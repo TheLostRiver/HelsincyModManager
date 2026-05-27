@@ -1,64 +1,66 @@
-# Architecture
+# 架构设计
 
-## Product Direction
+## 项目定位
 
-Helsincy Mod Manager is not designed as a simple archive extractor. It is a local game mod management platform with game-specific adapters. Monster Hunter: World - Iceborne is the first supported game, but the architecture should allow future adapters for Monster Hunter Rise, Monster Hunter Wilds, and other games with similar asset replacement workflows.
+Helsincy Mod Manager 不是一个简单的压缩包解压工具，而是一个本地游戏 Mod 管理平台。
 
-The first version should focus on a reliable Windows experience while keeping Linux and Steam Deck support possible through platform abstraction.
+第一阶段会以《怪物猎人：世界 冰原》为首个支持目标，但整体架构必须允许后续扩展到《怪物猎人：崛起》《怪物猎人：荒野》以及其他具有类似资源替换机制的游戏。
 
-## Core Principles
+第一版以 Windows 可用为重点，同时通过平台抽象保留 Linux / Steam Deck 支持空间。
 
-- UI and core logic are separated.
-- Application use cases depend on traits/interfaces, not concrete infrastructure implementations.
-- Game-specific behavior lives in adapters.
-- Installation is based on plans and manifests, not direct ad hoc file copying.
-- User-visible rules are data-driven where practical.
-- Heavy work runs as background tasks with progress events.
-- Game directory writes are serialized per game instance.
-- All destructive operations must be reversible or recoverable.
+## 核心原则
 
-## High-Level Layers
+- UI 和核心业务逻辑分离。
+- 应用用例依赖 trait / interface，而不是依赖具体实现。
+- 游戏差异全部收敛到游戏适配器。
+- 安装必须基于安装计划和安装清单，不能随手复制文件。
+- 面向玩家的规则尽量数据驱动。
+- 重任务必须后台执行，并通过事件向前端汇报进度。
+- 同一个游戏实例的写入操作必须串行。
+- 所有破坏性操作都必须可回滚或可恢复。
+
+## 总体分层
 
 ```text
-Frontend UI
+前端 UI
   React + TypeScript
-  Presentation, interaction, filtering, dialogs, progress display
+  负责展示、交互、筛选、弹窗、进度展示
 
 Tauri Commands
-  Thin command boundary between UI and Rust
-  Parameter validation and DTO mapping
+  前端与 Rust 后端之间的薄边界
+  负责参数校验和 DTO 转换
 
-Application Layer
-  Use cases such as import mod, install mod, disable mod, backup saves, launch game
+Application 应用层
+  导入 Mod、安装 Mod、禁用 Mod、备份存档、启动游戏等用例
 
-Domain Layer
-  Mod, Game, Profile, InstallPlan, Conflict, Manifest, Dependency, ReplacementTarget
+Domain 领域层
+  Mod、Game、Profile、InstallPlan、Conflict、Manifest、Dependency、ReplacementTarget
 
-Ports / Traits
-  File system, archive extraction, database repositories, game adapters, launcher, task runner
+Ports / Traits 接口层
+  文件系统、压缩包、数据库仓储、游戏适配器、启动器、任务系统
 
-Infrastructure
-  SQLite, real file system, archive tools, hashers, Steam library scan, platform APIs
+Infrastructure 基础设施层
+  SQLite、真实文件系统、压缩工具、hash、Steam 库扫描、平台 API
 
-Game Adapters
-  Monster Hunter: World - Iceborne first
-  Monster Hunter Rise / Wilds later
+Game Adapters 游戏适配器
+  首先支持 Monster Hunter: World - Iceborne
+  后续扩展 Monster Hunter Rise / Wilds
 ```
 
-## Proposed Rust Workspace
+## Rust Workspace 规划
 
 ```text
 src-tauri/
   crates/
-    hmm-core/          # Pure domain models and rules
-    hmm-ports/         # Traits/interfaces used by application logic
-    hmm-app/           # Use cases and orchestration
-    hmm-infra/         # SQLite, file system, archive, hash, Steam scan
-    hmm-games-mhw/     # MHW:I adapter and game rules
-    hmm-tauri/         # Tauri state, commands, events, app bootstrap
+    hmm-core/          # 纯领域模型和规则，不接触真实系统 API
+    hmm-ports/         # 应用层依赖的 traits/interfaces
+    hmm-app/           # 应用用例和流程编排
+    hmm-infra/         # SQLite、文件系统、压缩包、hash、Steam 扫描
+    hmm-games-mhw/     # MHW:I 适配器和游戏规则
+    hmm-tauri/         # Tauri state、commands、events、应用启动
 ```
 
-The frontend can be organized by feature:
+前端按功能拆分：
 
 ```text
 src/
@@ -77,91 +79,96 @@ src/
     types/
 ```
 
-## Main Modules
+## 主要模块
 
-### Game Discovery
+### 游戏发现
 
-Find installed games through multiple strategies:
+游戏目录识别需要支持多种策略：
 
-- Steam library scanning
-- Running process detection
-- Manual user selection
+- 扫描 Steam library
+- 扫描正在运行的进程
+- 玩家手动选择目录
 
-The discovery layer returns `GameInstance` values and does not assume one fixed install path.
+发现模块返回 `GameInstance`，不能假设游戏只有一个固定路径。
 
-### Game Launcher
+### 游戏启动
 
-Launch games through the proper platform strategy:
+启动逻辑由平台和游戏适配器决定：
 
-- Steam protocol when possible
-- Direct executable launch as fallback
-- Future Linux / Steam Deck launch behavior through platform-specific implementations
+- 优先通过 Steam 协议启动
+- 必要时直接启动游戏 exe
+- 后续 Linux / Steam Deck 通过独立平台实现处理
 
-Before launch, the app can warn about missing dependencies, unresolved conflicts, or incomplete install tasks.
+启动前可以检查：
 
-### Mod Import Pipeline
+- 是否缺少必要前置
+- 当前 profile 是否存在冲突
+- 是否有未完成的安装任务
+- 游戏目录是否仍然有效
 
-Imported archives go through a validation pipeline before they become installable:
+### Mod 导入流水线
+
+导入压缩包不能直接安装，必须先经过安全流水线：
 
 ```text
-Select archive
-Inspect archive
-Reject unsafe paths
-Extract to sandbox cache
-Analyze files
-Extract and validate preview image
-Infer mod type
-Generate metadata
-Generate candidate install plan
+选择压缩包
+检查压缩包信息
+拒绝危险路径
+解压到沙盒缓存目录
+分析文件结构
+提取并校验预览图
+推断 Mod 类型
+生成元数据
+生成候选安装计划
 ```
 
-The importer must defend against:
+导入器必须防御：
 
-- Path traversal such as `../`
-- Absolute paths
-- Archive bombs
-- Unsupported or suspicious file types
-- Fake image extensions
-- Case-insensitive path collisions
+- `../` 路径穿越
+- 绝对路径
+- 压缩包炸弹
+- 不支持或可疑的文件类型
+- 伪装图片扩展名
+- 大小写不敏感平台上的路径冲突
 
-### Package Analyzer
+### 包分析器
 
-The analyzer identifies package contents such as:
+包分析器识别 Mod 内容，例如：
 
-- `nativePC` files
-- Root-level DLL files
-- Executables or helper tools
-- INI/JSON/config files
-- Readme files
-- Preview images
-- Asset IDs used by appearance, weapon, or voice replacements
+- `nativePC` 文件
+- 游戏根目录 DLL
+- exe 或辅助工具
+- INI / JSON / config 文件
+- readme 文件
+- 预览图片
+- 外观、武器、语音替换相关的资源编号
 
-It should output structured package information rather than forcing installation rules into the frontend.
+包分析器输出结构化信息，不能把安装规则塞进前端。
 
-### Category and Tag System
+### 分类和标签
 
-Categories and tags must support many-to-many relationships.
+分类和标签必须支持多对多关系。
 
-Default categories can include:
+默认分类可以包括：
 
-- Appearance
-- Player appearance
-- NPC appearance
-- Palico appearance
-- Weapon replacement
-- Voice replacement
-- Functional mod
-- Weapon effect
-- Prerequisite
-- Tool
+- 外观
+- 主角外观
+- NPC 外观
+- 随从外观
+- 武器替换
+- 语音替换
+- 功能性 Mod
+- 武器特效
+- 前置
+- 工具
 
-Users must be able to create custom categories and assign one mod to multiple categories or tags.
+玩家必须可以创建自定义分类，并把一个 Mod 放到多个分类或标签下。
 
-### Dependency Checker
+### 前置依赖检查
 
-Many Monster Hunter mods depend on prerequisite files or loaders. Dependency checks should be data-driven.
+很多怪猎 Mod 需要前置文件或 loader。依赖检查必须数据驱动。
 
-Example dependency rule shape:
+依赖规则的大致形态：
 
 ```text
 DependencyRule
@@ -171,52 +178,52 @@ DependencyRule
   detection_rules
 ```
 
-Detection can support rules such as:
+检测方式可以包括：
 
-- File exists in game root
-- File exists under `nativePC`
-- Known hash matches
-- Known manifest entry exists
+- 游戏根目录存在某文件
+- `nativePC` 下存在某文件
+- 文件 hash 匹配已知值
+- 安装清单中存在某个前置 Mod
 
-Missing required dependencies should block installation or show a clear warning depending on severity.
+缺少必需前置时，安装应被阻止或给出明确警告，具体行为由严重级别决定。
 
-### Replacement Mapping
+### 替换目标映射
 
-Appearance, weapon, and voice mods often replace official game asset slots. The app should model this explicitly instead of treating it as plain file copying.
+外观、武器、语音 Mod 经常不是单纯“安装文件”，而是把自定义资源覆盖到官方资源槽位上。管理器必须把这种关系建模为一等概念。
 
-Core models:
+核心模型：
 
 ```text
 ReplacementTarget
-  Official game asset slot
-  Example: armor set, armor part, weapon, voice slot
+  官方游戏资源槽位
+  例如：某套外观、某个部位、某把武器、某个语音槽位
 
 ReplacementBinding
-  User-selected mapping from mod asset to official target
+  玩家选择的“Mod 资源 -> 官方目标”的绑定关系
 
 RetargetPlan
-  Staging changes needed to retarget package files
+  为了把 Mod 重定向到目标槽位，需要在 staging 目录执行的改写计划
 ```
 
-Armor replacement should support:
+外观替换需要支持：
 
-- Piecewise armor: head, chest, arms, waist, legs
-- Full-body armor: fixed full set replacement
-- Future advanced split/transform workflows through plugin-like transformers
+- 可拆分外观：头、胸、手、腰、脚
+- 固定整套外观：联动整套、不可拆分整套
+- 未来高级拆分或转换流程，通过插件式 transformer 扩展
 
-Important rules:
+重要规则：
 
-- The original imported mod package remains read-only.
-- Retargeting happens in a staging directory.
-- The manifest records the selected replacement binding.
-- Conflict detection uses final target paths, not original archive paths.
-- Changing target mapping is treated as uninstalling the old binding and installing the new one.
+- 原始导入的 Mod 包永远只读。
+- 重定向只发生在 staging 目录。
+- 安装清单记录玩家选择的替换绑定。
+- 冲突检测基于最终目标路径，而不是原始压缩包路径。
+- 玩家切换目标时，本质上是卸载旧绑定，再安装新绑定。
 
-### Install Planner
+### 安装计划
 
-Installation must start by creating an `InstallPlan`.
+安装前必须先生成 `InstallPlan`。
 
-Example actions:
+计划动作示例：
 
 ```text
 CopyFile
@@ -226,113 +233,113 @@ RemoveFile
 WriteManifest
 ```
 
-The planner is responsible for:
+安装计划负责：
 
-- Translating package contents into game target paths
-- Applying replacement bindings
-- Detecting conflicts
-- Checking dependencies
-- Estimating work for progress reporting
+- 将包内容转换成游戏目标路径
+- 应用替换目标绑定
+- 检测冲突
+- 检查前置依赖
+- 估算任务量，用于进度展示
 
-### Install Executor
+### 安装执行器
 
-The executor applies an `InstallPlan`.
+安装执行器负责真正修改游戏目录。
 
-Requirements:
+要求：
 
-- Back up overwritten files before writing.
-- Write an installation manifest.
-- Roll back on failure where possible.
-- Serialize writes per game instance.
-- Record enough state for recovery after a crash or forced shutdown.
+- 覆盖文件前必须备份。
+- 安装完成后必须写安装清单。
+- 失败时尽可能回滚。
+- 同一个游戏实例的写入必须串行。
+- 记录足够状态，用于崩溃或强制关闭后的恢复扫描。
 
-### Save Backup Service
+### 存档备份服务
 
-Save backups are independent from mod installation.
+存档备份模块独立于 Mod 安装模块。
 
-Required features:
+必备能力：
 
-- Manual backup
-- Automatic backup
-- User-selected backup directory
-- Default backup directory when the user has not selected one
-- Configurable automatic backup interval
-- Retention policy by count, age, or size
-- Backup manifest with hashes
+- 手动备份
+- 自动备份
+- 玩家自选备份目录
+- 未选择时使用默认备份目录
+- 自动备份时间间隔可配置
+- 按数量、时间或空间占用设置保留策略
+- 备份清单和 hash 校验
 
-The default backup location should live under the application data directory rather than inside the game directory.
+默认备份目录应位于应用数据目录下，而不是游戏目录里。
 
-### Task Manager
+### 任务管理器
 
-Long-running operations are background tasks:
+长耗时操作必须作为后台任务执行：
 
-- Archive extraction
-- Package scanning
-- Hash calculation
-- Conflict analysis
-- Install planning
-- Install execution
-- Save backup compression
+- 压缩包解压
+- 包扫描
+- hash 计算
+- 冲突分析
+- 安装计划生成
+- 安装执行
+- 存档备份压缩
 
-The frontend starts tasks through Tauri commands and receives progress through events.
+前端通过 Tauri command 启动任务，通过事件接收进度。
 
-## Concurrency Model
+## 并发模型
 
-The concurrency rule is:
-
-```text
-Read and prepare work may be parallel.
-Writes to the same game instance must be serialized.
-```
-
-Recommended task groups:
-
-- CPU pool: hashing and conflict analysis
-- IO pool: scanning, archive extraction, file copy preparation
-- Game write queue: one serialized queue per game instance
-- Database transactions: short, explicit writes
-- Event bus: progress and log messages
-
-Use a two-phase workflow:
+并发原则：
 
 ```text
-Prepare phase
-  Extract, hash, analyze, check dependencies, generate plan
-  Parallel and cancellable
-
-Commit phase
-  Acquire game write lock
-  Revalidate assumptions
-  Backup, copy, remove, write manifest
-  Short, serialized, recoverable
+读取和准备工作可以并行。
+同一个游戏实例的写入必须串行。
 ```
 
-Avoid holding game write locks during long extraction or hashing work.
+建议的任务分组：
 
-## Data Storage
+- CPU pool：hash 和冲突分析
+- IO pool：扫描、解压、复制前准备
+- Game write queue：每个游戏实例一个串行写入队列
+- Database transaction：短事务、明确写入边界
+- Event bus：进度和日志事件
 
-SQLite stores user and runtime state:
+采用两阶段执行：
 
-- Game instances
-- Imported mods
-- Categories and tags
-- Profiles
-- Replacement bindings
-- Install manifests
-- Backup history
-- User settings
+```text
+Prepare 阶段
+  解压、hash、分析、依赖检查、生成计划
+  可并行、可取消、不碰游戏目录
 
-JSON or TOML game data stores rule-like content:
+Commit 阶段
+  获取游戏写锁
+  重新校验当前状态
+  备份、复制、删除、写清单
+  短时间串行、可恢复
+```
 
-- Default categories
-- Official replacement target catalogs
-- Dependency rules
-- Save path rules
-- Mod type detection rules
-- Backup policy defaults
-- Limits such as preview image size and archive size
+不要在持有游戏写锁时做长时间解压或 hash。
 
-## Key Domain Models
+## 数据存储
+
+SQLite 存储用户数据和运行状态：
+
+- 游戏实例
+- 已导入 Mod
+- 分类和标签
+- Profile
+- 替换绑定
+- 安装清单
+- 备份历史
+- 用户设置
+
+JSON 或 TOML 存储偏规则的数据：
+
+- 默认分类
+- 官方替换目标 catalog
+- 前置依赖规则
+- 存档路径规则
+- Mod 类型识别规则
+- 备份策略默认值
+- 预览图大小、压缩包大小等限制
+
+## 关键领域模型
 
 ```text
 GameDefinition
@@ -399,7 +406,7 @@ InstallManifest
   replacement_bindings
 ```
 
-## Important Traits
+## 关键 Traits
 
 ```rust
 pub trait GameAdapter {
@@ -429,27 +436,27 @@ pub trait ModRepository {
 }
 ```
 
-## MVP Scope
+## MVP 范围
 
-The first build should include:
+第一版应包含：
 
-- MHW:I game directory detection and manual selection
-- Mod archive import and safety validation
-- Preview image extraction with validation
-- Category and tag management
-- Dependency check baseline
-- Install / uninstall with manifest
-- Conflict detection based on final paths
-- Manual save backup
-- One-click game launch
+- MHW:I 游戏目录识别和手动选择
+- Mod 压缩包导入和安全校验
+- 预览图提取和校验
+- 分类和标签管理
+- 基础前置依赖检查
+- 安装 / 卸载 / 安装清单
+- 基于最终路径的冲突检测
+- 手动存档备份
+- 一键启动游戏
 
-## Next Scope
+## 后续范围
 
-After the MVP:
+MVP 之后再加入：
 
-- Appearance, weapon, and voice replacement target selection
-- Profiles
-- Automatic save backups
-- Advanced rollback and recovery UI
-- Task queue UI
-- Linux / Steam Deck experimental packaging and community testing
+- 外观、武器、语音替换目标选择
+- Profile
+- 自动存档备份
+- 高级回滚和恢复 UI
+- 任务队列 UI
+- Linux / Steam Deck 实验性打包和社区测试

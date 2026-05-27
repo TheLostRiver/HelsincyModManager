@@ -1,30 +1,32 @@
 # Helsincy Mod Manager
 
-Helsincy Mod Manager is a planned cross-platform desktop mod manager for Monster Hunter games, starting with Monster Hunter: World - Iceborne on PC.
+Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台桌面 Mod 管理器。项目会先支持《怪物猎人：世界 冰原》，后续再考虑《怪物猎人：崛起》《怪物猎人：荒野》以及 Linux / Steam Deck 的实验性支持。
 
-The project is currently in the architecture and planning stage. The intended stack is:
+项目目前处于架构设计与规划阶段。
 
-- Desktop shell: Tauri 2
-- Frontend: React + TypeScript
-- Backend core: Rust
-- Storage: SQLite
-- First supported game: Monster Hunter: World - Iceborne
-- Future targets: Monster Hunter Rise, Monster Hunter Wilds, Linux / Steam Deck experimental support
+## 计划技术栈
 
-## Design Goals
+- 桌面框架：Tauri 2
+- 前端：React + TypeScript
+- 后端核心：Rust
+- 本地存储：SQLite
+- 首个支持游戏：《怪物猎人：世界 冰原》
+- 后续目标：《怪物猎人：崛起》《怪物猎人：荒野》、Linux / Steam Deck
 
-- Keep mod installation safe, reversible, and traceable.
-- Treat game support as adapters, not hard-coded one-off logic.
-- Use data-driven rules for categories, dependencies, replacement targets, backup policies, and platform-specific paths.
-- Support package validation before installation.
-- Support preview images, category/tag management, dependency checks, save backups, one-click game launch, and asset replacement mapping.
-- Keep heavy work off the UI thread and use controlled concurrency for scanning, hashing, extraction, and installation planning.
+## 设计目标
 
-## Documentation
+- Mod 安装必须安全、可回滚、可追踪。
+- 游戏支持通过适配器扩展，而不是把逻辑写死在核心代码里。
+- 分类、依赖、替换目标、备份策略、平台路径等规则尽量数据驱动。
+- Mod 安装前必须经过压缩包校验、文件结构分析和依赖检查。
+- 支持预览图、分类/标签、前置检查、存档备份、一键启动游戏、外观/武器/语音替换目标映射。
+- 扫描、解压、hash、分析等重任务必须在后台执行，并通过受控并发保证性能和安全性。
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Roadmap](docs/ROADMAP.md)
+## 文档
 
-## Repository Status
+- [架构设计](docs/ARCHITECTURE.md)
+- [路线图](docs/ROADMAP.md)
 
-This repository has been initialized for planning. Application scaffolding will be added after the architecture baseline is reviewed.
+## 仓库状态
+
+本仓库已经完成初始化，并先沉淀项目设计文档。应用脚手架会在架构基线确认后创建。
