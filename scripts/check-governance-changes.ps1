@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("staged", "head", "working")]
+    [ValidateSet("staged", "head", "working", "range")]
     [string]$Mode = "staged"
 )
 
@@ -19,6 +19,15 @@ try {
     }
     elseif ($Mode -eq "head") {
         $changed = @(git -c core.quotePath=false diff --name-only HEAD)
+    }
+    elseif ($Mode -eq "range") {
+        $upstream = git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($upstream)) {
+            $changed = @()
+        }
+        else {
+            $changed = @(git -c core.quotePath=false diff --name-only "$($upstream.Trim())..HEAD")
+        }
     }
     else {
         $changed = @(git -c core.quotePath=false status --short | ForEach-Object {
