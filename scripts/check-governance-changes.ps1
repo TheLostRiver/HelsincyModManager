@@ -21,12 +21,22 @@ try {
         $changed = @(git -c core.quotePath=false diff --name-only HEAD)
     }
     elseif ($Mode -eq "range") {
-        $upstream = git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($upstream)) {
+        $branch = (& git branch --show-current)
+        if ($LASTEXITCODE -ne 0 -or $null -eq $branch -or [string]::IsNullOrWhiteSpace(($branch | Select-Object -First 1))) {
+            Write-Host "No upstream branch configured; skipping governance range check."
             $changed = @()
         }
         else {
-            $changed = @(git -c core.quotePath=false diff --name-only "$($upstream.Trim())..HEAD")
+            $branchName = ($branch | Select-Object -First 1).Trim()
+            $remoteRef = "refs/remotes/origin/$branchName"
+            $remoteExists = (& git show-ref --verify --quiet $remoteRef)
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "No origin/$branchName branch found; skipping governance range check."
+                $changed = @()
+            }
+            else {
+                $changed = @(git -c core.quotePath=false diff --name-only "origin/$branchName..HEAD")
+            }
         }
     }
     else {
