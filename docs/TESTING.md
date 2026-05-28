@@ -26,6 +26,7 @@
 适用范围：
 
 - `README.md`
+- `CHANGELOG.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `AGENTS.md`
