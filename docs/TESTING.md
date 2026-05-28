@@ -28,7 +28,7 @@
 - `README.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
-- `agents.md`
+- `AGENTS.md`
 - `docs/`
 
 最小验证：
