@@ -185,6 +185,7 @@ PR 至少说明：
 - `docs/ARCHITECTURE.md`：架构、模块边界和核心模型。
 - `docs/ROADMAP.md`：阶段计划。
 - `docs/TESTING.md`：测试和验证基线。
+- `docs/GOVERNANCE.md`：工程治理与强制约束。
 - `CONTRIBUTING.md`：协作规则。
 - `SECURITY.md`：安全报告和敏感信息处理。
 - `AGENTS.md`：AI 协作约束。

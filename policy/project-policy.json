@@ -28,18 +28,36 @@
     "block": {
       "rust": 2200,
       "typescript": 2500,
+      "javascript": 2500,
+      "style": 1800,
+      "html": 1800,
+      "vue": 1800,
+      "svelte": 1800,
       "markdown": 2500,
       "yaml": 700,
       "powershell": 1200,
-      "json": 1200
+      "python": 1800,
+      "shell": 1200,
+      "toml": 1200,
+      "json": 1200,
+      "config": 1200
     },
     "extensions": {
       "rust": [".rs"],
       "typescript": [".ts", ".tsx"],
+      "javascript": [".js", ".jsx", ".mjs", ".cjs"],
+      "style": [".css", ".scss", ".sass", ".less"],
+      "html": [".html", ".htm"],
+      "vue": [".vue"],
+      "svelte": [".svelte"],
       "markdown": [".md"],
       "yaml": [".yml", ".yaml"],
       "powershell": [".ps1", ".psm1"],
-      "json": [".json"]
+      "python": [".py"],
+      "shell": [".sh", ".bash", ".zsh"],
+      "toml": [".toml"],
+      "json": [".json"],
+      "config": [".ini", ".conf", ".config"]
     },
     "allowlist": []
   },
@@ -88,6 +106,7 @@
   ],
   "governanceFiles": [
     "AGENTS.md",
+    "docs/GOVERNANCE.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
     "docs/TESTING.md",

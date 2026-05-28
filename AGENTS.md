@@ -18,6 +18,7 @@
 - `docs/ROADMAP.md`
 - `CONTRIBUTING.md`
 - `docs/TESTING.md`
+- `docs/GOVERNANCE.md`
 - `SECURITY.md`
 
 涉及安全、文件写入、存档、安装回滚、并发、游戏适配器时，必须先确认相关文档中的约束。

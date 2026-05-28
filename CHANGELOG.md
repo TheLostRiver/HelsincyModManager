@@ -13,12 +13,14 @@
 - 添加发布与产物规划文档。
 - 添加机器可读策略文件、本地验证脚本、Git hooks 和 GitHub Actions 验证工作流。
 - 添加 Codex 上下文管理工具目录 `.codex/`，用于项目内 planning hooks、skills、脚本和模板。
+- 添加 CODEOWNERS 和工程治理文档，规划分支保护、治理文件 review 和强制约束层级。
 
 ### Changed
 
 - 将项目文档默认语言确认为简体中文。
 - 放宽文件大小治理提醒线，并增加大文件滥用的硬性干预线。
 - 更新忽略规则，排除 Python 缓存和上下文管理工具运行时状态。
+- 扩展文件大小检查覆盖范围，纳入 JavaScript、样式、HTML、Vue、Svelte、Python、Shell、TOML 和配置文件。
 
 ### Security
 
