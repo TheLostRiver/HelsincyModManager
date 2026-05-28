@@ -30,6 +30,7 @@
 - `SECURITY.md`
 - `AGENTS.md`
 - `docs/`
+- `docs/release/`
 
 最小验证：
 
