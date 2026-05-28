@@ -95,6 +95,7 @@
     "docs/release/构建发布与脚本说明.md",
     "policy/project-policy.json",
     "scripts/**",
+    ".codex/**",
     ".githooks/**",
     ".github/workflows/**"
   ]

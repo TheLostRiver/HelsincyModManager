@@ -18,6 +18,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Node / frontend
 node_modules/
 dist/
@@ -31,6 +35,8 @@ src-tauri/target/
 
 # App data generated during local development
 .hmm/
+.planning/
+.plan-attestation
 tmp/
 temp/
 cache/
