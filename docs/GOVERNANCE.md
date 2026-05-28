@@ -11,6 +11,9 @@
 - `AGENTS.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
+- `CHANGELOG.md`
+- `docs/GOVERNANCE.md`
+- `docs/LOGGING.md`
 - `docs/TESTING.md`
 - `docs/release/`
 

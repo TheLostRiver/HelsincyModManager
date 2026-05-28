@@ -14,6 +14,7 @@
 - 添加机器可读策略文件、本地验证脚本、Git hooks 和 GitHub Actions 验证工作流。
 - 添加 Codex 上下文管理工具目录 `.codex/`，用于项目内 planning hooks、skills、脚本和模板。
 - 添加 CODEOWNERS 和工程治理文档，规划分支保护、治理文件 review 和强制约束层级。
+- 添加日志与审计设计文档，明确日志类型、脱敏规则、Audit Log、诊断导出和测试要求。
 
 ### Changed
 

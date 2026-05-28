@@ -6,6 +6,8 @@
     "SECURITY.md",
     "AGENTS.md",
     "docs/ARCHITECTURE.md",
+    "docs/GOVERNANCE.md",
+    "docs/LOGGING.md",
     "docs/ROADMAP.md",
     "docs/TESTING.md",
     "docs/release/发布与产物说明.md",
@@ -106,7 +108,9 @@
   ],
   "governanceFiles": [
     "AGENTS.md",
+    "CHANGELOG.md",
     "docs/GOVERNANCE.md",
+    "docs/LOGGING.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
     "docs/TESTING.md",
