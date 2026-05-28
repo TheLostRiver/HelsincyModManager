@@ -31,6 +31,7 @@
 - `SECURITY.md`
 - `AGENTS.md`
 - `docs/GOVERNANCE.md`
+- `docs/LOGGING.md`
 - `docs/`
 - `docs/release/`
 
@@ -237,6 +238,32 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 使用可控的 fake file system。
 - 使用临时目录和小文件。
 - 对锁顺序写单元测试或集成测试。
+
+## 日志与审计
+
+适用范围：
+
+- logging / telemetry 初始化
+- redaction helper
+- task event
+- audit log writer
+- diagnostic export
+
+必须覆盖：
+
+- home 路径脱敏。
+- 游戏目录路径脱敏。
+- Steam ID 脱敏。
+- token、API key、cookie 脱敏。
+- 任务日志和进度事件都携带同一个 `task_id`。
+- 写入、覆盖、删除、备份、恢复、manifest、回滚都会产生 Audit Log。
+- 诊断包不包含真实存档、第三方 Mod 包、完整本地路径或明显敏感信息。
+
+测试要求：
+
+- 使用人工构造的路径和临时目录。
+- 不读取真实游戏目录、真实存档或真实 Mod 包。
+- 不把未脱敏日志写入仓库。
 
 ## 游戏适配器
 
