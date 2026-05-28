@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+echo "Running pre-commit checks..."
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-policy.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-file-size.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-forbidden-files.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-doc-links.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-governance-changes.ps1 -Mode staged
+git diff --check --cached
+
+echo "Pre-commit checks passed."

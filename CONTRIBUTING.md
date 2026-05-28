@@ -152,6 +152,14 @@ Windows PowerShell 执行策略阻止脚本时，可以使用：
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
+建议安装本地 Git hooks：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
+```
+
+hooks 会在提交和推送前运行基础检查。它们可以被绕过，因此最终门禁仍以 GitHub Actions 为准。
+
 提交说明中应写明：
 
 - 已执行哪些验证。

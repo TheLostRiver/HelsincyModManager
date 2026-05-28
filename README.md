@@ -49,6 +49,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 该脚本会检查必需文档、文件大小硬性线、禁止提交的文件类型、Markdown 内链和明显敏感信息。
 
+可选安装本地 Git hooks：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
+```
+
 ## 仓库状态
 
 本仓库已经完成初始化，并先沉淀项目设计文档。应用脚手架会在架构基线确认后创建。

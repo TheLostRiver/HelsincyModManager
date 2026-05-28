@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+echo "Running pre-push verification..."
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-governance-changes.ps1 -Mode head
+
+echo "Pre-push verification passed."

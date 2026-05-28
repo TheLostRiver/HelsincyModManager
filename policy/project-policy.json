@@ -19,7 +19,9 @@
     "scripts/check-file-size.ps1",
     "scripts/check-forbidden-files.ps1",
     "scripts/check-doc-links.ps1",
-    "scripts/check-secrets.ps1"
+    "scripts/check-secrets.ps1",
+    "scripts/check-governance-changes.ps1",
+    "scripts/install-hooks.ps1"
   ],
   "fileSize": {
     "block": {
@@ -82,5 +84,17 @@
       "name": "Slack token",
       "regex": "xox[baprs]-[A-Za-z0-9-]{20,}"
     }
+  ],
+  "governanceFiles": [
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "docs/TESTING.md",
+    "docs/release/发布与产物说明.md",
+    "docs/release/构建发布与脚本说明.md",
+    "policy/project-policy.json",
+    "scripts/**",
+    ".githooks/**",
+    ".github/workflows/**"
   ]
 }

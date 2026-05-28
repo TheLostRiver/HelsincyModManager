@@ -52,6 +52,12 @@ git diff --check
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
+安装本地 Git hooks：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
+```
+
 ## 前端改动
 
 适用范围：
