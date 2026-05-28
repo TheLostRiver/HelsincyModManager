@@ -1,0 +1,15 @@
+# Governance files affect project rules, automation, and agent behavior.
+# Keep this in sync with policy/project-policy.json governanceFiles.
+
+/AGENTS.md @TheLostRiver
+/CONTRIBUTING.md @TheLostRiver
+/SECURITY.md @TheLostRiver
+/CHANGELOG.md @TheLostRiver
+/docs/TESTING.md @TheLostRiver
+/docs/release/ @TheLostRiver
+/policy/ @TheLostRiver
+/scripts/ @TheLostRiver
+/.githooks/ @TheLostRiver
+/.github/workflows/ @TheLostRiver
+/.github/CODEOWNERS @TheLostRiver
+/.codex/ @TheLostRiver

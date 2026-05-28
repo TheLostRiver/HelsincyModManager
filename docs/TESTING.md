@@ -30,6 +30,7 @@
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `AGENTS.md`
+- `docs/GOVERNANCE.md`
 - `docs/`
 - `docs/release/`
 
