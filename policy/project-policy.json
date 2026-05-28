@@ -1,0 +1,86 @@
+{
+  "requiredFiles": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "AGENTS.md",
+    "docs/ARCHITECTURE.md",
+    "docs/ROADMAP.md",
+    "docs/TESTING.md",
+    "docs/release/发布与产物说明.md",
+    "docs/release/构建发布与脚本说明.md"
+  ],
+  "caseSensitiveFiles": [
+    "AGENTS.md"
+  ],
+  "requiredScripts": [
+    "scripts/verify.ps1",
+    "scripts/check-policy.ps1",
+    "scripts/check-file-size.ps1",
+    "scripts/check-forbidden-files.ps1",
+    "scripts/check-doc-links.ps1",
+    "scripts/check-secrets.ps1"
+  ],
+  "fileSize": {
+    "block": {
+      "rust": 2200,
+      "typescript": 2500,
+      "markdown": 2500,
+      "yaml": 700,
+      "powershell": 1200,
+      "json": 1200
+    },
+    "extensions": {
+      "rust": [".rs"],
+      "typescript": [".ts", ".tsx"],
+      "markdown": [".md"],
+      "yaml": [".yml", ".yaml"],
+      "powershell": [".ps1", ".psm1"],
+      "json": [".json"]
+    },
+    "allowlist": []
+  },
+  "forbiddenFiles": {
+    "extensions": [
+      ".zip",
+      ".7z",
+      ".rar",
+      ".sav",
+      ".bak"
+    ],
+    "pathPatterns": [
+      ".hmm/**",
+      "tmp/**",
+      "temp/**",
+      "cache/**",
+      "backups/**",
+      "dist/**",
+      "build/**",
+      "release-artifacts/**",
+      "src-tauri/target/**",
+      "target/**"
+    ]
+  },
+  "secretPatterns": [
+    {
+      "name": "GitHub classic token",
+      "regex": "ghp_[A-Za-z0-9_]{30,}"
+    },
+    {
+      "name": "GitHub fine-grained token",
+      "regex": "github_pat_[A-Za-z0-9_]{20,}"
+    },
+    {
+      "name": "OpenAI style API key",
+      "regex": "sk-[A-Za-z0-9]{20,}"
+    },
+    {
+      "name": "AWS access key",
+      "regex": "AKIA[0-9A-Z]{16}"
+    },
+    {
+      "name": "Slack token",
+      "regex": "xox[baprs]-[A-Za-z0-9-]{20,}"
+    }
+  ]
+}

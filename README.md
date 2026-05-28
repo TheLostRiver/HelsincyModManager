@@ -33,6 +33,22 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [测试指南](docs/TESTING.md)
 - [AI 协作约束](AGENTS.md)
 
+## 当前验证入口
+
+脚手架创建前，仓库提供了基础策略验证脚本：
+
+```powershell
+./scripts/verify.ps1
+```
+
+如果 Windows PowerShell 执行策略阻止脚本运行，可以使用一次性绕过方式：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+```
+
+该脚本会检查必需文档、文件大小硬性线、禁止提交的文件类型、Markdown 内链和明显敏感信息。
+
 ## 仓库状态
 
 本仓库已经完成初始化，并先沉淀项目设计文档。应用脚手架会在架构基线确认后创建。

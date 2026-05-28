@@ -67,6 +67,18 @@
 
 根据改动范围参考 `docs/TESTING.md`。
 
+提交或最终回复前应优先执行：
+
+```powershell
+./scripts/verify.ps1
+```
+
+如果 Windows PowerShell 执行策略阻止脚本运行，使用：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+```
+
 如果暂时没有脚手架或测试命令不可用，最终回复必须明确：
 
 - 已执行什么检查。

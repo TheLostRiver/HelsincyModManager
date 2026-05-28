@@ -1,0 +1,53 @@
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+$repoRoot = git rev-parse --show-toplevel 2>$null
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
+    Write-Host "Current directory is not inside a Git repository." -ForegroundColor Red
+    exit 1
+}
+
+$repoRoot = $repoRoot.Trim()
+$checks = @(
+    "scripts/check-policy.ps1",
+    "scripts/check-file-size.ps1",
+    "scripts/check-forbidden-files.ps1",
+    "scripts/check-doc-links.ps1",
+    "scripts/check-secrets.ps1"
+)
+
+Push-Location $repoRoot
+try {
+    Write-Host "Running Git whitespace check..."
+    git diff --check
+    if ($LASTEXITCODE -ne 0) {
+        exit 1
+    }
+
+    foreach ($check in $checks) {
+        Write-Host "Running $check ..."
+        & (Join-Path $repoRoot ($check -replace '/', [System.IO.Path]::DirectorySeparatorChar))
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    }
+
+    if (Test-Path -LiteralPath (Join-Path $repoRoot "package.json")) {
+        Write-Host "package.json detected; frontend checks will be wired after scaffolding lands."
+    }
+    else {
+        Write-Host "Skipping frontend checks: package.json does not exist yet."
+    }
+
+    if (Test-Path -LiteralPath (Join-Path $repoRoot "Cargo.toml")) {
+        Write-Host "Cargo.toml detected; Rust workspace checks will be wired after scaffolding lands."
+    }
+    else {
+        Write-Host "Skipping Rust checks: Cargo.toml does not exist yet."
+    }
+
+    Write-Host "Verification passed."
+}
+finally {
+    Pop-Location
+}

@@ -140,6 +140,18 @@ Helsincy Mod Manager 是一个基于 Tauri 的本地桌面应用，计划由以�
 
 根据改动范围执行最小验证。当前项目仍在脚手架前阶段，具体命令以 [测试指南](docs/TESTING.md) 为准。
 
+当前统一验证入口：
+
+```powershell
+./scripts/verify.ps1
+```
+
+Windows PowerShell 执行策略阻止脚本时，可以使用：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+```
+
 提交说明中应写明：
 
 - 已执行哪些验证。

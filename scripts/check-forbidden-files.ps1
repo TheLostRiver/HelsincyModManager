@@ -1,0 +1,35 @@
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+. "$PSScriptRoot/lib/Policy.ps1"
+
+$repoRoot = Get-RepoRoot
+$policy = Read-ProjectPolicy -RepoRoot $repoRoot
+$files = Get-GitCandidateFiles -RepoRoot $repoRoot
+$errors = New-Object System.Collections.Generic.List[string]
+$forbiddenExtensions = @($policy.forbiddenFiles.extensions | ForEach-Object { $_.ToLowerInvariant() })
+$pathRegexes = @($policy.forbiddenFiles.pathPatterns | ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })
+
+foreach ($file in $files) {
+    $normalized = $file -replace '\\', '/'
+    $extension = [System.IO.Path]::GetExtension($normalized).ToLowerInvariant()
+
+    if ($forbiddenExtensions -contains $extension) {
+        $errors.Add("Forbidden file type: $normalized")
+        continue
+    }
+
+    foreach ($regex in $pathRegexes) {
+        if ($normalized -match $regex) {
+            $errors.Add("Forbidden path: $normalized")
+            break
+        }
+    }
+}
+
+if ($errors.Count -gt 0) {
+    Write-PolicyErrors -Title "Forbidden files check failed:" -Errors $errors
+    exit 1
+}
+
+Write-Host "Forbidden files check passed."

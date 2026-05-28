@@ -43,6 +43,13 @@
 ```powershell
 git status --short --branch
 git diff --check
+./scripts/verify.ps1
+```
+
+如果 Windows PowerShell 执行策略阻止脚本运行，可以使用：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
 ## 前端改动
