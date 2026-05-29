@@ -27,6 +27,10 @@
 - 扩展文件大小检查覆盖范围，纳入 JavaScript、样式、HTML、Vue、Svelte、Python、Shell、TOML 和配置文件。
 - 更新统一验证脚本和 GitHub Actions，使其覆盖前端类型检查、lint、构建以及 Rust workspace 检查。
 
+### Fixed
+
+- 补齐 Tauri Linux CI 需要的 PNG 图标资源，并在统一验证脚本中检查 Tauri 图标资产是否存在。
+
 ### Security
 
 - 添加 Mod 包、存档、敏感信息和文件写入相关的安全策略。

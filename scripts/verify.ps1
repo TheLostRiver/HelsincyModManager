@@ -27,6 +27,19 @@ function Invoke-Pnpm {
     }
 }
 
+function Assert-RequiredFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $RelativePath
+    )
+
+    $fullPath = Join-Path $repoRoot ($RelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        Write-Host "Required file is missing: $RelativePath" -ForegroundColor Red
+        exit 1
+    }
+}
+
 $checks = @(
     "scripts/check-policy.ps1",
     "scripts/check-file-size.ps1",
@@ -49,6 +62,12 @@ try {
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }
+    }
+
+    if (Test-Path -LiteralPath (Join-Path $repoRoot "src-tauri/tauri.conf.json")) {
+        Write-Host "Checking Tauri icon assets..."
+        Assert-RequiredFile -RelativePath "src-tauri/icons/icon.ico"
+        Assert-RequiredFile -RelativePath "src-tauri/icons/icon.png"
     }
 
     if (Test-Path -LiteralPath (Join-Path $repoRoot "package.json")) {
