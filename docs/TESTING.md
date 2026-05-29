@@ -1,6 +1,6 @@
 # 测试指南
 
-本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前仍在规划和脚手架阶段，测试命令会随着工程落地逐步完善。
+本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。
 
 ## 目标
 
@@ -11,15 +11,15 @@
 
 ## 基础环境
 
-计划使用：
+当前使用：
 
-- Node.js 20 或更新的 LTS 版本。
-- pnpm 9 或项目锁定版本。
+- Node.js 24 或更新的 LTS 版本。
+- pnpm 通过 `packageManager` 锁定，并由 Corepack 启用。
 - Rust stable。
 - Tauri 2 对应平台依赖。
 - Windows 开发环境建议安装 PowerShell 7+。
 
-脚手架创建后，应在仓库中明确锁定版本和安装方式。
+当前前端依赖由 `package.json` 和 `pnpm-lock.yaml` 锁定。Windows PowerShell 5.1 下建议使用 `cmd /c corepack pnpm ...`，避免直接调用 `pnpm.ps1` 时被执行策略拦截。
 
 ## 文档改动
 
@@ -70,16 +70,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 脚手架完成后的最小验证：
 
-```bash
-pnpm install
-pnpm run build
-pnpm run lint
+```powershell
+cmd /c corepack pnpm install --frozen-lockfile
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run build
 ```
 
 涉及 UI 工作流时，建议补充：
 
-```bash
-pnpm run test
+```powershell
+cmd /c corepack pnpm run test
 ```
 
 涉及真实桌面交互、窗口、文件选择器或 Tauri command 调用时，需要启动本地应用进行手动 smoke test。
@@ -96,15 +97,15 @@ pnpm run test
 
 最小验证：
 
-```bash
+```powershell
 cargo test --workspace
 cargo check --workspace
 ```
 
 建议补充：
 
-```bash
-pnpm run tauri dev
+```powershell
+cmd /c corepack pnpm run tauri:dev
 ```
 
 验证重点：
@@ -126,7 +127,7 @@ pnpm run tauri dev
 
 最小验证：
 
-```bash
+```powershell
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -302,15 +303,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 最小验证：
 
-```bash
-pnpm run build
+```powershell
+cmd /c corepack pnpm run build
 cargo test --workspace
 ```
 
 建议补充：
 
-```bash
-pnpm run tauri build
+```powershell
+cmd /c corepack pnpm run tauri:build
 ```
 
 必须人工确认：

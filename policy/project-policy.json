@@ -61,7 +61,10 @@
       "json": [".json"],
       "config": [".ini", ".conf", ".config"]
     },
-    "allowlist": []
+    "allowlist": [
+      "pnpm-lock.yaml",
+      "Cargo.lock"
+    ]
   },
   "forbiddenFiles": {
     "extensions": [

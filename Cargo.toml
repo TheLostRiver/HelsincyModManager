@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "src-tauri",
+    "src-tauri/crates/hmm-core",
+    "src-tauri/crates/hmm-ports",
+    "src-tauri/crates/hmm-app",
+    "src-tauri/crates/hmm-infra",
+    "src-tauri/crates/hmm-games-mhw",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/TheLostRiver/HelsincyModManager"
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tauri = "2.9.5"
+tauri-build = "2.5.3"
+thiserror = "2.0.17"
+tracing = "0.1.43"

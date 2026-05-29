@@ -1,0 +1,11 @@
+[package]
+name = "hmm-core"
+version = "0.1.0-alpha.0"
+description = "Domain model and rules for Helsincy Mod Manager"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true

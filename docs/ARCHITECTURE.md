@@ -50,21 +50,25 @@ Game Adapters 游戏适配器
 ## Rust Workspace 规划
 
 ```text
-src-tauri/
+src-tauri/              # Tauri 应用 crate，包名 hmm-tauri
+  src/                  # Tauri commands、state、events、应用启动
   crates/
     hmm-core/          # 纯领域模型和规则，不接触真实系统 API
     hmm-ports/         # 应用层依赖的 traits/interfaces
     hmm-app/           # 应用用例和流程编排
     hmm-infra/         # SQLite、文件系统、压缩包、hash、Steam 扫描
     hmm-games-mhw/     # MHW:I 适配器和游戏规则
-    hmm-tauri/         # Tauri state、commands、events、应用启动
 ```
+
+`src-tauri/` 本身作为 Tauri 应用 crate，包名为 `hmm-tauri`。这样可以保留 Tauri CLI 默认约定，避免额外配置成本；可复用业务 crate 放在 `src-tauri/crates/` 下。
 
 前端按功能拆分：
 
 ```text
 src/
+  app/
   features/
+    dashboard/
     mods/
     categories/
     profiles/

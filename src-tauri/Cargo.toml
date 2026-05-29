@@ -1,0 +1,22 @@
+[package]
+name = "hmm-tauri"
+version = "0.1.0-alpha.0"
+description = "Tauri shell for Helsincy Mod Manager"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "hmm_tauri"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+hmm-app = { path = "crates/hmm-app" }
+hmm-core = { path = "crates/hmm-core" }
+serde.workspace = true
+serde_json.workspace = true
+tauri = { workspace = true, features = [] }
+tracing.workspace = true
