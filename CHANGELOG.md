@@ -19,7 +19,7 @@
 - 根据 Pencil 设计稿落地首启工作台前端页面。
 - 添加安全的 `app_health` Tauri command，用于验证前后端桥接。
 - 添加 React Hooks ESLint 规则，用于提前发现 hooks 使用问题。
-- 添加前端外观系统设计文档，规划颜色方案、Shell 变体、密度、动效和浮动 Dock 布局边界。
+- 添加前端外观系统设计文档和扩展指南，规划颜色方案、Shell 变体、密度、动效、浮动 Dock 布局边界与扩展验收清单。
 
 ### Changed
 
