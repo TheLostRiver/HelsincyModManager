@@ -58,9 +58,14 @@ src-tauri/              # Tauri 应用 crate，包名 hmm-tauri
     hmm-app/           # 应用用例和流程编排
     hmm-infra/         # SQLite、文件系统、压缩包、hash、Steam 扫描
     hmm-games-mhw/     # MHW:I 适配器和游戏规则
+    hmm-games-rise/    # 后续 Rise 适配器和游戏规则
+    hmm-games-wilds/   # 后续 Wilds 适配器和游戏规则
+    hmm-games-common/  # 可选，怪物猎人系列共享适配工具
 ```
 
 `src-tauri/` 本身作为 Tauri 应用 crate，包名为 `hmm-tauri`。这样可以保留 Tauri CLI 默认约定，避免额外配置成本；可复用业务 crate 放在 `src-tauri/crates/` 下。
+
+`hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 
 前端按功能拆分：
 
@@ -82,6 +87,37 @@ src/
     state/
     types/
 ```
+
+## 多游戏扩展边界
+
+Helsincy Mod Manager 的扩展方式是“一个 app + 多个游戏适配器”，不是“一个游戏复制一套 app”。世界冰原、崛起、荒野的规则代码不能混放在同一个适配器文件或通用核心模块里。
+
+通用流程放在核心和应用层：
+
+- Mod 导入、压缩包安全校验和沙盒解压。
+- 预览图提取和基础元数据分析。
+- 分类、标签、Profile、任务队列和日志审计。
+- `InstallPlan`、`InstallManifest`、冲突检测框架、备份和回滚流程。
+- Tauri command、前端 API 封装和通用页面状态。
+
+游戏差异放在独立 adapter：
+
+- 游戏目录识别和启动方式差异。
+- `nativePC`、根目录 DLL、loader、前置依赖规则。
+- 官方外观、武器、语音替换目标 catalog。
+- 存档路径规则、资源编号解析、retarget / 重定向规则。
+- 游戏专属 Mod 结构识别和包分析扩展。
+
+应用层只依赖 `GameAdapter` trait 和数据 catalog，不直接依赖 `hmm-games-mhw`、`hmm-games-rise` 或 `hmm-games-wilds` 的具体实现。具体 adapter 只在组合根或注册表中被装配。这样新增 Rise 或 Wilds 时，应新增 adapter crate 并注册能力，而不是修改 MHW:I adapter 来兼容其他游戏。
+
+前端默认使用游戏无关 feature 页面，例如 `features/mods/`、`features/backups/`、`features/replacements/`、`features/settings/`。这些页面通过当前游戏的 capability、dependency rules、replacement catalog 和任务状态来改变展示内容。只有当某个游戏确实需要无法由通用页面表达的专属交互时，才新增 `features/games/<game-id>/` 下的专属 UI。
+
+禁止的耦合方式：
+
+- 在 `hmm-core`、`hmm-app` 或通用前端 feature 中写死 MHW:I 路径、资源编号或前置文件名。
+- 在 MHW:I adapter 中加入 Rise / Wilds 的判断分支。
+- 前端根据游戏名拼接安装路径或替换目标路径。
+- 为每个游戏复制一整套 Mod 管理、备份、任务和设置页面。
 
 ## 主要模块
 
