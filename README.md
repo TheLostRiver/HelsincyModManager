@@ -25,6 +25,8 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 ## 文档
 
 - [架构设计](docs/ARCHITECTURE.md)
+- [前端外观系统设计](docs/APPEARANCE_SYSTEM.md)
+- [前端外观系统扩展指南](docs/APPEARANCE_EXTENSION_GUIDE.md)
 - [路线图](docs/ROADMAP.md)
 - [发布与产物说明](docs/release/发布与产物说明.md)
 - [构建发布与脚本说明](docs/release/构建发布与脚本说明.md)
