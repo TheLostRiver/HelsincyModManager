@@ -15,6 +15,10 @@
 - 添加 Codex 上下文管理工具目录 `.codex/`，用于项目内 planning hooks、skills、脚本和模板。
 - 添加 CODEOWNERS 和工程治理文档，规划分支保护、治理文件 review 和强制约束层级。
 - 添加日志与审计设计文档，明确日志类型、脱敏规则、Audit Log、诊断导出和测试要求。
+- 添加 Tauri 2、React、TypeScript、Vite 与 Rust workspace 脚手架基线。
+- 根据 Pencil 设计稿落地首启工作台前端页面。
+- 添加安全的 `app_health` Tauri command，用于验证前后端桥接。
+- 添加 React Hooks ESLint 规则，用于提前发现 hooks 使用问题。
 
 ### Changed
 
@@ -22,6 +26,15 @@
 - 放宽文件大小治理提醒线，并增加大文件滥用的硬性干预线。
 - 更新忽略规则，排除 Python 缓存和上下文管理工具运行时状态。
 - 扩展文件大小检查覆盖范围，纳入 JavaScript、样式、HTML、Vue、Svelte、Python、Shell、TOML 和配置文件。
+- 更新统一验证脚本和 GitHub Actions，使其覆盖前端类型检查、lint、构建以及 Rust workspace 检查。
+- 固定 GitHub Actions 第三方 action 到 commit SHA，降低供应链风险。
+- 为 Tauri 配置生产 CSP，并保留开发环境 CSP 放宽入口。
+- 改进首启工作台导航的可访问性和中文文案一致性。
+
+### Fixed
+
+- 补齐 Tauri Linux CI 需要的 PNG 图标资源，并在统一验证脚本中检查 Tauri 图标资产是否存在。
+- 避免 Windows release 构建打开额外控制台窗口。
 
 ### Security
 

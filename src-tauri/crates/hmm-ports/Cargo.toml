@@ -1,0 +1,11 @@
+[package]
+name = "hmm-ports"
+version = "0.1.0-alpha.0"
+description = "Application ports for Helsincy Mod Manager"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+hmm-core = { path = "../hmm-core" }

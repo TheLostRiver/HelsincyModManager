@@ -8,6 +8,38 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
 }
 
 $repoRoot = $repoRoot.Trim()
+
+function Invoke-Pnpm {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]] $Arguments
+    )
+
+    if ($env:OS -eq "Windows_NT") {
+        & cmd /c corepack pnpm @Arguments
+    }
+    else {
+        & corepack pnpm @Arguments
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
+function Assert-RequiredFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $RelativePath
+    )
+
+    $fullPath = Join-Path $repoRoot ($RelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        Write-Host "Required file is missing: $RelativePath" -ForegroundColor Red
+        exit 1
+    }
+}
+
 $checks = @(
     "scripts/check-policy.ps1",
     "scripts/check-file-size.ps1",
@@ -32,15 +64,43 @@ try {
         }
     }
 
+    if (Test-Path -LiteralPath (Join-Path $repoRoot "src-tauri/tauri.conf.json")) {
+        Write-Host "Checking Tauri icon assets..."
+        Assert-RequiredFile -RelativePath "src-tauri/icons/icon.ico"
+        Assert-RequiredFile -RelativePath "src-tauri/icons/icon.png"
+    }
+
     if (Test-Path -LiteralPath (Join-Path $repoRoot "package.json")) {
-        Write-Host "package.json detected; frontend checks will be wired after scaffolding lands."
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "node_modules"))) {
+            Write-Host "node_modules is missing. Run: cmd /c corepack pnpm install --frozen-lockfile" -ForegroundColor Red
+            exit 1
+        }
+
+        Write-Host "Running frontend typecheck..."
+        Invoke-Pnpm -Arguments @("run", "typecheck")
+
+        Write-Host "Running frontend lint..."
+        Invoke-Pnpm -Arguments @("run", "lint")
+
+        Write-Host "Running frontend build..."
+        Invoke-Pnpm -Arguments @("run", "build")
     }
     else {
         Write-Host "Skipping frontend checks: package.json does not exist yet."
     }
 
     if (Test-Path -LiteralPath (Join-Path $repoRoot "Cargo.toml")) {
-        Write-Host "Cargo.toml detected; Rust workspace checks will be wired after scaffolding lands."
+        Write-Host "Running Rust tests..."
+        cargo test --workspace
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+
+        Write-Host "Running Rust check..."
+        cargo check --workspace
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
     }
     else {
         Write-Host "Skipping Rust checks: Cargo.toml does not exist yet."

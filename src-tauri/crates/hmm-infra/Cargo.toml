@@ -1,0 +1,11 @@
+[package]
+name = "hmm-infra"
+version = "0.1.0-alpha.0"
+description = "Infrastructure adapters for Helsincy Mod Manager"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+hmm-ports = { path = "../hmm-ports" }

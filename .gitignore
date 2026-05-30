@@ -32,6 +32,7 @@ release-artifacts/
 # Rust / Tauri
 target/
 src-tauri/target/
+src-tauri/gen/
 
 # App data generated during local development
 .hmm/

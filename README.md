@@ -2,7 +2,7 @@
 
 Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台桌面 Mod 管理器。项目会先支持《怪物猎人：世界 冰原》，后续再考虑《怪物猎人：崛起》《怪物猎人：荒野》以及 Linux / Steam Deck 的实验性支持。
 
-项目目前处于架构设计与规划阶段。
+项目目前处于架构设计与脚手架基线阶段，已开始落地 Tauri 2、React、TypeScript 与 Rust workspace。
 
 ## 计划技术栈
 
@@ -36,9 +36,28 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [测试指南](docs/TESTING.md)
 - [AI 协作约束](AGENTS.md)
 
+## 本地开发
+
+首次运行前安装前端依赖：
+
+```powershell
+cmd /c corepack pnpm install --frozen-lockfile
+```
+
+常用开发命令：
+
+```powershell
+cmd /c corepack pnpm run dev
+cmd /c corepack pnpm run build
+cmd /c corepack pnpm run tauri:dev
+cargo test --workspace
+```
+
+Tauri CLI 通过 `@tauri-apps/cli` 作为项目内 devDependency 提供，不要求全局安装 `cargo-tauri`。
+
 ## 当前验证入口
 
-脚手架创建前，仓库提供了基础策略验证脚本：
+仓库提供统一验证脚本：
 
 ```powershell
 ./scripts/verify.ps1
@@ -50,7 +69,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-该脚本会检查必需文档、文件大小硬性线、禁止提交的文件类型、Markdown 内链和明显敏感信息。
+该脚本会检查必需文档、文件大小硬性线、禁止提交的文件类型、Markdown 内链、明显敏感信息、前端类型检查、前端 lint、前端构建以及 Rust workspace 测试和编译检查。
 
 可选安装本地 Git hooks：
 
@@ -60,4 +79,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 ## 仓库状态
 
-本仓库已经完成初始化，并先沉淀项目设计文档。应用脚手架会在架构基线确认后创建。
+本仓库已经完成初始化，并沉淀项目设计文档、治理脚本、首启工作台前端页面和 Rust workspace 骨架。当前脚手架不会读写真实 Mod 包、真实游戏目录或真实玩家存档。
