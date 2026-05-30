@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   { label: "工作台", icon: LayoutDashboard, state: "active" },
   { label: "Mod 管理", icon: Puzzle, state: "disabled" },
   { label: "分类 / 标签", icon: Tags, state: "disabled" },
-  { label: "Profile", icon: User, state: "disabled" },
+  { label: "配置档", icon: User, state: "disabled" },
   { label: "替换目标", icon: Crosshair, state: "disabled" },
   { label: "存档备份", icon: Archive, state: "disabled" },
   { label: "游戏管理", icon: Gamepad2 },
@@ -75,6 +75,7 @@ function NavButton({ item }: { item: NavItem }) {
       type="button"
       className={`nav-item ${isActive ? "is-active" : ""}`}
       disabled={item.state === "disabled"}
+      aria-current={isActive ? "page" : undefined}
     >
       {isActive && <span className="active-mark" aria-hidden="true" />}
       <Icon size={16} strokeWidth={2.1} />
@@ -93,7 +94,7 @@ function TopStatusBar() {
 
       <div className="status-actions" aria-label="当前状态">
         <span className="status-pill warning">
-          <span>Profile</span>
+          <span>配置档</span>
           <strong>待初始化</strong>
         </span>
         <span className="status-pill warning compact">
