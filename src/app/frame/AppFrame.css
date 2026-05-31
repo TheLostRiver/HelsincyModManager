@@ -3,15 +3,17 @@
   grid-template-columns: 240px minmax(0, 1fr);
   width: 100%;
   min-height: 100vh;
-  color: #1f2933;
-  background: #f8fafc;
+  color: var(--color-text);
+  background: var(--color-bg);
 }
 
 .app-surface {
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-content-gap);
   min-width: 0;
   min-height: 100vh;
+  padding: var(--space-page);
 }
 
 .app-shell[data-sidebar-mode="floating"] {
@@ -19,18 +21,21 @@
 }
 
 .app-shell[data-sidebar-mode="floating"] .app-surface {
-  padding-left: 96px;
+  padding-left: 144px;
 }
 
 .top-status-bar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   height: 64px;
-  padding: 0 20px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  min-width: 0;
+  padding: 0 22px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
 }
 
 .current-game {
@@ -45,14 +50,15 @@
 }
 
 .current-game span {
-  color: #7a8494;
+  color: var(--color-text-muted);
   font-size: 11px;
+  font-weight: 600;
 }
 
 .current-game strong {
   overflow: hidden;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -71,26 +77,29 @@
 .status-pill {
   display: inline-flex;
   align-items: center;
-  white-space: nowrap;
   gap: 6px;
   height: 32px;
+  min-width: 0;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
 }
 
 .status-pill strong {
+  overflow: hidden;
   font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-pill.warning {
-  color: #92400e;
-  background: #fef3c7;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
 }
 
 .status-pill.neutral {
-  color: #475569;
-  background: #f1f5f9;
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
 }
 
 .dot {
@@ -101,11 +110,11 @@
 }
 
 .warning-dot {
-  background: #f59e0b;
+  background: var(--color-warning-dot);
 }
 
 .neutral-dot {
-  background: #64748b;
+  background: var(--color-neutral-dot);
 }
 
 .window-tools {
@@ -117,19 +126,19 @@
   width: 72px;
   height: 34px;
   padding: 0 4px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-pill);
 }
 
 .theme-button,
 .icon-button {
   display: inline-grid;
   place-items: center;
-  color: #64748b;
-  background: #f8fafc;
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 
@@ -139,31 +148,36 @@
 }
 
 .theme-button.is-selected {
-  color: #2563eb;
-  background: #ffffff;
-  box-shadow: 0 2px 6px #0f172a18;
+  color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px #0f172a18;
 }
 
 .icon-button {
   width: 38px;
   height: 34px;
-  color: #4b5563;
-  border: 1px solid #e2e8f0;
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border-muted);
 }
 
 .theme-button:focus-visible,
 .icon-button:focus-visible {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 @media (max-width: 1160px) {
   .top-status-bar {
-    grid-template-columns: minmax(200px, 1fr) auto;
+    grid-template-columns: minmax(180px, 1fr) minmax(0, auto);
   }
 
   .status-actions {
     justify-content: end;
+    min-width: 0;
+  }
+
+  .status-pill:not(.compact) {
+    display: none;
   }
 
   .window-tools {
@@ -177,17 +191,20 @@
   }
 
   .app-shell[data-sidebar-mode="floating"] .app-surface {
-    padding-left: 64px;
+    padding-left: 72px;
   }
 
   .app-surface {
     min-height: auto;
+    padding: 16px;
   }
 
   .top-status-bar {
     grid-template-columns: 1fr;
     height: auto;
+    min-height: 64px;
     padding: 14px 16px;
+    border-radius: 20px;
   }
 
   .status-actions {
