@@ -1,41 +1,10 @@
-import {
-  Archive,
-  Crosshair,
-  FileSearch,
-  Gamepad2,
-  LayoutDashboard,
-  ListChecks,
-  Moon,
-  Puzzle,
-  Settings,
-  Sun,
-  Tags,
-  User,
-} from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
+import { Moon, Settings, Sun } from "lucide-react";
+import type { ReactNode } from "react";
+import { navItems, type NavItem } from "./shell/navigation/navItems";
 
 type AppShellProps = {
   children: ReactNode;
 };
-
-type NavItem = {
-  label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
-  state?: "active" | "disabled";
-};
-
-const navItems: NavItem[] = [
-  { label: "工作台", icon: LayoutDashboard, state: "active" },
-  { label: "Mod 管理", icon: Puzzle, state: "disabled" },
-  { label: "分类 / 标签", icon: Tags, state: "disabled" },
-  { label: "配置档", icon: User, state: "disabled" },
-  { label: "替换目标", icon: Crosshair, state: "disabled" },
-  { label: "存档备份", icon: Archive, state: "disabled" },
-  { label: "游戏管理", icon: Gamepad2 },
-  { label: "任务队列", icon: ListChecks },
-  { label: "日志 / 诊断", icon: FileSearch },
-  { label: "设置", icon: Settings },
-];
 
 export function AppShell({ children }: AppShellProps) {
   return (
