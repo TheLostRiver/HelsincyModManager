@@ -1,10 +1,8 @@
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import type { MouseEvent } from "react";
 import { navItems, type NavItem } from "../../navigation/navItems";
-import { useSidebarMode } from "../../useSidebarMode";
+import { FloatingSidebarModeButton } from "../../sidebar-mode-control/SidebarModeControl";
 
 export function FloatingSidebar() {
-  const { toggleSidebarMode } = useSidebarMode();
-
   return (
     <aside className="floating-sidebar" aria-label="主导航">
       <div className="floating-sidebar__brand" aria-label="Helsincy">
@@ -17,15 +15,7 @@ export function FloatingSidebar() {
         ))}
       </nav>
 
-      <button
-        type="button"
-        className="floating-sidebar__mode-button"
-        aria-label="切换为普通侧边栏"
-        title="切换为普通侧边栏"
-        onClick={toggleSidebarMode}
-      >
-        <PanelLeftOpen size={18} strokeWidth={2.1} />
-      </button>
+      <FloatingSidebarModeButton />
     </aside>
   );
 }
@@ -34,29 +24,25 @@ function FloatingNavButton({ item }: { item: NavItem }) {
   const Icon = item.icon;
   const isActive = item.state === "active";
   const isDisabled = item.state === "disabled";
-  const label = isDisabled && item.disabledReason ? `${item.label}：${item.disabledReason}` : item.label;
+  const label = isDisabled && item.disabledReason ? `${item.label}: ${item.disabledReason}` : item.label;
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (isDisabled) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   return (
     <button
       type="button"
       className={`floating-sidebar__item ${isActive ? "is-active" : ""}`}
-      disabled={isDisabled}
+      aria-disabled={isDisabled || undefined}
       aria-current={isActive ? "page" : undefined}
       aria-label={label}
       title={label}
+      onClick={handleClick}
     >
       <Icon size={18} strokeWidth={2.1} />
-    </button>
-  );
-}
-
-export function ClassicSidebarModeButton() {
-  const { toggleSidebarMode } = useSidebarMode();
-
-  return (
-    <button type="button" className="sidebar-mode-button" aria-label="切换为悬浮侧边栏" onClick={toggleSidebarMode}>
-      <PanelLeftClose size={16} strokeWidth={2.1} />
-      <span>悬浮侧边栏</span>
     </button>
   );
 }

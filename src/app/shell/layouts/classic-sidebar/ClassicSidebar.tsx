@@ -1,5 +1,5 @@
 import { navItems, type NavItem } from "../../navigation/navItems";
-import { ClassicSidebarModeButton } from "../floating-sidebar/FloatingSidebar";
+import { ClassicSidebarModeButton } from "../../sidebar-mode-control/SidebarModeControl";
 
 export function ClassicSidebar() {
   return (

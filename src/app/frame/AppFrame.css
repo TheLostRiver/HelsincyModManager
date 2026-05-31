@@ -176,6 +176,10 @@
     grid-template-columns: 1fr;
   }
 
+  .app-shell[data-sidebar-mode="floating"] .app-surface {
+    padding-left: 64px;
+  }
+
   .app-surface {
     min-height: auto;
   }
