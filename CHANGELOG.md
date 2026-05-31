@@ -20,6 +20,7 @@
 - 添加安全的 `app_health` Tauri command，用于验证前后端桥接。
 - 添加 React Hooks ESLint 规则，用于提前发现 hooks 使用问题。
 - 添加前端外观系统设计文档和扩展指南，规划颜色方案、Shell 变体、密度、动效、浮动 Dock 布局边界与扩展验收清单。
+- 添加 Dashboard v2 与侧边栏模式设计文档，明确共享工作台视觉基线和普通 / 悬浮侧边栏的导航边界。
 
 ### Changed
 
