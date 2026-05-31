@@ -98,21 +98,6 @@
   background: #fef3c7;
 }
 
-.dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
-.warning-dot {
-  background: #f59e0b;
-}
-
-.neutral-dot {
-  background: #64748b;
-}
-
 .setup-message h3 {
   color: #0f172a;
   font-size: 28px;

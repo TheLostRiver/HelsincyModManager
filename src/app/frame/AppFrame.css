@@ -85,6 +85,21 @@
   background: #f1f5f9;
 }
 
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.warning-dot {
+  background: #f59e0b;
+}
+
+.neutral-dot {
+  background: #64748b;
+}
+
 .window-tools {
   gap: 8px;
 }
