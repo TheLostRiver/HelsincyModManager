@@ -61,7 +61,8 @@ function readPersistedSidebarMode(): SidebarMode {
 
 function writePersistedSidebarMode(sidebarMode: SidebarMode) {
   try {
-    window.localStorage.setItem(storageKey, sidebarMode);
+    const value: PersistedSidebarModeSettings = { version: 1, sidebarMode };
+    window.localStorage.setItem(storageKey, JSON.stringify(value));
   } catch {
     return;
   }
