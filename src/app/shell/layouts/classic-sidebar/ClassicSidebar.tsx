@@ -1,4 +1,5 @@
 import { navItems, type NavItem } from "../../navigation/navItems";
+import { ClassicSidebarModeButton } from "../floating-sidebar/FloatingSidebar";
 
 export function ClassicSidebar() {
   return (
@@ -13,6 +14,8 @@ export function ClassicSidebar() {
           <ClassicNavButton key={item.id} item={item} />
         ))}
       </nav>
+
+      <ClassicSidebarModeButton />
 
       <div className="nav-footnote">
         <span aria-hidden="true" />

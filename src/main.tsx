@@ -5,6 +5,7 @@ import "./shared/styles/reset.css";
 import "./shared/styles/tokens.css";
 import "./app/frame/AppFrame.css";
 import "./app/shell/layouts/classic-sidebar/ClassicSidebar.css";
+import "./app/shell/layouts/floating-sidebar/FloatingSidebar.css";
 import "./features/dashboard/Dashboard.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

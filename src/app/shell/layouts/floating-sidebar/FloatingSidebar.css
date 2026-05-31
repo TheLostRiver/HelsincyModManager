@@ -1,0 +1,87 @@
+.floating-sidebar {
+  position: fixed;
+  top: 18px;
+  bottom: 18px;
+  left: 18px;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  width: 62px;
+  padding: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 24px;
+  box-shadow: var(--shadow-panel);
+}
+
+.floating-sidebar__brand,
+.floating-sidebar__item,
+.floating-sidebar__mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 16px;
+}
+
+.floating-sidebar__brand {
+  color: var(--color-surface);
+  font-weight: 700;
+  background: var(--color-accent);
+}
+
+.floating-sidebar__nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.floating-sidebar__item,
+.floating-sidebar__mode-button {
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.floating-sidebar__item.is-active {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+}
+
+.floating-sidebar__item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.floating-sidebar__item:not(:disabled):hover,
+.floating-sidebar__item:not(:disabled):focus-visible,
+.floating-sidebar__mode-button:hover,
+.floating-sidebar__mode-button:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  outline: none;
+}
+
+.sidebar-mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-nav);
+  cursor: pointer;
+}
+
+.sidebar-mode-button:hover,
+.sidebar-mode-button:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  outline: none;
+}
