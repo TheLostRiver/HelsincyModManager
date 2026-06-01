@@ -64,3 +64,11 @@
     border-radius: 12px;
   }
 }
+
+@media (max-height: 820px) and (min-width: 861px) {
+  .floating-sidebar__mode-button {
+    width: 46px;
+    height: 28px;
+    border-radius: 14px;
+  }
+}

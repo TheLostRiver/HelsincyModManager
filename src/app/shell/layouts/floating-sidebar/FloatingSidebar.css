@@ -104,3 +104,25 @@ button.floating-sidebar__item {
     gap: 6px;
   }
 }
+
+@media (max-height: 820px) and (min-width: 861px) {
+  .floating-sidebar {
+    top: 18px;
+    bottom: 18px;
+    gap: 10px;
+    width: 76px;
+    padding: 10px 14px;
+    border-radius: 26px;
+  }
+
+  .floating-sidebar__brand,
+  .floating-sidebar__item {
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+  }
+
+  .floating-sidebar__nav {
+    gap: 6px;
+  }
+}
