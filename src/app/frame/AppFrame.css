@@ -2,6 +2,8 @@
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
   height: 100vh;
   overflow-anchor: none;
   overflow: hidden;
@@ -20,11 +22,7 @@
 }
 
 .app-shell[data-sidebar-mode="floating"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.app-shell[data-sidebar-mode="floating"] .app-surface {
-  padding-left: 120px;
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .top-status-bar {
