@@ -11,6 +11,7 @@
   gap: 16px;
   width: 88px;
   padding: 14px 18px;
+  overflow-anchor: none;
   background:
     linear-gradient(180deg, #ffffffeb 0%, #fffffff2 54%, #f8fbffeb 100%),
     var(--color-surface);

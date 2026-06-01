@@ -2,7 +2,9 @@
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  overflow-anchor: none;
+  overflow: hidden;
   color: var(--color-text);
   background: var(--color-bg);
 }
@@ -12,8 +14,9 @@
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--space-content-gap);
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
   padding: var(--space-page);
+  overflow: auto;
 }
 
 .app-shell[data-sidebar-mode="floating"] {

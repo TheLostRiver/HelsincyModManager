@@ -2,8 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 100vh;
+  min-height: 0;
   padding: 20px 16px 16px;
+  overflow-anchor: none;
+  overflow-y: auto;
   background: var(--color-surface-muted);
   border-right: 1px solid var(--color-border);
 }
@@ -124,7 +126,7 @@
 
 @media (max-width: 860px) {
   .sidebar {
-    min-height: auto;
+    min-height: 0;
     border-right: 0;
     border-bottom: 1px solid var(--color-border);
   }
