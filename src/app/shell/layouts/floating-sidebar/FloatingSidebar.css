@@ -1,8 +1,4 @@
 .floating-sidebar {
-  position: fixed;
-  top: 28px;
-  bottom: 28px;
-  left: 28px;
   z-index: 20;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -10,6 +6,9 @@
   justify-items: center;
   gap: 16px;
   width: 88px;
+  height: calc(100vh - 56px);
+  margin-left: 28px;
+  align-self: center;
   padding: 14px 18px;
   overflow-anchor: none;
   background:
