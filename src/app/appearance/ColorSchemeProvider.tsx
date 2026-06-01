@@ -31,6 +31,11 @@ export function ColorSchemeProvider({ children }: ColorSchemeProviderProps) {
   const [systemScheme, setSystemScheme] = useState<EffectiveColorScheme>(readSystemColorScheme);
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      setSystemScheme("light");
+      return;
+    }
+
     const query = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (event: MediaQueryListEvent) => {
       setSystemScheme(event.matches ? "dark" : "light");
@@ -44,6 +49,10 @@ export function ColorSchemeProvider({ children }: ColorSchemeProviderProps) {
   const effective = preference === "system" ? systemScheme : preference;
 
   useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
     document.documentElement.dataset.colorScheme = effective;
   }, [effective]);
 
