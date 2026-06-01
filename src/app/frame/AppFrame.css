@@ -158,12 +158,8 @@
 }
 
 @media (max-width: 860px) {
-  .app-shell {
+  .app-shell:not([data-sidebar-mode="floating"]) {
     grid-template-columns: 1fr;
-  }
-
-  .app-shell[data-sidebar-mode="floating"] .app-surface {
-    padding-left: 72px;
   }
 
   .app-surface {
