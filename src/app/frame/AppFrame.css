@@ -2,6 +2,8 @@
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   width: 100%;
+  max-width: 1920px;
+  margin: 0 auto;
   height: 100vh;
   overflow-anchor: none;
   overflow: hidden;
