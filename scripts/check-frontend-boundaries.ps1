@@ -10,6 +10,16 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
 $repoRoot = $repoRoot.Trim()
 $errors = New-Object System.Collections.Generic.List[string]
 
+$packageJsonPath = Join-Path $repoRoot "package.json"
+$srcRoot = Join-Path $repoRoot "src"
+if (
+    -not (Test-Path -LiteralPath $packageJsonPath -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $srcRoot -PathType Container)
+) {
+    Write-Host "Frontend boundary check skipped: frontend scaffold not found."
+    exit 0
+}
+
 function Get-RepoRelativePath {
     param(
         [Parameter(Mandatory = $true)]
@@ -65,14 +75,11 @@ foreach ($relativePath in $forbiddenDashboardFiles) {
     }
 }
 
-$srcRoot = Join-Path $repoRoot "src"
 $navDefinitionFiles = @()
-if (Test-Path -LiteralPath $srcRoot -PathType Container) {
-    $navDefinitionFiles = @(
-        Get-ChildItem -LiteralPath $srcRoot -Recurse -File |
-            Where-Object { $_.Name -like "*navItems.ts" -or $_.Name -like "*NavItems.ts" }
-    )
-}
+$navDefinitionFiles = @(
+    Get-ChildItem -LiteralPath $srcRoot -Recurse -File |
+        Where-Object { $_.Name -like "*navItems.ts" -or $_.Name -like "*NavItems.ts" }
+)
 
 if ($navDefinitionFiles.Count -ne 1) {
     $relativeFiles = @($navDefinitionFiles | ForEach-Object { Get-RepoRelativePath -FullName $_.FullName })
