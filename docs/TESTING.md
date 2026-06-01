@@ -83,6 +83,14 @@ cmd /c corepack pnpm run build
 cmd /c corepack pnpm run test
 ```
 
+涉及 App Shell、侧边栏模式、Dashboard 页面拆分时，还必须确认：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+```
+
+该脚本会阻止 Dashboard 页面读取 `sidebarMode` / `useSidebarMode`、阻止按侧边栏模式复制 Dashboard 页面、确认导航定义只有一份，并避免 Dashboard 样式通过 `[data-sidebar-mode]` 按侧边栏模式分叉。
+
 涉及真实桌面交互、窗口、文件选择器或 Tauri command 调用时，需要启动本地应用进行手动 smoke test。
 
 ## Tauri / Rust 桥接改动
