@@ -60,7 +60,7 @@
 .summary-box,
 .summary-note,
 .log-card {
-  background: #ffffff;
+  background: var(--color-surface);
   border-radius: var(--radius-inner);
 }
 
@@ -380,7 +380,7 @@
 }
 
 .step-item.is-active {
-  background: #f7fbff;
+  background: var(--color-accent-weak);
   box-shadow: 0 8px 18px -16px #0062ff29;
 }
 
@@ -417,7 +417,7 @@
 }
 
 .step-item.is-active .step-rail i {
-  background: #cfe2ff;
+  background: var(--color-border-muted);
 }
 
 .step-body {
