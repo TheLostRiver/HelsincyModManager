@@ -519,7 +519,7 @@
   margin-right: 8px;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1360px) {
   .workbench-body {
     grid-template-columns: 1fr;
     gap: var(--space-content-gap);

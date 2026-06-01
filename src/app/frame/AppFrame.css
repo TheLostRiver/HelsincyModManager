@@ -24,7 +24,7 @@
 }
 
 .app-shell[data-sidebar-mode="floating"] .app-surface {
-  padding-left: 144px;
+  padding-left: 120px;
 }
 
 .top-status-bar {
@@ -140,7 +140,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1360px) {
   .top-status-bar {
     grid-template-columns: minmax(180px, 1fr) minmax(0, auto);
   }
