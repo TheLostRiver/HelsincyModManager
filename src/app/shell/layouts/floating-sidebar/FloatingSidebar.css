@@ -11,9 +11,7 @@
   align-self: center;
   padding: 14px 18px;
   overflow-anchor: none;
-  background:
-    linear-gradient(180deg, #ffffffeb 0%, #fffffff2 54%, #f8fbffeb 100%),
-    var(--color-surface);
+  background: var(--bg-floating-sidebar);
   border: 1px solid var(--color-border-muted);
   border-radius: 30px;
   box-shadow: var(--shadow-panel);

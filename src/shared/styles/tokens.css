@@ -31,6 +31,8 @@
   --shadow-card: 0 22px 60px #0f172a14;
   --shadow-control: 0 8px 20px #0062ff26;
   --focus-ring: #93c5fd;
+  --bg-floating-sidebar: linear-gradient(180deg, #ffffffeb 0%, #fffffff2 54%, #f8fbffeb 100%), var(--color-surface);
+  --theme-transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :root[data-color-scheme="dark"] {
@@ -65,4 +67,5 @@
   --shadow-card: 0 22px 60px #02061770;
   --shadow-control: 0 8px 20px #60a5fa26;
   --focus-ring: #60a5fa;
+  --bg-floating-sidebar: linear-gradient(180deg, #1e293beb 0%, #1e293bf2 54%, #0f172aeb 100%), var(--color-surface);
 }
