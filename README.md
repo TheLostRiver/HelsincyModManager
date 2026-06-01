@@ -28,6 +28,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [前端外观系统设计](docs/APPEARANCE_SYSTEM.md)
 - [前端外观系统扩展指南](docs/APPEARANCE_EXTENSION_GUIDE.md)
 - [Dashboard v2 与侧边栏模式设计](docs/DASHBOARD_V2_SIDEBAR_MODES.md)
+- [Dashboard v2 侧边栏模式实现计划](docs/superpowers/plans/2026-05-31-dashboard-v2-sidebar-modes-implementation.md)
 - [路线图](docs/ROADMAP.md)
 - [发布与产物说明](docs/release/发布与产物说明.md)
 - [构建发布与脚本说明](docs/release/构建发布与脚本说明.md)
@@ -82,4 +83,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 ## 仓库状态
 
-本仓库已经完成初始化，并沉淀项目设计文档、治理脚本、首启工作台前端页面和 Rust workspace 骨架。当前脚手架不会读写真实 Mod 包、真实游戏目录或真实玩家存档。
+本仓库已经完成初始化，并沉淀项目设计文档、治理脚本、首启工作台前端页面和 Rust workspace 骨架。当前前端已拆分 App Frame、顶部状态栏、普通侧边栏、悬浮侧边栏和 Dashboard v2 组件，并通过前端边界检查防止 Dashboard 按侧边栏模式分叉。当前脚手架不会读写真实 Mod 包、真实游戏目录或真实玩家存档。

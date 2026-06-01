@@ -1,0 +1,129 @@
+.floating-sidebar {
+  position: fixed;
+  top: 28px;
+  bottom: 28px;
+  left: 28px;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-items: start;
+  justify-items: center;
+  gap: 16px;
+  width: 88px;
+  padding: 14px 18px;
+  overflow-anchor: none;
+  background:
+    linear-gradient(180deg, #ffffffeb 0%, #fffffff2 54%, #f8fbffeb 100%),
+    var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 30px;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(14px);
+}
+
+.floating-sidebar__brand,
+.floating-sidebar__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 18px;
+}
+
+.floating-sidebar__brand {
+  color: var(--color-surface);
+  font-weight: 800;
+  background: var(--color-accent);
+  box-shadow: var(--shadow-control);
+}
+
+.floating-sidebar__nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+}
+
+.floating-sidebar__item,
+button.floating-sidebar__item {
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.floating-sidebar__item.is-active {
+  color: var(--color-surface);
+  background: var(--color-accent);
+  box-shadow: var(--shadow-control);
+}
+
+.floating-sidebar__item[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.floating-sidebar__item:not([aria-disabled="true"]):hover,
+.floating-sidebar__item:not([aria-disabled="true"]):focus-visible {
+  color: var(--color-surface);
+  background: var(--color-accent-strong);
+  outline: none;
+}
+
+.floating-sidebar__item.is-active:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):hover,
+.floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):focus-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  outline: none;
+}
+
+@media (max-width: 860px) {
+  .floating-sidebar {
+    top: 12px;
+    bottom: 12px;
+    left: 10px;
+    gap: 10px;
+    width: 52px;
+    padding: 8px;
+    border-radius: 20px;
+  }
+
+  .floating-sidebar__brand,
+  .floating-sidebar__item {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+
+  .floating-sidebar__nav {
+    gap: 6px;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 861px) {
+  .floating-sidebar {
+    top: 18px;
+    bottom: 18px;
+    gap: 10px;
+    width: 76px;
+    padding: 10px 14px;
+    border-radius: 26px;
+  }
+
+  .floating-sidebar__brand,
+  .floating-sidebar__item {
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+  }
+
+  .floating-sidebar__nav {
+    gap: 6px;
+  }
+}

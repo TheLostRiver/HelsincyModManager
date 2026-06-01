@@ -1,10 +1,13 @@
 import { AppShell } from "./app/AppShell";
-import { FirstLaunchDashboard } from "./features/dashboard/FirstLaunchDashboard";
+import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
+import { DashboardPage } from "./features/dashboard/DashboardPage";
 
 export function App() {
   return (
-    <AppShell>
-      <FirstLaunchDashboard />
-    </AppShell>
+    <SidebarModeProvider>
+      <AppShell>
+        <DashboardPage />
+      </AppShell>
+    </SidebarModeProvider>
   );
 }

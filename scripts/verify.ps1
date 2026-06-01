@@ -45,6 +45,7 @@ $checks = @(
     "scripts/check-file-size.ps1",
     "scripts/check-forbidden-files.ps1",
     "scripts/check-doc-links.ps1",
+    "scripts/check-frontend-boundaries.ps1",
     "scripts/check-secrets.ps1"
 )
 
