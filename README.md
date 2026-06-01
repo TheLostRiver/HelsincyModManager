@@ -83,4 +83,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 ## 仓库状态
 
-本仓库已经完成初始化，并沉淀项目设计文档、治理脚本、首启工作台前端页面和 Rust workspace 骨架。当前脚手架不会读写真实 Mod 包、真实游戏目录或真实玩家存档。
+本仓库已经完成初始化，并沉淀项目设计文档、治理脚本、首启工作台前端页面和 Rust workspace 骨架。当前前端已拆分 App Frame、顶部状态栏、普通侧边栏、悬浮侧边栏和 Dashboard v2 组件，并通过前端边界检查防止 Dashboard 按侧边栏模式分叉。当前脚手架不会读写真实 Mod 包、真实游戏目录或真实玩家存档。
