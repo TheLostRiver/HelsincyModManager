@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { createContext, useCallback, useMemo, useState, type ReactNode } from "react";
 import { defaultSidebarMode, type PersistedSidebarModeSettings, type SidebarMode } from "./sidebarTypes";
 
@@ -24,12 +25,20 @@ export function SidebarModeProvider({ children }: SidebarModeProviderProps) {
   }, []);
 
   const toggleSidebarMode = useCallback(() => {
-    setSidebarModeState((currentMode) => {
-      const nextMode: SidebarMode = currentMode === "classic" ? "floating" : "classic";
+    const nextMode: SidebarMode = sidebarMode === "classic" ? "floating" : "classic";
+
+    if ("startViewTransition" in document) {
+      document.startViewTransition(() => {
+        flushSync(() => {
+          setSidebarModeState(nextMode);
+          writePersistedSidebarMode(nextMode);
+        });
+      });
+    } else {
+      setSidebarModeState(nextMode);
       writePersistedSidebarMode(nextMode);
-      return nextMode;
-    });
-  }, []);
+    }
+  }, [sidebarMode]);
 
   const value = useMemo(
     () => ({ sidebarMode, setSidebarMode, toggleSidebarMode }),

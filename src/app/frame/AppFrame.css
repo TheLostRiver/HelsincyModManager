@@ -19,6 +19,7 @@
   min-height: 0;
   padding: var(--space-page);
   overflow: auto;
+  view-transition-name: app-surface;
 }
 
 .app-shell[data-sidebar-mode="floating"] {
