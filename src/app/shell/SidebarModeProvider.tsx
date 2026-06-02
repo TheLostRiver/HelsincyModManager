@@ -28,7 +28,6 @@ export function SidebarModeProvider({ children }: SidebarModeProviderProps) {
     const nextMode: SidebarMode = sidebarMode === "classic" ? "floating" : "classic";
 
     if ("startViewTransition" in document) {
-      // @ts-expect-error - TS might not have startViewTransition types yet
       document.startViewTransition(() => {
         flushSync(() => {
           setSidebarModeState(nextMode);
