@@ -15,11 +15,13 @@ export function ClassicSidebar() {
         ))}
       </nav>
 
-      <ClassicSidebarModeButton />
+      <div className="sidebar-footer">
+        <ClassicSidebarModeButton />
 
-      <div className="nav-footnote">
-        <span aria-hidden="true" />
-        <p>MHW:I&nbsp;&nbsp;首次启动</p>
+        <div className="nav-footnote">
+          <span aria-hidden="true" />
+          <p>MHW:I&nbsp;&nbsp;首次启动</p>
+        </div>
       </div>
     </aside>
   );

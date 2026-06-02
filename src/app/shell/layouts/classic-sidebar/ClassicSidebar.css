@@ -106,10 +106,16 @@
   border-radius: 2px;
 }
 
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: auto;
+}
+
 .nav-footnote {
   display: grid;
   gap: 6px;
-  margin-top: auto;
 }
 
 .nav-footnote span {
