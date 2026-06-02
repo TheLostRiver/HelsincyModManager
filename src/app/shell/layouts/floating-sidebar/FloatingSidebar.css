@@ -16,6 +16,7 @@
   border-radius: 30px;
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(14px);
+  view-transition-name: app-sidebar;
 }
 
 .floating-sidebar__brand,
