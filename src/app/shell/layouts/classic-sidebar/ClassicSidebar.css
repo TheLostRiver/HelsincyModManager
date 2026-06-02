@@ -106,10 +106,16 @@
   border-radius: 2px;
 }
 
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: auto;
+}
+
 .nav-footnote {
   display: grid;
   gap: 6px;
-  margin-top: auto;
 }
 
 .nav-footnote span {
@@ -120,6 +126,7 @@
 
 .nav-footnote p {
   margin: 0;
+  padding: 0 10px;
   color: var(--color-text-muted);
   font-size: 12px;
 }

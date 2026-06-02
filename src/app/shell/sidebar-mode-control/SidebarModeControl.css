@@ -27,7 +27,7 @@
 .sidebar-mode-button {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: start;
   gap: 8px;
   min-height: 34px;
   min-width: 0;
