@@ -27,12 +27,17 @@
 
 仓库内的 `.codex/` 目录用于存放本项目的 Codex 上下文管理 hooks、skills、脚本和模板。
 
+仓库内的 `.agents/` 目录用于存放 Antigravity IDE、Gemini 或其他外部 agent 可读取的协作规则适配文件。它不是运行时缓存，而是项目治理文档的一部分。
+
 约束：
 
 - `.codex/` 下的源码、模板和 skill 文档可以纳入版本管理。
+- `.agents/` 下的规则文档可以纳入版本管理，但内容应与 `docs/MULTI_AGENT_COLLABORATION.md` 保持一致。
 - `.planning/`、`.plan-attestation`、`__pycache__/`、`*.pyc` 是运行时状态或缓存，不能提交。
 - 修改 `.codex/` 视为治理相关变更，应触发人工 review。
+- 修改 `.agents/` 视为治理相关变更，应触发人工 review。
 - 不要在 `.codex/` 中写入真实 token、会话日志、玩家数据或本地私有路径。
+- 不要在 `.agents/` 中写入真实 token、会话日志、玩家数据、本地私有路径或 IDE scratch 路径。
 
 ## 修改原则
 

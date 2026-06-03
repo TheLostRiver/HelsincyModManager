@@ -123,6 +123,7 @@
     "policy/project-policy.json",
     "scripts/**",
     ".codex/**",
+    ".agents/**",
     ".githooks/**",
     ".github/workflows/**"
   ]
