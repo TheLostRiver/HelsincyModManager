@@ -9,6 +9,7 @@
 面向人和 agent 的协作说明：
 
 - `AGENTS.md`
+- `.agents/`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `CHANGELOG.md`
@@ -107,6 +108,7 @@ CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分
 - `.githooks/`
 - `.github/workflows/`
 - `.codex/`
+- `.agents/`
 
 CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ruleset 中的 review 规则。
 
@@ -168,6 +170,7 @@ Target branch: main
 - `.github/workflows/`
 - `.github/CODEOWNERS`
 - `.codex/`
+- `.agents/`
 - `AGENTS.md`
 
 这些改动不禁止，但必须被视为“修改规则本身”。PR 描述应说明：
