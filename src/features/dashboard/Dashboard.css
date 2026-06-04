@@ -151,23 +151,25 @@
 }
 
 .primary-action {
-  color: var(--color-surface);
+  color: var(--color-primary-action-text);
   font-size: 13px;
   font-weight: 700;
-  background: var(--color-accent);
-  border: 0;
-  box-shadow: var(--shadow-control);
+  background: var(--color-primary-action-bg);
+  border: 1px solid var(--color-primary-action-border);
+  box-shadow: var(--shadow-primary-action);
 }
 
-.primary-action:not(:disabled):hover {
-  transform: translateY(-1px);
-  box-shadow: 0 11px 22px var(--color-accent-alpha-20);
-  filter: brightness(1.04);
+.primary-action:hover {
+  transform: translateY(-2px);
+  background: var(--color-primary-action-bg-hover);
+  box-shadow: var(--shadow-primary-action-hover);
+  filter: brightness(1.1);
 }
 
-.primary-action:not(:disabled):active {
-  transform: translateY(1px) scale(0.98);
-  box-shadow: 0 5px 12px var(--color-accent-alpha-25);
+.primary-action:active {
+  transform: translateY(1px) scale(0.96);
+  background: var(--color-primary-action-bg-active);
+  box-shadow: var(--shadow-primary-action-active);
   filter: brightness(1);
 }
 
