@@ -14,6 +14,8 @@
   --color-accent-strong: #0969ff;
   --color-accent-weak: #eaf3ff;
   --color-accent-alpha-40: #0062ff66;
+  --color-accent-alpha-25: #0062ff40;
+  --color-accent-alpha-20: #0062ff33;
   --color-accent-alpha-12: #0062ff1f;
   --color-warning-text: #92400e;
   --color-warning-bg: #fff4cf;
@@ -52,6 +54,8 @@
   --color-accent-strong: #93c5fd;
   --color-accent-weak: #1d4ed833;
   --color-accent-alpha-40: #60a5fa66;
+  --color-accent-alpha-25: #60a5fa40;
+  --color-accent-alpha-20: #60a5fa33;
   --color-accent-alpha-12: #60a5fa1f;
   --color-warning-text: #fcd34d;
   --color-warning-bg: #78350f66;

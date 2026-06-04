@@ -140,6 +140,14 @@
   padding: 0 16px;
   border-radius: var(--radius-inner);
   cursor: pointer;
+  will-change: transform;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.22s ease,
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    filter 0.18s ease;
 }
 
 .primary-action {
@@ -151,12 +159,46 @@
   box-shadow: var(--shadow-control);
 }
 
+.primary-action:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 11px 22px var(--color-accent-alpha-20);
+  filter: brightness(1.04);
+}
+
+.primary-action:not(:disabled):active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 5px 12px var(--color-accent-alpha-25);
+  filter: brightness(1);
+}
+
 .secondary-action {
   color: var(--color-text-soft);
   font-size: 13px;
   font-weight: 600;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+}
+
+.secondary-action:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: var(--color-accent-alpha-40);
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  box-shadow: 0 8px 18px var(--color-accent-alpha-12);
+}
+
+.secondary-action:not(:disabled):active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 4px 10px var(--color-accent-alpha-12);
+}
+
+.primary-action:disabled,
+.secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+  box-shadow: none;
+  filter: none;
 }
 
 .primary-action svg,
@@ -198,7 +240,10 @@
   padding: 12px;
   background: var(--color-surface);
   box-shadow: var(--shadow-soft);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
   cursor: default;
 }
 
@@ -578,5 +623,24 @@
 
   .setup-message h3 {
     font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-action,
+  .secondary-action,
+  .support-card,
+  .support-card-header svg {
+    transition-duration: 0.01ms;
+    will-change: auto;
+  }
+
+  .primary-action:not(:disabled):hover,
+  .primary-action:not(:disabled):active,
+  .secondary-action:not(:disabled):hover,
+  .secondary-action:not(:disabled):active,
+  .support-card:hover,
+  .support-card.group:hover .support-card-header svg {
+    transform: none;
   }
 }
