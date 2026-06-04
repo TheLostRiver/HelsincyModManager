@@ -6,6 +6,17 @@ import type {
   GameSetupStatusDto,
 } from "./gameSetupTypes";
 
+const GAME_SETUP_ERROR_CODES = [
+  "unsupported_game",
+  "directory_not_found",
+  "directory_not_absolute",
+  "missing_executable",
+  "storage_failed",
+  "storage_corrupted",
+  "scan_not_implemented",
+  "unknown",
+] as const satisfies readonly GameSetupErrorCode[];
+
 export function mapStatusDto(dto: GameSetupStatusDto): GameSetupStatus {
   const gameId = normalizeGameId(dto.gameId);
 
@@ -47,6 +58,8 @@ export function messageForError(code: GameSetupErrorCode): string {
       return "当前版本暂不支持该游戏。";
     case "directory_not_found":
       return "所选目录不存在。";
+    case "directory_not_absolute":
+      return "请选择完整的游戏安装目录，不能使用相对路径。";
     case "missing_executable":
       return "所选目录缺少 MonsterHunterWorld.exe。";
     case "storage_failed":
@@ -69,5 +82,11 @@ function isCommandErrorDto(value: unknown): value is CommandErrorDto {
     return false;
   }
 
-  return "code" in value && "message" in value;
+  const candidate = value as { code?: unknown; message?: unknown };
+
+  return isGameSetupErrorCode(candidate.code) && typeof candidate.message === "string";
+}
+
+function isGameSetupErrorCode(value: unknown): value is GameSetupErrorCode {
+  return typeof value === "string" && GAME_SETUP_ERROR_CODES.includes(value as GameSetupErrorCode);
 }

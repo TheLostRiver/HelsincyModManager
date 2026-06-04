@@ -3,6 +3,7 @@ export type GameId = "mhw";
 export type GameSetupErrorCode =
   | "unsupported_game"
   | "directory_not_found"
+  | "directory_not_absolute"
   | "missing_executable"
   | "storage_failed"
   | "storage_corrupted"

@@ -71,14 +71,25 @@ fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
 }
 
 fn parse_directory(value: String) -> Result<PathBuf, CommandErrorDto> {
-    if value.trim().is_empty() {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty() {
         return Err(CommandErrorDto {
             code: "directory_not_found".to_owned(),
             message: "directory cannot be empty".to_owned(),
         });
     }
 
-    Ok(PathBuf::from(value))
+    let directory = PathBuf::from(trimmed);
+
+    if !directory.is_absolute() {
+        return Err(CommandErrorDto {
+            code: "directory_not_absolute".to_owned(),
+            message: "directory must be an absolute path".to_owned(),
+        });
+    }
+
+    Ok(directory)
 }
 
 fn lock_service<'a>(
@@ -88,4 +99,17 @@ fn lock_service<'a>(
         code: "unknown".to_owned(),
         message: "game setup state lock failed".to_owned(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_directory_rejects_relative_paths() {
+        let error = parse_directory("Monster Hunter World".to_owned())
+            .expect_err("relative paths must be rejected");
+
+        assert_eq!(error.code, "directory_not_absolute");
+    }
 }

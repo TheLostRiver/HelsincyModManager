@@ -1,8 +1,14 @@
+use fs2::FileExt;
 use hmm_core::{GameId, GameInstance};
 use hmm_ports::{GameConfigRepository, GameConfigRepositoryError, GameConfigRepositoryResult};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const CURRENT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GamesConfigFile {
@@ -13,7 +19,7 @@ struct GamesConfigFile {
 impl Default for GamesConfigFile {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: CURRENT_SCHEMA_VERSION,
             games: Vec::new(),
         }
     }
@@ -21,11 +27,15 @@ impl Default for GamesConfigFile {
 
 pub struct JsonGameConfigRepository {
     file_path: PathBuf,
+    write_lock: Mutex<()>,
 }
 
 impl JsonGameConfigRepository {
     pub fn new(file_path: PathBuf) -> Self {
-        Self { file_path }
+        Self {
+            file_path,
+            write_lock: Mutex::new(()),
+        }
     }
 
     fn load_file(&self) -> GameConfigRepositoryResult<GamesConfigFile> {
@@ -36,7 +46,14 @@ impl JsonGameConfigRepository {
         let content = fs::read_to_string(&self.file_path)
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
 
-        serde_json::from_str(&content).map_err(|_| GameConfigRepositoryError::StorageCorrupted)
+        let config: GamesConfigFile =
+            serde_json::from_str(&content).map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
+
+        if config.version != CURRENT_SCHEMA_VERSION {
+            return Err(GameConfigRepositoryError::StorageCorrupted);
+        }
+
+        Ok(config)
     }
 
     fn save_file(&self, config: &GamesConfigFile) -> GameConfigRepositoryResult<()> {
@@ -47,14 +64,69 @@ impl JsonGameConfigRepository {
 
         let serialized = serde_json::to_string_pretty(config)
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
-        let temp_path = self.file_path.with_extension("json.tmp");
+        let temp_path = self.unique_temp_path();
 
-        fs::write(&temp_path, serialized)
-            .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+        {
+            let mut temp_file = File::create(&temp_path)
+                .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+            temp_file
+                .write_all(serialized.as_bytes())
+                .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+            temp_file
+                .sync_all()
+                .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+        }
+
         fs::rename(&temp_path, &self.file_path)
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
 
         Ok(())
+    }
+
+    fn lock_file_path(&self) -> PathBuf {
+        let lock_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("{name}.lock"))
+            .unwrap_or_else(|| "games.json.lock".to_owned());
+
+        self.file_path
+            .parent()
+            .map(|parent| parent.join(&lock_name))
+            .unwrap_or_else(|| PathBuf::from(lock_name))
+    }
+
+    fn unique_temp_path(&self) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let temp_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("{name}.{}.{}.tmp", std::process::id(), nonce))
+            .unwrap_or_else(|| format!("games.{}.{}.json.tmp", std::process::id(), nonce));
+
+        self.file_path
+            .parent()
+            .map(|parent| parent.join(&temp_name))
+            .unwrap_or_else(|| PathBuf::from(temp_name))
+    }
+
+    fn open_lock_file(&self) -> GameConfigRepositoryResult<File> {
+        if let Some(parent) = self.file_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+        }
+
+        OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(self.lock_file_path())
+            .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))
     }
 }
 
@@ -71,10 +143,24 @@ impl GameConfigRepository for JsonGameConfigRepository {
     }
 
     fn save_game_instance(&self, instance: &GameInstance) -> GameConfigRepositoryResult<()> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| GameConfigRepositoryError::StorageFailed("write lock poisoned".to_owned()))?;
+        let lock_file = self.open_lock_file()?;
+        lock_file
+            .lock_exclusive()
+            .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+
         let mut config = self.load_file()?;
         config.games.retain(|item| item.game_id != instance.game_id);
         config.games.push(instance.clone());
-        self.save_file(&config)
+        let result = self.save_file(&config);
+        let unlock_result = lock_file
+            .unlock()
+            .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()));
+
+        result.and(unlock_result)
     }
 }
 
@@ -149,6 +235,20 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_schema_version_returns_storage_corrupted() {
+        let path = test_file("unsupported-version");
+        fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
+        fs::write(&path, r#"{"version":999,"games":[]}"#).expect("write unsupported version");
+        let repo = JsonGameConfigRepository::new(path);
+
+        let error = repo
+            .load_game_instance(&GameId::mhw())
+            .expect_err("unsupported version should fail");
+
+        assert_eq!(error, GameConfigRepositoryError::StorageCorrupted);
+    }
+
+    #[test]
     fn save_replaces_existing_game_instance() {
         let path = test_file("replace");
         let repo = JsonGameConfigRepository::new(path);
@@ -162,5 +262,34 @@ mod tests {
             .expect("load should succeed");
 
         assert_eq!(loaded.expect("instance").root_dir, PathBuf::from("D:/New"));
+    }
+
+    #[test]
+    fn concurrent_saves_are_serialized() {
+        let path = test_file("concurrent");
+        let repo = std::sync::Arc::new(JsonGameConfigRepository::new(path));
+        let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let mut handles = Vec::new();
+
+        for index in 0..8 {
+            let repo = std::sync::Arc::clone(&repo);
+            let start = std::sync::Arc::clone(&start);
+            handles.push(std::thread::spawn(move || {
+                start.wait();
+                repo.save_game_instance(&instance(&format!("C:/MHW-{index}")))
+            }));
+        }
+
+        for handle in handles {
+            handle
+                .join()
+                .expect("worker should not panic")
+                .expect("save should not fail");
+        }
+
+        assert!(repo
+            .load_game_instance(&GameId::mhw())
+            .expect("load should succeed")
+            .is_some());
     }
 }

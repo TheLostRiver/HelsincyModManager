@@ -97,7 +97,7 @@ function statusPanelCopy(status: GameSetupStatus, actionMessage: string | null) 
   if (status.kind === "invalid") {
     return {
       title: "目录校验失败",
-      description: actionMessage ?? status.message,
+      description: status.message || actionMessage || "未知错误",
       badge: "需要重新选择",
       dotClass: "danger-dot",
       stepLabel: "第 2 / 4 步",

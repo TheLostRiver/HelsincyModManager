@@ -13,10 +13,11 @@ pub enum GameIdError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct GameId(String);
 
 impl GameId {
-    pub fn new(value: impl Into<String>) -> Self {
+    fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
 
@@ -32,15 +33,29 @@ impl GameId {
             return Err(GameIdError::Unsupported(trimmed.to_owned()));
         }
 
-        Ok(Self(trimmed.to_owned()))
+        Ok(Self::new(trimmed.to_owned()))
     }
 
     pub fn mhw() -> Self {
-        Self(MHW_GAME_ID.to_owned())
+        Self::new(MHW_GAME_ID.to_owned())
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl TryFrom<String> for GameId {
+    type Error = GameIdError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(value)
+    }
+}
+
+impl From<GameId> for String {
+    fn from(value: GameId) -> Self {
+        value.0
     }
 }
 
@@ -82,6 +97,7 @@ impl GameDirectoryEvidence {
 pub enum GameSetupErrorCode {
     UnsupportedGame,
     DirectoryNotFound,
+    DirectoryNotAbsolute,
     MissingExecutable,
     StorageFailed,
     StorageCorrupted,
@@ -196,6 +212,13 @@ mod tests {
     fn rejects_unsupported_game_id() {
         let result = GameId::parse("rise");
         assert_eq!(result, Err(GameIdError::Unsupported("rise".to_owned())));
+    }
+
+    #[test]
+    fn rejects_unsupported_game_id_during_deserialization() {
+        let result = serde_json::from_str::<GameId>(r#""rise""#);
+
+        assert!(result.is_err());
     }
 
     #[test]

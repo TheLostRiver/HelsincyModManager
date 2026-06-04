@@ -19,6 +19,7 @@ export function DashboardPage() {
           isBusy={gameSetup.isBusy}
           actionMessage={gameSetup.actionMessage}
           onDirectorySelected={gameSetup.saveDirectory}
+          onActionError={gameSetup.reportActionError}
           onScanSteam={gameSetup.scanSteam}
         />
         <DashboardModulePreview />

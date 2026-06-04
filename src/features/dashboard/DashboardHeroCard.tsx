@@ -7,6 +7,7 @@ type DashboardHeroCardProps = {
   isBusy: boolean;
   actionMessage: string | null;
   onDirectorySelected: (directory: string) => Promise<void>;
+  onActionError: (message: string) => void;
   onScanSteam: () => Promise<void>;
 };
 
@@ -15,6 +16,7 @@ export function DashboardHeroCard({
   isBusy,
   actionMessage,
   onDirectorySelected,
+  onActionError,
   onScanSteam,
 }: DashboardHeroCardProps) {
   const copy = heroCopyForStatus(status, actionMessage);
@@ -30,7 +32,12 @@ export function DashboardHeroCard({
         <p>{copy.description}</p>
       </div>
 
-      <GameDirectoryActions isBusy={isBusy} onDirectorySelected={onDirectorySelected} onScanSteam={onScanSteam} />
+      <GameDirectoryActions
+        isBusy={isBusy}
+        onDirectorySelected={onDirectorySelected}
+        onActionError={onActionError}
+        onScanSteam={onScanSteam}
+      />
 
       <div className="support-grid" aria-label="支持信息">
         {supportCards.map((card) => (

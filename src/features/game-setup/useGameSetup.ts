@@ -28,20 +28,25 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
       }));
     } catch (error) {
       const mapped = mapCommandError(error);
-      if (mapped.code === "unknown") {
-        return;
-      }
+      setState((current) => {
+        if (mapped.code === "unknown") {
+          return {
+            ...current,
+            actionMessage: mapped.message,
+          };
+        }
 
-      setState((current) => ({
-        ...current,
-        status: {
-          kind: "invalid",
-          gameId,
-          errorCode: mapped.code,
-          message: messageForError(mapped.code),
-        },
-        actionMessage: mapped.message,
-      }));
+        return {
+          ...current,
+          status: {
+            kind: "invalid",
+            gameId,
+            errorCode: mapped.code,
+            message: messageForError(mapped.code),
+          },
+          actionMessage: mapped.message,
+        };
+      });
     }
   }, [gameId]);
 
@@ -99,6 +104,14 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     }
   }, [gameId]);
 
+  const reportActionError = useCallback((message: string) => {
+    setState((current) => ({
+      ...current,
+      isBusy: false,
+      actionMessage: message,
+    }));
+  }, []);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -108,6 +121,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     isBusy: state.isBusy,
     actionMessage: state.actionMessage,
     refresh,
+    reportActionError,
     saveDirectory,
     scanSteam,
   };

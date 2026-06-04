@@ -60,7 +60,7 @@ impl GameSetupService {
             .map_err(Self::map_storage_error)?;
 
         Ok(match instance {
-            Some(instance) => GameSetupStatus::configured(instance),
+            Some(instance) => self.status_for_loaded_instance(instance)?,
             None => GameSetupStatus::not_configured(game_id),
         })
     }
@@ -128,6 +128,39 @@ impl GameSetupService {
             .find(|adapter| adapter.game_id() == *game_id)
             .cloned()
             .ok_or(GameSetupServiceError::UnsupportedGame)
+    }
+
+    fn status_for_loaded_instance(
+        &self,
+        instance: GameInstance,
+    ) -> Result<GameSetupStatus, GameSetupServiceError> {
+        let adapter = self.require_adapter(&instance.game_id)?;
+        let validation = self.validate_with_adapter(adapter.as_ref(), instance.root_dir.clone());
+
+        if validation.is_valid {
+            return Ok(GameSetupStatus::configured(instance));
+        }
+
+        let error_code = validation
+            .errors
+            .first()
+            .cloned()
+            .unwrap_or(GameSetupErrorCode::Unknown);
+
+        Ok(GameSetupStatus::invalid(
+            validation.game_id,
+            error_code,
+            "saved game directory is no longer valid",
+        ))
+    }
+
+    fn validate_with_adapter(
+        &self,
+        adapter: &dyn GameAdapter,
+        directory: PathBuf,
+    ) -> GameDirectoryValidation {
+        let probe = self.probe_factory.create(directory);
+        adapter.validate_directory(probe.as_ref())
     }
 
     fn map_storage_error(error: GameConfigRepositoryError) -> GameSetupServiceError {
@@ -285,6 +318,30 @@ mod tests {
         )
     }
 
+    fn service_with_repository(
+        adapter: FakeAdapter,
+        repository: Arc<dyn GameConfigRepository>,
+    ) -> GameSetupService {
+        GameSetupService::new(
+            vec![Arc::new(adapter)],
+            repository,
+            Arc::new(FakeProbeFactory),
+            Arc::new(NoopDiscovery),
+            Arc::new(FakeClock),
+        )
+    }
+
+    fn stored_instance(root: &str) -> GameInstance {
+        GameInstance {
+            id: "mhw-default".to_owned(),
+            game_id: GameId::mhw(),
+            display_name: "Monster Hunter: World - Iceborne".to_owned(),
+            root_dir: PathBuf::from(root),
+            status: GameDirectoryStatus::Configured,
+            configured_at_unix_millis: 42,
+        }
+    }
+
     #[test]
     fn status_is_not_configured_without_saved_instance() {
         let service = service_with(FakeAdapter { valid: true });
@@ -321,6 +378,20 @@ mod tests {
             .expect_err("invalid directory should fail");
 
         assert_eq!(error.error_code(), GameSetupErrorCode::MissingExecutable);
+    }
+
+    #[test]
+    fn status_revalidates_saved_instance_before_reporting_configured() {
+        let repository = Arc::new(FakeRepository {
+            stored: Mutex::new(Some(stored_instance("C:/Moved"))),
+        });
+        let service = service_with_repository(FakeAdapter { valid: false }, repository);
+
+        let status = service.get_status(GameId::mhw()).expect("status should load");
+
+        assert_eq!(status.status, GameDirectoryStatus::Invalid);
+        assert_eq!(status.error_code, Some(GameSetupErrorCode::MissingExecutable));
+        assert!(status.instance.is_none());
     }
 
     #[test]
