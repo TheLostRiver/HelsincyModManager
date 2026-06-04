@@ -144,23 +144,24 @@
 }
 
 .primary-action {
-  color: var(--color-surface);
+  color: var(--color-primary-action-text);
   font-size: 13px;
   font-weight: 700;
-  background: var(--color-accent);
+  background: var(--color-primary-action-bg);
   border: 0;
-  box-shadow: var(--shadow-control);
+  box-shadow: 0 8px 20px var(--color-primary-action-shadow);
 }
 
 .primary-action:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px #0062ff33;
+  background: var(--color-primary-action-bg-hover);
+  box-shadow: 0 12px 24px var(--color-accent-alpha-20);
   filter: brightness(1.1);
 }
 
 .primary-action:active {
   transform: translateY(1px) scale(0.96);
-  box-shadow: 0 4px 10px #0062ff40;
+  box-shadow: 0 4px 10px var(--color-accent-alpha-25);
   filter: brightness(1);
 }
 
