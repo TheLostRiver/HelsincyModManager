@@ -67,14 +67,14 @@
 
 .nav-item.is-active {
   height: 36px;
-  color: var(--color-accent);
+  color: var(--color-nav-item-text-active);
   font-weight: 600;
-  background: var(--color-accent-weak);
-  border: 1px solid #cfe2ff;
+  background: var(--color-nav-item-bg-active);
+  border: none;
 }
 
 .nav-item.is-active svg {
-  color: var(--color-accent);
+  color: var(--color-nav-item-text-active);
 }
 
 .nav-item:disabled {
@@ -90,7 +90,7 @@
 .nav-item:not(:disabled):not(.is-active):hover,
 .nav-item:not(:disabled):not(.is-active):focus-visible {
   color: var(--color-text);
-  background: #e8edf4;
+  background: var(--color-nav-item-bg-hover);
   outline: none;
 }
 
@@ -100,11 +100,14 @@
 }
 
 .active-mark {
-  width: 4px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
   height: 18px;
-  flex: 0 0 auto;
-  background: var(--color-accent);
-  border-radius: 2px;
+  background: var(--color-nav-indicator);
+  border-radius: 0 4px 4px 0;
 }
 
 .sidebar-footer {
