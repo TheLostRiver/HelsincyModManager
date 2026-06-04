@@ -26,6 +26,7 @@
   --color-nav-item-bg-active: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --color-nav-item-text-active: var(--color-accent);
   --color-nav-indicator: var(--color-accent);
+  --color-page-header-accent: var(--color-accent);
   --color-warning-text: #92400e;
   --color-warning-bg: #fff4cf;
   --color-warning-dot: #f59e0b;
@@ -78,6 +79,7 @@
   --color-nav-item-bg-active: color-mix(in srgb, var(--color-accent) 15%, transparent);
   --color-nav-item-text-active: var(--color-accent);
   --color-nav-indicator: var(--color-accent);
+  --color-page-header-accent: var(--color-accent);
   --color-warning-text: #fcd34d;
   --color-warning-bg: #78350f66;
   --color-warning-dot: #f59e0b;
