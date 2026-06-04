@@ -17,6 +17,10 @@
   --color-accent-alpha-25: #0062ff40;
   --color-accent-alpha-20: #0062ff33;
   --color-accent-alpha-12: #0062ff1f;
+  --color-primary-action-bg: #0062ff;
+  --color-primary-action-bg-hover: #0969ff;
+  --color-primary-action-bg-active: #0756d6;
+  --color-primary-action-text: #ffffff;
   --color-warning-text: #92400e;
   --color-warning-bg: #fff4cf;
   --color-warning-dot: #f59e0b;
@@ -34,6 +38,9 @@
   --shadow-panel: 0 24px 70px #0f172a18;
   --shadow-card: 0 22px 60px #0f172a14;
   --shadow-control: 0 8px 20px #0062ff26;
+  --shadow-primary-action: 0 8px 20px #0062ff26;
+  --shadow-primary-action-hover: 0 11px 22px #0062ff24;
+  --shadow-primary-action-active: 0 5px 12px #0062ff29;
   --focus-ring: #93c5fd;
   --bg-floating-sidebar: linear-gradient(180deg, #ffffffeb 0%, #fffffff2 54%, #f8fbffeb 100%), var(--color-surface);
   --theme-transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -57,6 +64,10 @@
   --color-accent-alpha-25: #60a5fa40;
   --color-accent-alpha-20: #60a5fa33;
   --color-accent-alpha-12: #60a5fa1f;
+  --color-primary-action-bg: #2563eb;
+  --color-primary-action-bg-hover: #2b6eea;
+  --color-primary-action-bg-active: #1d4ed8;
+  --color-primary-action-text: #f8fbff;
   --color-warning-text: #fcd34d;
   --color-warning-bg: #78350f66;
   --color-warning-dot: #f59e0b;
@@ -74,6 +85,9 @@
   --shadow-panel: 0 24px 70px #02061780;
   --shadow-card: 0 22px 60px #02061770;
   --shadow-control: 0 8px 20px #60a5fa26;
+  --shadow-primary-action: 0 8px 18px #1d4ed833;
+  --shadow-primary-action-hover: 0 11px 22px #1d4ed840;
+  --shadow-primary-action-active: 0 5px 12px #1d4ed82e;
   --focus-ring: #60a5fa;
   --bg-floating-sidebar: linear-gradient(180deg, #1e293beb 0%, #1e293bf2 54%, #0f172aeb 100%), var(--color-surface);
 }

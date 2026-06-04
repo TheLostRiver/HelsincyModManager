@@ -146,29 +146,28 @@
     box-shadow 0.22s ease,
     color 0.18s ease,
     background-color 0.18s ease,
-    border-color 0.18s ease,
-    filter 0.18s ease;
+    border-color 0.18s ease;
 }
 
 .primary-action {
-  color: var(--color-surface);
+  color: var(--color-primary-action-text);
   font-size: 13px;
   font-weight: 700;
-  background: var(--color-accent);
+  background: var(--color-primary-action-bg);
   border: 0;
-  box-shadow: var(--shadow-control);
+  box-shadow: var(--shadow-primary-action);
 }
 
 .primary-action:not(:disabled):hover {
   transform: translateY(-1px);
-  box-shadow: 0 11px 22px var(--color-accent-alpha-20);
-  filter: brightness(1.04);
+  background: var(--color-primary-action-bg-hover);
+  box-shadow: var(--shadow-primary-action-hover);
 }
 
 .primary-action:not(:disabled):active {
   transform: translateY(1px) scale(0.98);
-  box-shadow: 0 5px 12px var(--color-accent-alpha-25);
-  filter: brightness(1);
+  background: var(--color-primary-action-bg-active);
+  box-shadow: var(--shadow-primary-action-active);
 }
 
 .secondary-action {
