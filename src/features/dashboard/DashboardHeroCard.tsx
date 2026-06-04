@@ -26,8 +26,11 @@ export function DashboardHeroCard() {
 
       <div className="support-grid" aria-label="支持信息">
         {supportCards.map((card) => (
-          <article className="support-card" key={card.label}>
-            <span>{card.label}</span>
+          <article className="support-card group" key={card.label}>
+            <div className="support-card-header">
+              <card.icon size={16} color={card.iconColor} strokeWidth={2.1} />
+              <span>{card.label}</span>
+            </div>
             <strong>{card.value}</strong>
           </article>
         ))}

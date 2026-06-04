@@ -196,12 +196,41 @@
 .support-card {
   min-height: 72px;
   padding: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: default;
+}
+
+.support-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 98, 255, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 98, 255, 0.12);
+}
+
+.support-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.support-card-header svg {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.support-card.group:hover .support-card-header svg {
+  transform: scale(1.1);
 }
 
 .support-card span {
   color: var(--color-text-muted);
   font-size: 11px;
   font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.support-card.group:hover span {
+  color: var(--color-accent);
 }
 
 .support-card strong {
