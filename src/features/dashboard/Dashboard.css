@@ -18,8 +18,12 @@
 }
 
 .main-header {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+  padding-left: 16px;
+  border-left: 4px solid var(--color-page-header-accent);
+  margin-left: 4px;
 }
 
 .main-header h2,
