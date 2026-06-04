@@ -204,8 +204,8 @@
 
 .support-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(0, 98, 255, 0.4);
-  box-shadow: 0 8px 24px rgba(0, 98, 255, 0.12);
+  border-color: var(--color-accent-alpha-40);
+  box-shadow: 0 8px 24px var(--color-accent-alpha-12);
 }
 
 .support-card-header {
