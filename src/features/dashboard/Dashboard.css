@@ -590,6 +590,26 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .primary-action,
+  .secondary-action,
+  .support-card,
+  .support-card-header svg,
+  .support-card span {
+    transition: none;
+  }
+
+  .primary-action:hover,
+  .primary-action:active,
+  .secondary-action:hover,
+  .secondary-action:active,
+  .support-card:hover,
+  .support-card.group:hover .support-card-header svg {
+    transform: none;
+    filter: none;
+  }
+}
+
 @media (max-width: 560px) {
   .setup-panel {
     padding: 20px;
