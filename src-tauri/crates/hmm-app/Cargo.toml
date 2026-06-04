@@ -7,5 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
+thiserror.workspace = true

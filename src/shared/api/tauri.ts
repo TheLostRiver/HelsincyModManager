@@ -4,3 +4,10 @@ import type { AppHealth } from "../types/app";
 export async function getAppHealth(): Promise<AppHealth> {
   return invoke<AppHealth>("app_health");
 }
+
+export {
+  getGameSetupStatus,
+  saveGameDirectory,
+  scanGameCandidates,
+  validateGameDirectory,
+} from "../../features/game-setup/gameSetupApi";

@@ -16,7 +16,10 @@ tauri-build.workspace = true
 [dependencies]
 hmm-app = { path = "crates/hmm-app" }
 hmm-core = { path = "crates/hmm-core" }
+hmm-games-mhw = { path = "crates/hmm-games-mhw" }
+hmm-infra = { path = "crates/hmm-infra" }
 serde.workspace = true
 serde_json.workspace = true
 tauri = { workspace = true, features = [] }
+tauri-plugin-dialog = "2"
 tracing.workspace = true

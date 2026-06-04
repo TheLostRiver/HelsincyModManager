@@ -9,3 +9,4 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 hmm-core = { path = "../hmm-core" }
+thiserror.workspace = true

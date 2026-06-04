@@ -112,6 +112,24 @@
   background: var(--color-warning-bg);
 }
 
+.badge.success {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.badge.danger {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+.success-dot {
+  background: var(--color-success-dot);
+}
+
+.danger-dot {
+  background: var(--color-danger-dot);
+}
+
 .setup-message h3 {
   color: var(--color-text);
   font-size: 28px;
