@@ -4,7 +4,9 @@ use hmm_ports::{GameConfigRepository, GameConfigRepositoryError, GameConfigRepos
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -28,6 +30,8 @@ impl Default for GamesConfigFile {
 pub struct JsonGameConfigRepository {
     file_path: PathBuf,
     write_lock: Mutex<()>,
+    #[cfg(test)]
+    parent_directory_synced: AtomicBool,
 }
 
 impl JsonGameConfigRepository {
@@ -35,6 +39,8 @@ impl JsonGameConfigRepository {
         Self {
             file_path,
             write_lock: Mutex::new(()),
+            #[cfg(test)]
+            parent_directory_synced: AtomicBool::new(false),
         }
     }
 
@@ -43,8 +49,9 @@ impl JsonGameConfigRepository {
             return Ok(GamesConfigFile::default());
         }
 
-        let content = fs::read_to_string(&self.file_path)
+        let bytes = fs::read(&self.file_path)
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+        let content = String::from_utf8(bytes).map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
 
         let config: GamesConfigFile =
             serde_json::from_str(&content).map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
@@ -79,8 +86,29 @@ impl JsonGameConfigRepository {
 
         fs::rename(&temp_path, &self.file_path)
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+        self.sync_parent_directory()?;
 
         Ok(())
+    }
+
+    fn sync_parent_directory(&self) -> GameConfigRepositoryResult<()> {
+        let Some(parent) = self.file_path.parent() else {
+            return Ok(());
+        };
+
+        open_directory_for_sync(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
+
+        #[cfg(test)]
+        self.parent_directory_synced.store(true, Ordering::SeqCst);
+
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn parent_directory_synced_for_test(&self) -> bool {
+        self.parent_directory_synced.load(Ordering::SeqCst)
     }
 
     fn lock_file_path(&self) -> PathBuf {
@@ -128,6 +156,24 @@ impl JsonGameConfigRepository {
             .open(self.lock_file_path())
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))
     }
+}
+
+#[cfg(windows)]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
+
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+}
+
+#[cfg(not(windows))]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    File::open(path)
 }
 
 impl GameConfigRepository for JsonGameConfigRepository {
@@ -235,6 +281,20 @@ mod tests {
     }
 
     #[test]
+    fn non_utf8_config_returns_storage_corrupted() {
+        let path = test_file("non-utf8");
+        fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
+        fs::write(&path, [0xff, 0xfe, 0xfd]).expect("write non utf8 file");
+        let repo = JsonGameConfigRepository::new(path);
+
+        let error = repo
+            .load_game_instance(&GameId::mhw())
+            .expect_err("non utf8 config should fail");
+
+        assert_eq!(error, GameConfigRepositoryError::StorageCorrupted);
+    }
+
+    #[test]
     fn unsupported_schema_version_returns_storage_corrupted() {
         let path = test_file("unsupported-version");
         fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
@@ -262,6 +322,18 @@ mod tests {
             .expect("load should succeed");
 
         assert_eq!(loaded.expect("instance").root_dir, PathBuf::from("D:/New"));
+    }
+
+    #[test]
+    fn save_syncs_parent_directory_after_rename() {
+        let path = test_file("sync-parent");
+        let repo = JsonGameConfigRepository::new(path.clone());
+
+        repo.save_game_instance(&instance("C:/MHW"))
+            .expect("save should succeed");
+
+        assert!(repo.parent_directory_synced_for_test());
+        assert!(path.exists());
     }
 
     #[test]
