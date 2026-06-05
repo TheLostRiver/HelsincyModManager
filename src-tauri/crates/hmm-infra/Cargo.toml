@@ -8,4 +8,8 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+fs2 = "0.4.3"
+hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
+serde.workspace = true
+serde_json.workspace = true

@@ -1,3 +1,13 @@
+mod dto;
+mod game_setup_commands;
+mod state;
+
+use game_setup_commands::{
+    get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
+};
+use state::AppState;
+use tauri::Manager;
+
 #[tauri::command]
 fn app_health() -> &'static str {
     "ok"
@@ -5,7 +15,19 @@ fn app_health() -> &'static str {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![app_health])
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let state = AppState::new(&app.handle())?;
+            app.manage(state);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            app_health,
+            get_game_setup_status,
+            validate_game_directory,
+            save_game_directory,
+            scan_game_candidates
+        ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");
 }

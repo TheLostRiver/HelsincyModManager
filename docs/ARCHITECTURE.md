@@ -488,6 +488,15 @@ pub trait ModRepository {
 }
 ```
 
+当前已落地的首次启动 / 游戏目录配置端口位于 `hmm-ports::game_setup`，由 `hmm-app` 依赖并由 `hmm-infra`、`hmm-games-mhw` 提供实现：
+
+- `GameAdapter`：声明游戏 id、显示名和目录校验规则；MHW:I 的 `MonsterHunterWorld.exe`、`nativePC` 等识别规则属于游戏 adapter。
+- `GameDirectoryProbe` / `GameDirectoryProbeFactory`：隔离真实文件系统读取，让应用层只消费探测接口，测试可使用 fake probe。
+- `GameConfigRepository`：保存和读取已配置的游戏实例；实现层负责 JSON schema、原子写入和存储错误映射。
+- `GameDiscoveryService`：承载 Steam library / 运行进程扫描等发现能力；MVP 阶段允许返回明确的未实现错误。
+
+Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
+
 ## MVP 范围
 
 第一版应包含：
