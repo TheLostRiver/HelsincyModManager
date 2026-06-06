@@ -16,6 +16,7 @@ export function DashboardPage() {
 
         <DashboardHeroCard
           status={gameSetup.status}
+          candidates={gameSetup.candidates}
           isBusy={gameSetup.isBusy}
           actionMessage={gameSetup.actionMessage}
           onDirectorySelected={gameSetup.saveDirectory}
