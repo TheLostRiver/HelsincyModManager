@@ -1,6 +1,7 @@
 mod game_config_repository;
 mod game_directory_probe;
 mod game_discovery;
+mod steam_discovery;
 
 use anyhow::Result;
 use hmm_ports::AppClock;
