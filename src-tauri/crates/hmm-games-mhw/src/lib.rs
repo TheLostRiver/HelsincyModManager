@@ -5,6 +5,7 @@ use hmm_core::{
 use hmm_ports::{GameAdapter, GameDirectoryProbe};
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
+const STEAM_APP_ID: u32 = 582010;
 const EXECUTABLE_NAME: &str = "MonsterHunterWorld.exe";
 const NATIVE_PC_DIR: &str = "nativePC";
 
@@ -17,6 +18,10 @@ impl GameAdapter for MonsterHunterWorldAdapter {
 
     fn display_name(&self) -> &'static str {
         DISPLAY_NAME
+    }
+
+    fn steam_app_id(&self) -> Option<u32> {
+        Some(STEAM_APP_ID)
     }
 
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation {
@@ -137,6 +142,12 @@ mod tests {
     fn adapter_reports_game_id() {
         let adapter = MonsterHunterWorldAdapter;
         assert_eq!(adapter.game_id().as_str(), "mhw");
+    }
+
+    #[test]
+    fn adapter_reports_steam_app_id() {
+        let adapter = MonsterHunterWorldAdapter;
+        assert_eq!(adapter.steam_app_id(), Some(582010));
     }
 
     #[test]
