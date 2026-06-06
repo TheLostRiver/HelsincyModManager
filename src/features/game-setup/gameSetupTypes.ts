@@ -33,6 +33,31 @@ export type GameDirectoryValidationDto = {
   pathLabel: string;
 };
 
+export type GameCandidateSource = "steam";
+
+export type GameDirectoryCandidateDto = {
+  gameId: string;
+  displayName: string;
+  directory: string;
+  pathLabel: string;
+  source: GameCandidateSource;
+  sourceLabel: string;
+  isValid: boolean;
+  confidence: number;
+  evidence: GameDirectoryEvidenceDto[];
+  errors: string[];
+};
+
+export type GameCandidateScanDto = {
+  gameId: string;
+  candidates: GameDirectoryCandidateDto[];
+};
+
+export type GameDirectoryCandidate = Omit<GameDirectoryCandidateDto, "errors" | "gameId"> & {
+  gameId: GameId;
+  errors: GameSetupErrorCode[];
+};
+
 export type CommandErrorDto = {
   code: GameSetupErrorCode;
   message: string;

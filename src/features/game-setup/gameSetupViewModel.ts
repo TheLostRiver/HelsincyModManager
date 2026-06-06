@@ -1,5 +1,7 @@
 import type {
   CommandErrorDto,
+  GameCandidateScanDto,
+  GameDirectoryCandidate,
   GameId,
   GameSetupErrorCode,
   GameSetupStatus,
@@ -41,6 +43,14 @@ export function mapStatusDto(dto: GameSetupStatusDto): GameSetupStatus {
   return { kind: "not_configured", gameId };
 }
 
+export function mapCandidateScanDto(dto: GameCandidateScanDto): GameDirectoryCandidate[] {
+  return dto.candidates.map((candidate) => ({
+    ...candidate,
+    gameId: normalizeGameId(candidate.gameId),
+    errors: candidate.errors.map(normalizeGameSetupErrorCode),
+  }));
+}
+
 export function mapCommandError(error: unknown): CommandErrorDto {
   if (isCommandErrorDto(error)) {
     return error;
@@ -75,6 +85,10 @@ export function messageForError(code: GameSetupErrorCode): string {
 
 function normalizeGameId(value: string): GameId {
   return value === "mhw" ? "mhw" : "mhw";
+}
+
+function normalizeGameSetupErrorCode(value: string): GameSetupErrorCode {
+  return isGameSetupErrorCode(value) ? value : "unknown";
 }
 
 function isCommandErrorDto(value: unknown): value is CommandErrorDto {
