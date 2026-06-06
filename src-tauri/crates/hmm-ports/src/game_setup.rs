@@ -28,6 +28,10 @@ pub trait GameAdapter: Send + Sync {
     fn game_id(&self) -> GameId;
     fn display_name(&self) -> &'static str;
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation;
+
+    fn steam_app_id(&self) -> Option<u32> {
+        None
+    }
 }
 
 pub trait GameConfigRepository: Send + Sync {
@@ -40,15 +44,31 @@ pub trait GameConfigRepository: Send + Sync {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameDiscoveryRequest {
+    pub game_id: GameId,
+    pub display_name: String,
+    pub steam_app_id: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameCandidateSource {
+    Steam,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameCandidate {
     pub game_id: GameId,
     pub display_name: String,
     pub root_dir: PathBuf,
-    pub source: String,
+    pub source: GameCandidateSource,
+    pub source_label: String,
 }
 
 pub trait GameDiscoveryService: Send + Sync {
-    fn scan_candidates(&self, game_id: &GameId) -> Result<Vec<GameCandidate>, GameDiscoveryError>;
+    fn scan_candidates(
+        &self,
+        request: &GameDiscoveryRequest,
+    ) -> Result<Vec<GameCandidate>, GameDiscoveryError>;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

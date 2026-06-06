@@ -4,7 +4,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, GameAdapter, GameConfigRepository, GameConfigRepositoryError,
-    GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryService,
+    GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -107,9 +107,15 @@ impl GameSetupService {
     }
 
     pub fn scan_candidates(&self, game_id: GameId) -> Result<(), GameSetupServiceError> {
-        self.require_adapter(&game_id)?;
+        let adapter = self.require_adapter(&game_id)?;
+        let request = GameDiscoveryRequest {
+            game_id: game_id.clone(),
+            display_name: adapter.display_name().to_owned(),
+            steam_app_id: adapter.steam_app_id(),
+        };
+
         self.discovery
-            .scan_candidates(&game_id)
+            .scan_candidates(&request)
             .map(|_| ())
             .map_err(|error| match error {
                 GameDiscoveryError::ScanNotImplemented => GameSetupServiceError::ScanNotImplemented,
@@ -195,7 +201,8 @@ mod tests {
     use super::*;
     use hmm_core::{GameDirectoryEvidence, GameDirectoryEvidenceKind};
     use hmm_ports::{
-        GameCandidate, GameConfigRepositoryResult, GameDirectoryProbe, GameDiscoveryService,
+        GameCandidate, GameConfigRepositoryResult, GameDirectoryProbe, GameDiscoveryRequest,
+        GameDiscoveryService,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -302,7 +309,7 @@ mod tests {
     impl GameDiscoveryService for NoopDiscovery {
         fn scan_candidates(
             &self,
-            _game_id: &GameId,
+            _request: &GameDiscoveryRequest,
         ) -> Result<Vec<GameCandidate>, GameDiscoveryError> {
             Err(GameDiscoveryError::ScanNotImplemented)
         }
