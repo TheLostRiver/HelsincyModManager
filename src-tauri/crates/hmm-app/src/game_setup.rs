@@ -3,7 +3,7 @@ use hmm_core::{
     GameSetupStatus,
 };
 use hmm_ports::{
-    AppClock, GameAdapter, GameConfigRepository, GameConfigRepositoryError,
+    AppClock, GameAdapter, GameCandidate, GameConfigRepository, GameConfigRepositoryError,
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
 use std::path::PathBuf;
@@ -24,6 +24,18 @@ pub enum GameSetupServiceError {
     ScanNotImplemented,
     #[error("clock failed: {0}")]
     ClockFailed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameCandidateScan {
+    pub game_id: GameId,
+    pub candidates: Vec<GameSetupCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameSetupCandidate {
+    pub candidate: GameCandidate,
+    pub validation: GameDirectoryValidation,
 }
 
 pub struct GameSetupService {
@@ -106,7 +118,10 @@ impl GameSetupService {
         Ok(GameSetupStatus::configured(instance))
     }
 
-    pub fn scan_candidates(&self, game_id: GameId) -> Result<(), GameSetupServiceError> {
+    pub fn scan_candidates(
+        &self,
+        game_id: GameId,
+    ) -> Result<GameCandidateScan, GameSetupServiceError> {
         let adapter = self.require_adapter(&game_id)?;
         let request = GameDiscoveryRequest {
             game_id: game_id.clone(),
@@ -114,15 +129,46 @@ impl GameSetupService {
             steam_app_id: adapter.steam_app_id(),
         };
 
-        self.discovery
-            .scan_candidates(&request)
-            .map(|_| ())
-            .map_err(|error| match error {
-                GameDiscoveryError::ScanNotImplemented => GameSetupServiceError::ScanNotImplemented,
-                GameDiscoveryError::ScanFailed(message) => {
-                    GameSetupServiceError::StorageFailed(message)
+        let raw_candidates =
+            self.discovery
+                .scan_candidates(&request)
+                .map_err(|error| match error {
+                    GameDiscoveryError::ScanNotImplemented => {
+                        GameSetupServiceError::ScanNotImplemented
+                    }
+                    GameDiscoveryError::ScanFailed(message) => {
+                        GameSetupServiceError::StorageFailed(message)
+                    }
+                })?;
+        let mut candidates = raw_candidates
+            .into_iter()
+            .map(|candidate| {
+                let validation =
+                    self.validate_with_adapter(adapter.as_ref(), candidate.root_dir.clone());
+
+                GameSetupCandidate {
+                    candidate,
+                    validation,
                 }
             })
+            .collect::<Vec<_>>();
+
+        candidates.sort_by(|left, right| {
+            right
+                .validation
+                .is_valid
+                .cmp(&left.validation.is_valid)
+                .then_with(|| right.validation.confidence.cmp(&left.validation.confidence))
+                .then_with(|| {
+                    normalize_candidate_path(&left.candidate.root_dir)
+                        .cmp(&normalize_candidate_path(&right.candidate.root_dir))
+                })
+        });
+
+        Ok(GameCandidateScan {
+            game_id,
+            candidates,
+        })
     }
 
     fn require_adapter(
@@ -179,6 +225,10 @@ impl GameSetupService {
     }
 }
 
+fn normalize_candidate_path(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/").to_lowercase()
+}
+
 impl GameSetupServiceError {
     pub fn error_code(&self) -> GameSetupErrorCode {
         match self {
@@ -201,8 +251,8 @@ mod tests {
     use super::*;
     use hmm_core::{GameDirectoryEvidence, GameDirectoryEvidenceKind};
     use hmm_ports::{
-        GameCandidate, GameConfigRepositoryResult, GameDirectoryProbe, GameDiscoveryRequest,
-        GameDiscoveryService,
+        GameCandidate, GameCandidateSource, GameConfigRepositoryResult, GameDirectoryProbe,
+        GameDiscoveryRequest, GameDiscoveryService,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -279,6 +329,30 @@ mod tests {
 
     struct FakeAdapter {
         valid: bool,
+        invalid_roots: Vec<PathBuf>,
+    }
+
+    impl FakeAdapter {
+        fn valid() -> Self {
+            Self {
+                valid: true,
+                invalid_roots: Vec::new(),
+            }
+        }
+
+        fn invalid() -> Self {
+            Self {
+                valid: false,
+                invalid_roots: Vec::new(),
+            }
+        }
+
+        fn with_invalid_roots(roots: Vec<&str>) -> Self {
+            Self {
+                valid: true,
+                invalid_roots: roots.into_iter().map(PathBuf::from).collect(),
+            }
+        }
     }
 
     impl GameAdapter for FakeAdapter {
@@ -297,7 +371,13 @@ mod tests {
                 GameDirectoryEvidenceKind::DirectoryExists,
                 "目录存在",
             ));
-            if !self.valid {
+            let is_invalid = !self.valid
+                || self
+                    .invalid_roots
+                    .iter()
+                    .any(|root| root == probe.root_dir());
+            validation.confidence = if is_invalid { 20 } else { 90 };
+            if is_invalid {
                 validation.add_error(GameSetupErrorCode::MissingExecutable);
             }
             validation
@@ -315,12 +395,50 @@ mod tests {
         }
     }
 
+    struct FakeDiscovery {
+        result: Result<Vec<GameCandidate>, GameDiscoveryError>,
+    }
+
+    impl FakeDiscovery {
+        fn ok(candidates: Vec<GameCandidate>) -> Self {
+            Self {
+                result: Ok(candidates),
+            }
+        }
+
+        fn error(error: GameDiscoveryError) -> Self {
+            Self { result: Err(error) }
+        }
+    }
+
+    impl GameDiscoveryService for FakeDiscovery {
+        fn scan_candidates(
+            &self,
+            _request: &GameDiscoveryRequest,
+        ) -> Result<Vec<GameCandidate>, GameDiscoveryError> {
+            self.result.clone()
+        }
+    }
+
     fn service_with(adapter: FakeAdapter) -> GameSetupService {
         GameSetupService::new(
             vec![Arc::new(adapter)],
             Arc::new(FakeRepository::empty()),
             Arc::new(FakeProbeFactory),
             Arc::new(NoopDiscovery),
+            Arc::new(FakeClock),
+        )
+    }
+
+    fn service_with_discovery(
+        adapter: FakeAdapter,
+        discovery: Arc<dyn GameDiscoveryService>,
+    ) -> GameSetupService {
+        GameSetupService::new(
+            vec![Arc::new(adapter)],
+            Arc::new(FakeRepository::empty()),
+            Arc::new(FakeProbeFactory),
+            discovery,
             Arc::new(FakeClock),
         )
     }
@@ -351,16 +469,18 @@ mod tests {
 
     #[test]
     fn status_is_not_configured_without_saved_instance() {
-        let service = service_with(FakeAdapter { valid: true });
+        let service = service_with(FakeAdapter::valid());
 
-        let status = service.get_status(GameId::mhw()).expect("status should load");
+        let status = service
+            .get_status(GameId::mhw())
+            .expect("status should load");
 
         assert_eq!(status.status, GameDirectoryStatus::NotConfigured);
     }
 
     #[test]
     fn save_directory_validates_before_persisting() {
-        let service = service_with(FakeAdapter { valid: true });
+        let service = service_with(FakeAdapter::valid());
 
         let status = service
             .save_game_directory(GameId::mhw(), PathBuf::from("C:/MHW"))
@@ -368,17 +488,14 @@ mod tests {
 
         assert_eq!(status.status, GameDirectoryStatus::Configured);
         assert_eq!(
-            status
-                .instance
-                .expect("instance")
-                .configured_at_unix_millis,
+            status.instance.expect("instance").configured_at_unix_millis,
             42
         );
     }
 
     #[test]
     fn save_directory_rejects_invalid_validation() {
-        let service = service_with(FakeAdapter { valid: false });
+        let service = service_with(FakeAdapter::invalid());
 
         let error = service
             .save_game_directory(GameId::mhw(), PathBuf::from("C:/Wrong"))
@@ -392,23 +509,85 @@ mod tests {
         let repository = Arc::new(FakeRepository {
             stored: Mutex::new(Some(stored_instance("C:/Moved"))),
         });
-        let service = service_with_repository(FakeAdapter { valid: false }, repository);
+        let service = service_with_repository(FakeAdapter::invalid(), repository);
 
-        let status = service.get_status(GameId::mhw()).expect("status should load");
+        let status = service
+            .get_status(GameId::mhw())
+            .expect("status should load");
 
         assert_eq!(status.status, GameDirectoryStatus::Invalid);
-        assert_eq!(status.error_code, Some(GameSetupErrorCode::MissingExecutable));
+        assert_eq!(
+            status.error_code,
+            Some(GameSetupErrorCode::MissingExecutable)
+        );
         assert!(status.instance.is_none());
     }
 
     #[test]
-    fn scan_candidates_returns_explicit_not_implemented() {
-        let service = service_with(FakeAdapter { valid: true });
+    fn scan_candidates_validates_discovered_directories() {
+        let service = service_with_discovery(
+            FakeAdapter::valid(),
+            Arc::new(FakeDiscovery::ok(vec![steam_candidate("C:/MHW")])),
+        );
+
+        let scan = service
+            .scan_candidates(GameId::mhw())
+            .expect("scan should return candidates");
+
+        assert_eq!(scan.candidates.len(), 1);
+        assert_eq!(
+            scan.candidates[0].candidate.root_dir,
+            PathBuf::from("C:/MHW")
+        );
+        assert!(scan.candidates[0].validation.is_valid);
+        assert_eq!(scan.candidates[0].validation.confidence, 90);
+    }
+
+    #[test]
+    fn scan_candidates_sorts_valid_candidates_first() {
+        let service = service_with_discovery(
+            FakeAdapter::with_invalid_roots(vec!["C:/Broken"]),
+            Arc::new(FakeDiscovery::ok(vec![
+                steam_candidate("C:/Broken"),
+                steam_candidate("C:/MHW"),
+            ])),
+        );
+
+        let scan = service
+            .scan_candidates(GameId::mhw())
+            .expect("scan should return candidates");
+
+        assert_eq!(
+            scan.candidates[0].candidate.root_dir,
+            PathBuf::from("C:/MHW")
+        );
+        assert!(scan.candidates[0].validation.is_valid);
+        assert!(!scan.candidates[1].validation.is_valid);
+    }
+
+    #[test]
+    fn scan_candidates_maps_discovery_failure() {
+        let service = service_with_discovery(
+            FakeAdapter::valid(),
+            Arc::new(FakeDiscovery::error(GameDiscoveryError::ScanFailed(
+                "boom".to_owned(),
+            ))),
+        );
 
         let error = service
             .scan_candidates(GameId::mhw())
-            .expect_err("scan should be disabled in first version");
+            .expect_err("scan failure should map to service error");
 
-        assert_eq!(error.error_code(), GameSetupErrorCode::ScanNotImplemented);
+        assert_eq!(error.error_code(), GameSetupErrorCode::StorageFailed);
+    }
+
+    fn steam_candidate(root: &str) -> GameCandidate {
+        GameCandidate {
+            game_id: GameId::mhw(),
+            display_name: "Monster Hunter: World - Iceborne".to_owned(),
+            root_dir: PathBuf::from(root),
+            source: GameCandidateSource::Steam,
+            source_label: "Steam".to_owned(),
+        }
     }
 }
