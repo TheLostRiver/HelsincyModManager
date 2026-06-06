@@ -1,6 +1,6 @@
 use crate::dto::{
-    status_to_dto, validation_to_dto, CommandErrorDto, GameDirectoryValidationDto,
-    GameSetupStatusDto,
+    candidate_scan_to_dto, status_to_dto, validation_to_dto, CommandErrorDto,
+    GameCandidateScanDto, GameDirectoryValidationDto, GameSetupStatusDto,
 };
 use crate::state::AppState;
 use hmm_core::GameId;
@@ -54,12 +54,16 @@ pub fn save_game_directory(
 }
 
 #[tauri::command]
-pub fn scan_game_candidates(game_id: String, state: State<'_, AppState>) -> Result<(), CommandErrorDto> {
+pub fn scan_game_candidates(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> Result<GameCandidateScanDto, CommandErrorDto> {
     let game_id = parse_game_id(game_id)?;
     let service = lock_service(&state)?;
 
     service
         .scan_candidates(game_id)
+        .map(candidate_scan_to_dto)
         .map_err(CommandErrorDto::from_service_error)
 }
 

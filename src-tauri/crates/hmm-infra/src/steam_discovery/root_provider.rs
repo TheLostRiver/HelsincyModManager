@@ -1,4 +1,6 @@
-use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "linux", test))]
+use std::path::Path;
+use std::path::PathBuf;
 
 pub trait SteamRootProvider: Send + Sync {
     fn steam_roots(&self) -> Vec<PathBuf>;
@@ -12,6 +14,7 @@ impl SteamRootProvider for PlatformSteamRootProvider {
     }
 }
 
+#[cfg(any(target_os = "linux", test))]
 pub fn linux_steam_roots_from_home(home: &Path) -> Vec<PathBuf> {
     vec![
         home.join(".steam").join("steam"),

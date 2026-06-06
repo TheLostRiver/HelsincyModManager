@@ -1,8 +1,9 @@
-use hmm_app::GameSetupServiceError;
+use hmm_app::{GameCandidateScan, GameSetupCandidate, GameSetupServiceError};
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
     GameDirectoryValidation, GameInstance, GameSetupErrorCode, GameSetupStatus,
 };
+use hmm_ports::GameCandidateSource;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -52,6 +53,28 @@ pub struct GameDirectoryEvidenceDto {
     pub label: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameCandidateScanDto {
+    pub game_id: String,
+    pub candidates: Vec<GameCandidateDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameCandidateDto {
+    pub game_id: String,
+    pub display_name: String,
+    pub directory: String,
+    pub path_label: String,
+    pub source: String,
+    pub source_label: String,
+    pub is_valid: bool,
+    pub confidence: u8,
+    pub evidence: Vec<GameDirectoryEvidenceDto>,
+    pub errors: Vec<String>,
+}
+
 pub fn status_to_dto(status: GameSetupStatus) -> GameSetupStatusDto {
     let kind = match status.status {
         GameDirectoryStatus::NotConfigured => "not_configured",
@@ -75,6 +98,13 @@ pub fn status_to_dto(status: GameSetupStatus) -> GameSetupStatusDto {
     }
 }
 
+pub fn candidate_scan_to_dto(scan: GameCandidateScan) -> GameCandidateScanDto {
+    GameCandidateScanDto {
+        game_id: scan.game_id.as_str().to_owned(),
+        candidates: scan.candidates.into_iter().map(candidate_to_dto).collect(),
+    }
+}
+
 pub fn validation_to_dto(validation: GameDirectoryValidation) -> GameDirectoryValidationDto {
     GameDirectoryValidationDto {
         game_id: validation.game_id.as_str().to_owned(),
@@ -86,11 +116,43 @@ pub fn validation_to_dto(validation: GameDirectoryValidation) -> GameDirectoryVa
     }
 }
 
+fn candidate_to_dto(candidate: GameSetupCandidate) -> GameCandidateDto {
+    GameCandidateDto {
+        game_id: candidate.candidate.game_id.as_str().to_owned(),
+        display_name: candidate.candidate.display_name,
+        directory: candidate.candidate.root_dir.to_string_lossy().to_string(),
+        path_label: path_label_from_path(&candidate.candidate.root_dir),
+        source: candidate_source_to_string(candidate.candidate.source),
+        source_label: candidate.candidate.source_label,
+        is_valid: candidate.validation.is_valid,
+        confidence: candidate.validation.confidence,
+        evidence: candidate
+            .validation
+            .evidence
+            .into_iter()
+            .map(evidence_to_dto)
+            .collect(),
+        errors: candidate
+            .validation
+            .errors
+            .into_iter()
+            .map(error_code_to_string)
+            .collect(),
+    }
+}
+
 fn instance_to_display_parts(instance: GameInstance) -> (Option<String>, Option<String>) {
     (
         Some(instance.display_name),
         Some(path_label_from_path(&instance.root_dir)),
     )
+}
+
+fn candidate_source_to_string(source: GameCandidateSource) -> String {
+    match source {
+        GameCandidateSource::Steam => "steam",
+    }
+    .to_owned()
 }
 
 fn evidence_to_dto(evidence: GameDirectoryEvidence) -> GameDirectoryEvidenceDto {

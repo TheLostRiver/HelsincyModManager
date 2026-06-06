@@ -1285,6 +1285,7 @@ dependencies = [
  "hmm-core",
  "hmm-games-mhw",
  "hmm-infra",
+ "hmm-ports",
  "serde",
  "serde_json",
  "tauri",
