@@ -150,7 +150,7 @@ Linux / Steam Deck 预留路径：
 建议排序规则：
 
 1. 有效候选优先。
-2. 校验可信度高的优先。
+2. 按校验可信度从高到低排序。
 3. Steam 来源稳定排序，避免 UI 列表抖动。
 
 ### Tauri
@@ -177,6 +177,21 @@ pub struct GameCandidateDto {
 }
 ```
 
+`errors` 序列化为稳定错误码字符串，取值必须与现有 `GameSetupErrorCode` 的前端 code 保持一致，例如：
+
+```text
+unsupported_game
+directory_not_found
+directory_not_absolute
+missing_executable
+storage_failed
+storage_corrupted
+scan_not_implemented
+unknown
+```
+
+前端 DTO 层先按 `string[]` 接收，再归一化为 `GameSetupErrorCode[]` 给 UI 使用。未知字符串必须归一化为 `unknown`，不能直接透传给 UI 文案映射。
+
 `directory` 用于玩家点击候选后保存；日志和诊断不得记录完整路径。`path_label` 用于常规展示。
 
 ### Frontend
@@ -196,6 +211,8 @@ type GameDirectoryCandidate = {
   errors: GameSetupErrorCode[];
 };
 ```
+
+前端的原始 Tauri DTO 类型使用 `errors: string[]`，映射后的 `GameDirectoryCandidate` 才使用 `errors: GameSetupErrorCode[]`。这样可以同时匹配 Rust DTO 的序列化形状，并保证 UI 层只消费已归一化的稳定错误码。
 
 `useGameSetup` 的 `scanSteam` 改为接收候选结果并写入 state。`GameDirectoryActions` 继续负责按钮；新增 `GameDirectoryCandidateList` 展示候选并把有效候选传给 `saveDirectory`。
 

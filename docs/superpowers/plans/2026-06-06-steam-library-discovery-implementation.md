@@ -280,12 +280,9 @@ Create `src-tauri/crates/hmm-infra/src/steam_discovery/mod.rs`:
 
 ```rust
 mod key_values;
-mod library_manifest;
-mod root_provider;
-
-pub use library_manifest::{SteamAppManifest, SteamLibraryFolder};
-pub use root_provider::PlatformSteamRootProvider;
 ```
+
+Task 3 只声明 `key_values`，因为 `library_manifest.rs` 和 `root_provider.rs` 此时还不存在。不要在 Task 3 提前声明这两个模块；否则 `cargo test -p hmm-infra steam_key_values` 会在解析器测试运行前编译失败。
 
 - [ ] **Step 2: Add parser public API**
 
@@ -398,6 +395,7 @@ git commit -m "feat: 添加 Steam KeyValues 解析器"
 **Files:**
 
 - Create: `src-tauri/crates/hmm-infra/src/steam_discovery/library_manifest.rs`
+- Modify: `src-tauri/crates/hmm-infra/src/steam_discovery/mod.rs`
 - Test: `cargo test -p hmm-infra steam_manifest`
 
 - [ ] **Step 1: Add typed parser functions**
@@ -444,7 +442,20 @@ pub fn parse_app_manifest(input: &str) -> Result<SteamAppManifest, SteamManifest
 
 Implement the extraction code in this file. Keep field lookup case-sensitive because Steam manifest keys are stable in generated files.
 
-- [ ] **Step 2: Add manifest parser tests**
+- [ ] **Step 2: Export manifest parser module**
+
+Modify `src-tauri/crates/hmm-infra/src/steam_discovery/mod.rs`:
+
+```rust
+mod key_values;
+mod library_manifest;
+
+pub use library_manifest::{
+    parse_app_manifest, parse_library_folders, SteamAppManifest, SteamLibraryFolder,
+};
+```
+
+- [ ] **Step 3: Add manifest parser tests**
 
 Add tests in `library_manifest.rs`:
 
@@ -490,7 +501,7 @@ fn steam_manifest_parses_app_manifest_install_dir() {
 }
 ```
 
-- [ ] **Step 3: Run manifest tests**
+- [ ] **Step 4: Run manifest tests**
 
 Run:
 
@@ -504,7 +515,7 @@ Expected:
 test result: ok
 ```
 
-- [ ] **Step 4: Commit manifest parser**
+- [ ] **Step 5: Commit manifest parser**
 
 Run:
 
@@ -518,6 +529,7 @@ git commit -m "feat: 解析 Steam library 与应用清单"
 **Files:**
 
 - Create: `src-tauri/crates/hmm-infra/src/steam_discovery/root_provider.rs`
+- Modify: `src-tauri/crates/hmm-infra/src/steam_discovery/mod.rs`
 - Modify: `src-tauri/crates/hmm-infra/Cargo.toml`
 - Test: `cargo test -p hmm-infra steam_root`
 
@@ -560,7 +572,22 @@ Add platform-specific private `platform_steam_roots()` functions:
 - Linux: `linux_steam_roots_from_home(home)` using `HOME`.
 - Other platforms: empty list.
 
-- [ ] **Step 2: Add Windows registry dependency**
+- [ ] **Step 2: Export root provider module**
+
+Modify `src-tauri/crates/hmm-infra/src/steam_discovery/mod.rs`:
+
+```rust
+mod key_values;
+mod library_manifest;
+mod root_provider;
+
+pub use library_manifest::{
+    parse_app_manifest, parse_library_folders, SteamAppManifest, SteamLibraryFolder,
+};
+pub use root_provider::{PlatformSteamRootProvider, SteamRootProvider};
+```
+
+- [ ] **Step 3: Add Windows registry dependency**
 
 Modify `src-tauri/crates/hmm-infra/Cargo.toml`:
 
@@ -569,7 +596,7 @@ Modify `src-tauri/crates/hmm-infra/Cargo.toml`:
 winreg = "0.55"
 ```
 
-- [ ] **Step 3: Add root provider tests**
+- [ ] **Step 4: Add root provider tests**
 
 Add tests in `root_provider.rs`:
 
@@ -585,7 +612,7 @@ fn steam_root_builds_linux_candidate_roots_from_home() {
 }
 ```
 
-- [ ] **Step 4: Run root tests**
+- [ ] **Step 5: Run root tests**
 
 Run:
 
@@ -599,7 +626,7 @@ Expected:
 test result: ok
 ```
 
-- [ ] **Step 5: Commit root provider**
+- [ ] **Step 6: Commit root provider**
 
 Run:
 
@@ -696,6 +723,8 @@ Modify `src-tauri/crates/hmm-infra/src/lib.rs`:
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
 pub use steam_discovery::PlatformSteamRootProvider;
 ```
+
+`SteamGameDiscoveryService` 会通过 `crate::steam_discovery` 导入 parser 函数和 provider trait，所以 `steam_discovery/mod.rs` 必须已经按 Task 4 和 Task 5 导出 `parse_app_manifest`、`parse_library_folders` 和 `SteamRootProvider`。
 
 - [ ] **Step 4: Run discovery tests**
 

@@ -30,7 +30,7 @@ export type GameDirectoryCandidateDto = {
   isValid: boolean;
   confidence: number;
   evidence: GameDirectoryEvidenceDto[];
-  errors: GameSetupErrorCode[];
+  errors: string[];
 };
 
 export type GameCandidateScanDto = {
@@ -38,8 +38,9 @@ export type GameCandidateScanDto = {
   candidates: GameDirectoryCandidateDto[];
 };
 
-export type GameDirectoryCandidate = GameDirectoryCandidateDto & {
+export type GameDirectoryCandidate = Omit<GameDirectoryCandidateDto, "errors" | "gameId"> & {
   gameId: GameId;
+  errors: GameSetupErrorCode[];
 };
 ```
 
@@ -64,7 +65,12 @@ export function mapCandidateScanDto(dto: GameCandidateScanDto): GameDirectoryCan
   return dto.candidates.map((candidate) => ({
     ...candidate,
     gameId: normalizeGameId(candidate.gameId),
+    errors: candidate.errors.map(normalizeGameSetupErrorCode),
   }));
+}
+
+function normalizeGameSetupErrorCode(value: string): GameSetupErrorCode {
+  return isGameSetupErrorCode(value) ? value : "unknown";
 }
 ```
 
