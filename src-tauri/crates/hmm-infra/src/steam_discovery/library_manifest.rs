@@ -1,4 +1,4 @@
-use super::key_values::{parse_key_values, KeyValuesError, KeyValueNode};
+use super::key_values::{parse_key_values, KeyValueNode, KeyValuesError};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -20,6 +20,8 @@ pub enum SteamManifestError {
     Parse(#[from] KeyValuesError),
     #[error("expected object: {0}")]
     ExpectedObject(&'static str),
+    #[error("expected text field: {0}")]
+    ExpectedText(&'static str),
     #[error("missing field: {0}")]
     MissingField(&'static str),
     #[error("invalid app id: {0}")]
@@ -32,6 +34,7 @@ pub fn parse_library_folders(input: &str) -> Result<Vec<SteamLibraryFolder>, Ste
     let mut folders = Vec::new();
 
     for (key, folder_node) in libraryfolders {
+        // Steam uses numeric keys for library folders; metadata keys are intentionally ignored.
         if key.parse::<u32>().is_err() {
             continue;
         }
@@ -98,7 +101,7 @@ fn text_field<'a>(
 ) -> Result<&'a str, SteamManifestError> {
     match object.get(field) {
         Some(KeyValueNode::Text(value)) => Ok(value),
-        Some(KeyValueNode::Object(_)) => Err(SteamManifestError::ExpectedObject(field)),
+        Some(KeyValueNode::Object(_)) => Err(SteamManifestError::ExpectedText(field)),
         None => Err(SteamManifestError::MissingField(field)),
     }
 }
@@ -145,5 +148,21 @@ mod tests {
 
         assert_eq!(manifest.app_id, 582010);
         assert_eq!(manifest.install_dir, "Monster Hunter World");
+    }
+
+    #[test]
+    fn steam_manifest_reports_expected_text_for_object_field() {
+        let error = parse_app_manifest(
+            r#"
+            "AppState"
+            {
+                "appid" "582010"
+                "installdir" {}
+            }
+            "#,
+        )
+        .expect_err("installdir object should fail");
+
+        assert_eq!(error, SteamManifestError::ExpectedText("installdir"));
     }
 }

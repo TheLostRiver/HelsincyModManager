@@ -105,6 +105,22 @@ impl<'a> KeyValuesParser<'a> {
                 return Ok(value);
             }
 
+            if next == '\\' {
+                let escaped = self.advance_char().ok_or(KeyValuesError::UnexpectedEnd)?;
+                match escaped {
+                    '"' => value.push('"'),
+                    '\\' => value.push('\\'),
+                    'n' => value.push('\n'),
+                    'r' => value.push('\r'),
+                    't' => value.push('\t'),
+                    other => {
+                        value.push('\\');
+                        value.push(other);
+                    }
+                }
+                continue;
+            }
+
             value.push(next);
         }
 
@@ -168,6 +184,49 @@ mod tests {
     #[test]
     fn steam_key_values_rejects_unclosed_quote() {
         let error = parse_key_values(r#""libraryfolders" { "0"#).expect_err("invalid vdf");
+        assert_eq!(error, KeyValuesError::UnexpectedEnd);
+    }
+
+    #[test]
+    fn steam_key_values_parses_escaped_characters() {
+        let parsed = parse_key_values(
+            r#"
+            "AppState"
+            {
+                "installdir" "Monster \"Hunter\" World"
+                "path" "D:\\SteamLibrary"
+                "note" "line\nnext"
+            }
+            "#,
+        )
+        .expect("valid vdf");
+
+        let KeyValueNode::Object(root) = parsed else {
+            panic!("root should be object");
+        };
+        let KeyValueNode::Object(app_state) = root.get("AppState").expect("app state") else {
+            panic!("app state should be object");
+        };
+
+        assert_eq!(
+            app_state.get("installdir"),
+            Some(&KeyValueNode::Text("Monster \"Hunter\" World".to_owned()))
+        );
+        assert_eq!(
+            app_state.get("path"),
+            Some(&KeyValueNode::Text("D:\\SteamLibrary".to_owned()))
+        );
+        assert_eq!(
+            app_state.get("note"),
+            Some(&KeyValueNode::Text("line\nnext".to_owned()))
+        );
+    }
+
+    #[test]
+    fn steam_key_values_rejects_trailing_escape() {
+        let error =
+            parse_key_values(r#""AppState" { "installdir" "Monster \"#).expect_err("invalid vdf");
+
         assert_eq!(error, KeyValuesError::UnexpectedEnd);
     }
 }

@@ -189,7 +189,10 @@ mod tests {
         let validation = adapter.validate_directory(&probe);
 
         assert!(!validation.is_valid);
-        assert_eq!(validation.errors, vec![GameSetupErrorCode::MissingExecutable]);
+        assert_eq!(
+            validation.errors,
+            vec![GameSetupErrorCode::MissingExecutable]
+        );
     }
 
     #[test]
@@ -200,6 +203,9 @@ mod tests {
         let validation = adapter.validate_directory(&probe);
 
         assert!(!validation.is_valid);
-        assert_eq!(validation.errors, vec![GameSetupErrorCode::DirectoryNotFound]);
+        assert_eq!(
+            validation.errors,
+            vec![GameSetupErrorCode::DirectoryNotFound]
+        );
     }
 }

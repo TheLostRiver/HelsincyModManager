@@ -20,6 +20,8 @@ pub enum GameSetupServiceError {
     StorageCorrupted,
     #[error("storage failed: {0}")]
     StorageFailed(String),
+    #[error("candidate scan failed: {0}")]
+    ScanFailed(String),
     #[error("scan not implemented")]
     ScanNotImplemented,
     #[error("clock failed: {0}")]
@@ -137,7 +139,7 @@ impl GameSetupService {
                         GameSetupServiceError::ScanNotImplemented
                     }
                     GameDiscoveryError::ScanFailed(message) => {
-                        GameSetupServiceError::StorageFailed(message)
+                        GameSetupServiceError::ScanFailed(message)
                     }
                 })?;
         let mut candidates = raw_candidates
@@ -226,7 +228,12 @@ impl GameSetupService {
 }
 
 fn normalize_candidate_path(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/").to_lowercase()
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
 }
 
 impl GameSetupServiceError {
@@ -240,6 +247,7 @@ impl GameSetupServiceError {
                 .unwrap_or(GameSetupErrorCode::Unknown),
             Self::StorageCorrupted => GameSetupErrorCode::StorageCorrupted,
             Self::StorageFailed(_) => GameSetupErrorCode::StorageFailed,
+            Self::ScanFailed(_) => GameSetupErrorCode::ScanFailed,
             Self::ScanNotImplemented => GameSetupErrorCode::ScanNotImplemented,
             Self::ClockFailed(_) => GameSetupErrorCode::Unknown,
         }
@@ -578,7 +586,7 @@ mod tests {
             .scan_candidates(GameId::mhw())
             .expect_err("scan failure should map to service error");
 
-        assert_eq!(error.error_code(), GameSetupErrorCode::StorageFailed);
+        assert_eq!(error.error_code(), GameSetupErrorCode::ScanFailed);
     }
 
     fn steam_candidate(root: &str) -> GameCandidate {

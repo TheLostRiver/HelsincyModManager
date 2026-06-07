@@ -1,4 +1,6 @@
 #[cfg(any(target_os = "linux", test))]
+use std::collections::BTreeSet;
+#[cfg(any(target_os = "linux", test))]
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -48,10 +50,7 @@ fn platform_steam_roots() -> Vec<PathBuf> {
     }
 
     if let Some(program_files_x86) = std::env::var_os("ProgramFiles(x86)") {
-        push_unique(
-            &mut roots,
-            PathBuf::from(program_files_x86).join("Steam"),
-        );
+        push_unique(&mut roots, PathBuf::from(program_files_x86).join("Steam"));
     }
 
     roots
@@ -59,9 +58,11 @@ fn platform_steam_roots() -> Vec<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn platform_steam_roots() -> Vec<PathBuf> {
-    std::env::var_os("HOME")
+    let roots = std::env::var_os("HOME")
         .map(|home| linux_steam_roots_from_home(Path::new(&home)))
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    dedupe_paths(roots)
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
@@ -76,6 +77,32 @@ fn push_unique(roots: &mut Vec<PathBuf>, root: PathBuf) {
     }
 }
 
+#[cfg(any(target_os = "linux", test))]
+fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    let mut unique = Vec::new();
+
+    for path in paths {
+        let key_path = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let key = normalize_path_key(&key_path);
+        if seen.insert(key) {
+            unique.push(path);
+        }
+    }
+
+    unique
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn normalize_path_key(path: &Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,9 +111,30 @@ mod tests {
     fn steam_root_builds_linux_candidate_roots_from_home() {
         let roots = linux_steam_roots_from_home(std::path::Path::new("/home/deck"));
 
-        assert_eq!(roots[0], std::path::PathBuf::from("/home/deck/.steam/steam"));
-        assert!(roots.iter().any(|root| {
-            root.ends_with(".var/app/com.valvesoftware.Steam/.local/share/Steam")
-        }));
+        assert_eq!(
+            roots[0],
+            std::path::PathBuf::from("/home/deck/.steam/steam")
+        );
+        assert!(roots
+            .iter()
+            .any(|root| { root.ends_with(".var/app/com.valvesoftware.Steam/.local/share/Steam") }));
+    }
+
+    #[test]
+    fn steam_root_deduplicates_equivalent_paths() {
+        let root = std::env::temp_dir().join(format!(
+            "hmm-steam-root-dedupe-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+
+        let paths = dedupe_paths(vec![root.clone(), root.clone()]);
+
+        assert_eq!(paths, vec![root.clone()]);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -7,7 +7,7 @@ use hmm_ports::{
 };
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::sync::Arc;
 
 pub struct NoopGameDiscoveryService;
@@ -85,11 +85,17 @@ impl SteamGameDiscoveryService {
             return Ok(());
         }
 
-        let root_dir = library
-            .path
-            .join("steamapps")
-            .join("common")
-            .join(manifest.install_dir);
+        let install_dir = Path::new(&manifest.install_dir);
+        if !is_safe_install_dir(install_dir) {
+            return Ok(());
+        }
+
+        let common_dir = library.path.join("steamapps").join("common");
+        let root_dir = common_dir.join(install_dir);
+        if !is_path_within(&root_dir, &common_dir) {
+            return Ok(());
+        }
+
         let normalized = normalize_path_key(&root_dir);
         if !seen_roots.insert(normalized) {
             return Ok(());
@@ -134,7 +140,37 @@ impl GameDiscoveryService for SteamGameDiscoveryService {
 }
 
 fn normalize_path_key(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/").to_lowercase()
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
+}
+
+fn is_safe_install_dir(path: &Path) -> bool {
+    let mut has_component = false;
+
+    !path.is_absolute()
+        && path.components().all(|component| {
+            if matches!(component, Component::Normal(_)) {
+                has_component = true;
+                true
+            } else {
+                false
+            }
+        })
+        && has_component
+}
+
+fn is_path_within(path: &Path, parent: &Path) -> bool {
+    let normalized_path = normalize_path_key(path);
+    let mut normalized_parent = normalize_path_key(parent);
+    if !normalized_parent.ends_with('/') {
+        normalized_parent.push('/');
+    }
+
+    normalized_path.starts_with(&normalized_parent)
 }
 
 #[cfg(test)]
@@ -220,7 +256,10 @@ mod tests {
 
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].game_id, GameId::mhw());
-        assert_eq!(candidates[0].display_name, "Monster Hunter: World - Iceborne");
+        assert_eq!(
+            candidates[0].display_name,
+            "Monster Hunter: World - Iceborne"
+        );
         assert!(candidates[0]
             .root_dir
             .ends_with("steamapps/common/Monster Hunter World"));
@@ -285,6 +324,44 @@ mod tests {
             .expect("scan");
 
         assert_eq!(candidates.len(), 1);
+    }
+
+    #[test]
+    fn steam_discovery_rejects_install_dir_with_parent_segments() {
+        let temp = create_temp_steam_root();
+        write_libraryfolders_with_mhw(&temp);
+        write_mhw_manifest(&temp, "../Monster Hunter World");
+
+        let service = SteamGameDiscoveryService::new(Arc::new(FakeSteamRootProvider {
+            roots: vec![temp.path().to_path_buf()],
+        }));
+
+        let candidates = service
+            .scan_candidates(&mhw_request(Some(582010)))
+            .expect("scan");
+
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn steam_discovery_rejects_absolute_install_dir() {
+        let temp = create_temp_steam_root();
+        write_libraryfolders_with_mhw(&temp);
+        let absolute_install_dir = std::env::temp_dir()
+            .join("Monster Hunter World")
+            .to_string_lossy()
+            .replace('\\', "/");
+        write_mhw_manifest(&temp, &absolute_install_dir);
+
+        let service = SteamGameDiscoveryService::new(Arc::new(FakeSteamRootProvider {
+            roots: vec![temp.path().to_path_buf()],
+        }));
+
+        let candidates = service
+            .scan_candidates(&mhw_request(Some(582010)))
+            .expect("scan");
+
+        assert!(candidates.is_empty());
     }
 
     fn create_temp_steam_root() -> TestSteamRoot {
@@ -362,9 +439,7 @@ mod tests {
 
     fn write_mhw_manifest(temp: &TestSteamRoot, install_dir: &str) {
         fs::write(
-            temp.path()
-                .join("steamapps")
-                .join("appmanifest_582010.acf"),
+            temp.path().join("steamapps").join("appmanifest_582010.acf"),
             format!(
                 r#"
                 "AppState"

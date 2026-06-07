@@ -1,7 +1,7 @@
 use hmm_app::{GameCandidateScan, GameSetupCandidate, GameSetupServiceError};
 use hmm_core::{
-    GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
-    GameDirectoryValidation, GameInstance, GameSetupErrorCode, GameSetupStatus,
+    GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
+    GameInstance, GameSetupErrorCode, GameSetupStatus,
 };
 use hmm_ports::GameCandidateSource;
 use serde::Serialize;
@@ -110,8 +110,16 @@ pub fn validation_to_dto(validation: GameDirectoryValidation) -> GameDirectoryVa
         game_id: validation.game_id.as_str().to_owned(),
         is_valid: validation.is_valid,
         confidence: validation.confidence,
-        evidence: validation.evidence.into_iter().map(evidence_to_dto).collect(),
-        errors: validation.errors.into_iter().map(error_code_to_string).collect(),
+        evidence: validation
+            .evidence
+            .into_iter()
+            .map(evidence_to_dto)
+            .collect(),
+        errors: validation
+            .errors
+            .into_iter()
+            .map(error_code_to_string)
+            .collect(),
         path_label: path_label_from_path(&validation.directory),
     }
 }
@@ -181,6 +189,7 @@ fn error_code_to_string(error: GameSetupErrorCode) -> String {
         GameSetupErrorCode::MissingExecutable => "missing_executable",
         GameSetupErrorCode::StorageFailed => "storage_failed",
         GameSetupErrorCode::StorageCorrupted => "storage_corrupted",
+        GameSetupErrorCode::ScanFailed => "scan_failed",
         GameSetupErrorCode::ScanNotImplemented => "scan_not_implemented",
         GameSetupErrorCode::Unknown => "unknown",
     }

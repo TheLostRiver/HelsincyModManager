@@ -7,6 +7,7 @@ export type GameSetupErrorCode =
   | "missing_executable"
   | "storage_failed"
   | "storage_corrupted"
+  | "scan_failed"
   | "scan_not_implemented"
   | "unknown";
 
