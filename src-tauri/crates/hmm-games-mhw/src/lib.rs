@@ -5,6 +5,7 @@ use hmm_core::{
 use hmm_ports::{GameAdapter, GameDirectoryProbe};
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
+const STEAM_APP_ID: u32 = 582010;
 const EXECUTABLE_NAME: &str = "MonsterHunterWorld.exe";
 const NATIVE_PC_DIR: &str = "nativePC";
 
@@ -17,6 +18,10 @@ impl GameAdapter for MonsterHunterWorldAdapter {
 
     fn display_name(&self) -> &'static str {
         DISPLAY_NAME
+    }
+
+    fn steam_app_id(&self) -> Option<u32> {
+        Some(STEAM_APP_ID)
     }
 
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation {
@@ -140,6 +145,12 @@ mod tests {
     }
 
     #[test]
+    fn adapter_reports_steam_app_id() {
+        let adapter = MonsterHunterWorldAdapter;
+        assert_eq!(adapter.steam_app_id(), Some(582010));
+    }
+
+    #[test]
     fn validates_directory_with_executable() {
         let adapter = MonsterHunterWorldAdapter;
         let probe = FakeProbe::at("C:/Monster Hunter World").with_file("MonsterHunterWorld.exe");
@@ -178,7 +189,10 @@ mod tests {
         let validation = adapter.validate_directory(&probe);
 
         assert!(!validation.is_valid);
-        assert_eq!(validation.errors, vec![GameSetupErrorCode::MissingExecutable]);
+        assert_eq!(
+            validation.errors,
+            vec![GameSetupErrorCode::MissingExecutable]
+        );
     }
 
     #[test]
@@ -189,6 +203,9 @@ mod tests {
         let validation = adapter.validate_directory(&probe);
 
         assert!(!validation.is_valid);
-        assert_eq!(validation.errors, vec![GameSetupErrorCode::DirectoryNotFound]);
+        assert_eq!(
+            validation.errors,
+            vec![GameSetupErrorCode::DirectoryNotFound]
+        );
     }
 }

@@ -1,5 +1,7 @@
 import type {
   CommandErrorDto,
+  GameCandidateScanDto,
+  GameDirectoryCandidate,
   GameId,
   GameSetupErrorCode,
   GameSetupStatus,
@@ -13,6 +15,7 @@ const GAME_SETUP_ERROR_CODES = [
   "missing_executable",
   "storage_failed",
   "storage_corrupted",
+  "scan_failed",
   "scan_not_implemented",
   "unknown",
 ] as const satisfies readonly GameSetupErrorCode[];
@@ -41,6 +44,14 @@ export function mapStatusDto(dto: GameSetupStatusDto): GameSetupStatus {
   return { kind: "not_configured", gameId };
 }
 
+export function mapCandidateScanDto(dto: GameCandidateScanDto): GameDirectoryCandidate[] {
+  return dto.candidates.map((candidate) => ({
+    ...candidate,
+    gameId: normalizeGameId(candidate.gameId),
+    errors: candidate.errors.map(normalizeGameSetupErrorCode),
+  }));
+}
+
 export function mapCommandError(error: unknown): CommandErrorDto {
   if (isCommandErrorDto(error)) {
     return error;
@@ -66,6 +77,8 @@ export function messageForError(code: GameSetupErrorCode): string {
       return "配置保存失败，请检查应用数据目录权限。";
     case "storage_corrupted":
       return "配置文件已损坏，请先处理应用数据目录中的 games.json。";
+    case "scan_failed":
+      return "Steam 候选目录扫描失败，请先手动选择游戏目录。";
     case "scan_not_implemented":
       return "自动扫描 Steam 尚未启用，请先手动选择目录。";
     case "unknown":
@@ -75,6 +88,10 @@ export function messageForError(code: GameSetupErrorCode): string {
 
 function normalizeGameId(value: string): GameId {
   return value === "mhw" ? "mhw" : "mhw";
+}
+
+function normalizeGameSetupErrorCode(value: string): GameSetupErrorCode {
+  return isGameSetupErrorCode(value) ? value : "unknown";
 }
 
 function isCommandErrorDto(value: unknown): value is CommandErrorDto {

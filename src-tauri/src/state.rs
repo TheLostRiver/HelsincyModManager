@@ -1,13 +1,14 @@
 use hmm_app::GameSetupService;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
-    JsonGameConfigRepository, NoopGameDiscoveryService, RealGameDirectoryProbeFactory, SystemClock,
+    JsonGameConfigRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
+    SteamGameDiscoveryService, SystemClock,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 pub struct AppState {
-    pub game_setup: Mutex<GameSetupService>,
+    pub game_setup: Arc<GameSetupService>,
 }
 
 impl AppState {
@@ -19,11 +20,13 @@ impl AppState {
         let config_path = app_data_dir.join("config").join("games.json");
 
         Ok(Self {
-            game_setup: Mutex::new(GameSetupService::new(
+            game_setup: Arc::new(GameSetupService::new(
                 vec![Arc::new(MonsterHunterWorldAdapter)],
                 Arc::new(JsonGameConfigRepository::new(config_path)),
                 Arc::new(RealGameDirectoryProbeFactory),
-                Arc::new(NoopGameDiscoveryService),
+                Arc::new(SteamGameDiscoveryService::new(Arc::new(
+                    PlatformSteamRootProvider,
+                ))),
                 Arc::new(SystemClock),
             )),
         })

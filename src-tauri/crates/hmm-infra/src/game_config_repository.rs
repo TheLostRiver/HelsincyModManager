@@ -51,10 +51,11 @@ impl JsonGameConfigRepository {
 
         let bytes = fs::read(&self.file_path)
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))?;
-        let content = String::from_utf8(bytes).map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
+        let content =
+            String::from_utf8(bytes).map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
 
-        let config: GamesConfigFile =
-            serde_json::from_str(&content).map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
+        let config: GamesConfigFile = serde_json::from_str(&content)
+            .map_err(|_| GameConfigRepositoryError::StorageCorrupted)?;
 
         if config.version != CURRENT_SCHEMA_VERSION {
             return Err(GameConfigRepositoryError::StorageCorrupted);
@@ -152,6 +153,7 @@ impl JsonGameConfigRepository {
         OpenOptions::new()
             .create(true)
             .read(true)
+            .truncate(false)
             .write(true)
             .open(self.lock_file_path())
             .map_err(|error| GameConfigRepositoryError::StorageFailed(error.to_string()))
@@ -189,10 +191,9 @@ impl GameConfigRepository for JsonGameConfigRepository {
     }
 
     fn save_game_instance(&self, instance: &GameInstance) -> GameConfigRepositoryResult<()> {
-        let _guard = self
-            .write_lock
-            .lock()
-            .map_err(|_| GameConfigRepositoryError::StorageFailed("write lock poisoned".to_owned()))?;
+        let _guard = self.write_lock.lock().map_err(|_| {
+            GameConfigRepositoryError::StorageFailed("write lock poisoned".to_owned())
+        })?;
         let lock_file = self.open_lock_file()?;
         lock_file
             .lock_exclusive()

@@ -1,6 +1,8 @@
 mod game_setup;
 
-pub use game_setup::{GameSetupService, GameSetupServiceError};
+pub use game_setup::{
+    GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
+};
 
 pub fn app_name() -> &'static str {
     "Helsincy Mod Manager"

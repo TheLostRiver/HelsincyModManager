@@ -1,9 +1,11 @@
 import { GameDirectoryActions } from "../game-setup/GameDirectoryActions";
-import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
+import { GameDirectoryCandidateList } from "../game-setup/GameDirectoryCandidateList";
+import type { GameDirectoryCandidate, GameSetupStatus } from "../game-setup/gameSetupTypes";
 import { supportCards } from "./dashboardData";
 
 type DashboardHeroCardProps = {
   status: GameSetupStatus;
+  candidates: GameDirectoryCandidate[];
   isBusy: boolean;
   actionMessage: string | null;
   onDirectorySelected: (directory: string) => Promise<void>;
@@ -13,6 +15,7 @@ type DashboardHeroCardProps = {
 
 export function DashboardHeroCard({
   status,
+  candidates,
   isBusy,
   actionMessage,
   onDirectorySelected,
@@ -37,6 +40,12 @@ export function DashboardHeroCard({
         onDirectorySelected={onDirectorySelected}
         onActionError={onActionError}
         onScanSteam={onScanSteam}
+      />
+
+      <GameDirectoryCandidateList
+        candidates={candidates}
+        isBusy={isBusy}
+        onCandidateSelected={onDirectorySelected}
       />
 
       <div className="support-grid" aria-label="支持信息">

@@ -101,6 +101,7 @@ pub enum GameSetupErrorCode {
     MissingExecutable,
     StorageFailed,
     StorageCorrupted,
+    ScanFailed,
     ScanNotImplemented,
     Unknown,
 }
@@ -223,8 +224,7 @@ mod tests {
 
     #[test]
     fn validation_becomes_invalid_after_error() {
-        let mut validation =
-            GameDirectoryValidation::new(GameId::mhw(), PathBuf::from("C:/Game"));
+        let mut validation = GameDirectoryValidation::new(GameId::mhw(), PathBuf::from("C:/Game"));
 
         validation.add_error(GameSetupErrorCode::MissingExecutable);
 

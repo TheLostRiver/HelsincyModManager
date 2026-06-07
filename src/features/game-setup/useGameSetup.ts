@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { getGameSetupStatus, saveGameDirectory, scanGameCandidates } from "../../shared/api/tauri";
-import type { GameId, GameSetupStatus } from "./gameSetupTypes";
-import { mapCommandError, mapStatusDto, messageForError } from "./gameSetupViewModel";
+import type { GameDirectoryCandidate, GameId, GameSetupStatus } from "./gameSetupTypes";
+import {
+  mapCandidateScanDto,
+  mapCommandError,
+  mapStatusDto,
+  messageForError,
+} from "./gameSetupViewModel";
 
 type GameSetupState = {
   status: GameSetupStatus;
   isBusy: boolean;
   actionMessage: string | null;
+  candidates: GameDirectoryCandidate[];
 };
 
 const DEFAULT_GAME_ID: GameId = "mhw";
@@ -16,6 +22,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     status: { kind: "not_configured", gameId },
     isBusy: false,
     actionMessage: null,
+    candidates: [],
   });
 
   const refresh = useCallback(async () => {
@@ -65,11 +72,12 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
           status: mapStatusDto(dto),
           isBusy: false,
           actionMessage: "游戏目录已保存。",
+          candidates: [],
         });
       } catch (error) {
         const mapped = mapCommandError(error);
         const message = messageForError(mapped.code);
-        setState({
+        setState((current) => ({
           status: {
             kind: "invalid",
             gameId,
@@ -78,7 +86,8 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
           },
           isBusy: false,
           actionMessage: message,
-        });
+          candidates: current.candidates,
+        }));
       }
     },
     [gameId],
@@ -88,11 +97,14 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     setState((current) => ({ ...current, isBusy: true, actionMessage: null }));
 
     try {
-      await scanGameCandidates(gameId);
+      const dto = await scanGameCandidates(gameId);
+      const candidates = mapCandidateScanDto(dto);
       setState((current) => ({
         ...current,
+        candidates,
         isBusy: false,
-        actionMessage: "自动扫描没有返回候选目录。",
+        actionMessage:
+          candidates.length > 0 ? "已发现 Steam 候选目录。" : "未发现 Steam 候选目录，可手动选择游戏目录。",
       }));
     } catch (error) {
       const mapped = mapCommandError(error);
@@ -120,6 +132,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     status: state.status,
     isBusy: state.isBusy,
     actionMessage: state.actionMessage,
+    candidates: state.candidates,
     refresh,
     reportActionError,
     saveDirectory,
