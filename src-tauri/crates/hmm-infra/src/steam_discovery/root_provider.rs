@@ -1,6 +1,6 @@
 #[cfg(any(target_os = "linux", test))]
 use std::collections::BTreeSet;
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", test))]
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -72,9 +72,18 @@ fn platform_steam_roots() -> Vec<PathBuf> {
 
 #[cfg(windows)]
 fn push_unique(roots: &mut Vec<PathBuf>, root: PathBuf) {
-    if !roots.iter().any(|existing| existing == &root) {
+    let root_key = normalize_windows_path_key(&root);
+    if !roots
+        .iter()
+        .any(|existing| normalize_windows_path_key(existing) == root_key)
+    {
         roots.push(root);
     }
+}
+
+#[cfg(windows)]
+fn normalize_windows_path_key(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/").to_lowercase()
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -136,5 +145,15 @@ mod tests {
         assert_eq!(paths, vec![root.clone()]);
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn steam_root_push_unique_deduplicates_windows_paths_case_insensitively() {
+        let mut roots = vec![PathBuf::from("C:\\Program Files (x86)\\Steam")];
+
+        push_unique(&mut roots, PathBuf::from("c:\\program files (x86)\\steam"));
+
+        assert_eq!(roots, vec![PathBuf::from("C:\\Program Files (x86)\\Steam")]);
     }
 }
