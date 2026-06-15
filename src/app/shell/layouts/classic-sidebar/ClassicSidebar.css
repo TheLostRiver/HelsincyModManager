@@ -52,11 +52,13 @@
   border: 0;
   border-radius: var(--radius-nav);
   cursor: pointer;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 .nav-item svg {
   flex: 0 0 auto;
   color: var(--color-text-muted);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease;
 }
 
 .nav-item span:not(.active-mark) {
@@ -92,6 +94,13 @@
   color: var(--color-text);
   background: var(--color-nav-item-bg-hover);
   outline: none;
+}
+
+/* B2 微倾斜回弹:hover 时图标放大 + 微倾斜,带回弹缓动 */
+.nav-item:not(:disabled):not(.is-active):hover svg,
+.nav-item:not(:disabled):not(.is-active):focus-visible svg {
+  transform: scale(1.15) rotate(-8deg);
+  color: var(--color-accent);
 }
 
 .nav-item.is-active:focus-visible {
@@ -154,5 +163,17 @@
 @media (max-width: 560px) {
   .nav-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-item,
+  .nav-item svg {
+    transition-duration: 0.1s;
+  }
+
+  .nav-item:not(:disabled):not(.is-active):hover svg,
+  .nav-item:not(:disabled):not(.is-active):focus-visible svg {
+    transform: none;
   }
 }
