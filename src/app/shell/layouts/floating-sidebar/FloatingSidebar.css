@@ -143,7 +143,7 @@ button.floating-sidebar__item {
   }
 
   .floating-sidebar__item svg {
-    transition: none;
+    transition-duration: 0.1s;
   }
 
   .floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):hover svg,
