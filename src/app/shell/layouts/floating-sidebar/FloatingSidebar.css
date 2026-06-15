@@ -49,6 +49,11 @@ button.floating-sidebar__item {
   color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
+  transition: background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.floating-sidebar__item svg {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .floating-sidebar__item.is-active {
@@ -79,6 +84,12 @@ button.floating-sidebar__item {
   color: var(--color-accent);
   background: var(--color-accent-weak);
   outline: none;
+}
+
+/* B2 微倾斜回弹:hover 时图标放大 + 微倾斜,带回弹缓动 */
+.floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):hover svg,
+.floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):focus-visible svg {
+  transform: scale(1.15) rotate(-8deg);
 }
 
 @media (max-width: 860px) {
@@ -123,5 +134,20 @@ button.floating-sidebar__item {
 
   .floating-sidebar__nav {
     gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-sidebar__item {
+    transition-duration: 0.1s;
+  }
+
+  .floating-sidebar__item svg {
+    transition: none;
+  }
+
+  .floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):hover svg,
+  .floating-sidebar__item:not(.is-active):not([aria-disabled="true"]):focus-visible svg {
+    transform: none;
   }
 }

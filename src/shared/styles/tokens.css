@@ -22,7 +22,7 @@
   --color-primary-action-bg-active: var(--color-accent);
   --color-primary-action-text: var(--color-surface);
   --color-primary-action-border: transparent;
-  --color-nav-item-bg-hover: rgba(0, 0, 0, 0.05);
+  --color-nav-item-bg-hover: var(--color-accent-alpha-12);
   --color-nav-item-bg-active: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --color-nav-item-text-active: var(--color-accent);
   --color-nav-indicator: var(--color-accent);
@@ -81,7 +81,7 @@
   --color-primary-action-bg-active: color-mix(in srgb, var(--color-accent) 35%, transparent);
   --color-primary-action-text: var(--color-accent);
   --color-primary-action-border: color-mix(in srgb, var(--color-accent) 30%, transparent);
-  --color-nav-item-bg-hover: rgba(255, 255, 255, 0.06);
+  --color-nav-item-bg-hover: var(--color-accent-alpha-12);
   --color-nav-item-bg-active: color-mix(in srgb, var(--color-accent) 15%, transparent);
   --color-nav-item-text-active: var(--color-accent);
   --color-nav-indicator: var(--color-accent);
