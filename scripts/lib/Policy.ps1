@@ -172,6 +172,42 @@ function Select-PolicyIncludedFiles {
     return @($Files | Where-Object { -not (Test-PolicyPathExcluded -Path $_ -Regexes $excludePathRegexes) })
 }
 
+function Select-PolicyMatchingFiles {
+    param(
+        [string[]]$Files = @(),
+        [string[]]$IncludePathPatterns = @()
+    )
+
+    $includePathRegexes = @(Convert-PolicyGlobListToRegexes -Patterns $IncludePathPatterns)
+    if ($includePathRegexes.Count -eq 0) {
+        return @()
+    }
+
+    return @($Files | Where-Object { Test-PolicyPathExcluded -Path $_ -Regexes $includePathRegexes })
+}
+
+function Merge-PolicyFileLists {
+    param(
+        [string[]]$PrimaryFiles = @(),
+        [string[]]$AdditionalFiles = @()
+    )
+
+    $merged = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($file in @($PrimaryFiles + $AdditionalFiles)) {
+        if ([string]::IsNullOrWhiteSpace($file)) {
+            continue
+        }
+
+        $normalized = $file -replace '\\', '/'
+        if ($seen.Add($normalized)) {
+            $merged.Add($normalized)
+        }
+    }
+
+    return @($merged)
+}
+
 function Write-PolicyErrors {
     param(
         [Parameter(Mandatory = $true)][string]$Title,
