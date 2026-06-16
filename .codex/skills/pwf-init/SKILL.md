@@ -9,11 +9,18 @@ allowed-tools: "Bash"
 
 Use any text after `/pwf-init` as the task name and options.
 
+By default, when the current Codex session can be identified, `plan.py init` binds the new PWF task to this session and claims its task lease. This is the recommended behavior for multiple Codex conversations in the same project.
+
 If no task name was provided, ask the user for the task name. Otherwise run:
 
 ```powershell
 python .codex\skills\planning-with-files\scripts\plan.py init <task name and options>
 ```
+
+Useful options:
+
+- `--no-workspace-active`: bind the task to this session without changing `.planning/.active_plan`.
+- `--no-bind-session`: use the old workspace-only behavior intentionally.
 
 中文模式：如果用户希望中文输出和中文 planning 模板，先设置 `PWF_LANG=zh-CN`，再运行相同命令。
 

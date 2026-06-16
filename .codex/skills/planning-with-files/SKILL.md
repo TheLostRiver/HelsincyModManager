@@ -100,7 +100,61 @@ Filesystem = Disk (persistent, unlimited)
 
 Hooks may append objective auto records to `progress.md`: tool name, timestamp, result, and changed file paths. These records are factual audit entries.
 
+Automatic records also include stable `Session` and `Plan-Source` fields when the Codex Python hooks are installed. `Session` is a short session key or `unavailable`; `Plan-Source` shows whether the record came from `env`, `session`, `workspace`, `newest`, or `legacy` plan resolution.
+
 Agent-written notes are interpretive: rationale, conclusions, risks, and next steps. They are useful working memory, but they are not guaranteed to be fully accurate. When accuracy matters, verify agent notes against hook records, tests, and the actual code.
+
+## Session Task Binding
+
+`/pwf-init` and `plan.py init` are session-first by default. When `PWF_SESSION_ID` or `CODEX_THREAD_ID` is available, a new named task is automatically bound to the current session and protected by a task lease.
+
+Hooks resolve session identity as payload `session_id` -> `PWF_SESSION_ID` -> `CODEX_THREAD_ID`; ordinary Codex sessions usually do not need a manually configured `PWF_SESSION_ID`.
+
+When several Codex conversations work in the same project, create a task in each conversation normally:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name"
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-workspace-active
+```
+
+To intentionally use the old workspace-only behavior:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --no-bind-session
+```
+
+To bind an existing task:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session
+```
+
+The explicit binding form remains available:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py init "Task Name" --bind-session
+```
+
+`--session` writes only `.planning/session-bindings/<session-key>.json`; it does not change `.planning/.active_plan`. Plain `plan.py switch <plan-id>` still changes the workspace active plan.
+
+`--legacy` is only for root-level single-task compatibility mode and does not support session binding; `plan.py init "Task Name" --legacy --bind-session` is rejected. For multi-session isolation, use named `.planning/<plan-id>` tasks with the default session-first behavior.
+
+Task ownership is separate from routing. `PLAN_ID` is a routing override, not a permission override; selecting a task through `PLAN_ID` still requires ownership or release before hooks write to it. If another session owns a task, a new session must not automatically take it over, even if the owner is stale. Use explicit commands:
+
+```powershell
+python .codex\skills\planning-with-files\scripts\plan.py switch <plan-id> --session --force-claim
+python .codex\skills\planning-with-files\scripts\plan.py switch --release-session
+```
+
+Cross-session task sharing (`--share`) was removed because shared planning records mixed into multiple agent contexts cause confusion and concurrent write contention. Historical `.task-lease.json` files that still carry `shared=true` remain readable for backward compatibility but no command writes that field anymore. See `docs/REMOVED_CROSS_SESSION_SHARE.md`.
+
+`stale` is computed from the owner session heartbeat when that session lease exists; `.task-lease.json` `updated_at` is only a compatibility fallback. Stale is diagnostic, not automatic takeover permission.
+
+To make strict mode require both an attached session and a valid binding:
+
+```powershell
+$env:PWF_STRICT_REQUIRES_BINDING=1
+```
 
 ## Progress Lifecycle
 
@@ -110,7 +164,9 @@ Agent-written notes are interpretive: rationale, conclusions, risks, and next st
 python .codex\skills\planning-with-files\scripts\plan.py compact
 ```
 
-The command archives old objective auto records to `progress.archive.md`, keeps recent records in `progress.md`, and writes a deterministic compact summary. The summary is factual only: counts, time ranges, tools, and file paths. Agent-written summaries remain interpretive and should be verified when accuracy matters.
+The command performs append-only rollover. It writes old objective auto records to a newly created `progress-archive/<session-key>/archive-*.md`, continues future records in a newly created `progress-active/<session-key>/active-*.md`, and appends a linking event to `progress-index.ndjson`. It does not delete or overwrite existing progress/archive files. Agent-written summaries remain interpretive and should be verified when accuracy matters.
+
+`/pwf-doctor` also audits append-only progress storage. It checks `progress-index.ndjson`, active/archive directory roles, missing indexed files, hash mismatches, and orphan generated segments. It is report-only: it prints `No automatic repair was attempted.` and never deletes, moves, overwrites, compacts, or recreates progress files. Use `plan.py doctor --verbose` for effect/action details, `--json` for machine-readable output, and `--strict` to fail on warnings.
 
 ## Security Boundary
 

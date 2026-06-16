@@ -371,14 +371,31 @@ def extract_messages_after(messages: List[Dict[str, Any]], after_line: int) -> L
     return result
 
 
+def parse_args(argv: List[str]) -> Tuple[str, Optional[str]]:
+    project_path = argv[1] if len(argv) > 1 else os.getcwd()
+    planning_dir = None
+    if "--planning-dir" in argv:
+        index = argv.index("--planning-dir")
+        if index + 1 < len(argv):
+            planning_dir = argv[index + 1]
+    return project_path, planning_dir
+
+
+def planning_files_exist(project_path: str, planning_dir: Optional[str]) -> bool:
+    base = Path(planning_dir) if planning_dir else Path(project_path)
+    return any(Path(base, name).exists() for name in PLANNING_FILES)
+
+
 def main():
-    project_path = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+    project_path, planning_dir = parse_args(sys.argv)
+
+    if os.getenv("PWF_SESSION_CATCHUP_ECHO_ARGS", "").strip() == "1":
+        print(f"[planning-with-files] catchup project: {project_path}")
+        print(f"[planning-with-files] planning-dir: {planning_dir or project_path}")
+        return
 
     # Check if planning files exist (indicates active task)
-    has_planning_files = any(
-        Path(project_path, f).exists() for f in PLANNING_FILES
-    )
-    if not has_planning_files:
+    if not planning_files_exist(project_path, planning_dir):
         # No planning files in this project; skip catchup to avoid noise.
         return
 
