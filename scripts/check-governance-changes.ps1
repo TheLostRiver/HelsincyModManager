@@ -1,6 +1,7 @@
 param(
     [ValidateSet("staged", "head", "working", "range")]
-    [string]$Mode = "staged"
+    [string]$Mode = "staged",
+    [string]$Scope = "verify"
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +48,8 @@ try {
             }
         })
     }
+
+    $changed = @(Select-PolicyIncludedFiles -Files $changed -ExcludePathPatterns (Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope))
 
     $governanceMatches = New-Object System.Collections.Generic.List[string]
     foreach ($file in $changed) {

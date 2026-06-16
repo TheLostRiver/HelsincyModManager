@@ -33,6 +33,7 @@ policy/project-policy.json
 - 必需文件。
 - 大小写敏感文件。
 - 必需验证脚本。
+- 检查作用域及其路径排除规则。
 - 文件大小硬性限制。
 - 禁止提交的文件类型和路径。
 - 敏感信息扫描模式。
@@ -48,12 +49,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 当前检查：
 
-- `git diff --check`
+- 统一空白检查。
 - 必需文件和大小写检查
 - 文件大小硬性限制
 - 禁止文件检查
 - Markdown 内链检查
 - 敏感信息扫描
+
+检查作用域由 `policy/project-policy.json` 的 `checkScopes` 定义。`preCommit` 可以配置局部排除路径，例如 `.codex/**`；`verify` 默认保持全量检查。新增排除目录时优先修改 policy，不应在 hook 或检查脚本里硬编码路径。
 
 ### 4. Git Hooks 层
 

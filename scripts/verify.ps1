@@ -42,6 +42,7 @@ function Assert-RequiredFile {
 
 $checks = @(
     "scripts/check-policy.ps1",
+    "scripts/check-whitespace.ps1",
     "scripts/check-file-size.ps1",
     "scripts/check-forbidden-files.ps1",
     "scripts/check-doc-links.ps1",
@@ -51,12 +52,6 @@ $checks = @(
 
 Push-Location $repoRoot
 try {
-    Write-Host "Running Git whitespace check..."
-    git diff --check
-    if ($LASTEXITCODE -ne 0) {
-        exit 1
-    }
-
     foreach ($check in $checks) {
         Write-Host "Running $check ..."
         & (Join-Path $repoRoot ($check -replace '/', [System.IO.Path]::DirectorySeparatorChar))

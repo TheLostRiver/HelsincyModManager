@@ -4,11 +4,11 @@ set -e
 echo "Running pre-commit checks..."
 
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-policy.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-file-size.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-forbidden-files.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-doc-links.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-governance-changes.ps1 -Mode staged
-git diff --check --cached
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-file-size.ps1 -Scope preCommit
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-forbidden-files.ps1 -Scope preCommit
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-doc-links.ps1 -Scope preCommit
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1 -Scope preCommit
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-governance-changes.ps1 -Mode staged -Scope preCommit
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-whitespace.ps1 -Mode staged -Scope preCommit
 
 echo "Pre-commit checks passed."

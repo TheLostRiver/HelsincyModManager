@@ -45,7 +45,7 @@
 
 ```powershell
 git status --short --branch
-git diff --check
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-whitespace.ps1
 ./scripts/verify.ps1
 ```
 

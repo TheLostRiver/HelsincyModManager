@@ -1,3 +1,7 @@
+param(
+    [string]$Scope = "verify"
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
@@ -8,21 +12,17 @@ $policy = Read-ProjectPolicy -RepoRoot $repoRoot
 $files = Get-GitCandidateFiles -RepoRoot $repoRoot
 $errors = New-Object System.Collections.Generic.List[string]
 $allowlist = @($policy.fileSize.allowlist)
-$excludePathRegexes = @()
+$fileSizeExcludePathPatterns = @()
 if ($null -ne $policy.fileSize.PSObject.Properties["excludePathPatterns"]) {
-    $excludePathRegexes = @($policy.fileSize.excludePathPatterns | ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })
+    $fileSizeExcludePathPatterns += @($policy.fileSize.excludePathPatterns)
 }
+$fileSizeExcludePathPatterns += @(Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope)
+$excludePathRegexes = @(Convert-PolicyGlobListToRegexes -Patterns $fileSizeExcludePathPatterns)
 
 function Test-ExcludedPath {
     param([string]$Path)
 
-    foreach ($regex in $excludePathRegexes) {
-        if ($Path -match $regex) {
-            return $true
-        }
-    }
-
-    return $false
+    return Test-PolicyPathExcluded -Path $Path -Regexes $excludePathRegexes
 }
 
 function Get-PolicyCategory {
