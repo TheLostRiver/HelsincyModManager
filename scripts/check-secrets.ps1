@@ -9,7 +9,14 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Get-RepoRoot
 $policy = Read-ProjectPolicy -RepoRoot $repoRoot
-$files = Select-PolicyIncludedFiles -Files (Get-GitCandidateFiles -RepoRoot $repoRoot) -ExcludePathPatterns (Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope)
+$candidateFiles = Get-GitCandidateFiles -RepoRoot $repoRoot
+$scopeFiles = Select-PolicyIncludedFiles -Files $candidateFiles -ExcludePathPatterns (Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope)
+$forceIncludePathPatterns = @()
+if ($null -ne $policy.PSObject.Properties["secretScan"] -and $null -ne $policy.secretScan.PSObject.Properties["forceIncludePathPatterns"]) {
+    $forceIncludePathPatterns = @($policy.secretScan.forceIncludePathPatterns)
+}
+$forceIncludedFiles = Select-PolicyMatchingFiles -Files $candidateFiles -IncludePathPatterns $forceIncludePathPatterns
+$files = Merge-PolicyFileLists -PrimaryFiles $scopeFiles -AdditionalFiles $forceIncludedFiles
 $errors = New-Object System.Collections.Generic.List[string]
 $textExtensions = @(".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".ps1", ".psm1", ".rs", ".ts", ".tsx", ".js", ".jsx", ".css", ".html")
 
