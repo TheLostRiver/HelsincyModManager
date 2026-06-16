@@ -42,6 +42,7 @@ tmp/
 temp/
 cache/
 backups/
+.tmp/
 
 # Test coverage
 coverage/
