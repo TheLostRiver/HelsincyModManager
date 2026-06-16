@@ -1,0 +1,599 @@
+/*
+ * Mod Library 页面样式。
+ * 命名空间：mod-library / mod-card / library-toolbar / library-chip / compact-panel / compact-action
+ * 仅使用 tokens.css 中的语义 token，颜色按设计稿分档但通过 token 表达。
+ */
+
+/*
+ * Mod Library 自带右侧操作面板，不应被 AppFrame 的 workbench-body 双列布局拆分。
+ * 当它作为 main 直接子元素且独占该区域时，跨满整行。
+ */
+.workbench-body > .mod-library {
+  grid-column: 1 / -1;
+}
+
+.mod-library {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-content-gap);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 复用 dashboard 的 .main-header 视觉，避免重复声明颜色。 */
+
+.mod-library__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 168px;
+  align-items: start;
+  gap: 20px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.mod-library__main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---------- 工具栏 ---------- */
+
+.library-toolbar {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 28px;
+  box-shadow: var(--shadow-soft);
+}
+
+.library-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 14px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.library-search svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.library-search__input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.library-search__input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.library-search__input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.library-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-chip {
+  height: 28px;
+  padding: 0 12px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-surface-subtle);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.library-chip:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+}
+
+.library-chip.is-active {
+  color: var(--color-primary-action-text);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: 0 4px 12px var(--color-accent-alpha-20);
+}
+
+.library-chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---------- 空态 ---------- */
+
+.mod-library__empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 64px 24px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.mod-library__empty strong {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.mod-library__empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ---------- 卡片网格 ---------- */
+
+.mod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+
+.mod-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mod-card__poster {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 268px;
+  padding: 0;
+  border: none;
+  border-radius: 15px;
+  overflow: hidden;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--poster-from) 0%, var(--poster-to) 100%);
+  box-shadow: 0 14px 30px -18px #0f172a4d;
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.mod-card__poster:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 38px -18px #0f172a66;
+}
+
+.mod-card__poster:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+/* 简化人形剪影占位，纯装饰。 */
+.mod-card__silhouette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mod-card__silhouette::before,
+.mod-card__silhouette::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(28px);
+  opacity: 0.55;
+}
+
+.mod-card__silhouette::before {
+  width: 84px;
+  height: 84px;
+  top: 18px;
+  left: 18px;
+  background: #ffffff;
+}
+
+.mod-card__silhouette::after {
+  width: 62px;
+  height: 62px;
+  top: 101px;
+  left: 84px;
+  background: #0000001f;
+}
+
+.mod-card__head {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin-left: -20px;
+  background: #f8fafc;
+  border-radius: 50%;
+}
+
+.mod-card__torso {
+  position: absolute;
+  top: 69px;
+  left: 50%;
+  width: 58px;
+  height: 104px;
+  margin-left: -29px;
+  background: #cbd5e1;
+  border-radius: 24px 24px 10px 10px;
+}
+
+.mod-card__hair {
+  position: absolute;
+  top: 28px;
+  width: 28px;
+  height: 82px;
+  background: #e2e8f0;
+  border-radius: 14px 14px 6px 6px;
+}
+
+.mod-card__hair--left {
+  left: calc(50% - 29px);
+}
+
+.mod-card__hair--right {
+  right: calc(50% - 29px);
+}
+
+.mod-card__status-pill {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
+  color: #84cc16;
+  background: #0f172ab8;
+  border: 1px solid #bbf7d0cc;
+  box-shadow: 0 8px 20px -14px #16653455;
+}
+
+.mod-card__status-pill svg {
+  color: #16a34a;
+}
+
+.mod-card__status-pill.is-installed {
+  color: #84cc16;
+}
+
+.mod-card__status-pill.is-disabled {
+  color: #fbbf24;
+  background: #0f172ab8;
+  border-color: #fcd34dcc;
+}
+
+.mod-card__status-pill.is-disabled svg {
+  color: #f59e0b;
+}
+
+.mod-card__status-pill.is-conflict {
+  color: #f87171;
+  background: #0f172ab8;
+  border-color: #fecacacc;
+}
+
+.mod-card__status-pill.is-conflict svg {
+  color: #ef4444;
+}
+
+.mod-card__select-ring {
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--color-accent);
+  border-radius: 15px;
+  box-shadow: 0 0 0 4px var(--color-accent-alpha-25);
+  pointer-events: none;
+}
+
+.mod-card.is-selected .mod-card__poster {
+  transform: translateY(-3px);
+}
+
+.mod-card__meta {
+  display: grid;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.mod-card__title {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.mod-card__size {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ---------- 右侧快捷操作面板 ---------- */
+
+.compact-panel {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 6px;
+  padding: 7px;
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-bg));
+  border: 1px solid var(--color-border-muted);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+}
+
+.compact-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.compact-panel__title {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compact-panel__selected-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  color: var(--color-accent-strong, #1d4ed8);
+  font-size: 10px;
+  font-weight: 800;
+  background: var(--color-accent-weak);
+  border-radius: 9999px;
+}
+
+.compact-panel__stack {
+  display: grid;
+  gap: 7px;
+}
+
+/* ---------- 快捷操作按钮 ---------- */
+
+.compact-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid transparent;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.2s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.compact-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.compact-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: grayscale(0.3);
+}
+
+.compact-action:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.compact-action:not(:disabled):active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.compact-action__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compact-action__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-action__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+/* 主操作（添加 Mod）：蓝青渐变实心。 */
+.compact-action.is-primary {
+  color: #ffffff;
+  background: linear-gradient(180deg, #7dd3fc 0%, #3497d8 100%);
+  border-color: transparent;
+  box-shadow: 0 10px 22px -16px #38bdf8aa;
+}
+
+.compact-action.is-primary:not(:disabled):hover {
+  box-shadow: 0 14px 26px -16px #38bdf8cc;
+}
+
+.compact-action.is-primary .compact-action__dot {
+  background: #ffffffaa;
+}
+
+/* 中性操作：浅灰白渐变。 */
+.compact-action.is-neutral {
+  color: var(--color-text-soft);
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-color: #dce7f2;
+  box-shadow: 0 8px 18px -14px #0f172a33;
+}
+
+.compact-action.is-neutral:not(:disabled):hover {
+  border-color: var(--color-accent-alpha-40);
+  color: var(--color-accent);
+}
+
+.compact-action.is-neutral .compact-action__dot {
+  background: var(--color-text-muted);
+}
+
+/* 成功（启用全部）：薄荷渐变。 */
+.compact-action.is-success {
+  color: var(--color-success-text);
+  background: linear-gradient(180deg, #ffffff 0%, #dcfde7 100%);
+  border-color: #d8f3e3;
+  box-shadow: 0 8px 18px -14px #10b98144;
+}
+
+.compact-action.is-success:not(:disabled):hover {
+  color: #047857;
+}
+
+.compact-action.is-success .compact-action__dot {
+  background: var(--color-success-dot);
+}
+
+/* 警告（禁用全部）：暖橙渐变。 */
+.compact-action.is-warning {
+  color: #c2410c;
+  background: linear-gradient(180deg, #ffffff 0%, #ffedd5 100%);
+  border-color: #f7dec9;
+  box-shadow: 0 8px 18px -14px #f9731644;
+}
+
+.compact-action.is-warning .compact-action__dot {
+  background: #fb923c;
+}
+
+/* 信息（重装选中）：浅蓝渐变。 */
+.compact-action.is-info {
+  color: #1d4ed8;
+  background: linear-gradient(180deg, #ffffff 0%, #dbeafe 100%);
+  border-color: #d8e7ff;
+  box-shadow: 0 8px 18px -14px #3b82f644;
+}
+
+.compact-action.is-info .compact-action__dot {
+  background: #60a5fa;
+}
+
+/* 危险（卸载选中）：浅红渐变。 */
+.compact-action.is-danger {
+  color: var(--color-danger-text);
+  background: linear-gradient(180deg, #ffffff 0%, #fee2e2 100%);
+  border-color: #f7d5d5;
+  box-shadow: 0 8px 18px -14px #ef444444;
+}
+
+.compact-action.is-danger .compact-action__dot {
+  background: #f87171;
+}
+
+/* ---------- 响应式 ---------- */
+
+@media (max-width: 1280px) {
+  .mod-library__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compact-panel {
+    position: static;
+    grid-auto-flow: column;
+    grid-template-rows: none;
+  }
+
+  .compact-panel__stack {
+    grid-auto-flow: column;
+  }
+}
+
+@media (max-width: 960px) {
+  .mod-grid {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .mod-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .mod-card__poster {
+    height: 220px;
+  }
+
+  .compact-panel__stack {
+    grid-auto-flow: row;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-card__poster,
+  .compact-action {
+    transition-duration: 0.01ms;
+  }
+
+  .mod-card__poster:hover,
+  .mod-card.is-selected .mod-card__poster,
+  .compact-action:not(:disabled):hover,
+  .compact-action:not(:disabled):active {
+    transform: none;
+  }
+}
+
+/* 深色模式微调：占位剪影与胶囊对比。 */
+:root[data-color-scheme="dark"] .compact-action.is-neutral {
+  background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-subtle) 100%);
+  border-color: var(--color-border);
+}
+
+:root[data-color-scheme="dark"] .compact-action.is-primary {
+  background: linear-gradient(180deg, #38bdf8 0%, #2563eb 100%);
+}

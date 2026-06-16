@@ -9,6 +9,7 @@ import "./app/shell/sidebar-mode-control/SidebarModeControl.css";
 import "./app/shell/layouts/classic-sidebar/ClassicSidebar.css";
 import "./app/shell/layouts/floating-sidebar/FloatingSidebar.css";
 import "./features/dashboard/Dashboard.css";
+import "./features/mods/ModLibraryPage.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
