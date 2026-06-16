@@ -143,3 +143,4 @@ def main_guard(func) -> int:
         print(f"[planning-with-files hook] {exc}", file=sys.stderr)
         return 0
     return 0
+

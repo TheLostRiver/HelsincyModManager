@@ -13,7 +13,12 @@ $planCli = Join-Path $rootDir ".codex\skills\planning-with-files\scripts\plan.py
 $previousLang = $env:PWF_LANG
 $env:PWF_LANG = ""
 try {
-    $output = & python $planCli --root $rootDir status 2>$null
+    $pythonCommand = Get-Command python3, python -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $pythonCommand) {
+        return
+    }
+
+    $output = & $pythonCommand.Source $planCli --root $rootDir status 2>$null
     foreach ($line in $output) {
         if ($line -like "path: *") {
             $line.Substring(6)
