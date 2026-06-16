@@ -160,6 +160,8 @@ CLI_MESSAGES = {
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
         "task_lease": "task lease: owner={owner} status={status} shared={shared}",
+        "task_lease_none": "task lease: none",
+        "task_lease_status_conflict": "task lease: conflict owner={owner} status={status} shared={shared}",
         "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared={shared}; rerun with --force-claim if you mean to take ownership.",
         "task_lease_error": "task lease error: {message}",
         "task_lease_released": "task lease released: {key} -> {plan_id}",
@@ -261,8 +263,10 @@ CLI_MESSAGES = {
         "session_dir_ignored": "session mode: sessions directory ignored unless PWF_SESSION_MODE=strict",
         "session_mode": "session mode: {mode}",
         "session_mode_unsupported": "session mode: warning unsupported PWF_SESSION_MODE={mode}",
-        "task_lease": "task lease: owner={owner} status={status} shared={shared}",
-        "task_lease_conflict": "task is owned by another session: owner={owner} status={status} shared={shared}; rerun with --force-claim if you mean to take ownership.",
+        "task_lease": "任务占用: owner={owner} status={status} shared={shared}",
+        "task_lease_none": "任务占用: 无",
+        "task_lease_status_conflict": "任务占用: 冲突 owner={owner} status={status} shared={shared}",
+        "task_lease_conflict": "任务已被其他会话占用: owner={owner} status={status} shared={shared}；如果确实要接管，请重新运行并加上 --force-claim。",
         "task_lease_error": "task lease error: {message}",
         "task_lease_released": "task lease released: {key} -> {plan_id}",
         "workspace_active_plan": "workspace active plan: {plan_id}",
@@ -518,13 +522,18 @@ def _task_lease_line(root: Path, plan_id: str | None, session_id: str | None = N
         return None
     lease = planning_state.read_task_lease(root, plan_id)
     if lease is None:
-        return "task lease: none"
+        return _message("task_lease_none")
     status = planning_state.task_lease_status(root, lease)
     shared = str(lease.shared).lower()
     current_key = planning_state.session_key(session_id) if session_id else None
     if current_key and lease.owner_session_key != current_key and not lease.shared and status != "released":
-        return f"task lease: conflict owner={lease.owner_session_key} status={status} shared={shared}"
-    return f"task lease: owner={lease.owner_session_key} status={status} shared={shared}"
+        return _message(
+            "task_lease_status_conflict",
+            owner=lease.owner_session_key,
+            status=status,
+            shared=shared,
+        )
+    return _message("task_lease", owner=lease.owner_session_key, status=status, shared=shared)
 
 
 def _current_phase(paths: planning_state.PlanningPaths) -> str | None:
@@ -1660,7 +1669,7 @@ def compact(
     env_keep = _env_keep_records()
     if env_keep is not None:
         effective_keep = env_keep
-        keep_source = f"env PWF_COMPACT_KEEP_RECORDS"
+        keep_source = "env PWF_COMPACT_KEEP_RECORDS"
     elif keep_records is not None:
         effective_keep = keep_records
         keep_source = "--keep-records"

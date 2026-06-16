@@ -282,7 +282,7 @@ DATA_BLOCK_DELIMITER_RE = re.compile(r"^---(?:BEGIN|END) [A-Z ][A-Z ]* DATA---$"
 VALID_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 LEASE_STATUSES = {"active", "stale", "released", "shared"}
 DEFAULT_SESSION_LEASE_TTL_SECONDS = 600
-DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS = 0.25
+DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS = 2.0
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
