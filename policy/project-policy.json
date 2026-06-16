@@ -38,6 +38,11 @@
       "excludePathPatterns": []
     }
   },
+  "secretScan": {
+    "forceIncludePathPatterns": [
+      ".codex/**"
+    ]
+  },
   "fileSize": {
     "block": {
       "rust": 2200,
