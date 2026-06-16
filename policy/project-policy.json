@@ -25,8 +25,19 @@
     "scripts/check-frontend-boundaries.ps1",
     "scripts/check-secrets.ps1",
     "scripts/check-governance-changes.ps1",
+    "scripts/check-whitespace.ps1",
     "scripts/install-hooks.ps1"
   ],
+  "checkScopes": {
+    "preCommit": {
+      "excludePathPatterns": [
+        ".codex/**"
+      ]
+    },
+    "verify": {
+      "excludePathPatterns": []
+    }
+  },
   "fileSize": {
     "block": {
       "rust": 2200,

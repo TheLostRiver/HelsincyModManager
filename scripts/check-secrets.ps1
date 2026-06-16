@@ -1,3 +1,7 @@
+param(
+    [string]$Scope = "verify"
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
@@ -5,7 +9,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Get-RepoRoot
 $policy = Read-ProjectPolicy -RepoRoot $repoRoot
-$files = Get-GitCandidateFiles -RepoRoot $repoRoot
+$files = Select-PolicyIncludedFiles -Files (Get-GitCandidateFiles -RepoRoot $repoRoot) -ExcludePathPatterns (Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope)
 $errors = New-Object System.Collections.Generic.List[string]
 $textExtensions = @(".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".ps1", ".psm1", ".rs", ".ts", ".tsx", ".js", ".jsx", ".css", ".html")
 

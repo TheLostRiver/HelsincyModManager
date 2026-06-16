@@ -110,6 +110,68 @@ function Convert-PolicyGlobToRegex {
     return "^$escaped$"
 }
 
+function Convert-PolicyGlobListToRegexes {
+    param([string[]]$Patterns = @())
+
+    return @($Patterns |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })
+}
+
+function Get-PolicyCheckScopeExcludePathPatterns {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$Policy,
+        [string]$Scope = "verify"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Scope)) {
+        return @()
+    }
+
+    $checkScopesProperty = $Policy.PSObject.Properties["checkScopes"]
+    if ($null -eq $checkScopesProperty) {
+        return @()
+    }
+
+    $scopeProperty = $checkScopesProperty.Value.PSObject.Properties[$Scope]
+    if ($null -eq $scopeProperty -or $null -eq $scopeProperty.Value) {
+        return @()
+    }
+
+    $excludePathPatternsProperty = $scopeProperty.Value.PSObject.Properties["excludePathPatterns"]
+    if ($null -eq $excludePathPatternsProperty) {
+        return @()
+    }
+
+    return @($excludePathPatternsProperty.Value)
+}
+
+function Test-PolicyPathExcluded {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [string[]]$Regexes = @()
+    )
+
+    $normalized = $Path -replace '\\', '/'
+    foreach ($regex in $Regexes) {
+        if ($normalized -match $regex) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Select-PolicyIncludedFiles {
+    param(
+        [string[]]$Files = @(),
+        [string[]]$ExcludePathPatterns = @()
+    )
+
+    $excludePathRegexes = @(Convert-PolicyGlobListToRegexes -Patterns $ExcludePathPatterns)
+    return @($Files | Where-Object { -not (Test-PolicyPathExcluded -Path $_ -Regexes $excludePathRegexes) })
+}
+
 function Write-PolicyErrors {
     param(
         [Parameter(Mandatory = $true)][string]$Title,

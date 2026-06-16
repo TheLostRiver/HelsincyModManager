@@ -1,3 +1,7 @@
+param(
+    [string]$Scope = "verify"
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
@@ -5,7 +9,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Get-RepoRoot
 $policy = Read-ProjectPolicy -RepoRoot $repoRoot
-$files = Get-GitCandidateFiles -RepoRoot $repoRoot
+$files = Select-PolicyIncludedFiles -Files (Get-GitCandidateFiles -RepoRoot $repoRoot) -ExcludePathPatterns (Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope)
 $errors = New-Object System.Collections.Generic.List[string]
 $forbiddenExtensions = @($policy.forbiddenFiles.extensions | ForEach-Object { $_.ToLowerInvariant() })
 $pathRegexes = @($policy.forbiddenFiles.pathPatterns | ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })

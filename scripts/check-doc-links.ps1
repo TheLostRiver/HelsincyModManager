@@ -1,10 +1,15 @@
+param(
+    [string]$Scope = "verify"
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 . "$PSScriptRoot/lib/Policy.ps1"
 
 $repoRoot = Get-RepoRoot
-$files = Get-GitCandidateFiles -RepoRoot $repoRoot
+$policy = Read-ProjectPolicy -RepoRoot $repoRoot
+$files = Select-PolicyIncludedFiles -Files (Get-GitCandidateFiles -RepoRoot $repoRoot) -ExcludePathPatterns (Get-PolicyCheckScopeExcludePathPatterns -Policy $policy -Scope $Scope)
 $markdownFiles = @($files | Where-Object { [System.IO.Path]::GetExtension($_).ToLowerInvariant() -eq ".md" })
 $errors = New-Object System.Collections.Generic.List[string]
 $linkPattern = [regex]'\[[^\]]+\]\(([^)]+)\)'
