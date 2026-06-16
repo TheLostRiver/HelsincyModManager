@@ -8,6 +8,22 @@ $policy = Read-ProjectPolicy -RepoRoot $repoRoot
 $files = Get-GitCandidateFiles -RepoRoot $repoRoot
 $errors = New-Object System.Collections.Generic.List[string]
 $allowlist = @($policy.fileSize.allowlist)
+$excludePathRegexes = @()
+if ($null -ne $policy.fileSize.PSObject.Properties["excludePathPatterns"]) {
+    $excludePathRegexes = @($policy.fileSize.excludePathPatterns | ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })
+}
+
+function Test-ExcludedPath {
+    param([string]$Path)
+
+    foreach ($regex in $excludePathRegexes) {
+        if ($Path -match $regex) {
+            return $true
+        }
+    }
+
+    return $false
+}
 
 function Get-PolicyCategory {
     param([string]$Path)
@@ -26,6 +42,10 @@ function Get-PolicyCategory {
 
 foreach ($file in $files) {
     $normalized = $file -replace '\\', '/'
+    if (Test-ExcludedPath -Path $normalized) {
+        continue
+    }
+
     if ($allowlist -contains $normalized) {
         continue
     }

@@ -1,44 +1,26 @@
-# planning-with-files: resolve active plan directory (PowerShell mirror).
+$ErrorActionPreference = "Stop"
+
+# planning-with-files: deprecated compatibility resolver.
 #
-# Resolution order matches scripts/resolve-plan-dir.sh:
-#   1. $env:PLAN_ID -> .\.planning\$PLAN_ID\
-#   2. .\.planning\.active_plan content
-#   3. Newest .\.planning\<dir>\ by LastWriteTime
-#   4. Empty (legacy fallback to .\task_plan.md handled by caller)
+# The authoritative resolver lives in .codex/hooks/planning_state.py and is
+# exposed through plan.py status. Keep this wrapper thin so session bindings,
+# PLAN_ID precedence, and workspace fallback do not drift across implementations.
 
-param(
-    [string]$PlanRoot = (Join-Path (Get-Location) ".planning")
-)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$rootDir = Resolve-Path (Join-Path $scriptDir "..\..\..\..")
+$planCli = Join-Path $rootDir ".codex\skills\planning-with-files\scripts\plan.py"
 
-$activeFile = Join-Path $PlanRoot ".active_plan"
-
-if ($env:PLAN_ID) {
-    $candidate = Join-Path $PlanRoot $env:PLAN_ID
-    if (Test-Path $candidate -PathType Container) {
-        Write-Output $candidate
-        exit 0
-    }
-}
-
-if (Test-Path $activeFile) {
-    $planId = (Get-Content $activeFile -Raw).Trim()
-    if ($planId) {
-        $candidate = Join-Path $PlanRoot $planId
-        if (Test-Path $candidate -PathType Container) {
-            Write-Output $candidate
-            exit 0
+$previousLang = $env:PWF_LANG
+$env:PWF_LANG = ""
+try {
+    $output = & python $planCli --root $rootDir status 2>$null
+    foreach ($line in $output) {
+        if ($line -like "path: *") {
+            $line.Substring(6)
+            break
         }
     }
 }
-
-if (Test-Path $PlanRoot -PathType Container) {
-    $latest = Get-ChildItem -Path $PlanRoot -Directory |
-        Where-Object { -not $_.Name.StartsWith('.') } |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-    if ($latest) {
-        Write-Output $latest.FullName
-    }
+finally {
+    $env:PWF_LANG = $previousLang
 }
-
-exit 0

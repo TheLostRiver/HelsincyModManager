@@ -65,6 +65,9 @@
     "allowlist": [
       "pnpm-lock.yaml",
       "Cargo.lock"
+    ],
+    "excludePathPatterns": [
+      ".codex/**"
     ]
   },
   "forbiddenFiles": {

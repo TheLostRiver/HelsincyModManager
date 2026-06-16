@@ -130,7 +130,9 @@ CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ru
 - pre-push 失败。
 - GitHub Actions `Verify` 失败。
 
-如果确实是生成代码、协议定义或静态 catalog，应加入 allowlist，并在 PR 中解释原因。
+如果确实是生成代码、协议定义、静态 catalog，或与主应用无关的独立工具目录，应加入 allowlist 或 `fileSize.excludePathPatterns`，并在 PR 中解释原因。
+
+当前 `.codex/` 是独立的上下文管理工具，不属于主应用运行时代码边界；文件大小硬性限制默认通过 `fileSize.excludePathPatterns` 排除该目录，避免工具自身演进被主应用代码体量门禁误拦截。
 
 ## GitHub 分支保护建议
 
