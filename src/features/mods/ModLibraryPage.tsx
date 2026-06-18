@@ -2,24 +2,45 @@ import { useMemo, useState } from "react";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
-import { modLibraryItems } from "./modsLibraryData";
+import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
 
 type ModLibraryPageProps = {
   /** 快捷操作回调。点击行为由上层（路由/容器）接入业务，页面本身只负责展示与局部 UI 状态。 */
   onAction?: (actionId: string) => void;
 };
 
+const statusFilterByLabel: Partial<Record<string, ModInstallStatus>> = {
+  已安装: "installed",
+  已禁用: "disabled",
+  存在冲突: "conflict",
+};
+
+function matchesActiveFilter(item: ModLibraryItem, activeFilter: string) {
+  if (activeFilter === "全部") {
+    return true;
+  }
+
+  const statusFilter = statusFilterByLabel[activeFilter];
+  if (statusFilter) {
+    return item.status === statusFilter;
+  }
+
+  return item.categoryLabels.includes(activeFilter);
+}
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // 当前为纯展示过滤。真实过滤应基于仓储数据与标签，这里仅按名称做轻量筛选。
+  // 当前为展示层过滤。真实数据接入后应由仓储视图模型提供同名字段。
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    if (!keyword) return modLibraryItems;
-    return modLibraryItems.filter((item) => item.name.toLowerCase().includes(keyword));
-  }, [query]);
+    return modLibraryItems.filter((item) => {
+      const matchesKeyword = !keyword || item.name.toLowerCase().includes(keyword);
+      return matchesKeyword && matchesActiveFilter(item, activeFilter);
+    });
+  }, [activeFilter, query]);
 
   const selectedCount = selectedIds.size;
 
