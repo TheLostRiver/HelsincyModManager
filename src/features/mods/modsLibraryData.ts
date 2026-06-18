@@ -9,6 +9,7 @@ export type ModLibraryItem = {
   name: string;
   sizeLabel: string;
   status: ModInstallStatus;
+  categoryLabels: string[];
   // 海报背景的渐变色，用于无预览图时的占位。
   // 设计稿中每张卡片有独立色调，这里保留为语义化的色卡描述。
   posterFrom: string;
@@ -21,6 +22,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "非官方仪式礼服",
     sizeLabel: "2.1 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#d7e7ff",
     posterTo: "#77a8ff",
   },
@@ -29,6 +31,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "盛夏兔女郎",
     sizeLabel: "默认封面",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#eeeff3",
     posterTo: "#b5c2d6",
   },
@@ -37,6 +40,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "包臀裙",
     sizeLabel: "3.8 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#e0f0dc",
     posterTo: "#7cc47c",
   },
@@ -45,6 +49,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "贵妇装",
     sizeLabel: "1.9 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#fbe9cb",
     posterTo: "#e8b15a",
   },
@@ -53,6 +58,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "薄纱礼服",
     sizeLabel: "2.4 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#f5e6f2",
     posterTo: "#d98bc7",
   },
@@ -61,6 +67,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "夜宴礼裙",
     sizeLabel: "2.6 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#e5e7ff",
     posterTo: "#9ca3ff",
   },
@@ -69,6 +76,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "雪狐披肩",
     sizeLabel: "1.7 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#eef2ff",
     posterTo: "#a5b4fc",
   },
@@ -77,6 +85,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "礼宾套装",
     sizeLabel: "2.9 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#e2f7ec",
     posterTo: "#86efac",
   },
@@ -85,6 +94,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "月白长裙",
     sizeLabel: "2.2 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#fff1de",
     posterTo: "#fdba74",
   },
@@ -93,10 +103,11 @@ export const modLibraryItems: ModLibraryItem[] = [
     name: "祭典洋装",
     sizeLabel: "2.5 MB",
     status: "installed",
+    categoryLabels: ["外观"],
     posterFrom: "#fce7f3",
     posterTo: "#f9a8d4",
   },
-] as const;
+];
 
 // 快捷操作面板的动作项。
 // 仅承载展示语义，点击行为由页面层透传，不在此处实现业务。
@@ -117,6 +128,6 @@ export const compactActions: CompactAction[] = [
   { id: "disable-all", label: "禁用全部 MOD", variant: "warning" },
   { id: "reinstall", label: "重装选中 MOD", variant: "info" },
   { id: "uninstall", label: "卸载选中 MOD", variant: "danger" },
-] as const;
+];
 
 export const libraryFilterChips = ["全部", "已安装", "已禁用", "存在冲突", "外观", "武器", "语音"] as const;
