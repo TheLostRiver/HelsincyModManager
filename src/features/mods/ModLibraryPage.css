@@ -546,10 +546,21 @@
     position: static;
     grid-auto-flow: column;
     grid-template-rows: none;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .compact-panel__stack {
     grid-auto-flow: column;
+    grid-auto-columns: minmax(140px, max-content);
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 4px;
+  }
+
+  .compact-action {
+    min-width: 140px;
   }
 }
 
@@ -570,7 +581,14 @@
   }
 
   .compact-panel__stack {
+    grid-auto-columns: auto;
     grid-auto-flow: row;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .compact-action {
+    min-width: 0;
   }
 }
 

@@ -19,6 +19,7 @@ export function ModPosterCard({ item, selected, onSelect }: ModPosterCardProps) 
       className={`mod-card${selected ? " is-selected" : ""}`}
       aria-label={item.name}
       data-status={item.status}
+      role="listitem"
     >
       <button
         type="button"
