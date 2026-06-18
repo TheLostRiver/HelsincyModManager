@@ -1,8 +1,13 @@
 import type { MouseEvent } from "react";
+import { useAppRoute } from "../../../routing/useAppRoute";
 import { navItems, type NavItem } from "../../navigation/navItems";
 import { FloatingSidebarModeButton } from "../../sidebar-mode-control/SidebarModeControl";
+import type { NavigationStateItem } from "../../../routing/routeTypes";
 
 export function FloatingSidebar() {
+  const { getNavigationState, navigate } = useAppRoute();
+  const navigationItems = getNavigationState(navItems);
+
   return (
     <aside className="floating-sidebar" aria-label="主导航">
       <div className="floating-sidebar__brand" aria-label="Helsincy">
@@ -10,8 +15,8 @@ export function FloatingSidebar() {
       </div>
 
       <nav className="floating-sidebar__nav">
-        {navItems.map((item) => (
-          <FloatingNavButton key={item.id} item={item} />
+        {navigationItems.map((item) => (
+          <FloatingNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
       </nav>
 
@@ -20,16 +25,25 @@ export function FloatingSidebar() {
   );
 }
 
-function FloatingNavButton({ item }: { item: NavItem }) {
+function FloatingNavButton({
+  item,
+  onNavigate,
+}: {
+  item: NavigationStateItem<NavItem>;
+  onNavigate: (route: string) => void;
+}) {
   const Icon = item.icon;
-  const isActive = item.state === "active";
-  const isDisabled = item.state === "disabled";
+  const isActive = item.isActive;
+  const isDisabled = item.isDisabled;
   const label = isDisabled && item.disabledReason ? `${item.label}: ${item.disabledReason}` : item.label;
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (isDisabled) {
       event.preventDefault();
       event.stopPropagation();
+      return;
     }
+
+    onNavigate(item.route);
   };
 
   return (

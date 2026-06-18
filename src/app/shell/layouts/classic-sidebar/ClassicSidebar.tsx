@@ -1,7 +1,12 @@
+import { useAppRoute } from "../../../routing/useAppRoute";
+import type { NavigationStateItem } from "../../../routing/routeTypes";
 import { navItems, type NavItem } from "../../navigation/navItems";
 import { ClassicSidebarModeButton } from "../../sidebar-mode-control/SidebarModeControl";
 
 export function ClassicSidebar() {
+  const { getNavigationState, navigate } = useAppRoute();
+  const navigationItems = getNavigationState(navItems);
+
   return (
     <aside className="sidebar" aria-label="主导航">
       <div className="brand-block">
@@ -10,8 +15,8 @@ export function ClassicSidebar() {
       </div>
 
       <nav className="nav-list">
-        {navItems.map((item) => (
-          <ClassicNavButton key={item.id} item={item} />
+        {navigationItems.map((item) => (
+          <ClassicNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
       </nav>
 
@@ -27,10 +32,16 @@ export function ClassicSidebar() {
   );
 }
 
-function ClassicNavButton({ item }: { item: NavItem }) {
+function ClassicNavButton({
+  item,
+  onNavigate,
+}: {
+  item: NavigationStateItem<NavItem>;
+  onNavigate: (route: string) => void;
+}) {
   const Icon = item.icon;
-  const isActive = item.state === "active";
-  const isDisabled = item.state === "disabled";
+  const isActive = item.isActive;
+  const isDisabled = item.isDisabled;
 
   return (
     <button
@@ -39,6 +50,7 @@ function ClassicNavButton({ item }: { item: NavItem }) {
       disabled={isDisabled}
       aria-current={isActive ? "page" : undefined}
       title={isDisabled ? item.disabledReason : undefined}
+      onClick={() => onNavigate(item.route)}
     >
       {isActive && <span className="active-mark" aria-hidden="true" />}
       <Icon size={16} strokeWidth={2.1} />

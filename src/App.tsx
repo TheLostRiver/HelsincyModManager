@@ -1,15 +1,18 @@
 import { AppShell } from "./app/AppShell";
 import { ColorSchemeProvider } from "./app/appearance/ColorSchemeProvider";
+import { AppRouteProvider } from "./app/routing/AppRouteProvider";
+import { RouterOutlet } from "./app/routing/RouterOutlet";
 import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
-import { DashboardPage } from "./features/dashboard/DashboardPage";
 
 export function App() {
   return (
     <ColorSchemeProvider>
       <SidebarModeProvider>
-        <AppShell>
-          <DashboardPage />
-        </AppShell>
+        <AppRouteProvider>
+          <AppShell>
+            <RouterOutlet />
+          </AppShell>
+        </AppRouteProvider>
       </SidebarModeProvider>
     </ColorSchemeProvider>
   );
