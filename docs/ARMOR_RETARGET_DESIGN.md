@@ -1,5 +1,7 @@
 # MHW:I 外观套装重定向设计
 
+> 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
+
 ## 背景
 
 很多《怪物猎人：世界 冰原》外观 Mod 并不是新增一套独立外观，而是把自定义模型、贴图或材质覆盖到官方装备槽位。玩家真正关心的工作流是：
@@ -49,6 +51,8 @@
 
 `staging`：安装前的临时生成目录。重定向、路径改写和安装变体都发生在这里。
 
+> 路径结构事实：MHW:I armor 资源在 `<slot>` 之后是**固定结构目录** `arm/mod`，即 `nativePC/pl/f_equip/<slot>/arm/mod/<filename>`。部位（头/胸/手/腰/脚）不作为独立目录段出现。因此 `part` 在本设计中只是 catalog 的逻辑标签，由游戏 adapter 在 `metadata` 中维护，不参与路径改写。retarget 永远只改写 `<slot>` 这一段。
+
 ## 推荐路线
 
 采用“正式建模 + 路径级 MVP + 可扩展 transformer”的路线：
@@ -71,23 +75,22 @@
 
 ```text
 ReplacementTarget
-  id
-  game_id
-  target_type
-  display_name
-  aliases
-  internal_id
-  path_family
-  part
-  is_full_body
-  metadata
+  id              // 项目稳定主键，游戏无关，全局唯一（如 "mhw:armor:fatalis-alpha"）
+  game_id         // 所属游戏
+  target_type     // armor / weapon / voice / ...
+  display_name    // 展示用名称（可按语言分字段）
+  aliases         // 别名数组，仅用于展示和检索，不参与匹配
+  internal_id     // 游戏 adapter 的槽位编号；对 MHW armor 形如 plNNN_VVVV
+                  // 仅在 game_id + path_family 范围内唯一
+  metadata        // 游戏专属字段（path_family / rank / variant / part /
+                  // is_full_body / monster / parts 等），核心层透传不解析
 
 ReplacementBinding
   id
   mod_id
   profile_id
   source_asset
-  target_id
+  target_id       // 引用 ReplacementTarget.id（项目主键），不引用 internal_id
   created_at
 
 RetargetPlan
@@ -99,11 +102,17 @@ RetargetAction
   action_type
   source_relative_path
   staged_relative_path
-  source_slot
-  target_slot
+  source_slot            // 源槽位编号（如 pl121_0000）
+  target_slot            // 目标槽位编号（如 pl129_0000）
+  source_path_family     // 如 pl/f_equip 或 pl/m_equip
+  target_path_family     // 同上
 ```
 
-`metadata` 可以承载游戏适配器专属信息，但核心层只把它当作结构化数据，不解析 MHW:I 语义。
+字段边界约束：
+
+- `id` 是项目自身的稳定主键，游戏无关。`internal_id` 是游戏 adapter 的槽位编号（MHW armor 形如 `plNNN_VVVV`），仅在 `game_id + path_family` 范围内唯一，绝不当全局主键。理由：武器替换、语音替换、Rise/Wilds 的编号形态都不是 `plNNN_VVVV`，把 MHW 形态绑死成全局主键会污染多游戏场景。`ReplacementBinding.target_id` 引用的是 `ReplacementTarget.id`，不是 `internal_id`。
+- 所有游戏专属语义字段（`path_family`、`rank`、`variant`、`part`、`is_full_body`、`monster`、`parts`）一律放进 `metadata`，由对应游戏 adapter 解析。核心层不对 `metadata` 内任何字段值做分支判断，也不校验 `plNNN_VVVV` 这种游戏专属格式。
+- `RetargetAction` 携带 `source_path_family` / `target_path_family`，用于区分男女体路径（`f_equip` / `m_equip`），manifest 和冲突检测据此区分同名 slot。
 
 ### `hmm-ports`
 
@@ -128,12 +137,14 @@ StagingFileSystem
 
 负责 MHW:I 专属规则：
 
-- armor catalog。
-- `pl/f_equip/<slot>` 路径族识别。
-- `plNNN_VVVV` 编号解析与校验。
+- armor catalog 数据与加载。
+- catalog 加载时的 Unicode 归一化：对 display name 至少做 `NFC` 归一化，并对"看起来都像中点"的码位 `U+2027`（间隔号）/ `U+00B7`（中点）/ `U+30FB`（全角中点）/ `U+FF65`（半角中点）建立显式归一化映射表。归一化规则只存在于 adapter 内，核心层不感知。
+- `pl/f_equip/<slot>` 和 `pl/m_equip/<slot>` 路径族识别（两者为不同 path_family）。
+- `plNNN_VVVV` 编号解析与校验。该格式校验**只在 adapter 内做**，核心层把 `internal_id` 当不透明字符串。
+- catalog schema 内的游戏专属字段（`path_family` / `rank` / `variant` / `part` / `is_full_body` / `monster` / `parts`）由 adapter 解析并写入 `ReplacementTarget.metadata`，核心层透传。
 - 源槽位推断。
 - 路径级 `RetargetPlan` 生成。
-- 黑龙/煌黑龙等名称和别名区分。
+- 黑龙/煌黑龙等名称和别名区分（见 [Catalog 设计](#catalog-设计)）。
 
 通用核心和前端都不应写死 `pl129_0000`、`nativePC`、`f_equip` 等规则。
 
@@ -184,42 +195,63 @@ StagingFileSystem
 
 MHW:I armor catalog 应使用 JSON 或 TOML 存储，并由 `hmm-games-mhw` 加载。建议先使用静态随包数据，后续再考虑社区补丁或版本化更新。
 
-示例：
+顶层字段保持游戏无关（与 `hmm-core` 的 `ReplacementTarget` 一致），游戏专属字段放进 `metadata`：
 
 ```json
 {
   "id": "mhw:armor:fatalis-alpha",
   "game_id": "mhw",
   "target_type": "armor",
-  "display_name_zh_cn": "【精英‧龙α】服装",
-  "display_name_en": "Fatalis Alpha +",
+  "display_name": {
+    "zh_cn": "【精英‧龙α】服装",
+    "en": "Fatalis Alpha +"
+  },
   "aliases": ["黑龙α", "黑龙 Alpha", "Fatalis α"],
   "internal_id": "pl129_0000",
-  "path_family": "pl/f_equip",
-  "rank": "master",
-  "variant": "alpha",
-  "is_full_body": false,
-  "parts": ["head", "body", "arms", "waist", "legs"]
+  "metadata": {
+    "path_family": "pl/f_equip",
+    "monster": "fatalis",
+    "rank": "master",
+    "variant": "alpha",
+    "is_full_body": false,
+    "parts": ["head", "body", "arms", "waist", "legs"]
+  }
 }
 ```
 
-黑龙相关目标必须显式区分：
+主键与匹配规则：
+
+- `id`（如 `mhw:armor:fatalis-alpha`）是项目稳定主键，全局唯一、游戏无关。`internal_id`（如 `pl129_0000`）是 MHW adapter 的槽位编号，仅在 `game_id + path_family` 范围内唯一，用作 retarget 匹配键，绝不当全局主键。`ReplacementBinding.target_id` 引用的是 `id`。
+- 中文名和别名仅用于展示和检索，不参与 join 或匹配。
+
+`metadata` 内的变体建模：
+
+- `rank` 取值枚举：`high`（上位）、`master`（精英/冰原）、`event`（活动/换色）、`gamma`（γ 套装）。同一个怪物的上位、精英、活动、γ 套装分别对应不同的 `internal_id`。
+- `variant` 取值枚举：`alpha` / `beta` / `gamma`，只表示 α/β/γ 三种变体。
+- 亚种（如火龙魂、暴君角龙、雷颚龙）和活动换色（如银白耀日、死灭与繁荣）不塞进 `rank` 或 `variant`，而作为**独立的 `ReplacementTarget` 条目**——它们本就拥有独立的 `plNNN_VVVV`，应有独立的 `id`、`display_name` 和 `monster` 字段。
+- UI 筛选维度应是 `rank × variant × monster`，而不是 `variant` 单维度。
+
+黑龙 / 煌黑龙的 Unicode 陷阱（必须显式处理）：
 
 ```text
-【精英‧龙α】服装     -> Fatalis / 黑龙α     -> pl129_0000
-【精英‧龙β】服装     -> Fatalis / 黑龙β     -> pl129_0010
-【精英·煌黑龙α】服装 -> Alatreon / 煌黑龙α -> pl052_0000
-【精英·煌黑龙β】服装 -> Alatreon / 煌黑龙β -> pl052_0010
+【精英‧龙α】服装     -> Fatalis   / 黑龙α     -> pl129_0000   分隔符 ‧ = U+2027
+【精英‧龙β】服装     -> Fatalis   / 黑龙β     -> pl129_0010   分隔符 ‧ = U+2027
+【精英·煌黑龙α】服装 -> Alatreon  / 煌黑龙α  -> pl052_0000   分隔符 · = U+00B7
+【精英·煌黑龙β】服装 -> Alatreon  / 煌黑龙β  -> pl052_0010   分隔符 · = U+00B7
 ```
 
-UI 搜索“黑龙”时应同时展示清晰的怪物名、套装名和内部编号，避免玩家误选。
+注意 Fatalis 与 Alatreon 的分隔符是**不同码位**：前者 `‧`(U+2027 间隔号)，后者 `·`(U+00B7 中点)，视觉上几乎相同但码位完全不同。此外怪物名也不同（`龙` vs `煌黑龙`）。因此：
+
+- catalog 加载必须做 Unicode 归一化（见 [hmm-games-mhw](#hmm-games-mhw) 职责），否则玩家或运营手抄中文名时把 `·`(U+00B7) 误打成 `‧`(U+2027) 会导致 `internal_id` 查不到。
+- UI 搜索匹配必须基于 `metadata.monster` 逻辑字段（`fatalis` / `alatreon`），**不基于中文名子串**。用怪物名 `龙` 做子串匹配会同时命中 Fatalis 和所有含`龙`字条目。
+- alias 数组与 display name 之间的归一化（全半角、希腊字母 α vs `Alpha`、中点码位）规则由 adapter 统一处理，核心层不感知。
 
 ## 包分析
 
 包分析器应在安全解压后的 sandbox/cache 中分析相对路径。第一版只识别规范化后的路径：
 
 ```text
-nativePC/pl/f_equip/<slot>/...
+nativePC/pl/f_equip/<slot>/arm/mod/<filename>
 ```
 
 其中 `<slot>` 必须匹配：
@@ -228,20 +260,27 @@ nativePC/pl/f_equip/<slot>/...
 pl[0-9]{3}_[0-9]{4}
 ```
 
+路径规范化与 path_family 识别：
+
+- 路径分隔符 `/` 和 `\` 必须先统一规范化再匹配，否则从 zip 读出的正斜杠路径和从 rar 读出的反斜杠路径会产生两种分析结果。
+- `pl/f_equip/` 和 `pl/m_equip/` 视为**两个不同的 path_family**。第一版只支持 `f_equip` retarget；含 `m_equip` 文件的包按多源处理（见下），给出警告并阻止自动 retarget，不悄悄只处理 `f_equip`。
+- `<slot>` 之后的 `arm/mod` 是**固定结构目录**，不是部位。分析器不试图从路径目录推断部位。
+
 分析输出建议：
 
 ```text
 ReplacementAnalysis
   detected_targets
   source_slots
+  source_path_families   // 区分 f_equip / m_equip
   supported_retarget_kinds
   warnings
 ```
 
-对于多个源 slot：
+对于多个源 slot 或多个 path_family：
 
-- 若全部属于同一 slot，允许生成 retarget。
-- 若发现多个 armor slot，第一版给出警告并阻止自动 retarget。
+- 若全部属于同一 slot 且同一 path_family（`f_equip`），允许生成 retarget。
+- 若发现多个 armor slot、或同时存在 `f_equip` 与 `m_equip`、或含 `m_equip`，第一版给出警告并阻止自动 retarget。
 - 后续可以支持多 binding 或高级拆分。
 
 ## RetargetPlan 生成
@@ -253,16 +292,30 @@ source: nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3
 target: nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3
 ```
 
-生成 plan 时需要：
+**实现规则（强制）：结构化分段替换，不是字符串替换。**
+
+MHW:I armor 路径的段结构是固定的：
+
+```text
+nativePC / pl / f_equip / <slot=plNNN_VVVV> / arm / mod / <filename>
+```
+
+生成 plan 时：
+
+- 把路径解析成上述段。
+- **只允许替换 `<slot>` 段**。`nativePC`、`pl`、`f_equip`、`arm`、`mod`、`<filename>` 一律原样保留。
+- 重新 join 成目标路径。禁止用整路径字符串替换、禁止 `replace(slot_a, slot_b)` 这种宽泛做法。
+
+之所以写成强制规则，是因为宽泛字符串替换会误伤碰巧包含同样数字的片段。例如源 slot `pl121_0000` 的裸数字是 `121_0000`，若 filename 恰好是 `f_121_0000_extra.mod3`，整路径 `replace("121_0000", "129_0000")` 会把 filename 也改成 `f_129_0000_extra.mod3`，这是错误的。结构化分段替换能避免这类误伤。
+
+生成 plan 时还需要：
 
 - 校验 source slot 来自包分析结果。
-- 校验 target id 存在于当前游戏 catalog。
+- 校验 target `id` 存在于当前游戏 catalog。
 - 校验 source 和 target path 都是相对路径。
-- 只对 slot 段进行结构化替换，不做任意字符串全局替换。
+- 校验 source 与 target 的 path_family 一致（`f_equip` 不重定向到 `m_equip`）。
 - 保留原始文件内容，只改变 staging 目标路径。
 - 记录 warning，例如目标和源相同、多个源 slot、缺失常见部位。
-
-不要对整条路径做宽泛字符串替换，因为这会误改文件名、父目录或其他碰巧包含同样数字的片段。
 
 ## Staging 与安装计划
 
@@ -295,6 +348,8 @@ ManifestWrite
 
 不要在游戏目录中尝试“原地改名”。
 
+staging 目录的生命周期：它是**临时生成物**，可丢弃、可重建。切换目标或回滚后，旧 staging 可以安全清理。安装事实的唯一来源是三者：**原始导入包（只读）+ `ReplacementBinding` + `InstallManifest`**。任何时刻只要这三者在，就能重新 materialize 出 staging。这与 `ARCHITECTURE.md` “原始导入包永远只读”一致。staging 本身不作为事实来源持久化。
+
 ## Manifest 与审计
 
 安装 manifest 必须记录 replacement 信息：
@@ -305,6 +360,8 @@ replacement_bindings
   source_slot
   target_id
   target_slot
+  source_path_family     // 如 pl/f_equip，区分男女体
+  target_path_family
   target_display_name
   retarget_kind
 
@@ -403,12 +460,14 @@ SQLite 中应持久化玩家状态：
 
 单元测试：
 
-- catalog 中每个 `internal_id` 符合 `plNNN_VVVV`。
-- `黑龙` 和 `煌黑龙` alias 不混淆。
+- catalog 中每个 `internal_id` 符合 `plNNN_VVVV`。（**该测试落在 `hmm-games-mhw`，不落在 `hmm-core`**——核心层把 `internal_id` 当不透明字符串，不校验游戏专属格式。）
+- 中点码位归一化：把 `‧`(U+2027) 和 `·`(U+00B7) 两种写法的 display name 作为输入，验证 catalog 能查到同一条记录（`internal_id` 相同）。
+- `黑龙` 和 `煌黑龙` alias 不混淆；搜索“黑龙”只命中 `monster == fatalis` 的条目，不串到 `alatreon`。
 - path parser 能识别 `/` 和 `\` 输入并规范化。
-- 多源 slot 返回 `AmbiguousSourceSlot`。
+- 多源 slot、或同时含 `f_equip` 与 `m_equip`、或含 `m_equip`，返回 `AmbiguousSourceSlot`。
 - 未知 target id 返回 `TargetCatalogMissing`。
-- retarget action 只替换 slot 段，不改其他路径片段。
+- retarget action 只替换 slot 段，不改其他路径片段。**特别地：当 filename 或父目录里恰好包含与 source slot 相同的数字串时，只有真正的 slot 段被替换**（构造样本：`.../pl121_0000/arm/mod/f_121_0000_extra.mod3`，验证 filename 不变）。
+- 同一 `plNNN` 前缀下若存在多个 `VVVV`（如 `pl033_0000/0010/0100/...`），必须每条都有可区分的 `display_name` + 独立 `id`，不共用一个 `variant`。
 
 集成测试：
 
@@ -437,8 +496,9 @@ SQLite 中应持久化玩家状态：
 
 ### 阶段 2：包分析与路径级 RetargetPlan
 
-- 分析 `nativePC/pl/f_equip/<slot>`。
-- 生成路径级 `RetargetPlan`。
+- 分析 `nativePC/pl/f_equip/<slot>`（含 `/` 和 `\` 分隔符规范化）。
+- 识别 `m_equip` 并按多源 path_family 阻止自动 retarget。
+- 生成路径级 `RetargetPlan`（结构化分段替换，只改 slot 段）。
 - 对多源 slot、未知 target、危险路径给出明确错误。
 
 ### 阶段 3：staging 与 InstallPlan 集成
@@ -463,7 +523,8 @@ SQLite 中应持久化玩家状态：
 
 ## 开放问题
 
-- 是否需要第一版同时支持男性装备路径 `m_equip` 和女性装备路径 `f_equip`，还是先只支持 `f_equip`。
+> 已决：第一版对 `m_equip`（男体路径）的处理是**识别并明确拒绝**——含 `m_equip` 的包按多源 path_family 处理（警告 + 阻止），不悄悄只处理 `f_equip`。等路径级 retarget 稳定后再评估是否支持男体重定向。
+
 - armor catalog 的中文名称应以哪一版游戏文本为准，是否需要繁简差异。
 - 部位缺失时是允许安装并提示，还是阻止 retarget。
 - 外观 Mod 若包含 loose files 以外的说明文件、预览图或工具文件，应由包分析器如何分类。
