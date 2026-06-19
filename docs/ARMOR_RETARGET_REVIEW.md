@@ -51,7 +51,7 @@
 
 **建议**（应写入设计稿 `Catalog 设计` 与 `测试策略`）：
 
-- catalog 数据层必须以**内部编号 `plNNN_VVVV` 作为唯一稳定主键**，中文名和别名只是展示和检索辅助，绝不能作为 join 键或匹配键。设计稿的 `aliases`、`display_name_*` 已经走对了方向，需要补一句"内部编号是唯一权威"。
+- catalog 的主键和匹配键必须分两层：**`ReplacementTarget.id` 是本项目自身的稳定主键**（与 [`ARCHITECTURE.md`](ARCHITECTURE.md) 的 `ReplacementTarget` 模型一致），游戏无关；**`internal_id`（如 MHW armor 的 `plNNN_VVVV`）只是游戏 adapter 的槽位编号，仅在 `game_id + path_family` 范围内唯一**，用作 retarget / 匹配键，但绝不当全局主键。中文名和别名仅用于展示和检索辅助，不参与 join 或匹配。理由：武器替换、语音替换、以及 Rise/Wilds 的编号形态都不是 `plNNN_VVVV`，把 MHW 形态绑死成全局主键会污染多游戏场景。
 - catalog 加载时必须做**码位归一化校验**：对每条记录的 display name 做显式 Unicode 归一化（至少 `NFC`），并对 `U+2027` / `U+00B7` / `U+30FB` / `U+FF65` 这几个"看起来都像中点"的码位建立明确的归一化映射表，写进 `hmm-games-mhw`，核心层不感知。
 - UI 搜索匹配必须基于**怪物逻辑标识 + slot**，不是基于中文名子串。设计稿应新增 `monster` 字段（如 `fatalis` / `alatreon`），让 alias 只用于"搜得到"，不用于"唯一确定"。
 - 测试策略里需要补充：把 `‧`(U+2027) / `·`(U+00B7) 两种写法都作为输入，验证 catalog 能查到同一条记录；验证搜索"黑龙"时**只**命中 Fatalis 系，不串到煌黑龙系。
@@ -163,7 +163,7 @@ out:  nativePC/pl/f_equip/pl121_0000/arm/mod/f_121_0000_extra.mod3
 
 P0（不修正会直接产生 bug）：
 
-1. catalog 主键明确为 `internal_id`（`plNNN_VVVV`），中文名/别名仅用于展示和检索，不参与匹配。
+1. catalog 主键分层明确：`ReplacementTarget.id` 为项目稳定主键；`internal_id`（MHW armor 形如 `plNNN_VVVV`）仅作 `game_id + path_family` 范围内的匹配键，不作全局主键；中文名/别名仅用于展示和检索，不参与匹配。
 2. catalog 加载做 Unicode 归一化，特别是中点系码位（U+2027 / U+00B7 / U+30FB / U+FF65）；新增 `monster` 逻辑字段，搜索基于 `monster + internal_id`。
 3. retarget 实现规则改为结构化分段替换，`RetargetAction` 明确"只替换 slot 段"，并加"filename 含同数字段不被误改"的单测。
 4. analyzer 规范化 `/` 和 `\`，把 `m_equip` / `f_equip` 视为不同 path_family，混合包按多源处理。
