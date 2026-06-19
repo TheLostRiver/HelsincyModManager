@@ -87,3 +87,17 @@ test("completeRouteExit removes exiting layers and promotes entering route to ac
 
   assert.deepEqual(serializeLayers(nextLayers), [{ key: "mods:/mods", routeId: "mods", phase: "active" }]);
 });
+
+test("completeRouteExit keeps only the newest non-exiting layer", () => {
+  const layers = [
+    { key: "dashboard:/", route: dashboardRoute, phase: "exiting" },
+    { key: "mods:/mods", route: modsRoute, phase: "exiting" },
+    { key: "profiles:/profiles", route: profilesRoute, phase: "entering" },
+  ];
+
+  const nextLayers = completeRouteExit(layers);
+
+  assert.deepEqual(serializeLayers(nextLayers), [
+    { key: "profiles:/profiles", routeId: "profiles", phase: "active" },
+  ]);
+});
