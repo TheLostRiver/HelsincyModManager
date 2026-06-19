@@ -92,12 +92,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   return (
-    <section className="mod-library" aria-labelledby="mod-library-title">
-      <header className="main-header">
-        <h2 id="mod-library-title">模组库</h2>
-        <p>管理已导入的 Mod，查看安装状态并执行批量操作。</p>
-      </header>
-
+    <section className="mod-library" aria-label="模组库">
       <div className="mod-library__body">
         <div className="mod-library__main">
           <LibraryToolbar
