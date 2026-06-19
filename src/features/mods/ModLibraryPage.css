@@ -615,3 +615,22 @@
 :root[data-color-scheme="dark"] .compact-action.is-primary {
   background: linear-gradient(180deg, #38bdf8 0%, #2563eb 100%);
 }
+
+/* ---------- 页面过渡动画 (Staggered Entrance) ---------- */
+
+@keyframes libraryStaggerFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.anim-stagger-item {
+  opacity: 0;
+  animation: libraryStaggerFadeIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation-delay: calc(var(--stagger-idx, 0) * 0.03s);
+}

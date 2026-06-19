@@ -88,33 +88,38 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     <section className="mod-library" aria-label="模组库">
       <div className="mod-library__body">
         <div className="mod-library__main">
-          <LibraryToolbar
-            query={query}
-            activeFilter={activeFilter}
-            onQueryChange={setQuery}
-            onFilterChange={setActiveFilter}
-          />
+          <div className="anim-stagger-item" style={{ "--stagger-idx": 0 } as React.CSSProperties}>
+            <LibraryToolbar
+              query={query}
+              activeFilter={activeFilter}
+              onQueryChange={setQuery}
+              onFilterChange={setActiveFilter}
+            />
+          </div>
 
           {visibleItems.length === 0 ? (
-            <div className="mod-library__empty" role="status">
+            <div className="mod-library__empty anim-stagger-item" style={{ "--stagger-idx": 1 } as React.CSSProperties} role="status">
               <strong>没有匹配的 Mod</strong>
               <p>试试调整搜索关键词或筛选条件。</p>
             </div>
           ) : (
             <div className="mod-grid" role="list">
-              {visibleItems.map((item) => (
+              {visibleItems.map((item, index) => (
                 <ModPosterCard
                   key={item.id}
                   item={item}
                   selected={selectedIds.has(item.id)}
                   onSelect={selectCard}
+                  index={index}
                 />
               ))}
             </div>
           )}
         </div>
 
-        <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
+        <div className="anim-stagger-item" style={{ "--stagger-idx": 0 } as React.CSSProperties}>
+          <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
+        </div>
       </div>
     </section>
   );
