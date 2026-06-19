@@ -13,11 +13,9 @@ def main() -> None:
     if adapter.emit_session_denial_if_needed(root, session_id):
         return
 
-    message = planning_state.stop_message(root, session_id=session_id)
-    if not message:
-        return
-
-    adapter.emit_json({"systemMessage": message})
+    context = planning_state.render_pre_compact_context(root, session_id=session_id)
+    if context:
+        adapter.emit_json({"systemMessage": context})
 
 
 if __name__ == "__main__":
