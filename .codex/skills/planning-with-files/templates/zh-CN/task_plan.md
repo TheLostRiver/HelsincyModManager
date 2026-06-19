@@ -32,7 +32,7 @@ Phase 1
 
 ### Phase 4: 测试与验证
 - [ ] 验证所有需求
-- [ ] 将测试结果记录到 progress.md
+- [ ] 将测试结论和错误分析记录到 findings.md
 - [ ] 修复发现的问题
 - **Status:** pending
 

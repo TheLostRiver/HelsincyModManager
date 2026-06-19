@@ -66,10 +66,11 @@ Phase 1
 ### Phase 4: Testing & Verification
 <!-- 
   WHAT: Verify everything works and meets requirements.
-  WHY: Catching issues early saves time. Document test results in progress.md.
+  WHY: Catching issues early saves time. Put test conclusions and error analysis in findings.md;
+       progress.md is maintained by hooks as the objective auto-record log.
 -->
 - [ ] Verify all requirements met
-- [ ] Document test results in progress.md
+- [ ] Record test conclusions and error analysis in findings.md
 - [ ] Fix any issues found
 - **Status:** pending
 

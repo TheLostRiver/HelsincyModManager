@@ -2,7 +2,7 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume",
+        "matcher": "startup|resume|compact",
         "hooks": [
           {
             "type": "command",
@@ -42,6 +42,18 @@
             "type": "command",
             "command": "python .codex/hooks/post_tool_use.py",
             "statusMessage": "Recording tool context"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/pre_compact.py",
+            "statusMessage": "Preparing planning context before compact"
           }
         ]
       }
