@@ -5,6 +5,7 @@ type ModPosterCardProps = {
   item: ModLibraryItem;
   selected: boolean;
   onSelect: (id: string) => void;
+  index?: number;
 };
 
 const statusLabel: Record<ModLibraryItem["status"], string> = {
@@ -13,10 +14,11 @@ const statusLabel: Record<ModLibraryItem["status"], string> = {
   conflict: "存在冲突",
 };
 
-export function ModPosterCard({ item, selected, onSelect }: ModPosterCardProps) {
+export function ModPosterCard({ item, selected, onSelect, index = 0 }: ModPosterCardProps) {
   return (
     <article
-      className={`mod-card${selected ? " is-selected" : ""}`}
+      className={`mod-card anim-stagger-item${selected ? " is-selected" : ""}`}
+      style={{ "--stagger-idx": index + 1 } as React.CSSProperties}
       aria-label={item.name}
       data-status={item.status}
       role="listitem"
