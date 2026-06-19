@@ -217,7 +217,7 @@ git commit -m "test: 覆盖路由切换状态"
 - Modify: `src/app/routing/RouterOutlet.tsx`
 - Modify: `src/app/routing/routeTransition.ts`
 
-- [ ] **Step 1: Write the failing behavior test for reduced edge cases**
+- [x] **Step 1: Write the failing behavior test for reduced edge cases**
 
 Append this test to `src/app/routing/routeTransition.test.mjs`:
 
@@ -250,7 +250,7 @@ cmd /c corepack pnpm run test
 
 Expected: PASS if Task 1 implementation already uses `findLast`. If this fails, update `completeRouteExit` exactly as shown in Task 1.
 
-- [ ] **Step 2: Replace `RouterOutlet` with route layer rendering**
+- [x] **Step 2: Replace `RouterOutlet` with route layer rendering**
 
 Update `src/app/routing/RouterOutlet.tsx`:
 
@@ -318,7 +318,7 @@ export function RouterOutlet() {
 }
 ```
 
-- [ ] **Step 3: Run typecheck**
+- [x] **Step 3: Run typecheck**
 
 Run:
 
@@ -341,7 +341,7 @@ function findLastVisibleLayer(layers: readonly RouteLayer[]) {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
