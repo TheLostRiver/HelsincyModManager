@@ -3,6 +3,7 @@ import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
 import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
+import { applyModSelection } from "./modSelection";
 
 type ModLibraryPageProps = {
   /** 快捷操作回调。点击行为由上层（路由/容器）接入业务，页面本身只负责展示与局部 UI 状态。 */
@@ -44,16 +45,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const selectedCount = selectedIds.size;
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const selectCard = (id: string) => {
+    setSelectedIds((prev) => applyModSelection(prev, id, "replace"));
   };
 
   const selectAll = () => {
@@ -114,7 +107,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                   key={item.id}
                   item={item}
                   selected={selectedIds.has(item.id)}
-                  onSelect={toggleSelect}
+                  onSelect={selectCard}
                 />
               ))}
             </div>
