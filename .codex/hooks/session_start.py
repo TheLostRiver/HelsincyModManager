@@ -44,20 +44,28 @@ def main() -> None:
         return
 
     planning_dir = access.resolution.paths.root if access.resolution is not None else None
-    parts = [
-        _run_session_catchup(root, planning_dir),
-        planning_state.render_prompt_context(root, session_id=session_id, event="SessionStart"),
-    ]
+    catchup_context = _run_session_catchup(root, planning_dir)
+    prompt_context = planning_state.render_prompt_context(root, session_id=session_id, event="SessionStart")
+    parts = [catchup_context, prompt_context]
     output = "\n\n".join(part for part in parts if part)
     if output:
-        adapter.emit_json(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "SessionStart",
-                    "additionalContext": output,
-                }
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": output,
             }
+        }
+        notice_source = prompt_context or output
+        notice = planning_state.render_context_notice(
+            output,
+            root=root,
+            session_id=session_id,
+            event="SessionStart",
+            status_context=notice_source,
         )
+        if notice:
+            payload["systemMessage"] = notice
+        adapter.emit_json(payload)
 
 
 if __name__ == "__main__":

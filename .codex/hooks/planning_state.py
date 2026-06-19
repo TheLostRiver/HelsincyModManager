@@ -226,13 +226,19 @@ MESSAGES = {
             "[planning-with-files] context: profile={profile}, progress={progress}, "
             "~{chars} chars (~{tokens} tokens). {hint}. Mute: /pwf-context-notice-off."
         ),
+        "context_blocked_notice": (
+            "[planning-with-files] planning context was not injected: {reason}"
+        ),
         "post_tool_recorded": (
-            "[planning-with-files] Recorded PostToolUse context in progress.md. "
-            "If a phase is now complete, update task_plan.md status."
+            "[planning-with-files] Objective PostToolUse auto record appended by hooks. "
+            "If a phase is now complete, update task_plan.md status; "
+            "put interpretive notes in findings.md."
         ),
         "stop_incomplete": (
-            "[planning-with-files] Task incomplete ({complete}/{total} phases done). "
-            "Update progress.md, then read task_plan.md and continue working on the remaining phases."
+            "[planning-with-files] Task in progress ({complete}/{total} phases complete). "
+            "If ending this turn, review task_plan.md phase/status; "
+            "put interpretive notes or test conclusions in findings.md; "
+            "progress.md is maintained by hooks as the objective log."
         ),
     },
     "zh-CN": {
@@ -263,13 +269,17 @@ MESSAGES = {
             "[planning-with-files] 上下文：profile={profile}，progress={progress}，"
             "约 {chars} chars（~{tokens} tokens）。{hint}。静音：/pwf-context-notice-off。"
         ),
+        "context_blocked_notice": (
+            "[planning-with-files] 规划上下文未注入：{reason}"
+        ),
         "post_tool_recorded": (
-            "[planning-with-files] 已将 PostToolUse 上下文记录到 progress.md。"
-            "如果阶段已经完成，请更新 task_plan.md 状态。"
+            "[planning-with-files] PostToolUse 客观 auto record 已由 hook 追加。"
+            "如果阶段已经完成，请更新 task_plan.md 状态；解释性笔记或测试结论写入 findings.md。"
         ),
         "stop_incomplete": (
-            "[planning-with-files] 任务未完成（已完成 {complete}/{total} 个阶段）。"
-            "请更新 progress.md，然后阅读 task_plan.md 并继续处理剩余阶段。"
+            "[planning-with-files] 任务进行中（已完成 {complete}/{total} 个阶段）。"
+            "如果正在结束本轮，请检查 task_plan.md 阶段/状态；解释性笔记或测试结论写入 findings.md；"
+            "progress.md 由 hooks 维护为客观日志。"
         ),
     },
 }
@@ -283,6 +293,14 @@ VALID_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 LEASE_STATUSES = {"active", "stale", "released", "shared"}
 DEFAULT_SESSION_LEASE_TTL_SECONDS = 600
 DEFAULT_TASK_LEASE_LOCK_TIMEOUT_SECONDS = 2.0
+PRE_COMPACT_NOTICE = (
+    "[planning-with-files] PreCompact: context compaction is about to occur.\n"
+    "Before compaction completes: keep task_plan.md phase/status current; "
+    "leave progress.md as the objective log written by hooks; "
+    "capture interpretive notes in findings.md.\n"
+    "task_plan.md, findings.md, progress.md remain on disk and will be re-read "
+    "after compaction."
+)
 
 
 def current_lang(env: Mapping[str, str] | None = None) -> str:
@@ -1156,8 +1174,27 @@ def compact_threshold() -> int:
     return value if value >= 1 else DEFAULT_COMPACT_THRESHOLD
 
 
+def findings_injection_state(env: Mapping[str, str] | None = None) -> tuple[str, bool, str | None]:
+    source = env if env is not None else os.environ
+    raw = source.get("PWF_INCLUDE_FINDINGS")
+    if raw is None:
+        return "auto", True, None
+    value = raw.strip(" \t\r\n").lower()
+    if value == "auto":
+        return "auto", True, None
+    if value in {"1", "true", "yes", "on"}:
+        return "on", True, None
+    if value in {"0", "false", "no", "off"}:
+        return "off", False, None
+    return (
+        "invalid",
+        False,
+        f'[warn] invalid PWF_INCLUDE_FINDINGS="{safe_env_value(raw)}"; findings injection disabled',
+    )
+
+
 def findings_injection_enabled() -> bool:
-    enabled, _warning = env_bool("PWF_INCLUDE_FINDINGS", default=False)
+    _state, enabled, _warning = findings_injection_state()
     return enabled
 
 
@@ -1319,6 +1356,24 @@ def progress_compaction_notice(root: Path, session_id: str | None = None) -> str
     return message("progress_compaction_notice", count=count)
 
 
+def render_pre_compact_context(root: Path, session_id: str | None = None) -> str:
+    access = resolve_planning_access(root, session_id=session_id)
+    if not access.allowed:
+        return access.warning or ""
+    if access.resolution is None:
+        return ""
+
+    parts = [PRE_COMPACT_NOTICE]
+    status = plan_attestation_status(root, access.resolution.paths)
+    if status.valid is True and status.actual:
+        parts.append(f"Plan-SHA256 at compaction: {status.actual}")
+    elif status.valid is False:
+        if status.expected:
+            parts.append(f"Plan-SHA256 at compaction: {status.expected}")
+        parts.append(message("plan_tampered"))
+    return "\n".join(parts).rstrip()
+
+
 def _attestation_path(project_root: Path, paths: PlanningPaths) -> Path:
     try:
         plan_root = paths.root.resolve()
@@ -1449,7 +1504,34 @@ def _context_profile_hint_zh(profile: str) -> str:
     return _CONTEXT_PROFILE_HINT_ZH.get(profile, _CONTEXT_PROFILE_HINT_ZH["deep"])
 
 
-def _append_context_notice(
+def render_context_notice(
+    rendered: str,
+    *,
+    root: Path,
+    session_id: str | None = None,
+    event: str = "UserPromptSubmit",
+    status_context: str | None = None,
+) -> str:
+    if not rendered:
+        return ""
+    blocked_notice = _blocked_context_notice(status_context if status_context is not None else rendered)
+    if blocked_notice:
+        return blocked_notice
+    settings = context_settings_source(root=root, session_id=session_id)
+    limits = context_limits(root=root, session_id=session_id)
+    return _context_notice(rendered, settings=settings, limits=limits, event=event)
+
+
+def _blocked_context_notice(rendered: str) -> str:
+    if rendered == message("plan_tampered"):
+        return message("context_blocked_notice", reason="task_plan.md attestation mismatch.")
+    if rendered.startswith("[planning-with-files] planning context omitted because "):
+        reason = rendered.removeprefix("[planning-with-files] planning context omitted because ")
+        return message("context_blocked_notice", reason=reason)
+    return ""
+
+
+def _context_notice(
     rendered: str,
     *,
     settings: ContextSettingsSource,
@@ -1457,9 +1539,9 @@ def _append_context_notice(
     event: str,
 ) -> str:
     if not rendered:
-        return rendered
+        return ""
     if not _should_show_context_notice(settings, limits, event=event):
-        return rendered
+        return ""
     chars = len(rendered)
     tokens = _estimated_tokens(chars)
     hint = (
@@ -1475,7 +1557,7 @@ def _append_context_notice(
         tokens=_format_approx_count(tokens),
         hint=hint,
     )
-    return f"{notice}\n{rendered}"
+    return notice
 
 
 def render_prompt_context(root: Path, session_id: str | None = None, event: str = "UserPromptSubmit") -> str:
@@ -1485,7 +1567,6 @@ def render_prompt_context(root: Path, session_id: str | None = None, event: str 
     if paths is None:
         return ""
 
-    settings = context_settings_source(root=root, session_id=session_id)
     limits = context_limits(root=root, session_id=session_id)
     plan_context = _render_plan_data(
         root,
@@ -1527,8 +1608,7 @@ def render_prompt_context(root: Path, session_id: str | None = None, event: str 
         )
     parts.extend(["", message("plan_context_footer")])
     rendered = apply_total_context_budget("\n".join(parts).rstrip(), limits)
-    rendered = _append_context_notice(rendered, settings=settings, limits=limits, event=event)
-    return apply_total_context_budget(rendered, limits)
+    return rendered
 
 
 def _operation_from_change_value(value: Any) -> str:

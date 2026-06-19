@@ -35,7 +35,7 @@ fi
 if [ "$COMPLETE" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
     echo "[planning-with-files] ALL PHASES COMPLETE ($COMPLETE/$TOTAL). If the user has additional work, add new phases to task_plan.md before starting."
 else
-    echo "[planning-with-files] Task in progress ($COMPLETE/$TOTAL phases complete). Update progress.md before stopping."
+    echo "[planning-with-files] Task in progress ($COMPLETE/$TOTAL phases complete). Review task_plan.md phase/status; put interpretive notes in findings.md; progress.md is maintained by hooks as the objective log."
     if [ "$IN_PROGRESS" -gt 0 ]; then
         echo "[planning-with-files] $IN_PROGRESS phase(s) still in progress."
     fi

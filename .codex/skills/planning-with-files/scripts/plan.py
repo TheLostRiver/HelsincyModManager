@@ -30,6 +30,7 @@ REQUIRED_HOOK_ENTRYPOINTS = [
     ".codex/hooks/user_prompt_submit.py",
     ".codex/hooks/pre_tool_use.py",
     ".codex/hooks/post_tool_use.py",
+    ".codex/hooks/pre_compact.py",
     ".codex/hooks/stop.py",
 ]
 DEFAULT_COMPACT_THRESHOLD = 100
@@ -874,8 +875,8 @@ def _progress_storage_json(
     }
 
 
-def _findings_context_enabled() -> tuple[bool, str | None]:
-    return planning_state.env_bool("PWF_INCLUDE_FINDINGS", default=False)
+def _findings_context_state() -> tuple[str, bool, str | None]:
+    return planning_state.findings_injection_state()
 
 
 def _context_progress_text(limits: planning_state.ContextLimits) -> str:
@@ -885,9 +886,11 @@ def _context_progress_text(limits: planning_state.ContextLimits) -> str:
 
 
 def _context_findings_text(limits: planning_state.ContextLimits) -> str:
-    enabled, _warning = _findings_context_enabled()
+    state, enabled, _warning = _findings_context_state()
     if not enabled:
         return "off"
+    if state == "auto":
+        return f"auto tail {limits.findings_tail_lines}"
     return f"tail {limits.findings_tail_lines}"
 
 
@@ -952,7 +955,7 @@ def _context_doctor_lines(root: Path, session_id: str | None) -> list[str]:
     limits = planning_state.context_limits(root=root, session_id=session_id)
     source = planning_state.context_settings_source(root=root, session_id=session_id)
     paused = planning_state.is_session_paused(root, session_id)
-    findings_enabled, findings_warning = _findings_context_enabled()
+    findings_state, findings_enabled, findings_warning = _findings_context_state()
     lines = [
         f"context profile: {limits.profile}",
         f"context profile source: {source.profile_source}",
@@ -960,9 +963,13 @@ def _context_doctor_lines(root: Path, session_id: str | None) -> list[str]:
         f"context notice source: {source.notice_source}",
         _message("context_paused_status", paused=str(paused).lower()),
         (
-            f"context findings: on tail {limits.findings_tail_lines}"
-            if findings_enabled
-            else "context findings: off"
+            f"context findings: auto tail {limits.findings_tail_lines}"
+            if findings_enabled and findings_state == "auto"
+            else (
+                f"context findings: on tail {limits.findings_tail_lines}"
+                if findings_enabled
+                else "context findings: off"
+            )
         ),
         (
             f"context progress mode: record-aware {limits.progress_recent_records} records"

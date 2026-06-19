@@ -1,44 +1,32 @@
 # 进度日志
 <!--
-  用途：按时间记录做了什么、什么时候做、结果如何。
-  时机：完成阶段、遇到错误、运行重要验证后更新。
+  用途：由 planning hooks 写入的客观 auto records。
+  归属：不要在这里手写日常行动总结；写入/编辑工具完成后由 hooks 追加事实记录。
+  使用：阶段和状态写在 task_plan.md；测试结论、错误分析、决策和理由写在 findings.md。
 -->
 
-## 会话: [日期]
+## Hook 写入的 Auto Records
+<!--
+  PostToolUse hooks 会追加类似记录：
 
-### Phase 1: [标题]
-- **Status:** in_progress
-- **Started:** [timestamp]
-- 已执行操作:
-  -
-- 创建或修改的文件:
-  -
+  ### Auto Record: 2026-01-15 10:35:47
+  - Tool: apply_patch
+  - Session: unavailable
+  - Plan-Source: workspace
+  - Result: success
+  - Files:
+    - `src/example.py` (update)
 
-### Phase 2: [标题]
-- **Status:** pending
-- 已执行操作:
-  -
-- 创建或修改的文件:
-  -
-
-## 测试结果
-| 测试 | 输入 | 预期 | 实际 | 状态 |
-|------|------|------|------|------|
-|      |      |      |      |      |
-
-## 错误日志
-| 时间 | 错误 | 尝试次数 | 解决方式 |
-|------|------|----------|----------|
-|      |      | 1        |          |
+  这些记录是事实审计条目，便于恢复上下文；解释性总结请写入 findings.md。
+-->
 
 ## 5 问恢复检查
-| 问题 | 回答 |
-|------|------|
-| 我在哪里？ | task_plan.md 中的当前阶段 |
-| 我要去哪里？ | 剩余阶段 |
-| 目标是什么？ | task_plan.md 中的目标 |
-| 我学到了什么？ | 见 findings.md |
-| 我做了什么？ | 见本文件 |
+<!--
+  这是只读恢复指引，不是要求手写 progress 记录。
 
----
-*完成阶段或遇到错误后更新。*
+  1. 我在哪里？ -> task_plan.md 中的当前阶段/状态
+  2. 我要去哪里？ -> task_plan.md 中的剩余阶段
+  3. 目标是什么？ -> task_plan.md 中的目标
+  4. 我学到了什么？ -> findings.md
+  5. 哪些文件发生过变化？ -> 本文件中的 hook auto records
+-->
