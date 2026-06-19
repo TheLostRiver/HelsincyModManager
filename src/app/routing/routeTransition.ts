@@ -12,7 +12,7 @@ export function createRouteLayerKey(route: AppRoute): string {
   return `${route.id}:${route.path}`;
 }
 
-function findLastVisibleLayer(layers: readonly RouteLayer[]): RouteLayer | undefined {
+function getNewestVisibleLayer(layers: readonly RouteLayer[]): RouteLayer | undefined {
   for (let index = layers.length - 1; index >= 0; index -= 1) {
     const layer = layers[index];
 
@@ -55,7 +55,7 @@ export function beginRouteTransition(currentLayers: readonly RouteLayer[], targe
 }
 
 export function completeRouteExit(currentLayers: readonly RouteLayer[]): RouteLayer[] {
-  const visibleLayer = findLastVisibleLayer(currentLayers);
+  const visibleLayer = getNewestVisibleLayer(currentLayers);
 
   if (!visibleLayer) {
     return [];
