@@ -207,7 +207,7 @@
 | `.main-workspace` | `Dashboard.css` | Dashboard 主内容区 | 已有 |
 | `.setup-rail` | `Dashboard.css` | Dashboard 右侧 rail | 已有 |
 | `.mod-library` | `ModLibraryPage.css` | Mod 页面根容器 | 已有 |
-| `.mod-library__body` | `ModLibraryPage.css` | Mod 主内容 + 操作面板双列 | **需补查** |
+| `.mod-library__body` | `ModLibraryPage.css` | Mod 主内容 + 操作面板双列 | 已有 |
 | `.mod-library__main` | `ModLibraryPage.css` | Mod 主卡片区 | 已有 |
 | `.compact-panel` | `ModLibraryPage.css` | 小屏折叠后操作区 | **需补查** |
 | `.compact-panel__stack` | `ModLibraryPage.css` | 横向滚动操作栈 | 已有 |
@@ -218,6 +218,7 @@
 - `已/需补查` 仅表示文档设计时的首轮源码核对结论；实现前应再核对一次最新源码。
 - 这张表不是全仓最终穷举，而是本次响应式改动范围内的**强制检查集**。若实现中发现新的承压容器，应追加到该表，而不是只在代码里默默修。
 - 实现完成后，验收记录应明确写出：哪些容器已核对、哪些容器补了 `min-width: 0`、哪些容器确认不需要。
+- **语义区分：不要把 `min-width: 0` 一刀切套到所有容器。** 它的目的是让 flex/grid item 可以收缩到内容宽度以下、防止被内容最小宽度撑爆。但**滚动容器**（例如 `<= 1280px` 后转横向滚动的 `.compact-panel__stack`）需要的是 `min-content`/`auto` 语义来保留滚动内容可见宽度，此时写 `min-width: 0` 反而可能让滚动区塌缩。审计时按用途分类：收缩型容器用 `0`，滚动型容器保留 `auto`。
 
 ## 长文本兜底
 
