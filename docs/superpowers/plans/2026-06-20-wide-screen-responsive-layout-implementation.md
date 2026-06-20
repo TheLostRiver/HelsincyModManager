@@ -214,6 +214,27 @@ test("RouterOutlet 与 Dashboard 小屏契约保留：1360px 单列化", () => {
   }
 });
 
+test("关键承压容器保留 min-width: 0 护栏", () => {
+  const checks = [
+    ["src/app/frame/AppFrame.css", [".app-surface", ".top-status-bar", ".current-game"]],
+    ["src/app/routing/RouterOutlet.css", [".route-transition", ".route-transition__layer"]],
+    ["src/features/dashboard/Dashboard.css", [".main-workspace", ".setup-rail"]],
+    ["src/features/mods/ModLibraryPage.css", [".mod-library", ".mod-library__body", ".mod-library__main", ".compact-panel__stack", ".compact-action__left"]],
+  ];
+
+  for (const [file, selectors] of checks) {
+    const css = readProjectFile(file);
+    for (const selector of selectors) {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      assert.match(
+        css,
+        new RegExp(`${escaped}[\\s\\S]*?min-width:\\s*0`),
+        `${file} 缺少关键容器护栏: ${selector}`,
+      );
+    }
+  }
+});
+
 test("Mod 管理页小屏契约保留：1280/960/640 断点", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
   assert.match(css, /@media\s*\(max-width:\s*1280px\)/);
@@ -649,6 +670,44 @@ cmd /c corepack pnpm run dev -- --host 127.0.0.1 --port 1420
 })();
 ```
 
+- [ ] **Step 2.5: 运行焦点可达性片段**
+
+在真实 `/mods` 与 Dashboard 页面各至少运行一次。目标：补齐 `overflowX` / `clippedCount` 之外的键盘交互可达性证据。
+
+```js
+(() => {
+  const shell = document.querySelector(".app-shell");
+  if (!shell) return { error: "shell missing" };
+  const shellRect = shell.getBoundingClientRect();
+  const focusables = Array.from(
+    document.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+  ).filter(el => !el.hasAttribute("disabled"));
+
+  const sample = focusables.slice(0, 12).map(el => {
+    el.focus();
+    const r = el.getBoundingClientRect();
+    return {
+      label: el.textContent?.trim() || el.getAttribute("aria-label") || el.tagName,
+      hiddenByAttr: !!el.closest("[hidden],[aria-hidden='true']"),
+      zeroSized: r.width <= 0 || r.height <= 0,
+      outsideShell:
+        r.right > shellRect.right + 1 ||
+        r.left < shellRect.left - 1 ||
+        r.bottom > shellRect.bottom + 1 ||
+        r.top < shellRect.top - 1,
+    };
+  });
+
+  return {
+    sampled: sample.length,
+    failures: sample.filter(item => item.hiddenByAttr || item.zeroSized || item.outsideShell),
+    sample,
+  };
+})();
+```
+
+期望：`failures.length === 0`。若某控件使用父层 focus ring 而非自身 outline，可在记录中注明，但仍需证明焦点位置可见、未被裁切。
+
 - [ ] **Step 3: 全视口验收矩阵（放大 + 缩小双向）**
 
 | Viewport | 区间 | shellWidth 预期 | gridColumns | overflowX | clipped |
@@ -686,6 +745,7 @@ cmd /c corepack pnpm run dev -- --host 127.0.0.1 --port 1420
 - 超长游戏名（fixture 里故意放的长标题）被 `text-overflow: ellipsis` 截断，未撑破状态栏。
 - floating 模式下，浮动侧边栏不会遮住主操作按钮或右侧关键内容。
 - Dashboard 真实页面下，右侧 setup/status rail 在 `<= 1360px` 单列化后没有出现裁切或顺序错乱。
+- 键盘 Tab 导航下，至少一轮主操作按钮、搜索输入、紧凑操作按钮的焦点移动可见且未被 shell 裁切。
 
 - [ ] **Step 5: 连续拖拽与真实 4K 缩放检查（若硬件可用）**
 
@@ -759,6 +819,7 @@ Expected: PASS（policy、whitespace、doc links、frontend boundary、secret sc
 - 实际通过的自动化命令。
 - 已检查的浏览器视口（含缩小方向 375/800/1024、低高度 1280x720/640 与放大方向各档）。
 - `overflowX === 0` 与 `clippedCount === 0` 的实测结果。
+- 焦点可达性片段的抽样结果，及任何需要人工解释的焦点呈现差异。
 - fixture 与真实页面各自检查了哪些路由、哪些侧边栏模式。
 - 是否在真实 4K 显示器验证 50%/33%/25%；若用设备模拟替代，注明。
 - 是否执行了连续拖拽检查；若未执行，注明。
@@ -781,8 +842,10 @@ git commit -m "fix: 完善全视口响应式验证问题"
 - **Dashboard 收口**：原方案漏掉的 `.workbench-body` 与 `.setup-rail` 的 `360px` 已纳入 Task 4，两处都消费 `--layout-route-aside-width`，且澄清了与 route layer 的关系。
 - **最小 patch**：所有 CSS 改动明确标注"只替换目标行"，禁止全量重写规则块，杜绝悄悄回退。
 - **测试分层**：L1 正则（token 存在 + 硬编码消除）+ L2 结构（小屏契约负向 + 断点方向）+ L3 浏览器 DOM（宽度/溢出/裁切）。L3 是验收门，不可跳过。
+- **关键容器护栏**：L2 新增关键承压容器的 `min-width: 0` 回归断言，避免以后有人无感知删掉这层保护。
 - **缩小方向**：新增 `375/800/1024` 视口验收与连续拖拽观察，`overflowX === 0` 与 `clippedCount === 0` 为硬约束。
 - **真实覆盖**：fixture 只辅助测量；真实 `/mods`、Dashboard、classic/floating 模式与低高度窗口必须补测，否则不能宣称"全视口"完成验收。
+- **焦点可达性**：L3 补充焦点抽样脚本；若未来需要更强保证，可进一步演进为 Playwright 键盘 smoke。
 - **放大方向**：保留 50%/33%/25% 必测，并提示优先用 DevTools 设备模拟（确定性高于浏览器缩放快捷键）。
 - **Scope check**：单一前端布局计划。不修改 Tauri command、Rust crate、游戏适配器、InstallPlan、manifest、backup、rollback、文件写入或玩家数据逻辑。
 - **Placeholder scan**：每个 Task 含具体文件、精确 diff、命令与期望结果，无未说明的实现工作。
