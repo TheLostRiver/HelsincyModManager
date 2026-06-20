@@ -67,7 +67,7 @@
 @media (prefers-reduced-motion: reduce) {
   .route-transition__layer.is-entering,
   .route-transition__layer.is-exiting {
-    animation-duration: 0.01ms;
+    animation: none;
     transform: none;
   }
 }

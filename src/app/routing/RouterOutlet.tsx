@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type AnimationEvent } from "react";
 import {
   beginRouteTransition,
   completeRouteExit,
@@ -7,8 +7,6 @@ import {
   type RouteLayer,
 } from "./routeTransition";
 import { useAppRoute } from "./useAppRoute";
-
-const routeExitDurationMs = 240;
 
 function getNewestVisibleLayer(layers: readonly RouteLayer[]): RouteLayer | undefined {
   for (let index = layers.length - 1; index >= 0; index -= 1) {
@@ -42,12 +40,24 @@ export function RouterOutlet() {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      setRouteLayers((previousLayers) => completeRouteExit(previousLayers));
-    }, routeExitDurationMs);
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
 
-    return () => window.clearTimeout(timeoutId);
+    setRouteLayers((previousLayers) => completeRouteExit(previousLayers));
   }, [routeLayers]);
+
+  function handleLayerAnimationEnd(event: AnimationEvent<HTMLDivElement>, phase: RouteLayer["phase"]) {
+    if (event.currentTarget !== event.target) {
+      return;
+    }
+
+    if (phase !== "exiting") {
+      return;
+    }
+
+    setRouteLayers((previousLayers) => completeRouteExit(previousLayers));
+  }
 
   return (
     <div className="route-transition" aria-live="polite">
@@ -62,6 +72,7 @@ export function RouterOutlet() {
             aria-hidden={isHiddenFromA11y || undefined}
             inert={isHiddenFromA11y ? true : undefined}
             data-route-id={layer.route.id}
+            onAnimationEnd={(event) => handleLayerAnimationEnd(event, layer.phase)}
           >
             <RouteElement />
           </div>

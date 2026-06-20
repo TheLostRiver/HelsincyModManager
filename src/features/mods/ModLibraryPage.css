@@ -619,7 +619,7 @@
 
 /* ---------- 页面过渡动画 (Staggered Entrance) ---------- */
 
-@keyframes libraryStaggerFadeIn {
+@keyframes library-stagger-fade-in {
   0% {
     opacity: 0;
     transform: translateY(12px);
@@ -632,7 +632,7 @@
 
 .anim-stagger-item {
   opacity: 0;
-  animation: libraryStaggerFadeIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation: library-stagger-fade-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   animation-delay: calc(var(--stagger-idx, 0) * 0.03s);
 }
 
