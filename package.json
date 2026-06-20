@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.mjs\"",
+    "generate:mods-mock": "node scripts/generate-mod-library-mock-data.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "tauri": "tauri",
