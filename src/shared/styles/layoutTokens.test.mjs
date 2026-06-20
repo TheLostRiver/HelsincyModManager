@@ -280,8 +280,9 @@ test("关键承压容器保留 min-width: 0 护栏", () => {
       "src/features/mods/ModLibraryPage.css",
       [
         [".mod-library", null],
-        [".mod-library__body", null],
-        [".mod-library__main", null],
+        [".mod-library__sticky-controls", null],
+        [".mod-library__toolbar-slot,\n.mod-library__actions-slot", null],
+        [".mod-library__content", null],
         [".compact-panel", null],
         [".compact-panel__stack", "(max-width: 1280px)"],
         [".compact-action__left", null],
@@ -309,7 +310,7 @@ test("Mod 管理页小屏契约保留：1280/960/640 断点", () => {
   const rules = parseCssRules(readProjectFile("src/features/mods/ModLibraryPage.css"));
 
   expectDeclaration(
-    findRule(rules, ".mod-library__body", "(max-width: 1280px)"),
+    findRule(rules, ".mod-library__sticky-controls", "(max-width: 1280px)"),
     /grid-template-columns:\s*minmax\(0,\s*1fr\);/,
     "缺少 1280px 下 mod body 单列规则",
   );
