@@ -9,7 +9,7 @@
 .route-transition__layer {
   display: grid;
   grid-area: 1 / 1;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) var(--layout-route-aside-width);
   justify-content: start;
   gap: 28px;
   width: 100%;
