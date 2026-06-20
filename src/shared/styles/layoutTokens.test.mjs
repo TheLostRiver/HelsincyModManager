@@ -132,8 +132,48 @@ test("tokens.css 宽屏断点逐级覆盖 shell max-width", () => {
 
   assert.match(tokensCss, /--layout-shell-max-width:\s*1920px;/);
   assert.match(tokensCss, /@media\s*\(min-width:\s*1921px\)\s*{[\s\S]*--layout-shell-max-width:\s*2400px;/);
-  assert.match(tokensCss, /@media\s*\(min-width:\s*2561px\)\s*{[\s\S]*--layout-shell-max-width:\s*2880px;/);
-  assert.match(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-shell-max-width:\s*min\(100vw,\s*3200px\);/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*2561px\)\s*{[\s\S]*--layout-shell-max-width:\s*3040px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*2561px\)\s*{[\s\S]*--layout-page-padding:\s*32px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*2561px\)\s*{[\s\S]*--layout-content-gap:\s*20px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*2561px\)\s*{[\s\S]*--layout-mod-action-panel-width:\s*200px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*2561px\)\s*{[\s\S]*--layout-mod-card-min-width:\s*208px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-shell-max-width:\s*min\(100vw,\s*3440px\);/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-page-padding:\s*36px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-content-gap:\s*22px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-mod-action-panel-width:\s*212px;/);
+  assert.match(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-mod-card-min-width:\s*212px;/);
+  assert.doesNotMatch(tokensCss, /@media\s*\(min-width:\s*3201px\)\s*{[\s\S]*--layout-shell-max-width:\s*min\(100vw,\s*3200px\);/);
+});
+
+test("tokens.css 超宽档位不得覆盖 dashboard route aside token", () => {
+  const tokensCss = readProjectFile("src/shared/styles/tokens.css");
+  const wideBlocks = [
+    tokensCss.match(/@media\s*\(min-width:\s*2561px\)\s*{([\s\S]*?)}/),
+    tokensCss.match(/@media\s*\(min-width:\s*3201px\)\s*{([\s\S]*?)}/),
+  ];
+
+  for (const block of wideBlocks) {
+    assert.ok(block, "缺少超宽断点");
+    assert.doesNotMatch(
+      block[1],
+      /--layout-route-aside-width\s*:/,
+      "超宽档位不应覆盖 --layout-route-aside-width",
+    );
+  }
+});
+
+test("tokens.css 宽屏断点必须同时覆盖 light/dark theme root", () => {
+  const tokensCss = readProjectFile("src/shared/styles/tokens.css");
+
+  for (const breakpoint of [1921, 2561, 3201]) {
+    assert.match(
+      tokensCss,
+      new RegExp(
+        `@media\\s*\\(min-width:\\s*${breakpoint}px\\)\\s*{\\s*:root,\\s*:root\\[data-color-scheme="light"\\],\\s*:root\\[data-color-scheme="dark"\\]\\s*{`,
+      ),
+      `宽屏断点 ${breakpoint}px 未同时覆盖 light/dark theme root`,
+    );
+  }
 });
 
 test("AppFrame 不再硬编码 1920px，改为 token", () => {
