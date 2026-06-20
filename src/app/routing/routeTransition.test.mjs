@@ -69,6 +69,17 @@ test("beginRouteTransition replaces an in-flight entering route with the newest 
   assert.deepEqual(serializeLayers(nextLayers), [{ key: "dashboard:/", routeId: "dashboard", phase: "active" }]);
 });
 
+test("beginRouteTransition preserves an in-flight transition to the existing target route", () => {
+  const inFlightLayers = beginRouteTransition([createInitialRouteLayer(dashboardRoute)], modsRoute);
+
+  const nextLayers = beginRouteTransition(inFlightLayers, modsRoute);
+
+  assert.deepEqual(serializeLayers(nextLayers), [
+    { key: "dashboard:/", routeId: "dashboard", phase: "exiting" },
+    { key: "mods:/mods", routeId: "mods", phase: "entering" },
+  ]);
+});
+
 test("beginRouteTransition drops older exiting layers when switching to a third route", () => {
   const inFlightLayers = beginRouteTransition([createInitialRouteLayer(dashboardRoute)], modsRoute);
 
