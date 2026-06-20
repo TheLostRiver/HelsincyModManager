@@ -40,7 +40,7 @@
 
 真实 DOM 层级（来自 `AppFrame.tsx` + `RouterOutlet.tsx`）：
 
-```
+```text
 .app-shell
 ├── Sidebar（classic 240px 固定列 / floating 88px 浮动）
 └── .app-surface
