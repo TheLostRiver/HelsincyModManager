@@ -44,14 +44,14 @@
 | --- | --- | --- | --- |
 | L1 token 合约 | `node --test` + 正则 | token 名存在、宽屏断点数值、硬编码已消除 | cascade 实际值 |
 | L2 CSS 结构解析 | `node --test` + 轻量 CSS 解析（正则切分规则块） | 选择器与 media query 的包含关系、小屏契约规则未被删除 | 真实渲染 |
-| L3 浏览器 DOM 行为 | 手动 smoke + 可选 Playwright | shell 实际宽度、横向溢出、列数、裁切 | — |
+| L3 浏览器 DOM 行为 | 手动 smoke + 可选 Playwright | shell 实际宽度、横向溢出、列数、裁切、真实页面/模式差异 | — |
 
-L1/L2 跑在 `pnpm run test` 里，是**回归护栏**；L3 是**验收门**，不可跳过。三者互补：L1/L2 守住"源码没回退"，L3 证明"运行时固若金汤"。
+L1/L2 跑在 `pnpm run test` 里，是**回归护栏**；L3 是**验收门**，不可跳过。三者互补：L1/L2 守住"源码没回退"，L3 证明"当前验收范围内运行时稳定"。不要把 L3 的抽样结果表述成"任意视口都已被证明"。
 
 ### 文件结构
 
 - 新建 `src/shared/styles/layoutTokens.test.mjs`：L1 + L2 测试。
-- 新建 `src/shared/styles/layout.fixture.html`：最小 DOM 骨架，供 L3 手动加载测量。
+- 新建 `src/shared/styles/layout.fixture.html`：最小 DOM 骨架，供 L3 手动加载测量；**只作辅助，不替代真实页面验收**。
 - 修改 `src/shared/styles/tokens.css`：布局 token + 宽屏断点。
 - 修改 `src/app/frame/AppFrame.css`：shell/padding/gap token。
 - 修改 `src/app/routing/RouterOutlet.css`：route aside token。
@@ -81,6 +81,7 @@ L1/L2 跑在 `pnpm run test` 里，是**回归护栏**；L3 是**验收门**，�
 - `2561px – 3200px`：shell 2880px。
 - `> 3200px`：shell 封顶 `min(100vw, 3200px)`。
 - `375px` 及更窄：保证无横向滚动、无裁切，不追求美观。
+- 低高度窗口：至少补测 `1280x720` / `1280x640`，避免只盯宽度不盯可达性。
 
 ---
 
@@ -544,6 +545,8 @@ git commit -m "style: Mod 管理页消费密度 token 并保留小屏契约"
 
 目的：在不启动完整 Vite dev server 时，也能用浏览器直接打开此文件快速测量 shell 宽度、横向溢出、列数。fixture **不参与构建产物**（Vite 只处理被 import 的资源）。
 
+限制：fixture 不能完整复现真实路由切换、classic/floating 侧边栏差异、Dashboard 右侧 rail 的真实内容高度、sticky 面板行为。因此它只能作为 L3 的辅助载体，不能单独替代真实页面验收。
+
 ```html
 <!doctype html>
 <html lang="zh-CN">
@@ -608,7 +611,7 @@ fixture 与 Task 7 的验证一起提交。
 
 - [ ] **Step 1: 选择验证载体**
 
-优先用 Task 6 的 `layout.fixture.html`（确定性高、无需起服务）。若需验证真实路由与组件，再起 dev server：
+先用 Task 6 的 `layout.fixture.html` 做快速测量，再**必须**补跑真实页面。若需验证真实路由与组件，起 dev server：
 
 ```powershell
 cmd /c corepack pnpm run dev -- --host 127.0.0.1 --port 1420
@@ -616,7 +619,7 @@ cmd /c corepack pnpm run dev -- --host 127.0.0.1 --port 1420
 
 - [ ] **Step 2: 在每个视口运行 DOM 测量片段**
 
-在下方矩阵的每个视口下（用 DevTools Responsive 模拟），打开 fixture 或 `/mods`，等渲染完成后在 console 运行：
+在下方矩阵的每个视口下（用 DevTools Responsive 模拟），先打开 fixture 做壳体测量，再对真实 `/mods` 路由复测；Dashboard 则至少运行一次同类测量或做等价目视检查。等渲染完成后在 console 运行：
 
 ```js
 (() => {
@@ -666,16 +669,27 @@ cmd /c corepack pnpm run dev -- --host 127.0.0.1 --port 1420
 
 **每个视口都必须**：`overflowX === 0`、`clippedCount === 0`、`gridColumns >= 1`、`shellLeft ≈ shellRightGap`（居中）。
 
-- [ ] **Step 4: 小屏契约回归目视检查**
+另外补充两组低高度窗口：
 
-在 `375x812`、`800x600`、`1366x768` 三个视口目视确认：
+| Viewport | 区间 | 重点 |
+| --- | --- | --- |
+| `1280x720` | 低高度·桌面 | sticky 面板、顶部状态栏、主操作可达 |
+| `1280x640` | 低高度·极限 | floating 侧边栏高度断点、内容滚动区可用 |
+
+- [ ] **Step 4: 小屏契约与真实模式回归目视检查**
+
+在 `375x812`、`800x600`、`1366x768` 三个视口目视确认，并分别抽样 classic / floating 两种侧边栏模式：
 
 - `<= 1360px`：`.window-tools` 已隐藏、非 compact `.status-pill` 已隐藏。
 - `<= 860px`：shell 已单列（非浮动模式）、surface padding 为 16px。
 - `<= 640px`：Mod 卡片更小、compact-panel 已单列。
 - 超长游戏名（fixture 里故意放的长标题）被 `text-overflow: ellipsis` 截断，未撑破状态栏。
+- floating 模式下，浮动侧边栏不会遮住主操作按钮或右侧关键内容。
+- Dashboard 真实页面下，右侧 setup/status rail 在 `<= 1360px` 单列化后没有出现裁切或顺序错乱。
 
-- [ ] **Step 5: 真实 4K 缩放检查（若硬件可用）**
+- [ ] **Step 5: 连续拖拽与真实 4K 缩放检查（若硬件可用）**
+
+先做一轮连续拖拽观察：从 `1366px` 持续拖到 `375px`，确认没有在**非断点位置**突然出现横向滚动、按钮消失、文本重叠或 rail/面板闪断。
 
 若有 3840x2160 显示器，分别设浏览器缩放 `50%`、`33%`、`25%`，每个都确认：shell 居中且 `<= 3200px`、无横向滚动、无文本重叠。**三个缩放值分别测，不可互相替代**。
 
@@ -743,9 +757,11 @@ Expected: PASS（policy、whitespace、doc links、frontend boundary、secret sc
 在最终回复或 PR 描述中记录：
 
 - 实际通过的自动化命令。
-- 已检查的浏览器视口（含缩小方向 375/800/1024 与放大方向各档）。
+- 已检查的浏览器视口（含缩小方向 375/800/1024、低高度 1280x720/640 与放大方向各档）。
 - `overflowX === 0` 与 `clippedCount === 0` 的实测结果。
+- fixture 与真实页面各自检查了哪些路由、哪些侧边栏模式。
 - 是否在真实 4K 显示器验证 50%/33%/25%；若用设备模拟替代，注明。
+- 是否执行了连续拖拽检查；若未执行，注明。
 - 未执行的场景及原因。
 
 - [ ] **Step 7: 只在最终验证要求改动时提交修复**
@@ -765,7 +781,8 @@ git commit -m "fix: 完善全视口响应式验证问题"
 - **Dashboard 收口**：原方案漏掉的 `.workbench-body` 与 `.setup-rail` 的 `360px` 已纳入 Task 4，两处都消费 `--layout-route-aside-width`，且澄清了与 route layer 的关系。
 - **最小 patch**：所有 CSS 改动明确标注"只替换目标行"，禁止全量重写规则块，杜绝悄悄回退。
 - **测试分层**：L1 正则（token 存在 + 硬编码消除）+ L2 结构（小屏契约负向 + 断点方向）+ L3 浏览器 DOM（宽度/溢出/裁切）。L3 是验收门，不可跳过。
-- **缩小方向**：新增 `375/800/1024` 视口验收，`overflowX === 0` 与 `clippedCount === 0` 为硬约束。
+- **缩小方向**：新增 `375/800/1024` 视口验收与连续拖拽观察，`overflowX === 0` 与 `clippedCount === 0` 为硬约束。
+- **真实覆盖**：fixture 只辅助测量；真实 `/mods`、Dashboard、classic/floating 模式与低高度窗口必须补测，否则不能宣称"全视口"完成验收。
 - **放大方向**：保留 50%/33%/25% 必测，并提示优先用 DevTools 设备模拟（确定性高于浏览器缩放快捷键）。
 - **Scope check**：单一前端布局计划。不修改 Tauri command、Rust crate、游戏适配器、InstallPlan、manifest、backup、rollback、文件写入或玩家数据逻辑。
 - **Placeholder scan**：每个 Task 含具体文件、精确 diff、命令与期望结果，无未说明的实现工作。
