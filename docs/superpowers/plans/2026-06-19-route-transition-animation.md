@@ -17,7 +17,7 @@
 - Create `src/app/routing/routeTransition.test.mjs`: regression tests for route enter/exit state.
 - Create `src/app/routing/RouterOutlet.css`: route-layer layout and enter/exit animation classes.
 - Modify `src/main.tsx`: import the new routing CSS.
-- Leave `src/features/mods/ModLibraryPage.css` stagger animation intact; do not move feature-specific card/tool stagger in this task.
+- Keep the stagger animation owned by `ModLibraryPage`, but update it as needed so it also works under the route-layer wrapper and `ModPosterCard` index sequencing.
 - Do not modify sidebar button components unless implementation reveals a compile-time type issue; navigation should still call `navigate(path)`.
 
 ## Important Context
@@ -417,7 +417,7 @@ Create `src/app/routing/RouterOutlet.css`:
 @media (prefers-reduced-motion: reduce) {
   .route-transition__layer.is-entering,
   .route-transition__layer.is-exiting {
-    animation-duration: 0.01ms;
+    animation: none;
     transform: none;
   }
 }
