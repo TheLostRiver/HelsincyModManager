@@ -78,11 +78,11 @@ test("back-to-top control shifts slightly upward and toward the sidebar gap on w
 
   assert.match(
     css,
-    /\.mod-library__main[\s\S]*?--mod-library-back-to-top-inline-offset:\s*calc\(var\(--mod-library-back-to-top-size\)\s*\+\s*12px\);/,
+    /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-inline-offset:\s*calc\(var\(--mod-library-back-to-top-size\)\s*\+\s*12px\);/,
   );
   assert.match(
     css,
-    /\.mod-library__main[\s\S]*?--mod-library-back-to-top-block-offset:\s*12px;/,
+    /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*12px;/,
   );
   assert.match(
     css,
@@ -90,11 +90,11 @@ test("back-to-top control shifts slightly upward and toward the sidebar gap on w
   );
   assert.match(
     css,
-    /@media\s*\(max-width:\s*1280px\)\s*{[\s\S]*?\.mod-library__main\s*{[\s\S]*?--mod-library-back-to-top-inline-offset:\s*0px;/,
+    /@media\s*\(max-width:\s*1280px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-inline-offset:\s*0px;/,
   );
   assert.match(
     css,
-    /@media\s*\(max-width:\s*640px\)\s*{[\s\S]*?\.mod-library__main\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*8px;/,
+    /@media\s*\(max-width:\s*640px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*8px;/,
   );
 });
 
