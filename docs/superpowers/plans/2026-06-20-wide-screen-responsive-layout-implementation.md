@@ -775,10 +775,11 @@ cmd /c corepack pnpm run dev -- --host 127.0.0.1 --port 1420
 在 `375x812`、`800x600`、`1366x768` 三个视口目视确认，并分别抽样 classic / floating 两种侧边栏模式：
 
 - `<= 1360px`：`.window-tools` 已隐藏、非 compact `.status-pill` 已隐藏。
-- `<= 860px`：shell 已单列（非浮动模式）、surface padding 为 16px。
+- `<= 860px` classic 模式：`.app-shell:not([data-sidebar-mode="floating"])` 已单列，surface padding 为 16px。
+- `<= 860px` floating 模式：浮动侧边栏保持浮动态语义，但宽度已降到 52px，且不会遮住主操作按钮或右侧关键内容。
 - `<= 640px`：Mod 卡片更小、compact-panel 已单列。
 - 超长游戏名（fixture 里故意放的长标题）被 `text-overflow: ellipsis` 截断，未撑破状态栏。
-- floating 模式下，浮动侧边栏不会遮住主操作按钮或右侧关键内容。
+- `/mods` 真实页面下，`.compact-panel__stack` 在小屏横向滚动场景中仍保持可滚动、未塌缩，按钮完整可见。
 - Dashboard 真实页面下，右侧 setup/status rail 在 `<= 1360px` 单列化后没有出现裁切或顺序错乱。
 - 键盘 Tab 导航下，至少一轮主操作按钮、搜索输入、紧凑操作按钮的焦点移动可见且未被 shell 裁切。
 
