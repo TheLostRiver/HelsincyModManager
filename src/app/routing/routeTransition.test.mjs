@@ -80,6 +80,20 @@ test("beginRouteTransition preserves an in-flight transition to the existing tar
   ]);
 });
 
+test("beginRouteTransition transitions from the newest visible layer", () => {
+  const currentLayers = [
+    { key: "dashboard:/", route: dashboardRoute, phase: "active" },
+    { key: "mods:/mods", route: modsRoute, phase: "entering" },
+  ];
+
+  const nextLayers = beginRouteTransition(currentLayers, profilesRoute);
+
+  assert.deepEqual(serializeLayers(nextLayers), [
+    { key: "mods:/mods", routeId: "mods", phase: "exiting" },
+    { key: "profiles:/profiles", routeId: "profiles", phase: "entering" },
+  ]);
+});
+
 test("beginRouteTransition drops older exiting layers when switching to a third route", () => {
   const inFlightLayers = beginRouteTransition([createInitialRouteLayer(dashboardRoute)], modsRoute);
 

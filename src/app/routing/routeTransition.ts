@@ -35,7 +35,7 @@ export function createInitialRouteLayer(route: AppRoute): RouteLayer {
 export function beginRouteTransition(currentLayers: readonly RouteLayer[], targetRoute: AppRoute): RouteLayer[] {
   const targetKey = createRouteLayerKey(targetRoute);
   const existingTargetLayer = currentLayers.find((layer) => layer.key === targetKey);
-  const visibleLayer = currentLayers.find((layer) => layer.phase !== "exiting") ?? currentLayers.at(-1);
+  const visibleLayer = getNewestVisibleLayer(currentLayers) ?? currentLayers.at(-1);
 
   if (existingTargetLayer?.phase !== undefined && existingTargetLayer.phase !== "exiting") {
     return [...currentLayers];
