@@ -2,7 +2,7 @@
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   width: 100%;
-  max-width: 1920px;
+  max-width: var(--layout-shell-max-width);
   margin: 0 auto;
   height: 100vh;
   overflow-anchor: none;
@@ -14,10 +14,10 @@
 .app-surface {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--space-content-gap);
+  gap: var(--layout-content-gap);
   min-width: 0;
   min-height: 0;
-  padding: var(--space-page);
+  padding: var(--layout-page-padding);
   overflow: auto;
   view-transition-name: app-surface;
 }

@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Layout Fixture</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="../../app/frame/AppFrame.css" />
+    <link rel="stylesheet" href="../../app/routing/RouterOutlet.css" />
+    <link rel="stylesheet" href="../../features/dashboard/Dashboard.css" />
+    <link rel="stylesheet" href="../../features/mods/ModLibraryPage.css" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      .fixture-sidebar {
+        display: grid;
+        align-content: start;
+        gap: 14px;
+        min-width: 0;
+        padding: 20px 16px;
+        background: var(--color-surface-muted);
+        border-right: 1px solid var(--color-border-muted);
+      }
+
+      .fixture-brand,
+      .fixture-nav-button {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 14px;
+        border-radius: 16px;
+      }
+
+      .fixture-brand {
+        font-size: 14px;
+        font-weight: 800;
+        color: var(--color-text);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border-muted);
+      }
+
+      .fixture-nav-button {
+        justify-content: space-between;
+        color: var(--color-text-soft);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border-muted);
+        cursor: pointer;
+      }
+
+      .fixture-nav-button.is-active {
+        color: var(--color-accent);
+        border-color: var(--color-accent-alpha-40);
+        background: var(--color-accent-weak);
+      }
+    </style>
+  </head>
+  <body data-color-scheme="light">
+    <div class="app-shell" data-sidebar-mode="classic">
+      <aside class="fixture-sidebar" aria-label="Fixture 侧边栏">
+        <div class="fixture-brand">Helsincy Fixture</div>
+        <button type="button" class="fixture-nav-button is-active" aria-current="page">工作台</button>
+        <button type="button" class="fixture-nav-button">Mod 管理</button>
+        <button type="button" class="fixture-nav-button">悬浮侧边栏</button>
+      </aside>
+
+      <div class="app-surface">
+        <header class="top-status-bar">
+          <div class="current-game">
+            <span>当前游戏</span>
+            <strong>Fixture Game With A Very Long Title That Should Still Truncate Cleanly In Narrow Layouts</strong>
+          </div>
+
+          <div class="status-actions" aria-label="当前状态">
+            <span class="status-pill warning">
+              <span>配置档</span>
+              <strong>待初始化</strong>
+            </span>
+            <span class="status-pill warning compact">
+              <span class="dot warning-dot" aria-hidden="true"></span>
+              <strong>目录未配置</strong>
+            </span>
+            <span class="status-pill neutral compact">
+              <span class="dot neutral-dot" aria-hidden="true"></span>
+              <span>任务空闲</span>
+            </span>
+          </div>
+
+          <div class="window-tools" aria-label="窗口工具">
+            <button type="button" class="icon-button" aria-label="切换主题">T</button>
+            <button type="button" class="icon-button" aria-label="打开设置">S</button>
+          </div>
+        </header>
+
+        <main class="workbench-body">
+          <div class="route-transition">
+            <div class="route-transition__layer is-active" data-route-id="dashboard">
+              <section class="main-workspace" aria-labelledby="fixture-main-title">
+                <header class="main-header">
+                  <h2 id="fixture-main-title">工作台 / Mod 管理组合测量页</h2>
+                  <p>该 fixture 用于验证 shell 上限、双列布局和紧凑操作区在不同视口下是否稳定。</p>
+                </header>
+
+                <section class="mod-library" aria-label="模组库">
+                  <div class="mod-library__body">
+                    <div class="mod-library__main">
+                      <div class="library-toolbar">
+                        <label class="library-search" aria-label="搜索 Mod">
+                          <span aria-hidden="true">🔎</span>
+                          <input
+                            class="library-search__input"
+                            type="search"
+                            value=""
+                            placeholder="搜索 Mod 名称、武器或标签"
+                            aria-label="搜索 Mod 名称"
+                          />
+                        </label>
+
+                        <div class="library-filters" aria-label="筛选条件">
+                          <button type="button" class="library-chip is-active">全部</button>
+                          <button type="button" class="library-chip">已安装</button>
+                          <button type="button" class="library-chip">已禁用</button>
+                          <button type="button" class="library-chip">存在冲突</button>
+                        </div>
+                      </div>
+
+                      <div class="mod-grid" role="list">
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 1 详情">
+                            <span class="mod-card__silhouette" aria-hidden="true">
+                              <span class="mod-card__head"></span>
+                              <span class="mod-card__torso"></span>
+                              <span class="mod-card__hair mod-card__hair--left"></span>
+                              <span class="mod-card__hair mod-card__hair--right"></span>
+                            </span>
+                            <span class="mod-card__status-pill is-installed">已安装</span>
+                          </button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Velkhana Frost Layer Variant</strong>
+                            <span class="mod-card__size">42 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 2 详情">
+                            <span class="mod-card__silhouette" aria-hidden="true">
+                              <span class="mod-card__head"></span>
+                              <span class="mod-card__torso"></span>
+                              <span class="mod-card__hair mod-card__hair--left"></span>
+                              <span class="mod-card__hair mod-card__hair--right"></span>
+                            </span>
+                            <span class="mod-card__status-pill is-disabled">已禁用</span>
+                          </button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Guild Palace High Contrast Retexture</strong>
+                            <span class="mod-card__size">28 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 3 详情">
+                            <span class="mod-card__silhouette" aria-hidden="true">
+                              <span class="mod-card__head"></span>
+                              <span class="mod-card__torso"></span>
+                              <span class="mod-card__hair mod-card__hair--left"></span>
+                              <span class="mod-card__hair mod-card__hair--right"></span>
+                            </span>
+                            <span class="mod-card__status-pill is-conflict">存在冲突</span>
+                          </button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Long Named Experimental Weapon Color Overhaul Pack</strong>
+                            <span class="mod-card__size">64 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 4 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Seliana Room Expansion</strong>
+                            <span class="mod-card__size">16 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 5 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Alatreon UI Accent Refresh</strong>
+                            <span class="mod-card__size">9 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 6 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Handler Voice Replacement</strong>
+                            <span class="mod-card__size">73 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 7 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Minimalist Damage Meter Skin</strong>
+                            <span class="mod-card__size">5 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 8 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Raging Brachydios Lighting Adjustments</strong>
+                            <span class="mod-card__size">31 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 9 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Kulve Taroth Gold Tone Cleanup</strong>
+                            <span class="mod-card__size">22 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 10 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Smithy Menu Contrast Fix</strong>
+                            <span class="mod-card__size">4 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 11 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Event Quest Marker Refresh</strong>
+                            <span class="mod-card__size">7 MB</span>
+                          </div>
+                        </article>
+                        <article class="mod-card" role="listitem">
+                          <button type="button" class="mod-card__poster" aria-label="打开 Mod 12 详情"></button>
+                          <div class="mod-card__meta">
+                            <strong class="mod-card__title">Ultra Wide HUD Safe Area Preset</strong>
+                            <span class="mod-card__size">11 MB</span>
+                          </div>
+                        </article>
+                      </div>
+                    </div>
+
+                    <aside class="compact-panel" aria-label="紧凑操作面板">
+                      <div class="compact-panel__header">
+                        <h3 class="compact-panel__title">操作</h3>
+                        <span class="compact-panel__selected-pill">3 已选</span>
+                      </div>
+
+                      <div class="compact-panel__stack">
+                        <button type="button" class="compact-action is-primary">
+                          <span class="compact-action__left">
+                            <span class="compact-action__dot" aria-hidden="true"></span>
+                            <span class="compact-action__label">添加 Mod</span>
+                          </span>
+                        </button>
+                        <button type="button" class="compact-action is-neutral">
+                          <span class="compact-action__left">
+                            <span class="compact-action__dot" aria-hidden="true"></span>
+                            <span class="compact-action__label">全选可见条目</span>
+                          </span>
+                        </button>
+                        <button type="button" class="compact-action is-success">
+                          <span class="compact-action__left">
+                            <span class="compact-action__dot" aria-hidden="true"></span>
+                            <span class="compact-action__label">启用全部可见条目</span>
+                          </span>
+                        </button>
+                        <button type="button" class="compact-action is-warning">
+                          <span class="compact-action__left">
+                            <span class="compact-action__dot" aria-hidden="true"></span>
+                            <span class="compact-action__label">禁用全部可见条目</span>
+                          </span>
+                        </button>
+                      </div>
+                    </aside>
+                  </div>
+                </section>
+              </section>
+
+              <aside class="setup-rail" aria-label="状态轨道">
+                <div class="rail-header">
+                  <span>当前会话</span>
+                  <h2>Setup Rail</h2>
+                  <p>用于确认 Dashboard 右侧状态栏在宽屏和窄屏下不会被拉爆或错序。</p>
+                </div>
+
+                <section class="rail-card rail-section">
+                  <div class="section-title-row">
+                    <h3>最近步骤</h3>
+                    <span>3 / 5</span>
+                  </div>
+                  <div class="step-list">
+                    <div class="step-item is-active">
+                      <div class="step-rail"><span>3</span><i></i></div>
+                      <div class="step-body">
+                        <strong>验证布局护栏</strong>
+                        <p>检查横向滚动、溢出裁切和焦点可达性。</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="summary-note">
+                  <strong>验收重点</strong>
+                  <p>观察 rail、主工作区和紧凑操作面板是否在不同宽度下维持可读性与交互完整性。</p>
+                </section>
+              </aside>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
