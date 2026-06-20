@@ -537,7 +537,7 @@ If no changes were required, do not create an empty commit.
 **Files:**
 - No new code files unless fixes are discovered during verification.
 
-- [ ] **Step 1: Run focused frontend tests**
+- [x] **Step 1: Run focused frontend tests**
 
 Run:
 
@@ -547,7 +547,7 @@ cmd /c corepack pnpm run test
 
 Expected: PASS. The route transition tests and Mod selection tests should all pass.
 
-- [ ] **Step 2: Run frontend typecheck**
+- [x] **Step 2: Run frontend typecheck**
 
 Run:
 
@@ -557,7 +557,7 @@ cmd /c corepack pnpm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 3: Run frontend lint**
+- [x] **Step 3: Run frontend lint**
 
 Run:
 
@@ -567,7 +567,7 @@ cmd /c corepack pnpm run lint
 
 Expected: PASS.
 
-- [ ] **Step 4: Run frontend build**
+- [x] **Step 4: Run frontend build**
 
 Run:
 
@@ -577,7 +577,7 @@ cmd /c corepack pnpm run build
 
 Expected: PASS.
 
-- [ ] **Step 5: Run unified project verification**
+- [x] **Step 5: Run unified project verification**
 
 Run:
 
@@ -587,7 +587,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 Expected: PASS. This covers policy checks, frontend checks, Rust tests, and Rust check.
 
-- [ ] **Step 6: Manual browser smoke test**
+- [x] **Step 6: Manual browser smoke test**
 
 Run:
 
@@ -602,7 +602,7 @@ Manual checks:
 - Rapidly click `工作台` and `Mod 管理`: no duplicate permanent layers remain.
 - With reduced motion enabled at OS/browser level: route transitions become effectively instant.
 
-- [ ] **Step 7: Commit any final fixes**
+- [x] **Step 7: Commit any final fixes**
 
 If verification required changes, commit them:
 
