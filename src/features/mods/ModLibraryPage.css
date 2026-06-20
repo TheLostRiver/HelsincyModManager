@@ -8,7 +8,8 @@
  * Mod Library 自带右侧操作面板，不应被 AppFrame 的 workbench-body 双列布局拆分。
  * 当它作为 main 直接子元素且独占该区域时，跨满整行。
  */
-.workbench-body > .mod-library {
+.workbench-body > .mod-library,
+.route-transition__layer > .mod-library {
   grid-column: 1 / -1;
 }
 
@@ -633,4 +634,12 @@
   opacity: 0;
   animation: libraryStaggerFadeIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   animation-delay: calc(var(--stagger-idx, 0) * 0.03s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-stagger-item {
+    opacity: 1;
+    animation: none;
+    transform: none;
+  }
 }

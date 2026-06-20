@@ -358,7 +358,7 @@ git commit -m "feat: 添加路由层过渡状态"
 - Create: `src/app/routing/RouterOutlet.css`
 - Modify: `src/main.tsx`
 
-- [ ] **Step 1: Create route transition stylesheet**
+- [x] **Step 1: Create route transition stylesheet**
 
 Create `src/app/routing/RouterOutlet.css`:
 
@@ -423,7 +423,7 @@ Create `src/app/routing/RouterOutlet.css`:
 }
 ```
 
-- [ ] **Step 2: Import the stylesheet**
+- [x] **Step 2: Import the stylesheet**
 
 Update `src/main.tsx` imports so routing CSS loads with app shell CSS:
 
@@ -434,7 +434,7 @@ import "./app/routing/RouterOutlet.css";
 import "./app/shell/sidebar-mode-control/SidebarModeControl.css";
 ```
 
-- [ ] **Step 3: Run build**
+- [x] **Step 3: Run build**
 
 Run:
 
@@ -444,7 +444,7 @@ cmd /c corepack pnpm run build
 
 Expected: PASS with Vite build output and no TypeScript errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
