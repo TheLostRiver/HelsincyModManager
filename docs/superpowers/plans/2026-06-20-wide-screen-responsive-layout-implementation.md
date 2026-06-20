@@ -218,8 +218,8 @@ test("关键承压容器保留 min-width: 0 护栏", () => {
   const checks = [
     ["src/app/frame/AppFrame.css", [".app-surface", ".top-status-bar", ".current-game"]],
     ["src/app/routing/RouterOutlet.css", [".route-transition", ".route-transition__layer"]],
-    ["src/features/dashboard/Dashboard.css", [".main-workspace", ".setup-rail"]],
-    ["src/features/mods/ModLibraryPage.css", [".mod-library", ".mod-library__body", ".mod-library__main", ".compact-panel__stack", ".compact-action__left"]],
+    ["src/features/dashboard/Dashboard.css", [".workbench-body", ".main-workspace", ".setup-rail"]],
+    ["src/features/mods/ModLibraryPage.css", [".mod-library", ".mod-library__body", ".mod-library__main", ".compact-panel", ".compact-panel__stack", ".compact-action__left"]],
   ];
 
   for (const [file, selectors] of checks) {
@@ -430,15 +430,33 @@ git commit -m "style: 添加宽屏布局 token 并让 AppFrame/RouterOutlet 消�
 
 **保留** `@media (max-width: 1360px)` 的 `.setup-rail { width: auto; }`（小屏契约）。**保留** `.setup-panel { min-height: 360px }`（内容高度，非布局）。
 
-- [ ] **Step 3: 运行聚焦测试**
+- [ ] **Step 3: workbench-body — 补 min-width: 0 护栏**
+
+spec 审计清单把 `.workbench-body` 标为"需补查"（当前源码无 `min-width: 0`）。它是双列 grid 容器，左侧 `minmax(0, 1fr)` 列承载长文本，缺少护栏时可能被内容最小宽度撑爆，在保留 `.app-shell { overflow: hidden }` 的前提下被静默裁切。补一行（**最小 patch，只新增这一行**）：
+
+```diff
+ .workbench-body {
+   display: grid;
+   grid-template-columns: minmax(0, 1fr) var(--layout-route-aside-width);
+   justify-content: start;
+   gap: 28px;
+   width: 100%;
++  min-width: 0;
+   min-height: 0;
+   margin: 0;
+   background: var(--color-bg);
+ }
+```
+
+- [ ] **Step 4: 运行聚焦测试**
 
 ```powershell
 cmd /c corepack pnpm run test
 ```
 
-Expected: Dashboard 硬编码消除测试 PASS。
+Expected: Dashboard 硬编码消除测试 PASS；`min-width: 0 护栏` 测试对 `.workbench-body` PASS。
 
-- [ ] **Step 4: 提交 Dashboard token 化**
+- [ ] **Step 5: 提交 Dashboard token 化**
 
 ```powershell
 git add src/features/dashboard/Dashboard.css
@@ -530,13 +548,30 @@ git commit -m "style: Dashboard 双列容器消费 route aside token"
 
 **保留** `@media (max-width: 1280px)` 块整体不动（小屏契约）。
 
+- [ ] **Step 5.5: compact-panel — 补 min-width: 0 护栏**
+
+spec 审计清单把 `.compact-panel` 标为"需补查"（桌面态基础规则无 `min-width: 0`）。它是 sticky grid 容器，承载按钮标签等可截断文本，缺少护栏时可能被内容撑爆。小屏 `@media (max-width: 1280px)` 已有独立的 `.compact-panel { min-width: 0 }`（小屏契约，不动），这里只补基础规则一行（**最小 patch**）：
+
+```diff
+ .compact-panel {
+   position: sticky;
+   top: 0;
+   display: grid;
+   grid-template-rows: auto auto;
+   gap: 6px;
++  min-width: 0;
+   padding: 7px;
+   ...
+ }
+```
+
 - [ ] **Step 6: 运行聚焦测试**
 
 ```powershell
 cmd /c corepack pnpm run test
 ```
 
-Expected: 全部 token 合约与硬编码消除测试 PASS。
+Expected: 全部 token 合约、硬编码消除测试、`min-width: 0 护栏` 测试（含 `.compact-panel`）PASS。
 
 - [ ] **Step 7: 运行构建**
 
@@ -842,7 +877,7 @@ git commit -m "fix: 完善全视口响应式验证问题"
 - **Dashboard 收口**：原方案漏掉的 `.workbench-body` 与 `.setup-rail` 的 `360px` 已纳入 Task 4，两处都消费 `--layout-route-aside-width`，且澄清了与 route layer 的关系。
 - **最小 patch**：所有 CSS 改动明确标注"只替换目标行"，禁止全量重写规则块，杜绝悄悄回退。
 - **测试分层**：L1 正则（token 存在 + 硬编码消除）+ L2 结构（小屏契约负向 + 断点方向）+ L3 浏览器 DOM（宽度/溢出/裁切）。L3 是验收门，不可跳过。
-- **关键容器护栏**：L2 新增关键承压容器的 `min-width: 0` 回归断言，避免以后有人无感知删掉这层保护。
+- **关键容器护栏**：L2 对全部承压容器（含审计清单标"需补查"的 `.workbench-body` / `.compact-panel`）断言 `min-width: 0`，Task 4/5 对应补上这两处护栏，避免以后有人无感知删掉这层保护。
 - **缩小方向**：新增 `375/800/1024` 视口验收与连续拖拽观察，`overflowX === 0` 与 `clippedCount === 0` 为硬约束。
 - **真实覆盖**：fixture 只辅助测量；真实 `/mods`、Dashboard、classic/floating 模式与低高度窗口必须补测，否则不能宣称"全视口"完成验收。
 - **焦点可达性**：L3 补充焦点抽样脚本；若未来需要更强保证，可进一步演进为 Playwright 键盘 smoke。
