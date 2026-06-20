@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
-import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
+import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { applyModSelection } from "./modSelection";
+import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
 
 type ModLibraryPageProps = {
-  /** 快捷操作回调。点击行为由上层（路由/容器）接入业务，页面本身只负责展示与局部 UI 状态。 */
   onAction?: (actionId: string) => void;
 };
 
@@ -29,12 +30,15 @@ function matchesActiveFilter(item: ModLibraryItem, activeFilter: string) {
   return item.categoryLabels.includes(activeFilter);
 }
 
+function staggerStyle(index: number) {
+  return { "--stagger-idx": index } as CSSProperties;
+}
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // 当前为展示层过滤。真实数据接入后应由仓储视图模型提供同名字段。
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return modLibraryItems.filter((item) => {
@@ -75,7 +79,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         break;
       case "uninstall":
       case "reinstall":
-        // 需要选中项的操作，清空选择前先回调上层；此处仅交由业务层处理。
         onAction?.(actionId);
         break;
       default:
@@ -84,11 +87,25 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
   };
 
+  const handleBackToTop = () => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const fallbackTarget = document.scrollingElement ?? document.documentElement;
+    const target = getModLibraryBackToTopTarget(document, fallbackTarget);
+    scrollModLibraryBackToTop(target);
+  };
+
   return (
     <section className="mod-library" aria-label="模组库">
       <div className="mod-library__body">
         <div className="mod-library__main">
-          <div className="anim-stagger-item" style={{ "--stagger-idx": 0 } as React.CSSProperties}>
+          <div className="mod-library__main-floating-actions">
+            <BackToTopButton onClick={handleBackToTop} />
+          </div>
+
+          <div className="anim-stagger-item" style={staggerStyle(0)}>
             <LibraryToolbar
               query={query}
               activeFilter={activeFilter}
@@ -98,7 +115,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           </div>
 
           {visibleItems.length === 0 ? (
-            <div className="mod-library__empty anim-stagger-item" style={{ "--stagger-idx": 1 } as React.CSSProperties} role="status">
+            <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
               <strong>没有匹配的 Mod</strong>
               <p>试试调整搜索关键词或筛选条件。</p>
             </div>
@@ -117,7 +134,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           )}
         </div>
 
-        <div className="anim-stagger-item" style={{ "--stagger-idx": 0 } as React.CSSProperties}>
+        <div className="anim-stagger-item" style={staggerStyle(0)}>
           <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
         </div>
       </div>
