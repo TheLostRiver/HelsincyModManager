@@ -14,6 +14,20 @@ function stripComments(css) {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readMediaBlockBody(css, query) {
+  const normalizedCss = stripComments(css);
+  const match = new RegExp(`@media\\s*\\(${escapeRegExp(query)}\\)`).exec(normalizedCss);
+
+  assert.ok(match, `Missing media block: ${query}`);
+
+  const openBraceIndex = normalizedCss.indexOf("{", match.index);
+  return readBlock(normalizedCss, openBraceIndex).body;
+}
+
 function readBlock(css, openBraceIndex) {
   let depth = 0;
 
@@ -147,15 +161,10 @@ test("tokens.css 宽屏断点逐级覆盖 shell max-width", () => {
 
 test("tokens.css 超宽档位不得覆盖 dashboard route aside token", () => {
   const tokensCss = readProjectFile("src/shared/styles/tokens.css");
-  const wideBlocks = [
-    tokensCss.match(/@media\s*\(min-width:\s*2561px\)\s*{([\s\S]*?)}/),
-    tokensCss.match(/@media\s*\(min-width:\s*3201px\)\s*{([\s\S]*?)}/),
-  ];
-
-  for (const block of wideBlocks) {
-    assert.ok(block, "缺少超宽断点");
+  for (const query of ["min-width: 2561px", "min-width: 3201px"]) {
+    const blockBody = readMediaBlockBody(tokensCss, query);
     assert.doesNotMatch(
-      block[1],
+      blockBody,
       /--layout-route-aside-width\s*:/,
       "超宽档位不应覆盖 --layout-route-aside-width",
     );
@@ -174,6 +183,13 @@ test("tokens.css 宽屏断点必须同时覆盖 light/dark theme root", () => {
       `宽屏断点 ${breakpoint}px 未同时覆盖 light/dark theme root`,
     );
   }
+});
+
+test("layout fixture keeps data-color-scheme on html root", () => {
+  const fixtureHtml = readProjectFile("src/shared/styles/layout.fixture.html");
+
+  assert.match(fixtureHtml, /<html[^>]*\sdata-color-scheme="light"/);
+  assert.doesNotMatch(fixtureHtml, /<body[^>]*\sdata-color-scheme=/);
 });
 
 test("AppFrame 不再硬编码 1920px，改为 token", () => {
