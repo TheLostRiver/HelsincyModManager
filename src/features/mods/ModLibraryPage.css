@@ -19,28 +19,37 @@
   gap: var(--layout-content-gap);
   min-width: 0;
   min-height: 0;
+  --mod-library-sticky-top: var(--layout-page-padding);
+  --mod-library-back-to-top-size: 52px;
+  --mod-library-back-to-top-inline-offset: calc(var(--mod-library-back-to-top-size) + 12px);
+  --mod-library-back-to-top-block-offset: 12px;
 }
 
 /* 复用 dashboard 的 .main-header 视觉，避免重复声明颜色。 */
 
-.mod-library__body {
+.mod-library__sticky-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--layout-mod-action-panel-width);
   align-items: start;
   gap: var(--layout-content-gap);
   min-width: 0;
-  min-height: 0;
+  z-index: 30;
 }
 
-.mod-library__main {
+.mod-library__toolbar-slot,
+.mod-library__actions-slot {
+  position: sticky;
+  top: var(--mod-library-sticky-top);
+  z-index: 30;
+  min-width: 0;
+}
+
+.mod-library__content {
+  position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
   min-height: 0;
-  --mod-library-back-to-top-size: 52px;
-  --mod-library-back-to-top-inline-offset: calc(var(--mod-library-back-to-top-size) + 12px);
-  --mod-library-back-to-top-block-offset: 12px;
 }
 
 .mod-library__main-floating-actions {
@@ -101,6 +110,7 @@
   border: 1px solid var(--color-border-muted);
   border-radius: 28px;
   box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(12px);
 }
 
 .library-search {
@@ -397,8 +407,6 @@
 /* ---------- 右侧快捷操作面板 ---------- */
 
 .compact-panel {
-  position: sticky;
-  top: 0;
   display: grid;
   grid-template-rows: auto auto;
   gap: 6px;
@@ -408,6 +416,7 @@
   border: 1px solid var(--color-border-muted);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(12px);
 }
 
 .compact-panel__header {
@@ -591,16 +600,25 @@
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 1280px) {
-  .mod-library__body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .mod-library__main {
+  .mod-library {
+    --mod-library-sticky-top: 12px;
     --mod-library-back-to-top-inline-offset: 0px;
   }
 
-  .compact-panel {
+  .mod-library__sticky-controls {
+    position: sticky;
+    top: var(--mod-library-sticky-top);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    z-index: 35;
+  }
+
+  .mod-library__toolbar-slot,
+  .mod-library__actions-slot {
     position: static;
+  }
+
+  .compact-panel {
     grid-auto-flow: column;
     grid-template-rows: none;
     min-width: 0;
@@ -631,6 +649,8 @@
   .mod-library {
     --layout-mod-card-min-width: 150px;
     --layout-mod-card-poster-height: 220px;
+    --mod-library-back-to-top-size: 48px;
+    --mod-library-back-to-top-block-offset: 8px;
   }
 
   .mod-grid {
@@ -646,11 +666,6 @@
 
   .compact-action {
     min-width: 0;
-  }
-
-  .mod-library__main {
-    --mod-library-back-to-top-size: 48px;
-    --mod-library-back-to-top-block-offset: 8px;
   }
 
   .mod-library__main-floating-actions {

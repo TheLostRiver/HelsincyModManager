@@ -99,44 +99,44 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   return (
     <section className="mod-library" aria-label="模组库">
-      <div className="mod-library__body">
-        <div className="mod-library__main">
-          <div className="mod-library__main-floating-actions">
-            <BackToTopButton onClick={handleBackToTop} />
-          </div>
-
-          <div className="anim-stagger-item" style={staggerStyle(0)}>
-            <LibraryToolbar
-              query={query}
-              activeFilter={activeFilter}
-              onQueryChange={setQuery}
-              onFilterChange={setActiveFilter}
-            />
-          </div>
-
-          {visibleItems.length === 0 ? (
-            <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
-              <strong>没有匹配的 Mod</strong>
-              <p>试试调整搜索关键词或筛选条件。</p>
-            </div>
-          ) : (
-            <div className="mod-grid" role="list">
-              {visibleItems.map((item, index) => (
-                <ModPosterCard
-                  key={item.id}
-                  item={item}
-                  selected={selectedIds.has(item.id)}
-                  onSelect={selectCard}
-                  index={index}
-                />
-              ))}
-            </div>
-          )}
+      <div className="mod-library__sticky-controls anim-stagger-item" style={staggerStyle(0)}>
+        <div className="mod-library__toolbar-slot">
+          <LibraryToolbar
+            query={query}
+            activeFilter={activeFilter}
+            onQueryChange={setQuery}
+            onFilterChange={setActiveFilter}
+          />
         </div>
 
-        <div className="anim-stagger-item" style={staggerStyle(0)}>
+        <div className="mod-library__actions-slot">
           <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
         </div>
+      </div>
+
+      <div className="mod-library__content">
+        <div className="mod-library__main-floating-actions">
+          <BackToTopButton onClick={handleBackToTop} />
+        </div>
+
+        {visibleItems.length === 0 ? (
+          <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
+            <strong>没有匹配的 Mod</strong>
+            <p>试试调整搜索关键词或筛选条件。</p>
+          </div>
+        ) : (
+          <div className="mod-grid" role="list">
+            {visibleItems.map((item, index) => (
+              <ModPosterCard
+                key={item.id}
+                item={item}
+                selected={selectedIds.has(item.id)}
+                onSelect={selectCard}
+                index={index}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
