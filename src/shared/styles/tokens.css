@@ -133,7 +133,9 @@
 }
 
 @media (min-width: 1921px) {
-  :root {
+  :root,
+  :root[data-color-scheme="light"],
+  :root[data-color-scheme="dark"] {
     --layout-shell-max-width: 2400px;
     --layout-mod-action-panel-width: 192px;
     --layout-mod-card-min-width: 210px;
@@ -141,21 +143,25 @@
 }
 
 @media (min-width: 2561px) {
-  :root {
-    --layout-shell-max-width: 2880px;
-    --layout-page-padding: 36px;
-    --layout-content-gap: 24px;
-    --layout-mod-action-panel-width: 208px;
-    --layout-mod-card-min-width: 220px;
+  :root,
+  :root[data-color-scheme="light"],
+  :root[data-color-scheme="dark"] {
+    --layout-shell-max-width: 3040px;
+    --layout-page-padding: 32px;
+    --layout-content-gap: 20px;
+    --layout-mod-action-panel-width: 200px;
+    --layout-mod-card-min-width: 208px;
   }
 }
 
 @media (min-width: 3201px) {
-  :root {
-    --layout-shell-max-width: min(100vw, 3200px);
-    --layout-page-padding: 40px;
-    --layout-content-gap: 28px;
-    --layout-mod-action-panel-width: 220px;
-    --layout-mod-card-min-width: 230px;
+  :root,
+  :root[data-color-scheme="light"],
+  :root[data-color-scheme="dark"] {
+    --layout-shell-max-width: min(100vw, 3440px);
+    --layout-page-padding: 36px;
+    --layout-content-gap: 22px;
+    --layout-mod-action-panel-width: 212px;
+    --layout-mod-card-min-width: 212px;
   }
 }
