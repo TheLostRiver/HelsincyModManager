@@ -186,11 +186,38 @@
 
 现状 `.app-shell { overflow: hidden }` 会裁切溢出内容。本设计**不改变**这条规则（裁切比横向滚动条体验好），而是通过下面三道防线保证内容**不会真正溢出**：
 
-1. **所有 flex/grid 子项强制 `min-width: 0`**：防止 flex/grid item 因内容最小宽度撑爆容器（现状多数已有，需补查）。
+1. **所有 flex/grid 子项强制 `min-width: 0`**：防止 flex/grid item 因内容最小宽度撑爆容器。
 2. **长文本元素统一截断**：见下节"长文本兜底"。
 3. **窄屏断点逐级降级**：到 `860px` shell 单列化后，剩余横向压力由各页面的小屏规则吸收。
 
 如果实现中仍发现某元素溢出，**优先在责任元素上加 `min-width: 0` + 截断**，而非放宽 shell 的 `overflow`。
+
+### `min-width: 0` 关键审计清单
+
+以下容器是本方案定义的**首批必审计对象**。它们承接壳体、双列、卡片区或长文本压力；若缺少 `min-width: 0`，最容易在保留 `overflow: hidden` 的前提下被内容撑爆：
+
+| 选择器 | 所在文件 | 责任 | 当前状态 |
+| --- | --- | --- | --- |
+| `.app-surface` | `AppFrame.css` | 壳体内部主内容容器 | 已有 |
+| `.top-status-bar` | `AppFrame.css` | 承接长游戏名与状态胶囊 | 已有 |
+| `.current-game` | `AppFrame.css` | 长游戏名截断链路 | 已有 |
+| `.route-transition` | `RouterOutlet.css` | 路由层外壳 | 已有 |
+| `.route-transition__layer` | `RouterOutlet.css` | 通用双列容器 | 已有 |
+| `.workbench-body` | `Dashboard.css` | Dashboard / 全局工作区双列容器 | **需补查** |
+| `.main-workspace` | `Dashboard.css` | Dashboard 主内容区 | 已有 |
+| `.setup-rail` | `Dashboard.css` | Dashboard 右侧 rail | 已有 |
+| `.mod-library` | `ModLibraryPage.css` | Mod 页面根容器 | 已有 |
+| `.mod-library__body` | `ModLibraryPage.css` | Mod 主内容 + 操作面板双列 | **需补查** |
+| `.mod-library__main` | `ModLibraryPage.css` | Mod 主卡片区 | 已有 |
+| `.compact-panel` | `ModLibraryPage.css` | 小屏折叠后操作区 | **需补查** |
+| `.compact-panel__stack` | `ModLibraryPage.css` | 横向滚动操作栈 | 已有 |
+| `.compact-action__left` | `ModLibraryPage.css` | 按钮文本截断链路 | 已有 |
+
+说明：
+
+- `已/需补查` 仅表示文档设计时的首轮源码核对结论；实现前应再核对一次最新源码。
+- 这张表不是全仓最终穷举，而是本次响应式改动范围内的**强制检查集**。若实现中发现新的承压容器，应追加到该表，而不是只在代码里默默修。
+- 实现完成后，验收记录应明确写出：哪些容器已核对、哪些容器补了 `min-width: 0`、哪些容器确认不需要。
 
 ## 长文本兜底
 
@@ -381,6 +408,7 @@ Mod 管理页消费全局 token 控制右侧操作面板和卡片网格：
 - **侧边栏模式**：至少抽样覆盖 classic 与 floating 两种模式；因为两者的列结构、遮挡风险和小屏降级路径不同。
 - **低高度窗口**：至少补测 `1280x720` 与 `1280x640`，确认 `100vh`、sticky 面板、浮动侧边栏高度断点不会让主要操作不可达。
 - **连续拖拽**：至少执行一轮 `1366px -> 375px` 连续缩窗观察，确认没有在非断点位置突然出现裁切、重叠或交互控件消失。
+- **焦点可达性**：至少抽样验证主要按钮、链接、输入框的键盘聚焦状态在 shell 可见区域内，不被裁切、不落入不可见容器。
 
 ## 风险与取舍
 
