@@ -37,7 +37,11 @@ export function beginRouteTransition(currentLayers: readonly RouteLayer[], targe
   const existingTargetLayer = currentLayers.find((layer) => layer.key === targetKey);
   const visibleLayer = currentLayers.find((layer) => layer.phase !== "exiting") ?? currentLayers.at(-1);
 
-  if (!visibleLayer || existingTargetLayer) {
+  if (existingTargetLayer?.phase !== undefined && existingTargetLayer.phase !== "exiting") {
+    return [...currentLayers];
+  }
+
+  if (!visibleLayer || existingTargetLayer?.phase === "exiting") {
     return [createInitialRouteLayer(targetRoute)];
   }
 

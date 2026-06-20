@@ -461,7 +461,7 @@ git commit -m "style: 添加路由切换动画"
 - Inspect: `src/features/mods/ModLibraryPage.css`
 - Modify only if necessary: `src/features/mods/ModLibraryPage.css`
 
-- [ ] **Step 1: Check whether Mod page stagger reruns during exit**
+- [x] **Step 1: Check whether Mod page stagger reruns during exit**
 
 Run the app:
 
@@ -481,7 +481,7 @@ Manual check:
 
 Expected: Mod content should not restart the stagger while exiting because the exiting layer keeps already-mounted DOM nodes.
 
-- [ ] **Step 2: If layout overlap causes scrollbars, constrain exiting layer**
+- [x] **Step 2: If layout overlap causes scrollbars, constrain exiting layer**
 
 If the exiting route layer creates temporary scrollbars or changes layout height, update `src/app/routing/RouterOutlet.css`:
 
@@ -505,7 +505,7 @@ And add CSS:
 }
 ```
 
-- [ ] **Step 3: Do not add exit CSS to `.anim-stagger-item`**
+- [x] **Step 3: Do not add exit CSS to `.anim-stagger-item`**
 
 Keep `src/features/mods/ModLibraryPage.css` page-content animation as-is:
 
@@ -519,7 +519,7 @@ Keep `src/features/mods/ModLibraryPage.css` page-content animation as-is:
 
 Reason: the exit animation is now owned by route layers. Adding an exit animation here would duplicate responsibilities and risk Mod-only behavior drift.
 
-- [ ] **Step 4: Commit only if CSS or TS changed**
+- [x] **Step 4: Commit only if CSS or TS changed**
 
 If Step 2 required a change, run:
 
