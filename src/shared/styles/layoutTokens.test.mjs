@@ -223,7 +223,7 @@ test("RouterOutlet 与 Dashboard 都消费 route aside token，且无残留 360p
 test("Mod 管理页消费密度 token，无残留硬编码", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
-  assert.match(css, /minmax\(0,\s*1fr\)\s+var\(--layout-mod-action-panel-width\);/);
+  // 卡片网格密度仍由 token 驱动；操作面板宽度 token 在单列吸顶条下不再被消费。
   assert.match(css, /repeat\(auto-fill,\s*minmax\(var\(--layout-mod-card-min-width\),\s*1fr\)\)/);
   assert.match(css, /\.mod-card__poster[\s\S]*?height:\s*var\(--layout-mod-card-poster-height\);/);
   assert.doesNotMatch(css, /\.mod-library__body[\s\S]*?minmax\(0,\s*1fr\)\s+168px;/);
@@ -280,11 +280,11 @@ test("关键承压容器保留 min-width: 0 护栏", () => {
       "src/features/mods/ModLibraryPage.css",
       [
         [".mod-library", null],
-        [".mod-library__sticky-controls", null],
         [".mod-library__toolbar-slot,\n.mod-library__actions-slot", null],
         [".mod-library__content", null],
+        [".mod-library__sticky-controls", null],
         [".compact-panel", null],
-        [".compact-panel__stack", "(max-width: 1280px)"],
+        [".compact-panel__stack", null],
         [".compact-action__left", null],
       ],
     ],
@@ -306,14 +306,9 @@ test("关键承压容器保留 min-width: 0 护栏", () => {
   }
 });
 
-test("Mod 管理页小屏契约保留：1280/960/640 断点", () => {
+test("Mod 管理页小屏契约保留：960/640 断点", () => {
   const rules = parseCssRules(readProjectFile("src/features/mods/ModLibraryPage.css"));
 
-  expectDeclaration(
-    findRule(rules, ".mod-library__sticky-controls", "(max-width: 1280px)"),
-    /grid-template-columns:\s*minmax\(0,\s*1fr\);/,
-    "缺少 1280px 下 mod body 单列规则",
-  );
   expectDeclaration(
     findRule(rules, ".mod-library", "(max-width: 960px)"),
     /--layout-mod-card-min-width:\s*170px;/,
