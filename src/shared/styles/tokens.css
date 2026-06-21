@@ -54,6 +54,11 @@
   --layout-mod-card-min-width: 200px;
   --layout-mod-card-poster-height: 268px;
   --layout-text-overflow: ellipsis;
+  /*
+   * 全局状态栏基准高度。状态栏吸顶后，Mod 吸顶条据此贴合其下方，
+   * 避免两块吸顶元素叠压。860px 断点状态栏内容可能略高，按需在断点覆盖。
+   */
+  --app-header-height: 64px;
   --shadow-soft: 0 18px 45px #0f172a12;
   --shadow-panel: 0 24px 70px #0f172a18;
   --shadow-card: 0 22px 60px #0f172a14;
@@ -121,6 +126,11 @@
   --layout-mod-card-min-width: 200px;
   --layout-mod-card-poster-height: 268px;
   --layout-text-overflow: ellipsis;
+  /*
+   * 全局状态栏基准高度。状态栏吸顶后，Mod 吸顶条据此贴合其下方，
+   * 避免两块吸顶元素叠压。860px 断点状态栏内容可能略高，按需在断点覆盖。
+   */
+  --app-header-height: 64px;
   --shadow-soft: 0 18px 45px #02061766;
   --shadow-panel: 0 24px 70px #02061780;
   --shadow-card: 0 22px 60px #02061770;
