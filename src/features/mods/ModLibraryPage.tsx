@@ -99,22 +99,22 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   return (
     <section className="mod-library" aria-label="模组库">
-      <div className="mod-library__content">
-        <div className="mod-library__sticky-controls anim-stagger-item" style={staggerStyle(0)}>
-          <div className="mod-library__toolbar-slot">
-            <LibraryToolbar
-              query={query}
-              activeFilter={activeFilter}
-              onQueryChange={setQuery}
-              onFilterChange={setActiveFilter}
-            />
-          </div>
-
-          <div className="mod-library__actions-slot">
-            <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
-          </div>
+      <div className="mod-library__sticky-controls anim-stagger-item" style={staggerStyle(0)}>
+        <div className="mod-library__toolbar-slot">
+          <LibraryToolbar
+            query={query}
+            activeFilter={activeFilter}
+            onQueryChange={setQuery}
+            onFilterChange={setActiveFilter}
+          />
         </div>
 
+        <div className="mod-library__actions-slot">
+          <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
+        </div>
+      </div>
+
+      <div className="mod-library__content">
         <div className="mod-library__main-floating-actions">
           <BackToTopButton onClick={handleBackToTop} />
         </div>
