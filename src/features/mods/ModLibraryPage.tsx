@@ -1,9 +1,18 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
+import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
 
@@ -34,10 +43,18 @@ function staggerStyle(index: number) {
   return { "--stagger-idx": index } as CSSProperties;
 }
 
+const initialScrollUiState = getModLibraryScrollUiState({
+  scrollTop: 0,
+  scrollHeight: 0,
+  clientHeight: 0,
+});
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
 
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -48,6 +65,60 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [activeFilter, query]);
 
   const selectedCount = selectedIds.size;
+
+  const updateScrollUiState = useCallback(() => {
+    const content = contentRef.current;
+
+    if (!content) {
+      setScrollUiState(initialScrollUiState);
+      return;
+    }
+
+    setScrollUiState(
+      getModLibraryScrollUiState({
+        scrollTop: content.scrollTop,
+        scrollHeight: content.scrollHeight,
+        clientHeight: content.clientHeight,
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    const content = contentRef.current;
+
+    if (!content) {
+      return undefined;
+    }
+
+    let frameId = 0;
+    const requestUpdate = () => {
+      if (frameId !== 0) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0;
+        updateScrollUiState();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(requestUpdate);
+    resizeObserver.observe(content);
+    for (const child of Array.from(content.children)) {
+      resizeObserver.observe(child);
+    }
+
+    content.addEventListener("scroll", requestUpdate, { passive: true });
+    requestUpdate();
+
+    return () => {
+      content.removeEventListener("scroll", requestUpdate);
+      resizeObserver.disconnect();
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [updateScrollUiState, visibleItems.length, scrollUiState.showScrollUi]);
 
   const selectCard = (id: string) => {
     setSelectedIds((prev) => applyModSelection(prev, id, "replace"));
@@ -93,9 +164,41 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
 
     const fallbackTarget = document.scrollingElement ?? document.documentElement;
-    const target = getModLibraryBackToTopTarget(document, fallbackTarget);
+    const target = contentRef.current ?? getModLibraryBackToTopTarget(document, fallbackTarget);
     scrollModLibraryBackToTop(target);
   };
+
+  const handleScrollbarPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const content = contentRef.current;
+
+    if (!content) {
+      return;
+    }
+
+    event.preventDefault();
+    const startY = event.clientY;
+    const startScrollTop = content.scrollTop;
+    const maxScrollTop = Math.max(0, content.scrollHeight - content.clientHeight);
+    const thumbHeight = Number.parseFloat(scrollUiState.thumbStyle.height);
+    const maxThumbTop = Math.max(1, content.clientHeight - thumbHeight);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      content.scrollTop = startScrollTop + (deltaY / maxThumbTop) * maxScrollTop;
+    };
+
+    const stopDragging = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+  };
+
+  const { showScrollUi, thumbStyle } = scrollUiState;
 
   return (
     <section className="mod-library" aria-label="模组库">
@@ -114,29 +217,43 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         </div>
       </div>
 
-      <div className="mod-library__content">
-        <div className="mod-library__main-floating-actions">
-          <BackToTopButton onClick={handleBackToTop} />
+      <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
+        <div ref={contentRef} className="mod-library__content">
+          {showScrollUi ? (
+            <div className="mod-library__main-floating-actions">
+              <BackToTopButton onClick={handleBackToTop} />
+            </div>
+          ) : null}
+
+          {visibleItems.length === 0 ? (
+            <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
+              <strong>没有匹配的 Mod</strong>
+              <p>试试调整搜索关键词或筛选条件。</p>
+            </div>
+          ) : (
+            <div className="mod-grid" role="list">
+              {visibleItems.map((item, index) => (
+                <ModPosterCard
+                  key={item.id}
+                  item={item}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={selectCard}
+                  index={index}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        {visibleItems.length === 0 ? (
-          <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
-            <strong>没有匹配的 Mod</strong>
-            <p>试试调整搜索关键词或筛选条件。</p>
+        {showScrollUi ? (
+          <div className="mod-library__scrollbar" aria-hidden="true">
+            <div
+              className="mod-library__scrollbar-thumb"
+              style={thumbStyle}
+              onPointerDown={handleScrollbarPointerDown}
+            />
           </div>
-        ) : (
-          <div className="mod-grid" role="list">
-            {visibleItems.map((item, index) => (
-              <ModPosterCard
-                key={item.id}
-                item={item}
-                selected={selectedIds.has(item.id)}
-                onSelect={selectCard}
-                index={index}
-              />
-            ))}
-          </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
