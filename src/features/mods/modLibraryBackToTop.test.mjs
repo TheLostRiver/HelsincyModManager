@@ -51,36 +51,38 @@ test("scroll helper always requests smooth scroll-to-top", () => {
   });
 });
 
-test("mod library page renders a dedicated back-to-top button", () => {
+test("mod library page renders back-to-top from scroll UI state instead of unconditionally", () => {
   const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
 
   assert.match(source, /BackToTopButton/);
+  assert.match(source, /showScrollUi\s*\?/);
   assert.match(source, /mod-library__main-floating-actions/);
+  assert.match(source, /showScrollUi\s*\?\s*\([\s\S]*?mod-library__main-floating-actions[\s\S]*?<BackToTopButton/);
 });
 
-test("back-to-top control is fixed to the viewport bottom-right so it stays visible while scrolling", () => {
+test("scroll UI hides native scrollbar visuals and uses a custom state-driven scrollbar", () => {
   const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
-  assert.match(source, /mod-library__main-floating-actions/);
-  // 返回顶部用 position:fixed 相对视口固定：滚动卡片时不消失、不随卡片移动，
-  // 始终悬浮在右下角。这是浮动按钮的标准实现。
-  assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?position:\s*fixed;/);
-  assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?justify-content:\s*end;/);
-  // 距右边缘对齐 page-padding，距底部由 block-offset 控制（默认 100px，不贴太近方便点击）。
-  assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?right:\s*var\(--layout-page-padding\);/);
-  assert.match(
-    css,
-    /\.mod-library__main-floating-actions[\s\S]*?bottom:\s*var\(--mod-library-back-to-top-block-offset\);/,
-  );
-  assert.match(css, /\.mod-library__back-to-top[\s\S]*?pointer-events:\s*auto;/);
+  assert.match(source, /mod-library__content-shell/);
+  assert.match(source, /mod-library__scrollbar/);
+  assert.match(source, /mod-library__scrollbar-thumb/);
+  assert.match(source, /thumbStyle/);
+  assert.match(css, /\.mod-library__content[\s\S]*?scrollbar-width:\s*none;/);
+  assert.match(css, /\.mod-library__content::-webkit-scrollbar\s*{[\s\S]*?width:\s*0;/);
+  assert.match(css, /\.mod-library__scrollbar\s*{[\s\S]*?position:\s*absolute;/);
+  assert.match(css, /\.mod-library__scrollbar-thumb\s*{[\s\S]*?transform:\s*translateY/);
 });
 
-test("back-to-top button offset keeps it clear of the corner for easy clicking", () => {
+test("back-to-top button keeps the requested comfortable bottom offset when visible", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
   // 距底部 100px：不贴太近右下角，方便点击（用户明确要求）。
   assert.match(css, /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*100px;/);
+  assert.match(
+    css,
+    /\.mod-library__main-floating-actions[\s\S]*?bottom:\s*var\(--mod-library-back-to-top-block-offset\);/,
+  );
   // 关键根因保护：浮动层不得用 translateX 向外平移（会触发水平滚动并截断按钮）。
   assert.doesNotMatch(css, /\.mod-library__main-floating-actions[\s\S]*?transform:\s*translateX/);
   assert.doesNotMatch(css, /--mod-library-back-to-top-inline-offset/);

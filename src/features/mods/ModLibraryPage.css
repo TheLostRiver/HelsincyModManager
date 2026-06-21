@@ -45,11 +45,12 @@
 }
 
 /*
- * .mod-library__content 是 mods 路由的滚动容器：只装卡片网格 + 返回顶部浮动层。
+ * .mod-library__content-shell 承载列表滚动容器和自绘滚动条浮层。
+ * .mod-library__content 是 mods 路由的真实滚动容器：只装卡片网格 + 返回顶部浮动层。
  * 搜索栏(sticky-controls)在其之外(mod-library 第1行)，故滚动条从卡片区顶部(搜索栏正下方)
  * 开始，绝不达搜索栏。高度由路由作用域闭合的高度链约束，content 获得被约束高度可滚。
  */
-.mod-library__content {
+.mod-library__content-shell {
   grid-column: 1;
   grid-row: 2;
   position: relative;
@@ -57,56 +58,65 @@
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+}
+
+.mod-library__content {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
 }
 
 /*
- * .mod-library__content 滚动条样式（mods 路由滚动容器）：细窄、半透明、圆角的现代风格，
- * 替代 Windows 原生粗滚动条。与 .app-surface（Dashboard 用）样式保持一致。
+ * 原生滚动条只负责滚动能力，视觉层隐藏；显隐由自绘滚动条和返回顶部按钮统一跟随
+ * .mod-library__content 的 scrollTop 状态。
  */
 .mod-library__content {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
+  scrollbar-width: none;
 }
 
 .mod-library__content::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.mod-library__scrollbar {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  bottom: 0;
+  z-index: 15;
   width: 10px;
-  height: 10px;
+  pointer-events: none;
 }
 
-.mod-library__content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.mod-library__content::-webkit-scrollbar-thumb {
+.mod-library__scrollbar-thumb {
+  width: 10px;
+  min-height: 36px;
   background: var(--color-border);
   border: 2px solid transparent;
   border-radius: 9999px;
   background-clip: padding-box;
+  opacity: 0.9;
+  transform: translateY(0px);
+  pointer-events: auto;
+  cursor: grab;
+  transition:
+    background-color 0.18s ease,
+    opacity 0.18s ease;
 }
 
-.mod-library__content::-webkit-scrollbar-thumb:hover {
+.mod-library__scrollbar-thumb:active {
+  cursor: grabbing;
   background: var(--color-text-muted);
-  background-clip: padding-box;
 }
 
-.mod-library__content::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-:root[data-color-scheme="dark"] .mod-library__content {
-  scrollbar-color: var(--color-border-muted) transparent;
-}
-
-:root[data-color-scheme="dark"] .mod-library__content::-webkit-scrollbar-thumb {
+:root[data-color-scheme="dark"] .mod-library__scrollbar-thumb {
   background: var(--color-border-muted);
-  background-clip: padding-box;
-}
-
-:root[data-color-scheme="dark"] .mod-library__content::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
   background-clip: padding-box;
 }
 
@@ -733,6 +743,27 @@
   .compact-action {
     flex: 0 0 auto;
     min-width: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  /*
+   * classic sidebar 会在窄屏堆到内容上方，若继续把 mods 路由外层滚动完全关闭，
+   * 顶部状态栏和多行快捷操作会把列表行压到接近 0 高。窄屏允许外层页面滚动，
+   * 同时保留列表自身为真实滚动容器，避免卡片区失去最小可操作高度。
+   */
+  .app-surface:has(.route-transition__layer[data-route-id="mods"]) {
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .app-surface:has(.route-transition__layer[data-route-id="mods"])::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .mod-library {
+    grid-template-rows: auto minmax(320px, 1fr);
   }
 }
 
