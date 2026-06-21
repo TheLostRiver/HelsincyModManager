@@ -68,7 +68,8 @@ test("sticky controls are an opaque single-column bar fixed above the scroll con
   const stickyControlsBody = getRuleBody(css, ".mod-library__sticky-controls");
   assert.doesNotMatch(stickyControlsBody, /position:\s*sticky;/);
   assert.match(stickyControlsBody, /grid-row:\s*1;/);
-  assert.match(getRuleBody(css, ".mod-library__content"), /grid-row:\s*2;/);
+  assert.match(getRuleBody(css, ".mod-library__content-shell"), /grid-row:\s*2;/);
+  assert.match(getRuleBody(css, ".mod-library__content"), /overflow-y:\s*auto;/);
   // 单列垂直堆叠：搜索栏独占上行，操作区在下行，杜绝操作按钮贴在搜索框右侧被误当成搜索按钮。
   assert.match(
     css,
@@ -99,6 +100,23 @@ test("quick actions wrap instead of horizontally scrolling, so no ugly scrollbar
   assert.match(css, /\.compact-panel__stack\s*{[\s\S]*?flex-wrap:\s*wrap;/);
   assert.doesNotMatch(css, /\.compact-panel__stack\s*{[\s\S]*?overflow-x:\s*auto;/);
   assert.doesNotMatch(css, /@media\s*\(max-width:\s*1280px\)\s*{[\s\S]*?\.compact-panel__stack\s*{[\s\S]*?overflow-x:\s*auto;/);
+});
+
+test("narrow screens keep the mod list usable beneath tall controls", () => {
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.app-surface:has\(\.route-transition__layer\[data-route-id="mods"\]\)\s*{[\s\S]*?overflow-y:\s*auto;/,
+  );
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.app-surface:has\(\.route-transition__layer\[data-route-id="mods"\]\)\s*{[\s\S]*?scrollbar-width:\s*none;/,
+  );
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(320px,\s*1fr\);/,
+  );
 });
 
 test("quick action panel no longer owns sticky positioning directly", () => {
