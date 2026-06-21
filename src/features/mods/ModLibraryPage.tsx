@@ -16,6 +16,8 @@ import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
 
+export type ModViewMode = "classic" | "grid" | "list" | "tech";
+
 type ModLibraryPageProps = {
   onAction?: (actionId: string) => void;
 };
@@ -52,6 +54,7 @@ const initialScrollUiState = getModLibraryScrollUiState({
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
+  const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
@@ -207,8 +210,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           <LibraryToolbar
             query={query}
             activeFilter={activeFilter}
+            viewMode={viewMode}
             onQueryChange={setQuery}
             onFilterChange={setActiveFilter}
+            onViewModeChange={setViewMode}
           />
         </div>
 
@@ -231,12 +236,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               <p>试试调整搜索关键词或筛选条件。</p>
             </div>
           ) : (
-            <div className="mod-grid" role="list">
+            <div className={`mod-grid view-${viewMode}`} role="list">
               {visibleItems.map((item, index) => (
                 <ModPosterCard
                   key={item.id}
                   item={item}
                   selected={selectedIds.has(item.id)}
+                  viewMode={viewMode}
                   onSelect={selectCard}
                   index={index}
                 />

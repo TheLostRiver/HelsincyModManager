@@ -8,6 +8,8 @@ export type ModInstallStatus = "installed" | "disabled" | "conflict";
 export type ModLibraryItem = {
   id: string;
   name: string;
+  author?: string;
+  versionLabel?: string;
   sizeLabel: string;
   status: ModInstallStatus;
   categoryLabels: string[];
@@ -21,6 +23,8 @@ export const modLibraryItems: ModLibraryItem[] = [
   {
     id: "mod-001-非官方仪式礼服",
     name: "非官方仪式礼服",
+    author: "NexusUser123",
+    versionLabel: "v2.1.4",
     sizeLabel: "默认封面",
     status: "installed",
     categoryLabels: ["外观"],
@@ -30,6 +34,8 @@ export const modLibraryItems: ModLibraryItem[] = [
   {
     id: "mod-002-盛夏兔女郎套装",
     name: "盛夏兔女郎套装",
+    author: "NexusUser123",
+    versionLabel: "v1.0.0",
     sizeLabel: "2.9 MB",
     status: "disabled",
     categoryLabels: ["武器"],
