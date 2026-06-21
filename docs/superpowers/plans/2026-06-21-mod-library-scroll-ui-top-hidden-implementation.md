@@ -327,6 +327,9 @@ with:
 test("back-to-top button keeps the requested comfortable bottom offset when visible", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
+  // 100px / 80px are the final comfortable bottom offsets requested after the
+  // original sticky-controls plan. Do not revert these to the early 12px / 8px
+  // draft values from the first pass.
   assert.match(css, /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*100px;/);
   assert.match(
     css,
