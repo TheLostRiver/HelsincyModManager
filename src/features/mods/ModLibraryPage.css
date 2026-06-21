@@ -297,8 +297,8 @@
 
 .library-chip.is-active {
   color: var(--color-primary-action-text);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-primary-action-bg);
+  border-color: var(--color-primary-action-border, transparent);
   box-shadow: 0 4px 12px var(--color-accent-alpha-20);
 }
 
