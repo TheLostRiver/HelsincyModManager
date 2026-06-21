@@ -5,40 +5,122 @@
  */
 
 /*
- * Mod Library 自带右侧操作面板，不应被 AppFrame 的 workbench-body 双列布局拆分。
- * 当它作为 main 直接子元素且独占该区域时，跨满整行。
+ * 滚动容器路由级下沉：仅 mods 路由把滚动条从 .app-surface 下沉到 .mod-library__content，
+ * 让滚动条只出现在卡片区域（吸顶条下方→内容底部），不达到状态栏高度。
+ * 利用 .route-transition__layer 已有的 data-route-id="mods" 作为作用域，
+ * Dashboard 等其他路由完全不受影响，仍由 .app-surface 滚动。
  */
-.workbench-body > .mod-library,
-.route-transition__layer > .mod-library {
+.app-surface:has(.route-transition__layer[data-route-id="mods"]) {
+  overflow: hidden;
+}
+
+/* 仅 mods 路由：闭合从 .app-surface 到 .mod-library 的高度链（5 层），
+ * 让 .mod-library__content 获得被约束高度成为内层滚动容器。
+ * .workbench-body / .route-transition 无 data-route-id 属性，用 :has() 选中
+ * （当它们内含 mods layer 时闭合）；.route-transition__layer 与 .mod-library
+ * 直接用属性作用域。逐层 min-height:0 + 单行 1fr 把高度约束下传。 */
+.workbench-body:has([data-route-id="mods"]),
+.route-transition:has([data-route-id="mods"]),
+.route-transition__layer[data-route-id="mods"] {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.route-transition__layer[data-route-id="mods"] > .mod-library,
+.workbench-body > .mod-library {
   grid-column: 1 / -1;
-  align-self: start;
+  align-self: stretch;
 }
 
 .mod-library {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--layout-content-gap);
   min-width: 0;
   min-height: 0;
-  /*
-   * 搜索+操作统一吸顶条紧贴全局状态栏下方：状态栏高度 + 留出状态栏底部到吸顶条的呼吸间距。
-   * 状态栏吸顶后顶部不再有 page-padding 缝隙，吸顶条必须下移到状态栏之下。
-   */
-  --mod-library-sticky-top: calc(var(--app-header-height) + 4px);
   --mod-library-back-to-top-size: 52px;
   --mod-library-back-to-top-block-offset: 12px;
 }
 
 /*
- * 统一不透明吸顶条：搜索栏 + 快捷操作合为一个实体容器，紧贴状态栏下方常驻视野。
+ * .mod-library__content 是 mods 路由的滚动容器：内部第一行吸顶条(auto)、第二行卡片网格(1fr)。
+ * 吸顶条在其内部 sticky top:0 即可在滚动时贴顶。
+ */
+.mod-library__content {
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/*
+ * .mod-library__content 滚动条样式（mods 路由滚动容器）：细窄、半透明、圆角的现代风格，
+ * 替代 Windows 原生粗滚动条。与 .app-surface（Dashboard 用）样式保持一致。
+ */
+.mod-library__content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.mod-library__content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.mod-library__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mod-library__content::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+.mod-library__content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+
+.mod-library__content::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:root[data-color-scheme="dark"] .mod-library__content {
+  scrollbar-color: var(--color-border-muted) transparent;
+}
+
+:root[data-color-scheme="dark"] .mod-library__content::-webkit-scrollbar-thumb {
+  background: var(--color-border-muted);
+  background-clip: padding-box;
+}
+
+:root[data-color-scheme="dark"] .mod-library__content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+
+/*
+ * 统一不透明吸顶条：搜索栏 + 快捷操作合为一个实体容器，作为 content 首子元素。
  * 内部 toolbar / panel 褪去独立卡片外观，融入本条，杜绝卡片从缝隙透出。
  * 采用单列垂直堆叠（搜索栏在上、快捷操作在下），避免操作按钮贴在搜索框右侧
  * 被误当成搜索按钮；快捷操作另起一行并 flex-wrap 换行，杜绝横向溢出与水平滚动条。
  */
 .mod-library__sticky-controls {
+  grid-column: 1;
+  grid-row: 1;
   position: sticky;
-  top: var(--mod-library-sticky-top);
+  top: 0;
   z-index: 30;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -74,30 +156,20 @@
   border-top: 1px solid var(--color-border-muted);
 }
 
-.mod-library__content {
-  grid-column: 1;
-  grid-row: 2;
-  position: relative;
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  min-height: 0;
-}
-
 /*
- * 返回顶部浮动层：贴内容区右下角内部，绝不溢出容器。
- * 不再用 translateX 向外偏移（那会把按钮推出边界，触发 .app-surface 水平滚动并截断按钮）；
- * 改为按钮留在容器内贴右内边距，靠 justify-content: end 自然贴边。
+ * 返回顶部浮动层：贴滚动容器(.mod-library__content)右下角内部，绝不溢出。
+ * 滚动容器是 content（不再是 .app-surface），用 sticky bottom 贴 content 底部，
+ * 避免基于 100dvh 的 top 计算把按钮推到 content 可视区外（content 顶部在状态栏下方）。
  */
 .mod-library__main-floating-actions {
   grid-column: 1;
-  grid-row: 1 / -1;
+  grid-row: 2;
   position: sticky;
-  top: calc(100dvh - var(--layout-page-padding) - var(--mod-library-back-to-top-size) - var(--mod-library-back-to-top-block-offset));
+  bottom: var(--mod-library-back-to-top-block-offset);
   z-index: 20;
   display: flex;
   justify-content: end;
-  align-self: start;
+  align-self: end;
   height: 0;
   padding-right: 4px;
   pointer-events: none;

@@ -38,8 +38,9 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.ok(toolbarIndex > -1, "toolbar slot should exist");
   assert.ok(actionsIndex > -1, "actions slot should exist");
   assert.ok(gridIndex > -1, "content area should exist");
-  assert.ok(toolbarIndex < gridIndex, "toolbar slot should render before content");
-  assert.ok(actionsIndex < gridIndex, "actions slot should render before content");
+  // sticky-controls 已移入 content 内部作为首子元素，故 content 先于 slot 出现。
+  assert.ok(gridIndex < toolbarIndex, "toolbar slot should render inside content");
+  assert.ok(gridIndex < actionsIndex, "actions slot should render inside content");
 });
 
 test("global status bar stays pinned so the sticky controls can sit beneath it", () => {
@@ -52,21 +53,25 @@ test("global status bar stays pinned so the sticky controls can sit beneath it",
   assert.match(tokens, /--app-header-height:\s*64px;/);
 });
 
-test("sticky controls are an opaque single-column bar that sits beneath the status bar", () => {
+test("sticky controls are an opaque single-column bar pinned inside the scroll container", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
-  // 吸顶条 top 紧贴状态栏下方，不再依赖 page-padding。
+  // 滚动容器已下沉到 .mod-library__content：它是 overflow-y:auto 的滚动容器，
+  // 高度由路由作用域闭合的高度链约束，滚动条只出现在卡片区域，不达到状态栏高度。
+  assert.match(css, /\.mod-library__content\s*{[\s\S]*?overflow-y:\s*auto;/);
   assert.match(
     css,
-    /\.mod-library\s*{[\s\S]*?--mod-library-sticky-top:\s*calc\(var\(--app-header-height\)\s*\+\s*4px\);/,
+    /\.route-transition__layer\[data-route-id="mods"\][\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\);/,
   );
+  // 吸顶条作为 content 首子元素 sticky top:0，在滚动容器内贴顶（状态栏在 content 之外，天然遮挡上方）。
+  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?position:\s*sticky;/);
+  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?top:\s*0;/);
   // 单列垂直堆叠：搜索栏独占上行，操作区在下行，杜绝操作按钮贴在搜索框右侧被误当成搜索按钮。
   assert.match(
     css,
     /\.mod-library__sticky-controls\s*{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
   );
-  // 实体不透明条：sticky + 自带背景/边框，杜绝卡片从缝隙透出。
-  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?position:\s*sticky;/);
+  // 实体不透明条：自带背景/边框，杜绝卡片从缝隙透出。
   assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?background:\s*var\(--color-surface\);/);
   assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?border:\s*1px\s+solid\s+var\(--color-border-muted\);/);
   assert.doesNotMatch(css, /\.mod-library__sticky-controls\s*{[\s\S]*?display:\s*contents;/);
