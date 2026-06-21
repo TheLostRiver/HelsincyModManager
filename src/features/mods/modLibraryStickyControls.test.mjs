@@ -38,9 +38,9 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.ok(toolbarIndex > -1, "toolbar slot should exist");
   assert.ok(actionsIndex > -1, "actions slot should exist");
   assert.ok(gridIndex > -1, "content area should exist");
-  // sticky-controls 已移入 content 内部作为首子元素，故 content 先于 slot 出现。
-  assert.ok(gridIndex < toolbarIndex, "toolbar slot should render inside content");
-  assert.ok(gridIndex < actionsIndex, "actions slot should render inside content");
+  // sticky-controls 在 content 之外（mod-library 第1行），故 slot 先于 content 出现。
+  assert.ok(toolbarIndex < gridIndex, "toolbar slot should render before content");
+  assert.ok(actionsIndex < gridIndex, "actions slot should render before content");
 });
 
 test("global status bar stays pinned so the sticky controls can sit beneath it", () => {
@@ -53,7 +53,7 @@ test("global status bar stays pinned so the sticky controls can sit beneath it",
   assert.match(tokens, /--app-header-height:\s*64px;/);
 });
 
-test("sticky controls are an opaque single-column bar pinned inside the scroll container", () => {
+test("sticky controls are an opaque single-column bar fixed above the scroll container", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
   // 滚动容器已下沉到 .mod-library__content：它是 overflow-y:auto 的滚动容器，
@@ -63,9 +63,12 @@ test("sticky controls are an opaque single-column bar pinned inside the scroll c
     css,
     /\.route-transition__layer\[data-route-id="mods"\][\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\);/,
   );
-  // 吸顶条作为 content 首子元素 sticky top:0，在滚动容器内贴顶（状态栏在 content 之外，天然遮挡上方）。
-  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?position:\s*sticky;/);
-  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?top:\s*0;/);
+  // 吸顶条处于滚动容器(content)之外的 mod-library 第1行，祖先链都不滚，故无需 sticky——
+  // 物理固定常驻视野，滚动条(content 的)从其正下方开始，绝不达搜索栏。
+  const stickyControlsBody = getRuleBody(css, ".mod-library__sticky-controls");
+  assert.doesNotMatch(stickyControlsBody, /position:\s*sticky;/);
+  assert.match(stickyControlsBody, /grid-row:\s*1;/);
+  assert.match(getRuleBody(css, ".mod-library__content"), /grid-row:\s*2;/);
   // 单列垂直堆叠：搜索栏独占上行，操作区在下行，杜绝操作按钮贴在搜索框右侧被误当成搜索按钮。
   assert.match(
     css,
@@ -75,7 +78,7 @@ test("sticky controls are an opaque single-column bar pinned inside the scroll c
   assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?background:\s*var\(--color-surface\);/);
   assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?border:\s*1px\s+solid\s+var\(--color-border-muted\);/);
   assert.doesNotMatch(css, /\.mod-library__sticky-controls\s*{[\s\S]*?display:\s*contents;/);
-  // sticky 归属上移到吸顶条，内部 slot 退为 static。
+  // 内部 slot 退为 static。
   assert.match(
     css,
     /\.mod-library__toolbar-slot,[\s\S]*?\.mod-library__actions-slot\s*{[\s\S]*?position:\s*static;/,
