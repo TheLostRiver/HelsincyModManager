@@ -701,3 +701,40 @@ If no files changed, do not create an empty commit.
 - **Placeholder scan:** 每个任务都有明确文件、代码片段、命令和期望结果；没有未定义的实现步骤。
 - **Type consistency:** 新 wrapper 名称统一为 `mod-library__sticky-controls`、`mod-library__toolbar-slot`、`mod-library__actions-slot`、`mod-library__content`。
 - **Risk note:** sticky 生效依赖 `.app-surface` 作为滚动容器；最终必须做浏览器滚动 smoke test，源码测试只能保护结构合约，不能替代真实滚动验证。
+
+---
+
+## 范围修订（实现期发现）
+
+> 实施过程中发现原始目标漏掉了两项视觉缺陷，需求随之扩展。本节记录改动超出原计划边界的部分与根因。
+
+### 新发现的问题
+
+1. **全局状态栏（`AppHeader` / `.top-status-bar`）不吸顶**：它是 `.app-surface` 滚动容器第一个 grid 行，原本不是 sticky，向下滚动时整条滚出视野，顶部留下一片透明区域。原计划只考虑了搜索栏/快捷操作的吸顶，未覆盖状态栏。
+2. **透卡缝隙**：搜索栏 `.library-toolbar` 与操作面板 `.compact-panel` 是两个独立的圆角卡片，各自 `sticky`，且 `.mod-library__sticky-controls` 用 `display: contents` 把它们直接暴露到 grid。卡片之间的列 gap、卡片与已滚走状态栏之间的区域都是透明的，滚动的 Mod 卡片就从这些缝隙透出，视觉很突兀。
+
+### 范围扩展
+
+由此改动从「只改 `src/features/mods/`」扩展到全局布局层：
+
+- **`src/shared/styles/tokens.css`**：新增 `--app-header-height: 64px;`（light + dark 两块），作为状态栏与 Mod 吸顶条的对齐基准。
+- **`src/app/frame/AppFrame.css`**：`.top-status-bar` 追加 `position: sticky; top: 0; z-index: 40;`（全局行为，所有路由共用）。既有颜色/border/高度/小屏契约（`1360px` / `860px`）不回退，仅在原规则上叠加 sticky。
+
+### Mod 吸顶条改为统一不透明条（与原计划「双列常驻」不同）
+
+- `.mod-library__sticky-controls` 从 `display: contents` 改为**实体不透明容器**（`position: sticky` + `background` + `border` + `box-shadow`），紧贴状态栏下方（`top: calc(var(--app-header-height) + 4px)`）。
+- 内部 `.library-toolbar` / `.compact-panel` 褪去独立卡片外观（去背景/边框/圆角/阴影），融入吸顶条，杜绝嵌套卡片与透卡缝隙。
+- 桌面端操作面板由「右侧竖排常驻」改为**吸顶条内横排按钮**：`.compact-action` 收紧为 pill 状横排按钮，右侧装饰 dot 收起。`<=1280px` 时吸顶条内部单列堆叠（搜索栏 + 横向滚动操作条）。
+- `.mod-library` 主体由「双列」改为「单列两行」（吸顶条 + 内容），原双列职责并入吸顶条。`--layout-mod-action-panel-width` token 转由吸顶条右侧列消费（`minmax(var(...), auto)`）。
+
+### 取舍
+
+- **桌面操作面板从竖排常驻变顶部横排**：这是彻底消除水平缝隙的必要取舍。滚动时所有按钮仍可见可点。
+- **状态栏吸顶是全局行为**：影响所有页面，但 Dashboard 等无 sticky 依赖，安全。
+- 全程 `position: sticky`，不引入 `fixed`，符合原计划「不脱离 App Shell」约束。
+
+### 测试同步
+
+- `src/features/mods/modLibraryStickyControls.test.mjs`：断言改为校验「实体不透明吸顶条」「状态栏全局吸顶」「slot 为 static」「窄屏单列堆叠 + 横向滚动」。
+- `src/shared/styles/layoutTokens.test.mjs`：操作面板 token 消费断言从精确 `minmax(0,1fr) var(--layout-mod-action-panel-width)` 更新为 `minmax(var(--layout-mod-action-panel-width), auto)`；min-width 护栏清单补齐 `.mod-library__sticky-controls` 与 `.compact-panel__stack`（1280px）。
+- `src/features/mods/modLibraryBackToTop.test.mjs`：back-to-top 行为契约不变，无需改动（已验证通过）。

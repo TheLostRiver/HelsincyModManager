@@ -18,7 +18,14 @@
   min-width: 0;
   min-height: 0;
   padding: var(--layout-page-padding);
-  overflow: auto;
+  /*
+   * 拆分 overflow：垂直方向按需滚动，水平方向彻底禁止——卡片网格是自上而下布局，
+   * 不需要左右滚动，禁掉水平滚动条可避免用户看到无意义的横向滚动条。
+   * scrollbar-gutter 预留滚动条通道，内容宽度不因滚动条出现/消失而跳动。
+   */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   view-transition-name: app-surface;
 }
 
@@ -38,6 +45,13 @@
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-soft);
+  /*
+   * 全局吸顶：状态栏常驻 .app-surface 顶部，避免滚动后顶部留空，
+   * 也为 Mod 吸顶条提供稳定的上层参照。z-index 高于 mod 吸顶条(30) 与 back-to-top(20)。
+   */
+  position: sticky;
+  top: 0;
+  z-index: 40;
 }
 
 .current-game {
@@ -180,4 +194,53 @@
     justify-content: start;
     flex-wrap: wrap;
   }
+}
+
+/*
+ * .app-surface 自定义滚动条：细窄、半透明、圆角的现代风格，替代 Windows 原生粗滚动条。
+ * Firefox 用 scrollbar-width / scrollbar-color；WebKit/Chromium 用 ::-webkit-scrollbar 系列。
+ * 水平滚动条样式同样收窄（理论上 overflow-x:hidden 已禁用，此处仅作兜底美化）。
+ */
+.app-surface {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.app-surface::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.app-surface::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-surface::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+.app-surface::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+
+.app-surface::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:root[data-color-scheme="dark"] .app-surface {
+  scrollbar-color: var(--color-border-muted) transparent;
+}
+
+:root[data-color-scheme="dark"] .app-surface::-webkit-scrollbar-thumb {
+  background: var(--color-border-muted);
+  background-clip: padding-box;
+}
+
+:root[data-color-scheme="dark"] .app-surface::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
 }
