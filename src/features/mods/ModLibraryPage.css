@@ -41,7 +41,7 @@
   min-width: 0;
   min-height: 0;
   --mod-library-back-to-top-size: 52px;
-  --mod-library-back-to-top-block-offset: 12px;
+  --mod-library-back-to-top-block-offset: 100px;
 }
 
 /*
@@ -158,21 +158,18 @@
 }
 
 /*
- * 返回顶部浮动层：贴滚动容器(.mod-library__content)右下角内部，绝不溢出。
- * 滚动容器是 content（不再是 .app-surface），用 sticky bottom 贴 content 底部，
- * 避免基于 100dvh 的 top 计算把按钮推到 content 可视区外（content 顶部在状态栏下方）。
+ * 返回顶部浮动按钮：相对视口固定(fixed)，真正悬浮——滚动卡片时不消失、不随卡片移动。
+ * 定位在右下角，距底部 100px（不贴太近，方便点击）、距右边缘对齐 page-padding。
+ * fixed 是浮动按钮的标准实现：脱离文档流、不依赖父级滚动容器、始终在视口右下角。
+ * 因脱离流，不再是 content 的 grid item，从 DOM 角度仍在 content 内但定位完全独立。
  */
 .mod-library__main-floating-actions {
-  grid-column: 1;
-  grid-row: 1;
-  position: sticky;
+  position: fixed;
+  right: var(--layout-page-padding);
   bottom: var(--mod-library-back-to-top-block-offset);
-  z-index: 20;
+  z-index: 50;
   display: flex;
   justify-content: end;
-  align-self: end;
-  height: 0;
-  padding-right: 4px;
   pointer-events: none;
 }
 
@@ -750,7 +747,7 @@
     --layout-mod-card-min-width: 150px;
     --layout-mod-card-poster-height: 220px;
     --mod-library-back-to-top-size: 48px;
-    --mod-library-back-to-top-block-offset: 8px;
+    --mod-library-back-to-top-block-offset: 80px;
   }
 
   .mod-grid {
@@ -766,10 +763,6 @@
   .compact-action {
     flex: 0 0 auto;
     min-width: 0;
-  }
-
-  .mod-library__main-floating-actions {
-    top: calc(100dvh - 20px - var(--mod-library-back-to-top-size) - var(--mod-library-back-to-top-block-offset));
   }
 
   .mod-library__back-to-top {
