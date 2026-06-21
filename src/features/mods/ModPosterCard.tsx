@@ -16,20 +16,22 @@ const statusLabel: Record<ModLibraryItem["status"], string> = {
 
 export function ModPosterCard({ item, selected, onSelect, index = 0 }: ModPosterCardProps) {
   return (
-    <article
+    <button
+      type="button"
       className={`mod-card anim-stagger-item${selected ? " is-selected" : ""}`}
       style={{ "--stagger-idx": index + 1 } as React.CSSProperties}
-      aria-label={item.name}
+      onClick={() => onSelect(item.id)}
+      aria-pressed={selected}
+      aria-label={`选择 ${item.name}`}
       data-status={item.status}
-      role="listitem"
     >
-      <button
-        type="button"
+      <div className="mod-card__selection-indicator">
+        <Check size={14} strokeWidth={3} className="mod-card__check-icon" aria-hidden="true" />
+      </div>
+
+      <div
         className="mod-card__poster"
         style={{ "--poster-from": item.posterFrom, "--poster-to": item.posterTo } as React.CSSProperties}
-        onClick={() => onSelect(item.id)}
-        aria-pressed={selected}
-        aria-label={`选择 ${item.name}`}
       >
         {/* 无预览图时的简化人形剪影占位，仅用于还原设计稿视觉。 */}
         <span className="mod-card__silhouette" aria-hidden="true">
@@ -43,14 +45,12 @@ export function ModPosterCard({ item, selected, onSelect, index = 0 }: ModPoster
           <Check size={15} strokeWidth={2.6} aria-hidden="true" />
           {statusLabel[item.status]}
         </span>
-
-        {selected && <span className="mod-card__select-ring" aria-hidden="true" />}
-      </button>
+      </div>
 
       <div className="mod-card__meta">
         <strong className="mod-card__title">{item.name}</strong>
         <span className="mod-card__size">{item.sizeLabel}</span>
       </div>
-    </article>
+    </button>
   );
 }
