@@ -224,14 +224,27 @@
  */
 .library-toolbar {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
   padding: 0;
   background: none;
   border: none;
   border-radius: 0;
   box-shadow: none;
+}
+
+.library-toolbar__top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.library-toolbar__bottom-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 
 .library-search {
@@ -243,6 +256,7 @@
   color: var(--color-text-muted);
   background: var(--color-surface-subtle);
   border-radius: var(--radius-pill);
+  flex: 1;
 }
 
 .library-search svg {
@@ -273,7 +287,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
 }
 
 .library-view-toggles {
