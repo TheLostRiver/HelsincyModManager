@@ -297,8 +297,8 @@
 
 .library-chip.is-active {
   color: var(--color-primary-action-text);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-primary-action-bg);
+  border-color: var(--color-primary-action-border, transparent);
   box-shadow: 0 4px 12px var(--color-accent-alpha-20);
 }
 
@@ -618,8 +618,10 @@
 
 .compact-action:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
-  filter: grayscale(0.3);
+  background: var(--color-surface-subtle) !important;
+  color: var(--color-text-muted) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .compact-action:not(:disabled):hover {
@@ -663,33 +665,32 @@
   background: #ffffffaa;
 }
 
-/* 中性操作：浅灰白渐变。 */
+/* 中性操作：使用浅灰白。 */
 .compact-action.is-neutral {
   color: var(--color-text-soft);
-  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
-  border-color: #dce7f2;
-  box-shadow: 0 8px 18px -14px #0f172a33;
+  background: var(--color-surface);
+  border-color: var(--color-border-muted);
+  box-shadow: 0 4px 12px var(--color-shadow-alpha, #0f172a0a);
 }
 
 .compact-action.is-neutral:not(:disabled):hover {
-  border-color: var(--color-accent-alpha-40);
-  color: var(--color-accent);
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
 }
 
 .compact-action.is-neutral .compact-action__dot {
-  background: var(--color-text-muted);
+  background: var(--color-neutral-dot);
 }
 
 /* 成功（启用全部）：薄荷渐变。 */
 .compact-action.is-success {
   color: var(--color-success-text);
-  background: linear-gradient(180deg, #ffffff 0%, #dcfde7 100%);
-  border-color: #d8f3e3;
-  box-shadow: 0 8px 18px -14px #10b98144;
+  background: var(--color-success-bg);
+  border-color: transparent;
 }
 
 .compact-action.is-success:not(:disabled):hover {
-  color: #047857;
+  filter: brightness(0.95);
 }
 
 .compact-action.is-success .compact-action__dot {
@@ -698,38 +699,72 @@
 
 /* 警告（禁用全部）：暖橙渐变。 */
 .compact-action.is-warning {
-  color: #c2410c;
-  background: linear-gradient(180deg, #ffffff 0%, #ffedd5 100%);
-  border-color: #f7dec9;
-  box-shadow: 0 8px 18px -14px #f9731644;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-color: transparent;
+}
+
+.compact-action.is-warning:not(:disabled):hover {
+  filter: brightness(0.95);
 }
 
 .compact-action.is-warning .compact-action__dot {
-  background: #fb923c;
+  background: var(--color-warning-dot);
 }
 
 /* 信息（重装选中）：浅蓝渐变。 */
 .compact-action.is-info {
-  color: #1d4ed8;
-  background: linear-gradient(180deg, #ffffff 0%, #dbeafe 100%);
-  border-color: #d8e7ff;
-  box-shadow: 0 8px 18px -14px #3b82f644;
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: transparent;
+}
+
+.compact-action.is-info:not(:disabled):hover {
+  filter: brightness(0.95);
 }
 
 .compact-action.is-info .compact-action__dot {
-  background: #60a5fa;
+  background: var(--color-accent);
 }
 
 /* 危险（卸载选中）：浅红渐变。 */
 .compact-action.is-danger {
   color: var(--color-danger-text);
-  background: linear-gradient(180deg, #ffffff 0%, #fee2e2 100%);
-  border-color: #f7d5d5;
-  box-shadow: 0 8px 18px -14px #ef444444;
+  background: var(--color-danger-bg);
+  border-color: transparent;
+}
+
+.compact-action.is-danger:not(:disabled):hover {
+  filter: brightness(0.95);
 }
 
 .compact-action.is-danger .compact-action__dot {
-  background: #f87171;
+  background: var(--color-danger-dot);
+}
+
+/* 按钮编组 */
+.compact-action-group {
+  display: inline-flex;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border-muted);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.compact-action-group .compact-action {
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid var(--color-border-muted);
+  box-shadow: none;
+}
+
+.compact-action-group .compact-action:last-child {
+  border-right: none;
+}
+
+.compact-action-group .compact-action:not(:disabled):hover {
+  background: var(--color-surface-muted);
+  transform: none;
 }
 
 /* ---------- 响应式 ---------- */
