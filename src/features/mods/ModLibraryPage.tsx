@@ -213,7 +213,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         </div>
 
         <div className="mod-library__actions-slot">
-          <CompactActionPanel selectedCount={selectedCount} onAction={handleAction} />
+          <CompactActionPanel selectedCount={selectedCount} totalCount={visibleItems.length} onAction={handleAction} />
         </div>
       </div>
 
