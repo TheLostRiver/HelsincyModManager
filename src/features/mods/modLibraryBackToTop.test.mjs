@@ -12,19 +12,19 @@ function readProjectFile(relativePath) {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
-test("returns app-surface as the preferred back-to-top scroll target", () => {
-  const appSurface = { scrollTo() {} };
+test("returns mod-library__content as the preferred back-to-top scroll target", () => {
+  const modLibraryContent = { scrollTo() {} };
   const fallbackTarget = { scrollTo() {} };
   const documentLike = {
     querySelector(selector) {
-      return selector === ".app-surface" ? appSurface : null;
+      return selector === ".mod-library__content" ? modLibraryContent : null;
     },
   };
 
-  assert.equal(getModLibraryBackToTopTarget(documentLike, fallbackTarget), appSurface);
+  assert.equal(getModLibraryBackToTopTarget(documentLike, fallbackTarget), modLibraryContent);
 });
 
-test("falls back when app-surface scroll target is unavailable", () => {
+test("falls back when mod-library__content scroll target is unavailable", () => {
   const fallbackTarget = { scrollTo() {} };
   const documentLike = {
     querySelector() {
@@ -65,9 +65,11 @@ test("back-to-top control stays inside the mod library main column instead of pi
   assert.match(source, /mod-library__main-floating-actions/);
   assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?position:\s*sticky;/);
   assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?justify-content:\s*end;/);
+  // 滚动容器下沉到 .mod-library__content 后，按钮用 sticky bottom 贴 content 底部，
+  // 不再用基于 100dvh 的 top 计算（那会把按钮推到 content 可视区外，因 content 顶部在状态栏下方）。
   assert.match(
     css,
-    /\.mod-library__main-floating-actions[\s\S]*?top:\s*calc\(100dvh\s*-\s*var\(--layout-page-padding\)\s*-\s*var\(--mod-library-back-to-top-size\)\s*-\s*var\(--mod-library-back-to-top-block-offset\)\);/,
+    /\.mod-library__main-floating-actions[\s\S]*?bottom:\s*var\(--mod-library-back-to-top-block-offset\);/,
   );
   assert.doesNotMatch(css, /\.mod-library__back-to-top[\s\S]*?position:\s*fixed;/);
   assert.match(css, /\.mod-library__back-to-top[\s\S]*?pointer-events:\s*auto;/);
