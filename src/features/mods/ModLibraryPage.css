@@ -62,8 +62,7 @@
 
 .mod-library__content {
   position: relative;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  display: block;
   min-width: 0;
   min-height: 0;
   overflow-x: hidden;
@@ -224,8 +223,10 @@
  * 不再自带背景/边框/圆角/阴影，避免与吸顶条形成嵌套卡片。
  */
 .library-toolbar {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
   padding: 0;
   background: none;
   border: none;
@@ -272,6 +273,299 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  flex: 1;
+}
+
+.library-view-toggles {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-subtle);
+  border: 1px solid transparent;
+}
+
+.library-view-toggles .toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* ---------- GRID 增强网格视图 ---------- */
+.mod-grid.view-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.view-grid .mod-card {
+  gap: 12px;
+}
+
+.view-grid .mod-card__poster {
+  border-radius: calc(var(--radius-card) - 4px);
+}
+
+.view-grid .mod-card__version-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  backdrop-filter: blur(4px);
+}
+
+.view-grid .mod-card__info-enhanced {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.view-grid .mod-card__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.view-grid .mod-card__meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.view-grid .mod-card__author {
+  font-weight: 600;
+}
+
+/* ---------- LIST 紧凑列表视图 ---------- */
+.mod-grid.view-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.view-list .mod-card {
+  flex-direction: row;
+  align-items: stretch;
+  padding: 12px;
+  gap: 16px;
+}
+
+.view-list .mod-card__poster {
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+  border-radius: calc(var(--radius-card) - 4px);
+  margin-bottom: 0;
+}
+
+.view-list .mod-card__status-pill {
+  bottom: 8px;
+  right: 8px;
+  left: auto;
+  transform: none;
+}
+
+.view-list .mod-card__info-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.view-list .mod-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.view-list .mod-card__title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.view-list .mod-card__author {
+  font-size: 13px;
+  color: var(--color-accent);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.view-list .mod-card__desc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.view-list .mod-card__footer-list {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+/* ---------- TECH 机能数据面板视图 ---------- */
+.mod-grid.view-tech {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.mod-grid.view-tech .mod-card {
+  height: auto;
+  min-height: max-content;
+  border-width: 2px;
+  border-color: var(--color-border);
+  border-radius: 4px; /* 硬朗的直角 */
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.05);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.mod-grid.view-tech .mod-card__selection-indicator {
+  display: none; /* 彻底移除选中圆圈，仅靠卡片边框/位移表示选中 */
+}
+
+:root[data-color-scheme="dark"] .mod-grid.view-tech .mod-card {
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+}
+
+.mod-grid.view-tech .mod-card:hover:not(.is-selected) {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.mod-grid.view-tech .mod-card.is-selected {
+  background: var(--color-surface);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.mod-grid.view-tech .mod-card__poster {
+  display: none;
+}
+
+.mod-grid.view-tech .mod-card__info-tech {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mod-grid.view-tech .mod-card__title {
+  font-size: 16px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.5px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+}
+
+.mod-grid.view-tech .mod-card__tech-author {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.mod-grid.view-tech .mod-card__tech-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 8px;
+}
+
+.mod-grid.view-tech .mod-card__tech-footer > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mod-grid.view-tech .mod-card__tech-footer > span::before {
+  content: attr(data-label);
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.mod-grid.view-tech .mod-card__tech-version,
+.mod-grid.view-tech .mod-card__tech-size {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.mod-grid.view-tech .mod-card__tech-status {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--color-text); /* ACTIVE VALID 默认颜色 */
+}
+
+.mod-grid.view-tech .mod-card__tech-status[data-status="conflict"] {
+  color: #ef4444; /* ERROR */
+}
+
+.mod-grid.view-tech .mod-card__tech-status[data-status="disabled"] {
+  color: #f59e0b; /* STANDBY */
+}
+
+.mod-grid.view-tech .tech-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* 覆盖 installed 状态下的指示器颜色，因为文字是默认色，但指示器需绿色 */
+.mod-grid.view-tech .mod-card__tech-status[data-status="installed"] .tech-indicator {
+  color: #10b981;
+}
+
+.library-view-toggles .toggle-btn:hover {
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+}
+
+.library-view-toggles .toggle-btn.active {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
 .library-chip {
@@ -342,6 +636,7 @@
 }
 
 .mod-card {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;

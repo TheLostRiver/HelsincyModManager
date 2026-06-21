@@ -29,7 +29,10 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.match(source, /className="mod-library__toolbar-slot"/);
   assert.match(source, /className="mod-library__actions-slot"/);
   assert.match(source, /<LibraryToolbar[\s\S]*?query={query}[\s\S]*?activeFilter={activeFilter}/);
-  assert.match(source, /<CompactActionPanel selectedCount={selectedCount} onAction={handleAction} \/>/);
+  assert.match(
+    source,
+    /<CompactActionPanel selectedCount={selectedCount} totalCount={visibleItems\.length} onAction={handleAction} \/>/,
+  );
 
   const toolbarIndex = source.indexOf("mod-library__toolbar-slot");
   const actionsIndex = source.indexOf("mod-library__actions-slot");
@@ -125,4 +128,30 @@ test("quick action panel no longer owns sticky positioning directly", () => {
 
   assert.doesNotMatch(compactPanelBody, /position:\s*sticky;/);
   assert.match(compactPanelBody, /min-width:\s*0;/);
+});
+
+test("tech view mod cards are allowed to grow to their full data panel height", () => {
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const contentBody = getRuleBody(css, ".mod-library__content");
+  const techCardBody = getRuleBody(css, ".mod-grid.view-tech .mod-card");
+
+  // The scroll container must not be a one-row grid. Otherwise the nested
+  // mod-grid is stretched to the viewport and many tech rows are compressed.
+  assert.doesNotMatch(contentBody, /display:\s*grid;/);
+  assert.doesNotMatch(contentBody, /grid-template-rows:\s*minmax\(0,\s*1fr\);/);
+
+  // The tech card keeps the demo's hard-edged shell, but its block size must
+  // come from the data panel content instead of being clipped to a thin row.
+  assert.match(techCardBody, /min-height:\s*max-content;/);
+  assert.match(techCardBody, /overflow:\s*hidden;/);
+});
+
+test("tech view selection styling overrides the generic blue filled card state", () => {
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const techSelectedBody = getRuleBody(css, ".mod-grid.view-tech .mod-card.is-selected");
+
+  assert.match(techSelectedBody, /background:\s*var\(--color-surface\);/);
+  assert.match(techSelectedBody, /border-color:\s*var\(--color-accent\);/);
+  assert.match(techSelectedBody, /box-shadow:\s*6px\s+6px\s+0px\s+var\(--color-accent\);/);
+  assert.doesNotMatch(css, /--color-primary\)/);
 });
