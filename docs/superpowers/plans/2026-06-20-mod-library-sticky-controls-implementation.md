@@ -4,17 +4,29 @@
 
 **Goal:** 让 Mod 列表页的搜索、筛选和快捷操作在滚动列表时始终停留在可视区域内，减少用户回到顶部的操作成本。
 
-**Architecture:** 只调整 `src/features/mods/` 前端页面边界。把搜索栏和快捷操作收束为页面级 sticky controls：桌面宽屏仍呈现左侧工具栏 + 右侧操作面板，中窄屏折叠为单列顶部吸顶控制区。继续使用 `.app-surface` 作为滚动容器，不使用 `position: fixed`，避免脱离 App Shell、侧边栏模式和路由过渡层。
+**Architecture:** 最终目标已从原始「双列 sticky slots」修订为「全局状态栏吸顶 + Mod 页面单列两行」。`.top-status-bar` 在全局 App Frame 中吸顶；`.mod-library__sticky-controls` 是 `.mod-library` 第一行的实体不透明控制条，搜索栏在第一行，快捷操作在第二行并通过 `flex-wrap` 换行；`.mod-library__content` 是唯一真实列表滚动容器。返回顶部浮动控件是后续范围修订中的 `position: fixed` 例外，由列表滚动状态控制显隐。
 
 **Tech Stack:** React 19, TypeScript, CSS Grid, `position: sticky`, CSS custom properties, Node built-in test runner.
 
 ---
 
+## Prerequisites
+
+These global CSS dependencies are part of the final architecture and must be in place before executing the Mod page tasks:
+
+- Modify `src/shared/styles/tokens.css`: add `--app-header-height: 64px;` to both light and dark theme token blocks so the app header has a stable layout token.
+- Modify `src/app/frame/AppFrame.css`: keep `.app-surface` as the app-level surface, and make `.top-status-bar` globally sticky with `position: sticky; top: 0; z-index: 40;`.
+- Keep the Mod route-specific scroll ownership in `src/features/mods/ModLibraryPage.css`: for the mods route, `.app-surface` hides its own scrolling and `.mod-library__content` becomes the constrained inner scroller.
+
+---
+
 ## File Structure
 
+- Modify `src/shared/styles/tokens.css`: Add `--app-header-height` for the global sticky status bar.
+- Modify `src/app/frame/AppFrame.css`: Make `.top-status-bar` sticky and keep `.app-surface` overflow split behavior.
 - Create `src/features/mods/modLibraryStickyControls.test.mjs`: 用源码结构测试保护 sticky controls 的 DOM 和 CSS 合约。
 - Modify `src/features/mods/ModLibraryPage.tsx`: 重排 Mod 列表页结构，把 `LibraryToolbar` 和 `CompactActionPanel` 放入统一控制区。
-- Modify `src/features/mods/ModLibraryPage.css`: 增加 sticky controls 布局，修正快捷操作 sticky 生效位置，保留返回顶部按钮和卡片网格现有职责。
+- Modify `src/features/mods/ModLibraryPage.css`: 增加实体不透明控制条、路由级内层滚动容器、隐藏原生列表滚动条视觉，并保留返回顶部按钮和卡片网格职责。
 - Inspect `src/features/mods/LibraryToolbar.tsx`: 不改组件 API，只确认它继续由父页面传入 query/filter 状态。
 - Inspect `src/features/mods/CompactActionPanel.tsx`: 不改业务动作 API，只让父页面控制布局位置。
 - Inspect `src/features/mods/modLibraryBackToTop.test.mjs`: 若结构测试和旧断言冲突，只更新与页面 wrapper 名称相关的断言，不改变 back-to-top 行为。
@@ -32,10 +44,11 @@
 
 目标行为：
 
-- 宽屏：搜索栏/筛选在左列吸顶，快捷操作在右列吸顶，二者顶部对齐。
-- `<=1280px`：搜索栏和快捷操作变成单列顶部吸顶控制区，快捷操作仍为横向滚动按钮条。
-- `<=640px`：控制区仍吸顶，按钮可读、可点击，不遮挡 Mod 卡片标题和返回顶部按钮。
-- 返回顶部按钮继续停留在主列表列的右下视觉位置，不并入快捷操作面板。
+- 全局状态栏：`.top-status-bar` 吸顶，滚动 Mod 列表时顶部不留透明空洞。
+- Mod 控制区：搜索栏和快捷操作合并为一个不透明实体条，常驻 `.mod-library` 第一行；快捷操作另起第二行并换行，不使用横向滚动条。
+- Mod 列表区：`.mod-library__content` 是真实滚动容器，滚动条视觉从控制条下方开始；原生滚动条视觉隐藏，自绘滚动条由滚动状态控制。
+- `<=640px`：控制区仍可读、可点击，不遮挡 Mod 卡片标题和返回顶部按钮。
+- 返回顶部按钮继续独立于快捷操作面板，由 `.mod-library__content` 的滚动状态控制显隐，当前最终偏移为桌面 `100px`、小屏 `80px`。
 
 ---
 
@@ -82,33 +95,36 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.ok(actionsIndex < gridIndex, "actions slot should render before content");
 });
 
-test("sticky controls use app-surface friendly sticky positioning instead of fixed positioning", () => {
+test("global status bar stays pinned so the sticky controls can sit beneath it", () => {
+  const css = readProjectFile("src/app/frame/AppFrame.css");
+
+  assert.match(css, /\.top-status-bar\s*{[\s\S]*?position:\s*sticky;/);
+  assert.match(css, /\.top-status-bar\s*{[\s\S]*?top:\s*0;/);
+
+  const tokens = readProjectFile("src/shared/styles/tokens.css");
+  assert.match(tokens, /--app-header-height:\s*64px;/);
+});
+
+test("sticky controls are an opaque single-column bar fixed above the scroll container", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
-  assert.match(css, /\.mod-library\s*{[\s\S]*?--mod-library-sticky-top:\s*var\(--layout-page-padding\);/);
+  assert.match(css, /\.mod-library__content\s*{[\s\S]*?overflow-y:\s*auto;/);
   assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?display:\s*grid;/);
-  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s+var\(--layout-mod-action-panel-width\);/);
-  assert.match(css, /\.mod-library__toolbar-slot,[\s\S]*?\.mod-library__actions-slot\s*{[\s\S]*?position:\s*sticky;/);
-  assert.match(css, /\.mod-library__toolbar-slot,[\s\S]*?\.mod-library__actions-slot\s*{[\s\S]*?top:\s*var\(--mod-library-sticky-top\);/);
+  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/);
+  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?background:\s*var\(--color-surface\);/);
+  assert.match(css, /\.mod-library__sticky-controls\s*{[\s\S]*?border:\s*1px\s+solid\s+var\(--color-border-muted\);/);
+  assert.doesNotMatch(css, /\.mod-library__sticky-controls\s*{[\s\S]*?display:\s*contents;/);
+  assert.match(css, /\.mod-library__toolbar-slot,[\s\S]*?\.mod-library__actions-slot\s*{[\s\S]*?position:\s*static;/);
+  assert.match(css, /\.mod-library__actions-slot\s*{[\s\S]*?border-top:\s*1px\s+solid\s+var\(--color-border-muted\);/);
   assert.doesNotMatch(css, /\.library-toolbar[\s\S]*?position:\s*fixed;/);
   assert.doesNotMatch(css, /\.compact-panel[\s\S]*?position:\s*fixed;/);
 });
 
-test("narrow layouts collapse controls into a single sticky top area and keep quick actions horizontally scrollable", () => {
+test("quick actions wrap instead of horizontally scrolling", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
-  assert.match(
-    css,
-    /@media\s*\(max-width:\s*1280px\)\s*{[\s\S]*?\.mod-library__sticky-controls\s*{[\s\S]*?position:\s*sticky;[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
-  );
-  assert.match(
-    css,
-    /@media\s*\(max-width:\s*1280px\)\s*{[\s\S]*?\.mod-library__toolbar-slot,[\s\S]*?\.mod-library__actions-slot\s*{[\s\S]*?position:\s*static;/,
-  );
-  assert.match(
-    css,
-    /@media\s*\(max-width:\s*1280px\)\s*{[\s\S]*?\.compact-panel__stack\s*{[\s\S]*?overflow-x:\s*auto;/,
-  );
+  assert.match(css, /\.compact-panel__stack\s*{[\s\S]*?flex-wrap:\s*wrap;/);
+  assert.doesNotMatch(css, /\.compact-panel__stack\s*{[\s\S]*?overflow-x:\s*auto;/);
 });
 
 test("quick action panel no longer owns sticky positioning directly", () => {
@@ -127,7 +143,7 @@ Run:
 cmd /c corepack pnpm run test
 ```
 
-Expected: FAIL. The new test should report missing `mod-library__sticky-controls`, missing sticky slot CSS, and direct sticky ownership on `.compact-panel`.
+Expected: FAIL. The new test should report missing `mod-library__sticky-controls`, missing opaque single-column control bar CSS, missing global sticky status bar support, or direct sticky ownership on `.compact-panel`.
 
 - [ ] **Step 3: Keep the failing test uncommitted until Task 3 passes**
 
@@ -171,29 +187,43 @@ with this structure:
         </div>
       </div>
 
-      <div className="mod-library__content">
-        <div className="mod-library__main-floating-actions">
-          <BackToTopButton onClick={handleBackToTop} />
+      <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
+        <div ref={contentRef} className="mod-library__content">
+          {showScrollUi ? (
+            <div className="mod-library__main-floating-actions">
+              <BackToTopButton onClick={handleBackToTop} />
+            </div>
+          ) : null}
+
+          {visibleItems.length === 0 ? (
+            <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
+              <strong>没有匹配的 Mod</strong>
+              <p>试试调整搜索关键词或筛选条件。</p>
+            </div>
+          ) : (
+            <div className="mod-grid" role="list">
+              {visibleItems.map((item, index) => (
+                <ModPosterCard
+                  key={item.id}
+                  item={item}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={selectCard}
+                  index={index}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        {visibleItems.length === 0 ? (
-          <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
-            <strong>没有匹配的 Mod</strong>
-            <p>试试调整搜索关键词或筛选条件。</p>
+        {showScrollUi ? (
+          <div className="mod-library__scrollbar" aria-hidden="true">
+            <div
+              className="mod-library__scrollbar-thumb"
+              style={thumbStyle}
+              onPointerDown={handleScrollbarPointerDown}
+            />
           </div>
-        ) : (
-          <div className="mod-grid" role="list">
-            {visibleItems.map((item, index) => (
-              <ModPosterCard
-                key={item.id}
-                item={item}
-                selected={selectedIds.has(item.id)}
-                onSelect={selectCard}
-                index={index}
-              />
-            ))}
-          </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -230,79 +260,111 @@ Expected: PASS. `LibraryToolbar` and `CompactActionPanel` props remain unchanged
 
 ---
 
-### Task 3: Implement Sticky Controls CSS
+### Task 3: Implement Final Sticky Controls CSS
 
 **Files:**
 - Modify: `src/features/mods/ModLibraryPage.css`
 - Test: `src/features/mods/modLibraryStickyControls.test.mjs`
 - Possible test update: `src/features/mods/modLibraryBackToTop.test.mjs`
 
-- [ ] **Step 1: Replace the body/main layout with sticky controls/content layout**
+- [ ] **Step 1: Replace the body/main layout with opaque controls plus inner content scroller**
 
-In `src/features/mods/ModLibraryPage.css`, replace the existing `.mod-library__body` and `.mod-library__main` rule blocks with:
+In `src/features/mods/ModLibraryPage.css`, replace the existing `.mod-library__body` and `.mod-library__main` rule blocks with the final single-column layout:
 
 ```css
 .mod-library {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--layout-content-gap);
   min-width: 0;
   min-height: 0;
-  --mod-library-sticky-top: var(--layout-page-padding);
   --mod-library-back-to-top-size: 52px;
-  --mod-library-back-to-top-inline-offset: calc(var(--mod-library-back-to-top-size) + 12px);
-  --mod-library-back-to-top-block-offset: 12px;
+  --mod-library-back-to-top-block-offset: 100px;
 }
 
 .mod-library__sticky-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--layout-mod-action-panel-width);
-  align-items: start;
-  gap: var(--layout-content-gap);
-  min-width: 0;
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
   z-index: 30;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
 }
 
 .mod-library__toolbar-slot,
 .mod-library__actions-slot {
-  position: sticky;
-  top: var(--mod-library-sticky-top);
-  z-index: 30;
+  position: static;
   min-width: 0;
+}
+
+.mod-library__toolbar-slot {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.mod-library__actions-slot {
+  grid-column: 1;
+  grid-row: 2;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.mod-library__content-shell {
+  grid-column: 1;
+  grid-row: 2;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
 }
 
 .mod-library__content {
   position: relative;
   display: grid;
-  gap: 12px;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.mod-library__content::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 ```
 
 If `.mod-library` already exists, merge the new custom properties into that existing block instead of creating a duplicate `.mod-library` rule.
 
-- [ ] **Step 2: Update back-to-top positioning to target content**
+- [ ] **Step 2: Update back-to-top positioning to the final floating behavior**
 
-Keep `.mod-library__main-floating-actions` as the back-to-top wrapper, but ensure it can live under `.mod-library__content`:
+Keep `.mod-library__main-floating-actions` as the back-to-top wrapper, but make it a state-rendered fixed floating control. This is the explicit exception to the original "no fixed" preference because the later scroll UI requirement needs a viewport-floating control that does not move with cards:
 
 ```css
 .mod-library__main-floating-actions {
-  grid-column: 1;
-  grid-row: 1 / -1;
-  position: sticky;
-  top: calc(100dvh - var(--layout-page-padding) - var(--mod-library-back-to-top-size) - var(--mod-library-back-to-top-block-offset));
-  z-index: 20;
+  position: fixed;
+  right: var(--layout-page-padding);
+  bottom: var(--mod-library-back-to-top-block-offset);
+  z-index: 50;
   display: flex;
   justify-content: end;
-  align-self: start;
-  height: 0;
-  transform: translateX(var(--mod-library-back-to-top-inline-offset));
   pointer-events: none;
 }
 ```
 
-This is the current behavior. Only keep it after removing `.mod-library__main`; do not convert the button to fixed positioning.
+The button itself remains `pointer-events: auto`; the wrapper is rendered only when `showScrollUi` is true.
 
 - [ ] **Step 3: Move sticky ownership away from `.compact-panel`**
 
@@ -320,66 +382,61 @@ Replace the top of `.compact-panel` so the panel itself no longer owns sticky po
 
 If `min-width: 0;` is already present, keep one copy only.
 
-- [ ] **Step 4: Add visual separation for sticky toolbar state**
+- [ ] **Step 4: Remove independent card chrome from toolbar and action panel**
 
-Extend `.library-toolbar` and `.compact-panel` with stable backgrounds that remain readable over scrolled cards. Keep the existing colors and shadows; add only backdrop support:
+The unified controls bar owns the surface, border, radius, and shadow. Remove nested card chrome from the toolbar and compact panel:
 
 ```css
 .library-toolbar,
 .compact-panel {
-  backdrop-filter: blur(12px);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 ```
 
-If visual QA shows `backdrop-filter` creates poor contrast in dark mode, remove this addition and rely on the existing solid surface colors and shadows.
+Keep component APIs unchanged; this is only a layout and chrome change.
 
-- [ ] **Step 5: Replace the 1280px responsive block**
+- [ ] **Step 5: Keep quick actions wrapping instead of horizontally scrolling**
 
-In `@media (max-width: 1280px)`, replace the old `.mod-library__body`, `.mod-library__main`, and `.compact-panel { position: static; ... }` layout parts with:
+The action panel is part of the controls bar second row. Buttons should wrap naturally and must not force a horizontal scrollbar:
 
 ```css
-@media (max-width: 1280px) {
-  .mod-library {
-    --mod-library-sticky-top: 12px;
-    --mod-library-back-to-top-inline-offset: 0px;
-  }
+.compact-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 
+.compact-panel__header {
+  display: none;
+}
+
+.compact-panel__stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (max-width: 1280px) {
   .mod-library__sticky-controls {
-    position: sticky;
-    top: var(--mod-library-sticky-top);
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
     z-index: 35;
   }
 
-  .mod-library__toolbar-slot,
-  .mod-library__actions-slot {
-    position: static;
-  }
-
-  .compact-panel {
-    grid-auto-flow: column;
-    grid-template-rows: none;
-    min-width: 0;
-    overflow: hidden;
-  }
-
   .compact-panel__stack {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(140px, max-content);
-    min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-bottom: 4px;
-  }
-
-  .compact-action {
-    min-width: 140px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
   }
 }
 ```
 
-Reason: on narrow layouts the whole controls group is sticky, while its children become static inside the group.
+Reason: horizontal action scrolling was an intermediate idea; the final design uses wrap to avoid an extra horizontal scrollbar and overflow at narrow widths.
 
 - [ ] **Step 6: Update the 640px block to reference `.mod-library`**
 
@@ -391,7 +448,7 @@ Keep the existing card density behavior, but ensure back-to-top variables now li
     --layout-mod-card-min-width: 150px;
     --layout-mod-card-poster-height: 220px;
     --mod-library-back-to-top-size: 48px;
-    --mod-library-back-to-top-block-offset: 8px;
+    --mod-library-back-to-top-block-offset: 80px;
   }
 
   .mod-grid {
@@ -407,10 +464,6 @@ Keep the existing card density behavior, but ensure back-to-top variables now li
 
   .compact-action {
     min-width: 0;
-  }
-
-  .mod-library__main-floating-actions {
-    top: calc(100dvh - 20px - var(--mod-library-back-to-top-size) - var(--mod-library-back-to-top-block-offset));
   }
 
   .mod-library__back-to-top {
@@ -432,8 +485,9 @@ Expected: the new sticky controls tests should PASS. If `modLibraryBackToTop.tes
 
 ```js
 assert.match(source, /mod-library__main-floating-actions/);
-assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?position:\s*sticky;/);
-assert.doesNotMatch(css, /\.mod-library__back-to-top[\s\S]*?position:\s*fixed;/);
+assert.match(source, /showScrollUi\s*\?\s*\([\s\S]*?mod-library__main-floating-actions[\s\S]*?<BackToTopButton/);
+assert.match(css, /\.mod-library__main-floating-actions[\s\S]*?position:\s*fixed;/);
+assert.match(css, /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*100px;/);
 ```
 
 - [ ] **Step 8: Run build**
@@ -486,33 +540,36 @@ http://127.0.0.1:1420/
 
 Navigate to the Mod list route through the app sidebar.
 
-- [ ] **Step 3: Verify sticky behavior at desktop width**
+- [ ] **Step 3: Verify desktop controls and scroll UI behavior**
 
-At `1440x900`, scroll `.app-surface` until the first row of Mod cards has left the viewport.
+At `1440x900`, scroll `.mod-library__content` until the first row of Mod cards has left the visible list area.
 
 Run this snippet in the browser console:
 
 ```js
 (() => {
-  const surface = document.querySelector(".app-surface");
+  const content = document.querySelector(".mod-library__content");
   const controls = document.querySelector(".mod-library__sticky-controls");
   const toolbar = document.querySelector(".library-toolbar");
   const actions = document.querySelector(".compact-panel");
-  if (!surface || !controls || !toolbar || !actions) {
+  if (!content || !controls || !toolbar || !actions) {
     return { error: "missing required elements" };
   }
 
-  const surfaceRect = surface.getBoundingClientRect();
+  content.scrollTop = 520;
+  const contentRect = content.getBoundingClientRect();
   const controlsRect = controls.getBoundingClientRect();
   const toolbarRect = toolbar.getBoundingClientRect();
   const actionsRect = actions.getBoundingClientRect();
 
   return {
-    surfaceTop: Math.round(surfaceRect.top),
-    controlsTop: Math.round(controlsRect.top),
-    toolbarVisible: toolbarRect.bottom > surfaceRect.top && toolbarRect.top < surfaceRect.bottom,
-    actionsVisible: actionsRect.bottom > surfaceRect.top && actionsRect.top < surfaceRect.bottom,
-    toolbarAboveActionsDelta: Math.abs(Math.round(toolbarRect.top - actionsRect.top)),
+    contentScrollTop: Math.round(content.scrollTop),
+    controlsAboveContent: controlsRect.bottom <= contentRect.top,
+    toolbarVisible: toolbarRect.bottom > 0,
+    actionsVisible: actionsRect.bottom > 0,
+    actionsBelowToolbar: actionsRect.top >= toolbarRect.bottom,
+    backToTopVisible: Boolean(document.querySelector(".mod-library__back-to-top")),
+    customScrollbarVisible: Boolean(document.querySelector(".mod-library__scrollbar-thumb")),
   };
 })();
 ```
@@ -521,13 +578,17 @@ Expected:
 
 ```js
 {
+  contentScrollTop: 520,
+  controlsAboveContent: true,
   toolbarVisible: true,
   actionsVisible: true,
-  toolbarAboveActionsDelta: 0
+  actionsBelowToolbar: true,
+  backToTopVisible: true,
+  customScrollbarVisible: true
 }
 ```
 
-`controlsTop` may be slightly below `surfaceTop` because of page padding.
+Then set `content.scrollTop = 0` and verify both `.mod-library__back-to-top` and `.mod-library__scrollbar-thumb` disappear.
 
 - [ ] **Step 4: Verify sticky behavior at common narrow widths**
 
@@ -546,9 +607,9 @@ Expected at every size:
 
 - Search input remains visible after scrolling down.
 - Filter chips remain reachable.
-- Quick action buttons remain visible or reachable through horizontal scrolling.
+- Quick action buttons remain visible through wrapping; no horizontal action scrollbar is introduced.
 - No horizontal page overflow appears.
-- Back-to-top button remains visible and does not cover the search input or action buttons.
+- Back-to-top button and custom scrollbar are hidden at top and visible after scrolling down.
 
 - [ ] **Step 5: Verify click and keyboard access**
 
@@ -599,7 +660,7 @@ or, if narrow sticky area consumes too much height:
 }
 ```
 
-Do not move controls to `position: fixed`.
+Do not make `.mod-library__sticky-controls` fixed. The back-to-top wrapper may remain `position: fixed` because it is the intentional floating-control exception.
 
 - [ ] **Step 7: Commit smoke-test fixes if needed**
 
@@ -695,12 +756,12 @@ If no files changed, do not create an empty commit.
 
 ## Self-Review Notes
 
-- **Spec coverage:** 覆盖搜索栏、筛选 chips、右侧快捷操作、宽屏双列、中窄屏单列、返回顶部按钮不并入快捷操作、`.app-surface` sticky 模型、不使用 fixed。
+- **Spec coverage:** 覆盖搜索栏、筛选 chips、快捷操作换行、全局状态栏吸顶、`.mod-library__content` 内层滚动、顶部隐藏滚动 UI、返回顶部按钮不并入快捷操作。
 - **Scope check:** 单一前端布局任务。没有触碰 Tauri command、Rust crates、InstallPlan、manifest、backup、rollback、真实文件写入、游戏适配器或玩家数据路径。
 - **Existing patterns:** 使用当前项目已有 Node 源码扫描测试风格，延续 `src/features/mods/modLibraryBackToTop.test.mjs` 的测试方式。
 - **Placeholder scan:** 每个任务都有明确文件、代码片段、命令和期望结果；没有未定义的实现步骤。
 - **Type consistency:** 新 wrapper 名称统一为 `mod-library__sticky-controls`、`mod-library__toolbar-slot`、`mod-library__actions-slot`、`mod-library__content`。
-- **Risk note:** sticky 生效依赖 `.app-surface` 作为滚动容器；最终必须做浏览器滚动 smoke test，源码测试只能保护结构合约，不能替代真实滚动验证。
+- **Risk note:** 运行态依赖 mods 路由把滚动容器下沉到 `.mod-library__content`；最终必须做浏览器滚动 smoke test，源码测试只能保护结构合约，不能替代真实滚动验证。
 
 ---
 
@@ -720,21 +781,22 @@ If no files changed, do not create an empty commit.
 - **`src/shared/styles/tokens.css`**：新增 `--app-header-height: 64px;`（light + dark 两块），作为状态栏与 Mod 吸顶条的对齐基准。
 - **`src/app/frame/AppFrame.css`**：`.top-status-bar` 追加 `position: sticky; top: 0; z-index: 40;`（全局行为，所有路由共用）。既有颜色/border/高度/小屏契约（`1360px` / `860px`）不回退，仅在原规则上叠加 sticky。
 
-### Mod 吸顶条改为统一不透明条（与原计划「双列常驻」不同）
+### Mod 控制区改为统一不透明条（与原计划「双列常驻」不同）
 
-- `.mod-library__sticky-controls` 从 `display: contents` 改为**实体不透明容器**（`position: sticky` + `background` + `border` + `box-shadow`），紧贴状态栏下方（`top: calc(var(--app-header-height) + 4px)`）。
+- `.mod-library__sticky-controls` 从 `display: contents` 改为**实体不透明容器**（`background` + `border` + `box-shadow`），位于 `.mod-library` 第一行、`.mod-library__content` 滚动容器之外，因此自身无需 `position: sticky` 也会常驻视野。
 - 内部 `.library-toolbar` / `.compact-panel` 褪去独立卡片外观（去背景/边框/圆角/阴影），融入吸顶条，杜绝嵌套卡片与透卡缝隙。
-- 桌面端操作面板由「右侧竖排常驻」改为**吸顶条内横排按钮**：`.compact-action` 收紧为 pill 状横排按钮，右侧装饰 dot 收起。`<=1280px` 时吸顶条内部单列堆叠（搜索栏 + 横向滚动操作条）。
-- `.mod-library` 主体由「双列」改为「单列两行」（吸顶条 + 内容），原双列职责并入吸顶条。`--layout-mod-action-panel-width` token 转由吸顶条右侧列消费（`minmax(var(...), auto)`）。
+- 桌面端操作面板由「右侧竖排常驻」改为**控制条第二行的 pill 按钮组**：`.compact-action` 收紧为 pill 状按钮，右侧装饰 dot 收起，`.compact-panel__stack` 使用 `flex-wrap` 换行，不引入横向滚动条。
+- `.mod-library` 主体由「双列」改为「单列两行」（控制条 + 内容），原双列职责并入控制条；`--layout-mod-action-panel-width` 仍作为全局 token 保留，但本页最终不再消费它生成右侧列。
+- `.mod-library__content` 成为真实列表滚动容器，原生滚动条视觉隐藏；返回顶部按钮和自绘滚动条由 `.mod-library__content` 的滚动状态统一控制，在顶部隐藏、下滚显示。
 
 ### 取舍
 
-- **桌面操作面板从竖排常驻变顶部横排**：这是彻底消除水平缝隙的必要取舍。滚动时所有按钮仍可见可点。
+- **桌面操作面板从竖排常驻变控制条内换行按钮组**：这是彻底消除水平缝隙和额外水平滚动条的必要取舍。滚动时所有按钮仍可见可点。
 - **状态栏吸顶是全局行为**：影响所有页面，但 Dashboard 等无 sticky 依赖，安全。
-- 全程 `position: sticky`，不引入 `fixed`，符合原计划「不脱离 App Shell」约束。
+- `.mod-library__sticky-controls` 不使用 fixed；返回顶部按钮作为浮动控件使用 `position: fixed`，这是后续“顶部隐藏滚动 UI”需求下的明确例外。
 
 ### 测试同步
 
-- `src/features/mods/modLibraryStickyControls.test.mjs`：断言改为校验「实体不透明吸顶条」「状态栏全局吸顶」「slot 为 static」「窄屏单列堆叠 + 横向滚动」。
-- `src/shared/styles/layoutTokens.test.mjs`：操作面板 token 消费断言从精确 `minmax(0,1fr) var(--layout-mod-action-panel-width)` 更新为 `minmax(var(--layout-mod-action-panel-width), auto)`；min-width 护栏清单补齐 `.mod-library__sticky-controls` 与 `.compact-panel__stack`（1280px）。
-- `src/features/mods/modLibraryBackToTop.test.mjs`：back-to-top 行为契约不变，无需改动（已验证通过）。
+- `src/features/mods/modLibraryStickyControls.test.mjs`：断言改为校验「实体不透明控制条」「状态栏全局吸顶」「slot 为 static」「快捷操作换行」「内层滚动容器」。
+- `src/shared/styles/layoutTokens.test.mjs`：min-width 护栏清单补齐 `.mod-library__sticky-controls` 与 `.compact-panel__stack`。
+- `src/features/mods/modLibraryBackToTop.test.mjs`：断言改为校验按钮条件渲染、原生滚动条视觉隐藏、自绘滚动条存在，以及 `100px` / `80px` 的舒适底部偏移。
