@@ -5,6 +5,7 @@ import { compactActions } from "./modsLibraryData";
 
 type CompactActionPanelProps = {
   selectedCount: number;
+  totalCount: number;
   onAction: (actionId: string) => void;
 };
 
@@ -19,7 +20,7 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
   uninstall: Trash2,
 };
 
-export function CompactActionPanel({ selectedCount, onAction }: CompactActionPanelProps) {
+export function CompactActionPanel({ selectedCount, totalCount, onAction }: CompactActionPanelProps) {
   return (
     <aside className="compact-panel" aria-label="快捷操作">
       <header className="compact-panel__header">
@@ -49,6 +50,11 @@ export function CompactActionPanel({ selectedCount, onAction }: CompactActionPan
             </button>
           );
         })}
+
+        <div className="compact-panel__spacer" aria-hidden="true" />
+        <span className="compact-panel__selection-status">
+          已选中 {selectedCount} / 共 {totalCount} 项
+        </span>
       </div>
     </aside>
   );
