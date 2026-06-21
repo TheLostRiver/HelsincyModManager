@@ -36,7 +36,7 @@
 .mod-library {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--layout-content-gap);
   min-width: 0;
   min-height: 0;
@@ -45,16 +45,16 @@
 }
 
 /*
- * .mod-library__content 是 mods 路由的滚动容器：内部第一行吸顶条(auto)、第二行卡片网格(1fr)。
- * 吸顶条在其内部 sticky top:0 即可在滚动时贴顶。
+ * .mod-library__content 是 mods 路由的滚动容器：只装卡片网格 + 返回顶部浮动层。
+ * 搜索栏(sticky-controls)在其之外(mod-library 第1行)，故滚动条从卡片区顶部(搜索栏正下方)
+ * 开始，绝不达搜索栏。高度由路由作用域闭合的高度链约束，content 获得被约束高度可滚。
  */
 .mod-library__content {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow-x: hidden;
@@ -111,7 +111,9 @@
 }
 
 /*
- * 统一不透明吸顶条：搜索栏 + 快捷操作合为一个实体容器，作为 content 首子元素。
+ * 统一不透明吸顶条：搜索栏 + 快捷操作合为一个实体容器，位于 .mod-library 第1行
+ * （滚动容器 content 之外）。因处于非滚动区域，无需 position:sticky——祖先链都不滚，
+ * 搜索栏天然物理固定常驻视野。滚动条(content 的)从其正下方开始，绝不达搜索栏。
  * 内部 toolbar / panel 褪去独立卡片外观，融入本条，杜绝卡片从缝隙透出。
  * 采用单列垂直堆叠（搜索栏在上、快捷操作在下），避免操作按钮贴在搜索框右侧
  * 被误当成搜索按钮；快捷操作另起一行并 flex-wrap 换行，杜绝横向溢出与水平滚动条。
@@ -119,8 +121,7 @@
 .mod-library__sticky-controls {
   grid-column: 1;
   grid-row: 1;
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 30;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -163,7 +164,7 @@
  */
 .mod-library__main-floating-actions {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1;
   position: sticky;
   bottom: var(--mod-library-back-to-top-block-offset);
   z-index: 20;
