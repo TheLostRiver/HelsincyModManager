@@ -657,7 +657,7 @@
   min-width: 0;
   text-align: left;
   background: var(--color-surface);
-  border: 2px solid transparent;
+  border: none;
   border-radius: var(--radius-card);
   padding: 0;
   box-shadow: var(--shadow-card);
@@ -668,16 +668,34 @@
   overflow: hidden;
 }
 
+/* 使用伪元素盖在上方作为边框，完美解决 Full Bleed 的白边问题 */
+.mod-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: border-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 10;
+}
+
 .mod-card:hover:not(.is-selected) {
   transform: translateY(-4px);
+}
+
+.mod-card:hover:not(.is-selected)::after {
   border-color: var(--color-border);
 }
 
 .mod-card.is-selected {
-  border-color: var(--color-accent);
   background: var(--color-surface);
   transform: translateY(-4px);
   box-shadow: 0 0 0 1px var(--color-accent), 0 12px 32px var(--color-accent-alpha-20);
+}
+
+.mod-card.is-selected::after {
+  border-color: var(--color-accent);
 }
 
 .mod-card:focus-visible {
