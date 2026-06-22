@@ -322,7 +322,7 @@
 }
 
 .view-grid .mod-card__poster {
-  border-radius: calc(var(--radius-card) - 4px);
+  border-radius: 0;
 }
 
 .view-grid .mod-card__version-badge {
@@ -342,6 +342,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 16px;
 }
 
 .view-grid .mod-card__title {
@@ -658,12 +659,13 @@
   background: var(--color-surface);
   border: 2px solid transparent;
   border-radius: var(--radius-card);
-  padding: 12px;
+  padding: 0;
   box-shadow: var(--shadow-card);
   transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
   position: relative;
   cursor: pointer;
   user-select: none;
+  overflow: hidden;
 }
 
 .mod-card:hover:not(.is-selected) {
@@ -735,10 +737,10 @@
   height: var(--layout-mod-card-poster-height);
   padding: 0;
   border: none;
-  border-radius: 16px;
+  border-radius: 0;
   overflow: hidden;
   background: linear-gradient(180deg, var(--poster-from) 0%, var(--poster-to) 100%);
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
 /* 简化人形剪影占位，纯装饰。 */
@@ -859,7 +861,7 @@
 .mod-card__meta {
   display: grid;
   gap: 1px;
-  padding: 0 4px;
+  padding: 16px;
 }
 
 .mod-card__title {
