@@ -51,7 +51,14 @@ impl PreviewImageService {
                 .process_candidate(sandbox_root, &candidate, &self.policy)?
             {
                 PreviewImageProcessingResult::Thumbnail(thumbnail) => {
-                    self.thumbnail_store.resolve_url(&thumbnail.thumbnail_ref)?;
+                    if self
+                        .thumbnail_store
+                        .resolve_url(&thumbnail.thumbnail_ref)
+                        .is_err()
+                    {
+                        last_reason = PreviewImageRejectionReason::CacheWriteFailed;
+                        continue;
+                    }
                     return Ok(PreviewImageProcessingResult::Thumbnail(thumbnail));
                 }
                 PreviewImageProcessingResult::Fallback(reason) => {
@@ -83,7 +90,7 @@ mod tests {
             PreviewImagePolicy::default(),
             Box::new(FakeScanner::new(vec![])),
             Box::new(FakeProcessor::new(vec![])),
-            Box::new(FakeThumbnailStore),
+            Box::new(FakeThumbnailStore::default()),
         );
 
         let result = service
@@ -104,9 +111,7 @@ mod tests {
             PreviewImagePolicy::default(),
             Box::new(FakeScanner::new(vec![first, second])),
             Box::new(FakeProcessor::new(vec![
-                PreviewImageProcessingResult::Fallback(
-                    PreviewImageRejectionReason::DecodeFailed,
-                ),
+                PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::DecodeFailed),
                 PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
                     thumbnail_ref: ThumbnailRef {
                         package_id: "pkg-1".to_owned(),
@@ -118,7 +123,7 @@ mod tests {
                     content_hash: "hash".to_owned(),
                 }),
             ])),
-            Box::new(FakeThumbnailStore),
+            Box::new(FakeThumbnailStore::default()),
         );
 
         let result = service
@@ -126,6 +131,37 @@ mod tests {
             .expect("preview result");
 
         assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
+    }
+
+    #[test]
+    fn returns_cache_fallback_when_thumbnail_url_resolution_fails() {
+        let candidate = preview_candidate("pkg-1", "good.png");
+        let service = PreviewImageService::new(
+            PreviewImagePolicy::default(),
+            Box::new(FakeScanner::new(vec![candidate])),
+            Box::new(FakeProcessor::new(vec![
+                PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
+                    thumbnail_ref: ThumbnailRef {
+                        package_id: "pkg-1".to_owned(),
+                        content_hash: "hash".to_owned(),
+                        variant: "preview-768".to_owned(),
+                    },
+                    width: 4,
+                    height: 4,
+                    content_hash: "hash".to_owned(),
+                }),
+            ])),
+            Box::new(FakeThumbnailStore { fail_resolve: true }),
+        );
+
+        let result = service
+            .process_package_preview("task-1", "pkg-1", Path::new("sandbox"))
+            .expect("preview result should degrade to fallback");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::CacheWriteFailed)
+        );
     }
 
     fn preview_candidate(package_id: &str, logical_path: &str) -> PreviewImageCandidate {
@@ -189,7 +225,17 @@ mod tests {
         }
     }
 
-    struct FakeThumbnailStore;
+    struct FakeThumbnailStore {
+        fail_resolve: bool,
+    }
+
+    impl Default for FakeThumbnailStore {
+        fn default() -> Self {
+            Self {
+                fail_resolve: false,
+            }
+        }
+    }
 
     impl ThumbnailStore for FakeThumbnailStore {
         fn put_thumbnail(
@@ -203,6 +249,10 @@ mod tests {
         }
 
         fn resolve_url(&self, _thumbnail_ref: &ThumbnailRef) -> Result<String> {
+            if self.fail_resolve {
+                anyhow::bail!("resolve failed");
+            }
+
             Ok("thumbnail://pkg-1/preview-768/hash".to_owned())
         }
     }

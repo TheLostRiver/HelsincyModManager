@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
 import type { ModLibraryItem } from "./modsLibraryData";
@@ -38,6 +38,10 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
   const [posterFailed, setPosterFailed] = useState(false);
   const previewThumbnail = item.previewImage?.kind === "thumbnail" ? item.previewImage : null;
   const canShowPoster = previewThumbnail !== null && !posterFailed;
+
+  useEffect(() => {
+    setPosterFailed(false);
+  }, [previewThumbnail?.thumbnailUrl]);
 
   return (
     <div
