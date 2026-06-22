@@ -1,3 +1,4 @@
+use crate::ImportPreviewImageProcessor;
 use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
 use hmm_ports::{
@@ -68,6 +69,17 @@ impl PreviewImageService {
         }
 
         Ok(PreviewImageProcessingResult::Fallback(last_reason))
+    }
+}
+
+impl ImportPreviewImageProcessor for PreviewImageService {
+    fn process_package_preview(
+        &self,
+        task_id: &str,
+        package_id: &str,
+        sandbox_root: &Path,
+    ) -> Result<PreviewImageProcessingResult> {
+        PreviewImageService::process_package_preview(self, task_id, package_id, sandbox_root)
     }
 }
 
