@@ -1,7 +1,7 @@
 use hmm_app::{GameCandidateScan, GameSetupCandidate, GameSetupServiceError};
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
-    GameInstance, GameSetupErrorCode, GameSetupStatus,
+    GameInstance, GameSetupErrorCode, GameSetupStatus, PreviewImageRejectionReason,
 };
 use hmm_ports::GameCandidateSource;
 use serde::Serialize;
@@ -73,6 +73,52 @@ pub struct GameCandidateDto {
     pub confidence: u8,
     pub evidence: Vec<GameDirectoryEvidenceDto>,
     pub errors: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum PreviewImageDto {
+    Thumbnail {
+        thumbnail_url: String,
+        width: u32,
+        height: u32,
+        content_hash: String,
+    },
+    Fallback {
+        reason: PreviewImageFallbackReasonDto,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewImageFallbackReasonDto {
+    Missing,
+    TooLarge,
+    TooManyCandidates,
+    UnsupportedFormat,
+    DecodeFailed,
+    PixelLimitExceeded,
+    CacheWriteFailed,
+}
+
+impl From<PreviewImageRejectionReason> for PreviewImageFallbackReasonDto {
+    fn from(reason: PreviewImageRejectionReason) -> Self {
+        match reason {
+            PreviewImageRejectionReason::Missing => Self::Missing,
+            PreviewImageRejectionReason::TooLarge => Self::TooLarge,
+            PreviewImageRejectionReason::TooManyCandidates => Self::TooManyCandidates,
+            PreviewImageRejectionReason::UnsupportedFormat => Self::UnsupportedFormat,
+            PreviewImageRejectionReason::DecodeFailed => Self::DecodeFailed,
+            PreviewImageRejectionReason::PixelLimitExceeded => Self::PixelLimitExceeded,
+            PreviewImageRejectionReason::CacheWriteFailed => Self::CacheWriteFailed,
+        }
+    }
 }
 
 pub fn status_to_dto(status: GameSetupStatus) -> GameSetupStatusDto {
@@ -201,4 +247,68 @@ fn path_label_from_path(path: &std::path::Path) -> String {
         .and_then(|name| name.to_str())
         .map(|name| format!(".../{name}"))
         .unwrap_or_else(|| ".../selected-directory".to_owned())
+}
+
+#[cfg(test)]
+mod preview_image_tests {
+    use super::*;
+
+    #[test]
+    fn serializes_thumbnail_dto_with_camel_case_fields() {
+        let dto = PreviewImageDto::Thumbnail {
+            thumbnail_url: "thumbnail://pkg/preview/hash".to_owned(),
+            width: 512,
+            height: 768,
+            content_hash: "abc123".to_owned(),
+        };
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["kind"], "thumbnail");
+        assert_eq!(value["thumbnailUrl"], "thumbnail://pkg/preview/hash");
+        assert_eq!(value["contentHash"], "abc123");
+    }
+
+    #[test]
+    fn serializes_fallback_reason_as_snake_case() {
+        let dto = PreviewImageDto::Fallback {
+            reason: PreviewImageRejectionReason::PixelLimitExceeded.into(),
+        };
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["kind"], "fallback");
+        assert_eq!(value["reason"], "pixel_limit_exceeded");
+    }
+
+    #[test]
+    fn maps_all_domain_fallback_reasons_to_dto() {
+        let cases = [
+            (PreviewImageRejectionReason::Missing, "missing"),
+            (PreviewImageRejectionReason::TooLarge, "too_large"),
+            (
+                PreviewImageRejectionReason::TooManyCandidates,
+                "too_many_candidates",
+            ),
+            (
+                PreviewImageRejectionReason::UnsupportedFormat,
+                "unsupported_format",
+            ),
+            (PreviewImageRejectionReason::DecodeFailed, "decode_failed"),
+            (
+                PreviewImageRejectionReason::PixelLimitExceeded,
+                "pixel_limit_exceeded",
+            ),
+            (
+                PreviewImageRejectionReason::CacheWriteFailed,
+                "cache_write_failed",
+            ),
+        ];
+
+        for (reason, expected) in cases {
+            let dto_reason: PreviewImageFallbackReasonDto = reason.into();
+            let value = serde_json::to_value(dto_reason).expect("serialize reason");
+            assert_eq!(value, expected);
+        }
+    }
 }
