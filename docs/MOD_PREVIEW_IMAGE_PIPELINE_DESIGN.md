@@ -220,6 +220,7 @@ Mod 卡片保持固定比例：
 
 ```css
 .mod-card {
+  position: relative;
   aspect-ratio: 3 / 4;
   overflow: hidden;
 }
