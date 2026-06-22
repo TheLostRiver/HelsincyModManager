@@ -38,6 +38,14 @@ test("mod poster card renders controlled lazy thumbnails with fallback", () => {
   assert.match(source, /item\.previewImage\?\.kind === "thumbnail"/);
 });
 
+test("mod poster card retries when thumbnail url changes", () => {
+  const source = readSource("src/features/mods/ModPosterCard.tsx");
+
+  assert.match(source, /useEffect/);
+  assert.match(source, /setPosterFailed\(false\)/);
+  assert.match(source, /\[\s*previewThumbnail\?\.thumbnailUrl\s*\]/);
+});
+
 test("mod poster image fills stable poster frame", () => {
   const css = readSource("src/features/mods/ModLibraryPage.css");
   const body = getRuleBody(css, ".mod-card__poster-img");

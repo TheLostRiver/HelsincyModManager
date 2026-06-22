@@ -1,13 +1,16 @@
 use crate::preview_image::magic_bytes::detect_image_format;
-use anyhow::{Context, Result};
-use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
+use anyhow::Result;
+use hmm_core::{PreviewImageOutputFormat, PreviewImagePolicy, PreviewImageRejectionReason};
 use hmm_ports::{
     PreviewImageCandidate, PreviewImageProcessingResult, PreviewImageProcessor,
     ProcessedPreviewImage, ThumbnailStore,
 };
-use image::{GenericImageView, ImageFormat};
+use image::{
+    codecs::{jpeg::JpegEncoder, webp::WebPEncoder},
+    ExtendedColorType, GenericImageView, ImageEncoder,
+};
 use sha2::{Digest, Sha256};
-use std::io::{Cursor, Read};
+use std::io::Read;
 use std::path::Path;
 
 pub struct ImageCratePreviewImageProcessor {
@@ -27,11 +30,19 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
         candidate: &PreviewImageCandidate,
         policy: &PreviewImagePolicy,
     ) -> Result<PreviewImageProcessingResult> {
-        let Some(candidate_path) = resolve_logical_path(sandbox_root, &candidate.source_ref.logical_path) else {
+        let Some(candidate_path) =
+            resolve_logical_path(sandbox_root, &candidate.source_ref.logical_path)
+        else {
             return Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::UnsupportedFormat,
             ));
         };
+        if !candidate_stays_inside_sandbox(sandbox_root, &candidate_path) {
+            return Ok(PreviewImageProcessingResult::Fallback(
+                PreviewImageRejectionReason::UnsupportedFormat,
+            ));
+        }
+
         let metadata = match std::fs::metadata(&candidate_path) {
             Ok(metadata) => metadata,
             Err(_) => {
@@ -47,16 +58,39 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
             ));
         }
 
-        let mut file = std::fs::File::open(&candidate_path)?;
+        let mut file = match std::fs::File::open(&candidate_path) {
+            Ok(file) => file,
+            Err(_) => {
+                return Ok(PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::DecodeFailed,
+                ))
+            }
+        };
         let mut header = [0_u8; 16];
-        let read = file.read(&mut header)?;
+        let read = match file.read(&mut header) {
+            Ok(read) => read,
+            Err(_) => {
+                return Ok(PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::DecodeFailed,
+                ))
+            }
+        };
         if detect_image_format(&header[..read]).is_none() {
             return Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::UnsupportedFormat,
             ));
         }
 
-        let reader = image::ImageReader::open(&candidate_path)?.with_guessed_format()?;
+        let reader = match image::ImageReader::open(&candidate_path)
+            .and_then(|reader| reader.with_guessed_format())
+        {
+            Ok(reader) => reader,
+            Err(_) => {
+                return Ok(PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::DecodeFailed,
+                ))
+            }
+        };
         let dimensions = match reader.into_dimensions() {
             Ok(dimensions) => dimensions,
             Err(_) => {
@@ -86,17 +120,30 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
 
         let resized = image.thumbnail(policy.output_max_edge_px, policy.output_max_edge_px);
         let mut output = Vec::new();
-        resized
-            .write_to(&mut Cursor::new(&mut output), ImageFormat::Jpeg)
-            .context("encode preview thumbnail")?;
+        let encoded = encode_thumbnail(&resized, policy, &mut output);
+        let extension = match encoded {
+            Ok(extension) => extension,
+            Err(_) => {
+                return Ok(PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::DecodeFailed,
+                ))
+            }
+        };
 
         let content_hash = hex_sha256(&output);
-        let thumbnail_ref = self.thumbnail_store.put_thumbnail(
+        let thumbnail_ref = match self.thumbnail_store.put_thumbnail(
             &candidate.source_ref.package_id,
             &content_hash,
-            "jpg",
+            extension,
             &output,
-        )?;
+        ) {
+            Ok(thumbnail_ref) => thumbnail_ref,
+            Err(_) => {
+                return Ok(PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::CacheWriteFailed,
+                ))
+            }
+        };
 
         Ok(PreviewImageProcessingResult::Thumbnail(
             ProcessedPreviewImage {
@@ -114,13 +161,56 @@ fn hex_sha256(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn candidate_stays_inside_sandbox(sandbox_root: &Path, candidate_path: &Path) -> bool {
+    let Ok(root) = sandbox_root.canonicalize() else {
+        return false;
+    };
+    let Ok(candidate) = candidate_path.canonicalize() else {
+        return false;
+    };
+
+    candidate.starts_with(root)
+}
+
+fn encode_thumbnail(
+    image: &image::DynamicImage,
+    policy: &PreviewImagePolicy,
+    output: &mut Vec<u8>,
+) -> image::ImageResult<&'static str> {
+    match policy.preferred_output_format {
+        PreviewImageOutputFormat::Jpeg => {
+            let rgb = image.to_rgb8();
+            JpegEncoder::new_with_quality(output, policy.output_quality).write_image(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                ExtendedColorType::Rgb8,
+            )?;
+            Ok("jpg")
+        }
+        PreviewImageOutputFormat::WebP => {
+            let rgba = image.to_rgba8();
+            WebPEncoder::new_lossless(output).write_image(
+                rgba.as_raw(),
+                rgba.width(),
+                rgba.height(),
+                ExtendedColorType::Rgba8,
+            )?;
+            Ok("webp")
+        }
+    }
+}
+
 fn resolve_logical_path(sandbox_root: &Path, logical_path: &str) -> Option<std::path::PathBuf> {
     if logical_path.contains('\\') {
         return None;
     }
 
     let mut path = sandbox_root.to_path_buf();
-    for segment in logical_path.split('/').filter(|segment| !segment.is_empty()) {
+    for segment in logical_path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+    {
         if segment == "." || segment == ".." || segment.contains(':') {
             return None;
         }
@@ -145,14 +235,14 @@ mod tests {
     #[test]
     fn rejects_candidate_over_input_size_limit() {
         let temp = tempfile::tempdir().expect("temp dir");
-        std::fs::write(temp.path().join("preview.png"), vec![0_u8; 128])
-            .expect("write fake image");
+        std::fs::write(temp.path().join("preview.png"), vec![0_u8; 128]).expect("write fake image");
 
         let candidate = preview_candidate("pkg-1", "preview.png", 128);
         let mut policy = PreviewImagePolicy::default();
         policy.max_input_bytes = 64;
 
-        let processor = ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
+        let processor =
+            ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
         let result = processor
             .process_candidate(temp.path(), &candidate, &policy)
             .expect("processing result");
@@ -166,11 +256,11 @@ mod tests {
     #[test]
     fn rejects_magic_bytes_mismatch() {
         let temp = tempfile::tempdir().expect("temp dir");
-        std::fs::write(temp.path().join("preview.png"), b"not an image")
-            .expect("write fake image");
+        std::fs::write(temp.path().join("preview.png"), b"not an image").expect("write fake image");
 
         let candidate = preview_candidate("pkg-1", "preview.png", 12);
-        let processor = ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
+        let processor =
+            ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
         let result = processor
             .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
             .expect("processing result");
@@ -243,6 +333,67 @@ mod tests {
         );
     }
 
+    #[test]
+    fn returns_fallback_when_candidate_disappears_before_open() {
+        let temp = tempfile::tempdir().expect("temp dir");
+
+        let candidate = preview_candidate("pkg-1", "missing.png", 0);
+        let processor =
+            ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
+            .expect("preview result should degrade to fallback");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::UnsupportedFormat)
+        );
+    }
+
+    #[test]
+    fn returns_cache_fallback_when_thumbnail_store_fails() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_png(temp.path().join("preview.png").as_path(), 4, 4);
+
+        let candidate = preview_candidate("pkg-1", "preview.png", 0);
+        let processor = ImageCratePreviewImageProcessor::new(Box::new(FailingThumbnailStore));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
+            .expect("preview result should degrade to fallback");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::CacheWriteFailed)
+        );
+    }
+
+    #[test]
+    fn uses_jpeg_policy_extension_for_thumbnail_ref() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_png(temp.path().join("preview.png").as_path(), 4, 4);
+
+        let candidate = preview_candidate("pkg-1", "preview.png", 0);
+        let mut policy = PreviewImagePolicy::default();
+        policy.preferred_output_format = PreviewImageOutputFormat::Jpeg;
+        policy.output_quality = 72;
+
+        let store = InMemoryThumbnailStore::default();
+        let recorded_extension = store.recorded_extension.clone();
+        let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &policy)
+            .expect("processing result");
+
+        assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
+        assert_eq!(
+            recorded_extension
+                .lock()
+                .expect("thumbnail store extension lock")
+                .as_deref(),
+            Some("jpg")
+        );
+    }
+
     fn preview_candidate(
         package_id: &str,
         logical_path: &str,
@@ -253,7 +404,11 @@ mod tests {
                 package_id: package_id.to_owned(),
                 logical_path: logical_path.to_owned(),
             },
-            file_name: logical_path.rsplit('/').next().unwrap_or(logical_path).to_owned(),
+            file_name: logical_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(logical_path)
+                .to_owned(),
             compressed_size,
             priority: 0,
         }
@@ -271,6 +426,7 @@ mod tests {
     #[derive(Default)]
     struct InMemoryThumbnailStore {
         last_bytes: Mutex<Option<Vec<u8>>>,
+        recorded_extension: std::sync::Arc<Mutex<Option<String>>>,
     }
 
     impl ThumbnailStore for InMemoryThumbnailStore {
@@ -278,10 +434,14 @@ mod tests {
             &self,
             package_id: &str,
             content_hash: &str,
-            _extension: &str,
+            extension: &str,
             bytes: &[u8],
         ) -> anyhow::Result<ThumbnailRef> {
             *self.last_bytes.lock().expect("thumbnail store lock") = Some(bytes.to_vec());
+            *self
+                .recorded_extension
+                .lock()
+                .expect("thumbnail store extension lock") = Some(extension.to_owned());
             Ok(ThumbnailRef {
                 package_id: package_id.to_owned(),
                 content_hash: content_hash.to_owned(),
@@ -294,6 +454,24 @@ mod tests {
                 "thumbnail://{}/{}/{}",
                 thumbnail_ref.package_id, thumbnail_ref.variant, thumbnail_ref.content_hash
             ))
+        }
+    }
+
+    struct FailingThumbnailStore;
+
+    impl ThumbnailStore for FailingThumbnailStore {
+        fn put_thumbnail(
+            &self,
+            _package_id: &str,
+            _content_hash: &str,
+            _extension: &str,
+            _bytes: &[u8],
+        ) -> anyhow::Result<ThumbnailRef> {
+            anyhow::bail!("thumbnail store unavailable")
+        }
+
+        fn resolve_url(&self, _thumbnail_ref: &ThumbnailRef) -> anyhow::Result<String> {
+            unreachable!("processor should not resolve thumbnail URLs")
         }
     }
 }

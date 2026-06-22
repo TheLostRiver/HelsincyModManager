@@ -4,7 +4,7 @@
 
 **目标：** 按 [Mod 预览图安全处理设计](MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md) 落地一条安全、可测试、可降级的预览图处理流水线，让前端只消费后端生成的受控缩略图或 fallback 状态。
 
-**架构：** 预览图处理属于 Mod 导入分析 prepare 阶段，不进入游戏目录写锁，也不由前端读取任意本地路径。`hmm-core` 定义策略和值对象，`hmm-ports` 定义扫描、处理、缓存接口，`hmm-infra` 处理真实 I/O 和图片解码，`hmm-app` 编排导入任务，Tauri command 只暴露受控 DTO，前端只展示 `PreviewImageDto`。
+**架构：** 预览图处理属于 Mod 导入分析 prepare 阶段，不进入游戏目录写锁，也不由前端读取任意本地路径。`hmm-core` 定义策略和值对象，`hmm-ports` 定义扫描、处理、缓存接口，`hmm-infra` 处理真实 I/O 和图片解码，`hmm-app` 编排导入任务，Tauri command 只暴露受控 DTO，前端只消费与 DTO 对齐的本地 `PreviewImage` union。
 
 **技术栈：** Rust workspace、Tauri 2、React + TypeScript、`image` crate 或经验证的等价图片处理库、临时目录测试、人工构造的最小图片样本。
 
@@ -90,10 +90,8 @@
 
 ### Tauri DTO 与 Command
 
-- 创建或扩展 `src-tauri/src/preview_image_dto.rs`
-  - 定义 `PreviewImageDto`、`PreviewImageFallbackReasonDto`。
-- 修改 `src-tauri/src/dto.rs`
-  - 统一 re-export feature DTO，保持 `serde(rename_all = "camelCase")`。
+- 扩展 `src-tauri/src/dto.rs`
+  - 定义 `PreviewImageDto`、`PreviewImageFallbackReasonDto`，保持 `serde(rename_all = "camelCase")`。
 - 后续接入 Mod 导入 command 时修改对应 command 文件
   - `start_import_mod_task` 返回任务 id，最终结果通过 `get_mod_library` / `get_mod_detail` 暴露 `previewImage`。
   - 不新增 `read_image_path`、`load_preview_from_path` 这类宽泛 command。
@@ -146,7 +144,7 @@ mod tests {
         assert_eq!(policy.max_candidates_per_package, 8);
         assert_eq!(policy.output_max_edge_px, 768);
         assert_eq!(policy.output_quality, 80);
-        assert_eq!(policy.preferred_output_format, PreviewImageOutputFormat::WebP);
+        assert_eq!(policy.preferred_output_format, PreviewImageOutputFormat::Jpeg);
         assert!(policy.validate().is_ok());
     }
 
@@ -197,7 +195,7 @@ impl Default for PreviewImagePolicy {
             max_candidates_per_package: 8,
             output_max_edge_px: 768,
             output_quality: 80,
-            preferred_output_format: PreviewImageOutputFormat::WebP,
+            preferred_output_format: PreviewImageOutputFormat::Jpeg,
         }
     }
 }
@@ -565,7 +563,7 @@ fn candidate_priority(file_name: &str) -> u16 {
 - 扩展名只用于发现候选，不作为格式可信依据。
 - 文件名优先级：`preview`、`cover`、`poster`、`thumbnail`、`image` 高于普通图片。
 - 逻辑路径统一使用 `/` 分隔。
-- 如果发现符号链接、目录联接或无法 canonicalize 的条目，跳过并记录 recoverable 诊断。
+- 如果发现符号链接、目录联接或无法 canonicalize 的条目，跳过并记录 recoverable 诊断；诊断只记录结构化原因码和稳定 id，不记录真实本地路径、sandbox 布局或压缩包内部原始路径。
 - 不读取 sandbox 外路径。
 
 - [ ] **Step 4: 测试候选排序和数量限制**
@@ -641,7 +639,7 @@ sha2 = "0.10"
 
 - `image` 用于读取 header、解码和缩放。
 - `sha2` 用于缓存文件名的稳定内容 hash。
-- 如果实现阶段发现 WebP 编码在当前组合下不可用或不稳定，保持解码支持，输出格式先落 JPEG，并在 `PreviewImagePolicy` 默认值或 infra 映射里记录退回原因。
+- 当前 MVP 保持 WebP 解码支持，默认输出格式先落 JPEG，以便稳定使用 `output_quality`；后续如果引入稳定有损 WebP 编码器，再把 `preferred_output_format` 默认值切回 WebP。
 
 - [ ] **Step 2: 写处理器安全测试**
 
@@ -847,10 +845,9 @@ git commit -m "feat(app): orchestrate preview image processing"
 
 **Files:**
 
-- Create: `src-tauri/src/preview_image_dto.rs`
 - Modify: `src-tauri/src/dto.rs`
 - Later import command integration: `src-tauri/src/mod_import_commands.rs` or the concrete import command file introduced by the Mod import task
-- Test: `src-tauri/src/preview_image_dto.rs`
+- Test: `src-tauri/src/dto.rs`
 
 - [ ] **Step 1: 定义 DTO**
 
@@ -929,7 +926,7 @@ cargo check --workspace
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add src-tauri/src/dto.rs src-tauri/src/preview_image_dto.rs
+git add src-tauri/src/dto.rs
 git commit -m "feat(tauri): add preview image dto"
 ```
 
@@ -1106,7 +1103,7 @@ contentHash
 reason
 ```
 
-如果实现选择 JPEG 作为 MVP 输出格式，更新设计文档中的默认策略说明：WebP 是首选策略，JPEG 是经过验证的安全退回格式。
+如果实现选择 JPEG 作为 MVP 输出格式，更新设计文档中的默认策略说明：JPEG 是当前经过验证的安全默认输出格式，WebP 保留为后续可选优化。
 
 - [ ] **Step 2: 安全清单检查**
 

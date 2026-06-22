@@ -27,7 +27,7 @@ impl Default for PreviewImagePolicy {
             max_candidates_per_package: 8,
             output_max_edge_px: 768,
             output_quality: 80,
-            preferred_output_format: PreviewImageOutputFormat::WebP,
+            preferred_output_format: PreviewImageOutputFormat::Jpeg,
         }
     }
 }
@@ -102,7 +102,7 @@ mod tests {
         assert_eq!(policy.output_quality, 80);
         assert_eq!(
             policy.preferred_output_format,
-            PreviewImageOutputFormat::WebP
+            PreviewImageOutputFormat::Jpeg
         );
         assert!(policy.validate().is_ok());
     }

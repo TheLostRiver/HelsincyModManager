@@ -13,14 +13,13 @@ impl PackagePreviewScanner for SandboxPackagePreviewScanner {
         policy: &PreviewImagePolicy,
     ) -> Result<Vec<PreviewImageCandidate>> {
         let mut candidates = Vec::new();
-        collect_candidates(package_id, sandbox_root, sandbox_root, &mut candidates)?;
-        candidates.sort_by_key(|candidate| {
-            (
-                candidate.priority,
-                candidate.source_ref.logical_path.to_ascii_lowercase(),
-            )
-        });
-        candidates.truncate(policy.max_candidates_per_package);
+        collect_candidates(
+            package_id,
+            sandbox_root,
+            sandbox_root,
+            policy.max_candidates_per_package,
+            &mut candidates,
+        )?;
         Ok(candidates)
     }
 }
@@ -29,6 +28,7 @@ fn collect_candidates(
     package_id: &str,
     sandbox_root: &Path,
     current_dir: &Path,
+    max_candidates: usize,
     out: &mut Vec<PreviewImageCandidate>,
 ) -> Result<()> {
     for entry in std::fs::read_dir(current_dir)? {
@@ -41,7 +41,7 @@ fn collect_candidates(
 
         let path = entry.path();
         if file_type.is_dir() {
-            collect_candidates(package_id, sandbox_root, &path, out)?;
+            collect_candidates(package_id, sandbox_root, &path, max_candidates, out)?;
             continue;
         }
 
@@ -54,18 +54,41 @@ fn collect_candidates(
         let file_name = entry.file_name().to_string_lossy().to_string();
         let compressed_size = entry.metadata()?.len();
 
-        out.push(PreviewImageCandidate {
-            source_ref: PreviewImageSourceRef {
-                package_id: package_id.to_owned(),
-                logical_path,
+        insert_candidate(
+            out,
+            max_candidates,
+            PreviewImageCandidate {
+                source_ref: PreviewImageSourceRef {
+                    package_id: package_id.to_owned(),
+                    logical_path,
+                },
+                file_name: file_name.clone(),
+                compressed_size,
+                priority: candidate_priority(&file_name),
             },
-            file_name: file_name.clone(),
-            compressed_size,
-            priority: candidate_priority(&file_name),
-        });
+        );
     }
 
     Ok(())
+}
+
+fn insert_candidate(
+    candidates: &mut Vec<PreviewImageCandidate>,
+    max_candidates: usize,
+    candidate: PreviewImageCandidate,
+) {
+    if max_candidates == 0 {
+        return;
+    }
+
+    candidates.push(candidate);
+    candidates.sort_by_key(|candidate| {
+        (
+            candidate.priority,
+            candidate.source_ref.logical_path.to_ascii_lowercase(),
+        )
+    });
+    candidates.truncate(max_candidates);
 }
 
 fn has_image_extension(path: &Path) -> bool {
@@ -134,5 +157,27 @@ mod tests {
             .expect("scan candidates");
 
         assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn scanner_bounds_candidate_count_during_traversal() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        for index in 0..100 {
+            std::fs::write(temp.path().join(format!("candidate-{index:03}.png")), b"")
+                .expect("write candidate");
+        }
+
+        let mut policy = PreviewImagePolicy::default();
+        policy.max_candidates_per_package = 3;
+
+        let scanner = SandboxPackagePreviewScanner;
+        let candidates = scanner
+            .scan_candidates("pkg-1", temp.path(), &policy)
+            .expect("scan candidates");
+
+        assert_eq!(candidates.len(), 3);
+        assert_eq!(candidates[0].file_name, "candidate-000.png");
+        assert_eq!(candidates[1].file_name, "candidate-001.png");
+        assert_eq!(candidates[2].file_name, "candidate-002.png");
     }
 }

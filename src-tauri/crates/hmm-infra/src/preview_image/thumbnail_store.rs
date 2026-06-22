@@ -1,5 +1,6 @@
 use anyhow::Result;
 use hmm_ports::{ThumbnailRef, ThumbnailStore};
+use std::io::Write;
 use std::path::PathBuf;
 
 pub struct FileSystemThumbnailStore {
@@ -29,9 +30,14 @@ impl ThumbnailStore for FileSystemThumbnailStore {
 
         let final_path = package_dir.join(format!("{variant}-{safe_hash}.{safe_extension}"));
         if !final_path.exists() {
-            let temp_path = package_dir.join(format!("{variant}-{safe_hash}.{safe_extension}.tmp"));
-            std::fs::write(&temp_path, bytes)?;
-            std::fs::rename(&temp_path, &final_path)?;
+            let mut temp_file = tempfile::NamedTempFile::new_in(&package_dir)?;
+            temp_file.write_all(bytes)?;
+            temp_file.flush()?;
+            match temp_file.persist_noclobber(&final_path) {
+                Ok(_) => {}
+                Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.error.into()),
+            }
         }
 
         Ok(ThumbnailRef {
@@ -90,5 +96,36 @@ mod tests {
         assert_eq!(thumbnail_ref.variant, "preview-768");
         assert_eq!(url, "thumbnail://pkg-1/preview-768/abcdef");
         assert!(!url.contains(temp.path().to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn concurrent_same_key_writes_do_not_collide_on_temp_file() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let store = std::sync::Arc::new(FileSystemThumbnailStore::new(temp.path().to_path_buf()));
+
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let store = store.clone();
+            handles.push(std::thread::spawn(move || {
+                store.put_thumbnail("pkg-1", "abcdef", "jpg", b"thumbnail bytes")
+            }));
+        }
+
+        for handle in handles {
+            handle
+                .join()
+                .expect("writer thread should not panic")
+                .expect("put thumbnail should not fail");
+        }
+
+        let final_path = temp
+            .path()
+            .join("thumbnails")
+            .join("pkg-1")
+            .join("preview-768-abcdef.jpg");
+        assert_eq!(
+            std::fs::read(final_path).expect("read final thumbnail"),
+            b"thumbnail bytes"
+        );
     }
 }
