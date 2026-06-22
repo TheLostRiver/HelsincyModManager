@@ -1,8 +1,10 @@
 mod game_setup;
+mod preview_image;
 
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
 };
+pub use preview_image::PreviewImageService;
 
 pub fn app_name() -> &'static str {
     "Helsincy Mod Manager"

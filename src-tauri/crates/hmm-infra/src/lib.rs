@@ -1,6 +1,7 @@
 mod game_config_repository;
 mod game_directory_probe;
 mod game_discovery;
+mod preview_image;
 pub mod steam_discovery;
 
 use anyhow::Result;
@@ -10,6 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub use game_config_repository::JsonGameConfigRepository;
 pub use game_directory_probe::{RealGameDirectoryProbe, RealGameDirectoryProbeFactory};
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
+pub use preview_image::{
+    FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
+};
 pub use steam_discovery::PlatformSteamRootProvider;
 
 pub struct SystemClock;
