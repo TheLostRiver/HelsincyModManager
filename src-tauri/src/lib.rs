@@ -1,12 +1,14 @@
 mod dto;
 mod game_setup_commands;
 mod state;
+mod thumbnail_protocol;
 
 use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
 use state::AppState;
 use tauri::Manager;
+use thumbnail_protocol::register_thumbnail_protocol;
 
 #[tauri::command]
 fn app_health() -> &'static str {
@@ -14,7 +16,7 @@ fn app_health() -> &'static str {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    register_thumbnail_protocol(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let state = AppState::new(app.handle())?;
