@@ -467,9 +467,9 @@
 }
 
 .mod-grid.view-tech .mod-card:hover:not(.is-selected) {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0px var(--color-accent);
-  border-color: var(--color-accent);
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px var(--color-accent-alpha-20);
+  border-color: var(--color-accent-alpha-40);
 }
 
 .mod-grid.view-tech .mod-card.is-selected {
