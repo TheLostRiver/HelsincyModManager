@@ -183,6 +183,18 @@ TaskProgressEventDto
   resultRef
 ```
 
+`phase` 是稳定的点状命名空间字符串，格式为 `<task_kind>.<stage>.<sub>`，前端可据此展示阶段文案，但不能用 `message` 文本做分支。当前已定义的 phase code：
+
+| task kind | phase | 含义 |
+| --- | --- | --- |
+| `mod_import` | `mod_import.unpack.started` / `.completed` / `.failed` | 安全解压阶段 |
+| `mod_import` | `mod_import.preview_image.processing` | 预览图候选扫描和处理 |
+| `mod_import` | `mod_import.preview_image.fallback` | 预览图降级为 fallback，导入继续 |
+| `mod_import` | `mod_import.analyze.processing` | 包结构和依赖分析 |
+| `mod_import` | `mod_import.commit.processing` | 写入游戏实例前的 plan 落地 |
+
+新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
+
 规则：
 
 - 每个进度事件必须携带 `taskId`。
@@ -208,6 +220,8 @@ TaskProgressEventDto
 - 纯展示/筛选输入，例如 query、filter、sort、view mode。
 
 所有真实文件写入必须由后端基于受控 id 解析，并经过安全校验、计划、备份、manifest 和回滚流程。
+
+预览图缩略图的 `thumbnailUrl` 一律走 custom protocol（见上文「Mod 预览图」），前端不直接持有缓存路径，也不通过 asset protocol 或 `convertFileSrc` 自行解析。
 
 ## 首批迁移对象
 
@@ -269,10 +283,29 @@ get_mod_detail(modId)
 
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
-- 后端返回的 `thumbnailUrl` 必须是受控资源 URL，或由后端根据 opaque `thumbnailRef` 解析。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
-- 失败原因使用稳定 `snake_case` 字符串，例如 `too_large`、`decode_failed`、`pixel_limit_exceeded`。
+- 失败原因使用稳定 `snake_case` 字符串，例如 `too_large`、`decode_failed`、`pixel_limit_exceeded`、`cache_write_failed`。
 - 图片处理任务和导入任务事件必须携带 `taskId`。
+- 预览图阶段事件使用 `mod_import.preview_image.processing` 和 `mod_import.preview_image.fallback` 两个 phase code（见上文「长任务契约」）。
+
+#### thumbnailUrl 解析方案
+
+`thumbnailUrl` 必须由后端解析为受控资源 URL，前端拿不到真实磁盘路径。本项目采用 **custom protocol** 方案：
+
+- 后端注册自定义协议 scheme（如 `thumbnail://`），由 protocol handler 根据 opaque `thumbnailRef`（`package_id` / `variant` / `content_hash`）从应用缓存目录读字节返回，并设置正确 `Content-Type` 和缓存头。
+- 前端 `<img src={thumbnailUrl}>` 直接消费，不做任何路径拼接或 `convertFileSrc` 转换。
+- protocol handler 必须校验请求路径落在受控缓存目录内，拒绝穿越、绝对路径、符号链接和未登记 package 的访问。
+- 真实缓存路径不进入任何 DTO、日志或前端代码。
+- 缓存目录可整体删除重建，删除后同 `thumbnailRef` 的 URL 仍可命中（handler 重新生成或返回 fallback）。
+
+custom protocol 是契约层唯一允许的 `thumbnailUrl` 形态；asset protocol、`convertFileSrc` 和 base64 data URL 不作为正式契约方案，详情页若未来需要内联可另行扩展契约，不得在现有 DTO 上隐式承载。
+
+#### 输出格式与缓存布局
+
+- MVP 默认输出 **JPEG**（质量 80，最长边 768px）；WebP 保留为后续可选优化。
+- 缩略图文件名实际扩展名（`.jpg` / `.webp`）由后端根据 `preferred_output_format` 决定，**不进入前端 DTO**。
+- 缓存目录布局由 infra 决定，示例 `thumbnails/<package_id>/preview-<content_hash>-768.<ext>`，不进入前端契约。
+- 若后续把默认格式切到 WebP，DTO 字段不变，前端无感知。
 
 推荐 DTO 形状：
 
@@ -293,7 +326,8 @@ type PreviewImageDto =
         | "too_many_candidates"
         | "unsupported_format"
         | "decode_failed"
-        | "pixel_limit_exceeded";
+        | "pixel_limit_exceeded"
+        | "cache_write_failed";
     };
 ```
 

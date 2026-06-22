@@ -58,7 +58,10 @@ PreviewImageRejectionReason
   UnsupportedFormat
   DecodeFailed
   PixelLimitExceeded
+  CacheWriteFailed
 ```
+
+`CacheWriteFailed` 用于缩略图缓存写入或 `thumbnailUrl` 解析失败的降级。它属于缓存层失败，不阻断 Mod 导入主流程，只影响展示。
 
 `hmm-core` 只表达规则和结果，不依赖图片库、缓存目录、Tauri 或平台 API。
 
@@ -117,6 +120,13 @@ Tauri command 只做窄用例入口和 DTO 映射：
 - 不能暴露任意本地文件读取能力。
 - 不能让前端提交本地图片路径要求后端读取。
 - 不能把真实缓存路径直接返回给前端。
+
+`thumbnailUrl` 的字节流由 **custom protocol handler** 提供，不属于 Tauri command。handler 必须满足：
+
+- 只接受 opaque `thumbnailRef` 形态的请求（`thumbnail://<package_id>/<variant>/<content_hash>`），不接受任意路径。
+- 解析后定位到受控缓存目录，校验最终路径不穿越、不是符号链接、不指向缓存目录之外。
+- 设置正确的 `Content-Type`（如 `image/jpeg`）和可缓存响应头。
+- 文件缺失或解析失败时返回合适的 HTTP 状态（如 404），由前端 `<img onError>` 降级到 fallback 占位。
 
 具体 command 命名、错误 DTO、长任务事件和 typed API 边界必须遵循 [前后端通信契约设计](FRONTEND_BACKEND_CONTRACT.md)。本文只定义 Mod 预览图 feature 的输入输出形状和安全规则，不另起一套跨边界协议。
 
@@ -180,8 +190,10 @@ MVP 默认值建议：
 ```text
 thumbnails/
   <package_id>/
-    preview-<content_hash>-768.webp
+    preview-<content_hash>-768.<ext>
 ```
+
+`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
 
 实际目录由 infra 决定，不进入前端 DTO。
 
@@ -206,11 +218,12 @@ type PreviewImage =
         | "too_many_candidates"
         | "unsupported_format"
         | "decode_failed"
-        | "pixel_limit_exceeded";
+        | "pixel_limit_exceeded"
+        | "cache_write_failed";
     };
 ```
 
-`thumbnailUrl` 必须是 Tauri 后端允许的受控资源 URL，或由后端按 `thumbnailRef` 解析得到。前端不得拿到真实缓存路径。
+`thumbnailUrl` 必须由后端解析为受控资源 URL。本项目采用 custom protocol 方案（见 [前后端通信契约设计](FRONTEND_BACKEND_CONTRACT.md) 「Mod 预览图」一节）：后端注册 `thumbnail://` scheme，由 protocol handler 根据 opaque `thumbnailRef`（`package_id` / `variant` / `content_hash`）从应用缓存目录读字节返回，前端拿不到真实磁盘路径。asset protocol、`convertFileSrc` 和 base64 data URL 不作为正式契约方案。
 
 `reason` 只用于展示和测试分支，不应被前端用来推断底层文件系统状态。需要重新处理图片时，前端只能发送 `packageId`、`modId`、`taskId` 等后端生成的稳定 id。
 
@@ -253,15 +266,15 @@ Mod 卡片保持固定比例：
 
 图片处理失败返回 fallback，而不是中断导入：
 
-| 原因 | 行为 |
+| reason | 行为 |
 | --- | --- |
-| 没有候选图 | 使用默认封面 |
-| 文件过大 | 使用默认封面，导入结果可提示“预览图过大已忽略” |
-| 格式不支持 | 使用默认封面 |
-| magic bytes 不匹配 | 使用默认封面，并记录安全事件 |
-| 解码失败 | 使用默认封面 |
-| 像素数超限 | 使用默认封面 |
-| 缩略图缓存写入失败 | 使用默认封面，导入仍可继续 |
+| `missing` | 使用默认封面 |
+| `too_large` | 使用默认封面，导入结果可提示“预览图过大已忽略” |
+| `unsupported_format` | 使用默认封面 |
+| `unsupported_format`（magic bytes 不匹配） | 使用默认封面，并记录安全事件 |
+| `decode_failed` | 使用默认封面 |
+| `pixel_limit_exceeded` | 使用默认封面 |
+| `cache_write_failed` | 使用默认封面，导入仍可继续；同 `thumbnailRef` 的 URL 下次访问由 protocol handler 重试或返回 404 触发前端回退 |
 
 如果同一个包同时触发路径穿越、压缩炸弹或其他包级安全问题，应由导入流水线按包安全规则阻断，而不是由预览图模块单独决定。
 
