@@ -1,6 +1,6 @@
 use hmm_app::{
     GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
-    ModImportTaskError, TaskStarted,
+    ModImportTaskError, TaskKind, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
@@ -38,6 +38,24 @@ impl CommandErrorDto {
 #[serde(rename_all = "camelCase")]
 pub struct TaskStartedDto {
     pub task_id: String,
+    pub kind: TaskKindDto,
+    pub status: TaskStatusDto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskKindDto {
+    ModImport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatusDto {
+    Queued,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
 }
 
 #[derive(Debug, Serialize)]
@@ -162,6 +180,28 @@ impl From<TaskStarted> for TaskStartedDto {
     fn from(task: TaskStarted) -> Self {
         Self {
             task_id: task.task_id,
+            kind: task.kind.into(),
+            status: task.status.into(),
+        }
+    }
+}
+
+impl From<TaskKind> for TaskKindDto {
+    fn from(kind: TaskKind) -> Self {
+        match kind {
+            TaskKind::ModImport => Self::ModImport,
+        }
+    }
+}
+
+impl From<TaskStatus> for TaskStatusDto {
+    fn from(status: TaskStatus) -> Self {
+        match status {
+            TaskStatus::Queued => Self::Queued,
+            TaskStatus::Running => Self::Running,
+            TaskStatus::Completed => Self::Completed,
+            TaskStatus::Failed => Self::Failed,
+            TaskStatus::Cancelled => Self::Cancelled,
         }
     }
 }
@@ -398,11 +438,15 @@ mod task_dto_tests {
     fn serializes_task_started_dto_with_camel_case_fields() {
         let dto = TaskStartedDto {
             task_id: "mod-import-123".to_owned(),
+            kind: TaskKindDto::ModImport,
+            status: TaskStatusDto::Queued,
         };
 
         let value = serde_json::to_value(dto).expect("serialize dto");
 
         assert_eq!(value["taskId"], "mod-import-123");
+        assert_eq!(value["kind"], "mod_import");
+        assert_eq!(value["status"], "queued");
     }
 
     #[test]
