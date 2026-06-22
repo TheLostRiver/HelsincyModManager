@@ -1275,3 +1275,84 @@
     transform: none;
   }
 }
+
+/* =========================================
+   CINEMATIC FULL BLEED COVER OVERRIDES (OPTION 1)
+   ========================================= */
+.mod-grid.view-classic .mod-card,
+.mod-grid.view-grid .mod-card {
+  aspect-ratio: 3 / 4;
+}
+
+.view-classic .mod-card__poster,
+.view-grid .mod-card__poster {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  z-index: 0;
+}
+
+/* 居中剪影占位，证明海报 100% 撑满 */
+.view-classic .mod-card__silhouette,
+.view-grid .mod-card__silhouette {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-60%);
+  height: 180px;
+}
+
+.view-classic .mod-card__status-pill,
+.view-grid .mod-card__status-pill {
+  top: 12px;
+  right: 12px;
+  bottom: auto;
+  z-index: 2;
+}
+
+.view-classic .mod-card__selection-indicator,
+.view-grid .mod-card__selection-indicator {
+  top: 12px;
+  left: 12px;
+  right: auto;
+  z-index: 5;
+}
+
+/* 经典底部渐变掩膜 */
+.view-classic .mod-card__meta,
+.view-grid .mod-card__info-enhanced {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  /* 增加顶部的 padding，让渐变过渡有足够的呼吸空间，不压迫文字 */
+  padding: 80px 16px 16px 16px;
+  /* 经典的从透明到表面色的底部渐变 */
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--color-surface) 30%, transparent) 50%,
+    var(--color-surface) 100%
+  );
+  border: none;
+  box-shadow: none;
+  z-index: 2;
+}
+
+/* 启用平滑毛玻璃渐变遮罩 (Apple-style seamless frosted glass fade) */
+@supports (backdrop-filter: blur(10px)) {
+  .view-classic .mod-card__meta,
+  .view-grid .mod-card__info-enhanced {
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    /* 毛玻璃效果从上到下由完全透明渐变到完全不透明，彻底消灭硬边缘 */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 60%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 60%);
+    /* 底色调得更通透，透出更多海报原图 */
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in srgb, var(--color-surface) 10%, transparent) 40%,
+      color-mix(in srgb, var(--color-surface) 80%, transparent) 100%
+    );
+  }
+}
