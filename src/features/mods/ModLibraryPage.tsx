@@ -15,6 +15,7 @@ import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLi
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
+import { ModContextMenu } from "./ModContextMenu";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -58,6 +59,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
+  const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
 
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -125,6 +127,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const selectCard = (id: string) => {
     setSelectedIds((prev) => applyModSelection(prev, id, "replace"));
+  };
+
+  const handleContextMenu = (modId: string, x: number, y: number) => {
+    setContextMenuState({ x, y, modId });
+    // If the card isn't selected, select it
+    if (!selectedIds.has(modId)) {
+      setSelectedIds((prev) => applyModSelection(prev, modId, "replace"));
+    }
   };
 
   const selectAll = () => {
@@ -244,6 +254,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                   selected={selectedIds.has(item.id)}
                   viewMode={viewMode}
                   onSelect={selectCard}
+                  onContextMenu={handleContextMenu}
                   index={index}
                 />
               ))}
@@ -261,6 +272,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           </div>
         ) : null}
       </div>
+
+      {contextMenuState && (
+        <ModContextMenu
+          x={contextMenuState.x}
+          y={contextMenuState.y}
+          modId={contextMenuState.modId}
+          onClose={() => setContextMenuState(null)}
+          onAction={(actionId, modId) => {
+            console.log(`Context Menu Action: ${actionId} for Mod: ${modId}`);
+            // In a real app, you would handle the specific actions here or pass them up via onAction prop
+          }}
+        />
+      )}
     </section>
   );
 }
