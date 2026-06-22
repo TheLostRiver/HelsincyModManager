@@ -148,10 +148,21 @@ test("tech view mod cards are allowed to grow to their full data panel height", 
 
 test("tech view selection styling overrides the generic blue filled card state", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const techHoverBody = getRuleBody(css, ".mod-grid.view-tech .mod-card:hover:not(.is-selected)");
   const techSelectedBody = getRuleBody(css, ".mod-grid.view-tech .mod-card.is-selected");
 
+  assert.match(techHoverBody, /border-color:\s*var\(--color-accent-alpha-40\);/);
+  assert.match(techHoverBody, /box-shadow:\s*5px\s+5px\s+0px\s+var\(--color-accent-alpha-20\);/);
+  assert.doesNotMatch(techHoverBody, /box-shadow:\s*6px\s+6px\s+0px\s+var\(--color-accent\);/);
   assert.match(techSelectedBody, /background:\s*var\(--color-surface\);/);
   assert.match(techSelectedBody, /border-color:\s*var\(--color-accent\);/);
   assert.match(techSelectedBody, /box-shadow:\s*6px\s+6px\s+0px\s+var\(--color-accent\);/);
   assert.doesNotMatch(css, /--color-primary\)/);
+});
+
+test("mod library starts with no selected mod cards", () => {
+  const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(source, /const \[selectedIds,\s*setSelectedIds\] = useState<Set<string>>\(new Set\(\)\);/);
+  assert.doesNotMatch(source, /useState<Set<string>>\(new Set\(\[/);
 });
