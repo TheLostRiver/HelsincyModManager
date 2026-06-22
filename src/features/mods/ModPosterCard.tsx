@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
 import type { ModLibraryItem } from "./modsLibraryData";
@@ -34,6 +35,13 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
   const isClassic = viewMode === "classic";
+  const [posterFailed, setPosterFailed] = useState(false);
+  const previewThumbnail = item.previewImage?.kind === "thumbnail" ? item.previewImage : null;
+  const canShowPoster = previewThumbnail !== null && !posterFailed;
+
+  useEffect(() => {
+    setPosterFailed(false);
+  }, [previewThumbnail?.thumbnailUrl]);
 
   return (
     <div
@@ -74,8 +82,19 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
         >
           {isGrid && <div className="mod-card__version-badge">v1.0.0</div>}
 
+          {canShowPoster && (
+            <img
+              className="mod-card__poster-img"
+              src={previewThumbnail.thumbnailUrl}
+              loading="lazy"
+              decoding="async"
+              alt=""
+              onError={() => setPosterFailed(true)}
+            />
+          )}
+
           {/* 无预览图时的简化人形剪影占位 */}
-          <span className="mod-card__silhouette" aria-hidden="true">
+          <span className="mod-card__silhouette" aria-hidden="true" data-visible={!canShowPoster}>
             <span className="mod-card__hair mod-card__hair--left" />
             <span className="mod-card__hair mod-card__hair--right" />
             <span className="mod-card__head" />

@@ -3,6 +3,8 @@
 // 当前生成数量：72
 // 现阶段使用本地 mock 数据还原设计稿，后续由 Mod 仓储或视图模型提供真实数据。
 // 业务规则（安装、冲突、依赖判定）不在此处推断，仅承载展示字段。
+import type { PreviewImage } from "./modPreviewImageTypes";
+
 export type ModInstallStatus = "installed" | "disabled" | "conflict";
 
 export type ModLibraryItem = {
@@ -17,6 +19,7 @@ export type ModLibraryItem = {
   // 设计稿中每张卡片有独立色调，这里保留为语义化的色卡描述。
   posterFrom: string;
   posterTo: string;
+  previewImage?: PreviewImage;
 };
 
 export const modLibraryItems: ModLibraryItem[] = [
