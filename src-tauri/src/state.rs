@@ -1,4 +1,4 @@
-use hmm_app::{GameSetupService, ModImportTaskService};
+use hmm_app::{GameSetupService, ModImportTaskService, TaskManager};
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
     JsonGameConfigRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
@@ -20,6 +20,8 @@ impl AppState {
             .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
         let config_path = app_data_dir.join("config").join("games.json");
 
+        let task_manager = Arc::new(TaskManager::new());
+
         Ok(Self {
             game_setup: Arc::new(GameSetupService::new(
                 vec![Arc::new(MonsterHunterWorldAdapter)],
@@ -30,7 +32,7 @@ impl AppState {
                 ))),
                 Arc::new(SystemClock),
             )),
-            mod_import_tasks: Arc::new(ModImportTaskService::new()),
+            mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
         })
     }
 }
