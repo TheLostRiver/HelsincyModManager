@@ -7,6 +7,7 @@ type ModPosterCardProps = {
   selected: boolean;
   viewMode: ModViewMode;
   onSelect: (id: string) => void;
+  onContextMenu?: (id: string, x: number, y: number) => void;
   index?: number;
 };
 
@@ -28,7 +29,7 @@ const techValidityLabel: Record<ModLibraryItem["status"], string> = {
   conflict: "ERROR",
 };
 
-export function ModPosterCard({ item, selected, viewMode, onSelect, index = 0 }: ModPosterCardProps) {
+export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMenu, index = 0 }: ModPosterCardProps) {
   const isTech = viewMode === "tech";
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
@@ -41,6 +42,12 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, index = 0 }:
       className={`mod-card anim-stagger-item${selected ? " is-selected" : ""}`}
       style={{ "--stagger-idx": index + 1 } as React.CSSProperties}
       onClick={() => onSelect(item.id)}
+      onContextMenu={(e) => {
+        if (onContextMenu) {
+          e.preventDefault();
+          onContextMenu(item.id, e.clientX, e.clientY);
+        }
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
