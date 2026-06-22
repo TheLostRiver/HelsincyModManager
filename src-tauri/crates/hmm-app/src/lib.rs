@@ -1,8 +1,13 @@
 mod game_setup;
+mod mod_import;
 mod preview_image;
 
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
+};
+pub use mod_import::{
+    ImportPreviewImage, ImportPreviewImageProcessor, ModImportAnalysisRequest,
+    ModImportAnalysisResult, ModImportAnalysisService,
 };
 pub use preview_image::PreviewImageService;
 

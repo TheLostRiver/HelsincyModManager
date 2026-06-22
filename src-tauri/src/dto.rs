@@ -1,4 +1,4 @@
-use hmm_app::{GameCandidateScan, GameSetupCandidate, GameSetupServiceError};
+use hmm_app::{GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage};
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
     GameInstance, GameSetupErrorCode, GameSetupStatus, PreviewImageRejectionReason,
@@ -117,6 +117,27 @@ impl From<PreviewImageRejectionReason> for PreviewImageFallbackReasonDto {
             PreviewImageRejectionReason::DecodeFailed => Self::DecodeFailed,
             PreviewImageRejectionReason::PixelLimitExceeded => Self::PixelLimitExceeded,
             PreviewImageRejectionReason::CacheWriteFailed => Self::CacheWriteFailed,
+        }
+    }
+}
+
+impl From<ImportPreviewImage> for PreviewImageDto {
+    fn from(preview_image: ImportPreviewImage) -> Self {
+        match preview_image {
+            ImportPreviewImage::Thumbnail {
+                thumbnail_url,
+                width,
+                height,
+                content_hash,
+            } => Self::Thumbnail {
+                thumbnail_url,
+                width,
+                height,
+                content_hash,
+            },
+            ImportPreviewImage::Fallback { reason } => Self::Fallback {
+                reason: reason.into(),
+            },
         }
     }
 }
@@ -310,5 +331,37 @@ mod preview_image_tests {
             let value = serde_json::to_value(dto_reason).expect("serialize reason");
             assert_eq!(value, expected);
         }
+    }
+
+    #[test]
+    fn maps_import_preview_thumbnail_to_dto() {
+        let dto: PreviewImageDto = ImportPreviewImage::Thumbnail {
+            thumbnail_url: "thumbnail://pkg-1/preview-768/hash".to_owned(),
+            width: 320,
+            height: 180,
+            content_hash: "hash".to_owned(),
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["kind"], "thumbnail");
+        assert_eq!(value["thumbnailUrl"], "thumbnail://pkg-1/preview-768/hash");
+        assert_eq!(value["width"], 320);
+        assert_eq!(value["height"], 180);
+        assert_eq!(value["contentHash"], "hash");
+    }
+
+    #[test]
+    fn maps_import_preview_fallback_to_dto() {
+        let dto: PreviewImageDto = ImportPreviewImage::Fallback {
+            reason: PreviewImageRejectionReason::DecodeFailed,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["kind"], "fallback");
+        assert_eq!(value["reason"], "decode_failed");
     }
 }
