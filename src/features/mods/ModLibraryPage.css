@@ -673,7 +673,7 @@
 
 .mod-card.is-selected {
   border-color: var(--color-accent);
-  background: var(--color-primary-action-bg);
+  background: var(--color-surface);
   transform: translateY(-4px);
   box-shadow: 0 0 0 1px var(--color-accent), 0 12px 32px var(--color-accent-alpha-20);
 }
