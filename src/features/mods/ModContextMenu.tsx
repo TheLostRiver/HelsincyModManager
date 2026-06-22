@@ -48,36 +48,40 @@ const IconFolder = () => (
 
 export function ModContextMenu({ x, y, modId, onClose, onAction }: ModContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  // Keep ref up to date so we don't need to re-bind event listeners
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Close when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
+        onCloseRef.current();
       }
     };
 
     // Close when pressing Escape
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
       }
     };
 
-    // Use setTimeout to avoid closing immediately on the same click that opened it
-    const timer = setTimeout(() => {
-      window.addEventListener("click", handleClickOutside);
-      window.addEventListener("contextmenu", handleClickOutside);
-      window.addEventListener("keydown", handleKeyDown);
-    }, 0);
+    // Bind listeners synchronously since propagation is stopped at the source
+    // Use mousedown instead of click to prevent race conditions with React state updates
+    window.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("contextmenu", handleClickOutside);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      clearTimeout(timer);
-      window.removeEventListener("click", handleClickOutside);
+      window.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("contextmenu", handleClickOutside);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, []); // Empty dependency array: bind only once!
 
   // Adjust position to stay within viewport
   const getStyle = (): React.CSSProperties => {
