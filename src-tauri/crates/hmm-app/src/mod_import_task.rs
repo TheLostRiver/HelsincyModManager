@@ -1,6 +1,8 @@
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
 use thiserror::Error;
+
+use crate::{TaskKind, TaskManager, TaskManagerError, TaskStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartImportModTaskRequest {
@@ -10,6 +12,8 @@ pub struct StartImportModTaskRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskStarted {
     pub task_id: String,
+    pub kind: TaskKind,
+    pub status: TaskStatus,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -24,6 +28,8 @@ pub enum ModImportTaskError {
     ArchivePathIsNotFile,
     #[error("failed to generate task id: {0}")]
     TaskIdGenerationFailed(String),
+    #[error("failed to register task: {0}")]
+    TaskRegistrationFailed(String),
 }
 
 impl ModImportTaskError {
@@ -34,15 +40,18 @@ impl ModImportTaskError {
             Self::ArchiveFileNotFound => "archive_file_not_found",
             Self::ArchivePathIsNotFile => "archive_path_is_not_file",
             Self::TaskIdGenerationFailed(_) => "task_id_generation_failed",
+            Self::TaskRegistrationFailed(_) => "task_registration_failed",
         }
     }
 }
 
-pub struct ModImportTaskService;
+pub struct ModImportTaskService {
+    task_manager: Arc<TaskManager>,
+}
 
 impl ModImportTaskService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(task_manager: Arc<TaskManager>) -> Self {
+        Self { task_manager }
     }
 
     pub fn start_import_mod_task(
@@ -63,30 +72,42 @@ impl ModImportTaskService {
             return Err(ModImportTaskError::ArchivePathIsNotFile);
         }
 
+        let task = self
+            .task_manager
+            .create_task(TaskKind::ModImport)
+            .map_err(ModImportTaskError::from)?;
+
         Ok(TaskStarted {
-            task_id: generate_task_id()?,
+            task_id: task.task_id,
+            kind: task.kind,
+            status: task.status,
         })
+    }
+}
+
+impl From<TaskManagerError> for ModImportTaskError {
+    fn from(error: TaskManagerError) -> Self {
+        match error {
+            TaskManagerError::TaskIdGenerationFailed(message) => {
+                Self::TaskIdGenerationFailed(message)
+            }
+            TaskManagerError::TaskStoreUnavailable => {
+                Self::TaskRegistrationFailed(error.to_string())
+            }
+        }
     }
 }
 
 impl Default for ModImportTaskService {
     fn default() -> Self {
-        Self::new()
+        Self::new(Arc::new(TaskManager::new()))
     }
-}
-
-fn generate_task_id() -> Result<String, ModImportTaskError> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| ModImportTaskError::TaskIdGenerationFailed(error.to_string()))?
-        .as_millis();
-
-    Ok(format!("mod-import-{millis}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{TaskKind, TaskStatus};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -98,7 +119,8 @@ mod tests {
         let archive_path = root.join("sample.zip");
         fs::write(&archive_path, b"not a real archive yet").expect("write sample file");
 
-        let service = ModImportTaskService::new();
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let service = ModImportTaskService::new(std::sync::Arc::clone(&task_manager));
         let task = service
             .start_import_mod_task(StartImportModTaskRequest { archive_path })
             .expect("task starts");
@@ -107,13 +129,19 @@ mod tests {
         assert!(!task.task_id.contains("sample.zip"));
         assert!(!task.task_id.contains('\\'));
         assert!(!task.task_id.contains('/'));
+        assert_eq!(task.kind, TaskKind::ModImport);
+        assert_eq!(task.status, TaskStatus::Queued);
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(TaskStatus::Queued)
+        );
 
         fs::remove_dir_all(root).expect("cleanup temp root");
     }
 
     #[test]
     fn start_import_task_rejects_relative_paths() {
-        let service = ModImportTaskService::new();
+        let service = ModImportTaskService::default();
         let error = service
             .start_import_mod_task(StartImportModTaskRequest {
                 archive_path: PathBuf::from("relative.zip"),
@@ -125,7 +153,7 @@ mod tests {
 
     #[test]
     fn start_import_task_rejects_missing_paths() {
-        let service = ModImportTaskService::new();
+        let service = ModImportTaskService::default();
         let error = service
             .start_import_mod_task(StartImportModTaskRequest {
                 archive_path: temp_root("mod-import-task-missing").join("missing.zip"),
@@ -140,7 +168,7 @@ mod tests {
         let root = temp_root("mod-import-task-directory");
         fs::create_dir_all(&root).expect("create temp root");
 
-        let service = ModImportTaskService::new();
+        let service = ModImportTaskService::default();
         let error = service
             .start_import_mod_task(StartImportModTaskRequest {
                 archive_path: root.clone(),
