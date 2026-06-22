@@ -51,8 +51,9 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
       style={{ "--stagger-idx": index + 1 } as React.CSSProperties}
       onClick={() => onSelect(item.id)}
       onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (onContextMenu) {
-          e.preventDefault();
           onContextMenu(item.id, e.clientX, e.clientY);
         }
       }}
