@@ -284,7 +284,7 @@ get_mod_detail(modId)
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
-- 失败原因使用稳定 `snake_case` 字符串，例如 `too_large`、`decode_failed`、`pixel_limit_exceeded`、`cache_write_failed`。
+- 失败原因使用稳定 `snake_case` 字符串；已注册的 `reason` 值见下文 DTO 定义（例如 `too_large`、`decode_failed`、`pixel_limit_exceeded`、`cache_write_failed`）。
 - 图片处理任务和导入任务事件必须携带 `taskId`。
 - 预览图阶段事件使用 `mod_import.preview_image.processing` 和 `mod_import.preview_image.fallback` 两个 phase code（见上文「长任务契约」）。
 
@@ -304,7 +304,7 @@ custom protocol 是契约层唯一允许的 `thumbnailUrl` 形态；asset protoc
 
 - MVP 默认输出 **JPEG**（质量 80，最长边 768px）；WebP 保留为后续可选优化。
 - 缩略图文件名实际扩展名（`.jpg` / `.webp`）由后端根据 `preferred_output_format` 决定，**不进入前端 DTO**。
-- 缓存目录布局由 infra 决定，示例 `thumbnails/<package_id>/preview-<content_hash>-768.<ext>`，不进入前端契约。
+- 缓存目录布局由 infra 决定，示例 `thumbnails/<package_id>/preview-768-<content_hash>.<ext>`，不进入前端契约。
 - 若后续把默认格式切到 WebP，DTO 字段不变，前端无感知。
 
 推荐 DTO 形状：

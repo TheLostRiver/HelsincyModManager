@@ -190,10 +190,10 @@ MVP 默认值建议：
 ```text
 thumbnails/
   <package_id>/
-    preview-<content_hash>-768.<ext>
+    preview-768-<content_hash>.<ext>
 ```
 
-`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
+文件名采用 `<variant>-<content_hash>.<ext>` 顺序，其中 `variant` 当前固定为 `preview-768`（与 `hmm-infra` 的 `FileSystemThumbnailStore` 实现一致）。`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
 
 实际目录由 infra 决定，不进入前端 DTO。
 
