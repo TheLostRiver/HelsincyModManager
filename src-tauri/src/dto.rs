@@ -1,4 +1,7 @@
-use hmm_app::{GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage};
+use hmm_app::{
+    GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
+    ModImportTaskError, TaskStarted,
+};
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
     GameInstance, GameSetupErrorCode, GameSetupStatus, PreviewImageRejectionReason,
@@ -22,6 +25,19 @@ impl CommandErrorDto {
             message: error.to_string(),
         }
     }
+
+    pub fn from_mod_import_task_error(error: ModImportTaskError) -> Self {
+        Self {
+            code: error.error_code().to_owned(),
+            message: error.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStartedDto {
+    pub task_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -138,6 +154,14 @@ impl From<ImportPreviewImage> for PreviewImageDto {
             ImportPreviewImage::Fallback { reason } => Self::Fallback {
                 reason: reason.into(),
             },
+        }
+    }
+}
+
+impl From<TaskStarted> for TaskStartedDto {
+    fn from(task: TaskStarted) -> Self {
+        Self {
+            task_id: task.task_id,
         }
     }
 }
@@ -363,5 +387,29 @@ mod preview_image_tests {
 
         assert_eq!(value["kind"], "fallback");
         assert_eq!(value["reason"], "decode_failed");
+    }
+}
+
+#[cfg(test)]
+mod task_dto_tests {
+    use super::*;
+
+    #[test]
+    fn serializes_task_started_dto_with_camel_case_fields() {
+        let dto = TaskStartedDto {
+            task_id: "mod-import-123".to_owned(),
+        };
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["taskId"], "mod-import-123");
+    }
+
+    #[test]
+    fn maps_mod_import_task_error_to_command_error_code() {
+        let dto =
+            CommandErrorDto::from_mod_import_task_error(ModImportTaskError::ArchivePathNotAbsolute);
+
+        assert_eq!(dto.code, "archive_path_not_absolute");
     }
 }

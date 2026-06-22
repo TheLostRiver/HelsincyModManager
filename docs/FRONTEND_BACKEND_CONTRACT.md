@@ -281,6 +281,7 @@ get_mod_detail(modId)
 
 边界：
 
+- 当前 `start_import_mod_task` 最小入口只做 archive 路径基础校验并返回 `TaskStartedDto { taskId }`，不解压、不分析、不持久化、不返回巨大结果；`kind`、`status`、任务事件和取消接入在完整 TaskManager 落地时补齐。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
