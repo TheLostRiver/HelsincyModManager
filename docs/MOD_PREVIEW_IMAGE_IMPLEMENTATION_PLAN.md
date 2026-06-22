@@ -87,6 +87,7 @@
   - re-export service。
 - 后续接入 Mod 导入流水线时修改对应 import service
   - 将 `PreviewImageService` 放在安全解压和包结构分析之后、元数据写入之前。
+  - 当前已落地 `hmm-app::ModImportAnalysisService` 作为导入分析骨架：输入后端生成的 `task_id`、`package_id` 和安全 sandbox 路径，输出带 `ImportPreviewImage` 的分析结果。真实 `start_import_mod_task`、持久化和 library/detail command 仍属于后续导入流水线任务。
 
 ### Tauri DTO 与 Command
 
@@ -913,6 +914,7 @@ fn serializes_thumbnail_dto_with_camel_case_fields() {
 - `get_mod_library` 和 `get_mod_detail` 返回 `previewImage: PreviewImageDto`。
 - 导入任务事件带 `taskId` 和阶段 message code，例如 `mod_import.preview_image.processing`、`mod_import.preview_image.fallback`。
 - 不把 `ThumbnailRef`、缓存目录、sandbox 路径暴露给前端。
+- 在真实 command 落地前，Tauri DTO 层已提供 `ImportPreviewImage -> PreviewImageDto` 映射，后续 command 不需要重复拼接 `thumbnailUrl`、尺寸和 fallback reason。
 
 - [ ] **Step 4: 运行 Tauri/Rust 检查**
 
