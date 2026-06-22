@@ -915,6 +915,7 @@ fn serializes_thumbnail_dto_with_camel_case_fields() {
 - 导入任务事件带 `taskId` 和阶段 message code，例如 `mod_import.preview_image.processing`、`mod_import.preview_image.fallback`。
 - 不把 `ThumbnailRef`、缓存目录、sandbox 路径暴露给前端。
 - 在真实 command 落地前，Tauri DTO 层已提供 `ImportPreviewImage -> PreviewImageDto` 映射，后续 command 不需要重复拼接 `thumbnailUrl`、尺寸和 fallback reason。
+- 当前已落地 `start_import_mod_task` 最小入口：只校验 archive 路径、生成 `taskId` 并返回 `TaskStartedDto`；安全解压、任务事件、`ModImportAnalysisService` 接线和 library/detail 查询仍是后续任务。
 
 - [ ] **Step 4: 运行 Tauri/Rust 检查**
 

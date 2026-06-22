@@ -1,4 +1,4 @@
-use hmm_app::GameSetupService;
+use hmm_app::{GameSetupService, ModImportTaskService};
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
     JsonGameConfigRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager};
 
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
+    pub mod_import_tasks: Arc<ModImportTaskService>,
 }
 
 impl AppState {
@@ -29,6 +30,7 @@ impl AppState {
                 ))),
                 Arc::new(SystemClock),
             )),
+            mod_import_tasks: Arc::new(ModImportTaskService::new()),
         })
     }
 }
