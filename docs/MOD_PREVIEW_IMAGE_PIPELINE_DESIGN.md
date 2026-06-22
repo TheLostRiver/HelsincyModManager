@@ -1,0 +1,330 @@
+# Mod 预览图安全处理设计
+
+本文档定义 Helsincy Mod Manager 导入第三方 Mod 包时，如何安全、稳定地提取、校验、转换和展示 Mod 预览图。目标是避免超大图片、损坏图片、伪装图片或图片炸弹影响应用稳定性，同时保证 Mod 卡片 Full Bleed 封面排版可控。
+
+## 设计原则
+
+- 安全和稳定性优先于图片保真度。
+- 第三方 Mod 包中的原始图片不能直接进入前端 UI。
+- 原始导入包保持只读；缩略图是可删除、可重建的派生缓存。
+- 图片处理属于导入分析流水线，不属于前端展示规则。
+- 前端只展示后端生成的受控缩略图或默认占位图。
+- 图片处理失败不应阻止 Mod 导入，除非同时触发更高层级的包安全风险。
+- 真实缓存路径、原始包路径和本地用户路径不能暴露给前端或日志。
+
+## 非目标
+
+- 不在 MVP 中支持用户手动裁剪预览图。
+- 不保存第三方原始预览图作为 UI 资源。
+- 不把预览图缓存作为安装、卸载或回滚事实来源。
+- 不允许前端根据本地文件路径、游戏路径或压缩包内部路径拼接图片地址。
+- 不为每个游戏单独实现一套预览图展示组件。
+
+## 风险模型
+
+导入包中的预览图是不可信输入。必须防御：
+
+- 扩展名伪装，例如 `.png` 实际不是 PNG。
+- 损坏图片导致解码器错误或崩溃。
+- 超大压缩态文件导致 I/O 和内存压力。
+- 超大像素图片导致解码后内存暴涨。
+- 大量候选图片拖慢包分析。
+- 极端长宽比破坏卡片布局。
+- 前端直接加载本地原图导致 WebView 卡顿或 OOM。
+
+## 模块边界
+
+### `hmm-core`
+
+定义纯领域模型和策略值，不读取真实文件系统：
+
+```text
+PreviewImagePolicy
+  max_input_bytes
+  max_decoded_pixels
+  max_candidates_per_package
+  output_max_edge_px
+  output_quality
+  preferred_output_format
+
+PreviewImageStatus
+  Thumbnail
+  Fallback
+
+PreviewImageRejectionReason
+  Missing
+  TooLarge
+  TooManyCandidates
+  UnsupportedFormat
+  DecodeFailed
+  PixelLimitExceeded
+```
+
+`hmm-core` 只表达规则和结果，不依赖图片库、缓存目录、Tauri 或平台 API。
+
+### `hmm-ports`
+
+定义应用层依赖的接口：
+
+```text
+PackagePreviewScanner
+  从已安全解压的 sandbox/cache 中返回预览图候选
+
+PreviewImageProcessor
+  校验、解码、缩放并生成缩略图
+
+ThumbnailStore
+  保存、读取、清理缩略图缓存
+```
+
+接口参数应使用包内逻辑路径、内部 ID、hash 或后端 source ref。不要要求前端传入本地缓存路径。
+
+### `hmm-app`
+
+负责编排导入流程：
+
+```text
+安全解压完成
+-> 包结构分析
+-> 发现预览图候选
+-> 应用 PreviewImagePolicy
+-> 调用 PreviewImageProcessor
+-> 保存 ThumbnailStore
+-> 写入 Mod 元数据中的 preview_image 字段
+```
+
+图片处理应作为导入任务的一部分携带 `task_id`。失败时记录结构化原因，并返回 fallback 结果。
+
+### `hmm-infra`
+
+负责真实 I/O 和图片处理：
+
+- 从 sandbox/cache 读取候选文件。
+- 先检查文件大小和 magic bytes。
+- 读取图片 header 获取尺寸和格式。
+- 解码前检查像素数上限。
+- 生成固定规格缩略图。
+- 写入应用数据目录下的 thumbnails 缓存。
+- 返回后端受控的缩略图引用。
+
+图片处理不能在持有游戏写锁时执行。
+
+### Tauri command
+
+Tauri command 只做窄用例入口和 DTO 映射：
+
+- 可以返回 `previewImage` 的结构化状态。
+- 不能暴露任意本地文件读取能力。
+- 不能让前端提交本地图片路径要求后端读取。
+- 不能把真实缓存路径直接返回给前端。
+
+具体 command 命名、错误 DTO、长任务事件和 typed API 边界必须遵循 [前后端通信契约设计](FRONTEND_BACKEND_CONTRACT.md)。本文只定义 Mod 预览图 feature 的输入输出形状和安全规则，不另起一套跨边界协议。
+
+### 前端
+
+前端只负责展示：
+
+- 有缩略图时渲染受控 `thumbnailUrl`。
+- 无缩略图或加载失败时展示当前渐变剪影占位。
+- 用固定比例和 `object-fit: cover` 保证排版稳定。
+- 不基于失败原因执行安全判断。
+
+## 默认策略
+
+MVP 默认值建议：
+
+| 项目 | 默认值 | 说明 |
+| --- | ---: | --- |
+| 单张候选图压缩态大小 | `20 MiB` | 超过后直接 fallback |
+| 解码后像素数 | `16 MP` | 防止超大位图占用内存 |
+| 每个包候选图片数 | `8` | 防止大量图片拖慢分析 |
+| 输出缩略图最长边 | `768 px` | 兼顾卡片清晰度和体积 |
+| 输出格式 | `WebP` | 如平台支持不足可退回 JPEG |
+| 输出质量 | `80` | 保持体积可控 |
+| 图片处理并发 | `1-2` | 避免导入多包时内存峰值过高 |
+
+这些值应来自数据驱动配置或应用默认策略，不应写死在前端组件中。后续可以提供高级设置，但默认值必须偏保守。
+
+## 候选图发现
+
+预览图候选只来自安全解压后的 sandbox/cache。候选文件选择规则：
+
+- 优先匹配常见名称，例如 `preview`、`cover`、`poster`、`thumbnail`、`image`。
+- 支持常见扩展名，例如 `.png`、`.jpg`、`.jpeg`、`.webp`。
+- 不信任扩展名，最终以 magic bytes 和解码结果为准。
+- 只检查有限数量候选，超过数量后记录 `TooManyCandidates` 或忽略低优先级候选。
+- 候选排序应稳定，避免同一个包重复导入时得到不同封面。
+
+候选扫描不应读取真实游戏目录，也不应读取原始压缩包外的路径。
+
+## 缩略图生成
+
+处理顺序必须先便宜、后昂贵：
+
+```text
+候选 source ref
+-> 文件大小检查
+-> magic bytes 检查
+-> header 尺寸读取
+-> 像素数检查
+-> 受控解码
+-> 等比缩放
+-> 转码为标准格式
+-> 原子写入缩略图缓存
+```
+
+输出缩略图不要求裁成 3:4。后端只负责控制尺寸和格式；前端卡片用 `object-fit: cover` 进行展示裁切。这样可以避免在后端过早丢失画面信息，也让详情页未来可以复用同一缩略图。
+
+缓存文件名应基于稳定 hash，而不是原始文件名：
+
+```text
+thumbnails/
+  <package_id>/
+    preview-<content_hash>-768.webp
+```
+
+实际目录由 infra 决定，不进入前端 DTO。
+
+## 前端 DTO
+
+前端 DTO 是 [前后端通信契约设计](FRONTEND_BACKEND_CONTRACT.md) 的 feature-specific 扩展。字段使用 camelCase，enum 值使用稳定 `snake_case` 字符串。前端建议消费以下结构：
+
+```ts
+type PreviewImage =
+  | {
+      kind: "thumbnail";
+      thumbnailUrl: string;
+      width: number;
+      height: number;
+      contentHash: string;
+    }
+  | {
+      kind: "fallback";
+      reason:
+        | "missing"
+        | "too_large"
+        | "too_many_candidates"
+        | "unsupported_format"
+        | "decode_failed"
+        | "pixel_limit_exceeded";
+    };
+```
+
+`thumbnailUrl` 必须是 Tauri 后端允许的受控资源 URL，或由后端按 `thumbnailRef` 解析得到。前端不得拿到真实缓存路径。
+
+`reason` 只用于展示和测试分支，不应被前端用来推断底层文件系统状态。需要重新处理图片时，前端只能发送 `packageId`、`modId`、`taskId` 等后端生成的稳定 id。
+
+## 前端展示规则
+
+Mod 卡片保持固定比例：
+
+```css
+.mod-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+}
+
+.mod-card__poster-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+```
+
+图片标签应使用懒加载和异步解码：
+
+```tsx
+<img
+  className="mod-card__poster-img"
+  src={previewImage.thumbnailUrl}
+  loading="lazy"
+  decoding="async"
+  alt=""
+/>
+```
+
+图片加载失败时，卡片应退回当前渐变剪影占位。列表中不要显示低层解码错误文本，避免污染浏览体验。
+
+## 错误处理
+
+图片处理失败返回 fallback，而不是中断导入：
+
+| 原因 | 行为 |
+| --- | --- |
+| 没有候选图 | 使用默认封面 |
+| 文件过大 | 使用默认封面，导入结果可提示“预览图过大已忽略” |
+| 格式不支持 | 使用默认封面 |
+| magic bytes 不匹配 | 使用默认封面，并记录安全事件 |
+| 解码失败 | 使用默认封面 |
+| 像素数超限 | 使用默认封面 |
+| 缩略图缓存写入失败 | 使用默认封面，导入仍可继续 |
+
+如果同一个包同时触发路径穿越、压缩炸弹或其他包级安全问题，应由导入流水线按包安全规则阻断，而不是由预览图模块单独决定。
+
+## 日志与隐私
+
+日志只记录结构化字段：
+
+```text
+task_id
+mod_id
+package_id
+candidate_count
+input_size
+decoded_width
+decoded_height
+format
+result
+reason
+duration_ms
+```
+
+禁止记录：
+
+- 原始图片内容。
+- 第三方 Mod 包内容。
+- 完整本地路径。
+- Windows/Linux 用户名。
+- Steam ID。
+- token、cookie、API key。
+
+用户可见消息使用稳定 `message_code`，不拼接本地路径。
+
+## 并发与性能
+
+- 图片处理属于 prepare 阶段，可以和包分析、hash 等任务并行。
+- 不要在持有游戏写锁时处理图片。
+- 图片解码应有单独并发限制，避免多个大图同时解码。
+- 任务进度事件必须携带 `task_id`。
+- 缩略图缓存可以异步清理，但清理失败不影响安装状态。
+
+## 测试要求
+
+测试必须使用人工构造的最小图片和临时目录，不能提交真实第三方 Mod 包。
+
+至少覆盖：
+
+- 正常 PNG 生成缩略图。
+- 正常 JPEG 生成缩略图。
+- 正常 WebP 生成缩略图。
+- 没有预览图时返回 fallback。
+- 扩展名为图片但 magic bytes 不匹配。
+- 损坏图片解码失败。
+- 文件大小超过限制。
+- 像素数超过限制。
+- 候选图片数量超过限制。
+- 缩略图缓存写入失败时导入仍返回 fallback。
+- 前端卡片在有图、无图、图片加载失败时比例不变。
+- 日志不包含完整路径或第三方图片内容。
+
+## 后续扩展
+
+- 支持详情页使用更大规格的派生图，但仍不能直接展示原图。
+- 支持用户手动选择候选图，但选择结果必须仍走同一条后端处理流水线。
+- 支持缓存空间上限和 LRU 清理。
+- 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
+- 支持为诊断导出提供缩略图处理摘要，但不导出第三方图片内容。
