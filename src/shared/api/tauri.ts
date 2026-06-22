@@ -6,6 +6,10 @@ export async function getAppHealth(): Promise<AppHealth> {
 }
 
 export {
+  startImportModTask,
+} from "../../features/mods/modImportApi";
+
+export {
   getGameSetupStatus,
   saveGameDirectory,
   scanGameCandidates,

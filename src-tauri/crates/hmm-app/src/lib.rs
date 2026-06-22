@@ -1,5 +1,6 @@
 mod game_setup;
 mod mod_import;
+mod mod_import_task;
 mod preview_image;
 
 pub use game_setup::{
@@ -8,6 +9,9 @@ pub use game_setup::{
 pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModImportAnalysisRequest,
     ModImportAnalysisResult, ModImportAnalysisService,
+};
+pub use mod_import_task::{
+    ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,
 };
 pub use preview_image::PreviewImageService;
 
