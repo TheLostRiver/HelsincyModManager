@@ -5,15 +5,15 @@ description: Use when Helsincy Mod Manager work touches TaskManager, long-runnin
 
 # HMM Task And Concurrency
 
-## Overview
+## 概览
 
-Keep heavy work explicit, cancellable, and traceable. Prepare work may run in parallel, but writes to the same game instance/profile must be serialized and progress must always carry task identity.
+重任务必须显式、可取消、可追踪。准备工作可以并行，但同一 game instance/profile 的写入必须串行，progress 必须始终携带 task identity。
 
-HMM-specific skills belong under `.codex/skills/` in this repository, not in global skill directories.
+HMM 专属 skills 属于本仓库 `.codex/skills/`，不属于全局 skill 目录。
 
-## Required Context
+## 必读上下文
 
-Before editing, read or scan:
+编辑前，读或扫描：
 
 - `AGENTS.md`
 - `README.md`
@@ -27,56 +27,56 @@ Before editing, read or scan:
 - `docs/LOGGING.md`
 - `.codex/skills/hmm-project-guardrails/references/safety-boundary.md`
 
-If the task exposes or changes command/event DTOs, also use `hmm-tauri-command`. If it changes Rust crate placement, app/ports/infra dependency direction, AppState services, repositories, or DTO/domain mapping, also use `hmm-rust-crate-boundary`. If it changes React task UI, frontend listeners, typed API wrappers, task state, or browser-visible workflow, also use `hmm-frontend-workflow`. If it writes, deletes, backs up, restores, installs, uninstalls, or rolls back files, also use `hmm-install-safety`.
+如果任务暴露或修改 command/event DTOs，同时使用 `hmm-tauri-command`。如果修改 Rust crate placement、app/ports/infra dependency direction、AppState services、repositories 或 DTO/domain mapping，同时使用 `hmm-rust-crate-boundary`。如果修改 React task UI、frontend listeners、typed API wrappers、task state 或浏览器可见 workflow，同时使用 `hmm-frontend-workflow`。如果会写入、删除、备份、恢复、install、uninstall 或 rollback 文件，同时使用 `hmm-install-safety`。
 
-## Task Pattern
+## Task 模式
 
-1. Start long work through a narrow command that returns `TaskStartedDto` or equivalent identity.
-2. Emit progress through the documented `hmm://task-progress` contract with `taskId`, kind, status, phase, progress, error, and optional result reference.
-3. Keep phase codes stable and registered in `docs/FRONTEND_BACKEND_CONTRACT.md`.
-4. Fetch large final results by `resultRef` or query command, not by stuffing results into events.
-5. Support cancellation at explicit safe points and keep cancellation state consistent.
-6. Use structured logs with the same task id; do not put raw sensitive paths into messages.
+1. 通过返回 `TaskStartedDto` 或等价 identity 的窄 command 启动长任务。
+2. 通过文档化的 `hmm://task-progress` contract 发 progress，包含 `taskId`、kind、status、phase、progress、error 和可选 result reference。
+3. Phase codes 保持稳定，并注册在 `docs/FRONTEND_BACKEND_CONTRACT.md`。
+4. 大型最终结果通过 `resultRef` 或 query command 获取，不塞进 events。
+5. 在明确安全点支持 cancellation，并保持 cancellation state 一致。
+6. 使用带同一 task id 的 structured logs；不要把原始敏感路径放进 messages。
 
-## Concurrency Rules
+## 并发规则
 
-| Work | Allowed shape |
+| 工作 | 允许形态 |
 | --- | --- |
-| Scan, hash, archive inspect, sandbox extract, package analyze, dependency check, plan preview | Parallel where resources permit; cancellable; no game directory writes. |
-| Same game instance write | Serialized through a game write queue/lock. |
-| Same profile enable/disable/install/uninstall | Serialized through profile or game/profile coordination. |
-| Database write transaction | Short, explicit, and not held across long I/O. |
-| Commit/install/backup/restore | Revalidate before write, keep lock short, write audit data, preserve recovery path. |
+| Scan、hash、archive inspect、sandbox extract、package analyze、dependency check、plan preview | 资源允许时可并行；可取消；不写游戏目录。 |
+| 同一 game instance write | 通过 game write queue/lock 串行。 |
+| 同一 profile enable/disable/install/uninstall | 通过 profile 或 game/profile coordination 串行。 |
+| Database write transaction | 短、明确，不跨长 I/O 持有。 |
+| Commit/install/backup/restore | 写入前 revalidate，lock 保持短，写 audit data，保留 recovery path。 |
 
-Do not hold game write locks while extracting, hashing, scanning, analyzing, or building long-running plans.
+extract、hash、scan、analyze 或构建长时间 plan 时，不要持有 game write locks。
 
-## Hard Stops
+## 硬性停止条件
 
-- Do not match events by "only one task is active"; task identity must be explicit.
-- Do not start real game writes before logging/redaction/task/audit foundations required by `docs/LOGGING.md` exist.
-- Do not leave partial manifest or half-committed state after cancellation/failure without recovery/audit handling.
-- Do not use global mutable task state without clear locking and tests.
-- Do not let frontend infer task ownership from page state alone.
+- 不要用“只有一个任务活跃”来匹配 events；task identity 必须显式。
+- `docs/LOGGING.md` 要求的 logging/redaction/task/audit 基础存在前，不要启动真实 game writes。
+- cancellation/failure 后，不要留下没有 recovery/audit handling 的 partial manifest 或 half-committed state。
+- 不要使用没有清晰 locking 和 tests 的 global mutable task state。
+- 不要让 frontend 只从 page state 推断 task ownership。
 
-## Verification
+## 验证
 
-Use `references/task-concurrency-checklist.md` for review. Minimum checks:
+Review 时使用 `references/task-concurrency-checklist.md`。最小检查：
 
-| Change | Minimum checks |
+| 改动 | 最小检查 |
 | --- | --- |
-| Rust task manager/app/infra logic | `cargo test --workspace`, `cargo check --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, plus focused task/concurrency tests. |
-| Task identity/event DTO | `cargo test --workspace`, `cargo check --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, serialization/phase tests, plus `hmm-tauri-command` checks when the bridge changes. |
-| Cancellation | Tests for queued/running/unknown/already-finished task behavior and stable state after cancel. |
-| Locks/queues | Tests proving same game/profile writes serialize and long prepare work happens outside write lock. |
-| Install/save/write task | `hmm-install-safety` checks with temp/fake fixtures; Audit Log/redaction tests when relevant. |
-| Frontend listener/task UI | `hmm-frontend-workflow` checks, frontend typecheck, and listener matching by `taskId`, not page-local assumptions. |
+| Rust task manager/app/infra logic | `cargo test --workspace`、`cargo check --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`，加聚焦 task/concurrency tests。 |
+| Task identity/event DTO | `cargo test --workspace`、`cargo check --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`，serialization/phase tests；bridge 变化时补 `hmm-tauri-command` 检查。 |
+| Cancellation | 覆盖 queued/running/unknown/already-finished task behavior，以及 cancel 后 stable state。 |
+| Locks/queues | 测试证明同 game/profile writes 串行，长 prepare work 在 write lock 外执行。 |
+| Install/save/write task | 使用 temp/fake fixtures 满足 `hmm-install-safety` 检查；相关时补 Audit Log/redaction tests。 |
+| Frontend listener/task UI | 满足 `hmm-frontend-workflow` 检查、frontend typecheck，并确认 listener 按 `taskId` 匹配，而不是 page-local assumptions。 |
 
-Prefer full `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1` before final handoff for task/concurrency changes.
+Task/concurrency 改动最终交付前，优先完整运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
 
-## Common Mistakes
+## 常见错误
 
-- Adding a progress event without stable phase codes.
-- Letting cancellation flip UI state but not backend state.
-- Holding a write lock while doing archive or hash work.
-- Treating task logs as manifest or rollback state.
-- Forgetting that failed install tasks must not leave half-written manifests.
+- 新增 progress event 却没有稳定 phase codes。
+- cancellation 只翻 UI state，不改变 backend state。
+- 做 archive 或 hash 工作时持有 write lock。
+- 把 task logs 当成 manifest 或 rollback state。
+- 忘记 failed install tasks 不能留下 half-written manifests。

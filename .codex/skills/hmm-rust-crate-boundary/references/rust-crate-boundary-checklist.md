@@ -1,48 +1,48 @@
 # Rust Crate Boundary Checklist
 
-Use this checklist for HMM Rust crate placement, dependency direction, and workspace work.
+用于 HMM Rust crate placement、dependency direction 和 workspace 工作。
 
-## Placement
+## 放置
 
-- New type/function is in the narrowest correct crate.
-- Domain concepts are pure and testable without Tauri, FS, DB, Steam, or platform APIs.
-- Ports are traits/interfaces, not concrete infra leakage.
-- App services orchestrate use cases through ports.
-- Infra contains I/O details but not cross-cutting domain policy.
-- Game-specific rules live in `hmm-games-*`.
+- 新 type/function 放在最窄且正确的 crate。
+- Domain concepts 保持纯净，不依赖 Tauri、FS、DB、Steam 或 platform APIs 也可测试。
+- Ports 是 traits/interfaces，不泄漏 concrete infra。
+- App services 通过 ports 编排 use cases。
+- Infra 包含 I/O details，但不包含跨域 domain policy。
+- Game-specific rules 放在 `hmm-games-*`。
 
-## Dependency Direction
+## 依赖方向
 
-- `hmm-core` has no dependency on app/ports/infra/games/Tauri.
-- `hmm-app` depends on ports and domain, not infra concretes.
-- Tauri shell depends outward to app/state wiring and maps DTOs explicitly.
-- Tauri/DTO bridge changes were checked against `docs/FRONTEND_BACKEND_CONTRACT.md`.
-- New shared helpers do not invert dependencies for convenience.
+- `hmm-core` 不依赖 app/ports/infra/games/Tauri。
+- `hmm-app` 依赖 ports 和 domain，不依赖 infra concretes。
+- Tauri shell 向外依赖 app/state wiring，并显式映射 DTOs。
+- Tauri/DTO bridge changes 已对照 `docs/FRONTEND_BACKEND_CONTRACT.md` 检查。
+- 新 shared helpers 不为了方便而反转依赖。
 
 ## Game Adapter
 
-- MHW rules stay in `hmm-games-mhw`.
-- Future game logic does not branch inside MHW adapter.
-- Automated tests do not require a real MHW install.
-- Catalog/rule additions are data-driven where practical.
+- MHW rules 留在 `hmm-games-mhw`。
+- 未来游戏逻辑不在 MHW adapter 内部分支。
+- 自动测试不要求真实 MHW install。
+- Catalog/rule additions 在可行时 data-driven。
 
-## Safety and Errors
+## 安全和错误
 
-- File writes still flow through plan/manifest/backup/rollback design.
-- Errors preserve stable codes/categories for command mapping.
-- Sensitive raw paths or player data do not cross into logs or UI DTOs.
+- File writes 仍通过 plan/manifest/backup/rollback 设计。
+- Errors 为 command mapping 保留稳定 codes/categories。
+- Sensitive raw paths 或 player data 不进入 logs 或 UI DTOs。
 
-## Tasks and Concurrency
+## Tasks 和 Concurrency
 
-- TaskManager, task events, cancellation, progress phases, locks, queues, and database/write serialization changes also satisfy `hmm-task-and-concurrency`.
-- Long scan/hash/extract/analyze work stays outside game write locks.
-- Same game instance writes and same profile enable/disable/install/uninstall paths are serialized.
-- Progress and task logs carry explicit task identity.
+- TaskManager、task events、cancellation、progress phases、locks、queues 和 database/write serialization changes 也满足 `hmm-task-and-concurrency`。
+- 长时间 scan/hash/extract/analyze work 留在 game write locks 外。
+- 同 game instance writes 和同 profile enable/disable/install/uninstall paths 串行。
+- Progress 和 task logs 携带显式 task identity。
 
-## Verification
+## 验证
 
-- `cargo test --workspace` ran for Rust changes.
-- `cargo clippy --workspace --all-targets -- -D warnings` ran for core/app/ports/infra/game changes, or omission is explained.
-- Tauri bridge changes also ran `cargo check --workspace`.
-- Task/concurrency changes ran focused checks for task identity, phase codes, cancellation state, lock/queue ordering, or database write serialization as touched.
-- Architecture docs were checked when boundaries changed.
+- Rust changes 已运行 `cargo test --workspace`。
+- Core/app/ports/infra/game changes 已运行 `cargo clippy --workspace --all-targets -- -D warnings`，或说明省略原因。
+- Tauri bridge changes 也已运行 `cargo check --workspace`。
+- Task/concurrency changes 已按触及范围运行 task identity、phase codes、cancellation state、lock/queue ordering 或 database write serialization 聚焦检查。
+- 边界变化时已检查 architecture docs。

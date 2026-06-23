@@ -1,7 +1,7 @@
 interface:
   display_name: "HMM Install Safety"
-  short_description: "Guard install and rollback safety"
-  default_prompt: "Use $hmm-install-safety to review this HMM install, uninstall, backup, rollback, staging, or path-validation change before editing."
+  short_description: "守住安装和回滚安全边界"
+  default_prompt: "编辑前使用 $hmm-install-safety review 这个 HMM install、uninstall、backup、rollback、staging 或 path-validation 改动。"
 
 policy:
   allow_implicit_invocation: true
