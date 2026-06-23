@@ -204,6 +204,7 @@ export function SettingsPage() {
             />
             {isTimePickerOpen && settings.backupCadence !== "manual" && (
               <TimePickerPopover
+                key={settings.backupCadence}
                 initialHour={settings.backupCadence === "daily" ? settings.dailyBackupHour : settings.weeklyBackupHour}
                 initialMinute={settings.backupCadence === "daily" ? settings.dailyBackupMinute : settings.weeklyBackupMinute}
                 onSave={(h, m) => {
@@ -415,6 +416,12 @@ function ScrollPicker({
   };
 
   const [activeIndex, setActiveIndex] = useState(() => getCenterIdx(value));
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(scrollTimeout.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isScrolling.current) {

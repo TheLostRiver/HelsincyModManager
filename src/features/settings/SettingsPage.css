@@ -496,8 +496,8 @@
 
 .backup-time-popover {
   position: absolute;
-  top: -20px; /* Move it up significantly */
-  left: 180px; /* Move it further to the right */
+  top: calc(100% + 8px);
+  left: 0;
   z-index: 100;
   display: grid;
   gap: 12px;
@@ -770,6 +770,13 @@
 }
 
 /* ─── Responsive ─── */
+
+@media (min-width: 901px) {
+  .backup-time-popover {
+    top: 0;
+    left: calc(100% + 10px);
+  }
+}
 
 @media (max-width: 1180px) {
   .settings-hero {
