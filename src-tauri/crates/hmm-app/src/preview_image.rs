@@ -237,16 +237,9 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
     struct FakeThumbnailStore {
         fail_resolve: bool,
-    }
-
-    impl Default for FakeThumbnailStore {
-        fn default() -> Self {
-            Self {
-                fail_resolve: false,
-            }
-        }
     }
 
     impl ThumbnailStore for FakeThumbnailStore {

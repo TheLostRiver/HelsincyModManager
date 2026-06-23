@@ -132,8 +132,10 @@ mod tests {
         std::fs::write(temp.path().join("preview.png"), b"").expect("write preview");
         std::fs::write(temp.path().join("cover.webp"), b"").expect("write cover");
 
-        let mut policy = PreviewImagePolicy::default();
-        policy.max_candidates_per_package = 2;
+        let policy = PreviewImagePolicy {
+            max_candidates_per_package: 2,
+            ..PreviewImagePolicy::default()
+        };
 
         let scanner = SandboxPackagePreviewScanner;
         let candidates = scanner
@@ -167,8 +169,10 @@ mod tests {
                 .expect("write candidate");
         }
 
-        let mut policy = PreviewImagePolicy::default();
-        policy.max_candidates_per_package = 3;
+        let policy = PreviewImagePolicy {
+            max_candidates_per_package: 3,
+            ..PreviewImagePolicy::default()
+        };
 
         let scanner = SandboxPackagePreviewScanner;
         let candidates = scanner
