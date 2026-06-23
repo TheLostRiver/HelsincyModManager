@@ -187,6 +187,7 @@ TaskProgressEventDto
 
 | task kind | phase | 含义 |
 | --- | --- | --- |
+| `mod_import` | `mod_import.queued` | 导入任务已登记，等待后续执行 |
 | `mod_import` | `mod_import.unpack.started` / `.completed` / `.failed` | 安全解压阶段 |
 | `mod_import` | `mod_import.preview_image.processing` | 预览图候选扫描和处理 |
 | `mod_import` | `mod_import.preview_image.fallback` | 预览图降级为 fallback，导入继续 |
@@ -281,7 +282,7 @@ get_mod_detail(modId)
 
 边界：
 
-- 当前 `start_import_mod_task` 最小入口只做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，并返回 `TaskStartedDto { taskId, kind, status }`；不解压、不分析、不持久化、不返回巨大结果，任务事件、取消和真实异步执行仍在后续 TaskManager 流程中补齐。
+- 当前 `start_import_mod_task` 最小入口只做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；不解压、不分析、不持久化、不返回巨大结果，取消和真实异步执行仍在后续 TaskManager 流程中补齐。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
