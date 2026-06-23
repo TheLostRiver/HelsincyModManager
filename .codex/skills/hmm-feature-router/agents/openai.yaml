@@ -1,0 +1,7 @@
+interface:
+  display_name: "HMM Feature Router"
+  short_description: "Route HMM tasks safely by module"
+  default_prompt: "Use $hmm-feature-router to classify this Helsincy Mod Manager task, identify the module boundary, required docs, risks, and minimum verification."
+
+policy:
+  allow_implicit_invocation: true

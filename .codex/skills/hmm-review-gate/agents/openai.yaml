@@ -1,0 +1,7 @@
+interface:
+  display_name: "HMM Review Gate"
+  short_description: "Review and handoff safety gate"
+  default_prompt: "Use $hmm-review-gate when reviewing HMM changes, preparing final handoff, checking PR readiness, or auditing governance, safety, test, and artifact risks."
+
+policy:
+  allow_implicit_invocation: true
