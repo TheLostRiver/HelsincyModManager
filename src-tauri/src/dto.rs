@@ -1,6 +1,6 @@
 use hmm_app::{
     GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
-    ModImportTaskError, TaskKind, TaskStarted, TaskStatus,
+    ModImportTaskError, TaskKind, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
@@ -40,6 +40,20 @@ pub struct TaskStartedDto {
     pub task_id: String,
     pub kind: TaskKindDto,
     pub status: TaskStatusDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskProgressEventDto {
+    pub task_id: String,
+    pub kind: TaskKindDto,
+    pub status: TaskStatusDto,
+    pub phase: String,
+    pub current: Option<u64>,
+    pub total: Option<u64>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+    pub result_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -182,6 +196,22 @@ impl From<TaskStarted> for TaskStartedDto {
             task_id: task.task_id,
             kind: task.kind.into(),
             status: task.status.into(),
+        }
+    }
+}
+
+impl From<TaskProgressEvent> for TaskProgressEventDto {
+    fn from(event: TaskProgressEvent) -> Self {
+        Self {
+            task_id: event.task_id,
+            kind: event.kind.into(),
+            status: event.status.into(),
+            phase: event.phase,
+            current: event.current,
+            total: event.total,
+            message: event.message,
+            error: event.error,
+            result_ref: event.result_ref,
         }
     }
 }
@@ -447,6 +477,29 @@ mod task_dto_tests {
         assert_eq!(value["taskId"], "mod-import-123");
         assert_eq!(value["kind"], "mod_import");
         assert_eq!(value["status"], "queued");
+    }
+
+    #[test]
+    fn serializes_task_progress_event_dto_with_camel_case_fields() {
+        let dto: TaskProgressEventDto = TaskProgressEvent::new(
+            "mod-import-123",
+            TaskKind::ModImport,
+            TaskStatus::Queued,
+            "mod_import.queued",
+        )
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["taskId"], "mod-import-123");
+        assert_eq!(value["kind"], "mod_import");
+        assert_eq!(value["status"], "queued");
+        assert_eq!(value["phase"], "mod_import.queued");
+        assert!(value["current"].is_null());
+        assert!(value["total"].is_null());
+        assert!(value["message"].is_null());
+        assert!(value["error"].is_null());
+        assert!(value["resultRef"].is_null());
     }
 
     #[test]

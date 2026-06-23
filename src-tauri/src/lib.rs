@@ -2,6 +2,7 @@ mod dto;
 mod game_setup_commands;
 mod mod_import_commands;
 mod state;
+mod task_events;
 mod thumbnail_protocol;
 
 use game_setup_commands::{

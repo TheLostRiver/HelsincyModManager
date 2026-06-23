@@ -40,15 +40,30 @@ pub struct TaskProgressEvent {
     pub kind: TaskKind,
     pub status: TaskStatus,
     pub phase: String,
+    pub current: Option<u64>,
+    pub total: Option<u64>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+    pub result_ref: Option<String>,
 }
 
 impl TaskProgressEvent {
-    pub fn new(task: &TaskSnapshot, status: TaskStatus, phase: impl Into<String>) -> Self {
+    pub fn new(
+        task_id: impl Into<String>,
+        kind: TaskKind,
+        status: TaskStatus,
+        phase: impl Into<String>,
+    ) -> Self {
         Self {
-            task_id: task.task_id.clone(),
-            kind: task.kind,
+            task_id: task_id.into(),
+            kind,
             status,
             phase: phase.into(),
+            current: None,
+            total: None,
+            message: None,
+            error: None,
+            result_ref: None,
         }
     }
 }
@@ -133,7 +148,8 @@ mod tests {
             .expect("task can be created");
 
         let event = TaskProgressEvent::new(
-            &task,
+            task.task_id.clone(),
+            task.kind,
             TaskStatus::Running,
             "mod_import.preview_image.processing",
         );
@@ -142,5 +158,10 @@ mod tests {
         assert_eq!(event.kind, TaskKind::ModImport);
         assert_eq!(event.status, TaskStatus::Running);
         assert_eq!(event.phase, "mod_import.preview_image.processing");
+        assert_eq!(event.current, None);
+        assert_eq!(event.total, None);
+        assert_eq!(event.message, None);
+        assert_eq!(event.error, None);
+        assert_eq!(event.result_ref, None);
     }
 }
