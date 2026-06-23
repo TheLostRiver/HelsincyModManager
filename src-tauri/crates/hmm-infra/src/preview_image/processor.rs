@@ -100,9 +100,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
             }
         };
 
-        let decoded_pixels = u64::from(dimensions.0)
-            .checked_mul(u64::from(dimensions.1))
-            .unwrap_or(u64::MAX);
+        let decoded_pixels = u64::from(dimensions.0).saturating_mul(u64::from(dimensions.1));
         if decoded_pixels > policy.max_decoded_pixels {
             return Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::PixelLimitExceeded,
@@ -238,8 +236,10 @@ mod tests {
         std::fs::write(temp.path().join("preview.png"), vec![0_u8; 128]).expect("write fake image");
 
         let candidate = preview_candidate("pkg-1", "preview.png", 128);
-        let mut policy = PreviewImagePolicy::default();
-        policy.max_input_bytes = 64;
+        let policy = PreviewImagePolicy {
+            max_input_bytes: 64,
+            ..PreviewImagePolicy::default()
+        };
 
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
@@ -277,8 +277,10 @@ mod tests {
         write_png(temp.path().join("preview.png").as_path(), 8, 4);
 
         let candidate = preview_candidate("pkg-1", "preview.png", 0);
-        let mut policy = PreviewImagePolicy::default();
-        policy.output_max_edge_px = 4;
+        let policy = PreviewImagePolicy {
+            output_max_edge_px: 4,
+            ..PreviewImagePolicy::default()
+        };
 
         let store = InMemoryThumbnailStore::default();
         let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
@@ -373,9 +375,11 @@ mod tests {
         write_png(temp.path().join("preview.png").as_path(), 4, 4);
 
         let candidate = preview_candidate("pkg-1", "preview.png", 0);
-        let mut policy = PreviewImagePolicy::default();
-        policy.preferred_output_format = PreviewImageOutputFormat::Jpeg;
-        policy.output_quality = 72;
+        let policy = PreviewImagePolicy {
+            output_quality: 72,
+            preferred_output_format: PreviewImageOutputFormat::Jpeg,
+            ..PreviewImagePolicy::default()
+        };
 
         let store = InMemoryThumbnailStore::default();
         let recorded_extension = store.recorded_extension.clone();

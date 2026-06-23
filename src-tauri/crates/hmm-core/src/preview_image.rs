@@ -109,8 +109,10 @@ mod tests {
 
     #[test]
     fn rejects_zero_limits() {
-        let mut policy = PreviewImagePolicy::default();
-        policy.output_max_edge_px = 0;
+        let policy = PreviewImagePolicy {
+            output_max_edge_px: 0,
+            ..PreviewImagePolicy::default()
+        };
 
         assert_eq!(
             policy.validate(),
