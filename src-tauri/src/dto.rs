@@ -1,6 +1,6 @@
 use hmm_app::{
     GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
-    ModImportTaskError, TaskKind, TaskProgressEvent, TaskStarted, TaskStatus,
+    ModImportTaskError, TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
@@ -29,6 +29,20 @@ impl CommandErrorDto {
     pub fn from_mod_import_task_error(error: ModImportTaskError) -> Self {
         Self {
             code: error.error_code().to_owned(),
+            message: error.to_string(),
+        }
+    }
+
+    pub fn from_task_manager_error(error: TaskManagerError) -> Self {
+        let code = match error {
+            TaskManagerError::TaskIdGenerationFailed(_) => "task_id_generation_failed",
+            TaskManagerError::TaskNotFound(_) => "task_not_found",
+            TaskManagerError::TaskCannotBeCancelled { .. } => "task_cannot_be_cancelled",
+            TaskManagerError::TaskStoreUnavailable => "task_store_unavailable",
+        };
+
+        Self {
+            code: code.to_owned(),
             message: error.to_string(),
         }
     }
