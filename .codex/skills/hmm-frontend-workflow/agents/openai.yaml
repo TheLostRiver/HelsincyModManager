@@ -1,0 +1,7 @@
+interface:
+  display_name: "HMM Frontend Workflow"
+  short_description: "Frontend workflow guardrails"
+  default_prompt: "Use $hmm-frontend-workflow when HMM work touches React UI, feature pages, CSS, appearance, frontend state, typed API wrappers, or browser smoke tests."
+
+policy:
+  allow_implicit_invocation: true
