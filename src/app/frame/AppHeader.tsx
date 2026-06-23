@@ -1,7 +1,10 @@
 import { Settings } from "lucide-react";
+import { useAppRoute } from "../routing/useAppRoute";
 import { ThemeMenu } from "./ThemeMenu";
 
 export function AppHeader() {
+  const { navigate } = useAppRoute();
+
   return (
     <header className="top-status-bar">
       <div className="current-game">
@@ -26,7 +29,7 @@ export function AppHeader() {
 
       <div className="window-tools" aria-label="窗口工具">
         <ThemeMenu />
-        <button type="button" className="icon-button" aria-label="打开设置">
+        <button type="button" className="icon-button" aria-label="打开设置" onClick={() => navigate("/settings")}>
           <Settings size={16} />
         </button>
       </div>
