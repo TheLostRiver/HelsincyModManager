@@ -1,0 +1,7 @@
+interface:
+  display_name: "HMM Rust Crate Boundary"
+  short_description: "Rust crate boundary guardrails"
+  default_prompt: "Use $hmm-rust-crate-boundary when HMM work touches Rust crates, dependency direction, domain/app/ports/infra boundaries, or game adapter rules."
+
+policy:
+  allow_implicit_invocation: true

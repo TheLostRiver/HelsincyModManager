@@ -1,0 +1,7 @@
+interface:
+  display_name: "HMM Tauri Command"
+  short_description: "Keep HMM Tauri commands narrow"
+  default_prompt: "Use $hmm-tauri-command to scope this HMM Tauri command, DTO, event, or frontend typed API change before editing."
+
+policy:
+  allow_implicit_invocation: true
