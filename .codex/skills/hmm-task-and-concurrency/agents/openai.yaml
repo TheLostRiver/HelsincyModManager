@@ -1,7 +1,7 @@
 interface:
   display_name: "HMM Task And Concurrency"
-  short_description: "Task and concurrency guardrails"
-  default_prompt: "Use $hmm-task-and-concurrency when HMM work touches TaskManager, long-running tasks, cancellation, progress events, locks, queues, or concurrent file/database operations."
+  short_description: "任务和并发护栏"
+  default_prompt: "当 HMM 工作触及 TaskManager、long-running tasks、cancellation、progress events、locks、queues 或 concurrent file/database operations 时，使用 $hmm-task-and-concurrency。"
 
 policy:
   allow_implicit_invocation: true
