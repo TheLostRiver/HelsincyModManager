@@ -5,15 +5,15 @@ description: Use when reviewing Helsincy Mod Manager changes, preparing final ha
 
 # HMM Review Gate
 
-## Overview
+## 概览
 
-Review HMM changes before handoff with findings first, verified evidence, and project-specific safety gates. Treat `.codex/`, `.agents/`, policy, scripts, hooks, workflows, and core docs as governance changes that need human review.
+交付前 review HMM 变更，必须 findings first、基于已验证证据，并套用项目专属安全门禁。`.codex/`、`.agents/`、policy、scripts、hooks、workflows 和核心 docs 都视为需要人工 review 的治理变更。
 
-HMM-specific skills belong under `.codex/skills/` in this repository, not in global skill directories.
+HMM 专属 skills 属于本仓库 `.codex/skills/`，不属于全局 skill 目录。
 
-## Required Context
+## 必读上下文
 
-Before reviewing, read or scan:
+Review 前，读或扫描：
 
 - `AGENTS.md`
 - `README.md`
@@ -23,60 +23,60 @@ Before reviewing, read or scan:
 - `docs/TESTING.md`
 - `docs/GOVERNANCE.md`
 - `SECURITY.md`
-- `docs/MULTI_AGENT_COLLABORATION.md` when multi-agent work is involved.
+- 涉及 multi-agent work 时读 `docs/MULTI_AGENT_COLLABORATION.md`。
 
-Use boundary skills based on touched files and behavior, not only high-risk work:
+根据 touched files 和行为选择边界 skills，不只在高风险工作时才使用：
 
-- Frontend UI, state, CSS, typed API wrappers, accessibility, responsive behavior, or browser smoke: `hmm-frontend-workflow`.
-- Tauri commands, DTOs, command errors, task events, custom protocols, or frontend/backend contract shape: read `docs/FRONTEND_BACKEND_CONTRACT.md` and use `hmm-tauri-command`.
-- Rust crate placement, dependency direction, app/ports/infra boundaries, game adapters, or DTO/domain mapping: `hmm-rust-crate-boundary`.
-- TaskManager, long-running tasks, cancellation, progress phases, queues, locks, or database/write serialization: `hmm-task-and-concurrency`.
-- Mod import, archive extraction, staging, path validation, game writes, overwrite/delete, manifest, backup, uninstall, rollback, save backup, audit logging, diagnostics, or data-safety flow: read `docs/LOGGING.md` and use `hmm-install-safety`.
+- Frontend UI、state、CSS、typed API wrappers、accessibility、responsive behavior 或 browser smoke：`hmm-frontend-workflow`。
+- Tauri commands、DTOs、command errors、task events、custom protocols 或 frontend/backend contract shape：读 `docs/FRONTEND_BACKEND_CONTRACT.md` 并使用 `hmm-tauri-command`。
+- Rust crate placement、dependency direction、app/ports/infra boundaries、game adapters 或 DTO/domain mapping：`hmm-rust-crate-boundary`。
+- TaskManager、long-running tasks、cancellation、progress phases、queues、locks 或 database/write serialization：`hmm-task-and-concurrency`。
+- Mod import、archive extraction、staging、path validation、game writes、overwrite/delete、manifest、backup、uninstall、rollback、save backup、audit logging、diagnostics 或 data-safety flow：读 `docs/LOGGING.md` 并使用 `hmm-install-safety`。
 
-## Review Order
+## Review 顺序
 
-1. Check `git status --short --branch` and identify unrelated/user changes. Do not revert them.
-2. Classify changed files by boundary: frontend, Tauri, Rust crate, safety flow, task/concurrency, docs/governance, generated/runtime artifacts.
-3. Lead with findings ordered by severity. Include file and line references where possible.
-4. Check that tests/verification match the touched boundary and were actually run.
-5. Check docs/contract updates when architecture, command DTOs, error codes, task phase codes, typed API wrappers, custom protocols, safety rules, user settings, logging/audit behavior, or game adapter behavior changed.
-6. Check repository hygiene: no `.planning/`, `.plan-attestation`, `__pycache__/`, `*.pyc`, dist/cache/backup outputs, real Mod/save data, tokens, cookies, API keys, private paths, or session logs.
-7. End with concise summary, executed checks, omitted checks with reasons, and residual risk.
+1. 检查 `git status --short --branch`，识别 unrelated/user changes。不要回退它们。
+2. 按边界分类 changed files：frontend、Tauri、Rust crate、safety flow、task/concurrency、docs/governance、generated/runtime artifacts。
+3. 先列 findings，并按严重级别排序。可行时提供文件和行号引用。
+4. 检查 tests/verification 是否匹配 touched boundary，且是否实际运行。
+5. 当 architecture、command DTOs、error codes、task phase codes、typed API wrappers、custom protocols、safety rules、user settings、logging/audit behavior 或 game adapter behavior 变化时，检查 docs/contract 是否同步更新。
+6. 检查 repository hygiene：不得有 `.planning/`、`.plan-attestation`、`__pycache__/`、`*.pyc`、dist/cache/backup outputs、真实 Mod/save data、tokens、cookies、API keys、private paths 或 session logs。
+7. 结尾给出简短 summary、已执行 checks、未执行 checks 及原因、residual risk。
 
-## Severity Guide
+## 严重级别
 
-| Severity | Use for |
+| 级别 | 用于 |
 | --- | --- |
-| Critical | Player data loss, real game/save writes without safety chain, secret leakage, dangerous filesystem command exposure. |
-| Important | Architecture boundary break, missing required tests for high-risk code, stale contract/docs for public DTO/event changes. |
-| Moderate | Maintainability risk, oversized/mixed-responsibility files, incomplete edge coverage, unclear errors. |
-| Minor | Typos, small docs gaps, formatting, low-risk polish. |
+| Critical | 玩家数据丢失、没有安全链路的真实 game/save 写入、secret 泄漏、暴露危险 filesystem command。 |
+| Important | 架构边界破坏、高风险代码缺少必要测试、public DTO/event 变化但 contract/docs 过期。 |
+| Moderate | 可维护性风险、超大/混合职责文件、edge coverage 不完整、错误不清晰。 |
+| Minor | typo、小文档缺口、格式、低风险 polish。 |
 
-If there are no findings, say so clearly and still mention unverified areas or residual risk.
+如果没有 findings，明确说明，同时仍要提到未验证区域或残余风险。
 
-## Hard Stops
+## 硬性停止条件
 
-- Do not mark work complete if required verification failed or was not run without explanation.
-- Do not approve `.codex/`, `.agents/`, policy, script, hook, workflow, or core doc changes without calling out governance review.
-- Do not ignore generated/runtime artifacts just because they are untracked.
-- Do not let frontend, Tauri command, or generic core code take over install/safety/game-adapter rules.
-- Do not claim tests passed from a previous turn unless they were run successfully in the current relevant context.
+- 必要验证失败，或未运行且没有说明时，不要标记工作完成。
+- `.codex/`、`.agents/`、policy、script、hook、workflow 或 core doc 改动未指出需要治理 review 时，不要批准。
+- 不要因为 generated/runtime artifacts 是 untracked 就忽略。
+- 不要让 frontend、Tauri command 或 generic core code 接管 install/safety/game-adapter rules。
+- 除非测试在当前相关上下文中成功运行，否则不要声称上一轮测试通过。
 
-## Verification
+## 验证
 
-Use `references/review-gate-checklist.md` for detailed review. Prefer:
+详细 review 使用 `references/review-gate-checklist.md`。优先运行：
 
 ```powershell
 git status --short --branch
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-Add boundary-specific commands from `docs/TESTING.md`. If any check is not run, final handoff must say why.
+按 `docs/TESTING.md` 补边界专属命令。任何检查未运行，final handoff 必须说明原因。
 
-## Common Mistakes
+## 常见错误
 
-- Writing only a summary and burying defects.
-- Reviewing from memory instead of current files.
-- Treating governance skill edits as ordinary docs.
-- Letting "untracked" mean "irrelevant".
-- Saying "looks good" without naming verification evidence.
+- 只写 summary，把 defects 埋起来。
+- 凭记忆 review，而不是看当前文件。
+- 把 governance skill edits 当成普通 docs。
+- 把 “untracked” 当成 “irrelevant”。
+- 不列验证证据就说 “looks good”。
