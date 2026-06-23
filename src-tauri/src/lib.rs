@@ -2,6 +2,7 @@ mod dto;
 mod game_setup_commands;
 mod mod_import_commands;
 mod state;
+mod task_commands;
 mod task_events;
 mod thumbnail_protocol;
 
@@ -10,6 +11,7 @@ use game_setup_commands::{
 };
 use mod_import_commands::start_import_mod_task;
 use state::AppState;
+use task_commands::cancel_task;
 use tauri::Manager;
 use thumbnail_protocol::register_thumbnail_protocol;
 
@@ -32,6 +34,7 @@ pub fn run() {
             validate_game_directory,
             save_game_directory,
             scan_game_candidates,
+            cancel_task,
             start_import_mod_task
         ])
         .run(tauri::generate_context!())

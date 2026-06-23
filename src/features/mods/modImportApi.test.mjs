@@ -14,10 +14,19 @@ test("mod import API invokes the controlled task entry command", () => {
   assert.doesNotMatch(source, /convertFileSrc|asset:|thumbnail:|read_image_path/);
 });
 
+test("mod import API invokes the controlled cancel task command", () => {
+  const source = readSource("src/features/mods/modImportApi.ts");
+
+  assert.match(source, /invoke<TaskStartedDto>\("cancel_task"/);
+  assert.match(source, /taskId:\s*input\.taskId/);
+  assert.doesNotMatch(source, /archivePath.*cancel|sandbox|cache|rawPath/i);
+});
+
 test("mod import task types expose controlled task identity and archive path", () => {
   const source = readSource("src/features/mods/modImportTypes.ts");
 
   assert.match(source, /archivePath:\s*string/);
+  assert.match(source, /export type CancelTaskInput/);
   assert.match(source, /taskId:\s*string/);
   assert.match(source, /kind:\s*"mod_import"/);
   assert.match(source, /export type TaskStatus\s*=\s*"queued"\s*\|\s*"running"\s*\|\s*"completed"\s*\|\s*"failed"\s*\|\s*"cancelled"/);

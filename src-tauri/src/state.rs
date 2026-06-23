@@ -10,6 +10,7 @@ use tauri::{AppHandle, Manager};
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
+    pub task_manager: Arc<TaskManager>,
 }
 
 impl AppState {
@@ -33,6 +34,7 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
+            task_manager,
         })
     }
 }

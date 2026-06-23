@@ -2,6 +2,10 @@ export type StartImportModTaskInput = {
   archivePath: string;
 };
 
+export type CancelTaskInput = {
+  taskId: string;
+};
+
 export const TASK_PROGRESS_EVENT_NAME = "hmm://task-progress";
 
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
