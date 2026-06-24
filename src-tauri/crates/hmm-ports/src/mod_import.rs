@@ -96,3 +96,27 @@ pub trait ModImportResultRepository: Send + Sync {
     fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>>;
     fn get_analysis(&self, mod_id: &str) -> Result<Option<StoredModImportAnalysis>>;
 }
+
+pub struct DiagnosticPackageEntry<'a> {
+    pub name: &'a str,
+    pub bytes: &'a [u8],
+}
+
+pub struct DiagnosticPackageExportRequest<'a> {
+    pub file_name: &'a str,
+    pub entries: &'a [DiagnosticPackageEntry<'a>],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticPackageExportResult {
+    pub export_id: String,
+    pub file_name: String,
+    pub size_bytes: u64,
+}
+
+pub trait DiagnosticPackageExporter: Send + Sync {
+    fn export_package(
+        &self,
+        request: DiagnosticPackageExportRequest<'_>,
+    ) -> Result<DiagnosticPackageExportResult>;
+}
