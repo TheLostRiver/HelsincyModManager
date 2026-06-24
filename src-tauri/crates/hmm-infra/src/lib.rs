@@ -15,8 +15,9 @@ pub use game_config_repository::JsonGameConfigRepository;
 pub use game_directory_probe::{RealGameDirectoryProbe, RealGameDirectoryProbeFactory};
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
 pub use mod_import::{
-    JsonModImportResultRepository, SandboxModPackageMetadataAnalyzer,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    FileSystemDiagnosticPackageExporter, JsonModImportResultRepository,
+    SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
+    ZipModImportPackagePreparer,
 };
 pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,

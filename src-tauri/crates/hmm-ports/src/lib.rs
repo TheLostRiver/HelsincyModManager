@@ -16,9 +16,11 @@ pub use game_setup::{
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
 pub use mod_import::{
-    ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
-    StoredImportPreviewImage, StoredModImportAnalysis, StoredModPackageMetadata,
+    DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
+    DiagnosticPackageExporter, ModImportPackagePrepareRequest, ModImportPackagePreparer,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageMetadata,
+    ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
+    StoredModImportAnalysis, StoredModPackageMetadata,
 };
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,

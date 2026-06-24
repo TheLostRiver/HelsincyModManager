@@ -20,6 +20,7 @@ pub use mod_import::{
 pub use mod_import_diagnostics::{
     PreviewImageDiagnosticExportCategory, PreviewImageDiagnosticExportCategoryId,
     PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
+    PreviewImageDiagnosticsExport, PreviewImageDiagnosticsExportService,
     PreviewImageDiagnosticsSummary, PreviewImageFallbackDiagnostic,
 };
 pub use mod_import_task::{

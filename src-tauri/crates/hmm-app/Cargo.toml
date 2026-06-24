@@ -10,4 +10,5 @@ repository.workspace = true
 anyhow.workspace = true
 hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
+serde_json.workspace = true
 thiserror.workspace = true

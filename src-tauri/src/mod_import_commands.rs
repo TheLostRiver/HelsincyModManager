@@ -1,6 +1,6 @@
 use crate::dto::{
     AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto,
-    PreviewImageDiagnosticsDto, PreviewImageDto, TaskStartedDto,
+    PreviewImageDiagnosticsDto, PreviewImageDiagnosticsExportDto, PreviewImageDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -72,6 +72,18 @@ pub fn get_preview_image_diagnostics(
         .map_err(|_| mod_library_unavailable_error())?;
 
     Ok(summary.into())
+}
+
+#[tauri::command]
+pub fn export_preview_image_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<PreviewImageDiagnosticsExportDto, CommandErrorDto> {
+    let export = state
+        .preview_image_diagnostics_export
+        .export_preview_image_diagnostics()
+        .map_err(|_| preview_image_diagnostics_export_unavailable_error())?;
+
+    Ok(export.into())
 }
 
 #[tauri::command]
@@ -234,6 +246,13 @@ fn preview_image_detail_unavailable_error() -> CommandErrorDto {
     }
 }
 
+fn preview_image_diagnostics_export_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "preview_image_diagnostics_export_unavailable".to_owned(),
+        message: "preview image diagnostics export is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,6 +328,15 @@ mod tests {
         let error = preview_image_detail_unavailable_error();
 
         assert_eq!(error.code, "preview_image_detail_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn preview_image_diagnostics_export_unavailable_error_uses_stable_code_without_paths() {
+        let error = preview_image_diagnostics_export_unavailable_error();
+
+        assert_eq!(error.code, "preview_image_diagnostics_export_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
