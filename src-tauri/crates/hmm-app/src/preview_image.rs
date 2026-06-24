@@ -1,10 +1,11 @@
-use crate::ImportPreviewImageProcessor;
+use crate::{ImportPreviewImage, ImportPreviewImageProcessor};
 use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
 use hmm_ports::{
     CancellationToken, ModImportResultRepository, ModImportSandboxLocator, NeverCancelled,
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,
+    StoredImportPreviewImage, ThumbnailStore,
 };
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
@@ -96,6 +97,13 @@ pub struct PreviewImageCandidateListService {
     scanner: Box<dyn PackagePreviewScanner>,
 }
 
+pub struct PreviewImageCandidateSelectionService {
+    result_repository: Arc<dyn ModImportResultRepository>,
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    preview_image_service: PreviewImageService,
+    thumbnail_store: Box<dyn ThumbnailStore>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewImageCandidateList {
     pub mod_id: String,
@@ -153,6 +161,76 @@ impl PreviewImageCandidateListService {
     }
 }
 
+impl PreviewImageCandidateSelectionService {
+    pub fn new(
+        policy: PreviewImagePolicy,
+        result_repository: Arc<dyn ModImportResultRepository>,
+        sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        scanner: Box<dyn PackagePreviewScanner>,
+        processor: Box<dyn PreviewImageProcessor>,
+        thumbnail_store: Box<dyn ThumbnailStore>,
+    ) -> Self {
+        Self {
+            result_repository,
+            sandbox_locator,
+            preview_image_service: PreviewImageService::new(policy, scanner, processor),
+            thumbnail_store,
+        }
+    }
+
+    pub fn select_candidate(
+        &self,
+        mod_id: &str,
+        candidate_index: usize,
+    ) -> Result<Option<ImportPreviewImage>> {
+        let Some(mut record) = self.result_repository.get_analysis(mod_id)? else {
+            return Ok(None);
+        };
+
+        let sandbox_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(&record.package_id)?;
+        let preview_image = self.preview_image_from_processing_result(
+            self.preview_image_service
+                .process_selected_package_preview(
+                    "preview-image-candidate-selection",
+                    &record.package_id,
+                    &sandbox_root,
+                    candidate_index,
+                )?,
+        );
+        record.preview_image = stored_preview_from_import(&preview_image);
+        self.result_repository.save_analysis(&record)?;
+
+        Ok(Some(preview_image))
+    }
+
+    fn preview_image_from_processing_result(
+        &self,
+        result: PreviewImageProcessingResult,
+    ) -> ImportPreviewImage {
+        match result {
+            PreviewImageProcessingResult::Thumbnail(thumbnail) => {
+                match self.thumbnail_store.resolve_url(&thumbnail.thumbnail_ref) {
+                    Ok(thumbnail_url) => ImportPreviewImage::Thumbnail {
+                        thumbnail_url,
+                        width: thumbnail.width,
+                        height: thumbnail.height,
+                        content_hash: thumbnail.content_hash,
+                        variant: thumbnail.thumbnail_ref.variant,
+                    },
+                    Err(_) => ImportPreviewImage::Fallback {
+                        reason: PreviewImageRejectionReason::CacheWriteFailed,
+                    },
+                }
+            }
+            PreviewImageProcessingResult::Fallback(reason) => {
+                ImportPreviewImage::Fallback { reason }
+            }
+        }
+    }
+}
+
 fn candidate_summary_from_candidate(
     (candidate_index, candidate): (usize, PreviewImageCandidate),
 ) -> PreviewImageCandidateSummary {
@@ -160,6 +238,27 @@ fn candidate_summary_from_candidate(
         candidate_index,
         file_name: candidate.file_name,
         compressed_size_bytes: candidate.compressed_size,
+    }
+}
+
+fn stored_preview_from_import(preview_image: &ImportPreviewImage) -> StoredImportPreviewImage {
+    match preview_image {
+        ImportPreviewImage::Thumbnail {
+            thumbnail_url,
+            width,
+            height,
+            content_hash,
+            variant,
+        } => StoredImportPreviewImage::Thumbnail {
+            thumbnail_url: thumbnail_url.clone(),
+            width: *width,
+            height: *height,
+            content_hash: content_hash.clone(),
+            variant: variant.clone(),
+        },
+        ImportPreviewImage::Fallback { reason } => {
+            StoredImportPreviewImage::Fallback { reason: *reason }
+        }
     }
 }
 
@@ -650,7 +749,7 @@ mod tests {
     #[test]
     fn candidate_list_uses_import_record_and_returns_bounded_display_fields() {
         let repository = Arc::new(FakeModImportResultRepository {
-            record: Some(stored_analysis("mod-1", "pkg-1")),
+            record: Mutex::new(Some(stored_analysis("mod-1", "pkg-1"))),
         });
         let located_packages = Arc::new(Mutex::new(Vec::new()));
         let service = PreviewImageCandidateListService::new(
@@ -700,7 +799,9 @@ mod tests {
     fn candidate_list_returns_none_for_unknown_mod_without_scanning() {
         let service = PreviewImageCandidateListService::new(
             PreviewImagePolicy::default(),
-            Arc::new(FakeModImportResultRepository { record: None }),
+            Arc::new(FakeModImportResultRepository {
+                record: Mutex::new(None),
+            }),
             Arc::new(FakeSandboxLocator {
                 located_packages: Arc::new(Mutex::new(Vec::new())),
             }),
@@ -710,6 +811,97 @@ mod tests {
         let result = service
             .list_candidates("missing-mod")
             .expect("candidate list query succeeds");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn selected_candidate_updates_import_record_with_resolved_thumbnail() {
+        let repository = Arc::new(FakeModImportResultRepository {
+            record: Mutex::new(Some(stored_analysis("mod-1", "pkg-1"))),
+        });
+        let processed_paths = Arc::new(Mutex::new(Vec::new()));
+        let service = PreviewImageCandidateSelectionService::new(
+            PreviewImagePolicy::default(),
+            repository.clone(),
+            Arc::new(FakeSandboxLocator {
+                located_packages: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Box::new(FakeScanner::new(vec![
+                preview_candidate("pkg-1", "first.png"),
+                preview_candidate("pkg-1", "second.png"),
+            ])),
+            Box::new(RecordingProcessor::new(
+                Arc::clone(&processed_paths),
+                vec![PreviewImageProcessingResult::Thumbnail(
+                    ProcessedPreviewImage {
+                        thumbnail_ref: ThumbnailRef {
+                            package_id: "pkg-1".to_owned(),
+                            content_hash: "hash-2".to_owned(),
+                            variant: "preview-768".to_owned(),
+                        },
+                        width: 640,
+                        height: 360,
+                        content_hash: "hash-2".to_owned(),
+                    },
+                )],
+            )),
+            Box::new(FakeThumbnailStore),
+        );
+
+        let result = service
+            .select_candidate("mod-1", 1)
+            .expect("selection succeeds")
+            .expect("mod exists");
+
+        assert_eq!(
+            *processed_paths.lock().expect("processed paths lock"),
+            vec!["second.png".to_owned()]
+        );
+        assert_eq!(
+            result,
+            crate::ImportPreviewImage::Thumbnail {
+                thumbnail_url: "thumbnail://pkg-1/preview-768/hash-2".to_owned(),
+                width: 640,
+                height: 360,
+                content_hash: "hash-2".to_owned(),
+                variant: "preview-768".to_owned(),
+            }
+        );
+        assert_eq!(
+            repository
+                .get_analysis("mod-1")
+                .expect("record read succeeds")
+                .expect("record exists")
+                .preview_image,
+            StoredImportPreviewImage::Thumbnail {
+                thumbnail_url: "thumbnail://pkg-1/preview-768/hash-2".to_owned(),
+                width: 640,
+                height: 360,
+                content_hash: "hash-2".to_owned(),
+                variant: "preview-768".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn selected_candidate_returns_none_for_unknown_mod_without_scanning() {
+        let service = PreviewImageCandidateSelectionService::new(
+            PreviewImagePolicy::default(),
+            Arc::new(FakeModImportResultRepository {
+                record: Mutex::new(None),
+            }),
+            Arc::new(FakeSandboxLocator {
+                located_packages: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Box::new(PanicScanner),
+            Box::new(FakeProcessor::new(vec![])),
+            Box::new(FakeThumbnailStore),
+        );
+
+        let result = service
+            .select_candidate("missing-mod", 0)
+            .expect("selection query succeeds");
 
         assert!(result.is_none());
     }
@@ -731,20 +923,54 @@ mod tests {
     }
 
     struct FakeModImportResultRepository {
-        record: Option<StoredModImportAnalysis>,
+        record: Mutex<Option<StoredModImportAnalysis>>,
     }
 
     impl ModImportResultRepository for FakeModImportResultRepository {
-        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> Result<()> {
-            unreachable!("candidate list should not write import results")
+        fn save_analysis(&self, analysis: &StoredModImportAnalysis) -> Result<()> {
+            *self.record.lock().expect("record lock") = Some(analysis.clone());
+            Ok(())
         }
 
         fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
-            Ok(self.record.clone().into_iter().collect())
+            Ok(self
+                .record
+                .lock()
+                .expect("record lock")
+                .clone()
+                .into_iter()
+                .collect())
         }
 
         fn get_analysis(&self, mod_id: &str) -> Result<Option<StoredModImportAnalysis>> {
-            Ok(self.record.clone().filter(|record| record.mod_id == mod_id))
+            Ok(self
+                .record
+                .lock()
+                .expect("record lock")
+                .clone()
+                .filter(|record| record.mod_id == mod_id))
+        }
+    }
+
+    struct FakeThumbnailStore;
+
+    impl hmm_ports::ThumbnailStore for FakeThumbnailStore {
+        fn put_thumbnail(
+            &self,
+            _package_id: &str,
+            _content_hash: &str,
+            _variant: &str,
+            _extension: &str,
+            _bytes: &[u8],
+        ) -> Result<ThumbnailRef> {
+            unreachable!("selection service should not write thumbnails")
+        }
+
+        fn resolve_url(&self, thumbnail_ref: &ThumbnailRef) -> Result<String> {
+            Ok(format!(
+                "thumbnail://{}/{}/{}",
+                thumbnail_ref.package_id, thumbnail_ref.variant, thumbnail_ref.content_hash
+            ))
         }
     }
 
