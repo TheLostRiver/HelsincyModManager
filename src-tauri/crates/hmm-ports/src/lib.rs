@@ -10,9 +10,9 @@ pub use game_setup::{
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
 pub use mod_import::{
-    ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadata,
-    ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
-    StoredModImportAnalysis,
+    CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
+    ModImportResultRepository, ModPackageMetadata, ModPackageMetadataAnalyzer, NeverCancelled,
+    PreparedModPackage, StoredImportPreviewImage, StoredModImportAnalysis,
 };
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessingResult,
