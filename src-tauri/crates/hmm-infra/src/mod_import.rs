@@ -17,6 +17,9 @@ const MOD_IMPORT_RESULTS_SCHEMA_VERSION: u32 = 1;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METADATA_MAX_SCAN_DEPTH: usize = 2;
 const METADATA_MAX_DISPLAY_NAME_CHARS: usize = 80;
+const DEFAULT_ZIP_MAX_ENTRIES: usize = 16 * 1024;
+const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
+const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ModImportResultsFile {
@@ -210,11 +213,32 @@ impl ModImportResultRepository for JsonModImportResultRepository {
 
 pub struct ZipModImportPackagePreparer {
     sandbox_root: PathBuf,
+    limits: ZipExtractionLimits,
 }
 
 impl ZipModImportPackagePreparer {
     pub fn new(sandbox_root: PathBuf) -> Self {
-        Self { sandbox_root }
+        Self {
+            sandbox_root,
+            limits: ZipExtractionLimits::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ZipExtractionLimits {
+    max_entries: usize,
+    max_single_file_bytes: u64,
+    max_total_uncompressed_bytes: u64,
+}
+
+impl Default for ZipExtractionLimits {
+    fn default() -> Self {
+        Self {
+            max_entries: DEFAULT_ZIP_MAX_ENTRIES,
+            max_single_file_bytes: DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES,
+            max_total_uncompressed_bytes: DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES,
+        }
     }
 }
 
@@ -232,9 +256,12 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
         let sandbox_root = self.sandbox_root.join(task_id);
         fs::create_dir(&sandbox_root).context("failed to create task-scoped mod import sandbox")?;
 
-        if let Err(error) =
-            extract_zip_archive(archive_path, &sandbox_root, request.cancellation_token)
-        {
+        if let Err(error) = extract_zip_archive_with_limits(
+            archive_path,
+            &sandbox_root,
+            request.cancellation_token,
+            self.limits,
+        ) {
             let _ = fs::remove_dir_all(&sandbox_root);
             return Err(error);
         }
@@ -421,14 +448,17 @@ fn validate_task_id_segment(task_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn extract_zip_archive(
+fn extract_zip_archive_with_limits(
     archive_path: &Path,
     sandbox_root: &Path,
     cancellation_token: &dyn CancellationToken,
+    limits: ZipExtractionLimits,
 ) -> Result<()> {
     let archive_file = fs::File::open(archive_path).context("failed to open archive")?;
     let mut archive = zip::ZipArchive::new(archive_file).context("failed to read zip archive")?;
+    reject_too_many_archive_entries(archive.len(), limits.max_entries)?;
     let mut seen_paths = HashSet::new();
+    let mut total_uncompressed_bytes = 0_u64;
 
     for index in 0..archive.len() {
         ensure_not_cancelled(cancellation_token)?;
@@ -436,6 +466,7 @@ fn extract_zip_archive(
             .by_index(index)
             .context("failed to read zip archive entry")?;
         reject_symlink_entry(&entry)?;
+        reject_oversized_archive_entry(&entry, limits.max_single_file_bytes)?;
 
         let relative_path = safe_zip_entry_path(entry.name())?;
         reject_case_insensitive_collision(&mut seen_paths, &relative_path)?;
@@ -446,6 +477,12 @@ fn extract_zip_archive(
             continue;
         }
 
+        total_uncompressed_bytes = total_uncompressed_bytes.saturating_add(entry.size());
+        reject_oversized_archive_total(
+            total_uncompressed_bytes,
+            limits.max_total_uncompressed_bytes,
+        )?;
+
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).context("failed to create archive parent directory")?;
         }
@@ -454,6 +491,36 @@ fn extract_zip_archive(
             fs::File::create(&target_path).context("failed to create extracted file")?;
         copy_with_cancellation(&mut entry, &mut target_file, cancellation_token)
             .context("failed to extract archive file")?;
+    }
+
+    Ok(())
+}
+
+fn reject_too_many_archive_entries(actual_entries: usize, max_entries: usize) -> Result<()> {
+    if actual_entries > max_entries {
+        anyhow::bail!("unsafe archive: archive entry limit exceeded");
+    }
+
+    Ok(())
+}
+
+fn reject_oversized_archive_entry(
+    entry: &zip::read::ZipFile<'_>,
+    max_single_file_bytes: u64,
+) -> Result<()> {
+    if !entry.is_dir() && entry.size() > max_single_file_bytes {
+        anyhow::bail!("unsafe archive: archive file size limit exceeded");
+    }
+
+    Ok(())
+}
+
+fn reject_oversized_archive_total(
+    total_uncompressed_bytes: u64,
+    max_total_bytes: u64,
+) -> Result<()> {
+    if total_uncompressed_bytes > max_total_bytes {
+        anyhow::bail!("unsafe archive: archive total size limit exceeded");
     }
 
     Ok(())
@@ -756,6 +823,85 @@ mod tests {
     }
 
     #[test]
+    fn rejects_zip_archives_with_too_many_entries_and_cleans_task_sandbox() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("too-many.zip");
+        create_numbered_zip_entries(&archive_path, 3);
+        let sandbox_root = temp.path().join("sandboxes");
+        let limits = ZipExtractionLimits {
+            max_entries: 2,
+            max_single_file_bytes: 1024,
+            max_total_uncompressed_bytes: 4096,
+        };
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            limits,
+        };
+
+        let error = prepare_package(&preparer, "task-1", &archive_path)
+            .expect_err("entry limit should reject archive");
+
+        assert!(error.to_string().contains("archive entry limit exceeded"));
+        assert!(!sandbox_root.join("task-1").exists());
+    }
+
+    #[test]
+    fn rejects_zip_entries_over_single_file_limit_and_cleans_task_sandbox() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("single-too-large.zip");
+        create_zip(&archive_path, &[("large.bin", b"large".as_slice())]);
+        let sandbox_root = temp.path().join("sandboxes");
+        let limits = ZipExtractionLimits {
+            max_entries: 10,
+            max_single_file_bytes: 4,
+            max_total_uncompressed_bytes: 4096,
+        };
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            limits,
+        };
+
+        let error = prepare_package(&preparer, "task-1", &archive_path)
+            .expect_err("single file limit should reject archive");
+
+        assert!(error
+            .to_string()
+            .contains("archive file size limit exceeded"));
+        assert!(!sandbox_root.join("task-1").exists());
+    }
+
+    #[test]
+    fn rejects_zip_archives_over_total_uncompressed_limit_and_cleans_task_sandbox() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("total-too-large.zip");
+        create_zip(
+            &archive_path,
+            &[
+                ("first.bin", b"1234".as_slice()),
+                ("second.bin", b"5678".as_slice()),
+            ],
+        );
+        let sandbox_root = temp.path().join("sandboxes");
+        let limits = ZipExtractionLimits {
+            max_entries: 10,
+            max_single_file_bytes: 1024,
+            max_total_uncompressed_bytes: 7,
+        };
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            limits,
+        };
+
+        let error = prepare_package(&preparer, "task-1", &archive_path)
+            .expect_err("total size limit should reject archive");
+
+        assert!(error
+            .to_string()
+            .contains("archive total size limit exceeded"));
+        assert!(!sandbox_root.join("task-1").exists());
+    }
+
+    #[test]
     fn metadata_analyzer_reads_display_name_from_manifest_json() {
         let temp = tempfile::tempdir().expect("temp dir");
         fs::write(
@@ -808,6 +954,20 @@ mod tests {
         for (name, contents) in entries {
             zip.start_file(name, options).expect("start zip file");
             zip.write_all(contents).expect("write zip contents");
+        }
+
+        zip.finish().expect("finish zip");
+    }
+
+    fn create_numbered_zip_entries(path: &Path, count: usize) {
+        let file = fs::File::create(path).expect("create zip file");
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+
+        for index in 0..count {
+            zip.start_file(format!("file-{index}.txt"), options)
+                .expect("start zip file");
+            zip.write_all(b"x").expect("write zip contents");
         }
 
         zip.finish().expect("finish zip");
