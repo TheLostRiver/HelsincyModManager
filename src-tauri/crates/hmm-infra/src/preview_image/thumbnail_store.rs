@@ -1,5 +1,5 @@
 use anyhow::Result;
-use hmm_ports::{ThumbnailRef, ThumbnailStore};
+use hmm_ports::{ThumbnailCacheMaintenance, ThumbnailRef, ThumbnailStore};
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::fs;
@@ -164,6 +164,13 @@ impl ThumbnailStore for FileSystemThumbnailStore {
             "thumbnail://{}/{}/{}",
             thumbnail_ref.package_id, thumbnail_ref.variant, thumbnail_ref.content_hash
         ))
+    }
+}
+
+impl ThumbnailCacheMaintenance for FileSystemThumbnailStore {
+    fn prune_unreferenced_thumbnails(&self, retained: &[ThumbnailRef]) -> Result<()> {
+        FileSystemThumbnailStore::prune_unreferenced_thumbnails(self, retained)?;
+        Ok(())
     }
 }
 
