@@ -3,6 +3,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AppSettings {
     pub thumbnail_cache_max_bytes: Option<u64>,
+    pub thumbnail_cache_max_age_days: Option<u32>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

@@ -54,6 +54,9 @@ impl CommandErrorDto {
             AppSettingsServiceError::InvalidThumbnailCacheMaxBytes => {
                 "thumbnail_cache_max_bytes_invalid"
             }
+            AppSettingsServiceError::InvalidThumbnailCacheMaxAgeDays => {
+                "thumbnail_cache_max_age_days_invalid"
+            }
             AppSettingsServiceError::SettingsUnavailable => "app_settings_unavailable",
         };
 
@@ -68,12 +71,14 @@ impl CommandErrorDto {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettingsDto {
     pub thumbnail_cache_max_bytes: Option<u64>,
+    pub thumbnail_cache_max_age_days: Option<u32>,
 }
 
 impl From<AppSettings> for AppSettingsDto {
     fn from(settings: AppSettings) -> Self {
         Self {
             thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
+            thumbnail_cache_max_age_days: settings.thumbnail_cache_max_age_days,
         }
     }
 }
@@ -514,12 +519,14 @@ mod app_settings_dto_tests {
     fn serializes_app_settings_dto_with_camel_case_fields() {
         let dto: AppSettingsDto = AppSettings {
             thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
+            thumbnail_cache_max_age_days: Some(14),
         }
         .into();
 
         let value = serde_json::to_value(dto).expect("serialize settings");
 
         assert_eq!(value["thumbnailCacheMaxBytes"], 128 * 1024 * 1024);
+        assert_eq!(value["thumbnailCacheMaxAgeDays"], 14);
     }
 
     #[test]
@@ -529,6 +536,17 @@ mod app_settings_dto_tests {
         );
 
         assert_eq!(error.code, "thumbnail_cache_max_bytes_invalid");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn maps_invalid_thumbnail_cache_age_setting_to_stable_error_code() {
+        let error = CommandErrorDto::from_app_settings_service_error(
+            AppSettingsServiceError::InvalidThumbnailCacheMaxAgeDays,
+        );
+
+        assert_eq!(error.code, "thumbnail_cache_max_age_days_invalid");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }

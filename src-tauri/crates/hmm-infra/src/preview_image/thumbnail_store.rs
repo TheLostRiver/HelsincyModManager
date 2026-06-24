@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 pub struct FileSystemThumbnailStore {
     root_dir: PathBuf,
@@ -261,6 +261,107 @@ impl FileSystemThumbnailStore {
         report.bytes_after = bytes_after;
         Ok(report)
     }
+
+    pub fn prune_unreferenced_thumbnails_older_than<I, R>(
+        &self,
+        max_age: Duration,
+        retained: I,
+    ) -> Result<ThumbnailPruneReport>
+    where
+        I: IntoIterator<Item = R>,
+        R: Borrow<ThumbnailRef>,
+    {
+        let retained = retained_thumbnail_keys(retained);
+        let thumbnails_dir = self.root_dir.join("thumbnails");
+        let mut report = ThumbnailPruneReport::default();
+
+        let thumbnails_metadata = match fs::symlink_metadata(&thumbnails_dir) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(report),
+            Err(error) => return Err(error.into()),
+        };
+
+        if thumbnails_metadata.file_type().is_symlink() || !thumbnails_metadata.is_dir() {
+            report.skipped_entries += 1;
+            return Ok(report);
+        }
+
+        let canonical_thumbnails_dir = fs::canonicalize(&thumbnails_dir)?;
+        let now = SystemTime::now();
+
+        for package_entry in fs::read_dir(&thumbnails_dir)? {
+            let package_entry = package_entry?;
+            let package_path = package_entry.path();
+            let package_metadata = fs::symlink_metadata(&package_path)?;
+            if package_metadata.file_type().is_symlink() || !package_metadata.is_dir() {
+                report.skipped_entries += 1;
+                continue;
+            }
+
+            let Some(package_id) = package_entry.file_name().to_str().map(str::to_owned) else {
+                report.skipped_entries += 1;
+                continue;
+            };
+
+            let canonical_package_dir = fs::canonicalize(&package_path)?;
+            if !canonical_package_dir.starts_with(&canonical_thumbnails_dir) {
+                report.skipped_entries += 1;
+                continue;
+            }
+
+            for thumbnail_entry in fs::read_dir(&package_path)? {
+                let thumbnail_entry = thumbnail_entry?;
+                let thumbnail_path = thumbnail_entry.path();
+                let thumbnail_metadata = fs::symlink_metadata(&thumbnail_path)?;
+                if thumbnail_metadata.file_type().is_symlink() || !thumbnail_metadata.is_file() {
+                    report.skipped_entries += 1;
+                    continue;
+                }
+
+                let Some(file_name) = thumbnail_entry.file_name().to_str().map(str::to_owned)
+                else {
+                    report.skipped_entries += 1;
+                    continue;
+                };
+
+                if is_retained_thumbnail_file(&retained, &package_id, &file_name) {
+                    continue;
+                }
+
+                let lru_time = thumbnail_metadata
+                    .accessed()
+                    .or_else(|_| thumbnail_metadata.modified())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                if now
+                    .duration_since(lru_time)
+                    .map(|age| age < max_age)
+                    .unwrap_or(true)
+                {
+                    continue;
+                }
+
+                if !path_stays_inside(&canonical_thumbnails_dir, &thumbnail_path)? {
+                    report.skipped_entries += 1;
+                    continue;
+                }
+
+                fs::remove_file(&thumbnail_path)?;
+                report.deleted_files += 1;
+            }
+
+            match fs::remove_dir(&package_path) {
+                Ok(()) => report.deleted_package_dirs += 1,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::DirectoryNotEmpty | std::io::ErrorKind::NotFound
+                    ) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        Ok(report)
+    }
 }
 
 impl ThumbnailStore for FileSystemThumbnailStore {
@@ -310,7 +411,15 @@ impl ThumbnailCacheMaintenance for FileSystemThumbnailStore {
         &self,
         request: ThumbnailCacheMaintenanceRequest<'_>,
     ) -> Result<()> {
-        FileSystemThumbnailStore::prune_unreferenced_thumbnails(self, request.retained)?;
+        if let Some(max_age) = request.max_age {
+            FileSystemThumbnailStore::prune_unreferenced_thumbnails_older_than(
+                self,
+                max_age,
+                request.retained,
+            )?;
+        } else {
+            FileSystemThumbnailStore::prune_unreferenced_thumbnails(self, request.retained)?;
+        }
         if let Some(max_bytes) = request.max_bytes {
             FileSystemThumbnailStore::prune_to_size_limit(self, max_bytes, request.retained)?;
         }
@@ -506,6 +615,35 @@ mod tests {
         assert!(thumbnail_path(temp.path(), "pkg-1", "retained-old").exists());
         assert!(!thumbnail_path(temp.path(), "pkg-1", "delete-old").exists());
         assert!(thumbnail_path(temp.path(), "pkg-1", "keep-new").exists());
+    }
+
+    #[test]
+    fn prunes_only_expired_unreferenced_thumbnails_when_age_limit_is_set() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
+
+        let retained = store
+            .put_thumbnail("pkg-1", "retained", "jpg", b"retained")
+            .expect("put retained thumbnail");
+        store
+            .put_thumbnail("pkg-1", "expired", "jpg", b"expired")
+            .expect("put expired thumbnail");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        store
+            .put_thumbnail("pkg-1", "young", "jpg", b"young")
+            .expect("put young thumbnail");
+
+        let report = store
+            .prune_unreferenced_thumbnails_older_than(
+                std::time::Duration::from_millis(50),
+                std::slice::from_ref(&retained),
+            )
+            .expect("prune thumbnails by age");
+
+        assert_eq!(report.deleted_files, 1);
+        assert!(thumbnail_path(temp.path(), "pkg-1", "retained").exists());
+        assert!(!thumbnail_path(temp.path(), "pkg-1", "expired").exists());
+        assert!(thumbnail_path(temp.path(), "pkg-1", "young").exists());
     }
 
     #[test]

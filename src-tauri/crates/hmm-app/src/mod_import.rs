@@ -276,10 +276,12 @@ impl ModImportTaskRunner {
 
         let retained = retained_thumbnail_refs(&records);
         let max_bytes = Some(self.thumbnail_cache_max_bytes());
+        let max_age = self.thumbnail_cache_max_age();
         let _ = thumbnail_cache_maintenance.maintain_thumbnail_cache(
             ThumbnailCacheMaintenanceRequest {
                 retained: &retained,
                 max_bytes,
+                max_age,
             },
         );
     }
@@ -290,6 +292,14 @@ impl ModImportTaskRunner {
             .and_then(|repository| repository.load_settings().ok())
             .and_then(|settings| settings.thumbnail_cache_max_bytes)
             .unwrap_or(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES)
+    }
+
+    fn thumbnail_cache_max_age(&self) -> Option<Duration> {
+        self.app_settings_repository
+            .as_ref()
+            .and_then(|repository| repository.load_settings().ok())
+            .and_then(|settings| settings.thumbnail_cache_max_age_days)
+            .map(|days| Duration::from_secs(u64::from(days) * 24 * 60 * 60))
     }
 }
 
@@ -1185,6 +1195,7 @@ mod tests {
         let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
             settings: AppSettings {
                 thumbnail_cache_max_bytes: Some(64 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(14),
             },
         });
         let runner = ModImportTaskRunner::new(
@@ -1221,6 +1232,10 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(64 * 1024 * 1024));
+        assert_eq!(
+            calls[0].max_age,
+            Some(Duration::from_secs(14 * 24 * 60 * 60))
+        );
     }
 
     #[test]
@@ -1247,6 +1262,7 @@ mod tests {
         let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
             settings: AppSettings {
                 thumbnail_cache_max_bytes: Some(32 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(7),
             },
         });
         let runner = std::sync::Arc::new(
@@ -1295,6 +1311,10 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(32 * 1024 * 1024));
         assert_eq!(
+            calls[0].max_age,
+            Some(Duration::from_secs(7 * 24 * 60 * 60))
+        );
+        assert_eq!(
             calls[0].retained,
             vec![ThumbnailRef {
                 package_id: "pkg-1".to_owned(),
@@ -1328,6 +1348,7 @@ mod tests {
         let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
             settings: AppSettings {
                 thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(3),
             },
         });
         let runner = ModImportTaskRunner::new(
@@ -1362,6 +1383,10 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(96 * 1024 * 1024));
+        assert_eq!(
+            calls[0].max_age,
+            Some(Duration::from_secs(3 * 24 * 60 * 60))
+        );
         assert_eq!(
             calls[0].retained,
             vec![ThumbnailRef {
@@ -1983,6 +2008,7 @@ mod tests {
     struct FakeThumbnailCacheMaintenanceCall {
         retained: Vec<ThumbnailRef>,
         max_bytes: Option<u64>,
+        max_age: Option<Duration>,
     }
 
     impl ThumbnailCacheMaintenance for FakeThumbnailCacheMaintenance {
@@ -1996,6 +2022,7 @@ mod tests {
                 .push(FakeThumbnailCacheMaintenanceCall {
                     retained: request.retained.to_vec(),
                     max_bytes: request.max_bytes,
+                    max_age: request.max_age,
                 });
 
             if self.fail {

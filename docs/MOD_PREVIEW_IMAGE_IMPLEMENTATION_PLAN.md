@@ -32,8 +32,8 @@
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`。 |
 | `get_preview_image_diagnostics` | 后端入口已落地 | 基于已持久化导入结果聚合预览图诊断摘要，只返回总导入数、缩略图数、fallback 数和 fallback reason 计数；不导出第三方图片内容、`thumbnailUrl`、缓存路径、sandbox 路径或本地路径。 |
-| `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
-| `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 后端设置；`null`/缺省表示回退默认上限，`0` 会被拒绝；不暴露 settings 文件路径。 |
+| `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
+| `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；`null`/缺省表示回退默认语义，`0` 会被拒绝；不暴露 settings 文件路径。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
 | 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已下传到 zip 解压 entry/chunk、preview scanner 遍历和 processor 读文件/解码前后/缩略图写入前后检查点。图片库自身的单次解码/编码调用仍不是抢占式中断。 |
 
@@ -87,22 +87,24 @@
 当前已落地的缓存生命周期能力：
 
 - prepare runner 在成功保存导入分析结果后，会从结果仓储读取当前仍被 library/detail 记录引用的缩略图集合，并 best-effort 触发一次缓存维护。
-- 缓存维护会先执行引用保留清理，再使用后端 settings 中的 `thumbnailCacheMaxBytes` 执行空间上限 / LRU 清理；未配置或读取失败时回退默认 `512 MiB`。仍被当前导入结果引用的缩略图不会因空间上限被删除。
+- 缓存维护会先执行引用保留清理；当后端 settings 配置了 `thumbnailCacheMaxAgeDays` 时，只删除超过该天数的未引用缩略图，未配置时沿用当前立即清理未引用缩略图的语义；随后使用 `thumbnailCacheMaxBytes` 执行空间上限 / LRU 清理，未配置或读取失败时回退默认 `512 MiB`。仍被当前导入结果引用的缩略图不会因按时间保留或空间上限被删除。
 - `FileSystemThumbnailStore::prune_to_size_limit` 已提供后端空间上限 / LRU 清理能力；该 API 不暴露缓存路径给 app 或前端，也不通过 protocol handler 触发。
+- `FileSystemThumbnailStore::prune_unreferenced_thumbnails_older_than` 已提供后端按时间保留能力；该 API 仍只作用于应用数据目录下的 `thumbnails` 缓存根，并保留当前引用缩略图。
 - prune 失败不改变导入 task 的 completed 状态，也不发送用户可见失败事件；缓存仍是可删除、可重建的派生数据。
 - 后端当前读写 `app_data/config/settings.json`：
 
 ```json
 {
   "version": 1,
-  "thumbnailCacheMaxBytes": 536870912
+  "thumbnailCacheMaxBytes": 536870912,
+  "thumbnailCacheMaxAgeDays": 30
 }
 ```
 - AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一次同一条 best-effort 缓存维护链路；该线程不创建前端 task、不发送 progress event，也不暴露缓存路径，启动或清理失败只会降级为跳过本轮缓存治理。
 
 尚未落地的缓存生命周期能力：
 
-- UI 设置入口或按时间保留策略。
+- UI 设置入口和更完整的保留策略展示。
 
 ### 图片处理并发
 
