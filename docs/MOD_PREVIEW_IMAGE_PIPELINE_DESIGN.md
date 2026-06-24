@@ -227,6 +227,7 @@ thumbnails/
 - 只读安全 sandbox，不读取原始压缩包外的路径。
 - 元数据分析失败不阻断导入主流程，也不影响预览图 fallback 语义。
 - 展示名、分类、标签、版本、作者和依赖文本不是安装、卸载、回滚或冲突检测事实来源。
+- 当前 `get_mod_library` 会暴露由后端生成的 `author`、`versionLabel` 和 `categoryLabels`；`get_mod_detail` 会暴露 `metadata { version, author, category, tags, dependencies }` 摘要。这些字段只用于展示和后续诊断输入，不表示依赖安装状态。
 - 多个 manifest 候选会按缺失字段补齐；`authors`、`tags` 和 `dependencies` 当前支持字符串或字符串数组，作者数组会合并为短文本。
 - 更复杂的游戏专属 manifest schema、依赖是否安装的语义校验和跨 Mod 依赖图构建属于后续包分析能力。
 

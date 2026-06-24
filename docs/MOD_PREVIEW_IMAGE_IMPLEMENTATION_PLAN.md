@@ -30,7 +30,7 @@
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
-| `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`。 |
+| `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`；library DTO 暴露 `author`、`versionLabel`、`categoryLabels`，detail DTO 暴露通用 metadata 摘要。 |
 | `get_preview_image_diagnostics` | 后端入口已落地 | 基于已持久化导入结果聚合预览图诊断摘要，只返回总导入数、缩略图数、fallback 数和 fallback reason 计数；不导出第三方图片内容、`thumbnailUrl`、缓存路径、sandbox 路径或本地路径。 |
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
 | `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；`null`/缺省表示回退默认语义，`0` 会被拒绝；不暴露 settings 文件路径。 |
@@ -136,7 +136,8 @@
 - 支持字段：`displayName`、`display_name`、`name`、`title`。
 - 通用 schema 字段：`version` / `modVersion`、`author` / `authors`、`category` / `type`、`tags`、`dependencies` / `depends` / `requires`。
 - 多个 manifest 候选会按缺失字段补齐；`authors`、`tags` 和 `dependencies` 当前支持字符串或字符串数组，作者数组会合并为短文本。
-- `categoryLabels` 由后端解析到的 category 和 tags 生成，不由前端从路径推断。
+- `get_mod_library` 的 `author` / `versionLabel` 和 `categoryLabels` 由后端解析到的通用 metadata 生成，不由前端从路径或文件名推断。
+- `get_mod_detail` 返回 `metadata { version, author, category, tags, dependencies }` 摘要；这些字段只表示包内短文本声明，不表示依赖安装状态、冲突检测结果或安装计划事实。
 - README 候选：`README.md`、`README.txt`、`README`，使用第一个 Markdown 标题或非空文本行。
 - 单个元数据文件读取上限为 64 KiB，扫描深度限制为 2 层，symlink 和异常 entry 跳过。
 - 元数据缺失、损坏或不可读时回退 `packageId`，不阻断导入主流程。

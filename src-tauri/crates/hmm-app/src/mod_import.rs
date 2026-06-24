@@ -77,6 +77,8 @@ pub struct ModImportTaskRunError {
 pub struct ModLibraryItem {
     pub id: String,
     pub name: String,
+    pub author: Option<String>,
+    pub version_label: Option<String>,
     pub status: ModLibraryStatus,
     pub size_label: String,
     pub category_labels: Vec<String>,
@@ -88,7 +90,17 @@ pub struct ModDetail {
     pub id: String,
     pub name: String,
     pub package_id: String,
+    pub metadata: ModPackageMetadataSummary,
     pub preview_image: ImportPreviewImage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModPackageMetadataSummary {
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+    pub dependencies: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -450,10 +462,14 @@ fn increment_fallback_reason(
 
 fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
     let category_labels = category_labels_from_metadata(&record.metadata);
+    let author = non_empty_metadata_value(&record.metadata.author);
+    let version_label = version_label_from_metadata(&record.metadata);
 
     ModLibraryItem {
         id: record.mod_id,
         name: record.display_name,
+        author,
+        version_label,
         status: ModLibraryStatus::Disabled,
         size_label: "导入完成".to_owned(),
         category_labels,
@@ -462,12 +478,35 @@ fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
 }
 
 fn detail_from_stored(record: StoredModImportAnalysis) -> ModDetail {
+    let metadata = metadata_summary_from_stored(&record.metadata);
+
     ModDetail {
         id: record.mod_id,
         name: record.display_name,
         package_id: record.package_id,
+        metadata,
         preview_image: import_preview_from_stored(record.preview_image),
     }
+}
+
+fn metadata_summary_from_stored(metadata: &StoredModPackageMetadata) -> ModPackageMetadataSummary {
+    ModPackageMetadataSummary {
+        version: non_empty_metadata_value(&metadata.version),
+        author: non_empty_metadata_value(&metadata.author),
+        category: non_empty_metadata_value(&metadata.category),
+        tags: unique_non_empty_metadata_values(&metadata.tags),
+        dependencies: unique_non_empty_metadata_values(&metadata.dependencies),
+    }
+}
+
+fn version_label_from_metadata(metadata: &StoredModPackageMetadata) -> Option<String> {
+    non_empty_metadata_value(&metadata.version).map(|version| {
+        if version.starts_with('v') || version.starts_with('V') {
+            version
+        } else {
+            format!("v{version}")
+        }
+    })
 }
 
 fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<String> {
@@ -483,6 +522,20 @@ fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<Str
     }
 
     labels
+}
+
+fn non_empty_metadata_value(value: &Option<String>) -> Option<String> {
+    value.as_ref().filter(|value| !value.is_empty()).cloned()
+}
+
+fn unique_non_empty_metadata_values(values: &[String]) -> Vec<String> {
+    let mut unique = Vec::new();
+    for value in values {
+        if !value.is_empty() && !unique.iter().any(|existing| existing == value) {
+            unique.push(value.clone());
+        }
+    }
+    unique
 }
 
 impl ModImportPrepareService {
@@ -1469,7 +1522,13 @@ mod tests {
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 display_name: "pkg-1".to_owned(),
-                metadata: StoredModPackageMetadata::default(),
+                metadata: StoredModPackageMetadata {
+                    version: Some("1.2.3".to_owned()),
+                    author: Some("A Hunter".to_owned()),
+                    category: Some("Visual".to_owned()),
+                    tags: vec!["armor".to_owned(), "hd".to_owned()],
+                    dependencies: vec!["stracker-loader".to_owned()],
+                },
                 preview_image: StoredImportPreviewImage::Fallback {
                     reason: PreviewImageRejectionReason::Missing,
                 },
@@ -1486,6 +1545,9 @@ mod tests {
         assert_eq!(library.len(), 1);
         assert_eq!(library[0].id, "pkg-1");
         assert_eq!(library[0].name, "pkg-1");
+        assert_eq!(library[0].author.as_deref(), Some("A Hunter"));
+        assert_eq!(library[0].version_label.as_deref(), Some("v1.2.3"));
+        assert_eq!(library[0].category_labels, vec!["Visual", "armor", "hd"]);
         assert_eq!(
             library[0].preview_image,
             ImportPreviewImage::Fallback {
@@ -1493,6 +1555,11 @@ mod tests {
             }
         );
         assert_eq!(detail.id, "pkg-1");
+        assert_eq!(detail.metadata.version.as_deref(), Some("1.2.3"));
+        assert_eq!(detail.metadata.author.as_deref(), Some("A Hunter"));
+        assert_eq!(detail.metadata.category.as_deref(), Some("Visual"));
+        assert_eq!(detail.metadata.tags, vec!["armor", "hd"]);
+        assert_eq!(detail.metadata.dependencies, vec!["stracker-loader"]);
         assert_eq!(detail.preview_image, library[0].preview_image);
     }
 
