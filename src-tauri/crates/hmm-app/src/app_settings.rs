@@ -6,6 +6,8 @@ use thiserror::Error;
 pub enum AppSettingsServiceError {
     #[error("thumbnail cache max bytes must be greater than zero")]
     InvalidThumbnailCacheMaxBytes,
+    #[error("thumbnail cache max age days must be greater than zero")]
+    InvalidThumbnailCacheMaxAgeDays,
     #[error("app settings unavailable")]
     SettingsUnavailable,
 }
@@ -23,12 +25,24 @@ impl AppSettingsService {
         &self,
         max_bytes: Option<u64>,
     ) -> Result<AppSettings, AppSettingsServiceError> {
+        self.update_thumbnail_cache_settings(max_bytes, None)
+    }
+
+    pub fn update_thumbnail_cache_settings(
+        &self,
+        max_bytes: Option<u64>,
+        max_age_days: Option<u32>,
+    ) -> Result<AppSettings, AppSettingsServiceError> {
         if matches!(max_bytes, Some(0)) {
             return Err(AppSettingsServiceError::InvalidThumbnailCacheMaxBytes);
+        }
+        if matches!(max_age_days, Some(0)) {
+            return Err(AppSettingsServiceError::InvalidThumbnailCacheMaxAgeDays);
         }
 
         let settings = AppSettings {
             thumbnail_cache_max_bytes: max_bytes,
+            thumbnail_cache_max_age_days: max_age_days,
         };
         self.repository
             .save_settings(&settings)
@@ -54,10 +68,11 @@ mod tests {
         let service = AppSettingsService::new(repository.clone());
 
         let settings = service
-            .update_thumbnail_cache_max_bytes(Some(96 * 1024 * 1024))
+            .update_thumbnail_cache_settings(Some(96 * 1024 * 1024), Some(30))
             .expect("settings update succeeds");
 
         assert_eq!(settings.thumbnail_cache_max_bytes, Some(96 * 1024 * 1024));
+        assert_eq!(settings.thumbnail_cache_max_age_days, Some(30));
         assert_eq!(
             repository
                 .saved_settings
@@ -66,6 +81,7 @@ mod tests {
                 .as_ref(),
             Some(&AppSettings {
                 thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(30),
             })
         );
     }
@@ -82,6 +98,21 @@ mod tests {
         assert_eq!(
             error,
             AppSettingsServiceError::InvalidThumbnailCacheMaxBytes
+        );
+    }
+
+    #[test]
+    fn rejects_zero_thumbnail_cache_max_age_days() {
+        let service =
+            AppSettingsService::new(std::sync::Arc::new(FakeAppSettingsRepository::default()));
+
+        let error = service
+            .update_thumbnail_cache_settings(Some(64 * 1024 * 1024), Some(0))
+            .expect_err("zero retention days rejected");
+
+        assert_eq!(
+            error,
+            AppSettingsServiceError::InvalidThumbnailCacheMaxAgeDays
         );
     }
 
