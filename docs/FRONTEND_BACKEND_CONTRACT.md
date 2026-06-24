@@ -192,6 +192,7 @@ TaskProgressEventDto
 | `mod_import` | `mod_import.unpack.started` / `.completed` / `.failed` | 安全解压阶段 |
 | `mod_import` | `mod_import.preview_image.processing` | 预览图候选扫描和处理 |
 | `mod_import` | `mod_import.preview_image.fallback` | 预览图降级为 fallback，导入继续 |
+| `mod_import` | `mod_import.prepare.completed` | prepare 阶段已完成，后续结果通过查询或持久化链路获取 |
 | `mod_import` | `mod_import.analyze.processing` | 包结构和依赖分析 |
 | `mod_import` | `mod_import.commit.processing` | 写入游戏实例前的 plan 落地 |
 
@@ -283,7 +284,7 @@ get_mod_detail(modId)
 
 边界：
 
-- 当前 `start_import_mod_task` 最小入口只做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；`cancel_task(taskId)` 可取消仍在 queued 状态的任务并发送 `mod_import.cancelled` 事件；不解压、不分析、不持久化、不返回巨大结果，运行中取消和真实异步执行仍在后续 TaskManager 流程中补齐。
+- 当前 `start_import_mod_task` 会做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；随后后台 prepare runner 会执行受控 zip 沙盒解包和预览图处理，并发送 `unpack.*`、`preview_image.*` 与 `prepare.completed` 事件。当前仍不持久化导入结果、不返回巨大结果，运行中协作式取消由后续 TaskManager runner 补齐。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
