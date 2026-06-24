@@ -1,7 +1,8 @@
 use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{
-    ModImportPackagePreparer, ModImportResultRepository, PreviewImageProcessingResult,
-    StoredImportPreviewImage, StoredModImportAnalysis, ThumbnailStore,
+    ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadataAnalyzer,
+    PreviewImageProcessingResult, StoredImportPreviewImage, StoredModImportAnalysis,
+    ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub struct ModImportAnalysisRequest {
 pub struct ModImportAnalysisResult {
     pub task_id: String,
     pub package_id: String,
+    pub display_name: String,
     pub preview_image: ImportPreviewImage,
 }
 
@@ -209,7 +211,7 @@ fn stored_analysis_from_result(result: &ModImportAnalysisResult) -> StoredModImp
         mod_id: result.package_id.clone(),
         task_id: result.task_id.clone(),
         package_id: result.package_id.clone(),
-        display_name: result.package_id.clone(),
+        display_name: result.display_name.clone(),
         preview_image: stored_preview_from_import(&result.preview_image),
     }
 }
@@ -345,16 +347,19 @@ fn failed_event(task_id: &str) -> crate::TaskProgressEvent {
 pub struct ModImportAnalysisService {
     preview_image_processor: Box<dyn ImportPreviewImageProcessor>,
     thumbnail_store: Box<dyn ThumbnailStore>,
+    metadata_analyzer: Box<dyn ModPackageMetadataAnalyzer>,
 }
 
 impl ModImportAnalysisService {
     pub fn new(
         preview_image_processor: Box<dyn ImportPreviewImageProcessor>,
         thumbnail_store: Box<dyn ThumbnailStore>,
+        metadata_analyzer: Box<dyn ModPackageMetadataAnalyzer>,
     ) -> Self {
         Self {
             preview_image_processor,
             thumbnail_store,
+            metadata_analyzer,
         }
     }
 
@@ -385,9 +390,17 @@ impl ModImportAnalysisService {
             }
         };
 
+        let display_name = self
+            .metadata_analyzer
+            .analyze_metadata(&request.package_id, &request.sandbox_root)
+            .ok()
+            .and_then(|metadata| metadata.display_name)
+            .unwrap_or_else(|| request.package_id.clone());
+
         Ok(ModImportAnalysisResult {
             task_id: request.task_id,
             package_id: request.package_id,
+            display_name,
             preview_image,
         })
     }
@@ -398,9 +411,10 @@ mod tests {
     use super::*;
     use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
-        ModImportPackagePreparer, ModImportResultRepository, PreparedModPackage,
-        PreviewImageProcessingResult, ProcessedPreviewImage, StoredImportPreviewImage,
-        StoredModImportAnalysis, ThumbnailRef, ThumbnailStore,
+        ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadata,
+        ModPackageMetadataAnalyzer, PreparedModPackage, PreviewImageProcessingResult,
+        ProcessedPreviewImage, StoredImportPreviewImage, StoredModImportAnalysis, ThumbnailRef,
+        ThumbnailStore,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -421,6 +435,7 @@ mod tests {
                 }),
             }),
             Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer::default()),
         );
 
         let result = service
@@ -445,6 +460,35 @@ mod tests {
     }
 
     #[test]
+    fn analyze_sandbox_uses_package_metadata_display_name() {
+        let service = ModImportAnalysisService::new(
+            Box::new(FakePreviewImageProcessor {
+                result: PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::Missing,
+                ),
+            }),
+            Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer {
+                display_name: Some("Better Mod Name".to_owned()),
+            }),
+        );
+
+        let result = service
+            .analyze_sandbox(ModImportAnalysisRequest {
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                sandbox_root: Path::new("sandbox").to_path_buf(),
+            })
+            .expect("analysis succeeds");
+
+        assert_eq!(result.display_name, "Better Mod Name");
+        assert_eq!(
+            stored_analysis_from_result(&result).display_name,
+            "Better Mod Name"
+        );
+    }
+
+    #[test]
     fn analyze_sandbox_keeps_import_result_when_preview_falls_back() {
         let service = ModImportAnalysisService::new(
             Box::new(FakePreviewImageProcessor {
@@ -453,6 +497,7 @@ mod tests {
                 ),
             }),
             Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer::default()),
         );
 
         let result = service
@@ -487,6 +532,7 @@ mod tests {
                 }),
             }),
             Box::new(FakeThumbnailStore { fail_resolve: true }),
+            Box::new(FakeMetadataAnalyzer::default()),
         );
 
         let result = service
@@ -528,6 +574,7 @@ mod tests {
                     }),
                 }),
                 Box::new(FakeThumbnailStore::default()),
+                Box::new(FakeMetadataAnalyzer::default()),
             ),
         );
 
@@ -578,6 +625,7 @@ mod tests {
                     ),
                 }),
                 Box::new(FakeThumbnailStore::default()),
+                Box::new(FakeMetadataAnalyzer::default()),
             ),
         );
 
@@ -628,6 +676,9 @@ mod tests {
                         ),
                     }),
                     Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer {
+                        display_name: Some("Better Mod Name".to_owned()),
+                    }),
                 ),
             )),
             result_repository,
@@ -684,6 +735,9 @@ mod tests {
                         }),
                     }),
                     Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer {
+                        display_name: Some("Better Mod Name".to_owned()),
+                    }),
                 ),
             )),
             result_repository.clone(),
@@ -700,6 +754,7 @@ mod tests {
 
         assert_eq!(stored.mod_id, "pkg-1");
         assert_eq!(stored.package_id, "pkg-1");
+        assert_eq!(stored.display_name, "Better Mod Name");
         assert_eq!(stored.task_id, task.task_id);
         assert_eq!(
             stored.preview_image,
@@ -765,6 +820,7 @@ mod tests {
                         ),
                     }),
                     Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
                 ),
             )),
             std::sync::Arc::new(FakeModImportResultRepository::default()),
@@ -814,6 +870,7 @@ mod tests {
                         ),
                     }),
                     Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
                 ),
             )),
             std::sync::Arc::new(FakeModImportResultRepository::default()),
@@ -858,6 +915,7 @@ mod tests {
                         }),
                     }),
                     Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
                 ),
             )),
             result_repository.clone(),
@@ -893,6 +951,23 @@ mod tests {
             _sandbox_root: &Path,
         ) -> anyhow::Result<PreviewImageProcessingResult> {
             Ok(self.result.clone())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeMetadataAnalyzer {
+        display_name: Option<String>,
+    }
+
+    impl ModPackageMetadataAnalyzer for FakeMetadataAnalyzer {
+        fn analyze_metadata(
+            &self,
+            _package_id: &str,
+            _sandbox_root: &Path,
+        ) -> anyhow::Result<ModPackageMetadata> {
+            Ok(ModPackageMetadata {
+                display_name: self.display_name.clone(),
+            })
         }
     }
 
