@@ -25,7 +25,7 @@
 | `hmm-infra` 缩略图缓存 | MVP 已落地 | 已有原子写入、opaque URL 返回、package 登记校验、symlink 拒绝、引用保留清理和 infra-local 空间上限 / LRU 清理策略；`ThumbnailStore` 已支持由调用方传入 `preview-<max_edge_px>` variant，默认仍是 `preview-768`；清理只作用于应用数据目录下的 `thumbnails` 缓存根。 |
 | `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限；解压失败或取消会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
 | `hmm-infra` 包元数据分析 | MVP 已落地 | 已有 `SandboxModPackageMetadataAnalyzer`，只从安全 sandbox 中有限读取 manifest JSON 和 README，推断展示名，并解析版本、作者、分类、标签和依赖的通用字段。 |
-| `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；prepare runner 成功后会保存导入分析结果。`PreviewImageService` 已提供后端内部的按候选序号选择入口，选择结果仍复用 scanner / policy / processor 流水线。 |
+| `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService`、`ModImportAnalysisService` 和 `PreviewImageCandidateSelectionService`，且 URL 解析职责已收敛到应用层边界；prepare runner 成功后会保存导入分析结果。候选选择写回会基于已登记 `modId` 重新定位受控 sandbox、按后端候选序号复用 scanner / policy / processor 流水线，并把新的 `previewImage` 写回已导入 Mod 记录。 |
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
@@ -62,13 +62,14 @@
 
 - `get_preview_image_candidates(modId)` 是只读候选列表 command。它只接受后端已登记的 `modId`，通过导入结果仓储确认记录存在，再由后端 sandbox locator 解析受控 sandbox 根；返回 DTO 只包含 `candidateIndex`、`fileName` 和 `compressedSizeBytes`，不包含 logical path、sandbox/cache 路径、压缩包内部路径、`thumbnailUrl` 或图片字节。
 - `PreviewImageService::process_selected_package_preview` 会重新通过 scanner 获取受 `max_candidates_per_package` 限制的候选列表，并按后端候选序号只处理一个候选。该入口仍调用同一个 `PreviewImageProcessor`，因此文件大小、magic bytes、像素数、缩放、转码、缓存写入和取消检查都不会绕过。
+- `select_preview_image_candidate(modId, candidateIndex)` 是写回已导入 Mod 记录的后端 command。它只接受 `modId` 和非负 `candidateIndex`，不会接受 logical path、sandbox/cache/archive-internal 路径、本地图片路径或图片字节；命令返回更新后的 `PreviewImageDto`，未知 `modId` 返回 `null`。
+- 候选选择失败或缩略图 URL 解析失败时，写回 `fallback` 结果而不是阻断导入主流程；返回值和持久化记录保持一致。
 
 尚未落地的部分：
 
 - 前端可见的候选缩略图选择 UI。
-- 将选择结果回写到已导入 Mod 记录的用例。
 
-后续跨 Tauri 边界执行选择时，前端只能提交后端生成的候选标识或序号，不能提交 sandbox/cache/archive-internal 路径要求后端读取。
+后续补 UI 时，前端只能提交后端生成的候选标识或序号，不能提交 sandbox/cache/archive-internal 路径要求后端读取。
 
 ### Custom protocol 形态
 

@@ -1,8 +1,8 @@
 use hmm_app::{
     AppSettingsService, GameSetupService, LimitedPreviewImageProcessor, ModImportAnalysisService,
     ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
-    PreviewImageCandidateListService, PreviewImageService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    PreviewImageCandidateListService, PreviewImageCandidateSelectionService, PreviewImageService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
@@ -26,6 +26,7 @@ pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
     pub mod_library: Arc<ModLibraryService>,
     pub preview_image_candidates: Arc<PreviewImageCandidateListService>,
+    pub preview_image_selection: Arc<PreviewImageCandidateSelectionService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -80,8 +81,21 @@ impl AppState {
         let preview_image_candidates = Arc::new(PreviewImageCandidateListService::new(
             PreviewImagePolicy::default(),
             Arc::clone(&mod_import_result_repository),
-            mod_import_sandbox_locator,
+            Arc::clone(&mod_import_sandbox_locator),
             Box::new(SandboxPackagePreviewScanner),
+        ));
+        let preview_image_selection = Arc::new(PreviewImageCandidateSelectionService::new(
+            PreviewImagePolicy::default(),
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_import_sandbox_locator),
+            Box::new(SandboxPackagePreviewScanner),
+            Box::new(LimitedPreviewImageProcessor::new(
+                Box::new(ImageCratePreviewImageProcessor::new(Box::new(
+                    FileSystemThumbnailStore::new(app_data_dir.clone()),
+                ))),
+                DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+            )),
+            Box::new(FileSystemThumbnailStore::new(app_data_dir.clone())),
         ));
         let mod_import_task_runner = Arc::new(
             ModImportTaskRunner::new(
@@ -115,6 +129,7 @@ impl AppState {
             )),
             mod_library,
             preview_image_candidates,
+            preview_image_selection,
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,
