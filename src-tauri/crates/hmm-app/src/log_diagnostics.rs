@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 const AUDIT_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "audit-log-diagnostics.json";
+pub const MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditLogDiagnosticsExport {
@@ -43,6 +44,7 @@ impl AuditLogDiagnosticsExportService {
         max_events: usize,
     ) -> anyhow::Result<AuditLogDiagnosticsExport> {
         let export_timestamp = self.clock.now_unix_millis()?;
+        let max_events = max_events.min(MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS);
         let events = match self
             .audit_log_reader
             .read_recent_sanitized(AuditLogReadRequest { max_events })
@@ -237,6 +239,42 @@ mod tests {
         assert!(!serialized.contains("thumbnail://"));
         assert!(!serialized.contains("contentHash"));
         assert!(!serialized.contains("sandbox"));
+    }
+
+    #[test]
+    fn export_service_caps_requested_audit_log_event_count() {
+        let reader = Arc::new(StaticAuditLogReader {
+            events: (0..201)
+                .map(|index| AuditLogEvent {
+                    timestamp_unix_millis: index,
+                    category: "diagnostic_export".to_owned(),
+                    operation: "export_preview_image_diagnostics".to_owned(),
+                    result: "success".to_owned(),
+                    fields: BTreeMap::from([(
+                        "file_name".to_owned(),
+                        format!("preview-image-diagnostics-{index}.zip"),
+                    )]),
+                })
+                .collect(),
+        });
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let service = AuditLogDiagnosticsExportService::new(
+            reader,
+            exporter.clone(),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let export = service
+            .export_audit_log_diagnostics(usize::MAX)
+            .expect("export succeeds");
+
+        assert_eq!(export.audit_event_count, 200);
+        let request = exporter.take_request();
+        let payload = String::from_utf8(request.entries[0].bytes.clone()).expect("utf8 payload");
+        assert!(payload.contains("\"auditEventCount\":200"));
+        assert!(payload.contains("\"preview-image-diagnostics-200.zip\""));
+        assert!(!payload.contains("\"preview-image-diagnostics-0.zip\""));
     }
 
     struct StaticAuditLogReader {
