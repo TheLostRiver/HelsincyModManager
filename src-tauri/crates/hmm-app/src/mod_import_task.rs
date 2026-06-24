@@ -95,6 +95,9 @@ impl From<TaskManagerError> for ModImportTaskError {
             TaskManagerError::TaskCannotBeCancelled { .. } => {
                 Self::TaskRegistrationFailed(error.to_string())
             }
+            TaskManagerError::TaskCannotTransition { .. } => {
+                Self::TaskRegistrationFailed(error.to_string())
+            }
             TaskManagerError::TaskStoreUnavailable => {
                 Self::TaskRegistrationFailed(error.to_string())
             }
