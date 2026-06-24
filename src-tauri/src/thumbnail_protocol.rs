@@ -98,13 +98,25 @@ fn read_thumbnail(
     let reference = parse_thumbnail_url(uri)?;
     let thumbnails_root = cache_root.join("thumbnails");
     let package_dir = thumbnails_root.join(&reference.package_id);
+    if !is_registered_package_dir(&package_dir) {
+        return Err(ThumbnailProtocolError::BadRequest);
+    }
 
     for (extension, content_type) in CACHE_EXTENSIONS {
         let candidate = package_dir.join(format!(
             "{}-{}.{}",
             reference.variant, reference.content_hash, extension
         ));
-        if !candidate.is_file() {
+        let metadata = match std::fs::symlink_metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return Err(ThumbnailProtocolError::Internal),
+        };
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            return Err(ThumbnailProtocolError::BadRequest);
+        }
+        if !file_type.is_file() {
             continue;
         }
 
@@ -126,6 +138,14 @@ fn read_thumbnail(
     }
 
     Err(ThumbnailProtocolError::NotFound)
+}
+
+fn is_registered_package_dir(package_dir: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(package_dir) else {
+        return false;
+    };
+    let file_type = metadata.file_type();
+    file_type.is_dir() && !file_type.is_symlink()
 }
 
 fn is_safe_segment(value: &str) -> bool {
@@ -210,12 +230,43 @@ mod tests {
     #[test]
     fn returns_not_found_for_missing_thumbnail() {
         let root = temp_root("thumbnail-protocol-missing");
-        fs::create_dir_all(root.join("thumbnails")).expect("create thumbnails dir");
+        fs::create_dir_all(root.join("thumbnails").join("pkg-1"))
+            .expect("create package thumbnail dir");
 
         assert_eq!(
             read_thumbnail(&root, "thumbnail://pkg-1/preview-768/missing")
                 .expect_err("missing thumbnail"),
             ThumbnailProtocolError::NotFound
+        );
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn rejects_unregistered_package_directory() {
+        let root = temp_root("thumbnail-protocol-unregistered-package");
+        fs::create_dir_all(root.join("thumbnails")).expect("create thumbnails dir");
+
+        assert_eq!(
+            read_thumbnail(&root, "thumbnail://pkg-1/preview-768/abcdef")
+                .expect_err("unregistered package rejected"),
+            ThumbnailProtocolError::BadRequest
+        );
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn rejects_package_reference_that_is_not_directory() {
+        let root = temp_root("thumbnail-protocol-package-file");
+        let thumbnails_root = root.join("thumbnails");
+        fs::create_dir_all(&thumbnails_root).expect("create thumbnails dir");
+        fs::write(thumbnails_root.join("pkg-1"), b"not a package dir").expect("write package file");
+
+        assert_eq!(
+            read_thumbnail(&root, "thumbnail://pkg-1/preview-768/abcdef")
+                .expect_err("package file rejected"),
+            ThumbnailProtocolError::BadRequest
         );
 
         fs::remove_dir_all(root).expect("cleanup temp root");
