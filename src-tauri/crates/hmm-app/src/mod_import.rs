@@ -1,11 +1,15 @@
 use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{ModImportPackagePreparer, PreviewImageProcessingResult, ThumbnailStore};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const MOD_IMPORT_UNPACK_STARTED_PHASE: &str = "mod_import.unpack.started";
 const MOD_IMPORT_UNPACK_COMPLETED_PHASE: &str = "mod_import.unpack.completed";
+const MOD_IMPORT_UNPACK_FAILED_PHASE: &str = "mod_import.unpack.failed";
 const MOD_IMPORT_PREVIEW_IMAGE_PROCESSING_PHASE: &str = "mod_import.preview_image.processing";
 const MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE: &str = "mod_import.preview_image.fallback";
+const MOD_IMPORT_PREPARE_COMPLETED_PHASE: &str = "mod_import.prepare.completed";
+const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = "mod_import_prepare_failed";
 
 pub trait ImportPreviewImageProcessor: Send + Sync {
     fn process_package_preview(
@@ -43,6 +47,11 @@ pub struct ModImportPrepareResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModImportTaskRunError {
+    pub events: Vec<crate::TaskProgressEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportPreviewImage {
     Thumbnail {
         thumbnail_url: String,
@@ -53,6 +62,65 @@ pub enum ImportPreviewImage {
     Fallback {
         reason: PreviewImageRejectionReason,
     },
+}
+
+pub struct ModImportTaskRunner {
+    task_manager: Arc<crate::TaskManager>,
+    prepare_service: Arc<ModImportPrepareService>,
+}
+
+impl ModImportTaskRunner {
+    pub fn new(
+        task_manager: Arc<crate::TaskManager>,
+        prepare_service: Arc<ModImportPrepareService>,
+    ) -> Self {
+        Self {
+            task_manager,
+            prepare_service,
+        }
+    }
+
+    pub fn run_prepare_task(
+        &self,
+        task_id: &str,
+        archive_path: PathBuf,
+    ) -> Result<Vec<crate::TaskProgressEvent>, ModImportTaskRunError> {
+        if self.task_manager.start_task(task_id).is_err() {
+            return Err(ModImportTaskRunError { events: Vec::new() });
+        }
+
+        let request = ModImportPrepareRequest {
+            task_id: task_id.to_owned(),
+            archive_path,
+        };
+        let mut events = match self.prepare_service.prepare_import(request) {
+            Ok(result) => result.events,
+            Err(_) => {
+                let _ = self.task_manager.fail_task(task_id);
+                return Err(ModImportTaskRunError {
+                    events: vec![failed_event(task_id)],
+                });
+            }
+        };
+
+        match self.task_manager.complete_task(task_id) {
+            Ok(task) => {
+                events.push(crate::TaskProgressEvent::new(
+                    task.task_id,
+                    task.kind,
+                    task.status,
+                    MOD_IMPORT_PREPARE_COMPLETED_PHASE,
+                ));
+                Ok(events)
+            }
+            Err(_) => {
+                let _ = self.task_manager.fail_task(task_id);
+                Err(ModImportTaskRunError {
+                    events: vec![failed_event(task_id)],
+                })
+            }
+        }
+    }
 }
 
 pub struct ModImportPrepareService {
@@ -119,6 +187,17 @@ fn running_event(task_id: &str, phase: &str) -> crate::TaskProgressEvent {
         crate::TaskStatus::Running,
         phase,
     )
+}
+
+fn failed_event(task_id: &str) -> crate::TaskProgressEvent {
+    let mut event = crate::TaskProgressEvent::new(
+        task_id.to_owned(),
+        crate::TaskKind::ModImport,
+        crate::TaskStatus::Failed,
+        MOD_IMPORT_UNPACK_FAILED_PHASE,
+    );
+    event.error = Some(MOD_IMPORT_PREPARE_FAILED_ERROR.to_owned());
+    event
 }
 
 pub struct ModImportAnalysisService {
@@ -382,6 +461,134 @@ mod tests {
         );
     }
 
+    #[test]
+    fn task_runner_executes_prepare_and_marks_task_completed() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Fallback(
+                            PreviewImageRejectionReason::Missing,
+                        ),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                ),
+            )),
+        );
+
+        let events = runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect("runner succeeds");
+
+        assert_eq!(
+            event_phases(&events),
+            vec![
+                "mod_import.unpack.started",
+                "mod_import.unpack.completed",
+                "mod_import.preview_image.processing",
+                "mod_import.preview_image.fallback",
+                "mod_import.prepare.completed",
+            ]
+        );
+        assert!(events.iter().all(|event| event.task_id == task.task_id));
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+    }
+
+    #[test]
+    fn task_runner_marks_task_failed_without_exposing_paths() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let archive_path = Path::new("C:/Users/Alice/Mods/bad.zip").to_path_buf();
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FailingPackagePreparer),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Fallback(
+                            PreviewImageRejectionReason::Missing,
+                        ),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                ),
+            )),
+        );
+
+        let error = runner
+            .run_prepare_task(&task.task_id, archive_path)
+            .expect_err("runner fails");
+
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Failed)
+        );
+        assert_eq!(
+            event_phases(&error.events),
+            vec!["mod_import.unpack.failed"]
+        );
+        let failure = error.events.last().expect("failure event exists");
+        assert_eq!(failure.status, crate::TaskStatus::Failed);
+        assert_eq!(failure.error.as_deref(), Some("mod_import_prepare_failed"));
+        assert!(!failure.error.as_deref().unwrap().contains("Alice"));
+        assert!(!failure.error.as_deref().unwrap().contains("bad.zip"));
+    }
+
+    #[test]
+    fn task_runner_does_not_emit_failed_event_for_already_cancelled_task() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        task_manager
+            .cancel_task(&task.task_id)
+            .expect("task can be cancelled");
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Fallback(
+                            PreviewImageRejectionReason::Missing,
+                        ),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                ),
+            )),
+        );
+
+        let error = runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect_err("cancelled task does not run");
+
+        assert!(error.events.is_empty());
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Cancelled)
+        );
+    }
+
     struct FakePreviewImageProcessor {
         result: PreviewImageProcessingResult,
     }
@@ -433,6 +640,18 @@ mod tests {
                 package_id: self.package_id.clone(),
                 sandbox_root: self.sandbox_root.clone(),
             })
+        }
+    }
+
+    struct FailingPackagePreparer;
+
+    impl ModImportPackagePreparer for FailingPackagePreparer {
+        fn prepare_package(
+            &self,
+            _task_id: &str,
+            _archive_path: &Path,
+        ) -> anyhow::Result<PreparedModPackage> {
+            anyhow::bail!("failed to prepare C:/Users/Alice/Mods/bad.zip")
         }
     }
 

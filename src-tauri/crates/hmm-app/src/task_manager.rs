@@ -76,6 +76,12 @@ pub enum TaskManagerError {
     TaskNotFound(String),
     #[error("task cannot be cancelled from status {status:?}: {task_id}")]
     TaskCannotBeCancelled { task_id: String, status: TaskStatus },
+    #[error("task cannot transition from {from:?} to {to:?}: {task_id}")]
+    TaskCannotTransition {
+        task_id: String,
+        from: TaskStatus,
+        to: TaskStatus,
+    },
     #[error("task store is unavailable")]
     TaskStoreUnavailable,
 }
@@ -113,6 +119,22 @@ impl TaskManager {
             .and_then(|tasks| tasks.get(task_id).map(|task| task.status))
     }
 
+    pub fn start_task(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
+        self.transition_task(task_id, TaskStatus::Running, &[TaskStatus::Queued])
+    }
+
+    pub fn complete_task(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
+        self.transition_task(task_id, TaskStatus::Completed, &[TaskStatus::Running])
+    }
+
+    pub fn fail_task(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
+        self.transition_task(
+            task_id,
+            TaskStatus::Failed,
+            &[TaskStatus::Queued, TaskStatus::Running],
+        )
+    }
+
     pub fn cancel_task(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
         let mut tasks = self
             .tasks
@@ -130,6 +152,33 @@ impl TaskManager {
         }
 
         task.status = TaskStatus::Cancelled;
+
+        Ok(task.clone())
+    }
+
+    fn transition_task(
+        &self,
+        task_id: &str,
+        to: TaskStatus,
+        allowed_from: &[TaskStatus],
+    ) -> Result<TaskSnapshot, TaskManagerError> {
+        let mut tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let task = tasks
+            .get_mut(task_id)
+            .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
+
+        if !allowed_from.contains(&task.status) {
+            return Err(TaskManagerError::TaskCannotTransition {
+                task_id: task.task_id.clone(),
+                from: task.status,
+                to,
+            });
+        }
+
+        task.status = to;
 
         Ok(task.clone())
     }
@@ -227,6 +276,44 @@ mod tests {
             );
             assert_eq!(manager.task_status(&task.task_id), Some(status));
         }
+    }
+
+    #[test]
+    fn task_lifecycle_moves_from_queued_to_running_to_completed() {
+        let manager = TaskManager::new();
+        let task = manager
+            .create_task(TaskKind::ModImport)
+            .expect("task can be created");
+
+        let running = manager.start_task(&task.task_id).expect("task can start");
+        assert_eq!(running.status, TaskStatus::Running);
+        assert_eq!(
+            manager.task_status(&task.task_id),
+            Some(TaskStatus::Running)
+        );
+
+        let completed = manager
+            .complete_task(&task.task_id)
+            .expect("task can complete");
+        assert_eq!(completed.status, TaskStatus::Completed);
+        assert_eq!(
+            manager.task_status(&task.task_id),
+            Some(TaskStatus::Completed)
+        );
+    }
+
+    #[test]
+    fn task_lifecycle_can_mark_running_task_failed() {
+        let manager = TaskManager::new();
+        let task = manager
+            .create_task(TaskKind::ModImport)
+            .expect("task can be created");
+
+        manager.start_task(&task.task_id).expect("task can start");
+        let failed = manager.fail_task(&task.task_id).expect("task can fail");
+
+        assert_eq!(failed.status, TaskStatus::Failed);
+        assert_eq!(manager.task_status(&task.task_id), Some(TaskStatus::Failed));
     }
 
     #[test]

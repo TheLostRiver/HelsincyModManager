@@ -23,15 +23,15 @@
 | `hmm-infra` magic bytes 与候选扫描 | 部分落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。当前实现没有把候选超量显式上报为 `TooManyCandidates`。 |
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
 | `hmm-infra` 缩略图缓存 | 部分落地 | 已有原子写入、opaque URL 返回、package 登记校验和 symlink 拒绝。后续仍需要补清理策略。 |
-| `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞；解压失败会清理本次 task sandbox。当前只覆盖 zip，尚未接入 Tauri task runner。 |
-| `hmm-app` 预览图服务 | 部分落地 | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；真实导入任务尚未接线。 |
-| `hmm-app` 导入 prepare 服务 | 部分落地 | 已有 `ModImportPrepareService` 骨架，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务并生成 `unpack.*` / `preview_image.*` 进度事件；尚未接入持久化或 Tauri task runner。 |
+| `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞；解压失败会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
+| `hmm-app` 预览图服务 | 部分落地 | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；已接入 prepare runner，但导入结果尚未持久化。 |
+| `hmm-app` 导入 prepare 服务 | 部分落地 | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态并生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件；尚未接入持久化。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO 和 `ImportPreviewImage -> PreviewImageDto` 映射测试。 |
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。后续仍需清理策略。 |
-| `start_import_mod_task` | 最小入口已落地 | 当前只校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`。prepare 服务和 zip 沙盒准备器已存在，但尚未由 command runner 执行解压、分析、持久化或预览图处理。 |
+| `start_import_mod_task` | prepare runner 已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件。尚未持久化导入分析结果，也尚未让 library/detail 查询返回真实 `previewImage`。 |
 | `get_mod_library` / `get_mod_detail` | 未落地 | 真实库查询和详情查询尚未返回 `previewImage`。 |
 | 前端类型与卡片展示 | 部分落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；当前仍主要消费 mock 数据。 |
-| 并发限制和事件 | 未完全落地 | 文档要求图片解码并发受限，并在预览图阶段发送 task progress；当前真实执行链路尚未接入。 |
+| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 尚未落地，运行中协作式取消仍待补。 |
 
 ## 已知差异与决策点
 
@@ -103,9 +103,9 @@ cargo test -p hmm-app preview_image
 cargo test -p hmm-app mod_import
 ```
 
-### 3. 接入真实导入分析任务
+### 3. 接入真实导入分析任务（prepare runner 已完成，持久化待补）
 
-当前已有 `ModImportPrepareService` 作为 app 层编排骨架。它只依赖 `ModImportPackagePreparer` port，不依赖 infra concrete type。infra 侧已提供 zip 的最小安全沙盒准备器；真实接线仍需要把它装配进 task runner，并补结果持久化。
+当前已有 `ModImportPrepareService` 和 `ModImportTaskRunner` 作为 app 层编排骨架。它们只依赖 `ModImportPackagePreparer` port，不依赖 infra concrete type。infra 侧已提供 zip 的最小安全沙盒准备器，并已通过 `AppState` 装配进后台 prepare runner；后续仍需要补结果持久化。
 
 后续将预览图服务接入 `mod_import` prepare 阶段的完整链路：
 

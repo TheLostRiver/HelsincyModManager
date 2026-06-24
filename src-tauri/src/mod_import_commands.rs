@@ -3,6 +3,7 @@ use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{StartImportModTaskRequest, TaskProgressEvent, TaskStarted};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 const MOD_IMPORT_QUEUED_PHASE: &str = "mod_import.queued";
@@ -15,14 +16,39 @@ pub fn start_import_mod_task(
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let archive_path = parse_archive_path(archive_path)?;
 
+    let runner_archive_path = archive_path.clone();
     let task = state
         .mod_import_tasks
         .start_import_mod_task(StartImportModTaskRequest { archive_path })
         .map_err(CommandErrorDto::from_mod_import_task_error)?;
 
     emit_task_progress(&app_handle, queued_event_for_started_task(&task).into())?;
+    spawn_prepare_runner(
+        Arc::clone(&state.mod_import_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_archive_path,
+    );
 
     Ok(task.into())
+}
+
+fn spawn_prepare_runner(
+    runner: Arc<hmm_app::ModImportTaskRunner>,
+    app_handle: AppHandle,
+    task_id: String,
+    archive_path: PathBuf,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_prepare_task(&task_id, archive_path) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
 }
 
 fn queued_event_for_started_task(task: &TaskStarted) -> TaskProgressEvent {
