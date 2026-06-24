@@ -243,6 +243,10 @@ impl ModImportTaskRunner {
         }
     }
 
+    pub fn maintain_thumbnail_cache_now(&self) {
+        self.maintain_thumbnail_cache();
+    }
+
     fn is_task_cancelled(&self, task_id: &str) -> bool {
         self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
     }
@@ -1231,6 +1235,74 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(32 * 1024 * 1024));
+        assert_eq!(
+            calls[0].retained,
+            vec![ThumbnailRef {
+                package_id: "pkg-1".to_owned(),
+                variant: "preview-768".to_owned(),
+                content_hash: "hash-1".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn manual_thumbnail_cache_maintenance_uses_retained_refs_and_settings() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        result_repository
+            .save_analysis(&StoredModImportAnalysis {
+                mod_id: "pkg-1".to_owned(),
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                display_name: "Mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Thumbnail {
+                    thumbnail_url: "thumbnail://pkg-1/preview-768/hash-1".to_owned(),
+                    width: 320,
+                    height: 180,
+                    content_hash: "hash-1".to_owned(),
+                },
+            })
+            .expect("seed analysis");
+        let thumbnail_cache_maintenance =
+            std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
+        let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
+            settings: AppSettings {
+                thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+            },
+        });
+        let runner = ModImportTaskRunner::new(
+            task_manager,
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    "unused-task",
+                    Path::new("C:/mods/unused.zip"),
+                    "pkg-unused",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Fallback(
+                            PreviewImageRejectionReason::Missing,
+                        ),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
+                ),
+            )),
+            result_repository,
+        )
+        .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance.clone())
+        .with_app_settings_repository(settings_repository);
+
+        runner.maintain_thumbnail_cache_now();
+
+        let calls = thumbnail_cache_maintenance
+            .calls
+            .lock()
+            .expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].max_bytes, Some(96 * 1024 * 1024));
         assert_eq!(
             calls[0].retained,
             vec![ThumbnailRef {
