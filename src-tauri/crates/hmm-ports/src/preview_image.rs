@@ -2,6 +2,7 @@ use crate::CancellationToken;
 use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PreviewImageSourceRef {
@@ -81,6 +82,7 @@ pub trait ThumbnailStore: Send + Sync {
 pub struct ThumbnailCacheMaintenanceRequest<'a> {
     pub retained: &'a [ThumbnailRef],
     pub max_bytes: Option<u64>,
+    pub max_age: Option<Duration>,
 }
 
 pub trait ThumbnailCacheMaintenance: Send + Sync {

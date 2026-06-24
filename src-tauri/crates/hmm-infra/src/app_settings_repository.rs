@@ -16,6 +16,8 @@ struct AppSettingsFile {
     version: u32,
     #[serde(default)]
     thumbnail_cache_max_bytes: Option<u64>,
+    #[serde(default)]
+    thumbnail_cache_max_age_days: Option<u32>,
 }
 
 impl Default for AppSettingsFile {
@@ -23,6 +25,7 @@ impl Default for AppSettingsFile {
         Self {
             version: CURRENT_SCHEMA_VERSION,
             thumbnail_cache_max_bytes: None,
+            thumbnail_cache_max_age_days: None,
         }
     }
 }
@@ -142,6 +145,7 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
 
         Ok(AppSettings {
             thumbnail_cache_max_bytes: config.thumbnail_cache_max_bytes,
+            thumbnail_cache_max_age_days: config.thumbnail_cache_max_age_days,
         })
     }
 
@@ -152,6 +156,7 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
         self.save_file(&AppSettingsFile {
             version: CURRENT_SCHEMA_VERSION,
             thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
+            thumbnail_cache_max_age_days: settings.thumbnail_cache_max_age_days,
         })
     }
 }
@@ -178,6 +183,7 @@ mod tests {
         let settings = repo.load_settings().expect("load settings");
 
         assert_eq!(settings.thumbnail_cache_max_bytes, None);
+        assert_eq!(settings.thumbnail_cache_max_age_days, None);
     }
 
     #[test]
@@ -188,7 +194,8 @@ mod tests {
             &path,
             r#"{
                 "version": 1,
-                "thumbnailCacheMaxBytes": 67108864
+                "thumbnailCacheMaxBytes": 67108864,
+                "thumbnailCacheMaxAgeDays": 30
             }"#,
         )
         .expect("write settings");
@@ -197,6 +204,7 @@ mod tests {
         let settings = repo.load_settings().expect("load settings");
 
         assert_eq!(settings.thumbnail_cache_max_bytes, Some(64 * 1024 * 1024));
+        assert_eq!(settings.thumbnail_cache_max_age_days, Some(30));
     }
 
     #[test]
@@ -206,11 +214,13 @@ mod tests {
 
         repo.save_settings(&AppSettings {
             thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
+            thumbnail_cache_max_age_days: Some(14),
         })
         .expect("save settings");
         let settings = repo.load_settings().expect("load settings");
 
         assert_eq!(settings.thumbnail_cache_max_bytes, Some(128 * 1024 * 1024));
+        assert_eq!(settings.thumbnail_cache_max_age_days, Some(14));
     }
 
     #[test]
