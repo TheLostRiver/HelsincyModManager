@@ -1,4 +1,5 @@
 mod app_settings;
+mod audit;
 mod cancellation;
 mod game_setup;
 mod mod_import;
@@ -9,6 +10,7 @@ use anyhow::Result;
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
 };
+pub use audit::{AuditLogEvent, AuditLogWriter};
 pub use cancellation::{CancellationToken, NeverCancelled};
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
