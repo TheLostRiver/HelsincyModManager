@@ -6,6 +6,7 @@ mod game_discovery;
 mod mod_import;
 mod preview_image;
 pub mod steam_discovery;
+mod text_log;
 
 use anyhow::Result;
 use hmm_ports::AppClock;
@@ -26,6 +27,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use steam_discovery::PlatformSteamRootProvider;
+pub use text_log::FileSystemTextLogReader;
 
 pub struct SystemClock;
 
