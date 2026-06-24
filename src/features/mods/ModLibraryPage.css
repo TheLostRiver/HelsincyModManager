@@ -1047,7 +1047,7 @@
   padding: 0 18px;
   font-size: 13px;
   color: #ffffff;
-  background: linear-gradient(135deg, #3b82f6 0%, #0056e0 100%);
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   border-color: transparent;
   box-shadow: 0 8px 18px rgba(0, 86, 224, 0.25);
   transition:
@@ -1061,7 +1061,7 @@
 .compact-action.is-primary:not(:disabled):hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(0, 86, 224, 0.35);
-  background: linear-gradient(135deg, #4f46e5 0%, #2563eb 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
 }
 
 .compact-action.is-primary:not(:disabled):active {
@@ -1278,12 +1278,12 @@
 }
 
 :root[data-color-scheme="dark"] .compact-action.is-primary {
-  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.3);
 }
 
 :root[data-color-scheme="dark"] .compact-action.is-primary:not(:disabled):hover {
-  background: linear-gradient(135deg, #93c5fd 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.45);
 }
 

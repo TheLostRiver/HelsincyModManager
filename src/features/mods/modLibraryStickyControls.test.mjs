@@ -130,6 +130,27 @@ test("quick action panel no longer owns sticky positioning directly", () => {
   assert.match(compactPanelBody, /min-width:\s*0;/);
 });
 
+test("primary add action keeps contrast-safe blue gradients for white text", () => {
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const primaryBody = getRuleBody(css, ".compact-action.is-primary");
+  const primaryHoverBody = getRuleBody(css, ".compact-action.is-primary:not(:disabled):hover");
+  const darkPrimaryBody = getRuleBody(css, ':root[data-color-scheme="dark"] .compact-action.is-primary');
+  const darkPrimaryHoverBody = getRuleBody(
+    css,
+    ':root[data-color-scheme="dark"] .compact-action.is-primary:not(:disabled):hover',
+  );
+
+  for (const body of [primaryBody, primaryHoverBody, darkPrimaryBody, darkPrimaryHoverBody]) {
+    assert.doesNotMatch(body, /#3b82f6|#60a5fa|#93c5fd/i);
+  }
+
+  assert.match(primaryBody, /#2563eb/);
+  assert.match(primaryBody, /#1d4ed8/);
+  assert.match(primaryHoverBody, /#1e40af/);
+  assert.match(darkPrimaryBody, /#2563eb/);
+  assert.match(darkPrimaryHoverBody, /#1e40af/);
+});
+
 test("tech view mod cards are allowed to grow to their full data panel height", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
   const contentBody = getRuleBody(css, ".mod-library__content");
