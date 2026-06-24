@@ -304,7 +304,7 @@ AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一�
 
 当前后端还提供 `export_preview_image_diagnostics` 命令，用于写入一个受控的预览图诊断 zip。该命令不接受输出路径参数；后端固定写入 app data 下的 `logs/diagnostics/`，返回文件名和导出大小摘要。当前 zip 只包含 `preview-image-diagnostics.json`，内容来自上述脱敏聚合摘要和 `exportCategories`，不包含缩略图文件、`thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、本地路径、README 全文、原始第三方 Mod 包内容或原始日志。导出成功后会写入最小 Audit Log 事件，审计字段仅包含操作名、类别、结果、导出文件名/ID、大小和聚合计数；若诊断 zip 写入失败，会写入失败 Audit Log 事件，审计字段仅包含操作名、类别、失败结果、导出文件名、稳定错误分类和聚合计数，不包含原始错误文本或底层路径；若审计写入失败，命令不返回成功，避免出现无审计证据的成功导出。
 
-这只是预览图摘要诊断包基础，不等同于完整日志/审计诊断包系统。当前 Audit Log 只记录该导出动作的安全摘要，不把 Audit Log 本身纳入该预览图 zip。后端已有最小审计日志读取 port、infra 实现和 app 层 `AuditLogDiagnosticsExportService`，可以读取最近 N 条已校验审计事件并写入受控 `audit-log-diagnostics.json` 诊断包，同时为该导出动作写入最小 Audit Log 事件；该服务尚未暴露为 Tauri command，也未改变当前预览图诊断 zip。后续若要导出 App Log、Task Log、Audit Log、平台摘要或更多故障排查材料，仍必须继续遵守 [日志与审计设计](LOGGING.md) 的统一脱敏、类别确认和用户主动导出规则。
+这只是预览图摘要诊断包基础，不等同于完整日志/审计诊断包系统。当前 Audit Log 只记录该导出动作的安全摘要，不把 Audit Log 本身纳入该预览图 zip。后端已有最小审计日志读取 port、infra 实现和 app 层 `AuditLogDiagnosticsExportService`，可以读取最近 N 条已校验审计事件并写入受控 `audit-log-diagnostics.json` 诊断包，同时为该导出动作写入最小 Audit Log 事件；单次导出最多包含 200 条审计事件，避免诊断包无界膨胀。该服务尚未暴露为 Tauri command，也未改变当前预览图诊断 zip。后续若要导出 App Log、Task Log、Audit Log、平台摘要或更多故障排查材料，仍必须继续遵守 [日志与审计设计](LOGGING.md) 的统一脱敏、类别确认和用户主动导出规则。
 
 ## 前端 DTO
 
