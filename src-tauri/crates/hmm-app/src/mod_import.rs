@@ -91,6 +91,20 @@ pub struct ModDetail {
     pub preview_image: ImportPreviewImage,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewImageDiagnosticsSummary {
+    pub total_imported_mods: usize,
+    pub thumbnail_count: usize,
+    pub fallback_count: usize,
+    pub fallback_reasons: Vec<PreviewImageFallbackDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewImageFallbackDiagnostic {
+    pub reason: PreviewImageRejectionReason,
+    pub count: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModLibraryStatus {
     Disabled,
@@ -299,6 +313,11 @@ impl ModLibraryService {
             .get_analysis(mod_id)?
             .map(detail_from_stored))
     }
+
+    pub fn get_preview_image_diagnostics(&self) -> anyhow::Result<PreviewImageDiagnosticsSummary> {
+        let records = self.result_repository.list_analysis()?;
+        Ok(preview_image_diagnostics_from_stored(&records))
+    }
 }
 
 pub struct ModImportPrepareService {
@@ -377,6 +396,46 @@ fn retained_thumbnail_refs(records: &[StoredModImportAnalysis]) -> Vec<Thumbnail
             StoredImportPreviewImage::Fallback { .. } => None,
         })
         .collect()
+}
+
+fn preview_image_diagnostics_from_stored(
+    records: &[StoredModImportAnalysis],
+) -> PreviewImageDiagnosticsSummary {
+    let mut summary = PreviewImageDiagnosticsSummary {
+        total_imported_mods: records.len(),
+        thumbnail_count: 0,
+        fallback_count: 0,
+        fallback_reasons: Vec::new(),
+    };
+
+    for record in records {
+        match &record.preview_image {
+            StoredImportPreviewImage::Thumbnail { .. } => {
+                summary.thumbnail_count += 1;
+            }
+            StoredImportPreviewImage::Fallback { reason } => {
+                summary.fallback_count += 1;
+                increment_fallback_reason(&mut summary.fallback_reasons, *reason);
+            }
+        }
+    }
+
+    summary
+}
+
+fn increment_fallback_reason(
+    fallback_reasons: &mut Vec<PreviewImageFallbackDiagnostic>,
+    reason: PreviewImageRejectionReason,
+) {
+    if let Some(entry) = fallback_reasons
+        .iter_mut()
+        .find(|entry| entry.reason == reason)
+    {
+        entry.count += 1;
+        return;
+    }
+
+    fallback_reasons.push(PreviewImageFallbackDiagnostic { reason, count: 1 });
 }
 
 fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
@@ -1410,6 +1469,82 @@ mod tests {
         );
         assert_eq!(detail.id, "pkg-1");
         assert_eq!(detail.preview_image, library[0].preview_image);
+    }
+
+    #[test]
+    fn library_service_summarizes_preview_image_diagnostics_without_content() {
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        for record in [
+            StoredModImportAnalysis {
+                mod_id: "pkg-thumbnail".to_owned(),
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-thumbnail".to_owned(),
+                display_name: "Thumbnail Mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Thumbnail {
+                    thumbnail_url: "thumbnail://pkg-thumbnail/preview-768/hash-1".to_owned(),
+                    width: 320,
+                    height: 180,
+                    content_hash: "hash-1".to_owned(),
+                },
+            },
+            StoredModImportAnalysis {
+                mod_id: "pkg-missing".to_owned(),
+                task_id: "task-2".to_owned(),
+                package_id: "pkg-missing".to_owned(),
+                display_name: "Missing Preview".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::Missing,
+                },
+            },
+            StoredModImportAnalysis {
+                mod_id: "pkg-decode".to_owned(),
+                task_id: "task-3".to_owned(),
+                package_id: "pkg-decode".to_owned(),
+                display_name: "Decode Failed".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::DecodeFailed,
+                },
+            },
+            StoredModImportAnalysis {
+                mod_id: "pkg-decode-2".to_owned(),
+                task_id: "task-4".to_owned(),
+                package_id: "pkg-decode-2".to_owned(),
+                display_name: "Decode Failed Again".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::DecodeFailed,
+                },
+            },
+        ] {
+            result_repository
+                .save_analysis(&record)
+                .expect("save analysis");
+        }
+        let service = ModLibraryService::new(result_repository);
+
+        let summary = service
+            .get_preview_image_diagnostics()
+            .expect("diagnostics query succeeds");
+
+        assert_eq!(summary.total_imported_mods, 4);
+        assert_eq!(summary.thumbnail_count, 1);
+        assert_eq!(summary.fallback_count, 3);
+        assert_eq!(
+            summary.fallback_reasons,
+            vec![
+                PreviewImageFallbackDiagnostic {
+                    reason: PreviewImageRejectionReason::Missing,
+                    count: 1,
+                },
+                PreviewImageFallbackDiagnostic {
+                    reason: PreviewImageRejectionReason::DecodeFailed,
+                    count: 2,
+                },
+            ]
+        );
     }
 
     #[test]

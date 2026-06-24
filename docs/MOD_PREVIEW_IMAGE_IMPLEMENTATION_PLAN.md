@@ -31,6 +31,7 @@
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`。 |
+| `get_preview_image_diagnostics` | 后端入口已落地 | 基于已持久化导入结果聚合预览图诊断摘要，只返回总导入数、缩略图数、fallback 数和 fallback reason 计数；不导出第三方图片内容、`thumbnailUrl`、缓存路径、sandbox 路径或本地路径。 |
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
 | `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 后端设置；`null`/缺省表示回退默认上限，`0` 会被拒绝；不暴露 settings 文件路径。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |

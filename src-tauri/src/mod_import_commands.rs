@@ -1,5 +1,6 @@
 use crate::dto::{
-    AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, TaskStartedDto,
+    AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, PreviewImageDiagnosticsDto,
+    TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -59,6 +60,18 @@ pub fn get_mod_detail(
         .map_err(|_| mod_library_unavailable_error())?;
 
     Ok(detail.map(Into::into))
+}
+
+#[tauri::command]
+pub fn get_preview_image_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<PreviewImageDiagnosticsDto, CommandErrorDto> {
+    let summary = state
+        .mod_library
+        .get_preview_image_diagnostics()
+        .map_err(|_| mod_library_unavailable_error())?;
+
+    Ok(summary.into())
 }
 
 #[tauri::command]
