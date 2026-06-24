@@ -1,5 +1,8 @@
 use hmm_core::PreviewImageRejectionReason;
-use hmm_ports::{ModImportPackagePreparer, PreviewImageProcessingResult, ThumbnailStore};
+use hmm_ports::{
+    ModImportPackagePreparer, ModImportResultRepository, PreviewImageProcessingResult,
+    StoredImportPreviewImage, StoredModImportAnalysis, ThumbnailStore,
+};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -52,6 +55,29 @@ pub struct ModImportTaskRunError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModLibraryItem {
+    pub id: String,
+    pub name: String,
+    pub status: ModLibraryStatus,
+    pub size_label: String,
+    pub category_labels: Vec<String>,
+    pub preview_image: ImportPreviewImage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModDetail {
+    pub id: String,
+    pub name: String,
+    pub package_id: String,
+    pub preview_image: ImportPreviewImage,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModLibraryStatus {
+    Disabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportPreviewImage {
     Thumbnail {
         thumbnail_url: String,
@@ -67,16 +93,19 @@ pub enum ImportPreviewImage {
 pub struct ModImportTaskRunner {
     task_manager: Arc<crate::TaskManager>,
     prepare_service: Arc<ModImportPrepareService>,
+    result_repository: Arc<dyn ModImportResultRepository>,
 }
 
 impl ModImportTaskRunner {
     pub fn new(
         task_manager: Arc<crate::TaskManager>,
         prepare_service: Arc<ModImportPrepareService>,
+        result_repository: Arc<dyn ModImportResultRepository>,
     ) -> Self {
         Self {
             task_manager,
             prepare_service,
+            result_repository,
         }
     }
 
@@ -94,7 +123,20 @@ impl ModImportTaskRunner {
             archive_path,
         };
         let mut events = match self.prepare_service.prepare_import(request) {
-            Ok(result) => result.events,
+            Ok(result) => {
+                if self
+                    .result_repository
+                    .save_analysis(&stored_analysis_from_result(&result.analysis))
+                    .is_err()
+                {
+                    let _ = self.task_manager.fail_task(task_id);
+                    return Err(ModImportTaskRunError {
+                        events: vec![failed_event(task_id)],
+                    });
+                }
+
+                result.events
+            }
             Err(_) => {
                 let _ = self.task_manager.fail_task(task_id);
                 return Err(ModImportTaskRunError {
@@ -123,9 +165,97 @@ impl ModImportTaskRunner {
     }
 }
 
+pub struct ModLibraryService {
+    result_repository: Arc<dyn ModImportResultRepository>,
+}
+
+impl ModLibraryService {
+    pub fn new(result_repository: Arc<dyn ModImportResultRepository>) -> Self {
+        Self { result_repository }
+    }
+
+    pub fn get_mod_library(&self) -> anyhow::Result<Vec<ModLibraryItem>> {
+        let records = self.result_repository.list_analysis()?;
+        Ok(records.into_iter().map(library_item_from_stored).collect())
+    }
+
+    pub fn get_mod_detail(&self, mod_id: &str) -> anyhow::Result<Option<ModDetail>> {
+        Ok(self
+            .result_repository
+            .get_analysis(mod_id)?
+            .map(detail_from_stored))
+    }
+}
+
 pub struct ModImportPrepareService {
     package_preparer: Box<dyn ModImportPackagePreparer>,
     analysis_service: ModImportAnalysisService,
+}
+
+fn stored_analysis_from_result(result: &ModImportAnalysisResult) -> StoredModImportAnalysis {
+    StoredModImportAnalysis {
+        mod_id: result.package_id.clone(),
+        task_id: result.task_id.clone(),
+        package_id: result.package_id.clone(),
+        display_name: result.package_id.clone(),
+        preview_image: stored_preview_from_import(&result.preview_image),
+    }
+}
+
+fn stored_preview_from_import(preview_image: &ImportPreviewImage) -> StoredImportPreviewImage {
+    match preview_image {
+        ImportPreviewImage::Thumbnail {
+            thumbnail_url,
+            width,
+            height,
+            content_hash,
+        } => StoredImportPreviewImage::Thumbnail {
+            thumbnail_url: thumbnail_url.clone(),
+            width: *width,
+            height: *height,
+            content_hash: content_hash.clone(),
+        },
+        ImportPreviewImage::Fallback { reason } => {
+            StoredImportPreviewImage::Fallback { reason: *reason }
+        }
+    }
+}
+
+fn import_preview_from_stored(preview_image: StoredImportPreviewImage) -> ImportPreviewImage {
+    match preview_image {
+        StoredImportPreviewImage::Thumbnail {
+            thumbnail_url,
+            width,
+            height,
+            content_hash,
+        } => ImportPreviewImage::Thumbnail {
+            thumbnail_url,
+            width,
+            height,
+            content_hash,
+        },
+        StoredImportPreviewImage::Fallback { reason } => ImportPreviewImage::Fallback { reason },
+    }
+}
+
+fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
+    ModLibraryItem {
+        id: record.mod_id,
+        name: record.display_name,
+        status: ModLibraryStatus::Disabled,
+        size_label: "导入完成".to_owned(),
+        category_labels: Vec::new(),
+        preview_image: import_preview_from_stored(record.preview_image),
+    }
+}
+
+fn detail_from_stored(record: StoredModImportAnalysis) -> ModDetail {
+    ModDetail {
+        id: record.mod_id,
+        name: record.display_name,
+        package_id: record.package_id,
+        preview_image: import_preview_from_stored(record.preview_image),
+    }
 }
 
 impl ModImportPrepareService {
@@ -256,10 +386,12 @@ mod tests {
     use super::*;
     use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
-        ModImportPackagePreparer, PreparedModPackage, PreviewImageProcessingResult,
-        ProcessedPreviewImage, ThumbnailRef, ThumbnailStore,
+        ModImportPackagePreparer, ModImportResultRepository, PreparedModPackage,
+        PreviewImageProcessingResult, ProcessedPreviewImage, StoredImportPreviewImage,
+        StoredModImportAnalysis, ThumbnailRef, ThumbnailStore,
     };
     use std::path::Path;
+    use std::sync::Mutex;
 
     #[test]
     fn analyze_sandbox_includes_preview_thumbnail() {
@@ -467,6 +599,7 @@ mod tests {
         let task = task_manager
             .create_task(crate::TaskKind::ModImport)
             .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
         let runner = ModImportTaskRunner::new(
             std::sync::Arc::clone(&task_manager),
             std::sync::Arc::new(ModImportPrepareService::new(
@@ -485,6 +618,7 @@ mod tests {
                     Box::new(FakeThumbnailStore::default()),
                 ),
             )),
+            result_repository,
         );
 
         let events = runner
@@ -509,6 +643,99 @@ mod tests {
     }
 
     #[test]
+    fn task_runner_persists_prepare_analysis_for_library_queries() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
+                            thumbnail_ref: ThumbnailRef {
+                                package_id: "pkg-1".to_owned(),
+                                variant: "preview-768".to_owned(),
+                                content_hash: "hash-1".to_owned(),
+                            },
+                            width: 320,
+                            height: 180,
+                            content_hash: "hash-1".to_owned(),
+                        }),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                ),
+            )),
+            result_repository.clone(),
+        );
+
+        runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect("runner succeeds");
+
+        let stored = result_repository
+            .get_analysis("pkg-1")
+            .expect("repository read succeeds")
+            .expect("analysis was saved");
+
+        assert_eq!(stored.mod_id, "pkg-1");
+        assert_eq!(stored.package_id, "pkg-1");
+        assert_eq!(stored.task_id, task.task_id);
+        assert_eq!(
+            stored.preview_image,
+            StoredImportPreviewImage::Thumbnail {
+                thumbnail_url: "thumbnail://pkg-1/preview-768/hash-1".to_owned(),
+                width: 320,
+                height: 180,
+                content_hash: "hash-1".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn library_service_returns_library_and_detail_with_preview_image() {
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        result_repository
+            .save_analysis(&StoredModImportAnalysis {
+                mod_id: "pkg-1".to_owned(),
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                display_name: "pkg-1".to_owned(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::Missing,
+                },
+            })
+            .expect("save analysis");
+        let service = ModLibraryService::new(result_repository);
+
+        let library = service.get_mod_library().expect("library query succeeds");
+        let detail = service
+            .get_mod_detail("pkg-1")
+            .expect("detail query succeeds")
+            .expect("detail exists");
+
+        assert_eq!(library.len(), 1);
+        assert_eq!(library[0].id, "pkg-1");
+        assert_eq!(library[0].name, "pkg-1");
+        assert_eq!(
+            library[0].preview_image,
+            ImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            }
+        );
+        assert_eq!(detail.id, "pkg-1");
+        assert_eq!(detail.preview_image, library[0].preview_image);
+    }
+
+    #[test]
     fn task_runner_marks_task_failed_without_exposing_paths() {
         let task_manager = std::sync::Arc::new(crate::TaskManager::new());
         let task = task_manager
@@ -528,6 +755,7 @@ mod tests {
                     Box::new(FakeThumbnailStore::default()),
                 ),
             )),
+            std::sync::Arc::new(FakeModImportResultRepository::default()),
         );
 
         let error = runner
@@ -576,6 +804,7 @@ mod tests {
                     Box::new(FakeThumbnailStore::default()),
                 ),
             )),
+            std::sync::Arc::new(FakeModImportResultRepository::default()),
         );
 
         let error = runner
@@ -680,6 +909,34 @@ mod tests {
                 "thumbnail://{}/{}/{}",
                 thumbnail_ref.package_id, thumbnail_ref.variant, thumbnail_ref.content_hash
             ))
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeModImportResultRepository {
+        records: Mutex<Vec<StoredModImportAnalysis>>,
+    }
+
+    impl ModImportResultRepository for FakeModImportResultRepository {
+        fn save_analysis(&self, analysis: &StoredModImportAnalysis) -> anyhow::Result<()> {
+            let mut records = self.records.lock().expect("records lock");
+            records.retain(|record| record.mod_id != analysis.mod_id);
+            records.push(analysis.clone());
+            Ok(())
+        }
+
+        fn list_analysis(&self) -> anyhow::Result<Vec<StoredModImportAnalysis>> {
+            Ok(self.records.lock().expect("records lock").clone())
+        }
+
+        fn get_analysis(&self, mod_id: &str) -> anyhow::Result<Option<StoredModImportAnalysis>> {
+            Ok(self
+                .records
+                .lock()
+                .expect("records lock")
+                .iter()
+                .find(|record| record.mod_id == mod_id)
+                .cloned())
         }
     }
 

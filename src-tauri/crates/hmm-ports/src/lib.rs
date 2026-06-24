@@ -9,7 +9,10 @@ pub use game_setup::{
     GameConfigRepositoryError, GameConfigRepositoryResult, GameDirectoryProbe,
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
-pub use mod_import::{ModImportPackagePreparer, PreparedModPackage};
+pub use mod_import::{
+    ModImportPackagePreparer, ModImportResultRepository, PreparedModPackage,
+    StoredImportPreviewImage, StoredModImportAnalysis,
+};
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessingResult,
     PreviewImageProcessor, PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailRef,

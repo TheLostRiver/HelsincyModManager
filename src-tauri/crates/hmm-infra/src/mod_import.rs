@@ -1,9 +1,208 @@
 use anyhow::{Context, Result};
-use hmm_ports::{ModImportPackagePreparer, PreparedModPackage};
+use fs2::FileExt;
+use hmm_ports::{
+    ModImportPackagePreparer, ModImportResultRepository, PreparedModPackage,
+    StoredModImportAnalysis,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fs;
-use std::io;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const MOD_IMPORT_RESULTS_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ModImportResultsFile {
+    version: u32,
+    records: Vec<StoredModImportAnalysis>,
+}
+
+impl Default for ModImportResultsFile {
+    fn default() -> Self {
+        Self {
+            version: MOD_IMPORT_RESULTS_SCHEMA_VERSION,
+            records: Vec::new(),
+        }
+    }
+}
+
+pub struct JsonModImportResultRepository {
+    file_path: PathBuf,
+    write_lock: Mutex<()>,
+}
+
+impl JsonModImportResultRepository {
+    pub fn new(file_path: PathBuf) -> Self {
+        Self {
+            file_path,
+            write_lock: Mutex::new(()),
+        }
+    }
+
+    fn load_file(&self) -> Result<ModImportResultsFile> {
+        if !self.file_path.exists() {
+            return Ok(ModImportResultsFile::default());
+        }
+
+        let bytes = fs::read(&self.file_path).context("failed to read mod import result store")?;
+        let content = String::from_utf8(bytes).context("mod import result store is corrupted")?;
+        let file: ModImportResultsFile =
+            serde_json::from_str(&content).context("mod import result store is corrupted")?;
+
+        if file.version != MOD_IMPORT_RESULTS_SCHEMA_VERSION {
+            anyhow::bail!("mod import result store is corrupted");
+        }
+
+        Ok(file)
+    }
+
+    fn save_file(&self, file: &ModImportResultsFile) -> Result<()> {
+        if let Some(parent) = self.file_path.parent() {
+            fs::create_dir_all(parent).context("failed to create mod import result directory")?;
+        }
+
+        let serialized =
+            serde_json::to_string_pretty(file).context("failed to serialize mod import results")?;
+        let temp_path = self.unique_temp_path();
+
+        {
+            let mut temp_file =
+                File::create(&temp_path).context("failed to create mod import result temp file")?;
+            temp_file
+                .write_all(serialized.as_bytes())
+                .context("failed to write mod import result temp file")?;
+            temp_file
+                .sync_all()
+                .context("failed to sync mod import result temp file")?;
+        }
+
+        fs::rename(&temp_path, &self.file_path).context("failed to replace mod import results")?;
+        self.sync_parent_directory()?;
+
+        Ok(())
+    }
+
+    fn sync_parent_directory(&self) -> Result<()> {
+        let Some(parent) = self.file_path.parent() else {
+            return Ok(());
+        };
+
+        open_directory_for_sync(parent)
+            .and_then(|directory| directory.sync_all())
+            .context("failed to sync mod import result directory")?;
+
+        Ok(())
+    }
+
+    fn lock_file_path(&self) -> PathBuf {
+        let lock_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("{name}.lock"))
+            .unwrap_or_else(|| "mod-import-results.json.lock".to_owned());
+
+        self.file_path
+            .parent()
+            .map(|parent| parent.join(&lock_name))
+            .unwrap_or_else(|| PathBuf::from(lock_name))
+    }
+
+    fn unique_temp_path(&self) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let temp_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("{name}.{}.{}.tmp", std::process::id(), nonce))
+            .unwrap_or_else(|| {
+                format!(
+                    "mod-import-results.{}.{}.json.tmp",
+                    std::process::id(),
+                    nonce
+                )
+            });
+
+        self.file_path
+            .parent()
+            .map(|parent| parent.join(&temp_name))
+            .unwrap_or_else(|| PathBuf::from(temp_name))
+    }
+
+    fn open_lock_file(&self) -> Result<File> {
+        if let Some(parent) = self.file_path.parent() {
+            fs::create_dir_all(parent).context("failed to create mod import result directory")?;
+        }
+
+        OpenOptions::new()
+            .create(true)
+            .read(true)
+            .truncate(false)
+            .write(true)
+            .open(self.lock_file_path())
+            .context("failed to open mod import result lock")
+    }
+}
+
+#[cfg(windows)]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
+
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+}
+
+#[cfg(not(windows))]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    File::open(path)
+}
+
+impl ModImportResultRepository for JsonModImportResultRepository {
+    fn save_analysis(&self, analysis: &StoredModImportAnalysis) -> Result<()> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("mod import result write lock poisoned"))?;
+        let lock_file = self.open_lock_file()?;
+        lock_file
+            .lock_exclusive()
+            .context("failed to lock mod import results")?;
+
+        let mut file = self.load_file()?;
+        file.records
+            .retain(|record| record.mod_id != analysis.mod_id);
+        file.records.push(analysis.clone());
+        let result = self.save_file(&file);
+        let unlock_result = lock_file
+            .unlock()
+            .context("failed to unlock mod import results");
+
+        result.and(unlock_result)
+    }
+
+    fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
+        Ok(self.load_file()?.records)
+    }
+
+    fn get_analysis(&self, mod_id: &str) -> Result<Option<StoredModImportAnalysis>> {
+        Ok(self
+            .load_file()?
+            .records
+            .into_iter()
+            .find(|record| record.mod_id == mod_id))
+    }
+}
 
 pub struct ZipModImportPackagePreparer {
     sandbox_root: PathBuf,
@@ -136,7 +335,11 @@ fn safe_zip_entry_path(entry_name: &str) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hmm_ports::ModImportPackagePreparer;
+    use hmm_core::PreviewImageRejectionReason;
+    use hmm_ports::{
+        ModImportPackagePreparer, ModImportResultRepository, StoredImportPreviewImage,
+        StoredModImportAnalysis,
+    };
     use std::fs;
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -232,6 +435,71 @@ mod tests {
     }
 
     #[test]
+    fn missing_mod_import_result_file_loads_empty_library() {
+        let repo = JsonModImportResultRepository::new(test_file("missing-results"));
+
+        let records = repo.list_analysis().expect("list analysis");
+
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn saves_and_loads_mod_import_analysis_results() {
+        let repo = JsonModImportResultRepository::new(test_file("save-results"));
+
+        repo.save_analysis(&stored_analysis(
+            "pkg-1",
+            PreviewImageRejectionReason::Missing,
+        ))
+        .expect("save analysis");
+
+        let records = repo.list_analysis().expect("list analysis");
+        let loaded = repo
+            .get_analysis("pkg-1")
+            .expect("get analysis")
+            .expect("record exists");
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(loaded.mod_id, "pkg-1");
+        assert_eq!(
+            loaded.preview_image,
+            StoredImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            }
+        );
+    }
+
+    #[test]
+    fn saving_same_mod_import_result_replaces_existing_record() {
+        let repo = JsonModImportResultRepository::new(test_file("replace-results"));
+
+        repo.save_analysis(&stored_analysis(
+            "pkg-1",
+            PreviewImageRejectionReason::Missing,
+        ))
+        .expect("first save");
+        repo.save_analysis(&stored_analysis(
+            "pkg-1",
+            PreviewImageRejectionReason::DecodeFailed,
+        ))
+        .expect("second save");
+
+        let records = repo.list_analysis().expect("list analysis");
+        let loaded = repo
+            .get_analysis("pkg-1")
+            .expect("get analysis")
+            .expect("record exists");
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            loaded.preview_image,
+            StoredImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::DecodeFailed,
+            }
+        );
+    }
+
+    #[test]
     fn cleans_task_sandbox_when_extraction_fails() {
         let temp = tempfile::tempdir().expect("temp dir");
         let archive_path = temp.path().join("partial.zip");
@@ -275,5 +543,33 @@ mod tests {
         zip.add_symlink_from_path(PathBuf::from(name), PathBuf::from(target), options)
             .expect("add symlink");
         zip.finish().expect("finish zip");
+    }
+
+    fn test_file(name: &str) -> PathBuf {
+        let unique = format!(
+            "hmm-mod-import-results-{}-{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        std::env::temp_dir()
+            .join(unique)
+            .join("mod-import")
+            .join("results.json")
+    }
+
+    fn stored_analysis(
+        mod_id: &str,
+        reason: PreviewImageRejectionReason,
+    ) -> StoredModImportAnalysis {
+        StoredModImportAnalysis {
+            mod_id: mod_id.to_owned(),
+            task_id: "task-1".to_owned(),
+            package_id: mod_id.to_owned(),
+            display_name: mod_id.to_owned(),
+            preview_image: StoredImportPreviewImage::Fallback { reason },
+        }
     }
 }

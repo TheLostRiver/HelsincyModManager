@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
-import type { ModLibraryItem } from "./modsLibraryData";
+import type { ModLibraryItem } from "./modLibraryTypes";
 
 type ModPosterCardProps = {
   item: ModLibraryItem;
