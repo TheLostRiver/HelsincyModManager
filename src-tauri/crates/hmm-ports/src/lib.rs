@@ -4,6 +4,7 @@ mod cancellation;
 mod game_setup;
 mod mod_import;
 mod preview_image;
+mod text_log;
 
 use anyhow::Result;
 
@@ -30,6 +31,7 @@ pub use preview_image::{
     PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailCacheMaintenance,
     ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
+pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
 
 pub trait AppClock: Send + Sync {
     fn now_unix_millis(&self) -> Result<u128>;
