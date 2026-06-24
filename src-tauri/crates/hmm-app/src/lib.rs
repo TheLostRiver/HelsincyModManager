@@ -1,5 +1,6 @@
 mod app_settings;
 mod game_setup;
+mod log_diagnostics;
 mod mod_import;
 mod mod_import_diagnostics;
 mod mod_import_task;
@@ -10,6 +11,7 @@ pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
 };
+pub use log_diagnostics::{AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService};
 pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModDetail, ModImportAnalysisRequest,
     ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
