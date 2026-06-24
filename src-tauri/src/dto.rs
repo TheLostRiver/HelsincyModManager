@@ -1,6 +1,7 @@
 use hmm_app::{
-    GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
-    ModImportTaskError, TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
+    GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage, ModDetail,
+    ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
+    TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
@@ -138,6 +139,32 @@ pub struct GameCandidateDto {
     pub errors: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModLibraryItemDto {
+    pub id: String,
+    pub name: String,
+    pub size_label: String,
+    pub status: ModInstallStatusDto,
+    pub category_labels: Vec<String>,
+    pub preview_image: PreviewImageDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModDetailDto {
+    pub id: String,
+    pub name: String,
+    pub package_id: String,
+    pub preview_image: PreviewImageDto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModInstallStatusDto {
+    Disabled,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(
@@ -201,6 +228,38 @@ impl From<ImportPreviewImage> for PreviewImageDto {
             ImportPreviewImage::Fallback { reason } => Self::Fallback {
                 reason: reason.into(),
             },
+        }
+    }
+}
+
+impl From<ModLibraryItem> for ModLibraryItemDto {
+    fn from(item: ModLibraryItem) -> Self {
+        Self {
+            id: item.id,
+            name: item.name,
+            size_label: item.size_label,
+            status: item.status.into(),
+            category_labels: item.category_labels,
+            preview_image: item.preview_image.into(),
+        }
+    }
+}
+
+impl From<ModDetail> for ModDetailDto {
+    fn from(detail: ModDetail) -> Self {
+        Self {
+            id: detail.id,
+            name: detail.name,
+            package_id: detail.package_id,
+            preview_image: detail.preview_image.into(),
+        }
+    }
+}
+
+impl From<ModLibraryStatus> for ModInstallStatusDto {
+    fn from(status: ModLibraryStatus) -> Self {
+        match status {
+            ModLibraryStatus::Disabled => Self::Disabled,
         }
     }
 }
@@ -472,6 +531,56 @@ mod preview_image_tests {
 
         assert_eq!(value["kind"], "fallback");
         assert_eq!(value["reason"], "decode_failed");
+    }
+
+    #[test]
+    fn serializes_mod_library_item_with_preview_image() {
+        let dto: ModLibraryItemDto = hmm_app::ModLibraryItem {
+            id: "pkg-1".to_owned(),
+            name: "pkg-1".to_owned(),
+            size_label: "导入完成".to_owned(),
+            status: hmm_app::ModLibraryStatus::Disabled,
+            category_labels: Vec::new(),
+            preview_image: ImportPreviewImage::Thumbnail {
+                thumbnail_url: "thumbnail://pkg-1/preview/hash".to_owned(),
+                width: 320,
+                height: 180,
+                content_hash: "hash".to_owned(),
+            },
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["id"], "pkg-1");
+        assert_eq!(value["name"], "pkg-1");
+        assert_eq!(value["sizeLabel"], "导入完成");
+        assert_eq!(value["status"], "disabled");
+        assert_eq!(value["previewImage"]["kind"], "thumbnail");
+        assert_eq!(
+            value["previewImage"]["thumbnailUrl"],
+            "thumbnail://pkg-1/preview/hash"
+        );
+    }
+
+    #[test]
+    fn serializes_mod_detail_with_preview_image() {
+        let dto: ModDetailDto = hmm_app::ModDetail {
+            id: "pkg-1".to_owned(),
+            name: "pkg-1".to_owned(),
+            package_id: "pkg-1".to_owned(),
+            preview_image: ImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            },
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["id"], "pkg-1");
+        assert_eq!(value["packageId"], "pkg-1");
+        assert_eq!(value["previewImage"]["kind"], "fallback");
+        assert_eq!(value["previewImage"]["reason"], "missing");
     }
 }
 

@@ -3,24 +3,8 @@
 // 当前生成数量：72
 // 现阶段使用本地 mock 数据还原设计稿，后续由 Mod 仓储或视图模型提供真实数据。
 // 业务规则（安装、冲突、依赖判定）不在此处推断，仅承载展示字段。
-import type { PreviewImage } from "./modPreviewImageTypes";
-
-export type ModInstallStatus = "installed" | "disabled" | "conflict";
-
-export type ModLibraryItem = {
-  id: string;
-  name: string;
-  author?: string;
-  versionLabel?: string;
-  sizeLabel: string;
-  status: ModInstallStatus;
-  categoryLabels: string[];
-  // 海报背景的渐变色，用于无预览图时的占位。
-  // 设计稿中每张卡片有独立色调，这里保留为语义化的色卡描述。
-  posterFrom: string;
-  posterTo: string;
-  previewImage?: PreviewImage;
-};
+import type { ModLibraryItem } from "./modLibraryTypes";
+export type { ModInstallStatus, ModLibraryItem } from "./modLibraryTypes";
 
 export const modLibraryItems: ModLibraryItem[] = [
   {

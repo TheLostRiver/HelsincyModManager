@@ -1,4 +1,4 @@
-use crate::dto::{CommandErrorDto, TaskStartedDto};
+use crate::dto::{CommandErrorDto, ModDetailDto, ModLibraryItemDto, TaskStartedDto};
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{StartImportModTaskRequest, TaskProgressEvent, TaskStarted};
@@ -31,6 +31,32 @@ pub fn start_import_mod_task(
     );
 
     Ok(task.into())
+}
+
+#[tauri::command]
+pub fn get_mod_library(
+    state: State<'_, AppState>,
+) -> Result<Vec<ModLibraryItemDto>, CommandErrorDto> {
+    let items = state
+        .mod_library
+        .get_mod_library()
+        .map_err(|_| mod_library_unavailable_error())?;
+
+    Ok(items.into_iter().map(Into::into).collect())
+}
+
+#[tauri::command]
+pub fn get_mod_detail(
+    mod_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ModDetailDto>, CommandErrorDto> {
+    let mod_id = parse_mod_id(mod_id)?;
+    let detail = state
+        .mod_library
+        .get_mod_detail(&mod_id)
+        .map_err(|_| mod_library_unavailable_error())?;
+
+    Ok(detail.map(Into::into))
 }
 
 fn spawn_prepare_runner(
@@ -81,6 +107,26 @@ fn parse_archive_path(value: String) -> Result<PathBuf, CommandErrorDto> {
     Ok(archive_path)
 }
 
+fn parse_mod_id(value: String) -> Result<String, CommandErrorDto> {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty() {
+        return Err(CommandErrorDto {
+            code: "mod_id_empty".to_owned(),
+            message: "mod id cannot be empty".to_owned(),
+        });
+    }
+
+    Ok(trimmed.to_owned())
+}
+
+fn mod_library_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "mod_library_unavailable".to_owned(),
+        message: "mod library is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +147,29 @@ mod tests {
             parse_archive_path("mods/sample.zip".to_owned()).expect_err("relative path rejected");
 
         assert_eq!(error.code, "archive_path_not_absolute");
+    }
+
+    #[test]
+    fn parse_mod_id_rejects_empty_values() {
+        let error = parse_mod_id("  ".to_owned()).expect_err("empty id rejected");
+
+        assert_eq!(error.code, "mod_id_empty");
+    }
+
+    #[test]
+    fn parse_mod_id_trims_values() {
+        let mod_id = parse_mod_id("  pkg-1  ".to_owned()).expect("id accepted");
+
+        assert_eq!(mod_id, "pkg-1");
+    }
+
+    #[test]
+    fn mod_library_unavailable_error_uses_stable_code_without_paths() {
+        let error = mod_library_unavailable_error();
+
+        assert_eq!(error.code, "mod_library_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
     }
 
     #[test]

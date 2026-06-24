@@ -12,9 +12,11 @@ import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
+import { getModLibrary } from "./modLibraryApi";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
+import type { ModInstallStatus, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
-import { modLibraryItems, type ModInstallStatus, type ModLibraryItem } from "./modsLibraryData";
+import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
@@ -129,23 +131,44 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [activeFilter, setActiveFilter] = useState<string>("全部");
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [libraryItems, setLibraryItems] = useState<ModLibraryItem[]>(fallbackModLibraryItems);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
 
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    return modLibraryItems.filter((item) => {
+    return libraryItems.filter((item) => {
       const matchesKeyword = !keyword || item.name.toLowerCase().includes(keyword);
       return matchesKeyword && matchesActiveFilter(item, activeFilter);
     });
-  }, [activeFilter, query]);
+  }, [activeFilter, libraryItems, query]);
 
   const selectedCount = selectedIds.size;
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
     setViewMode,
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getModLibrary()
+      .then((items) => {
+        if (!cancelled && items.length > 0) {
+          setLibraryItems(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLibraryItems(fallbackModLibraryItems);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateScrollUiState = useCallback(() => {
     const content = contentRef.current;
