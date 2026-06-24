@@ -4,7 +4,8 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 pub struct FileSystemThumbnailStore {
     root_dir: PathBuf,
@@ -17,11 +18,28 @@ pub struct ThumbnailPruneReport {
     pub skipped_entries: usize,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ThumbnailSizePruneReport {
+    pub deleted_files: usize,
+    pub deleted_package_dirs: usize,
+    pub skipped_entries: usize,
+    pub bytes_before: u64,
+    pub bytes_after: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ThumbnailCacheKey {
     package_id: String,
     content_hash: String,
     variant: String,
+}
+
+struct ThumbnailCacheFile {
+    path: PathBuf,
+    package_dir: PathBuf,
+    file_name: String,
+    size_bytes: u64,
+    lru_time: SystemTime,
 }
 
 impl FileSystemThumbnailStore {
@@ -34,17 +52,7 @@ impl FileSystemThumbnailStore {
         I: IntoIterator<Item = R>,
         R: Borrow<ThumbnailRef>,
     {
-        let retained = retained
-            .into_iter()
-            .map(|thumbnail_ref| {
-                let thumbnail_ref = thumbnail_ref.borrow();
-                ThumbnailCacheKey {
-                    package_id: sanitize_path_segment(&thumbnail_ref.package_id),
-                    content_hash: sanitize_path_segment(&thumbnail_ref.content_hash),
-                    variant: sanitize_path_segment(&thumbnail_ref.variant),
-                }
-            })
-            .collect::<HashSet<_>>();
+        let retained = retained_thumbnail_keys(retained);
         let thumbnails_dir = self.root_dir.join("thumbnails");
         let mut report = ThumbnailPruneReport::default();
 
@@ -123,6 +131,134 @@ impl FileSystemThumbnailStore {
 
         Ok(report)
     }
+
+    pub fn prune_to_size_limit<I, R>(
+        &self,
+        max_bytes: u64,
+        retained: I,
+    ) -> Result<ThumbnailSizePruneReport>
+    where
+        I: IntoIterator<Item = R>,
+        R: Borrow<ThumbnailRef>,
+    {
+        let retained = retained_thumbnail_keys(retained);
+        let thumbnails_dir = self.root_dir.join("thumbnails");
+        let mut report = ThumbnailSizePruneReport::default();
+
+        let thumbnails_metadata = match fs::symlink_metadata(&thumbnails_dir) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(report),
+            Err(error) => return Err(error.into()),
+        };
+
+        if thumbnails_metadata.file_type().is_symlink() || !thumbnails_metadata.is_dir() {
+            report.skipped_entries += 1;
+            return Ok(report);
+        }
+
+        let canonical_thumbnails_dir = fs::canonicalize(&thumbnails_dir)?;
+        let mut candidates = Vec::new();
+        let mut package_dirs = Vec::new();
+
+        for package_entry in fs::read_dir(&thumbnails_dir)? {
+            let package_entry = package_entry?;
+            let package_path = package_entry.path();
+            let package_metadata = fs::symlink_metadata(&package_path)?;
+            if package_metadata.file_type().is_symlink() || !package_metadata.is_dir() {
+                report.skipped_entries += 1;
+                continue;
+            }
+
+            let Some(package_id) = package_entry.file_name().to_str().map(str::to_owned) else {
+                report.skipped_entries += 1;
+                continue;
+            };
+
+            let canonical_package_dir = fs::canonicalize(&package_path)?;
+            if !canonical_package_dir.starts_with(&canonical_thumbnails_dir) {
+                report.skipped_entries += 1;
+                continue;
+            }
+            package_dirs.push(package_path.clone());
+
+            for thumbnail_entry in fs::read_dir(&package_path)? {
+                let thumbnail_entry = thumbnail_entry?;
+                let thumbnail_path = thumbnail_entry.path();
+                let thumbnail_metadata = fs::symlink_metadata(&thumbnail_path)?;
+                if thumbnail_metadata.file_type().is_symlink() || !thumbnail_metadata.is_file() {
+                    report.skipped_entries += 1;
+                    continue;
+                }
+
+                let Some(file_name) = thumbnail_entry.file_name().to_str().map(str::to_owned)
+                else {
+                    report.skipped_entries += 1;
+                    continue;
+                };
+
+                let canonical_thumbnail_path = fs::canonicalize(&thumbnail_path)?;
+                if !canonical_thumbnail_path.starts_with(&canonical_thumbnails_dir) {
+                    report.skipped_entries += 1;
+                    continue;
+                }
+
+                let size_bytes = thumbnail_metadata.len();
+                report.bytes_before = report.bytes_before.saturating_add(size_bytes);
+                if is_retained_thumbnail_file(&retained, &package_id, &file_name) {
+                    continue;
+                }
+
+                candidates.push(ThumbnailCacheFile {
+                    path: thumbnail_path,
+                    package_dir: package_path.clone(),
+                    file_name,
+                    size_bytes,
+                    lru_time: thumbnail_metadata
+                        .accessed()
+                        .or_else(|_| thumbnail_metadata.modified())
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
+                });
+            }
+        }
+
+        let mut bytes_after = report.bytes_before;
+        candidates.sort_by(|left, right| {
+            left.lru_time
+                .cmp(&right.lru_time)
+                .then_with(|| left.package_dir.cmp(&right.package_dir))
+                .then_with(|| left.file_name.cmp(&right.file_name))
+        });
+
+        for candidate in candidates {
+            if bytes_after <= max_bytes {
+                break;
+            }
+
+            if !path_stays_inside(&canonical_thumbnails_dir, &candidate.path)? {
+                report.skipped_entries += 1;
+                continue;
+            }
+
+            fs::remove_file(&candidate.path)?;
+            report.deleted_files += 1;
+            bytes_after = bytes_after.saturating_sub(candidate.size_bytes);
+        }
+
+        for package_dir in package_dirs {
+            match fs::remove_dir(&package_dir) {
+                Ok(()) => report.deleted_package_dirs += 1,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::DirectoryNotEmpty | std::io::ErrorKind::NotFound
+                    ) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        report.bytes_after = bytes_after;
+        Ok(report)
+    }
 }
 
 impl ThumbnailStore for FileSystemThumbnailStore {
@@ -191,6 +327,28 @@ fn sanitize_path_segment(value: &str) -> String {
     } else {
         sanitized
     }
+}
+
+fn retained_thumbnail_keys<I, R>(retained: I) -> HashSet<ThumbnailCacheKey>
+where
+    I: IntoIterator<Item = R>,
+    R: Borrow<ThumbnailRef>,
+{
+    retained
+        .into_iter()
+        .map(|thumbnail_ref| {
+            let thumbnail_ref = thumbnail_ref.borrow();
+            ThumbnailCacheKey {
+                package_id: sanitize_path_segment(&thumbnail_ref.package_id),
+                content_hash: sanitize_path_segment(&thumbnail_ref.content_hash),
+                variant: sanitize_path_segment(&thumbnail_ref.variant),
+            }
+        })
+        .collect()
+}
+
+fn path_stays_inside(root: &Path, path: &Path) -> Result<bool> {
+    Ok(fs::canonicalize(path)?.starts_with(root))
 }
 
 fn is_retained_thumbnail_file(
@@ -308,6 +466,62 @@ mod tests {
             .expect("prune thumbnails");
 
         assert_eq!(report.deleted_files, 0);
+        assert_eq!(report.skipped_entries, 1);
+        assert!(outside_file.exists());
+        assert!(link_path.exists());
+    }
+
+    #[test]
+    fn prunes_unretained_thumbnails_by_lru_until_size_limit_is_met() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
+
+        let retained_old = store
+            .put_thumbnail("pkg-1", "retained-old", "jpg", b"1111")
+            .expect("put retained old thumbnail");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        store
+            .put_thumbnail("pkg-1", "delete-old", "jpg", b"2222")
+            .expect("put deletable old thumbnail");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        store
+            .put_thumbnail("pkg-1", "keep-new", "jpg", b"3333")
+            .expect("put newer thumbnail");
+
+        let report = store
+            .prune_to_size_limit(8, std::slice::from_ref(&retained_old))
+            .expect("prune thumbnails to size limit");
+
+        assert_eq!(report.deleted_files, 1);
+        assert_eq!(report.bytes_before, 12);
+        assert_eq!(report.bytes_after, 8);
+        assert!(thumbnail_path(temp.path(), "pkg-1", "retained-old").exists());
+        assert!(!thumbnail_path(temp.path(), "pkg-1", "delete-old").exists());
+        assert!(thumbnail_path(temp.path(), "pkg-1", "keep-new").exists());
+    }
+
+    #[test]
+    fn size_prune_skips_symlinked_cache_entries_without_following_them() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
+        store
+            .put_thumbnail("pkg-1", "delete", "jpg", b"delete")
+            .expect("put thumbnail");
+        let package_dir = temp.path().join("thumbnails").join("pkg-1");
+        let outside_file = outside.path().join("outside.jpg");
+        std::fs::write(&outside_file, b"outside").expect("write outside target");
+        let link_path = package_dir.join("preview-768-link.jpg");
+
+        if !try_create_symlink(&outside_file, &link_path) {
+            return;
+        }
+
+        let report = store
+            .prune_to_size_limit(0, std::iter::empty::<&ThumbnailRef>())
+            .expect("prune thumbnails to size limit");
+
+        assert_eq!(report.deleted_files, 1);
         assert_eq!(report.skipped_entries, 1);
         assert!(outside_file.exists());
         assert!(link_path.exists());

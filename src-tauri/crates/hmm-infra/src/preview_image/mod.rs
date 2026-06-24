@@ -5,4 +5,6 @@ mod thumbnail_store;
 
 pub use processor::ImageCratePreviewImageProcessor;
 pub use scanner::SandboxPackagePreviewScanner;
-pub use thumbnail_store::FileSystemThumbnailStore;
+pub use thumbnail_store::{
+    FileSystemThumbnailStore, ThumbnailPruneReport, ThumbnailSizePruneReport,
+};
