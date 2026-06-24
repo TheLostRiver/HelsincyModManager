@@ -2,7 +2,7 @@ use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{
     ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadataAnalyzer,
     PreviewImageProcessingResult, StoredImportPreviewImage, StoredModImportAnalysis,
-    ThumbnailStore,
+    ThumbnailCacheMaintenance, ThumbnailRef, ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -14,6 +14,7 @@ const MOD_IMPORT_PREVIEW_IMAGE_PROCESSING_PHASE: &str = "mod_import.preview_imag
 const MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE: &str = "mod_import.preview_image.fallback";
 const MOD_IMPORT_PREPARE_COMPLETED_PHASE: &str = "mod_import.prepare.completed";
 const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = "mod_import_prepare_failed";
+const DEFAULT_PREVIEW_THUMBNAIL_VARIANT: &str = "preview-768";
 
 pub trait ImportPreviewImageProcessor: Send + Sync {
     fn process_package_preview(
@@ -96,6 +97,7 @@ pub struct ModImportTaskRunner {
     task_manager: Arc<crate::TaskManager>,
     prepare_service: Arc<ModImportPrepareService>,
     result_repository: Arc<dyn ModImportResultRepository>,
+    thumbnail_cache_maintenance: Option<Arc<dyn ThumbnailCacheMaintenance>>,
 }
 
 impl ModImportTaskRunner {
@@ -108,7 +110,16 @@ impl ModImportTaskRunner {
             task_manager,
             prepare_service,
             result_repository,
+            thumbnail_cache_maintenance: None,
         }
+    }
+
+    pub fn with_thumbnail_cache_maintenance(
+        mut self,
+        thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance>,
+    ) -> Self {
+        self.thumbnail_cache_maintenance = Some(thumbnail_cache_maintenance);
+        self
     }
 
     pub fn run_prepare_task(
@@ -140,6 +151,8 @@ impl ModImportTaskRunner {
                         events: vec![failed_event(task_id)],
                     });
                 }
+
+                self.prune_unreferenced_thumbnails();
 
                 result.events
             }
@@ -176,6 +189,19 @@ impl ModImportTaskRunner {
 
     fn is_task_cancelled(&self, task_id: &str) -> bool {
         self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
+    }
+
+    fn prune_unreferenced_thumbnails(&self) {
+        let Some(thumbnail_cache_maintenance) = &self.thumbnail_cache_maintenance else {
+            return;
+        };
+
+        let Ok(records) = self.result_repository.list_analysis() else {
+            return;
+        };
+
+        let retained = retained_thumbnail_refs(&records);
+        let _ = thumbnail_cache_maintenance.prune_unreferenced_thumbnails(&retained);
     }
 }
 
@@ -250,6 +276,20 @@ fn import_preview_from_stored(preview_image: StoredImportPreviewImage) -> Import
         },
         StoredImportPreviewImage::Fallback { reason } => ImportPreviewImage::Fallback { reason },
     }
+}
+
+fn retained_thumbnail_refs(records: &[StoredModImportAnalysis]) -> Vec<ThumbnailRef> {
+    records
+        .iter()
+        .filter_map(|record| match &record.preview_image {
+            StoredImportPreviewImage::Thumbnail { content_hash, .. } => Some(ThumbnailRef {
+                package_id: record.package_id.clone(),
+                content_hash: content_hash.clone(),
+                variant: DEFAULT_PREVIEW_THUMBNAIL_VARIANT.to_owned(),
+            }),
+            StoredImportPreviewImage::Fallback { .. } => None,
+        })
+        .collect()
 }
 
 fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
@@ -413,8 +453,8 @@ mod tests {
     use hmm_ports::{
         ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadata,
         ModPackageMetadataAnalyzer, PreparedModPackage, PreviewImageProcessingResult,
-        ProcessedPreviewImage, StoredImportPreviewImage, StoredModImportAnalysis, ThumbnailRef,
-        ThumbnailStore,
+        ProcessedPreviewImage, StoredImportPreviewImage, StoredModImportAnalysis,
+        ThumbnailCacheMaintenance, ThumbnailRef, ThumbnailStore,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -768,6 +808,148 @@ mod tests {
     }
 
     #[test]
+    fn task_runner_prunes_thumbnail_cache_using_all_persisted_thumbnail_refs() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        result_repository
+            .save_analysis(&StoredModImportAnalysis {
+                mod_id: "pkg-old".to_owned(),
+                task_id: "task-old".to_owned(),
+                package_id: "pkg-old".to_owned(),
+                display_name: "Old Mod".to_owned(),
+                preview_image: StoredImportPreviewImage::Thumbnail {
+                    thumbnail_url: "thumbnail://pkg-old/preview-768/hash-old".to_owned(),
+                    width: 320,
+                    height: 180,
+                    content_hash: "hash-old".to_owned(),
+                },
+            })
+            .expect("seed old analysis");
+        let thumbnail_cache_maintenance =
+            std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
+                            thumbnail_ref: ThumbnailRef {
+                                package_id: "pkg-1".to_owned(),
+                                variant: "preview-768".to_owned(),
+                                content_hash: "hash-1".to_owned(),
+                            },
+                            width: 320,
+                            height: 180,
+                            content_hash: "hash-1".to_owned(),
+                        }),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
+                ),
+            )),
+            result_repository,
+        )
+        .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance.clone());
+
+        runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect("runner succeeds");
+
+        let calls = thumbnail_cache_maintenance
+            .calls
+            .lock()
+            .expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0],
+            vec![
+                ThumbnailRef {
+                    package_id: "pkg-old".to_owned(),
+                    variant: "preview-768".to_owned(),
+                    content_hash: "hash-old".to_owned(),
+                },
+                ThumbnailRef {
+                    package_id: "pkg-1".to_owned(),
+                    variant: "preview-768".to_owned(),
+                    content_hash: "hash-1".to_owned(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn task_runner_completes_when_thumbnail_cache_maintenance_fails() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
+                            thumbnail_ref: ThumbnailRef {
+                                package_id: "pkg-1".to_owned(),
+                                variant: "preview-768".to_owned(),
+                                content_hash: "hash-1".to_owned(),
+                            },
+                            width: 320,
+                            height: 180,
+                            content_hash: "hash-1".to_owned(),
+                        }),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
+                ),
+            )),
+            result_repository.clone(),
+        )
+        .with_thumbnail_cache_maintenance(std::sync::Arc::new(
+            FakeThumbnailCacheMaintenance {
+                fail: true,
+                ..FakeThumbnailCacheMaintenance::default()
+            },
+        ));
+
+        let events = runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect("maintenance failure does not fail import");
+
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+        assert_eq!(
+            event_phases(&events).last(),
+            Some(&"mod_import.prepare.completed")
+        );
+        assert!(
+            result_repository
+                .get_analysis("pkg-1")
+                .expect("repository read succeeds")
+                .is_some(),
+            "analysis remains persisted when cache maintenance fails"
+        );
+    }
+
+    #[test]
     fn library_service_returns_library_and_detail_with_preview_image() {
         let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
         result_repository
@@ -1098,6 +1280,27 @@ mod tests {
                 .iter()
                 .find(|record| record.mod_id == mod_id)
                 .cloned())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeThumbnailCacheMaintenance {
+        calls: Mutex<Vec<Vec<ThumbnailRef>>>,
+        fail: bool,
+    }
+
+    impl ThumbnailCacheMaintenance for FakeThumbnailCacheMaintenance {
+        fn prune_unreferenced_thumbnails(&self, retained: &[ThumbnailRef]) -> anyhow::Result<()> {
+            self.calls
+                .lock()
+                .expect("calls lock")
+                .push(retained.to_vec());
+
+            if self.fail {
+                anyhow::bail!("cache maintenance unavailable");
+            }
+
+            Ok(())
         }
     }
 

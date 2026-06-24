@@ -11,7 +11,7 @@ use hmm_infra::{
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
     SystemClock, ZipModImportPackagePreparer,
 };
-use hmm_ports::ModImportResultRepository;
+use hmm_ports::{ModImportResultRepository, ThumbnailCacheMaintenance};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -35,6 +35,8 @@ impl AppState {
         let task_manager = Arc::new(TaskManager::new());
         let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
             Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
+        let thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance> =
+            Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()));
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
@@ -70,11 +72,14 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             mod_library,
-            mod_import_task_runner: Arc::new(ModImportTaskRunner::new(
-                Arc::clone(&task_manager),
-                mod_import_prepare_service,
-                mod_import_result_repository,
-            )),
+            mod_import_task_runner: Arc::new(
+                ModImportTaskRunner::new(
+                    Arc::clone(&task_manager),
+                    mod_import_prepare_service,
+                    mod_import_result_repository,
+                )
+                .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance),
+            ),
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             task_manager,
         })
