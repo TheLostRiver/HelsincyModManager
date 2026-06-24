@@ -92,7 +92,7 @@ impl PreviewImageDiagnosticsExportService {
             serde_json::to_vec(&sanitized_preview_image_diagnostics_payload(&diagnostics))?;
         let export_timestamp = self.clock.now_unix_millis()?;
         let file_name = format!("preview-image-diagnostics-{}.zip", export_timestamp);
-        let export = self
+        let export = match self
             .diagnostic_exporter
             .export_package(DiagnosticPackageExportRequest {
                 file_name: &file_name,
@@ -100,7 +100,18 @@ impl PreviewImageDiagnosticsExportService {
                     name: PREVIEW_IMAGE_DIAGNOSTICS_ENTRY_NAME,
                     bytes: &payload,
                 }],
-            })?;
+            }) {
+            Ok(export) => export,
+            Err(error) => {
+                self.audit_log
+                    .record(preview_image_diagnostics_export_failure_audit_event(
+                        export_timestamp,
+                        &file_name,
+                        &diagnostics,
+                    ))?;
+                return Err(error);
+            }
+        };
         self.audit_log
             .record(preview_image_diagnostics_export_audit_event(
                 export_timestamp,
@@ -126,6 +137,43 @@ fn preview_image_diagnostics_export_audit_event(
     fields.insert("export_id".to_owned(), export.export_id.clone());
     fields.insert("file_name".to_owned(), export.file_name.clone());
     fields.insert("size_bytes".to_owned(), export.size_bytes.to_string());
+    insert_preview_image_diagnostics_counts(&mut fields, diagnostics);
+
+    AuditLogEvent {
+        timestamp_unix_millis,
+        category: "diagnostic_export".to_owned(),
+        operation: "export_preview_image_diagnostics".to_owned(),
+        result: "success".to_owned(),
+        fields,
+    }
+}
+
+fn preview_image_diagnostics_export_failure_audit_event(
+    timestamp_unix_millis: u128,
+    file_name: &str,
+    diagnostics: &PreviewImageDiagnosticsSummary,
+) -> AuditLogEvent {
+    let mut fields = BTreeMap::new();
+    fields.insert("file_name".to_owned(), file_name.to_owned());
+    fields.insert(
+        "error_code".to_owned(),
+        "diagnostic_package_export_failed".to_owned(),
+    );
+    insert_preview_image_diagnostics_counts(&mut fields, diagnostics);
+
+    AuditLogEvent {
+        timestamp_unix_millis,
+        category: "diagnostic_export".to_owned(),
+        operation: "export_preview_image_diagnostics".to_owned(),
+        result: "failure".to_owned(),
+        fields,
+    }
+}
+
+fn insert_preview_image_diagnostics_counts(
+    fields: &mut BTreeMap<String, String>,
+    diagnostics: &PreviewImageDiagnosticsSummary,
+) {
     fields.insert(
         "total_imported_mods".to_owned(),
         diagnostics.total_imported_mods.to_string(),
@@ -138,14 +186,6 @@ fn preview_image_diagnostics_export_audit_event(
         "fallback_count".to_owned(),
         diagnostics.fallback_count.to_string(),
     );
-
-    AuditLogEvent {
-        timestamp_unix_millis,
-        category: "diagnostic_export".to_owned(),
-        operation: "export_preview_image_diagnostics".to_owned(),
-        result: "success".to_owned(),
-        fields,
-    }
 }
 
 pub(crate) fn preview_image_diagnostics_from_stored(
@@ -419,6 +459,57 @@ mod tests {
         assert!(!serialized.contains("C:/"));
     }
 
+    #[test]
+    fn export_service_records_failure_audit_event_when_package_export_fails() {
+        let repository = Arc::new(FakeModImportResultRepository::default());
+        repository
+            .save_analysis(&StoredModImportAnalysis {
+                mod_id: "mod-1".to_owned(),
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                display_name: "Preview Mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::CacheWriteFailed,
+                },
+            })
+            .expect("save fallback analysis");
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let audit_log_port: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let service = PreviewImageDiagnosticsExportService::new(
+            repository,
+            Arc::new(FailingDiagnosticPackageExporter),
+            audit_log_port,
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_preview_image_diagnostics()
+            .expect_err("export fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        let event = audit_log.take_event();
+        assert_eq!(event.operation, "export_preview_image_diagnostics");
+        assert_eq!(event.category, "diagnostic_export");
+        assert_eq!(event.result, "failure");
+        assert_eq!(
+            event.fields["file_name"],
+            "preview-image-diagnostics-42.zip"
+        );
+        assert_eq!(
+            event.fields["error_code"],
+            "diagnostic_package_export_failed"
+        );
+        assert_eq!(event.fields["total_imported_mods"], "1");
+        assert_eq!(event.fields["fallback_count"], "1");
+        let serialized = serde_json::to_string(&event.fields).expect("serialize audit fields");
+        assert!(!serialized.contains("C:/Users/Player"));
+        assert!(!serialized.contains("raw_path"));
+        assert!(!serialized.contains("thumbnail://"));
+        assert!(!serialized.contains("contentHash"));
+        assert!(!serialized.contains("sandbox"));
+    }
+
     #[derive(Default)]
     struct FakeModImportResultRepository {
         records: Mutex<Vec<StoredModImportAnalysis>>,
@@ -480,6 +571,17 @@ mod tests {
                 file_name: request.file_name.to_owned(),
                 size_bytes: 4096,
             })
+        }
+    }
+
+    struct FailingDiagnosticPackageExporter;
+
+    impl DiagnosticPackageExporter for FailingDiagnosticPackageExporter {
+        fn export_package(
+            &self,
+            _request: DiagnosticPackageExportRequest<'_>,
+        ) -> Result<DiagnosticPackageExportResult> {
+            anyhow::bail!("failed to write C:/Users/Player/raw_path/mod.zip")
         }
     }
 
