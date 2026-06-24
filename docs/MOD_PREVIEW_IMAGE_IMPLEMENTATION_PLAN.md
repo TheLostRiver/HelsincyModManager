@@ -19,14 +19,15 @@
 | 区域 | 状态 | 说明 |
 | --- | --- | --- |
 | `hmm-core` 领域模型 | 已落地 | 已有 `PreviewImagePolicy`、输出格式、状态、fallback reason 和策略校验测试。 |
-| `hmm-ports` 接口 | 已落地 | 已有 `PackagePreviewScanner`、`PreviewImageProcessor`、`ThumbnailStore` 和相关值对象。 |
+| `hmm-ports` 接口 | 已落地 | 已有 `PackagePreviewScanner`、`PreviewImageProcessor`、`ThumbnailStore`、`ModImportPackagePreparer` 和相关值对象。 |
 | `hmm-infra` magic bytes 与候选扫描 | 部分落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。当前实现没有把候选超量显式上报为 `TooManyCandidates`。 |
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
 | `hmm-infra` 缩略图缓存 | 部分落地 | 已有原子写入、opaque URL 返回、package 登记校验和 symlink 拒绝。后续仍需要补清理策略。 |
 | `hmm-app` 预览图服务 | 部分落地 | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；真实导入任务尚未接线。 |
+| `hmm-app` 导入 prepare 服务 | 部分落地 | 已有 `ModImportPrepareService` 骨架，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务并生成 `unpack.*` / `preview_image.*` 进度事件；尚未接入真实解压、持久化或 Tauri task runner。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO 和 `ImportPreviewImage -> PreviewImageDto` 映射测试。 |
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。后续仍需清理策略。 |
-| `start_import_mod_task` | 最小入口已落地 | 当前只校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`。尚未解压、分析、持久化或调用预览图处理。 |
+| `start_import_mod_task` | 最小入口已落地 | 当前只校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`。prepare 服务骨架已存在，但尚未由 command runner 执行真实解压、分析、持久化或预览图处理。 |
 | `get_mod_library` / `get_mod_detail` | 未落地 | 真实库查询和详情查询尚未返回 `previewImage`。 |
 | 前端类型与卡片展示 | 部分落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；当前仍主要消费 mock 数据。 |
 | 并发限制和事件 | 未完全落地 | 文档要求图片解码并发受限，并在预览图阶段发送 task progress；当前真实执行链路尚未接入。 |
@@ -103,12 +104,14 @@ cargo test -p hmm-app mod_import
 
 ### 3. 接入真实导入分析任务
 
-在安全解压和包结构分析骨架可用后，将预览图服务接入 `mod_import` prepare 阶段：
+当前已有 `ModImportPrepareService` 作为 app 层编排骨架。它只依赖 `ModImportPackagePreparer` port，不实现真实解压；真实接线仍需要补 infra 侧安全解压实现、结果持久化和 task runner。
+
+后续将预览图服务接入 `mod_import` prepare 阶段的完整链路：
 
 ```text
 start_import_mod_task
 -> queued task
--> safe unpack into sandbox
+-> safe unpack into sandbox via ModImportPackagePreparer
 -> package structure analyze
 -> preview image processing
 -> persisted import result
