@@ -1,4 +1,5 @@
 import { Search, Grid, LayoutGrid, List, TerminalSquare } from "lucide-react";
+import type { CSSProperties } from "react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { libraryFilterChips } from "./modsLibraryData";
 
@@ -11,6 +12,8 @@ type LibraryToolbarProps = {
   onViewModeChange: (mode: ModViewMode) => void;
 };
 
+const viewModeOrder: ModViewMode[] = ["classic", "grid", "list", "tech"];
+
 export function LibraryToolbar({
   query,
   activeFilter,
@@ -19,6 +22,8 @@ export function LibraryToolbar({
   onFilterChange,
   onViewModeChange,
 }: LibraryToolbarProps) {
+  const viewModeIndex = Math.max(0, viewModeOrder.indexOf(viewMode));
+
   return (
     <div className="library-toolbar">
       <div className="library-toolbar__top-row">
@@ -34,7 +39,13 @@ export function LibraryToolbar({
           />
         </div>
 
-        <div className="library-view-toggles" role="group" aria-label="排版视图切换">
+        <div
+          className="library-view-toggles"
+          role="group"
+          aria-label="排版视图切换"
+          style={{ "--view-toggle-index": viewModeIndex } as CSSProperties}
+        >
+          <span className="library-view-toggle-indicator" aria-hidden="true" />
           <button
             type="button"
             className={`toggle-btn${viewMode === "classic" ? " active" : ""}`}
