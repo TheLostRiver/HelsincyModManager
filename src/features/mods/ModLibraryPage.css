@@ -695,11 +695,13 @@
   will-change: transform, opacity, filter;
 }
 
-.mod-grid[data-view-transition-variant="flip3d"] {
+.mod-grid[data-view-transition="out"][data-view-transition-variant="flip3d"],
+.mod-grid[data-view-transition="in"][data-view-transition-variant="flip3d"] {
   perspective: 1200px;
 }
 
-.mod-grid[data-view-transition-variant="flip3d"] .mod-card {
+.mod-grid[data-view-transition="out"][data-view-transition-variant="flip3d"] .mod-card,
+.mod-grid[data-view-transition="in"][data-view-transition-variant="flip3d"] .mod-card {
   backface-visibility: hidden;
   transform-style: preserve-3d;
 }
