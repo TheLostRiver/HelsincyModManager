@@ -212,6 +212,40 @@ pub struct PreviewImageDiagnosticsDto {
     pub thumbnail_count: usize,
     pub fallback_count: usize,
     pub fallback_reasons: Vec<PreviewImageFallbackDiagnosticsDto>,
+    pub export_categories: Vec<PreviewImageDiagnosticExportCategoryDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImageDiagnosticExportCategoryDto {
+    pub category: PreviewImageDiagnosticExportCategoryIdDto,
+    pub status: PreviewImageDiagnosticExportCategoryStatusDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<PreviewImageDiagnosticExportExclusionReasonDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewImageDiagnosticExportCategoryIdDto {
+    PreviewImageSummary,
+    ThumbnailFiles,
+    ThumbnailUrls,
+    RawPackageContent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewImageDiagnosticExportCategoryStatusDto {
+    Included,
+    Excluded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewImageDiagnosticExportExclusionReasonDto {
+    DerivedImageContent,
+    OpaqueResourceReference,
+    ThirdPartyModContent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -360,6 +394,69 @@ impl From<hmm_app::PreviewImageDiagnosticsSummary> for PreviewImageDiagnosticsDt
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            export_categories: summary
+                .export_categories
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageDiagnosticExportCategory>
+    for PreviewImageDiagnosticExportCategoryDto
+{
+    fn from(category: hmm_app::PreviewImageDiagnosticExportCategory) -> Self {
+        Self {
+            category: category.category.into(),
+            status: category.status.into(),
+            reason: category.reason.map(Into::into),
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageDiagnosticExportCategoryId>
+    for PreviewImageDiagnosticExportCategoryIdDto
+{
+    fn from(category: hmm_app::PreviewImageDiagnosticExportCategoryId) -> Self {
+        match category {
+            hmm_app::PreviewImageDiagnosticExportCategoryId::PreviewImageSummary => {
+                Self::PreviewImageSummary
+            }
+            hmm_app::PreviewImageDiagnosticExportCategoryId::ThumbnailFiles => Self::ThumbnailFiles,
+            hmm_app::PreviewImageDiagnosticExportCategoryId::ThumbnailUrls => Self::ThumbnailUrls,
+            hmm_app::PreviewImageDiagnosticExportCategoryId::RawPackageContent => {
+                Self::RawPackageContent
+            }
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageDiagnosticExportCategoryStatus>
+    for PreviewImageDiagnosticExportCategoryStatusDto
+{
+    fn from(status: hmm_app::PreviewImageDiagnosticExportCategoryStatus) -> Self {
+        match status {
+            hmm_app::PreviewImageDiagnosticExportCategoryStatus::Included => Self::Included,
+            hmm_app::PreviewImageDiagnosticExportCategoryStatus::Excluded => Self::Excluded,
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageDiagnosticExportExclusionReason>
+    for PreviewImageDiagnosticExportExclusionReasonDto
+{
+    fn from(reason: hmm_app::PreviewImageDiagnosticExportExclusionReason) -> Self {
+        match reason {
+            hmm_app::PreviewImageDiagnosticExportExclusionReason::DerivedImageContent => {
+                Self::DerivedImageContent
+            }
+            hmm_app::PreviewImageDiagnosticExportExclusionReason::OpaqueResourceReference => {
+                Self::OpaqueResourceReference
+            }
+            hmm_app::PreviewImageDiagnosticExportExclusionReason::ThirdPartyModContent => {
+                Self::ThirdPartyModContent
+            }
         }
     }
 }
@@ -721,6 +818,20 @@ mod preview_image_tests {
                 reason: PreviewImageRejectionReason::DecodeFailed,
                 count: 2,
             }],
+            export_categories: vec![
+                hmm_app::PreviewImageDiagnosticExportCategory {
+                    category: hmm_app::PreviewImageDiagnosticExportCategoryId::PreviewImageSummary,
+                    status: hmm_app::PreviewImageDiagnosticExportCategoryStatus::Included,
+                    reason: None,
+                },
+                hmm_app::PreviewImageDiagnosticExportCategory {
+                    category: hmm_app::PreviewImageDiagnosticExportCategoryId::ThumbnailFiles,
+                    status: hmm_app::PreviewImageDiagnosticExportCategoryStatus::Excluded,
+                    reason: Some(
+                        hmm_app::PreviewImageDiagnosticExportExclusionReason::DerivedImageContent,
+                    ),
+                },
+            ],
         }
         .into();
 
@@ -731,7 +842,21 @@ mod preview_image_tests {
         assert_eq!(value["fallbackCount"], 3);
         assert_eq!(value["fallbackReasons"][0]["reason"], "decode_failed");
         assert_eq!(value["fallbackReasons"][0]["count"], 2);
+        assert_eq!(
+            value["exportCategories"][0]["category"],
+            "preview_image_summary"
+        );
+        assert_eq!(value["exportCategories"][0]["status"], "included");
+        assert!(value["exportCategories"][0].get("reason").is_none());
+        assert_eq!(value["exportCategories"][1]["category"], "thumbnail_files");
+        assert_eq!(value["exportCategories"][1]["status"], "excluded");
+        assert_eq!(
+            value["exportCategories"][1]["reason"],
+            "derived_image_content"
+        );
         assert!(value.get("thumbnailUrl").is_none());
+        assert!(value.get("contentHash").is_none());
+        assert!(value.get("path").is_none());
     }
 
     #[test]
