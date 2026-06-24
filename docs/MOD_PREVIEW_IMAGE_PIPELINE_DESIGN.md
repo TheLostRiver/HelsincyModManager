@@ -181,6 +181,8 @@ MVP 默认值建议：
 
 当前后端也已有写回 command `select_preview_image_candidate(modId, candidateIndex)`。该命令只接受后端 `modId` 和非负 `candidateIndex`，通过导入结果仓储和 sandbox locator 重新定位受控 sandbox，再复用 `PreviewImageService::process_selected_package_preview` 重新扫描安全 sandbox 中的受限候选并处理单个候选。处理结果会解析为 `PreviewImageDto` 并写回已导入 Mod 记录；未知 `modId` 返回 `null`。该入口不接受本地路径、缓存路径、sandbox/cache/archive-internal 路径、压缩包内部路径或图片字节作为输入。
 
+详情页更大预览图使用独立 command `get_mod_detail_preview_image(modId)`。该命令同样只接受后端已登记的 `modId`，通过导入结果仓储和 sandbox locator 定位受控 sandbox，然后使用后端固定的 `preview-1024` 策略复用同一条 scanner / processor / thumbnail store 流水线。返回值仍是既有 `PreviewImageDto`；未知 `modId` 返回 `null`；处理失败或 URL 解析失败返回 fallback。该命令对导入记录和原始 Mod 包只读，不写回导入记录；处理过程中只会写入可丢弃的 thumbnail cache，不创建 task，不发送 progress event，也不接受或返回 logical path、sandbox/cache/archive-internal 路径、压缩包内部路径、本地图片路径、显式 variant 字段或图片字节。
+
 ## 缩略图生成
 
 处理顺序必须先便宜、后昂贵：
@@ -450,7 +452,7 @@ duration_ms
 
 ## 后续扩展
 
-- 支持详情页使用更大规格的派生图，但仍不能直接展示原图。
+- 前端详情页尚未接入更大派生图展示；后端只读入口 `get_mod_detail_preview_image(modId)` 已可按固定 `preview-1024` 策略生成/解析详情预览图，但仍不能直接展示原图。
 - 支持用户手动选择候选图的 UI；只读候选列表 command/DTO、后端按候选序号选择并复用同一条处理流水线的基础入口、以及选择结果写回已导入 Mod 记录的 command 已落地。
 - 支持游戏专属包元数据 schema、依赖安装状态校验和跨 Mod 依赖图。
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。

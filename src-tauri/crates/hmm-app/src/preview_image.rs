@@ -104,6 +104,13 @@ pub struct PreviewImageCandidateSelectionService {
     thumbnail_store: Box<dyn ThumbnailStore>,
 }
 
+pub struct PreviewImageDetailService {
+    result_repository: Arc<dyn ModImportResultRepository>,
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    preview_image_service: PreviewImageService,
+    thumbnail_store: Box<dyn ThumbnailStore>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewImageCandidateList {
     pub mod_id: String,
@@ -190,7 +197,7 @@ impl PreviewImageCandidateSelectionService {
         let sandbox_root = self
             .sandbox_locator
             .sandbox_root_for_package(&record.package_id)?;
-        let preview_image = self.preview_image_from_processing_result(
+        let preview_image = preview_image_from_processing_result(
             self.preview_image_service
                 .process_selected_package_preview(
                     "preview-image-candidate-selection",
@@ -198,36 +205,73 @@ impl PreviewImageCandidateSelectionService {
                     &sandbox_root,
                     candidate_index,
                 )?,
+            self.thumbnail_store.as_ref(),
         );
         record.preview_image = stored_preview_from_import(&preview_image);
         self.result_repository.save_analysis(&record)?;
 
         Ok(Some(preview_image))
     }
+}
 
-    fn preview_image_from_processing_result(
-        &self,
-        result: PreviewImageProcessingResult,
-    ) -> ImportPreviewImage {
-        match result {
-            PreviewImageProcessingResult::Thumbnail(thumbnail) => {
-                match self.thumbnail_store.resolve_url(&thumbnail.thumbnail_ref) {
-                    Ok(thumbnail_url) => ImportPreviewImage::Thumbnail {
-                        thumbnail_url,
-                        width: thumbnail.width,
-                        height: thumbnail.height,
-                        content_hash: thumbnail.content_hash,
-                        variant: thumbnail.thumbnail_ref.variant,
-                    },
-                    Err(_) => ImportPreviewImage::Fallback {
-                        reason: PreviewImageRejectionReason::CacheWriteFailed,
-                    },
-                }
-            }
-            PreviewImageProcessingResult::Fallback(reason) => {
-                ImportPreviewImage::Fallback { reason }
+impl PreviewImageDetailService {
+    pub fn new(
+        policy: PreviewImagePolicy,
+        result_repository: Arc<dyn ModImportResultRepository>,
+        sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        scanner: Box<dyn PackagePreviewScanner>,
+        processor: Box<dyn PreviewImageProcessor>,
+        thumbnail_store: Box<dyn ThumbnailStore>,
+    ) -> Self {
+        Self {
+            result_repository,
+            sandbox_locator,
+            preview_image_service: PreviewImageService::new(policy, scanner, processor),
+            thumbnail_store,
+        }
+    }
+
+    pub fn get_detail_preview_image(&self, mod_id: &str) -> Result<Option<ImportPreviewImage>> {
+        let Some(record) = self.result_repository.get_analysis(mod_id)? else {
+            return Ok(None);
+        };
+
+        let sandbox_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(&record.package_id)?;
+        let preview_image = preview_image_from_processing_result(
+            self.preview_image_service.process_package_preview(
+                "preview-image-detail",
+                &record.package_id,
+                &sandbox_root,
+            )?,
+            self.thumbnail_store.as_ref(),
+        );
+
+        Ok(Some(preview_image))
+    }
+}
+
+fn preview_image_from_processing_result(
+    result: PreviewImageProcessingResult,
+    thumbnail_store: &dyn ThumbnailStore,
+) -> ImportPreviewImage {
+    match result {
+        PreviewImageProcessingResult::Thumbnail(thumbnail) => {
+            match thumbnail_store.resolve_url(&thumbnail.thumbnail_ref) {
+                Ok(thumbnail_url) => ImportPreviewImage::Thumbnail {
+                    thumbnail_url,
+                    width: thumbnail.width,
+                    height: thumbnail.height,
+                    content_hash: thumbnail.content_hash,
+                    variant: thumbnail.thumbnail_ref.variant,
+                },
+                Err(_) => ImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::CacheWriteFailed,
+                },
             }
         }
+        PreviewImageProcessingResult::Fallback(reason) => ImportPreviewImage::Fallback { reason },
     }
 }
 
@@ -906,6 +950,61 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[test]
+    fn detail_preview_uses_larger_variant_without_updating_import_record() {
+        let original = stored_analysis("mod-1", "pkg-1");
+        let save_calls = Arc::new(Mutex::new(0));
+        let repository = Arc::new(ReadOnlyTrackingRepository {
+            record: original.clone(),
+            save_calls: Arc::clone(&save_calls),
+        });
+        let observed_edges = Arc::new(Mutex::new(Vec::new()));
+        let service = PreviewImageDetailService::new(
+            PreviewImagePolicy {
+                output_max_edge_px: 1024,
+                ..PreviewImagePolicy::default()
+            },
+            repository.clone(),
+            Arc::new(FakeSandboxLocator {
+                located_packages: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Box::new(FakeScanner::new(vec![preview_candidate(
+                "pkg-1",
+                "preview.png",
+            )])),
+            Box::new(PolicyRecordingProcessor {
+                observed_edges: Arc::clone(&observed_edges),
+            }),
+            Box::new(FakeThumbnailStore),
+        );
+
+        let result = service
+            .get_detail_preview_image("mod-1")
+            .expect("detail preview succeeds")
+            .expect("mod exists");
+
+        assert_eq!(*observed_edges.lock().expect("edges lock"), vec![1024]);
+        assert_eq!(
+            result,
+            crate::ImportPreviewImage::Thumbnail {
+                thumbnail_url: "thumbnail://pkg-1/preview-1024/hash-1024".to_owned(),
+                width: 1024,
+                height: 576,
+                content_hash: "hash-1024".to_owned(),
+                variant: "preview-1024".to_owned(),
+            }
+        );
+        assert_eq!(*save_calls.lock().expect("save calls lock"), 0);
+        assert_eq!(
+            repository
+                .get_analysis("mod-1")
+                .expect("record read succeeds")
+                .expect("record exists")
+                .preview_image,
+            original.preview_image
+        );
+    }
+
     fn preview_candidate(package_id: &str, logical_path: &str) -> PreviewImageCandidate {
         PreviewImageCandidate {
             source_ref: PreviewImageSourceRef {
@@ -1012,6 +1111,26 @@ mod tests {
         }
     }
 
+    struct ReadOnlyTrackingRepository {
+        record: StoredModImportAnalysis,
+        save_calls: Arc<Mutex<usize>>,
+    }
+
+    impl ModImportResultRepository for ReadOnlyTrackingRepository {
+        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> Result<()> {
+            *self.save_calls.lock().expect("save calls lock") += 1;
+            Ok(())
+        }
+
+        fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
+            Ok(vec![self.record.clone()])
+        }
+
+        fn get_analysis(&self, mod_id: &str) -> Result<Option<StoredModImportAnalysis>> {
+            Ok((self.record.mod_id == mod_id).then(|| self.record.clone()))
+        }
+    }
+
     struct FakeScanner {
         candidates: Vec<PreviewImageCandidate>,
     }
@@ -1090,6 +1209,36 @@ mod tests {
                 .expect("processor lock")
                 .pop()
                 .expect("processor result"))
+        }
+    }
+
+    struct PolicyRecordingProcessor {
+        observed_edges: Arc<Mutex<Vec<u32>>>,
+    }
+
+    impl PreviewImageProcessor for PolicyRecordingProcessor {
+        fn process_candidate(
+            &self,
+            request: PreviewImageProcessRequest<'_>,
+        ) -> Result<PreviewImageProcessingResult> {
+            let edge = request.policy.output_max_edge_px;
+            self.observed_edges
+                .lock()
+                .expect("observed edges lock")
+                .push(edge);
+
+            Ok(PreviewImageProcessingResult::Thumbnail(
+                ProcessedPreviewImage {
+                    thumbnail_ref: ThumbnailRef {
+                        package_id: request.candidate.source_ref.package_id.clone(),
+                        content_hash: format!("hash-{edge}"),
+                        variant: format!("preview-{edge}"),
+                    },
+                    width: edge,
+                    height: edge * 9 / 16,
+                    content_hash: format!("hash-{edge}"),
+                },
+            ))
         }
     }
 
