@@ -84,14 +84,22 @@
 当前已落地的缓存生命周期能力：
 
 - prepare runner 在成功保存导入分析结果后，会从结果仓储读取当前仍被 library/detail 记录引用的缩略图集合，并 best-effort 触发一次缓存维护。
-- 缓存维护会先执行引用保留清理，再使用后端默认 `512 MiB` 上限执行空间上限 / LRU 清理；仍被当前导入结果引用的缩略图不会因空间上限被删除。
+- 缓存维护会先执行引用保留清理，再使用后端 settings 中的 `thumbnailCacheMaxBytes` 执行空间上限 / LRU 清理；未配置或读取失败时回退默认 `512 MiB`。仍被当前导入结果引用的缩略图不会因空间上限被删除。
 - `FileSystemThumbnailStore::prune_to_size_limit` 已提供后端空间上限 / LRU 清理能力；该 API 不暴露缓存路径给 app 或前端，也不通过 protocol handler 触发。
 - prune 失败不改变导入 task 的 completed 状态，也不发送用户可见失败事件；缓存仍是可删除、可重建的派生数据。
+- 后端当前读取 `app_data/config/settings.json`：
+
+```json
+{
+  "version": 1,
+  "thumbnailCacheMaxBytes": 536870912
+}
+```
 
 尚未落地的缓存生命周期能力：
 
 - 定时后台维护任务。
-- 用户可配置空间上限、按时间保留策略或 UI/command 触发入口。
+- UI/command 设置入口、手动清理入口或按时间保留策略。
 
 ### 图片处理并发
 

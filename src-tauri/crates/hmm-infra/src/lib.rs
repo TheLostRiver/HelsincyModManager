@@ -1,3 +1,4 @@
+mod app_settings_repository;
 mod game_config_repository;
 mod game_directory_probe;
 mod game_discovery;
@@ -9,6 +10,7 @@ use anyhow::Result;
 use hmm_ports::AppClock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub use app_settings_repository::JsonAppSettingsRepository;
 pub use game_config_repository::JsonGameConfigRepository;
 pub use game_directory_probe::{RealGameDirectoryProbe, RealGameDirectoryProbeFactory};
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};

@@ -6,12 +6,12 @@ use hmm_app::{
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
-    FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonGameConfigRepository,
-    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
-    SystemClock, ZipModImportPackagePreparer,
+    FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
+    JsonGameConfigRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
+    RealGameDirectoryProbeFactory, SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner,
+    SteamGameDiscoveryService, SystemClock, ZipModImportPackagePreparer,
 };
-use hmm_ports::{ModImportResultRepository, ThumbnailCacheMaintenance};
+use hmm_ports::{AppSettingsRepository, ModImportResultRepository, ThumbnailCacheMaintenance};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -30,6 +30,7 @@ impl AppState {
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
         let config_path = app_data_dir.join("config").join("games.json");
+        let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
 
         let task_manager = Arc::new(TaskManager::new());
@@ -37,6 +38,8 @@ impl AppState {
             Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
         let thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance> =
             Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()));
+        let app_settings_repository: Arc<dyn AppSettingsRepository> =
+            Arc::new(JsonAppSettingsRepository::new(settings_path));
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
@@ -78,7 +81,8 @@ impl AppState {
                     mod_import_prepare_service,
                     mod_import_result_repository,
                 )
-                .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance),
+                .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance)
+                .with_app_settings_repository(app_settings_repository),
             ),
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             task_manager,
