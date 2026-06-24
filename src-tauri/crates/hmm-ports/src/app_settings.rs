@@ -17,4 +17,5 @@ pub type AppSettingsRepositoryResult<T> = Result<T, AppSettingsRepositoryError>;
 
 pub trait AppSettingsRepository: Send + Sync {
     fn load_settings(&self) -> AppSettingsRepositoryResult<AppSettings>;
+    fn save_settings(&self, settings: &AppSettings) -> AppSettingsRepositoryResult<()>;
 }

@@ -10,7 +10,8 @@ use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
 use mod_import_commands::{
-    get_mod_detail, get_mod_library, maintain_thumbnail_cache, start_import_mod_task,
+    get_mod_detail, get_mod_library, maintain_thumbnail_cache, set_thumbnail_cache_settings,
+    start_import_mod_task,
 };
 use state::AppState;
 use task_commands::cancel_task;
@@ -40,7 +41,8 @@ pub fn run() {
             start_import_mod_task,
             get_mod_library,
             get_mod_detail,
-            maintain_thumbnail_cache
+            maintain_thumbnail_cache,
+            set_thumbnail_cache_settings
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");
