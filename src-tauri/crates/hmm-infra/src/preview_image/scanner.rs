@@ -1,6 +1,8 @@
 use anyhow::Result;
-use hmm_core::PreviewImagePolicy;
-use hmm_ports::{PackagePreviewScanner, PreviewImageCandidate, PreviewImageSourceRef};
+use hmm_ports::{
+    CancellationToken, PackagePreviewScanner, PreviewImageCandidate, PreviewImageScanRequest,
+    PreviewImageSourceRef,
+};
 use std::path::Path;
 
 pub struct SandboxPackagePreviewScanner;
@@ -8,16 +10,15 @@ pub struct SandboxPackagePreviewScanner;
 impl PackagePreviewScanner for SandboxPackagePreviewScanner {
     fn scan_candidates(
         &self,
-        package_id: &str,
-        sandbox_root: &Path,
-        policy: &PreviewImagePolicy,
+        request: PreviewImageScanRequest<'_>,
     ) -> Result<Vec<PreviewImageCandidate>> {
         let mut candidates = Vec::new();
         collect_candidates(
-            package_id,
-            sandbox_root,
-            sandbox_root,
-            policy.max_candidates_per_package,
+            request.package_id,
+            request.sandbox_root,
+            request.sandbox_root,
+            request.policy.max_candidates_per_package,
+            request.cancellation_token,
             &mut candidates,
         )?;
         Ok(candidates)
@@ -29,9 +30,12 @@ fn collect_candidates(
     sandbox_root: &Path,
     current_dir: &Path,
     max_candidates: usize,
+    cancellation_token: &dyn CancellationToken,
     out: &mut Vec<PreviewImageCandidate>,
 ) -> Result<()> {
+    ensure_not_cancelled(cancellation_token)?;
     for entry in std::fs::read_dir(current_dir)? {
+        ensure_not_cancelled(cancellation_token)?;
         let entry = entry?;
         let file_type = entry.file_type()?;
 
@@ -41,7 +45,14 @@ fn collect_candidates(
 
         let path = entry.path();
         if file_type.is_dir() {
-            collect_candidates(package_id, sandbox_root, &path, max_candidates, out)?;
+            collect_candidates(
+                package_id,
+                sandbox_root,
+                &path,
+                max_candidates,
+                cancellation_token,
+                out,
+            )?;
             continue;
         }
 
@@ -67,6 +78,14 @@ fn collect_candidates(
                 priority: candidate_priority(&file_name),
             },
         );
+    }
+
+    Ok(())
+}
+
+fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
+    if cancellation_token.is_cancelled() {
+        anyhow::bail!("preview image scan cancelled");
     }
 
     Ok(())
@@ -123,7 +142,9 @@ fn candidate_priority(file_name: &str) -> u16 {
 mod tests {
     use super::*;
     use hmm_core::PreviewImagePolicy;
-    use hmm_ports::PackagePreviewScanner;
+    use hmm_ports::{
+        CancellationToken, NeverCancelled, PackagePreviewScanner, PreviewImageScanRequest,
+    };
 
     #[test]
     fn scanner_prefers_preview_names_and_limits_count() {
@@ -139,7 +160,12 @@ mod tests {
 
         let scanner = SandboxPackagePreviewScanner;
         let candidates = scanner
-            .scan_candidates("pkg-1", temp.path(), &policy)
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &policy,
+                cancellation_token: &NeverCancelled,
+            })
             .expect("scan candidates");
 
         assert_eq!(candidates.len(), 2);
@@ -155,7 +181,12 @@ mod tests {
 
         let scanner = SandboxPackagePreviewScanner;
         let candidates = scanner
-            .scan_candidates("pkg-1", temp.path(), &PreviewImagePolicy::default())
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &PreviewImagePolicy::default(),
+                cancellation_token: &NeverCancelled,
+            })
             .expect("scan candidates");
 
         assert!(candidates.is_empty());
@@ -176,12 +207,43 @@ mod tests {
 
         let scanner = SandboxPackagePreviewScanner;
         let candidates = scanner
-            .scan_candidates("pkg-1", temp.path(), &policy)
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &policy,
+                cancellation_token: &NeverCancelled,
+            })
             .expect("scan candidates");
 
         assert_eq!(candidates.len(), 3);
         assert_eq!(candidates[0].file_name, "candidate-000.png");
         assert_eq!(candidates[1].file_name, "candidate-001.png");
         assert_eq!(candidates[2].file_name, "candidate-002.png");
+    }
+
+    #[test]
+    fn scanner_stops_when_cancelled() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        std::fs::write(temp.path().join("preview.png"), b"").expect("write preview");
+
+        let scanner = SandboxPackagePreviewScanner;
+        let error = scanner
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &PreviewImagePolicy::default(),
+                cancellation_token: &AlwaysCancelled,
+            })
+            .expect_err("cancelled scan fails");
+
+        assert!(error.to_string().contains("cancelled"));
+    }
+
+    struct AlwaysCancelled;
+
+    impl CancellationToken for AlwaysCancelled {
+        fn is_cancelled(&self) -> bool {
+            true
+        }
     }
 }

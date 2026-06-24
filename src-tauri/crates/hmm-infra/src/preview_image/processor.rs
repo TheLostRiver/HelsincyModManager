@@ -2,8 +2,8 @@ use crate::preview_image::magic_bytes::detect_image_format;
 use anyhow::Result;
 use hmm_core::{PreviewImageOutputFormat, PreviewImagePolicy, PreviewImageRejectionReason};
 use hmm_ports::{
-    PreviewImageCandidate, PreviewImageProcessingResult, PreviewImageProcessor,
-    ProcessedPreviewImage, ThumbnailStore,
+    CancellationToken, PreviewImageProcessRequest, PreviewImageProcessingResult,
+    PreviewImageProcessor, ProcessedPreviewImage, ThumbnailStore,
 };
 use image::{
     codecs::{jpeg::JpegEncoder, webp::WebPEncoder},
@@ -26,10 +26,14 @@ impl ImageCratePreviewImageProcessor {
 impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
     fn process_candidate(
         &self,
-        sandbox_root: &Path,
-        candidate: &PreviewImageCandidate,
-        policy: &PreviewImagePolicy,
+        request: PreviewImageProcessRequest<'_>,
     ) -> Result<PreviewImageProcessingResult> {
+        let sandbox_root = request.sandbox_root;
+        let candidate = request.candidate;
+        let policy = request.policy;
+        let cancellation_token = request.cancellation_token;
+        ensure_not_cancelled(cancellation_token)?;
+
         let Some(candidate_path) =
             resolve_logical_path(sandbox_root, &candidate.source_ref.logical_path)
         else {
@@ -42,6 +46,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 PreviewImageRejectionReason::UnsupportedFormat,
             ));
         }
+        ensure_not_cancelled(cancellation_token)?;
 
         let metadata = match std::fs::metadata(&candidate_path) {
             Ok(metadata) => metadata,
@@ -57,6 +62,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 PreviewImageRejectionReason::TooLarge,
             ));
         }
+        ensure_not_cancelled(cancellation_token)?;
 
         let mut file = match std::fs::File::open(&candidate_path) {
             Ok(file) => file,
@@ -80,6 +86,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 PreviewImageRejectionReason::UnsupportedFormat,
             ));
         }
+        ensure_not_cancelled(cancellation_token)?;
 
         let reader = match image::ImageReader::open(&candidate_path)
             .and_then(|reader| reader.with_guessed_format())
@@ -106,6 +113,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 PreviewImageRejectionReason::PixelLimitExceeded,
             ));
         }
+        ensure_not_cancelled(cancellation_token)?;
 
         let image = match image::open(&candidate_path) {
             Ok(image) => image,
@@ -115,6 +123,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 ))
             }
         };
+        ensure_not_cancelled(cancellation_token)?;
 
         let resized = image.thumbnail(policy.output_max_edge_px, policy.output_max_edge_px);
         let mut output = Vec::new();
@@ -127,6 +136,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 ))
             }
         };
+        ensure_not_cancelled(cancellation_token)?;
 
         let content_hash = hex_sha256(&output);
         let thumbnail_ref = match self.thumbnail_store.put_thumbnail(
@@ -142,6 +152,7 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
                 ))
             }
         };
+        ensure_not_cancelled(cancellation_token)?;
 
         Ok(PreviewImageProcessingResult::Thumbnail(
             ProcessedPreviewImage {
@@ -152,6 +163,14 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
             },
         ))
     }
+}
+
+fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
+    if cancellation_token.is_cancelled() {
+        anyhow::bail!("preview image processing cancelled");
+    }
+
+    Ok(())
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
@@ -223,12 +242,15 @@ mod tests {
     use super::*;
     use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
     use hmm_ports::{
-        PreviewImageCandidate, PreviewImageProcessingResult, PreviewImageSourceRef, ThumbnailRef,
-        ThumbnailStore,
+        CancellationToken, NeverCancelled, PreviewImageCandidate, PreviewImageProcessRequest,
+        PreviewImageProcessingResult, PreviewImageSourceRef, ThumbnailRef, ThumbnailStore,
     };
     use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
     use std::io::Cursor;
-    use std::sync::Mutex;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    };
 
     #[test]
     fn rejects_candidate_over_input_size_limit() {
@@ -243,8 +265,7 @@ mod tests {
 
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &policy)
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
             .expect("processing result");
 
         assert_eq!(
@@ -261,9 +282,13 @@ mod tests {
         let candidate = preview_candidate("pkg-1", "preview.png", 12);
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
-            .expect("processing result");
+        let result = process_candidate(
+            &processor,
+            temp.path(),
+            &candidate,
+            &PreviewImagePolicy::default(),
+        )
+        .expect("processing result");
 
         assert_eq!(
             result,
@@ -284,8 +309,7 @@ mod tests {
 
         let store = InMemoryThumbnailStore::default();
         let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &policy)
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
             .expect("processing result");
 
         let PreviewImageProcessingResult::Thumbnail(thumbnail) = result else {
@@ -311,8 +335,7 @@ mod tests {
 
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &policy)
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
             .expect("processing result");
 
         let PreviewImageProcessingResult::Thumbnail(thumbnail) = result else {
@@ -338,8 +361,7 @@ mod tests {
         let store = InMemoryThumbnailStore::default();
         let recorded_extension = store.recorded_extension.clone();
         let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &policy)
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
             .expect("processing result");
 
         let PreviewImageProcessingResult::Thumbnail(thumbnail) = result else {
@@ -371,9 +393,13 @@ mod tests {
         let candidate = preview_candidate("pkg-1", "preview.png", 0);
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
-            .expect("processing result");
+        let result = process_candidate(
+            &processor,
+            temp.path(),
+            &candidate,
+            &PreviewImagePolicy::default(),
+        )
+        .expect("processing result");
 
         assert_eq!(
             result,
@@ -393,8 +419,7 @@ mod tests {
         };
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &policy)
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
             .expect("processing result");
 
         assert_eq!(
@@ -412,9 +437,13 @@ mod tests {
         let candidate = preview_candidate("pkg-1", "nested/preview.png", 0);
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
-            .expect("processing result");
+        let result = process_candidate(
+            &processor,
+            temp.path(),
+            &candidate,
+            &PreviewImagePolicy::default(),
+        )
+        .expect("processing result");
 
         assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
     }
@@ -430,9 +459,13 @@ mod tests {
         let candidate = preview_candidate("pkg-1", "../outside.png", 0);
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(&sandbox, &candidate, &PreviewImagePolicy::default())
-            .expect("processing result");
+        let result = process_candidate(
+            &processor,
+            &sandbox,
+            &candidate,
+            &PreviewImagePolicy::default(),
+        )
+        .expect("processing result");
 
         assert_eq!(
             result,
@@ -447,9 +480,13 @@ mod tests {
         let candidate = preview_candidate("pkg-1", "missing.png", 0);
         let processor =
             ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
-            .expect("preview result should degrade to fallback");
+        let result = process_candidate(
+            &processor,
+            temp.path(),
+            &candidate,
+            &PreviewImagePolicy::default(),
+        )
+        .expect("preview result should degrade to fallback");
 
         assert_eq!(
             result,
@@ -464,9 +501,13 @@ mod tests {
 
         let candidate = preview_candidate("pkg-1", "preview.png", 0);
         let processor = ImageCratePreviewImageProcessor::new(Box::new(FailingThumbnailStore));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
-            .expect("preview result should degrade to fallback");
+        let result = process_candidate(
+            &processor,
+            temp.path(),
+            &candidate,
+            &PreviewImagePolicy::default(),
+        )
+        .expect("preview result should degrade to fallback");
 
         assert_eq!(
             result,
@@ -489,8 +530,7 @@ mod tests {
         let store = InMemoryThumbnailStore::default();
         let recorded_extension = store.recorded_extension.clone();
         let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
-        let result = processor
-            .process_candidate(temp.path(), &candidate, &policy)
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
             .expect("processing result");
 
         assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
@@ -501,6 +541,31 @@ mod tests {
                 .as_deref(),
             Some("jpg")
         );
+    }
+
+    #[test]
+    fn cancellation_before_thumbnail_write_avoids_cache_write() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_png(temp.path().join("preview.png").as_path(), 4, 4);
+
+        let candidate = preview_candidate("pkg-1", "preview.png", 0);
+        let store_calls = Arc::new(AtomicUsize::new(0));
+        let processor = ImageCratePreviewImageProcessor::new(Box::new(CountingThumbnailStore {
+            calls: Arc::clone(&store_calls),
+        }));
+        let cancellation_token = CountingCancellationToken::new(6);
+
+        let error = process_candidate_with_token(
+            &processor,
+            temp.path(),
+            &candidate,
+            &PreviewImagePolicy::default(),
+            &cancellation_token,
+        )
+        .expect_err("cancelled processing fails before cache write");
+
+        assert!(error.to_string().contains("cancelled"));
+        assert_eq!(store_calls.load(Ordering::SeqCst), 0);
     }
 
     fn preview_candidate(
@@ -521,6 +586,30 @@ mod tests {
             compressed_size,
             priority: 0,
         }
+    }
+
+    fn process_candidate(
+        processor: &ImageCratePreviewImageProcessor,
+        sandbox_root: &std::path::Path,
+        candidate: &PreviewImageCandidate,
+        policy: &PreviewImagePolicy,
+    ) -> anyhow::Result<PreviewImageProcessingResult> {
+        process_candidate_with_token(processor, sandbox_root, candidate, policy, &NeverCancelled)
+    }
+
+    fn process_candidate_with_token(
+        processor: &ImageCratePreviewImageProcessor,
+        sandbox_root: &std::path::Path,
+        candidate: &PreviewImageCandidate,
+        policy: &PreviewImagePolicy,
+        cancellation_token: &dyn CancellationToken,
+    ) -> anyhow::Result<PreviewImageProcessingResult> {
+        processor.process_candidate(PreviewImageProcessRequest {
+            sandbox_root,
+            candidate,
+            policy,
+            cancellation_token,
+        })
     }
 
     fn write_png(path: &std::path::Path, width: u32, height: u32) {
@@ -599,6 +688,52 @@ mod tests {
 
         fn resolve_url(&self, _thumbnail_ref: &ThumbnailRef) -> anyhow::Result<String> {
             unreachable!("processor should not resolve thumbnail URLs")
+        }
+    }
+
+    struct CountingThumbnailStore {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl ThumbnailStore for CountingThumbnailStore {
+        fn put_thumbnail(
+            &self,
+            package_id: &str,
+            content_hash: &str,
+            _extension: &str,
+            _bytes: &[u8],
+        ) -> anyhow::Result<ThumbnailRef> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(ThumbnailRef {
+                package_id: package_id.to_owned(),
+                content_hash: content_hash.to_owned(),
+                variant: "preview-768".to_owned(),
+            })
+        }
+
+        fn resolve_url(&self, _thumbnail_ref: &ThumbnailRef) -> anyhow::Result<String> {
+            unreachable!("processor should not resolve thumbnail URLs")
+        }
+    }
+
+    struct CountingCancellationToken {
+        allowed_checks: usize,
+        checks: AtomicUsize,
+    }
+
+    impl CountingCancellationToken {
+        fn new(allowed_checks: usize) -> Self {
+            Self {
+                allowed_checks,
+                checks: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl CancellationToken for CountingCancellationToken {
+        fn is_cancelled(&self) -> bool {
+            let check = self.checks.fetch_add(1, Ordering::SeqCst) + 1;
+            check > self.allowed_checks
         }
     }
 }

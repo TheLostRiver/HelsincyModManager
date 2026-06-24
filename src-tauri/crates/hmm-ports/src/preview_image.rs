@@ -1,3 +1,4 @@
+use crate::CancellationToken;
 use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
 use std::path::Path;
@@ -37,21 +38,31 @@ pub enum PreviewImageProcessingResult {
     Fallback(PreviewImageRejectionReason),
 }
 
+pub struct PreviewImageScanRequest<'a> {
+    pub package_id: &'a str,
+    pub sandbox_root: &'a Path,
+    pub policy: &'a PreviewImagePolicy,
+    pub cancellation_token: &'a dyn CancellationToken,
+}
+
+pub struct PreviewImageProcessRequest<'a> {
+    pub sandbox_root: &'a Path,
+    pub candidate: &'a PreviewImageCandidate,
+    pub policy: &'a PreviewImagePolicy,
+    pub cancellation_token: &'a dyn CancellationToken,
+}
+
 pub trait PackagePreviewScanner: Send + Sync {
     fn scan_candidates(
         &self,
-        package_id: &str,
-        sandbox_root: &Path,
-        policy: &PreviewImagePolicy,
+        request: PreviewImageScanRequest<'_>,
     ) -> Result<Vec<PreviewImageCandidate>>;
 }
 
 pub trait PreviewImageProcessor: Send + Sync {
     fn process_candidate(
         &self,
-        sandbox_root: &Path,
-        candidate: &PreviewImageCandidate,
-        policy: &PreviewImagePolicy,
+        request: PreviewImageProcessRequest<'_>,
     ) -> Result<PreviewImageProcessingResult>;
 }
 
