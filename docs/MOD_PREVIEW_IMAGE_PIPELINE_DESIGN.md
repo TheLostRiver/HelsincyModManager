@@ -82,7 +82,7 @@ ThumbnailStore
 
 接口参数应使用包内逻辑路径、内部 ID、hash 或后端 source ref。不要要求前端传入本地缓存路径。
 
-缓存清理可以作为后续扩展加入专门 service 或扩展 port，但不能让前端直接删除缓存目录，也不能把真实缓存路径放入 DTO。
+缓存清理由后端基础设施层或后续专门维护服务触发，不能让前端直接删除缓存目录，也不能把真实缓存路径放入 DTO。当前 MVP 在 `FileSystemThumbnailStore` 提供 infra-local prune API，不扩展 `ThumbnailStore` port，避免 app 层依赖缓存布局细节。
 
 ### `hmm-app`
 
@@ -201,6 +201,30 @@ thumbnails/
 文件名采用 `<variant>-<content_hash>.<ext>` 顺序，其中 `variant` 当前固定为 `preview-768`（与 `hmm-infra` 的 `FileSystemThumbnailStore` 实现一致）。`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
 
 实际目录由 infra 决定，不进入前端 DTO。
+
+## 缩略图缓存清理
+
+缩略图缓存是派生数据，可以删除并在后续导入或重新处理时重建。当前 MVP 的清理策略是 **引用保留 + stale 删除**：
+
+```text
+当前仍被导入结果或库记录引用的 ThumbnailRef 集合
+-> sanitize package_id / variant / content_hash
+-> 遍历 app-data thumbnails 根
+-> 保留匹配 <variant>-<content_hash>.* 的文件
+-> 删除未引用的普通文件
+-> 删除清空后的 package 目录
+```
+
+安全边界：
+
+- 清理只作用于应用数据目录下的 `thumbnails/` 缓存根。
+- 不删除原始 Mod 包、安全解压 sandbox、retarget staging、游戏目录或存档目录。
+- 不跟随 symlink / junction；遇到 symlink、非预期目录或非普通文件时跳过。
+- 删除前必须确认 canonical 删除目标仍位于 canonical `thumbnails/` 根下。
+- 当前清理不递归删除未知子目录，避免把异常目录结构当成正常缓存处理。
+- 清理失败不影响安装、卸载、回滚或导入结果事实，只影响派生封面缓存占用。
+
+当前尚未定义全局空间上限、LRU、定时后台任务或 UI 触发入口；这些属于后续缓存生命周期治理。
 
 ## 前端 DTO
 
@@ -322,7 +346,7 @@ duration_ms
 - 图片解码应有单独并发限制，避免多个大图同时解码；当前实现由 `hmm-app` 的 `LimitedPreviewImageProcessor` 包裹 `PreviewImageProcessor` trait object，默认并发为 2。
 - 并发 limiter 只控制图片处理器入口，不改变候选扫描、沙盒解包、进度事件或 thumbnail URL 契约。
 - 任务进度事件必须携带 `task_id`。
-- 缩略图缓存可以异步清理，但清理失败不影响安装状态。
+- 缩略图缓存可以由后端维护任务异步清理；当前已有 infra-local prune API，清理失败不影响安装状态。
 
 ## 测试要求
 
@@ -340,6 +364,7 @@ duration_ms
 - 像素数超过限制。
 - 候选图片数量超过限制时保留 top N 继续处理，scanner 和 app 层服务都不能处理超过策略上限的候选。
 - 缩略图缓存写入失败时导入仍返回 fallback。
+- 缩略图缓存清理只删除未引用普通文件，保留当前引用，跳过 symlink 或异常 entry，不越过缓存根。
 - protocol handler 拒绝 traversal、absolute path、symlink、未登记 package，并返回正确 content type。
 - 前端卡片在有图、无图、图片加载失败时比例不变。
 - 日志不包含完整路径或第三方图片内容。
@@ -349,5 +374,6 @@ duration_ms
 - 支持详情页使用更大规格的派生图，但仍不能直接展示原图。
 - 支持用户手动选择候选图，但选择结果必须仍走同一条后端处理流水线。
 - 支持缓存空间上限和 LRU 清理。
+- 支持定时后台缓存维护任务或与导入结果仓储联动触发 prune。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
 - 支持为诊断导出提供缩略图处理摘要，但不导出第三方图片内容。
