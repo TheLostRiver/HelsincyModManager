@@ -22,7 +22,7 @@ pub use mod_import_task::{
 };
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
-    PreviewImageCandidateSummary, PreviewImageService,
+    PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageService,
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
 };
 pub use task_manager::{
