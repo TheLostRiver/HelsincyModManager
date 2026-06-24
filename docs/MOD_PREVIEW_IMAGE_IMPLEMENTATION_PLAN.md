@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | `hmm-core` 领域模型 | 已落地 | 已有 `PreviewImagePolicy`、输出格式、状态、fallback reason 和策略校验测试。 |
 | `hmm-ports` 接口 | 已落地 | 已有 `PackagePreviewScanner`、`PreviewImageProcessor`、`ThumbnailStore`、`ModImportPackagePreparer` 和相关值对象。 |
-| `hmm-infra` magic bytes 与候选扫描 | 部分落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。当前实现没有把候选超量显式上报为 `TooManyCandidates`。 |
+| `hmm-infra` magic bytes 与候选扫描 | MVP 已落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。默认策略不因候选总数超限直接返回 `TooManyCandidates`。 |
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
 | `hmm-infra` 缩略图缓存 | 部分落地 | 已有原子写入、opaque URL 返回、package 登记校验和 symlink 拒绝。后续仍需要补清理策略。 |
 | `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞；解压失败会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
@@ -37,10 +37,11 @@
 
 ### 候选数量超限
 
-当前扫描器在遍历过程中保留排序后的前 `max_candidates_per_package` 个候选，但不会返回 `TooManyCandidates`。后续需要二选一并保持文档、测试和实现一致：
+当前策略已定稿为 **保留稳定排序后的 top N 并继续处理**：
 
-- **推荐：** 扫描器返回 top N，同时在诊断/日志中记录候选被截断；最终仍尝试处理 top N。`TooManyCandidates` 仅在策略要求“候选超量直接降级”时使用。
-- **替代：** 发现候选超过限制后直接返回 `Fallback(TooManyCandidates)`，不处理任何图片。这个方案更保守，但用户体验较差。
+- `SandboxPackagePreviewScanner` 在遍历过程中维护最多 `max_candidates_per_package` 个候选。
+- `PreviewImageService` 也会防御性地只处理前 `max_candidates_per_package` 个候选，避免其他 scanner 实现返回过量候选时造成过多解码。
+- `TooManyCandidates` 仍保留为 domain/DTO reason，供未来产品策略改为“候选超量直接降级”或诊断记录时使用；当前默认路径不发出该 fallback。
 
 ### Thumbnail URL 解析职责
 

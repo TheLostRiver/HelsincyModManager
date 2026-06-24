@@ -165,12 +165,12 @@ MVP 默认值建议：
 - 优先匹配常见名称，例如 `preview`、`cover`、`poster`、`thumbnail`、`image`。
 - 支持常见扩展名，例如 `.png`、`.jpg`、`.jpeg`、`.webp`。
 - 不信任扩展名，最终以 magic bytes 和解码结果为准。
-- 只处理有限数量候选，超过数量后记录结构化诊断并忽略低优先级候选；如果产品策略要求候选超量直接降级，才返回 `too_many_candidates`。
+- 只处理有限数量候选，超过数量后忽略低优先级候选；如果未来产品策略要求候选超量直接降级，才返回 `too_many_candidates`。
 - 候选排序应稳定，避免同一个包重复导入时得到不同封面。
 
 候选扫描不应读取真实游戏目录，也不应读取原始压缩包外的路径。
 
-当前推荐策略是“保留稳定排序后的前 N 个候选并继续处理”，因为它能在保证资源上限的同时给用户保留预览图。`too_many_candidates` 应保留为可观测 fallback reason，但不能在没有明确产品决策时默认阻断所有候选处理。
+当前默认策略是“保留稳定排序后的前 N 个候选并继续处理”，因为它能在保证资源上限的同时给用户保留预览图。scanner 会维护 top N，app 层服务也会防御性地只处理前 N 个候选。`too_many_candidates` 保留为可观测 fallback reason，但当前默认路径不发出该 reason。
 
 ## 缩略图生成
 
@@ -277,7 +277,7 @@ Mod 卡片保持固定比例：
 | --- | --- |
 | `missing` | 使用默认封面 |
 | `too_large` | 使用默认封面，导入结果可提示“预览图过大已忽略” |
-| `too_many_candidates` | 使用默认封面，或在采用 top N 策略时仅作为诊断记录；具体行为必须与实现计划和测试一致 |
+| `too_many_candidates` | 当前默认路径不发出；若未来改为候选超量直接降级，则使用默认封面 |
 | `unsupported_format` | 使用默认封面 |
 | `unsupported_format`（magic bytes 不匹配） | 使用默认封面，并记录安全事件 |
 | `decode_failed` | 使用默认封面 |
@@ -338,7 +338,7 @@ duration_ms
 - 损坏图片解码失败。
 - 文件大小超过限制。
 - 像素数超过限制。
-- 候选图片数量超过限制时的既定行为：保留 top N 继续处理，或返回 `too_many_candidates`。
+- 候选图片数量超过限制时保留 top N 继续处理，scanner 和 app 层服务都不能处理超过策略上限的候选。
 - 缩略图缓存写入失败时导入仍返回 fallback。
 - protocol handler 拒绝 traversal、absolute path、symlink、未登记 package，并返回正确 content type。
 - 前端卡片在有图、无图、图片加载失败时比例不变。
