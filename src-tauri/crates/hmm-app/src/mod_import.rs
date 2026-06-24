@@ -1879,6 +1879,10 @@ mod tests {
         fn load_settings(&self) -> AppSettingsRepositoryResult<AppSettings> {
             Ok(self.settings.clone())
         }
+
+        fn save_settings(&self, _settings: &AppSettings) -> AppSettingsRepositoryResult<()> {
+            Ok(())
+        }
     }
 
     fn event_phases(events: &[crate::TaskProgressEvent]) -> Vec<&str> {

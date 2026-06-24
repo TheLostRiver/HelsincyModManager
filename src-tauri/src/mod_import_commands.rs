@@ -1,4 +1,6 @@
-use crate::dto::{CommandErrorDto, ModDetailDto, ModLibraryItemDto, TaskStartedDto};
+use crate::dto::{
+    AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, TaskStartedDto,
+};
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{StartImportModTaskRequest, TaskProgressEvent, TaskStarted};
@@ -63,6 +65,19 @@ pub fn get_mod_detail(
 pub fn maintain_thumbnail_cache(state: State<'_, AppState>) -> Result<(), CommandErrorDto> {
     state.mod_import_task_runner.maintain_thumbnail_cache_now();
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_thumbnail_cache_settings(
+    thumbnail_cache_max_bytes: Option<u64>,
+    state: State<'_, AppState>,
+) -> Result<AppSettingsDto, CommandErrorDto> {
+    let settings = state
+        .app_settings
+        .update_thumbnail_cache_max_bytes(thumbnail_cache_max_bytes)
+        .map_err(CommandErrorDto::from_app_settings_service_error)?;
+
+    Ok(settings.into())
 }
 
 fn spawn_prepare_runner(

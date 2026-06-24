@@ -1,9 +1,11 @@
+mod app_settings;
 mod game_setup;
 mod mod_import;
 mod mod_import_task;
 mod preview_image;
 mod task_manager;
 
+pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
 };

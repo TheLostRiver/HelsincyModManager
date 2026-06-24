@@ -2,8 +2,11 @@ use hmm_ports::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
 };
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
 
@@ -26,18 +29,20 @@ impl Default for AppSettingsFile {
 
 pub struct JsonAppSettingsRepository {
     file_path: PathBuf,
+    write_lock: Mutex<()>,
 }
 
 impl JsonAppSettingsRepository {
     pub fn new(file_path: PathBuf) -> Self {
-        Self { file_path }
+        Self {
+            file_path,
+            write_lock: Mutex::new(()),
+        }
     }
-}
 
-impl AppSettingsRepository for JsonAppSettingsRepository {
-    fn load_settings(&self) -> AppSettingsRepositoryResult<AppSettings> {
+    fn load_file(&self) -> AppSettingsRepositoryResult<AppSettingsFile> {
         if !self.file_path.exists() {
-            return Ok(AppSettings::default());
+            return Ok(AppSettingsFile::default());
         }
 
         let bytes = fs::read(&self.file_path)
@@ -51,8 +56,102 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
             return Err(AppSettingsRepositoryError::StorageCorrupted);
         }
 
+        Ok(config)
+    }
+
+    fn save_file(&self, config: &AppSettingsFile) -> AppSettingsRepositoryResult<()> {
+        if let Some(parent) = self.file_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+        }
+
+        let serialized = serde_json::to_string_pretty(config)
+            .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+        let temp_path = self.unique_temp_path();
+
+        {
+            let mut temp_file = File::create(&temp_path)
+                .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+            temp_file
+                .write_all(serialized.as_bytes())
+                .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+            temp_file
+                .sync_all()
+                .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+        }
+
+        fs::rename(&temp_path, &self.file_path)
+            .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+        self.sync_parent_directory()?;
+
+        Ok(())
+    }
+
+    fn sync_parent_directory(&self) -> AppSettingsRepositoryResult<()> {
+        let Some(parent) = self.file_path.parent() else {
+            return Ok(());
+        };
+
+        open_directory_for_sync(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| AppSettingsRepositoryError::StorageFailed(error.to_string()))?;
+
+        Ok(())
+    }
+
+    fn unique_temp_path(&self) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let temp_name = self
+            .file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("{name}.{}.{}.tmp", std::process::id(), nonce))
+            .unwrap_or_else(|| format!("settings.{}.{}.json.tmp", std::process::id(), nonce));
+
+        self.file_path
+            .parent()
+            .map(|parent| parent.join(&temp_name))
+            .unwrap_or_else(|| PathBuf::from(temp_name))
+    }
+}
+
+#[cfg(windows)]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
+
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+}
+
+#[cfg(not(windows))]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    File::open(path)
+}
+
+impl AppSettingsRepository for JsonAppSettingsRepository {
+    fn load_settings(&self) -> AppSettingsRepositoryResult<AppSettings> {
+        let config = self.load_file()?;
+
         Ok(AppSettings {
             thumbnail_cache_max_bytes: config.thumbnail_cache_max_bytes,
+        })
+    }
+
+    fn save_settings(&self, settings: &AppSettings) -> AppSettingsRepositoryResult<()> {
+        let _guard = self.write_lock.lock().map_err(|_| {
+            AppSettingsRepositoryError::StorageFailed("write lock poisoned".to_owned())
+        })?;
+        self.save_file(&AppSettingsFile {
+            version: CURRENT_SCHEMA_VERSION,
+            thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
         })
     }
 }
@@ -98,6 +197,20 @@ mod tests {
         let settings = repo.load_settings().expect("load settings");
 
         assert_eq!(settings.thumbnail_cache_max_bytes, Some(64 * 1024 * 1024));
+    }
+
+    #[test]
+    fn saves_thumbnail_cache_size_limit_to_settings_json() {
+        let path = test_file("save-cache-limit");
+        let repo = JsonAppSettingsRepository::new(path);
+
+        repo.save_settings(&AppSettings {
+            thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
+        })
+        .expect("save settings");
+        let settings = repo.load_settings().expect("load settings");
+
+        assert_eq!(settings.thumbnail_cache_max_bytes, Some(128 * 1024 * 1024));
     }
 
     #[test]

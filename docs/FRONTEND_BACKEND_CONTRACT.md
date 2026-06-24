@@ -53,6 +53,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`
 - 手动后端维护：`maintain_thumbnail_cache`
+- 写入受控设置：`set_thumbnail_cache_settings`
 - 取消长任务：`cancel_task`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
@@ -283,6 +284,7 @@ start_import_mod_task(input)
 get_mod_library(query)
 get_mod_detail(modId)
 maintain_thumbnail_cache()
+set_thumbnail_cache_settings({ thumbnailCacheMaxBytes })
 ```
 
 边界：
@@ -291,6 +293,7 @@ maintain_thumbnail_cache()
 - `get_mod_library()` 返回已持久化的导入分析结果列表，条目包含 `id`、`name`、`status`、`sizeLabel`、`categoryLabels` 和 `previewImage`。当前 MVP 使用 `packageId` 作为稳定 `id`；`name` 优先来自后端包元数据分析，缺失时回退 `packageId`；`categoryLabels` 来自后端解析的通用 category 和 tags，不由前端从路径推断。后端会从受控 sandbox 的 manifest/readme 候选解析通用元数据，多个 manifest 候选只用于补齐缺失字段，不作为安装事实来源。
 - `get_mod_detail(modId)` 通过后端受控 `modId` 查询单个导入结果，返回 `null` 或包含 `previewImage` 的详情 DTO；前端不传递 sandbox/cache/archive-internal 路径。
 - `maintain_thumbnail_cache()` 手动触发后端缩略图缓存维护，复用当前导入结果引用保留、settings 空间上限和 LRU 清理逻辑。该命令不创建长任务、不发送 progress event、不返回清理报告或真实缓存路径；清理失败按 best-effort 处理，不改变导入、安装、卸载或回滚事实。
+- `set_thumbnail_cache_settings({ thumbnailCacheMaxBytes })` 写入受控后端设置并返回当前设置 DTO。`thumbnailCacheMaxBytes` 可为正整数或 `null`，`null` 表示回退默认上限；`0` 会返回稳定错误码 `thumbnail_cache_max_bytes_invalid`。该命令不接收或返回 settings 文件路径、缓存路径、sandbox 路径或任意文件系统路径。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
