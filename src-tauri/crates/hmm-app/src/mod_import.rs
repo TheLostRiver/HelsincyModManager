@@ -1,10 +1,10 @@
 use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{
-    CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
-    ModImportResultRepository, ModPackageMetadataAnalyzer, NeverCancelled,
-    PreviewImageProcessingResult, StoredImportPreviewImage, StoredModImportAnalysis,
-    StoredModPackageMetadata, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest,
-    ThumbnailRef, ThumbnailStore,
+    AppSettingsRepository, CancellationToken, ModImportPackagePrepareRequest,
+    ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadataAnalyzer,
+    NeverCancelled, PreviewImageProcessingResult, StoredImportPreviewImage,
+    StoredModImportAnalysis, StoredModPackageMetadata, ThumbnailCacheMaintenance,
+    ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -112,6 +112,7 @@ pub struct ModImportTaskRunner {
     prepare_service: Arc<ModImportPrepareService>,
     result_repository: Arc<dyn ModImportResultRepository>,
     thumbnail_cache_maintenance: Option<Arc<dyn ThumbnailCacheMaintenance>>,
+    app_settings_repository: Option<Arc<dyn AppSettingsRepository>>,
 }
 
 impl ModImportTaskRunner {
@@ -125,6 +126,7 @@ impl ModImportTaskRunner {
             prepare_service,
             result_repository,
             thumbnail_cache_maintenance: None,
+            app_settings_repository: None,
         }
     }
 
@@ -133,6 +135,14 @@ impl ModImportTaskRunner {
         thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance>,
     ) -> Self {
         self.thumbnail_cache_maintenance = Some(thumbnail_cache_maintenance);
+        self
+    }
+
+    pub fn with_app_settings_repository(
+        mut self,
+        app_settings_repository: Arc<dyn AppSettingsRepository>,
+    ) -> Self {
+        self.app_settings_repository = Some(app_settings_repository);
         self
     }
 
@@ -222,12 +232,21 @@ impl ModImportTaskRunner {
         };
 
         let retained = retained_thumbnail_refs(&records);
+        let max_bytes = Some(self.thumbnail_cache_max_bytes());
         let _ = thumbnail_cache_maintenance.maintain_thumbnail_cache(
             ThumbnailCacheMaintenanceRequest {
                 retained: &retained,
-                max_bytes: Some(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES),
+                max_bytes,
             },
         );
+    }
+
+    fn thumbnail_cache_max_bytes(&self) -> u64 {
+        self.app_settings_repository
+            .as_ref()
+            .and_then(|repository| repository.load_settings().ok())
+            .and_then(|settings| settings.thumbnail_cache_max_bytes)
+            .unwrap_or(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES)
     }
 }
 
@@ -556,6 +575,7 @@ mod tests {
     use super::*;
     use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
+        AppSettings, AppSettingsRepository, AppSettingsRepositoryResult,
         ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
         ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
         PreviewImageProcessingResult, ProcessedPreviewImage, StoredImportPreviewImage,
@@ -1062,6 +1082,56 @@ mod tests {
             ]
         );
         assert_eq!(calls[0].max_bytes, Some(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES));
+    }
+
+    #[test]
+    fn task_runner_uses_configured_thumbnail_cache_size_limit_for_maintenance() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        let thumbnail_cache_maintenance =
+            std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
+        let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
+            settings: AppSettings {
+                thumbnail_cache_max_bytes: Some(64 * 1024 * 1024),
+            },
+        });
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Fallback(
+                            PreviewImageRejectionReason::Missing,
+                        ),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
+                ),
+            )),
+            result_repository,
+        )
+        .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance.clone())
+        .with_app_settings_repository(settings_repository);
+
+        runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect("runner succeeds");
+
+        let calls = thumbnail_cache_maintenance
+            .calls
+            .lock()
+            .expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].max_bytes, Some(64 * 1024 * 1024));
     }
 
     #[test]
@@ -1619,6 +1689,16 @@ mod tests {
             }
 
             Ok(())
+        }
+    }
+
+    struct FakeAppSettingsRepository {
+        settings: AppSettings,
+    }
+
+    impl AppSettingsRepository for FakeAppSettingsRepository {
+        fn load_settings(&self) -> AppSettingsRepositoryResult<AppSettings> {
+            Ok(self.settings.clone())
         }
     }
 

@@ -1,3 +1,4 @@
+mod app_settings;
 mod cancellation;
 mod game_setup;
 mod mod_import;
@@ -5,6 +6,9 @@ mod preview_image;
 
 use anyhow::Result;
 
+pub use app_settings::{
+    AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
+};
 pub use cancellation::{CancellationToken, NeverCancelled};
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
