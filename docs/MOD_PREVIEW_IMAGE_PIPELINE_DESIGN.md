@@ -267,7 +267,7 @@ thumbnails/
 
 当前 MVP 已接入导入结果仓储联动触发：`mod_import` prepare runner 在成功保存导入分析结果后，会收集结果仓储中仍被 library/detail 记录引用的 `ThumbnailRef` 集合，并调用后端缓存维护 port 执行 best-effort maintenance。该维护先执行引用保留清理，再使用后端 settings 的 `thumbnailCacheMaxBytes` 执行空间上限 / LRU 清理；未配置或读取失败时回退默认 `512 MiB`。仍被当前导入结果引用的缩略图不会因空间上限被删除。该触发不扩展前端命令，不把缓存路径暴露给 DTO，也不会因为清理失败把成功导入改成失败。
 
-当前后端 settings 仓储会读取 `app_data/config/settings.json`：
+当前后端 settings 仓储会读写 `app_data/config/settings.json`：
 
 ```json
 {
@@ -278,7 +278,7 @@ thumbnails/
 
 AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一次同一条 best-effort 缓存维护链路。该线程不创建前端 task、不发送 progress event、不暴露缓存路径；启动或清理失败只影响派生缓存占用，不影响导入、安装、卸载或回滚事实。
 
-当前已有 `maintain_thumbnail_cache` 后端命令可手动触发同一条 best-effort 缓存维护链路；该命令不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。尚未定义 UI 设置入口、命令式设置写入入口或按时间保留策略；这些属于后续缓存生命周期治理。已有的 `prune_to_size_limit`、settings 读取、默认导入后维护、定时后端维护和手动后端触发只属于后端生命周期能力，不改变缩略图 URL 契约。
+当前已有 `maintain_thumbnail_cache` 后端命令可手动触发同一条 best-effort 缓存维护链路；该命令不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。`set_thumbnail_cache_settings` 可写入 `thumbnailCacheMaxBytes`，`null`/缺省表示回退默认上限，`0` 会被拒绝；该命令不暴露 settings 文件路径。尚未定义 UI 设置入口或按时间保留策略；这些属于后续缓存生命周期治理。已有的 `prune_to_size_limit`、settings 读写、默认导入后维护、定时后端维护和手动后端触发只属于后端生命周期能力，不改变缩略图 URL 契约。
 
 ## 前端 DTO
 
@@ -435,6 +435,6 @@ duration_ms
 - 支持用户手动选择候选图，但选择结果必须仍走同一条后端处理流水线。
 - 支持游戏专属包元数据 schema、依赖安装状态校验和跨 Mod 依赖图。
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
-- 支持 UI 设置入口、命令式设置写入入口，以及更完整的保留策略。
+- 支持 UI 设置入口和更完整的保留策略。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
 - 支持为诊断导出提供缩略图处理摘要，但不导出第三方图片内容。

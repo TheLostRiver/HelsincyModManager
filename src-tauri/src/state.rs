@@ -1,5 +1,5 @@
 use hmm_app::{
-    GameSetupService, LimitedPreviewImageProcessor, ModImportAnalysisService,
+    AppSettingsService, GameSetupService, LimitedPreviewImageProcessor, ModImportAnalysisService,
     ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
     PreviewImageService, TaskManager, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
@@ -22,6 +22,7 @@ pub struct AppState {
     pub mod_library: Arc<ModLibraryService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
+    pub app_settings: Arc<AppSettingsService>,
     pub task_manager: Arc<TaskManager>,
 }
 
@@ -42,6 +43,9 @@ impl AppState {
             Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
+        let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
+            &app_settings_repository,
+        )));
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
@@ -98,6 +102,7 @@ impl AppState {
             mod_library,
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
+            app_settings,
             task_manager,
         })
     }
