@@ -1,7 +1,10 @@
 use crate::ImportPreviewImageProcessor;
 use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
-use hmm_ports::{PackagePreviewScanner, PreviewImageProcessingResult, PreviewImageProcessor};
+use hmm_ports::{
+    CancellationToken, NeverCancelled, PackagePreviewScanner, PreviewImageProcessRequest,
+    PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,
+};
 use std::path::Path;
 use std::sync::{Condvar, Mutex};
 
@@ -24,13 +27,10 @@ impl LimitedPreviewImageProcessor {
 impl PreviewImageProcessor for LimitedPreviewImageProcessor {
     fn process_candidate(
         &self,
-        sandbox_root: &Path,
-        candidate: &hmm_ports::PreviewImageCandidate,
-        policy: &PreviewImagePolicy,
+        request: PreviewImageProcessRequest<'_>,
     ) -> Result<PreviewImageProcessingResult> {
         let _permit = self.limiter.acquire();
-        self.inner
-            .process_candidate(sandbox_root, candidate, policy)
+        self.inner.process_candidate(request)
     }
 }
 
@@ -103,15 +103,34 @@ impl PreviewImageService {
 
     pub fn process_package_preview(
         &self,
-        _task_id: &str,
+        task_id: &str,
         package_id: &str,
         sandbox_root: &Path,
     ) -> Result<PreviewImageProcessingResult> {
-        self.policy.validate()?;
+        self.process_package_preview_with_cancellation(
+            task_id,
+            package_id,
+            sandbox_root,
+            &NeverCancelled,
+        )
+    }
 
-        let candidates = self
-            .scanner
-            .scan_candidates(package_id, sandbox_root, &self.policy)?;
+    pub fn process_package_preview_with_cancellation(
+        &self,
+        _task_id: &str,
+        package_id: &str,
+        sandbox_root: &Path,
+        cancellation_token: &dyn CancellationToken,
+    ) -> Result<PreviewImageProcessingResult> {
+        self.policy.validate()?;
+        ensure_not_cancelled(cancellation_token)?;
+
+        let candidates = self.scanner.scan_candidates(PreviewImageScanRequest {
+            package_id,
+            sandbox_root,
+            policy: &self.policy,
+            cancellation_token,
+        })?;
         if candidates.is_empty() {
             return Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::Missing,
@@ -123,10 +142,15 @@ impl PreviewImageService {
             .into_iter()
             .take(self.policy.max_candidates_per_package)
         {
+            ensure_not_cancelled(cancellation_token)?;
             match self
                 .processor
-                .process_candidate(sandbox_root, &candidate, &self.policy)?
-            {
+                .process_candidate(PreviewImageProcessRequest {
+                    sandbox_root,
+                    candidate: &candidate,
+                    policy: &self.policy,
+                    cancellation_token,
+                })? {
                 PreviewImageProcessingResult::Thumbnail(thumbnail) => {
                     return Ok(PreviewImageProcessingResult::Thumbnail(thumbnail));
                 }
@@ -134,10 +158,19 @@ impl PreviewImageService {
                     last_reason = reason;
                 }
             }
+            ensure_not_cancelled(cancellation_token)?;
         }
 
         Ok(PreviewImageProcessingResult::Fallback(last_reason))
     }
+}
+
+fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
+    if cancellation_token.is_cancelled() {
+        anyhow::bail!("preview image processing cancelled");
+    }
+
+    Ok(())
 }
 
 impl ImportPreviewImageProcessor for PreviewImageService {
@@ -149,6 +182,22 @@ impl ImportPreviewImageProcessor for PreviewImageService {
     ) -> Result<PreviewImageProcessingResult> {
         PreviewImageService::process_package_preview(self, task_id, package_id, sandbox_root)
     }
+
+    fn process_package_preview_with_cancellation(
+        &self,
+        task_id: &str,
+        package_id: &str,
+        sandbox_root: &Path,
+        cancellation_token: &dyn CancellationToken,
+    ) -> Result<PreviewImageProcessingResult> {
+        PreviewImageService::process_package_preview_with_cancellation(
+            self,
+            task_id,
+            package_id,
+            sandbox_root,
+            cancellation_token,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -157,8 +206,9 @@ mod tests {
     use anyhow::Result;
     use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
     use hmm_ports::{
-        PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessingResult,
-        PreviewImageProcessor, PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailRef,
+        CancellationToken, PackagePreviewScanner, PreviewImageCandidate,
+        PreviewImageProcessRequest, PreviewImageProcessingResult, PreviewImageProcessor,
+        PreviewImageScanRequest, PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailRef,
     };
     use std::path::Path;
     use std::sync::{Arc, Barrier, Mutex};
@@ -302,7 +352,12 @@ mod tests {
                 std::thread::spawn(move || {
                     barrier.wait();
                     processor
-                        .process_candidate(Path::new("sandbox"), &candidate, &policy)
+                        .process_candidate(PreviewImageProcessRequest {
+                            sandbox_root: Path::new("sandbox"),
+                            candidate: &candidate,
+                            policy: &policy,
+                            cancellation_token: &hmm_ports::NeverCancelled,
+                        })
                         .expect("preview processing succeeds");
                 })
             })
@@ -313,6 +368,69 @@ mod tests {
         }
 
         assert_eq!(stats.lock().expect("stats lock").max_active, 2);
+    }
+
+    #[test]
+    fn passes_cancellation_token_to_scanner_and_processor() {
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let candidate = preview_candidate("pkg-1", "preview.png");
+        let service = PreviewImageService::new(
+            PreviewImagePolicy::default(),
+            Box::new(CancellationObservingScanner {
+                observed: Arc::clone(&observed),
+                candidates: vec![candidate],
+            }),
+            Box::new(CancellationObservingProcessor {
+                observed: Arc::clone(&observed),
+            }),
+        );
+        let cancellation_token = ToggleCancellationToken::default();
+
+        let result = service
+            .process_package_preview_with_cancellation(
+                "task-1",
+                "pkg-1",
+                Path::new("sandbox"),
+                &cancellation_token,
+            )
+            .expect("preview result");
+
+        assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
+        assert_eq!(
+            observed.lock().expect("observed lock").as_slice(),
+            &[false, false]
+        );
+    }
+
+    #[test]
+    fn stops_before_processing_next_candidate_when_cancelled() {
+        let first = preview_candidate("pkg-1", "first.png");
+        let second = preview_candidate("pkg-1", "second.png");
+        let processed_paths = Arc::new(Mutex::new(Vec::new()));
+        let cancellation_token = Arc::new(ToggleCancellationToken::default());
+        let service = PreviewImageService::new(
+            PreviewImagePolicy::default(),
+            Box::new(FakeScanner::new(vec![first, second])),
+            Box::new(CancellingProcessor {
+                processed_paths: Arc::clone(&processed_paths),
+                cancellation_token: Arc::clone(&cancellation_token),
+            }),
+        );
+
+        let error = service
+            .process_package_preview_with_cancellation(
+                "task-1",
+                "pkg-1",
+                Path::new("sandbox"),
+                cancellation_token.as_ref(),
+            )
+            .expect_err("cancellation stops preview processing");
+
+        assert!(error.to_string().contains("cancelled"));
+        assert_eq!(
+            *processed_paths.lock().expect("processed paths lock"),
+            vec!["first.png".to_owned()]
+        );
     }
 
     fn preview_candidate(package_id: &str, logical_path: &str) -> PreviewImageCandidate {
@@ -340,9 +458,7 @@ mod tests {
     impl PackagePreviewScanner for FakeScanner {
         fn scan_candidates(
             &self,
-            _package_id: &str,
-            _sandbox_root: &Path,
-            _policy: &PreviewImagePolicy,
+            _request: PreviewImageScanRequest<'_>,
         ) -> Result<Vec<PreviewImageCandidate>> {
             Ok(self.candidates.clone())
         }
@@ -363,9 +479,7 @@ mod tests {
     impl PreviewImageProcessor for FakeProcessor {
         fn process_candidate(
             &self,
-            _sandbox_root: &Path,
-            _candidate: &PreviewImageCandidate,
-            _policy: &PreviewImagePolicy,
+            _request: PreviewImageProcessRequest<'_>,
         ) -> Result<PreviewImageProcessingResult> {
             Ok(self
                 .results
@@ -396,14 +510,12 @@ mod tests {
     impl PreviewImageProcessor for RecordingProcessor {
         fn process_candidate(
             &self,
-            _sandbox_root: &Path,
-            candidate: &PreviewImageCandidate,
-            _policy: &PreviewImagePolicy,
+            request: PreviewImageProcessRequest<'_>,
         ) -> Result<PreviewImageProcessingResult> {
             self.processed_paths
                 .lock()
                 .expect("processed paths lock")
-                .push(candidate.source_ref.logical_path.clone());
+                .push(request.candidate.source_ref.logical_path.clone());
 
             Ok(self
                 .results
@@ -427,9 +539,7 @@ mod tests {
     impl PreviewImageProcessor for BlockingProcessor {
         fn process_candidate(
             &self,
-            _sandbox_root: &Path,
-            _candidate: &PreviewImageCandidate,
-            _policy: &PreviewImagePolicy,
+            _request: PreviewImageProcessRequest<'_>,
         ) -> Result<PreviewImageProcessingResult> {
             {
                 let mut stats = self.stats.lock().expect("stats lock");
@@ -447,6 +557,90 @@ mod tests {
             Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::Missing,
             ))
+        }
+    }
+
+    struct CancellationObservingScanner {
+        observed: Arc<Mutex<Vec<bool>>>,
+        candidates: Vec<PreviewImageCandidate>,
+    }
+
+    impl PackagePreviewScanner for CancellationObservingScanner {
+        fn scan_candidates(
+            &self,
+            request: PreviewImageScanRequest<'_>,
+        ) -> Result<Vec<PreviewImageCandidate>> {
+            self.observed
+                .lock()
+                .expect("observed lock")
+                .push(request.cancellation_token.is_cancelled());
+            Ok(self.candidates.clone())
+        }
+    }
+
+    struct CancellationObservingProcessor {
+        observed: Arc<Mutex<Vec<bool>>>,
+    }
+
+    impl PreviewImageProcessor for CancellationObservingProcessor {
+        fn process_candidate(
+            &self,
+            request: PreviewImageProcessRequest<'_>,
+        ) -> Result<PreviewImageProcessingResult> {
+            self.observed
+                .lock()
+                .expect("observed lock")
+                .push(request.cancellation_token.is_cancelled());
+            Ok(PreviewImageProcessingResult::Thumbnail(
+                ProcessedPreviewImage {
+                    thumbnail_ref: ThumbnailRef {
+                        package_id: request.candidate.source_ref.package_id.clone(),
+                        content_hash: "hash".to_owned(),
+                        variant: "preview-768".to_owned(),
+                    },
+                    width: 4,
+                    height: 4,
+                    content_hash: "hash".to_owned(),
+                },
+            ))
+        }
+    }
+
+    struct CancellingProcessor {
+        processed_paths: Arc<Mutex<Vec<String>>>,
+        cancellation_token: Arc<ToggleCancellationToken>,
+    }
+
+    impl PreviewImageProcessor for CancellingProcessor {
+        fn process_candidate(
+            &self,
+            request: PreviewImageProcessRequest<'_>,
+        ) -> Result<PreviewImageProcessingResult> {
+            self.processed_paths
+                .lock()
+                .expect("processed paths lock")
+                .push(request.candidate.source_ref.logical_path.clone());
+            self.cancellation_token.cancel_for_test();
+            Ok(PreviewImageProcessingResult::Fallback(
+                PreviewImageRejectionReason::DecodeFailed,
+            ))
+        }
+    }
+
+    #[derive(Default)]
+    struct ToggleCancellationToken {
+        cancelled: Mutex<bool>,
+    }
+
+    impl ToggleCancellationToken {
+        fn cancel_for_test(&self) {
+            *self.cancelled.lock().expect("cancelled lock") = true;
+        }
+    }
+
+    impl CancellationToken for ToggleCancellationToken {
+        fn is_cancelled(&self) -> bool {
+            *self.cancelled.lock().expect("cancelled lock")
         }
     }
 }

@@ -32,7 +32,7 @@
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
-| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已下传到 zip 解压 entry/chunk 检查点，图片扫描/处理循环仍待后续接入。 |
+| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已下传到 zip 解压 entry/chunk、preview scanner 遍历和 processor 读文件/解码前后/缩略图写入前后检查点。图片库自身的单次解码/编码调用仍不是抢占式中断。 |
 
 ## 已知差异与决策点
 
@@ -109,7 +109,8 @@
 - `cancel_task` 立即把 task 状态标记为 `cancelled`，并发送 `mod_import.cancelled` 事件。
 - prepare runner 在 prepare 返回后的检查点读取 task 状态；如果已经取消，则不保存导入分析结果，不发送 `mod_import.prepare.completed`，也不发送 failed 覆盖事件。
 - `ModImportPackagePreparer` 现在接收后端 cancellation token；`ZipModImportPackagePreparer` 在 zip entry 循环和文件 chunk 复制前检查取消，检测到取消后返回 cancelled error，并沿用失败清理路径删除本次 task sandbox。
-- 当前实现仍不强制中断正在进行的图片扫描、图片解码或缩略图写入线程；如需更细粒度中断，后续要把 cancellation token 继续下传到 preview scanner / processor 循环。
+- `PreviewImageService` 会把同一个 cancellation token 下传到 `PackagePreviewScanner` 和 `PreviewImageProcessor`；scanner 在目录遍历期间检查取消，processor 在路径校验、文件读取、图片尺寸读取、完整解码前后、缩略图编码后和缓存写入后检查取消。
+- 当前实现不强制抢占 `image` crate 的单次解码/编码调用；取消会在这些调用前后的检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，runner 仍不会保存导入结果，缩略图作为派生缓存可由后续维护清理。
 
 ### 包元数据展示名
 
