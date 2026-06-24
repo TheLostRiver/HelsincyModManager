@@ -16,7 +16,9 @@ pub use mod_import::{
 pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,
 };
-pub use preview_image::PreviewImageService;
+pub use preview_image::{
+    LimitedPreviewImageProcessor, PreviewImageService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+};
 pub use task_manager::{
     TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot, TaskStatus,
 };
