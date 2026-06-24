@@ -31,7 +31,7 @@
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；当前展示名仍来自 `packageId`。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
-| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 尚未落地，运行中协作式取消仍待补。 |
+| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入，运行中协作式取消仍待补。 |
 
 ## 已知差异与决策点
 
@@ -69,7 +69,14 @@
 
 ### 图片处理并发
 
-设计要求图片解码并发限制为 `1-2`。在真实导入任务接线前可以暂不落地；一旦支持后台多包导入或并行分析，必须引入单独的图片处理 limiter，不能依赖全局 task 数量。
+设计要求图片解码并发限制为 `1-2`。当前实现已在 `hmm-app` 中提供 `LimitedPreviewImageProcessor`，作为 `PreviewImageProcessor` trait object 的装饰器包住真实 infra processor；`AppState` 默认使用 `DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY = 2`。
+
+边界约束：
+
+- limiter 控制进入图片处理器的并发数量，不限制候选扫描、zip 沙盒解包或其他 prepare 阶段工作。
+- `PreviewImageService` 仍只依赖 `PackagePreviewScanner` 和 `PreviewImageProcessor` trait，不依赖 infra concrete type。
+- infra 的 `ImageCratePreviewImageProcessor` 不持有全局 task 状态，也不感知 app 层并发策略。
+- 该 limiter 不能替代后续 running task cancellation；运行中取消仍需要单独设计协作式取消点。
 
 ## 下一批实施顺序
 
