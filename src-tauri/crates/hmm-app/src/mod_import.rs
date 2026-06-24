@@ -3,7 +3,7 @@ use hmm_ports::{
     CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
     ModImportResultRepository, ModPackageMetadataAnalyzer, NeverCancelled,
     PreviewImageProcessingResult, StoredImportPreviewImage, StoredModImportAnalysis,
-    ThumbnailCacheMaintenance, ThumbnailRef, ThumbnailStore,
+    ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -16,6 +16,7 @@ const MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE: &str = "mod_import.preview_image.
 const MOD_IMPORT_PREPARE_COMPLETED_PHASE: &str = "mod_import.prepare.completed";
 const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = "mod_import_prepare_failed";
 const DEFAULT_PREVIEW_THUMBNAIL_VARIANT: &str = "preview-768";
+pub const DEFAULT_THUMBNAIL_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 pub trait ImportPreviewImageProcessor: Send + Sync {
     fn process_package_preview(
@@ -170,7 +171,7 @@ impl ModImportTaskRunner {
                     });
                 }
 
-                self.prune_unreferenced_thumbnails();
+                self.maintain_thumbnail_cache();
 
                 result.events
             }
@@ -209,7 +210,7 @@ impl ModImportTaskRunner {
         self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
     }
 
-    fn prune_unreferenced_thumbnails(&self) {
+    fn maintain_thumbnail_cache(&self) {
         let Some(thumbnail_cache_maintenance) = &self.thumbnail_cache_maintenance else {
             return;
         };
@@ -219,7 +220,12 @@ impl ModImportTaskRunner {
         };
 
         let retained = retained_thumbnail_refs(&records);
-        let _ = thumbnail_cache_maintenance.prune_unreferenced_thumbnails(&retained);
+        let _ = thumbnail_cache_maintenance.maintain_thumbnail_cache(
+            ThumbnailCacheMaintenanceRequest {
+                retained: &retained,
+                max_bytes: Some(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES),
+            },
+        );
     }
 }
 
@@ -518,7 +524,8 @@ mod tests {
         ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
         ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
         PreviewImageProcessingResult, ProcessedPreviewImage, StoredImportPreviewImage,
-        StoredModImportAnalysis, ThumbnailCacheMaintenance, ThumbnailRef, ThumbnailStore,
+        StoredModImportAnalysis, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest,
+        ThumbnailRef, ThumbnailStore,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -966,7 +973,7 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(
-            calls[0],
+            calls[0].retained,
             vec![
                 ThumbnailRef {
                     package_id: "pkg-old".to_owned(),
@@ -980,6 +987,7 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(calls[0].max_bytes, Some(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES));
     }
 
     #[test]
@@ -1498,16 +1506,28 @@ mod tests {
 
     #[derive(Default)]
     struct FakeThumbnailCacheMaintenance {
-        calls: Mutex<Vec<Vec<ThumbnailRef>>>,
+        calls: Mutex<Vec<FakeThumbnailCacheMaintenanceCall>>,
         fail: bool,
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct FakeThumbnailCacheMaintenanceCall {
+        retained: Vec<ThumbnailRef>,
+        max_bytes: Option<u64>,
+    }
+
     impl ThumbnailCacheMaintenance for FakeThumbnailCacheMaintenance {
-        fn prune_unreferenced_thumbnails(&self, retained: &[ThumbnailRef]) -> anyhow::Result<()> {
+        fn maintain_thumbnail_cache(
+            &self,
+            request: ThumbnailCacheMaintenanceRequest<'_>,
+        ) -> anyhow::Result<()> {
             self.calls
                 .lock()
                 .expect("calls lock")
-                .push(retained.to_vec());
+                .push(FakeThumbnailCacheMaintenanceCall {
+                    retained: request.retained.to_vec(),
+                    max_bytes: request.max_bytes,
+                });
 
             if self.fail {
                 anyhow::bail!("cache maintenance unavailable");
