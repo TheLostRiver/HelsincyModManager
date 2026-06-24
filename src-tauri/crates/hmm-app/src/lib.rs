@@ -11,7 +11,9 @@ pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
 };
-pub use log_diagnostics::{AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService};
+pub use log_diagnostics::{
+    AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
+};
 pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModDetail, ModImportAnalysisRequest,
     ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
