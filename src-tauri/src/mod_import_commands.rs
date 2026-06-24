@@ -1,6 +1,6 @@
 use crate::dto::{
     AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto,
-    PreviewImageDiagnosticsDto, TaskStartedDto,
+    PreviewImageDiagnosticsDto, PreviewImageDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -89,6 +89,22 @@ pub fn get_preview_image_candidates(
 }
 
 #[tauri::command]
+pub fn select_preview_image_candidate(
+    mod_id: String,
+    candidate_index: i64,
+    state: State<'_, AppState>,
+) -> Result<Option<PreviewImageDto>, CommandErrorDto> {
+    let mod_id = parse_mod_id(mod_id)?;
+    let candidate_index = parse_candidate_index(candidate_index)?;
+    let preview_image = state
+        .preview_image_selection
+        .select_candidate(&mod_id, candidate_index)
+        .map_err(|_| preview_image_selection_unavailable_error())?;
+
+    Ok(preview_image.map(Into::into))
+}
+
+#[tauri::command]
 pub fn maintain_thumbnail_cache(state: State<'_, AppState>) -> Result<(), CommandErrorDto> {
     state.mod_import_task_runner.maintain_thumbnail_cache_now();
     Ok(())
@@ -169,6 +185,13 @@ fn parse_mod_id(value: String) -> Result<String, CommandErrorDto> {
     Ok(trimmed.to_owned())
 }
 
+fn parse_candidate_index(value: i64) -> Result<usize, CommandErrorDto> {
+    usize::try_from(value).map_err(|_| CommandErrorDto {
+        code: "preview_image_candidate_index_invalid".to_owned(),
+        message: "preview image candidate index must be zero or greater".to_owned(),
+    })
+}
+
 fn mod_library_unavailable_error() -> CommandErrorDto {
     CommandErrorDto {
         code: "mod_library_unavailable".to_owned(),
@@ -180,6 +203,13 @@ fn preview_image_candidates_unavailable_error() -> CommandErrorDto {
     CommandErrorDto {
         code: "preview_image_candidates_unavailable".to_owned(),
         message: "preview image candidates are unavailable".to_owned(),
+    }
+}
+
+fn preview_image_selection_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "preview_image_selection_unavailable".to_owned(),
+        message: "preview image selection is unavailable".to_owned(),
     }
 }
 
@@ -220,6 +250,13 @@ mod tests {
     }
 
     #[test]
+    fn parse_candidate_index_rejects_negative_values() {
+        let error = parse_candidate_index(-1).expect_err("negative index rejected");
+
+        assert_eq!(error.code, "preview_image_candidate_index_invalid");
+    }
+
+    #[test]
     fn mod_library_unavailable_error_uses_stable_code_without_paths() {
         let error = mod_library_unavailable_error();
 
@@ -233,6 +270,15 @@ mod tests {
         let error = preview_image_candidates_unavailable_error();
 
         assert_eq!(error.code, "preview_image_candidates_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn preview_image_selection_unavailable_error_uses_stable_code_without_paths() {
+        let error = preview_image_selection_unavailable_error();
+
+        assert_eq!(error.code, "preview_image_selection_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
