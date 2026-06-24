@@ -226,7 +226,7 @@ mod tests {
         PreviewImageCandidate, PreviewImageProcessingResult, PreviewImageSourceRef, ThumbnailRef,
         ThumbnailStore,
     };
-    use image::{ImageBuffer, ImageFormat, Rgba};
+    use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
     use std::io::Cursor;
     use std::sync::Mutex;
 
@@ -296,6 +296,111 @@ mod tests {
         assert_eq!(thumbnail.height, 2);
         assert_eq!(thumbnail.thumbnail_ref.package_id, "pkg-1");
         assert!(!thumbnail.content_hash.is_empty());
+    }
+
+    #[test]
+    fn creates_thumbnail_for_valid_jpeg() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jpeg(temp.path().join("preview.jpg").as_path(), 10, 5);
+
+        let candidate = preview_candidate("pkg-1", "preview.jpg", 0);
+        let policy = PreviewImagePolicy {
+            output_max_edge_px: 5,
+            ..PreviewImagePolicy::default()
+        };
+
+        let processor =
+            ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &policy)
+            .expect("processing result");
+
+        let PreviewImageProcessingResult::Thumbnail(thumbnail) = result else {
+            panic!("expected thumbnail result");
+        };
+
+        assert_eq!(thumbnail.width, 5);
+        assert_eq!(thumbnail.height, 3);
+        assert!(!thumbnail.content_hash.is_empty());
+    }
+
+    #[test]
+    fn creates_thumbnail_for_valid_webp() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_webp(temp.path().join("preview.webp").as_path(), 6, 3);
+
+        let candidate = preview_candidate("pkg-1", "preview.webp", 0);
+        let policy = PreviewImagePolicy {
+            preferred_output_format: PreviewImageOutputFormat::WebP,
+            output_max_edge_px: 3,
+            ..PreviewImagePolicy::default()
+        };
+        let store = InMemoryThumbnailStore::default();
+        let recorded_extension = store.recorded_extension.clone();
+        let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &policy)
+            .expect("processing result");
+
+        let PreviewImageProcessingResult::Thumbnail(thumbnail) = result else {
+            panic!("expected thumbnail result");
+        };
+
+        assert_eq!(thumbnail.width, 3);
+        assert_eq!(thumbnail.height, 2);
+        assert_eq!(
+            recorded_extension
+                .lock()
+                .expect("thumbnail store extension lock")
+                .as_deref(),
+            Some("webp")
+        );
+    }
+
+    #[test]
+    fn returns_decode_failed_for_corrupted_image_after_magic_bytes_match() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            temp.path().join("preview.png"),
+            [
+                0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, b'b', b'a', b'd',
+            ],
+        )
+        .expect("write corrupted png");
+
+        let candidate = preview_candidate("pkg-1", "preview.png", 0);
+        let processor =
+            ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &PreviewImagePolicy::default())
+            .expect("processing result");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::DecodeFailed)
+        );
+    }
+
+    #[test]
+    fn rejects_image_over_decoded_pixel_limit_before_decode() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_png(temp.path().join("preview.png").as_path(), 4, 4);
+
+        let candidate = preview_candidate("pkg-1", "preview.png", 0);
+        let policy = PreviewImagePolicy {
+            max_decoded_pixels: 15,
+            ..PreviewImagePolicy::default()
+        };
+        let processor =
+            ImageCratePreviewImageProcessor::new(Box::new(InMemoryThumbnailStore::default()));
+        let result = processor
+            .process_candidate(temp.path(), &candidate, &policy)
+            .expect("processing result");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::PixelLimitExceeded)
+        );
     }
 
     #[test]
@@ -425,6 +530,24 @@ mod tests {
             .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
             .expect("encode png");
         std::fs::write(path, bytes).expect("write png");
+    }
+
+    fn write_jpeg(path: &std::path::Path, width: u32, height: u32) {
+        let image = ImageBuffer::from_pixel(width, height, Rgb([255_u8, 0, 0]));
+        let mut bytes = Vec::new();
+        DynamicImage::ImageRgb8(image)
+            .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Jpeg)
+            .expect("encode jpeg");
+        std::fs::write(path, bytes).expect("write jpeg");
+    }
+
+    fn write_webp(path: &std::path::Path, width: u32, height: u32) {
+        let image = ImageBuffer::from_pixel(width, height, Rgba([255_u8, 0, 0, 255]));
+        let mut bytes = Vec::new();
+        DynamicImage::ImageRgba8(image)
+            .write_to(&mut Cursor::new(&mut bytes), ImageFormat::WebP)
+            .expect("encode webp");
+        std::fs::write(path, bytes).expect("write webp");
     }
 
     #[derive(Default)]
