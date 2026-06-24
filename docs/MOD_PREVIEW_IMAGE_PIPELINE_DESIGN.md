@@ -298,8 +298,9 @@ AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一�
 - `thumbnailCount`
 - `fallbackCount`
 - `fallbackReasons[]`，其中每项包含稳定 `snake_case` 的 `reason` 和 `count`
+- `exportCategories[]`，用于导出前类别确认；当前只把 `preview_image_summary` 标记为 `included`，并把 `thumbnail_files`、`thumbnail_urls` 和 `raw_package_content` 标记为 `excluded`
 
-该命令不读取缩略图文件、不导出第三方图片内容、不返回 `thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、原始 Mod 包路径或本地路径。它也不创建长任务、不发送 progress event。完整诊断包导出、用户可见导出入口和导出前类别确认仍属于后续日志/诊断治理工作，必须继续遵守 [日志与审计设计](LOGGING.md) 的脱敏规则。
+该命令不读取缩略图文件、不导出第三方图片内容、不返回 `thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、原始 Mod 包路径或本地路径。它也不创建长任务、不发送 progress event。当前只落地了预览图诊断摘要和类别确认清单，完整诊断包写入与用户可见导出入口仍属于后续日志/诊断治理工作，必须继续遵守 [日志与审计设计](LOGGING.md) 的脱敏规则。
 
 ## 前端 DTO
 
@@ -458,4 +459,4 @@ duration_ms
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
 - 支持 UI 设置入口和更完整的保留策略展示。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
-- 支持完整诊断包导出和导出前类别确认；已有预览图处理摘要只能作为脱敏统计输入，不能导出第三方图片内容。
+- 支持完整诊断包导出；已有预览图处理摘要和 `exportCategories` 只能作为脱敏统计输入与导出前类别确认，不能导出第三方图片内容、缩略图 URL 或原始 Mod 包内容。
