@@ -23,7 +23,7 @@
 | `hmm-infra` magic bytes 与候选扫描 | MVP 已落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。默认策略不因候选总数超限直接返回 `TooManyCandidates`。 |
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
 | `hmm-infra` 缩略图缓存 | MVP 已落地 | 已有原子写入、opaque URL 返回、package 登记校验、symlink 拒绝、引用保留清理和 infra-local 空间上限 / LRU 清理策略；清理只作用于应用数据目录下的 `thumbnails` 缓存根。 |
-| `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞；解压失败或取消会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
+| `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限；解压失败或取消会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
 | `hmm-infra` 包元数据分析 | MVP 已落地 | 已有 `SandboxModPackageMetadataAnalyzer`，只从安全 sandbox 中有限读取 manifest JSON 和 README，推断 `displayName` / `display_name` / `name` / `title` 或 README 标题。 |
 | `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；prepare runner 成功后会保存导入分析结果。 |
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储。 |
@@ -111,6 +111,7 @@
 - `cancel_task` 立即把 task 状态标记为 `cancelled`，并发送 `mod_import.cancelled` 事件。
 - prepare runner 在 prepare 返回后的检查点读取 task 状态；如果已经取消，则不保存导入分析结果，不发送 `mod_import.prepare.completed`，也不发送 failed 覆盖事件。
 - `ModImportPackagePreparer` 现在接收后端 cancellation token；`ZipModImportPackagePreparer` 在 zip entry 循环和文件 chunk 复制前检查取消，检测到取消后返回 cancelled error，并沿用失败清理路径删除本次 task sandbox。
+- zip 解包当前默认限制最多 `16384` 个 entry、单个普通文件解压后最大 `1 GiB`、单个包总解压后普通文件大小最大 `4 GiB`；超过上限属于包级安全拒绝，失败后清理本次 task sandbox。
 - `PreviewImageService` 会把同一个 cancellation token 下传到 `PackagePreviewScanner` 和 `PreviewImageProcessor`；scanner 在目录遍历期间检查取消，processor 在路径校验、文件读取、图片尺寸读取、完整解码前后、缩略图编码后和缓存写入后检查取消。
 - 当前实现不强制抢占 `image` crate 的单次解码/编码调用；取消会在这些调用前后的检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，runner 仍不会保存导入结果，缩略图作为派生缓存可由后续维护清理。
 
@@ -177,7 +178,7 @@ start_import_mod_task
 要求：
 
 - 所有 progress event 携带 `taskId`。
-- zip 解包只写入 app-controlled task sandbox，不写游戏目录；包级路径穿越、绝对路径、symlink entry 和大小写不敏感路径碰撞必须阻断导入。
+- zip 解包只写入 app-controlled task sandbox，不写游戏目录；包级路径穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限必须阻断导入。
 - 预览图阶段使用已登记的 `mod_import.preview_image.processing` 和 `mod_import.preview_image.fallback` phase code。
 - 不把 sandbox 路径、缓存目录、包内路径或真实本地路径放入 DTO、event message 或日志。
 - 图片处理不在 game write lock 内执行。
@@ -225,7 +226,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 - 候选图超量行为与文档一致，并有测试覆盖。
 - 缩略图缓存写入或 URL 解析失败时导入主流程仍返回 fallback。
 - protocol handler 不暴露真实缓存路径，并拒绝 traversal、absolute、symlink 和未登记 package。
-- 导入沙盒准备器拒绝 `../`、绝对路径、symlink entry 和大小写不敏感路径碰撞；失败时不保留部分解压出的 task sandbox。
+- 导入沙盒准备器拒绝 `../`、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限；失败时不保留部分解压出的 task sandbox。
 - 前端卡片在 thumbnail、fallback、图片加载失败三种状态下尺寸不跳动。
 - `PreviewImageDto` 字段与 TypeScript 类型一致。
 - 任务进度事件携带 `taskId`。
