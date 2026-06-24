@@ -416,12 +416,12 @@ duration_ms
 - 不要在持有游戏写锁时处理图片。
 - 图片解码应有单独并发限制，避免多个大图同时解码；当前实现由 `hmm-app` 的 `LimitedPreviewImageProcessor` 包裹 `PreviewImageProcessor` trait object，默认并发为 2。
 - 并发 limiter 只控制图片处理器入口，不改变候选扫描、沙盒解包、进度事件或 thumbnail URL 契约。
-- running prepare cancellation 使用后端 cancellation token 协作式下传；当前 zip 解压会在 entry 循环和文件 chunk 复制前检查取消，取消后清理本次 task sandbox，不保存导入结果，也不发送完成事件。
+- running prepare cancellation 使用后端 cancellation token 协作式下传；当前 zip 解压会在 entry 循环和文件 chunk 复制前检查取消，取消后清理本次 task sandbox，不保存导入结果，也不发送完成事件，并由 runner best-effort 触发一次缩略图缓存维护。
 - zip 解包只写入 task-scoped sandbox，并在解包前/解包中拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限。当前默认上限为 `16384` 个 entry、单文件 `1 GiB`、总解压普通文件大小 `4 GiB`。
 - 预览图 scanner / processor 也使用同一个 cancellation token：scanner 在候选目录遍历中检查取消，processor 在路径校验、文件读取、图片尺寸读取、完整解码前后、缩略图编码后和缓存写入后检查取消。
-- `image` crate 的单次解码/编码调用本身仍不是抢占式中断；取消会在调用前后的安全检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，缩略图仍只是可删除、可重建的派生缓存。
+- `image` crate 的单次解码/编码调用本身仍不是抢占式中断；取消会在调用前后的安全检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，缩略图仍只是可删除、可重建的派生缓存；runner 会在取消返回前复用当前导入结果引用触发 best-effort 维护，清理失败不改变取消语义。
 - 任务进度事件必须携带 `task_id`。
-- 缩略图缓存可以由后端维护任务异步清理；当前已有 infra-local prune API，并已在导入结果保存成功后进行 best-effort 仓储联动 prune，清理失败不影响安装状态。
+- 缩略图缓存可以由后端维护任务异步清理；当前已有 infra-local prune API，并已在导入结果保存成功、prepare 返回后观察到取消、或 prepare 因取消中止时进行 best-effort 仓储联动 prune，清理失败不影响安装状态、取消状态或导入结果持久化语义。
 
 ## 测试要求
 

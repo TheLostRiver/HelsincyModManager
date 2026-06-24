@@ -29,7 +29,7 @@
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
-| `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
+| `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件，并 best-effort 触发一次缩略图缓存维护。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`；library DTO 暴露 `author`、`versionLabel`、`categoryLabels`，detail DTO 暴露通用 metadata 摘要。 |
 | `get_preview_image_diagnostics` | 后端入口已落地 | 基于已持久化导入结果聚合预览图诊断摘要，只返回总导入数、缩略图数、fallback 数和 fallback reason 计数；不导出第三方图片内容、`thumbnailUrl`、缓存路径、sandbox 路径或本地路径。 |
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
@@ -136,11 +136,11 @@
 当前 `cancel_task(taskId)` 可以取消 `queued` 和 `running` 的 `mod_import` task。对于 running prepare，取消语义是协作式的：
 
 - `cancel_task` 立即把 task 状态标记为 `cancelled`，并发送 `mod_import.cancelled` 事件。
-- prepare runner 在 prepare 返回后的检查点读取 task 状态；如果已经取消，则不保存导入分析结果，不发送 `mod_import.prepare.completed`，也不发送 failed 覆盖事件。
+- prepare runner 在 prepare 返回后的检查点读取 task 状态；如果已经取消，则不保存导入分析结果，不发送 `mod_import.prepare.completed`，也不发送 failed 覆盖事件，并按当前已持久化导入结果的引用 best-effort 触发一次缩略图缓存维护。
 - `ModImportPackagePreparer` 现在接收后端 cancellation token；`ZipModImportPackagePreparer` 在 zip entry 循环和文件 chunk 复制前检查取消，检测到取消后返回 cancelled error，并沿用失败清理路径删除本次 task sandbox。
 - zip 解包当前默认限制最多 `16384` 个 entry、单个普通文件解压后最大 `1 GiB`、单个包总解压后普通文件大小最大 `4 GiB`；超过上限属于包级安全拒绝，失败后清理本次 task sandbox。
 - `PreviewImageService` 会把同一个 cancellation token 下传到 `PackagePreviewScanner` 和 `PreviewImageProcessor`；scanner 在目录遍历期间检查取消，processor 在路径校验、文件读取、图片尺寸读取、完整解码前后、缩略图编码后和缓存写入后检查取消。
-- 当前实现不强制抢占 `image` crate 的单次解码/编码调用；取消会在这些调用前后的检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，runner 仍不会保存导入结果，缩略图作为派生缓存可由后续维护清理。
+- 当前实现不强制抢占 `image` crate 的单次解码/编码调用；取消会在这些调用前后的检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，runner 仍不会保存导入结果，并会触发同一条 best-effort 缓存维护链路，使未引用的派生缩略图更早具备清理机会。
 
 ### 包元数据分析
 

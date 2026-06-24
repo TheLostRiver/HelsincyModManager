@@ -220,6 +220,7 @@ impl ModImportTaskRunner {
         {
             Ok(result) => {
                 if self.is_task_cancelled(task_id) {
+                    self.maintain_thumbnail_cache();
                     return Err(ModImportTaskRunError { events: Vec::new() });
                 }
 
@@ -240,6 +241,7 @@ impl ModImportTaskRunner {
             }
             Err(_) => {
                 if self.is_task_cancelled(task_id) {
+                    self.maintain_thumbnail_cache();
                     return Err(ModImportTaskRunError { events: Vec::new() });
                 }
 
@@ -750,16 +752,7 @@ mod tests {
     fn analyze_sandbox_includes_preview_thumbnail() {
         let service = ModImportAnalysisService::new(
             Box::new(FakePreviewImageProcessor {
-                result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                    thumbnail_ref: ThumbnailRef {
-                        package_id: "pkg-1".to_owned(),
-                        variant: "preview-768".to_owned(),
-                        content_hash: "hash-1".to_owned(),
-                    },
-                    width: 320,
-                    height: 180,
-                    content_hash: "hash-1".to_owned(),
-                }),
+                result: sample_thumbnail_result(),
             }),
             Box::new(FakeThumbnailStore::default()),
             Box::new(FakeMetadataAnalyzer::default()),
@@ -916,16 +909,7 @@ mod tests {
     fn analyze_sandbox_falls_back_when_thumbnail_url_resolution_fails() {
         let service = ModImportAnalysisService::new(
             Box::new(FakePreviewImageProcessor {
-                result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                    thumbnail_ref: ThumbnailRef {
-                        package_id: "pkg-1".to_owned(),
-                        variant: "preview-768".to_owned(),
-                        content_hash: "hash-1".to_owned(),
-                    },
-                    width: 320,
-                    height: 180,
-                    content_hash: "hash-1".to_owned(),
-                }),
+                result: sample_thumbnail_result(),
             }),
             Box::new(FakeThumbnailStore { fail_resolve: true }),
             Box::new(FakeMetadataAnalyzer::default()),
@@ -958,16 +942,7 @@ mod tests {
             )),
             ModImportAnalysisService::new(
                 Box::new(FakePreviewImageProcessor {
-                    result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                        thumbnail_ref: ThumbnailRef {
-                            package_id: "pkg-1".to_owned(),
-                            variant: "preview-768".to_owned(),
-                            content_hash: "hash-1".to_owned(),
-                        },
-                        width: 320,
-                        height: 180,
-                        content_hash: "hash-1".to_owned(),
-                    }),
+                    result: sample_thumbnail_result(),
                 }),
                 Box::new(FakeThumbnailStore::default()),
                 Box::new(FakeMetadataAnalyzer::default()),
@@ -1121,16 +1096,7 @@ mod tests {
                 )),
                 ModImportAnalysisService::new(
                     Box::new(FakePreviewImageProcessor {
-                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                            thumbnail_ref: ThumbnailRef {
-                                package_id: "pkg-1".to_owned(),
-                                variant: "preview-768".to_owned(),
-                                content_hash: "hash-1".to_owned(),
-                            },
-                            width: 320,
-                            height: 180,
-                            content_hash: "hash-1".to_owned(),
-                        }),
+                        result: sample_thumbnail_result(),
                     }),
                     Box::new(FakeThumbnailStore::default()),
                     Box::new(FakeMetadataAnalyzer {
@@ -1203,16 +1169,7 @@ mod tests {
                 )),
                 ModImportAnalysisService::new(
                     Box::new(FakePreviewImageProcessor {
-                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                            thumbnail_ref: ThumbnailRef {
-                                package_id: "pkg-1".to_owned(),
-                                variant: "preview-768".to_owned(),
-                                content_hash: "hash-1".to_owned(),
-                            },
-                            width: 320,
-                            height: 180,
-                            content_hash: "hash-1".to_owned(),
-                        }),
+                        result: sample_thumbnail_result(),
                     }),
                     Box::new(FakeThumbnailStore::default()),
                     Box::new(FakeMetadataAnalyzer::default()),
@@ -1483,16 +1440,7 @@ mod tests {
                 )),
                 ModImportAnalysisService::new(
                     Box::new(FakePreviewImageProcessor {
-                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                            thumbnail_ref: ThumbnailRef {
-                                package_id: "pkg-1".to_owned(),
-                                variant: "preview-768".to_owned(),
-                                content_hash: "hash-1".to_owned(),
-                            },
-                            width: 320,
-                            height: 180,
-                            content_hash: "hash-1".to_owned(),
-                        }),
+                        result: sample_thumbnail_result(),
                     }),
                     Box::new(FakeThumbnailStore::default()),
                     Box::new(FakeMetadataAnalyzer::default()),
@@ -1756,16 +1704,7 @@ mod tests {
                 }),
                 ModImportAnalysisService::new(
                     Box::new(FakePreviewImageProcessor {
-                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
-                            thumbnail_ref: ThumbnailRef {
-                                package_id: "pkg-1".to_owned(),
-                                variant: "preview-768".to_owned(),
-                                content_hash: "hash-1".to_owned(),
-                            },
-                            width: 320,
-                            height: 180,
-                            content_hash: "hash-1".to_owned(),
-                        }),
+                        result: sample_thumbnail_result(),
                     }),
                     Box::new(FakeThumbnailStore::default()),
                     Box::new(FakeMetadataAnalyzer::default()),
@@ -1790,6 +1729,60 @@ mod tests {
                 .is_none(),
             "cancelled prepare result must not be persisted"
         );
+    }
+
+    #[test]
+    fn task_runner_maintains_thumbnail_cache_when_cancelled_after_preview_processing() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        let thumbnail_cache_maintenance =
+            std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(FakePackagePreparer::new(
+                    &task.task_id,
+                    Path::new("C:/mods/sample.zip"),
+                    "pkg-1",
+                    Path::new("sandbox"),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(CancellingPreviewImageProcessor {
+                        task_manager: std::sync::Arc::clone(&task_manager),
+                        task_id: task.task_id.clone(),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                    Box::new(FakeMetadataAnalyzer::default()),
+                ),
+            )),
+            result_repository.clone(),
+        )
+        .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance.clone());
+
+        let error = runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect_err("cancelled running task stops after preview checkpoint");
+
+        assert!(error.events.is_empty());
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Cancelled)
+        );
+        assert!(result_repository
+            .list_analysis()
+            .expect("repository read succeeds")
+            .is_empty());
+
+        let calls = thumbnail_cache_maintenance
+            .calls
+            .lock()
+            .expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].retained.is_empty());
+        assert_eq!(calls[0].max_bytes, Some(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES));
     }
 
     #[test]
@@ -1883,6 +1876,37 @@ mod tests {
             Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::Missing,
             ))
+        }
+    }
+
+    struct CancellingPreviewImageProcessor {
+        task_manager: std::sync::Arc<crate::TaskManager>,
+        task_id: String,
+    }
+
+    impl ImportPreviewImageProcessor for CancellingPreviewImageProcessor {
+        fn process_package_preview(
+            &self,
+            _task_id: &str,
+            _package_id: &str,
+            _sandbox_root: &Path,
+        ) -> anyhow::Result<PreviewImageProcessingResult> {
+            anyhow::bail!("preview processor should receive cancellation-aware call")
+        }
+
+        fn process_package_preview_with_cancellation(
+            &self,
+            _task_id: &str,
+            _package_id: &str,
+            _sandbox_root: &Path,
+            cancellation_token: &dyn CancellationToken,
+        ) -> anyhow::Result<PreviewImageProcessingResult> {
+            assert!(!cancellation_token.is_cancelled());
+            self.task_manager
+                .cancel_task(&self.task_id)
+                .expect("running task can be cancelled");
+
+            Ok(sample_thumbnail_result())
         }
     }
 
@@ -2133,5 +2157,18 @@ mod tests {
 
     fn event_phases(events: &[crate::TaskProgressEvent]) -> Vec<&str> {
         events.iter().map(|event| event.phase.as_str()).collect()
+    }
+
+    fn sample_thumbnail_result() -> PreviewImageProcessingResult {
+        PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
+            thumbnail_ref: ThumbnailRef {
+                package_id: "pkg-1".to_owned(),
+                variant: "preview-768".to_owned(),
+                content_hash: "hash-1".to_owned(),
+            },
+            width: 320,
+            height: 180,
+            content_hash: "hash-1".to_owned(),
+        })
     }
 }
