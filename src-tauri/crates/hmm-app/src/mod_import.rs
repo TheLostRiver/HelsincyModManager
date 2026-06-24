@@ -8,6 +8,7 @@ use hmm_ports::{
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 const MOD_IMPORT_UNPACK_STARTED_PHASE: &str = "mod_import.unpack.started";
 const MOD_IMPORT_UNPACK_COMPLETED_PHASE: &str = "mod_import.unpack.completed";
@@ -18,6 +19,7 @@ const MOD_IMPORT_PREPARE_COMPLETED_PHASE: &str = "mod_import.prepare.completed";
 const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = "mod_import_prepare_failed";
 const DEFAULT_PREVIEW_THUMBNAIL_VARIANT: &str = "preview-768";
 pub const DEFAULT_THUMBNAIL_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
+pub const DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
 pub trait ImportPreviewImageProcessor: Send + Sync {
     fn process_package_preview(
@@ -113,6 +115,29 @@ pub struct ModImportTaskRunner {
     result_repository: Arc<dyn ModImportResultRepository>,
     thumbnail_cache_maintenance: Option<Arc<dyn ThumbnailCacheMaintenance>>,
     app_settings_repository: Option<Arc<dyn AppSettingsRepository>>,
+}
+
+#[derive(Clone)]
+pub struct ThumbnailCacheMaintenanceScheduler {
+    runner: Arc<ModImportTaskRunner>,
+    interval: Duration,
+}
+
+impl ThumbnailCacheMaintenanceScheduler {
+    pub fn new(runner: Arc<ModImportTaskRunner>, interval: Duration) -> Self {
+        Self { runner, interval }
+    }
+
+    pub fn run_one_cycle_with_sleep(&self, sleep: impl FnOnce(Duration)) {
+        sleep(self.interval);
+        self.runner.maintain_thumbnail_cache();
+    }
+
+    pub fn run_forever(self) {
+        loop {
+            self.run_one_cycle_with_sleep(std::thread::sleep);
+        }
+    }
 }
 
 impl ModImportTaskRunner {
@@ -584,6 +609,7 @@ mod tests {
     };
     use std::path::Path;
     use std::sync::Mutex;
+    use std::time::Duration;
 
     #[test]
     fn analyze_sandbox_includes_preview_thumbnail() {
@@ -1132,6 +1158,87 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(64 * 1024 * 1024));
+    }
+
+    #[test]
+    fn scheduled_thumbnail_cache_maintenance_runs_one_cycle_after_interval() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        result_repository
+            .save_analysis(&StoredModImportAnalysis {
+                mod_id: "pkg-1".to_owned(),
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                display_name: "Mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Thumbnail {
+                    thumbnail_url: "thumbnail://pkg-1/preview-768/hash-1".to_owned(),
+                    width: 320,
+                    height: 180,
+                    content_hash: "hash-1".to_owned(),
+                },
+            })
+            .expect("seed analysis");
+        let thumbnail_cache_maintenance =
+            std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
+        let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
+            settings: AppSettings {
+                thumbnail_cache_max_bytes: Some(32 * 1024 * 1024),
+            },
+        });
+        let runner = std::sync::Arc::new(
+            ModImportTaskRunner::new(
+                task_manager,
+                std::sync::Arc::new(ModImportPrepareService::new(
+                    Box::new(FakePackagePreparer::new(
+                        "unused-task",
+                        Path::new("C:/mods/unused.zip"),
+                        "pkg-unused",
+                        Path::new("sandbox"),
+                    )),
+                    ModImportAnalysisService::new(
+                        Box::new(FakePreviewImageProcessor {
+                            result: PreviewImageProcessingResult::Fallback(
+                                PreviewImageRejectionReason::Missing,
+                            ),
+                        }),
+                        Box::new(FakeThumbnailStore::default()),
+                        Box::new(FakeMetadataAnalyzer::default()),
+                    ),
+                )),
+                result_repository,
+            )
+            .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance.clone())
+            .with_app_settings_repository(settings_repository),
+        );
+        let scheduler = ThumbnailCacheMaintenanceScheduler::new(runner, Duration::from_secs(3600));
+        let slept_intervals = Mutex::new(Vec::new());
+
+        scheduler.run_one_cycle_with_sleep(|duration| {
+            slept_intervals
+                .lock()
+                .expect("slept intervals lock")
+                .push(duration);
+        });
+
+        assert_eq!(
+            *slept_intervals.lock().expect("slept intervals lock"),
+            vec![Duration::from_secs(3600)]
+        );
+        let calls = thumbnail_cache_maintenance
+            .calls
+            .lock()
+            .expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].max_bytes, Some(32 * 1024 * 1024));
+        assert_eq!(
+            calls[0].retained,
+            vec![ThumbnailRef {
+                package_id: "pkg-1".to_owned(),
+                variant: "preview-768".to_owned(),
+                content_hash: "hash-1".to_owned(),
+            }]
+        );
     }
 
     #[test]
