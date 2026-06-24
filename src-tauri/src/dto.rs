@@ -187,6 +187,22 @@ pub struct ModDetailDto {
     pub preview_image: PreviewImageDto,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImageDiagnosticsDto {
+    pub total_imported_mods: usize,
+    pub thumbnail_count: usize,
+    pub fallback_count: usize,
+    pub fallback_reasons: Vec<PreviewImageFallbackDiagnosticsDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImageFallbackDiagnosticsDto {
+    pub reason: PreviewImageFallbackReasonDto,
+    pub count: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModInstallStatusDto {
@@ -280,6 +296,30 @@ impl From<ModDetail> for ModDetailDto {
             name: detail.name,
             package_id: detail.package_id,
             preview_image: detail.preview_image.into(),
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageDiagnosticsSummary> for PreviewImageDiagnosticsDto {
+    fn from(summary: hmm_app::PreviewImageDiagnosticsSummary) -> Self {
+        Self {
+            total_imported_mods: summary.total_imported_mods,
+            thumbnail_count: summary.thumbnail_count,
+            fallback_count: summary.fallback_count,
+            fallback_reasons: summary
+                .fallback_reasons
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageFallbackDiagnostic> for PreviewImageFallbackDiagnosticsDto {
+    fn from(reason: hmm_app::PreviewImageFallbackDiagnostic) -> Self {
+        Self {
+            reason: reason.reason.into(),
+            count: reason.count,
         }
     }
 }
@@ -587,6 +627,29 @@ mod preview_image_tests {
 
         assert_eq!(value["kind"], "fallback");
         assert_eq!(value["reason"], "decode_failed");
+    }
+
+    #[test]
+    fn serializes_preview_image_diagnostics_without_thumbnail_urls() {
+        let dto: PreviewImageDiagnosticsDto = hmm_app::PreviewImageDiagnosticsSummary {
+            total_imported_mods: 4,
+            thumbnail_count: 1,
+            fallback_count: 3,
+            fallback_reasons: vec![hmm_app::PreviewImageFallbackDiagnostic {
+                reason: PreviewImageRejectionReason::DecodeFailed,
+                count: 2,
+            }],
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize diagnostics");
+
+        assert_eq!(value["totalImportedMods"], 4);
+        assert_eq!(value["thumbnailCount"], 1);
+        assert_eq!(value["fallbackCount"], 3);
+        assert_eq!(value["fallbackReasons"][0]["reason"], "decode_failed");
+        assert_eq!(value["fallbackReasons"][0]["count"], 2);
+        assert!(value.get("thumbnailUrl").is_none());
     }
 
     #[test]

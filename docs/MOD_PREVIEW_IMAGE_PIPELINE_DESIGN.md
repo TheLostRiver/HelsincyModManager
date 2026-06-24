@@ -280,6 +280,17 @@ AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一�
 
 当前已有 `maintain_thumbnail_cache` 后端命令可手动触发同一条 best-effort 缓存维护链路；该命令不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。`set_thumbnail_cache_settings` 可写入 `thumbnailCacheMaxBytes`，`null`/缺省表示回退默认上限，`0` 会被拒绝；该命令不暴露 settings 文件路径。尚未定义 UI 设置入口或按时间保留策略；这些属于后续缓存生命周期治理。已有的 `prune_to_size_limit`、settings 读写、默认导入后维护、定时后端维护和手动后端触发只属于后端生命周期能力，不改变缩略图 URL 契约。
 
+## 诊断摘要
+
+当前后端已有 `get_preview_image_diagnostics` 命令，用于为后续诊断导出提供已脱敏的预览图处理摘要。该摘要只基于已持久化导入结果聚合：
+
+- `totalImportedMods`
+- `thumbnailCount`
+- `fallbackCount`
+- `fallbackReasons[]`，其中每项包含稳定 `snake_case` 的 `reason` 和 `count`
+
+该命令不读取缩略图文件、不导出第三方图片内容、不返回 `thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、原始 Mod 包路径或本地路径。它也不创建长任务、不发送 progress event。完整诊断包导出、用户可见导出入口和导出前类别确认仍属于后续日志/诊断治理工作，必须继续遵守 [日志与审计设计](LOGGING.md) 的脱敏规则。
+
 ## 前端 DTO
 
 前端 DTO 是 [前后端通信契约设计](FRONTEND_BACKEND_CONTRACT.md) 的 feature-specific 扩展。字段使用 camelCase，enum 值使用稳定 `snake_case` 字符串。前端建议消费以下结构：
@@ -437,4 +448,4 @@ duration_ms
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
 - 支持 UI 设置入口和更完整的保留策略。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
-- 支持为诊断导出提供缩略图处理摘要，但不导出第三方图片内容。
+- 支持完整诊断包导出和导出前类别确认；已有预览图处理摘要只能作为脱敏统计输入，不能导出第三方图片内容。
