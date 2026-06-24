@@ -14,8 +14,29 @@ pub struct ModPackageMetadata {
     pub display_name: Option<String>,
 }
 
+pub trait CancellationToken: Send + Sync {
+    fn is_cancelled(&self) -> bool;
+}
+
+pub struct NeverCancelled;
+
+impl CancellationToken for NeverCancelled {
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+}
+
+pub struct ModImportPackagePrepareRequest<'a> {
+    pub task_id: &'a str,
+    pub archive_path: &'a Path,
+    pub cancellation_token: &'a dyn CancellationToken,
+}
+
 pub trait ModImportPackagePreparer: Send + Sync {
-    fn prepare_package(&self, task_id: &str, archive_path: &Path) -> Result<PreparedModPackage>;
+    fn prepare_package(
+        &self,
+        request: ModImportPackagePrepareRequest<'_>,
+    ) -> Result<PreparedModPackage>;
 }
 
 pub trait ModPackageMetadataAnalyzer: Send + Sync {

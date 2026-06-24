@@ -373,6 +373,8 @@ duration_ms
 - 不要在持有游戏写锁时处理图片。
 - 图片解码应有单独并发限制，避免多个大图同时解码；当前实现由 `hmm-app` 的 `LimitedPreviewImageProcessor` 包裹 `PreviewImageProcessor` trait object，默认并发为 2。
 - 并发 limiter 只控制图片处理器入口，不改变候选扫描、沙盒解包、进度事件或 thumbnail URL 契约。
+- running prepare cancellation 使用后端 cancellation token 协作式下传；当前 zip 解压会在 entry 循环和文件 chunk 复制前检查取消，取消后清理本次 task sandbox，不保存导入结果，也不发送完成事件。
+- 图片扫描、图片解码和缩略图写入当前仍不是可中断循环；取消会在 zip 解压后或 prepare 返回后的检查点生效。
 - 任务进度事件必须携带 `task_id`。
 - 缩略图缓存可以由后端维护任务异步清理；当前已有 infra-local prune API，并已在导入结果保存成功后进行 best-effort 仓储联动 prune，清理失败不影响安装状态。
 
@@ -403,6 +405,7 @@ duration_ms
 - 支持详情页使用更大规格的派生图，但仍不能直接展示原图。
 - 支持用户手动选择候选图，但选择结果必须仍走同一条后端处理流水线。
 - 支持更完整的包元数据 schema、版本、作者、分类、标签和依赖解析。
+- 支持把 cancellation token 继续下传到 preview scanner / processor，覆盖图片候选扫描、解码和缩略图写入前后的取消检查。
 - 支持缓存空间上限和 LRU 清理。
 - 支持定时后台缓存维护任务。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
