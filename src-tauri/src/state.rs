@@ -1,6 +1,7 @@
 use hmm_app::{
-    GameSetupService, ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner,
-    ModImportTaskService, ModLibraryService, PreviewImageService, TaskManager,
+    GameSetupService, LimitedPreviewImageProcessor, ModImportAnalysisService,
+    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
+    PreviewImageService, TaskManager, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
 };
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
@@ -37,9 +38,12 @@ impl AppState {
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
-            Box::new(ImageCratePreviewImageProcessor::new(Box::new(
-                FileSystemThumbnailStore::new(app_data_dir.clone()),
-            ))),
+            Box::new(LimitedPreviewImageProcessor::new(
+                Box::new(ImageCratePreviewImageProcessor::new(Box::new(
+                    FileSystemThumbnailStore::new(app_data_dir.clone()),
+                ))),
+                DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+            )),
         );
         let mod_import_prepare_service = Arc::new(ModImportPrepareService::new(
             Box::new(ZipModImportPackagePreparer::new(
