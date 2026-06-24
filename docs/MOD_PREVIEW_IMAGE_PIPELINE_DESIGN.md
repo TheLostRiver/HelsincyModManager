@@ -77,10 +77,12 @@ PreviewImageProcessor
   校验、解码、缩放并生成缩略图
 
 ThumbnailStore
-  保存、读取、清理缩略图缓存
+  保存缩略图缓存，并把后端 opaque 引用解析为受控 URL
 ```
 
 接口参数应使用包内逻辑路径、内部 ID、hash 或后端 source ref。不要要求前端传入本地缓存路径。
+
+缓存清理可以作为后续扩展加入专门 service 或扩展 port，但不能让前端直接删除缓存目录，也不能把真实缓存路径放入 DTO。
 
 ### `hmm-app`
 
@@ -123,8 +125,9 @@ Tauri command 只做窄用例入口和 DTO 映射：
 
 `thumbnailUrl` 的字节流由 **custom protocol handler** 提供，不属于 Tauri command。handler 必须满足：
 
-- 只接受 opaque `thumbnailRef` 形态的请求（`thumbnail://<package_id>/<variant>/<content_hash>`），不接受任意路径。
-- 解析后定位到受控缓存目录，校验最终路径不穿越、不是符号链接、不指向缓存目录之外。
+- 只接受 opaque `thumbnailRef` 形态的请求（语义上为 `thumbnail://<package_id>/<variant>/<content_hash>`），不接受任意路径。
+- 可以为了 Tauri/WebView 平台兼容接受等价的受控 origin，例如 `http://thumbnail.localhost/<package_id>/<variant>/<content_hash>`；前端仍只能消费后端 DTO 返回的 `thumbnailUrl`，不能自行拼接。
+- 解析后定位到受控缓存目录，校验最终路径不穿越、不是符号链接、不指向缓存目录之外，并拒绝未登记 package 的访问。
 - 设置正确的 `Content-Type`（如 `image/jpeg`）和可缓存响应头。
 - 文件缺失或解析失败时返回合适的 HTTP 状态（如 404），由前端 `<img onError>` 降级到 fallback 占位。
 
@@ -151,7 +154,7 @@ MVP 默认值建议：
 | 输出缩略图最长边 | `768 px` | 兼顾卡片清晰度和体积 |
 | 输出格式 | `JPEG` | 当前 MVP 使用可控质量 JPEG；WebP 保留为后续可选优化 |
 | 输出质量 | `80` | 保持体积可控 |
-| 图片处理并发 | `1-2` | 避免导入多包时内存峰值过高 |
+| 图片处理并发 | `1-2` | 避免导入多包时内存峰值过高；真实多包导入接入前可以暂不启用，但接入后台执行后必须落地 |
 
 这些值应来自数据驱动配置或应用默认策略，不应写死在前端组件中。后续可以提供高级设置，但默认值必须偏保守。
 
@@ -162,10 +165,12 @@ MVP 默认值建议：
 - 优先匹配常见名称，例如 `preview`、`cover`、`poster`、`thumbnail`、`image`。
 - 支持常见扩展名，例如 `.png`、`.jpg`、`.jpeg`、`.webp`。
 - 不信任扩展名，最终以 magic bytes 和解码结果为准。
-- 只检查有限数量候选，超过数量后记录 `TooManyCandidates` 或忽略低优先级候选。
+- 只处理有限数量候选，超过数量后记录结构化诊断并忽略低优先级候选；如果产品策略要求候选超量直接降级，才返回 `too_many_candidates`。
 - 候选排序应稳定，避免同一个包重复导入时得到不同封面。
 
 候选扫描不应读取真实游戏目录，也不应读取原始压缩包外的路径。
+
+当前推荐策略是“保留稳定排序后的前 N 个候选并继续处理”，因为它能在保证资源上限的同时给用户保留预览图。`too_many_candidates` 应保留为可观测 fallback reason，但不能在没有明确产品决策时默认阻断所有候选处理。
 
 ## 缩略图生成
 
@@ -225,6 +230,8 @@ type PreviewImage =
 
 `thumbnailUrl` 必须由后端解析为受控资源 URL。本项目采用 custom protocol 方案（见 [前后端通信契约设计](FRONTEND_BACKEND_CONTRACT.md) 「Mod 预览图」一节）：后端注册 `thumbnail://` scheme，由 protocol handler 根据 opaque `thumbnailRef`（`package_id` / `variant` / `content_hash`）从应用缓存目录读字节返回，前端拿不到真实磁盘路径。asset protocol、`convertFileSrc` 和 base64 data URL 不作为正式契约方案。
 
+在 Windows WebView 或 Tauri 内部实现需要时，后端可以把同一 opaque 引用解析为 `http://thumbnail.localhost/...` 这类受控 origin。它只是传输兼容形态，不改变安全边界：前端不得拼接该 URL，也不得从中推断缓存布局。
+
 `reason` 只用于展示和测试分支，不应被前端用来推断底层文件系统状态。需要重新处理图片时，前端只能发送 `packageId`、`modId`、`taskId` 等后端生成的稳定 id。
 
 ## 前端展示规则
@@ -270,6 +277,7 @@ Mod 卡片保持固定比例：
 | --- | --- |
 | `missing` | 使用默认封面 |
 | `too_large` | 使用默认封面，导入结果可提示“预览图过大已忽略” |
+| `too_many_candidates` | 使用默认封面，或在采用 top N 策略时仅作为诊断记录；具体行为必须与实现计划和测试一致 |
 | `unsupported_format` | 使用默认封面 |
 | `unsupported_format`（magic bytes 不匹配） | 使用默认封面，并记录安全事件 |
 | `decode_failed` | 使用默认封面 |
@@ -329,8 +337,9 @@ duration_ms
 - 损坏图片解码失败。
 - 文件大小超过限制。
 - 像素数超过限制。
-- 候选图片数量超过限制。
+- 候选图片数量超过限制时的既定行为：保留 top N 继续处理，或返回 `too_many_candidates`。
 - 缩略图缓存写入失败时导入仍返回 fallback。
+- protocol handler 拒绝 traversal、absolute path、symlink、未登记 package，并返回正确 content type。
 - 前端卡片在有图、无图、图片加载失败时比例不变。
 - 日志不包含完整路径或第三方图片内容。
 
