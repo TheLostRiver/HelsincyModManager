@@ -1314,6 +1314,7 @@ version = "0.1.0-alpha.0"
 dependencies = [
  "anyhow",
  "hmm-core",
+ "serde",
  "thiserror 2.0.18",
 ]
 
