@@ -21,11 +21,11 @@
 | `hmm-core` 领域模型 | 已落地 | 已有 `PreviewImagePolicy`、输出格式、状态、fallback reason 和策略校验测试。 |
 | `hmm-ports` 接口 | 已落地 | 已有 `PackagePreviewScanner`、`PreviewImageProcessor`、`ThumbnailStore` 和相关值对象。 |
 | `hmm-infra` magic bytes 与候选扫描 | 部分落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。当前实现没有把候选超量显式上报为 `TooManyCandidates`。 |
-| `hmm-infra` 图片处理器 | 部分落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程。测试覆盖仍缺 JPEG/WebP 正常路径、损坏图、像素超限等验收项。 |
-| `hmm-infra` 缩略图缓存 | 部分落地 | 已有原子写入和 opaque URL 返回。后续需要补强缓存路径 symlink 拒绝、package 登记校验和清理策略。 |
-| `hmm-app` 预览图服务 | 部分落地 | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，但真实导入任务尚未接线。两个服务当前都可能解析 thumbnail URL，后续应明确单一职责。 |
+| `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
+| `hmm-infra` 缩略图缓存 | 部分落地 | 已有原子写入、opaque URL 返回、package 登记校验和 symlink 拒绝。后续仍需要补清理策略。 |
+| `hmm-app` 预览图服务 | 部分落地 | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；真实导入任务尚未接线。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO 和 `ImportPreviewImage -> PreviewImageDto` 映射测试。 |
-| Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态。仍需补 symlink/package registry 等安全测试。 |
+| Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。后续仍需清理策略。 |
 | `start_import_mod_task` | 最小入口已落地 | 当前只校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`。尚未解压、分析、持久化或调用预览图处理。 |
 | `get_mod_library` / `get_mod_detail` | 未落地 | 真实库查询和详情查询尚未返回 `previewImage`。 |
 | 前端类型与卡片展示 | 部分落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；当前仍主要消费 mock 数据。 |
@@ -42,12 +42,12 @@
 
 ### Thumbnail URL 解析职责
 
-当前 `PreviewImageService` 和 `ModImportAnalysisService` 都持有 `ThumbnailStore` 并调用 `resolve_url`。后续应收敛为一个边界：
+当前 `PreviewImageService` 只编排 scanner / processor 并返回 `PreviewImageProcessingResult`；`ModImportAnalysisService` 持有 `ThumbnailStore` 并调用 `resolve_url`。职责边界为：
 
 - `PreviewImageService` 只返回 `PreviewImageProcessingResult` 和 `ThumbnailRef`。
 - `ModImportAnalysisService` 或更靠近 DTO 的应用服务负责把 `ThumbnailRef` 解析为 `thumbnailUrl`。
 
-这样可以避免不同服务注入不同 store 时产生不一致。
+这样可以避免不同服务注入不同 store 时产生不一致。缩略图 URL 解析失败仍由 `ModImportAnalysisService` 降级为 `CacheWriteFailed` fallback。
 
 ### Custom protocol 形态
 
@@ -63,7 +63,7 @@
 - 只从应用数据目录下的 thumbnails 缓存读取。
 - 返回正确 `Content-Type` 和缓存头。
 
-当前实现已有 segment 白名单、containment 和 content type，仍需补强未登记 package 和 symlink 场景。
+当前实现已有 segment 白名单、containment、content type、未登记 package 拒绝和 symlink 拒绝。后续可补充缓存生命周期与清理策略。
 
 ### 图片处理并发
 
@@ -86,13 +86,13 @@ cargo test -p hmm-infra preview_image
 cargo test -p hmm-tauri thumbnail_protocol
 ```
 
-### 2. 收敛 App 层职责
+### 2. 收敛 App 层职责（已完成）
 
-整理 `PreviewImageService` 与 `ModImportAnalysisService` 的职责：
+`PreviewImageService` 与 `ModImportAnalysisService` 的职责已经整理为：
 
 - `PreviewImageService` 编排 scanner 和 processor，返回 `ThumbnailRef` 或 fallback。
 - `ModImportAnalysisService` 负责把处理结果映射为 `ImportPreviewImage`。
-- URL 解析只保留在一个应用层边界，避免重复解析。
+- URL 解析只保留在 `ModImportAnalysisService` 这个应用层边界，避免重复解析。
 
 最小验证：
 
