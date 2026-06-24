@@ -17,7 +17,6 @@ const MOD_IMPORT_PREVIEW_IMAGE_PROCESSING_PHASE: &str = "mod_import.preview_imag
 const MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE: &str = "mod_import.preview_image.fallback";
 const MOD_IMPORT_PREPARE_COMPLETED_PHASE: &str = "mod_import.prepare.completed";
 const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = "mod_import_prepare_failed";
-const DEFAULT_PREVIEW_THUMBNAIL_VARIANT: &str = "preview-768";
 pub const DEFAULT_THUMBNAIL_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 pub const DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
@@ -129,6 +128,7 @@ pub enum ImportPreviewImage {
         width: u32,
         height: u32,
         content_hash: String,
+        variant: String,
     },
     Fallback {
         reason: PreviewImageRejectionReason,
@@ -377,11 +377,13 @@ fn stored_preview_from_import(preview_image: &ImportPreviewImage) -> StoredImpor
             width,
             height,
             content_hash,
+            variant,
         } => StoredImportPreviewImage::Thumbnail {
             thumbnail_url: thumbnail_url.clone(),
             width: *width,
             height: *height,
             content_hash: content_hash.clone(),
+            variant: variant.clone(),
         },
         ImportPreviewImage::Fallback { reason } => {
             StoredImportPreviewImage::Fallback { reason: *reason }
@@ -396,11 +398,13 @@ fn import_preview_from_stored(preview_image: StoredImportPreviewImage) -> Import
             width,
             height,
             content_hash,
+            variant,
         } => ImportPreviewImage::Thumbnail {
             thumbnail_url,
             width,
             height,
             content_hash,
+            variant,
         },
         StoredImportPreviewImage::Fallback { reason } => ImportPreviewImage::Fallback { reason },
     }
@@ -410,10 +414,14 @@ fn retained_thumbnail_refs(records: &[StoredModImportAnalysis]) -> Vec<Thumbnail
     records
         .iter()
         .filter_map(|record| match &record.preview_image {
-            StoredImportPreviewImage::Thumbnail { content_hash, .. } => Some(ThumbnailRef {
+            StoredImportPreviewImage::Thumbnail {
+                content_hash,
+                variant,
+                ..
+            } => Some(ThumbnailRef {
                 package_id: record.package_id.clone(),
                 content_hash: content_hash.clone(),
-                variant: DEFAULT_PREVIEW_THUMBNAIL_VARIANT.to_owned(),
+                variant: variant.clone(),
             }),
             StoredImportPreviewImage::Fallback { .. } => None,
         })
@@ -690,6 +698,7 @@ impl ModImportAnalysisService {
                         width: thumbnail.width,
                         height: thumbnail.height,
                         content_hash: thumbnail.content_hash,
+                        variant: thumbnail.thumbnail_ref.variant,
                     },
                     Err(_) => ImportPreviewImage::Fallback {
                         reason: PreviewImageRejectionReason::CacheWriteFailed,
@@ -773,6 +782,7 @@ mod tests {
                 width: 320,
                 height: 180,
                 content_hash: "hash-1".to_owned(),
+                variant: "preview-768".to_owned(),
             }
         );
     }
@@ -980,6 +990,7 @@ mod tests {
                 width: 320,
                 height: 180,
                 content_hash: "hash-1".to_owned(),
+                variant: "preview-768".to_owned(),
             }
         );
         assert_eq!(
@@ -1151,6 +1162,7 @@ mod tests {
                 width: 320,
                 height: 180,
                 content_hash: "hash-1".to_owned(),
+                variant: "preview-768".to_owned(),
             }
         );
     }
@@ -1170,10 +1182,11 @@ mod tests {
                 display_name: "Old Mod".to_owned(),
                 metadata: StoredModPackageMetadata::default(),
                 preview_image: StoredImportPreviewImage::Thumbnail {
-                    thumbnail_url: "thumbnail://pkg-old/preview-768/hash-old".to_owned(),
+                    thumbnail_url: "thumbnail://pkg-old/preview-1024/hash-old".to_owned(),
                     width: 320,
                     height: 180,
                     content_hash: "hash-old".to_owned(),
+                    variant: "preview-1024".to_owned(),
                 },
             })
             .expect("seed old analysis");
@@ -1223,7 +1236,7 @@ mod tests {
             vec![
                 ThumbnailRef {
                     package_id: "pkg-old".to_owned(),
-                    variant: "preview-768".to_owned(),
+                    variant: "preview-1024".to_owned(),
                     content_hash: "hash-old".to_owned(),
                 },
                 ThumbnailRef {
@@ -1307,6 +1320,7 @@ mod tests {
                     width: 320,
                     height: 180,
                     content_hash: "hash-1".to_owned(),
+                    variant: "preview-768".to_owned(),
                 },
             })
             .expect("seed analysis");
@@ -1393,6 +1407,7 @@ mod tests {
                     width: 320,
                     height: 180,
                     content_hash: "hash-1".to_owned(),
+                    variant: "preview-768".to_owned(),
                 },
             })
             .expect("seed analysis");
@@ -1578,6 +1593,7 @@ mod tests {
                     width: 320,
                     height: 180,
                     content_hash: "hash-1".to_owned(),
+                    variant: "preview-768".to_owned(),
                 },
             },
             StoredModImportAnalysis {
@@ -2019,6 +2035,7 @@ mod tests {
             &self,
             _package_id: &str,
             _content_hash: &str,
+            _variant: &str,
             _extension: &str,
             _bytes: &[u8],
         ) -> anyhow::Result<ThumbnailRef> {

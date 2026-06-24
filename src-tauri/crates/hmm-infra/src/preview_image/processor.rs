@@ -139,9 +139,11 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
         ensure_not_cancelled(cancellation_token)?;
 
         let content_hash = hex_sha256(&output);
+        let variant = thumbnail_variant_for_policy(policy);
         let thumbnail_ref = match self.thumbnail_store.put_thumbnail(
             &candidate.source_ref.package_id,
             &content_hash,
+            &variant,
             extension,
             &output,
         ) {
@@ -163,6 +165,10 @@ impl PreviewImageProcessor for ImageCratePreviewImageProcessor {
             },
         ))
     }
+}
+
+fn thumbnail_variant_for_policy(policy: &PreviewImagePolicy) -> String {
+    format!("preview-{}", policy.output_max_edge_px)
 }
 
 fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
@@ -320,6 +326,37 @@ mod tests {
         assert_eq!(thumbnail.height, 2);
         assert_eq!(thumbnail.thumbnail_ref.package_id, "pkg-1");
         assert!(!thumbnail.content_hash.is_empty());
+    }
+
+    #[test]
+    fn passes_policy_derived_variant_to_thumbnail_store() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_png(temp.path().join("preview.png").as_path(), 16, 8);
+
+        let candidate = preview_candidate("pkg-1", "preview.png", 0);
+        let policy = PreviewImagePolicy {
+            output_max_edge_px: 1024,
+            ..PreviewImagePolicy::default()
+        };
+
+        let store = InMemoryThumbnailStore::default();
+        let recorded_variant = store.recorded_variant.clone();
+        let processor = ImageCratePreviewImageProcessor::new(Box::new(store));
+        let result = process_candidate(&processor, temp.path(), &candidate, &policy)
+            .expect("processing result");
+
+        let PreviewImageProcessingResult::Thumbnail(thumbnail) = result else {
+            panic!("expected thumbnail result");
+        };
+
+        assert_eq!(thumbnail.thumbnail_ref.variant, "preview-1024");
+        assert_eq!(
+            recorded_variant
+                .lock()
+                .expect("thumbnail store variant lock")
+                .as_deref(),
+            Some("preview-1024")
+        );
     }
 
     #[test]
@@ -643,6 +680,7 @@ mod tests {
     struct InMemoryThumbnailStore {
         last_bytes: Mutex<Option<Vec<u8>>>,
         recorded_extension: std::sync::Arc<Mutex<Option<String>>>,
+        recorded_variant: std::sync::Arc<Mutex<Option<String>>>,
     }
 
     impl ThumbnailStore for InMemoryThumbnailStore {
@@ -650,6 +688,7 @@ mod tests {
             &self,
             package_id: &str,
             content_hash: &str,
+            variant: &str,
             extension: &str,
             bytes: &[u8],
         ) -> anyhow::Result<ThumbnailRef> {
@@ -658,10 +697,14 @@ mod tests {
                 .recorded_extension
                 .lock()
                 .expect("thumbnail store extension lock") = Some(extension.to_owned());
+            *self
+                .recorded_variant
+                .lock()
+                .expect("thumbnail store variant lock") = Some(variant.to_owned());
             Ok(ThumbnailRef {
                 package_id: package_id.to_owned(),
                 content_hash: content_hash.to_owned(),
-                variant: "preview-768".to_owned(),
+                variant: variant.to_owned(),
             })
         }
 
@@ -680,6 +723,7 @@ mod tests {
             &self,
             _package_id: &str,
             _content_hash: &str,
+            _variant: &str,
             _extension: &str,
             _bytes: &[u8],
         ) -> anyhow::Result<ThumbnailRef> {
@@ -700,6 +744,7 @@ mod tests {
             &self,
             package_id: &str,
             content_hash: &str,
+            variant: &str,
             _extension: &str,
             _bytes: &[u8],
         ) -> anyhow::Result<ThumbnailRef> {
@@ -707,7 +752,7 @@ mod tests {
             Ok(ThumbnailRef {
                 package_id: package_id.to_owned(),
                 content_hash: content_hash.to_owned(),
-                variant: "preview-768".to_owned(),
+                variant: variant.to_owned(),
             })
         }
 
