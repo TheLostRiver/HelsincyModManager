@@ -105,9 +105,12 @@ impl AuditLogReader for FileSystemAuditLogWriter {
                     continue;
                 }
 
-                let event: AuditLogEvent =
-                    serde_json::from_str(&line).context("failed to parse audit log event")?;
-                validate_audit_event(&event).context("audit log event failed sanitization")?;
+                let Ok(event) = serde_json::from_str::<AuditLogEvent>(&line) else {
+                    continue;
+                };
+                if validate_audit_event(&event).is_err() {
+                    continue;
+                }
                 if events.len() == request.max_events {
                     events.remove(0);
                 }
@@ -390,5 +393,64 @@ mod tests {
         assert!(!serialized.contains("contentHash"));
         assert!(!serialized.contains("sandbox"));
         assert!(!serialized.contains("C:/"));
+    }
+
+    #[test]
+    fn audit_log_reader_skips_corrupted_or_unsanitized_events() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let writer = FileSystemAuditLogWriter::new(temp.path().to_path_buf());
+        writer
+            .record(AuditLogEvent {
+                timestamp_unix_millis: 42,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_preview_image_diagnostics".to_owned(),
+                result: "success".to_owned(),
+                fields: BTreeMap::from([(
+                    "file_name".to_owned(),
+                    "preview-image-diagnostics-42.zip".to_owned(),
+                )]),
+            })
+            .expect("record valid audit event");
+
+        let audit_path = temp
+            .path()
+            .join("logs")
+            .join("audit")
+            .join("audit-1970-01-01.log");
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&audit_path)
+            .expect("open audit log for fixture append");
+        writeln!(file, "{{not-json").expect("write corrupted audit line");
+        writeln!(
+            file,
+            "{}",
+            serde_json::to_string(&AuditLogEvent {
+                timestamp_unix_millis: 43,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_audit_log_diagnostics".to_owned(),
+                result: "failure".to_owned(),
+                fields: BTreeMap::from([(
+                    "raw_path".to_owned(),
+                    "C:/Users/Player/raw_path/audit.log".to_owned(),
+                )]),
+            })
+            .expect("serialize unsafe fixture event")
+        )
+        .expect("write unsafe audit line");
+
+        let events = writer
+            .read_recent_sanitized(AuditLogReadRequest { max_events: 10 })
+            .expect("read only sanitized audit events");
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].timestamp_unix_millis, 42);
+        assert_eq!(
+            events[0].fields["file_name"],
+            "preview-image-diagnostics-42.zip"
+        );
+        let serialized = serde_json::to_string(&events).expect("serialize audit events");
+        assert!(!serialized.contains("C:/Users/Player"));
+        assert!(!serialized.contains("raw_path"));
     }
 }
