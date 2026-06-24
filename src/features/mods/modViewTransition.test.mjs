@@ -21,6 +21,27 @@ function getRuleBody(css, selector) {
   return css.slice(openBraceIndex + 1, closeBraceIndex);
 }
 
+function getRuleBodies(css, selector) {
+  const bodies = [];
+  let searchFrom = 0;
+
+  while (searchFrom < css.length) {
+    const start = css.indexOf(`${selector} {`, searchFrom);
+    if (start < 0) {
+      break;
+    }
+
+    const openBraceIndex = css.indexOf("{", start);
+    const closeBraceIndex = css.indexOf("}", openBraceIndex);
+    assert.ok(openBraceIndex >= 0 && closeBraceIndex > openBraceIndex, `invalid CSS rule: ${selector}`);
+    bodies.push(css.slice(openBraceIndex + 1, closeBraceIndex));
+    searchFrom = closeBraceIndex + 1;
+  }
+
+  assert.ok(bodies.length > 0, `missing CSS rule: ${selector}`);
+  return bodies;
+}
+
 test("view mode toggle owns a sliding selected-state indicator", () => {
   const toolbar = readProjectFile("src/features/mods/LibraryToolbar.tsx");
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
@@ -74,6 +95,15 @@ test("mod library switches views through a visible two-phase transition", () => 
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*{[\s\S]*?\.mod-grid\[data-view-transition="out"\]\s+\.mod-card/);
 });
 
+test("reduced-motion view switches clear pending transition timers first", () => {
+  const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(
+    page,
+    /if \(outTimeoutRef\.current !== null\) \{[\s\S]*?window\.clearTimeout\(outTimeoutRef\.current\);[\s\S]*?outTimeoutRef\.current = null;[\s\S]*?\}[\s\S]*?if \(inTimeoutRef\.current !== null\) \{[\s\S]*?window\.clearTimeout\(inTimeoutRef\.current\);[\s\S]*?inTimeoutRef\.current = null;[\s\S]*?\}[\s\S]*?if \(prefersReducedMotion\(\)\)/,
+  );
+});
+
 test("each target view maps to a distinct list transition variant", () => {
   const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
@@ -94,10 +124,22 @@ test("each target view maps to a distinct list transition variant", () => {
 
   for (const [variant, animationName] of variantAnimations) {
     const selector = `.mod-grid[data-view-transition="in"][data-view-transition-variant="${variant}"] .mod-card`;
-    const body = getRuleBody(css, selector);
-    assert.match(body, new RegExp(`animation:\\s*${animationName}`));
+    const bodies = getRuleBodies(css, selector);
+    assert.ok(
+      bodies.some((body) => new RegExp(`animation:\\s*${animationName}`).test(body)),
+      `${selector} should define ${animationName}`,
+    );
     assert.match(css, new RegExp(`@keyframes\\s+${animationName}`));
   }
 
-  assert.match(css, /\.mod-grid\[data-view-transition-variant="flip3d"\]/);
+  assert.match(
+    css,
+    /\.mod-grid\[data-view-transition="out"\]\[data-view-transition-variant="flip3d"\],\s*\.mod-grid\[data-view-transition="in"\]\[data-view-transition-variant="flip3d"\]\s*{[\s\S]*?perspective:\s*1200px;/,
+  );
+  assert.match(
+    css,
+    /\.mod-grid\[data-view-transition="out"\]\[data-view-transition-variant="flip3d"\]\s+\.mod-card,\s*\.mod-grid\[data-view-transition="in"\]\[data-view-transition-variant="flip3d"\]\s+\.mod-card\s*{[\s\S]*?backface-visibility:\s*hidden;[\s\S]*?transform-style:\s*preserve-3d;/,
+  );
+  assert.doesNotMatch(css, /\.mod-grid\[data-view-transition-variant="flip3d"\]\s*{/);
+  assert.doesNotMatch(css, /\.mod-grid\[data-view-transition-variant="flip3d"\]\s+\.mod-card\s*{/);
 });
