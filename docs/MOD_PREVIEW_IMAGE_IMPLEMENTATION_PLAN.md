@@ -58,15 +58,17 @@
 
 ### 手动候选选择
 
-当前已落地后端基础入口：`PreviewImageService::process_selected_package_preview` 会重新通过 scanner 获取受 `max_candidates_per_package` 限制的候选列表，并按后端候选序号只处理一个候选。该入口仍调用同一个 `PreviewImageProcessor`，因此文件大小、magic bytes、像素数、缩放、转码、缓存写入和取消检查都不会绕过。
+当前已落地两个后端基础入口：
+
+- `get_preview_image_candidates(modId)` 是只读候选列表 command。它只接受后端已登记的 `modId`，通过导入结果仓储确认记录存在，再由后端 sandbox locator 解析受控 sandbox 根；返回 DTO 只包含 `candidateIndex`、`fileName` 和 `compressedSizeBytes`，不包含 logical path、sandbox/cache 路径、压缩包内部路径、`thumbnailUrl` 或图片字节。
+- `PreviewImageService::process_selected_package_preview` 会重新通过 scanner 获取受 `max_candidates_per_package` 限制的候选列表，并按后端候选序号只处理一个候选。该入口仍调用同一个 `PreviewImageProcessor`，因此文件大小、magic bytes、像素数、缩放、转码、缓存写入和取消检查都不会绕过。
 
 尚未落地的部分：
 
-- 对前端暴露候选列表的命令和 DTO。
 - 前端可见的候选缩略图选择 UI。
 - 将选择结果回写到已导入 Mod 记录的用例。
 
-后续跨 Tauri 边界时，前端只能提交后端生成的候选标识或序号，不能提交 sandbox/cache/archive-internal 路径要求后端读取。
+后续跨 Tauri 边界执行选择时，前端只能提交后端生成的候选标识或序号，不能提交 sandbox/cache/archive-internal 路径要求后端读取。
 
 ### Custom protocol 形态
 

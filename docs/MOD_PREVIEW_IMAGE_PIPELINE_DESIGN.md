@@ -177,7 +177,7 @@ MVP 默认值建议：
 
 当前默认策略是“保留稳定排序后的前 N 个候选并继续处理”，因为它能在保证资源上限的同时给用户保留预览图。scanner 会维护 top N，app 层服务也会防御性地只处理前 N 个候选。`too_many_candidates` 保留为可观测 fallback reason，但当前默认路径不发出该 reason。
 
-手动选择候选图也必须建立在同一组受限候选之上。当前后端已有 `PreviewImageService::process_selected_package_preview` 基础入口：它重新扫描安全 sandbox 中的候选，应用同一份 `PreviewImagePolicy` 和 `max_candidates_per_package` 上限，然后按后端候选序号处理单个候选。该入口不接受本地路径、缓存路径或压缩包内部路径作为输入；后续如果暴露 Tauri command，前端只能提交后端生成的候选标识或序号。
+手动选择候选图也必须建立在同一组受限候选之上。当前后端已有只读候选列表 command `get_preview_image_candidates(modId)`：它只接受后端已登记的 `modId`，通过导入结果仓储确认记录存在，再由后端 sandbox locator 解析受控 sandbox 根，并应用同一份 `PreviewImagePolicy` / `max_candidates_per_package` 上限。候选列表 DTO 只返回 `candidateIndex`、`fileName` 和 `compressedSizeBytes`，不返回 logical path、sandbox/cache 路径、压缩包内部路径、`thumbnailUrl` 或图片字节。当前后端也已有 `PreviewImageService::process_selected_package_preview` 基础入口：它重新扫描安全 sandbox 中的候选，应用同一份策略上限，然后按后端候选序号处理单个候选。该入口不接受本地路径、缓存路径或压缩包内部路径作为输入；后续如果暴露选择写回 command，前端只能提交后端生成的候选标识或序号。
 
 ## 缩略图生成
 
@@ -449,7 +449,7 @@ duration_ms
 ## 后续扩展
 
 - 支持详情页使用更大规格的派生图，但仍不能直接展示原图。
-- 支持用户手动选择候选图的命令、候选列表 DTO 和 UI；后端按候选序号选择并复用同一条处理流水线的基础入口已落地。
+- 支持用户手动选择候选图的 UI 和选择结果写回；只读候选列表 command/DTO、以及后端按候选序号选择并复用同一条处理流水线的基础入口已落地。
 - 支持游戏专属包元数据 schema、依赖安装状态校验和跨 Mod 依赖图。
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
 - 支持 UI 设置入口和更完整的保留策略展示。
