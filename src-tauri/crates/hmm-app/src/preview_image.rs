@@ -163,6 +163,69 @@ impl PreviewImageService {
 
         Ok(PreviewImageProcessingResult::Fallback(last_reason))
     }
+
+    pub fn process_selected_package_preview(
+        &self,
+        task_id: &str,
+        package_id: &str,
+        sandbox_root: &Path,
+        selected_candidate_index: usize,
+    ) -> Result<PreviewImageProcessingResult> {
+        self.process_selected_package_preview_with_cancellation(
+            task_id,
+            package_id,
+            sandbox_root,
+            selected_candidate_index,
+            &NeverCancelled,
+        )
+    }
+
+    pub fn process_selected_package_preview_with_cancellation(
+        &self,
+        _task_id: &str,
+        package_id: &str,
+        sandbox_root: &Path,
+        selected_candidate_index: usize,
+        cancellation_token: &dyn CancellationToken,
+    ) -> Result<PreviewImageProcessingResult> {
+        self.policy.validate()?;
+        ensure_not_cancelled(cancellation_token)?;
+
+        let candidates = self.bounded_candidates(package_id, sandbox_root, cancellation_token)?;
+        let Some(candidate) = candidates.into_iter().nth(selected_candidate_index) else {
+            return Ok(PreviewImageProcessingResult::Fallback(
+                PreviewImageRejectionReason::Missing,
+            ));
+        };
+
+        ensure_not_cancelled(cancellation_token)?;
+        self.processor
+            .process_candidate(PreviewImageProcessRequest {
+                sandbox_root,
+                candidate: &candidate,
+                policy: &self.policy,
+                cancellation_token,
+            })
+    }
+
+    fn bounded_candidates(
+        &self,
+        package_id: &str,
+        sandbox_root: &Path,
+        cancellation_token: &dyn CancellationToken,
+    ) -> Result<Vec<hmm_ports::PreviewImageCandidate>> {
+        let candidates = self.scanner.scan_candidates(PreviewImageScanRequest {
+            package_id,
+            sandbox_root,
+            policy: &self.policy,
+            cancellation_token,
+        })?;
+
+        Ok(candidates
+            .into_iter()
+            .take(self.policy.max_candidates_per_package)
+            .collect())
+    }
 }
 
 fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
@@ -286,6 +349,80 @@ mod tests {
             .expect("preview result");
 
         assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
+    }
+
+    #[test]
+    fn processes_selected_candidate_by_bounded_scan_index() {
+        let first = preview_candidate("pkg-1", "first.png");
+        let second = preview_candidate("pkg-1", "second.png");
+        let processed_paths = Arc::new(Mutex::new(Vec::new()));
+        let service = PreviewImageService::new(
+            PreviewImagePolicy::default(),
+            Box::new(FakeScanner::new(vec![first, second])),
+            Box::new(RecordingProcessor::new(
+                Arc::clone(&processed_paths),
+                vec![PreviewImageProcessingResult::Thumbnail(
+                    ProcessedPreviewImage {
+                        thumbnail_ref: ThumbnailRef {
+                            package_id: "pkg-1".to_owned(),
+                            content_hash: "hash".to_owned(),
+                            variant: "preview-768".to_owned(),
+                        },
+                        width: 4,
+                        height: 4,
+                        content_hash: "hash".to_owned(),
+                    },
+                )],
+            )),
+        );
+
+        let result = service
+            .process_selected_package_preview("task-1", "pkg-1", Path::new("sandbox"), 1)
+            .expect("selected preview result");
+
+        assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
+        assert_eq!(
+            *processed_paths.lock().expect("processed paths lock"),
+            vec!["second.png".to_owned()]
+        );
+    }
+
+    #[test]
+    fn selected_candidate_index_out_of_range_returns_missing_without_processing() {
+        let candidate = preview_candidate("pkg-1", "first.png");
+        let processed_paths = Arc::new(Mutex::new(Vec::new()));
+        let service = PreviewImageService::new(
+            PreviewImagePolicy::default(),
+            Box::new(FakeScanner::new(vec![candidate])),
+            Box::new(RecordingProcessor::new(
+                Arc::clone(&processed_paths),
+                vec![PreviewImageProcessingResult::Thumbnail(
+                    ProcessedPreviewImage {
+                        thumbnail_ref: ThumbnailRef {
+                            package_id: "pkg-1".to_owned(),
+                            content_hash: "hash".to_owned(),
+                            variant: "preview-768".to_owned(),
+                        },
+                        width: 4,
+                        height: 4,
+                        content_hash: "hash".to_owned(),
+                    },
+                )],
+            )),
+        );
+
+        let result = service
+            .process_selected_package_preview("task-1", "pkg-1", Path::new("sandbox"), 4)
+            .expect("selected preview result");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::Missing)
+        );
+        assert!(processed_paths
+            .lock()
+            .expect("processed paths lock")
+            .is_empty());
     }
 
     #[test]
