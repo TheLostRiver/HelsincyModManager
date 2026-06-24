@@ -47,7 +47,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
     <div
       role="button"
       tabIndex={0}
-      className={`mod-card anim-stagger-item${selected ? " is-selected" : ""}`}
+      className={`mod-card${selected ? " is-selected" : ""}`}
       style={{ "--stagger-idx": index + 1 } as React.CSSProperties}
       onClick={() => onSelect(item.id)}
       onContextMenu={(e) => {

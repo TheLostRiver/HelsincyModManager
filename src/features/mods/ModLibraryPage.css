@@ -166,6 +166,52 @@
   border-top: 1px solid var(--color-border-muted);
 }
 
+.library-view-toggles {
+  --view-toggle-size: 28px;
+  --view-toggle-gap: 4px;
+
+  display: flex;
+  gap: var(--view-toggle-gap);
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-subtle);
+  border: 1px solid transparent;
+  position: relative;
+  overflow: hidden;
+}
+
+.library-view-toggle-indicator {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: var(--view-toggle-size);
+  height: var(--view-toggle-size);
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transform: translateX(calc(var(--view-toggle-index) * (var(--view-toggle-size) + var(--view-toggle-gap))));
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.library-view-toggles .toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  width: var(--view-toggle-size);
+  height: var(--view-toggle-size);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
 /*
  * 返回顶部浮动按钮：相对视口固定(fixed)，真正悬浮——滚动卡片时不消失、不随卡片移动。
  * 定位在右下角，距底部 100px（不贴太近，方便点击）、距右边缘对齐 page-padding。
@@ -287,29 +333,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.library-view-toggles {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-subtle);
-  border: 1px solid transparent;
-}
-
-.library-view-toggles .toggle-btn {
-  background: transparent;
-  border: none;
-  color: var(--color-text-muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
 }
 
 /* ---------- GRID 增强网格视图 ---------- */
@@ -573,13 +596,11 @@
 
 .library-view-toggles .toggle-btn:hover {
   color: var(--color-text);
-  background: var(--color-surface-muted);
+  transform: translateY(-1px);
 }
 
 .library-view-toggles .toggle-btn.active {
-  background: var(--color-surface);
   color: var(--color-accent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
 .library-chip {
@@ -666,6 +687,166 @@
   cursor: pointer;
   user-select: none;
   overflow: hidden;
+}
+
+.mod-grid[data-view-transition="out"] .mod-card,
+.mod-grid[data-view-transition="in"] .mod-card {
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+
+.mod-grid[data-view-transition-variant="flip3d"] {
+  perspective: 1200px;
+}
+
+.mod-grid[data-view-transition-variant="flip3d"] .mod-card {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
+.mod-grid[data-view-transition="out"][data-view-transition-variant="morph"] .mod-card {
+  opacity: 0;
+  filter: blur(5px);
+  transform: translateY(14px) scale(0.96);
+  transition:
+    opacity 220ms ease,
+    filter 220ms ease,
+    transform 220ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.mod-grid[data-view-transition="out"][data-view-transition-variant="wave"] .mod-card {
+  opacity: 0;
+  filter: saturate(0.75);
+  transform: scale(0.74);
+  transition:
+    opacity 170ms ease,
+    filter 170ms ease,
+    transform 170ms cubic-bezier(0.6, -0.28, 0.735, 0.045);
+  transition-delay: calc(min(var(--stagger-idx), 6) * 8ms);
+}
+
+.mod-grid[data-view-transition="out"][data-view-transition-variant="flip3d"] .mod-card {
+  opacity: 0;
+  filter: saturate(0.85);
+  transform: rotateX(78deg) translateY(-34px) translateZ(-48px);
+  transition:
+    opacity 210ms ease,
+    filter 210ms ease,
+    transform 220ms cubic-bezier(0.55, 0.055, 0.675, 0.19);
+}
+
+.mod-grid[data-view-transition="out"][data-view-transition-variant="blur"] .mod-card {
+  opacity: 0;
+  filter: blur(12px) contrast(0.9);
+  transform: scale(0.95);
+  transition:
+    opacity 200ms ease,
+    filter 200ms ease,
+    transform 200ms ease;
+}
+
+.mod-grid[data-view-transition="in"] .mod-card {
+  animation-delay: calc(min(var(--stagger-idx), 12) * 18ms);
+}
+
+.mod-grid[data-view-transition="in"][data-view-transition-variant="morph"] .mod-card {
+  animation: mod-view-card-enter-morph 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mod-grid[data-view-transition="in"][data-view-transition-variant="wave"] .mod-card {
+  animation: mod-view-card-enter-wave 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.mod-grid[data-view-transition="in"][data-view-transition-variant="flip3d"] .mod-card {
+  animation: mod-view-card-enter-flip3d 500ms cubic-bezier(0.175, 0.885, 0.32, 1.15) both;
+}
+
+.mod-grid[data-view-transition="in"][data-view-transition-variant="blur"] .mod-card {
+  animation: mod-view-card-enter-blur 460ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.mod-grid[data-view-transition="in"][data-view-transition-variant] .mod-card {
+  animation-delay: calc(min(var(--stagger-idx), 12) * 18ms);
+}
+
+@keyframes mod-view-card-enter-morph {
+  0% {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateY(-14px) scale(0.97);
+  }
+
+  70% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(1px) scale(1.01);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+@keyframes mod-view-card-enter-wave {
+  0% {
+    opacity: 0;
+    filter: saturate(0.75);
+    transform: translateY(8px) scale(0.72);
+  }
+
+  62% {
+    opacity: 1;
+    filter: saturate(1.05);
+    transform: translateY(-2px) scale(1.035);
+  }
+
+  100% {
+    opacity: 1;
+    filter: saturate(1);
+    transform: none;
+  }
+}
+
+@keyframes mod-view-card-enter-flip3d {
+  0% {
+    opacity: 0;
+    filter: saturate(0.85);
+    transform: rotateX(-78deg) translateY(34px) translateZ(-48px);
+  }
+
+  68% {
+    opacity: 1;
+    filter: saturate(1.05);
+    transform: rotateX(6deg) translateY(-2px) translateZ(0);
+  }
+
+  100% {
+    opacity: 1;
+    filter: saturate(1);
+    transform: none;
+  }
+}
+
+@keyframes mod-view-card-enter-blur {
+  0% {
+    opacity: 0;
+    filter: blur(14px) contrast(0.9);
+    transform: scale(1.045);
+  }
+
+  65% {
+    opacity: 1;
+    filter: blur(1px) contrast(1.02);
+    transform: scale(0.995);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
 }
 
 /* 使用伪元素盖在上方作为边框，完美解决 Full Bleed 的白边问题 */
@@ -1255,12 +1436,23 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .library-view-toggle-indicator,
+  .mod-grid[data-view-transition="out"] .mod-card,
+  .mod-grid[data-view-transition="in"] .mod-card,
   .mod-card__poster,
   .compact-action,
   .mod-library__back-to-top {
+    animation-duration: 0.01ms;
     transition-duration: 0.01ms;
   }
 
+  .mod-grid[data-view-transition="in"][data-view-transition-variant] .mod-card {
+    animation-duration: 0.01ms;
+    animation-delay: 0.01ms;
+  }
+
+  .mod-grid[data-view-transition="out"] .mod-card,
+  .mod-grid[data-view-transition="in"] .mod-card,
   .mod-card__poster:hover,
   .mod-card.is-selected .mod-card__poster,
   .compact-action:not(:disabled):hover,

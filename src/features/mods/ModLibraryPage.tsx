@@ -19,6 +19,19 @@ import { ModContextMenu } from "./ModContextMenu";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
+type ViewTransitionPhase = "idle" | "out" | "in";
+type ViewTransitionVariant = "morph" | "wave" | "flip3d" | "blur";
+
+const viewTransitionOutMs = 220;
+const viewTransitionInMs = 420;
+
+const viewTransitionVariantByMode: Record<ModViewMode, ViewTransitionVariant> = {
+  classic: "morph",
+  grid: "wave",
+  list: "flip3d",
+  tech: "blur",
+};
+
 type ModLibraryPageProps = {
   onAction?: (actionId: string) => void;
 };
@@ -46,6 +59,68 @@ function staggerStyle(index: number) {
   return { "--stagger-idx": index } as CSSProperties;
 }
 
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+function useModViewTransition(viewMode: ModViewMode, setViewMode: (mode: ModViewMode) => void) {
+  const [viewTransitionPhase, setViewTransitionPhase] = useState<ViewTransitionPhase>("idle");
+  const [viewTransitionVariant, setViewTransitionVariant] = useState<ViewTransitionVariant>(
+    viewTransitionVariantByMode[viewMode],
+  );
+  const outTimeoutRef = useRef<number | null>(null);
+  const inTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (outTimeoutRef.current !== null) {
+        window.clearTimeout(outTimeoutRef.current);
+      }
+      if (inTimeoutRef.current !== null) {
+        window.clearTimeout(inTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleViewModeChange = useCallback(
+    (nextViewMode: ModViewMode) => {
+      if (nextViewMode === viewMode) {
+        return;
+      }
+
+      if (prefersReducedMotion()) {
+        setViewTransitionVariant(viewTransitionVariantByMode[nextViewMode]);
+        setViewMode(nextViewMode);
+        setViewTransitionPhase("idle");
+        return;
+      }
+
+      if (outTimeoutRef.current !== null) {
+        window.clearTimeout(outTimeoutRef.current);
+      }
+      if (inTimeoutRef.current !== null) {
+        window.clearTimeout(inTimeoutRef.current);
+      }
+
+      setViewTransitionVariant(viewTransitionVariantByMode[nextViewMode]);
+      setViewTransitionPhase("out");
+      outTimeoutRef.current = window.setTimeout(() => {
+        outTimeoutRef.current = null;
+        setViewMode(nextViewMode);
+        setViewTransitionPhase("in");
+
+        inTimeoutRef.current = window.setTimeout(() => {
+          inTimeoutRef.current = null;
+          setViewTransitionPhase("idle");
+        }, viewTransitionInMs);
+      }, viewTransitionOutMs);
+    },
+    [setViewMode, viewMode],
+  );
+
+  return { handleViewModeChange, viewTransitionPhase, viewTransitionVariant };
+}
+
 const initialScrollUiState = getModLibraryScrollUiState({
   scrollTop: 0,
   scrollHeight: 0,
@@ -70,6 +145,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [activeFilter, query]);
 
   const selectedCount = selectedIds.size;
+  const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
+    viewMode,
+    setViewMode,
+  );
 
   const updateScrollUiState = useCallback(() => {
     const content = contentRef.current;
@@ -223,7 +302,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             viewMode={viewMode}
             onQueryChange={setQuery}
             onFilterChange={setActiveFilter}
-            onViewModeChange={setViewMode}
+            onViewModeChange={handleViewModeChange}
           />
         </div>
 
@@ -246,7 +325,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               <p>试试调整搜索关键词或筛选条件。</p>
             </div>
           ) : (
-            <div className={`mod-grid view-${viewMode}`} role="list">
+            <div
+              className={`mod-grid view-${viewMode}`}
+              role="list"
+              data-view-transition={viewTransitionPhase}
+              data-view-transition-variant={viewTransitionVariant}
+            >
               {visibleItems.map((item, index) => (
                 <ModPosterCard
                   key={item.id}
