@@ -13,7 +13,8 @@ pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModDetail, ModImportAnalysisRequest,
     ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
     ModImportPrepareResult, ModImportPrepareService, ModImportTaskRunError, ModImportTaskRunner,
-    ModLibraryItem, ModLibraryService, ModLibraryStatus, ThumbnailCacheMaintenanceScheduler,
+    ModLibraryItem, ModLibraryService, ModLibraryStatus, PreviewImageDiagnosticsSummary,
+    PreviewImageFallbackDiagnostic, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 pub use mod_import_task::{
