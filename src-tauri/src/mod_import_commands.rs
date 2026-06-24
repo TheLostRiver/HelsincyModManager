@@ -105,6 +105,20 @@ pub fn select_preview_image_candidate(
 }
 
 #[tauri::command]
+pub fn get_mod_detail_preview_image(
+    mod_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<PreviewImageDto>, CommandErrorDto> {
+    let mod_id = parse_mod_id(mod_id)?;
+    let preview_image = state
+        .preview_image_detail
+        .get_detail_preview_image(&mod_id)
+        .map_err(|_| preview_image_detail_unavailable_error())?;
+
+    Ok(preview_image.map(Into::into))
+}
+
+#[tauri::command]
 pub fn maintain_thumbnail_cache(state: State<'_, AppState>) -> Result<(), CommandErrorDto> {
     state.mod_import_task_runner.maintain_thumbnail_cache_now();
     Ok(())
@@ -213,6 +227,13 @@ fn preview_image_selection_unavailable_error() -> CommandErrorDto {
     }
 }
 
+fn preview_image_detail_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "preview_image_detail_unavailable".to_owned(),
+        message: "preview image detail preview is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +300,15 @@ mod tests {
         let error = preview_image_selection_unavailable_error();
 
         assert_eq!(error.code, "preview_image_selection_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn preview_image_detail_unavailable_error_uses_stable_code_without_paths() {
+        let error = preview_image_detail_unavailable_error();
+
+        assert_eq!(error.code, "preview_image_detail_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }

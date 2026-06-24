@@ -31,6 +31,7 @@
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件，并 best-effort 触发一次缩略图缓存维护。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`；library DTO 暴露 `author`、`versionLabel`、`categoryLabels`，detail DTO 暴露通用 metadata 摘要。 |
+| `get_mod_detail_preview_image` | 后端入口已落地 | 详情页可按后端 `modId` 请求更大派生预览图。后端固定使用 `preview-1024` 策略重扫受控 sandbox 并处理首个可用候选，返回既有 `PreviewImageDto`；该命令对导入记录只读，不写回导入记录，处理过程中只会写入可丢弃的 thumbnail cache，不创建 task，不发送 progress event，也不新增显式 variant 字段、sandbox/cache/archive-internal 路径、本地路径或图片字节。 |
 | `get_preview_image_diagnostics` | 后端入口已落地 | 基于已持久化导入结果聚合预览图诊断摘要，只返回总导入数、缩略图数、fallback 数和 fallback reason 计数；不导出第三方图片内容、`thumbnailUrl`、缓存路径、sandbox 路径或本地路径。 |
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
 | `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；`null`/缺省表示回退默认语义，`0` 会被拒绝；不暴露 settings 文件路径。 |
@@ -121,7 +122,7 @@
 尚未落地的缓存生命周期能力：
 
 - UI 设置入口和更完整的保留策略展示。
-- 详情页请求/展示更大派生图的前端入口和后端用例仍未落地；当前完成的是后端 variant 基础通路，不能直接展示原图。
+- 详情页请求更大派生图的后端只读用例已落地为 `get_mod_detail_preview_image(modId)`，固定生成/解析 `preview-1024` 派生图；前端详情页展示入口仍未落地。该能力仍不能直接展示原图。
 
 ### 图片处理并发
 
