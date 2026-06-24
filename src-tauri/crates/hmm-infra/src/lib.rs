@@ -17,6 +17,7 @@ pub use mod_import::{
 };
 pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
+    ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use steam_discovery::PlatformSteamRootProvider;
 

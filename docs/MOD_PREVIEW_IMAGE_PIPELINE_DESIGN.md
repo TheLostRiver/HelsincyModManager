@@ -230,7 +230,7 @@ thumbnails/
 
 ## 缩略图缓存清理
 
-缩略图缓存是派生数据，可以删除并在后续导入或重新处理时重建。当前 MVP 的清理策略是 **引用保留 + stale 删除**：
+缩略图缓存是派生数据，可以删除并在后续导入或重新处理时重建。当前 MVP 的清理策略是 **引用保留 + stale 删除**，并已补充 infra-local **空间上限 + LRU 删除** 能力：
 
 ```text
 当前仍被导入结果或库记录引用的 ThumbnailRef 集合
@@ -238,6 +238,19 @@ thumbnails/
 -> 遍历 app-data thumbnails 根
 -> 保留匹配 <variant>-<content_hash>.* 的文件
 -> 删除未引用的普通文件
+-> 删除清空后的 package 目录
+```
+
+当调用方需要控制缓存占用时，可以使用 `FileSystemThumbnailStore::prune_to_size_limit(max_bytes, retained)`：
+
+```text
+当前仍被导入结果或库记录引用的 ThumbnailRef 集合
+-> sanitize package_id / variant / content_hash
+-> 遍历 app-data thumbnails 根内普通缩略图文件
+-> 统计普通文件总大小
+-> 保留当前引用文件
+-> 对未引用文件按 accessed 时间优先、modified 时间兜底排序
+-> 从最旧文件开始删除，直到总大小不超过 max_bytes
 -> 删除清空后的 package 目录
 ```
 
@@ -252,7 +265,7 @@ thumbnails/
 
 当前 MVP 已接入导入结果仓储联动触发：`mod_import` prepare runner 在成功保存导入分析结果后，会收集结果仓储中仍被 library/detail 记录引用的 `ThumbnailRef` 集合，并调用后端缓存维护 port 执行 best-effort prune。该触发不扩展前端命令，不把缓存路径暴露给 DTO，也不会因为清理失败把成功导入改成失败。
 
-当前尚未定义全局空间上限、LRU、定时后台任务或 UI 触发入口；这些属于后续缓存生命周期治理。
+当前尚未定义默认全局空间上限、导入完成后的自动空间清理触发、定时后台任务或 UI 触发入口；这些属于后续缓存生命周期治理。已有的 `prune_to_size_limit` 只是后端 store 生命周期 API，不改变前后端契约。
 
 ## 前端 DTO
 
@@ -407,7 +420,7 @@ duration_ms
 - 支持用户手动选择候选图，但选择结果必须仍走同一条后端处理流水线。
 - 支持更完整的包元数据 schema、版本、作者、分类、标签和依赖解析。
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
-- 支持缓存空间上限和 LRU 清理。
+- 支持默认缓存空间上限配置、导入完成后的自动空间清理触发和更完整的保留策略。
 - 支持定时后台缓存维护任务。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
 - 支持为诊断导出提供缩略图处理摘要，但不导出第三方图片内容。
