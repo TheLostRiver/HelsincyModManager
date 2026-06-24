@@ -59,6 +59,12 @@ pub fn get_mod_detail(
     Ok(detail.map(Into::into))
 }
 
+#[tauri::command]
+pub fn maintain_thumbnail_cache(state: State<'_, AppState>) -> Result<(), CommandErrorDto> {
+    state.mod_import_task_runner.maintain_thumbnail_cache_now();
+    Ok(())
+}
+
 fn spawn_prepare_runner(
     runner: Arc<hmm_app::ModImportTaskRunner>,
     app_handle: AppHandle,
