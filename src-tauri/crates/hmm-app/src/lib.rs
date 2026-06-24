@@ -1,6 +1,7 @@
 mod app_settings;
 mod game_setup;
 mod mod_import;
+mod mod_import_diagnostics;
 mod mod_import_task;
 mod preview_image;
 mod task_manager;
@@ -14,8 +15,12 @@ pub use mod_import::{
     ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
     ModImportPrepareResult, ModImportPrepareService, ModImportTaskRunError, ModImportTaskRunner,
     ModLibraryItem, ModLibraryService, ModLibraryStatus, ModPackageMetadataSummary,
-    PreviewImageDiagnosticsSummary, PreviewImageFallbackDiagnostic,
     ThumbnailCacheMaintenanceScheduler, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+};
+pub use mod_import_diagnostics::{
+    PreviewImageDiagnosticExportCategory, PreviewImageDiagnosticExportCategoryId,
+    PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
+    PreviewImageDiagnosticsSummary, PreviewImageFallbackDiagnostic,
 };
 pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,

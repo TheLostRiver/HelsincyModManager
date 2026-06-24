@@ -1,3 +1,6 @@
+use crate::mod_import_diagnostics::{
+    preview_image_diagnostics_from_stored, PreviewImageDiagnosticsSummary,
+};
 use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, ModImportPackagePrepareRequest,
@@ -100,20 +103,6 @@ pub struct ModPackageMetadataSummary {
     pub category: Option<String>,
     pub tags: Vec<String>,
     pub dependencies: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreviewImageDiagnosticsSummary {
-    pub total_imported_mods: usize,
-    pub thumbnail_count: usize,
-    pub fallback_count: usize,
-    pub fallback_reasons: Vec<PreviewImageFallbackDiagnostic>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreviewImageFallbackDiagnostic {
-    pub reason: PreviewImageRejectionReason,
-    pub count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -430,46 +419,6 @@ fn retained_thumbnail_refs(records: &[StoredModImportAnalysis]) -> Vec<Thumbnail
         .collect()
 }
 
-fn preview_image_diagnostics_from_stored(
-    records: &[StoredModImportAnalysis],
-) -> PreviewImageDiagnosticsSummary {
-    let mut summary = PreviewImageDiagnosticsSummary {
-        total_imported_mods: records.len(),
-        thumbnail_count: 0,
-        fallback_count: 0,
-        fallback_reasons: Vec::new(),
-    };
-
-    for record in records {
-        match &record.preview_image {
-            StoredImportPreviewImage::Thumbnail { .. } => {
-                summary.thumbnail_count += 1;
-            }
-            StoredImportPreviewImage::Fallback { reason } => {
-                summary.fallback_count += 1;
-                increment_fallback_reason(&mut summary.fallback_reasons, *reason);
-            }
-        }
-    }
-
-    summary
-}
-
-fn increment_fallback_reason(
-    fallback_reasons: &mut Vec<PreviewImageFallbackDiagnostic>,
-    reason: PreviewImageRejectionReason,
-) {
-    if let Some(entry) = fallback_reasons
-        .iter_mut()
-        .find(|entry| entry.reason == reason)
-    {
-        entry.count += 1;
-        return;
-    }
-
-    fallback_reasons.push(PreviewImageFallbackDiagnostic { reason, count: 1 });
-}
-
 fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
     let category_labels = category_labels_from_metadata(&record.metadata);
     let author = non_empty_metadata_value(&record.metadata.author);
@@ -735,6 +684,11 @@ impl ModImportAnalysisService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mod_import_diagnostics::{
+        PreviewImageDiagnosticExportCategory, PreviewImageDiagnosticExportCategoryId,
+        PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
+        PreviewImageFallbackDiagnostic,
+    };
     use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
         AppSettings, AppSettingsRepository, AppSettingsRepositoryResult,
@@ -1598,6 +1552,33 @@ mod tests {
                 PreviewImageFallbackDiagnostic {
                     reason: PreviewImageRejectionReason::DecodeFailed,
                     count: 2,
+                },
+            ]
+        );
+        assert_eq!(
+            summary.export_categories,
+            vec![
+                PreviewImageDiagnosticExportCategory {
+                    category: PreviewImageDiagnosticExportCategoryId::PreviewImageSummary,
+                    status: PreviewImageDiagnosticExportCategoryStatus::Included,
+                    reason: None,
+                },
+                PreviewImageDiagnosticExportCategory {
+                    category: PreviewImageDiagnosticExportCategoryId::ThumbnailFiles,
+                    status: PreviewImageDiagnosticExportCategoryStatus::Excluded,
+                    reason: Some(PreviewImageDiagnosticExportExclusionReason::DerivedImageContent),
+                },
+                PreviewImageDiagnosticExportCategory {
+                    category: PreviewImageDiagnosticExportCategoryId::ThumbnailUrls,
+                    status: PreviewImageDiagnosticExportCategoryStatus::Excluded,
+                    reason: Some(
+                        PreviewImageDiagnosticExportExclusionReason::OpaqueResourceReference
+                    ),
+                },
+                PreviewImageDiagnosticExportCategory {
+                    category: PreviewImageDiagnosticExportCategoryId::RawPackageContent,
+                    status: PreviewImageDiagnosticExportCategoryStatus::Excluded,
+                    reason: Some(PreviewImageDiagnosticExportExclusionReason::ThirdPartyModContent),
                 },
             ]
         );
