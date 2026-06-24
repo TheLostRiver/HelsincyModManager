@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use hmm_ports::{AuditLogEvent, AuditLogWriter};
+use hmm_ports::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter};
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -61,6 +61,74 @@ impl AuditLogWriter for FileSystemAuditLogWriter {
 
         Ok(())
     }
+}
+
+impl AuditLogReader for FileSystemAuditLogWriter {
+    fn read_recent_sanitized(&self, request: AuditLogReadRequest) -> Result<Vec<AuditLogEvent>> {
+        if request.max_events == 0 {
+            return Ok(Vec::new());
+        }
+
+        let audit_dir = self.audit_dir();
+        let directory_entries = match fs::read_dir(&audit_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error).context("failed to read audit log directory"),
+        };
+        let mut audit_paths = Vec::new();
+        for entry in directory_entries {
+            let entry = entry.context("failed to read audit log directory entry")?;
+            if !entry
+                .file_type()
+                .context("failed to inspect audit log entry")?
+                .is_file()
+            {
+                continue;
+            }
+
+            let file_name = entry.file_name();
+            let Some(file_name) = file_name.to_str() else {
+                continue;
+            };
+            if is_audit_log_file_name(file_name) {
+                audit_paths.push(entry.path());
+            }
+        }
+        audit_paths.sort();
+
+        let mut events = Vec::new();
+        for audit_path in audit_paths {
+            let file = File::open(&audit_path).context("failed to open audit log")?;
+            for line in BufReader::new(file).lines() {
+                let line = line.context("failed to read audit log event")?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+
+                let event: AuditLogEvent =
+                    serde_json::from_str(&line).context("failed to parse audit log event")?;
+                validate_audit_event(&event).context("audit log event failed sanitization")?;
+                if events.len() == request.max_events {
+                    events.remove(0);
+                }
+                events.push(event);
+            }
+        }
+
+        Ok(events)
+    }
+}
+
+fn is_audit_log_file_name(file_name: &str) -> bool {
+    let bytes = file_name.as_bytes();
+    bytes.len() == "audit-1970-01-01.log".len()
+        && file_name.starts_with("audit-")
+        && file_name.ends_with(".log")
+        && bytes[6..10].iter().all(u8::is_ascii_digit)
+        && bytes[10] == b'-'
+        && bytes[11..13].iter().all(u8::is_ascii_digit)
+        && bytes[13] == b'-'
+        && bytes[14..16].iter().all(u8::is_ascii_digit)
 }
 
 fn validate_audit_event(event: &AuditLogEvent) -> Result<()> {
@@ -182,6 +250,7 @@ fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hmm_ports::{AuditLogReadRequest, AuditLogReader};
     use std::collections::BTreeMap;
 
     #[test]
@@ -266,5 +335,60 @@ mod tests {
             audit_log_file_name(1_704_067_200_000).expect("2024 leap year date"),
             "audit-2024-01-01.log"
         );
+    }
+
+    #[test]
+    fn audit_log_reader_returns_recent_sanitized_events_without_paths() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let writer = FileSystemAuditLogWriter::new(temp.path().to_path_buf());
+        writer
+            .record(AuditLogEvent {
+                timestamp_unix_millis: 42,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_preview_image_diagnostics".to_owned(),
+                result: "success".to_owned(),
+                fields: BTreeMap::from([(
+                    "file_name".to_owned(),
+                    "preview-image-diagnostics-42.zip".to_owned(),
+                )]),
+            })
+            .expect("record first audit event");
+        writer
+            .record(AuditLogEvent {
+                timestamp_unix_millis: 86_400_000,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_preview_image_diagnostics".to_owned(),
+                result: "failure".to_owned(),
+                fields: BTreeMap::from([
+                    (
+                        "file_name".to_owned(),
+                        "preview-image-diagnostics-86400000.zip".to_owned(),
+                    ),
+                    (
+                        "error_code".to_owned(),
+                        "diagnostic_package_export_failed".to_owned(),
+                    ),
+                ]),
+            })
+            .expect("record second audit event");
+
+        let events = writer
+            .read_recent_sanitized(AuditLogReadRequest { max_events: 1 })
+            .expect("read recent audit event");
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].timestamp_unix_millis, 86_400_000);
+        assert_eq!(events[0].result, "failure");
+        assert_eq!(
+            events[0].fields["error_code"],
+            "diagnostic_package_export_failed"
+        );
+        let serialized = serde_json::to_string(&events).expect("serialize audit events");
+        assert!(!serialized.contains(temp.path().to_string_lossy().as_ref()));
+        assert!(!serialized.contains("raw_path"));
+        assert!(!serialized.contains("thumbnail://"));
+        assert!(!serialized.contains("contentHash"));
+        assert!(!serialized.contains("sandbox"));
+        assert!(!serialized.contains("C:/"));
     }
 }
