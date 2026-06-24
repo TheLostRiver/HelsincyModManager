@@ -1,9 +1,10 @@
 use hmm_app::{
-    AppSettingsService, GameSetupService, LimitedPreviewImageProcessor, ModImportAnalysisService,
-    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
-    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
-    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    AppSettingsService, AuditLogDiagnosticsExportService, GameSetupService,
+    LimitedPreviewImageProcessor, ModImportAnalysisService, ModImportPrepareService,
+    ModImportTaskRunner, ModImportTaskService, ModLibraryService, PreviewImageCandidateListService,
+    PreviewImageCandidateSelectionService, PreviewImageDetailService,
+    PreviewImageDiagnosticsExportService, PreviewImageService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
@@ -16,8 +17,8 @@ use hmm_infra::{
     SystemClock, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
-    AppSettingsRepository, AuditLogWriter, DiagnosticPackageExporter, ModImportResultRepository,
-    ModImportSandboxLocator, ThumbnailCacheMaintenance,
+    AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
+    ModImportResultRepository, ModImportSandboxLocator, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::sync::Arc;
@@ -30,6 +31,7 @@ pub struct AppState {
     pub preview_image_selection: Arc<PreviewImageCandidateSelectionService>,
     pub preview_image_detail: Arc<PreviewImageDetailService>,
     pub preview_image_diagnostics_export: Arc<PreviewImageDiagnosticsExportService>,
+    pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -58,8 +60,9 @@ impl AppState {
         let diagnostic_package_exporter: Arc<dyn DiagnosticPackageExporter> = Arc::new(
             FileSystemDiagnosticPackageExporter::new(app_data_dir.clone()),
         );
-        let audit_log: Arc<dyn AuditLogWriter> =
-            Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
+        let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
+        let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
+        let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
         let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
@@ -123,8 +126,14 @@ impl AppState {
         ));
         let preview_image_diagnostics_export = Arc::new(PreviewImageDiagnosticsExportService::new(
             Arc::clone(&mod_import_result_repository),
+            Arc::clone(&diagnostic_package_exporter),
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+        ));
+        let audit_log_diagnostics_export = Arc::new(AuditLogDiagnosticsExportService::new(
+            audit_log_reader,
             diagnostic_package_exporter,
-            audit_log,
+            audit_log_writer,
             Arc::new(SystemClock),
         ));
         let mod_import_task_runner = Arc::new(
@@ -162,6 +171,7 @@ impl AppState {
             preview_image_selection,
             preview_image_detail,
             preview_image_diagnostics_export,
+            audit_log_diagnostics_export,
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,

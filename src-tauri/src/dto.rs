@@ -226,6 +226,15 @@ pub struct PreviewImageDiagnosticsExportDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AuditLogDiagnosticsExportDto {
+    pub export_id: String,
+    pub file_name: String,
+    pub size_bytes: u64,
+    pub audit_event_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewImageDiagnosticExportCategoryDto {
     pub category: PreviewImageDiagnosticExportCategoryIdDto,
     pub status: PreviewImageDiagnosticExportCategoryStatusDto,
@@ -419,6 +428,17 @@ impl From<hmm_app::PreviewImageDiagnosticsExport> for PreviewImageDiagnosticsExp
             file_name: export.file_name,
             size_bytes: export.size_bytes,
             diagnostics: export.diagnostics.into(),
+        }
+    }
+}
+
+impl From<hmm_app::AuditLogDiagnosticsExport> for AuditLogDiagnosticsExportDto {
+    fn from(export: hmm_app::AuditLogDiagnosticsExport) -> Self {
+        Self {
+            export_id: export.export_id,
+            file_name: export.file_name,
+            size_bytes: export.size_bytes,
+            audit_event_count: export.audit_event_count,
         }
     }
 }
@@ -912,6 +932,30 @@ mod preview_image_tests {
         assert!(!value.to_string().contains("thumbnailUrl"));
         assert!(!value.to_string().contains("contentHash"));
         assert!(!value.to_string().contains("thumbnail://"));
+        assert!(!value.to_string().contains("C:/"));
+        assert!(!value.to_string().contains("sandbox"));
+    }
+
+    #[test]
+    fn serializes_audit_log_diagnostics_export_without_paths_or_raw_events() {
+        let dto: AuditLogDiagnosticsExportDto = hmm_app::AuditLogDiagnosticsExport {
+            export_id: "audit-log-diagnostics-42.zip".to_owned(),
+            file_name: "audit-log-diagnostics-42.zip".to_owned(),
+            size_bytes: 1234,
+            audit_event_count: 2,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize audit diagnostics export");
+
+        assert_eq!(value["exportId"], "audit-log-diagnostics-42.zip");
+        assert_eq!(value["fileName"], "audit-log-diagnostics-42.zip");
+        assert_eq!(value["sizeBytes"], 1234);
+        assert_eq!(value["auditEventCount"], 2);
+        assert!(value.get("events").is_none());
+        assert!(!value.to_string().contains("thumbnail://"));
+        assert!(!value.to_string().contains("contentHash"));
+        assert!(!value.to_string().contains("raw_path"));
         assert!(!value.to_string().contains("C:/"));
         assert!(!value.to_string().contains("sandbox"));
     }
