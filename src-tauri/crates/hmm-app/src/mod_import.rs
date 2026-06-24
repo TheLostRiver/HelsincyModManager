@@ -24,6 +24,16 @@ pub trait ImportPreviewImageProcessor: Send + Sync {
         package_id: &str,
         sandbox_root: &Path,
     ) -> anyhow::Result<PreviewImageProcessingResult>;
+
+    fn process_package_preview_with_cancellation(
+        &self,
+        task_id: &str,
+        package_id: &str,
+        sandbox_root: &Path,
+        _cancellation_token: &dyn CancellationToken,
+    ) -> anyhow::Result<PreviewImageProcessingResult> {
+        self.process_package_preview(task_id, package_id, sandbox_root)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -366,13 +376,14 @@ impl ModImportPrepareService {
             MOD_IMPORT_PREVIEW_IMAGE_PROCESSING_PHASE,
         ));
 
-        let analysis = self
-            .analysis_service
-            .analyze_sandbox(ModImportAnalysisRequest {
+        let analysis = self.analysis_service.analyze_sandbox_with_cancellation(
+            ModImportAnalysisRequest {
                 task_id: request.task_id.clone(),
                 package_id: prepared_package.package_id,
                 sandbox_root: prepared_package.sandbox_root,
-            })?;
+            },
+            cancellation_token,
+        )?;
 
         if matches!(analysis.preview_image, ImportPreviewImage::Fallback { .. }) {
             events.push(running_event(
@@ -447,11 +458,23 @@ impl ModImportAnalysisService {
         &self,
         request: ModImportAnalysisRequest,
     ) -> anyhow::Result<ModImportAnalysisResult> {
-        let preview_image = match self.preview_image_processor.process_package_preview(
-            &request.task_id,
-            &request.package_id,
-            &request.sandbox_root,
-        )? {
+        self.analyze_sandbox_with_cancellation(request, &NeverCancelled)
+    }
+
+    pub fn analyze_sandbox_with_cancellation(
+        &self,
+        request: ModImportAnalysisRequest,
+        cancellation_token: &dyn CancellationToken,
+    ) -> anyhow::Result<ModImportAnalysisResult> {
+        ensure_not_cancelled(cancellation_token)?;
+        let preview_image = match self
+            .preview_image_processor
+            .process_package_preview_with_cancellation(
+                &request.task_id,
+                &request.package_id,
+                &request.sandbox_root,
+                cancellation_token,
+            )? {
             PreviewImageProcessingResult::Thumbnail(thumbnail) => {
                 match self.thumbnail_store.resolve_url(&thumbnail.thumbnail_ref) {
                     Ok(thumbnail_url) => ImportPreviewImage::Thumbnail {
@@ -469,6 +492,7 @@ impl ModImportAnalysisService {
                 ImportPreviewImage::Fallback { reason }
             }
         };
+        ensure_not_cancelled(cancellation_token)?;
 
         let display_name = self
             .metadata_analyzer
@@ -594,6 +618,38 @@ mod tests {
                 reason: PreviewImageRejectionReason::DecodeFailed,
             }
         );
+    }
+
+    #[test]
+    fn analyze_sandbox_passes_cancellation_token_to_preview_processor() {
+        let observed = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let service = ModImportAnalysisService::new(
+            Box::new(CancellationObservingPreviewImageProcessor {
+                observed: std::sync::Arc::clone(&observed),
+            }),
+            Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer::default()),
+        );
+        let cancellation_token = TestCancellationToken { cancelled: false };
+
+        let result = service
+            .analyze_sandbox_with_cancellation(
+                ModImportAnalysisRequest {
+                    task_id: "task-1".to_owned(),
+                    package_id: "pkg-1".to_owned(),
+                    sandbox_root: Path::new("sandbox").to_path_buf(),
+                },
+                &cancellation_token,
+            )
+            .expect("analysis succeeds");
+
+        assert_eq!(
+            result.preview_image,
+            ImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            }
+        );
+        assert_eq!(observed.lock().expect("observed lock").as_slice(), &[false]);
     }
 
     #[test]
@@ -1221,6 +1277,47 @@ mod tests {
             _sandbox_root: &Path,
         ) -> anyhow::Result<PreviewImageProcessingResult> {
             Ok(self.result.clone())
+        }
+    }
+
+    struct CancellationObservingPreviewImageProcessor {
+        observed: std::sync::Arc<Mutex<Vec<bool>>>,
+    }
+
+    impl ImportPreviewImageProcessor for CancellationObservingPreviewImageProcessor {
+        fn process_package_preview(
+            &self,
+            _task_id: &str,
+            _package_id: &str,
+            _sandbox_root: &Path,
+        ) -> anyhow::Result<PreviewImageProcessingResult> {
+            anyhow::bail!("preview processor should receive cancellation-aware call")
+        }
+
+        fn process_package_preview_with_cancellation(
+            &self,
+            _task_id: &str,
+            _package_id: &str,
+            _sandbox_root: &Path,
+            cancellation_token: &dyn CancellationToken,
+        ) -> anyhow::Result<PreviewImageProcessingResult> {
+            self.observed
+                .lock()
+                .expect("observed lock")
+                .push(cancellation_token.is_cancelled());
+            Ok(PreviewImageProcessingResult::Fallback(
+                PreviewImageRejectionReason::Missing,
+            ))
+        }
+    }
+
+    struct TestCancellationToken {
+        cancelled: bool,
+    }
+
+    impl CancellationToken for TestCancellationToken {
+        fn is_cancelled(&self) -> bool {
+            self.cancelled
         }
     }
 
