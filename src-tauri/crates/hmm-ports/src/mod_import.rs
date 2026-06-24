@@ -75,10 +75,16 @@ pub enum StoredImportPreviewImage {
         width: u32,
         height: u32,
         content_hash: String,
+        #[serde(default = "default_preview_thumbnail_variant")]
+        variant: String,
     },
     Fallback {
         reason: PreviewImageRejectionReason,
     },
+}
+
+fn default_preview_thumbnail_variant() -> String {
+    "preview-768".to_owned()
 }
 
 pub trait ModImportResultRepository: Send + Sync {

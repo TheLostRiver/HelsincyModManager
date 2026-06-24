@@ -72,6 +72,7 @@ pub trait ThumbnailStore: Send + Sync {
         &self,
         package_id: &str,
         content_hash: &str,
+        variant: &str,
         extension: &str,
         bytes: &[u8],
     ) -> Result<ThumbnailRef>;

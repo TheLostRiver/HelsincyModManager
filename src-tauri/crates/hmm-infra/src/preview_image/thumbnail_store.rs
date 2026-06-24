@@ -369,13 +369,14 @@ impl ThumbnailStore for FileSystemThumbnailStore {
         &self,
         package_id: &str,
         content_hash: &str,
+        variant: &str,
         extension: &str,
         bytes: &[u8],
     ) -> Result<ThumbnailRef> {
         let safe_package_id = sanitize_path_segment(package_id);
         let safe_hash = sanitize_path_segment(content_hash);
+        let variant = sanitize_path_segment(variant);
         let safe_extension = sanitize_path_segment(extension);
-        let variant = "preview-768".to_owned();
         let package_dir = self.root_dir.join("thumbnails").join(&safe_package_id);
         std::fs::create_dir_all(&package_dir)?;
 
@@ -493,7 +494,7 @@ mod tests {
         let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
 
         let thumbnail_ref = store
-            .put_thumbnail("pkg-1", "abcdef", "jpg", b"thumbnail bytes")
+            .put_thumbnail("pkg-1", "abcdef", "preview-768", "jpg", b"thumbnail bytes")
             .expect("put thumbnail");
         let url = store
             .resolve_url(&thumbnail_ref)
@@ -507,6 +508,28 @@ mod tests {
     }
 
     #[test]
+    fn stores_thumbnail_with_caller_selected_variant() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
+
+        let thumbnail_ref = store
+            .put_thumbnail("pkg-1", "abcdef", "preview-1024", "jpg", b"thumbnail bytes")
+            .expect("put thumbnail");
+        let url = store
+            .resolve_url(&thumbnail_ref)
+            .expect("resolve thumbnail url");
+
+        assert_eq!(thumbnail_ref.variant, "preview-1024");
+        assert_eq!(url, "thumbnail://pkg-1/preview-1024/abcdef");
+        assert!(temp
+            .path()
+            .join("thumbnails")
+            .join("pkg-1")
+            .join("preview-1024-abcdef.jpg")
+            .exists());
+    }
+
+    #[test]
     fn concurrent_same_key_writes_do_not_collide_on_temp_file() {
         let temp = tempfile::tempdir().expect("temp dir");
         let store = std::sync::Arc::new(FileSystemThumbnailStore::new(temp.path().to_path_buf()));
@@ -515,7 +538,7 @@ mod tests {
         for _ in 0..8 {
             let store = store.clone();
             handles.push(std::thread::spawn(move || {
-                store.put_thumbnail("pkg-1", "abcdef", "jpg", b"thumbnail bytes")
+                store.put_thumbnail("pkg-1", "abcdef", "preview-768", "jpg", b"thumbnail bytes")
             }));
         }
 
@@ -543,13 +566,13 @@ mod tests {
         let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
 
         let retained = store
-            .put_thumbnail("pkg-1", "keep", "jpg", b"keep")
+            .put_thumbnail("pkg-1", "keep", "preview-768", "jpg", b"keep")
             .expect("put retained thumbnail");
         store
-            .put_thumbnail("pkg-1", "stale", "jpg", b"stale")
+            .put_thumbnail("pkg-1", "stale", "preview-768", "jpg", b"stale")
             .expect("put stale thumbnail");
         store
-            .put_thumbnail("pkg-2", "old", "jpg", b"old")
+            .put_thumbnail("pkg-2", "old", "preview-768", "jpg", b"old")
             .expect("put stale package thumbnail");
 
         let report = store
@@ -594,15 +617,15 @@ mod tests {
         let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
 
         let retained_old = store
-            .put_thumbnail("pkg-1", "retained-old", "jpg", b"1111")
+            .put_thumbnail("pkg-1", "retained-old", "preview-768", "jpg", b"1111")
             .expect("put retained old thumbnail");
         std::thread::sleep(std::time::Duration::from_millis(20));
         store
-            .put_thumbnail("pkg-1", "delete-old", "jpg", b"2222")
+            .put_thumbnail("pkg-1", "delete-old", "preview-768", "jpg", b"2222")
             .expect("put deletable old thumbnail");
         std::thread::sleep(std::time::Duration::from_millis(20));
         store
-            .put_thumbnail("pkg-1", "keep-new", "jpg", b"3333")
+            .put_thumbnail("pkg-1", "keep-new", "preview-768", "jpg", b"3333")
             .expect("put newer thumbnail");
 
         let report = store
@@ -623,14 +646,14 @@ mod tests {
         let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
 
         let retained = store
-            .put_thumbnail("pkg-1", "retained", "jpg", b"retained")
+            .put_thumbnail("pkg-1", "retained", "preview-768", "jpg", b"retained")
             .expect("put retained thumbnail");
         store
-            .put_thumbnail("pkg-1", "expired", "jpg", b"expired")
+            .put_thumbnail("pkg-1", "expired", "preview-768", "jpg", b"expired")
             .expect("put expired thumbnail");
         std::thread::sleep(std::time::Duration::from_millis(100));
         store
-            .put_thumbnail("pkg-1", "young", "jpg", b"young")
+            .put_thumbnail("pkg-1", "young", "preview-768", "jpg", b"young")
             .expect("put young thumbnail");
 
         let report = store
@@ -652,7 +675,7 @@ mod tests {
         let outside = tempfile::tempdir().expect("outside temp dir");
         let store = FileSystemThumbnailStore::new(temp.path().to_path_buf());
         store
-            .put_thumbnail("pkg-1", "delete", "jpg", b"delete")
+            .put_thumbnail("pkg-1", "delete", "preview-768", "jpg", b"delete")
             .expect("put thumbnail");
         let package_dir = temp.path().join("thumbnails").join("pkg-1");
         let outside_file = outside.path().join("outside.jpg");
