@@ -189,7 +189,7 @@ TaskProgressEventDto
 | task kind | phase | 含义 |
 | --- | --- | --- |
 | `mod_import` | `mod_import.queued` | 导入任务已登记，等待后续执行 |
-| `mod_import` | `mod_import.cancelled` | 导入任务在执行前被取消 |
+| `mod_import` | `mod_import.cancelled` | 导入任务被取消；running prepare 会在后端检查点协作式停止 |
 | `mod_import` | `mod_import.unpack.started` / `.completed` / `.failed` | 安全解压阶段 |
 | `mod_import` | `mod_import.preview_image.processing` | 预览图候选扫描和处理 |
 | `mod_import` | `mod_import.preview_image.fallback` | 预览图降级为 fallback，导入继续 |
@@ -203,7 +203,7 @@ TaskProgressEventDto
 
 - 每个进度事件必须携带 `taskId`。
 - 前端不能靠“当前页面只有一个任务”来匹配事件。
-- 取消使用 `cancel_task(taskId)`；当前最小实现只取消 `queued` 任务，运行中任务的协作式取消由后续 TaskManager runner 补齐。
+- 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程，而是在 runner 检查点停止后续持久化、完成事件和失败覆盖事件。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 
@@ -285,7 +285,7 @@ get_mod_detail(modId)
 
 边界：
 
-- 当前 `start_import_mod_task` 会做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；随后后台 prepare runner 会执行受控 zip 沙盒解包和预览图处理，并发送 `unpack.*`、`preview_image.*` 与 `prepare.completed` 事件。prepare 成功后，导入分析结果会保存到 app data 下的受控结果仓储；进度事件仍不承载巨大结果。
+- 当前 `start_import_mod_task` 会做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；随后后台 prepare runner 会执行受控 zip 沙盒解包和预览图处理，并发送 `unpack.*`、`preview_image.*` 与 `prepare.completed` 事件。prepare 成功后，导入分析结果会保存到 app data 下的受控结果仓储；进度事件仍不承载巨大结果。若任务在 running prepare 期间被取消，runner 会在下一检查点停止保存结果，不再发送 `prepare.completed`，也不会用 failed 覆盖 cancelled 状态。
 - `get_mod_library()` 返回已持久化的导入分析结果列表，条目包含 `id`、`name`、`status`、`sizeLabel`、`categoryLabels` 和 `previewImage`。当前 MVP 使用 `packageId` 作为 `id/name` 的最小展示来源，后续包结构分析落地后再替换为真实元数据。
 - `get_mod_detail(modId)` 通过后端受控 `modId` 查询单个导入结果，返回 `null` 或包含 `previewImage` 的详情 DTO；前端不传递 sandbox/cache/archive-internal 路径。
 - 前端只能接收后端生成的 `previewImage` 结构。
