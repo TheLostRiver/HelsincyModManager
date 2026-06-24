@@ -227,6 +227,11 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - `Tauri Commands`：记录调用边界和错误分类，不记录未脱敏参数。
 - `Frontend`：展示用户可读信息，不直接拼接底层文件系统日志。
 
+当前已落地的最小 Audit Log 能力：
+- `export_preview_image_diagnostics` 成功写入受控预览图诊断 zip 后，会在 app data 下的 `logs/audit/` 写入 JSONL 审计事件。
+- 该事件只记录操作名、类别、结果、导出文件名/ID、大小和聚合计数，不记录完整本地路径、`thumbnailUrl`、`contentHash`、sandbox/cache 路径、README 全文、原始 Mod 包内容或原始日志。
+- 若审计写入失败，命令不报告导出成功；当前预览图 zip 仍只包含脱敏聚合摘要，不等同于完整日志/审计诊断包导出。
+
 ## MVP 落地要求
 
 在实现 Mod 安装前，至少应先落地：

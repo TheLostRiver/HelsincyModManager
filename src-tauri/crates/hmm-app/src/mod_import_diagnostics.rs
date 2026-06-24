@@ -1,9 +1,11 @@
 use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{
-    AppClock, DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExporter,
-    ModImportResultRepository, StoredImportPreviewImage, StoredModImportAnalysis,
+    AppClock, AuditLogEvent, AuditLogWriter, DiagnosticPackageEntry,
+    DiagnosticPackageExportRequest, DiagnosticPackageExporter, ModImportResultRepository,
+    StoredImportPreviewImage, StoredModImportAnalysis,
 };
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 const PREVIEW_IMAGE_DIAGNOSTICS_ENTRY_NAME: &str = "preview-image-diagnostics.json";
@@ -62,6 +64,7 @@ pub struct PreviewImageDiagnosticsExport {
 pub struct PreviewImageDiagnosticsExportService {
     result_repository: Arc<dyn ModImportResultRepository>,
     diagnostic_exporter: Arc<dyn DiagnosticPackageExporter>,
+    audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
 }
 
@@ -69,11 +72,13 @@ impl PreviewImageDiagnosticsExportService {
     pub fn new(
         result_repository: Arc<dyn ModImportResultRepository>,
         diagnostic_exporter: Arc<dyn DiagnosticPackageExporter>,
+        audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
         Self {
             result_repository,
             diagnostic_exporter,
+            audit_log,
             clock,
         }
     }
@@ -85,10 +90,8 @@ impl PreviewImageDiagnosticsExportService {
         let diagnostics = preview_image_diagnostics_from_stored(&records);
         let payload =
             serde_json::to_vec(&sanitized_preview_image_diagnostics_payload(&diagnostics))?;
-        let file_name = format!(
-            "preview-image-diagnostics-{}.zip",
-            self.clock.now_unix_millis()?
-        );
+        let export_timestamp = self.clock.now_unix_millis()?;
+        let file_name = format!("preview-image-diagnostics-{}.zip", export_timestamp);
         let export = self
             .diagnostic_exporter
             .export_package(DiagnosticPackageExportRequest {
@@ -98,6 +101,12 @@ impl PreviewImageDiagnosticsExportService {
                     bytes: &payload,
                 }],
             })?;
+        self.audit_log
+            .record(preview_image_diagnostics_export_audit_event(
+                export_timestamp,
+                &export,
+                &diagnostics,
+            ))?;
 
         Ok(PreviewImageDiagnosticsExport {
             export_id: export.export_id,
@@ -105,6 +114,37 @@ impl PreviewImageDiagnosticsExportService {
             size_bytes: export.size_bytes,
             diagnostics,
         })
+    }
+}
+
+fn preview_image_diagnostics_export_audit_event(
+    timestamp_unix_millis: u128,
+    export: &hmm_ports::DiagnosticPackageExportResult,
+    diagnostics: &PreviewImageDiagnosticsSummary,
+) -> AuditLogEvent {
+    let mut fields = BTreeMap::new();
+    fields.insert("export_id".to_owned(), export.export_id.clone());
+    fields.insert("file_name".to_owned(), export.file_name.clone());
+    fields.insert("size_bytes".to_owned(), export.size_bytes.to_string());
+    fields.insert(
+        "total_imported_mods".to_owned(),
+        diagnostics.total_imported_mods.to_string(),
+    );
+    fields.insert(
+        "thumbnail_count".to_owned(),
+        diagnostics.thumbnail_count.to_string(),
+    );
+    fields.insert(
+        "fallback_count".to_owned(),
+        diagnostics.fallback_count.to_string(),
+    );
+
+    AuditLogEvent {
+        timestamp_unix_millis,
+        category: "diagnostic_export".to_owned(),
+        operation: "export_preview_image_diagnostics".to_owned(),
+        result: "success".to_owned(),
+        fields,
     }
 }
 
@@ -251,9 +291,9 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use hmm_ports::{
-        AppClock, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
-        DiagnosticPackageExporter, ModImportResultRepository, StoredImportPreviewImage,
-        StoredModPackageMetadata,
+        AppClock, AuditLogEvent, AuditLogWriter, DiagnosticPackageExportRequest,
+        DiagnosticPackageExportResult, DiagnosticPackageExporter, ModImportResultRepository,
+        StoredImportPreviewImage, StoredModPackageMetadata,
     };
     use std::sync::{Arc, Mutex};
 
@@ -290,9 +330,11 @@ mod tests {
             .expect("save fallback analysis");
         let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
         let exporter_port: Arc<dyn DiagnosticPackageExporter> = exporter.clone();
+        let audit_log: Arc<dyn AuditLogWriter> = Arc::new(RecordingAuditLogWriter::default());
         let service = PreviewImageDiagnosticsExportService::new(
             repository,
             exporter_port,
+            audit_log,
             Arc::new(FixedClock { unix_millis: 42 }),
         );
 
@@ -318,6 +360,63 @@ mod tests {
         assert!(!payload.contains("thumbnailUrl"));
         assert!(!payload.contains("sandbox"));
         assert!(!payload.contains("C:/"));
+    }
+
+    #[test]
+    fn export_service_records_sanitized_audit_event_for_diagnostics_export() {
+        let repository = Arc::new(FakeModImportResultRepository::default());
+        repository
+            .save_analysis(&StoredModImportAnalysis {
+                mod_id: "mod-1".to_owned(),
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                display_name: "Preview Mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Thumbnail {
+                    thumbnail_url: "thumbnail://pkg-1/preview-768/secret-hash".to_owned(),
+                    width: 320,
+                    height: 180,
+                    content_hash: "secret-hash".to_owned(),
+                    variant: "preview-768".to_owned(),
+                },
+            })
+            .expect("save thumbnail analysis");
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let exporter_port: Arc<dyn DiagnosticPackageExporter> = exporter.clone();
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let audit_log_port: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let service = PreviewImageDiagnosticsExportService::new(
+            repository,
+            exporter_port,
+            audit_log_port,
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        service
+            .export_preview_image_diagnostics()
+            .expect("export succeeds");
+
+        let event = audit_log.take_event();
+        assert_eq!(event.operation, "export_preview_image_diagnostics");
+        assert_eq!(event.category, "diagnostic_export");
+        assert_eq!(event.result, "success");
+        assert_eq!(
+            event.fields["export_id"],
+            "preview-image-diagnostics-42.zip"
+        );
+        assert_eq!(
+            event.fields["file_name"],
+            "preview-image-diagnostics-42.zip"
+        );
+        assert_eq!(event.fields["size_bytes"], "4096");
+        assert_eq!(event.fields["total_imported_mods"], "1");
+        let serialized = serde_json::to_string(&event.fields).expect("serialize audit fields");
+        assert!(!serialized.contains("thumbnail://"));
+        assert!(!serialized.contains("secret-hash"));
+        assert!(!serialized.contains("contentHash"));
+        assert!(!serialized.contains("thumbnailUrl"));
+        assert!(!serialized.contains("sandbox"));
+        assert!(!serialized.contains("C:/"));
     }
 
     #[derive(Default)]
@@ -381,6 +480,28 @@ mod tests {
                 file_name: request.file_name.to_owned(),
                 size_bytes: 4096,
             })
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingAuditLogWriter {
+        event: Mutex<Option<AuditLogEvent>>,
+    }
+
+    impl RecordingAuditLogWriter {
+        fn take_event(&self) -> AuditLogEvent {
+            self.event
+                .lock()
+                .expect("audit event lock")
+                .take()
+                .expect("audit event")
+        }
+    }
+
+    impl AuditLogWriter for RecordingAuditLogWriter {
+        fn record(&self, event: AuditLogEvent) -> Result<()> {
+            *self.event.lock().expect("audit event lock") = Some(event);
+            Ok(())
         }
     }
 
