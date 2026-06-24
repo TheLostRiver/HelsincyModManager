@@ -216,6 +216,21 @@ pub struct PreviewImageDiagnosticsDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PreviewImageCandidateListDto {
+    pub mod_id: String,
+    pub candidates: Vec<PreviewImageCandidateDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImageCandidateDto {
+    pub candidate_index: usize,
+    pub file_name: String,
+    pub compressed_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewImageFallbackDiagnosticsDto {
     pub reason: PreviewImageFallbackReasonDto,
     pub count: usize,
@@ -354,6 +369,25 @@ impl From<hmm_app::PreviewImageFallbackDiagnostic> for PreviewImageFallbackDiagn
         Self {
             reason: reason.reason.into(),
             count: reason.count,
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageCandidateList> for PreviewImageCandidateListDto {
+    fn from(list: hmm_app::PreviewImageCandidateList) -> Self {
+        Self {
+            mod_id: list.mod_id,
+            candidates: list.candidates.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageCandidateSummary> for PreviewImageCandidateDto {
+    fn from(candidate: hmm_app::PreviewImageCandidateSummary) -> Self {
+        Self {
+            candidate_index: candidate.candidate_index,
+            file_name: candidate.file_name,
+            compressed_size_bytes: candidate.compressed_size_bytes,
         }
     }
 }
@@ -698,6 +732,29 @@ mod preview_image_tests {
         assert_eq!(value["fallbackReasons"][0]["reason"], "decode_failed");
         assert_eq!(value["fallbackReasons"][0]["count"], 2);
         assert!(value.get("thumbnailUrl").is_none());
+    }
+
+    #[test]
+    fn serializes_preview_image_candidate_list_without_paths_or_urls() {
+        let dto: PreviewImageCandidateListDto = hmm_app::PreviewImageCandidateList {
+            mod_id: "mod-1".to_owned(),
+            candidates: vec![hmm_app::PreviewImageCandidateSummary {
+                candidate_index: 0,
+                file_name: "preview.png".to_owned(),
+                compressed_size_bytes: 1234,
+            }],
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize candidate list");
+
+        assert_eq!(value["modId"], "mod-1");
+        assert_eq!(value["candidates"][0]["candidateIndex"], 0);
+        assert_eq!(value["candidates"][0]["fileName"], "preview.png");
+        assert_eq!(value["candidates"][0]["compressedSizeBytes"], 1234);
+        assert!(value["candidates"][0].get("logicalPath").is_none());
+        assert!(value["candidates"][0].get("thumbnailUrl").is_none());
+        assert!(value["candidates"][0].get("path").is_none());
     }
 
     #[test]

@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use fs2::FileExt;
 use hmm_ports::{
     CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
-    ModImportResultRepository, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
-    StoredModImportAnalysis,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageMetadata,
+    ModPackageMetadataAnalyzer, PreparedModPackage, StoredModImportAnalysis,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -216,12 +216,29 @@ pub struct ZipModImportPackagePreparer {
     limits: ZipExtractionLimits,
 }
 
+pub struct TaskScopedModImportSandboxLocator {
+    sandbox_root: PathBuf,
+}
+
 impl ZipModImportPackagePreparer {
     pub fn new(sandbox_root: PathBuf) -> Self {
         Self {
             sandbox_root,
             limits: ZipExtractionLimits::default(),
         }
+    }
+}
+
+impl TaskScopedModImportSandboxLocator {
+    pub fn new(sandbox_root: PathBuf) -> Self {
+        Self { sandbox_root }
+    }
+}
+
+impl ModImportSandboxLocator for TaskScopedModImportSandboxLocator {
+    fn sandbox_root_for_package(&self, package_id: &str) -> Result<PathBuf> {
+        validate_task_id_segment(package_id)?;
+        Ok(self.sandbox_root.join(package_id))
     }
 }
 
@@ -950,6 +967,31 @@ mod tests {
 
         assert!(error.to_string().contains("cancelled"));
         assert!(!sandbox_root.join("task-1").exists());
+    }
+
+    #[test]
+    fn sandbox_locator_resolves_package_inside_controlled_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("sandboxes");
+        let locator = TaskScopedModImportSandboxLocator::new(sandbox_root.clone());
+
+        let resolved = locator
+            .sandbox_root_for_package("task-1")
+            .expect("sandbox root resolves");
+
+        assert_eq!(resolved, sandbox_root.join("task-1"));
+    }
+
+    #[test]
+    fn sandbox_locator_rejects_unsafe_package_segments() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let locator = TaskScopedModImportSandboxLocator::new(temp.path().join("sandboxes"));
+
+        let error = locator
+            .sandbox_root_for_package("../escape")
+            .expect_err("unsafe package id rejected");
+
+        assert!(error.to_string().contains("unsafe task id segment"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::dto::{
-    AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, PreviewImageDiagnosticsDto,
-    TaskStartedDto,
+    AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto,
+    PreviewImageDiagnosticsDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -72,6 +72,20 @@ pub fn get_preview_image_diagnostics(
         .map_err(|_| mod_library_unavailable_error())?;
 
     Ok(summary.into())
+}
+
+#[tauri::command]
+pub fn get_preview_image_candidates(
+    mod_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<PreviewImageCandidateListDto>, CommandErrorDto> {
+    let mod_id = parse_mod_id(mod_id)?;
+    let candidates = state
+        .preview_image_candidates
+        .list_candidates(&mod_id)
+        .map_err(|_| preview_image_candidates_unavailable_error())?;
+
+    Ok(candidates.map(Into::into))
 }
 
 #[tauri::command]
@@ -162,6 +176,13 @@ fn mod_library_unavailable_error() -> CommandErrorDto {
     }
 }
 
+fn preview_image_candidates_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "preview_image_candidates_unavailable".to_owned(),
+        message: "preview image candidates are unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,6 +224,15 @@ mod tests {
         let error = mod_library_unavailable_error();
 
         assert_eq!(error.code, "mod_library_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn preview_image_candidates_unavailable_error_uses_stable_code_without_paths() {
+        let error = preview_image_candidates_unavailable_error();
+
+        assert_eq!(error.code, "preview_image_candidates_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
