@@ -17,6 +17,7 @@ serde_json.workspace = true
 sha2 = "0.10.9"
 tempfile = "3.27.0"
 thiserror.workspace = true
+zip.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
