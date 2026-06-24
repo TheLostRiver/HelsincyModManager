@@ -9,7 +9,8 @@ pub use game_setup::{
 };
 pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModImportAnalysisRequest,
-    ModImportAnalysisResult, ModImportAnalysisService,
+    ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
+    ModImportPrepareResult, ModImportPrepareService,
 };
 pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,

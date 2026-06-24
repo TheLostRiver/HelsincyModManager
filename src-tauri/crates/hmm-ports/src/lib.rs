@@ -1,4 +1,5 @@
 mod game_setup;
+mod mod_import;
 mod preview_image;
 
 use anyhow::Result;
@@ -8,6 +9,7 @@ pub use game_setup::{
     GameConfigRepositoryError, GameConfigRepositoryResult, GameDirectoryProbe,
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
+pub use mod_import::{ModImportPackagePreparer, PreparedModPackage};
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessingResult,
     PreviewImageProcessor, PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailRef,
