@@ -22,12 +22,12 @@
 | `hmm-ports` 接口 | 已落地 | 已有 `PackagePreviewScanner`、`PreviewImageProcessor`、`ThumbnailStore`、`ModImportPackagePreparer` 和相关值对象。 |
 | `hmm-infra` magic bytes 与候选扫描 | MVP 已落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。默认策略不因候选总数超限直接返回 `TooManyCandidates`。 |
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
-| `hmm-infra` 缩略图缓存 | 部分落地 | 已有原子写入、opaque URL 返回、package 登记校验和 symlink 拒绝。后续仍需要补清理策略。 |
+| `hmm-infra` 缩略图缓存 | MVP 已落地 | 已有原子写入、opaque URL 返回、package 登记校验、symlink 拒绝和 infra-local 清理策略；清理只作用于应用数据目录下的 `thumbnails` 缓存根。 |
 | `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞；解压失败会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
 | `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；prepare runner 成功后会保存导入分析结果。 |
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
-| Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。后续仍需清理策略。 |
+| Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；当前展示名仍来自 `packageId`。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
@@ -66,7 +66,25 @@
 - 只从应用数据目录下的 thumbnails 缓存读取。
 - 返回正确 `Content-Type` 和缓存头。
 
-当前实现已有 segment 白名单、containment、content type、未登记 package 拒绝和 symlink 拒绝。后续可补充缓存生命周期与清理策略。
+当前实现已有 segment 白名单、containment、content type、未登记 package 拒绝和 symlink 拒绝。缓存生命周期的最小清理 API 已在 infra store 中提供，protocol handler 不承担删除职责。
+
+### 缩略图缓存清理策略
+
+当前已在 `FileSystemThumbnailStore` 落地最小清理 API：调用方传入仍被导入结果或库记录引用的 `ThumbnailRef` 集合，store 只删除未引用的缩略图文件和清空后的 package 目录。
+
+边界约束：
+
+- 清理范围固定为 `root_dir/thumbnails/`，其中 `root_dir` 是后端组合根传入的应用数据目录；不读取或删除原始 Mod 包、sandbox、staging、游戏目录或存档目录。
+- 删除前检查 `thumbnails` 根、package entry 和缩略图 entry 的 symlink metadata；遇到 symlink、非预期目录或非普通文件时跳过，不跟随。
+- 对实际删除目标执行 canonical containment 校验，确认仍位于 canonical `thumbnails` 根下。
+- 当前只做非递归清理：删除 stale 文件和空 package 目录，不递归清理未知子目录。
+- 清理失败不改变安装、卸载、回滚或导入结果事实；缩略图仍是可删除、可重建的派生缓存。
+
+尚未落地的缓存生命周期能力：
+
+- 定时后台维护任务。
+- 空间上限、LRU 或按时间保留策略。
+- 与导入结果仓储的自动联动触发。
 
 ### 图片处理并发
 
