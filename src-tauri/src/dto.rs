@@ -1,13 +1,13 @@
 use hmm_app::{
-    GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage, ModDetail,
-    ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
-    TaskProgressEvent, TaskStarted, TaskStatus,
+    AppSettingsServiceError, GameCandidateScan, GameSetupCandidate, GameSetupServiceError,
+    ImportPreviewImage, ModDetail, ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind,
+    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
     GameInstance, GameSetupErrorCode, GameSetupStatus, PreviewImageRejectionReason,
 };
-use hmm_ports::GameCandidateSource;
+use hmm_ports::{AppSettings, GameCandidateSource};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -46,6 +46,34 @@ impl CommandErrorDto {
         Self {
             code: code.to_owned(),
             message: error.to_string(),
+        }
+    }
+
+    pub fn from_app_settings_service_error(error: AppSettingsServiceError) -> Self {
+        let code = match error {
+            AppSettingsServiceError::InvalidThumbnailCacheMaxBytes => {
+                "thumbnail_cache_max_bytes_invalid"
+            }
+            AppSettingsServiceError::SettingsUnavailable => "app_settings_unavailable",
+        };
+
+        Self {
+            code: code.to_owned(),
+            message: error.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettingsDto {
+    pub thumbnail_cache_max_bytes: Option<u64>,
+}
+
+impl From<AppSettings> for AppSettingsDto {
+    fn from(settings: AppSettings) -> Self {
+        Self {
+            thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
         }
     }
 }
@@ -436,6 +464,34 @@ fn path_label_from_path(path: &std::path::Path) -> String {
         .and_then(|name| name.to_str())
         .map(|name| format!(".../{name}"))
         .unwrap_or_else(|| ".../selected-directory".to_owned())
+}
+
+#[cfg(test)]
+mod app_settings_dto_tests {
+    use super::*;
+
+    #[test]
+    fn serializes_app_settings_dto_with_camel_case_fields() {
+        let dto: AppSettingsDto = AppSettings {
+            thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize settings");
+
+        assert_eq!(value["thumbnailCacheMaxBytes"], 128 * 1024 * 1024);
+    }
+
+    #[test]
+    fn maps_invalid_thumbnail_cache_setting_to_stable_error_code() {
+        let error = CommandErrorDto::from_app_settings_service_error(
+            AppSettingsServiceError::InvalidThumbnailCacheMaxBytes,
+        );
+
+        assert_eq!(error.code, "thumbnail_cache_max_bytes_invalid");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
 }
 
 #[cfg(test)]
