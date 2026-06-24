@@ -1,13 +1,14 @@
 use anyhow::{Context, Result};
 use fs2::FileExt;
 use hmm_ports::{
-    ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadata,
-    ModPackageMetadataAnalyzer, PreparedModPackage, StoredModImportAnalysis,
+    CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
+    ModImportResultRepository, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
+    StoredModImportAnalysis,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -218,7 +219,12 @@ impl ZipModImportPackagePreparer {
 }
 
 impl ModImportPackagePreparer for ZipModImportPackagePreparer {
-    fn prepare_package(&self, task_id: &str, archive_path: &Path) -> Result<PreparedModPackage> {
+    fn prepare_package(
+        &self,
+        request: ModImportPackagePrepareRequest<'_>,
+    ) -> Result<PreparedModPackage> {
+        let task_id = request.task_id;
+        let archive_path = request.archive_path;
         validate_task_id_segment(task_id)?;
 
         fs::create_dir_all(&self.sandbox_root)
@@ -226,7 +232,9 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
         let sandbox_root = self.sandbox_root.join(task_id);
         fs::create_dir(&sandbox_root).context("failed to create task-scoped mod import sandbox")?;
 
-        if let Err(error) = extract_zip_archive(archive_path, &sandbox_root) {
+        if let Err(error) =
+            extract_zip_archive(archive_path, &sandbox_root, request.cancellation_token)
+        {
             let _ = fs::remove_dir_all(&sandbox_root);
             return Err(error);
         }
@@ -413,12 +421,17 @@ fn validate_task_id_segment(task_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn extract_zip_archive(archive_path: &Path, sandbox_root: &Path) -> Result<()> {
+fn extract_zip_archive(
+    archive_path: &Path,
+    sandbox_root: &Path,
+    cancellation_token: &dyn CancellationToken,
+) -> Result<()> {
     let archive_file = fs::File::open(archive_path).context("failed to open archive")?;
     let mut archive = zip::ZipArchive::new(archive_file).context("failed to read zip archive")?;
     let mut seen_paths = HashSet::new();
 
     for index in 0..archive.len() {
+        ensure_not_cancelled(cancellation_token)?;
         let mut entry = archive
             .by_index(index)
             .context("failed to read zip archive entry")?;
@@ -439,7 +452,39 @@ fn extract_zip_archive(archive_path: &Path, sandbox_root: &Path) -> Result<()> {
 
         let mut target_file =
             fs::File::create(&target_path).context("failed to create extracted file")?;
-        io::copy(&mut entry, &mut target_file).context("failed to extract archive file")?;
+        copy_with_cancellation(&mut entry, &mut target_file, cancellation_token)
+            .context("failed to extract archive file")?;
+    }
+
+    Ok(())
+}
+
+fn copy_with_cancellation<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    cancellation_token: &dyn CancellationToken,
+) -> Result<()>
+where
+    R: Read,
+    W: Write,
+{
+    let mut buffer = [0_u8; 64 * 1024];
+
+    loop {
+        ensure_not_cancelled(cancellation_token)?;
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..read])?;
+    }
+
+    Ok(())
+}
+
+fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
+    if cancellation_token.is_cancelled() {
+        anyhow::bail!("mod import prepare cancelled");
     }
 
     Ok(())
@@ -503,7 +548,8 @@ mod tests {
     use super::*;
     use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
-        ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadataAnalyzer,
+        CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
+        ModImportResultRepository, ModPackageMetadataAnalyzer, NeverCancelled,
         StoredImportPreviewImage, StoredModImportAnalysis,
     };
     use std::fs;
@@ -520,9 +566,8 @@ mod tests {
         );
 
         let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
-        let prepared = preparer
-            .prepare_package("task-1", &archive_path)
-            .expect("prepare package");
+        let prepared =
+            prepare_package(&preparer, "task-1", &archive_path).expect("prepare package");
 
         assert_eq!(prepared.package_id, "task-1");
         assert!(prepared
@@ -542,9 +587,8 @@ mod tests {
         create_zip(&archive_path, &[("../escape.txt", b"bad".as_slice())]);
 
         let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
-        let error = preparer
-            .prepare_package("task-1", &archive_path)
-            .expect_err("unsafe entry rejected");
+        let error =
+            prepare_package(&preparer, "task-1", &archive_path).expect_err("unsafe entry rejected");
 
         assert!(error.to_string().contains("unsafe archive path"));
         assert!(!temp.path().join("escape.txt").exists());
@@ -557,9 +601,8 @@ mod tests {
         create_zip(&archive_path, &[("/absolute.txt", b"bad".as_slice())]);
 
         let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
-        let error = preparer
-            .prepare_package("task-1", &archive_path)
-            .expect_err("unsafe entry rejected");
+        let error =
+            prepare_package(&preparer, "task-1", &archive_path).expect_err("unsafe entry rejected");
 
         assert!(error.to_string().contains("unsafe archive path"));
     }
@@ -571,8 +614,7 @@ mod tests {
         create_zip_with_symlink(&archive_path, "link-to-outside", "../outside.txt");
 
         let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
-        let error = preparer
-            .prepare_package("task-1", &archive_path)
+        let error = prepare_package(&preparer, "task-1", &archive_path)
             .expect_err("symlink entry rejected");
 
         assert!(error.to_string().contains("symlink"));
@@ -591,8 +633,7 @@ mod tests {
         );
 
         let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
-        let error = preparer
-            .prepare_package("task-1", &archive_path)
+        let error = prepare_package(&preparer, "task-1", &archive_path)
             .expect_err("case collision rejected");
 
         assert!(error
@@ -679,13 +720,39 @@ mod tests {
 
         let sandbox_root = temp.path().join("sandboxes");
         let preparer = ZipModImportPackagePreparer::new(sandbox_root.clone());
-        let error = preparer
-            .prepare_package("task-1", &archive_path)
-            .expect_err("unsafe entry rejected");
+        let error =
+            prepare_package(&preparer, "task-1", &archive_path).expect_err("unsafe entry rejected");
 
         assert!(error.to_string().contains("unsafe archive path"));
         assert!(!sandbox_root.join("task-1").exists());
         assert!(!temp.path().join("escape.txt").exists());
+    }
+
+    #[test]
+    fn cancels_zip_extraction_and_cleans_task_sandbox() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("cancel.zip");
+        create_zip(
+            &archive_path,
+            &[
+                ("one.txt", b"hello".as_slice()),
+                ("two.txt", b"world".as_slice()),
+            ],
+        );
+
+        let sandbox_root = temp.path().join("sandboxes");
+        let preparer = ZipModImportPackagePreparer::new(sandbox_root.clone());
+        let cancellation_token = AlwaysCancelled;
+        let error = preparer
+            .prepare_package(ModImportPackagePrepareRequest {
+                task_id: "task-1",
+                archive_path: &archive_path,
+                cancellation_token: &cancellation_token,
+            })
+            .expect_err("cancelled extraction should stop");
+
+        assert!(error.to_string().contains("cancelled"));
+        assert!(!sandbox_root.join("task-1").exists());
     }
 
     #[test]
@@ -746,6 +813,19 @@ mod tests {
         zip.finish().expect("finish zip");
     }
 
+    fn prepare_package(
+        preparer: &ZipModImportPackagePreparer,
+        task_id: &str,
+        archive_path: &Path,
+    ) -> Result<PreparedModPackage> {
+        let cancellation_token = NeverCancelled;
+        preparer.prepare_package(ModImportPackagePrepareRequest {
+            task_id,
+            archive_path,
+            cancellation_token: &cancellation_token,
+        })
+    }
+
     fn create_zip_with_symlink(path: &Path, name: &str, target: &str) {
         let file = fs::File::create(path).expect("create zip file");
         let mut zip = zip::ZipWriter::new(file);
@@ -781,6 +861,14 @@ mod tests {
             package_id: mod_id.to_owned(),
             display_name: mod_id.to_owned(),
             preview_image: StoredImportPreviewImage::Fallback { reason },
+        }
+    }
+
+    struct AlwaysCancelled;
+
+    impl CancellationToken for AlwaysCancelled {
+        fn is_cancelled(&self) -> bool {
+            true
         }
     }
 }
