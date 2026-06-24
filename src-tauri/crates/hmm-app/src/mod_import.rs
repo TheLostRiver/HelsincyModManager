@@ -124,6 +124,10 @@ impl ModImportTaskRunner {
         };
         let mut events = match self.prepare_service.prepare_import(request) {
             Ok(result) => {
+                if self.is_task_cancelled(task_id) {
+                    return Err(ModImportTaskRunError { events: Vec::new() });
+                }
+
                 if self
                     .result_repository
                     .save_analysis(&stored_analysis_from_result(&result.analysis))
@@ -138,6 +142,10 @@ impl ModImportTaskRunner {
                 result.events
             }
             Err(_) => {
+                if self.is_task_cancelled(task_id) {
+                    return Err(ModImportTaskRunError { events: Vec::new() });
+                }
+
                 let _ = self.task_manager.fail_task(task_id);
                 return Err(ModImportTaskRunError {
                     events: vec![failed_event(task_id)],
@@ -162,6 +170,10 @@ impl ModImportTaskRunner {
                 })
             }
         }
+    }
+
+    fn is_task_cancelled(&self, task_id: &str) -> bool {
+        self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
     }
 }
 
@@ -818,6 +830,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn task_runner_does_not_complete_or_persist_when_cancelled_during_prepare() {
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::ModImport)
+            .expect("task can be created");
+        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
+        let runner = ModImportTaskRunner::new(
+            std::sync::Arc::clone(&task_manager),
+            std::sync::Arc::new(ModImportPrepareService::new(
+                Box::new(CancellingPackagePreparer {
+                    task_manager: std::sync::Arc::clone(&task_manager),
+                    task_id: task.task_id.clone(),
+                }),
+                ModImportAnalysisService::new(
+                    Box::new(FakePreviewImageProcessor {
+                        result: PreviewImageProcessingResult::Thumbnail(ProcessedPreviewImage {
+                            thumbnail_ref: ThumbnailRef {
+                                package_id: "pkg-1".to_owned(),
+                                variant: "preview-768".to_owned(),
+                                content_hash: "hash-1".to_owned(),
+                            },
+                            width: 320,
+                            height: 180,
+                            content_hash: "hash-1".to_owned(),
+                        }),
+                    }),
+                    Box::new(FakeThumbnailStore::default()),
+                ),
+            )),
+            result_repository.clone(),
+        );
+
+        let error = runner
+            .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
+            .expect_err("cancelled running task stops after prepare checkpoint");
+
+        assert!(error.events.is_empty());
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Cancelled)
+        );
+        assert!(
+            result_repository
+                .get_analysis("pkg-1")
+                .expect("repository read succeeds")
+                .is_none(),
+            "cancelled prepare result must not be persisted"
+        );
+    }
+
     struct FakePreviewImageProcessor {
         result: PreviewImageProcessingResult,
     }
@@ -881,6 +944,29 @@ mod tests {
             _archive_path: &Path,
         ) -> anyhow::Result<PreparedModPackage> {
             anyhow::bail!("failed to prepare C:/Users/Alice/Mods/bad.zip")
+        }
+    }
+
+    struct CancellingPackagePreparer {
+        task_manager: std::sync::Arc<crate::TaskManager>,
+        task_id: String,
+    }
+
+    impl ModImportPackagePreparer for CancellingPackagePreparer {
+        fn prepare_package(
+            &self,
+            task_id: &str,
+            _archive_path: &Path,
+        ) -> anyhow::Result<PreparedModPackage> {
+            assert_eq!(task_id, self.task_id);
+            self.task_manager
+                .cancel_task(&self.task_id)
+                .expect("running task can be cancelled");
+
+            Ok(PreparedModPackage {
+                package_id: "pkg-1".to_owned(),
+                sandbox_root: Path::new("sandbox").to_path_buf(),
+            })
         }
     }
 

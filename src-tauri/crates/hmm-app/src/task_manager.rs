@@ -144,7 +144,7 @@ impl TaskManager {
             .get_mut(task_id)
             .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
 
-        if task.status != TaskStatus::Queued {
+        if !matches!(task.status, TaskStatus::Queued | TaskStatus::Running) {
             return Err(TaskManagerError::TaskCannotBeCancelled {
                 task_id: task.task_id.clone(),
                 status: task.status,
@@ -249,11 +249,30 @@ mod tests {
     }
 
     #[test]
-    fn cancel_non_queued_task_is_rejected_without_status_change() {
+    fn cancel_running_task_marks_it_cancelled() {
+        let manager = TaskManager::new();
+        let task = manager
+            .create_task(TaskKind::ModImport)
+            .expect("task can be created");
+        manager.start_task(&task.task_id).expect("task can start");
+
+        let cancelled = manager
+            .cancel_task(&task.task_id)
+            .expect("running task can be cancelled");
+
+        assert_eq!(cancelled.task_id, task.task_id);
+        assert_eq!(cancelled.status, TaskStatus::Cancelled);
+        assert_eq!(
+            manager.task_status(&cancelled.task_id),
+            Some(TaskStatus::Cancelled)
+        );
+    }
+
+    #[test]
+    fn cancel_finished_or_already_cancelled_task_is_rejected_without_status_change() {
         let manager = TaskManager::new();
 
         for status in [
-            TaskStatus::Running,
             TaskStatus::Completed,
             TaskStatus::Failed,
             TaskStatus::Cancelled,
