@@ -177,6 +177,8 @@ pub struct GameCandidateDto {
 pub struct ModLibraryItemDto {
     pub id: String,
     pub name: String,
+    pub author: Option<String>,
+    pub version_label: Option<String>,
     pub size_label: String,
     pub status: ModInstallStatusDto,
     pub category_labels: Vec<String>,
@@ -189,7 +191,18 @@ pub struct ModDetailDto {
     pub id: String,
     pub name: String,
     pub package_id: String,
+    pub metadata: ModPackageMetadataDto,
     pub preview_image: PreviewImageDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModPackageMetadataDto {
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+    pub dependencies: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -286,6 +299,8 @@ impl From<ModLibraryItem> for ModLibraryItemDto {
         Self {
             id: item.id,
             name: item.name,
+            author: item.author,
+            version_label: item.version_label,
             size_label: item.size_label,
             status: item.status.into(),
             category_labels: item.category_labels,
@@ -300,7 +315,20 @@ impl From<ModDetail> for ModDetailDto {
             id: detail.id,
             name: detail.name,
             package_id: detail.package_id,
+            metadata: detail.metadata.into(),
             preview_image: detail.preview_image.into(),
+        }
+    }
+}
+
+impl From<hmm_app::ModPackageMetadataSummary> for ModPackageMetadataDto {
+    fn from(metadata: hmm_app::ModPackageMetadataSummary) -> Self {
+        Self {
+            version: metadata.version,
+            author: metadata.author,
+            category: metadata.category,
+            tags: metadata.tags,
+            dependencies: metadata.dependencies,
         }
     }
 }
@@ -675,6 +703,8 @@ mod preview_image_tests {
         let dto: ModLibraryItemDto = hmm_app::ModLibraryItem {
             id: "pkg-1".to_owned(),
             name: "pkg-1".to_owned(),
+            author: Some("A Hunter".to_owned()),
+            version_label: Some("v1.2.3".to_owned()),
             size_label: "导入完成".to_owned(),
             status: hmm_app::ModLibraryStatus::Disabled,
             category_labels: Vec::new(),
@@ -691,6 +721,8 @@ mod preview_image_tests {
 
         assert_eq!(value["id"], "pkg-1");
         assert_eq!(value["name"], "pkg-1");
+        assert_eq!(value["author"], "A Hunter");
+        assert_eq!(value["versionLabel"], "v1.2.3");
         assert_eq!(value["sizeLabel"], "导入完成");
         assert_eq!(value["status"], "disabled");
         assert_eq!(value["previewImage"]["kind"], "thumbnail");
@@ -706,6 +738,13 @@ mod preview_image_tests {
             id: "pkg-1".to_owned(),
             name: "pkg-1".to_owned(),
             package_id: "pkg-1".to_owned(),
+            metadata: hmm_app::ModPackageMetadataSummary {
+                version: Some("1.2.3".to_owned()),
+                author: Some("A Hunter".to_owned()),
+                category: Some("Visual".to_owned()),
+                tags: vec!["armor".to_owned(), "hd".to_owned()],
+                dependencies: vec!["stracker-loader".to_owned()],
+            },
             preview_image: ImportPreviewImage::Fallback {
                 reason: PreviewImageRejectionReason::Missing,
             },
@@ -716,6 +755,11 @@ mod preview_image_tests {
 
         assert_eq!(value["id"], "pkg-1");
         assert_eq!(value["packageId"], "pkg-1");
+        assert_eq!(value["metadata"]["version"], "1.2.3");
+        assert_eq!(value["metadata"]["author"], "A Hunter");
+        assert_eq!(value["metadata"]["category"], "Visual");
+        assert_eq!(value["metadata"]["tags"][0], "armor");
+        assert_eq!(value["metadata"]["dependencies"][0], "stracker-loader");
         assert_eq!(value["previewImage"]["kind"], "fallback");
         assert_eq!(value["previewImage"]["reason"], "missing");
     }
