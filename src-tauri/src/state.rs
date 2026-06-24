@@ -9,14 +9,14 @@ use hmm_app::{
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
-    FileSystemDiagnosticPackageExporter, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
-    JsonAppSettingsRepository, JsonGameConfigRepository, JsonModImportResultRepository,
-    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SteamGameDiscoveryService, SystemClock,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemThumbnailStore,
+    ImageCratePreviewImageProcessor, JsonAppSettingsRepository, JsonGameConfigRepository,
+    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
+    SystemClock, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
-    AppSettingsRepository, DiagnosticPackageExporter, ModImportResultRepository,
+    AppSettingsRepository, AuditLogWriter, DiagnosticPackageExporter, ModImportResultRepository,
     ModImportSandboxLocator, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
@@ -58,6 +58,8 @@ impl AppState {
         let diagnostic_package_exporter: Arc<dyn DiagnosticPackageExporter> = Arc::new(
             FileSystemDiagnosticPackageExporter::new(app_data_dir.clone()),
         );
+        let audit_log: Arc<dyn AuditLogWriter> =
+            Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
         let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
@@ -122,6 +124,7 @@ impl AppState {
         let preview_image_diagnostics_export = Arc::new(PreviewImageDiagnosticsExportService::new(
             Arc::clone(&mod_import_result_repository),
             diagnostic_package_exporter,
+            audit_log,
             Arc::new(SystemClock),
         ));
         let mod_import_task_runner = Arc::new(
