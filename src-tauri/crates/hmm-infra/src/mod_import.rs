@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use fs2::FileExt;
 use hmm_ports::{
-    ModImportPackagePreparer, ModImportResultRepository, PreparedModPackage,
-    StoredModImportAnalysis,
+    ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadata,
+    ModPackageMetadataAnalyzer, PreparedModPackage, StoredModImportAnalysis,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -13,6 +13,9 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MOD_IMPORT_RESULTS_SCHEMA_VERSION: u32 = 1;
+const METADATA_MAX_BYTES: u64 = 64 * 1024;
+const METADATA_MAX_SCAN_DEPTH: usize = 2;
+const METADATA_MAX_DISPLAY_NAME_CHARS: usize = 80;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ModImportResultsFile {
@@ -235,6 +238,169 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
     }
 }
 
+pub struct SandboxModPackageMetadataAnalyzer;
+
+impl ModPackageMetadataAnalyzer for SandboxModPackageMetadataAnalyzer {
+    fn analyze_metadata(
+        &self,
+        _package_id: &str,
+        sandbox_root: &Path,
+    ) -> Result<ModPackageMetadata> {
+        let mut manifest_candidates = Vec::new();
+        let mut readme_candidates = Vec::new();
+        collect_metadata_candidates(
+            sandbox_root,
+            0,
+            &mut manifest_candidates,
+            &mut readme_candidates,
+        )?;
+
+        for path in manifest_candidates {
+            if let Some(display_name) = read_manifest_display_name(&path)? {
+                return Ok(ModPackageMetadata {
+                    display_name: Some(display_name),
+                });
+            }
+        }
+
+        for path in readme_candidates {
+            if let Some(display_name) = read_readme_display_name(&path)? {
+                return Ok(ModPackageMetadata {
+                    display_name: Some(display_name),
+                });
+            }
+        }
+
+        Ok(ModPackageMetadata { display_name: None })
+    }
+}
+
+fn collect_metadata_candidates(
+    directory: &Path,
+    depth: usize,
+    manifest_candidates: &mut Vec<PathBuf>,
+    readme_candidates: &mut Vec<PathBuf>,
+) -> Result<()> {
+    if depth >= METADATA_MAX_SCAN_DEPTH {
+        return Ok(());
+    }
+
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+
+        if metadata.is_dir() {
+            collect_metadata_candidates(&path, depth + 1, manifest_candidates, readme_candidates)?;
+            continue;
+        }
+
+        if !metadata.is_file() || metadata.len() > METADATA_MAX_BYTES {
+            continue;
+        }
+
+        let Some(file_name) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_ascii_lowercase())
+        else {
+            continue;
+        };
+
+        if is_manifest_file_name(&file_name) {
+            manifest_candidates.push(path);
+        } else if is_readme_file_name(&file_name) {
+            readme_candidates.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn is_manifest_file_name(file_name: &str) -> bool {
+    matches!(
+        file_name,
+        "manifest.json" | "mod.json" | "metadata.json" | "info.json"
+    )
+}
+
+fn is_readme_file_name(file_name: &str) -> bool {
+    matches!(file_name, "readme" | "readme.md" | "readme.txt")
+}
+
+fn read_manifest_display_name(path: &Path) -> Result<Option<String>> {
+    let Ok(content) = fs::read_to_string(path) else {
+        return Ok(None);
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return Ok(None);
+    };
+    let Some(object) = value.as_object() else {
+        return Ok(None);
+    };
+
+    for key in ["displayName", "display_name", "name", "title"] {
+        if let Some(display_name) = object
+            .get(key)
+            .and_then(|value| value.as_str())
+            .and_then(sanitize_display_name)
+        {
+            return Ok(Some(display_name));
+        }
+    }
+
+    Ok(None)
+}
+
+fn read_readme_display_name(path: &Path) -> Result<Option<String>> {
+    let content = fs::read_to_string(path).context("failed to read mod readme")?;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let heading = trimmed
+            .strip_prefix('#')
+            .map(|value| value.trim_start_matches('#').trim())
+            .unwrap_or(trimmed);
+
+        if let Some(display_name) = sanitize_display_name(heading) {
+            return Ok(Some(display_name));
+        }
+    }
+
+    Ok(None)
+}
+
+fn sanitize_display_name(value: &str) -> Option<String> {
+    let normalized = value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(METADATA_MAX_DISPLAY_NAME_CHARS)
+        .collect::<String>();
+    let normalized = normalized.trim();
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.to_owned())
+    }
+}
+
 fn validate_task_id_segment(task_id: &str) -> Result<()> {
     if task_id.is_empty()
         || !task_id
@@ -337,8 +503,8 @@ mod tests {
     use super::*;
     use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
-        ModImportPackagePreparer, ModImportResultRepository, StoredImportPreviewImage,
-        StoredModImportAnalysis,
+        ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadataAnalyzer,
+        StoredImportPreviewImage, StoredModImportAnalysis,
     };
     use std::fs;
     use std::io::Write;
@@ -520,6 +686,51 @@ mod tests {
         assert!(error.to_string().contains("unsafe archive path"));
         assert!(!sandbox_root.join("task-1").exists());
         assert!(!temp.path().join("escape.txt").exists());
+    }
+
+    #[test]
+    fn metadata_analyzer_reads_display_name_from_manifest_json() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            temp.path().join("manifest.json"),
+            r#"{"displayName":"Better Mod Name"}"#,
+        )
+        .expect("write manifest");
+
+        let metadata = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        assert_eq!(metadata.display_name.as_deref(), Some("Better Mod Name"));
+    }
+
+    #[test]
+    fn metadata_analyzer_reads_display_name_from_readme_heading() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            temp.path().join("README.md"),
+            "# Better Readme Name\n\nInstall notes",
+        )
+        .expect("write readme");
+
+        let metadata = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        assert_eq!(metadata.display_name.as_deref(), Some("Better Readme Name"));
+    }
+
+    #[test]
+    fn metadata_analyzer_falls_back_to_readme_when_manifest_is_invalid() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(temp.path().join("manifest.json"), "{not json").expect("write manifest");
+        fs::write(temp.path().join("README.md"), "# Readme Name").expect("write readme");
+
+        let metadata = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        assert_eq!(metadata.display_name.as_deref(), Some("Readme Name"));
     }
 
     fn create_zip(path: &Path, entries: &[(&str, &[u8])]) {

@@ -78,6 +78,9 @@ PreviewImageProcessor
 
 ThumbnailStore
   保存缩略图缓存，并把后端 opaque 引用解析为受控 URL
+
+ModPackageMetadataAnalyzer
+  从已安全解压的 sandbox/cache 中读取有限包元数据，用于展示名等非安装事实
 ```
 
 接口参数应使用包内逻辑路径、内部 ID、hash 或后端 source ref。不要要求前端传入本地缓存路径。
@@ -95,7 +98,8 @@ ThumbnailStore
 -> 应用 PreviewImagePolicy
 -> 调用 PreviewImageProcessor
 -> 保存 ThumbnailStore
--> 写入 Mod 元数据中的 preview_image 字段
+-> 调用 ModPackageMetadataAnalyzer
+-> 写入 Mod 元数据中的 display_name 和 preview_image 字段
 ```
 
 图片处理应作为导入任务的一部分携带 `task_id`。失败时记录结构化原因，并返回 fallback 结果。
@@ -111,6 +115,7 @@ ThumbnailStore
 - 生成固定规格缩略图。
 - 写入应用数据目录下的 thumbnails 缓存。
 - 返回后端受控的缩略图引用。
+- 从安全 sandbox 中有限读取 manifest JSON 和 README，用于推断展示名。
 
 图片处理不能在持有游戏写锁时执行。
 
@@ -201,6 +206,27 @@ thumbnails/
 文件名采用 `<variant>-<content_hash>.<ext>` 顺序，其中 `variant` 当前固定为 `preview-768`（与 `hmm-infra` 的 `FileSystemThumbnailStore` 实现一致）。`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
 
 实际目录由 infra 决定，不进入前端 DTO。
+
+## 包元数据展示名
+
+导入结果中的展示名属于后端包分析结果，不应由前端从文件名、路径或压缩包内部路径推断。当前 MVP 的元数据分析只用于生成安全、短小、可显示的 `display_name`：
+
+```text
+安全解压 sandbox
+-> 有限扫描 manifest/readme 候选
+-> 跳过 symlink、目录、过大文件和异常 entry
+-> 读取 displayName / display_name / name / title
+-> 或读取 README 第一条标题/非空文本
+-> 清洗控制字符、折叠空白、限制长度
+-> 缺失或损坏时回退 package_id
+```
+
+边界约束：
+
+- 只读安全 sandbox，不读取原始压缩包外的路径。
+- 元数据分析失败不阻断导入主流程，也不影响预览图 fallback 语义。
+- 展示名不是安装、卸载、回滚或冲突检测事实来源。
+- 当前不解析版本号、作者、依赖、分类、标签或游戏专属 manifest schema；这些属于后续包分析能力。
 
 ## 缩略图缓存清理
 
@@ -365,6 +391,7 @@ duration_ms
 - 候选图片数量超过限制时保留 top N 继续处理，scanner 和 app 层服务都不能处理超过策略上限的候选。
 - 缩略图缓存写入失败时导入仍返回 fallback。
 - 缩略图缓存清理只删除未引用普通文件，保留当前引用，跳过 symlink 或异常 entry，不越过缓存根。
+- 包元数据展示名优先来自 sandbox manifest/readme，缺失或损坏时回退 package id，且不读取 sandbox 外路径。
 - protocol handler 拒绝 traversal、absolute path、symlink、未登记 package，并返回正确 content type。
 - 前端卡片在有图、无图、图片加载失败时比例不变。
 - 日志不包含完整路径或第三方图片内容。
@@ -373,6 +400,7 @@ duration_ms
 
 - 支持详情页使用更大规格的派生图，但仍不能直接展示原图。
 - 支持用户手动选择候选图，但选择结果必须仍走同一条后端处理流水线。
+- 支持更完整的包元数据 schema、版本、作者、分类、标签和依赖解析。
 - 支持缓存空间上限和 LRU 清理。
 - 支持定时后台缓存维护任务或与导入结果仓储联动触发 prune。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
