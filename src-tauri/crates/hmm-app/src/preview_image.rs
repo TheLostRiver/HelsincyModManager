@@ -119,7 +119,10 @@ impl PreviewImageService {
         }
 
         let mut last_reason = PreviewImageRejectionReason::Missing;
-        for candidate in candidates {
+        for candidate in candidates
+            .into_iter()
+            .take(self.policy.max_candidates_per_package)
+        {
             match self
                 .processor
                 .process_candidate(sandbox_root, &candidate, &self.policy)?
@@ -236,6 +239,48 @@ mod tests {
     }
 
     #[test]
+    fn processes_only_policy_candidate_limit_when_scanner_returns_more() {
+        let first = preview_candidate("pkg-1", "first.png");
+        let second = preview_candidate("pkg-1", "second.png");
+        let third = preview_candidate("pkg-1", "third.png");
+        let processed_paths = Arc::new(Mutex::new(Vec::new()));
+        let service = PreviewImageService::new(
+            PreviewImagePolicy {
+                max_candidates_per_package: 2,
+                ..PreviewImagePolicy::default()
+            },
+            Box::new(FakeScanner::new(vec![first, second, third])),
+            Box::new(RecordingProcessor::new(
+                Arc::clone(&processed_paths),
+                vec![
+                    PreviewImageProcessingResult::Fallback(
+                        PreviewImageRejectionReason::DecodeFailed,
+                    ),
+                    PreviewImageProcessingResult::Fallback(
+                        PreviewImageRejectionReason::UnsupportedFormat,
+                    ),
+                    PreviewImageProcessingResult::Fallback(
+                        PreviewImageRejectionReason::CacheWriteFailed,
+                    ),
+                ],
+            )),
+        );
+
+        let result = service
+            .process_package_preview("task-1", "pkg-1", Path::new("sandbox"))
+            .expect("preview result");
+
+        assert_eq!(
+            result,
+            PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::UnsupportedFormat)
+        );
+        assert_eq!(
+            *processed_paths.lock().expect("processed paths lock"),
+            vec!["first.png".to_owned(), "second.png".to_owned()]
+        );
+    }
+
+    #[test]
     fn limited_processor_caps_concurrent_candidate_processing() {
         let stats = Arc::new(Mutex::new(ConcurrencyStats::default()));
         let processor = Arc::new(LimitedPreviewImageProcessor::new(
@@ -322,6 +367,44 @@ mod tests {
             _candidate: &PreviewImageCandidate,
             _policy: &PreviewImagePolicy,
         ) -> Result<PreviewImageProcessingResult> {
+            Ok(self
+                .results
+                .lock()
+                .expect("processor lock")
+                .pop()
+                .expect("processor result"))
+        }
+    }
+
+    struct RecordingProcessor {
+        processed_paths: Arc<Mutex<Vec<String>>>,
+        results: Mutex<Vec<PreviewImageProcessingResult>>,
+    }
+
+    impl RecordingProcessor {
+        fn new(
+            processed_paths: Arc<Mutex<Vec<String>>>,
+            results: Vec<PreviewImageProcessingResult>,
+        ) -> Self {
+            Self {
+                processed_paths,
+                results: Mutex::new(results.into_iter().rev().collect()),
+            }
+        }
+    }
+
+    impl PreviewImageProcessor for RecordingProcessor {
+        fn process_candidate(
+            &self,
+            _sandbox_root: &Path,
+            candidate: &PreviewImageCandidate,
+            _policy: &PreviewImagePolicy,
+        ) -> Result<PreviewImageProcessingResult> {
+            self.processed_paths
+                .lock()
+                .expect("processed paths lock")
+                .push(candidate.source_ref.logical_path.clone());
+
             Ok(self
                 .results
                 .lock()
