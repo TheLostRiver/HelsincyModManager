@@ -1,19 +1,22 @@
 use hmm_app::{
     GameSetupService, ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner,
-    ModImportTaskService, PreviewImageService, TaskManager,
+    ModImportTaskService, ModLibraryService, PreviewImageService, TaskManager,
 };
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonGameConfigRepository,
-    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, SandboxPackagePreviewScanner,
-    SteamGameDiscoveryService, SystemClock, ZipModImportPackagePreparer,
+    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
+    SandboxPackagePreviewScanner, SteamGameDiscoveryService, SystemClock,
+    ZipModImportPackagePreparer,
 };
+use hmm_ports::ModImportResultRepository;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
+    pub mod_library: Arc<ModLibraryService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub task_manager: Arc<TaskManager>,
@@ -26,8 +29,11 @@ impl AppState {
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
         let config_path = app_data_dir.join("config").join("games.json");
+        let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
 
         let task_manager = Arc::new(TaskManager::new());
+        let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
+            Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
@@ -44,6 +50,9 @@ impl AppState {
                 Box::new(FileSystemThumbnailStore::new(app_data_dir.clone())),
             ),
         ));
+        let mod_library = Arc::new(ModLibraryService::new(Arc::clone(
+            &mod_import_result_repository,
+        )));
 
         Ok(Self {
             game_setup: Arc::new(GameSetupService::new(
@@ -55,9 +64,11 @@ impl AppState {
                 ))),
                 Arc::new(SystemClock),
             )),
+            mod_library,
             mod_import_task_runner: Arc::new(ModImportTaskRunner::new(
                 Arc::clone(&task_manager),
                 mod_import_prepare_service,
+                mod_import_result_repository,
             )),
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             task_manager,

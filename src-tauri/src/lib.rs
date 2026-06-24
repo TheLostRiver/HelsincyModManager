@@ -9,7 +9,7 @@ mod thumbnail_protocol;
 use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
-use mod_import_commands::start_import_mod_task;
+use mod_import_commands::{get_mod_detail, get_mod_library, start_import_mod_task};
 use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
@@ -35,7 +35,9 @@ pub fn run() {
             save_game_directory,
             scan_game_candidates,
             cancel_task,
-            start_import_mod_task
+            start_import_mod_task,
+            get_mod_library,
+            get_mod_detail
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");
