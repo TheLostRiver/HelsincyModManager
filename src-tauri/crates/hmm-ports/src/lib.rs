@@ -19,8 +19,8 @@ pub use mod_import::{
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,
-    PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailCacheMaintenance, ThumbnailRef,
-    ThumbnailStore,
+    PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailCacheMaintenance,
+    ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
 
 pub trait AppClock: Send + Sync {
