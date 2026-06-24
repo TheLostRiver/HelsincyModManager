@@ -28,10 +28,10 @@
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
 | Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。后续仍需清理策略。 |
-| `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。 |
+| `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；当前展示名仍来自 `packageId`。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
-| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入，运行中协作式取消仍待补。 |
+| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已有 runner 检查点保护，但尚未深入 zip 解压循环内部中断。 |
 
 ## 已知差异与决策点
 
@@ -76,7 +76,15 @@
 - limiter 控制进入图片处理器的并发数量，不限制候选扫描、zip 沙盒解包或其他 prepare 阶段工作。
 - `PreviewImageService` 仍只依赖 `PackagePreviewScanner` 和 `PreviewImageProcessor` trait，不依赖 infra concrete type。
 - infra 的 `ImageCratePreviewImageProcessor` 不持有全局 task 状态，也不感知 app 层并发策略。
-- 该 limiter 不能替代后续 running task cancellation；运行中取消仍需要单独设计协作式取消点。
+- 该 limiter 不承担 task cancellation；运行中取消由 `TaskManager` 和 prepare runner 检查点处理。
+
+### 运行中取消
+
+当前 `cancel_task(taskId)` 可以取消 `queued` 和 `running` 的 `mod_import` task。对于 running prepare，取消语义是协作式的：
+
+- `cancel_task` 立即把 task 状态标记为 `cancelled`，并发送 `mod_import.cancelled` 事件。
+- prepare runner 在 prepare 返回后的检查点读取 task 状态；如果已经取消，则不保存导入分析结果，不发送 `mod_import.prepare.completed`，也不发送 failed 覆盖事件。
+- 当前实现不强制中断正在进行的 zip 解压或图片处理线程；如需更细粒度中断，后续要把 cancellation token 继续下传到 infra 解压/扫描/处理循环。
 
 ## 下一批实施顺序
 
