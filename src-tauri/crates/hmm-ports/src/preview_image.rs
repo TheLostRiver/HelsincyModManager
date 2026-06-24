@@ -66,3 +66,7 @@ pub trait ThumbnailStore: Send + Sync {
 
     fn resolve_url(&self, thumbnail_ref: &ThumbnailRef) -> Result<String>;
 }
+
+pub trait ThumbnailCacheMaintenance: Send + Sync {
+    fn prune_unreferenced_thumbnails(&self, retained: &[ThumbnailRef]) -> Result<()>;
+}
