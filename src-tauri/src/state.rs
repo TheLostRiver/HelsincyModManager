@@ -1,8 +1,9 @@
 use hmm_app::{
     AppSettingsService, GameSetupService, LimitedPreviewImageProcessor, ModImportAnalysisService,
     ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
-    PreviewImageService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    PreviewImageCandidateListService, PreviewImageService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
@@ -10,9 +11,13 @@ use hmm_infra::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
     RealGameDirectoryProbeFactory, SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner,
-    SteamGameDiscoveryService, SystemClock, ZipModImportPackagePreparer,
+    SteamGameDiscoveryService, SystemClock, TaskScopedModImportSandboxLocator,
+    ZipModImportPackagePreparer,
 };
-use hmm_ports::{AppSettingsRepository, ModImportResultRepository, ThumbnailCacheMaintenance};
+use hmm_ports::{
+    AppSettingsRepository, ModImportResultRepository, ModImportSandboxLocator,
+    ThumbnailCacheMaintenance,
+};
 use std::fmt::Display;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -20,6 +25,7 @@ use tauri::{AppHandle, Manager};
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
     pub mod_library: Arc<ModLibraryService>,
+    pub preview_image_candidates: Arc<PreviewImageCandidateListService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -35,10 +41,14 @@ impl AppState {
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
+        let mod_import_sandbox_root = app_data_dir.join("mod-import").join("sandboxes");
 
         let task_manager = Arc::new(TaskManager::new());
         let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
             Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
+        let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
+            TaskScopedModImportSandboxLocator::new(mod_import_sandbox_root.clone()),
+        );
         let thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance> =
             Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
@@ -57,9 +67,7 @@ impl AppState {
             )),
         );
         let mod_import_prepare_service = Arc::new(ModImportPrepareService::new(
-            Box::new(ZipModImportPackagePreparer::new(
-                app_data_dir.join("mod-import").join("sandboxes"),
-            )),
+            Box::new(ZipModImportPackagePreparer::new(mod_import_sandbox_root)),
             ModImportAnalysisService::new(
                 Box::new(preview_image_service),
                 Box::new(FileSystemThumbnailStore::new(app_data_dir.clone())),
@@ -69,6 +77,12 @@ impl AppState {
         let mod_library = Arc::new(ModLibraryService::new(Arc::clone(
             &mod_import_result_repository,
         )));
+        let preview_image_candidates = Arc::new(PreviewImageCandidateListService::new(
+            PreviewImagePolicy::default(),
+            Arc::clone(&mod_import_result_repository),
+            mod_import_sandbox_locator,
+            Box::new(SandboxPackagePreviewScanner),
+        ));
         let mod_import_task_runner = Arc::new(
             ModImportTaskRunner::new(
                 Arc::clone(&task_manager),
@@ -100,6 +114,7 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             mod_library,
+            preview_image_candidates,
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,

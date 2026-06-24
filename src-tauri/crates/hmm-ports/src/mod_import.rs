@@ -37,6 +37,10 @@ pub trait ModPackageMetadataAnalyzer: Send + Sync {
         -> Result<ModPackageMetadata>;
 }
 
+pub trait ModImportSandboxLocator: Send + Sync {
+    fn sandbox_root_for_package(&self, package_id: &str) -> Result<PathBuf>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredModImportAnalysis {
     pub mod_id: String,

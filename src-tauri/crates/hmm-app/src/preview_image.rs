@@ -2,11 +2,12 @@ use crate::ImportPreviewImageProcessor;
 use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
 use hmm_ports::{
-    CancellationToken, NeverCancelled, PackagePreviewScanner, PreviewImageProcessRequest,
+    CancellationToken, ModImportResultRepository, ModImportSandboxLocator, NeverCancelled,
+    PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,
 };
 use std::path::Path;
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 pub const DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY: usize = 2;
 
@@ -86,6 +87,80 @@ pub struct PreviewImageService {
     policy: PreviewImagePolicy,
     scanner: Box<dyn PackagePreviewScanner>,
     processor: Box<dyn PreviewImageProcessor>,
+}
+
+pub struct PreviewImageCandidateListService {
+    policy: PreviewImagePolicy,
+    result_repository: Arc<dyn ModImportResultRepository>,
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    scanner: Box<dyn PackagePreviewScanner>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewImageCandidateList {
+    pub mod_id: String,
+    pub candidates: Vec<PreviewImageCandidateSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewImageCandidateSummary {
+    pub candidate_index: usize,
+    pub file_name: String,
+    pub compressed_size_bytes: u64,
+}
+
+impl PreviewImageCandidateListService {
+    pub fn new(
+        policy: PreviewImagePolicy,
+        result_repository: Arc<dyn ModImportResultRepository>,
+        sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        scanner: Box<dyn PackagePreviewScanner>,
+    ) -> Self {
+        Self {
+            policy,
+            result_repository,
+            sandbox_locator,
+            scanner,
+        }
+    }
+
+    pub fn list_candidates(&self, mod_id: &str) -> Result<Option<PreviewImageCandidateList>> {
+        self.policy.validate()?;
+        let Some(record) = self.result_repository.get_analysis(mod_id)? else {
+            return Ok(None);
+        };
+
+        let sandbox_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(&record.package_id)?;
+        let candidates = self.scanner.scan_candidates(PreviewImageScanRequest {
+            package_id: &record.package_id,
+            sandbox_root: &sandbox_root,
+            policy: &self.policy,
+            cancellation_token: &NeverCancelled,
+        })?;
+        let candidates = candidates
+            .into_iter()
+            .take(self.policy.max_candidates_per_package)
+            .enumerate()
+            .map(candidate_summary_from_candidate)
+            .collect();
+
+        Ok(Some(PreviewImageCandidateList {
+            mod_id: record.mod_id,
+            candidates,
+        }))
+    }
+}
+
+fn candidate_summary_from_candidate(
+    (candidate_index, candidate): (usize, PreviewImageCandidate),
+) -> PreviewImageCandidateSummary {
+    PreviewImageCandidateSummary {
+        candidate_index,
+        file_name: candidate.file_name,
+        compressed_size_bytes: candidate.compressed_size,
+    }
 }
 
 impl PreviewImageService {
@@ -269,9 +344,11 @@ mod tests {
     use anyhow::Result;
     use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
     use hmm_ports::{
-        CancellationToken, PackagePreviewScanner, PreviewImageCandidate,
-        PreviewImageProcessRequest, PreviewImageProcessingResult, PreviewImageProcessor,
-        PreviewImageScanRequest, PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailRef,
+        CancellationToken, ModImportResultRepository, ModImportSandboxLocator,
+        PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
+        PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,
+        PreviewImageSourceRef, ProcessedPreviewImage, StoredImportPreviewImage,
+        StoredModImportAnalysis, StoredModPackageMetadata, ThumbnailRef,
     };
     use std::path::Path;
     use std::sync::{Arc, Barrier, Mutex};
@@ -570,15 +647,142 @@ mod tests {
         );
     }
 
+    #[test]
+    fn candidate_list_uses_import_record_and_returns_bounded_display_fields() {
+        let repository = Arc::new(FakeModImportResultRepository {
+            record: Some(stored_analysis("mod-1", "pkg-1")),
+        });
+        let located_packages = Arc::new(Mutex::new(Vec::new()));
+        let service = PreviewImageCandidateListService::new(
+            PreviewImagePolicy {
+                max_candidates_per_package: 2,
+                ..PreviewImagePolicy::default()
+            },
+            repository,
+            Arc::new(FakeSandboxLocator {
+                located_packages: Arc::clone(&located_packages),
+            }),
+            Box::new(FakeScanner::new(vec![
+                preview_candidate("pkg-1", "nested/preview.png"),
+                preview_candidate("pkg-1", "cover.webp"),
+                preview_candidate("pkg-1", "extra.jpg"),
+            ])),
+        );
+
+        let result = service
+            .list_candidates("mod-1")
+            .expect("candidate list succeeds")
+            .expect("mod exists");
+
+        assert_eq!(result.mod_id, "mod-1");
+        assert_eq!(
+            *located_packages.lock().expect("located packages lock"),
+            vec!["pkg-1".to_owned()]
+        );
+        assert_eq!(
+            result.candidates,
+            vec![
+                PreviewImageCandidateSummary {
+                    candidate_index: 0,
+                    file_name: "preview.png".to_owned(),
+                    compressed_size_bytes: 0,
+                },
+                PreviewImageCandidateSummary {
+                    candidate_index: 1,
+                    file_name: "cover.webp".to_owned(),
+                    compressed_size_bytes: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn candidate_list_returns_none_for_unknown_mod_without_scanning() {
+        let service = PreviewImageCandidateListService::new(
+            PreviewImagePolicy::default(),
+            Arc::new(FakeModImportResultRepository { record: None }),
+            Arc::new(FakeSandboxLocator {
+                located_packages: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Box::new(PanicScanner),
+        );
+
+        let result = service
+            .list_candidates("missing-mod")
+            .expect("candidate list query succeeds");
+
+        assert!(result.is_none());
+    }
+
     fn preview_candidate(package_id: &str, logical_path: &str) -> PreviewImageCandidate {
         PreviewImageCandidate {
             source_ref: PreviewImageSourceRef {
                 package_id: package_id.to_owned(),
                 logical_path: logical_path.to_owned(),
             },
-            file_name: logical_path.to_owned(),
+            file_name: Path::new(logical_path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(logical_path)
+                .to_owned(),
             compressed_size: 0,
             priority: 0,
+        }
+    }
+
+    struct FakeModImportResultRepository {
+        record: Option<StoredModImportAnalysis>,
+    }
+
+    impl ModImportResultRepository for FakeModImportResultRepository {
+        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> Result<()> {
+            unreachable!("candidate list should not write import results")
+        }
+
+        fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
+            Ok(self.record.clone().into_iter().collect())
+        }
+
+        fn get_analysis(&self, mod_id: &str) -> Result<Option<StoredModImportAnalysis>> {
+            Ok(self.record.clone().filter(|record| record.mod_id == mod_id))
+        }
+    }
+
+    struct FakeSandboxLocator {
+        located_packages: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl ModImportSandboxLocator for FakeSandboxLocator {
+        fn sandbox_root_for_package(&self, package_id: &str) -> Result<std::path::PathBuf> {
+            self.located_packages
+                .lock()
+                .expect("located packages lock")
+                .push(package_id.to_owned());
+            Ok(std::path::PathBuf::from("sandbox"))
+        }
+    }
+
+    struct PanicScanner;
+
+    impl PackagePreviewScanner for PanicScanner {
+        fn scan_candidates(
+            &self,
+            _request: PreviewImageScanRequest<'_>,
+        ) -> Result<Vec<PreviewImageCandidate>> {
+            panic!("unknown mod should not scan candidates")
+        }
+    }
+
+    fn stored_analysis(mod_id: &str, package_id: &str) -> StoredModImportAnalysis {
+        StoredModImportAnalysis {
+            mod_id: mod_id.to_owned(),
+            task_id: "task-1".to_owned(),
+            package_id: package_id.to_owned(),
+            display_name: mod_id.to_owned(),
+            metadata: StoredModPackageMetadata::default(),
+            preview_image: StoredImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            },
         }
     }
 
