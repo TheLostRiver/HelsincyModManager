@@ -12,6 +12,15 @@ pub struct AuditLogEvent {
     pub fields: BTreeMap<String, String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuditLogReadRequest {
+    pub max_events: usize,
+}
+
 pub trait AuditLogWriter: Send + Sync {
     fn record(&self, event: AuditLogEvent) -> Result<()>;
+}
+
+pub trait AuditLogReader: Send + Sync {
+    fn read_recent_sanitized(&self, request: AuditLogReadRequest) -> Result<Vec<AuditLogEvent>>;
 }
