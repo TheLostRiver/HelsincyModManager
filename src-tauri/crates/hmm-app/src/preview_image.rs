@@ -3,6 +3,84 @@ use anyhow::Result;
 use hmm_core::{PreviewImagePolicy, PreviewImageRejectionReason};
 use hmm_ports::{PackagePreviewScanner, PreviewImageProcessingResult, PreviewImageProcessor};
 use std::path::Path;
+use std::sync::{Condvar, Mutex};
+
+pub const DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY: usize = 2;
+
+pub struct LimitedPreviewImageProcessor {
+    inner: Box<dyn PreviewImageProcessor>,
+    limiter: ProcessingLimiter,
+}
+
+impl LimitedPreviewImageProcessor {
+    pub fn new(inner: Box<dyn PreviewImageProcessor>, max_concurrent: usize) -> Self {
+        Self {
+            inner,
+            limiter: ProcessingLimiter::new(max_concurrent.max(1)),
+        }
+    }
+}
+
+impl PreviewImageProcessor for LimitedPreviewImageProcessor {
+    fn process_candidate(
+        &self,
+        sandbox_root: &Path,
+        candidate: &hmm_ports::PreviewImageCandidate,
+        policy: &PreviewImagePolicy,
+    ) -> Result<PreviewImageProcessingResult> {
+        let _permit = self.limiter.acquire();
+        self.inner
+            .process_candidate(sandbox_root, candidate, policy)
+    }
+}
+
+struct ProcessingLimiter {
+    max_concurrent: usize,
+    active: Mutex<usize>,
+    available: Condvar,
+}
+
+impl ProcessingLimiter {
+    fn new(max_concurrent: usize) -> Self {
+        Self {
+            max_concurrent,
+            active: Mutex::new(0),
+            available: Condvar::new(),
+        }
+    }
+
+    fn acquire(&self) -> ProcessingPermit<'_> {
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while *active >= self.max_concurrent {
+            active = self
+                .available
+                .wait(active)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        *active += 1;
+
+        ProcessingPermit { limiter: self }
+    }
+}
+
+struct ProcessingPermit<'a> {
+    limiter: &'a ProcessingLimiter,
+}
+
+impl Drop for ProcessingPermit<'_> {
+    fn drop(&mut self) {
+        let mut active = self
+            .limiter
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *active = active.saturating_sub(1);
+        self.limiter.available.notify_one();
+    }
+}
 
 pub struct PreviewImageService {
     policy: PreviewImagePolicy,
@@ -80,7 +158,8 @@ mod tests {
         PreviewImageProcessor, PreviewImageSourceRef, ProcessedPreviewImage, ThumbnailRef,
     };
     use std::path::Path;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::time::Duration;
 
     #[test]
     fn returns_missing_fallback_when_no_candidates_exist() {
@@ -156,6 +235,41 @@ mod tests {
         assert!(matches!(result, PreviewImageProcessingResult::Thumbnail(_)));
     }
 
+    #[test]
+    fn limited_processor_caps_concurrent_candidate_processing() {
+        let stats = Arc::new(Mutex::new(ConcurrencyStats::default()));
+        let processor = Arc::new(LimitedPreviewImageProcessor::new(
+            Box::new(BlockingProcessor {
+                stats: Arc::clone(&stats),
+            }),
+            2,
+        ));
+        let barrier = Arc::new(Barrier::new(4));
+        let candidate = preview_candidate("pkg-1", "good.png");
+        let policy = PreviewImagePolicy::default();
+
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let processor = Arc::clone(&processor);
+                let barrier = Arc::clone(&barrier);
+                let candidate = candidate.clone();
+                let policy = policy.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    processor
+                        .process_candidate(Path::new("sandbox"), &candidate, &policy)
+                        .expect("preview processing succeeds");
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().expect("thread joins");
+        }
+
+        assert_eq!(stats.lock().expect("stats lock").max_active, 2);
+    }
+
     fn preview_candidate(package_id: &str, logical_path: &str) -> PreviewImageCandidate {
         PreviewImageCandidate {
             source_ref: PreviewImageSourceRef {
@@ -214,6 +328,42 @@ mod tests {
                 .expect("processor lock")
                 .pop()
                 .expect("processor result"))
+        }
+    }
+
+    #[derive(Default)]
+    struct ConcurrencyStats {
+        active: usize,
+        max_active: usize,
+    }
+
+    struct BlockingProcessor {
+        stats: Arc<Mutex<ConcurrencyStats>>,
+    }
+
+    impl PreviewImageProcessor for BlockingProcessor {
+        fn process_candidate(
+            &self,
+            _sandbox_root: &Path,
+            _candidate: &PreviewImageCandidate,
+            _policy: &PreviewImagePolicy,
+        ) -> Result<PreviewImageProcessingResult> {
+            {
+                let mut stats = self.stats.lock().expect("stats lock");
+                stats.active += 1;
+                stats.max_active = stats.max_active.max(stats.active);
+            }
+
+            std::thread::sleep(Duration::from_millis(50));
+
+            {
+                let mut stats = self.stats.lock().expect("stats lock");
+                stats.active -= 1;
+            }
+
+            Ok(PreviewImageProcessingResult::Fallback(
+                PreviewImageRejectionReason::Missing,
+            ))
         }
     }
 }
