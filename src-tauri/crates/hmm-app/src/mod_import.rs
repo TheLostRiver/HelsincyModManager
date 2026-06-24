@@ -3,7 +3,8 @@ use hmm_ports::{
     CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
     ModImportResultRepository, ModPackageMetadataAnalyzer, NeverCancelled,
     PreviewImageProcessingResult, StoredImportPreviewImage, StoredModImportAnalysis,
-    ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
+    StoredModPackageMetadata, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest,
+    ThumbnailRef, ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -49,6 +50,7 @@ pub struct ModImportAnalysisResult {
     pub task_id: String,
     pub package_id: String,
     pub display_name: String,
+    pub metadata: hmm_ports::ModPackageMetadata,
     pub preview_image: ImportPreviewImage,
 }
 
@@ -262,7 +264,20 @@ fn stored_analysis_from_result(result: &ModImportAnalysisResult) -> StoredModImp
         task_id: result.task_id.clone(),
         package_id: result.package_id.clone(),
         display_name: result.display_name.clone(),
+        metadata: stored_metadata_from_package_metadata(&result.metadata),
         preview_image: stored_preview_from_import(&result.preview_image),
+    }
+}
+
+fn stored_metadata_from_package_metadata(
+    metadata: &hmm_ports::ModPackageMetadata,
+) -> StoredModPackageMetadata {
+    StoredModPackageMetadata {
+        version: metadata.version.clone(),
+        author: metadata.author.clone(),
+        category: metadata.category.clone(),
+        tags: metadata.tags.clone(),
+        dependencies: metadata.dependencies.clone(),
     }
 }
 
@@ -317,12 +332,14 @@ fn retained_thumbnail_refs(records: &[StoredModImportAnalysis]) -> Vec<Thumbnail
 }
 
 fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
+    let category_labels = category_labels_from_metadata(&record.metadata);
+
     ModLibraryItem {
         id: record.mod_id,
         name: record.display_name,
         status: ModLibraryStatus::Disabled,
         size_label: "导入完成".to_owned(),
-        category_labels: Vec::new(),
+        category_labels,
         preview_image: import_preview_from_stored(record.preview_image),
     }
 }
@@ -334,6 +351,21 @@ fn detail_from_stored(record: StoredModImportAnalysis) -> ModDetail {
         package_id: record.package_id,
         preview_image: import_preview_from_stored(record.preview_image),
     }
+}
+
+fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<String> {
+    let mut labels = Vec::new();
+    if let Some(category) = metadata.category.as_ref().filter(|value| !value.is_empty()) {
+        labels.push(category.clone());
+    }
+
+    for tag in &metadata.tags {
+        if !tag.is_empty() && !labels.iter().any(|label| label == tag) {
+            labels.push(tag.clone());
+        }
+    }
+
+    labels
 }
 
 impl ModImportPrepareService {
@@ -500,17 +532,20 @@ impl ModImportAnalysisService {
         };
         ensure_not_cancelled(cancellation_token)?;
 
-        let display_name = self
+        let metadata = self
             .metadata_analyzer
             .analyze_metadata(&request.package_id, &request.sandbox_root)
-            .ok()
-            .and_then(|metadata| metadata.display_name)
+            .unwrap_or_default();
+        let display_name = metadata
+            .display_name
+            .clone()
             .unwrap_or_else(|| request.package_id.clone());
 
         Ok(ModImportAnalysisResult {
             task_id: request.task_id,
             package_id: request.package_id,
             display_name,
+            metadata,
             preview_image,
         })
     }
@@ -581,6 +616,7 @@ mod tests {
             Box::new(FakeThumbnailStore::default()),
             Box::new(FakeMetadataAnalyzer {
                 display_name: Some("Better Mod Name".to_owned()),
+                ..FakeMetadataAnalyzer::default()
             }),
         );
 
@@ -597,6 +633,41 @@ mod tests {
             stored_analysis_from_result(&result).display_name,
             "Better Mod Name"
         );
+    }
+
+    #[test]
+    fn analyze_sandbox_persists_package_metadata_schema_fields() {
+        let service = ModImportAnalysisService::new(
+            Box::new(FakePreviewImageProcessor {
+                result: PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::Missing,
+                ),
+            }),
+            Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer {
+                display_name: Some("Better Mod Name".to_owned()),
+                version: Some("1.2.3".to_owned()),
+                author: Some("A Hunter".to_owned()),
+                category: Some("Visual".to_owned()),
+                tags: vec!["armor".to_owned(), "hd".to_owned()],
+                dependencies: vec!["stracker-loader".to_owned()],
+            }),
+        );
+
+        let result = service
+            .analyze_sandbox(ModImportAnalysisRequest {
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                sandbox_root: Path::new("sandbox").to_path_buf(),
+            })
+            .expect("analysis succeeds");
+        let stored = stored_analysis_from_result(&result);
+        let library_item = library_item_from_stored(stored.clone());
+
+        assert_eq!(result.metadata.version.as_deref(), Some("1.2.3"));
+        assert_eq!(stored.metadata.author.as_deref(), Some("A Hunter"));
+        assert_eq!(stored.metadata.dependencies, vec!["stracker-loader"]);
+        assert_eq!(library_item.category_labels, vec!["Visual", "armor", "hd"]);
     }
 
     #[test]
@@ -821,6 +892,7 @@ mod tests {
                     Box::new(FakeThumbnailStore::default()),
                     Box::new(FakeMetadataAnalyzer {
                         display_name: Some("Better Mod Name".to_owned()),
+                        ..FakeMetadataAnalyzer::default()
                     }),
                 ),
             )),
@@ -880,6 +952,7 @@ mod tests {
                     Box::new(FakeThumbnailStore::default()),
                     Box::new(FakeMetadataAnalyzer {
                         display_name: Some("Better Mod Name".to_owned()),
+                        ..FakeMetadataAnalyzer::default()
                     }),
                 ),
             )),
@@ -923,6 +996,7 @@ mod tests {
                 task_id: "task-old".to_owned(),
                 package_id: "pkg-old".to_owned(),
                 display_name: "Old Mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
                 preview_image: StoredImportPreviewImage::Thumbnail {
                     thumbnail_url: "thumbnail://pkg-old/preview-768/hash-old".to_owned(),
                     width: 320,
@@ -1062,6 +1136,7 @@ mod tests {
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 display_name: "pkg-1".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
                 preview_image: StoredImportPreviewImage::Fallback {
                     reason: PreviewImageRejectionReason::Missing,
                 },
@@ -1332,6 +1407,11 @@ mod tests {
     #[derive(Default)]
     struct FakeMetadataAnalyzer {
         display_name: Option<String>,
+        version: Option<String>,
+        author: Option<String>,
+        category: Option<String>,
+        tags: Vec<String>,
+        dependencies: Vec<String>,
     }
 
     impl ModPackageMetadataAnalyzer for FakeMetadataAnalyzer {
@@ -1342,6 +1422,11 @@ mod tests {
         ) -> anyhow::Result<ModPackageMetadata> {
             Ok(ModPackageMetadata {
                 display_name: self.display_name.clone(),
+                version: self.version.clone(),
+                author: self.author.clone(),
+                category: self.category.clone(),
+                tags: self.tags.clone(),
+                dependencies: self.dependencies.clone(),
             })
         }
     }

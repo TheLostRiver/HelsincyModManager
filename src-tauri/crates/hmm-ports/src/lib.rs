@@ -14,7 +14,7 @@ pub use game_setup::{
 pub use mod_import::{
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
     ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
-    StoredModImportAnalysis,
+    StoredModImportAnalysis, StoredModPackageMetadata,
 };
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
