@@ -10,7 +10,7 @@ use anyhow::Result;
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
 };
-pub use audit::{AuditLogEvent, AuditLogWriter};
+pub use audit::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter};
 pub use cancellation::{CancellationToken, NeverCancelled};
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
