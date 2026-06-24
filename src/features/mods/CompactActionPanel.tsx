@@ -21,6 +21,8 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
 };
 
 export function CompactActionPanel({ selectedCount, totalCount, onAction }: CompactActionPanelProps) {
+  const addAction = compactActions.find((a) => a.id === "add");
+
   return (
     <aside className="compact-panel" aria-label="快捷操作">
       <header className="compact-panel__header">
@@ -29,6 +31,20 @@ export function CompactActionPanel({ selectedCount, totalCount, onAction }: Comp
       </header>
 
       <div className="compact-panel__stack">
+        {addAction && (
+          <button
+            type="button"
+            className={`compact-action is-${addAction.variant}`}
+            data-variant={addAction.variant}
+            onClick={() => onAction(addAction.id)}
+          >
+            <span className="compact-action__left">
+              <Plus size={14} strokeWidth={3} aria-hidden="true" />
+              <span className="compact-action__label">{addAction.label}</span>
+            </span>
+          </button>
+        )}
+
         <div className="compact-action-group">
           {compactActions
             .filter((a) => ["select-all", "invert", "refresh"].includes(a.id))
