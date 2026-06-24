@@ -22,7 +22,7 @@
 | `hmm-ports` 接口 | 已落地 | 已有 `PackagePreviewScanner`、`PreviewImageProcessor`、`ThumbnailStore`、`ModImportPackagePreparer` 和相关值对象。 |
 | `hmm-infra` magic bytes 与候选扫描 | MVP 已落地 | 已能按扩展名发现候选并稳定保留 top N；扩展名仍只作为候选发现，不作为格式信任依据。默认策略不因候选总数超限直接返回 `TooManyCandidates`。 |
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
-| `hmm-infra` 缩略图缓存 | MVP 已落地 | 已有原子写入、opaque URL 返回、package 登记校验、symlink 拒绝和 infra-local 清理策略；清理只作用于应用数据目录下的 `thumbnails` 缓存根。 |
+| `hmm-infra` 缩略图缓存 | MVP 已落地 | 已有原子写入、opaque URL 返回、package 登记校验、symlink 拒绝、引用保留清理和 infra-local 空间上限 / LRU 清理策略；清理只作用于应用数据目录下的 `thumbnails` 缓存根。 |
 | `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞；解压失败或取消会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
 | `hmm-infra` 包元数据分析 | MVP 已落地 | 已有 `SandboxModPackageMetadataAnalyzer`，只从安全 sandbox 中有限读取 manifest JSON 和 README，推断 `displayName` / `display_name` / `name` / `title` 或 README 标题。 |
 | `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；prepare runner 成功后会保存导入分析结果。 |
@@ -71,7 +71,7 @@
 
 ### 缩略图缓存清理策略
 
-当前已在 `FileSystemThumbnailStore` 落地最小清理 API：调用方传入仍被导入结果或库记录引用的 `ThumbnailRef` 集合，store 只删除未引用的缩略图文件和清空后的 package 目录。
+当前已在 `FileSystemThumbnailStore` 落地最小清理 API：调用方传入仍被导入结果或库记录引用的 `ThumbnailRef` 集合，store 只删除未引用的缩略图文件和清空后的 package 目录。另有 infra-local `prune_to_size_limit(max_bytes, retained)`，可在保留当前引用缩略图的前提下，按访问时间优先、修改时间兜底的 LRU 顺序删除未引用缩略图，直到普通缩略图文件总大小不超过上限。
 
 边界约束：
 
@@ -84,12 +84,14 @@
 当前已落地的缓存生命周期能力：
 
 - prepare runner 在成功保存导入分析结果后，会从结果仓储读取当前仍被 library/detail 记录引用的缩略图集合，并 best-effort 触发一次 prune。
+- `FileSystemThumbnailStore::prune_to_size_limit` 已提供后端空间上限 / LRU 清理能力；该 API 不暴露缓存路径给 app 或前端，当前也不通过 protocol handler 触发。
 - prune 失败不改变导入 task 的 completed 状态，也不发送用户可见失败事件；缓存仍是可删除、可重建的派生数据。
 
 尚未落地的缓存生命周期能力：
 
+- 默认空间上限配置，以及导入完成后自动执行空间上限清理。
 - 定时后台维护任务。
-- 空间上限、LRU 或按时间保留策略。
+- 按时间保留策略或 UI/command 触发入口。
 
 ### 图片处理并发
 
