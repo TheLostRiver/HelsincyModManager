@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const AUDIT_LOG_DIR: &str = "audit";
-const AUDIT_LOG_FILE: &str = "audit.log";
+const MILLIS_PER_DAY: u128 = 86_400_000;
 
 pub struct FileSystemAuditLogWriter {
     app_data_root: PathBuf,
@@ -24,6 +24,12 @@ impl FileSystemAuditLogWriter {
     fn audit_dir(&self) -> PathBuf {
         self.app_data_root.join("logs").join(AUDIT_LOG_DIR)
     }
+
+    fn audit_path_for_event(&self, event: &AuditLogEvent) -> Result<PathBuf> {
+        Ok(self
+            .audit_dir()
+            .join(audit_log_file_name(event.timestamp_unix_millis)?))
+    }
 }
 
 impl AuditLogWriter for FileSystemAuditLogWriter {
@@ -36,7 +42,7 @@ impl AuditLogWriter for FileSystemAuditLogWriter {
             .map_err(|_| anyhow::anyhow!("audit log write lock poisoned"))?;
         let audit_dir = self.audit_dir();
         fs::create_dir_all(&audit_dir).context("failed to create audit log directory")?;
-        let audit_path = audit_dir.join(AUDIT_LOG_FILE);
+        let audit_path = self.audit_path_for_event(&event)?;
         let mut file = OpenOptions::new()
             .append(true)
             .create(true)
@@ -130,6 +136,31 @@ fn validate_audit_value(_label: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+fn audit_log_file_name(timestamp_unix_millis: u128) -> Result<String> {
+    let days_since_epoch = timestamp_unix_millis / MILLIS_PER_DAY;
+    let days_since_epoch =
+        i64::try_from(days_since_epoch).context("audit log timestamp is out of supported range")?;
+    let (year, month, day) = civil_from_days(days_since_epoch);
+
+    Ok(format!("audit-{year:04}-{month:02}-{day:02}.log"))
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i32, u32, u32) {
+    let days = days_since_epoch + 719_468;
+    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+
+    (year as i32, month as u32, day as u32)
+}
+
 #[cfg(windows)]
 fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
@@ -177,7 +208,11 @@ mod tests {
 
         writer.record(event).expect("record audit event");
 
-        let audit_path = temp.path().join("logs").join("audit").join("audit.log");
+        let audit_path = temp
+            .path()
+            .join("logs")
+            .join("audit")
+            .join("audit-1970-01-01.log");
         let content = fs::read_to_string(audit_path).expect("audit log content");
         let value: serde_json::Value =
             serde_json::from_str(content.trim()).expect("audit json line");
@@ -215,5 +250,21 @@ mod tests {
         let error = writer.record(event).expect_err("sensitive field rejected");
 
         assert!(!error.to_string().contains("mod.zip"));
+    }
+
+    #[test]
+    fn audit_log_file_name_uses_utc_calendar_date() {
+        assert_eq!(
+            audit_log_file_name(42).expect("epoch day"),
+            "audit-1970-01-01.log"
+        );
+        assert_eq!(
+            audit_log_file_name(86_400_000).expect("next day"),
+            "audit-1970-01-02.log"
+        );
+        assert_eq!(
+            audit_log_file_name(1_704_067_200_000).expect("2024 leap year date"),
+            "audit-2024-01-01.log"
+        );
     }
 }
