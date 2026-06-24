@@ -24,7 +24,7 @@
 | `hmm-infra` 图片处理器 | 已落地 | 已有大小、magic bytes、header 尺寸、像素数、解码、缩放、编码和缓存写入流程，并覆盖 PNG/JPEG/WebP、损坏图、像素超限等验收项。 |
 | `hmm-infra` 缩略图缓存 | MVP 已落地 | 已有原子写入、opaque URL 返回、package 登记校验、symlink 拒绝、引用保留清理和 infra-local 空间上限 / LRU 清理策略；清理只作用于应用数据目录下的 `thumbnails` 缓存根。 |
 | `hmm-infra` 导入沙盒准备器 | 最小实现已落地 | 已有 `ZipModImportPackagePreparer`，能把 zip 解压到 task-scoped sandbox，并拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限；解压失败或取消会清理本次 task sandbox。当前只覆盖 zip，并已由 AppState 装配到后台 prepare runner。 |
-| `hmm-infra` 包元数据分析 | MVP 已落地 | 已有 `SandboxModPackageMetadataAnalyzer`，只从安全 sandbox 中有限读取 manifest JSON 和 README，推断 `displayName` / `display_name` / `name` / `title` 或 README 标题。 |
+| `hmm-infra` 包元数据分析 | MVP 已落地 | 已有 `SandboxModPackageMetadataAnalyzer`，只从安全 sandbox 中有限读取 manifest JSON 和 README，推断展示名，并解析版本、作者、分类、标签和依赖的通用字段。 |
 | `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService` 和 `ModImportAnalysisService`，且 URL 解析职责已收敛到导入分析边界；prepare runner 成功后会保存导入分析结果。 |
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
@@ -115,17 +115,20 @@
 - `PreviewImageService` 会把同一个 cancellation token 下传到 `PackagePreviewScanner` 和 `PreviewImageProcessor`；scanner 在目录遍历期间检查取消，processor 在路径校验、文件读取、图片尺寸读取、完整解码前后、缩略图编码后和缓存写入后检查取消。
 - 当前实现不强制抢占 `image` crate 的单次解码/编码调用；取消会在这些调用前后的检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，runner 仍不会保存导入结果，缩略图作为派生缓存可由后续维护清理。
 
-### 包元数据展示名
+### 包元数据分析
 
 当前 library/detail 的 `name` / `displayName` 已不再只能使用 `packageId`。prepare 阶段会通过 `ModPackageMetadataAnalyzer` port 分析安全 sandbox 中的有限元数据：
 
 - manifest JSON 候选：`manifest.json`、`mod.json`、`metadata.json`、`info.json`。
 - 支持字段：`displayName`、`display_name`、`name`、`title`。
+- 通用 schema 字段：`version` / `modVersion`、`author` / `authors`、`category` / `type`、`tags`、`dependencies` / `depends` / `requires`。
+- 多个 manifest 候选会按缺失字段补齐；`authors`、`tags` 和 `dependencies` 当前支持字符串或字符串数组，作者数组会合并为短文本。
+- `categoryLabels` 由后端解析到的 category 和 tags 生成，不由前端从路径推断。
 - README 候选：`README.md`、`README.txt`、`README`，使用第一个 Markdown 标题或非空文本行。
 - 单个元数据文件读取上限为 64 KiB，扫描深度限制为 2 层，symlink 和异常 entry 跳过。
 - 元数据缺失、损坏或不可读时回退 `packageId`，不阻断导入主流程。
 
-该能力仍是 MVP：尚未做游戏专属 manifest schema、版本号、作者、依赖、分类或标签解析。
+该能力仍是 MVP：尚未做游戏专属 manifest schema、依赖是否安装的语义校验或跨 Mod 依赖图构建。
 
 ## 下一批实施顺序
 

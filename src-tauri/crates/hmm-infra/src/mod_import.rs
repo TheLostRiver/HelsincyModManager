@@ -290,23 +290,24 @@ impl ModPackageMetadataAnalyzer for SandboxModPackageMetadataAnalyzer {
             &mut readme_candidates,
         )?;
 
+        let mut metadata = ModPackageMetadata::default();
+
         for path in manifest_candidates {
-            if let Some(display_name) = read_manifest_display_name(&path)? {
-                return Ok(ModPackageMetadata {
-                    display_name: Some(display_name),
-                });
+            if let Some(manifest_metadata) = read_manifest_metadata(&path)? {
+                merge_missing_metadata(&mut metadata, manifest_metadata);
             }
         }
 
-        for path in readme_candidates {
-            if let Some(display_name) = read_readme_display_name(&path)? {
-                return Ok(ModPackageMetadata {
-                    display_name: Some(display_name),
-                });
+        if metadata.display_name.is_none() {
+            for path in readme_candidates {
+                if let Some(display_name) = read_readme_display_name(&path)? {
+                    metadata.display_name = Some(display_name);
+                    break;
+                }
             }
         }
 
-        Ok(ModPackageMetadata { display_name: None })
+        Ok(metadata)
     }
 }
 
@@ -372,7 +373,7 @@ fn is_readme_file_name(file_name: &str) -> bool {
     matches!(file_name, "readme" | "readme.md" | "readme.txt")
 }
 
-fn read_manifest_display_name(path: &Path) -> Result<Option<String>> {
+fn read_manifest_metadata(path: &Path) -> Result<Option<ModPackageMetadata>> {
     let Ok(content) = fs::read_to_string(path) else {
         return Ok(None);
     };
@@ -383,17 +384,115 @@ fn read_manifest_display_name(path: &Path) -> Result<Option<String>> {
         return Ok(None);
     };
 
-    for key in ["displayName", "display_name", "name", "title"] {
-        if let Some(display_name) = object
-            .get(key)
-            .and_then(|value| value.as_str())
-            .and_then(sanitize_display_name)
-        {
-            return Ok(Some(display_name));
+    let metadata = ModPackageMetadata {
+        display_name: read_manifest_string(
+            object,
+            &["displayName", "display_name", "name", "title"],
+        ),
+        version: read_manifest_string(object, &["version", "modVersion", "mod_version"]),
+        author: read_manifest_author(object, &["author", "authors", "createdBy", "created_by"]),
+        category: read_manifest_string(object, &["category", "type"]),
+        tags: read_manifest_string_list(object, &["tags", "tag"]),
+        dependencies: read_manifest_string_list(object, &["dependencies", "depends", "requires"]),
+    };
+
+    if metadata_has_value(&metadata) {
+        Ok(Some(metadata))
+    } else {
+        Ok(None)
+    }
+}
+
+fn merge_missing_metadata(target: &mut ModPackageMetadata, source: ModPackageMetadata) {
+    if target.display_name.is_none() {
+        target.display_name = source.display_name;
+    }
+    if target.version.is_none() {
+        target.version = source.version;
+    }
+    if target.author.is_none() {
+        target.author = source.author;
+    }
+    if target.category.is_none() {
+        target.category = source.category;
+    }
+    append_unique_metadata_values(&mut target.tags, source.tags);
+    append_unique_metadata_values(&mut target.dependencies, source.dependencies);
+}
+
+fn append_unique_metadata_values(target: &mut Vec<String>, source: Vec<String>) {
+    for value in source {
+        if !target.iter().any(|existing| existing == &value) {
+            target.push(value);
         }
     }
+}
 
-    Ok(None)
+fn read_manifest_string(
+    object: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter().find_map(|key| {
+        object
+            .get(*key)
+            .and_then(|value| value.as_str())
+            .and_then(sanitize_metadata_text)
+    })
+}
+
+fn read_manifest_author(
+    object: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter().find_map(|key| {
+        let value = object.get(*key)?;
+        if let Some(text) = value.as_str().and_then(sanitize_metadata_text) {
+            return Some(text);
+        }
+
+        let authors = value.as_array()?;
+        let authors = authors
+            .iter()
+            .filter_map(|value| value.as_str().and_then(sanitize_metadata_text))
+            .collect::<Vec<_>>();
+
+        if authors.is_empty() {
+            None
+        } else {
+            Some(authors.join(", "))
+        }
+    })
+}
+
+fn read_manifest_string_list(
+    object: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Vec<String> {
+    keys.iter()
+        .find_map(|key| object.get(*key).and_then(metadata_value_to_string_list))
+        .unwrap_or_default()
+}
+
+fn metadata_value_to_string_list(value: &serde_json::Value) -> Option<Vec<String>> {
+    if let Some(text) = value.as_str().and_then(sanitize_metadata_text) {
+        return Some(vec![text]);
+    }
+
+    value.as_array().map(|values| {
+        values
+            .iter()
+            .filter_map(|value| value.as_str().and_then(sanitize_metadata_text))
+            .collect()
+    })
+}
+
+fn metadata_has_value(metadata: &ModPackageMetadata) -> bool {
+    metadata.display_name.is_some()
+        || metadata.version.is_some()
+        || metadata.author.is_some()
+        || metadata.category.is_some()
+        || !metadata.tags.is_empty()
+        || !metadata.dependencies.is_empty()
 }
 
 fn read_readme_display_name(path: &Path) -> Result<Option<String>> {
@@ -410,7 +509,7 @@ fn read_readme_display_name(path: &Path) -> Result<Option<String>> {
             .map(|value| value.trim_start_matches('#').trim())
             .unwrap_or(trimmed);
 
-        if let Some(display_name) = sanitize_display_name(heading) {
+        if let Some(display_name) = sanitize_metadata_text(heading) {
             return Ok(Some(display_name));
         }
     }
@@ -418,7 +517,7 @@ fn read_readme_display_name(path: &Path) -> Result<Option<String>> {
     Ok(None)
 }
 
-fn sanitize_display_name(value: &str) -> Option<String> {
+fn sanitize_metadata_text(value: &str) -> Option<String> {
     let normalized = value
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -744,6 +843,37 @@ mod tests {
     }
 
     #[test]
+    fn loads_legacy_mod_import_results_without_metadata() {
+        let path = test_file("legacy-results");
+        fs::create_dir_all(path.parent().expect("results parent")).expect("create parent");
+        fs::write(
+            &path,
+            r#"{
+                "version": 1,
+                "records": [{
+                    "mod_id": "pkg-1",
+                    "task_id": "task-1",
+                    "package_id": "pkg-1",
+                    "display_name": "pkg-1",
+                    "preview_image": {
+                        "kind": "fallback",
+                        "reason": "missing"
+                    }
+                }]
+            }"#,
+        )
+        .expect("write legacy results");
+        let repo = JsonModImportResultRepository::new(path);
+
+        let record = repo
+            .get_analysis("pkg-1")
+            .expect("read legacy analysis")
+            .expect("legacy record exists");
+
+        assert_eq!(record.metadata, Default::default());
+    }
+
+    #[test]
     fn saving_same_mod_import_result_replaces_existing_record() {
         let repo = JsonModImportResultRepository::new(test_file("replace-results"));
 
@@ -918,6 +1048,64 @@ mod tests {
     }
 
     #[test]
+    fn metadata_analyzer_reads_schema_fields_from_manifest_json() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            temp.path().join("manifest.json"),
+            r#"{
+                "displayName": "Better Mod Name",
+                "version": "1.2.3",
+                "author": "A Hunter",
+                "category": "Visual",
+                "tags": ["armor", "hd"],
+                "dependencies": ["stracker-loader"]
+            }"#,
+        )
+        .expect("write manifest");
+
+        let metadata = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        assert_eq!(metadata.display_name.as_deref(), Some("Better Mod Name"));
+        assert_eq!(metadata.version.as_deref(), Some("1.2.3"));
+        assert_eq!(metadata.author.as_deref(), Some("A Hunter"));
+        assert_eq!(metadata.category.as_deref(), Some("Visual"));
+        assert_eq!(metadata.tags, vec!["armor", "hd"]);
+        assert_eq!(metadata.dependencies, vec!["stracker-loader"]);
+    }
+
+    #[test]
+    fn metadata_analyzer_merges_manifest_candidates_and_author_arrays() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            temp.path().join("metadata.json"),
+            r#"{
+                "version": "1.2.3",
+                "authors": ["A Hunter", "Another Hunter"]
+            }"#,
+        )
+        .expect("write metadata");
+        fs::write(
+            temp.path().join("manifest.json"),
+            r#"{
+                "displayName": "Better Mod Name",
+                "category": "Visual"
+            }"#,
+        )
+        .expect("write manifest");
+
+        let metadata = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        assert_eq!(metadata.display_name.as_deref(), Some("Better Mod Name"));
+        assert_eq!(metadata.version.as_deref(), Some("1.2.3"));
+        assert_eq!(metadata.author.as_deref(), Some("A Hunter, Another Hunter"));
+        assert_eq!(metadata.category.as_deref(), Some("Visual"));
+    }
+
+    #[test]
     fn metadata_analyzer_reads_display_name_from_readme_heading() {
         let temp = tempfile::tempdir().expect("temp dir");
         fs::write(
@@ -1020,6 +1208,7 @@ mod tests {
             task_id: "task-1".to_owned(),
             package_id: mod_id.to_owned(),
             display_name: mod_id.to_owned(),
+            metadata: Default::default(),
             preview_image: StoredImportPreviewImage::Fallback { reason },
         }
     }

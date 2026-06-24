@@ -9,9 +9,14 @@ pub struct PreparedModPackage {
     pub sandbox_root: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModPackageMetadata {
     pub display_name: Option<String>,
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+    pub dependencies: Vec<String>,
 }
 
 pub struct ModImportPackagePrepareRequest<'a> {
@@ -38,7 +43,24 @@ pub struct StoredModImportAnalysis {
     pub task_id: String,
     pub package_id: String,
     pub display_name: String,
+    #[serde(default)]
+    pub metadata: StoredModPackageMetadata,
     pub preview_image: StoredImportPreviewImage,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredModPackageMetadata {
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub dependencies: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
