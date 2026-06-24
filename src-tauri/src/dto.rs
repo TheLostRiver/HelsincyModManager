@@ -281,6 +281,7 @@ impl From<ImportPreviewImage> for PreviewImageDto {
                 width,
                 height,
                 content_hash,
+                variant: _,
             } => Self::Thumbnail {
                 thumbnail_url,
                 width,
@@ -650,6 +651,7 @@ mod preview_image_tests {
             width: 320,
             height: 180,
             content_hash: "hash".to_owned(),
+            variant: "preview-768".to_owned(),
         }
         .into();
 
@@ -713,6 +715,7 @@ mod preview_image_tests {
                 width: 320,
                 height: 180,
                 content_hash: "hash".to_owned(),
+                variant: "preview".to_owned(),
             },
         }
         .into();

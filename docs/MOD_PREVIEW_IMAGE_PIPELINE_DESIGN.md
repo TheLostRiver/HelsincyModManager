@@ -200,10 +200,10 @@ MVP 默认值建议：
 ```text
 thumbnails/
   <package_id>/
-    preview-768-<content_hash>.<ext>
+    preview-<max_edge_px>-<content_hash>.<ext>
 ```
 
-文件名采用 `<variant>-<content_hash>.<ext>` 顺序，其中 `variant` 当前固定为 `preview-768`（与 `hmm-infra` 的 `FileSystemThumbnailStore` 实现一致）。`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
+文件名采用 `<variant>-<content_hash>.<ext>` 顺序，其中 `variant` 由后端图片处理策略的 `output_max_edge_px` 派生，形如 `preview-768` 或 `preview-1024`。当前默认策略仍生成 `preview-768`，但 `ThumbnailStore` port 和 `FileSystemThumbnailStore` 已不再硬编码该值，可为详情页更大派生图复用同一条受控后端流水线。`<ext>` 由后端根据 `preferred_output_format` 决定，当前 MVP 默认 `.jpg`（对应 JPEG 输出）。扩展名不进入前端 DTO，前端只看到 `thumbnailUrl`。如果后续把默认格式切到 WebP，文件名和缓存布局变化由后端内部吸收，DTO 不变。
 
 实际目录由 infra 决定，不进入前端 DTO。
 
@@ -267,6 +267,8 @@ thumbnails/
 - 清理失败不影响安装、卸载、回滚或导入结果事实，只影响派生封面缓存占用。
 
 当前 MVP 已接入导入结果仓储联动触发：`mod_import` prepare runner 在成功保存导入分析结果后，会收集结果仓储中仍被 library/detail 记录引用的 `ThumbnailRef` 集合，并调用后端缓存维护 port 执行 best-effort maintenance。该维护先执行引用保留清理；如果后端 settings 配置了 `thumbnailCacheMaxAgeDays`，则只删除超过该天数的未引用缩略图，未配置时沿用立即删除未引用缩略图的既有语义。随后维护会使用后端 settings 的 `thumbnailCacheMaxBytes` 执行空间上限 / LRU 清理；未配置或读取失败时回退默认 `512 MiB`。仍被当前导入结果引用的缩略图不会因按时间保留或空间上限被删除。该触发不扩展前端命令，不把缓存路径暴露给 DTO，也不会因为清理失败把成功导入改成失败。
+
+导入结果中的缩略图记录会持久化 `variant`，用于后续缓存维护精确保留非默认尺寸派生图。旧记录缺少 `variant` 字段时按 `preview-768` 兼容处理，避免升级后误删既有默认缩略图。
 
 当前后端 settings 仓储会读写 `app_data/config/settings.json`：
 
