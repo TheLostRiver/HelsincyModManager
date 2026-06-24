@@ -1,6 +1,7 @@
 use crate::dto::{
-    AppSettingsDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto,
-    PreviewImageDiagnosticsDto, PreviewImageDiagnosticsExportDto, PreviewImageDto, TaskStartedDto,
+    AppSettingsDto, AuditLogDiagnosticsExportDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto,
+    PreviewImageCandidateListDto, PreviewImageDiagnosticsDto, PreviewImageDiagnosticsExportDto,
+    PreviewImageDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -82,6 +83,18 @@ pub fn export_preview_image_diagnostics(
         .preview_image_diagnostics_export
         .export_preview_image_diagnostics()
         .map_err(|_| preview_image_diagnostics_export_unavailable_error())?;
+
+    Ok(export.into())
+}
+
+#[tauri::command]
+pub fn export_audit_log_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<AuditLogDiagnosticsExportDto, CommandErrorDto> {
+    let export = state
+        .audit_log_diagnostics_export
+        .export_audit_log_diagnostics(hmm_app::MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS)
+        .map_err(|_| audit_log_diagnostics_export_unavailable_error())?;
 
     Ok(export.into())
 }
@@ -253,6 +266,13 @@ fn preview_image_diagnostics_export_unavailable_error() -> CommandErrorDto {
     }
 }
 
+fn audit_log_diagnostics_export_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "audit_log_diagnostics_export_unavailable".to_owned(),
+        message: "audit log diagnostics export is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,6 +357,15 @@ mod tests {
         let error = preview_image_diagnostics_export_unavailable_error();
 
         assert_eq!(error.code, "preview_image_diagnostics_export_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn audit_log_diagnostics_export_unavailable_error_uses_stable_code_without_paths() {
+        let error = audit_log_diagnostics_export_unavailable_error();
+
+        assert_eq!(error.code, "audit_log_diagnostics_export_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
