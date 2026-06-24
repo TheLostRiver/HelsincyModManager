@@ -71,16 +71,18 @@ function useModViewTransition(viewMode: ModViewMode, setViewMode: (mode: ModView
   const outTimeoutRef = useRef<number | null>(null);
   const inTimeoutRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (outTimeoutRef.current !== null) {
-        window.clearTimeout(outTimeoutRef.current);
-      }
-      if (inTimeoutRef.current !== null) {
-        window.clearTimeout(inTimeoutRef.current);
-      }
-    };
+  const clearTransitionTimers = useCallback(() => {
+    if (outTimeoutRef.current !== null) {
+      window.clearTimeout(outTimeoutRef.current);
+      outTimeoutRef.current = null;
+    }
+    if (inTimeoutRef.current !== null) {
+      window.clearTimeout(inTimeoutRef.current);
+      inTimeoutRef.current = null;
+    }
   }, []);
+
+  useEffect(() => clearTransitionTimers, [clearTransitionTimers]);
 
   const handleViewModeChange = useCallback(
     (nextViewMode: ModViewMode) => {
@@ -88,18 +90,13 @@ function useModViewTransition(viewMode: ModViewMode, setViewMode: (mode: ModView
         return;
       }
 
+      clearTransitionTimers();
+
       if (prefersReducedMotion()) {
         setViewTransitionVariant(viewTransitionVariantByMode[nextViewMode]);
         setViewMode(nextViewMode);
         setViewTransitionPhase("idle");
         return;
-      }
-
-      if (outTimeoutRef.current !== null) {
-        window.clearTimeout(outTimeoutRef.current);
-      }
-      if (inTimeoutRef.current !== null) {
-        window.clearTimeout(inTimeoutRef.current);
       }
 
       setViewTransitionVariant(viewTransitionVariantByMode[nextViewMode]);
@@ -115,7 +112,7 @@ function useModViewTransition(viewMode: ModViewMode, setViewMode: (mode: ModView
         }, viewTransitionInMs);
       }, viewTransitionOutMs);
     },
-    [setViewMode, viewMode],
+    [clearTransitionTimers, setViewMode, viewMode],
   );
 
   return { handleViewModeChange, viewTransitionPhase, viewTransitionVariant };
