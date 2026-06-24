@@ -78,6 +78,12 @@ pub trait ThumbnailStore: Send + Sync {
     fn resolve_url(&self, thumbnail_ref: &ThumbnailRef) -> Result<String>;
 }
 
+pub struct ThumbnailCacheMaintenanceRequest<'a> {
+    pub retained: &'a [ThumbnailRef],
+    pub max_bytes: Option<u64>,
+}
+
 pub trait ThumbnailCacheMaintenance: Send + Sync {
-    fn prune_unreferenced_thumbnails(&self, retained: &[ThumbnailRef]) -> Result<()>;
+    fn maintain_thumbnail_cache(&self, request: ThumbnailCacheMaintenanceRequest<'_>)
+        -> Result<()>;
 }

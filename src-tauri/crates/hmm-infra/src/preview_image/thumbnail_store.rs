@@ -1,5 +1,7 @@
 use anyhow::Result;
-use hmm_ports::{ThumbnailCacheMaintenance, ThumbnailRef, ThumbnailStore};
+use hmm_ports::{
+    ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
+};
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::fs;
@@ -304,8 +306,14 @@ impl ThumbnailStore for FileSystemThumbnailStore {
 }
 
 impl ThumbnailCacheMaintenance for FileSystemThumbnailStore {
-    fn prune_unreferenced_thumbnails(&self, retained: &[ThumbnailRef]) -> Result<()> {
-        FileSystemThumbnailStore::prune_unreferenced_thumbnails(self, retained)?;
+    fn maintain_thumbnail_cache(
+        &self,
+        request: ThumbnailCacheMaintenanceRequest<'_>,
+    ) -> Result<()> {
+        FileSystemThumbnailStore::prune_unreferenced_thumbnails(self, request.retained)?;
+        if let Some(max_bytes) = request.max_bytes {
+            FileSystemThumbnailStore::prune_to_size_limit(self, max_bytes, request.retained)?;
+        }
         Ok(())
     }
 }
