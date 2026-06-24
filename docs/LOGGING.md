@@ -230,7 +230,7 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 当前已落地的最小 Audit Log 能力：
 - `export_preview_image_diagnostics` 成功写入受控预览图诊断 zip 后，会在 app data 下的 `logs/audit/audit-YYYY-MM-DD.log` 写入 JSONL 审计事件，日期来自事件时间戳；若诊断 zip 写入失败，也会先写入失败审计事件。
 - 该事件只记录操作名、类别、结果、导出文件名/ID、大小、稳定错误分类和聚合计数，不记录完整本地路径、原始错误文本、`thumbnailUrl`、`contentHash`、sandbox/cache 路径、README 全文、原始 Mod 包内容或原始日志。
-- `hmm-ports` 已提供最小 `AuditLogReader` port，`hmm-infra` 可从 app data 下的审计 JSONL 中读取最近 N 条已校验事件，作为后续完整日志/审计诊断包的基础；该读取能力尚未暴露为 Tauri command，也尚未纳入当前预览图诊断 zip。
+- `hmm-ports` 已提供最小 `AuditLogReader` port，`hmm-infra` 可从 app data 下的审计 JSONL 中读取最近 N 条已校验事件，作为后续完整日志/审计诊断包的基础；该读取能力已通过 `export_audit_log_diagnostics` 的 app service/command 链路受控使用，但仍未纳入当前预览图诊断 zip。
 - `export_audit_log_diagnostics` 已提供最小后端命令：通过 `AuditLogReader` 读取最近 N 条已校验审计事件并写入受控 `audit-log-diagnostics.json` 诊断包，同时为该导出动作写入最小 Audit Log 事件；单次导出最多包含 200 条审计事件，避免诊断包无界膨胀；命令 DTO 只返回文件名、大小和事件计数，不返回审计事件正文或路径。
 - 若审计写入失败，命令不报告导出成功；当前预览图 zip 仍只包含脱敏聚合摘要，不等同于完整日志/审计诊断包导出。
 

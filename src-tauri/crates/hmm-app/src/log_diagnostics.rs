@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(export.export_id, "audit-log-diagnostics-42.zip");
         assert_eq!(export.size_bytes, 4096);
         assert_eq!(export.audit_event_count, 2);
-        let request = exporter.take_request();
+        let request = exporter.take_request().expect("export request");
         assert_eq!(request.file_name, "audit-log-diagnostics-42.zip");
         assert_eq!(request.entries.len(), 1);
         assert_eq!(request.entries[0].name, "audit-log-diagnostics.json");
@@ -226,7 +226,7 @@ mod tests {
         assert!(!payload.contains("contentHash"));
         assert!(!payload.contains("sandbox"));
 
-        let event = audit_log.take_event();
+        let event = audit_log.take_event().expect("success audit event");
         assert_eq!(event.operation, "export_audit_log_diagnostics");
         assert_eq!(event.category, "diagnostic_export");
         assert_eq!(event.result, "success");
@@ -270,11 +270,94 @@ mod tests {
             .expect("export succeeds");
 
         assert_eq!(export.audit_event_count, 200);
-        let request = exporter.take_request();
+        let request = exporter.take_request().expect("export request");
         let payload = String::from_utf8(request.entries[0].bytes.clone()).expect("utf8 payload");
         assert!(payload.contains("\"auditEventCount\":200"));
         assert!(payload.contains("\"preview-image-diagnostics-200.zip\""));
         assert!(!payload.contains("\"preview-image-diagnostics-0.zip\""));
+    }
+
+    #[test]
+    fn export_service_records_failure_audit_event_when_audit_log_read_fails() {
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = AuditLogDiagnosticsExportService::new(
+            Arc::new(FailingAuditLogReader),
+            exporter.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_audit_log_diagnostics(2)
+            .expect_err("audit log read fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        assert!(
+            exporter.take_request().is_none(),
+            "diagnostic package must not be exported when audit log read fails"
+        );
+        let event = audit_log.take_event().expect("failure audit event");
+        assert_eq!(event.operation, "export_audit_log_diagnostics");
+        assert_eq!(event.category, "diagnostic_export");
+        assert_eq!(event.result, "failure");
+        assert_eq!(
+            event.fields["file_name"],
+            "audit-log-diagnostics-unavailable.zip"
+        );
+        assert_eq!(event.fields["error_code"], "audit_log_read_failed");
+        assert_eq!(event.fields["audit_event_count"], "0");
+        let serialized = serde_json::to_string(&event.fields).expect("serialize audit fields");
+        assert!(!serialized.contains("C:/Users/Player"));
+        assert!(!serialized.contains("raw_path"));
+        assert!(!serialized.contains("thumbnail://"));
+        assert!(!serialized.contains("contentHash"));
+        assert!(!serialized.contains("sandbox"));
+    }
+
+    #[test]
+    fn export_service_records_failure_audit_event_when_package_export_fails() {
+        let reader = Arc::new(StaticAuditLogReader {
+            events: vec![AuditLogEvent {
+                timestamp_unix_millis: 42,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_preview_image_diagnostics".to_owned(),
+                result: "success".to_owned(),
+                fields: BTreeMap::from([(
+                    "file_name".to_owned(),
+                    "preview-image-diagnostics-42.zip".to_owned(),
+                )]),
+            }],
+        });
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = AuditLogDiagnosticsExportService::new(
+            reader,
+            Arc::new(FailingDiagnosticPackageExporter),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_audit_log_diagnostics(2)
+            .expect_err("diagnostic package export fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        let event = audit_log.take_event().expect("failure audit event");
+        assert_eq!(event.operation, "export_audit_log_diagnostics");
+        assert_eq!(event.category, "diagnostic_export");
+        assert_eq!(event.result, "failure");
+        assert_eq!(event.fields["file_name"], "audit-log-diagnostics-42.zip");
+        assert_eq!(
+            event.fields["error_code"],
+            "diagnostic_package_export_failed"
+        );
+        assert_eq!(event.fields["audit_event_count"], "1");
+        let serialized = serde_json::to_string(&event.fields).expect("serialize audit fields");
+        assert!(!serialized.contains("C:/Users/Player"));
+        assert!(!serialized.contains("raw_path"));
+        assert!(!serialized.contains("thumbnail://"));
+        assert!(!serialized.contains("contentHash"));
+        assert!(!serialized.contains("sandbox"));
     }
 
     struct StaticAuditLogReader {
@@ -305,12 +388,8 @@ mod tests {
     }
 
     impl RecordingDiagnosticPackageExporter {
-        fn take_request(&self) -> OwnedDiagnosticPackageExportRequest {
-            self.request
-                .lock()
-                .expect("request lock")
-                .take()
-                .expect("export request")
+        fn take_request(&self) -> Option<OwnedDiagnosticPackageExportRequest> {
+            self.request.lock().expect("request lock").take()
         }
     }
 
@@ -340,18 +419,36 @@ mod tests {
         }
     }
 
+    struct FailingAuditLogReader;
+
+    impl AuditLogReader for FailingAuditLogReader {
+        fn read_recent_sanitized(
+            &self,
+            _request: AuditLogReadRequest,
+        ) -> Result<Vec<AuditLogEvent>> {
+            anyhow::bail!("failed to read C:/Users/Player/raw_path/audit.log")
+        }
+    }
+
+    struct FailingDiagnosticPackageExporter;
+
+    impl DiagnosticPackageExporter for FailingDiagnosticPackageExporter {
+        fn export_package(
+            &self,
+            _request: DiagnosticPackageExportRequest<'_>,
+        ) -> Result<DiagnosticPackageExportResult> {
+            anyhow::bail!("failed to write C:/Users/Player/raw_path/audit-log.zip")
+        }
+    }
+
     #[derive(Default)]
     struct RecordingAuditLogWriter {
         event: Mutex<Option<AuditLogEvent>>,
     }
 
     impl RecordingAuditLogWriter {
-        fn take_event(&self) -> AuditLogEvent {
-            self.event
-                .lock()
-                .expect("audit event lock")
-                .take()
-                .expect("audit event")
+        fn take_event(&self) -> Option<AuditLogEvent> {
+            self.event.lock().expect("audit event lock").take()
         }
     }
 
