@@ -22,8 +22,8 @@ pub use mod_import_task::{
 };
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
-    PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageDetailService,
+    PreviewImageService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
 };
 pub use task_manager::{
     TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot, TaskStatus,
