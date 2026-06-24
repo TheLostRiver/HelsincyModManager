@@ -8,8 +8,8 @@ use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonGameConfigRepository,
     JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    SandboxPackagePreviewScanner, SteamGameDiscoveryService, SystemClock,
-    ZipModImportPackagePreparer,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
+    SystemClock, ZipModImportPackagePreparer,
 };
 use hmm_ports::ModImportResultRepository;
 use std::sync::Arc;
@@ -52,6 +52,7 @@ impl AppState {
             ModImportAnalysisService::new(
                 Box::new(preview_image_service),
                 Box::new(FileSystemThumbnailStore::new(app_data_dir.clone())),
+                Box::new(SandboxModPackageMetadataAnalyzer),
             ),
         ));
         let mod_library = Arc::new(ModLibraryService::new(Arc::clone(

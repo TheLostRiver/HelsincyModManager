@@ -9,8 +9,18 @@ pub struct PreparedModPackage {
     pub sandbox_root: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModPackageMetadata {
+    pub display_name: Option<String>,
+}
+
 pub trait ModImportPackagePreparer: Send + Sync {
     fn prepare_package(&self, task_id: &str, archive_path: &Path) -> Result<PreparedModPackage>;
+}
+
+pub trait ModPackageMetadataAnalyzer: Send + Sync {
+    fn analyze_metadata(&self, package_id: &str, sandbox_root: &Path)
+        -> Result<ModPackageMetadata>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
