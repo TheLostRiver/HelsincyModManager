@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use fs2::FileExt;
 use hmm_ports::{
-    CancellationToken, ModImportPackagePrepareRequest, ModImportPackagePreparer,
+    CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
+    DiagnosticPackageExporter, ModImportPackagePrepareRequest, ModImportPackagePreparer,
     ModImportResultRepository, ModImportSandboxLocator, ModPackageMetadata,
     ModPackageMetadataAnalyzer, PreparedModPackage, StoredModImportAnalysis,
 };
@@ -20,6 +21,7 @@ const METADATA_MAX_DISPLAY_NAME_CHARS: usize = 80;
 const DEFAULT_ZIP_MAX_ENTRIES: usize = 16 * 1024;
 const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const DIAGNOSTIC_PACKAGE_DIR: &str = "diagnostics";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ModImportResultsFile {
@@ -216,6 +218,10 @@ pub struct ZipModImportPackagePreparer {
     limits: ZipExtractionLimits,
 }
 
+pub struct FileSystemDiagnosticPackageExporter {
+    app_data_root: PathBuf,
+}
+
 pub struct TaskScopedModImportSandboxLocator {
     sandbox_root: PathBuf,
 }
@@ -226,6 +232,16 @@ impl ZipModImportPackagePreparer {
             sandbox_root,
             limits: ZipExtractionLimits::default(),
         }
+    }
+}
+
+impl FileSystemDiagnosticPackageExporter {
+    pub fn new(app_data_root: PathBuf) -> Self {
+        Self { app_data_root }
+    }
+
+    fn export_dir(&self) -> PathBuf {
+        self.app_data_root.join("logs").join(DIAGNOSTIC_PACKAGE_DIR)
     }
 }
 
@@ -286,6 +302,54 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
         Ok(PreparedModPackage {
             package_id: task_id.to_owned(),
             sandbox_root,
+        })
+    }
+}
+
+impl DiagnosticPackageExporter for FileSystemDiagnosticPackageExporter {
+    fn export_package(
+        &self,
+        request: DiagnosticPackageExportRequest<'_>,
+    ) -> Result<DiagnosticPackageExportResult> {
+        validate_diagnostic_package_file_name(request.file_name)?;
+        if request.entries.is_empty() {
+            anyhow::bail!("diagnostic package must contain at least one entry");
+        }
+
+        for entry in request.entries {
+            validate_diagnostic_package_entry_name(entry.name)?;
+        }
+
+        let export_dir = self.export_dir();
+        fs::create_dir_all(&export_dir).context("failed to create diagnostic export directory")?;
+        let export_path = export_dir.join(request.file_name);
+        let file = File::create(&export_path).context("failed to create diagnostic package")?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+
+        for entry in request.entries {
+            zip.start_file(entry.name, options)
+                .context("failed to write diagnostic package entry")?;
+            zip.write_all(entry.bytes)
+                .context("failed to write diagnostic package entry")?;
+        }
+
+        let file = zip
+            .finish()
+            .context("failed to finish diagnostic package")?;
+        file.sync_all()
+            .context("failed to sync diagnostic package")?;
+        open_directory_for_sync(&export_dir)
+            .and_then(|directory| directory.sync_all())
+            .context("failed to sync diagnostic export directory")?;
+        let size_bytes = fs::metadata(&export_path)
+            .context("failed to inspect diagnostic package")?
+            .len();
+
+        Ok(DiagnosticPackageExportResult {
+            export_id: request.file_name.to_owned(),
+            file_name: request.file_name.to_owned(),
+            size_bytes,
         })
     }
 }
@@ -559,6 +623,36 @@ fn validate_task_id_segment(task_id: &str) -> Result<()> {
             .all(|value| value.is_ascii_alphanumeric() || value == '-' || value == '_')
     {
         anyhow::bail!("unsafe task id segment");
+    }
+
+    Ok(())
+}
+
+fn validate_diagnostic_package_file_name(file_name: &str) -> Result<()> {
+    validate_diagnostic_name_segment(file_name, "diagnostic package file name")?;
+    if !file_name.ends_with(".zip") {
+        anyhow::bail!("diagnostic package file name must end with .zip");
+    }
+
+    Ok(())
+}
+
+fn validate_diagnostic_package_entry_name(entry_name: &str) -> Result<()> {
+    validate_diagnostic_name_segment(entry_name, "diagnostic package entry name")
+}
+
+fn validate_diagnostic_name_segment(value: &str, label: &str) -> Result<()> {
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || value.contains('/')
+        || value.contains('\\')
+        || value.contains(':')
+        || Path::new(value)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        anyhow::bail!("{label} is unsafe");
     }
 
     Ok(())
@@ -1115,6 +1209,46 @@ mod tests {
         assert_eq!(metadata.category.as_deref(), Some("Visual"));
         assert_eq!(metadata.tags, vec!["armor", "hd"]);
         assert_eq!(metadata.dependencies, vec!["stracker-loader"]);
+    }
+
+    #[test]
+    fn diagnostic_package_exporter_writes_zip_inside_app_data_without_returning_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let exporter = FileSystemDiagnosticPackageExporter::new(temp.path().to_path_buf());
+        let payload = br#"{"totalImportedMods":1,"thumbnailCount":0}"#;
+
+        let result = exporter
+            .export_package(hmm_ports::DiagnosticPackageExportRequest {
+                file_name: "preview-image-diagnostics-42.zip",
+                entries: &[hmm_ports::DiagnosticPackageEntry {
+                    name: "preview-image-diagnostics.json",
+                    bytes: payload,
+                }],
+            })
+            .expect("export package");
+
+        assert_eq!(result.export_id, "preview-image-diagnostics-42.zip");
+        assert_eq!(result.file_name, "preview-image-diagnostics-42.zip");
+        assert!(result.size_bytes > 0);
+        assert!(!result
+            .file_name
+            .contains(temp.path().to_string_lossy().as_ref()));
+
+        let export_path = temp
+            .path()
+            .join("logs")
+            .join("diagnostics")
+            .join("preview-image-diagnostics-42.zip");
+        assert!(export_path.exists());
+        let file = fs::File::open(export_path).expect("open exported zip");
+        let mut archive = zip::ZipArchive::new(file).expect("read exported zip");
+        assert_eq!(archive.len(), 1);
+        let mut entry = archive
+            .by_name("preview-image-diagnostics.json")
+            .expect("diagnostic json entry");
+        let mut contents = Vec::new();
+        entry.read_to_end(&mut contents).expect("read json entry");
+        assert_eq!(contents, payload);
     }
 
     #[test]

@@ -292,7 +292,7 @@ AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一�
 
 ## 诊断摘要
 
-当前后端已有 `get_preview_image_diagnostics` 命令，用于为后续诊断导出提供已脱敏的预览图处理摘要。该摘要只基于已持久化导入结果聚合：
+当前后端已有 `get_preview_image_diagnostics` 命令，用于为诊断导出提供已脱敏的预览图处理摘要。该摘要只基于已持久化导入结果聚合：
 
 - `totalImportedMods`
 - `thumbnailCount`
@@ -300,7 +300,11 @@ AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一�
 - `fallbackReasons[]`，其中每项包含稳定 `snake_case` 的 `reason` 和 `count`
 - `exportCategories[]`，用于导出前类别确认；当前只把 `preview_image_summary` 标记为 `included`，并把 `thumbnail_files`、`thumbnail_urls` 和 `raw_package_content` 标记为 `excluded`
 
-该命令不读取缩略图文件、不导出第三方图片内容、不返回 `thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、原始 Mod 包路径或本地路径。它也不创建长任务、不发送 progress event。当前只落地了预览图诊断摘要和类别确认清单，完整诊断包写入与用户可见导出入口仍属于后续日志/诊断治理工作，必须继续遵守 [日志与审计设计](LOGGING.md) 的脱敏规则。
+该命令不读取缩略图文件、不导出第三方图片内容、不返回 `thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、原始 Mod 包路径或本地路径。它也不创建长任务、不发送 progress event。
+
+当前后端还提供 `export_preview_image_diagnostics` 命令，用于写入一个受控的预览图诊断 zip。该命令不接受输出路径参数；后端固定写入 app data 下的 `logs/diagnostics/`，返回文件名和导出大小摘要。当前 zip 只包含 `preview-image-diagnostics.json`，内容来自上述脱敏聚合摘要和 `exportCategories`，不包含缩略图文件、`thumbnailUrl`、`contentHash`、缓存路径、sandbox 路径、本地路径、README 全文、原始第三方 Mod 包内容或原始日志。
+
+这只是预览图摘要诊断包基础，不等同于完整日志/审计诊断包系统。后续若要导出 App Log、Task Log、Audit Log、平台摘要或更多故障排查材料，仍必须继续遵守 [日志与审计设计](LOGGING.md) 的统一脱敏、类别确认和用户主动导出规则。
 
 ## 前端 DTO
 
@@ -459,4 +463,4 @@ duration_ms
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
 - 支持 UI 设置入口和更完整的保留策略展示。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
-- 支持完整诊断包导出；已有预览图处理摘要和 `exportCategories` 只能作为脱敏统计输入与导出前类别确认，不能导出第三方图片内容、缩略图 URL 或原始 Mod 包内容。
+- 扩展完整日志/审计诊断包导出；当前已落地的 `export_preview_image_diagnostics` 只导出预览图聚合摘要 JSON，不能导出第三方图片内容、缩略图 URL、原始 Mod 包内容、原始日志或未脱敏路径。

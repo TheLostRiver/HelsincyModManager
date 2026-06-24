@@ -1270,6 +1270,7 @@ dependencies = [
  "anyhow",
  "hmm-core",
  "hmm-ports",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

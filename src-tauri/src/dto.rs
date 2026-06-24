@@ -217,6 +217,15 @@ pub struct PreviewImageDiagnosticsDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PreviewImageDiagnosticsExportDto {
+    pub export_id: String,
+    pub file_name: String,
+    pub size_bytes: u64,
+    pub diagnostics: PreviewImageDiagnosticsDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewImageDiagnosticExportCategoryDto {
     pub category: PreviewImageDiagnosticExportCategoryIdDto,
     pub status: PreviewImageDiagnosticExportCategoryStatusDto,
@@ -399,6 +408,17 @@ impl From<hmm_app::PreviewImageDiagnosticsSummary> for PreviewImageDiagnosticsDt
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+        }
+    }
+}
+
+impl From<hmm_app::PreviewImageDiagnosticsExport> for PreviewImageDiagnosticsExportDto {
+    fn from(export: hmm_app::PreviewImageDiagnosticsExport) -> Self {
+        Self {
+            export_id: export.export_id,
+            file_name: export.file_name,
+            size_bytes: export.size_bytes,
+            diagnostics: export.diagnostics.into(),
         }
     }
 }
@@ -857,6 +877,43 @@ mod preview_image_tests {
         assert!(value.get("thumbnailUrl").is_none());
         assert!(value.get("contentHash").is_none());
         assert!(value.get("path").is_none());
+    }
+
+    #[test]
+    fn serializes_preview_image_diagnostics_export_without_paths_or_thumbnail_urls() {
+        let dto: PreviewImageDiagnosticsExportDto = hmm_app::PreviewImageDiagnosticsExport {
+            export_id: "preview-image-diagnostics-42.zip".to_owned(),
+            file_name: "preview-image-diagnostics-42.zip".to_owned(),
+            size_bytes: 1234,
+            diagnostics: hmm_app::PreviewImageDiagnosticsSummary {
+                total_imported_mods: 2,
+                thumbnail_count: 1,
+                fallback_count: 1,
+                fallback_reasons: vec![hmm_app::PreviewImageFallbackDiagnostic {
+                    reason: PreviewImageRejectionReason::DecodeFailed,
+                    count: 1,
+                }],
+                export_categories: vec![hmm_app::PreviewImageDiagnosticExportCategory {
+                    category: hmm_app::PreviewImageDiagnosticExportCategoryId::PreviewImageSummary,
+                    status: hmm_app::PreviewImageDiagnosticExportCategoryStatus::Included,
+                    reason: None,
+                }],
+            },
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize export");
+
+        assert_eq!(value["exportId"], "preview-image-diagnostics-42.zip");
+        assert_eq!(value["fileName"], "preview-image-diagnostics-42.zip");
+        assert_eq!(value["sizeBytes"], 1234);
+        assert_eq!(value["diagnostics"]["totalImportedMods"], 2);
+        assert_eq!(value["diagnostics"]["thumbnailCount"], 1);
+        assert!(!value.to_string().contains("thumbnailUrl"));
+        assert!(!value.to_string().contains("contentHash"));
+        assert!(!value.to_string().contains("thumbnail://"));
+        assert!(!value.to_string().contains("C:/"));
+        assert!(!value.to_string().contains("sandbox"));
     }
 
     #[test]
