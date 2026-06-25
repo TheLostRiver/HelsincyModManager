@@ -61,6 +61,136 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - [x] 安装任务入口、写锁、审计日志和 `start_install_task`。
 
+## 设计细化规则
+
+本节用于约束后续 InstallPlan PR 的“怎么做”。如果后续实现发现这里的规则与代码事实冲突，应先更新本文档并说明取舍，再修改实现。
+
+### Manifest schema 与状态规则
+
+当前 MVP manifest 只应承担安装事实记录，不应提前变成 UI 状态缓存或日志替代品。后续 rich manifest 可以分两层演进：
+
+| 层级 | 字段 | 用途 |
+| --- | --- | --- |
+| MVP 必需 | `manifest_id`、`game_id`、`profile_id`、`mod_id` | 定位一次受控安装事实，供查询、卸载和恢复扫描使用。 |
+| MVP 必需 | `files` | 记录最终目标相对路径、动作类型、写入摘要和是否覆盖旧文件。 |
+| MVP 必需 | `backups` | 记录覆盖前备份引用，卸载或回滚必须通过它恢复旧文件。 |
+| MVP 必需 | `plan_hash` | 绑定本次提交消费的计划摘要，避免安装后被误判为另一个计划。 |
+| Rich manifest | `backend`、`status`、`created_at`、`completed_at` | 支持状态机、恢复扫描、迁移和 UI 摘要。 |
+| Rich manifest | `replacement_bindings` | 记录玩家选择的替换目标快照，而不是依赖当前 staging 目录推断。 |
+| Rich manifest | `schema_version`、`migrated_from` | 支持旧 manifest 兼容读取和一次性迁移。 |
+
+状态含义：
+
+| 状态 | 含义 | UI 可展示摘要 | 后续动作 |
+| --- | --- | --- | --- |
+| `planned` | 计划已持久化但尚未开始真实写入。 | 等待安装 | 可取消或重新生成计划。 |
+| `committing` | 已进入真实写入窗口，进程中断时可能留下半完成状态。 | 安装中或需要检查 | 启动恢复扫描，不能直接显示为已安装。 |
+| `completed` | manifest 与目标状态摘要一致，安装完成。 | 已安装 | 可查询、卸载、重装或 retarget。 |
+| `rollback_required` | 写入失败且回滚未确认完成。 | 需要恢复 | 阻断卸载和再次安装，先执行恢复/回滚。 |
+| `rolled_back` | 回滚完成，目标状态已恢复或清理。 | 已回滚 | 可重新安装；保留审计记录。 |
+| `repair_required` | manifest、backup 或目标状态不一致，无法安全自动判断。 | 需要人工处理 | 阻断破坏性操作，提供诊断和人工修复建议。 |
+
+允许的状态迁移：
+
+```text
+planned -> committing -> completed
+planned -> rolled_back
+committing -> completed
+committing -> rollback_required
+committing -> repair_required
+rollback_required -> rolled_back
+rollback_required -> repair_required
+repair_required -> planned
+completed -> rollback_required
+completed -> repair_required
+```
+
+兼容规则：
+
+- 读取旧 manifest 时必须走兼容层，缺少 rich 字段不能直接当作损坏。
+- 缺少 `status` 的旧 manifest 可以按只读摘要处理，但不能自动承诺可安全卸载。
+- 新增字段默认向后兼容；删除或重命名字段必须带迁移测试。
+- Manifest 只能记录受控安装事实和必要快照，不记录完整本地路径、sandbox/cache 路径、备份绝对路径或第三方 Mod 内容。
+
+### 卸载与恢复决策表
+
+卸载、恢复和修复扫描必须基于 manifest、backup 和受控目标状态，不能基于当前 Mod 包内容重新猜测。
+
+| 场景 | 判断依据 | 动作 | 阻断行为 | 审计/日志 |
+| --- | --- | --- | --- | --- |
+| `completed` 且目标文件摘要匹配 | manifest `files` 与当前目标摘要一致 | 可执行 manifest 驱动卸载 | 不阻断 | 记录卸载计划、删除/恢复动作和结果。 |
+| `completed` 但目标文件缺失 | manifest 有记录，目标不存在 | 标记 `repair_required` 或要求确认 | 阻断自动卸载 | 记录状态不一致摘要，不输出完整路径。 |
+| 新增文件由本工具安装 | manifest 标记为新增，无 backup ref | 卸载时删除该文件 | 若当前摘要不匹配则阻断 | 记录删除结果和 hash/大小摘要。 |
+| 覆盖文件由本工具安装 | manifest 有 backup ref | 卸载时恢复 backup | backup 缺失或校验失败时阻断 | 记录恢复结果；backup 错误进入 Audit Log。 |
+| 目标文件被外部修改 | 当前摘要与 manifest 不一致 | 标记 `repair_required` | 阻断删除/覆盖 | 给出人工处理提示，避免误删玩家或其他工具文件。 |
+| manifest 丢失但疑似有写入 | task/audit 摘要显示写入过 | 不自动删除 | 阻断并提示人工确认 | 记录 `DataSafetyRisk` 或稳定错误分类。 |
+| `committing` 后进程中断 | manifest/status 或 task state 未完成 | 运行恢复扫描 | 阻断新安装和卸载 | 记录扫描来源和恢复建议。 |
+| `rollback_required` | 失败状态未被消解 | 优先执行回滚或修复 | 阻断安装/卸载 | 回滚成功/失败均进入 Audit Log。 |
+| manifest 未记录的未知文件 | 目标目录存在额外文件 | 保留 | 不把未知文件纳入卸载 | 只记录聚合摘要，避免泄露目录内容。 |
+
+### 安装 UI 状态契约
+
+前端只消费后端 DTO 与任务事件，不计算最终安装路径、MHW 规则、backup 路径或 manifest 路径。
+
+| UI 状态 | 来源 | 可见行为 | 注意事项 |
+| --- | --- | --- | --- |
+| `idle` | 无活动任务 | 显示可安装入口或状态摘要 | 不根据本地 mock 推断已安装。 |
+| `previewing` | 调用预览 command | 显示加载态 | 预览失败不启动安装。 |
+| `preview_ready` | 后端返回 plan summary | 展示动作数、冲突和阻断原因 | 只展示摘要，不展示路径正文。 |
+| `install_queued` | `install.queued` | 显示排队/等待写锁 | 必须匹配 `taskId`。 |
+| `install_planning` | `install.plan.building` | 显示计划构建中 | 不显示 sandbox/cache 路径。 |
+| `install_committing` | `install.commit.processing` | 显示安装中，允许受控取消提示 | Commit 阶段取消可能转为失败或恢复状态。 |
+| `install_completed` | `install.completed` | 显示安装成功摘要 | 成功后可触发 manifest 查询刷新。 |
+| `install_failed` | `install.failed` | 显示稳定错误码和可读提示 | 不展示原始错误文本中的敏感路径。 |
+| `install_cancelled` | `install.cancelled` | 显示已取消 | 区分用户取消和失败回滚。 |
+| `repair_required` | manifest 查询或恢复扫描 | 显示需要修复 | 阻断再次安装/卸载入口，直到后端状态消解。 |
+
+UI 约束：
+
+- 任务事件必须按 `taskId` 归属，不能因为当前页面只有一个任务就接收所有 install 事件。
+- 如果页面切换、刷新或重新进入，应通过 manifest 查询恢复可展示状态，而不是依赖内存任务状态。
+- Cancel 按钮只能调用受控任务取消入口；前端不自行中断文件操作或清理 staging。
+- 错误展示使用稳定错误码和后端给出的安全摘要；禁止展示完整本地路径、manifest 正文、backup root 或第三方 Mod 内容。
+
+### ARMOR_RETARGET staging 输入契约
+
+Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是事实来源。
+
+| 输入 | 所属边界 | 说明 |
+| --- | --- | --- |
+| 原始导入 metadata | import / analyzer | 只读事实来源，描述原始包和可替换资产。 |
+| `ReplacementBinding` | profile / game adapter | 玩家选择的“Mod 资源 -> 官方目标”结构化绑定。 |
+| retarget materialized files | staging provider | 根据绑定生成的可安装文件，只能位于受控 staging root。 |
+| final target relative path | game adapter / provider | 交给 InstallPlan 的最终相对目标路径，用于冲突检测。 |
+| binding snapshot | manifest | 安装完成后记录本次选择，供卸载、重装和恢复判断。 |
+
+接入规则：
+
+- Retarget 只能写 staging，不能直接写游戏目录。
+- `InstallPlan` 只消费 provider 暴露的最终相对目标路径、layer 和 source ref。
+- 冲突检测基于最终目标路径，不基于原始包路径或 staging 物理路径。
+- Staging 可删除、可重建；恢复和卸载必须依赖 manifest 与 backup，不依赖 staging 是否仍存在。
+- MHW 的 `nativePC`、`plNNN_VVVV`、slot 解析和 catalog 归一化留在 `hmm-games-mhw` 或专属 retarget 模块，不进入通用 core 或前端。
+
+### 测试矩阵
+
+后续 InstallPlan PR 至少按改动范围覆盖下表中对应项。文档或纯 DTO 改动可以只跑文档/类型检查，但 PR 描述必须说明未触达真实写入链路。
+
+| 场景 | 最小测试 | fixture 类型 | 禁止依赖 |
+| --- | --- | --- | --- |
+| 目标路径校验 | 单元测试覆盖空路径、绝对路径、`..`、盘符、大小写冲突 | 人工相对路径样本 | 真实游戏目录 |
+| 计划冲突 | 同目标同 priority 阻断、不同 priority 排序 | fake provider | 第三方 Mod 包 |
+| 安装新增文件 | 临时目录写入、manifest entry、Audit Log | temp game root | 真实 MHW 安装 |
+| 覆盖并备份 | 旧文件备份、写入新文件、manifest backup ref | temp game root + fake backup root | 真实玩家文件 |
+| 写入失败回滚 | 注入写入/manifest 保存失败，校验回滚结果 | fake FS 或受控临时目录 | 手动修改真实文件 |
+| Manifest 查询 | 只返回摘要和状态，不返回路径/root/正文 | fake manifest repo | manifest 绝对路径 |
+| 卸载新增文件 | 只删除 manifest 记录且摘要匹配的文件 | temp game root | 未记录文件 |
+| 卸载覆盖文件 | backup ref 恢复旧文件，backup 缺失阻断 | fake backup store | 任意猜测恢复 |
+| 恢复扫描 | `committing`、`rollback_required`、`repair_required` 分支 | fake manifest/task/audit 状态 | Task Log 作为唯一事实来源 |
+| Retarget staging | staging containment、最终目标路径冲突、binding snapshot | fake retarget provider | 前端拼接 `nativePC` |
+| 任务取消 | plan 阶段可取消、commit 阶段状态一致 | fake task manager / temp FS | 无 `taskId` 的事件 |
+| 审计与脱敏 | 写入、覆盖、删除、备份、manifest、回滚事件脱敏 | 人工路径和 ID | 完整本地路径、Steam ID、token |
+
 ## 后续切片优先级
 
 ### P0：最小安装 UI
