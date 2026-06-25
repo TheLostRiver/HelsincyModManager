@@ -460,7 +460,7 @@ duration_ms
 - 前端详情页尚未接入更大派生图展示；后端只读入口 `get_mod_detail_preview_image(modId)` 已可按固定 `preview-1024` 策略生成/解析详情预览图，但仍不能直接展示原图。
 - 支持用户手动选择候选图的 UI；只读候选列表 command/DTO、后端按候选序号选择并复用同一条处理流水线的基础入口、以及选择结果写回已导入 Mod 记录的 command 已落地。
 - 支持游戏专属包元数据 schema、依赖安装状态校验和跨 Mod 依赖图。
-- 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略。
+- 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略；这些属于后续鲁棒性增强，当前后端 MVP 已通过并发 limiter、task event 和协作式 cancellation 检查点落地。
 - 支持 UI 设置入口和更完整的保留策略展示。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
 - 扩展完整日志/审计诊断包的前端用户确认入口；当前已落地的 `export_preview_image_diagnostics` 只导出预览图聚合摘要 JSON，`export_audit_log_diagnostics` 只导出最多 200 条已校验 Audit Log 事件，`export_support_diagnostics` 可导出平台摘要、已校验 App Log、已校验 Task Log 和已校验 Audit Log 的完整支持诊断 zip。这些能力都不能导出第三方图片内容、缩略图 URL、原始 Mod 包内容、原始日志或未脱敏路径；对应 command DTO 也只能返回摘要。
