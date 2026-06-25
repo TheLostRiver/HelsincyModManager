@@ -6,7 +6,17 @@
 
 - Mod 导入分析、预览图处理、导入结果持久化和 Mod 库查询已经落地。
 - 前端 Mod 库已经能消费后端 `get_mod_library()`，并且后端成功返回空数组时不再显示 mock 数据。
+- InstallPlan 领域模型、只读 app 预览服务和 `preview_install_plan` Tauri DTO/command 已经落地。
 - 安装链路尚未落地；任何真实游戏目录写入仍必须等待 `InstallPlan -> backup -> commit -> manifest -> rollback/recover` 链路补齐。
+
+## 当前切片 TODO
+
+- [x] 在 `hmm-core` 定义最小 `InstallPlan`、目标路径校验和冲突模型。
+- [x] 在 `hmm-app` 增加只读安装计划预览服务。
+- [x] 增加 `preview_install_plan` Tauri DTO/command，并更新前后端契约。
+- [ ] 让后端从已导入 Mod 的受控 sandbox 和游戏 adapter 生成安装计划输入，减少正式前端直接传 `targetPath` 的需要。
+- [ ] 接入最小前端 typed API / 预览 UI。
+- [ ] 在 backup / manifest / rollback 链路补齐后，再进入真实安装提交。
 
 ## 下一条 PR 目标
 
