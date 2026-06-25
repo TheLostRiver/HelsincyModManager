@@ -14,6 +14,7 @@ description: Use when working in the Helsincy Mod Manager repository, especially
 3. 搜索文件和文本优先使用 `rg` / `rg --files`。
 4. `.planning/`、`.plan-attestation`、`__pycache__/`、`*.pyc`、构建产物、备份、真实存档、真实 Mod 包、token、cookie、API key 都不能提交。
 5. 不回退用户或其他 agent 的改动，除非用户明确要求。
+6. 创建 PR、推送 review 修复、将草稿 PR 标记为 ready 或最终交付前，必须触发 `hmm-review-gate`，并在最后一次变更后完成本地自审；不能只依赖 CodeRabbit、CI 或外部 reviewer。
 
 任何文件修改前必须先查看这些基础文档。为控制上下文，可以先用标题扫描或关键词定位，但不能用 reference 摘要替代它们：
 
