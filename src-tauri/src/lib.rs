@@ -10,7 +10,7 @@ mod thumbnail_protocol;
 use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
-use install_commands::preview_install_plan;
+use install_commands::{preview_imported_mod_install_plan, preview_install_plan};
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
     get_mod_dependency_graph, get_mod_detail, get_mod_detail_preview_image, get_mod_library,
@@ -44,6 +44,7 @@ pub fn run() {
             scan_game_candidates,
             cancel_task,
             preview_install_plan,
+            preview_imported_mod_install_plan,
             start_import_mod_task,
             get_mod_library,
             get_mod_detail,

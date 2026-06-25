@@ -13,9 +13,10 @@ use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemTextLogReader,
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
-    RealGameDirectoryProbeFactory, SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner,
-    SteamGameDiscoveryService, SystemClock, SystemDiagnosticsEnvironmentProvider,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
+    ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
@@ -55,6 +56,7 @@ impl AppState {
         let mod_import_sandbox_root = app_data_dir.join("mod-import").join("sandboxes");
 
         let task_manager = Arc::new(TaskManager::new());
+        let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
         let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
             Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
@@ -70,7 +72,7 @@ impl AppState {
         let diagnostics_environment_provider: Arc<dyn DiagnosticsEnvironmentProvider> =
             Arc::new(SystemDiagnosticsEnvironmentProvider::new(
                 env!("CARGO_PKG_VERSION").to_owned(),
-                vec![MonsterHunterWorldAdapter.game_id().as_str().to_owned()],
+                vec![mhw_adapter.game_id().as_str().to_owned()],
             ));
         let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
@@ -181,7 +183,7 @@ impl AppState {
 
         Ok(Self {
             game_setup: Arc::new(GameSetupService::new(
-                vec![Arc::new(MonsterHunterWorldAdapter)],
+                vec![Arc::clone(&mhw_adapter)],
                 Arc::new(JsonGameConfigRepository::new(config_path)),
                 Arc::new(RealGameDirectoryProbeFactory),
                 Arc::new(SteamGameDiscoveryService::new(Arc::new(
@@ -197,7 +199,12 @@ impl AppState {
             preview_image_diagnostics_export,
             audit_log_diagnostics_export,
             support_diagnostics_export,
-            install_planning: Arc::new(InstallPlanningService::new()),
+            install_planning: Arc::new(InstallPlanningService::with_imported_mod_sources(
+                Arc::clone(&mod_import_result_repository),
+                Arc::clone(&mod_import_sandbox_locator),
+                Arc::new(SandboxModPackageInstallFileScanner),
+                vec![mhw_adapter],
+            )),
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,

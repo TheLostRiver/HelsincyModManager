@@ -1,10 +1,13 @@
 use crate::dto::{
-    CommandErrorDto, InstallPlanPreviewDto, PreviewInstallPlanFileInputDto,
-    PreviewInstallPlanRequestDto,
+    CommandErrorDto, InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
+    PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto,
 };
 use crate::state::AppState;
-use hmm_app::{BuildInstallPlanRequest, InstallPlanFile, InstallPlanningError};
-use hmm_core::{FileLayer, InstallTargetPathError, ModId, PackageFileId};
+use hmm_app::{
+    BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallPlanFile,
+    InstallPlanningError,
+};
+use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId};
 use tauri::State;
 
 #[tauri::command]
@@ -21,6 +24,20 @@ pub fn preview_install_plan(
     Ok(plan.into())
 }
 
+#[tauri::command]
+pub fn preview_imported_mod_install_plan(
+    request: PreviewImportedModInstallPlanRequestDto,
+    state: State<'_, AppState>,
+) -> Result<InstallPlanPreviewDto, CommandErrorDto> {
+    let request = imported_mod_install_plan_request_from_dto(request)?;
+    let plan = state
+        .install_planning
+        .build_plan_from_imported_mod(request)
+        .map_err(install_planning_error_to_command_error)?;
+
+    Ok(plan.into())
+}
+
 fn build_install_plan_request_from_dto(
     request: PreviewInstallPlanRequestDto,
 ) -> BuildInstallPlanRequest {
@@ -32,6 +49,21 @@ fn build_install_plan_request_from_dto(
             .map(install_plan_file_from_dto)
             .collect(),
     }
+}
+
+fn imported_mod_install_plan_request_from_dto(
+    request: PreviewImportedModInstallPlanRequestDto,
+) -> Result<BuildImportedModInstallPlanRequest, CommandErrorDto> {
+    let game_id = GameId::parse(request.game_id).map_err(|_| CommandErrorDto {
+        code: "game_id_invalid".to_owned(),
+        message: "game id is invalid".to_owned(),
+    })?;
+
+    Ok(BuildImportedModInstallPlanRequest {
+        game_id,
+        mod_id: ModId::new(request.mod_id),
+        layer: FileLayer::new(request.layer_name, request.layer_priority),
+    })
 }
 
 fn install_plan_file_from_dto(file: PreviewInstallPlanFileInputDto) -> InstallPlanFile {
@@ -52,6 +84,30 @@ fn install_planning_error_to_command_error(error: InstallPlanningError) -> Comma
             code: install_target_path_error_code(source).to_owned(),
             message: "install target path is invalid".to_owned(),
         },
+        InstallPlanningError::ImportedModSourcesUnavailable => CommandErrorDto {
+            code: "install_planning_sources_unavailable".to_owned(),
+            message: "install planning sources are unavailable".to_owned(),
+        },
+        InstallPlanningError::GameAdapterNotFound { game_id: _ } => CommandErrorDto {
+            code: "install_planning_game_adapter_not_found".to_owned(),
+            message: "game adapter is unavailable for install planning".to_owned(),
+        },
+        InstallPlanningError::ImportedModNotFound { mod_id: _ } => CommandErrorDto {
+            code: "install_planning_imported_mod_not_found".to_owned(),
+            message: "imported mod was not found".to_owned(),
+        },
+        InstallPlanningError::ImportedModAnalysisUnavailable => CommandErrorDto {
+            code: "install_planning_imported_mod_analysis_unavailable".to_owned(),
+            message: "imported mod analysis is unavailable".to_owned(),
+        },
+        InstallPlanningError::ImportedModSandboxUnavailable => CommandErrorDto {
+            code: "install_planning_imported_mod_sandbox_unavailable".to_owned(),
+            message: "imported mod sandbox is unavailable".to_owned(),
+        },
+        InstallPlanningError::ImportedModFileScanUnavailable => CommandErrorDto {
+            code: "install_planning_imported_mod_file_scan_unavailable".to_owned(),
+            message: "imported mod files are unavailable".to_owned(),
+        },
     }
 }
 
@@ -70,7 +126,8 @@ fn install_target_path_error_code(error: InstallTargetPathError) -> &'static str
 mod tests {
     use super::*;
     use crate::dto::{
-        InstallPlanPreviewDto, PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto,
+        InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
+        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto,
     };
     use hmm_core::{
         FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallPlan,
@@ -100,6 +157,26 @@ mod tests {
         assert_eq!(request.files[0].target_path, "content/models/player.mod3");
         assert_eq!(request.files[0].layer_name, "base");
         assert_eq!(request.files[0].layer_priority, 10);
+    }
+
+    #[test]
+    fn preview_imported_mod_install_plan_request_deserializes_without_paths() {
+        let value = json!({
+            "gameId": "mhw",
+            "modId": "mod-a",
+            "layerName": "base",
+            "layerPriority": 10
+        });
+
+        let request: PreviewImportedModInstallPlanRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let app_request = imported_mod_install_plan_request_from_dto(request)
+            .expect("valid ids should map to app request");
+
+        assert_eq!(app_request.game_id.as_str(), "mhw");
+        assert_eq!(app_request.mod_id.as_str(), "mod-a");
+        assert_eq!(app_request.layer.name, "base");
+        assert_eq!(app_request.layer.priority, 10);
     }
 
     #[test]

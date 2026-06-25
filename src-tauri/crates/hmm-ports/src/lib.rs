@@ -23,7 +23,8 @@ pub use game_setup::{
 pub use mod_import::{
     DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
     DiagnosticPackageExporter, ModImportPackagePrepareRequest, ModImportPackagePreparer,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageMetadata,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
+    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ModPackageMetadata,
     ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
     StoredModImportAnalysis, StoredModPackageMetadata,
 };

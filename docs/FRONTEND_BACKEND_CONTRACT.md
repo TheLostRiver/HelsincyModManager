@@ -267,6 +267,7 @@ preview_retarget_plan({ gameId, packageId, binding })
 
 ```text
 preview_install_plan(input)
+preview_imported_mod_install_plan(input)
 start_install_task(input)
 cancel_task(taskId)
 ```
@@ -278,11 +279,20 @@ cancel_task(taskId)
 - 真实 commit 过程必须写 manifest，并能回滚或恢复。
 - 当前 `preview_install_plan` 只暴露只读计划预览壳，用于验证 Tauri DTO 与 `hmm-app` 计划服务边界；它返回相对目标路径摘要、来源 id、层级信息和阻断冲突，不创建目录、不复制文件、不删除文件、不写 manifest。
 - `preview_install_plan` 的 `allowedTargetRoots` 和 `files[].targetPath` 必须来自后端分析/adapter 结果或测试夹具；正式前端 UI 不得根据游戏名、Mod 内容或用户输入自行拼接最终安装路径。后续 package analyzer / game adapter 接入后，应优先让前端只提交后端生成的 `modId`、`packageId`、`profileId` 或 `targetId`。
+- `preview_imported_mod_install_plan` 是正式前端优先使用的后端驱动预览入口。前端只提交 `gameId`、`modId` 和 layer 摘要；后端通过已持久化导入记录定位受控 sandbox，只读枚举包内普通文件，并使用对应 game adapter 声明的允许安装根生成 `InstallPlan` 输入。
+- `preview_imported_mod_install_plan` 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径或游戏目录路径；DTO 和错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_install_plan` 的错误使用稳定 code，例如 `install_target_path_empty`、`install_target_path_absolute`、`install_target_path_parent_traversal`、`install_target_path_windows_drive_prefix`、`install_target_path_invalid_segment` 和 `install_target_root_not_allowed`；错误 message 不应包含完整本地路径或第三方 Mod 内容。
 
 当前只读预览 DTO 形状：
 
 ```ts
+type PreviewImportedModInstallPlanRequestDto = {
+  gameId: string;
+  modId: string;
+  layerName: string;
+  layerPriority: number;
+};
+
 type PreviewInstallPlanRequestDto = {
   allowedTargetRoots: string[];
   files: Array<{

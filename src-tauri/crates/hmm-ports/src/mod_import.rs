@@ -41,6 +41,24 @@ pub trait ModImportSandboxLocator: Send + Sync {
     fn sandbox_root_for_package(&self, package_id: &str) -> Result<PathBuf>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModPackageInstallFile {
+    pub package_file_id: String,
+    pub target_path: String,
+}
+
+pub struct ModPackageInstallFileScanRequest<'a> {
+    pub package_id: &'a str,
+    pub sandbox_root: &'a Path,
+}
+
+pub trait ModPackageInstallFileScanner: Send + Sync {
+    fn scan_install_files(
+        &self,
+        request: ModPackageInstallFileScanRequest<'_>,
+    ) -> Result<Vec<ModPackageInstallFile>>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredModImportAnalysis {
     pub mod_id: String,

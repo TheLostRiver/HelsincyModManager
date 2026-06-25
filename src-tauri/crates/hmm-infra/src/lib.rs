@@ -5,6 +5,7 @@ mod game_config_repository;
 mod game_directory_probe;
 mod game_discovery;
 mod mod_import;
+mod mod_import_install_files;
 mod preview_image;
 pub mod steam_discovery;
 mod text_log;
@@ -24,6 +25,7 @@ pub use mod_import::{
     SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
+pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
 pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
     ThumbnailPruneReport, ThumbnailSizePruneReport,

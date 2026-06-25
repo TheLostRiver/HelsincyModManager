@@ -24,6 +24,10 @@ impl GameAdapter for MonsterHunterWorldAdapter {
         Some(STEAM_APP_ID)
     }
 
+    fn allowed_install_roots(&self) -> Vec<String> {
+        vec![NATIVE_PC_DIR.to_owned()]
+    }
+
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation {
         let mut validation =
             GameDirectoryValidation::new(self.game_id(), probe.root_dir().to_path_buf());
@@ -148,6 +152,12 @@ mod tests {
     fn adapter_reports_steam_app_id() {
         let adapter = MonsterHunterWorldAdapter;
         assert_eq!(adapter.steam_app_id(), Some(582010));
+    }
+
+    #[test]
+    fn adapter_reports_allowed_install_roots() {
+        let adapter = MonsterHunterWorldAdapter;
+        assert_eq!(adapter.allowed_install_roots(), vec!["nativePC".to_owned()]);
     }
 
     #[test]
