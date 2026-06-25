@@ -40,7 +40,7 @@
 | 平台诊断摘要基础 | 后端 ports/infra 基础已落地 | `DiagnosticsEnvironmentProvider` / `SystemDiagnosticsEnvironmentProvider` 可生成应用版本、平台 OS、CPU 架构和受控 game adapter id 列表摘要，不读取本地路径或玩家数据。该能力已通过 `export_support_diagnostics` 的 app service/command 链路受控使用，但不纳入当前预览图诊断 zip 或审计日志诊断 zip。 |
 | `export_support_diagnostics` | 后端入口已落地 | 通过 `SupportDiagnosticsExportService` 组合平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和已校验 Audit Log 事件，写入受控完整诊断 zip，并为导出动作写入最小 Audit Log 事件；若平台摘要、App Log、Task Log、Audit Log 读取或诊断 zip 写入失败，也会写入只含稳定错误分类和聚合计数的失败 Audit Log 事件。该命令不接受输出路径、日志路径、类别选择、行数或事件数量参数；DTO 只返回 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不返回日志正文、审计事件正文、路径、原始错误、第三方 Mod 内容或缩略图 URL；不改变当前预览图诊断 zip 或审计日志诊断 zip 的契约。 |
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
-| `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；`null`/缺省表示回退默认语义，`0` 会被拒绝；不暴露 settings 文件路径。 |
+| `get_thumbnail_cache_settings` / `set_thumbnail_cache_settings` | 后端入口已落地 | 读取或写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；读取入口不写入 settings 文件、不触发缓存维护，写入入口中 `null`/缺省表示回退默认语义，`0` 会被拒绝；两者都不暴露 settings 文件路径。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
 | 并发限制和事件 | 后端 MVP 已落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已下传到 zip 解压 entry/chunk、preview scanner 遍历和 processor 读文件/解码前后/缩略图写入前后检查点。图片库自身的单次解码/编码调用仍不是抢占式中断，这是当前协作式取消的已知边界，不再视为后端 MVP 未完成项。 |
 
@@ -113,6 +113,7 @@
 - 缓存维护会先执行引用保留清理；当后端 settings 配置了 `thumbnailCacheMaxAgeDays` 时，只删除超过该天数的未引用缩略图，未配置时沿用当前立即清理未引用缩略图的语义；随后使用 `thumbnailCacheMaxBytes` 执行空间上限 / LRU 清理，未配置或读取失败时回退默认 `512 MiB`。仍被当前导入结果引用的缩略图不会因按时间保留或空间上限被删除。
 - `FileSystemThumbnailStore::prune_to_size_limit` 已提供后端空间上限 / LRU 清理能力；该 API 不暴露缓存路径给 app 或前端，也不通过 protocol handler 触发。
 - `FileSystemThumbnailStore::prune_unreferenced_thumbnails_older_than` 已提供后端按时间保留能力；该 API 仍只作用于应用数据目录下的 `thumbnails` 缓存根，并保留当前引用缩略图。
+- `get_thumbnail_cache_settings` 可只读返回当前受控设置；该入口不写入 settings 文件、不触发缓存维护，也不返回 settings 文件路径或缓存路径。
 - prune 失败不改变导入 task 的 completed 状态，也不发送用户可见失败事件；缓存仍是可删除、可重建的派生数据。
 - 后端当前读写 `app_data/config/settings.json`：
 
