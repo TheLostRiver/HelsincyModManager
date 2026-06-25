@@ -31,6 +31,7 @@
 | Custom protocol | MVP 已落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 traversal、content type、未登记 package、symlinked `thumbnails` 根、symlinked package dir 和 symlinked 缩略图文件等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件，并 best-effort 触发一次缩略图缓存维护。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`；library DTO 暴露 `author`、`versionLabel`、`categoryLabels`，detail DTO 暴露通用 metadata 摘要。 |
+| `get_mod_dependency_graph` | 后端声明图基础已落地 | 基于已持久化导入结果返回只读依赖声明图；节点只包含 `modId` 和展示名，边只包含 `sourceModId`、声明文本 `dependency` 和可选 `matchedImportedModId`。该匹配只表示依赖文本与已导入 `modId` 的规范化精确匹配，不表示依赖已安装、已启用或通过安装计划校验。 |
 | `get_mod_detail_preview_image` | 后端入口已落地 | 详情页可按后端 `modId` 请求更大派生预览图。后端固定使用 `preview-1024` 策略重扫受控 sandbox 并处理首个可用候选，返回既有 `PreviewImageDto`；该命令对导入记录只读，不写回导入记录，处理过程中只会写入可丢弃的 thumbnail cache，不创建 task，不发送 progress event，也不新增显式 variant 字段、sandbox/cache/archive-internal 路径、本地路径或图片字节。 |
 | `get_preview_image_diagnostics` | 后端入口已落地 | 基于已持久化导入结果聚合预览图诊断摘要，返回总导入数、缩略图数、fallback 数、fallback reason 计数和导出前类别确认清单；当前只把预览图聚合摘要标记为可包含，并明确排除缩略图文件、`thumbnailUrl` 和原始 Mod 包内容。不导出第三方图片内容、缓存路径、sandbox 路径或本地路径。 |
 | `export_preview_image_diagnostics` | 后端入口已落地 | 写入受控预览图诊断 zip，不接受前端输出路径；后端固定写入 app data 下的 `logs/diagnostics/`，返回 `exportId`、`fileName`、`sizeBytes` 和本次导出的诊断摘要。当前 zip 只包含脱敏的 `preview-image-diagnostics.json`，不包含缩略图文件、`thumbnailUrl`、`contentHash`、sandbox/cache/local 路径、README 全文、原始 Mod 包内容或原始日志。导出成功后会写入最小 Audit Log 事件，只记录 `operation`、`category`、`result`、`export_id`、`file_name`、`size_bytes` 和聚合计数；诊断 zip 写入失败时会写入失败 Audit Log 事件，只记录 `file_name`、稳定 `error_code` 和聚合计数，不记录原始错误文本或路径；Audit Log 写入失败时命令不报告成功。 |
@@ -161,11 +162,12 @@
 - 多个 manifest 候选会按缺失字段补齐；`authors`、`tags` 和 `dependencies` 当前支持字符串或字符串数组，作者数组会合并为短文本。
 - `get_mod_library` 的 `author` / `versionLabel` 和 `categoryLabels` 由后端解析到的通用 metadata 生成，不由前端从路径或文件名推断。
 - `get_mod_detail` 返回 `metadata { version, author, category, tags, dependencies }` 摘要；这些字段只表示包内短文本声明，不表示依赖安装状态、冲突检测结果或安装计划事实。
+- `get_mod_dependency_graph` 会基于这些短文本声明构建跨已导入 Mod 的只读声明图；它只做已导入 `modId` 的规范化精确匹配，不根据展示名、路径或前端状态推断安装事实。
 - README 候选：`README.md`、`README.txt`、`README`，使用第一个 Markdown 标题或非空文本行。
 - 单个元数据文件读取上限为 64 KiB，扫描深度限制为 2 层，symlink 和异常 entry 跳过。
 - 元数据缺失、损坏或不可读时回退 `packageId`，不阻断导入主流程。
 
-该能力仍是包元数据 MVP：游戏专属 manifest schema、依赖是否安装的语义校验或跨 Mod 依赖图构建属于后续包分析 / 安装计划能力。它们需要游戏 adapter、已安装 Mod 事实或 profile/install manifest 作为依据，不能仅凭预览图导入阶段读取到的短文本 metadata 推断。
+该能力仍是包元数据 MVP：游戏专属 manifest schema、依赖是否安装的语义校验或安装计划级依赖图属于后续包分析 / 安装计划能力。它们需要游戏 adapter、已安装 Mod 事实或 profile/install manifest 作为依据，不能仅凭预览图导入阶段读取到的短文本 metadata 推断。
 
 ## 后续实施边界
 

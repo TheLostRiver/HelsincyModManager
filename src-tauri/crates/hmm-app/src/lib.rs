@@ -1,6 +1,7 @@
 mod app_settings;
 mod game_setup;
 mod log_diagnostics;
+mod mod_dependency_graph;
 mod mod_import;
 mod mod_import_diagnostics;
 mod mod_import_task;
@@ -14,6 +15,9 @@ pub use game_setup::{
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
+};
+pub use mod_dependency_graph::{
+    ModDependencyGraph, ModDependencyGraphEdge, ModDependencyGraphNode, ModDependencyGraphService,
 };
 pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModDetail, ModImportAnalysisRequest,

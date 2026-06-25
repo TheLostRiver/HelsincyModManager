@@ -1,7 +1,7 @@
 use crate::dto::{
-    AppSettingsDto, AuditLogDiagnosticsExportDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto,
-    PreviewImageCandidateListDto, PreviewImageDiagnosticsDto, PreviewImageDiagnosticsExportDto,
-    PreviewImageDto, SupportDiagnosticsExportDto, TaskStartedDto,
+    AppSettingsDto, AuditLogDiagnosticsExportDto, CommandErrorDto, ModDependencyGraphDto,
+    ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto, PreviewImageDiagnosticsDto,
+    PreviewImageDiagnosticsExportDto, PreviewImageDto, SupportDiagnosticsExportDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -61,6 +61,18 @@ pub fn get_mod_detail(
         .map_err(|_| mod_library_unavailable_error())?;
 
     Ok(detail.map(Into::into))
+}
+
+#[tauri::command]
+pub fn get_mod_dependency_graph(
+    state: State<'_, AppState>,
+) -> Result<ModDependencyGraphDto, CommandErrorDto> {
+    let graph = state
+        .mod_dependency_graph
+        .get_mod_dependency_graph()
+        .map_err(|_| mod_dependency_graph_unavailable_error())?;
+
+    Ok(graph.into())
 }
 
 #[tauri::command]
@@ -250,6 +262,13 @@ fn mod_library_unavailable_error() -> CommandErrorDto {
     }
 }
 
+fn mod_dependency_graph_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "mod_dependency_graph_unavailable".to_owned(),
+        message: "mod dependency graph is unavailable".to_owned(),
+    }
+}
+
 fn preview_image_candidates_unavailable_error() -> CommandErrorDto {
     CommandErrorDto {
         code: "preview_image_candidates_unavailable".to_owned(),
@@ -340,6 +359,15 @@ mod tests {
         let error = mod_library_unavailable_error();
 
         assert_eq!(error.code, "mod_library_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn mod_dependency_graph_unavailable_error_uses_stable_code_without_paths() {
+        let error = mod_dependency_graph_unavailable_error();
+
+        assert_eq!(error.code, "mod_dependency_graph_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
