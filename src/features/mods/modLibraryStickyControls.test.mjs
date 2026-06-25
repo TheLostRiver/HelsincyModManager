@@ -66,12 +66,13 @@ test("sticky controls are an opaque single-column bar fixed above the scroll con
     css,
     /\.route-transition__layer\[data-route-id="mods"\][\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\);/,
   );
-  // 吸顶条处于滚动容器(content)之外的 mod-library 第1行，祖先链都不滚，故无需 sticky——
-  // 物理固定常驻视野，滚动条(content 的)从其正下方开始，绝不达搜索栏。
+  // 吸顶条处于滚动容器(content)之外的 mod-library 第1行，预览面板可占第2行；
+  // 祖先链都不滚，故无需 sticky。滚动条(content 的)从内容区顶部开始，绝不达搜索栏。
   const stickyControlsBody = getRuleBody(css, ".mod-library__sticky-controls");
   assert.doesNotMatch(stickyControlsBody, /position:\s*sticky;/);
   assert.match(stickyControlsBody, /grid-row:\s*1;/);
-  assert.match(getRuleBody(css, ".mod-library__content-shell"), /grid-row:\s*2;/);
+  assert.match(getRuleBody(css, ".install-plan-preview"), /grid-row:\s*2;/);
+  assert.match(getRuleBody(css, ".mod-library__content-shell"), /grid-row:\s*3;/);
   assert.match(getRuleBody(css, ".mod-library__content"), /overflow-y:\s*auto;/);
   // 单列垂直堆叠：搜索栏独占上行，操作区在下行，杜绝操作按钮贴在搜索框右侧被误当成搜索按钮。
   assert.match(
@@ -118,7 +119,7 @@ test("narrow screens keep the mod list usable beneath tall controls", () => {
   );
   assert.match(
     css,
-    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(320px,\s*1fr\);/,
+    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+auto\s+minmax\(320px,\s*1fr\);/,
   );
 });
 
