@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 const AUDIT_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "audit-log-diagnostics.json";
 pub const MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS: usize = 200;
+const AUDIT_LOG_DIAGNOSTICS_UNAVAILABLE: &str = "audit log diagnostics unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditLogDiagnosticsExport {
@@ -43,25 +44,30 @@ impl AuditLogDiagnosticsExportService {
         &self,
         max_events: usize,
     ) -> anyhow::Result<AuditLogDiagnosticsExport> {
-        let export_timestamp = self.clock.now_unix_millis()?;
+        let export_timestamp = self
+            .clock
+            .now_unix_millis()
+            .map_err(|_| audit_log_diagnostics_unavailable())?;
         let max_events = max_events.min(MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS);
         let events = match self
             .audit_log_reader
             .read_recent_sanitized(AuditLogReadRequest { max_events })
         {
             Ok(events) => events,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(audit_log_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        "audit-log-diagnostics-unavailable.zip",
-                        "audit_log_read_failed",
-                        0,
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(audit_log_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            "audit-log-diagnostics-unavailable.zip",
+                            "audit_log_read_failed",
+                            0,
+                        ));
+                return Err(audit_log_diagnostics_unavailable());
             }
         };
-        let payload = serde_json::to_vec(&sanitized_audit_log_diagnostics_payload(&events))?;
+        let payload = serde_json::to_vec(&sanitized_audit_log_diagnostics_payload(&events))
+            .map_err(|_| audit_log_diagnostics_unavailable())?;
         let file_name = format!("audit-log-diagnostics-{}.zip", export_timestamp);
         let export = match self
             .diagnostic_exporter
@@ -73,15 +79,16 @@ impl AuditLogDiagnosticsExportService {
                 }],
             }) {
             Ok(export) => export,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(audit_log_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "diagnostic_package_export_failed",
-                        events.len(),
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(audit_log_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "diagnostic_package_export_failed",
+                            events.len(),
+                        ));
+                return Err(audit_log_diagnostics_unavailable());
             }
         };
 
@@ -90,7 +97,8 @@ impl AuditLogDiagnosticsExportService {
                 export_timestamp,
                 &export,
                 events.len(),
-            ))?;
+            ))
+            .map_err(|_| audit_log_diagnostics_unavailable())?;
 
         Ok(AuditLogDiagnosticsExport {
             export_id: export.export_id,
@@ -99,6 +107,10 @@ impl AuditLogDiagnosticsExportService {
             audit_event_count: events.len(),
         })
     }
+}
+
+fn audit_log_diagnostics_unavailable() -> anyhow::Error {
+    anyhow::anyhow!(AUDIT_LOG_DIAGNOSTICS_UNAVAILABLE)
 }
 
 fn sanitized_audit_log_diagnostics_payload(events: &[AuditLogEvent]) -> serde_json::Value {
@@ -292,7 +304,7 @@ mod tests {
             .export_audit_log_diagnostics(2)
             .expect_err("audit log read fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "audit log diagnostics unavailable");
         assert!(
             exporter.take_request().is_none(),
             "diagnostic package must not be exported when audit log read fails"
@@ -341,7 +353,7 @@ mod tests {
             .export_audit_log_diagnostics(2)
             .expect_err("diagnostic package export fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "audit log diagnostics unavailable");
         let event = audit_log.take_event().expect("failure audit event");
         assert_eq!(event.operation, "export_audit_log_diagnostics");
         assert_eq!(event.category, "diagnostic_export");
