@@ -78,6 +78,12 @@ Tauri CLI 通过 `@tauri-apps/cli` 作为项目内 devDependency 提供，不要
 ./scripts/verify.ps1
 ```
 
+Linux / Steam Deck 开发环境可以使用原生 Bash 入口：
+
+```bash
+bash scripts/verify.sh
+```
+
 如果 Windows PowerShell 执行策略阻止脚本运行，可以使用一次性绕过方式：
 
 ```powershell
