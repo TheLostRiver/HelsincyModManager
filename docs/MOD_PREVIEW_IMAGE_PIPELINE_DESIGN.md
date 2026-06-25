@@ -102,7 +102,7 @@ ModPackageMetadataAnalyzer
 -> 写入 Mod 元数据中的 display_name 和 preview_image 字段
 ```
 
-图片处理应作为导入任务的一部分携带 `task_id`。失败时记录结构化原因，并返回 fallback 结果。
+图片处理应作为导入任务的一部分携带 `task_id`。失败时记录结构化原因，并返回 fallback 结果。当前 prepare 阶段通过 `mod_import.preview_image.fallback` task event 的 `error` 字段携带稳定 fallback reason，不把路径、原始错误文本或图片内容放进事件。
 
 ### `hmm-infra`
 
@@ -383,7 +383,7 @@ Mod 卡片保持固定比例：
 | `too_large` | 使用默认封面，导入结果可提示“预览图过大已忽略” |
 | `too_many_candidates` | 当前默认路径不发出；若未来改为候选超量直接降级，则使用默认封面 |
 | `unsupported_format` | 使用默认封面 |
-| `unsupported_format`（magic bytes 不匹配） | 使用默认封面，并记录安全事件 |
+| `unsupported_format`（magic bytes 不匹配） | 使用默认封面，并通过稳定 fallback reason 进入 task event / 诊断聚合；若后续升格为安全审计事件，也只能记录稳定分类，不记录路径或原始错误文本 |
 | `decode_failed` | 使用默认封面 |
 | `pixel_limit_exceeded` | 使用默认封面 |
 | `cache_write_failed` | 使用默认封面，导入仍可继续；同 `thumbnailRef` 的 URL 下次访问由 protocol handler 重试或返回 404 触发前端回退 |
