@@ -1,4 +1,4 @@
-import { Ban, BadgeCheck, Plus, RefreshCcw, RotateCw, Shuffle, Trash2, CheckCheck } from "lucide-react";
+import { Ban, BadgeCheck, CheckCheck, ClipboardList, Plus, RefreshCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { compactActions } from "./modsLibraryData";
@@ -16,6 +16,7 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
   refresh: RotateCw,
   "enable-all": BadgeCheck,
   "disable-all": Ban,
+  "preview-plan": ClipboardList,
   reinstall: RefreshCcw,
   uninstall: Trash2,
 };
@@ -72,8 +73,10 @@ export function CompactActionPanel({ selectedCount, totalCount, onAction }: Comp
           .filter((a) => !["select-all", "invert", "refresh", "add"].includes(a.id))
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
-            const needsSelection = ["reinstall", "uninstall"].includes(action.id);
+            const needsSelection = ["preview-plan", "reinstall", "uninstall"].includes(action.id);
+            const needsSingleSelection = action.id === "preview-plan";
             const disabled = needsSelection && selectedCount === 0;
+            const isDisabled = disabled || (needsSingleSelection && selectedCount !== 1);
             return (
               <button
                 key={action.id}
@@ -81,7 +84,7 @@ export function CompactActionPanel({ selectedCount, totalCount, onAction }: Comp
                 className={`compact-action is-${action.variant}`}
                 data-variant={action.variant}
                 onClick={() => onAction(action.id)}
-                disabled={disabled}
+                disabled={isDisabled}
               >
                 <span className="compact-action__left">
                   <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
