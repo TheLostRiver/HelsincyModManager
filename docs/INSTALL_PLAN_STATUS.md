@@ -86,14 +86,17 @@
 
 ```text
 检查 plan 是否存在阻断冲突
+读取同 profile 的旧 manifest
 读取 source file
 读取目标文件旧状态
 覆盖前备份已有文件
 写入目标文件
-生成 InstallManifest
+生成并合并 InstallManifest
 保存 manifest
 失败时 best-effort rollback
 ```
+
+manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载、修复扫描和 rich status 仍需后续切片补齐。
 
 当前回滚能力：
 
@@ -124,7 +127,7 @@
 - 受控 source root 下的文件读取。
 - 受控 game root 下的目标文件读写和删除。
 - 受控 backup root 下的备份写入和清理。
-- 受控 manifest root 下的 JSON manifest 保存。
+- 受控 manifest root 下的 JSON manifest 读取和保存；读取会拒绝不安全 profile id、manifest symlink 和 profile id 不匹配的内容。
 
 文件系统实现会拒绝路径穿越、绝对路径、Windows 盘符前缀、symlink 目标和 symlink ancestor 逃逸。测试使用临时目录，不依赖真实 MHW:I 安装目录、真实存档或真实第三方 Mod 包。
 
@@ -191,7 +194,7 @@
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest 查询与已安装状态：尚未提供查询 manifest、展示已安装状态或修复状态的正式 command。
+- Manifest 查询与已安装状态：底层 manifest 已可读取，但尚未提供查询 manifest、展示已安装状态或修复状态的正式 command。
 - Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、hash、replacement binding snapshot、created/completed time 等长期字段。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
@@ -208,7 +211,7 @@
 建议继续按下面顺序推进：
 
 1. 最小安装 UI：触发 `start_install_task`、按 `taskId` 订阅进度、展示失败和取消状态。
-2. Manifest 查询：提供后端 command 返回某个 profile/mod 的安装状态摘要，前端只消费摘要。
+2. Manifest 查询：基于已可读取的 profile manifest，提供后端 command 返回某个 profile/mod 的安装状态摘要，前端只消费摘要。
 3. 基于 manifest 的 uninstall：不根据当前 Mod 包猜测已安装文件。
 4. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
 5. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
