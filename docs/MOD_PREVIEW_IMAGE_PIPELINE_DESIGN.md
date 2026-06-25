@@ -234,8 +234,9 @@ thumbnails/
 - 元数据分析失败不阻断导入主流程，也不影响预览图 fallback 语义。
 - 展示名、分类、标签、版本、作者和依赖文本不是安装、卸载、回滚或冲突检测事实来源。
 - 当前 `get_mod_library` 会暴露由后端生成的 `author`、`versionLabel` 和 `categoryLabels`；`get_mod_detail` 会暴露 `metadata { version, author, category, tags, dependencies }` 摘要。这些字段只用于展示和后续诊断输入，不表示依赖安装状态。
+- 当前 `get_mod_dependency_graph` 会基于已持久化导入结果生成只读依赖声明图；边只表示某个导入记录声明了依赖文本，并在该文本与另一个已导入 `modId` 规范化后精确匹配时返回 `matchedImportedModId`。它不表示依赖已安装、已启用或已通过安装计划校验。
 - 多个 manifest 候选会按缺失字段补齐；`authors`、`tags` 和 `dependencies` 当前支持字符串或字符串数组，作者数组会合并为短文本。
-- 更复杂的游戏专属 manifest schema、依赖是否安装的语义校验和跨 Mod 依赖图构建属于后续包分析 / 安装计划能力；它们需要游戏 adapter、已安装 Mod 事实或 profile/install manifest 作为依据，不能仅凭预览图导入阶段读取到的短文本 metadata 推断。
+- 更复杂的游戏专属 manifest schema、依赖是否安装的语义校验和安装计划级依赖图构建属于后续包分析 / 安装计划能力；它们需要游戏 adapter、已安装 Mod 事实或 profile/install manifest 作为依据，不能仅凭预览图导入阶段读取到的短文本 metadata 推断。
 
 ## 缩略图缓存清理
 
@@ -459,7 +460,7 @@ duration_ms
 
 - 前端详情页尚未接入更大派生图展示；后端只读入口 `get_mod_detail_preview_image(modId)` 已可按固定 `preview-1024` 策略生成/解析详情预览图，但仍不能直接展示原图。
 - 支持用户手动选择候选图的 UI；只读候选列表 command/DTO、后端按候选序号选择并复用同一条处理流水线的基础入口、以及选择结果写回已导入 Mod 记录的 command 已落地。
-- 支持游戏专属包元数据 schema、依赖安装状态校验和跨 Mod 依赖图；该能力应接入游戏 adapter 与安装事实来源，不应把预览图 metadata 摘要升级成依赖真相来源。
+- 支持游戏专属包元数据 schema、依赖安装状态校验和安装计划级依赖图；该能力应接入游戏 adapter 与安装事实来源，不应把预览图 metadata 摘要或当前声明图升级成依赖真相来源。
 - 继续细化图片处理取消治理，例如更细粒度的解码超时、worker 隔离或取消后 stale 缩略图维护策略；这些属于后续鲁棒性增强，当前后端 MVP 已通过并发 limiter、task event 和协作式 cancellation 检查点落地。
 - 支持 UI 设置入口和更完整的保留策略展示。
 - 支持按主题或分类生成更丰富的默认封面，但默认封面仍属于前端展示层。
