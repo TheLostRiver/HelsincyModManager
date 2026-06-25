@@ -315,7 +315,7 @@ set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays 
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
-- 失败原因使用稳定 `snake_case` 字符串；已注册的 `reason` 值见下文 DTO 定义（例如 `too_large`、`decode_failed`、`pixel_limit_exceeded`、`cache_write_failed`）。
+- 失败原因使用稳定 `snake_case` 字符串；已注册的 `reason` 值见下文 DTO 定义（例如 `too_large`、`decode_failed`、`pixel_limit_exceeded`、`cache_write_failed`）。当 prepare 阶段发送 `mod_import.preview_image.fallback` 事件时，事件 payload 的 `error` 字段携带同一组稳定 fallback reason，`message` 不作为前端分支依据。
 - 图片处理任务和导入任务事件必须携带 `taskId`。
 - 预览图阶段事件使用 `mod_import.preview_image.processing` 和 `mod_import.preview_image.fallback` 两个 phase code（见上文「长任务契约」）。
 
