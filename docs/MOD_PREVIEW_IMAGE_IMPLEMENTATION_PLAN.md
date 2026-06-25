@@ -165,13 +165,13 @@
 - 单个元数据文件读取上限为 64 KiB，扫描深度限制为 2 层，symlink 和异常 entry 跳过。
 - 元数据缺失、损坏或不可读时回退 `packageId`，不阻断导入主流程。
 
-该能力仍是 MVP：尚未做游戏专属 manifest schema、依赖是否安装的语义校验或跨 Mod 依赖图构建。
+该能力仍是包元数据 MVP：游戏专属 manifest schema、依赖是否安装的语义校验或跨 Mod 依赖图构建属于后续包分析 / 安装计划能力。它们需要游戏 adapter、已安装 Mod 事实或 profile/install manifest 作为依据，不能仅凭预览图导入阶段读取到的短文本 metadata 推断。
 
-## 下一批实施顺序
+## 后续实施边界
 
-### 1. 补齐安全测试与小修
+### 1. 安全测试与小修（后端已完成）
 
-优先补不依赖真实导入流水线的测试：
+以下测试已经补齐，用于证明当前后端预览图流水线的安全边界：
 
 - `thumbnail_protocol`：覆盖 symlinked `thumbnails` 根拒绝、package / 文件 symlink 拒绝、未登记 package 拒绝、Windows localhost 兼容形态、content type。
 - `processor`：覆盖 JPEG 正常路径、WebP 正常路径、损坏图片 `DecodeFailed`、像素超限 `PixelLimitExceeded`。
@@ -223,16 +223,16 @@ start_import_mod_task
 - 不把 sandbox 路径、缓存目录、包内路径或真实本地路径放入 DTO、event message 或日志。
 - 图片处理不在 game write lock 内执行。
 
-### 4. 接入库查询与前端真实数据（MVP 已完成）
+### 4. 接入库查询与前端真实数据（后端 MVP 已完成，前端入口另行处理）
 
-`get_mod_library` 和 `get_mod_detail` 已返回包含 `previewImage` 的真实 DTO，前端卡片按以下规则消费：
+`get_mod_library` 和 `get_mod_detail` 已返回包含 `previewImage` 的真实 DTO。前端消费规则仍保留为跨边界契约，但本轮后端任务不修改 `src/`：
 
 - `thumbnail`：渲染 `thumbnailUrl`。
 - `fallback` 或图片加载失败：保留当前渐变剪影占位。
 - 前端不使用 `convertFileSrc`、asset protocol、base64 data URL 或本地路径拼接。
 - 当后端结果为空或查询失败时，当前页面保留现有 mock fallback，避免脚手架阶段出现空白库。
 
-最小验证：
+若后续修改前端展示入口，最小验证：
 
 ```powershell
 cmd /c corepack pnpm run typecheck
@@ -242,7 +242,7 @@ cmd /c corepack pnpm run test
 
 ### 5. 收尾验证与文档同步
 
-当真实导入链路、library/detail 查询和前端展示都接通后，执行完整检查：
+当真实导入链路、library/detail 查询、后端诊断导出或前端展示发生变化时，执行完整检查：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
