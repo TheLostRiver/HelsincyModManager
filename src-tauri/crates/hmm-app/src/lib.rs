@@ -5,6 +5,7 @@ mod mod_import;
 mod mod_import_diagnostics;
 mod mod_import_task;
 mod preview_image;
+mod support_diagnostics;
 mod task_manager;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
@@ -34,6 +35,10 @@ pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageDetailService,
     PreviewImageService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+};
+pub use support_diagnostics::{
+    SupportDiagnosticsExport, SupportDiagnosticsExportService,
+    MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
 };
 pub use task_manager::{
     TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot, TaskStatus,
