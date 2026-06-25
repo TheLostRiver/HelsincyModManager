@@ -181,14 +181,18 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `previewInstallPlanForImportedMod`
 - `startInstallTask`
 - 最小安装计划预览面板。
+- 从 Mod 库触发最小安装任务。
+- 按 `taskId` 订阅 `hmm://task-progress` 安装事件。
+- 展示 `install.queued`、`install.plan.building`、`install.commit.processing`、`install.completed`、`install.failed` 和 `install.cancelled`。
+- 处理 `start_install_task` 返回前进度事件先到达的竞态。
 
-当前前端只能展示后端返回的计划摘要和冲突摘要，不应推断 MHW 路径规则或自行拼接安装路径。
+当前前端只能展示后端返回的计划摘要、冲突摘要和任务事件状态，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的已安装/需要修复摘要要等 Manifest 查询切片提供后端事实来源。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
-- 完整安装 UI：从 Mod 库触发安装任务、订阅进度、展示成功/失败/取消状态的闭环仍未完成。
+- 安装状态持久化和已安装摘要：最小安装任务 UI 已能启动任务并展示事件进度，但尚不能在页面刷新、重新进入或任务结束后基于 manifest 展示“已安装 / 需要修复 / 状态未知”等事实摘要。
 - 卸载：尚未实现基于 manifest 的 uninstall。
 - 恢复扫描：尚未实现启动时扫描半完成安装、`rollback_required` 或 `repair_required` 状态。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
@@ -210,8 +214,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. 最小安装 UI：触发 `start_install_task`、按 `taskId` 订阅进度、展示失败和取消状态。
-2. Manifest 查询：基于已可读取的 profile manifest，提供后端 command 返回某个 profile/mod 的安装状态摘要，前端只消费摘要。
+1. Manifest 查询：基于已可读取的 profile manifest，提供后端 command 返回某个 profile/mod 的安装状态摘要，前端只消费摘要。
+2. 安装 UI 状态恢复：在 Mod 库重新进入或安装任务完成后刷新 manifest 摘要，展示已安装、需要修复或状态未知，不依赖页面内存任务态。
 3. 基于 manifest 的 uninstall：不根据当前 Mod 包猜测已安装文件。
 4. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
 5. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
