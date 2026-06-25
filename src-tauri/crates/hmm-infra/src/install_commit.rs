@@ -147,10 +147,13 @@ impl InstallManifestRepository for JsonInstallManifestRepository {
     fn load_manifest(&self, profile_id: &ProfileId) -> Result<Option<InstallManifest>> {
         let file_name = manifest_file_name(profile_id.as_str())?;
 
-        if !self.manifest_root.exists() {
-            return Ok(None);
+        match fs::symlink_metadata(&self.manifest_root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).context("failed to inspect install manifest root"),
         }
 
+        ensure_existing_directory(&self.manifest_root, "install manifest root")?;
         ensure_contained_existing_path(&self.manifest_root, &self.manifest_root)?;
         let manifest_path = self.manifest_root.join(file_name);
 
@@ -178,6 +181,7 @@ impl InstallManifestRepository for JsonInstallManifestRepository {
     fn save_manifest(&self, manifest: &InstallManifest) -> Result<()> {
         fs::create_dir_all(&self.manifest_root)
             .context("failed to create install manifest root")?;
+        ensure_existing_directory(&self.manifest_root, "install manifest root")?;
         ensure_contained_existing_path(&self.manifest_root, &self.manifest_root)?;
         let file_name = manifest_file_name(manifest.profile_id.as_str())?;
         let manifest_path = self.manifest_root.join(file_name);
@@ -239,6 +243,16 @@ fn ensure_contained_existing_path(root: &Path, path: &Path) -> Result<()> {
 
     if !canonical_path.starts_with(&canonical_root) {
         anyhow::bail!("install path escaped its root");
+    }
+
+    Ok(())
+}
+
+fn ensure_existing_directory(path: &Path, label: &str) -> Result<()> {
+    let metadata =
+        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {label}"))?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        anyhow::bail!("{label} is not a directory");
     }
 
     Ok(())
@@ -672,6 +686,60 @@ mod tests {
             .expect("load manifest");
 
         assert_eq!(loaded, Some(manifest));
+    }
+
+    #[test]
+    fn json_manifest_repository_load_rejects_file_manifest_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let manifest_root = temp.path().join("manifests");
+        fs::write(&manifest_root, b"not a directory").expect("write manifest root fixture");
+        let repository = JsonInstallManifestRepository::new(manifest_root);
+
+        let error = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect_err("manifest root file must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install manifest root is not a directory"));
+    }
+
+    #[test]
+    fn json_manifest_repository_load_rejects_symlink_manifest_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside_root = temp.path().join("outside-manifests");
+        fs::create_dir_all(&outside_root).expect("create outside root");
+        let manifest_root = temp.path().join("manifests");
+        if !try_create_dir_symlink(&outside_root, &manifest_root) {
+            return;
+        }
+        let repository = JsonInstallManifestRepository::new(manifest_root);
+
+        let error = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect_err("manifest root symlink must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install manifest root is not a directory"));
+    }
+
+    #[test]
+    fn json_manifest_repository_load_rejects_broken_symlink_manifest_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let manifest_root = temp.path().join("manifests");
+        if !try_create_dir_symlink(temp.path().join("missing-manifests"), &manifest_root) {
+            return;
+        }
+        let repository = JsonInstallManifestRepository::new(manifest_root);
+
+        let error = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect_err("broken manifest root symlink must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install manifest root is not a directory"));
     }
 
     #[test]
