@@ -289,7 +289,7 @@ thumbnails/
 
 AppState 会尝试启动后端定时维护线程，默认每 6 小时执行一次同一条 best-effort 缓存维护链路。该线程不创建前端 task、不发送 progress event、不暴露缓存路径；启动或清理失败只影响派生缓存占用，不影响导入、安装、卸载或回滚事实。
 
-当前已有 `maintain_thumbnail_cache` 后端命令可手动触发同一条 best-effort 缓存维护链路；该命令不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。`set_thumbnail_cache_settings` 可写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays`，二者可为正整数或 `null`，`null` 表示回退默认语义，`0` 会被拒绝；该命令不暴露 settings 文件路径。尚未定义 UI 设置入口；这属于后续缓存生命周期治理。已有的 `prune_unreferenced_thumbnails_older_than`、`prune_to_size_limit`、settings 读写、默认导入后维护、定时后端维护和手动后端触发只属于后端生命周期能力，不改变缩略图 URL 契约。
+当前已有 `maintain_thumbnail_cache` 后端命令可手动触发同一条 best-effort 缓存维护链路；该命令不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。`get_thumbnail_cache_settings` 可只读返回当前受控设置，且不写入 settings 文件、不触发缓存维护；`set_thumbnail_cache_settings` 可写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays`，二者可为正整数或 `null`，`null` 表示回退默认语义，`0` 会被拒绝；这两个设置命令都不暴露 settings 文件路径、缓存路径或任意文件系统路径。尚未定义 UI 设置入口；这属于后续缓存生命周期治理。已有的 `prune_unreferenced_thumbnails_older_than`、`prune_to_size_limit`、settings 读写、默认导入后维护、定时后端维护和手动后端触发只属于后端生命周期能力，不改变缩略图 URL 契约。
 
 ## 诊断摘要
 
