@@ -985,6 +985,38 @@ mod tests {
     }
 
     #[test]
+    fn loads_legacy_mod_import_results_without_preview_image() {
+        let path = test_file("legacy-results-without-preview-image");
+        fs::create_dir_all(path.parent().expect("results parent")).expect("create parent");
+        fs::write(
+            &path,
+            r#"{
+                "version": 1,
+                "records": [{
+                    "mod_id": "pkg-1",
+                    "task_id": "task-1",
+                    "package_id": "pkg-1",
+                    "display_name": "pkg-1"
+                }]
+            }"#,
+        )
+        .expect("write legacy results");
+        let repo = JsonModImportResultRepository::new(path);
+
+        let record = repo
+            .get_analysis("pkg-1")
+            .expect("read legacy analysis")
+            .expect("legacy record exists");
+
+        assert_eq!(
+            record.preview_image,
+            StoredImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            }
+        );
+    }
+
+    #[test]
     fn saving_same_mod_import_result_replaces_existing_record() {
         let repo = JsonModImportResultRepository::new(test_file("replace-results"));
 

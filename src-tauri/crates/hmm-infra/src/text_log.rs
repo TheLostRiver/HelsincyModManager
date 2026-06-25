@@ -72,7 +72,9 @@ fn read_sanitized_lines_from_file(
 ) -> Result<()> {
     let file = File::open(log_path).context("failed to open text log")?;
     for line in BufReader::new(file).lines() {
-        let line = line.context("failed to read text log line")?;
+        let Ok(line) = line else {
+            continue;
+        };
         if line.trim().is_empty() || !is_safe_log_line(&line) {
             continue;
         }
@@ -229,5 +231,30 @@ mod tests {
         assert!(!serialized.contains("token"));
         assert!(!serialized.contains("thumbnail://"));
         assert!(!serialized.contains("secret-hash"));
+    }
+
+    #[test]
+    fn text_log_reader_skips_invalid_utf8_lines() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app_log_dir = temp.path().join("logs").join("app");
+        fs::create_dir_all(&app_log_dir).expect("create app log dir");
+        fs::write(
+            app_log_dir.join("app-1970-01-01.log"),
+            b"application started\n\xFF\xFE\napplication recovered\n",
+        )
+        .expect("write app log");
+
+        let reader = FileSystemTextLogReader::new(temp.path().to_path_buf());
+
+        let lines = reader
+            .read_recent_sanitized(TextLogReadRequest {
+                kind: TextLogKind::App,
+                max_lines: 10,
+            })
+            .expect("read sanitized app log lines");
+
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].line, "application started");
+        assert_eq!(lines[1].line, "application recovered");
     }
 }
