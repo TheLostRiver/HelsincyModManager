@@ -200,7 +200,7 @@
 - [架构设计](ARCHITECTURE.md)：记录安装必须经过计划、manifest、备份和回滚的原则。
 - [Mod 安装方案规划](mod_installation_strategy.md)：记录长期方案和可选后端，不代表当前全部已实现。
 - [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)：记录当前 Tauri command、DTO、错误码和任务事件契约。
-- [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)：记录后续切片、验收标准和安全门禁。
+- [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)：记录后续切片、验收标准、安全门禁，以及 manifest 状态、卸载/恢复、安装 UI、retarget staging 和测试矩阵的细化规则。
 - 本文档：记录当前实现状态和后续切片判断。
 
 ## 后续建议切片
