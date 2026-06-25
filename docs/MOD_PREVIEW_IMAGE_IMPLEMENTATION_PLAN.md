@@ -41,7 +41,7 @@
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
 | `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；`null`/缺省表示回退默认语义，`0` 会被拒绝；不暴露 settings 文件路径。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
-| 并发限制和事件 | 部分落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已下传到 zip 解压 entry/chunk、preview scanner 遍历和 processor 读文件/解码前后/缩略图写入前后检查点。图片库自身的单次解码/编码调用仍不是抢占式中断。 |
+| 并发限制和事件 | 后端 MVP 已落地 | prepare runner 已发送 task progress 且事件携带 `taskId`；图片解码并发 limiter 已通过 app 层 `LimitedPreviewImageProcessor` 以默认并发 2 接入；running prepare cancellation 已下传到 zip 解压 entry/chunk、preview scanner 遍历和 processor 读文件/解码前后/缩略图写入前后检查点。图片库自身的单次解码/编码调用仍不是抢占式中断，这是当前协作式取消的已知边界，不再视为后端 MVP 未完成项。 |
 
 ## 已知差异与决策点
 
