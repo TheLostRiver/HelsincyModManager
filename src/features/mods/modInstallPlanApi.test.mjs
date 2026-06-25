@@ -68,6 +68,10 @@ test("mod library page starts install task and tracks only matching task progres
   assert.match(source, /listen<\s*TaskProgressEventDto\s*>/);
   assert.match(source, /event\.payload\.taskId\s*!==\s*installTaskState\.taskId/);
   assert.match(source, /event\.payload\.kind\s*!==\s*"install"/);
+  assert.match(source, /pendingInstallProgressEventsRef/);
+  assert.match(source, /pendingInstallProgressEventsRef\.current\.set\(event\.payload\.taskId,\s*event\.payload\)/);
+  assert.match(source, /pendingInstallProgressEventsRef\.current\.get\(task\.taskId\)/);
+  assert.match(source, /nextInstallTaskStateFromProgress\(runningState,\s*pendingProgressEvent\)/);
   assert.match(source, /install\.queued/);
   assert.match(source, /install\.plan\.building/);
   assert.match(source, /install\.commit\.processing/);

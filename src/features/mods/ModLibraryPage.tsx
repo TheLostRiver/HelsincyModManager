@@ -244,6 +244,52 @@ function installTaskPanelState(
   }
 }
 
+function nextInstallTaskStateFromProgress(
+  current: InstallTaskState,
+  event: TaskProgressEventDto,
+): InstallTaskState {
+  if (!("taskId" in current) || current.taskId !== event.taskId) {
+    return current;
+  }
+
+  const phase = event.phase;
+  if (!isInstallTaskPhase(phase)) {
+    return current;
+  }
+
+  switch (phase) {
+    case "install.completed":
+      return {
+        status: "completed",
+        taskId: event.taskId,
+        modName: current.modName,
+        phase,
+      };
+    case "install.failed":
+      return {
+        status: "failed",
+        taskId: event.taskId,
+        modName: current.modName,
+        phase,
+        message: event.error ?? event.message ?? "安装失败",
+      };
+    case "install.cancelled":
+      return {
+        status: "cancelled",
+        taskId: event.taskId,
+        modName: current.modName,
+        phase,
+      };
+    default:
+      return {
+        status: "running",
+        taskId: event.taskId,
+        modName: current.modName,
+        phase,
+      };
+  }
+}
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
@@ -258,13 +304,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   });
   const [installTaskState, setInstallTaskState] = useState<InstallTaskState>({ status: "idle" });
   const installTaskStateRef = useRef<InstallTaskState>(installTaskState);
+  const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
 
   const setTrackedInstallTaskState = useCallback((update: InstallTaskStateUpdate) => {
-    setInstallTaskState((current) => {
-      const nextState = typeof update === "function" ? update(current) : update;
-      installTaskStateRef.current = nextState;
-      return nextState;
-    });
+    const nextState = typeof update === "function" ? update(installTaskStateRef.current) : update;
+    installTaskStateRef.current = nextState;
+    setInstallTaskState(nextState);
   }, []);
 
   const visibleItems = useMemo(() => {
@@ -280,10 +325,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     viewMode,
     setViewMode,
   );
-
-  useEffect(() => {
-    installTaskStateRef.current = installTaskState;
-  }, [installTaskState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,12 +366,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       }
 
       const installTaskState = installTaskStateRef.current;
-      if (!("taskId" in installTaskState) || installTaskState.taskId === null) {
-        return;
-      }
-      if (event.payload.taskId !== installTaskState.taskId) {
-        return;
-      }
       if (event.payload.kind !== "install") {
         return;
       }
@@ -340,42 +375,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         return;
       }
 
-      setTrackedInstallTaskState((current) => {
-        if (!("taskId" in current) || current.taskId !== event.payload.taskId) {
-          return current;
+      if (!("taskId" in installTaskState) || installTaskState.taskId === null) {
+        if (installTaskState.status === "starting") {
+          pendingInstallProgressEventsRef.current.set(event.payload.taskId, event.payload);
         }
+        return;
+      }
+      if (event.payload.taskId !== installTaskState.taskId) {
+        return;
+      }
 
-        switch (phase) {
-          case "install.completed":
-            return {
-              status: "completed",
-              taskId: event.payload.taskId,
-              modName: current.modName,
-              phase,
-            };
-          case "install.failed":
-            return {
-              status: "failed",
-              taskId: event.payload.taskId,
-              modName: current.modName,
-              phase,
-              message: event.payload.error ?? event.payload.message ?? "安装失败",
-            };
-          case "install.cancelled":
-            return {
-              status: "cancelled",
-              taskId: event.payload.taskId,
-              modName: current.modName,
-              phase,
-            };
-          default:
-            return {
-              status: "running",
-              taskId: event.payload.taskId,
-              modName: current.modName,
-              phase,
-            };
-        }
+      setTrackedInstallTaskState((current) => {
+        return nextInstallTaskStateFromProgress(current, event.payload);
       });
     }).then((unlisten) => {
       if (disposed) {
@@ -512,6 +523,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const modName = item?.name ?? modId;
 
     setInstallPlanPreviewState({ status: "idle" });
+    pendingInstallProgressEventsRef.current.clear();
     setTrackedInstallTaskState({ status: "starting", modName });
     void startInstallTask({
       gameId: "mhw",
@@ -521,6 +533,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       layerPriority: 0,
     })
       .then((task) => {
+        const pendingProgressEvent = pendingInstallProgressEventsRef.current.get(task.taskId) ?? null;
+        pendingInstallProgressEventsRef.current.clear();
+
         if (task.kind !== "install") {
           setTrackedInstallTaskState({
             status: "failed",
@@ -532,14 +547,25 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           return;
         }
 
-        setTrackedInstallTaskState({
-          status: "running",
-          taskId: task.taskId,
-          modName,
-          phase: "install.queued",
+        setTrackedInstallTaskState((current) => {
+          const runningState: InstallTaskState = {
+            status: "running",
+            taskId: task.taskId,
+            modName,
+            phase: "install.queued",
+          };
+
+          if (current.status !== "starting") {
+            return current;
+          }
+
+          return pendingProgressEvent
+            ? nextInstallTaskStateFromProgress(runningState, pendingProgressEvent)
+            : runningState;
         });
       })
       .catch((error: unknown) => {
+        pendingInstallProgressEventsRef.current.clear();
         setTrackedInstallTaskState({
           status: "failed",
           taskId: null,
