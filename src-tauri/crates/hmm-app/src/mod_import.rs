@@ -552,11 +552,11 @@ impl ModImportPrepareService {
             cancellation_token,
         )?;
 
-        if matches!(analysis.preview_image, ImportPreviewImage::Fallback { .. }) {
-            events.push(running_event(
-                &request.task_id,
-                MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE,
-            ));
+        if let ImportPreviewImage::Fallback { reason } = &analysis.preview_image {
+            let mut event =
+                running_event(&request.task_id, MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE);
+            event.error = Some(preview_image_rejection_reason_key(*reason).to_owned());
+            events.push(event);
         }
 
         Ok(ModImportPrepareResult { analysis, events })
@@ -600,6 +600,18 @@ fn failed_event(task_id: &str) -> crate::TaskProgressEvent {
     );
     event.error = Some(MOD_IMPORT_PREPARE_FAILED_ERROR.to_owned());
     event
+}
+
+fn preview_image_rejection_reason_key(reason: PreviewImageRejectionReason) -> &'static str {
+    match reason {
+        PreviewImageRejectionReason::Missing => "missing",
+        PreviewImageRejectionReason::TooLarge => "too_large",
+        PreviewImageRejectionReason::TooManyCandidates => "too_many_candidates",
+        PreviewImageRejectionReason::UnsupportedFormat => "unsupported_format",
+        PreviewImageRejectionReason::DecodeFailed => "decode_failed",
+        PreviewImageRejectionReason::PixelLimitExceeded => "pixel_limit_exceeded",
+        PreviewImageRejectionReason::CacheWriteFailed => "cache_write_failed",
+    }
 }
 
 pub struct ModImportAnalysisService {
@@ -975,6 +987,38 @@ mod tests {
                 "mod_import.unpack.completed",
                 "mod_import.preview_image.processing",
                 "mod_import.preview_image.fallback",
+            ]
+        );
+        let fallback_event = result
+            .events
+            .iter()
+            .find(|event| event.phase == "mod_import.preview_image.fallback")
+            .expect("fallback event is emitted");
+        assert_eq!(fallback_event.error.as_deref(), Some("decode_failed"));
+        assert_eq!(fallback_event.message, None);
+        assert_eq!(fallback_event.result_ref, None);
+    }
+
+    #[test]
+    fn preview_image_rejection_reason_key_returns_contract_values() {
+        assert_eq!(
+            [
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::Missing),
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::TooLarge),
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::TooManyCandidates),
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::UnsupportedFormat),
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::DecodeFailed),
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::PixelLimitExceeded),
+                preview_image_rejection_reason_key(PreviewImageRejectionReason::CacheWriteFailed),
+            ],
+            [
+                "missing",
+                "too_large",
+                "too_many_candidates",
+                "unsupported_format",
+                "decode_failed",
+                "pixel_limit_exceeded",
+                "cache_write_failed",
             ]
         );
     }
