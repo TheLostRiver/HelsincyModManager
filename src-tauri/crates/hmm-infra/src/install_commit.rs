@@ -54,6 +54,7 @@ impl InstallGameFileSystem for FileSystemInstallGameFileSystem {
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             anyhow::bail!("install target is not a regular file");
         }
+        ensure_contained_existing_path(&self.game_root, &path)?;
 
         Ok(Some(
             fs::read(path).context("failed to read install target")?,
@@ -85,6 +86,7 @@ impl InstallGameFileSystem for FileSystemInstallGameFileSystem {
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             anyhow::bail!("install target is not a regular file");
         }
+        ensure_contained_existing_path(&self.game_root, &path)?;
 
         fs::remove_file(path).context("failed to remove install target")
     }
@@ -516,6 +518,51 @@ mod tests {
 
         assert!(error.to_string().contains("install path escaped its root"));
         assert!(!outside_created_dir.exists());
+    }
+
+    #[test]
+    fn filesystem_game_reader_rejects_symlink_ancestor() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let game_root = temp.path().join("game");
+        let outside_root = temp.path().join("outside");
+        let outside_file = outside_root.join("player.mod3");
+        fs::create_dir_all(game_root.join("nativePC")).expect("create game dirs");
+        fs::create_dir_all(&outside_root).expect("create outside root");
+        fs::write(&outside_file, b"outside").expect("write outside");
+        if !try_create_dir_symlink(&outside_root, game_root.join("nativePC/link")) {
+            return;
+        }
+        let target = InstallTargetPath::parse("nativePC/link/player.mod3", ["nativePC"])
+            .expect("target");
+
+        let error = FileSystemInstallGameFileSystem::new(game_root)
+            .read_game_file(&target)
+            .expect_err("reader must reject symlink ancestor");
+
+        assert!(error.to_string().contains("install path escaped its root"));
+    }
+
+    #[test]
+    fn filesystem_game_remover_rejects_symlink_ancestor_without_deleting_outside_file() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let game_root = temp.path().join("game");
+        let outside_root = temp.path().join("outside");
+        let outside_file = outside_root.join("player.mod3");
+        fs::create_dir_all(game_root.join("nativePC")).expect("create game dirs");
+        fs::create_dir_all(&outside_root).expect("create outside root");
+        fs::write(&outside_file, b"outside").expect("write outside");
+        if !try_create_dir_symlink(&outside_root, game_root.join("nativePC/link")) {
+            return;
+        }
+        let target = InstallTargetPath::parse("nativePC/link/player.mod3", ["nativePC"])
+            .expect("target");
+
+        let error = FileSystemInstallGameFileSystem::new(game_root)
+            .remove_game_file(&target)
+            .expect_err("remover must reject symlink ancestor");
+
+        assert!(error.to_string().contains("install path escaped its root"));
+        assert_eq!(fs::read(outside_file).expect("outside file"), b"outside");
     }
 
     #[test]

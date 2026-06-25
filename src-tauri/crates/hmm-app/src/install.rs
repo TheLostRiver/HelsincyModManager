@@ -222,13 +222,10 @@ impl InstallCommitService {
             };
         }
 
-        let rollback_result = self.rollback(applied_changes).and_then(|_| {
-            if let Some(backup_ref) = pending_backup_ref {
-                self.backup_store.remove_backup(backup_ref)?;
-            }
-
-            Ok(())
-        });
+        let rollback_result = self.rollback(applied_changes);
+        if let Some(backup_ref) = pending_backup_ref {
+            let _ = self.backup_store.remove_backup(backup_ref);
+        }
 
         if rollback_result.is_ok() {
             InstallCommitError::RollbackSucceeded { failed_phase }
@@ -238,20 +235,31 @@ impl InstallCommitService {
     }
 
     fn rollback(&self, applied_changes: &[AppliedInstallChange]) -> anyhow::Result<()> {
-        for change in applied_changes.iter().rev() {
-            if let Some(previous_bytes) = &change.previous_bytes {
-                self.game_files
-                    .write_game_file(&change.target_path, previous_bytes)?;
-            } else {
-                self.game_files.remove_game_file(&change.target_path)?;
-            }
+        let mut rollback_error = None;
 
-            if let Some(backup_ref) = &change.entry.backup_ref {
-                self.backup_store.remove_backup(backup_ref)?;
+        for change in applied_changes.iter().rev() {
+            let restore_result = if let Some(previous_bytes) = &change.previous_bytes {
+                self.game_files
+                    .write_game_file(&change.target_path, previous_bytes)
+            } else {
+                self.game_files.remove_game_file(&change.target_path)
+            };
+
+            if let Err(error) = restore_result {
+                rollback_error.get_or_insert(error);
             }
         }
 
-        Ok(())
+        for change in applied_changes.iter().rev() {
+            if let Some(backup_ref) = &change.entry.backup_ref {
+                let _ = self.backup_store.remove_backup(backup_ref);
+            }
+        }
+
+        match rollback_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 }
 
@@ -847,6 +855,75 @@ mod tests {
         assert!(manifests.take_manifest().is_none());
     }
 
+    #[test]
+    fn commit_plan_restores_all_files_even_when_backup_cleanup_fails() {
+        let first_target =
+            InstallTargetPath::parse("nativePC/models/first.mod3", ["nativePC"]).expect("valid");
+        let second_target =
+            InstallTargetPath::parse("nativePC/models/second.mod3", ["nativePC"]).expect("valid");
+        let plan = InstallPlan::from_providers(vec![
+            InstallFileProvider::new(
+                ModId::new("mod-a"),
+                PackageFileId::new("nativePC/models/first.mod3"),
+                first_target,
+                FileLayer::new("base", 0),
+            ),
+            InstallFileProvider::new(
+                ModId::new("mod-a"),
+                PackageFileId::new("nativePC/models/second.mod3"),
+                second_target,
+                FileLayer::new("base", 0),
+            ),
+        ]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+            ("nativePC/models/first.mod3", b"new first".as_slice()),
+            ("nativePC/models/second.mod3", b"new second".as_slice()),
+        ]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([
+            ("nativePC/models/first.mod3", b"old first".as_slice()),
+            ("nativePC/models/second.mod3", b"old second".as_slice()),
+        ]));
+        let backups = Arc::new(RecordingInstallBackupStore::failing_removals());
+        let manifests = Arc::new(RecordingInstallManifestRepository::failing());
+        let service = InstallCommitService::new(
+            source_files,
+            game_files.clone(),
+            backups.clone(),
+            manifests,
+        );
+
+        let error = service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect_err("manifest failure should trigger rollback");
+
+        assert_eq!(
+            error,
+            InstallCommitError::RollbackSucceeded {
+                failed_phase: InstallCommitPhase::Manifest
+            }
+        );
+        assert_eq!(
+            game_files.file_bytes("nativePC/models/first.mod3").as_deref(),
+            Some(b"old first".as_slice())
+        );
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/second.mod3")
+                .as_deref(),
+            Some(b"old second".as_slice())
+        );
+        assert_eq!(
+            backups.removed_refs(),
+            vec![
+                "backup-nativePC-models-second.mod3-1".to_owned(),
+                "backup-nativePC-models-first.mod3".to_owned(),
+            ]
+        );
+    }
+
     fn stored_analysis(mod_id: &str, package_id: &str) -> StoredModImportAnalysis {
         StoredModImportAnalysis {
             mod_id: mod_id.to_owned(),
@@ -1040,9 +1117,18 @@ mod tests {
     struct RecordingInstallBackupStore {
         records: Mutex<Vec<(String, String, Vec<u8>)>>,
         removed_refs: Mutex<Vec<String>>,
+        fail_removals: bool,
     }
 
     impl RecordingInstallBackupStore {
+        fn failing_removals() -> Self {
+            Self {
+                records: Mutex::new(Vec::new()),
+                removed_refs: Mutex::new(Vec::new()),
+                fail_removals: true,
+            }
+        }
+
         fn records(&self) -> Vec<(String, Vec<u8>)> {
             self.records
                 .lock()
@@ -1083,6 +1169,9 @@ mod tests {
                 .lock()
                 .expect("removed refs")
                 .push(backup_ref.to_owned());
+            if self.fail_removals {
+                anyhow::bail!("backup cleanup failed");
+            }
             Ok(())
         }
     }
