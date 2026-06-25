@@ -7,6 +7,7 @@ use hmm_ports::{
     InstallSourceFileReader, ModImportResultRepository, ModImportSandboxLocator,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -110,6 +111,7 @@ pub struct InstallCommitService {
 struct AppliedInstallChange {
     target_path: InstallTargetPath,
     previous_bytes: Option<Vec<u8>>,
+    pending_backup_ref: Option<String>,
     entry: InstallManifestEntry,
 }
 
@@ -144,6 +146,7 @@ impl InstallCommitService {
             .map_err(|_| InstallCommitError::Failed {
                 phase: InstallCommitPhase::ManifestRead,
             })?;
+        let existing_backup_refs = manifest_backup_refs_by_target(existing_manifest.as_ref());
         let mut applied_changes = Vec::new();
 
         for action in plan.actions {
@@ -170,6 +173,10 @@ impl InstallCommitService {
             } else {
                 None
             };
+            let manifest_backup_ref = match existing_backup_refs.get(&action.target_path) {
+                Some(existing_backup_ref) => existing_backup_ref.clone(),
+                None => backup_ref.clone(),
+            };
 
             if self
                 .game_files
@@ -186,12 +193,13 @@ impl InstallCommitService {
             applied_changes.push(AppliedInstallChange {
                 target_path: action.target_path.clone(),
                 previous_bytes,
+                pending_backup_ref: backup_ref,
                 entry: InstallManifestEntry {
                     target_path: action.target_path,
                     mod_id: action.provider.mod_id,
                     package_file_id: action.provider.package_file_id,
                     layer: action.provider.layer,
-                    backup_ref,
+                    backup_ref: manifest_backup_ref,
                 },
             });
         }
@@ -208,6 +216,7 @@ impl InstallCommitService {
         self.manifest_repository
             .save_manifest(&manifest)
             .map_err(|_| self.fail_or_rollback(&applied_changes, InstallCommitPhase::Manifest))?;
+        self.remove_obsolete_pending_backups(&applied_changes);
 
         Ok(InstallCommitResult { manifest })
     }
@@ -261,7 +270,7 @@ impl InstallCommitService {
         }
 
         for change in applied_changes.iter().rev() {
-            if let Some(backup_ref) = &change.entry.backup_ref {
+            if let Some(backup_ref) = &change.pending_backup_ref {
                 let _ = self.backup_store.remove_backup(backup_ref);
             }
         }
@@ -271,6 +280,31 @@ impl InstallCommitService {
             None => Ok(()),
         }
     }
+
+    fn remove_obsolete_pending_backups(&self, applied_changes: &[AppliedInstallChange]) {
+        for change in applied_changes {
+            if let Some(pending_backup_ref) = &change.pending_backup_ref {
+                if change.entry.backup_ref.as_deref() != Some(pending_backup_ref.as_str()) {
+                    let _ = self.backup_store.remove_backup(pending_backup_ref);
+                }
+            }
+        }
+    }
+}
+
+fn manifest_backup_refs_by_target(
+    existing_manifest: Option<&InstallManifest>,
+) -> HashMap<InstallTargetPath, Option<String>> {
+    let mut backup_refs = HashMap::new();
+    if let Some(manifest) = existing_manifest {
+        for entry in &manifest.entries {
+            backup_refs
+                .entry(entry.target_path.clone())
+                .or_insert_with(|| entry.backup_ref.clone());
+        }
+    }
+
+    backup_refs
 }
 
 fn merge_install_manifest(
@@ -724,6 +758,134 @@ mod tests {
                     "nativePC/models/player.mod3"
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/player-new.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player-new.mod3",
+            b"new model".as_slice(),
+        )]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"old managed model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse(
+                    "nativePC/models/player.mod3",
+                    ["nativePC"],
+                )
+                .expect("valid target"),
+                mod_id: ModId::new("mod-old"),
+                package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: Some("backup-original-player".to_owned()),
+            }],
+        };
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service =
+            InstallCommitService::new(source_files, game_files, backups.clone(), manifests.clone());
+
+        service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect("commit should succeed");
+
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.entries.len(), 1);
+        assert_eq!(
+            manifest.entries[0].package_file_id.as_str(),
+            "nativePC/models/player-new.mod3"
+        );
+        assert_eq!(
+            manifest.entries[0].backup_ref.as_deref(),
+            Some("backup-original-player")
+        );
+        assert_eq!(
+            backups.records(),
+            vec![(
+                "nativePC/models/player.mod3".to_owned(),
+                b"old managed model".to_vec()
+            )]
+        );
+        assert_eq!(
+            backups.removed_refs(),
+            vec!["backup-nativePC-models-player.mod3".to_owned()]
+        );
+    }
+
+    #[test]
+    fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
+        let target = InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/new-file-v2.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/new-file-v2.mod3",
+            b"new model v2".as_slice(),
+        )]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/new-file.mod3",
+            b"old managed new file".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse(
+                    "nativePC/models/new-file.mod3",
+                    ["nativePC"],
+                )
+                .expect("valid target"),
+                mod_id: ModId::new("mod-old"),
+                package_file_id: PackageFileId::new("nativePC/models/new-file-v1.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+            }],
+        };
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service =
+            InstallCommitService::new(source_files, game_files, backups.clone(), manifests.clone());
+
+        service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect("commit should succeed");
+
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.entries.len(), 1);
+        assert_eq!(
+            manifest.entries[0].package_file_id.as_str(),
+            "nativePC/models/new-file-v2.mod3"
+        );
+        assert_eq!(manifest.entries[0].backup_ref, None);
+        assert_eq!(
+            backups.removed_refs(),
+            vec!["backup-nativePC-models-new-file.mod3".to_owned()]
         );
     }
 

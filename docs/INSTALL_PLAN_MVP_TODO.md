@@ -37,7 +37,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 后端驱动的 `preview_imported_mod_install_plan`，从已导入 Mod 的受控 sandbox 和 game adapter 生成计划输入。
 - 最小前端 typed API 和计划预览 UI。
 - 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
-- JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目。
+- JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目，并在替换已有托管目标时保留旧 `backup_ref` 恢复语义。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 
@@ -113,6 +113,7 @@ completed -> repair_required
 
 - 读取旧 manifest 时必须走兼容层，缺少 rich 字段不能直接当作损坏。
 - 提交服务合并 MVP manifest 时只按本次写入的目标路径替换旧条目；未触达目标必须保留，不能因为 `modId` 相同就遗忘仍在游戏目录中的托管文件。
+- 替换已有托管目标时，新 manifest entry 必须继承旧条目的长期 `backup_ref` 语义；本次提交为了失败回滚创建的中间状态 backup 不能覆盖原始恢复引用，提交成功后应 best-effort 清理。
 - 缺少 `status` 的旧 manifest 可以按只读摘要处理，但不能自动承诺可安全卸载。
 - 新增字段默认向后兼容；删除或重命名字段必须带迁移测试。
 - Manifest 只能记录受控安装事实和必要快照，不记录完整本地路径、sandbox/cache 路径、备份绝对路径或第三方 Mod 内容。

@@ -96,7 +96,7 @@
 失败时 best-effort rollback
 ```
 
-manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载、修复扫描和 rich status 仍需后续切片补齐。
+manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。替换已有托管目标时，新的 manifest entry 会继承旧条目的长期 `backup_ref` 语义；本次提交为中间状态创建的 pending backup 只用于失败回滚，提交成功后会 best-effort 清理。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载、修复扫描和 rich status 仍需后续切片补齐。
 
 当前回滚能力：
 

@@ -4,7 +4,7 @@
 
 **Goal:** 为 InstallPlan MVP 补上 manifest 读取与按目标路径合并能力，避免一次安装覆盖同一 profile 下其他已记录的安装条目。
 
-**Architecture:** `hmm-ports` 扩展 `InstallManifestRepository` 只读接口；`hmm-infra` 的 JSON repository 负责安全读取 `profileId.json`；`hmm-app` 的 `InstallCommitService` 在真实写入前读取旧 manifest，并在保存前按目标路径替换旧条目、保留未触达条目。此 PR 不新增 Tauri command、不接前端 UI、不实现卸载或 repair 状态。
+**Architecture:** `hmm-ports` 扩展 `InstallManifestRepository` 只读接口；`hmm-infra` 的 JSON repository 负责安全读取 `profileId.json`；`hmm-app` 的 `InstallCommitService` 在真实写入前读取旧 manifest，并在保存前按目标路径替换旧条目、保留未触达条目。替换已有托管目标时，manifest 继承旧条目的长期 `backup_ref`，本次提交产生的中间状态 backup 只作为 pending rollback 资源并在成功后 best-effort 清理。此 PR 不新增 Tauri command、不接前端 UI、不实现卸载或 repair 状态。
 
 **Tech Stack:** Rust workspace, `anyhow`, `serde_json`, existing temp/fake test fixtures, PowerShell verification scripts.
 
