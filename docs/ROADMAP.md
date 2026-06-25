@@ -31,6 +31,8 @@
 - 实现手动存档备份。
 - 实现一键启动游戏。
 
+InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md)，后续切片见 [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)。
+
 ## Phase 3：玩家工作流
 
 - 添加 Profile 支持。
