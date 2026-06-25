@@ -119,11 +119,11 @@ completed -> repair_required
 | 场景 | 判断依据 | 动作 | 阻断行为 | 审计/日志 |
 | --- | --- | --- | --- | --- |
 | `completed` 且目标文件摘要匹配 | manifest `files` 与当前目标摘要一致 | 可执行 manifest 驱动卸载 | 不阻断 | 记录卸载计划、删除/恢复动作和结果。 |
-| `completed` 但目标文件缺失 | manifest 有记录，目标不存在 | 标记 `repair_required` 或要求确认 | 阻断自动卸载 | 记录状态不一致摘要，不输出完整路径。 |
+| `completed` 但目标文件缺失 | manifest 有记录，目标不存在 | 标记 `repair_required` | 阻断自动卸载 | 记录状态不一致摘要，不输出完整路径。 |
 | 新增文件由本工具安装 | manifest 标记为新增，无 backup ref | 卸载时删除该文件 | 若当前摘要不匹配则阻断 | 记录删除结果和 hash/大小摘要。 |
 | 覆盖文件由本工具安装 | manifest 有 backup ref | 卸载时恢复 backup | backup 缺失或校验失败时阻断 | 记录恢复结果；backup 错误进入 Audit Log。 |
 | 目标文件被外部修改 | 当前摘要与 manifest 不一致 | 标记 `repair_required` | 阻断删除/覆盖 | 给出人工处理提示，避免误删玩家或其他工具文件。 |
-| manifest 丢失但疑似有写入 | task/audit 摘要显示写入过 | 不自动删除 | 阻断并提示人工确认 | 记录 `DataSafetyRisk` 或稳定错误分类。 |
+| manifest 丢失但疑似有写入 | task/audit 摘要显示写入过 | 不自动删除 | 阻断并提示人工确认 | 按 `DataSafetyRisk` 写入 Audit Log。 |
 | `committing` 后进程中断 | manifest/status 或 task state 未完成 | 运行恢复扫描 | 阻断新安装和卸载 | 记录扫描来源和恢复建议。 |
 | `rollback_required` | 失败状态未被消解 | 优先执行回滚或修复 | 阻断安装/卸载 | 回滚成功/失败均进入 Audit Log。 |
 | manifest 未记录的未知文件 | 目标目录存在额外文件 | 保留 | 不把未知文件纳入卸载 | 只记录聚合摘要，避免泄露目录内容。 |
