@@ -13,6 +13,7 @@ import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
+import { resolveLoadedModLibraryItems } from "./modLibraryLoadState";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import type { ModInstallStatus, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
@@ -155,13 +156,23 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
     void getModLibrary()
       .then((items) => {
-        if (!cancelled && items.length > 0) {
-          setLibraryItems(items);
+        if (!cancelled) {
+          setLibraryItems(
+            resolveLoadedModLibraryItems({
+              backendItems: items,
+              fallbackItems: fallbackModLibraryItems,
+            }),
+          );
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setLibraryItems(fallbackModLibraryItems);
+          setLibraryItems(
+            resolveLoadedModLibraryItems({
+              backendItems: null,
+              fallbackItems: fallbackModLibraryItems,
+            }),
+          );
         }
       });
 
