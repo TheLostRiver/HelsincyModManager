@@ -54,24 +54,81 @@ impl SupportDiagnosticsExportService {
 
     pub fn export_support_diagnostics(&self) -> anyhow::Result<SupportDiagnosticsExport> {
         let export_timestamp = self.clock.now_unix_millis()?;
-        let platform_summary = self.environment_provider.summarize()?;
-        let app_log_lines = self
+        let file_name = format!("support-diagnostics-{}.zip", export_timestamp);
+        let platform_summary = match self.environment_provider.summarize() {
+            Ok(summary) => summary,
+            Err(error) => {
+                self.audit_log_writer
+                    .record(support_diagnostics_export_failure_audit_event(
+                        export_timestamp,
+                        &file_name,
+                        "environment_summary_failed",
+                        0,
+                        0,
+                        0,
+                    ))?;
+                return Err(error);
+            }
+        };
+        let app_log_lines = match self
             .text_log_reader
             .read_recent_sanitized(TextLogReadRequest {
                 kind: TextLogKind::App,
                 max_lines: MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
-            })?;
-        let task_log_lines = self
+            }) {
+            Ok(lines) => lines,
+            Err(error) => {
+                self.audit_log_writer
+                    .record(support_diagnostics_export_failure_audit_event(
+                        export_timestamp,
+                        &file_name,
+                        "app_log_read_failed",
+                        0,
+                        0,
+                        0,
+                    ))?;
+                return Err(error);
+            }
+        };
+        let task_log_lines = match self
             .text_log_reader
             .read_recent_sanitized(TextLogReadRequest {
                 kind: TextLogKind::Task,
                 max_lines: MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
-            })?;
-        let audit_events = self
+            }) {
+            Ok(lines) => lines,
+            Err(error) => {
+                self.audit_log_writer
+                    .record(support_diagnostics_export_failure_audit_event(
+                        export_timestamp,
+                        &file_name,
+                        "task_log_read_failed",
+                        app_log_lines.len(),
+                        0,
+                        0,
+                    ))?;
+                return Err(error);
+            }
+        };
+        let audit_events = match self
             .audit_log_reader
             .read_recent_sanitized(AuditLogReadRequest {
                 max_events: crate::MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
-            })?;
+            }) {
+            Ok(events) => events,
+            Err(error) => {
+                self.audit_log_writer
+                    .record(support_diagnostics_export_failure_audit_event(
+                        export_timestamp,
+                        &file_name,
+                        "audit_log_read_failed",
+                        app_log_lines.len(),
+                        task_log_lines.len(),
+                        0,
+                    ))?;
+                return Err(error);
+            }
+        };
 
         let support_payload = serde_json::to_vec(&support_diagnostics_payload(
             export_timestamp,
@@ -86,7 +143,6 @@ impl SupportDiagnosticsExportService {
             serde_json::to_vec(&text_log_diagnostics_payload("task_log", &task_log_lines))?;
         let audit_log_payload = serde_json::to_vec(&audit_log_diagnostics_payload(&audit_events))?;
 
-        let file_name = format!("support-diagnostics-{}.zip", export_timestamp);
         let entries = [
             DiagnosticPackageEntry {
                 name: SUPPORT_DIAGNOSTICS_ENTRY_NAME,
@@ -117,6 +173,7 @@ impl SupportDiagnosticsExportService {
                     .record(support_diagnostics_export_failure_audit_event(
                         export_timestamp,
                         &file_name,
+                        "diagnostic_package_export_failed",
                         app_log_lines.len(),
                         task_log_lines.len(),
                         audit_events.len(),
@@ -230,6 +287,7 @@ fn support_diagnostics_export_success_audit_event(
 fn support_diagnostics_export_failure_audit_event(
     timestamp_unix_millis: u128,
     file_name: &str,
+    error_code: &str,
     app_log_line_count: usize,
     task_log_line_count: usize,
     audit_event_count: usize,
@@ -240,10 +298,7 @@ fn support_diagnostics_export_failure_audit_event(
         audit_event_count,
     );
     fields.insert("file_name".to_owned(), file_name.to_owned());
-    fields.insert(
-        "error_code".to_owned(),
-        "diagnostic_package_export_failed".to_owned(),
-    );
+    fields.insert("error_code".to_owned(), error_code.to_owned());
 
     AuditLogEvent {
         timestamp_unix_millis,
@@ -350,6 +405,192 @@ mod tests {
         assert_eq!(event.fields["audit_event_count"], "1");
     }
 
+    #[test]
+    fn export_service_records_failure_audit_event_when_environment_summary_fails() {
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(StaticTextLogReader),
+            Arc::new(StaticAuditLogReader),
+            Arc::new(FailingDiagnosticsEnvironmentProvider),
+            exporter.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_support_diagnostics()
+            .expect_err("environment summary fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        assert!(
+            exporter.take_request().is_none(),
+            "diagnostic package must not be exported when environment summary fails"
+        );
+        assert_support_failure_audit_event_sanitized(
+            audit_log.take_event().expect("failure audit event"),
+            "environment_summary_failed",
+            0,
+            0,
+            0,
+        );
+    }
+
+    #[test]
+    fn export_service_records_failure_audit_event_when_app_log_read_fails() {
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(FailingTextLogReader {
+                failing_kind: TextLogKind::App,
+            }),
+            Arc::new(StaticAuditLogReader),
+            Arc::new(StaticDiagnosticsEnvironmentProvider),
+            exporter.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_support_diagnostics()
+            .expect_err("app log read fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        assert!(
+            exporter.take_request().is_none(),
+            "diagnostic package must not be exported when app log read fails"
+        );
+        assert_support_failure_audit_event_sanitized(
+            audit_log.take_event().expect("failure audit event"),
+            "app_log_read_failed",
+            0,
+            0,
+            0,
+        );
+    }
+
+    #[test]
+    fn export_service_records_failure_audit_event_when_task_log_read_fails() {
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(FailingTextLogReader {
+                failing_kind: TextLogKind::Task,
+            }),
+            Arc::new(StaticAuditLogReader),
+            Arc::new(StaticDiagnosticsEnvironmentProvider),
+            exporter.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_support_diagnostics()
+            .expect_err("task log read fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        assert!(
+            exporter.take_request().is_none(),
+            "diagnostic package must not be exported when task log read fails"
+        );
+        assert_support_failure_audit_event_sanitized(
+            audit_log.take_event().expect("failure audit event"),
+            "task_log_read_failed",
+            1,
+            0,
+            0,
+        );
+    }
+
+    #[test]
+    fn export_service_records_failure_audit_event_when_audit_log_read_fails() {
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(StaticTextLogReader),
+            Arc::new(FailingAuditLogReader),
+            Arc::new(StaticDiagnosticsEnvironmentProvider),
+            exporter.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_support_diagnostics()
+            .expect_err("audit log read fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        assert!(
+            exporter.take_request().is_none(),
+            "diagnostic package must not be exported when audit log read fails"
+        );
+        assert_support_failure_audit_event_sanitized(
+            audit_log.take_event().expect("failure audit event"),
+            "audit_log_read_failed",
+            1,
+            1,
+            0,
+        );
+    }
+
+    #[test]
+    fn export_service_records_failure_audit_event_when_package_export_fails() {
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(StaticTextLogReader),
+            Arc::new(StaticAuditLogReader),
+            Arc::new(StaticDiagnosticsEnvironmentProvider),
+            Arc::new(FailingDiagnosticPackageExporter),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_support_diagnostics()
+            .expect_err("diagnostic package export fails");
+
+        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_support_failure_audit_event_sanitized(
+            audit_log.take_event().expect("failure audit event"),
+            "diagnostic_package_export_failed",
+            1,
+            1,
+            1,
+        );
+    }
+
+    fn assert_support_failure_audit_event_sanitized(
+        event: AuditLogEvent,
+        error_code: &str,
+        app_log_line_count: usize,
+        task_log_line_count: usize,
+        audit_event_count: usize,
+    ) {
+        assert_eq!(event.operation, "export_support_diagnostics");
+        assert_eq!(event.category, "diagnostic_export");
+        assert_eq!(event.result, "failure");
+        assert_eq!(event.fields["file_name"], "support-diagnostics-42.zip");
+        assert_eq!(event.fields["error_code"], error_code);
+        assert_eq!(
+            event.fields["app_log_line_count"],
+            app_log_line_count.to_string()
+        );
+        assert_eq!(
+            event.fields["task_log_line_count"],
+            task_log_line_count.to_string()
+        );
+        assert_eq!(
+            event.fields["audit_event_count"],
+            audit_event_count.to_string()
+        );
+        let serialized = serde_json::to_string(&event.fields).expect("serialize audit fields");
+        assert!(!serialized.contains("C:/Users/Player"));
+        assert!(!serialized.contains("raw_path"));
+        assert!(!serialized.contains("thumbnail://"));
+        assert!(!serialized.contains("contentHash"));
+        assert!(!serialized.contains("sandbox"));
+    }
+
     struct StaticTextLogReader;
 
     impl TextLogReader for StaticTextLogReader {
@@ -367,6 +608,23 @@ mod tests {
             .into_iter()
             .take(request.max_lines)
             .collect())
+        }
+    }
+
+    struct FailingTextLogReader {
+        failing_kind: TextLogKind,
+    }
+
+    impl TextLogReader for FailingTextLogReader {
+        fn read_recent_sanitized(&self, request: TextLogReadRequest) -> Result<Vec<TextLogLine>> {
+            if request.kind == self.failing_kind {
+                anyhow::bail!(
+                    "failed to read C:/Users/Player/raw_path/{:?}.log",
+                    request.kind
+                );
+            }
+
+            StaticTextLogReader.read_recent_sanitized(request)
         }
     }
 
@@ -393,6 +651,17 @@ mod tests {
         }
     }
 
+    struct FailingAuditLogReader;
+
+    impl AuditLogReader for FailingAuditLogReader {
+        fn read_recent_sanitized(
+            &self,
+            _request: AuditLogReadRequest,
+        ) -> Result<Vec<AuditLogEvent>> {
+            anyhow::bail!("failed to read C:/Users/Player/raw_path/audit.log")
+        }
+    }
+
     struct StaticDiagnosticsEnvironmentProvider;
 
     impl DiagnosticsEnvironmentProvider for StaticDiagnosticsEnvironmentProvider {
@@ -403,6 +672,14 @@ mod tests {
                 arch: "x86_64".to_owned(),
                 game_adapter_ids: vec!["mhw".to_owned()],
             })
+        }
+    }
+
+    struct FailingDiagnosticsEnvironmentProvider;
+
+    impl DiagnosticsEnvironmentProvider for FailingDiagnosticsEnvironmentProvider {
+        fn summarize(&self) -> Result<DiagnosticsEnvironmentSummary> {
+            anyhow::bail!("failed to inspect C:/Users/Player/raw_path/platform")
         }
     }
 
@@ -440,6 +717,17 @@ mod tests {
                 file_name: request.file_name.to_owned(),
                 size_bytes: 4096,
             })
+        }
+    }
+
+    struct FailingDiagnosticPackageExporter;
+
+    impl DiagnosticPackageExporter for FailingDiagnosticPackageExporter {
+        fn export_package(
+            &self,
+            _request: DiagnosticPackageExportRequest<'_>,
+        ) -> Result<DiagnosticPackageExportResult> {
+            anyhow::bail!("failed to write C:/Users/Player/raw_path/support-diagnostics.zip")
         }
     }
 
