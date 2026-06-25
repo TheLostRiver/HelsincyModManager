@@ -183,6 +183,21 @@ impl InstallPlan {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallManifestEntry {
+    pub target_path: InstallTargetPath,
+    pub mod_id: ModId,
+    pub package_file_id: PackageFileId,
+    pub layer: FileLayer,
+    pub backup_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallManifest {
+    pub profile_id: ProfileId,
+    pub entries: Vec<InstallManifestEntry>,
+}
+
 fn has_duplicate_priorities(providers: &[InstallFileProvider]) -> bool {
     let mut priorities = BTreeSet::new();
     providers

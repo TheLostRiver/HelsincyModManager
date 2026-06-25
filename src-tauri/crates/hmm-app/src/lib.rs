@@ -15,8 +15,9 @@ pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
 };
 pub use install::{
-    BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallPlanFile,
-    InstallPlanningError, InstallPlanningService,
+    BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,
+    InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
+    InstallPlanFile, InstallPlanningError, InstallPlanningService,
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
