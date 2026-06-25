@@ -28,7 +28,7 @@
 | `hmm-app` 预览图服务 | 已落地到 MVP | 已有 `PreviewImageService`、`ModImportAnalysisService` 和 `PreviewImageCandidateSelectionService`，且 URL 解析职责已收敛到应用层边界；prepare runner 成功后会保存导入分析结果。候选选择写回会基于已登记 `modId` 重新定位受控 sandbox、按后端候选序号复用 scanner / policy / processor 流水线，并把新的 `previewImage` 写回已导入 Mod 记录。 |
 | `hmm-app` 导入 prepare 服务 | 已落地到 MVP | 已有 `ModImportPrepareService` 和 `ModImportTaskRunner`，能通过 `ModImportPackagePreparer` 取得 sandbox package、调用导入分析服务、更新 task 状态、生成 `unpack.*` / `preview_image.*` / `prepare.completed` 进度事件，并将分析结果写入结果仓储；`mod_import.preview_image.fallback` 事件会在 `error` 字段携带稳定 fallback reason，不使用 message 文本承载分支逻辑。 |
 | Tauri DTO | 已落地 | 已有 `PreviewImageDto`、fallback reason DTO、`ImportPreviewImage -> PreviewImageDto` 映射测试，以及 library/detail DTO 序列化测试。 |
-| Custom protocol | 部分落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 symlink/package registry 等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
+| Custom protocol | MVP 已落地 | 已注册 `thumbnail` protocol，并支持 `thumbnail://...` 以及 Windows WebView 兼容的 `http://thumbnail.localhost/...` 形态；已补 traversal、content type、未登记 package、symlinked `thumbnails` 根、package dir 和缩略图文件等安全测试。缓存清理由 `hmm-infra` 的 store 生命周期 API 处理，不通过 protocol 或前端触发。 |
 | `start_import_mod_task` | prepare runner 与结果保存已接线 | 当前校验 archive 路径、登记 queued 的 `mod_import` task 并发送 `mod_import.queued`；随后后台 runner 执行 zip 沙盒解包和预览图处理，发送受控进度事件，并保存导入分析结果。running prepare 被取消后，runner 会在检查点停止保存结果和完成事件，并 best-effort 触发一次缩略图缓存维护。 |
 | `get_mod_library` / `get_mod_detail` | MVP 已落地 | 查询 app data 下的导入分析结果仓储，返回包含 `previewImage` 的 library/detail DTO；展示名优先来自后端包元数据分析，缺失时回退 `packageId`；library DTO 暴露 `author`、`versionLabel`、`categoryLabels`，detail DTO 暴露通用 metadata 摘要。 |
 | `get_mod_detail_preview_image` | 后端入口已落地 | 详情页可按后端 `modId` 请求更大派生预览图。后端固定使用 `preview-1024` 策略重扫受控 sandbox 并处理首个可用候选，返回既有 `PreviewImageDto`；该命令对导入记录只读，不写回导入记录，处理过程中只会写入可丢弃的 thumbnail cache，不创建 task，不发送 progress event，也不新增显式 variant 字段、sandbox/cache/archive-internal 路径、本地路径或图片字节。 |
@@ -87,11 +87,11 @@
 
 - 只接受 package id、variant、content hash 三段安全 segment。
 - 拒绝路径穿越、绝对路径和未登记 package。
-- 拒绝最终文件是 symlink 或指向缓存根之外。
+- 拒绝 `thumbnails` 根、package 目录或最终文件是 symlink / junction，或最终文件指向缓存根之外。
 - 只从应用数据目录下的 thumbnails 缓存读取。
 - 返回正确 `Content-Type` 和缓存头。
 
-当前实现已有 segment 白名单、containment、content type、未登记 package 拒绝和 symlink 拒绝。缓存生命周期的最小清理 API 已在 infra store 中提供，protocol handler 不承担删除职责。
+当前实现已有 segment 白名单、containment、content type、未登记 package 拒绝，以及 symlinked `thumbnails` 根、package 目录和缩略图文件拒绝。缓存生命周期的最小清理 API 已在 infra store 中提供，protocol handler 不承担删除职责。
 
 ### 缩略图缓存清理策略
 
@@ -173,7 +173,7 @@
 
 优先补不依赖真实导入流水线的测试：
 
-- `thumbnail_protocol`：覆盖 symlink 拒绝、未登记 package 拒绝、Windows localhost 兼容形态、content type。
+- `thumbnail_protocol`：覆盖 symlinked `thumbnails` 根拒绝、package / 文件 symlink 拒绝、未登记 package 拒绝、Windows localhost 兼容形态、content type。
 - `processor`：覆盖 JPEG 正常路径、WebP 正常路径、损坏图片 `DecodeFailed`、像素超限 `PixelLimitExceeded`。
 - `scanner`：明确候选超量行为，补对应测试。
 
@@ -265,7 +265,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 - 解码后像素数超过限制返回 fallback。
 - 候选图超量行为与文档一致，并有测试覆盖。
 - 缩略图缓存写入或 URL 解析失败时导入主流程仍返回 fallback。
-- protocol handler 不暴露真实缓存路径，并拒绝 traversal、absolute、symlink 和未登记 package。
+- protocol handler 不暴露真实缓存路径，并拒绝 traversal、absolute、symlinked `thumbnails` 根、package / 文件 symlink 和未登记 package。
 - 导入沙盒准备器拒绝 `../`、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限；失败时不保留部分解压出的 task sandbox。
 - 前端卡片在 thumbnail、fallback、图片加载失败三种状态下尺寸不跳动。
 - `PreviewImageDto` 字段与 TypeScript 类型一致。
