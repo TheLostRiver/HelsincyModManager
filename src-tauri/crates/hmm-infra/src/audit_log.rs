@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use hmm_ports::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter};
+use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -96,7 +97,7 @@ impl AuditLogReader for FileSystemAuditLogWriter {
         }
         audit_paths.sort();
 
-        let mut events = Vec::new();
+        let mut events = VecDeque::new();
         for audit_path in audit_paths {
             let file = File::open(&audit_path).context("failed to open audit log")?;
             for line in BufReader::new(file).lines() {
@@ -112,13 +113,13 @@ impl AuditLogReader for FileSystemAuditLogWriter {
                     continue;
                 }
                 if events.len() == request.max_events {
-                    events.remove(0);
+                    events.pop_front();
                 }
-                events.push(event);
+                events.push_back(event);
             }
         }
 
-        Ok(events)
+        Ok(events.into_iter().collect())
     }
 }
 
@@ -175,7 +176,11 @@ fn validate_audit_key(key: &str) -> Result<()> {
 }
 
 fn validate_audit_value(_label: &str, value: &str) -> Result<()> {
-    if value.is_empty() || value.chars().any(char::is_control) {
+    if value.is_empty()
+        || value.chars().any(char::is_control)
+        || value.contains('/')
+        || value.contains('\\')
+    {
         anyhow::bail!("audit log event contains invalid field value");
     }
 
@@ -452,5 +457,59 @@ mod tests {
         let serialized = serde_json::to_string(&events).expect("serialize audit events");
         assert!(!serialized.contains("C:/Users/Player"));
         assert!(!serialized.contains("raw_path"));
+    }
+
+    #[test]
+    fn audit_log_reader_returns_empty_when_max_events_is_zero() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let writer = FileSystemAuditLogWriter::new(temp.path().to_path_buf());
+        writer
+            .record(AuditLogEvent {
+                timestamp_unix_millis: 42,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_preview_image_diagnostics".to_owned(),
+                result: "success".to_owned(),
+                fields: BTreeMap::from([(
+                    "file_name".to_owned(),
+                    "preview-image-diagnostics-42.zip".to_owned(),
+                )]),
+            })
+            .expect("record audit event");
+
+        let events = writer
+            .read_recent_sanitized(AuditLogReadRequest { max_events: 0 })
+            .expect("read zero audit events");
+
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn audit_log_reader_skips_generic_path_like_values() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let writer = FileSystemAuditLogWriter::new(temp.path().to_path_buf());
+        let audit_dir = temp.path().join("logs").join("audit");
+        fs::create_dir_all(&audit_dir).expect("create audit dir");
+        let audit_path = audit_dir.join("audit-1970-01-01.log");
+        fs::write(
+            &audit_path,
+            serde_json::to_string(&AuditLogEvent {
+                timestamp_unix_millis: 42,
+                category: "diagnostic_export".to_owned(),
+                operation: "export_preview_image_diagnostics".to_owned(),
+                result: "failure".to_owned(),
+                fields: BTreeMap::from([(
+                    "file_name".to_owned(),
+                    "D:\\Games\\MonsterHunterWorld\\nativePC\\mod.bin".to_owned(),
+                )]),
+            })
+            .expect("serialize path-like audit event"),
+        )
+        .expect("write path-like audit event");
+
+        let events = writer
+            .read_recent_sanitized(AuditLogReadRequest { max_events: 10 })
+            .expect("read sanitized audit events");
+
+        assert!(events.is_empty());
     }
 }
