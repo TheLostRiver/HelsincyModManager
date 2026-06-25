@@ -143,11 +143,13 @@ impl InstallPlanningService {
                 sandbox_root: &sandbox_root,
             })
             .map_err(|_| InstallPlanningError::ImportedModFileScanUnavailable)?;
+        let allowed_target_roots = adapter.allowed_install_roots();
 
         self.build_plan(BuildInstallPlanRequest {
-            allowed_target_roots: adapter.allowed_install_roots(),
+            allowed_target_roots: allowed_target_roots.clone(),
             files: files
                 .into_iter()
+                .filter(|file| is_installable_target_path(&file.target_path, &allowed_target_roots))
                 .map(|file| InstallPlanFile {
                     mod_id: request.mod_id.clone(),
                     package_file_id: PackageFileId::new(file.package_file_id),
@@ -157,6 +159,10 @@ impl InstallPlanningService {
                 .collect(),
         })
     }
+}
+
+fn is_installable_target_path(target_path: &str, allowed_target_roots: &[String]) -> bool {
+    InstallTargetPath::parse(target_path, allowed_target_roots).is_ok()
 }
 
 #[cfg(test)]
@@ -304,6 +310,53 @@ mod tests {
                 "package-a".to_owned(),
                 PathBuf::from("controlled-sandbox/package-a")
             )]
+        );
+    }
+
+    #[test]
+    fn build_plan_from_imported_mod_ignores_files_outside_adapter_roots() {
+        let repository = Arc::new(FakeModImportResultRepository::new(vec![stored_analysis(
+            "mod-a",
+            "package-a",
+        )]));
+        let locator = Arc::new(FakeSandboxLocator {
+            root: PathBuf::from("controlled-sandbox/package-a"),
+        });
+        let scanner = Arc::new(FakeInstallFileScanner {
+            files: vec![
+                ModPackageInstallFile {
+                    package_file_id: "readme.txt".to_owned(),
+                    target_path: "readme.txt".to_owned(),
+                },
+                ModPackageInstallFile {
+                    package_file_id: "nativePC/models/player.mod3".to_owned(),
+                    target_path: "nativePC/models/player.mod3".to_owned(),
+                },
+            ],
+            seen_requests: Mutex::new(Vec::new()),
+        });
+        let service = InstallPlanningService::with_imported_mod_sources(
+            repository,
+            locator,
+            scanner,
+            vec![Arc::new(FakeGameAdapter {
+                game_id: GameId::mhw(),
+                allowed_roots: vec!["nativePC".to_owned()],
+            })],
+        );
+
+        let plan = service
+            .build_plan_from_imported_mod(BuildImportedModInstallPlanRequest {
+                game_id: GameId::mhw(),
+                mod_id: ModId::new("mod-a"),
+                layer: FileLayer::new("base", 0),
+            })
+            .expect("non-install files should be ignored");
+
+        assert_eq!(plan.actions.len(), 1);
+        assert_eq!(
+            plan.actions[0].target_path.as_str(),
+            "nativePC/models/player.mod3"
         );
     }
 

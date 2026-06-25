@@ -5,6 +5,8 @@ use hmm_ports::{
 use std::fs;
 use std::path::{Component, Path};
 
+const MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH: usize = 64;
+
 pub struct SandboxModPackageInstallFileScanner;
 
 impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
@@ -13,7 +15,7 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
         request: ModPackageInstallFileScanRequest<'_>,
     ) -> Result<Vec<ModPackageInstallFile>> {
         let mut files = Vec::new();
-        collect_sandbox_install_files(request.sandbox_root, request.sandbox_root, &mut files)?;
+        collect_sandbox_install_files(request.sandbox_root, request.sandbox_root, 0, &mut files)?;
         files.sort_by(|left, right| left.target_path.cmp(&right.target_path));
         Ok(files)
     }
@@ -22,8 +24,13 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
 fn collect_sandbox_install_files(
     sandbox_root: &Path,
     directory: &Path,
+    depth: usize,
     files: &mut Vec<ModPackageInstallFile>,
 ) -> Result<()> {
+    if depth > MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH {
+        anyhow::bail!("imported mod sandbox exceeds install file scan depth limit");
+    }
+
     let entries = fs::read_dir(directory).context("failed to read imported mod sandbox")?;
 
     for entry in entries {
@@ -37,7 +44,7 @@ fn collect_sandbox_install_files(
         }
 
         if metadata.is_dir() {
-            collect_sandbox_install_files(sandbox_root, &path, files)?;
+            collect_sandbox_install_files(sandbox_root, &path, depth + 1, files)?;
             continue;
         }
 
@@ -113,6 +120,74 @@ mod tests {
                 package_file_id: "nativePC/models/player.mod3".to_owned(),
                 target_path: "nativePC/models/player.mod3".to_owned(),
             }]
+        );
+    }
+
+    #[test]
+    fn sandbox_install_file_scanner_rejects_excessive_directory_depth() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        let mut deep_dir = sandbox_root.clone();
+
+        for index in 0..70 {
+            deep_dir = deep_dir.join(format!("level-{index}"));
+        }
+
+        fs::create_dir_all(&deep_dir).expect("create deep fixture dirs");
+
+        let error = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("excessive depth should be rejected");
+
+        assert!(error.to_string().contains("depth"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn sandbox_install_file_scanner_rejects_windows_directory_junctions() {
+        use std::process::Command;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        let outside_root = temp.path().join("outside");
+        let junction_path = sandbox_root.join("nativePC").join("junction");
+
+        fs::create_dir_all(junction_path.parent().expect("junction parent"))
+            .expect("create sandbox dirs");
+        fs::create_dir_all(&outside_root).expect("create outside dir");
+        fs::write(outside_root.join("escape.mod3"), b"outside").expect("write outside file");
+
+        let output = Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                junction_path.to_str().expect("junction path"),
+                outside_root.to_str().expect("outside path"),
+            ])
+            .output()
+            .expect("create junction");
+        assert!(
+            output.status.success(),
+            "mklink failed: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let error = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("junction should be rejected");
+
+        fs::remove_dir(&junction_path).expect("remove junction");
+        assert!(
+            error.to_string().contains("unsupported link") || error.to_string().contains("reparse"),
+            "unexpected error: {error}"
         );
     }
 }
