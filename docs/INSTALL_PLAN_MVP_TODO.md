@@ -39,10 +39,11 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
+- 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 
 仍未完成：
 
-- 完整安装 UI 工作流。
+- 安装状态持久化和已安装/修复摘要展示。
 - manifest 查询和“已安装状态”展示。
 - 基于 manifest 的卸载。
 - 跨进程崩溃恢复扫描。
@@ -62,6 +63,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - [x] 安装任务入口、写锁、审计日志和 `start_install_task`。
 - [x] manifest 读取与按目标路径合并基础能力。
+- [x] 前端最小安装任务流程与进度事件竞态处理。
 
 ## 设计细化规则
 
@@ -196,17 +198,17 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ## 后续切片优先级
 
-### P0：最小安装 UI
+### P0：安装 UI 状态恢复与安装状态摘要
 
-目标：让用户能从 Mod 库触发安装任务，并看到任务进行中、成功、失败和取消状态。
+目标：让用户在 Mod 库重新进入、刷新或安装任务结束后，能看到来自后端 manifest 摘要的安装状态，而不是只依赖页面内存里的任务事件。
 
 范围：
 
-- 在 Mod 库或详情页提供受控安装入口。
-- 调用 `start_install_task`，只提交 `gameId`、`modId`、`profileId` 和 layer 摘要。
-- 按 `taskId` 订阅任务事件，不用“当前页面只有一个任务”推断任务归属。
-- 展示 `install.queued`、`install.plan.building`、`install.commit.processing`、`install.completed`、`install.failed`、`install.cancelled`。
-- 安装失败时展示可读错误状态，不展示真实路径、sandbox 路径、manifest 正文或第三方 Mod 内容。
+- 复用已落地的最小安装任务入口和 `taskId` 事件归属逻辑。
+- 在安装完成、页面重新进入或 Mod 库刷新时调用 Manifest 查询。
+- 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态。
+- 将 failed / cancelled 任务态与 manifest 查询状态区分展示。
+- 安装失败时继续只展示稳定错误状态，不展示真实路径、sandbox 路径、manifest 正文或第三方 Mod 内容。
 
 明确不做：
 
@@ -214,12 +216,14 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 不实现 retarget。
 - 不让前端构造 `targetPath`。
 - 不在前端根据 MHW 规则判断文件是否可安装。
+- 不把当前页面内存任务状态当作安装事实。
 
 验收标准：
 
 - 前端 typed API 不包含路径字段。
 - 任务状态严格按 `taskId` 匹配。
-- UI 能区分 failed 和 cancelled。
+- UI 能区分 failed、cancelled 和后端查询到的安装事实。
+- 页面刷新后不会把未知状态误报为已安装。
 - 前端 typecheck、lint、build 通过。
 - Rust command/DTO 测试仍通过。
 
