@@ -49,6 +49,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-whitespace.p
 ./scripts/verify.ps1
 ```
 
+Linux / Steam Deck 开发环境可以使用：
+
+```bash
+bash scripts/verify.sh
+```
+
 如果 Windows PowerShell 执行策略阻止脚本运行，可以使用：
 
 ```powershell

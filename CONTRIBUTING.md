@@ -146,6 +146,12 @@ Helsincy Mod Manager 是一个基于 Tauri 的本地桌面应用，计划由以�
 ./scripts/verify.ps1
 ```
 
+Linux / Steam Deck 开发环境：
+
+```bash
+bash scripts/verify.sh
+```
+
 Windows PowerShell 执行策略阻止脚本时，可以使用：
 
 ```powershell

@@ -46,5 +46,5 @@ jobs:
             patchelf
 
       - name: Run verification
-        shell: pwsh
-        run: ./scripts/verify.ps1
+        shell: bash
+        run: bash scripts/verify.sh
