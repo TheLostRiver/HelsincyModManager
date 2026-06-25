@@ -6,6 +6,7 @@ import { compactActions } from "./modsLibraryData";
 type CompactActionPanelProps = {
   selectedCount: number;
   totalCount: number;
+  installTaskActive?: boolean;
   onAction: (actionId: string) => void;
 };
 
@@ -21,7 +22,12 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
   uninstall: Trash2,
 };
 
-export function CompactActionPanel({ selectedCount, totalCount, onAction }: CompactActionPanelProps) {
+export function CompactActionPanel({
+  selectedCount,
+  totalCount,
+  installTaskActive = false,
+  onAction,
+}: CompactActionPanelProps) {
   const addAction = compactActions.find((a) => a.id === "add");
 
   return (
@@ -74,9 +80,10 @@ export function CompactActionPanel({ selectedCount, totalCount, onAction }: Comp
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
             const needsSelection = ["preview-plan", "reinstall", "uninstall"].includes(action.id);
-            const needsSingleSelection = action.id === "preview-plan";
+            const needsSingleSelection = ["preview-plan", "reinstall"].includes(action.id);
             const disabled = needsSelection && selectedCount === 0;
-            const isDisabled = disabled || (needsSingleSelection && selectedCount !== 1);
+            const isDisabled =
+              disabled || (needsSingleSelection && selectedCount !== 1) || (action.id === "reinstall" && installTaskActive);
             return (
               <button
                 key={action.id}

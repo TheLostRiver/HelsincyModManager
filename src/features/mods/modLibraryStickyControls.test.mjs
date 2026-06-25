@@ -29,10 +29,10 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.match(source, /className="mod-library__toolbar-slot"/);
   assert.match(source, /className="mod-library__actions-slot"/);
   assert.match(source, /<LibraryToolbar[\s\S]*?query={query}[\s\S]*?activeFilter={activeFilter}/);
-  assert.match(
-    source,
-    /<CompactActionPanel selectedCount={selectedCount} totalCount={visibleItems\.length} onAction={handleAction} \/>/,
-  );
+  assert.match(source, /<CompactActionPanel[\s\S]*?selectedCount={selectedCount}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?totalCount={visibleItems\.length}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?installTaskActive={installTaskActive}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?onAction={handleAction}/);
 
   const toolbarIndex = source.indexOf("mod-library__toolbar-slot");
   const actionsIndex = source.indexOf("mod-library__actions-slot");

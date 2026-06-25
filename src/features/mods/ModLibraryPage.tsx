@@ -7,12 +7,14 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./InstallPlanPreviewPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
-import { previewInstallPlanForImportedMod } from "./modInstallPlanApi";
+import { previewInstallPlanForImportedMod, startInstallTask } from "./modInstallPlanApi";
+import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
 import { resolveLoadedModLibraryItems } from "./modLibraryLoadState";
@@ -29,6 +31,33 @@ type ViewTransitionVariant = "morph" | "wave" | "flip3d" | "blur";
 
 const viewTransitionOutMs = 220;
 const viewTransitionInMs = 420;
+const DEFAULT_INSTALL_PROFILE_ID = "default";
+
+type InstallTaskPhase =
+  | "install.queued"
+  | "install.plan.building"
+  | "install.commit.processing"
+  | "install.completed"
+  | "install.failed"
+  | "install.cancelled";
+
+type InstallTaskState =
+  | { status: "idle" }
+  | { status: "starting"; modName: string }
+  | { status: "running"; taskId: string; modName: string; phase: InstallTaskPhase }
+  | { status: "completed"; taskId: string; modName: string; phase: "install.completed" }
+  | { status: "failed"; taskId: string | null; modName: string; phase: "install.failed"; message: string }
+  | { status: "cancelled"; taskId: string; modName: string; phase: "install.cancelled" };
+type InstallTaskStateUpdate = InstallTaskState | ((current: InstallTaskState) => InstallTaskState);
+
+const installTaskPhaseLabels: Record<InstallTaskPhase, string> = {
+  "install.queued": "等待安装",
+  "install.plan.building": "生成安装计划",
+  "install.commit.processing": "写入中",
+  "install.completed": "安装完成",
+  "install.failed": "安装失败",
+  "install.cancelled": "已取消",
+};
 
 const viewTransitionVariantByMode: Record<ModViewMode, ViewTransitionVariant> = {
   classic: "morph",
@@ -151,6 +180,70 @@ function installPlanPreviewErrorMessage(error: unknown) {
   }
 }
 
+function isInstallTaskPhase(phase: string): phase is InstallTaskPhase {
+  return Object.prototype.hasOwnProperty.call(installTaskPhaseLabels, phase);
+}
+
+function installTaskErrorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+      ? error.code
+      : null;
+
+  switch (code) {
+    case "install_planning_imported_mod_not_found":
+      return "未找到已导入的 Mod";
+    case "install_planning_imported_mod_analysis_unavailable":
+      return "无法读取导入分析";
+    case "install_planning_game_adapter_not_found":
+    case "game_id_invalid":
+      return "当前游戏不支持安装任务";
+    default:
+      return "安装任务启动失败";
+  }
+}
+
+function installTaskPanelState(
+  previewState: InstallPlanPreviewPanelState,
+  installTaskState: InstallTaskState,
+): InstallPlanPreviewPanelState {
+  switch (installTaskState.status) {
+    case "idle":
+      return previewState;
+    case "starting":
+      return {
+        status: "install-starting",
+        modName: installTaskState.modName,
+        phaseLabel: "启动安装任务",
+      };
+    case "running":
+      return {
+        status: "install-running",
+        modName: installTaskState.modName,
+        phaseLabel: installTaskPhaseLabels[installTaskState.phase],
+      };
+    case "completed":
+      return {
+        status: "install-completed",
+        modName: installTaskState.modName,
+        phaseLabel: installTaskPhaseLabels[installTaskState.phase],
+      };
+    case "failed":
+      return {
+        status: "install-failed",
+        modName: installTaskState.modName,
+        phaseLabel: installTaskPhaseLabels[installTaskState.phase],
+        message: installTaskState.message,
+      };
+    case "cancelled":
+      return {
+        status: "install-cancelled",
+        modName: installTaskState.modName,
+        phaseLabel: installTaskPhaseLabels[installTaskState.phase],
+      };
+  }
+}
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
@@ -163,6 +256,16 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [installPlanPreviewState, setInstallPlanPreviewState] = useState<InstallPlanPreviewPanelState>({
     status: "idle",
   });
+  const [installTaskState, setInstallTaskState] = useState<InstallTaskState>({ status: "idle" });
+  const installTaskStateRef = useRef<InstallTaskState>(installTaskState);
+
+  const setTrackedInstallTaskState = useCallback((update: InstallTaskStateUpdate) => {
+    setInstallTaskState((current) => {
+      const nextState = typeof update === "function" ? update(current) : update;
+      installTaskStateRef.current = nextState;
+      return nextState;
+    });
+  }, []);
 
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -177,6 +280,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     viewMode,
     setViewMode,
   );
+
+  useEffect(() => {
+    installTaskStateRef.current = installTaskState;
+  }, [installTaskState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,6 +314,83 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlistenTaskProgress: (() => void) | null = null;
+
+    void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, (event) => {
+      if (disposed) {
+        return;
+      }
+
+      const installTaskState = installTaskStateRef.current;
+      if (!("taskId" in installTaskState) || installTaskState.taskId === null) {
+        return;
+      }
+      if (event.payload.taskId !== installTaskState.taskId) {
+        return;
+      }
+      if (event.payload.kind !== "install") {
+        return;
+      }
+
+      const phase = event.payload.phase;
+      if (!isInstallTaskPhase(phase)) {
+        return;
+      }
+
+      setTrackedInstallTaskState((current) => {
+        if (!("taskId" in current) || current.taskId !== event.payload.taskId) {
+          return current;
+        }
+
+        switch (phase) {
+          case "install.completed":
+            return {
+              status: "completed",
+              taskId: event.payload.taskId,
+              modName: current.modName,
+              phase,
+            };
+          case "install.failed":
+            return {
+              status: "failed",
+              taskId: event.payload.taskId,
+              modName: current.modName,
+              phase,
+              message: event.payload.error ?? event.payload.message ?? "安装失败",
+            };
+          case "install.cancelled":
+            return {
+              status: "cancelled",
+              taskId: event.payload.taskId,
+              modName: current.modName,
+              phase,
+            };
+          default:
+            return {
+              status: "running",
+              taskId: event.payload.taskId,
+              modName: current.modName,
+              phase,
+            };
+        }
+      });
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+        return;
+      }
+
+      unlistenTaskProgress = unlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlistenTaskProgress?.();
+    };
+  }, [setTrackedInstallTaskState]);
 
   const updateScrollUiState = useCallback(() => {
     const content = contentRef.current;
@@ -318,6 +502,54 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       });
   };
 
+  const startSelectedInstallTask = () => {
+    if (selectedIds.size !== 1) {
+      return;
+    }
+
+    const [modId] = Array.from(selectedIds);
+    const item = libraryItems.find((candidate) => candidate.id === modId);
+    const modName = item?.name ?? modId;
+
+    setInstallPlanPreviewState({ status: "idle" });
+    setTrackedInstallTaskState({ status: "starting", modName });
+    void startInstallTask({
+      gameId: "mhw",
+      modId,
+      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      layerName: "base",
+      layerPriority: 0,
+    })
+      .then((task) => {
+        if (task.kind !== "install") {
+          setTrackedInstallTaskState({
+            status: "failed",
+            taskId: null,
+            modName,
+            phase: "install.failed",
+            message: "安装任务返回了无效类型",
+          });
+          return;
+        }
+
+        setTrackedInstallTaskState({
+          status: "running",
+          taskId: task.taskId,
+          modName,
+          phase: "install.queued",
+        });
+      })
+      .catch((error: unknown) => {
+        setTrackedInstallTaskState({
+          status: "failed",
+          taskId: null,
+          modName,
+          phase: "install.failed",
+          message: installTaskErrorMessage(error),
+        });
+      });
+  };
+
   const handleAction = (actionId: string) => {
     switch (actionId) {
       case "select-all":
@@ -329,8 +561,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       case "preview-plan":
         previewSelectedInstallPlan();
         break;
-      case "uninstall":
       case "reinstall":
+        startSelectedInstallTask();
+        break;
+      case "uninstall":
         onAction?.(actionId);
         break;
       default:
@@ -379,6 +613,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     window.addEventListener("pointercancel", stopDragging);
   };
 
+  const installTaskActive = installTaskState.status === "starting" || installTaskState.status === "running";
+  const activeInstallPanelState = installTaskPanelState(installPlanPreviewState, installTaskState);
+  const closeInstallPlanPanel = () => {
+    setInstallPlanPreviewState({ status: "idle" });
+    setTrackedInstallTaskState((current) =>
+      current.status === "starting" || current.status === "running" ? current : { status: "idle" },
+    );
+  };
   const { showScrollUi, thumbStyle } = scrollUiState;
 
   return (
@@ -396,13 +638,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         </div>
 
         <div className="mod-library__actions-slot">
-          <CompactActionPanel selectedCount={selectedCount} totalCount={visibleItems.length} onAction={handleAction} />
+          <CompactActionPanel
+            selectedCount={selectedCount}
+            totalCount={visibleItems.length}
+            installTaskActive={installTaskActive}
+            onAction={handleAction}
+          />
         </div>
       </div>
 
       <InstallPlanPreviewPanel
-        state={installPlanPreviewState}
-        onClose={() => setInstallPlanPreviewState({ status: "idle" })}
+        state={activeInstallPanelState}
+        onClose={closeInstallPlanPanel}
+        closeDisabled={installTaskActive}
       />
 
       <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
