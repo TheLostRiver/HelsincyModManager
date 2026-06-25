@@ -7,8 +7,9 @@ pub use game::{
     GameId, GameIdError, GameInstance, GameSetupErrorCode, GameSetupStatus, MHW_GAME_ID,
 };
 pub use install::{
-    FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallPlan, InstallTargetPath,
-    InstallTargetPathError, ModId, PackageFileId, ProfileId,
+    FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallManifest,
+    InstallManifestEntry, InstallPlan, InstallTargetPath, InstallTargetPathError, ModId,
+    PackageFileId, ProfileId,
 };
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,

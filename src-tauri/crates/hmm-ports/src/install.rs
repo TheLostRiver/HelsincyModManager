@@ -1,0 +1,20 @@
+use anyhow::Result;
+use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId};
+
+pub trait InstallSourceFileReader: Send + Sync {
+    fn read_source_file(&self, package_file_id: &PackageFileId) -> Result<Vec<u8>>;
+}
+
+pub trait InstallGameFileSystem: Send + Sync {
+    fn read_game_file(&self, target_path: &InstallTargetPath) -> Result<Option<Vec<u8>>>;
+    fn write_game_file(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> Result<()>;
+    fn remove_game_file(&self, target_path: &InstallTargetPath) -> Result<()>;
+}
+
+pub trait InstallBackupStore: Send + Sync {
+    fn store_backup(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> Result<String>;
+}
+
+pub trait InstallManifestRepository: Send + Sync {
+    fn save_manifest(&self, manifest: &InstallManifest) -> Result<()>;
+}
