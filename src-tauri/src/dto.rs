@@ -5,10 +5,11 @@ use hmm_app::{
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
-    GameInstance, GameSetupErrorCode, GameSetupStatus, PreviewImageRejectionReason,
+    GameInstance, GameSetupErrorCode, GameSetupStatus, InstallAction, InstallConflict,
+    InstallFileProvider, InstallPlan, PreviewImageRejectionReason,
 };
 use hmm_ports::{AppSettings, GameCandidateSource};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,11 +75,108 @@ pub struct AppSettingsDto {
     pub thumbnail_cache_max_age_days: Option<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewInstallPlanRequestDto {
+    pub allowed_target_roots: Vec<String>,
+    pub files: Vec<PreviewInstallPlanFileInputDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewInstallPlanFileInputDto {
+    pub mod_id: String,
+    pub package_file_id: String,
+    pub target_path: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallPlanPreviewDto {
+    pub actions: Vec<InstallPlanActionDto>,
+    pub conflicts: Vec<InstallPlanConflictDto>,
+    pub has_blocking_conflicts: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallPlanActionDto {
+    pub target_path: String,
+    pub mod_id: String,
+    pub package_file_id: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallPlanConflictDto {
+    pub target_path: String,
+    pub providers: Vec<InstallPlanProviderDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallPlanProviderDto {
+    pub mod_id: String,
+    pub package_file_id: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+}
+
 impl From<AppSettings> for AppSettingsDto {
     fn from(settings: AppSettings) -> Self {
         Self {
             thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
             thumbnail_cache_max_age_days: settings.thumbnail_cache_max_age_days,
+        }
+    }
+}
+
+impl From<InstallPlan> for InstallPlanPreviewDto {
+    fn from(plan: InstallPlan) -> Self {
+        let has_blocking_conflicts = plan.has_blocking_conflicts();
+
+        Self {
+            actions: plan.actions.into_iter().map(Into::into).collect(),
+            conflicts: plan.conflicts.into_iter().map(Into::into).collect(),
+            has_blocking_conflicts,
+        }
+    }
+}
+
+impl From<InstallAction> for InstallPlanActionDto {
+    fn from(action: InstallAction) -> Self {
+        let provider = action.provider;
+
+        Self {
+            target_path: action.target_path.as_str().to_owned(),
+            mod_id: provider.mod_id.as_str().to_owned(),
+            package_file_id: provider.package_file_id.as_str().to_owned(),
+            layer_name: provider.layer.name,
+            layer_priority: provider.layer.priority,
+        }
+    }
+}
+
+impl From<InstallConflict> for InstallPlanConflictDto {
+    fn from(conflict: InstallConflict) -> Self {
+        Self {
+            target_path: conflict.target_path.as_str().to_owned(),
+            providers: conflict.providers.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<InstallFileProvider> for InstallPlanProviderDto {
+    fn from(provider: InstallFileProvider) -> Self {
+        Self {
+            mod_id: provider.mod_id.as_str().to_owned(),
+            package_file_id: provider.package_file_id.as_str().to_owned(),
+            layer_name: provider.layer.name,
+            layer_priority: provider.layer.priority,
         }
     }
 }

@@ -1,5 +1,5 @@
 use hmm_app::{
-    AppSettingsService, AuditLogDiagnosticsExportService, GameSetupService,
+    AppSettingsService, AuditLogDiagnosticsExportService, GameSetupService, InstallPlanningService,
     LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
     ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
     PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
@@ -36,6 +36,7 @@ pub struct AppState {
     pub preview_image_diagnostics_export: Arc<PreviewImageDiagnosticsExportService>,
     pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
+    pub install_planning: Arc<InstallPlanningService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -196,6 +197,7 @@ impl AppState {
             preview_image_diagnostics_export,
             audit_log_diagnostics_export,
             support_diagnostics_export,
+            install_planning: Arc::new(InstallPlanningService::new()),
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,
