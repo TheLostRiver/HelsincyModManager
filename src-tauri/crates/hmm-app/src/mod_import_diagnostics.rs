@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 const PREVIEW_IMAGE_DIAGNOSTICS_ENTRY_NAME: &str = "preview-image-diagnostics.json";
+const PREVIEW_IMAGE_DIAGNOSTICS_UNAVAILABLE: &str = "preview image diagnostics unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewImageDiagnosticsSummary {
@@ -86,11 +87,18 @@ impl PreviewImageDiagnosticsExportService {
     pub fn export_preview_image_diagnostics(
         &self,
     ) -> anyhow::Result<PreviewImageDiagnosticsExport> {
-        let records = self.result_repository.list_analysis()?;
+        let records = self
+            .result_repository
+            .list_analysis()
+            .map_err(|_| preview_image_diagnostics_unavailable())?;
         let diagnostics = preview_image_diagnostics_from_stored(&records);
         let payload =
-            serde_json::to_vec(&sanitized_preview_image_diagnostics_payload(&diagnostics))?;
-        let export_timestamp = self.clock.now_unix_millis()?;
+            serde_json::to_vec(&sanitized_preview_image_diagnostics_payload(&diagnostics))
+                .map_err(|_| preview_image_diagnostics_unavailable())?;
+        let export_timestamp = self
+            .clock
+            .now_unix_millis()
+            .map_err(|_| preview_image_diagnostics_unavailable())?;
         let file_name = format!("preview-image-diagnostics-{}.zip", export_timestamp);
         let export = match self
             .diagnostic_exporter
@@ -102,14 +110,15 @@ impl PreviewImageDiagnosticsExportService {
                 }],
             }) {
             Ok(export) => export,
-            Err(error) => {
-                self.audit_log
-                    .record(preview_image_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        &diagnostics,
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log
+                        .record(preview_image_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            &diagnostics,
+                        ));
+                return Err(preview_image_diagnostics_unavailable());
             }
         };
         self.audit_log
@@ -117,7 +126,8 @@ impl PreviewImageDiagnosticsExportService {
                 export_timestamp,
                 &export,
                 &diagnostics,
-            ))?;
+            ))
+            .map_err(|_| preview_image_diagnostics_unavailable())?;
 
         Ok(PreviewImageDiagnosticsExport {
             export_id: export.export_id,
@@ -126,6 +136,10 @@ impl PreviewImageDiagnosticsExportService {
             diagnostics,
         })
     }
+}
+
+fn preview_image_diagnostics_unavailable() -> anyhow::Error {
+    anyhow::anyhow!(PREVIEW_IMAGE_DIAGNOSTICS_UNAVAILABLE)
 }
 
 fn preview_image_diagnostics_export_audit_event(
@@ -487,7 +501,7 @@ mod tests {
             .export_preview_image_diagnostics()
             .expect_err("export fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "preview image diagnostics unavailable");
         let event = audit_log.take_event();
         assert_eq!(event.operation, "export_preview_image_diagnostics");
         assert_eq!(event.category, "diagnostic_export");

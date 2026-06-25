@@ -13,6 +13,7 @@ const APP_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "app-log-diagnostics.json";
 const TASK_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "task-log-diagnostics.json";
 const SUPPORT_AUDIT_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "audit-log-diagnostics.json";
 pub const MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES: usize = 200;
+const SUPPORT_DIAGNOSTICS_UNAVAILABLE: &str = "support diagnostics unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupportDiagnosticsExport {
@@ -53,21 +54,25 @@ impl SupportDiagnosticsExportService {
     }
 
     pub fn export_support_diagnostics(&self) -> anyhow::Result<SupportDiagnosticsExport> {
-        let export_timestamp = self.clock.now_unix_millis()?;
+        let export_timestamp = self
+            .clock
+            .now_unix_millis()
+            .map_err(|_| support_diagnostics_unavailable())?;
         let file_name = format!("support-diagnostics-{}.zip", export_timestamp);
         let platform_summary = match self.environment_provider.summarize() {
             Ok(summary) => summary,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(support_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "environment_summary_failed",
-                        0,
-                        0,
-                        0,
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(support_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "environment_summary_failed",
+                            0,
+                            0,
+                            0,
+                        ));
+                return Err(support_diagnostics_unavailable());
             }
         };
         let app_log_lines = match self
@@ -77,17 +82,18 @@ impl SupportDiagnosticsExportService {
                 max_lines: MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
             }) {
             Ok(lines) => lines,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(support_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "app_log_read_failed",
-                        0,
-                        0,
-                        0,
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(support_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "app_log_read_failed",
+                            0,
+                            0,
+                            0,
+                        ));
+                return Err(support_diagnostics_unavailable());
             }
         };
         let task_log_lines = match self
@@ -97,17 +103,18 @@ impl SupportDiagnosticsExportService {
                 max_lines: MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
             }) {
             Ok(lines) => lines,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(support_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "task_log_read_failed",
-                        app_log_lines.len(),
-                        0,
-                        0,
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(support_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "task_log_read_failed",
+                            app_log_lines.len(),
+                            0,
+                            0,
+                        ));
+                return Err(support_diagnostics_unavailable());
             }
         };
         let audit_events = match self
@@ -116,17 +123,18 @@ impl SupportDiagnosticsExportService {
                 max_events: crate::MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
             }) {
             Ok(events) => events,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(support_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "audit_log_read_failed",
-                        app_log_lines.len(),
-                        task_log_lines.len(),
-                        0,
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(support_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "audit_log_read_failed",
+                            app_log_lines.len(),
+                            task_log_lines.len(),
+                            0,
+                        ));
+                return Err(support_diagnostics_unavailable());
             }
         };
 
@@ -136,12 +144,16 @@ impl SupportDiagnosticsExportService {
             app_log_lines.len(),
             task_log_lines.len(),
             audit_events.len(),
-        ))?;
+        ))
+        .map_err(|_| support_diagnostics_unavailable())?;
         let app_log_payload =
-            serde_json::to_vec(&text_log_diagnostics_payload("app_log", &app_log_lines))?;
+            serde_json::to_vec(&text_log_diagnostics_payload("app_log", &app_log_lines))
+                .map_err(|_| support_diagnostics_unavailable())?;
         let task_log_payload =
-            serde_json::to_vec(&text_log_diagnostics_payload("task_log", &task_log_lines))?;
-        let audit_log_payload = serde_json::to_vec(&audit_log_diagnostics_payload(&audit_events))?;
+            serde_json::to_vec(&text_log_diagnostics_payload("task_log", &task_log_lines))
+                .map_err(|_| support_diagnostics_unavailable())?;
+        let audit_log_payload = serde_json::to_vec(&audit_log_diagnostics_payload(&audit_events))
+            .map_err(|_| support_diagnostics_unavailable())?;
 
         let entries = [
             DiagnosticPackageEntry {
@@ -168,17 +180,18 @@ impl SupportDiagnosticsExportService {
                 entries: &entries,
             }) {
             Ok(export) => export,
-            Err(error) => {
-                self.audit_log_writer
-                    .record(support_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "diagnostic_package_export_failed",
-                        app_log_lines.len(),
-                        task_log_lines.len(),
-                        audit_events.len(),
-                    ))?;
-                return Err(error);
+            Err(_) => {
+                let _ =
+                    self.audit_log_writer
+                        .record(support_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "diagnostic_package_export_failed",
+                            app_log_lines.len(),
+                            task_log_lines.len(),
+                            audit_events.len(),
+                        ));
+                return Err(support_diagnostics_unavailable());
             }
         };
 
@@ -189,7 +202,8 @@ impl SupportDiagnosticsExportService {
                 app_log_lines.len(),
                 task_log_lines.len(),
                 audit_events.len(),
-            ))?;
+            ))
+            .map_err(|_| support_diagnostics_unavailable())?;
 
         Ok(SupportDiagnosticsExport {
             export_id: export.export_id,
@@ -200,6 +214,10 @@ impl SupportDiagnosticsExportService {
             audit_event_count: audit_events.len(),
         })
     }
+}
+
+fn support_diagnostics_unavailable() -> anyhow::Error {
+    anyhow::anyhow!(SUPPORT_DIAGNOSTICS_UNAVAILABLE)
 }
 
 fn support_diagnostics_payload(
@@ -422,7 +440,7 @@ mod tests {
             .export_support_diagnostics()
             .expect_err("environment summary fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "support diagnostics unavailable");
         assert!(
             exporter.take_request().is_none(),
             "diagnostic package must not be exported when environment summary fails"
@@ -455,7 +473,7 @@ mod tests {
             .export_support_diagnostics()
             .expect_err("app log read fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "support diagnostics unavailable");
         assert!(
             exporter.take_request().is_none(),
             "diagnostic package must not be exported when app log read fails"
@@ -488,7 +506,7 @@ mod tests {
             .export_support_diagnostics()
             .expect_err("task log read fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "support diagnostics unavailable");
         assert!(
             exporter.take_request().is_none(),
             "diagnostic package must not be exported when task log read fails"
@@ -519,7 +537,7 @@ mod tests {
             .export_support_diagnostics()
             .expect_err("audit log read fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "support diagnostics unavailable");
         assert!(
             exporter.take_request().is_none(),
             "diagnostic package must not be exported when audit log read fails"
@@ -549,7 +567,7 @@ mod tests {
             .export_support_diagnostics()
             .expect_err("diagnostic package export fails");
 
-        assert!(error.to_string().contains("C:/Users/Player"));
+        assert_eq!(error.to_string(), "support diagnostics unavailable");
         assert_support_failure_audit_event_sanitized(
             audit_log.take_event().expect("failure audit event"),
             "diagnostic_package_export_failed",
