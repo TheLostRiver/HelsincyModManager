@@ -234,7 +234,7 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - `hmm-ports` 已提供最小 `DiagnosticsEnvironmentProvider` port，`hmm-infra` 可生成应用版本、平台 OS、CPU 架构和受控 game adapter id 列表的诊断摘要；该摘要不读取或返回本地路径、Steam ID、token/cookie/API key，并已通过 `export_support_diagnostics` 的 app service/command 链路受控使用。
 - `hmm-ports` 已提供最小 `AuditLogReader` port，`hmm-infra` 可从 app data 下的审计 JSONL 中读取最近 N 条已校验事件，作为后续完整日志/审计诊断包的基础；读取时会跳过损坏 JSONL 行或未通过脱敏校验的事件，只返回已校验事件。该读取能力已通过 `export_audit_log_diagnostics` 的 app service/command 链路受控使用，但仍未纳入当前预览图诊断 zip。
 - `export_audit_log_diagnostics` 已提供最小后端命令：通过 `AuditLogReader` 读取最近 N 条已校验审计事件并写入受控 `audit-log-diagnostics.json` 诊断包，同时为该导出动作写入最小 Audit Log 事件；单次导出最多包含 200 条审计事件，避免诊断包无界膨胀；命令 DTO 只返回文件名、大小和事件计数，不返回审计事件正文或路径。
-- `export_support_diagnostics` 已提供最小后端命令：通过 `SupportDiagnosticsExportService` 把平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和已校验 Audit Log 事件组合写入受控 `support-diagnostics.json`、`app-log-diagnostics.json`、`task-log-diagnostics.json` 和 `audit-log-diagnostics.json` 诊断 zip，并为该导出动作写入最小 Audit Log 事件；命令不接受输出路径、日志路径、类别选择、行数或事件数量参数，DTO 只返回文件名、大小和聚合计数，不返回日志正文、审计事件正文或路径。
+- `export_support_diagnostics` 已提供最小后端命令：通过 `SupportDiagnosticsExportService` 把平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和已校验 Audit Log 事件组合写入受控 `support-diagnostics.json`、`app-log-diagnostics.json`、`task-log-diagnostics.json` 和 `audit-log-diagnostics.json` 诊断 zip，并为该导出动作写入最小 Audit Log 事件；若平台摘要、App Log、Task Log、Audit Log 读取或诊断 zip 写入失败，也会先写入只含稳定 `error_code` 和聚合计数的失败 Audit Log 事件，不记录原始错误文本或路径；命令不接受输出路径、日志路径、类别选择、行数或事件数量参数，DTO 只返回文件名、大小和聚合计数，不返回日志正文、审计事件正文或路径。
 - 若审计写入失败，命令不报告导出成功；当前预览图 zip 仍只包含脱敏聚合摘要，不等同于完整日志/审计诊断包导出。
 
 ## MVP 落地要求
