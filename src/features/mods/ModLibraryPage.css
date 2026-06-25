@@ -207,6 +207,10 @@
   color: var(--color-success-dot);
 }
 
+.install-plan-preview__icon.is-completed {
+  color: var(--color-success-dot);
+}
+
 .install-plan-preview__icon.is-warning {
   color: var(--color-warning-dot);
 }
@@ -241,6 +245,11 @@
 .install-plan-preview__close:hover {
   color: var(--color-text);
   border-color: var(--color-border);
+}
+
+.install-plan-preview__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .install-plan-preview__close:focus-visible {
