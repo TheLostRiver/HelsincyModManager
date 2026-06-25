@@ -1,7 +1,7 @@
 use crate::dto::{
     AppSettingsDto, AuditLogDiagnosticsExportDto, CommandErrorDto, ModDetailDto, ModLibraryItemDto,
     PreviewImageCandidateListDto, PreviewImageDiagnosticsDto, PreviewImageDiagnosticsExportDto,
-    PreviewImageDto, TaskStartedDto,
+    PreviewImageDto, SupportDiagnosticsExportDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -95,6 +95,18 @@ pub fn export_audit_log_diagnostics(
         .audit_log_diagnostics_export
         .export_audit_log_diagnostics(hmm_app::MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS)
         .map_err(|_| audit_log_diagnostics_export_unavailable_error())?;
+
+    Ok(export.into())
+}
+
+#[tauri::command]
+pub fn export_support_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<SupportDiagnosticsExportDto, CommandErrorDto> {
+    let export = state
+        .support_diagnostics_export
+        .export_support_diagnostics()
+        .map_err(|_| support_diagnostics_export_unavailable_error())?;
 
     Ok(export.into())
 }
@@ -273,6 +285,13 @@ fn audit_log_diagnostics_export_unavailable_error() -> CommandErrorDto {
     }
 }
 
+fn support_diagnostics_export_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "support_diagnostics_export_unavailable".to_owned(),
+        message: "support diagnostics export is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,6 +385,15 @@ mod tests {
         let error = audit_log_diagnostics_export_unavailable_error();
 
         assert_eq!(error.code, "audit_log_diagnostics_export_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn support_diagnostics_export_unavailable_error_uses_stable_code_without_paths() {
+        let error = support_diagnostics_export_unavailable_error();
+
+        assert_eq!(error.code, "support_diagnostics_export_unavailable");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
