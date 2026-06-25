@@ -9,8 +9,10 @@ use hmm_ports::{
 };
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 pub const DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY: usize = 2;
+const PROCESSING_LIMITER_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 pub struct LimitedPreviewImageProcessor {
     inner: Box<dyn PreviewImageProcessor>,
@@ -31,7 +33,7 @@ impl PreviewImageProcessor for LimitedPreviewImageProcessor {
         &self,
         request: PreviewImageProcessRequest<'_>,
     ) -> Result<PreviewImageProcessingResult> {
-        let _permit = self.limiter.acquire();
+        let _permit = self.limiter.acquire(request.cancellation_token)?;
         self.inner.process_candidate(request)
     }
 }
@@ -51,20 +53,26 @@ impl ProcessingLimiter {
         }
     }
 
-    fn acquire(&self) -> ProcessingPermit<'_> {
+    fn acquire(&self, cancellation_token: &dyn CancellationToken) -> Result<ProcessingPermit<'_>> {
+        ensure_not_cancelled(cancellation_token)?;
         let mut active = self
             .active
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         while *active >= self.max_concurrent {
-            active = self
+            ensure_not_cancelled(cancellation_token)?;
+            active = match self
                 .available
-                .wait(active)
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .wait_timeout(active, PROCESSING_LIMITER_CANCEL_POLL_INTERVAL)
+            {
+                Ok((active, _timeout)) => active,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
         }
+        ensure_not_cancelled(cancellation_token)?;
         *active += 1;
 
-        ProcessingPermit { limiter: self }
+        Ok(ProcessingPermit { limiter: self })
     }
 }
 
@@ -728,6 +736,82 @@ mod tests {
     }
 
     #[test]
+    fn limited_processor_returns_when_cancelled_while_waiting_for_permit() {
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let inner_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let processor = Arc::new(LimitedPreviewImageProcessor::new(
+            Box::new(PermitHoldingProcessor {
+                entered_tx: Mutex::new(Some(entered_tx)),
+                release_rx: Mutex::new(release_rx),
+                inner_calls: Arc::clone(&inner_calls),
+            }),
+            1,
+        ));
+        let candidate = preview_candidate("pkg-1", "good.png");
+        let policy = PreviewImagePolicy::default();
+
+        let first_processor = Arc::clone(&processor);
+        let first_candidate = candidate.clone();
+        let first_policy = policy.clone();
+        let first_handle = std::thread::spawn(move || {
+            first_processor.process_candidate(PreviewImageProcessRequest {
+                sandbox_root: Path::new("sandbox"),
+                candidate: &first_candidate,
+                policy: &first_policy,
+                cancellation_token: &hmm_ports::NeverCancelled,
+            })
+        });
+        entered_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first processor acquired permit");
+
+        let cancellation_token = Arc::new(ToggleCancellationToken::default());
+        let second_processor = Arc::clone(&processor);
+        let second_candidate = candidate.clone();
+        let second_policy = policy.clone();
+        let second_token = Arc::clone(&cancellation_token);
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let second_handle = std::thread::spawn(move || {
+            let result = second_processor.process_candidate(PreviewImageProcessRequest {
+                sandbox_root: Path::new("sandbox"),
+                candidate: &second_candidate,
+                policy: &second_policy,
+                cancellation_token: second_token.as_ref(),
+            });
+            result_tx.send(result.map(|_| ())).expect("send result");
+        });
+
+        std::thread::sleep(Duration::from_millis(25));
+        cancellation_token.cancel_for_test();
+        let result = match result_rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(result) => result,
+            Err(error) => {
+                release_tx.send(()).expect("release first processor");
+                release_tx.send(()).expect("release second processor");
+                first_handle.join().expect("first thread joins").ok();
+                second_handle.join().expect("second thread joins");
+                panic!("cancelled waiter did not return before timeout: {error}");
+            }
+        };
+
+        release_tx.send(()).expect("release first processor");
+        first_handle
+            .join()
+            .expect("first thread joins")
+            .expect("first processor succeeds");
+        second_handle.join().expect("second thread joins");
+
+        let error = result.expect_err("waiting processor is cancelled");
+        assert!(error.to_string().contains("cancelled"));
+        assert_eq!(
+            inner_calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "cancelled waiter must not enter the inner processor"
+        );
+    }
+
+    #[test]
     fn passes_cancellation_token_to_scanner_and_processor() {
         let observed = Arc::new(Mutex::new(Vec::new()));
         let candidate = preview_candidate("pkg-1", "preview.png");
@@ -1270,6 +1354,33 @@ mod tests {
                 stats.active -= 1;
             }
 
+            Ok(PreviewImageProcessingResult::Fallback(
+                PreviewImageRejectionReason::Missing,
+            ))
+        }
+    }
+
+    struct PermitHoldingProcessor {
+        entered_tx: Mutex<Option<std::sync::mpsc::Sender<()>>>,
+        release_rx: Mutex<std::sync::mpsc::Receiver<()>>,
+        inner_calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl PreviewImageProcessor for PermitHoldingProcessor {
+        fn process_candidate(
+            &self,
+            _request: PreviewImageProcessRequest<'_>,
+        ) -> Result<PreviewImageProcessingResult> {
+            self.inner_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(entered_tx) = self.entered_tx.lock().expect("entered lock").take() {
+                entered_tx.send(()).expect("send entered signal");
+            }
+            self.release_rx
+                .lock()
+                .expect("release lock")
+                .recv()
+                .expect("wait for release");
             Ok(PreviewImageProcessingResult::Fallback(
                 PreviewImageRejectionReason::Missing,
             ))
