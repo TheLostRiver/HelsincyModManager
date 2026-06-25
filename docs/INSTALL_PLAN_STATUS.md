@@ -127,7 +127,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 受控 source root 下的文件读取。
 - 受控 game root 下的目标文件读写和删除。
 - 受控 backup root 下的备份写入和清理。
-- 受控 manifest root 下的 JSON manifest 读取和保存；读取会拒绝不安全 profile id、manifest symlink 和 profile id 不匹配的内容。
+- 受控 manifest root 下的 JSON manifest 读取和保存；读取会拒绝不安全 profile id、非真实目录的 manifest root、manifest symlink 和 profile id 不匹配的内容。
 
 文件系统实现会拒绝路径穿越、绝对路径、Windows 盘符前缀、symlink 目标和 symlink ancestor 逃逸。测试使用临时目录，不依赖真实 MHW:I 安装目录、真实存档或真实第三方 Mod 包。
 
