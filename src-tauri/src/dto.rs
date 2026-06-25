@@ -92,6 +92,15 @@ pub struct PreviewInstallPlanFileInputDto {
     pub layer_priority: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImportedModInstallPlanRequestDto {
+    pub game_id: String,
+    pub mod_id: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanPreviewDto {

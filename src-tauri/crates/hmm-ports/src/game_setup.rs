@@ -29,6 +29,10 @@ pub trait GameAdapter: Send + Sync {
     fn display_name(&self) -> &'static str;
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation;
 
+    fn allowed_install_roots(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     fn steam_app_id(&self) -> Option<u32> {
         None
     }
