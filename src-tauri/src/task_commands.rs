@@ -1,10 +1,11 @@
 use crate::dto::{CommandErrorDto, TaskStartedDto};
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
-use hmm_app::{TaskProgressEvent, TaskSnapshot, TaskStarted};
+use hmm_app::{TaskKind, TaskProgressEvent, TaskSnapshot, TaskStarted};
 use tauri::{AppHandle, State};
 
 const MOD_IMPORT_CANCELLED_PHASE: &str = "mod_import.cancelled";
+const INSTALL_CANCELLED_PHASE: &str = "install.cancelled";
 
 #[tauri::command]
 pub fn cancel_task(
@@ -33,8 +34,15 @@ fn cancelled_event_for_task(task: &TaskSnapshot) -> TaskProgressEvent {
         task.task_id.clone(),
         task.kind,
         task.status,
-        MOD_IMPORT_CANCELLED_PHASE,
+        cancelled_phase_for_kind(task.kind),
     )
+}
+
+fn cancelled_phase_for_kind(kind: TaskKind) -> &'static str {
+    match kind {
+        TaskKind::ModImport => MOD_IMPORT_CANCELLED_PHASE,
+        TaskKind::Install => INSTALL_CANCELLED_PHASE,
+    }
 }
 
 fn parse_task_id(value: String) -> Result<String, CommandErrorDto> {
@@ -54,7 +62,7 @@ fn parse_task_id(value: String) -> Result<String, CommandErrorDto> {
 mod tests {
     use super::*;
     use crate::dto::TaskProgressEventDto;
-    use hmm_app::{TaskKind, TaskStatus};
+    use hmm_app::TaskStatus;
     use serde_json::Value;
 
     #[test]
@@ -84,6 +92,23 @@ mod tests {
         assert!(value["message"].is_null());
         assert!(value["error"].is_null());
         assert!(value["resultRef"].is_null());
+    }
+
+    #[test]
+    fn cancelled_event_for_install_task_uses_install_phase() {
+        let task = TaskSnapshot {
+            task_id: "install-123".to_owned(),
+            kind: TaskKind::Install,
+            status: TaskStatus::Cancelled,
+        };
+
+        let dto: TaskProgressEventDto = cancelled_event_for_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "install-123");
+        assert_eq!(value["kind"], "install");
+        assert_eq!(value["status"], "cancelled");
+        assert_eq!(value["phase"], "install.cancelled");
     }
 
     #[test]
