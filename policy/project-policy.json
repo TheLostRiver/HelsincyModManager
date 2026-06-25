@@ -18,7 +18,9 @@
   ],
   "requiredScripts": [
     "scripts/verify.ps1",
+    "scripts/verify.sh",
     "scripts/check-policy.ps1",
+    "scripts/check-policy.mjs",
     "scripts/check-file-size.ps1",
     "scripts/check-forbidden-files.ps1",
     "scripts/check-doc-links.ps1",

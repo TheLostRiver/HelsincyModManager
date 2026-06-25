@@ -47,6 +47,12 @@ policy/project-policy.json
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
+Linux / Steam Deck 开发环境：
+
+```bash
+bash scripts/verify.sh
+```
+
 当前检查：
 
 - 统一空白检查。
@@ -87,7 +93,7 @@ GitHub Actions 工作流：
 .github/workflows/verify.yml
 ```
 
-该工作流在 push 和 pull request 时运行 `scripts/verify.ps1`。
+该工作流在 push 和 pull request 时通过 `bash scripts/verify.sh` 运行 Linux 原生入口。
 
 CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分支保护配合。
 
@@ -128,7 +134,7 @@ CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ru
 
 超过硬性限制会导致：
 
-- 本地 `verify.ps1` 失败。
+- 本地 `verify.ps1` 或 `verify.sh` 失败。
 - pre-commit 失败。
 - pre-push 失败。
 - GitHub Actions `Verify` 失败。
@@ -170,7 +176,9 @@ Target branch: main
 
 - `policy/project-policy.json`
 - `scripts/check-*.ps1`
+- `scripts/check-*.mjs`
 - `scripts/verify.ps1`
+- `scripts/verify.sh`
 - `.githooks/`
 - `.github/workflows/`
 - `.github/CODEOWNERS`
