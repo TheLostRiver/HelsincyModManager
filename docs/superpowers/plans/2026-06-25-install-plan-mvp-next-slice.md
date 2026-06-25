@@ -17,27 +17,25 @@
 - [x] 让后端从已导入 Mod 的受控 sandbox 和游戏 adapter 生成安装计划输入，减少正式前端直接传 `targetPath` 的需要。
 - [x] 接入最小前端 typed API / 预览 UI。
 - [x] 增加安装提交服务、JSON manifest 仓储、备份和失败回滚的后端骨架，测试只使用临时目录。
-- [ ] 接入任务、写锁、审计日志和 Tauri `start_install_task` 后，再开放真实安装提交入口。
+- [x] 接入任务、写锁、审计日志和 Tauri `start_install_task` 后，再开放真实安装提交入口。
 
 ## 当前 PR 目标
 
-实现后端安装提交安全骨架：
+实现后端驱动的安装任务入口：
 
-- 在 `hmm-core` 定义最小 `InstallManifest` / manifest entry。
-- 在 `hmm-ports` 增加安装提交所需的窄接口：源文件读取、游戏文件写入、备份存储和 manifest 仓储。
-- 在 `hmm-app` 增加 `InstallCommitService`，按 `InstallPlan -> backup -> commit -> manifest` 顺序编排。
-- manifest 写入失败时，按已应用动作反向 rollback：新文件删除、覆盖文件恢复旧内容。
-- 在 `hmm-infra` 增加受 root containment 约束的文件系统适配器和 JSON manifest 仓储。
+- 在 `hmm-app` 增加 `InstallTaskService` / `InstallTaskRunner`，用 `TaskKind::Install` 登记和执行安装任务。
+- `start_install_task` 只接收 `gameId`、`modId`、`profileId` 和 layer 摘要；前端不传真实路径或最终安装路径。
+- runner 在后端从已导入 Mod 重建 `InstallPlan`，再调用既有 `InstallCommitService` 完成 `InstallPlan -> backup -> commit -> manifest`。
+- commit 阶段按 `gameId/profileId` 加写锁串行；plan build 不持有写锁。
+- 发送 `install.queued`、`install.plan.building`、`install.commit.processing`、`install.completed` / `install.failed` 等稳定任务事件。
+- 写入最小 Audit Log，只记录 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数，不记录完整本地路径或第三方 Mod 内容。
+- 更新前后端契约和 feature-local typed API wrapper。
 
 ## 明确不做
 
-- 不写入真实游戏目录。
-- 不接 Tauri `start_install_task`，不从前端触发安装提交。
-- 不实现卸载、崩溃恢复扫描或跨进程恢复。
-- 不实现 game/profile 写锁和任务进度事件。
-- 不实现安装审计日志；真实入口接入前必须补上 Audit Log。
-- 不做重定向 staging。
 - 不新增完整安装 UI。
+- 不实现卸载、崩溃恢复扫描或跨进程恢复。
+- 不做重定向 staging。
 - 不让前端拼接安装路径、推断 MHW 路径规则或承担文件系统安全规则。
 - 不使用真实第三方 Mod 包、真实 MHW 安装目录或真实玩家存档做测试。
 
@@ -61,6 +59,13 @@
   - `InstallCommitService`
   - `CommitInstallPlanRequest`
   - 提交阶段只依赖 ports，不依赖具体文件系统
+- `src-tauri/crates/hmm-app/src/install_task.rs`
+  - `StartInstallTaskRequest`
+  - `InstallTaskService`
+  - `InstallTaskRunner`
+  - `ImportedModInstallPlanner`
+  - `InstallPlanCommitter`
+  - 任务状态、阶段事件、写锁和 Audit Log 编排
 - `src-tauri/crates/hmm-ports/src/install.rs`
   - `InstallSourceFileReader`
   - `InstallGameFileSystem`
@@ -72,7 +77,7 @@
   - 文件系统备份存储
   - JSON manifest 仓储
 - `src-tauri/crates/hmm-app/src/lib.rs`
-  - 导出安装计划服务
+  - 导出安装计划服务和安装任务服务
 
 ## 安全约束
 
@@ -81,7 +86,9 @@
 - 计划预览阶段必须只读，不创建目录、不复制文件、不删除文件、不写 manifest。
 - 后续真实写入必须从本切片产出的 `InstallPlan` 消费，不能另开直接复制的快捷路径。
 - 文件系统适配器必须把 package file id 和 target path 解析为受控 root 下的相对路径，拒绝父级穿越、绝对路径和 Windows 盘符前缀。
-- 在 Tauri 真实入口接入前，必须补上 game/profile 写锁、任务事件和 Audit Log。
+- `start_install_task` 必须从后端已持久化导入结果和受控 sandbox 重建 plan，不能让前端提交 `targetPath`、sandbox/cache 路径、导入包路径、游戏目录路径、备份路径或 manifest 路径。
+- game/profile 写锁只包住 commit 阶段；plan build、扫描和只读分析不持有写锁。
+- 安装任务事件和 Audit Log 不得包含完整本地路径、用户名、Steam ID、真实 Mod 内容、sandbox/cache 路径或第三方 Mod 包内容。
 
 ## 最小验收测试
 
@@ -100,6 +107,10 @@
 - manifest 保存失败时回滚已写文件：新文件删除，旧文件恢复。
 - 文件系统 source reader 拒绝 package file id 父级穿越，错误消息不泄露临时根路径。
 - JSON manifest 内容不包含临时测试根路径。
+- `start_install_task` request DTO 不包含路径字段。
+- install task 事件携带 `taskId`、`kind`、`status` 和稳定 phase code。
+- cancel install task 使用 `install.cancelled`，不复用 `mod_import.cancelled`。
+- install runner 成功时写入脱敏 Audit Log。
 
 ## 验证命令
 
@@ -132,3 +143,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 4. 安装提交服务、JSON manifest 仓储、备份和失败回滚，测试只使用临时目录。
 5. Tauri `start_install_task` 命令、任务事件、写锁和 Audit Log。
 6. ARMOR_RETARGET staging 接入 InstallPlan 输入。
+7. 最小安装 UI：触发安装任务、展示进度和失败状态，不在前端拼接路径。

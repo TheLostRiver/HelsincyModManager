@@ -1,14 +1,19 @@
 use crate::dto::{
     CommandErrorDto, InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
-    PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto,
+    PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartInstallTaskRequestDto,
+    TaskStartedDto,
 };
 use crate::state::AppState;
+use crate::task_events::emit_task_progress;
 use hmm_app::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallPlanFile,
-    InstallPlanningError,
+    InstallPlanningError, StartInstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
-use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId};
-use tauri::State;
+use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
+use std::sync::Arc;
+use tauri::{AppHandle, State};
+
+const INSTALL_QUEUED_PHASE: &str = "install.queued";
 
 #[tauri::command]
 pub fn preview_install_plan(
@@ -38,6 +43,60 @@ pub fn preview_imported_mod_install_plan(
     Ok(plan.into())
 }
 
+#[tauri::command]
+pub fn start_install_task(
+    request: StartInstallTaskRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let request = start_install_task_request_from_dto(request)?;
+    let runner_request = request.clone();
+    let task = state
+        .install_tasks
+        .start_install_task(request)
+        .map_err(CommandErrorDto::from_task_manager_error)?;
+
+    emit_task_progress(
+        &app_handle,
+        queued_event_for_started_install_task(&task).into(),
+    )?;
+    spawn_install_runner(
+        Arc::clone(&state.install_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_request,
+    );
+
+    Ok(task.into())
+}
+
+fn spawn_install_runner(
+    runner: Arc<hmm_app::InstallTaskRunner>,
+    app_handle: AppHandle,
+    task_id: String,
+    request: StartInstallTaskRequest,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_install_task(&task_id, request) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
+}
+
+fn queued_event_for_started_install_task(task: &TaskStarted) -> TaskProgressEvent {
+    TaskProgressEvent::new(
+        task.task_id.clone(),
+        task.kind,
+        task.status,
+        INSTALL_QUEUED_PHASE,
+    )
+}
+
 fn build_install_plan_request_from_dto(
     request: PreviewInstallPlanRequestDto,
 ) -> BuildInstallPlanRequest {
@@ -64,6 +123,50 @@ fn imported_mod_install_plan_request_from_dto(
         mod_id: ModId::new(request.mod_id),
         layer: FileLayer::new(request.layer_name, request.layer_priority),
     })
+}
+
+fn start_install_task_request_from_dto(
+    request: StartInstallTaskRequestDto,
+) -> Result<StartInstallTaskRequest, CommandErrorDto> {
+    let game_id = GameId::parse(request.game_id).map_err(|_| CommandErrorDto {
+        code: "game_id_invalid".to_owned(),
+        message: "game id is invalid".to_owned(),
+    })?;
+    let mod_id = parse_non_empty_id(request.mod_id, "mod_id_empty", "mod id cannot be empty")?;
+    let profile_id = parse_non_empty_id(
+        request.profile_id,
+        "profile_id_empty",
+        "profile id cannot be empty",
+    )?;
+    let layer_name = parse_non_empty_id(
+        request.layer_name,
+        "layer_name_empty",
+        "layer name cannot be empty",
+    )?;
+
+    Ok(StartInstallTaskRequest {
+        game_id,
+        mod_id: ModId::new(mod_id),
+        profile_id: ProfileId::new(profile_id),
+        layer: FileLayer::new(layer_name, request.layer_priority),
+    })
+}
+
+fn parse_non_empty_id(
+    value: String,
+    code: &'static str,
+    message: &'static str,
+) -> Result<String, CommandErrorDto> {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty() {
+        return Err(CommandErrorDto {
+            code: code.to_owned(),
+            message: message.to_owned(),
+        });
+    }
+
+    Ok(trimmed.to_owned())
 }
 
 fn install_plan_file_from_dto(file: PreviewInstallPlanFileInputDto) -> InstallPlanFile {
@@ -127,7 +230,7 @@ mod tests {
     use super::*;
     use crate::dto::{
         InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
-        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto,
+        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, TaskProgressEventDto,
     };
     use hmm_core::{
         FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallPlan,
@@ -177,6 +280,50 @@ mod tests {
         assert_eq!(app_request.mod_id.as_str(), "mod-a");
         assert_eq!(app_request.layer.name, "base");
         assert_eq!(app_request.layer.priority, 10);
+    }
+
+    #[test]
+    fn start_install_task_request_deserializes_without_paths() {
+        let value = json!({
+            "gameId": "mhw",
+            "modId": "mod-a",
+            "profileId": "default",
+            "layerName": "base",
+            "layerPriority": 10
+        });
+
+        let request: StartInstallTaskRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let app_request =
+            start_install_task_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(app_request.game_id.as_str(), "mhw");
+        assert_eq!(app_request.mod_id.as_str(), "mod-a");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(app_request.layer.name, "base");
+        assert_eq!(app_request.layer.priority, 10);
+    }
+
+    #[test]
+    fn queued_install_event_uses_registered_phase() {
+        let task = TaskStarted {
+            task_id: "install-123".to_owned(),
+            kind: hmm_app::TaskKind::Install,
+            status: hmm_app::TaskStatus::Queued,
+        };
+
+        let dto: TaskProgressEventDto = queued_event_for_started_install_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "install-123");
+        assert_eq!(value["kind"], "install");
+        assert_eq!(value["status"], "queued");
+        assert_eq!(value["phase"], INSTALL_QUEUED_PHASE);
+        assert!(value["current"].is_null());
+        assert!(value["total"].is_null());
+        assert!(value["message"].is_null());
+        assert!(value["error"].is_null());
+        assert!(value["resultRef"].is_null());
     }
 
     #[test]
