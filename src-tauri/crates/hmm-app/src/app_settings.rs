@@ -31,7 +31,15 @@ impl AppSettingsService {
         &self,
         max_bytes: Option<u64>,
     ) -> Result<AppSettings, AppSettingsServiceError> {
-        self.update_thumbnail_cache_settings(max_bytes, None)
+        if matches!(max_bytes, Some(0)) {
+            return Err(AppSettingsServiceError::InvalidThumbnailCacheMaxBytes);
+        }
+
+        let current = self
+            .repository
+            .load_settings()
+            .map_err(settings_error_to_service_error)?;
+        self.update_thumbnail_cache_settings(max_bytes, current.thumbnail_cache_max_age_days)
     }
 
     pub fn update_thumbnail_cache_settings(
@@ -114,6 +122,36 @@ mod tests {
                 .expect("save count lock")
                 .to_owned(),
             0
+        );
+    }
+
+    #[test]
+    fn updating_thumbnail_cache_max_bytes_preserves_current_max_age() {
+        let repository = std::sync::Arc::new(FakeAppSettingsRepository {
+            saved_settings: Mutex::new(Some(AppSettings {
+                thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(30),
+            })),
+            save_count: Mutex::new(0),
+        });
+        let service = AppSettingsService::new(repository.clone());
+
+        let settings = service
+            .update_thumbnail_cache_max_bytes(Some(128 * 1024 * 1024))
+            .expect("settings update succeeds");
+
+        assert_eq!(settings.thumbnail_cache_max_bytes, Some(128 * 1024 * 1024));
+        assert_eq!(settings.thumbnail_cache_max_age_days, Some(30));
+        assert_eq!(
+            repository
+                .saved_settings
+                .lock()
+                .expect("settings lock")
+                .as_ref(),
+            Some(&AppSettings {
+                thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(30),
+            })
         );
     }
 

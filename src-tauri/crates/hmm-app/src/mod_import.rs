@@ -278,8 +278,20 @@ impl ModImportTaskRunner {
         };
 
         let retained = retained_thumbnail_refs(&records);
-        let max_bytes = Some(self.thumbnail_cache_max_bytes());
-        let max_age = self.thumbnail_cache_max_age();
+        let settings = self
+            .app_settings_repository
+            .as_ref()
+            .and_then(|repository| repository.load_settings().ok());
+        let max_bytes = Some(
+            settings
+                .as_ref()
+                .and_then(|settings| settings.thumbnail_cache_max_bytes)
+                .unwrap_or(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES),
+        );
+        let max_age = settings
+            .as_ref()
+            .and_then(|settings| settings.thumbnail_cache_max_age_days)
+            .map(|days| Duration::from_secs(u64::from(days) * 24 * 60 * 60));
         let _ = thumbnail_cache_maintenance.maintain_thumbnail_cache(
             ThumbnailCacheMaintenanceRequest {
                 retained: &retained,
@@ -287,22 +299,6 @@ impl ModImportTaskRunner {
                 max_age,
             },
         );
-    }
-
-    fn thumbnail_cache_max_bytes(&self) -> u64 {
-        self.app_settings_repository
-            .as_ref()
-            .and_then(|repository| repository.load_settings().ok())
-            .and_then(|settings| settings.thumbnail_cache_max_bytes)
-            .unwrap_or(DEFAULT_THUMBNAIL_CACHE_MAX_BYTES)
-    }
-
-    fn thumbnail_cache_max_age(&self) -> Option<Duration> {
-        self.app_settings_repository
-            .as_ref()
-            .and_then(|repository| repository.load_settings().ok())
-            .and_then(|settings| settings.thumbnail_cache_max_age_days)
-            .map(|days| Duration::from_secs(u64::from(days) * 24 * 60 * 60))
     }
 }
 
@@ -1218,6 +1214,7 @@ mod tests {
                 thumbnail_cache_max_bytes: Some(64 * 1024 * 1024),
                 thumbnail_cache_max_age_days: Some(14),
             },
+            load_count: Mutex::new(0),
         });
         let runner = ModImportTaskRunner::new(
             std::sync::Arc::clone(&task_manager),
@@ -1241,7 +1238,7 @@ mod tests {
             result_repository,
         )
         .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance.clone())
-        .with_app_settings_repository(settings_repository);
+        .with_app_settings_repository(settings_repository.clone());
 
         runner
             .run_prepare_task(&task.task_id, Path::new("C:/mods/sample.zip").to_path_buf())
@@ -1257,6 +1254,7 @@ mod tests {
             calls[0].max_age,
             Some(Duration::from_secs(14 * 24 * 60 * 60))
         );
+        assert_eq!(settings_repository.load_count(), 1);
     }
 
     #[test]
@@ -1286,6 +1284,7 @@ mod tests {
                 thumbnail_cache_max_bytes: Some(32 * 1024 * 1024),
                 thumbnail_cache_max_age_days: Some(7),
             },
+            load_count: Mutex::new(0),
         });
         let runner = std::sync::Arc::new(
             ModImportTaskRunner::new(
@@ -1373,6 +1372,7 @@ mod tests {
                 thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
                 thumbnail_cache_max_age_days: Some(3),
             },
+            load_count: Mutex::new(0),
         });
         let runner = ModImportTaskRunner::new(
             task_manager,
@@ -2166,17 +2166,26 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
     struct FakeAppSettingsRepository {
         settings: AppSettings,
+        load_count: Mutex<usize>,
     }
 
     impl AppSettingsRepository for FakeAppSettingsRepository {
         fn load_settings(&self) -> AppSettingsRepositoryResult<AppSettings> {
+            *self.load_count.lock().expect("load count lock") += 1;
             Ok(self.settings.clone())
         }
 
         fn save_settings(&self, _settings: &AppSettings) -> AppSettingsRepositoryResult<()> {
             Ok(())
+        }
+    }
+
+    impl FakeAppSettingsRepository {
+        fn load_count(&self) -> usize {
+            *self.load_count.lock().expect("load count lock")
         }
     }
 
