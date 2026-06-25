@@ -56,10 +56,10 @@ pub fn start_install_task(
         .start_install_task(request)
         .map_err(CommandErrorDto::from_task_manager_error)?;
 
-    emit_task_progress(
+    let _ = emit_task_progress(
         &app_handle,
         queued_event_for_started_install_task(&task).into(),
-    )?;
+    );
     spawn_install_runner(
         Arc::clone(&state.install_task_runner),
         app_handle,

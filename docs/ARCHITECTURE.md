@@ -263,6 +263,8 @@ RetargetPlan
 
 安装前必须先生成 `InstallPlan`。
 
+当前 `InstallPlan` 模块的已落地能力、未完成边界和后续切片见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md)。
+
 计划动作示例：
 
 ```text

@@ -140,18 +140,27 @@ impl InstallTaskRunner {
                     layer: request.layer.clone(),
                 }) {
                 Ok(plan) => plan,
-                Err(_) => return Err(self.fail_with_audit(task_id, &request, events, "planning")),
+                Err(_) => {
+                    return Err(self.fail_with_audit(task_id, &request, events, "planning", 0))
+                }
             };
         let action_count = plan.actions.len();
 
-        events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            return Ok(events);
+        }
+
         let write_lock = self
             .write_locks
             .lock_for(&request.game_id, &request.profile_id);
         let commit_result = {
-            let _guard = write_lock
-                .lock()
-                .map_err(|_| self.fail_with_audit(task_id, &request, events.clone(), "lock"))?;
+            let _guard = write_lock.lock().map_err(|_| {
+                self.fail_with_audit(task_id, &request, events.clone(), "lock", action_count)
+            })?;
+            if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                return Ok(events);
+            }
+            events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
             self.committer
                 .commit_install_plan(ImportedModInstallCommitRequest {
                     game_id: request.game_id.clone(),
@@ -163,7 +172,9 @@ impl InstallTaskRunner {
 
         match commit_result {
             Ok(_) => self.record_audit(task_id, &request, "success", action_count),
-            Err(_) => return Err(self.fail_with_audit(task_id, &request, events, "commit")),
+            Err(_) => {
+                return Err(self.fail_with_audit(task_id, &request, events, "commit", action_count))
+            }
         }
 
         match self.task_manager.complete_task(task_id) {
@@ -179,7 +190,9 @@ impl InstallTaskRunner {
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
                 Ok(events)
             }
-            Err(_) => Err(self.fail_with_audit(task_id, &request, events, "complete")),
+            Err(_) => {
+                Err(self.fail_with_audit(task_id, &request, events, "complete", action_count))
+            }
         }
     }
 
@@ -189,10 +202,15 @@ impl InstallTaskRunner {
         request: &StartInstallTaskRequest,
         mut events: Vec<TaskProgressEvent>,
         phase: &str,
+        action_count: usize,
     ) -> InstallTaskRunError {
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            return InstallTaskRunError { events };
+        }
+
         let _ = self.task_manager.fail_task(task_id);
         events.push(failed_event(task_id, phase));
-        self.record_audit(task_id, request, "failure", 0);
+        self.record_audit(task_id, request, "failure", action_count);
         InstallTaskRunError { events }
     }
 
@@ -407,6 +425,84 @@ mod tests {
         assert_eq!(event.fields["task_id"], task.task_id);
     }
 
+    #[test]
+    fn run_install_task_stops_before_commit_when_cancelled_after_planning() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let planner = Arc::new(CancellingInstallPlanner {
+            task_manager: Arc::clone(&task_manager),
+            task_id: task.task_id.clone(),
+            plan: sample_plan(),
+        });
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            planner,
+            committer.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        let events = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect("cancelled task should stop without failing");
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec!["install.plan.building"]
+        );
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Cancelled)
+        );
+        assert!(committer.take_profiles().is_empty());
+        assert!(audit_log.take_event().is_none());
+    }
+
+    #[test]
+    fn run_install_task_preserves_action_count_in_failure_audit_after_planning() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let planner = Arc::new(RecordingInstallPlanner::new(sample_plan()));
+        let committer = Arc::new(FailingInstallCommitter);
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            planner,
+            committer,
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("commit failure should fail the task");
+
+        assert_eq!(
+            error
+                .events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "install.plan.building",
+                "install.commit.processing",
+                "install.failed"
+            ]
+        );
+        let event = audit_log.take_event().expect("failure audit recorded");
+        assert_eq!(event.result, "failure");
+        assert_eq!(event.fields["action_count"], "1");
+    }
+
     fn sample_request() -> StartInstallTaskRequest {
         StartInstallTaskRequest {
             game_id: GameId::mhw(),
@@ -475,6 +571,24 @@ mod tests {
         }
     }
 
+    struct CancellingInstallPlanner {
+        task_manager: Arc<crate::TaskManager>,
+        task_id: String,
+        plan: InstallPlan,
+    }
+
+    impl ImportedModInstallPlanner for CancellingInstallPlanner {
+        fn build_imported_mod_install_plan(
+            &self,
+            _request: BuildImportedModInstallPlanRequest,
+        ) -> Result<InstallPlan, InstallPlanningError> {
+            self.task_manager
+                .cancel_task(&self.task_id)
+                .expect("task can be cancelled after planning");
+            Ok(self.plan.clone())
+        }
+    }
+
     struct RecordingInstallCommitter {
         manifest: InstallManifest,
         profiles: Mutex<Vec<String>>,
@@ -504,6 +618,19 @@ mod tests {
                 .push(request.profile_id.as_str().to_owned());
             Ok(InstallCommitResult {
                 manifest: self.manifest.clone(),
+            })
+        }
+    }
+
+    struct FailingInstallCommitter;
+
+    impl InstallPlanCommitter for FailingInstallCommitter {
+        fn commit_install_plan(
+            &self,
+            _request: ImportedModInstallCommitRequest,
+        ) -> Result<InstallCommitResult, InstallCommitError> {
+            Err(InstallCommitError::Failed {
+                phase: crate::InstallCommitPhase::Write,
             })
         }
     }
