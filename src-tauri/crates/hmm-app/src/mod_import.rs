@@ -707,7 +707,7 @@ mod tests {
         ThumbnailRef, ThumbnailStore,
     };
     use std::path::Path;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
@@ -1209,13 +1209,7 @@ mod tests {
         let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
         let thumbnail_cache_maintenance =
             std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
-        let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
-            settings: AppSettings {
-                thumbnail_cache_max_bytes: Some(64 * 1024 * 1024),
-                thumbnail_cache_max_age_days: Some(14),
-            },
-            load_count: Mutex::new(0),
-        });
+        let settings_repository = fake_app_settings_repository(64 * 1024 * 1024, 14);
         let runner = ModImportTaskRunner::new(
             std::sync::Arc::clone(&task_manager),
             std::sync::Arc::new(ModImportPrepareService::new(
@@ -1250,10 +1244,7 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(64 * 1024 * 1024));
-        assert_eq!(
-            calls[0].max_age,
-            Some(Duration::from_secs(14 * 24 * 60 * 60))
-        );
+        assert_eq!(calls[0].max_age, Some(days(14)));
         assert_eq!(settings_repository.load_count(), 1);
     }
 
@@ -1279,13 +1270,7 @@ mod tests {
             .expect("seed analysis");
         let thumbnail_cache_maintenance =
             std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
-        let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
-            settings: AppSettings {
-                thumbnail_cache_max_bytes: Some(32 * 1024 * 1024),
-                thumbnail_cache_max_age_days: Some(7),
-            },
-            load_count: Mutex::new(0),
-        });
+        let settings_repository = fake_app_settings_repository(32 * 1024 * 1024, 7);
         let runner = std::sync::Arc::new(
             ModImportTaskRunner::new(
                 task_manager,
@@ -1331,10 +1316,7 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(32 * 1024 * 1024));
-        assert_eq!(
-            calls[0].max_age,
-            Some(Duration::from_secs(7 * 24 * 60 * 60))
-        );
+        assert_eq!(calls[0].max_age, Some(days(7)));
         assert_eq!(
             calls[0].retained,
             vec![ThumbnailRef {
@@ -1367,13 +1349,7 @@ mod tests {
             .expect("seed analysis");
         let thumbnail_cache_maintenance =
             std::sync::Arc::new(FakeThumbnailCacheMaintenance::default());
-        let settings_repository = std::sync::Arc::new(FakeAppSettingsRepository {
-            settings: AppSettings {
-                thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
-                thumbnail_cache_max_age_days: Some(3),
-            },
-            load_count: Mutex::new(0),
-        });
+        let settings_repository = fake_app_settings_repository(96 * 1024 * 1024, 3);
         let runner = ModImportTaskRunner::new(
             task_manager,
             std::sync::Arc::new(ModImportPrepareService::new(
@@ -1406,10 +1382,7 @@ mod tests {
             .expect("calls lock");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].max_bytes, Some(96 * 1024 * 1024));
-        assert_eq!(
-            calls[0].max_age,
-            Some(Duration::from_secs(3 * 24 * 60 * 60))
-        );
+        assert_eq!(calls[0].max_age, Some(days(3)));
         assert_eq!(
             calls[0].retained,
             vec![ThumbnailRef {
@@ -2187,6 +2160,23 @@ mod tests {
         fn load_count(&self) -> usize {
             *self.load_count.lock().expect("load count lock")
         }
+    }
+
+    fn fake_app_settings_repository(
+        max_bytes: u64,
+        max_age_days: u32,
+    ) -> Arc<FakeAppSettingsRepository> {
+        Arc::new(FakeAppSettingsRepository {
+            settings: AppSettings {
+                thumbnail_cache_max_bytes: Some(max_bytes),
+                thumbnail_cache_max_age_days: Some(max_age_days),
+            },
+            load_count: Mutex::new(0),
+        })
+    }
+
+    fn days(days: u64) -> Duration {
+        Duration::from_secs(days * 24 * 60 * 60)
     }
 
     fn event_phases(events: &[crate::TaskProgressEvent]) -> Vec<&str> {
