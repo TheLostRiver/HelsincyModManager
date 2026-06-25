@@ -1,0 +1,49 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { test } from "node:test";
+
+function readSource(path) {
+  return readFileSync(path, "utf8");
+}
+
+test("install plan API invokes backend-driven imported mod preview command", () => {
+  assert.equal(existsSync("src/features/mods/modInstallPlanApi.ts"), true);
+  const source = readSource("src/features/mods/modInstallPlanApi.ts");
+
+  assert.match(source, /invoke<InstallPlanPreview>\("preview_imported_mod_install_plan"/);
+  assert.match(source, /gameId:\s*input\.gameId/);
+  assert.match(source, /modId:\s*input\.modId/);
+  assert.match(source, /layerName:\s*input\.layerName/);
+  assert.match(source, /layerPriority:\s*input\.layerPriority/);
+  assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath/i);
+});
+
+test("install plan types expose preview DTO without filesystem paths", () => {
+  assert.equal(existsSync("src/features/mods/modInstallPlanTypes.ts"), true);
+  const source = readSource("src/features/mods/modInstallPlanTypes.ts");
+
+  assert.match(source, /export type PreviewImportedModInstallPlanInput/);
+  assert.match(source, /export type InstallPlanPreview/);
+  assert.match(source, /hasBlockingConflicts:\s*boolean/);
+  assert.match(source, /targetPath:\s*string/);
+  assert.match(source, /packageFileId:\s*string/);
+  assert.doesNotMatch(source, /sandbox|cache|localPath|diskPath|archivePath|allowedTargetRoots/i);
+});
+
+test("mod library page renders a backend install plan preview workflow", () => {
+  const source = readSource("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(source, /previewInstallPlanForImportedMod/);
+  assert.match(source, /InstallPlanPreviewPanel/);
+  assert.match(source, /preview-plan/);
+  assert.match(source, /selectedIds\.size\s*!==\s*1/);
+  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath/i);
+
+  const previewCall = source.match(/previewInstallPlanForImportedMod\(\{([\s\S]*?)\}\)/);
+  assert.ok(previewCall, "expected page to call the backend-driven imported mod preview wrapper");
+  assert.match(previewCall[1], /gameId:\s*"mhw"/);
+  assert.match(previewCall[1], /modId/);
+  assert.match(previewCall[1], /layerName:\s*"base"/);
+  assert.match(previewCall[1], /layerPriority:\s*0/);
+  assert.doesNotMatch(previewCall[1], /targetPath|allowedTargetRoots|sandbox|cache|archivePath/i);
+});

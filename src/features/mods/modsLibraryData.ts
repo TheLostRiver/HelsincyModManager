@@ -678,6 +678,7 @@ export const compactActions: CompactAction[] = [
   { id: "refresh", label: "刷新", variant: "neutral" },
   { id: "enable-all", label: "启用全部 MOD", variant: "success" },
   { id: "disable-all", label: "禁用全部 MOD", variant: "warning" },
+  { id: "preview-plan", label: "预览安装计划", variant: "info" },
   { id: "reinstall", label: "重装选中 MOD", variant: "info" },
   { id: "uninstall", label: "卸载选中 MOD", variant: "danger" },
 ];

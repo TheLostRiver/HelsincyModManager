@@ -9,8 +9,10 @@ import {
 } from "react";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
+import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./InstallPlanPreviewPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
+import { previewInstallPlanForImportedMod } from "./modInstallPlanApi";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
 import { resolveLoadedModLibraryItems } from "./modLibraryLoadState";
@@ -127,6 +129,28 @@ const initialScrollUiState = getModLibraryScrollUiState({
   clientHeight: 0,
 });
 
+function installPlanPreviewErrorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+      ? error.code
+      : null;
+
+  switch (code) {
+    case "install_planning_imported_mod_not_found":
+      return "未找到已导入的 Mod";
+    case "install_planning_imported_mod_analysis_unavailable":
+      return "无法读取导入分析";
+    case "install_planning_imported_mod_sandbox_unavailable":
+    case "install_planning_imported_mod_file_scan_unavailable":
+      return "无法读取导入文件";
+    case "install_planning_game_adapter_not_found":
+    case "game_id_invalid":
+      return "当前游戏不支持安装计划预览";
+    default:
+      return "安装计划预览失败";
+  }
+}
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
@@ -136,6 +160,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
+  const [installPlanPreviewState, setInstallPlanPreviewState] = useState<InstallPlanPreviewPanelState>({
+    status: "idle",
+  });
 
   const visibleItems = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -263,6 +290,34 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     });
   };
 
+  const previewSelectedInstallPlan = () => {
+    if (selectedIds.size !== 1) {
+      return;
+    }
+
+    const [modId] = Array.from(selectedIds);
+    const item = libraryItems.find((candidate) => candidate.id === modId);
+    const modName = item?.name ?? modId;
+
+    setInstallPlanPreviewState({ status: "loading", modName });
+    void previewInstallPlanForImportedMod({
+      gameId: "mhw",
+      modId,
+      layerName: "base",
+      layerPriority: 0,
+    })
+      .then((plan) => {
+        setInstallPlanPreviewState({ status: "ready", modName, plan });
+      })
+      .catch((error: unknown) => {
+        setInstallPlanPreviewState({
+          status: "error",
+          modName,
+          message: installPlanPreviewErrorMessage(error),
+        });
+      });
+  };
+
   const handleAction = (actionId: string) => {
     switch (actionId) {
       case "select-all":
@@ -270,6 +325,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         break;
       case "invert":
         invertSelection();
+        break;
+      case "preview-plan":
+        previewSelectedInstallPlan();
         break;
       case "uninstall":
       case "reinstall":
@@ -341,6 +399,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           <CompactActionPanel selectedCount={selectedCount} totalCount={visibleItems.length} onAction={handleAction} />
         </div>
       </div>
+
+      <InstallPlanPreviewPanel
+        state={installPlanPreviewState}
+        onClose={() => setInstallPlanPreviewState({ status: "idle" })}
+      />
 
       <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
         <div ref={contentRef} className="mod-library__content">

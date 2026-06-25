@@ -15,7 +15,7 @@
 - [x] 在 `hmm-app` 增加只读安装计划预览服务。
 - [x] 增加 `preview_install_plan` Tauri DTO/command，并更新前后端契约。
 - [x] 让后端从已导入 Mod 的受控 sandbox 和游戏 adapter 生成安装计划输入，减少正式前端直接传 `targetPath` 的需要。
-- [ ] 接入最小前端 typed API / 预览 UI。
+- [x] 接入最小前端 typed API / 预览 UI。
 - [ ] 在 backup / manifest / rollback 链路补齐后，再进入真实安装提交。
 
 ## 当前 PR 目标
