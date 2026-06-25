@@ -49,6 +49,7 @@ pub struct StoredModImportAnalysis {
     pub display_name: String,
     #[serde(default)]
     pub metadata: StoredModPackageMetadata,
+    #[serde(default = "default_preview_image")]
     pub preview_image: StoredImportPreviewImage,
 }
 
@@ -89,6 +90,12 @@ pub enum StoredImportPreviewImage {
 
 fn default_preview_thumbnail_variant() -> String {
     "preview-768".to_owned()
+}
+
+fn default_preview_image() -> StoredImportPreviewImage {
+    StoredImportPreviewImage::Fallback {
+        reason: PreviewImageRejectionReason::Missing,
+    }
 }
 
 pub trait ModImportResultRepository: Send + Sync {
