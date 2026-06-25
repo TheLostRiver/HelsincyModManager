@@ -97,8 +97,12 @@ fn read_thumbnail(
 ) -> Result<ThumbnailResponse, ThumbnailProtocolError> {
     let reference = parse_thumbnail_url(uri)?;
     let thumbnails_root = cache_root.join("thumbnails");
+    if !is_registered_cache_dir(&thumbnails_root) {
+        return Err(ThumbnailProtocolError::BadRequest);
+    }
+
     let package_dir = thumbnails_root.join(&reference.package_id);
-    if !is_registered_package_dir(&package_dir) {
+    if !is_registered_cache_dir(&package_dir) {
         return Err(ThumbnailProtocolError::BadRequest);
     }
 
@@ -140,8 +144,8 @@ fn read_thumbnail(
     Err(ThumbnailProtocolError::NotFound)
 }
 
-fn is_registered_package_dir(package_dir: &Path) -> bool {
-    let Ok(metadata) = std::fs::symlink_metadata(package_dir) else {
+fn is_registered_cache_dir(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
         return false;
     };
     let file_type = metadata.file_type();
@@ -272,11 +276,61 @@ mod tests {
         fs::remove_dir_all(root).expect("cleanup temp root");
     }
 
+    #[test]
+    fn rejects_symlinked_thumbnails_root_without_following_it() {
+        let root = temp_root("thumbnail-protocol-symlink-root");
+        let outside = temp_root("thumbnail-protocol-outside");
+        let thumbnails_link = root.join("thumbnails");
+        let outside_package = outside.join("pkg-1");
+        fs::create_dir_all(&outside_package).expect("create outside package");
+        fs::write(
+            outside_package.join("preview-768-abcdef.jpg"),
+            b"outside bytes",
+        )
+        .expect("write outside thumbnail");
+        fs::create_dir_all(&root).expect("create app data root");
+
+        if !try_create_dir_symlink(&outside, &thumbnails_link) {
+            fs::remove_dir_all(root).expect("cleanup temp root");
+            fs::remove_dir_all(outside).expect("cleanup outside root");
+            return;
+        }
+
+        assert_eq!(
+            read_thumbnail(&root, "thumbnail://pkg-1/preview-768/abcdef")
+                .expect_err("symlinked thumbnails root rejected"),
+            ThumbnailProtocolError::BadRequest
+        );
+
+        let _ = fs::remove_dir(&thumbnails_link);
+        fs::remove_dir_all(root).expect("cleanup temp root");
+        fs::remove_dir_all(outside).expect("cleanup outside root");
+    }
+
     fn temp_root(name: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time")
             .as_nanos();
         std::env::temp_dir().join(format!("{name}-{suffix}"))
+    }
+
+    #[cfg(unix)]
+    fn try_create_dir_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+
+    #[cfg(windows)]
+    fn try_create_dir_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
+        if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+            return true;
+        }
+
+        let output = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output();
+        output.is_ok_and(|output| output.status.success())
     }
 }

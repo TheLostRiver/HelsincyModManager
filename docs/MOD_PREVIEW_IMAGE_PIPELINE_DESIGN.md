@@ -132,7 +132,7 @@ Tauri command 只做窄用例入口和 DTO 映射：
 
 - 只接受 opaque `thumbnailRef` 形态的请求（语义上为 `thumbnail://<package_id>/<variant>/<content_hash>`），不接受任意路径。
 - 可以为了 Tauri/WebView 平台兼容接受等价的受控 origin，例如 `http://thumbnail.localhost/<package_id>/<variant>/<content_hash>`；前端仍只能消费后端 DTO 返回的 `thumbnailUrl`，不能自行拼接。
-- 解析后定位到受控缓存目录，校验最终路径不穿越、不是符号链接、不指向缓存目录之外，并拒绝未登记 package 的访问。
+- 解析后定位到受控缓存目录，校验 `thumbnails` 根、package 目录和最终文件都不是 symlink / junction，最终路径不穿越且不指向缓存目录之外，并拒绝未登记 package 的访问。
 - 设置正确的 `Content-Type`（如 `image/jpeg`）和可缓存响应头。
 - 文件缺失或解析失败时返回合适的 HTTP 状态（如 404），由前端 `<img onError>` 降级到 fallback 占位。
 
@@ -451,7 +451,7 @@ duration_ms
 - 缩略图缓存清理只删除未引用普通文件，保留当前引用，跳过 symlink 或异常 entry，不越过缓存根。
 - 包元数据展示名优先来自 sandbox manifest/readme，缺失或损坏时回退 package id，且不读取 sandbox 外路径。
 - zip 沙盒准备器拒绝路径穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限，且失败时清理本次 task sandbox。
-- protocol handler 拒绝 traversal、absolute path、symlink、未登记 package，并返回正确 content type。
+- protocol handler 拒绝 traversal、absolute path、symlinked `thumbnails` 根、package / 文件 symlink、未登记 package，并返回正确 content type。
 - 前端卡片在有图、无图、图片加载失败时比例不变。
 - 日志不包含完整路径或第三方图片内容。
 
