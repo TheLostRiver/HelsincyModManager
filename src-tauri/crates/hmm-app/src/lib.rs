@@ -1,5 +1,6 @@
 mod app_settings;
 mod game_setup;
+mod install;
 mod log_diagnostics;
 mod mod_dependency_graph;
 mod mod_import;
@@ -12,6 +13,9 @@ mod task_manager;
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
+};
+pub use install::{
+    BuildInstallPlanRequest, InstallPlanFile, InstallPlanningError, InstallPlanningService,
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
