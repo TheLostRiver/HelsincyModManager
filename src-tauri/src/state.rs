@@ -3,22 +3,24 @@ use hmm_app::{
     LimitedPreviewImageProcessor, ModImportAnalysisService, ModImportPrepareService,
     ModImportTaskRunner, ModImportTaskService, ModLibraryService, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    PreviewImageDiagnosticsExportService, PreviewImageService, SupportDiagnosticsExportService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
-    FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemThumbnailStore,
-    ImageCratePreviewImageProcessor, JsonAppSettingsRepository, JsonGameConfigRepository,
-    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
-    SystemClock, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemTextLogReader,
+    FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
+    JsonGameConfigRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
+    RealGameDirectoryProbeFactory, SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner,
+    SteamGameDiscoveryService, SystemClock, SystemDiagnosticsEnvironmentProvider,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
-    ModImportResultRepository, ModImportSandboxLocator, ThumbnailCacheMaintenance,
+    DiagnosticsEnvironmentProvider, GameAdapter, ModImportResultRepository,
+    ModImportSandboxLocator, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::sync::Arc;
@@ -32,6 +34,7 @@ pub struct AppState {
     pub preview_image_detail: Arc<PreviewImageDetailService>,
     pub preview_image_diagnostics_export: Arc<PreviewImageDiagnosticsExportService>,
     pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
+    pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -60,6 +63,13 @@ impl AppState {
         let diagnostic_package_exporter: Arc<dyn DiagnosticPackageExporter> = Arc::new(
             FileSystemDiagnosticPackageExporter::new(app_data_dir.clone()),
         );
+        let text_log_reader: Arc<dyn TextLogReader> =
+            Arc::new(FileSystemTextLogReader::new(app_data_dir.clone()));
+        let diagnostics_environment_provider: Arc<dyn DiagnosticsEnvironmentProvider> =
+            Arc::new(SystemDiagnosticsEnvironmentProvider::new(
+                env!("CARGO_PKG_VERSION").to_owned(),
+                vec![MonsterHunterWorldAdapter.game_id().as_str().to_owned()],
+            ));
         let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
@@ -131,7 +141,15 @@ impl AppState {
             Arc::new(SystemClock),
         ));
         let audit_log_diagnostics_export = Arc::new(AuditLogDiagnosticsExportService::new(
+            Arc::clone(&audit_log_reader),
+            Arc::clone(&diagnostic_package_exporter),
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+        ));
+        let support_diagnostics_export = Arc::new(SupportDiagnosticsExportService::new(
+            text_log_reader,
             audit_log_reader,
+            diagnostics_environment_provider,
             diagnostic_package_exporter,
             audit_log_writer,
             Arc::new(SystemClock),
@@ -172,6 +190,7 @@ impl AppState {
             preview_image_detail,
             preview_image_diagnostics_export,
             audit_log_diagnostics_export,
+            support_diagnostics_export,
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,

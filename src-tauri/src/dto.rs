@@ -235,6 +235,17 @@ pub struct AuditLogDiagnosticsExportDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SupportDiagnosticsExportDto {
+    pub export_id: String,
+    pub file_name: String,
+    pub size_bytes: u64,
+    pub app_log_line_count: usize,
+    pub task_log_line_count: usize,
+    pub audit_event_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewImageDiagnosticExportCategoryDto {
     pub category: PreviewImageDiagnosticExportCategoryIdDto,
     pub status: PreviewImageDiagnosticExportCategoryStatusDto,
@@ -438,6 +449,19 @@ impl From<hmm_app::AuditLogDiagnosticsExport> for AuditLogDiagnosticsExportDto {
             export_id: export.export_id,
             file_name: export.file_name,
             size_bytes: export.size_bytes,
+            audit_event_count: export.audit_event_count,
+        }
+    }
+}
+
+impl From<hmm_app::SupportDiagnosticsExport> for SupportDiagnosticsExportDto {
+    fn from(export: hmm_app::SupportDiagnosticsExport) -> Self {
+        Self {
+            export_id: export.export_id,
+            file_name: export.file_name,
+            size_bytes: export.size_bytes,
+            app_log_line_count: export.app_log_line_count,
+            task_log_line_count: export.task_log_line_count,
             audit_event_count: export.audit_event_count,
         }
     }
@@ -953,6 +977,37 @@ mod preview_image_tests {
         assert_eq!(value["sizeBytes"], 1234);
         assert_eq!(value["auditEventCount"], 2);
         assert!(value.get("events").is_none());
+        assert!(!value.to_string().contains("thumbnail://"));
+        assert!(!value.to_string().contains("contentHash"));
+        assert!(!value.to_string().contains("raw_path"));
+        assert!(!value.to_string().contains("C:/"));
+        assert!(!value.to_string().contains("sandbox"));
+    }
+
+    #[test]
+    fn serializes_support_diagnostics_export_without_paths_or_raw_logs() {
+        let dto: SupportDiagnosticsExportDto = hmm_app::SupportDiagnosticsExport {
+            export_id: "support-diagnostics-42.zip".to_owned(),
+            file_name: "support-diagnostics-42.zip".to_owned(),
+            size_bytes: 4096,
+            app_log_line_count: 2,
+            task_log_line_count: 3,
+            audit_event_count: 4,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize support diagnostics export");
+
+        assert_eq!(value["exportId"], "support-diagnostics-42.zip");
+        assert_eq!(value["fileName"], "support-diagnostics-42.zip");
+        assert_eq!(value["sizeBytes"], 4096);
+        assert_eq!(value["appLogLineCount"], 2);
+        assert_eq!(value["taskLogLineCount"], 3);
+        assert_eq!(value["auditEventCount"], 4);
+        assert!(value.get("appLogLines").is_none());
+        assert!(value.get("taskLogLines").is_none());
+        assert!(value.get("events").is_none());
+        assert!(value.get("path").is_none());
         assert!(!value.to_string().contains("thumbnail://"));
         assert!(!value.to_string().contains("contentHash"));
         assert!(!value.to_string().contains("raw_path"));
