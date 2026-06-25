@@ -1,6 +1,7 @@
 mod app_settings;
 mod game_setup;
 mod install;
+mod install_task;
 mod log_diagnostics;
 mod mod_dependency_graph;
 mod mod_import;
@@ -18,6 +19,10 @@ pub use install::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
     InstallPlanFile, InstallPlanningError, InstallPlanningService,
+};
+pub use install_task::{
+    ImportedModInstallCommitRequest, ImportedModInstallPlanner, InstallPlanCommitter,
+    InstallTaskRunError, InstallTaskRunner, InstallTaskService, StartInstallTaskRequest,
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,

@@ -8,17 +8,18 @@ export type CancelTaskInput = {
 
 export const TASK_PROGRESS_EVENT_NAME = "hmm://task-progress";
 
+export type TaskKind = "mod_import" | "install";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type TaskStartedDto = {
   taskId: string;
-  kind: "mod_import";
+  kind: TaskKind;
   status: TaskStatus;
 };
 
 export type TaskProgressEventDto = {
   taskId: string;
-  kind: "mod_import";
+  kind: TaskKind;
   status: TaskStatus;
   phase: string;
   current: number | null;
