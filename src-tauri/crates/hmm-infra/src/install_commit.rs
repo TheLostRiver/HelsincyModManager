@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId};
+use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId, ProfileId};
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
 };
@@ -144,6 +144,37 @@ impl JsonInstallManifestRepository {
 }
 
 impl InstallManifestRepository for JsonInstallManifestRepository {
+    fn load_manifest(&self, profile_id: &ProfileId) -> Result<Option<InstallManifest>> {
+        let file_name = manifest_file_name(profile_id.as_str())?;
+
+        if !self.manifest_root.exists() {
+            return Ok(None);
+        }
+
+        ensure_contained_existing_path(&self.manifest_root, &self.manifest_root)?;
+        let manifest_path = self.manifest_root.join(file_name);
+
+        let metadata = match fs::symlink_metadata(&manifest_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).context("failed to inspect install manifest"),
+        };
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            anyhow::bail!("install manifest is not a regular file");
+        }
+        ensure_contained_existing_path(&self.manifest_root, &manifest_path)?;
+
+        let serialized =
+            fs::read_to_string(&manifest_path).context("failed to read install manifest")?;
+        let manifest: InstallManifest =
+            serde_json::from_str(&serialized).context("failed to deserialize install manifest")?;
+        if manifest.profile_id != *profile_id {
+            anyhow::bail!("install manifest profile id does not match request");
+        }
+
+        Ok(Some(manifest))
+    }
+
     fn save_manifest(&self, manifest: &InstallManifest) -> Result<()> {
         fs::create_dir_all(&self.manifest_root)
             .context("failed to create install manifest root")?;
@@ -478,10 +509,7 @@ mod tests {
         let game_root = temp.path().join("game");
         let outside_target = temp.path().join("outside-created.mod3");
         fs::create_dir_all(game_root.join("nativePC/models")).expect("create game dirs");
-        if !try_create_file_symlink(
-            &outside_target,
-            game_root.join("nativePC/models/link.mod3"),
-        ) {
+        if !try_create_file_symlink(&outside_target, game_root.join("nativePC/models/link.mod3")) {
             return;
         }
         let target =
@@ -508,9 +536,8 @@ mod tests {
         if !try_create_dir_symlink(&outside_root, game_root.join("nativePC/link")) {
             return;
         }
-        let target =
-            InstallTargetPath::parse("nativePC/link/new-dir/file.mod3", ["nativePC"])
-                .expect("target");
+        let target = InstallTargetPath::parse("nativePC/link/new-dir/file.mod3", ["nativePC"])
+            .expect("target");
 
         let error = FileSystemInstallGameFileSystem::new(game_root)
             .write_game_file(&target, b"new")
@@ -532,8 +559,8 @@ mod tests {
         if !try_create_dir_symlink(&outside_root, game_root.join("nativePC/link")) {
             return;
         }
-        let target = InstallTargetPath::parse("nativePC/link/player.mod3", ["nativePC"])
-            .expect("target");
+        let target =
+            InstallTargetPath::parse("nativePC/link/player.mod3", ["nativePC"]).expect("target");
 
         let error = FileSystemInstallGameFileSystem::new(game_root)
             .read_game_file(&target)
@@ -554,8 +581,8 @@ mod tests {
         if !try_create_dir_symlink(&outside_root, game_root.join("nativePC/link")) {
             return;
         }
-        let target = InstallTargetPath::parse("nativePC/link/player.mod3", ["nativePC"])
-            .expect("target");
+        let target =
+            InstallTargetPath::parse("nativePC/link/player.mod3", ["nativePC"]).expect("target");
 
         let error = FileSystemInstallGameFileSystem::new(game_root)
             .remove_game_file(&target)
@@ -611,19 +638,109 @@ mod tests {
         assert_eq!(temp_artifacts, 0);
     }
 
+    #[test]
+    fn json_manifest_repository_load_returns_none_when_manifest_is_missing() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
+
+        let manifest = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect("missing manifest should not fail");
+
+        assert_eq!(manifest, None);
+    }
+
+    #[test]
+    fn json_manifest_repository_load_round_trips_saved_manifest() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
+        let manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("target"),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: Some("backup-player".to_owned()),
+            }],
+        };
+
+        repository.save_manifest(&manifest).expect("save manifest");
+        let loaded = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect("load manifest");
+
+        assert_eq!(loaded, Some(manifest));
+    }
+
+    #[test]
+    fn json_manifest_repository_load_rejects_unsafe_profile_id_without_path_details() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
+
+        let error = repository
+            .load_manifest(&ProfileId::new("../outside"))
+            .expect_err("unsafe profile id must be rejected");
+
+        assert!(!error
+            .to_string()
+            .contains(temp.path().to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn json_manifest_repository_load_rejects_broken_symlink_manifest() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let manifest_root = temp.path().join("manifests");
+        fs::create_dir_all(&manifest_root).expect("create manifest root");
+        if !try_create_file_symlink(
+            temp.path().join("missing-manifest.json"),
+            manifest_root.join("default.json"),
+        ) {
+            return;
+        }
+        let repository = JsonInstallManifestRepository::new(manifest_root);
+
+        let error = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect_err("manifest symlink must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install manifest is not a regular file"));
+    }
+
+    #[test]
+    fn json_manifest_repository_load_rejects_profile_id_mismatch() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
+        let manifest = InstallManifest {
+            profile_id: ProfileId::new("other"),
+            entries: Vec::new(),
+        };
+
+        repository.save_manifest(&manifest).expect("save manifest");
+        fs::rename(
+            temp.path().join("manifests").join("other.json"),
+            temp.path().join("manifests").join("default.json"),
+        )
+        .expect("rename manifest fixture");
+        let error = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect_err("profile mismatch must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install manifest profile id does not match request"));
+    }
+
     #[cfg(unix)]
-    fn try_create_file_symlink(
-        original: impl AsRef<Path>,
-        link: impl AsRef<Path>,
-    ) -> bool {
+    fn try_create_file_symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> bool {
         std::os::unix::fs::symlink(original, link).is_ok()
     }
 
     #[cfg(windows)]
-    fn try_create_file_symlink(
-        original: impl AsRef<Path>,
-        link: impl AsRef<Path>,
-    ) -> bool {
+    fn try_create_file_symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> bool {
         std::os::windows::fs::symlink_file(original, link).is_ok()
     }
 

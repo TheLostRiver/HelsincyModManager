@@ -44,6 +44,7 @@ pub struct InstallCommitResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallCommitPhase {
+    ManifestRead,
     SourceRead,
     TargetRead,
     Backup,
@@ -131,13 +132,21 @@ impl InstallCommitService {
         &self,
         request: CommitInstallPlanRequest,
     ) -> Result<InstallCommitResult, InstallCommitError> {
-        if request.plan.has_blocking_conflicts() {
+        let CommitInstallPlanRequest { profile_id, plan } = request;
+
+        if plan.has_blocking_conflicts() {
             return Err(InstallCommitError::PlanHasBlockingConflicts);
         }
 
+        let existing_manifest = self
+            .manifest_repository
+            .load_manifest(&profile_id)
+            .map_err(|_| InstallCommitError::Failed {
+                phase: InstallCommitPhase::ManifestRead,
+            })?;
         let mut applied_changes = Vec::new();
 
-        for action in request.plan.actions {
+        for action in plan.actions {
             let source_bytes = self
                 .source_files
                 .read_source_file(&action.provider.package_file_id)
@@ -187,13 +196,14 @@ impl InstallCommitService {
             });
         }
 
-        let manifest = InstallManifest {
-            profile_id: request.profile_id,
-            entries: applied_changes
+        let manifest = merge_install_manifest(
+            profile_id,
+            existing_manifest,
+            applied_changes
                 .iter()
                 .map(|change| change.entry.clone())
                 .collect(),
-        };
+        );
 
         self.manifest_repository
             .save_manifest(&manifest)
@@ -260,6 +270,28 @@ impl InstallCommitService {
             Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+}
+
+fn merge_install_manifest(
+    profile_id: ProfileId,
+    existing_manifest: Option<InstallManifest>,
+    applied_entries: Vec<InstallManifestEntry>,
+) -> InstallManifest {
+    let mut entries = existing_manifest
+        .map(|manifest| manifest.entries)
+        .unwrap_or_default();
+
+    entries.retain(|entry| {
+        !applied_entries
+            .iter()
+            .any(|applied_entry| applied_entry.target_path == entry.target_path)
+    });
+    entries.extend(applied_entries);
+
+    InstallManifest {
+        profile_id,
+        entries,
     }
 }
 
@@ -613,6 +645,122 @@ mod tests {
     }
 
     #[test]
+    fn commit_plan_merges_existing_manifest_by_target_path() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/player.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![
+                InstallManifestEntry {
+                    target_path: InstallTargetPath::parse(
+                        "nativePC/models/keep.mod3",
+                        ["nativePC"],
+                    )
+                    .expect("valid target"),
+                    mod_id: ModId::new("mod-new"),
+                    package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
+                    layer: FileLayer::new("base", 0),
+                    backup_ref: None,
+                },
+                InstallManifestEntry {
+                    target_path: InstallTargetPath::parse(
+                        "nativePC/models/player.mod3",
+                        ["nativePC"],
+                    )
+                    .expect("valid target"),
+                    mod_id: ModId::new("mod-old"),
+                    package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
+                    layer: FileLayer::new("base", 0),
+                    backup_ref: Some("backup-old-player".to_owned()),
+                },
+            ],
+        };
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service =
+            InstallCommitService::new(source_files, game_files, backups, manifests.clone());
+
+        service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect("commit should succeed");
+
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.profile_id.as_str(), "default");
+        assert_eq!(
+            manifest
+                .entries
+                .iter()
+                .map(|entry| (
+                    entry.target_path.as_str(),
+                    entry.mod_id.as_str(),
+                    entry.package_file_id.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    "nativePC/models/keep.mod3",
+                    "mod-new",
+                    "nativePC/models/keep.mod3"
+                ),
+                (
+                    "nativePC/models/player.mod3",
+                    "mod-new",
+                    "nativePC/models/player.mod3"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn commit_plan_aborts_before_writes_when_manifest_load_fails() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/player.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(RecordingInstallManifestRepository::failing_load());
+        let service =
+            InstallCommitService::new(source_files, game_files.clone(), backups, manifests);
+
+        let error = service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect_err("manifest load failure should abort before file operations");
+
+        assert_eq!(
+            error,
+            InstallCommitError::Failed {
+                phase: InstallCommitPhase::ManifestRead
+            }
+        );
+        assert_eq!(game_files.file_bytes("nativePC/models/player.mod3"), None);
+    }
+
+    #[test]
     fn commit_plan_backs_up_overwritten_files_before_writing_manifest() {
         let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
             .expect("valid target");
@@ -769,12 +917,8 @@ mod tests {
         )]));
         let backups = Arc::new(RecordingInstallBackupStore::default());
         let manifests = Arc::new(RecordingInstallManifestRepository::failing());
-        let service = InstallCommitService::new(
-            source_files,
-            game_files.clone(),
-            backups.clone(),
-            manifests,
-        );
+        let service =
+            InstallCommitService::new(source_files, game_files.clone(), backups.clone(), manifests);
 
         let error = service
             .commit_plan(CommitInstallPlanRequest {
@@ -885,12 +1029,8 @@ mod tests {
         ]));
         let backups = Arc::new(RecordingInstallBackupStore::failing_removals());
         let manifests = Arc::new(RecordingInstallManifestRepository::failing());
-        let service = InstallCommitService::new(
-            source_files,
-            game_files.clone(),
-            backups.clone(),
-            manifests,
-        );
+        let service =
+            InstallCommitService::new(source_files, game_files.clone(), backups.clone(), manifests);
 
         let error = service
             .commit_plan(CommitInstallPlanRequest {
@@ -906,7 +1046,9 @@ mod tests {
             }
         );
         assert_eq!(
-            game_files.file_bytes("nativePC/models/first.mod3").as_deref(),
+            game_files
+                .file_bytes("nativePC/models/first.mod3")
+                .as_deref(),
             Some(b"old first".as_slice())
         );
         assert_eq!(
@@ -1178,16 +1320,34 @@ mod tests {
 
     #[derive(Default)]
     struct RecordingInstallManifestRepository {
+        existing_manifest: Option<InstallManifest>,
         saved_manifest: Mutex<Option<InstallManifest>>,
+        fail_load: bool,
         fail_save: bool,
     }
 
     impl RecordingInstallManifestRepository {
+        fn failing_load() -> Self {
+            Self {
+                existing_manifest: None,
+                saved_manifest: Mutex::new(None),
+                fail_load: true,
+                fail_save: false,
+            }
+        }
+
         fn failing() -> Self {
             Self {
+                existing_manifest: None,
                 saved_manifest: Mutex::new(None),
+                fail_load: false,
                 fail_save: true,
             }
+        }
+
+        fn with_existing_manifest(mut self, manifest: InstallManifest) -> Self {
+            self.existing_manifest = Some(manifest);
+            self
         }
 
         fn take_manifest(&self) -> Option<InstallManifest> {
@@ -1196,6 +1356,16 @@ mod tests {
     }
 
     impl InstallManifestRepository for RecordingInstallManifestRepository {
+        fn load_manifest(
+            &self,
+            _profile_id: &ProfileId,
+        ) -> anyhow::Result<Option<InstallManifest>> {
+            if self.fail_load {
+                anyhow::bail!("manifest load failed");
+            }
+            Ok(self.existing_manifest.clone())
+        }
+
         fn save_manifest(&self, manifest: &InstallManifest) -> anyhow::Result<()> {
             if self.fail_save {
                 anyhow::bail!("manifest save failed");
