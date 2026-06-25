@@ -14,18 +14,19 @@
 - [x] 在 `hmm-core` 定义最小 `InstallPlan`、目标路径校验和冲突模型。
 - [x] 在 `hmm-app` 增加只读安装计划预览服务。
 - [x] 增加 `preview_install_plan` Tauri DTO/command，并更新前后端契约。
-- [ ] 让后端从已导入 Mod 的受控 sandbox 和游戏 adapter 生成安装计划输入，减少正式前端直接传 `targetPath` 的需要。
+- [x] 让后端从已导入 Mod 的受控 sandbox 和游戏 adapter 生成安装计划输入，减少正式前端直接传 `targetPath` 的需要。
 - [ ] 接入最小前端 typed API / 预览 UI。
 - [ ] 在 backup / manifest / rollback 链路补齐后，再进入真实安装提交。
 
-## 下一条 PR 目标
+## 当前 PR 目标
 
-实现第一条只读、可测试的 InstallPlan 预览切片：
+实现后端驱动的只读 InstallPlan 预览输入切片：
 
-- 在 `hmm-core` 定义安装计划最小领域模型。
-- 定义安全的目标相对路径类型，拒绝空路径、绝对路径、父级穿越、Windows 盘符前缀和不被适配器允许的目标根。
-- 基于已分析的文件提供者生成 `InstallPlan`，只描述将要写入的目标路径、来源引用和阻断冲突。
-- 使用测试证明冲突检测基于最终目标路径，而不是原始包路径或前端输入。
+- 通过已持久化导入结果按 `modId` 找到 `packageId`。
+- 通过受控 sandbox locator 定位已导入包的 sandbox root。
+- 只读枚举 sandbox 内普通文件，生成 package file candidate。
+- 由 game adapter 提供允许安装根，app service 组装 `InstallPlan` 输入。
+- 增加 `preview_imported_mod_install_plan` Tauri 入口，让正式前端不再直接提交 `targetPath`。
 
 ## 明确不做
 
