@@ -12,8 +12,9 @@ use game_setup_commands::{
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
     get_mod_dependency_graph, get_mod_detail, get_mod_detail_preview_image, get_mod_library,
-    get_preview_image_candidates, get_preview_image_diagnostics, maintain_thumbnail_cache,
-    select_preview_image_candidate, set_thumbnail_cache_settings, start_import_mod_task,
+    get_preview_image_candidates, get_preview_image_diagnostics, get_thumbnail_cache_settings,
+    maintain_thumbnail_cache, select_preview_image_candidate, set_thumbnail_cache_settings,
+    start_import_mod_task,
 };
 use state::AppState;
 use task_commands::cancel_task;
@@ -52,6 +53,7 @@ pub fn run() {
             get_preview_image_candidates,
             select_preview_image_candidate,
             maintain_thumbnail_cache,
+            get_thumbnail_cache_settings,
             set_thumbnail_cache_settings
         ])
         .run(tauri::generate_context!())

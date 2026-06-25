@@ -174,6 +174,18 @@ pub fn maintain_thumbnail_cache(state: State<'_, AppState>) -> Result<(), Comman
 }
 
 #[tauri::command]
+pub fn get_thumbnail_cache_settings(
+    state: State<'_, AppState>,
+) -> Result<AppSettingsDto, CommandErrorDto> {
+    let settings = state
+        .app_settings
+        .get_settings()
+        .map_err(CommandErrorDto::from_app_settings_service_error)?;
+
+    Ok(settings.into())
+}
+
+#[tauri::command]
 pub fn set_thumbnail_cache_settings(
     thumbnail_cache_max_bytes: Option<u64>,
     thumbnail_cache_max_age_days: Option<u32>,
