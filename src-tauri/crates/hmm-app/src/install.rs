@@ -1,9 +1,10 @@
 use hmm_core::{
-    FileLayer, GameId, InstallFileProvider, InstallPlan, InstallTargetPath, InstallTargetPathError,
-    ModId, PackageFileId,
+    FileLayer, GameId, InstallFileProvider, InstallManifest, InstallManifestEntry, InstallPlan,
+    InstallTargetPath, InstallTargetPathError, ModId, PackageFileId, ProfileId,
 };
 use hmm_ports::{
-    GameAdapter, ModImportResultRepository, ModImportSandboxLocator,
+    GameAdapter, InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
+    InstallSourceFileReader, ModImportResultRepository, ModImportSandboxLocator,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use std::sync::Arc;
@@ -28,6 +29,38 @@ pub struct InstallPlanFile {
     pub package_file_id: PackageFileId,
     pub target_path: String,
     pub layer: FileLayer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitInstallPlanRequest {
+    pub profile_id: ProfileId,
+    pub plan: InstallPlan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallCommitResult {
+    pub manifest: InstallManifest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallCommitPhase {
+    SourceRead,
+    TargetRead,
+    Backup,
+    Write,
+    Manifest,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InstallCommitError {
+    #[error("install plan has blocking conflicts")]
+    PlanHasBlockingConflicts,
+    #[error("install commit failed during {phase:?}")]
+    Failed { phase: InstallCommitPhase },
+    #[error("install commit failed during {failed_phase:?}; rollback succeeded")]
+    RollbackSucceeded { failed_phase: InstallCommitPhase },
+    #[error("install commit failed during {failed_phase:?}; rollback failed")]
+    RollbackFailed { failed_phase: InstallCommitPhase },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -62,6 +95,135 @@ struct ImportedModInstallPlanSources {
 #[derive(Default, Clone)]
 pub struct InstallPlanningService {
     imported_mod_sources: Option<ImportedModInstallPlanSources>,
+}
+
+#[derive(Clone)]
+pub struct InstallCommitService {
+    source_files: Arc<dyn InstallSourceFileReader>,
+    game_files: Arc<dyn InstallGameFileSystem>,
+    backup_store: Arc<dyn InstallBackupStore>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
+}
+
+#[derive(Clone)]
+struct AppliedInstallChange {
+    target_path: InstallTargetPath,
+    previous_bytes: Option<Vec<u8>>,
+    entry: InstallManifestEntry,
+}
+
+impl InstallCommitService {
+    pub fn new(
+        source_files: Arc<dyn InstallSourceFileReader>,
+        game_files: Arc<dyn InstallGameFileSystem>,
+        backup_store: Arc<dyn InstallBackupStore>,
+        manifest_repository: Arc<dyn InstallManifestRepository>,
+    ) -> Self {
+        Self {
+            source_files,
+            game_files,
+            backup_store,
+            manifest_repository,
+        }
+    }
+
+    pub fn commit_plan(
+        &self,
+        request: CommitInstallPlanRequest,
+    ) -> Result<InstallCommitResult, InstallCommitError> {
+        if request.plan.has_blocking_conflicts() {
+            return Err(InstallCommitError::PlanHasBlockingConflicts);
+        }
+
+        let mut applied_changes = Vec::new();
+
+        for action in request.plan.actions {
+            let source_bytes = self
+                .source_files
+                .read_source_file(&action.provider.package_file_id)
+                .map_err(|_| {
+                    self.fail_or_rollback(&applied_changes, InstallCommitPhase::SourceRead)
+                })?;
+            let previous_bytes = self
+                .game_files
+                .read_game_file(&action.target_path)
+                .map_err(|_| {
+                    self.fail_or_rollback(&applied_changes, InstallCommitPhase::TargetRead)
+                })?;
+            let backup_ref = if let Some(bytes) = previous_bytes.as_deref() {
+                Some(
+                    self.backup_store
+                        .store_backup(&action.target_path, bytes)
+                        .map_err(|_| {
+                            self.fail_or_rollback(&applied_changes, InstallCommitPhase::Backup)
+                        })?,
+                )
+            } else {
+                None
+            };
+
+            self.game_files
+                .write_game_file(&action.target_path, &source_bytes)
+                .map_err(|_| self.fail_or_rollback(&applied_changes, InstallCommitPhase::Write))?;
+
+            applied_changes.push(AppliedInstallChange {
+                target_path: action.target_path.clone(),
+                previous_bytes,
+                entry: InstallManifestEntry {
+                    target_path: action.target_path,
+                    mod_id: action.provider.mod_id,
+                    package_file_id: action.provider.package_file_id,
+                    layer: action.provider.layer,
+                    backup_ref,
+                },
+            });
+        }
+
+        let manifest = InstallManifest {
+            profile_id: request.profile_id,
+            entries: applied_changes
+                .iter()
+                .map(|change| change.entry.clone())
+                .collect(),
+        };
+
+        self.manifest_repository
+            .save_manifest(&manifest)
+            .map_err(|_| self.fail_or_rollback(&applied_changes, InstallCommitPhase::Manifest))?;
+
+        Ok(InstallCommitResult { manifest })
+    }
+
+    fn fail_or_rollback(
+        &self,
+        applied_changes: &[AppliedInstallChange],
+        failed_phase: InstallCommitPhase,
+    ) -> InstallCommitError {
+        if applied_changes.is_empty() {
+            return InstallCommitError::Failed {
+                phase: failed_phase,
+            };
+        }
+
+        if self.rollback(applied_changes).is_ok() {
+            InstallCommitError::RollbackSucceeded { failed_phase }
+        } else {
+            InstallCommitError::RollbackFailed { failed_phase }
+        }
+    }
+
+    fn rollback(&self, applied_changes: &[AppliedInstallChange]) -> anyhow::Result<()> {
+        for change in applied_changes.iter().rev() {
+            if let Some(previous_bytes) = &change.previous_bytes {
+                self.game_files
+                    .write_game_file(&change.target_path, previous_bytes)?;
+            } else {
+                self.game_files.remove_game_file(&change.target_path)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl InstallPlanningService {
@@ -170,12 +332,16 @@ mod tests {
     use super::*;
     use hmm_core::{
         FileLayer, GameDirectoryValidation, GameId, InstallTargetPathError, ModId, PackageFileId,
+        ProfileId,
     };
     use hmm_ports::{
-        GameAdapter, GameDirectoryProbe, ModImportResultRepository, ModImportSandboxLocator,
-        ModPackageInstallFile, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-        StoredImportPreviewImage, StoredModImportAnalysis, StoredModPackageMetadata,
+        GameAdapter, GameDirectoryProbe, InstallBackupStore, InstallGameFileSystem,
+        InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
+        ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileScanRequest,
+        ModPackageInstallFileScanner, StoredImportPreviewImage, StoredModImportAnalysis,
+        StoredModPackageMetadata,
     };
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
@@ -360,6 +526,164 @@ mod tests {
         );
     }
 
+    #[test]
+    fn commit_plan_writes_new_files_and_persists_manifest() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/player.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(RecordingInstallManifestRepository::default());
+        let service = InstallCommitService::new(
+            source_files,
+            game_files.clone(),
+            backups.clone(),
+            manifests.clone(),
+        );
+
+        let result = service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect("commit should succeed");
+
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"new model".as_slice())
+        );
+        assert_eq!(backups.records().len(), 0);
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.profile_id.as_str(), "default");
+        assert_eq!(manifest.entries.len(), 1);
+        assert_eq!(
+            manifest.entries[0].target_path.as_str(),
+            "nativePC/models/player.mod3"
+        );
+        assert_eq!(manifest.entries[0].backup_ref, None);
+        assert_eq!(result.manifest, manifest);
+    }
+
+    #[test]
+    fn commit_plan_backs_up_overwritten_files_before_writing_manifest() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/player.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"old model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(RecordingInstallManifestRepository::default());
+        let service = InstallCommitService::new(
+            source_files,
+            game_files.clone(),
+            backups.clone(),
+            manifests.clone(),
+        );
+
+        service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect("commit should succeed");
+
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"new model".as_slice())
+        );
+        assert_eq!(
+            backups.records(),
+            vec![(
+                "nativePC/models/player.mod3".to_owned(),
+                b"old model".to_vec()
+            )]
+        );
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(
+            manifest.entries[0].backup_ref.as_deref(),
+            Some("backup-nativePC-models-player.mod3")
+        );
+    }
+
+    #[test]
+    fn commit_plan_rolls_back_written_files_when_manifest_save_fails() {
+        let new_target =
+            InstallTargetPath::parse("nativePC/models/new.mod3", ["nativePC"]).expect("valid");
+        let existing_target =
+            InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("valid");
+        let plan = InstallPlan::from_providers(vec![
+            InstallFileProvider::new(
+                ModId::new("mod-a"),
+                PackageFileId::new("nativePC/models/new.mod3"),
+                new_target,
+                FileLayer::new("base", 0),
+            ),
+            InstallFileProvider::new(
+                ModId::new("mod-a"),
+                PackageFileId::new("nativePC/models/player.mod3"),
+                existing_target,
+                FileLayer::new("base", 0),
+            ),
+        ]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+            ("nativePC/models/new.mod3", b"new file".as_slice()),
+            ("nativePC/models/player.mod3", b"new model".as_slice()),
+        ]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"old model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(RecordingInstallManifestRepository::failing());
+        let service =
+            InstallCommitService::new(source_files, game_files.clone(), backups, manifests);
+
+        let error = service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect_err("manifest failure should abort commit");
+
+        assert_eq!(
+            error,
+            InstallCommitError::RollbackSucceeded {
+                failed_phase: InstallCommitPhase::Manifest
+            }
+        );
+        assert_eq!(game_files.file_bytes("nativePC/models/new.mod3"), None);
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"old model".as_slice())
+        );
+    }
+
     fn stored_analysis(mod_id: &str, package_id: &str) -> StoredModImportAnalysis {
         StoredModImportAnalysis {
             mod_id: mod_id.to_owned(),
@@ -449,6 +773,140 @@ mod tests {
 
         fn allowed_install_roots(&self) -> Vec<String> {
             self.allowed_roots.clone()
+        }
+    }
+
+    struct RecordingInstallSourceFileReader {
+        files: BTreeMap<String, Vec<u8>>,
+    }
+
+    impl RecordingInstallSourceFileReader {
+        fn new<const N: usize>(files: [(&str, &[u8]); N]) -> Self {
+            Self {
+                files: files
+                    .into_iter()
+                    .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
+                    .collect(),
+            }
+        }
+    }
+
+    impl InstallSourceFileReader for RecordingInstallSourceFileReader {
+        fn read_source_file(&self, package_file_id: &PackageFileId) -> anyhow::Result<Vec<u8>> {
+            self.files
+                .get(package_file_id.as_str())
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("missing source file"))
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingInstallGameFileSystem {
+        files: Mutex<BTreeMap<String, Vec<u8>>>,
+    }
+
+    impl RecordingInstallGameFileSystem {
+        fn with_files<const N: usize>(files: [(&str, &[u8]); N]) -> Self {
+            Self {
+                files: Mutex::new(
+                    files
+                        .into_iter()
+                        .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
+                        .collect(),
+                ),
+            }
+        }
+
+        fn file_bytes(&self, target_path: &str) -> Option<Vec<u8>> {
+            self.files.lock().expect("files").get(target_path).cloned()
+        }
+    }
+
+    impl InstallGameFileSystem for RecordingInstallGameFileSystem {
+        fn read_game_file(
+            &self,
+            target_path: &InstallTargetPath,
+        ) -> anyhow::Result<Option<Vec<u8>>> {
+            Ok(self
+                .files
+                .lock()
+                .expect("files")
+                .get(target_path.as_str())
+                .cloned())
+        }
+
+        fn write_game_file(
+            &self,
+            target_path: &InstallTargetPath,
+            bytes: &[u8],
+        ) -> anyhow::Result<()> {
+            self.files
+                .lock()
+                .expect("files")
+                .insert(target_path.as_str().to_owned(), bytes.to_vec());
+            Ok(())
+        }
+
+        fn remove_game_file(&self, target_path: &InstallTargetPath) -> anyhow::Result<()> {
+            self.files
+                .lock()
+                .expect("files")
+                .remove(target_path.as_str());
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingInstallBackupStore {
+        records: Mutex<Vec<(String, Vec<u8>)>>,
+    }
+
+    impl RecordingInstallBackupStore {
+        fn records(&self) -> Vec<(String, Vec<u8>)> {
+            self.records.lock().expect("records").clone()
+        }
+    }
+
+    impl InstallBackupStore for RecordingInstallBackupStore {
+        fn store_backup(
+            &self,
+            target_path: &InstallTargetPath,
+            bytes: &[u8],
+        ) -> anyhow::Result<String> {
+            self.records
+                .lock()
+                .expect("records")
+                .push((target_path.as_str().to_owned(), bytes.to_vec()));
+            Ok(format!("backup-{}", target_path.as_str().replace('/', "-")))
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingInstallManifestRepository {
+        saved_manifest: Mutex<Option<InstallManifest>>,
+        fail_save: bool,
+    }
+
+    impl RecordingInstallManifestRepository {
+        fn failing() -> Self {
+            Self {
+                saved_manifest: Mutex::new(None),
+                fail_save: true,
+            }
+        }
+
+        fn take_manifest(&self) -> Option<InstallManifest> {
+            self.saved_manifest.lock().expect("manifest").take()
+        }
+    }
+
+    impl InstallManifestRepository for RecordingInstallManifestRepository {
+        fn save_manifest(&self, manifest: &InstallManifest) -> anyhow::Result<()> {
+            if self.fail_save {
+                anyhow::bail!("manifest save failed");
+            }
+            *self.saved_manifest.lock().expect("manifest") = Some(manifest.clone());
+            Ok(())
         }
     }
 }

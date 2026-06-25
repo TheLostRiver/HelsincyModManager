@@ -3,6 +3,7 @@ mod audit;
 mod cancellation;
 mod diagnostics_environment;
 mod game_setup;
+mod install;
 mod mod_import;
 mod preview_image;
 mod text_log;
@@ -19,6 +20,9 @@ pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
     GameConfigRepositoryError, GameConfigRepositoryResult, GameDirectoryProbe,
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
+};
+pub use install::{
+    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
 };
 pub use mod_import::{
     DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
