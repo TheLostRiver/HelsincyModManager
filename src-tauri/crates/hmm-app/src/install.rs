@@ -162,9 +162,17 @@ impl InstallCommitService {
                 None
             };
 
-            self.game_files
+            if self
+                .game_files
                 .write_game_file(&action.target_path, &source_bytes)
-                .map_err(|_| self.fail_or_rollback(&applied_changes, InstallCommitPhase::Write))?;
+                .is_err()
+            {
+                return Err(self.fail_or_rollback_with_pending_backup(
+                    &applied_changes,
+                    backup_ref.as_deref(),
+                    InstallCommitPhase::Write,
+                ));
+            }
 
             applied_changes.push(AppliedInstallChange {
                 target_path: action.target_path.clone(),
@@ -199,13 +207,30 @@ impl InstallCommitService {
         applied_changes: &[AppliedInstallChange],
         failed_phase: InstallCommitPhase,
     ) -> InstallCommitError {
-        if applied_changes.is_empty() {
+        self.fail_or_rollback_with_pending_backup(applied_changes, None, failed_phase)
+    }
+
+    fn fail_or_rollback_with_pending_backup(
+        &self,
+        applied_changes: &[AppliedInstallChange],
+        pending_backup_ref: Option<&str>,
+        failed_phase: InstallCommitPhase,
+    ) -> InstallCommitError {
+        if applied_changes.is_empty() && pending_backup_ref.is_none() {
             return InstallCommitError::Failed {
                 phase: failed_phase,
             };
         }
 
-        if self.rollback(applied_changes).is_ok() {
+        let rollback_result = self.rollback(applied_changes).and_then(|_| {
+            if let Some(backup_ref) = pending_backup_ref {
+                self.backup_store.remove_backup(backup_ref)?;
+            }
+
+            Ok(())
+        });
+
+        if rollback_result.is_ok() {
             InstallCommitError::RollbackSucceeded { failed_phase }
         } else {
             InstallCommitError::RollbackFailed { failed_phase }
@@ -219,6 +244,10 @@ impl InstallCommitService {
                     .write_game_file(&change.target_path, previous_bytes)?;
             } else {
                 self.game_files.remove_game_file(&change.target_path)?;
+            }
+
+            if let Some(backup_ref) = &change.entry.backup_ref {
+                self.backup_store.remove_backup(backup_ref)?;
             }
         }
 
@@ -630,6 +659,79 @@ mod tests {
     }
 
     #[test]
+    fn commit_plan_applies_layered_same_target_actions_in_priority_order() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![
+            InstallFileProvider::new(
+                ModId::new("mod-low"),
+                PackageFileId::new("nativePC/models/player-low.mod3"),
+                target.clone(),
+                FileLayer::new("low", 0),
+            ),
+            InstallFileProvider::new(
+                ModId::new("mod-high"),
+                PackageFileId::new("nativePC/models/player-high.mod3"),
+                target,
+                FileLayer::new("high", 10),
+            ),
+        ]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+            ("nativePC/models/player-low.mod3", b"low layer".as_slice()),
+            ("nativePC/models/player-high.mod3", b"high layer".as_slice()),
+        ]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"original".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(RecordingInstallManifestRepository::default());
+        let service = InstallCommitService::new(
+            source_files,
+            game_files.clone(),
+            backups.clone(),
+            manifests.clone(),
+        );
+
+        service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect("commit should succeed");
+
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"high layer".as_slice())
+        );
+        assert_eq!(
+            backups.records(),
+            vec![
+                (
+                    "nativePC/models/player.mod3".to_owned(),
+                    b"original".to_vec()
+                ),
+                (
+                    "nativePC/models/player.mod3".to_owned(),
+                    b"low layer".to_vec()
+                ),
+            ]
+        );
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.entries.len(), 2);
+        assert_eq!(
+            manifest.entries[0].package_file_id.as_str(),
+            "nativePC/models/player-low.mod3"
+        );
+        assert_eq!(
+            manifest.entries[1].package_file_id.as_str(),
+            "nativePC/models/player-high.mod3"
+        );
+    }
+
+    #[test]
     fn commit_plan_rolls_back_written_files_when_manifest_save_fails() {
         let new_target =
             InstallTargetPath::parse("nativePC/models/new.mod3", ["nativePC"]).expect("valid");
@@ -659,8 +761,12 @@ mod tests {
         )]));
         let backups = Arc::new(RecordingInstallBackupStore::default());
         let manifests = Arc::new(RecordingInstallManifestRepository::failing());
-        let service =
-            InstallCommitService::new(source_files, game_files.clone(), backups, manifests);
+        let service = InstallCommitService::new(
+            source_files,
+            game_files.clone(),
+            backups.clone(),
+            manifests,
+        );
 
         let error = service
             .commit_plan(CommitInstallPlanRequest {
@@ -682,6 +788,63 @@ mod tests {
                 .as_deref(),
             Some(b"old model".as_slice())
         );
+        assert_eq!(
+            backups.removed_refs(),
+            vec!["backup-nativePC-models-player.mod3".to_owned()]
+        );
+    }
+
+    #[test]
+    fn commit_plan_cleans_pending_backup_when_write_fails() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/player.mod3"),
+            target,
+            FileLayer::new("base", 0),
+        )]);
+        let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_failing_writes([(
+            "nativePC/models/player.mod3",
+            b"old model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(RecordingInstallManifestRepository::default());
+        let service = InstallCommitService::new(
+            source_files,
+            game_files.clone(),
+            backups.clone(),
+            manifests.clone(),
+        );
+
+        let error = service
+            .commit_plan(CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            })
+            .expect_err("write failure should abort commit");
+
+        assert_eq!(
+            error,
+            InstallCommitError::RollbackSucceeded {
+                failed_phase: InstallCommitPhase::Write
+            }
+        );
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"old model".as_slice())
+        );
+        assert_eq!(
+            backups.removed_refs(),
+            vec!["backup-nativePC-models-player.mod3".to_owned()]
+        );
+        assert!(manifests.take_manifest().is_none());
     }
 
     fn stored_analysis(mod_id: &str, package_id: &str) -> StoredModImportAnalysis {
@@ -803,6 +966,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingInstallGameFileSystem {
         files: Mutex<BTreeMap<String, Vec<u8>>>,
+        fail_writes: bool,
     }
 
     impl RecordingInstallGameFileSystem {
@@ -814,6 +978,19 @@ mod tests {
                         .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
                         .collect(),
                 ),
+                fail_writes: false,
+            }
+        }
+
+        fn with_failing_writes<const N: usize>(files: [(&str, &[u8]); N]) -> Self {
+            Self {
+                files: Mutex::new(
+                    files
+                        .into_iter()
+                        .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
+                        .collect(),
+                ),
+                fail_writes: true,
             }
         }
 
@@ -840,6 +1017,9 @@ mod tests {
             target_path: &InstallTargetPath,
             bytes: &[u8],
         ) -> anyhow::Result<()> {
+            if self.fail_writes {
+                anyhow::bail!("write failed");
+            }
             self.files
                 .lock()
                 .expect("files")
@@ -858,12 +1038,22 @@ mod tests {
 
     #[derive(Default)]
     struct RecordingInstallBackupStore {
-        records: Mutex<Vec<(String, Vec<u8>)>>,
+        records: Mutex<Vec<(String, String, Vec<u8>)>>,
+        removed_refs: Mutex<Vec<String>>,
     }
 
     impl RecordingInstallBackupStore {
         fn records(&self) -> Vec<(String, Vec<u8>)> {
-            self.records.lock().expect("records").clone()
+            self.records
+                .lock()
+                .expect("records")
+                .iter()
+                .map(|(_, target_path, bytes)| (target_path.clone(), bytes.clone()))
+                .collect()
+        }
+
+        fn removed_refs(&self) -> Vec<String> {
+            self.removed_refs.lock().expect("removed refs").clone()
         }
     }
 
@@ -873,11 +1063,27 @@ mod tests {
             target_path: &InstallTargetPath,
             bytes: &[u8],
         ) -> anyhow::Result<String> {
-            self.records
+            let mut records = self.records.lock().expect("records");
+            let base_ref = format!("backup-{}", target_path.as_str().replace('/', "-"));
+            let backup_ref = if records.is_empty() {
+                base_ref
+            } else {
+                format!("{base_ref}-{}", records.len())
+            };
+            records.push((
+                backup_ref.clone(),
+                target_path.as_str().to_owned(),
+                bytes.to_vec(),
+            ));
+            Ok(backup_ref)
+        }
+
+        fn remove_backup(&self, backup_ref: &str) -> anyhow::Result<()> {
+            self.removed_refs
                 .lock()
-                .expect("records")
-                .push((target_path.as_str().to_owned(), bytes.to_vec()));
-            Ok(format!("backup-{}", target_path.as_str().replace('/', "-")))
+                .expect("removed refs")
+                .push(backup_ref.to_owned());
+            Ok(())
         }
     }
 
