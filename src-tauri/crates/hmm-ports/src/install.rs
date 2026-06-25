@@ -1,5 +1,5 @@
 use anyhow::Result;
-use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId};
+use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId, ProfileId};
 
 pub trait InstallSourceFileReader: Send + Sync {
     fn read_source_file(&self, package_file_id: &PackageFileId) -> Result<Vec<u8>>;
@@ -17,5 +17,6 @@ pub trait InstallBackupStore: Send + Sync {
 }
 
 pub trait InstallManifestRepository: Send + Sync {
+    fn load_manifest(&self, profile_id: &ProfileId) -> Result<Option<InstallManifest>>;
     fn save_manifest(&self, manifest: &InstallManifest) -> Result<()>;
 }
