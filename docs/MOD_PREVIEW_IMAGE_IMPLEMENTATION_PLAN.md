@@ -37,6 +37,7 @@
 | `export_audit_log_diagnostics` | 后端入口已落地 | 通过 `AuditLogReader` 读取最近 N 条已校验审计事件，写入受控 `audit-log-diagnostics.json` 诊断包，并为该导出动作写入最小 Audit Log 事件；单次导出最多包含 200 条审计事件，避免诊断包无界膨胀。该命令不接受输出路径、日志路径或事件数量参数，不改变当前预览图诊断 zip，也不在 DTO 中返回审计事件正文、原始日志、未脱敏路径、第三方 Mod 内容或缩略图 URL。 |
 | App/Task 文本日志读取基础 | 后端 ports/infra 基础已落地 | `TextLogReader` / `FileSystemTextLogReader` 可从 app data 下的 `logs/app/` 与 `logs/tasks/` 读取最近 N 行已校验文本，只接受白名单文件名并跳过敏感或不合规行，返回值只包含安全文件名和文本行。该能力尚未暴露为 Tauri command，也尚未纳入当前预览图诊断 zip 或审计日志诊断 zip。 |
 | 平台诊断摘要基础 | 后端 ports/infra 基础已落地 | `DiagnosticsEnvironmentProvider` / `SystemDiagnosticsEnvironmentProvider` 可生成应用版本、平台 OS、CPU 架构和受控 game adapter id 列表摘要，不读取本地路径或玩家数据。该能力尚未暴露为 Tauri command，也尚未纳入当前预览图诊断 zip 或审计日志诊断 zip。 |
+| `SupportDiagnosticsExportService` | 后端 app 层基础已落地 | 可通过 ports 组合平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和已校验 Audit Log 事件，写入受控完整诊断 zip，并为导出动作写入最小 Audit Log 事件。该服务尚未暴露为 Tauri command，不改变当前预览图诊断 zip 或审计日志诊断 zip 的契约。 |
 | `maintain_thumbnail_cache` | 后端入口已落地 | 手动触发同一条 best-effort 缓存维护链路；支持引用保留、可选按时间保留、settings 空间上限和 LRU 清理；不创建前端 task、不发送 progress event、不返回清理报告或真实缓存路径。 |
 | `set_thumbnail_cache_settings` | 后端入口已落地 | 写入 `thumbnailCacheMaxBytes` 和 `thumbnailCacheMaxAgeDays` 后端设置；`null`/缺省表示回退默认语义，`0` 会被拒绝；不暴露 settings 文件路径。 |
 | 前端类型与卡片展示 | MVP 已落地 | 已有 `PreviewImage` union、卡片 `<img>` 懒加载、加载失败 fallback 和静态测试；库页面会优先加载真实 DTO，后端不可用或结果为空时保留 mock fallback。 |
