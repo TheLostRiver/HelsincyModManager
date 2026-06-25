@@ -1,8 +1,10 @@
 use hmm_app::{
-    AppSettingsService, AuditLogDiagnosticsExportService, GameSetupService, InstallPlanningService,
-    LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
-    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
-    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    AppSettingsService, AuditLogDiagnosticsExportService, CommitInstallPlanRequest,
+    GameSetupService, ImportedModInstallCommitRequest, InstallCommitError, InstallCommitPhase,
+    InstallCommitResult, InstallCommitService, InstallPlanCommitter, InstallPlanningService,
+    InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor, ModDependencyGraphService,
+    ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
+    ModLibraryService, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
@@ -10,20 +12,22 @@ use hmm_app::{
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
-    FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemTextLogReader,
+    FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
+    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemTextLogReader,
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
-    JsonGameConfigRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
-    RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner,
+    JsonGameConfigRepository, JsonInstallManifestRepository, JsonModImportResultRepository,
+    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
     SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, GameAdapter, ModImportResultRepository,
+    DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, ModImportResultRepository,
     ModImportSandboxLocator, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -38,6 +42,8 @@ pub struct AppState {
     pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
     pub install_planning: Arc<InstallPlanningService>,
+    pub install_task_runner: Arc<InstallTaskRunner>,
+    pub install_tasks: Arc<InstallTaskService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -57,6 +63,8 @@ impl AppState {
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
+        let game_config_repository: Arc<dyn GameConfigRepository> =
+            Arc::new(JsonGameConfigRepository::new(config_path));
         let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
             Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
@@ -158,7 +166,27 @@ impl AppState {
             audit_log_reader,
             diagnostics_environment_provider,
             diagnostic_package_exporter,
-            audit_log_writer,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+        ));
+        let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_import_sandbox_locator),
+            Arc::new(SandboxModPackageInstallFileScanner),
+            vec![Arc::clone(&mhw_adapter)],
+        ));
+        let install_committer: Arc<dyn InstallPlanCommitter> =
+            Arc::new(ConfiguredInstallCommitter::new(
+                Arc::clone(&game_config_repository),
+                Arc::clone(&mod_import_result_repository),
+                Arc::clone(&mod_import_sandbox_locator),
+                app_data_dir.clone(),
+            ));
+        let install_task_runner = Arc::new(InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            install_planning.clone(),
+            install_committer,
+            Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
         ));
         let mod_import_task_runner = Arc::new(
@@ -183,8 +211,8 @@ impl AppState {
 
         Ok(Self {
             game_setup: Arc::new(GameSetupService::new(
-                vec![Arc::clone(&mhw_adapter)],
-                Arc::new(JsonGameConfigRepository::new(config_path)),
+                vec![mhw_adapter],
+                game_config_repository,
                 Arc::new(RealGameDirectoryProbeFactory),
                 Arc::new(SteamGameDiscoveryService::new(Arc::new(
                     PlatformSteamRootProvider,
@@ -199,16 +227,83 @@ impl AppState {
             preview_image_diagnostics_export,
             audit_log_diagnostics_export,
             support_diagnostics_export,
-            install_planning: Arc::new(InstallPlanningService::with_imported_mod_sources(
-                Arc::clone(&mod_import_result_repository),
-                Arc::clone(&mod_import_sandbox_locator),
-                Arc::new(SandboxModPackageInstallFileScanner),
-                vec![mhw_adapter],
-            )),
+            install_planning,
+            install_task_runner,
+            install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,
             task_manager,
+        })
+    }
+}
+
+struct ConfiguredInstallCommitter {
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    mod_import_result_repository: Arc<dyn ModImportResultRepository>,
+    mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    app_data_dir: PathBuf,
+}
+
+impl ConfiguredInstallCommitter {
+    fn new(
+        game_config_repository: Arc<dyn GameConfigRepository>,
+        mod_import_result_repository: Arc<dyn ModImportResultRepository>,
+        mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        app_data_dir: PathBuf,
+    ) -> Self {
+        Self {
+            game_config_repository,
+            mod_import_result_repository,
+            mod_import_sandbox_locator,
+            app_data_dir,
+        }
+    }
+}
+
+impl InstallPlanCommitter for ConfiguredInstallCommitter {
+    fn commit_install_plan(
+        &self,
+        request: ImportedModInstallCommitRequest,
+    ) -> Result<InstallCommitResult, InstallCommitError> {
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(&request.game_id)
+            .map_err(|_| InstallCommitError::Failed {
+                phase: InstallCommitPhase::TargetRead,
+            })?
+            .ok_or(InstallCommitError::Failed {
+                phase: InstallCommitPhase::TargetRead,
+            })?;
+        let analysis = self
+            .mod_import_result_repository
+            .get_analysis(request.mod_id.as_str())
+            .map_err(|_| InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead,
+            })?
+            .ok_or(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead,
+            })?;
+        let source_root = self
+            .mod_import_sandbox_locator
+            .sandbox_root_for_package(&analysis.package_id)
+            .map_err(|_| InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead,
+            })?;
+        let service = InstallCommitService::new(
+            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            Arc::new(FileSystemInstallBackupStore::new(
+                self.app_data_dir.join("install").join("backups"),
+            )),
+            Arc::new(JsonInstallManifestRepository::new(
+                self.app_data_dir.join("install").join("manifests"),
+            )),
+        );
+
+        service.commit_plan(CommitInstallPlanRequest {
+            profile_id: request.profile_id,
+            plan: request.plan,
         })
     }
 }

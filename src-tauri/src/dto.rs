@@ -101,6 +101,16 @@ pub struct PreviewImportedModInstallPlanRequestDto {
     pub layer_priority: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartInstallTaskRequestDto {
+    pub game_id: String,
+    pub mod_id: String,
+    pub profile_id: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanPreviewDto {
@@ -216,6 +226,7 @@ pub struct TaskProgressEventDto {
 #[serde(rename_all = "snake_case")]
 pub enum TaskKindDto {
     ModImport,
+    Install,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -748,6 +759,7 @@ impl From<TaskKind> for TaskKindDto {
     fn from(kind: TaskKind) -> Self {
         match kind {
             TaskKind::ModImport => Self::ModImport,
+            TaskKind::Install => Self::Install,
         }
     }
 }
@@ -1305,6 +1317,22 @@ mod task_dto_tests {
 
         assert_eq!(value["taskId"], "mod-import-123");
         assert_eq!(value["kind"], "mod_import");
+        assert_eq!(value["status"], "queued");
+    }
+
+    #[test]
+    fn serializes_install_task_kind_as_stable_snake_case() {
+        let dto: TaskStartedDto = TaskStarted {
+            task_id: "install-123".to_owned(),
+            kind: TaskKind::Install,
+            status: TaskStatus::Queued,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["taskId"], "install-123");
+        assert_eq!(value["kind"], "install");
         assert_eq!(value["status"], "queued");
     }
 

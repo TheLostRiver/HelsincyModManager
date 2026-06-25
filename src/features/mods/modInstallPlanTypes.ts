@@ -7,6 +7,10 @@ export type PreviewImportedModInstallPlanInput = {
   layerPriority: number;
 };
 
+export type StartInstallTaskInput = PreviewImportedModInstallPlanInput & {
+  profileId: string;
+};
+
 export type InstallPlanProvider = {
   modId: string;
   packageFileId: string;
