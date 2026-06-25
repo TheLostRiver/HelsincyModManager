@@ -28,7 +28,8 @@ test("mod import task types expose controlled task identity and archive path", (
   assert.match(source, /archivePath:\s*string/);
   assert.match(source, /export type CancelTaskInput/);
   assert.match(source, /taskId:\s*string/);
-  assert.match(source, /kind:\s*"mod_import"/);
+  assert.match(source, /export type TaskKind\s*=\s*"mod_import"\s*\|\s*"install"/);
+  assert.match(source, /kind:\s*TaskKind/);
   assert.match(source, /export type TaskStatus\s*=\s*"queued"\s*\|\s*"running"\s*\|\s*"completed"\s*\|\s*"failed"\s*\|\s*"cancelled"/);
   assert.match(source, /status:\s*TaskStatus/);
   assert.doesNotMatch(source, /previewImage|thumbnailUrl|sandbox|cache/i);

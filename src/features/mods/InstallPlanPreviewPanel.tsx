@@ -5,37 +5,71 @@ export type InstallPlanPreviewPanelState =
   | { status: "idle" }
   | { status: "loading"; modName: string }
   | { status: "ready"; modName: string; plan: InstallPlanPreview }
-  | { status: "error"; modName: string; message: string };
+  | { status: "error"; modName: string; message: string }
+  | { status: "install-starting"; modName: string; phaseLabel: string }
+  | { status: "install-running"; modName: string; phaseLabel: string }
+  | { status: "install-completed"; modName: string; phaseLabel: string }
+  | { status: "install-failed"; modName: string; phaseLabel: string; message: string }
+  | { status: "install-cancelled"; modName: string; phaseLabel: string };
 
 type InstallPlanPreviewPanelProps = {
   state: InstallPlanPreviewPanelState;
   onClose: () => void;
+  closeDisabled?: boolean;
 };
 
-export function InstallPlanPreviewPanel({ state, onClose }: InstallPlanPreviewPanelProps) {
+export function InstallPlanPreviewPanel({ state, onClose, closeDisabled = false }: InstallPlanPreviewPanelProps) {
   if (state.status === "idle") {
     return null;
   }
 
-  const title = state.status === "ready" && state.plan.hasBlockingConflicts ? "安装计划存在冲突" : "安装计划预览";
+  const title =
+    state.status === "ready" && state.plan.hasBlockingConflicts
+      ? "安装计划存在冲突"
+      : state.status === "install-completed"
+        ? "安装完成"
+        : state.status === "install-failed"
+          ? "安装失败"
+          : state.status === "install-cancelled"
+            ? "安装已取消"
+            : state.status.startsWith("install-")
+              ? "安装任务"
+              : "安装计划预览";
+  const isLoading = state.status === "loading" || state.status === "install-starting" || state.status === "install-running";
+  const isWarning =
+    state.status === "error" ||
+    state.status === "install-failed" ||
+    state.status === "install-cancelled" ||
+    (state.status === "ready" && state.plan.hasBlockingConflicts);
+  const isCompleted = state.status === "install-completed";
 
   return (
     <section className="install-plan-preview" aria-live="polite">
       <header className="install-plan-preview__header">
         <div className="install-plan-preview__title-group">
-          {state.status === "loading" ? (
+          {isLoading ? (
             <Loader2 className="install-plan-preview__icon is-loading" size={18} aria-hidden="true" />
-          ) : state.status === "error" || (state.status === "ready" && state.plan.hasBlockingConflicts) ? (
+          ) : isWarning ? (
             <AlertTriangle className="install-plan-preview__icon is-warning" size={18} aria-hidden="true" />
           ) : (
-            <FileCheck2 className="install-plan-preview__icon is-ready" size={18} aria-hidden="true" />
+            <FileCheck2
+              className={`install-plan-preview__icon ${isCompleted ? "is-completed" : "is-ready"}`}
+              size={18}
+              aria-hidden="true"
+            />
           )}
           <div>
             <h3 className="install-plan-preview__title">{title}</h3>
             <p className="install-plan-preview__mod-name">{state.modName}</p>
           </div>
         </div>
-        <button type="button" className="install-plan-preview__close" onClick={onClose} aria-label="关闭安装计划预览">
+        <button
+          type="button"
+          className="install-plan-preview__close"
+          onClick={onClose}
+          aria-label="关闭安装计划预览"
+          disabled={closeDisabled}
+        >
           <X size={16} aria-hidden="true" />
         </button>
       </header>
@@ -46,6 +80,20 @@ export function InstallPlanPreviewPanel({ state, onClose }: InstallPlanPreviewPa
 
       {state.status === "error" ? (
         <p className="install-plan-preview__status is-error">{state.message}</p>
+      ) : null}
+
+      {state.status === "install-starting" ||
+      state.status === "install-running" ||
+      state.status === "install-completed" ||
+      state.status === "install-cancelled" ? (
+        <p className="install-plan-preview__status">{state.phaseLabel}</p>
+      ) : null}
+
+      {state.status === "install-failed" ? (
+        <>
+          <p className="install-plan-preview__status is-error">{state.phaseLabel}</p>
+          <p className="install-plan-preview__status is-error">{state.message}</p>
+        </>
       ) : null}
 
       {state.status === "ready" ? <InstallPlanPreviewSummary plan={state.plan} /> : null}
