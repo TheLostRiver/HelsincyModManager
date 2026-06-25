@@ -3,9 +3,10 @@ use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId};
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
 };
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct FileSystemInstallSourceFileReader {
     source_root: PathBuf,
@@ -64,14 +65,11 @@ impl InstallGameFileSystem for FileSystemInstallGameFileSystem {
         let parent = path
             .parent()
             .context("install target path has no parent directory")?;
+        ensure_nearest_existing_ancestor_contained(&self.game_root, parent)?;
         fs::create_dir_all(parent).context("failed to create install target parent")?;
-        ensure_contained_existing_path(&self.game_root, parent)?;
         ensure_safe_write_target(&self.game_root, &path)?;
 
-        let mut file = File::create(&path).context("failed to open install target for writing")?;
-        file.write_all(bytes)
-            .context("failed to write install target")?;
-        file.sync_all().context("failed to sync install target")?;
+        atomic_write_file(&path, bytes).context("failed to write install target")?;
 
         Ok(())
     }
@@ -110,12 +108,26 @@ impl InstallBackupStore for FileSystemInstallBackupStore {
         let base_name = format!("backup-{}", target_path.as_str().replace('/', "-"));
         let backup_ref = unique_backup_ref(&self.backup_root, &base_name);
         let backup_path = self.backup_root.join(&backup_ref);
-        let mut file = File::create(&backup_path).context("failed to create install backup")?;
-        file.write_all(bytes)
-            .context("failed to write install backup")?;
-        file.sync_all().context("failed to sync install backup")?;
+        ensure_safe_write_target(&self.backup_root, &backup_path)?;
+        atomic_write_file(&backup_path, bytes).context("failed to write install backup")?;
 
         Ok(backup_ref)
+    }
+
+    fn remove_backup(&self, backup_ref: &str) -> Result<()> {
+        let backup_path = contained_path(&self.backup_root, backup_ref)?;
+
+        if !backup_path.exists() {
+            return Ok(());
+        }
+
+        let metadata =
+            fs::symlink_metadata(&backup_path).context("failed to inspect install backup")?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            anyhow::bail!("install backup is not a regular file");
+        }
+
+        fs::remove_file(backup_path).context("failed to remove install backup")
     }
 }
 
@@ -139,10 +151,8 @@ impl InstallManifestRepository for JsonInstallManifestRepository {
         ensure_safe_write_target(&self.manifest_root, &manifest_path)?;
         let serialized = serde_json::to_string_pretty(manifest)
             .context("failed to serialize install manifest")?;
-        let mut file = File::create(manifest_path).context("failed to create install manifest")?;
-        file.write_all(serialized.as_bytes())
+        atomic_write_file(&manifest_path, serialized.as_bytes())
             .context("failed to write install manifest")?;
-        file.sync_all().context("failed to sync install manifest")?;
 
         Ok(())
     }
@@ -201,18 +211,109 @@ fn ensure_contained_existing_path(root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn ensure_safe_write_target(root: &Path, path: &Path) -> Result<()> {
-    if path.exists() {
-        let metadata = fs::symlink_metadata(path).context("failed to inspect install write target")?;
-        if !metadata.is_file() || metadata.file_type().is_symlink() {
-            anyhow::bail!("install write target is not a regular file");
+fn ensure_nearest_existing_ancestor_contained(root: &Path, path: &Path) -> Result<()> {
+    let mut current = Some(path);
+
+    while let Some(candidate) = current {
+        if candidate.exists() {
+            return ensure_contained_existing_path(root, candidate);
         }
-        ensure_contained_existing_path(root, path)?;
-    } else if let Some(parent) = path.parent().filter(|parent| parent.exists()) {
-        ensure_contained_existing_path(root, parent)?;
+
+        current = candidate.parent();
+    }
+
+    anyhow::bail!("install path has no existing ancestor")
+}
+
+fn ensure_safe_write_target(root: &Path, path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                anyhow::bail!("install write target is not a regular file");
+            }
+            ensure_contained_existing_path(root, path)?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(parent) = path.parent() {
+                ensure_nearest_existing_ancestor_contained(root, parent)?;
+            }
+        }
+        Err(error) => return Err(error).context("failed to inspect install write target"),
     }
 
     Ok(())
+}
+
+fn atomic_write_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path
+        .parent()
+        .context("install write target has no parent directory")?;
+    let temp_path = unique_temp_path(path);
+
+    let result = (|| -> Result<()> {
+        let mut temp_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .context("failed to create install temp file")?;
+        temp_file
+            .write_all(bytes)
+            .context("failed to write install temp file")?;
+        temp_file
+            .sync_all()
+            .context("failed to sync install temp file")?;
+        drop(temp_file);
+
+        fs::rename(&temp_path, path).context("failed to rename install temp file")?;
+        sync_directory(parent).context("failed to sync install parent directory")?;
+
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    result
+}
+
+fn unique_temp_path(path: &Path) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let temp_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| format!("{name}.{}.{}.tmp", std::process::id(), nonce))
+        .unwrap_or_else(|| format!("install.{}.{}.tmp", std::process::id(), nonce));
+
+    path.parent()
+        .map(|parent| parent.join(&temp_name))
+        .unwrap_or_else(|| PathBuf::from(temp_name))
+}
+
+fn sync_directory(path: &Path) -> Result<()> {
+    open_directory_for_sync(path)
+        .and_then(|directory| directory.sync_all())
+        .context("failed to sync directory")
+}
+
+#[cfg(not(windows))]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    File::open(path)
+}
+
+#[cfg(windows)]
+fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
 }
 
 fn has_windows_drive_prefix(value: &str) -> bool {
@@ -315,9 +416,13 @@ mod tests {
             b"new model"
         );
         assert_eq!(
-            fs::read(backup_root.join(backup_ref)).expect("backup"),
+            fs::read(backup_root.join(&backup_ref)).expect("backup"),
             b"old model"
         );
+        backup_store
+            .remove_backup(&backup_ref)
+            .expect("remove backup");
+        assert!(!backup_root.join(backup_ref).exists());
         let manifest = fs::read_to_string(manifest_root.join("default.json")).expect("manifest");
         assert!(manifest.contains("\"profile_id\"") || manifest.contains("\"profileId\""));
         assert!(manifest.contains("nativePC/models/player.mod3"));
@@ -365,6 +470,100 @@ mod tests {
             .contains("install write target is not a regular file"));
     }
 
+    #[test]
+    fn filesystem_game_writer_rejects_broken_symlink_target_without_following_it() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let game_root = temp.path().join("game");
+        let outside_target = temp.path().join("outside-created.mod3");
+        fs::create_dir_all(game_root.join("nativePC/models")).expect("create game dirs");
+        if !try_create_file_symlink(
+            &outside_target,
+            game_root.join("nativePC/models/link.mod3"),
+        ) {
+            return;
+        }
+        let target =
+            InstallTargetPath::parse("nativePC/models/link.mod3", ["nativePC"]).expect("target");
+
+        let error = FileSystemInstallGameFileSystem::new(game_root)
+            .write_game_file(&target, b"new")
+            .expect_err("writer must reject broken symlink target");
+
+        assert!(error
+            .to_string()
+            .contains("install write target is not a regular file"));
+        assert!(!outside_target.exists());
+    }
+
+    #[test]
+    fn filesystem_game_writer_rejects_symlink_ancestor_before_creating_directories() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let game_root = temp.path().join("game");
+        let outside_root = temp.path().join("outside");
+        let outside_created_dir = outside_root.join("new-dir");
+        fs::create_dir_all(game_root.join("nativePC")).expect("create game dirs");
+        fs::create_dir_all(&outside_root).expect("create outside root");
+        if !try_create_dir_symlink(&outside_root, game_root.join("nativePC/link")) {
+            return;
+        }
+        let target =
+            InstallTargetPath::parse("nativePC/link/new-dir/file.mod3", ["nativePC"])
+                .expect("target");
+
+        let error = FileSystemInstallGameFileSystem::new(game_root)
+            .write_game_file(&target, b"new")
+            .expect_err("writer must reject symlink ancestor");
+
+        assert!(error.to_string().contains("install path escaped its root"));
+        assert!(!outside_created_dir.exists());
+    }
+
+    #[test]
+    fn json_manifest_repository_replaces_manifest_without_temp_artifacts() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let manifest_root = temp.path().join("manifests");
+        let repository = JsonInstallManifestRepository::new(manifest_root.clone());
+        let target =
+            InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target");
+        let first_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: target.clone(),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/old.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+            }],
+        };
+        let second_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: target,
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/new.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+            }],
+        };
+
+        repository
+            .save_manifest(&first_manifest)
+            .expect("save first manifest");
+        repository
+            .save_manifest(&second_manifest)
+            .expect("replace manifest");
+
+        let manifest = fs::read_to_string(manifest_root.join("default.json")).expect("manifest");
+        assert!(manifest.contains("nativePC/models/new.mod3"));
+        assert!(!manifest.contains("nativePC/models/old.mod3"));
+        let temp_artifacts = fs::read_dir(&manifest_root)
+            .expect("read manifest root")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(temp_artifacts, 0);
+    }
+
     #[cfg(unix)]
     fn try_create_file_symlink(
         original: impl AsRef<Path>,
@@ -379,5 +578,15 @@ mod tests {
         link: impl AsRef<Path>,
     ) -> bool {
         std::os::windows::fs::symlink_file(original, link).is_ok()
+    }
+
+    #[cfg(unix)]
+    fn try_create_dir_symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> bool {
+        std::os::unix::fs::symlink(original, link).is_ok()
+    }
+
+    #[cfg(windows)]
+    fn try_create_dir_symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> bool {
+        std::os::windows::fs::symlink_dir(original, link).is_ok()
     }
 }
