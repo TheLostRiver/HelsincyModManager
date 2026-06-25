@@ -207,6 +207,28 @@ pub struct ModPackageMetadataDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ModDependencyGraphDto {
+    pub nodes: Vec<ModDependencyGraphNodeDto>,
+    pub edges: Vec<ModDependencyGraphEdgeDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModDependencyGraphNodeDto {
+    pub mod_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModDependencyGraphEdgeDto {
+    pub source_mod_id: String,
+    pub dependency: String,
+    pub matched_imported_mod_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewImageDiagnosticsDto {
     pub total_imported_mods: usize,
     pub thumbnail_count: usize,
@@ -408,6 +430,34 @@ impl From<hmm_app::ModPackageMetadataSummary> for ModPackageMetadataDto {
             category: metadata.category,
             tags: metadata.tags,
             dependencies: metadata.dependencies,
+        }
+    }
+}
+
+impl From<hmm_app::ModDependencyGraph> for ModDependencyGraphDto {
+    fn from(graph: hmm_app::ModDependencyGraph) -> Self {
+        Self {
+            nodes: graph.nodes.into_iter().map(Into::into).collect(),
+            edges: graph.edges.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<hmm_app::ModDependencyGraphNode> for ModDependencyGraphNodeDto {
+    fn from(node: hmm_app::ModDependencyGraphNode) -> Self {
+        Self {
+            mod_id: node.mod_id,
+            name: node.name,
+        }
+    }
+}
+
+impl From<hmm_app::ModDependencyGraphEdge> for ModDependencyGraphEdgeDto {
+    fn from(edge: hmm_app::ModDependencyGraphEdge) -> Self {
+        Self {
+            source_mod_id: edge.source_mod_id,
+            dependency: edge.dependency,
+            matched_imported_mod_id: edge.matched_imported_mod_id,
         }
     }
 }
@@ -1103,6 +1153,32 @@ mod preview_image_tests {
         assert_eq!(value["metadata"]["dependencies"][0], "stracker-loader");
         assert_eq!(value["previewImage"]["kind"], "fallback");
         assert_eq!(value["previewImage"]["reason"], "missing");
+    }
+
+    #[test]
+    fn serializes_mod_dependency_graph_without_install_status_or_paths() {
+        let dto: ModDependencyGraphDto = hmm_app::ModDependencyGraph {
+            nodes: vec![hmm_app::ModDependencyGraphNode {
+                mod_id: "armor-pack".to_owned(),
+                name: "Armor Pack".to_owned(),
+            }],
+            edges: vec![hmm_app::ModDependencyGraphEdge {
+                source_mod_id: "armor-pack".to_owned(),
+                dependency: "stracker-loader".to_owned(),
+                matched_imported_mod_id: Some("stracker-loader".to_owned()),
+            }],
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["nodes"][0]["modId"], "armor-pack");
+        assert_eq!(value["nodes"][0]["name"], "Armor Pack");
+        assert_eq!(value["edges"][0]["sourceModId"], "armor-pack");
+        assert_eq!(value["edges"][0]["dependency"], "stracker-loader");
+        assert_eq!(value["edges"][0]["matchedImportedModId"], "stracker-loader");
+        assert!(value["edges"][0].get("installed").is_none());
+        assert!(value["edges"][0].get("path").is_none());
     }
 }
 

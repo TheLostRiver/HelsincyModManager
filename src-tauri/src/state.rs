@@ -1,11 +1,11 @@
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, GameSetupService,
-    LimitedPreviewImageProcessor, ModImportAnalysisService, ModImportPrepareService,
-    ModImportTaskRunner, ModImportTaskService, ModLibraryService, PreviewImageCandidateListService,
-    PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService, SupportDiagnosticsExportService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
+    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
+    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
@@ -29,6 +29,7 @@ use tauri::{AppHandle, Manager};
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
     pub mod_library: Arc<ModLibraryService>,
+    pub mod_dependency_graph: Arc<ModDependencyGraphService>,
     pub preview_image_candidates: Arc<PreviewImageCandidateListService>,
     pub preview_image_selection: Arc<PreviewImageCandidateSelectionService>,
     pub preview_image_detail: Arc<PreviewImageDetailService>,
@@ -97,6 +98,9 @@ impl AppState {
             ),
         ));
         let mod_library = Arc::new(ModLibraryService::new(Arc::clone(
+            &mod_import_result_repository,
+        )));
+        let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(
             &mod_import_result_repository,
         )));
         let preview_image_candidates = Arc::new(PreviewImageCandidateListService::new(
@@ -185,6 +189,7 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             mod_library,
+            mod_dependency_graph,
             preview_image_candidates,
             preview_image_selection,
             preview_image_detail,
