@@ -46,6 +46,15 @@ test("mod poster card retries when thumbnail url changes", () => {
   assert.match(source, /\[\s*previewThumbnail\?\.thumbnailUrl\s*\]/);
 });
 
+test("mod poster card hides zero repair file count", () => {
+  const source = readSource("src/features/mods/ModPosterCard.tsx");
+
+  assert.match(
+    source,
+    /item\.status === "repair_required" && summary && summary\.managedFileCount > 0/,
+  );
+});
+
 test("mod poster image fills stable poster frame", () => {
   const css = readSource("src/features/mods/ModLibraryPage.css");
   const body = getRuleBody(css, ".mod-card__poster-img");

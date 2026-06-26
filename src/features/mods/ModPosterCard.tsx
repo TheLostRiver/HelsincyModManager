@@ -45,7 +45,7 @@ function statusLabelForItem(item: ModLibraryItem) {
     return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
   }
 
-  if (item.status === "repair_required" && summary) {
+  if (item.status === "repair_required" && summary && summary.managedFileCount > 0) {
     return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
   }
 
