@@ -73,3 +73,68 @@ test("Recovery Center renders rich repair summary without action commands", () =
     assert.equal(page.includes(token), false, `${token} must not be exposed from the Recovery Center`);
   }
 });
+
+test("Recovery Center exposes support diagnostics export without path or raw log fields", () => {
+  const api = readSource("src/features/install-recovery/recoveryDiagnosticsApi.ts");
+  const types = readSource("src/features/install-recovery/recoveryDiagnosticsTypes.ts");
+  const hook = readSource("src/features/install-recovery/useRecoveryDiagnosticsExport.ts");
+  const page = readSource("src/features/install-recovery/RecoveryCenterPage.tsx");
+
+  assert.match(api, /export function exportSupportDiagnostics/);
+  assert.match(api, /invoke<SupportDiagnosticsExport>\("export_support_diagnostics"\)/);
+  assert.doesNotMatch(api, /request:\s*\{|outputPath|logPath|path:/i);
+
+  assert.match(types, /export type SupportDiagnosticsExport/);
+  assert.match(types, /exportId:\s*string/);
+  assert.match(types, /fileName:\s*string/);
+  assert.match(types, /sizeBytes:\s*number/);
+  assert.match(types, /appLogLineCount:\s*number/);
+  assert.match(types, /taskLogLineCount:\s*number/);
+  assert.match(types, /auditEventCount:\s*number/);
+
+  assert.match(hook, /exportSupportDiagnostics/);
+  assert.match(hook, /status:\s*"confirming"/);
+  assert.match(hook, /status:\s*"exporting"/);
+  assert.match(hook, /status:\s*"exported"/);
+  assert.match(hook, /status:\s*"failed"/);
+  assert.match(hook, /requestExport/);
+  assert.match(hook, /confirmExport/);
+  assert.match(hook, /cancelExport/);
+
+  assert.match(page, /useRecoveryDiagnosticsExport/);
+  assert.match(page, /DiagnosticExportPanel/);
+  assert.match(page, /diagnostics\.state/);
+  assert.match(page, /确认导出诊断包/);
+  assert.match(page, /onConfirm/);
+  assert.match(page, /onCancel/);
+  assert.match(page, /result\.fileName/);
+  assert.match(page, /result\.sizeBytes/);
+  assert.match(page, /result\.appLogLineCount/);
+  assert.match(page, /result\.taskLogLineCount/);
+  assert.match(page, /result\.auditEventCount/);
+
+  const forbidden = [
+    "outputPath",
+    "logPath",
+    "diagnosticsPath",
+    "appLogLines",
+    "taskLogLines",
+    "events",
+    "targetPath",
+    "gameRoot",
+    "backupRef",
+    "backupRoot",
+    "manifestPath",
+    "manifestRoot",
+    "sandbox",
+    "cachePath",
+    "raw_path",
+  ];
+
+  for (const token of forbidden) {
+    assert.equal(api.includes(token), false, `${token} must stay out of diagnostics API`);
+    assert.equal(types.includes(token), false, `${token} must stay out of diagnostics types`);
+    assert.equal(hook.includes(token), false, `${token} must stay out of diagnostics hook`);
+    assert.equal(page.includes(token), false, `${token} must stay out of Recovery Center diagnostics UI`);
+  }
+});
