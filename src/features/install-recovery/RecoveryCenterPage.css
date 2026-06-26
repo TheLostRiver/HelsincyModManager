@@ -58,7 +58,16 @@
   line-height: 1.5;
 }
 
-.recovery-center__refresh {
+.recovery-center__hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recovery-center__refresh,
+.recovery-center__diagnostics {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -79,19 +88,28 @@
     color 0.2s ease;
 }
 
-.recovery-center__refresh:not(:disabled):hover {
+.recovery-center__diagnostics {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.recovery-center__refresh:not(:disabled):hover,
+.recovery-center__diagnostics:not(:disabled):hover {
   color: var(--color-accent);
   background: var(--color-accent-weak);
   border-color: var(--color-accent-alpha-40);
   transform: translateY(-1px);
 }
 
-.recovery-center__refresh:disabled {
+.recovery-center__refresh:disabled,
+.recovery-center__diagnostics:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
-.recovery-center__refresh:focus-visible {
+.recovery-center__refresh:focus-visible,
+.recovery-center__diagnostics:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -234,6 +252,124 @@
   color: var(--color-text);
   font-size: 20px;
   line-height: 1;
+}
+
+.recovery-center__diagnostic-export {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+  padding: 15px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent-alpha-40);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-center__diagnostic-export h3 {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.recovery-center__diagnostic-export p {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.recovery-center__diagnostic-export.is-confirming {
+  border-color: var(--color-border-muted);
+}
+
+.recovery-center__diagnostic-confirmation {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.recovery-center__diagnostic-confirmation ul {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.recovery-center__diagnostic-confirmation li {
+  overflow-wrap: anywhere;
+}
+
+.recovery-center__diagnostic-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recovery-center__diagnostic-export-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+}
+
+.recovery-center__diagnostic-export-actions button.is-primary {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.recovery-center__diagnostic-export-actions button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.recovery-center__diagnostic-export dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.recovery-center__diagnostic-export dl div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-center__diagnostic-export dt {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.recovery-center__diagnostic-export dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .recovery-center__repair-summary {
@@ -435,6 +571,14 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .recovery-center__diagnostic-export {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recovery-center__diagnostic-export dl {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .recovery-center__mod-metrics {
     justify-content: flex-start;
   }
@@ -445,11 +589,20 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .recovery-center__refresh {
+  .recovery-center__hero-actions {
+    justify-content: flex-start;
+  }
+
+  .recovery-center__refresh,
+  .recovery-center__diagnostics {
     width: fit-content;
   }
 
   .recovery-center__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recovery-center__diagnostic-export dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
