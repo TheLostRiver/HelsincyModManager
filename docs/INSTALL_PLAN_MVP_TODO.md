@@ -38,6 +38,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 最小前端 typed API 和计划预览 UI。
 - 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目，并在替换已有托管目标时保留旧 `backup_ref` 恢复语义。
+- 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 
@@ -63,6 +64,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] manifest 读取与按目标路径合并基础能力。
 - [x] 前端最小安装任务流程与进度事件竞态处理。
 - [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
+- [x] Manifest entry 写入 `installed_file` size/SHA-256 摘要，并兼容读取缺少摘要的旧 manifest。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -87,9 +89,25 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 - 基于 manifest 的 uninstall。
 - Crash/recovery 扫描。
-- Rich manifest 字段、状态机、hash/status 校验和真实 `repair_required` 检测。
+- Rich manifest 状态机、目标/backup 校验和真实 `repair_required` 检测。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - Dependency / preflight 阻断。
+
+### 2026-06-26 进度详情：Manifest installed file 摘要
+
+本切片完成 P1 “基于 manifest 的 uninstall” 的安全前置：新提交的 manifest entry 记录本工具实际写入到目标路径的 `installed_file` 摘要，包含 `size_bytes` 和 SHA-256。这样后续卸载可以先比较当前目标文件摘要与 manifest 事实，再决定删除新增文件或用 backup 恢复覆盖文件，避免根据当前 Mod 包内容重新猜测。
+
+已落地范围：
+
+- `hmm-core` 新增 `InstalledFileSummary`，并在 `InstallManifestEntry.installed_file` 上使用可选字段，旧 manifest 缺少该字段时仍能读取。
+- `hmm-app` 的安装提交服务在写入 manifest entry 时记录写入内容 size 和 SHA-256。
+- 现有 manifest 查询 DTO 不暴露 hash，也不把摘要返回前端；查询服务仍只返回状态和计数摘要。
+
+仍明确未完成：
+
+- 自动卸载仍未实现。
+- 查询服务尚未读取真实目标文件或 backup 做 hash 校验。
+- 缺少 `installed_file` 的旧 manifest 后续必须阻断自动卸载或转入修复流程，不能视为安全可卸载。
 
 ## 设计细化规则
 
@@ -102,7 +120,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 | 层级 | 字段 | 用途 |
 | --- | --- | --- |
 | MVP 必需 | `manifest_id`、`game_id`、`profile_id`、`mod_id` | 定位一次受控安装事实，供查询、卸载和恢复扫描使用。 |
-| MVP 必需 | `files` | 记录最终目标相对路径、动作类型、写入摘要和是否覆盖旧文件。 |
+| MVP 必需 | `files` | 记录最终目标相对路径、动作类型、`installed_file` 写入摘要和是否覆盖旧文件。 |
 | MVP 必需 | `backups` | 记录覆盖前备份引用，卸载或回滚必须通过它恢复旧文件。 |
 | MVP 必需 | `plan_hash` | 绑定本次提交消费的计划摘要，避免安装后被误判为另一个计划。 |
 | Rich manifest | `backend`、`status`、`created_at`、`completed_at` | 支持状态机、恢复扫描、迁移和 UI 摘要。 |
@@ -138,6 +156,7 @@ completed -> repair_required
 兼容规则：
 
 - 读取旧 manifest 时必须走兼容层，缺少 rich 字段不能直接当作损坏。
+- 缺少 `installed_file` 摘要的旧 manifest 可以用于只读安装状态摘要，但不能自动执行删除或恢复；后续卸载应返回需要修复/迁移/人工确认的安全状态。
 - 提交服务合并 MVP manifest 时只按本次写入的目标路径替换旧条目；未触达目标必须保留，不能因为 `modId` 相同就遗忘仍在游戏目录中的托管文件。
 - 替换已有托管目标时，新 manifest entry 必须继承旧条目的长期 `backup_ref` 语义；本次提交为了失败回滚创建的中间状态 backup 不能覆盖原始恢复引用，提交成功后应 best-effort 清理。
 - 缺少 `status` 的旧 manifest 可以按只读摘要处理，但不能自动承诺可安全卸载。
@@ -258,7 +277,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P0：Manifest 查询与安装状态摘要
 
-状态：已落地 MVP。当前 command 按 `profileId` + `modIds` 返回 `not_installed` / `installed` / `repair_required` / `unknown` 摘要；旧 MVP manifest 暂只能根据匹配 entry 派生 `installed`，不做目标文件 hash 校验、backup 完整性校验或卸载计划。
+状态：已落地 MVP。当前 command 按 `profileId` + `modIds` 返回 `not_installed` / `installed` / `repair_required` / `unknown` 摘要；新 manifest entry 已记录 `installed_file` size/SHA-256，但该 command 暂只根据匹配 entry 派生 `installed`，不做目标文件 hash 校验、backup 完整性校验或卸载计划。
 
 目标：让前端能展示某个 profile / mod 的安装状态，但不暴露 manifest 文件路径或原始 manifest 正文。
 
@@ -289,6 +308,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 范围：
 
 - 根据 manifest entries 计算卸载计划。
+- 只对存在 `installed_file` 摘要且当前目标摘要匹配的 entries 自动执行破坏性动作。
 - 对本工具新增的文件执行删除。
 - 对覆盖过的文件使用 backup ref 恢复。
 - 对未知或不一致状态给出阻断或修复提示。
@@ -298,6 +318,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 - 不根据当前 Mod 包重新猜测安装过什么。
 - 不删除 manifest 未记录的文件。
+- 不对缺少 `installed_file` 摘要的旧 manifest 自动删除或恢复。
 - 不做批量 profile 切换。
 
 验收标准：

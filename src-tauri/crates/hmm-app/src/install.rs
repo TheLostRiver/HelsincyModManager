@@ -1,12 +1,14 @@
 use hmm_core::{
     FileLayer, GameId, InstallFileProvider, InstallManifest, InstallManifestEntry, InstallPlan,
-    InstallTargetPath, InstallTargetPathError, ModId, PackageFileId, ProfileId,
+    InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, PackageFileId,
+    ProfileId,
 };
 use hmm_ports::{
     GameAdapter, InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
     InstallSourceFileReader, ModImportResultRepository, ModImportSandboxLocator,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -200,6 +202,7 @@ impl InstallCommitService {
                     package_file_id: action.provider.package_file_id,
                     layer: action.provider.layer,
                     backup_ref: manifest_backup_ref,
+                    installed_file: Some(installed_file_summary(&source_bytes)),
                 },
             });
         }
@@ -327,6 +330,18 @@ fn merge_install_manifest(
         profile_id,
         entries,
     }
+}
+
+fn installed_file_summary(bytes: &[u8]) -> InstalledFileSummary {
+    InstalledFileSummary {
+        size_bytes: bytes.len() as u64,
+        sha256: sha256_hex(bytes),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl InstallPlanningService {
@@ -675,6 +690,15 @@ mod tests {
             "nativePC/models/player.mod3"
         );
         assert_eq!(manifest.entries[0].backup_ref, None);
+        let installed_file = manifest.entries[0]
+            .installed_file
+            .as_ref()
+            .expect("manifest entry should record installed file summary");
+        assert_eq!(installed_file.size_bytes, 9);
+        assert_eq!(
+            installed_file.sha256,
+            "d556e02a85803b1d71c94a462432da55b16b443f7579c8bfdc4a44a4c7d6a17a"
+        );
         assert_eq!(result.manifest, manifest);
     }
 
@@ -707,6 +731,7 @@ mod tests {
                     package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
+                    installed_file: None,
                 },
                 InstallManifestEntry {
                     target_path: InstallTargetPath::parse(
@@ -718,6 +743,7 @@ mod tests {
                     package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: Some("backup-old-player".to_owned()),
+                    installed_file: None,
                 },
             ],
         };
@@ -783,15 +809,13 @@ mod tests {
         let existing_manifest = InstallManifest {
             profile_id: ProfileId::new("default"),
             entries: vec![InstallManifestEntry {
-                target_path: InstallTargetPath::parse(
-                    "nativePC/models/player.mod3",
-                    ["nativePC"],
-                )
-                .expect("valid target"),
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("valid target"),
                 mod_id: ModId::new("mod-old"),
                 package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-original-player".to_owned()),
+                installed_file: None,
             }],
         };
         let manifests = Arc::new(
@@ -861,6 +885,7 @@ mod tests {
                 package_file_id: PackageFileId::new("nativePC/models/new-file-v1.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
+                installed_file: None,
             }],
         };
         let manifests = Arc::new(

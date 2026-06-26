@@ -190,6 +190,14 @@ pub struct InstallManifestEntry {
     pub package_file_id: PackageFileId,
     pub layer: FileLayer,
     pub backup_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_file: Option<InstalledFileSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledFileSummary {
+    pub size_bytes: u64,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -363,5 +371,26 @@ mod tests {
         assert_eq!(plan.actions[0].provider.layer.name, "base");
         assert_eq!(plan.actions[1].provider.mod_id.as_str(), "overlay");
         assert_eq!(plan.actions[1].provider.layer.name, "overlay");
+    }
+
+    #[test]
+    fn manifest_entry_accepts_legacy_missing_installed_file_summary() {
+        let manifest: InstallManifest = serde_json::from_str(
+            r#"{
+                "profile_id": "default",
+                "entries": [
+                    {
+                        "target_path": "content/models/player.mod3",
+                        "mod_id": "mod-a",
+                        "package_file_id": "content/models/player.mod3",
+                        "layer": { "name": "base", "priority": 0 },
+                        "backup_ref": null
+                    }
+                ]
+            }"#,
+        )
+        .expect("legacy manifest should remain readable");
+
+        assert_eq!(manifest.entries[0].installed_file, None);
     }
 }

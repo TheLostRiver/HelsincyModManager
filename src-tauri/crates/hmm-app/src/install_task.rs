@@ -244,11 +244,14 @@ impl InstallTaskRunner {
 
 #[derive(Default)]
 struct GameProfileWriteLocks {
-    locks: Mutex<HashMap<(String, String), Arc<Mutex<()>>>>,
+    locks: Mutex<HashMap<GameProfileLockKey, GameProfileLock>>,
 }
 
+type GameProfileLockKey = (String, String);
+type GameProfileLock = Arc<Mutex<()>>;
+
 impl GameProfileWriteLocks {
-    fn lock_for(&self, game_id: &GameId, profile_id: &ProfileId) -> Arc<Mutex<()>> {
+    fn lock_for(&self, game_id: &GameId, profile_id: &ProfileId) -> GameProfileLock {
         let mut locks = self.locks.lock().expect("write lock registry");
         locks
             .entry((game_id.as_str().to_owned(), profile_id.as_str().to_owned()))
@@ -525,6 +528,7 @@ mod tests {
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
+                installed_file: None,
             }],
         }
     }

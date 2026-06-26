@@ -452,6 +452,7 @@ mod tests {
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some(backup_ref.clone()),
+                installed_file: None,
             }],
         };
         manifest_repository
@@ -621,6 +622,7 @@ mod tests {
                 package_file_id: PackageFileId::new("nativePC/models/old.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
+                installed_file: None,
             }],
         };
         let second_manifest = InstallManifest {
@@ -631,6 +633,7 @@ mod tests {
                 package_file_id: PackageFileId::new("nativePC/models/new.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
+                installed_file: None,
             }],
         };
 
@@ -677,6 +680,7 @@ mod tests {
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-player".to_owned()),
+                installed_file: None,
             }],
         };
 
