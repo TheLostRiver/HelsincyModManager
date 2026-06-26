@@ -1,6 +1,7 @@
 use hmm_app::{
     AppSettingsServiceError, GameCandidateScan, GameSetupCandidate, GameSetupServiceError,
-    ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary, ModDetail,
+    ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary, InstallRecoveryIssue,
+    InstallRecoveryIssueSummary, InstallRecoveryStatus, InstallRecoverySummary, ModDetail,
     ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
     TaskProgressEvent, TaskStarted, TaskStatus,
 };
@@ -127,6 +128,14 @@ pub struct InstallManifestStatusRequestDto {
     pub mod_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecoveryScanRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanPreviewDto {
@@ -171,6 +180,25 @@ pub struct InstallManifestStatusSummaryDto {
     pub backup_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecoverySummaryDto {
+    pub profile_id: String,
+    pub mod_id: String,
+    pub status: InstallRecoveryStatusDto,
+    pub managed_file_count: usize,
+    pub backup_count: usize,
+    pub issue_count: usize,
+    pub issues: Vec<InstallRecoveryIssueSummaryDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecoveryIssueSummaryDto {
+    pub issue: InstallRecoveryIssueDto,
+    pub count: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallManifestStatusDto {
@@ -178,6 +206,26 @@ pub enum InstallManifestStatusDto {
     Installed,
     RepairRequired,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRecoveryStatusDto {
+    NotInstalled,
+    Completed,
+    RepairRequired,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRecoveryIssueDto {
+    MissingInstalledFileSummary,
+    TargetMissing,
+    TargetChanged,
+    TargetReadFailed,
+    BackupMissing,
+    BackupReadFailed,
 }
 
 impl From<AppSettings> for AppSettingsDto {
@@ -247,6 +295,29 @@ impl From<InstallManifestStatusSummary> for InstallManifestStatusSummaryDto {
     }
 }
 
+impl From<InstallRecoverySummary> for InstallRecoverySummaryDto {
+    fn from(summary: InstallRecoverySummary) -> Self {
+        Self {
+            profile_id: summary.profile_id.as_str().to_owned(),
+            mod_id: summary.mod_id.as_str().to_owned(),
+            status: summary.status.into(),
+            managed_file_count: summary.managed_file_count,
+            backup_count: summary.backup_count,
+            issue_count: summary.issue_count,
+            issues: summary.issues.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<InstallRecoveryIssueSummary> for InstallRecoveryIssueSummaryDto {
+    fn from(summary: InstallRecoveryIssueSummary) -> Self {
+        Self {
+            issue: summary.issue.into(),
+            count: summary.count,
+        }
+    }
+}
+
 impl From<InstallManifestStatus> for InstallManifestStatusDto {
     fn from(status: InstallManifestStatus) -> Self {
         match status {
@@ -254,6 +325,30 @@ impl From<InstallManifestStatus> for InstallManifestStatusDto {
             InstallManifestStatus::Installed => Self::Installed,
             InstallManifestStatus::RepairRequired => Self::RepairRequired,
             InstallManifestStatus::Unknown => Self::Unknown,
+        }
+    }
+}
+
+impl From<InstallRecoveryStatus> for InstallRecoveryStatusDto {
+    fn from(status: InstallRecoveryStatus) -> Self {
+        match status {
+            InstallRecoveryStatus::NotInstalled => Self::NotInstalled,
+            InstallRecoveryStatus::Completed => Self::Completed,
+            InstallRecoveryStatus::RepairRequired => Self::RepairRequired,
+            InstallRecoveryStatus::Unknown => Self::Unknown,
+        }
+    }
+}
+
+impl From<InstallRecoveryIssue> for InstallRecoveryIssueDto {
+    fn from(issue: InstallRecoveryIssue) -> Self {
+        match issue {
+            InstallRecoveryIssue::MissingInstalledFileSummary => Self::MissingInstalledFileSummary,
+            InstallRecoveryIssue::TargetMissing => Self::TargetMissing,
+            InstallRecoveryIssue::TargetChanged => Self::TargetChanged,
+            InstallRecoveryIssue::TargetReadFailed => Self::TargetReadFailed,
+            InstallRecoveryIssue::BackupMissing => Self::BackupMissing,
+            InstallRecoveryIssue::BackupReadFailed => Self::BackupReadFailed,
         }
     }
 }
@@ -1423,5 +1518,43 @@ mod task_dto_tests {
             CommandErrorDto::from_mod_import_task_error(ModImportTaskError::ArchivePathNotAbsolute);
 
         assert_eq!(dto.code, "archive_path_not_absolute");
+    }
+}
+
+#[cfg(test)]
+mod install_recovery_dto_tests {
+    use super::*;
+    use hmm_core::{ModId, ProfileId};
+
+    #[test]
+    fn serializes_install_recovery_summary_without_paths_or_backup_refs() {
+        let dto: InstallRecoverySummaryDto = hmm_app::InstallRecoverySummary {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: hmm_app::InstallRecoveryStatus::RepairRequired,
+            managed_file_count: 1,
+            backup_count: 1,
+            issue_count: 1,
+            issues: vec![hmm_app::InstallRecoveryIssueSummary {
+                issue: hmm_app::InstallRecoveryIssue::BackupMissing,
+                count: 1,
+            }],
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize recovery summary");
+
+        assert_eq!(value["profileId"], "default");
+        assert_eq!(value["modId"], "mod-a");
+        assert_eq!(value["status"], "repair_required");
+        assert_eq!(value["managedFileCount"], 1);
+        assert_eq!(value["backupCount"], 1);
+        assert_eq!(value["issueCount"], 1);
+        assert_eq!(value["issues"][0]["issue"], "backup_missing");
+        assert_eq!(value["issues"][0]["count"], 1);
+        assert!(value.get("targetPath").is_none());
+        assert!(value.get("backupRef").is_none());
+        assert!(!value.to_string().contains("nativePC"));
+        assert!(!value.to_string().contains("backup-original"));
     }
 }

@@ -141,6 +141,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `src-tauri/src/install_commands.rs`
 - `src-tauri/src/dto.rs`
 - `src-tauri/src/state.rs`
+- `src-tauri/crates/hmm-app/src/install_recovery.rs`
 - `src-tauri/crates/hmm-app/src/install_task.rs`
 
 已包含 command：
@@ -149,6 +150,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `preview_imported_mod_install_plan`
 - `start_install_task`
 - `start_uninstall_task`
+- `get_install_manifest_status`
+- `scan_install_recovery`
 
 `start_install_task` 只接收：
 
@@ -163,6 +166,12 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `gameId`
 - `modId`
 - `profileId`
+
+`scan_install_recovery` 只接收：
+
+- `gameId`
+- `profileId`
+- `modIds`
 
 安装和卸载任务已接入 `TaskKind::Install`。安装 commit 阶段、卸载删除/恢复阶段均按 `gameId/profileId` 写锁串行。plan build、sandbox 文件扫描和只读分析不持有写锁。
 
@@ -180,6 +189,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `install.uninstall.failed`
 
 当前最小卸载能力基于 manifest entries、`installed_file` 摘要和 backup ref。自动卸载只处理指定 `modId` 的 manifest entries；缺少 `installed_file`、当前目标文件 size/SHA-256 与 manifest 不匹配、目标文件缺失或 backup 缺失时会阻断，不根据当前 Mod 包内容猜测。
+
+当前只读恢复扫描能力基于 manifest entries、`installed_file` 摘要、当前目标文件摘要和 backup 是否存在。`scan_install_recovery` 会按 `modId` 返回 `completed`、`repair_required`、`unknown` 或 `not_installed` 摘要，以及不含路径或 backup ref 的聚合 issue code。扫描会复用安装/卸载同一份 `gameId/profileId` 写锁，避免在 commit / uninstall 写入窗口内读取半完成状态。它只做检测，不自动删除、恢复、回滚或写 manifest；启动时自动扫描和 UI 恢复入口仍需后续切片。
 
 任务事件和 Audit Log 不应携带完整本地路径、用户名、Steam ID、sandbox/cache 路径、真实 Mod 包内容或 manifest 正文。
 
@@ -215,12 +226,12 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 以下能力仍不能视为已完成：
 
-- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口与前端最小单选卸载 UI 已落地，但尚未实现批量/profile 切换、rich repair summary 或恢复扫描入口。
-- 恢复扫描：尚未实现启动时扫描半完成安装、`rollback_required` 或 `repair_required` 状态。
+- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口与前端最小单选卸载 UI 已落地，但尚未实现批量/profile 切换、rich repair summary 或前端恢复入口。
+- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，但尚未实现启动时自动扫描、`rollback_required` rich 状态、自动回滚/恢复执行或前端入口。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command 和前端展示，新 manifest entry 已记录写入内容的 size/SHA-256，但查询服务尚未读取真实目标文件或 backup 来检测缺失、外部修改或 backup 不一致并自动标记 `repair_required`。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
+- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；`scan_install_recovery` 已能读取真实目标文件和 backup 做只读一致性检测，但 `get_install_manifest_status` 尚未自动消费该结果，rich manifest 状态机和 `rollback_required` 仍未落地。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
 - Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、replacement binding snapshot、created/completed time、plan hash 等长期字段。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
@@ -236,8 +247,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
-2. Rich manifest / repair 检测：消费 `installed_file` 摘要，并补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `repair_required` 的真实检测。
+1. Crash/recovery 扫描后续：把只读 `scan_install_recovery` 摘要接入启动/进入安装页流程，并给出恢复或人工处理路径。
+2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
 3. 卸载后续 UI：补充 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
 5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
