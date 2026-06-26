@@ -2,9 +2,14 @@ import { useGameSetup } from "../game-setup/useGameSetup";
 import { DashboardHeroCard } from "./DashboardHeroCard";
 import { DashboardModulePreview } from "./DashboardModulePreview";
 import { SetupStatusPanel } from "./SetupStatusPanel";
+import { useInstallRecoveryHealth } from "./useInstallRecoveryHealth";
 
 export function DashboardPage() {
   const gameSetup = useGameSetup("mhw");
+  const recoveryHealth = useInstallRecoveryHealth({
+    gameId: "mhw",
+    enabled: gameSetup.status.kind === "configured",
+  });
 
   return (
     <>
@@ -26,7 +31,11 @@ export function DashboardPage() {
         <DashboardModulePreview />
       </section>
 
-      <SetupStatusPanel status={gameSetup.status} actionMessage={gameSetup.actionMessage} />
+      <SetupStatusPanel
+        status={gameSetup.status}
+        actionMessage={gameSetup.actionMessage}
+        recoveryHealth={recoveryHealth}
+      />
     </>
   );
 }
