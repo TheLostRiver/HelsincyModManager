@@ -45,12 +45,14 @@ function statusLabelForItem(item: ModLibraryItem) {
     return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
   }
 
-  if (item.status === "repair_required" && summary && summary.managedFileCount > 0) {
+  if (item.status === "repair_required" && summary) {
     if (summary.issueCount && summary.issueCount > 0) {
       return `${statusLabel[item.status]} · ${summary.issueCount} 项`;
     }
 
-    return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
+    if (summary.managedFileCount > 0) {
+      return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
+    }
   }
 
   if (item.status === "unknown" && summary?.issueCount && summary.issueCount > 0) {
