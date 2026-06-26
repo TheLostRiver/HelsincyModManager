@@ -1,12 +1,15 @@
 import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
 import { setupLogs, setupSteps } from "./dashboardData";
+import { InstallRecoveryHealthPanel } from "./InstallRecoveryHealthPanel";
+import type { InstallRecoveryHealthLoadState } from "./useInstallRecoveryHealth";
 
 type SetupStatusPanelProps = {
   status: GameSetupStatus;
   actionMessage: string | null;
+  recoveryHealth: InstallRecoveryHealthLoadState;
 };
 
-export function SetupStatusPanel({ status, actionMessage }: SetupStatusPanelProps) {
+export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: SetupStatusPanelProps) {
   const copy = statusPanelCopy(status, actionMessage);
 
   return (
@@ -49,6 +52,8 @@ export function SetupStatusPanel({ status, actionMessage }: SetupStatusPanelProp
           <p>{copy.noteBody}</p>
         </article>
       </section>
+
+      <InstallRecoveryHealthPanel state={recoveryHealth} />
 
       <section className="rail-section" aria-labelledby="setup-log-title">
         <h3 id="setup-log-title">设置日志</h3>
