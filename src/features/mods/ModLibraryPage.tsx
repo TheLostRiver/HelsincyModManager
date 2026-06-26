@@ -16,6 +16,7 @@ import { ModPosterCard } from "./ModPosterCard";
 import {
   getInstallManifestStatus,
   previewInstallPlanForImportedMod,
+  scanInstallRecovery,
   startInstallTask,
   startUninstallTask,
 } from "./modInstallPlanApi";
@@ -31,9 +32,13 @@ import {
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
-import { applyInstallManifestStatusSummaries, resolveLoadedModLibraryItems } from "./modLibraryLoadState";
+import {
+  applyInstallManifestStatusSummaries,
+  applyInstallRecoverySummaries,
+  resolveLoadedModLibraryItems,
+} from "./modLibraryLoadState";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
-import type { ModInstallStatus, ModLibraryItem } from "./modLibraryTypes";
+import type { ModInstallStatus, ModInstallSummary, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
@@ -45,6 +50,7 @@ type ViewTransitionVariant = "morph" | "wave" | "flip3d" | "blur";
 
 const viewTransitionOutMs = 220;
 const viewTransitionInMs = 420;
+const DEFAULT_INSTALL_GAME_ID = "mhw";
 const DEFAULT_INSTALL_PROFILE_ID = "default";
 
 const viewTransitionVariantByMode: Record<ModViewMode, ViewTransitionVariant> = {
@@ -228,6 +234,31 @@ function installTaskPanelState(
   }
 }
 
+type UnsafeRecoverySummary = ModInstallSummary & {
+  status: "repair_required" | "unknown";
+};
+
+function isUnsafeRecoverySummary(summary: ModInstallSummary | undefined): summary is UnsafeRecoverySummary {
+  return summary?.status === "repair_required" || summary?.status === "unknown";
+}
+
+function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanPreviewPanelState | null {
+  const summary = item.installSummary;
+  if (!isUnsafeRecoverySummary(summary)) {
+    return null;
+  }
+
+  return {
+    status: "recovery-required",
+    modName: item.name,
+    recoveryStatus: summary.status,
+    managedFileCount: summary.managedFileCount,
+    backupCount: summary.backupCount,
+    issueCount: summary.issueCount ?? 0,
+    issues: summary.issues ?? [],
+  };
+}
+
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("全部");
@@ -271,6 +302,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     return libraryItems.find((item) => item.id === selectedId) ?? null;
   }, [libraryItems, selectedIds]);
   const canUninstallSelected = selectedItem?.installSummary?.status === "installed";
+  const canInstallSelected =
+    selectedItem !== null &&
+    selectedItem.installSummary?.status !== "repair_required" &&
+    selectedItem.installSummary?.status !== "unknown";
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
     setViewMode,
@@ -287,6 +322,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       modIds,
     })
       .then((summaries) => applyInstallManifestStatusSummaries(items, summaries))
+      .then((itemsWithManifestStatus) =>
+        scanInstallRecovery({
+          gameId: DEFAULT_INSTALL_GAME_ID,
+          profileId: DEFAULT_INSTALL_PROFILE_ID,
+          modIds,
+        })
+          .then((summaries) => applyInstallRecoverySummaries(itemsWithManifestStatus, summaries))
+          .catch(() => itemsWithManifestStatus),
+      )
       .catch(() => items);
   }, []);
 
@@ -481,10 +525,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const [modId] = Array.from(selectedIds);
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
+    const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
+    if (recoveryPanelState) {
+      setInstallPlanPreviewState(recoveryPanelState);
+      return;
+    }
 
     setInstallPlanPreviewState({ status: "loading", modName });
     void previewInstallPlanForImportedMod({
-      gameId: "mhw",
+      gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
       layerName: "base",
       layerPriority: 0,
@@ -509,12 +558,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const [modId] = Array.from(selectedIds);
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
+    const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
+    if (!canInstallSelected || recoveryPanelState) {
+      if (recoveryPanelState) {
+        setInstallPlanPreviewState(recoveryPanelState);
+      }
+      return;
+    }
 
     setInstallPlanPreviewState({ status: "idle" });
     pendingInstallProgressEventsRef.current.clear();
     setTrackedInstallTaskState({ status: "starting", operation: "install", modName });
     void startInstallTask({
-      gameId: "mhw",
+      gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
       profileId: DEFAULT_INSTALL_PROFILE_ID,
       layerName: "base",
@@ -599,7 +655,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     pendingInstallProgressEventsRef.current.clear();
     setTrackedInstallTaskState({ status: "starting", operation: "uninstall", modName });
     void startUninstallTask({
-      gameId: "mhw",
+      gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
       profileId: DEFAULT_INSTALL_PROFILE_ID,
     })
@@ -743,6 +799,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             selectedCount={selectedCount}
             totalCount={visibleItems.length}
             installTaskActive={installTaskActive}
+            canInstallSelection={canInstallSelected}
             canUninstallSelection={canUninstallSelected}
             onAction={handleAction}
           />
