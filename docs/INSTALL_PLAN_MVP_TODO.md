@@ -349,6 +349,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 - TDD RED：新增 `installRecoveryGlobalAlert.test.mjs` 后，聚焦测试先失败于缺少 `installRecoveryGlobalAlert.ts`、`InstallRecoveryGlobalAlert.tsx` 和 App Frame 接线。
 - 聚焦验证：`cmd /c corepack pnpm exec node --test "src/features/install-recovery/installRecoveryGlobalAlert.test.mjs" "src/features/dashboard/installRecoveryHealth.test.mjs" "src/features/dashboard/dashboardInstallRecoveryHealth.test.mjs"`。
+- PR #100 本地自审修复：补充 `.app-surface:has(.install-recovery-global-alert)` 三行布局，避免告警出现时占用主内容的 `1fr` 行；新增 source-level 回归断言，并通过完整 `scripts/verify.ps1`。
 
 仍明确未完成：
 
