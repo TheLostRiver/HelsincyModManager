@@ -18,7 +18,7 @@
 当前不能假设：
 
 - MVP manifest 还没有持久化 `planned`、`committing`、`rollback_required`、`rolled_back` 等 rich 状态。
-- 安装 commit 还没有写入 durable recovery record；恢复扫描也还没有消费该记录。
+- 安装 commit 已写入 durable recovery record，但恢复扫描还没有消费该记录，也不会对外返回 `rollback_required`。
 - 安装进程在写入文件但尚未保存 manifest 时崩溃，当前系统不能仅凭目录内容安全推断“本工具写过哪些目标”。
 - Task Log / Audit Log 不能成为唯一事实来源；它们只能辅助诊断，不能替代 manifest、backup 和受控目标摘要。
 - `repair_required` 不等于“可以自动覆盖或删除”。目标被外部工具或玩家修改时，自动恢复可能误伤玩家文件。
@@ -45,7 +45,7 @@
 | `repair_required` | manifest、backup 或目标状态不一致，但无法安全自动判断。 | 阻断破坏性操作，仅提供诊断和人工处理建议。 |
 | `unknown` | 目标或 backup 读取失败，状态不可判定。 | 阻断自动动作，提示重新扫描或导出诊断。 |
 
-`rollback_required` 不能只由当前目标文件变化推断，必须来自未来的 durable recovery record、rich manifest status 或等价受控事务记录。
+`rollback_required` 不能只由当前目标文件变化推断，必须来自 durable recovery record、rich manifest status 或等价受控事务记录。当前 durable recovery record 已由安装 commit 写入，但只读恢复扫描尚未消费它。
 
 ## 恢复动作集合
 
@@ -126,12 +126,13 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 当前进度：
 
 - 已完成第一步基础：领域模型、状态迁移、repository port 和 JSON 仓储。
-- 尚未完成：安装 commit 写入 `planned` / `committing` / `completed` / `rollback_required` 记录，恢复扫描消费该记录，以及任何对外 `rollback_required` DTO 或 UI。
+- 已完成安装 commit 编排写入：`planned` / `committing` / `completed`，并且只在进入写入窗口后 rollback 失败时留下 `rollback_required`。
+- 尚未完成：恢复扫描消费该记录，以及任何对外 `rollback_required` DTO、动作预览或 UI。
 
 候选落点：
 
 - `hmm-core`：新增 game-independent recovery status / action 类型，或扩展 manifest rich 状态模型。
-- `hmm-app`：在安装 commit 编排中定义可测试的状态转换边界。
+- `hmm-app`：安装 commit 编排已定义可测试的状态转换边界；后续恢复扫描消费时仍应继续保持 app service 依赖 ports。
 - `hmm-ports`：如果需要持久化 recovery record，新增窄 repository trait。
 - `hmm-infra`：使用 app data 下受控 JSON/SQLite 存储；禁止写仓库、游戏目录或临时无命名空间目录。
 
