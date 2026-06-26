@@ -11,6 +11,21 @@ export type StartInstallTaskInput = PreviewImportedModInstallPlanInput & {
   profileId: string;
 };
 
+export type GetInstallManifestStatusInput = {
+  profileId: string;
+  modIds: string[];
+};
+
+export type InstallManifestStatus = "not_installed" | "installed" | "repair_required" | "unknown";
+
+export type InstallManifestStatusSummary = {
+  profileId: string;
+  modId: string;
+  status: InstallManifestStatus;
+  managedFileCount: number;
+  backupCount: number;
+};
+
 export type InstallPlanProvider = {
   modId: string;
   packageFileId: string;
