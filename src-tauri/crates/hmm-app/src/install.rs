@@ -46,6 +46,19 @@ pub struct InstallCommitResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UninstallModRequest {
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UninstallModResult {
+    pub manifest: InstallManifest,
+    pub removed_file_count: usize,
+    pub restored_file_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallCommitPhase {
     ManifestRead,
     SourceRead,
@@ -65,6 +78,28 @@ pub enum InstallCommitError {
     RollbackSucceeded { failed_phase: InstallCommitPhase },
     #[error("install commit failed during {failed_phase:?}; rollback failed")]
     RollbackFailed { failed_phase: InstallCommitPhase },
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum UninstallModError {
+    #[error("game instance is unavailable")]
+    GameInstanceUnavailable,
+    #[error("install manifest is unavailable")]
+    ManifestUnavailable,
+    #[error("mod is not installed in this profile")]
+    ModNotInstalled,
+    #[error("installed file summary is required for safe uninstall")]
+    MissingInstalledFileSummary,
+    #[error("installed target state does not match manifest")]
+    TargetStateMismatch,
+    #[error("install backup is unavailable")]
+    BackupUnavailable,
+    #[error("uninstall failed during manifest save")]
+    ManifestSaveFailed,
+    #[error("uninstall failed while removing game file")]
+    RemoveFailed,
+    #[error("uninstall failed while restoring game file")]
+    RestoreFailed,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -110,11 +145,29 @@ pub struct InstallCommitService {
 }
 
 #[derive(Clone)]
+pub struct UninstallModService {
+    game_files: Arc<dyn InstallGameFileSystem>,
+    backup_store: Arc<dyn InstallBackupStore>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
+}
+
+#[derive(Clone)]
 struct AppliedInstallChange {
     target_path: InstallTargetPath,
     previous_bytes: Option<Vec<u8>>,
     pending_backup_ref: Option<String>,
     entry: InstallManifestEntry,
+}
+
+struct PreparedUninstallChange {
+    entry: InstallManifestEntry,
+    current_bytes: Vec<u8>,
+    backup_bytes: Option<Vec<u8>>,
+}
+
+struct AppliedUninstallChange {
+    target_path: InstallTargetPath,
+    previous_bytes: Vec<u8>,
 }
 
 impl InstallCommitService {
@@ -291,6 +344,137 @@ impl InstallCommitService {
                     let _ = self.backup_store.remove_backup(pending_backup_ref);
                 }
             }
+        }
+    }
+}
+
+impl UninstallModService {
+    pub fn new(
+        game_files: Arc<dyn InstallGameFileSystem>,
+        backup_store: Arc<dyn InstallBackupStore>,
+        manifest_repository: Arc<dyn InstallManifestRepository>,
+    ) -> Self {
+        Self {
+            game_files,
+            backup_store,
+            manifest_repository,
+        }
+    }
+
+    pub fn uninstall_mod(
+        &self,
+        request: UninstallModRequest,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        let manifest = self
+            .manifest_repository
+            .load_manifest(&request.profile_id)
+            .map_err(|_| UninstallModError::ManifestUnavailable)?
+            .ok_or(UninstallModError::ModNotInstalled)?;
+
+        let (uninstall_entries, kept_entries): (Vec<_>, Vec<_>) = manifest
+            .entries
+            .into_iter()
+            .partition(|entry| entry.mod_id == request.mod_id);
+
+        if uninstall_entries.is_empty() {
+            return Err(UninstallModError::ModNotInstalled);
+        }
+
+        let mut prepared_changes = Vec::with_capacity(uninstall_entries.len());
+        for entry in uninstall_entries {
+            let expected = entry
+                .installed_file
+                .as_ref()
+                .ok_or(UninstallModError::MissingInstalledFileSummary)?;
+            let current = self
+                .game_files
+                .read_game_file(&entry.target_path)
+                .map_err(|_| UninstallModError::TargetStateMismatch)?
+                .ok_or(UninstallModError::TargetStateMismatch)?;
+
+            if &installed_file_summary(&current) != expected {
+                return Err(UninstallModError::TargetStateMismatch);
+            }
+
+            let backup_bytes = match &entry.backup_ref {
+                Some(backup_ref) => Some(
+                    self.backup_store
+                        .read_backup(backup_ref)
+                        .map_err(|_| UninstallModError::BackupUnavailable)?
+                        .ok_or(UninstallModError::BackupUnavailable)?,
+                ),
+                None => None,
+            };
+
+            prepared_changes.push(PreparedUninstallChange {
+                entry,
+                current_bytes: current,
+                backup_bytes,
+            });
+        }
+
+        let mut removed_file_count = 0;
+        let mut restored_file_count = 0;
+        let mut applied_changes = Vec::with_capacity(prepared_changes.len());
+        for change in &prepared_changes {
+            if let Some(backup_bytes) = &change.backup_bytes {
+                if self
+                    .game_files
+                    .write_game_file(&change.entry.target_path, backup_bytes)
+                    .is_err()
+                {
+                    self.rollback_uninstall(&applied_changes);
+                    return Err(UninstallModError::RestoreFailed);
+                }
+                restored_file_count += 1;
+            } else {
+                if self
+                    .game_files
+                    .remove_game_file(&change.entry.target_path)
+                    .is_err()
+                {
+                    self.rollback_uninstall(&applied_changes);
+                    return Err(UninstallModError::RemoveFailed);
+                }
+                removed_file_count += 1;
+            }
+            applied_changes.push(AppliedUninstallChange {
+                target_path: change.entry.target_path.clone(),
+                previous_bytes: change.current_bytes.clone(),
+            });
+        }
+
+        let updated_manifest = InstallManifest {
+            profile_id: request.profile_id,
+            entries: kept_entries,
+        };
+        if self
+            .manifest_repository
+            .save_manifest(&updated_manifest)
+            .is_err()
+        {
+            self.rollback_uninstall(&applied_changes);
+            return Err(UninstallModError::ManifestSaveFailed);
+        }
+
+        for change in &prepared_changes {
+            if let Some(backup_ref) = &change.entry.backup_ref {
+                let _ = self.backup_store.remove_backup(backup_ref);
+            }
+        }
+
+        Ok(UninstallModResult {
+            manifest: updated_manifest,
+            removed_file_count,
+            restored_file_count,
+        })
+    }
+
+    fn rollback_uninstall(&self, applied_changes: &[AppliedUninstallChange]) {
+        for change in applied_changes.iter().rev() {
+            let _ = self
+                .game_files
+                .write_game_file(&change.target_path, &change.previous_bytes);
         }
     }
 }
@@ -700,6 +884,267 @@ mod tests {
             "d556e02a85803b1d71c94a462432da55b16b443f7579c8bfdc4a44a4c7d6a17a"
         );
         assert_eq!(result.manifest, manifest);
+    }
+
+    #[test]
+    fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: target,
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"new model")),
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service =
+            UninstallModService::new(game_files.clone(), backups.clone(), manifests.clone());
+
+        let result = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect("matching manifest-owned new file should uninstall");
+
+        assert_eq!(game_files.file_bytes("nativePC/models/player.mod3"), None);
+        assert_eq!(backups.removed_refs(), Vec::<String>::new());
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.entries, Vec::<InstallManifestEntry>::new());
+        assert_eq!(result.manifest, manifest);
+        assert_eq!(result.removed_file_count, 1);
+        assert_eq!(result.restored_file_count, 0);
+    }
+
+    #[test]
+    fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matches() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: target,
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: Some("backup-original-player".to_owned()),
+                installed_file: Some(installed_file_summary(b"modded model")),
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"modded model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::with_backups([(
+            "backup-original-player",
+            b"original model".as_slice(),
+        )]));
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service =
+            UninstallModService::new(game_files.clone(), backups.clone(), manifests.clone());
+
+        let result = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect("matching manifest-owned overwrite should restore backup");
+
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"original model".as_slice())
+        );
+        assert_eq!(
+            backups.removed_refs(),
+            vec!["backup-original-player".to_owned()]
+        );
+        let manifest = manifests.take_manifest().expect("manifest should be saved");
+        assert_eq!(manifest.entries, Vec::<InstallManifestEntry>::new());
+        assert_eq!(result.manifest, manifest);
+        assert_eq!(result.removed_file_count, 0);
+        assert_eq!(result.restored_file_count, 1);
+    }
+
+    #[test]
+    fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
+        let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+            .expect("valid target");
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: target,
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"new model")),
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::failing().with_existing_manifest(existing_manifest),
+        );
+        let service =
+            UninstallModService::new(game_files.clone(), backups.clone(), manifests.clone());
+
+        let error = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("manifest save failure should abort uninstall");
+
+        assert_eq!(error, UninstallModError::ManifestSaveFailed);
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"new model".as_slice())
+        );
+        assert!(manifests.take_manifest().is_none());
+    }
+
+    #[test]
+    fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("valid target"),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: None,
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service = UninstallModService::new(game_files.clone(), backups, manifests.clone());
+
+        let error = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("legacy entries without installed summary must be blocked");
+
+        assert_eq!(error, UninstallModError::MissingInstalledFileSummary);
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"new model".as_slice())
+        );
+        assert!(manifests.take_manifest().is_none());
+    }
+
+    #[test]
+    fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("valid target"),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"new model")),
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"external edit".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service = UninstallModService::new(game_files.clone(), backups, manifests.clone());
+
+        let error = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("changed target should be blocked");
+
+        assert_eq!(error, UninstallModError::TargetStateMismatch);
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"external edit".as_slice())
+        );
+        assert!(manifests.take_manifest().is_none());
+    }
+
+    #[test]
+    fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("valid target"),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: Some("missing-backup".to_owned()),
+                installed_file: Some(installed_file_summary(b"new model")),
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service = UninstallModService::new(game_files.clone(), backups, manifests.clone());
+
+        let error = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("missing backup must block restore");
+
+        assert_eq!(error, UninstallModError::BackupUnavailable);
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"new model".as_slice())
+        );
+        assert!(manifests.take_manifest().is_none());
     }
 
     #[test]
@@ -1450,6 +1895,25 @@ mod tests {
     }
 
     impl RecordingInstallBackupStore {
+        fn with_backups<const N: usize>(backups: [(&str, &[u8]); N]) -> Self {
+            Self {
+                records: Mutex::new(
+                    backups
+                        .into_iter()
+                        .map(|(backup_ref, bytes)| {
+                            (
+                                backup_ref.to_owned(),
+                                "<preexisting>".to_owned(),
+                                bytes.to_vec(),
+                            )
+                        })
+                        .collect(),
+                ),
+                removed_refs: Mutex::new(Vec::new()),
+                fail_removals: false,
+            }
+        }
+
         fn failing_removals() -> Self {
             Self {
                 records: Mutex::new(Vec::new()),
@@ -1491,6 +1955,16 @@ mod tests {
                 bytes.to_vec(),
             ));
             Ok(backup_ref)
+        }
+
+        fn read_backup(&self, backup_ref: &str) -> anyhow::Result<Option<Vec<u8>>> {
+            Ok(self
+                .records
+                .lock()
+                .expect("records")
+                .iter()
+                .find(|(record_ref, _, _)| record_ref == backup_ref)
+                .map(|(_, _, bytes)| bytes.clone()))
         }
 
         fn remove_backup(&self, backup_ref: &str) -> anyhow::Result<()> {
