@@ -100,6 +100,8 @@ test("app frame wires readonly global recovery alert to recovery center navigati
   assert.match(alertSource, /useInstallRecoveryHealth/);
   assert.match(alertSource, /enabled:\s*gameSetup\.status\.kind\s*===\s*"configured"/);
   assert.match(alertSource, /navigate\("\/recovery"\)/);
+  assert.match(alertSource, /role=\{alert\.status === "attention" \? "alert" : "status"\}/);
+  assert.match(alertSource, /aria-live=\{alert\.status === "attention" \? "assertive" : "polite"\}/);
   assert.doesNotMatch(
     alertSource,
     /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|manifestRoot|backupRoot|backupRef|gameRoot|targetHash/i,
