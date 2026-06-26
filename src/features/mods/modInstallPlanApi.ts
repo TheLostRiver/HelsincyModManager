@@ -6,6 +6,7 @@ import type {
   InstallPlanPreview,
   PreviewImportedModInstallPlanInput,
   StartInstallTaskInput,
+  StartUninstallTaskInput,
 } from "./modInstallPlanTypes";
 
 export function previewInstallPlanForImportedMod(
@@ -26,6 +27,14 @@ export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStar
     profileId: input.profileId,
     layerName: input.layerName,
     layerPriority: input.layerPriority,
+  });
+}
+
+export function startUninstallTask(input: StartUninstallTaskInput): Promise<TaskStartedDto> {
+  return invoke<TaskStartedDto>("start_uninstall_task", {
+    gameId: input.gameId,
+    modId: input.modId,
+    profileId: input.profileId,
   });
 }
 

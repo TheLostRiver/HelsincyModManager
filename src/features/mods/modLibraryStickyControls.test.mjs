@@ -58,6 +58,7 @@ test("global status bar stays pinned so the sticky controls can sit beneath it",
 
 test("sticky controls are an opaque single-column bar fixed above the scroll container", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const installPlanPreviewCss = readProjectFile("src/features/mods/InstallPlanPreviewPanel.css");
 
   // 滚动容器已下沉到 .mod-library__content：它是 overflow-y:auto 的滚动容器，
   // 高度由路由作用域闭合的高度链约束，滚动条只出现在卡片区域，不达到状态栏高度。
@@ -71,7 +72,7 @@ test("sticky controls are an opaque single-column bar fixed above the scroll con
   const stickyControlsBody = getRuleBody(css, ".mod-library__sticky-controls");
   assert.doesNotMatch(stickyControlsBody, /position:\s*sticky;/);
   assert.match(stickyControlsBody, /grid-row:\s*1;/);
-  assert.match(getRuleBody(css, ".install-plan-preview"), /grid-row:\s*2;/);
+  assert.match(getRuleBody(installPlanPreviewCss, ".install-plan-preview"), /grid-row:\s*2;/);
   assert.match(getRuleBody(css, ".mod-library__content-shell"), /grid-row:\s*3;/);
   assert.match(getRuleBody(css, ".mod-library__content"), /overflow-y:\s*auto;/);
   // 单列垂直堆叠：搜索栏独占上行，操作区在下行，杜绝操作按钮贴在搜索框右侧被误当成搜索按钮。
