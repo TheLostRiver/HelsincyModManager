@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleHelp, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CircleHelp, FileDown, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useGameSetup } from "../game-setup/useGameSetup";
 import type {
   RecoveryCenterIssueView,
@@ -6,11 +6,18 @@ import type {
   RecoveryCenterRepairSummary,
   RecoveryCenterViewModel,
 } from "./recoveryCenterViewModel";
+import {
+  useRecoveryDiagnosticsExport,
+  type RecoveryDiagnosticsExportState,
+} from "./useRecoveryDiagnosticsExport";
 import { useRecoveryCenterScan, type RecoveryCenterScanState } from "./useRecoveryCenterScan";
+
+type ActiveRecoveryDiagnosticsExportState = Exclude<RecoveryDiagnosticsExportState, { status: "idle" }>;
 
 export function RecoveryCenterPage() {
   const gameSetup = useGameSetup("mhw");
   const isConfigured = gameSetup.status.kind === "configured";
+  const diagnostics = useRecoveryDiagnosticsExport();
   const scan = useRecoveryCenterScan({
     gameId: "mhw",
     enabled: isConfigured,
@@ -24,16 +31,35 @@ export function RecoveryCenterPage() {
           <h2 id="recovery-center-title">恢复中心</h2>
           <p>查看当前配置档的托管安装健康状态，先定位需要人工处理的条目。</p>
         </div>
-        <button
-          type="button"
-          className="recovery-center__refresh"
-          disabled={!isConfigured || scan.state.status === "loading"}
-          onClick={scan.refresh}
-        >
-          <RefreshCw size={15} aria-hidden="true" />
-          刷新
-        </button>
+        <div className="recovery-center__hero-actions">
+          <button
+            type="button"
+            className="recovery-center__diagnostics"
+            disabled={diagnostics.state.status === "exporting"}
+            onClick={diagnostics.requestExport}
+          >
+            <FileDown size={15} aria-hidden="true" />
+            {diagnostics.state.status === "exporting" ? "导出中" : "导出诊断"}
+          </button>
+          <button
+            type="button"
+            className="recovery-center__refresh"
+            disabled={!isConfigured || scan.state.status === "loading"}
+            onClick={scan.refresh}
+          >
+            <RefreshCw size={15} aria-hidden="true" />
+            刷新
+          </button>
+        </div>
       </header>
+
+      {diagnostics.state.status !== "idle" ? (
+        <DiagnosticExportPanel
+          state={diagnostics.state}
+          onConfirm={diagnostics.confirmExport}
+          onCancel={diagnostics.cancelExport}
+        />
+      ) : null}
 
       {!isConfigured ? (
         <NotConfiguredPanel />
@@ -42,6 +68,112 @@ export function RecoveryCenterPage() {
       )}
     </section>
   );
+}
+
+function DiagnosticExportPanel({
+  state,
+  onConfirm,
+  onCancel,
+}: {
+  state: ActiveRecoveryDiagnosticsExportState;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (state.status === "confirming") {
+    return (
+      <section
+        className="recovery-center__diagnostic-export is-confirming"
+        aria-labelledby="diagnostic-export-confirm-title"
+      >
+        <div>
+          <h3 id="diagnostic-export-confirm-title">确认导出诊断包</h3>
+          <p>导出包会由后端生成已脱敏的支持材料，页面只显示安全摘要。</p>
+        </div>
+        <div className="recovery-center__diagnostic-confirmation">
+          <ul>
+            <li>包含平台摘要、已校验 App 日志、已校验任务日志和已校验审计事件。</li>
+            <li>页面不展示日志正文、审计正文、本地路径或第三方 Mod 内容。</li>
+          </ul>
+          <div className="recovery-center__diagnostic-export-actions">
+            <button type="button" className="is-primary" onClick={onConfirm}>
+              <FileDown size={14} aria-hidden="true" />
+              开始导出
+            </button>
+            <button type="button" onClick={onCancel}>
+              取消
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (state.status === "exporting") {
+    return (
+      <section className="recovery-center__panel is-loading" role="status" aria-label="诊断导出状态">
+        <div className="recovery-center__state-icon" aria-hidden="true">
+          <Loader2 size={18} />
+        </div>
+        <div>
+          <h3>正在导出诊断包</h3>
+          <p>正在生成已脱敏的支持诊断摘要。</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (state.status === "failed") {
+    return (
+      <section className="recovery-center__panel is-unknown" aria-labelledby="diagnostic-export-failed-title">
+        <div className="recovery-center__state-icon" aria-hidden="true">
+          <CircleHelp size={18} />
+        </div>
+        <div>
+          <h3 id="diagnostic-export-failed-title">诊断导出失败</h3>
+          <p>诊断包暂时不可用。请稍后重试，并保留当前恢复中心状态。</p>
+        </div>
+      </section>
+    );
+  }
+
+  const { result } = state;
+
+  return (
+    <section className="recovery-center__diagnostic-export" aria-labelledby="diagnostic-export-title">
+      <div>
+        <h3 id="diagnostic-export-title">诊断包已导出</h3>
+        <p>{result.fileName}</p>
+      </div>
+      <dl>
+        <MetricTerm label="导出 ID" value={result.exportId} />
+        <MetricTerm label="大小" value={formatBytes(result.sizeBytes)} />
+        <MetricTerm label="App 日志" value={`${result.appLogLineCount} 行`} />
+        <MetricTerm label="任务日志" value={`${result.taskLogLineCount} 行`} />
+        <MetricTerm label="审计事件" value={`${result.auditEventCount} 条`} />
+      </dl>
+    </section>
+  );
+}
+
+function MetricTerm({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function formatBytes(sizeBytes: number) {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function NotConfiguredPanel() {
