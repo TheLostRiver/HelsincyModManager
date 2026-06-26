@@ -52,6 +52,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 预览计划：`preview_install_plan`、`preview_retarget_plan`
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
+- 查询安装恢复摘要：`scan_install_recovery`
 - 查询诊断摘要：`get_preview_image_diagnostics`
 - 导出诊断包：`export_preview_image_diagnostics`
 - 导出审计日志诊断包：`export_audit_log_diagnostics`
@@ -281,6 +282,7 @@ preview_imported_mod_install_plan(input)
 start_install_task(input)
 start_uninstall_task(input)
 get_install_manifest_status(input)
+scan_install_recovery(input)
 cancel_task(taskId)
 ```
 
@@ -306,6 +308,9 @@ cancel_task(taskId)
 - `get_install_manifest_status` 是只读安装状态摘要入口。前端只提交 `profileId` 和 `modIds`，后端从受控 manifest 仓储读取对应 profile 的 manifest，并按 `modId` 返回 `status`、`managedFileCount` 和 `backupCount`。该 command 不接受 `gameId`、`targetPath`、manifest root/path、backup root/ref、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `get_install_manifest_status` 的返回状态为 `not_installed`、`installed`、`repair_required` 或 `unknown`。当前 MVP 后端只根据匹配到的 manifest entries 派生 `installed`，缺失 manifest 或无匹配 entry 返回 `not_installed`；即使新 manifest entry 已包含 `installed_file` 摘要，该 command 也暂不读取目标文件或 backup 做 hash 校验。`repair_required` / `unknown` 作为契约保留给后续恢复扫描和 rich manifest 检测使用。
 - `get_install_manifest_status` 读取失败使用稳定错误码 `install_manifest_unavailable`。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。
+- `scan_install_recovery` 是只读恢复扫描摘要入口。前端只提交 `gameId`、`profileId` 和 `modIds`；后端通过受控游戏配置解析 game root，并复用同一 `gameId/profileId` 的安装/卸载写锁后读取受控 manifest、目标文件摘要和 backup 是否存在。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径、游戏目录路径或 manifest 正文。
+- `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`repair_required` 表示目标缺失、目标摘要不匹配、缺少 `installed_file` 摘要或 backup 缺失等可判断的不一致；`unknown` 表示目标或 backup 读取失败等无法安全判断状态；缺失 manifest 或无匹配 entry 返回 `not_installed`。当前命令只做只读检测，不自动删除、恢复、回滚或写 manifest。
+- `scan_install_recovery` 读取失败使用稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；manifest 仓储不可用返回 `install_recovery_unavailable`。错误 message 不应包含完整本地路径、backup ref、manifest 路径或第三方 Mod 内容。
 - `preview_install_plan` 的错误使用稳定 code，例如 `install_target_path_empty`、`install_target_path_absolute`、`install_target_path_parent_traversal`、`install_target_path_windows_drive_prefix`、`install_target_path_invalid_segment` 和 `install_target_root_not_allowed`；错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_imported_mod_install_plan` 的错误使用稳定 code，例如 `game_id_invalid`、`install_planning_sources_unavailable`、`install_planning_game_adapter_not_found`、`install_planning_imported_mod_not_found`、`install_planning_imported_mod_analysis_unavailable`、`install_planning_imported_mod_sandbox_unavailable`、`install_planning_imported_mod_file_scan_unavailable`，以及复用的 `install_target_*` / `install_target_root_not_allowed` 路径校验错误；错误 message 不应包含完整本地路径、sandbox/cache 路径或第三方 Mod 内容。
 
@@ -349,6 +354,12 @@ type InstallManifestStatusRequestDto = {
   modIds: string[];
 };
 
+type InstallRecoveryScanRequestDto = {
+  gameId: string;
+  profileId: string;
+  modIds: string[];
+};
+
 type InstallManifestStatusDto =
   | "not_installed"
   | "installed"
@@ -361,6 +372,33 @@ type InstallManifestStatusSummaryDto = {
   status: InstallManifestStatusDto;
   managedFileCount: number;
   backupCount: number;
+};
+
+type InstallRecoveryStatusDto =
+  | "not_installed"
+  | "completed"
+  | "repair_required"
+  | "unknown";
+
+type InstallRecoveryIssueDto =
+  | "missing_installed_file_summary"
+  | "target_missing"
+  | "target_changed"
+  | "target_read_failed"
+  | "backup_missing"
+  | "backup_read_failed";
+
+type InstallRecoverySummaryDto = {
+  profileId: string;
+  modId: string;
+  status: InstallRecoveryStatusDto;
+  managedFileCount: number;
+  backupCount: number;
+  issueCount: number;
+  issues: Array<{
+    issue: InstallRecoveryIssueDto;
+    count: number;
+  }>;
 };
 
 type InstallPlanPreviewDto = {
