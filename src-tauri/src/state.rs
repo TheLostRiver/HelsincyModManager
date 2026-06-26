@@ -1,12 +1,13 @@
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CommitInstallPlanRequest,
     GameSetupService, ImportedModInstallCommitRequest, InstallCommitError, InstallCommitPhase,
-    InstallCommitResult, InstallCommitService, InstallPlanCommitter, InstallPlanningService,
-    InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor, ModDependencyGraphService,
-    ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
-    ModLibraryService, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
-    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    InstallCommitResult, InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
+    InstallPlanningService, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
+    ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
+    ModImportTaskRunner, ModImportTaskService, ModLibraryService, PreviewImageCandidateListService,
+    PreviewImageCandidateSelectionService, PreviewImageDetailService,
+    PreviewImageDiagnosticsExportService, PreviewImageService, SupportDiagnosticsExportService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
@@ -42,6 +43,7 @@ pub struct AppState {
     pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
     pub install_planning: Arc<InstallPlanningService>,
+    pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
@@ -87,6 +89,9 @@ impl AppState {
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
+        let install_manifest_repository = Arc::new(JsonInstallManifestRepository::new(
+            app_data_dir.join("install").join("manifests"),
+        ));
         let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
             &app_settings_repository,
         )));
@@ -175,6 +180,9 @@ impl AppState {
             Arc::new(SandboxModPackageInstallFileScanner),
             vec![Arc::clone(&mhw_adapter)],
         ));
+        let install_manifest_query = Arc::new(InstallManifestQueryService::new(
+            install_manifest_repository.clone(),
+        ));
         let install_committer: Arc<dyn InstallPlanCommitter> =
             Arc::new(ConfiguredInstallCommitter::new(
                 Arc::clone(&game_config_repository),
@@ -228,6 +236,7 @@ impl AppState {
             audit_log_diagnostics_export,
             support_diagnostics_export,
             install_planning,
+            install_manifest_query,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             mod_import_task_runner,

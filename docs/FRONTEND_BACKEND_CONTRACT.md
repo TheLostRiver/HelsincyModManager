@@ -275,6 +275,7 @@ preview_retarget_plan({ gameId, packageId, binding })
 preview_install_plan(input)
 preview_imported_mod_install_plan(input)
 start_install_task(input)
+get_install_manifest_status(input)
 cancel_task(taskId)
 ```
 
@@ -290,6 +291,9 @@ cancel_task(taskId)
 - `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
 - `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
 - `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。
+- `get_install_manifest_status` 是只读安装状态摘要入口。前端只提交 `profileId` 和 `modIds`，后端从受控 manifest 仓储读取对应 profile 的 manifest，并按 `modId` 返回 `status`、`managedFileCount` 和 `backupCount`。该 command 不接受 `gameId`、`targetPath`、manifest root/path、backup root/ref、sandbox/cache 路径、导入包路径或游戏目录路径。
+- `get_install_manifest_status` 的返回状态为 `not_installed`、`installed`、`repair_required` 或 `unknown`。当前 MVP 旧 manifest 缺少 rich status/hash 字段，后端只能根据匹配到的 manifest entries 派生 `installed`，缺失 manifest 或无匹配 entry 返回 `not_installed`；`repair_required` / `unknown` 作为契约保留给后续恢复扫描和 rich manifest 检测使用。
+- `get_install_manifest_status` 读取失败使用稳定错误码 `install_manifest_unavailable`。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。
 - `preview_install_plan` 的错误使用稳定 code，例如 `install_target_path_empty`、`install_target_path_absolute`、`install_target_path_parent_traversal`、`install_target_path_windows_drive_prefix`、`install_target_path_invalid_segment` 和 `install_target_root_not_allowed`；错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_imported_mod_install_plan` 的错误使用稳定 code，例如 `game_id_invalid`、`install_planning_sources_unavailable`、`install_planning_game_adapter_not_found`、`install_planning_imported_mod_not_found`、`install_planning_imported_mod_analysis_unavailable`、`install_planning_imported_mod_sandbox_unavailable`、`install_planning_imported_mod_file_scan_unavailable`，以及复用的 `install_target_*` / `install_target_root_not_allowed` 路径校验错误；错误 message 不应包含完整本地路径、sandbox/cache 路径或第三方 Mod 内容。
 
@@ -320,6 +324,25 @@ type StartInstallTaskRequestDto = {
   profileId: string;
   layerName: string;
   layerPriority: number;
+};
+
+type InstallManifestStatusRequestDto = {
+  profileId: string;
+  modIds: string[];
+};
+
+type InstallManifestStatusDto =
+  | "not_installed"
+  | "installed"
+  | "repair_required"
+  | "unknown";
+
+type InstallManifestStatusSummaryDto = {
+  profileId: string;
+  modId: string;
+  status: InstallManifestStatusDto;
+  managedFileCount: number;
+  backupCount: number;
 };
 
 type InstallPlanPreviewDto = {

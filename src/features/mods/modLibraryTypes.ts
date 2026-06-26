@@ -1,6 +1,13 @@
 import type { PreviewImage } from "./modPreviewImageTypes";
+import type { InstallManifestStatus } from "./modInstallPlanTypes";
 
-export type ModInstallStatus = "installed" | "disabled" | "conflict";
+export type ModInstallStatus = InstallManifestStatus | "disabled" | "conflict";
+
+export type ModInstallSummary = {
+  status: InstallManifestStatus;
+  managedFileCount: number;
+  backupCount: number;
+};
 
 export type ModLibraryItem = {
   id: string;
@@ -9,6 +16,7 @@ export type ModLibraryItem = {
   versionLabel?: string;
   sizeLabel: string;
   status: ModInstallStatus;
+  installSummary?: ModInstallSummary;
   categoryLabels: string[];
   posterFrom?: string;
   posterTo?: string;

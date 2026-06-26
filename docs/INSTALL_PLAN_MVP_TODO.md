@@ -43,12 +43,10 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍未完成：
 
-- 安装状态持久化和已安装/修复摘要展示。
-- manifest 查询和“已安装状态”展示。
 - 基于 manifest 的卸载。
 - 跨进程崩溃恢复扫描。
 - ARMOR_RETARGET staging 接入 InstallPlan。
-- rich manifest 字段和状态机。
+- rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
 
 ## 已完成切片记录
@@ -64,6 +62,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 安装任务入口、写锁、审计日志和 `start_install_task`。
 - [x] manifest 读取与按目标路径合并基础能力。
 - [x] 前端最小安装任务流程与进度事件竞态处理。
+- [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
 
 ## 设计细化规则
 
@@ -201,6 +200,8 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P0：安装 UI 状态恢复与安装状态摘要
 
+状态：已落地 MVP。当前实现会在 Mod 库加载成功和安装任务完成后调用 `get_install_manifest_status`，并展示后端返回的摘要状态；后续 rich manifest / recovery 扫描会继续增强 `repair_required` 的真实检测。
+
 目标：让用户在 Mod 库重新进入、刷新或安装任务结束后，能看到来自后端 manifest 摘要的安装状态，而不是只依赖页面内存里的任务事件。
 
 范围：
@@ -229,6 +230,8 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - Rust command/DTO 测试仍通过。
 
 ### P0：Manifest 查询与安装状态摘要
+
+状态：已落地 MVP。当前 command 按 `profileId` + `modIds` 返回 `not_installed` / `installed` / `repair_required` / `unknown` 摘要；旧 MVP manifest 暂只能根据匹配 entry 派生 `installed`，不做目标文件 hash 校验、backup 完整性校验或卸载计划。
 
 目标：让前端能展示某个 profile / mod 的安装状态，但不暴露 manifest 文件路径或原始 manifest 正文。
 

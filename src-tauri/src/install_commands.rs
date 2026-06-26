@@ -1,5 +1,6 @@
 use crate::dto::{
-    CommandErrorDto, InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
+    CommandErrorDto, InstallManifestStatusRequestDto, InstallManifestStatusSummaryDto,
+    InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
     PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartInstallTaskRequestDto,
     TaskStartedDto,
 };
@@ -7,7 +8,8 @@ use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallPlanFile,
-    InstallPlanningError, StartInstallTaskRequest, TaskProgressEvent, TaskStarted,
+    InstallManifestQueryError, InstallManifestQueryRequest, InstallPlanningError,
+    StartInstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
 use std::sync::Arc;
@@ -68,6 +70,20 @@ pub fn start_install_task(
     );
 
     Ok(task.into())
+}
+
+#[tauri::command]
+pub fn get_install_manifest_status(
+    request: InstallManifestStatusRequestDto,
+    state: State<'_, AppState>,
+) -> Result<Vec<InstallManifestStatusSummaryDto>, CommandErrorDto> {
+    let request = install_manifest_status_request_from_dto(request)?;
+    let summaries = state
+        .install_manifest_query
+        .query_statuses(request)
+        .map_err(install_manifest_query_error_to_command_error)?;
+
+    Ok(summaries.into_iter().map(Into::into).collect())
 }
 
 fn spawn_install_runner(
@@ -152,6 +168,36 @@ fn start_install_task_request_from_dto(
     })
 }
 
+fn install_manifest_status_request_from_dto(
+    request: InstallManifestStatusRequestDto,
+) -> Result<InstallManifestQueryRequest, CommandErrorDto> {
+    let profile_id = parse_non_empty_id(
+        request.profile_id,
+        "profile_id_empty",
+        "profile id cannot be empty",
+    )?;
+    if request.mod_ids.is_empty() {
+        return Err(CommandErrorDto {
+            code: "mod_ids_empty".to_owned(),
+            message: "mod ids cannot be empty".to_owned(),
+        });
+    }
+
+    let mod_ids = request
+        .mod_ids
+        .into_iter()
+        .map(|mod_id| parse_non_empty_id(mod_id, "mod_id_empty", "mod id cannot be empty"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(ModId::new)
+        .collect();
+
+    Ok(InstallManifestQueryRequest {
+        profile_id: ProfileId::new(profile_id),
+        mod_ids,
+    })
+}
+
 fn parse_non_empty_id(
     value: String,
     code: &'static str,
@@ -210,6 +256,17 @@ fn install_planning_error_to_command_error(error: InstallPlanningError) -> Comma
         InstallPlanningError::ImportedModFileScanUnavailable => CommandErrorDto {
             code: "install_planning_imported_mod_file_scan_unavailable".to_owned(),
             message: "imported mod files are unavailable".to_owned(),
+        },
+    }
+}
+
+fn install_manifest_query_error_to_command_error(
+    error: InstallManifestQueryError,
+) -> CommandErrorDto {
+    match error {
+        InstallManifestQueryError::ManifestUnavailable => CommandErrorDto {
+            code: "install_manifest_unavailable".to_owned(),
+            message: "install manifest status is unavailable".to_owned(),
         },
     }
 }
@@ -302,6 +359,29 @@ mod tests {
         assert_eq!(app_request.profile_id.as_str(), "default");
         assert_eq!(app_request.layer.name, "base");
         assert_eq!(app_request.layer.priority, 10);
+    }
+
+    #[test]
+    fn install_manifest_status_request_deserializes_without_paths() {
+        let value = json!({
+            "profileId": "default",
+            "modIds": ["mod-a", "mod-b"]
+        });
+
+        let request: crate::dto::InstallManifestStatusRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let app_request =
+            install_manifest_status_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(
+            app_request
+                .mod_ids
+                .iter()
+                .map(|mod_id| mod_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mod-a", "mod-b"]
+        );
     }
 
     #[test]

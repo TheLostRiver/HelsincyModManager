@@ -185,20 +185,21 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 按 `taskId` 订阅 `hmm://task-progress` 安装事件。
 - 展示 `install.queued`、`install.plan.building`、`install.commit.processing`、`install.completed`、`install.failed` 和 `install.cancelled`。
 - 处理 `start_install_task` 返回前进度事件先到达的竞态。
+- 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新 manifest 状态摘要。
+- 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会对旧 manifest 根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。
 
-当前前端只能展示后端返回的计划摘要、冲突摘要和任务事件状态，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的已安装/需要修复摘要要等 Manifest 查询切片提供后端事实来源。
+当前前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
-- 安装状态持久化和已安装摘要：最小安装任务 UI 已能启动任务并展示事件进度，但尚不能在页面刷新、重新进入或任务结束后基于 manifest 展示“已安装 / 需要修复 / 状态未知”等事实摘要。
 - 卸载：尚未实现基于 manifest 的 uninstall。
 - 恢复扫描：尚未实现启动时扫描半完成安装、`rollback_required` 或 `repair_required` 状态。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest 查询与已安装状态：底层 manifest 已可读取，但尚未提供查询 manifest、展示已安装状态或修复状态的正式 command。
+- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command 和前端展示，但旧 MVP manifest 尚未记录 hash/status，暂不能检测目标文件缺失、backup 缺失或外部修改并自动标记 `repair_required`。
 - Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、hash、replacement binding snapshot、created/completed time 等长期字段。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
@@ -214,13 +215,11 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. Manifest 查询：基于已可读取的 profile manifest，提供后端 command 返回某个 profile/mod 的安装状态摘要，前端只消费摘要。
-2. 安装 UI 状态恢复：在 Mod 库重新进入或安装任务完成后刷新 manifest 摘要，展示已安装、需要修复或状态未知，不依赖页面内存任务态。
-3. 基于 manifest 的 uninstall：不根据当前 Mod 包猜测已安装文件。
-4. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
-5. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
-6. Rich manifest：补齐 backend、status、hash、replacement binding snapshot 和时间字段。
-7. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
+1. 基于 manifest 的 uninstall：不根据当前 Mod 包猜测已安装文件。
+2. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
+3. Rich manifest / repair 检测：补齐 backend、status、hash、replacement binding snapshot 和时间字段，支持 `repair_required` 的真实检测。
+4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
+5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
 
 ## 验证基线
 
