@@ -11,6 +11,7 @@ test("install plan API invokes backend-driven imported mod preview command", () 
   const source = readSource("src/features/mods/modInstallPlanApi.ts");
 
   assert.match(source, /invoke<InstallPlanPreview>\("preview_imported_mod_install_plan"/);
+  assert.match(source, /preview_imported_mod_install_plan"[\s\S]*request:\s*\{/);
   assert.match(source, /gameId:\s*input\.gameId/);
   assert.match(source, /modId:\s*input\.modId/);
   assert.match(source, /layerName:\s*input\.layerName/);
@@ -22,6 +23,7 @@ test("install plan API invokes controlled install task command without paths", (
   const source = readSource("src/features/mods/modInstallPlanApi.ts");
 
   assert.match(source, /invoke<TaskStartedDto>\("start_install_task"/);
+  assert.match(source, /start_install_task"[\s\S]*request:\s*\{/);
   assert.match(source, /gameId:\s*input\.gameId/);
   assert.match(source, /modId:\s*input\.modId/);
   assert.match(source, /profileId:\s*input\.profileId/);
@@ -37,6 +39,7 @@ test("install plan API invokes controlled uninstall task command without paths",
   const uninstallCall = source.match(/export function startUninstallTask[\s\S]*?\n}/);
   assert.ok(uninstallCall, "expected a feature-local uninstall wrapper");
   assert.match(uninstallCall[0], /invoke<TaskStartedDto>\("start_uninstall_task"/);
+  assert.match(uninstallCall[0], /request:\s*\{/);
   assert.match(uninstallCall[0], /gameId:\s*input\.gameId/);
   assert.match(uninstallCall[0], /modId:\s*input\.modId/);
   assert.match(uninstallCall[0], /profileId:\s*input\.profileId/);
@@ -50,6 +53,7 @@ test("install manifest status API invokes controlled summary command without pat
   const source = readSource("src/features/mods/modInstallPlanApi.ts");
 
   assert.match(source, /invoke<InstallManifestStatusSummary\[\]>\("get_install_manifest_status"/);
+  assert.match(source, /get_install_manifest_status"[\s\S]*request:\s*\{/);
   assert.match(source, /profileId:\s*input\.profileId/);
   assert.match(source, /modIds:\s*input\.modIds/);
   assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot/i);
@@ -62,6 +66,7 @@ test("install recovery scan API invokes controlled summary command without paths
   const recoveryCall = source.match(/export function scanInstallRecovery[\s\S]*?\n}/);
   assert.ok(recoveryCall, "expected a feature-local recovery scan wrapper");
   assert.match(recoveryCall[0], /invoke<InstallRecoverySummary\[\]>\("scan_install_recovery"/);
+  assert.match(recoveryCall[0], /request:\s*\{/);
   assert.match(recoveryCall[0], /gameId:\s*input\.gameId/);
   assert.match(recoveryCall[0], /profileId:\s*input\.profileId/);
   assert.match(recoveryCall[0], /modIds:\s*input\.modIds/);
@@ -148,6 +153,7 @@ test("mod library page refreshes install status from manifest summaries", () => 
   assert.match(source, /scanInstallRecovery/);
   assert.match(source, /applyInstallManifestStatusSummaries/);
   assert.match(source, /applyInstallRecoverySummaries/);
+  assert.match(source, /applyInstallRecoveryUnavailable/);
   assert.match(source, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);

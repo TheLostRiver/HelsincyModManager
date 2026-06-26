@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   applyInstallManifestStatusSummaries,
+  applyInstallRecoveryUnavailable,
   applyInstallRecoverySummaries,
   resolveLoadedModLibraryItems,
 } from "./modLibraryLoadState.ts";
@@ -157,4 +158,51 @@ test("install recovery summaries surface unsafe states and issue counts", () => 
     issueCount: 2,
     issues: [{ issue: "target_changed", count: 2 }],
   });
+});
+
+test("unavailable install recovery degrades managed states to unknown without paths", () => {
+  const result = applyInstallRecoveryUnavailable([
+    {
+      id: "installed-mod",
+      name: "Installed Mod",
+      status: "installed",
+      sizeLabel: "1 KB",
+      categoryLabels: [],
+      installSummary: {
+        status: "installed",
+        managedFileCount: 2,
+        backupCount: 1,
+      },
+    },
+    {
+      id: "new-mod",
+      name: "New Mod",
+      status: "not_installed",
+      sizeLabel: "2 KB",
+      categoryLabels: [],
+      installSummary: {
+        status: "not_installed",
+        managedFileCount: 0,
+        backupCount: 0,
+      },
+    },
+  ]);
+
+  assert.equal(result[0].status, "unknown");
+  assert.deepEqual(result[0].installSummary, {
+    status: "unknown",
+    managedFileCount: 2,
+    backupCount: 1,
+    recoveryStatus: "unknown",
+    issueCount: 0,
+    issues: [],
+  });
+  assert.equal(result[1].status, "not_installed");
+  assert.deepEqual(result[1].installSummary, {
+    status: "not_installed",
+    managedFileCount: 0,
+    backupCount: 0,
+  });
+  assert.equal("targetPath" in result[0], false);
+  assert.equal("backupRef" in result[0], false);
 });

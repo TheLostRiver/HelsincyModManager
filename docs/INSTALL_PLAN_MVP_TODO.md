@@ -180,7 +180,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 已落地范围：
 
 - 前端新增 feature-local `scanInstallRecovery` typed API，只调用 `scan_install_recovery` 并提交 `gameId`、`profileId`、`modIds`。
-- Mod 库在 `get_install_manifest_status` 摘要刷新后调用只读恢复扫描；扫描失败时保留 manifest 摘要，不把失败回退为 mock 安装事实。
+- Mod 库在 `get_install_manifest_status` 摘要刷新后调用只读恢复扫描；扫描失败时把已有非 `not_installed` manifest 摘要降级为不安全 `unknown`，不把失败回退为 mock 安装事实。
 - `applyInstallRecoverySummaries` 把后端 `completed` 映射为前端 `installed`，把 `repair_required` / `unknown` 合并为不安全安装状态，同时保留 `disabled` / `conflict` 等非 manifest UI 状态。
 - 安装/重装入口在 `repair_required` / `unknown` 时被阻断；卸载仍只允许后端摘要为 `installed` 的单选条目，不根据 Mod 包内容、页面内存态或展示标签推断可卸载。
 - 人工处理面板和卡片状态只展示托管文件数、backup 计数、聚合 issue code 与计数，不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。

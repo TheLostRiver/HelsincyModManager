@@ -85,3 +85,24 @@ export function applyInstallRecoverySummaries(
     };
   });
 }
+
+export function applyInstallRecoveryUnavailable(items: ModLibraryItem[]): ModLibraryItem[] {
+  return items.map((item) => {
+    const summary = item.installSummary;
+    if (!summary || summary.status === "not_installed") {
+      return item;
+    }
+
+    return {
+      ...item,
+      status: item.status === "disabled" || item.status === "conflict" ? item.status : "unknown",
+      installSummary: {
+        ...summary,
+        status: "unknown",
+        recoveryStatus: "unknown",
+        issueCount: summary.issueCount ?? 0,
+        issues: summary.issues ?? [],
+      },
+    };
+  });
+}
