@@ -555,7 +555,9 @@
 
 .summary-box,
 .summary-note,
-.log-card {
+.log-card,
+.recovery-health-card,
+.recovery-health-metric {
   box-shadow: 0 8px 20px -16px #1f29371f;
 }
 
@@ -596,6 +598,107 @@
   font-size: 11px;
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+.recovery-health-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recovery-health-badge.is-healthy,
+.recovery-health-badge.is-empty {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.recovery-health-badge.is-attention,
+.recovery-health-badge.is-unknown,
+.recovery-health-badge.is-loading {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.recovery-health-card {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 9px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-health-card svg {
+  margin-top: 1px;
+  color: var(--color-text-muted);
+}
+
+.recovery-health-card.is-healthy svg,
+.recovery-health-card.is-empty svg {
+  color: var(--color-success-dot);
+}
+
+.recovery-health-card.is-attention svg {
+  color: var(--color-warning-text);
+}
+
+.recovery-health-card p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.recovery-health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recovery-health-metric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--color-surface);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-health-metric span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.recovery-health-metric strong {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.recovery-issue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recovery-issue-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .log-card {
