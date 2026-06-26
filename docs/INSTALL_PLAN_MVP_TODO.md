@@ -42,7 +42,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod。
-- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储。当前该记录尚未接入安装 commit 写入或恢复扫描消费。
+- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描尚未消费该记录，也不会对外返回 `rollback_required`。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
@@ -53,7 +53,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储基础已落地，但 commit 写入、扫描消费、动作预览和回滚执行仍未落地。
+- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储和安装 commit 写入已落地，但扫描消费、动作预览和回滚执行仍未落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -86,6 +86,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 恢复中心只读人工处理决策面板，提供重新扫描、导出诊断和不可用的受控修复占位，不提供恢复/删除/回滚/manifest 写入动作。
 - [x] 安装恢复受控动作实施计划，明确 durable recovery record / rich status、只读动作预览、受控回滚任务和恢复中心 UI 启用的后续拆分边界。
 - [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
+- [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -107,6 +108,31 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 - 聚焦 core：`cargo test -p hmm-core recovery_record`。
 - 聚焦 infra：`cargo test -p hmm-infra json_recovery_record_repository`。
+
+### 2026-06-27 进度详情：安装 commit 写入 durable recovery record
+
+本切片继续完成 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 中“切片 1”的安装提交编排部分。它只写后端内部 recovery record，不启用恢复按钮、动作预览或对外 `rollback_required` 扫描状态。
+
+已落地范围：
+
+- `InstallCommitService` 新增可选 `InstallRecoveryRecordRepository` 注入；旧构造函数保持兼容，生产 `start_install_task` 组合根接入 `JsonInstallRecoveryRecordRepository`，记录保存在 app data 下的 `install/recovery`。
+- 安装 commit 在 manifest 读取成功后按 `profileId/modId` 写入 `planned`，进入真实写入窗口前写入 `committing`，manifest 保存成功后 best-effort 写入 `completed`。
+- 如果进入写入窗口后失败，现有 best-effort rollback 成功时会 best-effort 清理本次 recovery record，避免制造假的待恢复状态；只有 rollback 失败时才通过受控迁移留下 `rollback_required`。
+- recovery record entry 只记录受控 target path、package file id、backup ref 和 installed file 摘要，不新增前端 DTO，也不向任务事件暴露路径、backup root、manifest root、sandbox/cache 路径或第三方 Mod 内容。
+
+仍明确未完成：
+
+- `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`。
+- 没有新增 Tauri command、DTO、task phase、前端 UI、只读动作预览或受控回滚执行。
+- 回滚成功后的 `rolled_back` rich 状态、只读动作预览和受控回滚任务仍需后续切片。
+
+验证记录：
+
+- TDD RED：`cargo test -p hmm-app recovery_record` 先失败于缺少 `InstallCommitService::new_with_recovery_records`。
+- 聚焦 recovery record：`cargo test -p hmm-app recovery_record`（覆盖成功生命周期、rollback 成功清理记录、rollback 失败留下 `rollback_required`）。
+- 聚焦 commit plan 回归：`cargo test -p hmm-app commit_plan`。
+- Tauri 安装契约回归：`cargo test -p hmm-tauri install`。
+- 全量门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -393,7 +419,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 仍明确未完成：
 
-- durable recovery record / rich manifest 状态代码。
+- durable recovery record 扫描消费 / rich manifest 状态代码。
 - `rollback_required` scan 分支。
 - `install.recovery.*` 任务事件和受控回滚 command。
 - 恢复中心中的实际恢复按钮。
@@ -629,14 +655,14 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续代码切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储和安装 commit 写入已落地；自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续代码切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
 范围：
 
 - 扫描 manifest、备份记录和任务状态摘要。
-- 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 durable recovery record / rich manifest/task 状态后续补齐，不能只从目录内容推断。
+- 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；安装 commit 已写入 durable recovery record，但 `scan_install_recovery` 尚未消费该记录，`rollback_required` 仍需要后续扫描/rich manifest 状态切片补齐，不能只从目录内容推断。
 - 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
 - Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；App Frame 已提供全局只读恢复告警；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要、只读 rich repair summary 和完整支持诊断包导出联动；受控恢复/回滚动作仍待后续补齐。
 
