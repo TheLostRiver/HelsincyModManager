@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import {
+  isManualActionDisabled,
+  resolveManualActionHandler,
+} from "./recoveryCenterManualActions.ts";
+
 function readSource(path) {
   return readFileSync(path, "utf8");
 }
@@ -81,8 +86,10 @@ test("Recovery Center renders manual handling decision panel with safe actions o
   assert.match(page, /manualDecision\.actions/);
   assert.match(page, /onRefresh/);
   assert.match(page, /onExportDiagnostics/);
-  assert.match(page, /action\.state === "available"/);
-  assert.match(page, /disabled=\{action\.state !== "available"\}/);
+  assert.match(page, /isManualActionDisabled/);
+  assert.match(page, /resolveManualActionHandler/);
+  assert.match(page, /isRefreshing=\{scan\.state\.status === "loading"\}/);
+  assert.match(page, /isExporting=\{diagnostics\.state\.status === "exporting"\}/);
   assert.match(page, /manual-decision/);
 
   const forbiddenCommands = [
@@ -97,6 +104,82 @@ test("Recovery Center renders manual handling decision panel with safe actions o
   for (const token of forbiddenCommands) {
     assert.equal(page.includes(token), false, `${token} must not be exposed from manual handling UI`);
   }
+});
+
+test("manual handling actions combine action state with live busy state", () => {
+  const retryAction = {
+    id: "retry_scan",
+    label: "重新扫描",
+    description: "重新读取后端只读恢复摘要。",
+    state: "available",
+  };
+  const exportAction = {
+    id: "export_diagnostics",
+    label: "导出诊断",
+    description: "生成已脱敏的支持诊断包。",
+    state: "available",
+  };
+  const controlledRecoveryAction = {
+    id: "controlled_recovery",
+    label: "受控修复",
+    description: "当前不可用。",
+    state: "unavailable",
+  };
+
+  assert.equal(isManualActionDisabled(retryAction, { isRefreshing: false, isExporting: false }), false);
+  assert.equal(isManualActionDisabled(retryAction, { isRefreshing: true, isExporting: false }), true);
+  assert.equal(isManualActionDisabled(exportAction, { isRefreshing: false, isExporting: false }), false);
+  assert.equal(isManualActionDisabled(exportAction, { isRefreshing: false, isExporting: true }), true);
+  assert.equal(
+    isManualActionDisabled(controlledRecoveryAction, { isRefreshing: false, isExporting: false }),
+    true,
+  );
+});
+
+test("manual handling action handlers only fire for available non-busy safe actions", () => {
+  let refreshCount = 0;
+  let exportCount = 0;
+  const handlers = {
+    onRefresh: () => {
+      refreshCount += 1;
+    },
+    onExportDiagnostics: () => {
+      exportCount += 1;
+    },
+  };
+  const retryAction = {
+    id: "retry_scan",
+    label: "重新扫描",
+    description: "重新读取后端只读恢复摘要。",
+    state: "available",
+  };
+  const exportAction = {
+    id: "export_diagnostics",
+    label: "导出诊断",
+    description: "生成已脱敏的支持诊断包。",
+    state: "available",
+  };
+  const controlledRecoveryAction = {
+    id: "controlled_recovery",
+    label: "受控修复",
+    description: "当前不可用。",
+    state: "unavailable",
+  };
+
+  resolveManualActionHandler(retryAction, { isRefreshing: false, isExporting: false }, handlers)?.();
+  resolveManualActionHandler(exportAction, { isRefreshing: false, isExporting: false }, handlers)?.();
+
+  assert.equal(refreshCount, 1);
+  assert.equal(exportCount, 1);
+  assert.equal(resolveManualActionHandler(retryAction, { isRefreshing: true, isExporting: false }, handlers), undefined);
+  assert.equal(
+    resolveManualActionHandler(exportAction, { isRefreshing: false, isExporting: true }, handlers),
+    undefined,
+  );
+  assert.equal(
+    resolveManualActionHandler(controlledRecoveryAction, { isRefreshing: false, isExporting: false }, handlers),
+    undefined,
+  );
 });
 
 test("Recovery Center exposes support diagnostics export without path or raw log fields", () => {

@@ -12,6 +12,7 @@ import {
   useRecoveryDiagnosticsExport,
   type RecoveryDiagnosticsExportState,
 } from "./useRecoveryDiagnosticsExport";
+import { isManualActionDisabled, resolveManualActionHandler } from "./recoveryCenterManualActions";
 import { useRecoveryCenterScan, type RecoveryCenterScanState } from "./useRecoveryCenterScan";
 
 type ActiveRecoveryDiagnosticsExportState = Exclude<RecoveryDiagnosticsExportState, { status: "idle" }>;
@@ -70,6 +71,8 @@ export function RecoveryCenterPage() {
           state={scan.state}
           onRefresh={scan.refresh}
           onExportDiagnostics={diagnostics.requestExport}
+          isRefreshing={scan.state.status === "loading"}
+          isExporting={diagnostics.state.status === "exporting"}
         />
       )}
     </section>
@@ -200,10 +203,14 @@ function RecoveryCenterBody({
   state,
   onRefresh,
   onExportDiagnostics,
+  isRefreshing,
+  isExporting,
 }: {
   state: RecoveryCenterScanState;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
+  isRefreshing: boolean;
+  isExporting: boolean;
 }) {
   if (state.status === "idle" || state.status === "loading") {
     return (
@@ -238,6 +245,8 @@ function RecoveryCenterBody({
       viewModel={state.viewModel}
       onRefresh={onRefresh}
       onExportDiagnostics={onExportDiagnostics}
+      isRefreshing={isRefreshing}
+      isExporting={isExporting}
     />
   );
 }
@@ -246,10 +255,14 @@ function RecoveryCenterSummary({
   viewModel,
   onRefresh,
   onExportDiagnostics,
+  isRefreshing,
+  isExporting,
 }: {
   viewModel: RecoveryCenterViewModel;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
+  isRefreshing: boolean;
+  isExporting: boolean;
 }) {
   const copy = overviewCopy(viewModel);
 
@@ -283,6 +296,8 @@ function RecoveryCenterSummary({
         manualDecision={viewModel.overview.manualDecision}
         onRefresh={onRefresh}
         onExportDiagnostics={onExportDiagnostics}
+        isRefreshing={isRefreshing}
+        isExporting={isExporting}
       />
 
       {viewModel.overview.issues.length > 0 ? (
@@ -316,10 +331,14 @@ function ManualHandlingPanel({
   manualDecision,
   onRefresh,
   onExportDiagnostics,
+  isRefreshing,
+  isExporting,
 }: {
   manualDecision: RecoveryCenterManualDecision;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
+  isRefreshing: boolean;
+  isExporting: boolean;
 }) {
   return (
     <section className={`recovery-center__manual-decision is-${manualDecision.status}`} aria-label="人工处理决策">
@@ -336,43 +355,27 @@ function ManualHandlingPanel({
         ) : null}
       </div>
       <div className="recovery-center__manual-actions">
-        {manualDecision.actions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            disabled={action.state !== "available"}
-            onClick={
-              action.state === "available"
-                ? manualActionHandler(action, onRefresh, onExportDiagnostics)
-                : undefined
-            }
-          >
-            {manualActionIcon(action)}
-            <span>
-              <strong>{action.label}</strong>
-              <small>{action.description}</small>
-            </span>
-          </button>
-        ))}
+        {manualDecision.actions.map((action) => {
+          const busyState = { isRefreshing, isExporting };
+          const disabled = isManualActionDisabled(action, busyState);
+          const handler = resolveManualActionHandler(action, busyState, {
+            onRefresh,
+            onExportDiagnostics,
+          });
+
+          return (
+            <button key={action.id} type="button" disabled={disabled} onClick={handler}>
+              {manualActionIcon(action)}
+              <span>
+                <strong>{action.label}</strong>
+                <small>{action.description}</small>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
-}
-
-function manualActionHandler(
-  action: RecoveryCenterManualAction,
-  onRefresh: () => void,
-  onExportDiagnostics: () => void,
-) {
-  if (action.id === "retry_scan") {
-    return onRefresh;
-  }
-
-  if (action.id === "export_diagnostics") {
-    return onExportDiagnostics;
-  }
-
-  return undefined;
 }
 
 function manualActionIcon(action: RecoveryCenterManualAction) {
