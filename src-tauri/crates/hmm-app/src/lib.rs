@@ -2,6 +2,7 @@ mod app_settings;
 mod game_setup;
 mod install;
 mod install_manifest_query;
+mod install_recovery;
 mod install_task;
 mod log_diagnostics;
 mod mod_dependency_graph;
@@ -25,6 +26,11 @@ pub use install::{
 pub use install_manifest_query::{
     InstallManifestQueryError, InstallManifestQueryRequest, InstallManifestQueryService,
     InstallManifestStatus, InstallManifestStatusSummary,
+};
+pub use install_recovery::{
+    InstallRecoveryIssue, InstallRecoveryIssueSummary, InstallRecoveryScanError,
+    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
+    InstallRecoverySummary,
 };
 pub use install_task::{
     GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, ImportedModInstallPlanner,

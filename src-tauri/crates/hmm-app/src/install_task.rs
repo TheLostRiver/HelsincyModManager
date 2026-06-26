@@ -490,7 +490,7 @@ type GameProfileLockKey = (String, String);
 type GameProfileLock = Arc<Mutex<()>>;
 
 impl GameProfileWriteLockRegistry {
-    fn lock_for(&self, game_id: &GameId, profile_id: &ProfileId) -> GameProfileLock {
+    pub fn lock_for(&self, game_id: &GameId, profile_id: &ProfileId) -> Arc<Mutex<()>> {
         let mut locks = self.locks.lock().expect("write lock registry");
         locks
             .entry((game_id.as_str().to_owned(), profile_id.as_str().to_owned()))

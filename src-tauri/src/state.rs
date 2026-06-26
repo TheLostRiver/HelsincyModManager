@@ -2,18 +2,19 @@ use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CommitInstallPlanRequest,
     GameProfileWriteLockRegistry, GameSetupService, ImportedModInstallCommitRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
-    InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService, InstallTaskRunner,
-    InstallTaskService, LimitedPreviewImageProcessor, ModDependencyGraphService,
-    ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
-    ModLibraryService, ModUninstaller, PreviewImageCandidateListService,
-    PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService, StartUninstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService,
+    InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
+    InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
+    ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
+    ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModUninstaller,
+    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
+    UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
-use hmm_core::PreviewImagePolicy;
+use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
@@ -47,6 +48,7 @@ pub struct AppState {
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
     pub install_planning: Arc<InstallPlanningService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
+    pub(crate) install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
     pub uninstall_task_runner: Arc<UninstallTaskRunner>,
@@ -188,6 +190,12 @@ impl AppState {
         let install_manifest_query = Arc::new(InstallManifestQueryService::new(
             install_manifest_repository.clone(),
         ));
+        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let install_recovery_scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
+            Arc::clone(&game_config_repository),
+            app_data_dir.clone(),
+            Arc::clone(&install_write_locks),
+        ));
         let install_committer: Arc<dyn InstallPlanCommitter> =
             Arc::new(ConfiguredInstallCommitter::new(
                 Arc::clone(&game_config_repository),
@@ -199,7 +207,6 @@ impl AppState {
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
         ));
-        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
         let install_task_runner = Arc::new(InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             install_planning.clone(),
@@ -255,6 +262,7 @@ impl AppState {
             support_diagnostics_export,
             install_planning,
             install_manifest_query,
+            install_recovery_scanner,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             uninstall_task_runner,
@@ -264,6 +272,53 @@ impl AppState {
             app_settings,
             task_manager,
         })
+    }
+}
+
+pub(crate) struct ConfiguredInstallRecoveryScanner {
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    app_data_dir: PathBuf,
+    write_locks: Arc<GameProfileWriteLockRegistry>,
+}
+
+impl ConfiguredInstallRecoveryScanner {
+    fn new(
+        game_config_repository: Arc<dyn GameConfigRepository>,
+        app_data_dir: PathBuf,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+    ) -> Self {
+        Self {
+            game_config_repository,
+            app_data_dir,
+            write_locks,
+        }
+    }
+
+    pub(crate) fn scan(
+        &self,
+        game_id: GameId,
+        request: InstallRecoveryScanRequest,
+    ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
+        let write_lock = self.write_locks.lock_for(&game_id, &request.profile_id);
+        let _guard = write_lock
+            .lock()
+            .map_err(|_| InstallRecoveryScanError::ManifestUnavailable)?;
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(&game_id)
+            .map_err(|_| InstallRecoveryScanError::GameInstanceUnavailable)?
+            .ok_or(InstallRecoveryScanError::GameInstanceUnavailable)?;
+        let service = InstallRecoveryScanService::new(
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            Arc::new(FileSystemInstallBackupStore::new(
+                self.app_data_dir.join("install").join("backups"),
+            )),
+            Arc::new(JsonInstallManifestRepository::new(
+                self.app_data_dir.join("install").join("manifests"),
+            )),
+        );
+
+        service.scan(request)
     }
 }
 
@@ -396,11 +451,93 @@ fn start_best_effort_background_task<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hmm_core::{GameId, GameInstance, ModId, ProfileId};
+    use hmm_ports::{GameConfigRepositoryError, GameConfigRepositoryResult};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::time::{Duration, Instant};
+
+    struct NotifyingGameConfigRepository {
+        load_called: Arc<AtomicBool>,
+    }
+
+    impl GameConfigRepository for NotifyingGameConfigRepository {
+        fn load_game_instance(
+            &self,
+            _game_id: &GameId,
+        ) -> GameConfigRepositoryResult<Option<GameInstance>> {
+            self.load_called.store(true, Ordering::SeqCst);
+            Err(GameConfigRepositoryError::StorageFailed(
+                "not configured in test".to_owned(),
+            ))
+        }
+
+        fn save_game_instance(&self, _instance: &GameInstance) -> GameConfigRepositoryResult<()> {
+            panic!("recovery scanner lock test must not save game config")
+        }
+    }
 
     #[test]
     fn best_effort_background_task_start_ignores_spawn_failure() {
         start_best_effort_background_task("thumbnail-cache-maintenance", || -> Result<(), &str> {
             Err("spawn failed")
         });
+    }
+
+    #[test]
+    fn recovery_scan_waits_for_shared_game_profile_write_lock() {
+        let game_id = GameId::mhw();
+        let profile_id = ProfileId::new("default");
+        let write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let write_lock = write_locks.lock_for(&game_id, &profile_id);
+        let guard = write_lock.lock().expect("hold shared write lock");
+        let load_called = Arc::new(AtomicBool::new(false));
+        let scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
+            Arc::new(NotifyingGameConfigRepository {
+                load_called: Arc::clone(&load_called),
+            }),
+            std::env::temp_dir().join("hmm-recovery-lock-test"),
+            Arc::clone(&write_locks),
+        ));
+        let barrier = Arc::new(Barrier::new(2));
+        let scan_barrier = Arc::clone(&barrier);
+        let scan_scanner = Arc::clone(&scanner);
+        let scan_game_id = game_id.clone();
+        let scan_profile_id = profile_id.clone();
+
+        let handle = std::thread::spawn(move || {
+            scan_barrier.wait();
+            scan_scanner.scan(
+                scan_game_id,
+                InstallRecoveryScanRequest {
+                    profile_id: scan_profile_id,
+                    mod_ids: vec![ModId::new("mod-a")],
+                },
+            )
+        });
+
+        barrier.wait();
+        let deadline = Instant::now() + Duration::from_millis(150);
+        while Instant::now() < deadline {
+            if load_called.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+
+        assert!(
+            !load_called.load(Ordering::SeqCst),
+            "recovery scan entered filesystem/config work while the shared write lock was held"
+        );
+
+        drop(guard);
+        let result = handle
+            .join()
+            .expect("recovery scan thread should not panic");
+        assert_eq!(
+            result,
+            Err(InstallRecoveryScanError::GameInstanceUnavailable)
+        );
+        assert!(load_called.load(Ordering::SeqCst));
     }
 }
