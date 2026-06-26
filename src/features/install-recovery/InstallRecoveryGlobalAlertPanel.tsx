@@ -28,7 +28,12 @@ function GlobalRecoveryAlertView({
   onOpenRecoveryCenter: () => void;
 }) {
   return (
-    <section className={`install-recovery-global-alert is-${alert.status}`} aria-label="安装恢复全局告警">
+    <section
+      className={`install-recovery-global-alert is-${alert.status}`}
+      aria-label="安装恢复全局告警"
+      role={alert.status === "attention" ? "alert" : "status"}
+      aria-live={alert.status === "attention" ? "assertive" : "polite"}
+    >
       <div className="install-recovery-global-alert__icon" aria-hidden="true">
         {alert.status === "attention" ? <AlertTriangle size={18} /> : <CircleHelp size={18} />}
       </div>
