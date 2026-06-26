@@ -21,7 +21,7 @@ test("dashboard wires app-level install recovery health scan into setup rail", (
 });
 
 test("dashboard recovery health hook uses profile-wide readonly scan without paths", () => {
-  const hookSource = readSource("src/features/dashboard/useInstallRecoveryHealth.ts");
+  const hookSource = readSource("src/features/install-recovery/useInstallRecoveryHealth.ts");
 
   assert.match(hookSource, /scanInstallRecovery/);
   assert.match(hookSource, /gameId:\s*input\.gameId/);

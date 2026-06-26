@@ -54,6 +54,77 @@
   z-index: 40;
 }
 
+.install-recovery-global-alert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border: 1px solid color-mix(in srgb, var(--color-warning-dot) 28%, transparent);
+  border-radius: var(--radius-panel);
+}
+
+.install-recovery-global-alert.is-unknown {
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+  border-color: var(--color-border-muted);
+}
+
+.install-recovery-global-alert__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--color-warning-dot);
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+}
+
+.install-recovery-global-alert.is-unknown .install-recovery-global-alert__icon {
+  color: var(--color-text-muted);
+}
+
+.install-recovery-global-alert__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.install-recovery-global-alert__copy strong {
+  font-size: 13px;
+}
+
+.install-recovery-global-alert__copy p {
+  margin: 0;
+  color: currentColor;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.install-recovery-global-alert button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.install-recovery-global-alert button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .current-game {
   display: grid;
   gap: 2px;
@@ -193,6 +264,15 @@
   .status-actions {
     justify-content: start;
     flex-wrap: wrap;
+  }
+
+  .install-recovery-global-alert {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .install-recovery-global-alert button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 }
 
