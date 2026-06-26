@@ -64,6 +64,33 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端最小安装任务流程与进度事件竞态处理。
 - [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
 
+### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
+
+PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片。它把 Mod 库安装状态从页面内存任务态推进到后端 manifest 摘要查询，但仍保持 MVP 边界：当前只根据已有 manifest entries 派生 `installed` / `not_installed` 等摘要，不做目标文件 hash 校验、backup 完整性校验、跨进程恢复扫描或安全卸载。
+
+已落地范围：
+
+- 后端新增 `InstallManifestQueryService`，通过受控 `InstallManifestRepository` 读取 profile manifest；缺失 manifest 时返回 `not_installed`，匹配 entry 时返回 `installed`、`managed_file_count` 和 `backup_count`。
+- Tauri 新增 `get_install_manifest_status` 窄 command；DTO 只接收 `profileId` 和 `modIds`，读取失败使用稳定错误码 `install_manifest_unavailable`。
+- 前端新增 feature-local typed API；Mod 库加载成功和 `install.completed` 后刷新 manifest 摘要。
+- Mod 卡片展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；安装事实不再来自 mock 数据或页面内存任务状态。
+- CodeRabbit 评论修复：`applyInstallManifestStatusSummaries` 保留已有 `disabled` / `conflict` UI 状态，同时把 manifest 事实写入 `installSummary.status`；`repair_required` 仅在 `managedFileCount > 0` 时追加文件数，避免显示“需要修复 · 0 文件”。
+
+验证记录：
+
+- 聚焦回归：`cmd /c corepack pnpm exec node --test "src/features/mods/modLibraryLoadState.test.mjs" "src/features/mods/modPreviewImage.test.mjs"`。
+- 前端：`cmd /c corepack pnpm run typecheck`、`cmd /c corepack pnpm run lint`、`cmd /c corepack pnpm run test`。
+- 全量门禁：`git diff --check`、`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
+- 本地 review 记录位于 `.planning/reviews/2026-06-26-install-manifest-query-review.md` 和 `.planning/reviews/2026-06-26-install-manifest-query-coderabbit-fix-review.md`，该目录为运行时上下文，不提交。
+
+仍明确未完成：
+
+- 基于 manifest 的 uninstall。
+- Crash/recovery 扫描。
+- Rich manifest 字段、状态机、hash/status 校验和真实 `repair_required` 检测。
+- ARMOR_RETARGET staging 接入 InstallPlan。
+- Dependency / preflight 阻断。
+
 ## 设计细化规则
 
 本节用于约束后续 InstallPlan PR 的“怎么做”。如果后续实现发现这里的规则与代码事实冲突，应先更新本文档并说明取舍，再修改实现。
