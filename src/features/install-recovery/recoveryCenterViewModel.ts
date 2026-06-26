@@ -8,6 +8,9 @@ import type {
 export type RecoveryCenterStatus = "empty" | "healthy" | "attention";
 export type RecoveryCenterRepairStatus = "clear" | "manual_required" | "unknown";
 export type RecoveryCenterIssueSeverity = "blocking" | "unknown";
+export type RecoveryCenterManualDecisionStatus = "clear" | "blocked";
+export type RecoveryCenterManualActionId = "retry_scan" | "export_diagnostics" | "controlled_recovery";
+export type RecoveryCenterManualActionState = "available" | "unavailable";
 
 export type RecoveryCenterIssueView = InstallRecoveryIssueSummary & {
   label: string;
@@ -23,6 +26,22 @@ export type RecoveryCenterRepairSummary = {
   blockingReason: string;
 };
 
+export type RecoveryCenterManualAction = {
+  id: RecoveryCenterManualActionId;
+  label: string;
+  description: string;
+  state: RecoveryCenterManualActionState;
+};
+
+export type RecoveryCenterManualDecision = {
+  status: RecoveryCenterManualDecisionStatus;
+  title: string;
+  description: string;
+  recommendedAction: string;
+  safeguards: string[];
+  actions: RecoveryCenterManualAction[];
+};
+
 export type RecoveryCenterOverview = {
   status: RecoveryCenterStatus;
   scannedModCount: number;
@@ -34,6 +53,7 @@ export type RecoveryCenterOverview = {
   issueCount: number;
   issues: RecoveryCenterIssueView[];
   repairSummary: RecoveryCenterRepairSummary;
+  manualDecision: RecoveryCenterManualDecision;
 };
 
 export type RecoveryCenterModView = {
@@ -179,6 +199,10 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
         attentionModCount,
         unknownModCount,
       }),
+      manualDecision: deriveManualDecision({
+        attentionModCount,
+        unknownModCount,
+      }),
     },
     mods,
   };
@@ -286,6 +310,62 @@ function deriveModRepairSummary(summary: InstallRecoverySummary): RecoveryCenter
     actionLabel: "无需处理",
     blockingReason: "未发现恢复问题",
   };
+}
+
+function deriveManualDecision(input: {
+  attentionModCount: number;
+  unknownModCount: number;
+}): RecoveryCenterManualDecision {
+  const hasBlockedState = input.attentionModCount > 0 || input.unknownModCount > 0;
+
+  if (!hasBlockedState) {
+    return {
+      status: "clear",
+      title: "无需人工处理",
+      description: "当前没有需要恢复中心人工处理的托管安装状态。",
+      recommendedAction: "保持观察。",
+      safeguards: [],
+      actions: safeManualActions(),
+    };
+  }
+
+  return {
+    status: "blocked",
+    title: "需要人工处理",
+    description: "恢复中心已阻断自动安装、卸载和恢复动作，当前只能执行只读复查或导出诊断。",
+    recommendedAction: "先重新扫描；如果仍异常，导出诊断并保留现场。",
+    safeguards: [
+      "不删除未知文件",
+      "不根据当前 Mod 包猜测恢复动作",
+      "不写入 manifest 或 backup 状态",
+    ],
+    actions: [
+      ...safeManualActions(),
+      {
+        id: "controlled_recovery",
+        label: "受控修复",
+        description: "需要后续 manifest 状态机和恢复执行器支持，当前不可用。",
+        state: "unavailable",
+      },
+    ],
+  };
+}
+
+function safeManualActions(): RecoveryCenterManualAction[] {
+  return [
+    {
+      id: "retry_scan",
+      label: "重新扫描",
+      description: "重新读取后端只读恢复摘要。",
+      state: "available",
+    },
+    {
+      id: "export_diagnostics",
+      label: "导出诊断",
+      description: "生成已脱敏的支持诊断包。",
+      state: "available",
+    },
+  ];
 }
 
 function statusTone(status: InstallRecoveryStatus): RecoveryCenterModView["statusTone"] {

@@ -46,11 +46,11 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
-- 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、只读 rich repair summary 和每个托管 Mod 的安全状态摘要；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
+- 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、只读 rich repair summary、只读人工处理决策面板和每个托管 Mod 的安全状态摘要；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
 
 仍未完成：
 
-- 卸载 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
+- 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
 - 全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
@@ -80,6 +80,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 独立恢复中心只读入口，基于空 `modIds` 全量 profile 扫描展示 profile 聚合摘要和逐 Mod 安全状态摘要。
 - [x] 恢复中心只读 rich repair summary，基于稳定 issue code 展示风险等级、阻断理由和人工处理建议，不提供恢复/删除/回滚/manifest 写入动作。
 - [x] 恢复中心诊断导出联动，复用 `export_support_diagnostics` 展示完整支持诊断包的安全导出摘要。
+- [x] 恢复中心只读人工处理决策面板，提供重新扫描、导出诊断和不可用的受控修复占位，不提供恢复/删除/回滚/manifest 写入动作。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -307,6 +308,28 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 - 受控恢复/回滚动作和人工修复决策流。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 全局后台启动告警、跨 profile 批量健康摘要和更完整的恢复决策流。
+
+### 2026-06-26 进度详情：恢复中心只读人工处理决策面板
+
+本切片在独立恢复中心内补充只读人工处理决策面板。它只基于现有 `scan_install_recovery` 摘要、issue code 和前端 view model 派生安全下一步，不新增 Tauri command、Rust 写入链路、恢复/回滚动作或 manifest 写入。
+
+已落地范围：
+
+- `deriveRecoveryCenterViewModel` 为 profile 级摘要派生 `manualDecision`：在 `repair_required` / `unknown` 存在时标记为 blocked，说明自动安装、卸载和恢复动作保持阻断。
+- 决策面板只提供两个可用安全动作：重新扫描只触发现有只读 scan refresh，导出诊断只进入已有 `export_support_diagnostics` 确认流程。
+- “受控修复”仅作为不可用占位展示，等待后续 manifest 状态机和恢复执行器支持。
+- 页面仍不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标 hash、manifest 正文或第三方 Mod 内容；也不提供自动恢复、删除、回滚或 manifest 写入入口。
+
+验证记录：
+
+- TDD RED：新增恢复中心 view model 与页面 source 测试后，聚焦测试先失败于缺少 `manualDecision` / `ManualHandlingPanel`。
+- 聚焦验证：`cmd /c corepack pnpm exec node --test "src/features/install-recovery/recoveryCenterViewModel.test.mjs" "src/features/install-recovery/recoveryCenterRoute.test.mjs"`。
+
+仍明确未完成：
+
+- 真正的受控恢复/回滚动作。
+- 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
+- 全局后台启动告警、跨 profile 批量健康摘要和后端恢复决策执行流。
 
 ## 设计细化规则
 
