@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TaskStartedDto } from "./modImportTypes";
 import type {
+  GetInstallManifestStatusInput,
+  InstallManifestStatusSummary,
   InstallPlanPreview,
   PreviewImportedModInstallPlanInput,
   StartInstallTaskInput,
@@ -24,5 +26,14 @@ export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStar
     profileId: input.profileId,
     layerName: input.layerName,
     layerPriority: input.layerPriority,
+  });
+}
+
+export function getInstallManifestStatus(
+  input: GetInstallManifestStatusInput,
+): Promise<InstallManifestStatusSummary[]> {
+  return invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
+    profileId: input.profileId,
+    modIds: input.modIds,
   });
 }

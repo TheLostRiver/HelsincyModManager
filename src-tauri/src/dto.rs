@@ -1,7 +1,8 @@
 use hmm_app::{
     AppSettingsServiceError, GameCandidateScan, GameSetupCandidate, GameSetupServiceError,
-    ImportPreviewImage, ModDetail, ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind,
-    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
+    ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary, ModDetail,
+    ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
+    TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
@@ -111,6 +112,13 @@ pub struct StartInstallTaskRequestDto {
     pub layer_priority: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallManifestStatusRequestDto {
+    pub profile_id: String,
+    pub mod_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanPreviewDto {
@@ -143,6 +151,25 @@ pub struct InstallPlanProviderDto {
     pub package_file_id: String,
     pub layer_name: String,
     pub layer_priority: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallManifestStatusSummaryDto {
+    pub profile_id: String,
+    pub mod_id: String,
+    pub status: InstallManifestStatusDto,
+    pub managed_file_count: usize,
+    pub backup_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallManifestStatusDto {
+    NotInstalled,
+    Installed,
+    RepairRequired,
+    Unknown,
 }
 
 impl From<AppSettings> for AppSettingsDto {
@@ -196,6 +223,29 @@ impl From<InstallFileProvider> for InstallPlanProviderDto {
             package_file_id: provider.package_file_id.as_str().to_owned(),
             layer_name: provider.layer.name,
             layer_priority: provider.layer.priority,
+        }
+    }
+}
+
+impl From<InstallManifestStatusSummary> for InstallManifestStatusSummaryDto {
+    fn from(summary: InstallManifestStatusSummary) -> Self {
+        Self {
+            profile_id: summary.profile_id.as_str().to_owned(),
+            mod_id: summary.mod_id.as_str().to_owned(),
+            status: summary.status.into(),
+            managed_file_count: summary.managed_file_count,
+            backup_count: summary.backup_count,
+        }
+    }
+}
+
+impl From<InstallManifestStatus> for InstallManifestStatusDto {
+    fn from(status: InstallManifestStatus) -> Self {
+        match status {
+            InstallManifestStatus::NotInstalled => Self::NotInstalled,
+            InstallManifestStatus::Installed => Self::Installed,
+            InstallManifestStatus::RepairRequired => Self::RepairRequired,
+            InstallManifestStatus::Unknown => Self::Unknown,
         }
     }
 }

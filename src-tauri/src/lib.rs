@@ -11,7 +11,8 @@ use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
 use install_commands::{
-    preview_imported_mod_install_plan, preview_install_plan, start_install_task,
+    get_install_manifest_status, preview_imported_mod_install_plan, preview_install_plan,
+    start_install_task,
 };
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
@@ -48,6 +49,7 @@ pub fn run() {
             preview_install_plan,
             preview_imported_mod_install_plan,
             start_install_task,
+            get_install_manifest_status,
             start_import_mod_task,
             get_mod_library,
             get_mod_detail,
