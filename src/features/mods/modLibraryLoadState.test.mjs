@@ -53,3 +53,53 @@ test("install manifest summaries override matching mod status without paths", ()
   assert.equal("manifestPath" in result[0], false);
   assert.equal("backupRoot" in result[0], false);
 });
+
+test("install manifest summaries preserve non-manifest mod statuses", () => {
+  const result = applyInstallManifestStatusSummaries(
+    [
+      {
+        id: "disabled-mod",
+        name: "Disabled Mod",
+        status: "disabled",
+        sizeLabel: "1 KB",
+        categoryLabels: [],
+      },
+      {
+        id: "conflict-mod",
+        name: "Conflict Mod",
+        status: "conflict",
+        sizeLabel: "2 KB",
+        categoryLabels: [],
+      },
+    ],
+    [
+      {
+        profileId: "default",
+        modId: "disabled-mod",
+        status: "installed",
+        managedFileCount: 2,
+        backupCount: 0,
+      },
+      {
+        profileId: "default",
+        modId: "conflict-mod",
+        status: "not_installed",
+        managedFileCount: 0,
+        backupCount: 0,
+      },
+    ],
+  );
+
+  assert.equal(result[0].status, "disabled");
+  assert.deepEqual(result[0].installSummary, {
+    status: "installed",
+    managedFileCount: 2,
+    backupCount: 0,
+  });
+  assert.equal(result[1].status, "conflict");
+  assert.deepEqual(result[1].installSummary, {
+    status: "not_installed",
+    managedFileCount: 0,
+    backupCount: 0,
+  });
+});
