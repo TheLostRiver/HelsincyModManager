@@ -52,7 +52,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作。
+- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，但代码能力仍未落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -83,6 +83,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 恢复中心只读 rich repair summary，基于稳定 issue code 展示风险等级、阻断理由和人工处理建议，不提供恢复/删除/回滚/manifest 写入动作。
 - [x] 恢复中心诊断导出联动，复用 `export_support_diagnostics` 展示完整支持诊断包的安全导出摘要。
 - [x] 恢复中心只读人工处理决策面板，提供重新扫描、导出诊断和不可用的受控修复占位，不提供恢复/删除/回滚/manifest 写入动作。
+- [x] 安装恢复受控动作实施计划，明确 durable recovery record / rich status、只读动作预览、受控回滚任务和恢复中心 UI 启用的后续拆分边界。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -357,6 +358,23 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 跨 profile 批量健康摘要和后端恢复决策执行流。
 
+### 2026-06-26 进度详情：安装恢复受控动作实施计划
+
+本切片补充 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，用于约束后续真正会写游戏目录、恢复 backup、删除目标文件或写 manifest/recovery record 的高风险恢复动作。它不新增 Tauri command、不新增 DTO、不改变 Rust 服务、不执行恢复/删除/回滚或 manifest 写入。
+
+已明确的后续拆分：
+
+- 先补 durable recovery record / rich status 基础，确保 `rollback_required` 只能来自持久化状态事实，而不是目录内容猜测。
+- 再补只读恢复动作预览，只返回可执行性、聚合计数和稳定阻断 reason code，不返回 target path、backup ref、manifest path、hash 或第三方 Mod 内容。
+- 最后才补受控回滚任务和恢复中心 UI 启用；执行任务必须复用同一 `gameId/profileId` 写锁，执行前重新验证目标摘要和 backup，并写 Audit Log。
+
+仍明确未完成：
+
+- durable recovery record / rich manifest 状态代码。
+- `rollback_required` scan 分支。
+- `install.recovery.*` 任务事件和受控回滚 command。
+- 恢复中心中的实际恢复按钮。
+
 ## 设计细化规则
 
 本节用于约束后续 InstallPlan PR 的“怎么做”。如果后续实现发现这里的规则与代码事实冲突，应先更新本文档并说明取舍，再修改实现。
@@ -588,14 +606,14 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续代码切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
 范围：
 
 - 扫描 manifest、备份记录和任务状态摘要。
-- 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 rich manifest/task 状态后续补齐。
+- 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 durable recovery record / rich manifest/task 状态后续补齐，不能只从目录内容推断。
 - 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
 - Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；App Frame 已提供全局只读恢复告警；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要、只读 rich repair summary 和完整支持诊断包导出联动；受控恢复/回滚动作仍待后续补齐。
 
