@@ -1,6 +1,7 @@
 use crate::dto::{
     CommandErrorDto, InstallManifestStatusRequestDto, InstallManifestStatusSummaryDto,
-    InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto, PreviewInstallPlanFileInputDto,
+    InstallPlanPreviewDto, InstallRecoveryScanRequestDto, InstallRecoverySummaryDto,
+    PreviewImportedModInstallPlanRequestDto, PreviewInstallPlanFileInputDto,
     PreviewInstallPlanRequestDto, StartInstallTaskRequestDto, StartUninstallTaskRequestDto,
     TaskStartedDto,
 };
@@ -8,8 +9,9 @@ use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallManifestQueryError,
-    InstallManifestQueryRequest, InstallPlanFile, InstallPlanningError, StartInstallTaskRequest,
-    StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
+    InstallManifestQueryRequest, InstallPlanFile, InstallPlanningError, InstallRecoveryScanError,
+    InstallRecoveryScanRequest, StartInstallTaskRequest, StartUninstallTaskRequest,
+    TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
 use std::sync::Arc;
@@ -110,6 +112,20 @@ pub fn get_install_manifest_status(
         .install_manifest_query
         .query_statuses(request)
         .map_err(install_manifest_query_error_to_command_error)?;
+
+    Ok(summaries.into_iter().map(Into::into).collect())
+}
+
+#[tauri::command]
+pub fn scan_install_recovery(
+    request: InstallRecoveryScanRequestDto,
+    state: State<'_, AppState>,
+) -> Result<Vec<InstallRecoverySummaryDto>, CommandErrorDto> {
+    let (game_id, request) = install_recovery_scan_request_from_dto(request)?;
+    let summaries = state
+        .install_recovery_scanner
+        .scan(game_id, request)
+        .map_err(install_recovery_scan_error_to_command_error)?;
 
     Ok(summaries.into_iter().map(Into::into).collect())
 }
@@ -274,6 +290,43 @@ fn install_manifest_status_request_from_dto(
     })
 }
 
+fn install_recovery_scan_request_from_dto(
+    request: InstallRecoveryScanRequestDto,
+) -> Result<(GameId, InstallRecoveryScanRequest), CommandErrorDto> {
+    let game_id = GameId::parse(request.game_id).map_err(|_| CommandErrorDto {
+        code: "game_id_invalid".to_owned(),
+        message: "game id is invalid".to_owned(),
+    })?;
+    let profile_id = parse_non_empty_id(
+        request.profile_id,
+        "profile_id_empty",
+        "profile id cannot be empty",
+    )?;
+    if request.mod_ids.is_empty() {
+        return Err(CommandErrorDto {
+            code: "mod_ids_empty".to_owned(),
+            message: "mod ids cannot be empty".to_owned(),
+        });
+    }
+
+    let mod_ids = request
+        .mod_ids
+        .into_iter()
+        .map(|mod_id| parse_non_empty_id(mod_id, "mod_id_empty", "mod id cannot be empty"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(ModId::new)
+        .collect();
+
+    Ok((
+        game_id,
+        InstallRecoveryScanRequest {
+            profile_id: ProfileId::new(profile_id),
+            mod_ids,
+        },
+    ))
+}
+
 fn parse_non_empty_id(
     value: String,
     code: &'static str,
@@ -343,6 +396,21 @@ fn install_manifest_query_error_to_command_error(
         InstallManifestQueryError::ManifestUnavailable => CommandErrorDto {
             code: "install_manifest_unavailable".to_owned(),
             message: "install manifest status is unavailable".to_owned(),
+        },
+    }
+}
+
+fn install_recovery_scan_error_to_command_error(
+    error: InstallRecoveryScanError,
+) -> CommandErrorDto {
+    match error {
+        InstallRecoveryScanError::GameInstanceUnavailable => CommandErrorDto {
+            code: "game_instance_unavailable".to_owned(),
+            message: "game instance is unavailable".to_owned(),
+        },
+        InstallRecoveryScanError::ManifestUnavailable => CommandErrorDto {
+            code: "install_recovery_unavailable".to_owned(),
+            message: "install recovery scan is unavailable".to_owned(),
         },
     }
 }
@@ -480,6 +548,31 @@ mod tests {
     }
 
     #[test]
+    fn install_recovery_scan_request_deserializes_without_paths() {
+        let value = json!({
+            "gameId": "mhw",
+            "profileId": "default",
+            "modIds": ["mod-a", "mod-b"]
+        });
+
+        let request: crate::dto::InstallRecoveryScanRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let (game_id, app_request) =
+            install_recovery_scan_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(game_id.as_str(), "mhw");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(
+            app_request
+                .mod_ids
+                .iter()
+                .map(|mod_id| mod_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mod-a", "mod-b"]
+        );
+    }
+
+    #[test]
     fn queued_install_event_uses_registered_phase() {
         let task = TaskStarted {
             task_id: "install-123".to_owned(),
@@ -578,6 +671,18 @@ mod tests {
         assert_eq!(error.code, "install_target_path_parent_traversal");
         assert!(!error.message.contains("../"));
         assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn install_recovery_unavailable_error_uses_stable_code_without_paths() {
+        let error = install_recovery_scan_error_to_command_error(
+            hmm_app::InstallRecoveryScanError::ManifestUnavailable,
+        );
+
+        assert_eq!(error.code, "install_recovery_unavailable");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+        assert!(!error.message.contains("manifest"));
     }
 
     #[test]

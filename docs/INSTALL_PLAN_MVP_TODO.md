@@ -41,13 +41,14 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
+- 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
-- 跨进程崩溃恢复扫描。
+- 启动时自动恢复扫描、自动回滚/恢复执行、`rollback_required` rich 状态和前端恢复入口。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -69,6 +70,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] Manifest entry 写入 `installed_file` size/SHA-256 摘要，并兼容读取缺少摘要的旧 manifest。
 - [x] 后端最小 manifest 驱动卸载服务、backup 受控读取、卸载任务 runner 和 `start_uninstall_task` Tauri 入口。
 - [x] 前端最小卸载 UI、`startUninstallTask` typed API、`install.uninstall.*` 任务展示和完成后 manifest 摘要刷新。
+- [x] 后端只读恢复扫描摘要 command：`scan_install_recovery`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -149,6 +151,25 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 - rich repair summary、恢复扫描入口和批量/profile 卸载工作流。
 - `get_install_manifest_status` 尚未读取目标文件或 backup 做真实 `repair_required` 检测。
 - 卸载失败后的人工修复建议仍需要后续后端结构化摘要支撑。
+
+### 2026-06-26 进度详情：只读恢复扫描摘要
+
+本切片完成 P1 “崩溃恢复扫描” 的后端只读摘要基础。它不执行自动回滚或修复，只基于 manifest、当前目标文件摘要和 backup 可读性判断状态，避免根据当前 Mod 包内容重新猜测安装结果。
+
+已落地范围：
+
+- `hmm-app` 新增 `InstallRecoveryScanService`，依赖 `InstallManifestRepository`、`InstallGameFileSystem` 和 `InstallBackupStore`，只读扫描指定 `profileId` / `modIds`。
+- 扫描返回 `completed`、`repair_required`、`unknown`、`not_installed` 摘要；`repair_required` 覆盖缺少 `installed_file` 摘要、目标缺失、目标摘要变化或 backup 缺失，`unknown` 用于目标或 backup 读取失败等无法安全判断状态。
+- 摘要只返回短 id、托管文件计数、backup 计数、聚合 issue 数和稳定 issue code，不返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。
+- Tauri 新增 `scan_install_recovery` 窄 command，只接收 `gameId`、`profileId`、`modIds`；组合根通过已配置 game instance 构造受控 game filesystem，通过 app data 构造受控 backup store 和 manifest repository，并复用安装/卸载同一份 `gameId/profileId` 写锁避免读取半写状态。
+- 稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；manifest 仓储不可用返回 `install_recovery_unavailable`。
+
+仍明确未完成：
+
+- 启动或进入安装页时自动调用恢复扫描。
+- 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
+- 前端恢复入口、人工处理说明和 rich repair summary。
+- `get_install_manifest_status` 尚未消费 recovery scan 结果来自动显示真实 `repair_required`。
 
 ## 设计细化规则
 
@@ -284,7 +305,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 | Manifest 查询 | 只返回摘要和状态，不返回路径/root/正文 | fake manifest repo | manifest 绝对路径 |
 | 卸载新增文件 | 只删除 manifest 记录且摘要匹配的文件 | temp game root | 未记录文件 |
 | 卸载覆盖文件 | backup ref 恢复旧文件，backup 缺失阻断 | fake backup store | 任意猜测恢复 |
-| 恢复扫描 | `committing`、`rollback_required`、`repair_required` 分支 | fake manifest/task/audit 状态 | Task Log 作为唯一事实来源 |
+| 恢复扫描 | `completed`、`repair_required`、`unknown`，后续补 `committing` / `rollback_required` 分支 | fake manifest、target bytes、backup store、task/audit 状态 | Task Log 作为唯一事实来源 |
 | Retarget staging | staging containment、最终目标路径冲突、binding snapshot | fake retarget provider | 前端拼接 `nativePC` |
 | 任务取消 | plan 阶段可取消、commit 阶段状态一致 | fake task manager / temp FS | 无 `taskId` 的事件 |
 | 审计与脱敏 | 写入、覆盖、删除、备份、manifest、回滚事件脱敏 | 人工路径和 ID | 完整本地路径、Steam ID、token |
@@ -381,13 +402,15 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
+状态：后端只读恢复扫描摘要和 `scan_install_recovery` 窄 command 已落地；启动/进入页面自动扫描、自动回滚/恢复执行、`rollback_required` rich 状态和前端入口仍待后续切片。
+
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
 范围：
 
 - 扫描 manifest、备份记录和任务状态摘要。
-- 识别已完成、需要 rollback、需要 repair、无法判断等状态。
-- 提供后端 command 返回恢复摘要。
+- 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 rich manifest/task 状态后续补齐。
+- 已提供后端 command 返回只读恢复摘要。
 - 前端展示恢复入口或人工处理提示。
 
 明确不做：
