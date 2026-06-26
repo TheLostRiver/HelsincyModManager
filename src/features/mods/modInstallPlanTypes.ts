@@ -11,6 +11,12 @@ export type StartInstallTaskInput = PreviewImportedModInstallPlanInput & {
   profileId: string;
 };
 
+export type StartUninstallTaskInput = {
+  gameId: GameId;
+  modId: string;
+  profileId: string;
+};
+
 export type GetInstallManifestStatusInput = {
   profileId: string;
   modIds: string[];

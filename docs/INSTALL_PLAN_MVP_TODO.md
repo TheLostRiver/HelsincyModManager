@@ -42,10 +42,11 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
+- 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 
 仍未完成：
 
-- 前端卸载按钮、确认流程和 `install.uninstall.*` 任务状态展示。
+- 卸载 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
 - 跨进程崩溃恢复扫描。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
@@ -67,6 +68,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
 - [x] Manifest entry 写入 `installed_file` size/SHA-256 摘要，并兼容读取缺少摘要的旧 manifest。
 - [x] 后端最小 manifest 驱动卸载服务、backup 受控读取、卸载任务 runner 和 `start_uninstall_task` Tauri 入口。
+- [x] 前端最小卸载 UI、`startUninstallTask` typed API、`install.uninstall.*` 任务展示和完成后 manifest 摘要刷新。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -125,10 +127,28 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 仍明确未完成：
 
-- 前端 Mod 库尚未接入卸载按钮、确认弹窗、typed API 或 `install.uninstall.*` 展示。
+- 前端 Mod 库的最小单选卸载 UI 已在下一小节落地；仍缺少 rich repair summary、批量/profile 工作流和恢复扫描入口。
 - 卸载失败当前只通过任务失败 phase 和稳定错误前缀表达，尚未提供 rich repair summary。
 - `get_install_manifest_status` 仍不读取目标文件或 backup 做真实 `repair_required` 检测。
 - 跨进程崩溃恢复扫描仍未实现。
+
+### 2026-06-26 进度详情：前端最小卸载 UI 接入
+
+本切片完成 P1 “基于 manifest 的卸载” 的前端最小接入。它只消费后端 manifest 摘要和任务事件，不把卸载规则、目标路径、backup ref 或 manifest 正文带到前端。
+
+已落地范围：
+
+- 前端新增 feature-local `startUninstallTask` typed API，只调用 `start_uninstall_task` 并提交 `gameId`、`modId`、`profileId`。
+- Mod 库只在单选条目的 `installSummary.status === "installed"` 时启用卸载入口；该状态来自 `get_install_manifest_status`，不是页面内存任务态或 mock 数据。
+- 卸载操作先展示确认面板，确认后启动后端任务；确认摘要只展示托管文件数和备份恢复点数量，不展示目标路径、backup ref、manifest 路径或第三方 Mod 内容。
+- 前端集中维护安装/卸载任务 phase 映射，按 `taskId` 和 operation 归属 `install.*` / `install.uninstall.*` 进度事件，继续处理 command 返回前事件先到达的竞态。
+- `install.uninstall.completed` 后复用 manifest 摘要查询刷新安装事实；失败只显示稳定失败摘要，不尝试在前端推断修复动作。
+
+仍明确未完成：
+
+- rich repair summary、恢复扫描入口和批量/profile 卸载工作流。
+- `get_install_manifest_status` 尚未读取目标文件或 backup 做真实 `repair_required` 检测。
+- 卸载失败后的人工修复建议仍需要后续后端结构化摘要支撑。
 
 ## 设计细化规则
 
@@ -215,11 +235,17 @@ completed -> repair_required
 | `install_completed` | `install.completed` | 显示安装成功摘要 | 成功后可触发 manifest 查询刷新。 |
 | `install_failed` | `install.failed` | 显示稳定错误码和可读提示 | 不展示原始错误文本中的敏感路径。 |
 | `install_cancelled` | `install.cancelled` | 显示已取消 | 区分用户取消和失败回滚。 |
+| `uninstall_confirming` | manifest 摘要 `installed` | 显示卸载确认和托管文件/备份计数 | 只允许单选已安装条目，不展示路径或 backup ref。 |
+| `uninstall_queued` | `install.uninstall.queued` | 显示等待卸载 | 必须匹配 `taskId` 和卸载 operation。 |
+| `uninstall_processing` | `install.uninstall.processing` | 显示卸载中 | 不展示目标路径、manifest 正文或 backup 路径。 |
+| `uninstall_completed` | `install.uninstall.completed` | 显示卸载完成摘要 | 成功后触发 manifest 查询刷新。 |
+| `uninstall_failed` | `install.uninstall.failed` | 显示稳定错误摘要 | 不在前端推断修复动作，等待后端 rich repair summary。 |
 | `repair_required` | manifest 查询或恢复扫描 | 显示需要修复 | 阻断再次安装/卸载入口，直到后端状态消解。 |
 
 UI 约束：
 
 - 任务事件必须按 `taskId` 归属，不能因为当前页面只有一个任务就接收所有 install 事件。
+- 卸载入口只能来自后端 manifest 摘要的 `installed` 状态；前端不能根据安装按钮点击、任务内存态、Mod 包内容或展示标签推断“已安装”。
 - 如果页面切换、刷新或重新进入，应通过 manifest 查询恢复可展示状态，而不是依赖内存任务状态。
 - Cancel 按钮只能调用受控任务取消入口；前端不自行中断文件操作或清理 staging。
 - 错误展示使用稳定错误码和后端给出的安全摘要；禁止展示完整本地路径、manifest 正文、backup root 或第三方 Mod 内容。
@@ -324,7 +350,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：基于 manifest 的卸载
 
-状态：后端最小安全卸载和 `start_uninstall_task` 任务入口已落地；前端 UI、rich repair summary 和恢复扫描仍待后续切片。
+状态：后端最小安全卸载、`start_uninstall_task` 任务入口和前端最小单选卸载 UI 已落地；rich repair summary、批量/profile 工作流和恢复扫描仍待后续切片。
 
 目标：提供第一版安全卸载能力，删除或恢复本工具安装过的文件。
 
@@ -336,6 +362,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 对覆盖过的文件使用 backup ref 恢复。
 - 对未知或不一致状态给出阻断或修复提示。
 - 写入 Audit Log。
+- 前端从 manifest 摘要确认可卸载状态，启动卸载任务并展示 `install.uninstall.*` 进度。
 
 明确不做：
 
@@ -343,12 +370,14 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 不删除 manifest 未记录的文件。
 - 不对缺少 `installed_file` 摘要的旧 manifest 自动删除或恢复。
 - 不做批量 profile 切换。
+- 不在前端展示或提交 target path、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。
 
 验收标准：
 
 - 覆盖“新增文件卸载”“覆盖文件恢复”“backup 缺失阻断”“manifest 不一致阻断”。
 - 只使用临时目录或 fake file system 测试。
 - 卸载失败不会留下误导性的 completed 状态。
+- 前端卸载入口只在后端 manifest 摘要为 `installed` 时可用，并在完成后刷新 manifest 摘要。
 
 ### P1：崩溃恢复扫描
 
