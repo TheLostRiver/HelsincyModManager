@@ -19,15 +19,18 @@ pub use game_setup::{
 pub use install::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
-    InstallPlanFile, InstallPlanningError, InstallPlanningService,
+    InstallPlanFile, InstallPlanningError, InstallPlanningService, UninstallModError,
+    UninstallModRequest, UninstallModResult, UninstallModService,
 };
 pub use install_manifest_query::{
     InstallManifestQueryError, InstallManifestQueryRequest, InstallManifestQueryService,
     InstallManifestStatus, InstallManifestStatusSummary,
 };
 pub use install_task::{
-    ImportedModInstallCommitRequest, ImportedModInstallPlanner, InstallPlanCommitter,
-    InstallTaskRunError, InstallTaskRunner, InstallTaskService, StartInstallTaskRequest,
+    GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, ImportedModInstallPlanner,
+    InstallPlanCommitter, InstallTaskRunError, InstallTaskRunner, InstallTaskService,
+    ModUninstaller, StartInstallTaskRequest, StartUninstallTaskRequest, UninstallTaskRunError,
+    UninstallTaskRunner, UninstallTaskService,
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,

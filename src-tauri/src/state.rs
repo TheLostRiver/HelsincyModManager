@@ -1,14 +1,17 @@
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CommitInstallPlanRequest,
-    GameSetupService, ImportedModInstallCommitRequest, InstallCommitError, InstallCommitPhase,
-    InstallCommitResult, InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
-    InstallPlanningService, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
-    ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
-    ModImportTaskRunner, ModImportTaskService, ModLibraryService, PreviewImageCandidateListService,
+    GameProfileWriteLockRegistry, GameSetupService, ImportedModInstallCommitRequest,
+    InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
+    InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService, InstallTaskRunner,
+    InstallTaskService, LimitedPreviewImageProcessor, ModDependencyGraphService,
+    ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
+    ModLibraryService, ModUninstaller, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService, SupportDiagnosticsExportService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    PreviewImageDiagnosticsExportService, PreviewImageService, StartUninstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::PreviewImagePolicy;
 use hmm_games_mhw::MonsterHunterWorldAdapter;
@@ -46,6 +49,8 @@ pub struct AppState {
     pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
+    pub uninstall_task_runner: Arc<UninstallTaskRunner>,
+    pub uninstall_tasks: Arc<UninstallTaskService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
@@ -190,12 +195,25 @@ impl AppState {
                 Arc::clone(&mod_import_sandbox_locator),
                 app_data_dir.clone(),
             ));
-        let install_task_runner = Arc::new(InstallTaskRunner::new(
+        let mod_uninstaller: Arc<dyn ModUninstaller> = Arc::new(ConfiguredModUninstaller::new(
+            Arc::clone(&game_config_repository),
+            app_data_dir.clone(),
+        ));
+        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let install_task_runner = Arc::new(InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             install_planning.clone(),
             install_committer,
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
+            Arc::clone(&install_write_locks),
+        ));
+        let uninstall_task_runner = Arc::new(UninstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            mod_uninstaller,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+            install_write_locks,
         ));
         let mod_import_task_runner = Arc::new(
             ModImportTaskRunner::new(
@@ -220,7 +238,7 @@ impl AppState {
         Ok(Self {
             game_setup: Arc::new(GameSetupService::new(
                 vec![mhw_adapter],
-                game_config_repository,
+                Arc::clone(&game_config_repository),
                 Arc::new(RealGameDirectoryProbeFactory),
                 Arc::new(SteamGameDiscoveryService::new(Arc::new(
                     PlatformSteamRootProvider,
@@ -239,10 +257,53 @@ impl AppState {
             install_manifest_query,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
+            uninstall_task_runner,
+            uninstall_tasks: Arc::new(UninstallTaskService::new(Arc::clone(&task_manager))),
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,
             task_manager,
+        })
+    }
+}
+
+struct ConfiguredModUninstaller {
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    app_data_dir: PathBuf,
+}
+
+impl ConfiguredModUninstaller {
+    fn new(game_config_repository: Arc<dyn GameConfigRepository>, app_data_dir: PathBuf) -> Self {
+        Self {
+            game_config_repository,
+            app_data_dir,
+        }
+    }
+}
+
+impl ModUninstaller for ConfiguredModUninstaller {
+    fn uninstall_mod(
+        &self,
+        request: StartUninstallTaskRequest,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(&request.game_id)
+            .map_err(|_| UninstallModError::GameInstanceUnavailable)?
+            .ok_or(UninstallModError::GameInstanceUnavailable)?;
+        let service = UninstallModService::new(
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            Arc::new(FileSystemInstallBackupStore::new(
+                self.app_data_dir.join("install").join("backups"),
+            )),
+            Arc::new(JsonInstallManifestRepository::new(
+                self.app_data_dir.join("install").join("manifests"),
+            )),
+        );
+
+        service.uninstall_mod(UninstallModRequest {
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
         })
     }
 }

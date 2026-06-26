@@ -1,21 +1,22 @@
 use crate::dto::{
     CommandErrorDto, InstallManifestStatusRequestDto, InstallManifestStatusSummaryDto,
-    InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
-    PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartInstallTaskRequestDto,
+    InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto, PreviewInstallPlanFileInputDto,
+    PreviewInstallPlanRequestDto, StartInstallTaskRequestDto, StartUninstallTaskRequestDto,
     TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{
-    BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallPlanFile,
-    InstallManifestQueryError, InstallManifestQueryRequest, InstallPlanningError,
-    StartInstallTaskRequest, TaskProgressEvent, TaskStarted,
+    BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallManifestQueryError,
+    InstallManifestQueryRequest, InstallPlanFile, InstallPlanningError, StartInstallTaskRequest,
+    StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 const INSTALL_QUEUED_PHASE: &str = "install.queued";
+const INSTALL_UNINSTALL_QUEUED_PHASE: &str = "install.uninstall.queued";
 
 #[tauri::command]
 pub fn preview_install_plan(
@@ -73,6 +74,33 @@ pub fn start_install_task(
 }
 
 #[tauri::command]
+pub fn start_uninstall_task(
+    request: StartUninstallTaskRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let request = start_uninstall_task_request_from_dto(request)?;
+    let runner_request = request.clone();
+    let task = state
+        .uninstall_tasks
+        .start_uninstall_task(request)
+        .map_err(CommandErrorDto::from_task_manager_error)?;
+
+    let _ = emit_task_progress(
+        &app_handle,
+        queued_event_for_started_uninstall_task(&task).into(),
+    );
+    spawn_uninstall_runner(
+        Arc::clone(&state.uninstall_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_request,
+    );
+
+    Ok(task.into())
+}
+
+#[tauri::command]
 pub fn get_install_manifest_status(
     request: InstallManifestStatusRequestDto,
     state: State<'_, AppState>,
@@ -84,6 +112,24 @@ pub fn get_install_manifest_status(
         .map_err(install_manifest_query_error_to_command_error)?;
 
     Ok(summaries.into_iter().map(Into::into).collect())
+}
+
+fn spawn_uninstall_runner(
+    runner: Arc<hmm_app::UninstallTaskRunner>,
+    app_handle: AppHandle,
+    task_id: String,
+    request: StartUninstallTaskRequest,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_uninstall_task(&task_id, request) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
 }
 
 fn spawn_install_runner(
@@ -104,6 +150,15 @@ fn spawn_install_runner(
     });
 }
 
+fn queued_event_for_started_uninstall_task(task: &TaskStarted) -> TaskProgressEvent {
+    TaskProgressEvent::new(
+        task.task_id.clone(),
+        task.kind,
+        task.status,
+        INSTALL_UNINSTALL_QUEUED_PHASE,
+    )
+}
+
 fn queued_event_for_started_install_task(task: &TaskStarted) -> TaskProgressEvent {
     TaskProgressEvent::new(
         task.task_id.clone(),
@@ -111,6 +166,27 @@ fn queued_event_for_started_install_task(task: &TaskStarted) -> TaskProgressEven
         task.status,
         INSTALL_QUEUED_PHASE,
     )
+}
+
+fn start_uninstall_task_request_from_dto(
+    request: StartUninstallTaskRequestDto,
+) -> Result<StartUninstallTaskRequest, CommandErrorDto> {
+    let game_id = GameId::parse(request.game_id).map_err(|_| CommandErrorDto {
+        code: "game_id_invalid".to_owned(),
+        message: "game id is invalid".to_owned(),
+    })?;
+    let mod_id = parse_non_empty_id(request.mod_id, "mod_id_empty", "mod id cannot be empty")?;
+    let profile_id = parse_non_empty_id(
+        request.profile_id,
+        "profile_id_empty",
+        "profile id cannot be empty",
+    )?;
+
+    Ok(StartUninstallTaskRequest {
+        game_id,
+        mod_id: ModId::new(mod_id),
+        profile_id: ProfileId::new(profile_id),
+    })
 }
 
 fn build_install_plan_request_from_dto(
@@ -287,7 +363,8 @@ mod tests {
     use super::*;
     use crate::dto::{
         InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
-        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, TaskProgressEventDto,
+        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartUninstallTaskRequestDto,
+        TaskProgressEventDto,
     };
     use hmm_core::{
         FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallPlan,
@@ -362,6 +439,24 @@ mod tests {
     }
 
     #[test]
+    fn start_uninstall_task_request_deserializes_without_paths() {
+        let value = json!({
+            "gameId": "mhw",
+            "modId": "mod-a",
+            "profileId": "default"
+        });
+
+        let request: StartUninstallTaskRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let app_request =
+            start_uninstall_task_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(app_request.game_id.as_str(), "mhw");
+        assert_eq!(app_request.mod_id.as_str(), "mod-a");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+    }
+
+    #[test]
     fn install_manifest_status_request_deserializes_without_paths() {
         let value = json!({
             "profileId": "default",
@@ -399,6 +494,28 @@ mod tests {
         assert_eq!(value["kind"], "install");
         assert_eq!(value["status"], "queued");
         assert_eq!(value["phase"], INSTALL_QUEUED_PHASE);
+        assert!(value["current"].is_null());
+        assert!(value["total"].is_null());
+        assert!(value["message"].is_null());
+        assert!(value["error"].is_null());
+        assert!(value["resultRef"].is_null());
+    }
+
+    #[test]
+    fn queued_uninstall_event_uses_registered_phase() {
+        let task = TaskStarted {
+            task_id: "install-123".to_owned(),
+            kind: hmm_app::TaskKind::Install,
+            status: hmm_app::TaskStatus::Queued,
+        };
+
+        let dto: TaskProgressEventDto = queued_event_for_started_uninstall_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "install-123");
+        assert_eq!(value["kind"], "install");
+        assert_eq!(value["status"], "queued");
+        assert_eq!(value["phase"], INSTALL_UNINSTALL_QUEUED_PHASE);
         assert!(value["current"].is_null());
         assert!(value["total"].is_null());
         assert!(value["message"].is_null());

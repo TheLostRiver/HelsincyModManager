@@ -13,6 +13,7 @@ pub trait InstallGameFileSystem: Send + Sync {
 
 pub trait InstallBackupStore: Send + Sync {
     fn store_backup(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> Result<String>;
+    fn read_backup(&self, backup_ref: &str) -> Result<Option<Vec<u8>>>;
     fn remove_backup(&self, backup_ref: &str) -> Result<()>;
 }
 

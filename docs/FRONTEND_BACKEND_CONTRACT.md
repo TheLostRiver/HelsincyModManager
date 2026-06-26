@@ -208,6 +208,10 @@ TaskProgressEventDto
 | `install` | `install.completed` | 安装提交已完成，manifest 已写入 |
 | `install` | `install.failed` | 安装提交失败；后端会 best-effort 走回滚或保留可恢复状态 |
 | `install` | `install.cancelled` | 安装任务被取消；已进入 commit 阶段后不保证抢占式中断 |
+| `install` | `install.uninstall.queued` | 卸载任务已登记，等待后续执行 |
+| `install` | `install.uninstall.processing` | 后端正在执行受写锁保护的 manifest 驱动卸载 |
+| `install` | `install.uninstall.completed` | 卸载完成，manifest 已移除对应 Mod 的托管条目 |
+| `install` | `install.uninstall.failed` | 卸载失败；后端会 best-effort 回滚已应用的删除或恢复 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -275,6 +279,7 @@ preview_retarget_plan({ gameId, packageId, binding })
 preview_install_plan(input)
 preview_imported_mod_install_plan(input)
 start_install_task(input)
+start_uninstall_task(input)
 get_install_manifest_status(input)
 cancel_task(taskId)
 ```
@@ -283,6 +288,7 @@ cancel_task(taskId)
 
 - `preview_install_plan` 不写真实游戏目录。
 - `start_install_task` 必须基于已经生成或可重建的 plan。
+- `start_uninstall_task` 必须基于已有 manifest、`installed_file` 摘要和 backup 记录，不根据当前 Mod 包内容猜测。
 - 真实 commit 过程必须写 manifest，并能回滚或恢复。
 - 当前 `preview_install_plan` 只暴露只读计划预览壳，用于验证 Tauri DTO 与 `hmm-app` 计划服务边界；它返回相对目标路径摘要、来源 id、层级信息和阻断冲突，不创建目录、不复制文件、不删除文件、不写 manifest。
 - `preview_install_plan` 的 `allowedTargetRoots` 和 `files[].targetPath` 必须来自后端分析/adapter 结果或测试夹具；正式前端 UI 不得根据游戏名、Mod 内容或用户输入自行拼接最终安装路径。后续 package analyzer / game adapter 接入后，应优先让前端只提交后端生成的 `modId`、`packageId`、`profileId` 或 `targetId`。
@@ -291,6 +297,10 @@ cancel_task(taskId)
 - `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
 - `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
 - `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。
+- `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
+- `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的本工具新增文件会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
+- `start_uninstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.uninstall.queued` 事件；后台 runner 会发送 `install.uninstall.processing`、`install.uninstall.completed` 或 `install.uninstall.failed`。失败事件的 `error` 使用稳定前缀 `install_uninstall_failed:<phase>`，当前 phase 可为 `lock`、`uninstall` 或 `complete`。事件 payload 不承载目标路径、完整本地路径、manifest 内容、backup ref 或第三方 Mod 内容。
+- `start_uninstall_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`removed_file_count` 和 `restored_file_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径、backup 路径、manifest 正文或第三方 Mod 内容。
 - 安装提交写入 manifest entry 时会记录后端内部使用的 `installed_file` 摘要（写入内容 size + SHA-256）。该摘要不进入当前前端 DTO，不暴露目标路径、backup ref、manifest path、sandbox/cache path 或文件内容；后续卸载/恢复扫描可用它判断目标文件是否仍与受控安装事实一致。
 - `get_install_manifest_status` 是只读安装状态摘要入口。前端只提交 `profileId` 和 `modIds`，后端从受控 manifest 仓储读取对应 profile 的 manifest，并按 `modId` 返回 `status`、`managedFileCount` 和 `backupCount`。该 command 不接受 `gameId`、`targetPath`、manifest root/path、backup root/ref、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `get_install_manifest_status` 的返回状态为 `not_installed`、`installed`、`repair_required` 或 `unknown`。当前 MVP 后端只根据匹配到的 manifest entries 派生 `installed`，缺失 manifest 或无匹配 entry 返回 `not_installed`；即使新 manifest entry 已包含 `installed_file` 摘要，该 command 也暂不读取目标文件或 backup 做 hash 校验。`repair_required` / `unknown` 作为契约保留给后续恢复扫描和 rich manifest 检测使用。
@@ -325,6 +335,12 @@ type StartInstallTaskRequestDto = {
   profileId: string;
   layerName: string;
   layerPriority: number;
+};
+
+type StartUninstallTaskRequestDto = {
+  gameId: string;
+  modId: string;
+  profileId: string;
 };
 
 type InstallManifestStatusRequestDto = {
