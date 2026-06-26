@@ -1,6 +1,7 @@
 mod app_settings;
 mod game_setup;
 mod install;
+mod install_manifest_query;
 mod install_task;
 mod log_diagnostics;
 mod mod_dependency_graph;
@@ -19,6 +20,10 @@ pub use install::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
     InstallPlanFile, InstallPlanningError, InstallPlanningService,
+};
+pub use install_manifest_query::{
+    InstallManifestQueryError, InstallManifestQueryRequest, InstallManifestQueryService,
+    InstallManifestStatus, InstallManifestStatusSummary,
 };
 pub use install_task::{
     ImportedModInstallCommitRequest, ImportedModInstallPlanner, InstallPlanCommitter,

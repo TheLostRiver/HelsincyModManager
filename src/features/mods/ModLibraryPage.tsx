@@ -13,11 +13,11 @@ import { CompactActionPanel } from "./CompactActionPanel";
 import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./InstallPlanPreviewPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModPosterCard } from "./ModPosterCard";
-import { previewInstallPlanForImportedMod, startInstallTask } from "./modInstallPlanApi";
+import { getInstallManifestStatus, previewInstallPlanForImportedMod, startInstallTask } from "./modInstallPlanApi";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
-import { resolveLoadedModLibraryItems } from "./modLibraryLoadState";
+import { applyInstallManifestStatusSummaries, resolveLoadedModLibraryItems } from "./modLibraryLoadState";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import type { ModInstallStatus, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
@@ -296,6 +296,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [libraryItems, setLibraryItems] = useState<ModLibraryItem[]>(fallbackModLibraryItems);
+  const libraryItemsRef = useRef<ModLibraryItem[]>(fallbackModLibraryItems);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
@@ -304,6 +305,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   });
   const [installTaskState, setInstallTaskState] = useState<InstallTaskState>({ status: "idle" });
   const installTaskStateRef = useRef<InstallTaskState>(installTaskState);
+  const lastInstallStatusRefreshTaskIdRef = useRef<string | null>(null);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
 
   const setTrackedInstallTaskState = useCallback((update: InstallTaskStateUpdate) => {
@@ -326,19 +328,39 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     setViewMode,
   );
 
+  const refreshInstallManifestStatuses = useCallback((items: ModLibraryItem[]) => {
+    const modIds = Array.from(new Set(items.map((item) => item.id))).filter((id) => id.length > 0);
+    if (modIds.length === 0) {
+      return Promise.resolve(items);
+    }
+
+    return getInstallManifestStatus({
+      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      modIds,
+    })
+      .then((summaries) => applyInstallManifestStatusSummaries(items, summaries))
+      .catch(() => items);
+  }, []);
+
+  useEffect(() => {
+    libraryItemsRef.current = libraryItems;
+  }, [libraryItems]);
+
   useEffect(() => {
     let cancelled = false;
 
     void getModLibrary()
       .then((items) => {
-        if (!cancelled) {
-          setLibraryItems(
-            resolveLoadedModLibraryItems({
-              backendItems: items,
-              fallbackItems: fallbackModLibraryItems,
-            }),
-          );
-        }
+        const resolvedItems = resolveLoadedModLibraryItems({
+          backendItems: items,
+          fallbackItems: fallbackModLibraryItems,
+        });
+
+        return refreshInstallManifestStatuses(resolvedItems).then((itemsWithStatus) => {
+          if (!cancelled) {
+            setLibraryItems(itemsWithStatus);
+          }
+        });
       })
       .catch(() => {
         if (!cancelled) {
@@ -354,7 +376,25 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshInstallManifestStatuses]);
+
+  useEffect(() => {
+    if (installTaskState.status !== "completed") {
+      return;
+    }
+    if (lastInstallStatusRefreshTaskIdRef.current === installTaskState.taskId) {
+      return;
+    }
+
+    lastInstallStatusRefreshTaskIdRef.current = installTaskState.taskId;
+    const itemsAtRefreshStart = libraryItemsRef.current;
+
+    void refreshInstallManifestStatuses(itemsAtRefreshStart).then((itemsWithStatus) => {
+      if (libraryItemsRef.current === itemsAtRefreshStart) {
+        setLibraryItems(itemsWithStatus);
+      }
+    });
+  }, [installTaskState, refreshInstallManifestStatuses]);
 
   useEffect(() => {
     let disposed = false;

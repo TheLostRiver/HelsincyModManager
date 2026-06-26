@@ -13,22 +13,44 @@ type ModPosterCardProps = {
 };
 
 const statusLabel: Record<ModLibraryItem["status"], string> = {
+  not_installed: "未安装",
   installed: "已安装",
   disabled: "已禁用",
   conflict: "存在冲突",
+  repair_required: "需要修复",
+  unknown: "状态未知",
 };
 
 const techStatusLabel: Record<ModLibraryItem["status"], string> = {
+  not_installed: "READY",
   installed: "ACTIVE",
   disabled: "DISABLED",
   conflict: "CONFLICT",
+  repair_required: "REPAIR",
+  unknown: "UNKNOWN",
 };
 
 const techValidityLabel: Record<ModLibraryItem["status"], string> = {
+  not_installed: "PENDING",
   installed: "VALID",
   disabled: "STANDBY",
   conflict: "ERROR",
+  repair_required: "CHECK",
+  unknown: "UNKNOWN",
 };
+
+function statusLabelForItem(item: ModLibraryItem) {
+  const summary = item.installSummary;
+  if (item.status === "installed" && summary && summary.managedFileCount > 0) {
+    return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
+  }
+
+  if (item.status === "repair_required" && summary) {
+    return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
+  }
+
+  return statusLabel[item.status];
+}
 
 export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMenu, index = 0 }: ModPosterCardProps) {
   const isTech = viewMode === "tech";
@@ -105,7 +127,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
           {/* 状态徽标：Classic, Grid, List 通用 */}
           <span className={`mod-card__status-pill is-${item.status}`}>
             <Check size={15} strokeWidth={2.6} aria-hidden="true" />
-            {statusLabel[item.status]}
+            {statusLabelForItem(item)}
           </span>
 
           {/* 经典视图专属的选中边框 */}

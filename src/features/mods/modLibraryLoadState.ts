@@ -1,3 +1,4 @@
+import type { InstallManifestStatusSummary } from "./modInstallPlanTypes";
 import type { ModLibraryItem } from "./modLibraryTypes";
 
 type ResolveLoadedModLibraryItemsInput = {
@@ -10,4 +11,32 @@ export function resolveLoadedModLibraryItems({
   fallbackItems,
 }: ResolveLoadedModLibraryItemsInput): ModLibraryItem[] {
   return backendItems ?? fallbackItems;
+}
+
+export function applyInstallManifestStatusSummaries(
+  items: ModLibraryItem[],
+  summaries: InstallManifestStatusSummary[],
+): ModLibraryItem[] {
+  if (items.length === 0 || summaries.length === 0) {
+    return items;
+  }
+
+  const summaryByModId = new Map(summaries.map((summary) => [summary.modId, summary]));
+
+  return items.map((item) => {
+    const summary = summaryByModId.get(item.id);
+    if (!summary) {
+      return item;
+    }
+
+    return {
+      ...item,
+      status: summary.status,
+      installSummary: {
+        status: summary.status,
+        managedFileCount: summary.managedFileCount,
+        backupCount: summary.backupCount,
+      },
+    };
+  });
 }

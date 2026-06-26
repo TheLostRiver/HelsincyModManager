@@ -30,6 +30,15 @@ test("install plan API invokes controlled install task command without paths", (
   assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath/i);
 });
 
+test("install manifest status API invokes controlled summary command without paths", () => {
+  const source = readSource("src/features/mods/modInstallPlanApi.ts");
+
+  assert.match(source, /invoke<InstallManifestStatusSummary\[\]>\("get_install_manifest_status"/);
+  assert.match(source, /profileId:\s*input\.profileId/);
+  assert.match(source, /modIds:\s*input\.modIds/);
+  assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot/i);
+});
+
 test("install plan types expose preview DTO without filesystem paths", () => {
   assert.equal(existsSync("src/features/mods/modInstallPlanTypes.ts"), true);
   const source = readSource("src/features/mods/modInstallPlanTypes.ts");
@@ -78,5 +87,16 @@ test("mod library page starts install task and tracks only matching task progres
   assert.match(source, /install\.completed/);
   assert.match(source, /install\.failed/);
   assert.match(source, /install\.cancelled/);
+  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
+});
+
+test("mod library page refreshes install status from manifest summaries", () => {
+  const source = readSource("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(source, /getInstallManifestStatus/);
+  assert.match(source, /applyInstallManifestStatusSummaries/);
+  assert.match(source, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
+  assert.match(source, /modIds/);
+  assert.match(source, /installTaskState\.status\s*!==\s*"completed"/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
 });

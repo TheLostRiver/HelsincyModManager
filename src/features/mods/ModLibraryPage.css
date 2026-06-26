@@ -748,6 +748,15 @@
   color: #f59e0b; /* STANDBY */
 }
 
+.mod-grid.view-tech .mod-card__tech-status[data-status="not_installed"],
+.mod-grid.view-tech .mod-card__tech-status[data-status="unknown"] {
+  color: var(--color-text-muted);
+}
+
+.mod-grid.view-tech .mod-card__tech-status[data-status="repair_required"] {
+  color: var(--color-danger-text);
+}
+
 .mod-grid.view-tech .tech-indicator {
   width: 8px;
   height: 8px;
@@ -1229,6 +1238,17 @@
   color: var(--color-success-text);
 }
 
+.mod-card__status-pill.is-not_installed,
+.mod-card__status-pill.is-unknown {
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+}
+
+.mod-card__status-pill.is-not_installed svg,
+.mod-card__status-pill.is-unknown svg {
+  color: var(--color-text-muted);
+}
+
 .mod-card__status-pill.is-disabled {
   color: var(--color-warning-text);
   background: var(--color-warning-bg);
@@ -1244,6 +1264,15 @@
 }
 
 .mod-card__status-pill.is-conflict svg {
+  color: var(--color-danger-dot);
+}
+
+.mod-card__status-pill.is-repair_required {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+.mod-card__status-pill.is-repair_required svg {
   color: var(--color-danger-dot);
 }
 
