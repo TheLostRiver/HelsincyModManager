@@ -8,8 +8,9 @@ pub use game::{
 };
 pub use install::{
     FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallManifest,
-    InstallManifestEntry, InstallPlan, InstallTargetPath, InstallTargetPathError,
-    InstalledFileSummary, ModId, PackageFileId, ProfileId,
+    InstallManifestEntry, InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry,
+    InstallRecoveryRecordStatus, InstallRecoveryRecordTransitionError, InstallTargetPath,
+    InstallTargetPathError, InstalledFileSummary, ModId, PackageFileId, ProfileId,
 };
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,
