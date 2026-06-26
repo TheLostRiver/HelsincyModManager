@@ -73,7 +73,10 @@ fn summary_for_mod(
                 .iter()
                 .filter(|entry| entry.mod_id == *mod_id)
                 .fold((0_usize, 0_usize), |(managed, backups), entry| {
-                    (managed + 1, backups + usize::from(entry.backup_ref.is_some()))
+                    (
+                        managed + 1,
+                        backups + usize::from(entry.backup_ref.is_some()),
+                    )
                 })
         })
         .unwrap_or((0, 0));
@@ -187,6 +190,7 @@ mod tests {
             package_file_id: PackageFileId::new(target_path),
             layer: FileLayer::new("base", 0),
             backup_ref: backup_ref.map(str::to_owned),
+            installed_file: None,
         }
     }
 }
