@@ -302,13 +302,6 @@ fn install_recovery_scan_request_from_dto(
         "profile_id_empty",
         "profile id cannot be empty",
     )?;
-    if request.mod_ids.is_empty() {
-        return Err(CommandErrorDto {
-            code: "mod_ids_empty".to_owned(),
-            message: "mod ids cannot be empty".to_owned(),
-        });
-    }
-
     let mod_ids = request
         .mod_ids
         .into_iter()
@@ -570,6 +563,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["mod-a", "mod-b"]
         );
+    }
+
+    #[test]
+    fn install_recovery_scan_request_allows_empty_mod_ids_for_profile_scan() {
+        let value = json!({
+            "gameId": "mhw",
+            "profileId": "default",
+            "modIds": []
+        });
+
+        let request: crate::dto::InstallRecoveryScanRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let (game_id, app_request) =
+            install_recovery_scan_request_from_dto(request).expect("empty mod ids should map");
+
+        assert_eq!(game_id.as_str(), "mhw");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert!(app_request.mod_ids.is_empty());
     }
 
     #[test]

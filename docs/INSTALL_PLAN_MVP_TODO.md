@@ -41,7 +41,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
-- 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code。
+- 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
@@ -73,6 +73,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端最小卸载 UI、`startUninstallTask` typed API、`install.uninstall.*` 任务展示和完成后 manifest 摘要刷新。
 - [x] 后端只读恢复扫描摘要 command：`scan_install_recovery`。
 - [x] 前端 Mod 库只读恢复扫描入口、聚合人工处理提示和不安全状态安装/卸载阻断。
+- [x] `scan_install_recovery` 支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，作为启动级恢复检查或独立恢复中心的后端基础。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -160,10 +161,10 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 已落地范围：
 
-- `hmm-app` 新增 `InstallRecoveryScanService`，依赖 `InstallManifestRepository`、`InstallGameFileSystem` 和 `InstallBackupStore`，只读扫描指定 `profileId` / `modIds`。
+- `hmm-app` 新增 `InstallRecoveryScanService`，依赖 `InstallManifestRepository`、`InstallGameFileSystem` 和 `InstallBackupStore`，只读扫描指定 `profileId` / `modIds`；当 `modIds` 为空时，会从该 profile manifest entries 中去重并按稳定顺序扫描全部已知托管 Mod。
 - 扫描返回 `completed`、`repair_required`、`unknown`、`not_installed` 摘要；`repair_required` 覆盖缺少 `installed_file` 摘要、目标缺失、目标摘要变化或 backup 缺失，`unknown` 用于目标或 backup 读取失败等无法安全判断状态。
 - 摘要只返回短 id、托管文件计数、backup 计数、聚合 issue 数和稳定 issue code，不返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。
-- Tauri 新增 `scan_install_recovery` 窄 command，只接收 `gameId`、`profileId`、`modIds`；组合根通过已配置 game instance 构造受控 game filesystem，通过 app data 构造受控 backup store 和 manifest repository，并复用安装/卸载同一份 `gameId/profileId` 写锁避免读取半写状态。
+- Tauri 新增 `scan_install_recovery` 窄 command，只接收 `gameId`、`profileId`、`modIds`；`modIds` 可为空，表示扫描当前 profile manifest 内全部已知托管 Mod。组合根通过已配置 game instance 构造受控 game filesystem，通过 app data 构造受控 backup store 和 manifest repository，并复用安装/卸载同一份 `gameId/profileId` 写锁避免读取半写状态。
 - 稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；manifest 仓储不可用返回 `install_recovery_unavailable`。
 
 仍明确未完成：
@@ -197,6 +198,22 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 后端 rich repair summary、人工修复决策流和批量/profile 工作流。
 - `get_install_manifest_status` 尚未在后端内部消费 recovery scan 结果；当前真实 `repair_required` 展示由 Mod 库额外调用 recovery scan 获得。
+
+### 2026-06-26 进度详情：Recovery scan 全量 profile 扫描基础
+
+本切片补齐 P1 “崩溃恢复扫描” 的启动级/恢复中心基础能力：前端或后续恢复中心可以用空 `modIds` 请求扫描当前 profile manifest 内全部已知托管 Mod，而不必先加载 Mod 库或在前端维护一份待扫描 id 列表。
+
+已落地范围：
+
+- `InstallRecoveryScanService` 在 `modIds` 为空时，从 manifest entries 中按 `mod_id` 去重并稳定排序，再复用既有只读扫描逻辑返回每个 Mod 的恢复摘要。
+- `scan_install_recovery` Tauri DTO 映射允许空 `modIds`；非空 id 仍逐项执行空白校验，`get_install_manifest_status` 仍要求显式 `modIds`，避免改变普通 manifest 摘要查询语义。
+- 契约仍只暴露 `gameId`、`profileId`、`modIds` 和聚合摘要，不返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。
+
+仍明确未完成：
+
+- 应用启动级自动调用和 UI 告警入口。
+- 独立恢复中心页面、自动处理动作和 rich repair summary。
+- 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 
 ## 设计细化规则
 
@@ -429,7 +446,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command 和 Mod 库加载后的前端只读扫描入口已落地；应用启动级自动扫描、自动回滚/恢复执行、`rollback_required` rich 状态和独立恢复中心入口仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础和 Mod 库加载后的前端只读扫描入口已落地；应用启动级自动扫描 UI、自动回滚/恢复执行、`rollback_required` rich 状态和独立恢复中心入口仍待后续切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
@@ -437,7 +454,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 - 扫描 manifest、备份记录和任务状态摘要。
 - 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 rich manifest/task 状态后续补齐。
-- 已提供后端 command 返回只读恢复摘要。
+- 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
 - Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；应用启动级恢复入口仍待后续补齐。
 
 明确不做：
