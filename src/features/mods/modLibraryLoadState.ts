@@ -29,9 +29,11 @@ export function applyInstallManifestStatusSummaries(
       return item;
     }
 
+    const status = item.status === "disabled" || item.status === "conflict" ? item.status : summary.status;
+
     return {
       ...item,
-      status: summary.status,
+      status,
       installSummary: {
         status: summary.status,
         managedFileCount: summary.managedFileCount,
