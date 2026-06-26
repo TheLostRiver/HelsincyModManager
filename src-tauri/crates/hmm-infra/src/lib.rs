@@ -24,6 +24,7 @@ pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
 pub use install_commit::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonInstallManifestRepository,
+    JsonInstallRecoveryRecordRepository,
 };
 pub use mod_import::{
     FileSystemDiagnosticPackageExporter, JsonModImportResultRepository,

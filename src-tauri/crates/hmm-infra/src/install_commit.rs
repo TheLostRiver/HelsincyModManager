@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
-use hmm_core::{InstallManifest, InstallTargetPath, PackageFileId, ProfileId};
-use hmm_ports::{
-    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
+use hmm_core::{
+    InstallManifest, InstallRecoveryRecord, InstallTargetPath, ModId, PackageFileId, ProfileId,
 };
+use hmm_ports::{
+    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
+    InstallRecoveryRecordRepository, InstallSourceFileReader,
+};
+use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -162,6 +166,16 @@ impl JsonInstallManifestRepository {
     }
 }
 
+pub struct JsonInstallRecoveryRecordRepository {
+    record_root: PathBuf,
+}
+
+impl JsonInstallRecoveryRecordRepository {
+    pub fn new(record_root: PathBuf) -> Self {
+        Self { record_root }
+    }
+}
+
 impl InstallManifestRepository for JsonInstallManifestRepository {
     fn load_manifest(&self, profile_id: &ProfileId) -> Result<Option<InstallManifest>> {
         let file_name = manifest_file_name(profile_id.as_str())?;
@@ -211,6 +225,89 @@ impl InstallManifestRepository for JsonInstallManifestRepository {
             .context("failed to write install manifest")?;
 
         Ok(())
+    }
+}
+
+impl InstallRecoveryRecordRepository for JsonInstallRecoveryRecordRepository {
+    fn load_record(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<Option<InstallRecoveryRecord>> {
+        match fs::symlink_metadata(&self.record_root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).context("failed to inspect install recovery root"),
+        }
+
+        ensure_existing_directory(&self.record_root, "install recovery root")?;
+        ensure_contained_existing_path(&self.record_root, &self.record_root)?;
+        let record_path = self
+            .record_root
+            .join(recovery_record_file_name(profile_id, mod_id));
+
+        let metadata = match fs::symlink_metadata(&record_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).context("failed to inspect install recovery record"),
+        };
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            anyhow::bail!("install recovery record is not a regular file");
+        }
+        ensure_contained_existing_path(&self.record_root, &record_path)?;
+
+        let serialized =
+            fs::read_to_string(&record_path).context("failed to read install recovery record")?;
+        let record: InstallRecoveryRecord = serde_json::from_str(&serialized)
+            .context("failed to deserialize install recovery record")?;
+        if record.profile_id != *profile_id || record.mod_id != *mod_id {
+            anyhow::bail!("install recovery record id does not match request");
+        }
+
+        Ok(Some(record))
+    }
+
+    fn save_record(&self, record: &InstallRecoveryRecord) -> Result<()> {
+        fs::create_dir_all(&self.record_root).context("failed to create install recovery root")?;
+        ensure_existing_directory(&self.record_root, "install recovery root")?;
+        ensure_contained_existing_path(&self.record_root, &self.record_root)?;
+        let record_path = self.record_root.join(recovery_record_file_name(
+            &record.profile_id,
+            &record.mod_id,
+        ));
+        ensure_safe_write_target(&self.record_root, &record_path)?;
+        let serialized = serde_json::to_string_pretty(record)
+            .context("failed to serialize install recovery record")?;
+        atomic_write_file(&record_path, serialized.as_bytes())
+            .context("failed to write install recovery record")?;
+
+        Ok(())
+    }
+
+    fn remove_record(&self, profile_id: &ProfileId, mod_id: &ModId) -> Result<()> {
+        match fs::symlink_metadata(&self.record_root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error).context("failed to inspect install recovery root"),
+        }
+
+        ensure_existing_directory(&self.record_root, "install recovery root")?;
+        ensure_contained_existing_path(&self.record_root, &self.record_root)?;
+        let record_path = self
+            .record_root
+            .join(recovery_record_file_name(profile_id, mod_id));
+
+        let metadata = match fs::symlink_metadata(&record_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error).context("failed to inspect install recovery record"),
+        };
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            anyhow::bail!("install recovery record is not a regular file");
+        }
+        ensure_contained_existing_path(&self.record_root, &record_path)?;
+
+        fs::remove_file(record_path).context("failed to remove install recovery record")
     }
 }
 
@@ -414,16 +511,32 @@ fn manifest_file_name(profile_id: &str) -> Result<String> {
     Ok(format!("{profile_id}.json"))
 }
 
+fn recovery_record_file_name(profile_id: &ProfileId, mod_id: &ModId) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"profile:");
+    hasher.update(profile_id.as_str().as_bytes());
+    hasher.update(b"\0mod:");
+    hasher.update(mod_id.as_str().as_bytes());
+    let digest = hasher.finalize();
+    let digest_hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+
+    format!("record-{digest_hex}.json")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use hmm_core::{
-        FileLayer, InstallManifest, InstallManifestEntry, InstallTargetPath, ModId, PackageFileId,
-        ProfileId,
+        FileLayer, InstallManifest, InstallManifestEntry, InstallRecoveryRecord,
+        InstallRecoveryRecordEntry, InstallRecoveryRecordStatus, InstallTargetPath, ModId,
+        PackageFileId, ProfileId,
     };
     use hmm_ports::{
         InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-        InstallSourceFileReader,
+        InstallRecoveryRecordRepository, InstallSourceFileReader,
     };
     use std::fs;
 
@@ -868,6 +981,132 @@ mod tests {
         assert!(error
             .to_string()
             .contains("install manifest profile id does not match request"));
+    }
+
+    #[test]
+    fn json_recovery_record_repository_round_trips_without_raw_id_file_names() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let recovery_root = temp.path().join("recovery-records");
+        let repository = JsonInstallRecoveryRecordRepository::new(recovery_root.clone());
+        let record = recovery_record("../unsafe-profile", "mod/with/slash");
+
+        repository
+            .save_record(&record)
+            .expect("save recovery record");
+        let loaded = repository
+            .load_record(&record.profile_id, &record.mod_id)
+            .expect("load recovery record");
+
+        assert_eq!(loaded, Some(record));
+        let stored_files = fs::read_dir(&recovery_root)
+            .expect("read recovery root")
+            .filter_map(|entry| entry.ok())
+            .collect::<Vec<_>>();
+        assert_eq!(stored_files.len(), 1);
+        let file_name = stored_files[0].file_name().to_string_lossy().to_string();
+        assert!(file_name.ends_with(".json"));
+        assert!(!file_name.contains("unsafe-profile"));
+        assert!(!file_name.contains("mod"));
+        assert!(!file_name.contains('/'));
+        assert!(!file_name.contains('\\'));
+    }
+
+    #[test]
+    fn json_recovery_record_repository_removes_record_inside_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repository = JsonInstallRecoveryRecordRepository::new(temp.path().join("recovery"));
+        let record = recovery_record("default", "mod-a");
+
+        repository
+            .save_record(&record)
+            .expect("save recovery record");
+        repository
+            .remove_record(&record.profile_id, &record.mod_id)
+            .expect("remove recovery record");
+
+        let loaded = repository
+            .load_record(&record.profile_id, &record.mod_id)
+            .expect("load removed recovery record");
+        assert_eq!(loaded, None);
+    }
+
+    #[test]
+    fn json_recovery_record_repository_load_rejects_file_record_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let recovery_root = temp.path().join("recovery");
+        fs::write(&recovery_root, b"not a directory").expect("write recovery root fixture");
+        let repository = JsonInstallRecoveryRecordRepository::new(recovery_root);
+
+        let error = repository
+            .load_record(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect_err("recovery root file must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install recovery root is not a directory"));
+    }
+
+    #[test]
+    fn json_recovery_record_repository_load_rejects_directory_record() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let recovery_root = temp.path().join("recovery");
+        let profile_id = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        fs::create_dir_all(recovery_root.join(recovery_record_file_name(&profile_id, &mod_id)))
+            .expect("create directory record fixture");
+        let repository = JsonInstallRecoveryRecordRepository::new(recovery_root);
+
+        let error = repository
+            .load_record(&profile_id, &mod_id)
+            .expect_err("directory record must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install recovery record is not a regular file"));
+    }
+
+    #[test]
+    fn json_recovery_record_repository_load_rejects_record_id_mismatch() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let recovery_root = temp.path().join("recovery");
+        let requested_profile_id = ProfileId::new("default");
+        let requested_mod_id = ModId::new("mod-a");
+        let mismatched_record = recovery_record("other", "mod-b");
+        fs::create_dir_all(&recovery_root).expect("create recovery root");
+        let serialized =
+            serde_json::to_string_pretty(&mismatched_record).expect("serialize fixture");
+        fs::write(
+            recovery_root.join(recovery_record_file_name(
+                &requested_profile_id,
+                &requested_mod_id,
+            )),
+            serialized,
+        )
+        .expect("write mismatched recovery record fixture");
+        let repository = JsonInstallRecoveryRecordRepository::new(recovery_root);
+
+        let error = repository
+            .load_record(&requested_profile_id, &requested_mod_id)
+            .expect_err("record id mismatch must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("install recovery record id does not match request"));
+    }
+
+    fn recovery_record(profile_id: &str, mod_id: &str) -> InstallRecoveryRecord {
+        InstallRecoveryRecord {
+            profile_id: ProfileId::new(profile_id),
+            mod_id: ModId::new(mod_id),
+            status: InstallRecoveryRecordStatus::RollbackRequired,
+            entries: vec![InstallRecoveryRecordEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("target"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                backup_ref: Some("backup-player".to_owned()),
+                installed_file: None,
+            }],
+        }
     }
 
     #[cfg(unix)]
