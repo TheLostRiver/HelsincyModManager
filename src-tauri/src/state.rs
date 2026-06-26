@@ -20,10 +20,11 @@ use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
     FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemTextLogReader,
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
-    JsonGameConfigRepository, JsonInstallManifestRepository, JsonModImportResultRepository,
-    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner,
-    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SteamGameDiscoveryService,
-    SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
+    JsonGameConfigRepository, JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
+    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
+    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
+    SandboxPackagePreviewScanner, SteamGameDiscoveryService, SystemClock,
+    SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
 use hmm_ports::{
@@ -415,7 +416,7 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             .map_err(|_| InstallCommitError::Failed {
                 phase: InstallCommitPhase::SourceRead,
             })?;
-        let service = InstallCommitService::new(
+        let service = InstallCommitService::new_with_recovery_records(
             Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
@@ -423,6 +424,9 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             )),
             Arc::new(JsonInstallManifestRepository::new(
                 self.app_data_dir.join("install").join("manifests"),
+            )),
+            Arc::new(JsonInstallRecoveryRecordRepository::new(
+                self.app_data_dir.join("install").join("recovery"),
             )),
         );
 
