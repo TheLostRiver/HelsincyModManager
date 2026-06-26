@@ -240,7 +240,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 以下能力仍不能视为已完成：
 
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
-- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局只读告警，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。但尚未实现 `rollback_required` rich 状态、自动回滚/恢复执行或真正的受控恢复/回滚动作。
+- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局只读告警，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。受控恢复/回滚动作的实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，但尚未实现 `rollback_required` rich 状态、自动回滚/恢复执行或真正的受控恢复/回滚动作。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
@@ -254,13 +254,14 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - [Mod 安装方案规划](mod_installation_strategy.md)：记录长期方案和可选后端，不代表当前全部已实现。
 - [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)：记录当前 Tauri command、DTO、错误码和任务事件契约。
 - [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)：记录后续切片、验收标准、安全门禁，以及 manifest 状态、卸载/恢复、安装 UI、retarget staging 和测试矩阵的细化规则。
+- [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)：记录 `rollback_required`、只读动作预览、受控回滚任务和恢复中心写入动作启用前的安全拆分。
 - 本文档：记录当前实现状态和后续切片判断。
 
 ## 后续建议切片
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 扫描后续：补充真正的受控恢复/回滚动作；已落地的 App Frame 全局告警和恢复中心人工处理面板仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
+1. Crash/recovery 扫描后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 先补 durable recovery record / rich status 基础，再补只读动作预览和受控回滚任务；已落地的 App Frame 全局告警和恢复中心人工处理面板仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
 2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
 3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
