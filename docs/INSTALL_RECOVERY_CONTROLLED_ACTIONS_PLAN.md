@@ -13,10 +13,12 @@
 - `start_install_task` 和 `start_uninstall_task` 都复用 `gameId/profileId` 写锁；commit / uninstall 写入窗口串行。
 - `UninstallModService` 已有最小安全删除/恢复能力：只在 `installed_file` 摘要匹配且 backup 可读时删除新增文件或恢复覆盖文件。
 - 安装和卸载任务已写最小 Audit Log，字段只包含 task/game/profile/mod id 和聚合计数，不记录完整路径或 backup ref。
+- Durable recovery record 的第一步基础已落地：`hmm-core` 提供 `InstallRecoveryRecord` / `InstallRecoveryRecordStatus` 状态模型，`hmm-ports` 提供窄 repository trait，`hmm-infra` 提供受控 JSON 仓储。
 
 当前不能假设：
 
 - MVP manifest 还没有持久化 `planned`、`committing`、`rollback_required`、`rolled_back` 等 rich 状态。
+- 安装 commit 还没有写入 durable recovery record；恢复扫描也还没有消费该记录。
 - 安装进程在写入文件但尚未保存 manifest 时崩溃，当前系统不能仅凭目录内容安全推断“本工具写过哪些目标”。
 - Task Log / Audit Log 不能成为唯一事实来源；它们只能辅助诊断，不能替代 manifest、backup 和受控目标摘要。
 - `repair_required` 不等于“可以自动覆盖或删除”。目标被外部工具或玩家修改时，自动恢复可能误伤玩家文件。
@@ -120,6 +122,11 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 ### 切片 1：durable recovery record / rich status 基础
 
 目标：让系统有足够事实表示 commit 是否进入写入窗口、哪些目标已经应用、失败后是否需要回滚。
+
+当前进度：
+
+- 已完成第一步基础：领域模型、状态迁移、repository port 和 JSON 仓储。
+- 尚未完成：安装 commit 写入 `planned` / `committing` / `completed` / `rollback_required` 记录，恢复扫描消费该记录，以及任何对外 `rollback_required` DTO 或 UI。
 
 候选落点：
 

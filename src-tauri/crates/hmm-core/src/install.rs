@@ -200,6 +200,82 @@ pub struct InstalledFileSummary {
     pub sha256: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRecoveryRecordStatus {
+    Planned,
+    Committing,
+    Completed,
+    RollbackRequired,
+    RolledBack,
+    RepairRequired,
+}
+
+impl InstallRecoveryRecordStatus {
+    pub fn can_transition_to(self, next: Self) -> bool {
+        use InstallRecoveryRecordStatus::{
+            Committing, Completed, Planned, RepairRequired, RollbackRequired, RolledBack,
+        };
+
+        self == next
+            || matches!(
+                (self, next),
+                (Planned, Committing)
+                    | (Planned, RolledBack)
+                    | (Committing, Completed)
+                    | (Committing, RollbackRequired)
+                    | (Committing, RepairRequired)
+                    | (RollbackRequired, RolledBack)
+                    | (RollbackRequired, RepairRequired)
+                    | (RepairRequired, Planned)
+                    | (Completed, RollbackRequired)
+                    | (Completed, RepairRequired)
+            )
+    }
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InstallRecoveryRecordTransitionError {
+    #[error("invalid install recovery record transition from {from:?} to {to:?}")]
+    InvalidTransition {
+        from: InstallRecoveryRecordStatus,
+        to: InstallRecoveryRecordStatus,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallRecoveryRecordEntry {
+    pub target_path: InstallTargetPath,
+    pub package_file_id: PackageFileId,
+    pub backup_ref: Option<String>,
+    pub installed_file: Option<InstalledFileSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallRecoveryRecord {
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub status: InstallRecoveryRecordStatus,
+    pub entries: Vec<InstallRecoveryRecordEntry>,
+}
+
+impl InstallRecoveryRecord {
+    pub fn transition_to(
+        &mut self,
+        next: InstallRecoveryRecordStatus,
+    ) -> Result<(), InstallRecoveryRecordTransitionError> {
+        if self.status.can_transition_to(next) {
+            self.status = next;
+            Ok(())
+        } else {
+            Err(InstallRecoveryRecordTransitionError::InvalidTransition {
+                from: self.status,
+                to: next,
+            })
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallManifest {
     pub profile_id: ProfileId,
@@ -392,5 +468,68 @@ mod tests {
         .expect("legacy manifest should remain readable");
 
         assert_eq!(manifest.entries[0].installed_file, None);
+    }
+
+    #[test]
+    fn recovery_record_requires_committing_evidence_before_rollback_required() {
+        let mut record = sample_recovery_record(InstallRecoveryRecordStatus::Planned);
+
+        let error = record
+            .transition_to(InstallRecoveryRecordStatus::RollbackRequired)
+            .expect_err("planned records must not become rollback_required directly");
+
+        assert_eq!(
+            error,
+            InstallRecoveryRecordTransitionError::InvalidTransition {
+                from: InstallRecoveryRecordStatus::Planned,
+                to: InstallRecoveryRecordStatus::RollbackRequired,
+            }
+        );
+        assert_eq!(record.status, InstallRecoveryRecordStatus::Planned);
+    }
+
+    #[test]
+    fn recovery_record_allows_controlled_rollback_lifecycle() {
+        let mut record = sample_recovery_record(InstallRecoveryRecordStatus::Planned);
+
+        record
+            .transition_to(InstallRecoveryRecordStatus::Committing)
+            .expect("planned records can enter committing");
+        record
+            .transition_to(InstallRecoveryRecordStatus::RollbackRequired)
+            .expect("committing records can require rollback");
+        record
+            .transition_to(InstallRecoveryRecordStatus::RolledBack)
+            .expect("rollback_required records can be marked rolled_back");
+
+        assert_eq!(record.status, InstallRecoveryRecordStatus::RolledBack);
+    }
+
+    #[test]
+    fn recovery_record_status_serializes_as_stable_snake_case() {
+        let record = sample_recovery_record(InstallRecoveryRecordStatus::RollbackRequired);
+
+        let serialized = serde_json::to_string(&record).expect("serialize recovery record");
+
+        assert!(serialized.contains("\"status\":\"rollback_required\""));
+        assert!(!serialized.contains("RollbackRequired"));
+    }
+
+    fn sample_recovery_record(status: InstallRecoveryRecordStatus) -> InstallRecoveryRecord {
+        InstallRecoveryRecord {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status,
+            entries: vec![InstallRecoveryRecordEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("target"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                backup_ref: Some("backup-player".to_owned()),
+                installed_file: Some(InstalledFileSummary {
+                    size_bytes: 11,
+                    sha256: "hash-player".to_owned(),
+                }),
+            }],
+        }
     }
 }

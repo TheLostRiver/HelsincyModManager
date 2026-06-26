@@ -22,7 +22,8 @@ pub use game_setup::{
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
 };
 pub use install::{
-    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
+    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
+    InstallRecoveryRecordRepository, InstallSourceFileReader,
 };
 pub use mod_import::{
     DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
