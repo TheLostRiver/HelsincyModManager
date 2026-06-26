@@ -41,6 +41,7 @@
 
 .recovery-center h2,
 .recovery-center h3,
+.recovery-center h4,
 .recovery-center p {
   margin: 0;
 }
@@ -235,6 +236,69 @@
   line-height: 1;
 }
 
+.recovery-center__repair-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+  padding: 15px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-center__repair-summary.is-manual_required {
+  border-color: color-mix(in srgb, var(--color-warning-dot) 34%, var(--color-border-muted));
+}
+
+.recovery-center__repair-summary.is-unknown {
+  border-color: color-mix(in srgb, var(--color-neutral-dot) 36%, var(--color-border-muted));
+}
+
+.recovery-center__repair-summary.is-compact {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 12px;
+}
+
+.recovery-center__repair-summary h4 {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.recovery-center__repair-summary dl {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.recovery-center__repair-summary dl div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.recovery-center__repair-summary dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.recovery-center__repair-summary dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .recovery-center__issues {
   display: flex;
   flex-wrap: wrap;
@@ -243,17 +307,34 @@
 }
 
 .recovery-center__issues span {
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  gap: 2px;
   max-width: 100%;
-  min-height: 26px;
-  padding: 0 9px;
+  min-height: 28px;
+  padding: 6px 9px;
   color: var(--color-warning-text);
   font-size: 11px;
   font-weight: 700;
   background: var(--color-warning-bg);
   border-radius: var(--radius-pill);
   overflow-wrap: anywhere;
+}
+
+.recovery-center__issues span.is-unknown {
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+}
+
+.recovery-center__issues strong {
+  font-size: 11px;
+}
+
+.recovery-center__issues small {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  opacity: 0.82;
 }
 
 .recovery-center__issues.is-compact span {
@@ -347,6 +428,10 @@
   }
 
   .recovery-center__mod {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recovery-center__repair-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
