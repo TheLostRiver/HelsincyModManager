@@ -225,7 +225,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 对 `repair_required` / `unknown` 只展示托管文件数、backup 计数、聚合 issue code 和计数，不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。
 - 当恢复扫描返回 `repair_required` / `unknown` 时，Mod 库会阻断安装/重装入口和自动卸载入口，并展示人工处理提示。
 - Dashboard 入口在游戏目录已配置后调用只读 `scan_install_recovery`，使用空 `modIds` 扫描当前 profile 的全部托管 Mod，并在右侧状态栏展示 profile 级健康摘要。该摘要只展示扫描 Mod 数、需处理数、未知数、问题计数和聚合 issue 分类，不提供恢复、删除、回滚或 manifest 写入动作。
-- 独立恢复中心入口在游戏目录已配置后调用只读 `scan_install_recovery`，使用空 `modIds` 扫描当前 profile 的全部托管 Mod，并展示 profile 级聚合摘要、只读 rich repair summary、每个托管 Mod 的状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类和人工处理提示。该页面不提供自动恢复、删除、回滚或 manifest 写入动作，也不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash、manifest 正文或第三方 Mod 内容。
+- 独立恢复中心入口在游戏目录已配置后调用只读 `scan_install_recovery`，使用空 `modIds` 扫描当前 profile 的全部托管 Mod，并展示 profile 级聚合摘要、只读 rich repair summary、只读人工处理决策面板、每个托管 Mod 的状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类和人工处理提示。人工处理决策面板只提供重新扫描、导出诊断等安全动作，并把后续受控修复标记为不可用；该页面不提供自动恢复、删除、回滚或 manifest 写入动作，也不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash、manifest 正文或第三方 Mod 内容。
 - 恢复中心提供用户主动触发的完整支持诊断包导出入口，复用已有 `export_support_diagnostics` 后端 command。前端导出前先展示已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、App/Task 日志行数和 Audit event 计数，不接受输出路径、日志路径或类别参数，也不展示诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。
 - 只在后端 manifest 摘要显示 `installed` 时启用单选卸载入口。
 - 从 Mod 库触发最小卸载确认流程，并通过 `start_uninstall_task` 启动后端任务。
@@ -238,8 +238,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 以下能力仍不能视为已完成：
 
-- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或 rich repair summary。
-- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary 和完整支持诊断包导出联动。但尚未实现全局后台启动告警、`rollback_required` rich 状态、自动回滚/恢复执行或真正的受控恢复/回滚动作。
+- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
+- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。但尚未实现全局后台启动告警、`rollback_required` rich 状态、自动回滚/恢复执行或真正的受控恢复/回滚动作。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
@@ -259,7 +259,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 扫描后续：在独立恢复中心补充受控人工处理路径，但仍不能绕过 manifest、backup、Audit Log 和恢复扫描事实。
+1. Crash/recovery 扫描后续：补充全局后台启动告警和真正的受控恢复/回滚动作；已落地的恢复中心人工处理面板仍只是只读决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
 2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
 3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。

@@ -435,6 +435,122 @@
   overflow-wrap: anywhere;
 }
 
+.recovery-center__manual-decision {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+  padding: 15px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-center__manual-decision.is-blocked {
+  border-color: color-mix(in srgb, var(--color-warning-dot) 34%, var(--color-border-muted));
+}
+
+.recovery-center__manual-copy {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.recovery-center__manual-copy h3 {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.recovery-center__manual-copy strong {
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.recovery-center__manual-copy ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recovery-center__manual-copy li {
+  max-width: 100%;
+  padding: 5px 8px;
+  color: var(--color-warning-text);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-pill);
+  overflow-wrap: anywhere;
+}
+
+.recovery-center__manual-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recovery-center__manual-actions button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 9px 11px;
+  color: var(--color-text);
+  text-align: left;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+}
+
+.recovery-center__manual-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.recovery-center__manual-actions button:not(:disabled):hover {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.recovery-center__manual-actions button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.recovery-center__manual-actions span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recovery-center__manual-actions strong {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.recovery-center__manual-actions small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .recovery-center__issues {
   display: flex;
   flex-wrap: wrap;
@@ -568,6 +684,10 @@
   }
 
   .recovery-center__repair-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recovery-center__manual-decision {
     grid-template-columns: minmax(0, 1fr);
   }
 
