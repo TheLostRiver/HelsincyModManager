@@ -36,6 +36,7 @@
 - `InstallAction`
 - `InstallConflict`
 - `InstallPlan`
+- `InstalledFileSummary`
 - `InstallManifestEntry`
 - `InstallManifest`
 
@@ -97,6 +98,8 @@
 ```
 
 manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。替换已有托管目标时，新的 manifest entry 会继承旧条目的长期 `backup_ref` 语义；本次提交为中间状态创建的 pending backup 只用于失败回滚，提交成功后会 best-effort 清理。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载、修复扫描和 rich status 仍需后续切片补齐。
+
+新写入的 manifest entry 会记录 `installed_file` 摘要：写入内容的字节数和 SHA-256。该字段只描述本工具本次写入到目标路径的内容，不记录完整本地路径、sandbox/cache 路径或文件内容。旧 manifest 缺少该字段时仍可兼容读取，但后续自动卸载或修复检测不能把缺少摘要的旧 entry 当作可安全删除/恢复的充分事实。
 
 当前回滚能力：
 
@@ -186,7 +189,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 展示 `install.queued`、`install.plan.building`、`install.commit.processing`、`install.completed`、`install.failed` 和 `install.cancelled`。
 - 处理 `start_install_task` 返回前进度事件先到达的竞态。
 - 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新 manifest 状态摘要。
-- 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会对旧 manifest 根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。
+- 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。`installed_file` 摘要已写入新 manifest，但 manifest 查询尚未执行目标文件 hash/backup 完整性校验。
 
 当前前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
 
@@ -199,8 +202,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command 和前端展示，但旧 MVP manifest 尚未记录 hash/status，暂不能检测目标文件缺失、backup 缺失或外部修改并自动标记 `repair_required`。
-- Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、hash、replacement binding snapshot、created/completed time 等长期字段。
+- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command 和前端展示，新 manifest entry 已记录写入内容的 size/SHA-256，但查询服务尚未读取真实目标文件或 backup 来检测缺失、外部修改或 backup 不一致并自动标记 `repair_required`。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
+- Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、replacement binding snapshot、created/completed time、plan hash 等长期字段。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
 ## 文档现状与分工
@@ -217,7 +220,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 1. 基于 manifest 的 uninstall：不根据当前 Mod 包猜测已安装文件。
 2. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
-3. Rich manifest / repair 检测：补齐 backend、status、hash、replacement binding snapshot 和时间字段，支持 `repair_required` 的真实检测。
+3. Rich manifest / repair 检测：消费 `installed_file` 摘要，并补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `repair_required` 的真实检测。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
 5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
 
