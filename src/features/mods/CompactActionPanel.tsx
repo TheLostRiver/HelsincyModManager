@@ -81,11 +81,8 @@ export function CompactActionPanel({
           .filter((a) => !["select-all", "invert", "refresh", "add"].includes(a.id))
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
-            const needsSelection = ["preview-plan", "reinstall", "uninstall"].includes(action.id);
             const needsSingleSelection = ["preview-plan", "reinstall", "uninstall"].includes(action.id);
-            const disabled = needsSelection && selectedCount === 0;
             const isDisabled =
-              disabled ||
               (needsSingleSelection && selectedCount !== 1) ||
               (["reinstall", "uninstall"].includes(action.id) && installTaskActive) ||
               (action.id === "uninstall" && !canUninstallSelection);
