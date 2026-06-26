@@ -83,8 +83,13 @@ impl InstallRecoveryScanService {
             .load_manifest(&request.profile_id)
             .map_err(|_| InstallRecoveryScanError::ManifestUnavailable)?;
 
-        Ok(request
-            .mod_ids
+        let mod_ids = if request.mod_ids.is_empty() {
+            manifest.as_ref().map(manifest_mod_ids).unwrap_or_default()
+        } else {
+            request.mod_ids
+        };
+
+        Ok(mod_ids
             .into_iter()
             .map(|mod_id| self.scan_mod(&request.profile_id, &mod_id, manifest.as_ref()))
             .collect())
@@ -190,6 +195,18 @@ impl InstallRecoveryScanService {
 
 fn add_issue(issues: &mut BTreeMap<InstallRecoveryIssue, usize>, issue: InstallRecoveryIssue) {
     *issues.entry(issue).or_default() += 1;
+}
+
+fn manifest_mod_ids(manifest: &InstallManifest) -> Vec<ModId> {
+    let mut mod_ids = BTreeMap::new();
+
+    for entry in &manifest.entries {
+        mod_ids
+            .entry(entry.mod_id.as_str().to_owned())
+            .or_insert_with(|| entry.mod_id.clone());
+    }
+
+    mod_ids.into_values().collect()
 }
 
 fn installed_file_summary(bytes: &[u8]) -> InstalledFileSummary {
@@ -364,6 +381,78 @@ mod tests {
                 issues: Vec::new(),
             }]
         );
+    }
+
+    #[test]
+    fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
+        let target_a =
+            InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target");
+        let target_b =
+            InstallTargetPath::parse("nativePC/models/weapon.mod3", ["nativePC"]).expect("target");
+        let target_a_extra =
+            InstallTargetPath::parse("nativePC/models/player-extra.mod3", ["nativePC"])
+                .expect("target");
+        let bytes_a = b"player model".to_vec();
+        let bytes_b = b"weapon model".to_vec();
+        let game_files = Arc::new(FakeGameFiles::default());
+        {
+            let mut files = game_files.files.lock().expect("files lock");
+            files.insert(target_a.as_str().to_owned(), bytes_a.clone());
+            files.insert(target_a_extra.as_str().to_owned(), bytes_a.clone());
+            files.insert(target_b.as_str().to_owned(), bytes_b.clone());
+        }
+        let backups = Arc::new(FakeBackups::default());
+        let manifests = Arc::new(FakeManifests {
+            manifest: Some(InstallManifest {
+                profile_id: ProfileId::new("default"),
+                entries: vec![
+                    InstallManifestEntry {
+                        target_path: target_b,
+                        mod_id: ModId::new("mod-b"),
+                        package_file_id: PackageFileId::new("nativePC/models/weapon.mod3"),
+                        layer: FileLayer::new("base", 0),
+                        backup_ref: None,
+                        installed_file: Some(summary(&bytes_b)),
+                    },
+                    InstallManifestEntry {
+                        target_path: target_a,
+                        mod_id: ModId::new("mod-a"),
+                        package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                        layer: FileLayer::new("base", 0),
+                        backup_ref: None,
+                        installed_file: Some(summary(&bytes_a)),
+                    },
+                    InstallManifestEntry {
+                        target_path: target_a_extra,
+                        mod_id: ModId::new("mod-a"),
+                        package_file_id: PackageFileId::new("nativePC/models/player-extra.mod3"),
+                        layer: FileLayer::new("base", 0),
+                        backup_ref: None,
+                        installed_file: Some(summary(&bytes_a)),
+                    },
+                ],
+            }),
+        });
+        let service = InstallRecoveryScanService::new(game_files, backups, manifests);
+
+        let summaries = service
+            .scan(InstallRecoveryScanRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: Vec::new(),
+            })
+            .expect("scan should succeed");
+
+        assert_eq!(
+            summaries
+                .iter()
+                .map(|summary| summary.mod_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mod-a", "mod-b"]
+        );
+        assert_eq!(summaries[0].managed_file_count, 2);
+        assert_eq!(summaries[0].status, InstallRecoveryStatus::Completed);
+        assert_eq!(summaries[1].managed_file_count, 1);
+        assert_eq!(summaries[1].status, InstallRecoveryStatus::Completed);
     }
 
     #[test]
