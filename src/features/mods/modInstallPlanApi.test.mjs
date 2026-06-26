@@ -55,6 +55,22 @@ test("install manifest status API invokes controlled summary command without pat
   assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot/i);
 });
 
+test("install recovery scan API invokes controlled summary command without paths", () => {
+  const source = readSource("src/features/mods/modInstallPlanApi.ts");
+
+  assert.match(source, /export function scanInstallRecovery/);
+  const recoveryCall = source.match(/export function scanInstallRecovery[\s\S]*?\n}/);
+  assert.ok(recoveryCall, "expected a feature-local recovery scan wrapper");
+  assert.match(recoveryCall[0], /invoke<InstallRecoverySummary\[\]>\("scan_install_recovery"/);
+  assert.match(recoveryCall[0], /gameId:\s*input\.gameId/);
+  assert.match(recoveryCall[0], /profileId:\s*input\.profileId/);
+  assert.match(recoveryCall[0], /modIds:\s*input\.modIds/);
+  assert.doesNotMatch(
+    recoveryCall[0],
+    /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot|backupRef/i,
+  );
+});
+
 test("install plan types expose preview DTO without filesystem paths", () => {
   assert.equal(existsSync("src/features/mods/modInstallPlanTypes.ts"), true);
   const source = readSource("src/features/mods/modInstallPlanTypes.ts");
@@ -78,7 +94,7 @@ test("mod library page renders a backend install plan preview workflow", () => {
 
   const previewCall = source.match(/previewInstallPlanForImportedMod\(\{([\s\S]*?)\}\)/);
   assert.ok(previewCall, "expected page to call the backend-driven imported mod preview wrapper");
-  assert.match(previewCall[1], /gameId:\s*"mhw"/);
+  assert.match(previewCall[1], /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(previewCall[1], /modId/);
   assert.match(previewCall[1], /layerName:\s*"base"/);
   assert.match(previewCall[1], /layerPriority:\s*0/);
@@ -98,6 +114,7 @@ test("mod library page starts install task and tracks only matching task progres
   assert.match(source, /pendingInstallProgressEventsRef\.current\.set\(event\.payload\.taskId,\s*event\.payload\)/);
   assert.match(source, /pendingInstallProgressEventsRef\.current\.get\(task\.taskId\)/);
   assert.match(source, /nextManagedInstallTaskStateFromProgress\(runningState,\s*pendingProgressEvent\)/);
+  assert.match(source, /canInstallSelected/);
   assert.match(source, /install\.queued/);
   assert.match(source, /install\.failed/);
   assert.match(taskStateSource, /install\.plan\.building/);
@@ -128,9 +145,26 @@ test("mod library page refreshes install status from manifest summaries", () => 
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
 
   assert.match(source, /getInstallManifestStatus/);
+  assert.match(source, /scanInstallRecovery/);
   assert.match(source, /applyInstallManifestStatusSummaries/);
+  assert.match(source, /applyInstallRecoverySummaries/);
   assert.match(source, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
+  assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
   assert.match(source, /installTaskState\.status\s*!==\s*"completed"/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
+});
+
+test("mod library page blocks install and uninstall actions during unsafe recovery states", () => {
+  const source = readSource("src/features/mods/ModLibraryPage.tsx");
+  const actionPanelSource = readSource("src/features/mods/CompactActionPanel.tsx");
+
+  assert.match(source, /canInstallSelected/);
+  assert.match(source, /summary\?\.status\s*===\s*"repair_required"/);
+  assert.match(source, /summary\?\.status\s*===\s*"unknown"/);
+  assert.match(source, /recoveryPanelStateForItem/);
+  assert.match(source, /canInstallSelection=\{canInstallSelected\}/);
+  assert.match(actionPanelSource, /canInstallSelection/);
+  assert.match(actionPanelSource, /action\.id\s*===\s*"reinstall"\s*&&\s*!canInstallSelection/);
+  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });

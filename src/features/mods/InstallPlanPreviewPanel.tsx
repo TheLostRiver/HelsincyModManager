@@ -1,5 +1,5 @@
 import { AlertTriangle, FileCheck2, Loader2, X } from "lucide-react";
-import type { InstallPlanPreview } from "./modInstallPlanTypes";
+import type { InstallPlanPreview, InstallRecoveryIssueSummary } from "./modInstallPlanTypes";
 import "./InstallPlanPreviewPanel.css";
 
 export type InstallPlanPreviewPanelState =
@@ -7,6 +7,15 @@ export type InstallPlanPreviewPanelState =
   | { status: "loading"; modName: string }
   | { status: "ready"; modName: string; plan: InstallPlanPreview }
   | { status: "error"; modName: string; message: string }
+  | {
+      status: "recovery-required";
+      modName: string;
+      recoveryStatus: "repair_required" | "unknown";
+      managedFileCount: number;
+      backupCount: number;
+      issueCount: number;
+      issues: InstallRecoveryIssueSummary[];
+    }
   | { status: "uninstall-confirming"; modName: string; managedFileCount: number; backupCount: number }
   | { status: "install-starting"; modName: string; phaseLabel: string }
   | { status: "install-running"; modName: string; phaseLabel: string }
@@ -32,6 +41,8 @@ function panelTitle(state: InstallPlanPreviewPanelState) {
   }
 
   switch (state.status) {
+    case "recovery-required":
+      return state.recoveryStatus === "unknown" ? "安装状态未知" : "需要人工处理";
     case "uninstall-confirming":
       return "确认卸载";
     case "uninstall-completed":
@@ -75,6 +86,7 @@ export function InstallPlanPreviewPanel({
     state.status === "uninstall-running";
   const isWarning =
     state.status === "error" ||
+    state.status === "recovery-required" ||
     state.status === "install-failed" ||
     state.status === "install-cancelled" ||
     state.status === "uninstall-confirming" ||
@@ -119,6 +131,15 @@ export function InstallPlanPreviewPanel({
 
       {state.status === "error" ? (
         <p className="install-plan-preview__status is-error">{state.message}</p>
+      ) : null}
+
+      {state.status === "recovery-required" ? (
+        <RecoveryRequiredSummary
+          managedFileCount={state.managedFileCount}
+          backupCount={state.backupCount}
+          issueCount={state.issueCount}
+          issues={state.issues}
+        />
       ) : null}
 
       {state.status === "uninstall-confirming" ? (
@@ -169,6 +190,58 @@ export function InstallPlanPreviewPanel({
 
       {state.status === "ready" ? <InstallPlanPreviewSummary plan={state.plan} /> : null}
     </section>
+  );
+}
+
+const recoveryIssueLabels: Record<InstallRecoveryIssueSummary["issue"], string> = {
+  missing_installed_file_summary: "缺少安装摘要",
+  target_missing: "目标缺失",
+  target_changed: "目标已变化",
+  target_read_failed: "目标读取失败",
+  backup_missing: "备份缺失",
+  backup_read_failed: "备份读取失败",
+};
+
+function RecoveryRequiredSummary({
+  managedFileCount,
+  backupCount,
+  issueCount,
+  issues,
+}: {
+  managedFileCount: number;
+  backupCount: number;
+  issueCount: number;
+  issues: InstallRecoveryIssueSummary[];
+}) {
+  return (
+    <div className="install-plan-preview__body">
+      <p className="install-plan-preview__status is-error">
+        恢复扫描发现当前安装状态不能安全自动处理。请先人工确认后再安装或卸载。
+      </p>
+      <div className="install-plan-preview__metrics" aria-label="恢复扫描摘要">
+        <span>
+          <strong>{managedFileCount}</strong>
+          托管文件
+        </span>
+        <span>
+          <strong>{backupCount}</strong>
+          备份恢复点
+        </span>
+        <span data-conflict={issueCount > 0 ? "true" : "false"}>
+          <strong>{issueCount}</strong>
+          检查项
+        </span>
+      </div>
+      {issues.length > 0 ? (
+        <div className="install-plan-preview__list" aria-label="恢复扫描问题摘要">
+          {issues.map((issue) => (
+            <code key={issue.issue}>
+              {recoveryIssueLabels[issue.issue]} × {issue.count}
+            </code>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

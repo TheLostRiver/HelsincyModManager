@@ -200,12 +200,18 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 - `src/features/mods/modInstallPlanApi.ts`
 - `src/features/mods/modInstallPlanTypes.ts`
+- `src/features/mods/modLibraryLoadState.ts`
+- `src/features/mods/modLibraryTypes.ts`
 - `src/features/mods/InstallPlanPreviewPanel.tsx`
 - `src/features/mods/ModLibraryPage.tsx`
+- `src/features/mods/CompactActionPanel.tsx`
+- `src/features/mods/ModPosterCard.tsx`
 
 已包含：
 
 - `previewInstallPlanForImportedMod`
+- `getInstallManifestStatus`
+- `scanInstallRecovery`
 - `startInstallTask`
 - `startUninstallTask`
 - 最小安装计划预览面板。
@@ -215,19 +221,22 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 处理 `start_install_task` 返回前进度事件先到达的竞态。
 - 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新 manifest 状态摘要。
 - 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。`installed_file` 摘要已写入新 manifest，但 manifest 查询尚未执行目标文件 hash/backup 完整性校验。
+- 在 manifest 摘要刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为前端 `installed`，把 `repair_required` / `unknown` 作为不安全安装状态展示。
+- 对 `repair_required` / `unknown` 只展示托管文件数、backup 计数、聚合 issue code 和计数，不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。
+- 当恢复扫描返回 `repair_required` / `unknown` 时，Mod 库会阻断安装/重装入口和自动卸载入口，并展示人工处理提示。
 - 只在后端 manifest 摘要显示 `installed` 时启用单选卸载入口。
 - 从 Mod 库触发最小卸载确认流程，并通过 `start_uninstall_task` 启动后端任务。
 - 展示 `install.uninstall.queued`、`install.uninstall.processing`、`install.uninstall.completed` 和 `install.uninstall.failed`。
 - 卸载完成后复用 manifest 状态摘要查询刷新安装事实。
 
-前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装/卸载路径。卸载 UI 只提交 `gameId`、`modId`、`profileId`，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
+前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态、manifest 查询摘要和只读恢复扫描摘要，不应推断 MHW 路径规则或自行拼接安装/卸载路径。安装/卸载/恢复扫描 UI 只提交 `gameId`、`modId`、`profileId` 和 `modIds` 等短 id，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询和只读 recovery scan 恢复，而不是依赖内存任务状态或 mock 数据。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
-- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口与前端最小单选卸载 UI 已落地，但尚未实现批量/profile 切换、rich repair summary 或前端恢复入口。
-- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，但尚未实现启动时自动扫描、`rollback_required` rich 状态、自动回滚/恢复执行或前端入口。
+- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或 rich repair summary。
+- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，Mod 库加载后已会消费该摘要并展示人工处理提示；但尚未实现应用启动级自动扫描、`rollback_required` rich 状态、自动回滚/恢复执行或独立恢复中心入口。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
@@ -247,7 +256,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 扫描后续：把只读 `scan_install_recovery` 摘要接入启动/进入安装页流程，并给出恢复或人工处理路径。
+1. Crash/recovery 扫描后续：把当前 Mod 库加载时的只读 recovery scan 扩展到应用启动级扫描或独立恢复中心，并给出受控恢复/人工处理路径。
 2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
 3. 卸载后续 UI：补充 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
