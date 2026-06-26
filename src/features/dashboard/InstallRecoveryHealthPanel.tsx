@@ -1,7 +1,7 @@
 import { AlertTriangle, CircleHelp, Loader2, ShieldCheck } from "lucide-react";
 import type { InstallRecoveryIssue } from "../mods/modInstallPlanTypes";
-import type { InstallRecoveryHealth, InstallRecoveryHealthStatus } from "./installRecoveryHealth";
-import type { InstallRecoveryHealthLoadState } from "./useInstallRecoveryHealth";
+import type { InstallRecoveryHealth, InstallRecoveryHealthStatus } from "../install-recovery/installRecoveryHealth";
+import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
 
 type InstallRecoveryHealthPanelProps = {
   state: InstallRecoveryHealthLoadState;

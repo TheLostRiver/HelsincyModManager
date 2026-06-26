@@ -1,7 +1,7 @@
 import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
+import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
 import { setupLogs, setupSteps } from "./dashboardData";
 import { InstallRecoveryHealthPanel } from "./InstallRecoveryHealthPanel";
-import type { InstallRecoveryHealthLoadState } from "./useInstallRecoveryHealth";
 
 type SetupStatusPanelProps = {
   status: GameSetupStatus;

@@ -3,6 +3,7 @@ import { ClassicSidebar } from "../shell/layouts/classic-sidebar/ClassicSidebar"
 import { FloatingSidebar } from "../shell/layouts/floating-sidebar/FloatingSidebar";
 import { useSidebarMode } from "../shell/useSidebarMode";
 import { AppHeader } from "./AppHeader";
+import { InstallRecoveryGlobalAlert } from "../../features/install-recovery/InstallRecoveryGlobalAlertPanel";
 
 type AppFrameProps = {
   children: ReactNode;
@@ -17,6 +18,7 @@ export function AppFrame({ children }: AppFrameProps) {
       <Sidebar />
       <div className="app-surface">
         <AppHeader />
+        <InstallRecoveryGlobalAlert />
         <main className="workbench-body">{children}</main>
       </div>
     </div>
