@@ -1,5 +1,5 @@
 import type { PreviewImage } from "./modPreviewImageTypes";
-import type { InstallManifestStatus } from "./modInstallPlanTypes";
+import type { InstallManifestStatus, InstallRecoveryIssueSummary, InstallRecoveryStatus } from "./modInstallPlanTypes";
 
 export type ModInstallStatus = InstallManifestStatus | "disabled" | "conflict";
 
@@ -7,6 +7,9 @@ export type ModInstallSummary = {
   status: InstallManifestStatus;
   managedFileCount: number;
   backupCount: number;
+  recoveryStatus?: InstallRecoveryStatus;
+  issueCount?: number;
+  issues?: InstallRecoveryIssueSummary[];
 };
 
 export type ModLibraryItem = {

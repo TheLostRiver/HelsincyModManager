@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { applyInstallManifestStatusSummaries, resolveLoadedModLibraryItems } from "./modLibraryLoadState.ts";
+import {
+  applyInstallManifestStatusSummaries,
+  applyInstallRecoverySummaries,
+  resolveLoadedModLibraryItems,
+} from "./modLibraryLoadState.ts";
 
 const fallbackItems = [
   {
@@ -101,5 +105,56 @@ test("install manifest summaries preserve non-manifest mod statuses", () => {
     status: "not_installed",
     managedFileCount: 0,
     backupCount: 0,
+  });
+});
+
+test("install recovery summaries map completed status to installed without paths", () => {
+  const result = applyInstallRecoverySummaries(fallbackItems, [
+    {
+      profileId: "default",
+      modId: "mock-mod",
+      status: "completed",
+      managedFileCount: 2,
+      backupCount: 1,
+      issueCount: 0,
+      issues: [],
+    },
+  ]);
+
+  assert.equal(result[0].status, "installed");
+  assert.deepEqual(result[0].installSummary, {
+    status: "installed",
+    managedFileCount: 2,
+    backupCount: 1,
+    recoveryStatus: "completed",
+    issueCount: 0,
+    issues: [],
+  });
+  assert.equal("targetPath" in result[0], false);
+  assert.equal("manifestPath" in result[0], false);
+  assert.equal("backupRef" in result[0], false);
+});
+
+test("install recovery summaries surface unsafe states and issue counts", () => {
+  const result = applyInstallRecoverySummaries(fallbackItems, [
+    {
+      profileId: "default",
+      modId: "mock-mod",
+      status: "repair_required",
+      managedFileCount: 3,
+      backupCount: 1,
+      issueCount: 2,
+      issues: [{ issue: "target_changed", count: 2 }],
+    },
+  ]);
+
+  assert.equal(result[0].status, "repair_required");
+  assert.deepEqual(result[0].installSummary, {
+    status: "repair_required",
+    managedFileCount: 3,
+    backupCount: 1,
+    recoveryStatus: "repair_required",
+    issueCount: 2,
+    issues: [{ issue: "target_changed", count: 2 }],
   });
 });
