@@ -29,6 +29,10 @@
   view-transition-name: app-surface;
 }
 
+.app-surface:has(.install-recovery-global-alert) {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
 .app-shell[data-sidebar-mode="floating"] {
   grid-template-columns: auto minmax(0, 1fr);
 }
