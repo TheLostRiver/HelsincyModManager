@@ -135,6 +135,63 @@ test("derives read-only rich repair summary for unsafe recovery states", () => {
   assert.equal("manifestPath" in viewModel.mods[0].issues[0], false);
 });
 
+test("derives safe manual handling decisions for recovery attention states", () => {
+  const viewModel = deriveRecoveryCenterViewModel([
+    {
+      ...baseSummary,
+      modId: "changed-mod",
+      status: "repair_required",
+      managedFileCount: 2,
+      backupCount: 1,
+      issueCount: 2,
+      issues: [{ issue: "target_changed", count: 2 }],
+    },
+    {
+      ...baseSummary,
+      modId: "unknown-mod",
+      status: "unknown",
+      managedFileCount: 1,
+      issueCount: 1,
+      issues: [{ issue: "backup_read_failed", count: 1 }],
+    },
+  ]);
+
+  assert.deepEqual(viewModel.overview.manualDecision, {
+    status: "blocked",
+    title: "需要人工处理",
+    description: "恢复中心已阻断自动安装、卸载和恢复动作，当前只能执行只读复查或导出诊断。",
+    recommendedAction: "先重新扫描；如果仍异常，导出诊断并保留现场。",
+    safeguards: [
+      "不删除未知文件",
+      "不根据当前 Mod 包猜测恢复动作",
+      "不写入 manifest 或 backup 状态",
+    ],
+    actions: [
+      {
+        id: "retry_scan",
+        label: "重新扫描",
+        description: "重新读取后端只读恢复摘要。",
+        state: "available",
+      },
+      {
+        id: "export_diagnostics",
+        label: "导出诊断",
+        description: "生成已脱敏的支持诊断包。",
+        state: "available",
+      },
+      {
+        id: "controlled_recovery",
+        label: "受控修复",
+        description: "需要后续 manifest 状态机和恢复执行器支持，当前不可用。",
+        state: "unavailable",
+      },
+    ],
+  });
+  assert.equal("targetPath" in viewModel.overview.manualDecision, false);
+  assert.equal("backupRef" in viewModel.overview.manualDecision.actions[0], false);
+  assert.equal("manifestPath" in viewModel.overview.manualDecision.actions[2], false);
+});
+
 test("derives empty recovery center state for a profile without managed installs", () => {
   const viewModel = deriveRecoveryCenterViewModel([]);
 
@@ -145,6 +202,27 @@ test("derives empty recovery center state for a profile without managed installs
     description: "当前配置档没有需要恢复中心处理的托管安装状态。",
     actionLabel: "保持观察",
     blockingReason: "没有托管安装记录",
+  });
+  assert.deepEqual(viewModel.overview.manualDecision, {
+    status: "clear",
+    title: "无需人工处理",
+    description: "当前没有需要恢复中心人工处理的托管安装状态。",
+    recommendedAction: "保持观察。",
+    safeguards: [],
+    actions: [
+      {
+        id: "retry_scan",
+        label: "重新扫描",
+        description: "重新读取后端只读恢复摘要。",
+        state: "available",
+      },
+      {
+        id: "export_diagnostics",
+        label: "导出诊断",
+        description: "生成已脱敏的支持诊断包。",
+        state: "available",
+      },
+    ],
   });
   assert.equal(viewModel.mods.length, 0);
   assert.equal(viewModel.overview.scannedModCount, 0);

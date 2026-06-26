@@ -74,6 +74,31 @@ test("Recovery Center renders rich repair summary without action commands", () =
   }
 });
 
+test("Recovery Center renders manual handling decision panel with safe actions only", () => {
+  const page = readSource("src/features/install-recovery/RecoveryCenterPage.tsx");
+
+  assert.match(page, /ManualHandlingPanel/);
+  assert.match(page, /manualDecision\.actions/);
+  assert.match(page, /onRefresh/);
+  assert.match(page, /onExportDiagnostics/);
+  assert.match(page, /action\.state === "available"/);
+  assert.match(page, /disabled=\{action\.state !== "available"\}/);
+  assert.match(page, /manual-decision/);
+
+  const forbiddenCommands = [
+    "restoreInstall",
+    "rollbackInstall",
+    "deleteInstall",
+    "writeManifest",
+    "startInstallTask",
+    "startUninstallTask",
+  ];
+
+  for (const token of forbiddenCommands) {
+    assert.equal(page.includes(token), false, `${token} must not be exposed from manual handling UI`);
+  }
+});
+
 test("Recovery Center exposes support diagnostics export without path or raw log fields", () => {
   const api = readSource("src/features/install-recovery/recoveryDiagnosticsApi.ts");
   const types = readSource("src/features/install-recovery/recoveryDiagnosticsTypes.ts");

@@ -2,6 +2,8 @@ import { AlertTriangle, CircleHelp, FileDown, Loader2, RefreshCw, ShieldCheck } 
 import { useGameSetup } from "../game-setup/useGameSetup";
 import type {
   RecoveryCenterIssueView,
+  RecoveryCenterManualAction,
+  RecoveryCenterManualDecision,
   RecoveryCenterModView,
   RecoveryCenterRepairSummary,
   RecoveryCenterViewModel,
@@ -64,7 +66,11 @@ export function RecoveryCenterPage() {
       {!isConfigured ? (
         <NotConfiguredPanel />
       ) : (
-        <RecoveryCenterBody state={scan.state} />
+        <RecoveryCenterBody
+          state={scan.state}
+          onRefresh={scan.refresh}
+          onExportDiagnostics={diagnostics.requestExport}
+        />
       )}
     </section>
   );
@@ -190,7 +196,15 @@ function NotConfiguredPanel() {
   );
 }
 
-function RecoveryCenterBody({ state }: { state: RecoveryCenterScanState }) {
+function RecoveryCenterBody({
+  state,
+  onRefresh,
+  onExportDiagnostics,
+}: {
+  state: RecoveryCenterScanState;
+  onRefresh: () => void;
+  onExportDiagnostics: () => void;
+}) {
   if (state.status === "idle" || state.status === "loading") {
     return (
       <section className="recovery-center__panel is-loading" role="status" aria-label="恢复扫描状态">
@@ -219,10 +233,24 @@ function RecoveryCenterBody({ state }: { state: RecoveryCenterScanState }) {
     );
   }
 
-  return <RecoveryCenterSummary viewModel={state.viewModel} />;
+  return (
+    <RecoveryCenterSummary
+      viewModel={state.viewModel}
+      onRefresh={onRefresh}
+      onExportDiagnostics={onExportDiagnostics}
+    />
+  );
 }
 
-function RecoveryCenterSummary({ viewModel }: { viewModel: RecoveryCenterViewModel }) {
+function RecoveryCenterSummary({
+  viewModel,
+  onRefresh,
+  onExportDiagnostics,
+}: {
+  viewModel: RecoveryCenterViewModel;
+  onRefresh: () => void;
+  onExportDiagnostics: () => void;
+}) {
   const copy = overviewCopy(viewModel);
 
   return (
@@ -251,6 +279,12 @@ function RecoveryCenterSummary({ viewModel }: { viewModel: RecoveryCenterViewMod
 
       <RepairSummaryPanel summary={viewModel.overview.repairSummary} />
 
+      <ManualHandlingPanel
+        manualDecision={viewModel.overview.manualDecision}
+        onRefresh={onRefresh}
+        onExportDiagnostics={onExportDiagnostics}
+      />
+
       {viewModel.overview.issues.length > 0 ? (
         <IssueList label="恢复问题聚合" issues={viewModel.overview.issues} />
       ) : null}
@@ -276,6 +310,81 @@ function RecoveryCenterSummary({ viewModel }: { viewModel: RecoveryCenterViewMod
       </section>
     </>
   );
+}
+
+function ManualHandlingPanel({
+  manualDecision,
+  onRefresh,
+  onExportDiagnostics,
+}: {
+  manualDecision: RecoveryCenterManualDecision;
+  onRefresh: () => void;
+  onExportDiagnostics: () => void;
+}) {
+  return (
+    <section className={`recovery-center__manual-decision is-${manualDecision.status}`} aria-label="人工处理决策">
+      <div className="recovery-center__manual-copy">
+        <h3>{manualDecision.title}</h3>
+        <p>{manualDecision.description}</p>
+        <strong>{manualDecision.recommendedAction}</strong>
+        {manualDecision.safeguards.length > 0 ? (
+          <ul>
+            {manualDecision.safeguards.map((safeguard) => (
+              <li key={safeguard}>{safeguard}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      <div className="recovery-center__manual-actions">
+        {manualDecision.actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            disabled={action.state !== "available"}
+            onClick={
+              action.state === "available"
+                ? manualActionHandler(action, onRefresh, onExportDiagnostics)
+                : undefined
+            }
+          >
+            {manualActionIcon(action)}
+            <span>
+              <strong>{action.label}</strong>
+              <small>{action.description}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function manualActionHandler(
+  action: RecoveryCenterManualAction,
+  onRefresh: () => void,
+  onExportDiagnostics: () => void,
+) {
+  if (action.id === "retry_scan") {
+    return onRefresh;
+  }
+
+  if (action.id === "export_diagnostics") {
+    return onExportDiagnostics;
+  }
+
+  return undefined;
+}
+
+function manualActionIcon(action: RecoveryCenterManualAction) {
+  if (action.id === "export_diagnostics") {
+    return <FileDown size={15} aria-hidden="true" />;
+  }
+
+  if (action.id === "controlled_recovery") {
+    return <ShieldCheck size={15} aria-hidden="true" />;
+  }
+
+  return <RefreshCw size={15} aria-hidden="true" />;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
