@@ -46,12 +46,12 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
-- 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要和每个托管 Mod 的安全状态摘要。
+- 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、只读 rich repair summary 和每个托管 Mod 的安全状态摘要。
 
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
-- 全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和恢复中心 rich repair summary / 受控人工处理路径。
+- 全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态、诊断导出联动和真正的受控恢复/回滚动作。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -78,6 +78,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] `scan_install_recovery` 支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，作为启动级恢复检查或独立恢复中心的后端基础。
 - [x] Dashboard 入口只读恢复健康摘要，基于空 `modIds` 全量 profile 扫描展示聚合健康状态。
 - [x] 独立恢复中心只读入口，基于空 `modIds` 全量 profile 扫描展示 profile 聚合摘要和逐 Mod 安全状态摘要。
+- [x] 恢复中心只读 rich repair summary，基于稳定 issue code 展示风险等级、阻断理由和人工处理建议，不提供恢复/删除/回滚/manifest 写入动作。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -256,7 +257,31 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 仍明确未完成：
 
-- 恢复中心 rich repair summary、诊断导出联动、受控恢复/回滚动作和人工修复决策流。
+- 诊断导出联动、受控恢复/回滚动作和人工修复决策流。
+- 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
+- 全局后台启动告警、跨 profile 批量健康摘要和更完整的恢复决策流。
+
+### 2026-06-26 进度详情：恢复中心只读 rich repair summary
+
+本切片在独立恢复中心内补充只读 rich repair summary。它只消费现有 `scan_install_recovery` DTO 和稳定 issue code，在前端 view model 中派生风险等级、阻断原因和人工处理建议，不新增 Tauri command/DTO/Rust 写路径，也不执行恢复、删除、回滚或 manifest 写入。
+
+已落地范围：
+
+- `deriveRecoveryCenterViewModel` 为 profile 和逐 Mod 条目派生 `repairSummary`，区分 `clear`、`manual_required` 和 `unknown`，并给出安全的 `blockingReason` 与 `actionLabel`。
+- 每个稳定 issue code 增加只读展示 metadata：标签、风险等级和人工处理指引；这些指引只描述“保持阻断、刷新确认、保留现场、等待受控流程”等安全动作，不承诺自动恢复。
+- 恢复中心页面展示“恢复处理摘要”和 issue 指引，仍不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标 hash、manifest 正文或第三方 Mod 内容。
+- 页面没有新增 `start_install_task`、`start_uninstall_task`、恢复、删除、回滚或 manifest 写入入口；刷新仍只是重新读取只读恢复扫描。
+
+验证记录：
+
+- TDD RED：新增恢复中心 view model 与页面 source 测试后，聚焦测试先失败于缺少 `repairSummary` / `RepairSummaryPanel`。
+- 聚焦验证：`cmd /c corepack pnpm exec node --test "src/features/install-recovery/recoveryCenterViewModel.test.mjs" "src/features/install-recovery/recoveryCenterRoute.test.mjs"`。
+- 前端验证：`cmd /c corepack pnpm run typecheck`、`cmd /c corepack pnpm run lint`、`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1`、`cmd /c corepack pnpm run build`、`cmd /c corepack pnpm run test`。
+- 浏览器覆盖：当前环境没有 Playwright/browser 自动化工具可用；已确认 `http://127.0.0.1:5173/` HTTP 可访问，后续完整提交前仍需记录未执行真实截图/交互 smoke 的原因。
+
+仍明确未完成：
+
+- 诊断导出联动、受控恢复/回滚动作和人工修复决策流。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 全局后台启动告警、跨 profile 批量健康摘要和更完整的恢复决策流。
 
@@ -491,7 +516,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要和独立恢复中心只读入口已落地；全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和恢复中心 rich repair summary / 受控人工处理路径仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、独立恢复中心只读入口和恢复中心只读 rich repair summary 已落地；全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态、诊断导出联动和真正的受控恢复/回滚动作仍待后续切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
@@ -500,7 +525,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 扫描 manifest、备份记录和任务状态摘要。
 - 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 rich manifest/task 状态后续补齐。
 - 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
-- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；独立恢复中心已提供只读入口并展示逐 Mod 安全状态摘要；全局后台告警和 rich repair summary 仍待后续补齐。
+- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要和只读 rich repair summary；全局后台告警、诊断导出联动和受控恢复/回滚动作仍待后续补齐。
 
 明确不做：
 

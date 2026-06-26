@@ -1,6 +1,11 @@
 import { AlertTriangle, CircleHelp, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useGameSetup } from "../game-setup/useGameSetup";
-import type { RecoveryCenterIssueView, RecoveryCenterModView, RecoveryCenterViewModel } from "./recoveryCenterViewModel";
+import type {
+  RecoveryCenterIssueView,
+  RecoveryCenterModView,
+  RecoveryCenterRepairSummary,
+  RecoveryCenterViewModel,
+} from "./recoveryCenterViewModel";
 import { useRecoveryCenterScan, type RecoveryCenterScanState } from "./useRecoveryCenterScan";
 
 export function RecoveryCenterPage() {
@@ -112,6 +117,8 @@ function RecoveryCenterSummary({ viewModel }: { viewModel: RecoveryCenterViewMod
         <Metric label="问题" value={viewModel.overview.issueCount} />
       </section>
 
+      <RepairSummaryPanel summary={viewModel.overview.repairSummary} />
+
       {viewModel.overview.issues.length > 0 ? (
         <IssueList label="恢复问题聚合" issues={viewModel.overview.issues} />
       ) : null}
@@ -160,8 +167,39 @@ function RecoveryModRow({ mod }: { mod: RecoveryCenterModView }) {
         <span>{mod.backupCount} 备份</span>
         <span>{mod.issueCount} 问题</span>
       </div>
+      {mod.repairSummary.status !== "clear" ? <RepairSummaryPanel summary={mod.repairSummary} compact /> : null}
       {mod.issues.length > 0 ? <IssueList label={`${mod.modId} 恢复问题`} issues={mod.issues} compact /> : null}
     </article>
+  );
+}
+
+function RepairSummaryPanel({
+  summary,
+  compact = false,
+}: {
+  summary: RecoveryCenterRepairSummary;
+  compact?: boolean;
+}) {
+  return (
+    <section
+      className={`recovery-center__repair-summary is-${summary.status} ${compact ? "is-compact" : ""}`}
+      aria-label="恢复处理摘要"
+    >
+      <div>
+        <h4>{summary.title}</h4>
+        <p>{summary.description}</p>
+      </div>
+      <dl>
+        <div>
+          <dt>阻断原因</dt>
+          <dd>{summary.blockingReason}</dd>
+        </div>
+        <div>
+          <dt>下一步</dt>
+          <dd>{summary.actionLabel}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
@@ -177,8 +215,11 @@ function IssueList({
   return (
     <div className={`recovery-center__issues ${compact ? "is-compact" : ""}`} aria-label={label}>
       {issues.map((issue) => (
-        <span key={issue.issue}>
-          {issue.label} · {issue.count}
+        <span key={issue.issue} className={`is-${issue.severity}`}>
+          <strong>
+            {issue.label} · {issue.count}
+          </strong>
+          <small>{issue.guidance}</small>
         </span>
       ))}
     </div>

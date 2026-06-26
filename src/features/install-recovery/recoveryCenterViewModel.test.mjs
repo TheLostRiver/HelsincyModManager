@@ -51,9 +51,27 @@ test("derives profile recovery center overview without path fields", () => {
   assert.equal(viewModel.overview.backupCount, 2);
   assert.equal(viewModel.overview.issueCount, 4);
   assert.deepEqual(viewModel.overview.issues, [
-    { issue: "target_changed", count: 2, label: "目标变更" },
-    { issue: "target_read_failed", count: 1, label: "读取未知" },
-    { issue: "backup_missing", count: 1, label: "备份缺失" },
+    {
+      issue: "target_changed",
+      count: 2,
+      label: "目标变更",
+      severity: "blocking",
+      guidance: "暂停自动安装/卸载，等待受控恢复或重新安装流程确认目标状态。",
+    },
+    {
+      issue: "target_read_failed",
+      count: 1,
+      label: "读取未知",
+      severity: "unknown",
+      guidance: "重新扫描；如果仍不可读，先检查权限或占用状态。",
+    },
+    {
+      issue: "backup_missing",
+      count: 1,
+      label: "备份缺失",
+      severity: "blocking",
+      guidance: "不要自动恢复或卸载，先保留当前文件并进入人工确认。",
+    },
   ]);
   assert.deepEqual(
     viewModel.mods.map((mod) => [mod.modId, mod.status, mod.statusLabel]),
@@ -69,10 +87,65 @@ test("derives profile recovery center overview without path fields", () => {
   assert.equal("manifestPath" in viewModel.mods[0], false);
 });
 
+test("derives read-only rich repair summary for unsafe recovery states", () => {
+  const viewModel = deriveRecoveryCenterViewModel([
+    {
+      ...baseSummary,
+      modId: "changed-mod",
+      status: "repair_required",
+      managedFileCount: 3,
+      backupCount: 1,
+      issueCount: 3,
+      issues: [
+        { issue: "target_changed", count: 2 },
+        { issue: "backup_missing", count: 1 },
+      ],
+    },
+    {
+      ...baseSummary,
+      modId: "unknown-mod",
+      status: "unknown",
+      managedFileCount: 1,
+      issueCount: 1,
+      issues: [{ issue: "target_read_failed", count: 1 }],
+    },
+  ]);
+
+  assert.deepEqual(viewModel.overview.repairSummary, {
+    status: "unknown",
+    title: "恢复状态需要人工确认",
+    description: "部分托管安装状态无法读取，自动安装、卸载和恢复都应保持阻断。",
+    actionLabel: "刷新后仍异常则保留现场并人工处理",
+    blockingReason: "存在 1 个状态未知 Mod 和 1 个需要修复 Mod",
+  });
+
+  assert.equal(viewModel.mods[0].repairSummary.status, "manual_required");
+  assert.equal(viewModel.mods[0].repairSummary.blockingReason, "检测到 3 个恢复问题");
+  assert.deepEqual(
+    viewModel.mods[0].issues.map((issue) => [issue.issue, issue.severity, issue.guidance]),
+    [
+      ["target_changed", "blocking", "暂停自动安装/卸载，等待受控恢复或重新安装流程确认目标状态。"],
+      ["backup_missing", "blocking", "不要自动恢复或卸载，先保留当前文件并进入人工确认。"],
+    ],
+  );
+  assert.equal(viewModel.mods[1].repairSummary.status, "unknown");
+  assert.equal(viewModel.mods[1].issues[0].guidance, "重新扫描；如果仍不可读，先检查权限或占用状态。");
+  assert.equal("targetPath" in viewModel.overview.repairSummary, false);
+  assert.equal("backupRef" in viewModel.mods[0].repairSummary, false);
+  assert.equal("manifestPath" in viewModel.mods[0].issues[0], false);
+});
+
 test("derives empty recovery center state for a profile without managed installs", () => {
   const viewModel = deriveRecoveryCenterViewModel([]);
 
   assert.equal(viewModel.overview.status, "empty");
+  assert.deepEqual(viewModel.overview.repairSummary, {
+    status: "clear",
+    title: "无需处理",
+    description: "当前配置档没有需要恢复中心处理的托管安装状态。",
+    actionLabel: "保持观察",
+    blockingReason: "没有托管安装记录",
+  });
   assert.equal(viewModel.mods.length, 0);
   assert.equal(viewModel.overview.scannedModCount, 0);
   assert.equal(viewModel.overview.issueCount, 0);

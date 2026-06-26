@@ -59,3 +59,17 @@ test("Recovery Center page only performs read-only recovery scan with short ids"
     assert.equal(hook.includes(token), false, `${token} must stay out of Recovery Center scan hook`);
   }
 });
+
+test("Recovery Center renders rich repair summary without action commands", () => {
+  const page = readSource("src/features/install-recovery/RecoveryCenterPage.tsx");
+
+  assert.match(page, /RepairSummaryPanel/);
+  assert.match(page, /summary\.blockingReason/);
+  assert.match(page, /issue\.guidance/);
+  assert.match(page, /aria-label="恢复处理摘要"/);
+
+  const forbiddenCommands = ["startInstallTask", "startUninstallTask", "restoreInstall", "rollbackInstall", "deleteInstall"];
+  for (const token of forbiddenCommands) {
+    assert.equal(page.includes(token), false, `${token} must not be exposed from the Recovery Center`);
+  }
+});
