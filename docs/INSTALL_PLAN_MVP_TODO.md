@@ -42,6 +42,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod。
+- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储。当前该记录尚未接入安装 commit 写入或恢复扫描消费。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
@@ -52,7 +53,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，但代码能力仍未落地。
+- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储基础已落地，但 commit 写入、扫描消费、动作预览和回滚执行仍未落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -84,6 +85,28 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 恢复中心诊断导出联动，复用 `export_support_diagnostics` 展示完整支持诊断包的安全导出摘要。
 - [x] 恢复中心只读人工处理决策面板，提供重新扫描、导出诊断和不可用的受控修复占位，不提供恢复/删除/回滚/manifest 写入动作。
 - [x] 安装恢复受控动作实施计划，明确 durable recovery record / rich status、只读动作预览、受控回滚任务和恢复中心 UI 启用的后续拆分边界。
+- [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
+
+### 2026-06-27 进度详情：Durable recovery record 基础
+
+本切片完成 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 中“切片 1”的第一步基础设施，但没有启用任何破坏性恢复动作。
+
+已落地范围：
+
+- `hmm-core` 新增 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry` 和 `InstallRecoveryRecordStatus`。状态使用稳定 `snake_case` 序列化，并通过 `transition_to` 限制 `planned -> committing -> completed`、`committing -> rollback_required`、`rollback_required -> rolled_back` 等迁移。
+- `hmm-ports` 新增 `InstallRecoveryRecordRepository`，只按 `profileId` / `modId` 读写删除恢复记录。
+- `hmm-infra` 新增 `JsonInstallRecoveryRecordRepository`，在受控 recovery root 下使用 profile/mod id 的 SHA-256 派生文件名持久化记录，避免把任意 id 直接作为路径片段；仓储读写继续拒绝 symlink / 非普通文件等不安全目标。
+
+仍明确未完成：
+
+- 安装 commit 尚未写入 `planned`、`committing`、`completed` 或 `rollback_required` recovery record。
+- `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`。
+- 没有新增 Tauri command、DTO、task phase、前端 UI、动作预览或受控回滚执行。
+
+验证记录：
+
+- 聚焦 core：`cargo test -p hmm-core recovery_record`。
+- 聚焦 infra：`cargo test -p hmm-infra json_recovery_record_repository`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 

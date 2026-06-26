@@ -134,6 +134,13 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 文件系统实现会拒绝路径穿越、绝对路径、Windows 盘符前缀、symlink 目标和 symlink ancestor 逃逸。测试使用临时目录，不依赖真实 MHW:I 安装目录、真实存档或真实第三方 Mod 包。
 
+恢复记录基础：
+
+- `hmm-core` 已新增 game-independent `InstallRecoveryRecord`、`InstallRecoveryRecordEntry` 和 `InstallRecoveryRecordStatus`，状态值使用稳定 `snake_case` 序列化。
+- `InstallRecoveryRecordStatus` 已约束 `planned -> committing -> completed`、`committing -> rollback_required`、`rollback_required -> rolled_back` 等受控迁移；没有进入 `committing` 的持久化事实时，不能直接生成 `rollback_required`。
+- `hmm-ports` 已新增窄 `InstallRecoveryRecordRepository` trait；`hmm-infra` 已提供 `JsonInstallRecoveryRecordRepository`，在受控 app data root 下用 profile/mod id 的派生文件名持久化记录，避免把任意 id 当作路径片段。
+- 当前安装 commit 尚未写入该 recovery record，`scan_install_recovery` 也尚未消费该记录；因此 `rollback_required` 仍不能视为已落地对外状态。
+
 ### Tauri command 与任务入口
 
 位置：
@@ -240,11 +247,11 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 以下能力仍不能视为已完成：
 
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
-- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局只读告警，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。受控恢复/回滚动作的实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，但尚未实现 `rollback_required` rich 状态、自动回滚/恢复执行或真正的受控恢复/回滚动作。
+- 恢复扫描：只读 `scan_install_recovery` 摘要已能检测 `completed`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局只读告警，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。受控恢复/回滚动作的实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的领域模型、port 和 JSON 仓储基础已落地；但安装 commit 尚未写入该记录，扫描尚未消费该记录，因此尚未实现 `rollback_required` rich 状态、自动回滚/恢复执行或真正的受控恢复/回滚动作。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；`scan_install_recovery` 已能读取真实目标文件和 backup 做只读一致性检测，但 `get_install_manifest_status` 尚未自动消费该结果，rich manifest 状态机和 `rollback_required` 仍未落地。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
+- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；`scan_install_recovery` 已能读取真实目标文件和 backup 做只读一致性检测。`InstallRecoveryRecord` 状态机基础已落地，但 `get_install_manifest_status` 尚未自动消费 recovery scan 结果，安装 commit 尚未写入 recovery record，`rollback_required` 仍未作为真实扫描状态落地。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
 - Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、replacement binding snapshot、created/completed time、plan hash 等长期字段。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
@@ -261,7 +268,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 扫描后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 先补 durable recovery record / rich status 基础，再补只读动作预览和受控回滚任务；已落地的 App Frame 全局告警和恢复中心人工处理面板仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
+1. Crash/recovery 扫描后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 已先补 durable recovery record 的领域模型、port 和 JSON 仓储基础；下一步应在安装 commit 编排中受控写入 `planned/committing/completed/rollback_required` 事实，再补只读动作预览和受控回滚任务。已落地的 App Frame 全局告警和恢复中心人工处理面板仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
 2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
 3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
