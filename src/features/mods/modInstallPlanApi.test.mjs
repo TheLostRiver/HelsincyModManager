@@ -30,6 +30,22 @@ test("install plan API invokes controlled install task command without paths", (
   assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath/i);
 });
 
+test("install plan API invokes controlled uninstall task command without paths", () => {
+  const source = readSource("src/features/mods/modInstallPlanApi.ts");
+
+  assert.match(source, /export function startUninstallTask/);
+  const uninstallCall = source.match(/export function startUninstallTask[\s\S]*?\n}/);
+  assert.ok(uninstallCall, "expected a feature-local uninstall wrapper");
+  assert.match(uninstallCall[0], /invoke<TaskStartedDto>\("start_uninstall_task"/);
+  assert.match(uninstallCall[0], /gameId:\s*input\.gameId/);
+  assert.match(uninstallCall[0], /modId:\s*input\.modId/);
+  assert.match(uninstallCall[0], /profileId:\s*input\.profileId/);
+  assert.doesNotMatch(
+    uninstallCall[0],
+    /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot|backupRef|layerName|layerPriority/i,
+  );
+});
+
 test("install manifest status API invokes controlled summary command without paths", () => {
   const source = readSource("src/features/mods/modInstallPlanApi.ts");
 
@@ -71,6 +87,7 @@ test("mod library page renders a backend install plan preview workflow", () => {
 
 test("mod library page starts install task and tracks only matching task progress", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
+  const taskStateSource = readSource("src/features/mods/modInstallTaskState.ts");
 
   assert.match(source, /startInstallTask/);
   assert.match(source, /TASK_PROGRESS_EVENT_NAME/);
@@ -80,14 +97,31 @@ test("mod library page starts install task and tracks only matching task progres
   assert.match(source, /pendingInstallProgressEventsRef/);
   assert.match(source, /pendingInstallProgressEventsRef\.current\.set\(event\.payload\.taskId,\s*event\.payload\)/);
   assert.match(source, /pendingInstallProgressEventsRef\.current\.get\(task\.taskId\)/);
-  assert.match(source, /nextInstallTaskStateFromProgress\(runningState,\s*pendingProgressEvent\)/);
+  assert.match(source, /nextManagedInstallTaskStateFromProgress\(runningState,\s*pendingProgressEvent\)/);
   assert.match(source, /install\.queued/);
-  assert.match(source, /install\.plan\.building/);
-  assert.match(source, /install\.commit\.processing/);
-  assert.match(source, /install\.completed/);
   assert.match(source, /install\.failed/);
-  assert.match(source, /install\.cancelled/);
+  assert.match(taskStateSource, /install\.plan\.building/);
+  assert.match(taskStateSource, /install\.commit\.processing/);
+  assert.match(taskStateSource, /install\.completed/);
+  assert.match(taskStateSource, /install\.cancelled/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
+});
+
+test("mod library page starts uninstall task only from manifest installed summaries", () => {
+  const source = readSource("src/features/mods/ModLibraryPage.tsx");
+  const taskStateSource = readSource("src/features/mods/modInstallTaskState.ts");
+
+  assert.match(source, /startUninstallTask/);
+  assert.match(source, /startSelectedUninstallTask/);
+  assert.match(source, /selectedItem\?\.installSummary\?\.status\s*===\s*"installed"/);
+  assert.match(source, /install\.uninstall\.queued/);
+  assert.match(source, /install\.uninstall\.failed/);
+  assert.match(source, /nextManagedInstallTaskStateFromProgress/);
+  assert.match(taskStateSource, /install\.uninstall\.processing/);
+  assert.match(taskStateSource, /install\.uninstall\.completed/);
+  assert.match(source, /onConfirmUninstall/);
+  assert.match(source, /refreshInstallManifestStatuses/);
+  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
 
 test("mod library page refreshes install status from manifest summaries", () => {

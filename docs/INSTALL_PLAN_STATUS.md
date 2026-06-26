@@ -196,6 +196,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 - `previewInstallPlanForImportedMod`
 - `startInstallTask`
+- `startUninstallTask`
 - 最小安装计划预览面板。
 - 从 Mod 库触发最小安装任务。
 - 按 `taskId` 订阅 `hmm://task-progress` 安装事件。
@@ -203,14 +204,18 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 处理 `start_install_task` 返回前进度事件先到达的竞态。
 - 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新 manifest 状态摘要。
 - 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。`installed_file` 摘要已写入新 manifest，但 manifest 查询尚未执行目标文件 hash/backup 完整性校验。
+- 只在后端 manifest 摘要显示 `installed` 时启用单选卸载入口。
+- 从 Mod 库触发最小卸载确认流程，并通过 `start_uninstall_task` 启动后端任务。
+- 展示 `install.uninstall.queued`、`install.uninstall.processing`、`install.uninstall.completed` 和 `install.uninstall.failed`。
+- 卸载完成后复用 manifest 状态摘要查询刷新安装事实。
 
-当前前端尚未接入卸载按钮或 `start_uninstall_task` typed API；本切片只提供后端任务入口。前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
+前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装/卸载路径。卸载 UI 只提交 `gameId`、`modId`、`profileId`，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
-- 卸载 UI 和批量/profile 工作流：后端已有最小 manifest 驱动卸载任务入口，但前端尚未接入卸载按钮、确认流程或失败修复提示，也未实现批量 profile 切换。
+- 卸载后续工作流：后端最小 manifest 驱动卸载任务入口与前端最小单选卸载 UI 已落地，但尚未实现批量/profile 切换、rich repair summary 或恢复扫描入口。
 - 恢复扫描：尚未实现启动时扫描半完成安装、`rollback_required` 或 `repair_required` 状态。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
@@ -231,9 +236,9 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. 前端卸载 UI 接入：调用 `start_uninstall_task`、按 `taskId` 订阅 `install.uninstall.*` 阶段，并展示阻断/失败提示。
-2. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
-3. Rich manifest / repair 检测：消费 `installed_file` 摘要，并补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `repair_required` 的真实检测。
+1. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
+2. Rich manifest / repair 检测：消费 `installed_file` 摘要，并补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `repair_required` 的真实检测。
+3. 卸载后续 UI：补充 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
 5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
 
