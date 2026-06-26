@@ -94,6 +94,7 @@ test("app frame wires readonly global recovery alert to recovery center navigati
   assert.equal(existsSync("src/features/install-recovery/InstallRecoveryGlobalAlertPanel.tsx"), true);
 
   const frameSource = readSource("src/app/frame/AppFrame.tsx");
+  const frameCss = readSource("src/app/frame/AppFrame.css");
   const alertSource = readSource("src/features/install-recovery/InstallRecoveryGlobalAlertPanel.tsx");
 
   assert.match(frameSource, /InstallRecoveryGlobalAlert/);
@@ -102,6 +103,10 @@ test("app frame wires readonly global recovery alert to recovery center navigati
   assert.match(alertSource, /navigate\("\/recovery"\)/);
   assert.match(alertSource, /role=\{alert\.status === "attention" \? "alert" : "status"\}/);
   assert.match(alertSource, /aria-live=\{alert\.status === "attention" \? "assertive" : "polite"\}/);
+  assert.match(
+    frameCss,
+    /\.app-surface:has\(\.install-recovery-global-alert\)\s*{[\s\S]*?grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);/,
+  );
   assert.doesNotMatch(
     alertSource,
     /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|manifestRoot|backupRoot|backupRef|gameRoot|targetHash/i,
