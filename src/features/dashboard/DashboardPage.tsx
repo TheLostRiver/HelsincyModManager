@@ -1,8 +1,8 @@
 import { useGameSetup } from "../game-setup/useGameSetup";
+import { useInstallRecoveryHealth } from "../install-recovery/useInstallRecoveryHealth";
 import { DashboardHeroCard } from "./DashboardHeroCard";
 import { DashboardModulePreview } from "./DashboardModulePreview";
 import { SetupStatusPanel } from "./SetupStatusPanel";
-import { useInstallRecoveryHealth } from "./useInstallRecoveryHealth";
 
 export function DashboardPage() {
   const gameSetup = useGameSetup("mhw");

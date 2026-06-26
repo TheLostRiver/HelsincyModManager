@@ -46,12 +46,13 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
+- App Frame 全局只读恢复告警：游戏目录配置完成后复用空 `modIds` 全量 profile 扫描聚合，只在需要处理、状态未知或扫描不可用时显示轻量告警，并提供恢复中心导航。
 - 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、只读 rich repair summary、只读人工处理决策面板和每个托管 Mod 的安全状态摘要；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
 
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作。
+- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -77,6 +78,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端 Mod 库只读恢复扫描入口、聚合人工处理提示和不安全状态安装/卸载阻断。
 - [x] `scan_install_recovery` 支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，作为启动级恢复检查或独立恢复中心的后端基础。
 - [x] Dashboard 入口只读恢复健康摘要，基于空 `modIds` 全量 profile 扫描展示聚合健康状态。
+- [x] App Frame 全局只读恢复告警，基于空 `modIds` 全量 profile 扫描聚合只显示安全告警和恢复中心导航。
 - [x] 独立恢复中心只读入口，基于空 `modIds` 全量 profile 扫描展示 profile 聚合摘要和逐 Mod 安全状态摘要。
 - [x] 恢复中心只读 rich repair summary，基于稳定 issue code 展示风险等级、阻断理由和人工处理建议，不提供恢复/删除/回滚/manifest 写入动作。
 - [x] 恢复中心诊断导出联动，复用 `export_support_diagnostics` 展示完整支持诊断包的安全导出摘要。
@@ -329,7 +331,30 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 - 真正的受控恢复/回滚动作。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
-- 全局后台启动告警、跨 profile 批量健康摘要和后端恢复决策执行流。
+- 跨 profile 批量健康摘要和后端恢复决策执行流。
+
+### 2026-06-26 进度详情：App Frame 全局只读恢复告警
+
+本切片把 P1 “崩溃恢复扫描” 的空 `modIds` 全量 profile 扫描能力接入 App Frame 全局告警。它只展示安全聚合提示和恢复中心导航，不提供恢复、回滚、删除、重写 manifest 或自动修复动作。
+
+已落地范围：
+
+- 将 Dashboard 私有的恢复健康聚合 helper / hook 迁到 `src/features/install-recovery/`，Dashboard 保留兼容 re-export，App Frame 和 Dashboard 共享同一套只读聚合逻辑。
+- App Frame 在游戏目录配置完成后调用只读 `scan_install_recovery`，提交 `gameId`、`profileId` 和空 `modIds`，由后端扫描当前 profile manifest 内全部已知托管 Mod。
+- 新增全局告警 view model：`healthy`、`empty`、`idle` 和 `loading` 不显示；`repair_required` / `unknown` 聚合为需要关注时显示告警；扫描失败显示状态未知。
+- 告警只显示需处理数、未知数和 issue 聚合描述，并提供“打开恢复中心”导航；不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash、manifest 正文或第三方 Mod 内容。
+- 告警不调用 `start_install_task`、`start_uninstall_task` 或任何恢复、删除、回滚、manifest 写入 command；恢复中心导航只是进入现有只读页面。
+
+验证记录：
+
+- TDD RED：新增 `installRecoveryGlobalAlert.test.mjs` 后，聚焦测试先失败于缺少 `installRecoveryGlobalAlert.ts`、`InstallRecoveryGlobalAlert.tsx` 和 App Frame 接线。
+- 聚焦验证：`cmd /c corepack pnpm exec node --test "src/features/install-recovery/installRecoveryGlobalAlert.test.mjs" "src/features/dashboard/installRecoveryHealth.test.mjs" "src/features/dashboard/dashboardInstallRecoveryHealth.test.mjs"`。
+
+仍明确未完成：
+
+- 真正的受控恢复/回滚动作。
+- 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
+- 跨 profile 批量健康摘要和后端恢复决策执行流。
 
 ## 设计细化规则
 
@@ -562,7 +587,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
@@ -571,7 +596,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 扫描 manifest、备份记录和任务状态摘要。
 - 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 rich manifest/task 状态后续补齐。
 - 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
-- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要、只读 rich repair summary 和完整支持诊断包导出联动；全局后台告警和受控恢复/回滚动作仍待后续补齐。
+- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；App Frame 已提供全局只读恢复告警；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要、只读 rich repair summary 和完整支持诊断包导出联动；受控恢复/回滚动作仍待后续补齐。
 
 明确不做：
 

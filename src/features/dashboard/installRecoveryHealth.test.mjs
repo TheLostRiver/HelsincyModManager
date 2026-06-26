@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { deriveInstallRecoveryHealth } from "./installRecoveryHealth.ts";
+import { deriveInstallRecoveryHealth } from "../install-recovery/installRecoveryHealth.ts";
 
 const baseSummary = {
   profileId: "default",
