@@ -34,6 +34,7 @@ import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLi
 import { getModLibrary } from "./modLibraryApi";
 import {
   applyInstallManifestStatusSummaries,
+  applyInstallRecoveryUnavailable,
   applyInstallRecoverySummaries,
   resolveLoadedModLibraryItems,
 } from "./modLibraryLoadState";
@@ -329,7 +330,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           modIds,
         })
           .then((summaries) => applyInstallRecoverySummaries(itemsWithManifestStatus, summaries))
-          .catch(() => itemsWithManifestStatus),
+          .catch(() => applyInstallRecoveryUnavailable(itemsWithManifestStatus)),
       )
       .catch(() => items);
   }, []);
