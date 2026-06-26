@@ -116,6 +116,25 @@ impl InstallBackupStore for FileSystemInstallBackupStore {
         Ok(backup_ref)
     }
 
+    fn read_backup(&self, backup_ref: &str) -> Result<Option<Vec<u8>>> {
+        let backup_path = contained_path(&self.backup_root, backup_ref)?;
+
+        if !backup_path.exists() {
+            return Ok(None);
+        }
+
+        let metadata =
+            fs::symlink_metadata(&backup_path).context("failed to inspect install backup")?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            anyhow::bail!("install backup is not a regular file");
+        }
+        ensure_contained_existing_path(&self.backup_root, &backup_path)?;
+
+        Ok(Some(
+            fs::read(backup_path).context("failed to read install backup")?,
+        ))
+    }
+
     fn remove_backup(&self, backup_ref: &str) -> Result<()> {
         let backup_path = contained_path(&self.backup_root, backup_ref)?;
 
@@ -475,6 +494,51 @@ mod tests {
         assert!(manifest.contains("\"profile_id\"") || manifest.contains("\"profileId\""));
         assert!(manifest.contains("nativePC/models/player.mod3"));
         assert!(!manifest.contains(temp.path().to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn filesystem_backup_reader_reads_backup_inside_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let backup_root = temp.path().join("backups");
+        let backup_store = FileSystemInstallBackupStore::new(backup_root);
+        let target =
+            InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target");
+        let backup_ref = backup_store
+            .store_backup(&target, b"original model")
+            .expect("store backup");
+
+        let bytes = backup_store
+            .read_backup(&backup_ref)
+            .expect("read backup")
+            .expect("backup should exist");
+
+        assert_eq!(bytes, b"original model");
+    }
+
+    #[test]
+    fn filesystem_backup_reader_returns_none_for_missing_backup() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let backup_store = FileSystemInstallBackupStore::new(temp.path().join("backups"));
+
+        let bytes = backup_store
+            .read_backup("missing-backup")
+            .expect("missing backup should not fail");
+
+        assert_eq!(bytes, None);
+    }
+
+    #[test]
+    fn filesystem_backup_reader_rejects_parent_traversal_without_path_details() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let backup_store = FileSystemInstallBackupStore::new(temp.path().join("backups"));
+
+        let error = backup_store
+            .read_backup("../outside-backup")
+            .expect_err("backup reader must reject traversal");
+
+        assert!(!error
+            .to_string()
+            .contains(temp.path().to_string_lossy().as_ref()));
     }
 
     #[test]
