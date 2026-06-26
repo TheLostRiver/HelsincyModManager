@@ -4,7 +4,9 @@ import type {
   GetInstallManifestStatusInput,
   InstallManifestStatusSummary,
   InstallPlanPreview,
+  InstallRecoverySummary,
   PreviewImportedModInstallPlanInput,
+  ScanInstallRecoveryInput,
   StartInstallTaskInput,
   StartUninstallTaskInput,
 } from "./modInstallPlanTypes";
@@ -42,6 +44,14 @@ export function getInstallManifestStatus(
   input: GetInstallManifestStatusInput,
 ): Promise<InstallManifestStatusSummary[]> {
   return invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
+    profileId: input.profileId,
+    modIds: input.modIds,
+  });
+}
+
+export function scanInstallRecovery(input: ScanInstallRecoveryInput): Promise<InstallRecoverySummary[]> {
+  return invoke<InstallRecoverySummary[]>("scan_install_recovery", {
+    gameId: input.gameId,
     profileId: input.profileId,
     modIds: input.modIds,
   });

@@ -7,6 +7,7 @@ type CompactActionPanelProps = {
   selectedCount: number;
   totalCount: number;
   installTaskActive?: boolean;
+  canInstallSelection?: boolean;
   canUninstallSelection?: boolean;
   onAction: (actionId: string) => void;
 };
@@ -27,6 +28,7 @@ export function CompactActionPanel({
   selectedCount,
   totalCount,
   installTaskActive = false,
+  canInstallSelection = true,
   canUninstallSelection = false,
   onAction,
 }: CompactActionPanelProps) {
@@ -85,6 +87,7 @@ export function CompactActionPanel({
             const isDisabled =
               (needsSingleSelection && selectedCount !== 1) ||
               (["reinstall", "uninstall"].includes(action.id) && installTaskActive) ||
+              (action.id === "reinstall" && !canInstallSelection) ||
               (action.id === "uninstall" && !canUninstallSelection);
             return (
               <button
