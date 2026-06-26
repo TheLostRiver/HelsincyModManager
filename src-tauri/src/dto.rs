@@ -114,6 +114,14 @@ pub struct StartInstallTaskRequestDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StartUninstallTaskRequestDto {
+    pub game_id: String,
+    pub mod_id: String,
+    pub profile_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallManifestStatusRequestDto {
     pub profile_id: String,
     pub mod_ids: Vec<String>,

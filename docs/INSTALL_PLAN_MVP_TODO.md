@@ -40,11 +40,12 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目，并在替换已有托管目标时保留旧 `backup_ref` 恢复语义。
 - 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
+- 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 
 仍未完成：
 
-- 基于 manifest 的卸载。
+- 前端卸载按钮、确认流程和 `install.uninstall.*` 任务状态展示。
 - 跨进程崩溃恢复扫描。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
@@ -65,6 +66,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端最小安装任务流程与进度事件竞态处理。
 - [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
 - [x] Manifest entry 写入 `installed_file` size/SHA-256 摘要，并兼容读取缺少摘要的旧 manifest。
+- [x] 后端最小 manifest 驱动卸载服务、backup 受控读取、卸载任务 runner 和 `start_uninstall_task` Tauri 入口。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -105,9 +107,28 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 仍明确未完成：
 
-- 自动卸载仍未实现。
+- Manifest 摘要切片本身未实现自动卸载；当前最小 manifest 驱动卸载任务入口见下一小节。
 - 查询服务尚未读取真实目标文件或 backup 做 hash 校验。
 - 缺少 `installed_file` 的旧 manifest 后续必须阻断自动卸载或转入修复流程，不能视为安全可卸载。
+
+### 2026-06-26 进度详情：后端最小 manifest 驱动卸载
+
+本切片完成 P1 “基于 manifest 的卸载” 的后端最小安全路径和 Tauri 任务入口。它仍保持 MVP 边界：不根据当前 Mod 包内容猜测，不删除 manifest 未记录文件，不接前端传入路径，也不把 hash、backup ref 或 manifest 正文返回前端。
+
+已落地范围：
+
+- `hmm-app` 新增 `UninstallModService`。服务读取 profile manifest，只处理指定 `modId` 的 entries；每个 entry 必须有 `installed_file` 摘要，且当前目标文件 size/SHA-256 必须与 manifest 匹配。
+- 新增文件卸载时删除目标文件；覆盖文件卸载时读取受控 backup 并恢复原文件；manifest 保存失败时 best-effort 回滚已删除或已恢复的目标。
+- `hmm-ports` / `hmm-infra` 为 `InstallBackupStore` 增加受控 `read_backup`，实现层继续执行 backup root containment、普通文件校验和 traversal 拒绝。
+- `hmm-app` 新增 `UninstallTaskService` / `UninstallTaskRunner`，复用 `TaskKind::Install` 和 `gameId/profileId` 写锁，发送 `install.uninstall.processing`、`install.uninstall.completed`、`install.uninstall.failed`，并写入只含短 id/计数的最小 Audit Log。
+- Tauri 新增 `start_uninstall_task`，DTO 只接收 `gameId`、`modId`、`profileId`，queued phase 为 `install.uninstall.queued`；组合根通过 `GameConfigRepository` 解析 game root，再装配受控 game file system、backup store 和 manifest repository。
+
+仍明确未完成：
+
+- 前端 Mod 库尚未接入卸载按钮、确认弹窗、typed API 或 `install.uninstall.*` 展示。
+- 卸载失败当前只通过任务失败 phase 和稳定错误前缀表达，尚未提供 rich repair summary。
+- `get_install_manifest_status` 仍不读取目标文件或 backup 做真实 `repair_required` 检测。
+- 跨进程崩溃恢复扫描仍未实现。
 
 ## 设计细化规则
 
@@ -302,6 +323,8 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 文档同步更新 `FRONTEND_BACKEND_CONTRACT.md`。
 
 ### P1：基于 manifest 的卸载
+
+状态：后端最小安全卸载和 `start_uninstall_task` 任务入口已落地；前端 UI、rich repair summary 和恢复扫描仍待后续切片。
 
 目标：提供第一版安全卸载能力，删除或恢复本工具安装过的文件。
 

@@ -148,6 +148,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `preview_install_plan`
 - `preview_imported_mod_install_plan`
 - `start_install_task`
+- `start_uninstall_task`
 
 `start_install_task` 只接收：
 
@@ -157,7 +158,13 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `layerName`
 - `layerPriority`
 
-安装任务已接入 `TaskKind::Install`，commit 阶段按 `gameId/profileId` 写锁串行。plan build、sandbox 文件扫描和只读分析不持有写锁。
+`start_uninstall_task` 只接收：
+
+- `gameId`
+- `modId`
+- `profileId`
+
+安装和卸载任务已接入 `TaskKind::Install`。安装 commit 阶段、卸载删除/恢复阶段均按 `gameId/profileId` 写锁串行。plan build、sandbox 文件扫描和只读分析不持有写锁。
 
 当前安装任务阶段：
 
@@ -167,6 +174,12 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `install.completed`
 - `install.failed`
 - `install.cancelled`
+- `install.uninstall.queued`
+- `install.uninstall.processing`
+- `install.uninstall.completed`
+- `install.uninstall.failed`
+
+当前最小卸载能力基于 manifest entries、`installed_file` 摘要和 backup ref。自动卸载只处理指定 `modId` 的 manifest entries；缺少 `installed_file`、当前目标文件 size/SHA-256 与 manifest 不匹配、目标文件缺失或 backup 缺失时会阻断，不根据当前 Mod 包内容猜测。
 
 任务事件和 Audit Log 不应携带完整本地路径、用户名、Steam ID、sandbox/cache 路径、真实 Mod 包内容或 manifest 正文。
 
@@ -191,13 +204,13 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新 manifest 状态摘要。
 - 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。`installed_file` 摘要已写入新 manifest，但 manifest 查询尚未执行目标文件 hash/backup 完整性校验。
 
-当前前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
+当前前端尚未接入卸载按钮或 `start_uninstall_task` typed API；本切片只提供后端任务入口。前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态和 manifest 查询摘要，不应推断 MHW 路径规则或自行拼接安装路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询恢复，而不是依赖内存任务状态或 mock 数据。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
-- 卸载：尚未实现基于 manifest 的 uninstall。
+- 卸载 UI 和批量/profile 工作流：后端已有最小 manifest 驱动卸载任务入口，但前端尚未接入卸载按钮、确认流程或失败修复提示，也未实现批量 profile 切换。
 - 恢复扫描：尚未实现启动时扫描半完成安装、`rollback_required` 或 `repair_required` 状态。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
@@ -218,7 +231,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. 基于 manifest 的 uninstall：不根据当前 Mod 包猜测已安装文件。
+1. 前端卸载 UI 接入：调用 `start_uninstall_task`、按 `taskId` 订阅 `install.uninstall.*` 阶段，并展示阻断/失败提示。
 2. Crash/recovery 扫描：启动或进入安装页时识别半完成状态，并给出恢复或人工处理路径。
 3. Rich manifest / repair 检测：消费 `installed_file` 摘要，并补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `repair_required` 的真实检测。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
