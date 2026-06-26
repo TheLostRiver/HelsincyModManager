@@ -100,6 +100,16 @@ pub enum UninstallModError {
     RemoveFailed,
     #[error("uninstall failed while restoring game file")]
     RestoreFailed,
+    #[error("uninstall rollback failed")]
+    RollbackFailed { failed_phase: UninstallModPhase },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UninstallModPhase {
+    Revalidate,
+    Remove,
+    Restore,
+    ManifestSave,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -417,14 +427,25 @@ impl UninstallModService {
         let mut restored_file_count = 0;
         let mut applied_changes = Vec::with_capacity(prepared_changes.len());
         for change in &prepared_changes {
+            if !self.target_still_matches(&change.entry.target_path, &change.current_bytes) {
+                return Err(self.rollback_or_error(
+                    &applied_changes,
+                    UninstallModPhase::Revalidate,
+                    UninstallModError::TargetStateMismatch,
+                ));
+            }
+
             if let Some(backup_bytes) = &change.backup_bytes {
                 if self
                     .game_files
                     .write_game_file(&change.entry.target_path, backup_bytes)
                     .is_err()
                 {
-                    self.rollback_uninstall(&applied_changes);
-                    return Err(UninstallModError::RestoreFailed);
+                    return Err(self.rollback_or_error(
+                        &applied_changes,
+                        UninstallModPhase::Restore,
+                        UninstallModError::RestoreFailed,
+                    ));
                 }
                 restored_file_count += 1;
             } else {
@@ -433,8 +454,11 @@ impl UninstallModService {
                     .remove_game_file(&change.entry.target_path)
                     .is_err()
                 {
-                    self.rollback_uninstall(&applied_changes);
-                    return Err(UninstallModError::RemoveFailed);
+                    return Err(self.rollback_or_error(
+                        &applied_changes,
+                        UninstallModPhase::Remove,
+                        UninstallModError::RemoveFailed,
+                    ));
                 }
                 removed_file_count += 1;
             }
@@ -453,8 +477,11 @@ impl UninstallModService {
             .save_manifest(&updated_manifest)
             .is_err()
         {
-            self.rollback_uninstall(&applied_changes);
-            return Err(UninstallModError::ManifestSaveFailed);
+            return Err(self.rollback_or_error(
+                &applied_changes,
+                UninstallModPhase::ManifestSave,
+                UninstallModError::ManifestSaveFailed,
+            ));
         }
 
         for change in &prepared_changes {
@@ -470,12 +497,34 @@ impl UninstallModService {
         })
     }
 
-    fn rollback_uninstall(&self, applied_changes: &[AppliedUninstallChange]) {
-        for change in applied_changes.iter().rev() {
-            let _ = self
-                .game_files
-                .write_game_file(&change.target_path, &change.previous_bytes);
+    fn target_still_matches(&self, target_path: &InstallTargetPath, expected_bytes: &[u8]) -> bool {
+        self.game_files
+            .read_game_file(target_path)
+            .ok()
+            .flatten()
+            .as_deref()
+            == Some(expected_bytes)
+    }
+
+    fn rollback_or_error(
+        &self,
+        applied_changes: &[AppliedUninstallChange],
+        failed_phase: UninstallModPhase,
+        fallback: UninstallModError,
+    ) -> UninstallModError {
+        match self.rollback_uninstall(applied_changes) {
+            Ok(()) => fallback,
+            Err(()) => UninstallModError::RollbackFailed { failed_phase },
         }
+    }
+
+    fn rollback_uninstall(&self, applied_changes: &[AppliedUninstallChange]) -> Result<(), ()> {
+        for change in applied_changes.iter().rev() {
+            self.game_files
+                .write_game_file(&change.target_path, &change.previous_bytes)
+                .map_err(|_| ())?;
+        }
+        Ok(())
     }
 }
 
@@ -1021,6 +1070,91 @@ mod tests {
                 .as_deref(),
             Some(b"new model".as_slice())
         );
+        assert!(manifests.take_manifest().is_none());
+    }
+
+    #[test]
+    fn uninstall_mod_revalidates_target_before_removing_new_file() {
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("valid target"),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"new model")),
+            }],
+        };
+        let game_files = Arc::new(
+            RecordingInstallGameFileSystem::with_files([(
+                "nativePC/models/player.mod3",
+                b"new model".as_slice(),
+            )])
+            .with_read_mutation("nativePC/models/player.mod3", b"external edit"),
+        );
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+        );
+        let service = UninstallModService::new(game_files.clone(), backups, manifests.clone());
+
+        let error = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("changed target should be blocked at mutation time");
+
+        assert_eq!(error, UninstallModError::TargetStateMismatch);
+        assert_eq!(
+            game_files
+                .file_bytes("nativePC/models/player.mod3")
+                .as_deref(),
+            Some(b"external edit".as_slice())
+        );
+        assert!(manifests.take_manifest().is_none());
+    }
+
+    #[test]
+    fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
+        let existing_manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            entries: vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                    .expect("valid target"),
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"new model")),
+            }],
+        };
+        let game_files = Arc::new(RecordingInstallGameFileSystem::with_failing_writes([(
+            "nativePC/models/player.mod3",
+            b"new model".as_slice(),
+        )]));
+        let backups = Arc::new(RecordingInstallBackupStore::default());
+        let manifests = Arc::new(
+            RecordingInstallManifestRepository::failing().with_existing_manifest(existing_manifest),
+        );
+        let service = UninstallModService::new(game_files.clone(), backups, manifests.clone());
+
+        let error = service
+            .uninstall_mod(UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("rollback failure should be reported");
+
+        assert_eq!(
+            error,
+            UninstallModError::RollbackFailed {
+                failed_phase: UninstallModPhase::ManifestSave
+            }
+        );
+        assert_eq!(game_files.file_bytes("nativePC/models/player.mod3"), None);
         assert!(manifests.take_manifest().is_none());
     }
 
@@ -1817,6 +1951,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingInstallGameFileSystem {
         files: Mutex<BTreeMap<String, Vec<u8>>>,
+        read_mutation: Mutex<Option<(String, Vec<u8>)>>,
         fail_writes: bool,
     }
 
@@ -1829,6 +1964,7 @@ mod tests {
                         .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
                         .collect(),
                 ),
+                read_mutation: Mutex::new(None),
                 fail_writes: false,
             }
         }
@@ -1841,8 +1977,15 @@ mod tests {
                         .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
                         .collect(),
                 ),
+                read_mutation: Mutex::new(None),
                 fail_writes: true,
             }
+        }
+
+        fn with_read_mutation(self, target_path: &str, bytes: &[u8]) -> Self {
+            *self.read_mutation.lock().expect("read mutation") =
+                Some((target_path.to_owned(), bytes.to_vec()));
+            self
         }
 
         fn file_bytes(&self, target_path: &str) -> Option<Vec<u8>> {
@@ -1855,12 +1998,18 @@ mod tests {
             &self,
             target_path: &InstallTargetPath,
         ) -> anyhow::Result<Option<Vec<u8>>> {
-            Ok(self
+            let bytes = self
                 .files
                 .lock()
                 .expect("files")
                 .get(target_path.as_str())
-                .cloned())
+                .cloned();
+            if let Some((path, replacement)) =
+                self.read_mutation.lock().expect("read mutation").take()
+            {
+                self.files.lock().expect("files").insert(path, replacement);
+            }
+            Ok(bytes)
         }
 
         fn write_game_file(
