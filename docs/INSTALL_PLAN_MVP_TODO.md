@@ -46,11 +46,12 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
+- 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要和每个托管 Mod 的安全状态摘要。
 
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和更明确的人工修复入口。
-- 全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和独立恢复中心入口。
+- 全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和恢复中心 rich repair summary / 受控人工处理路径。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -76,6 +77,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端 Mod 库只读恢复扫描入口、聚合人工处理提示和不安全状态安装/卸载阻断。
 - [x] `scan_install_recovery` 支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，作为启动级恢复检查或独立恢复中心的后端基础。
 - [x] Dashboard 入口只读恢复健康摘要，基于空 `modIds` 全量 profile 扫描展示聚合健康状态。
+- [x] 独立恢复中心只读入口，基于空 `modIds` 全量 profile 扫描展示 profile 聚合摘要和逐 Mod 安全状态摘要。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -173,7 +175,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 - 应用启动级自动调用恢复扫描；Mod 库加载成功后的只读扫描入口已在下一小节落地。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
-- 独立恢复中心入口、自动处理动作和 rich repair summary。
+- 独立恢复中心只读入口已在后续切片落地；自动处理动作和 rich repair summary 仍未完成。
 - `get_install_manifest_status` 尚未消费 recovery scan 结果来自动显示真实 `repair_required`。
 
 ### 2026-06-26 进度详情：前端恢复扫描入口
@@ -214,7 +216,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 仍明确未完成：
 
 - Dashboard 入口级健康摘要已在下一小节落地；全局后台启动告警仍未完成。
-- 独立恢复中心页面、自动处理动作和 rich repair summary。
+- 独立恢复中心只读页面已在后续切片落地；自动处理动作和 rich repair summary 仍未完成。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 
 ### 2026-06-26 进度详情：Dashboard 入口恢复健康摘要
@@ -236,7 +238,25 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 
 仍明确未完成：
 
-- 独立恢复中心页面、自动处理动作和 rich repair summary。
+- 独立恢复中心只读页面已在下一小节落地；自动处理动作和 rich repair summary 仍未完成。
+- 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
+- 全局后台启动告警、跨 profile 批量健康摘要和更完整的恢复决策流。
+
+### 2026-06-26 进度详情：独立恢复中心只读入口
+
+本切片把 P1 “崩溃恢复扫描” 的空 `modIds` 全量 profile 扫描能力接入独立恢复中心入口。它只做只读展示，不提供恢复、回滚、删除、重写 manifest 或自动修复动作。
+
+已落地范围：
+
+- 新增 `recovery` route 和 “恢复中心”导航项，复用现有 App Frame、单一 `navItems` 和 route registry，不按侧边栏模式复制页面。
+- 恢复中心在游戏目录配置完成后调用只读 `scan_install_recovery`，提交 `gameId`、`profileId` 和空 `modIds`，由后端扫描当前 profile manifest 内全部已知托管 Mod。
+- 新增前端 view model helper，把 `completed` / `not_installed` 归为正常或空记录，把 `repair_required` / `unknown` 归为需要关注，并聚合扫描 Mod 数、正常数、需处理数、未知数、托管文件数、backup 计数和 issue 计数。
+- 页面展示 profile 级摘要、聚合 issue 分类，以及每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数和稳定 issue 分类；不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash、manifest 正文或第三方 Mod 内容。
+- 未配置游戏目录时恢复中心不调用恢复扫描，只提示先完成受控游戏实例配置。
+
+仍明确未完成：
+
+- 恢复中心 rich repair summary、诊断导出联动、受控恢复/回滚动作和人工修复决策流。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 全局后台启动告警、跨 profile 批量健康摘要和更完整的恢复决策流。
 
@@ -471,7 +491,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口和 Dashboard 入口健康摘要已落地；全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和独立恢复中心入口仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要和独立恢复中心只读入口已落地；全局后台启动告警、自动回滚/恢复执行、`rollback_required` rich 状态和恢复中心 rich repair summary / 受控人工处理路径仍待后续切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
@@ -480,7 +500,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 扫描 manifest、备份记录和任务状态摘要。
 - 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 需要 rich manifest/task 状态后续补齐。
 - 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
-- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；独立恢复中心和全局后台告警仍待后续补齐。
+- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；独立恢复中心已提供只读入口并展示逐 Mod 安全状态摘要；全局后台告警和 rich repair summary 仍待后续补齐。
 
 明确不做：
 
