@@ -54,6 +54,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - 查询安装恢复摘要：`scan_install_recovery`
 - 查询安装恢复动作预览：`preview_recovery_action`
+- 启动安装恢复动作任务：`start_recovery_action_task`
 - 查询诊断摘要：`get_preview_image_diagnostics`
 - 导出诊断包：`export_preview_image_diagnostics`
 - 导出审计日志诊断包：`export_audit_log_diagnostics`
@@ -214,6 +215,11 @@ TaskProgressEventDto
 | `install` | `install.uninstall.processing` | 后端正在执行受写锁保护的 manifest 驱动卸载 |
 | `install` | `install.uninstall.completed` | 卸载完成，manifest 已移除对应 Mod 的托管条目 |
 | `install` | `install.uninstall.failed` | 卸载失败；后端会 best-effort 回滚已应用的删除或恢复 |
+| `install` | `install.recovery.queued` | 恢复动作任务已登记，等待后续执行 |
+| `install` | `install.recovery.planning` | 后端正在等待写锁并准备受控恢复动作 |
+| `install` | `install.recovery.processing` | 后端正在执行受写锁保护的恢复动作 |
+| `install` | `install.recovery.completed` | 恢复动作已完成，durable recovery record 已更新 |
+| `install` | `install.recovery.failed` | 恢复动作失败；后端会 best-effort 回滚已应用的删除或恢复 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -285,6 +291,7 @@ start_uninstall_task(input)
 get_install_manifest_status(input)
 scan_install_recovery(input)
 preview_recovery_action(input)
+start_recovery_action_task(input)
 cancel_task(taskId)
 ```
 
@@ -293,6 +300,7 @@ cancel_task(taskId)
 - `preview_install_plan` 不写真实游戏目录。
 - `start_install_task` 必须基于已经生成或可重建的 plan。
 - `start_uninstall_task` 必须基于已有 manifest、`installed_file` 摘要和 backup 记录，不根据当前 Mod 包内容猜测。
+- `start_recovery_action_task` 必须基于 durable recovery record、`installed_file` 摘要和 backup 记录，不根据当前 Mod 包内容猜测。
 - 真实 commit 过程必须写 manifest，并能回滚或恢复。
 - 当前 `preview_install_plan` 只暴露只读计划预览壳，用于验证 Tauri DTO 与 `hmm-app` 计划服务边界；它返回相对目标路径摘要、来源 id、层级信息和阻断冲突，不创建目录、不复制文件、不删除文件、不写 manifest。
 - `preview_install_plan` 的 `allowedTargetRoots` 和 `files[].targetPath` 必须来自后端分析/adapter 结果或测试夹具；正式前端 UI 不得根据游戏名、Mod 内容或用户输入自行拼接最终安装路径。后续 package analyzer / game adapter 接入后，应优先让前端只提交后端生成的 `modId`、`packageId`、`profileId` 或 `targetId`。
@@ -315,17 +323,20 @@ cancel_task(taskId)
 - `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`rollback_required` 只来自 durable recovery record 中的 `committing` 或 `rollback_required` 受控状态，表示上次写入窗口未确认完成并需要后续受控回滚流程；`repair_required` 表示目标缺失、目标摘要不匹配、缺少 `installed_file` 摘要或 backup 缺失等可判断的不一致；`unknown` 表示目标或 backup 读取失败等无法安全判断状态；缺失 manifest、无匹配 entry 且没有需要处理的 recovery record 时返回 `not_installed`。当前命令只做只读检测，不自动删除、恢复、回滚或写 manifest。
 - `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；当前唯一 action kind 为 `rollback_install`。后端在同一 `gameId/profileId` 写锁下读取 durable recovery record、当前目标摘要和 backup 可读性，返回 `available` 或 `blocked`、将删除的新文件数、将恢复的覆盖文件数、需要 backup 的文件数、阻断 issue 总数和稳定阻断 reason code。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容；也不执行删除、恢复、回滚、写 backup、写 manifest、写 recovery record、发送任务事件或写 Audit Log。
 - `preview_recovery_action` 只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
+- `start_recovery_action_task` 是后端驱动的受控恢复动作任务入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；当前唯一 action kind 为 `rollback_install`。后端在同一 `gameId/profileId` 写锁下重新读取 durable recovery record、当前目标摘要和 backup 可读性，然后删除本工具新增文件或从受控 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。该 command 不接受 `targetPath`、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
+- `start_recovery_action_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.recovery.queued` 事件；后台 runner 会发送 `install.recovery.planning`、`install.recovery.processing`、`install.recovery.completed` 或 `install.recovery.failed`。失败事件的 `error` 使用稳定前缀 `install_recovery_failed:<phase>`，当前 phase 可为 `lock`、`planning`、`processing` 或 `complete`。事件 payload 不承载目标路径、完整本地路径、backup ref、manifest 内容、目标 hash、sandbox/cache 路径或第三方 Mod 内容。
+- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、backup ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - Mod 库前端可以在 `get_install_manifest_status` 摘要刷新后调用 `scan_install_recovery`。前端应把 `completed` 映射为可展示的 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载；扫描失败时应把已有非 `not_installed` manifest 摘要降级为不安全 `unknown`，不应回退为 mock 安装事实或从任务内存态推断已安装。
 - Dashboard / App Frame / 独立恢复中心可以在游戏目录配置完成后调用 `scan_install_recovery`，传入空 `modIds` 获取当前 profile 的全量托管安装健康摘要。Dashboard 等入口级摘要只能展示扫描 Mod 数、需处理数、未知数、托管文件数、backup 计数、issue 总数和 `issues[].issue/count` 等聚合信息；App Frame 全局告警只能在需要处理、状态未知或扫描不可用时展示轻量摘要和恢复中心导航；独立恢复中心可以额外展示每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类，以及由前端 view model 基于稳定 issue code 派生的只读 rich repair summary、风险等级、阻断原因、人工处理建议和只读人工处理决策面板。扫描失败必须展示状态未知，不能解释为健康或自动触发恢复。
 - 独立恢复中心可以提供用户主动触发的 `export_support_diagnostics` 入口。该入口必须通过 feature-local typed API 调用无参数 command；前端导出前先展示将包含的已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不能传入或展示输出路径、日志路径、诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。诊断导出成功不改变安装、卸载、恢复扫描或 manifest 状态。
-- 独立恢复中心的人工处理决策面板只能把 `retry_scan` 映射为重新触发只读 `scan_install_recovery`，把 `export_diagnostics` 映射为上述诊断导出确认流程；`controlled_recovery` 等未来写入型动作在后端 manifest 状态机和恢复执行器落地前必须保持不可用或禁用。该面板不得调用 `start_install_task`、`start_uninstall_task` 或任何恢复、删除、回滚、manifest 写入 command，也不得根据 Mod 包内容、展示标签或页面内存态推断修复动作。
+- 独立恢复中心的人工处理决策面板只能把 `retry_scan` 映射为重新触发只读 `scan_install_recovery`，把 `export_diagnostics` 映射为上述诊断导出确认流程；虽然后端 `start_recovery_action_task` 已落地，`controlled_recovery` 写入型入口在恢复中心 UI 启用切片完成前仍必须保持不可用或禁用。该面板不得调用 `start_install_task`、`start_uninstall_task`、`start_recovery_action_task` 或任何恢复、删除、回滚、manifest 写入 command，也不得根据 Mod 包内容、展示标签或页面内存态推断修复动作。
 - `scan_install_recovery` 的前端展示只允许使用 `managedFileCount`、`backupCount`、`issueCount` 和 `issues[].issue/count` 等聚合摘要。UI 不得展示或提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文、目标文件 hash 或第三方 Mod 内容。
 - `scan_install_recovery` 读取失败使用稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；manifest 仓储不可用返回 `install_recovery_unavailable`。错误 message 不应包含完整本地路径、backup ref、manifest 路径或第三方 Mod 内容。
 - `preview_recovery_action` 读取失败使用稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；动作预览不可用返回 `install_recovery_action_preview_unavailable`。错误 message 不应包含完整本地路径、backup ref、manifest 路径、sandbox/cache 路径或第三方 Mod 内容。
 - `preview_install_plan` 的错误使用稳定 code，例如 `install_target_path_empty`、`install_target_path_absolute`、`install_target_path_parent_traversal`、`install_target_path_windows_drive_prefix`、`install_target_path_invalid_segment` 和 `install_target_root_not_allowed`；错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_imported_mod_install_plan` 的错误使用稳定 code，例如 `game_id_invalid`、`install_planning_sources_unavailable`、`install_planning_game_adapter_not_found`、`install_planning_imported_mod_not_found`、`install_planning_imported_mod_analysis_unavailable`、`install_planning_imported_mod_sandbox_unavailable`、`install_planning_imported_mod_file_scan_unavailable`，以及复用的 `install_target_*` / `install_target_root_not_allowed` 路径校验错误；错误 message 不应包含完整本地路径、sandbox/cache 路径或第三方 Mod 内容。
 
-当前只读预览 DTO 形状：
+当前安装与恢复 DTO 形状：
 
 ```ts
 type PreviewImportedModInstallPlanRequestDto = {
@@ -374,6 +385,13 @@ type InstallRecoveryScanRequestDto = {
 type InstallRecoveryActionKindDto = "rollback_install";
 
 type InstallRecoveryActionPreviewRequestDto = {
+  gameId: string;
+  profileId: string;
+  modId: string;
+  actionKind: InstallRecoveryActionKindDto;
+};
+
+type StartRecoveryActionTaskRequestDto = {
   gameId: string;
   profileId: string;
   modId: string;

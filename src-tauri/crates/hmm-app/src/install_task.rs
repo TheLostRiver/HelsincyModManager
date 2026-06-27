@@ -7,8 +7,10 @@ use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 use crate::{
     BuildImportedModInstallPlanRequest, CommitInstallPlanRequest, InstallCommitError,
     InstallCommitResult, InstallCommitService, InstallPlanningError, InstallPlanningService,
-    TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    InstallRecoveryActionError, InstallRecoveryActionKind, InstallRecoveryActionRequest,
+    InstallRecoveryActionResult, InstallRecoveryActionService, TaskKind, TaskManager,
+    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus, UninstallModError,
+    UninstallModRequest, UninstallModResult, UninstallModService,
 };
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
@@ -20,6 +22,11 @@ const INSTALL_UNINSTALL_PROCESSING_PHASE: &str = "install.uninstall.processing";
 const INSTALL_UNINSTALL_COMPLETED_PHASE: &str = "install.uninstall.completed";
 const INSTALL_UNINSTALL_FAILED_PHASE: &str = "install.uninstall.failed";
 const INSTALL_UNINSTALL_FAILED_ERROR: &str = "install_uninstall_failed";
+const INSTALL_RECOVERY_PLANNING_PHASE: &str = "install.recovery.planning";
+const INSTALL_RECOVERY_PROCESSING_PHASE: &str = "install.recovery.processing";
+const INSTALL_RECOVERY_COMPLETED_PHASE: &str = "install.recovery.completed";
+const INSTALL_RECOVERY_FAILED_PHASE: &str = "install.recovery.failed";
+const INSTALL_RECOVERY_FAILED_ERROR: &str = "install_recovery_failed";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartInstallTaskRequest {
@@ -36,11 +43,23 @@ pub struct StartUninstallTaskRequest {
     pub profile_id: ProfileId,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartRecoveryActionTaskRequest {
+    pub game_id: GameId,
+    pub mod_id: ModId,
+    pub profile_id: ProfileId,
+    pub action_kind: InstallRecoveryActionKind,
+}
+
 pub struct InstallTaskService {
     task_manager: Arc<TaskManager>,
 }
 
 pub struct UninstallTaskService {
+    task_manager: Arc<TaskManager>,
+}
+
+pub struct RecoveryActionTaskService {
     task_manager: Arc<TaskManager>,
 }
 
@@ -51,6 +70,11 @@ pub struct InstallTaskRunError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UninstallTaskRunError {
+    pub events: Vec<TaskProgressEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryActionTaskRunError {
     pub events: Vec<TaskProgressEvent>,
 }
 
@@ -118,6 +142,26 @@ impl ModUninstaller for UninstallModService {
     }
 }
 
+pub trait InstallRecoveryActionExecutor: Send + Sync {
+    fn run_recovery_action(
+        &self,
+        request: StartRecoveryActionTaskRequest,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError>;
+}
+
+impl InstallRecoveryActionExecutor for InstallRecoveryActionService {
+    fn run_recovery_action(
+        &self,
+        request: StartRecoveryActionTaskRequest,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+        self.run(InstallRecoveryActionRequest {
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            action_kind: request.action_kind,
+        })
+    }
+}
+
 pub struct InstallTaskRunner {
     task_manager: Arc<TaskManager>,
     planner: Arc<dyn ImportedModInstallPlanner>,
@@ -130,6 +174,14 @@ pub struct InstallTaskRunner {
 pub struct UninstallTaskRunner {
     task_manager: Arc<TaskManager>,
     uninstaller: Arc<dyn ModUninstaller>,
+    audit_log: Arc<dyn AuditLogWriter>,
+    clock: Arc<dyn AppClock>,
+    write_locks: Arc<GameProfileWriteLockRegistry>,
+}
+
+pub struct RecoveryActionTaskRunner {
+    task_manager: Arc<TaskManager>,
+    action_executor: Arc<dyn InstallRecoveryActionExecutor>,
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
@@ -162,6 +214,25 @@ impl UninstallTaskService {
     pub fn start_uninstall_task(
         &self,
         _request: StartUninstallTaskRequest,
+    ) -> Result<TaskStarted, TaskManagerError> {
+        let task = self.task_manager.create_task(TaskKind::Install)?;
+
+        Ok(TaskStarted {
+            task_id: task.task_id,
+            kind: task.kind,
+            status: task.status,
+        })
+    }
+}
+
+impl RecoveryActionTaskService {
+    pub fn new(task_manager: Arc<TaskManager>) -> Self {
+        Self { task_manager }
+    }
+
+    pub fn start_recovery_action_task(
+        &self,
+        _request: StartRecoveryActionTaskRequest,
     ) -> Result<TaskStarted, TaskManagerError> {
         let task = self.task_manager.create_task(TaskKind::Install)?;
 
@@ -481,6 +552,171 @@ impl UninstallTaskRunner {
     }
 }
 
+impl RecoveryActionTaskRunner {
+    pub fn new(
+        task_manager: Arc<TaskManager>,
+        action_executor: Arc<dyn InstallRecoveryActionExecutor>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+    ) -> Self {
+        Self::with_write_locks(
+            task_manager,
+            action_executor,
+            audit_log,
+            clock,
+            Arc::new(GameProfileWriteLockRegistry::default()),
+        )
+    }
+
+    pub fn with_write_locks(
+        task_manager: Arc<TaskManager>,
+        action_executor: Arc<dyn InstallRecoveryActionExecutor>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+    ) -> Self {
+        Self {
+            task_manager,
+            action_executor,
+            audit_log,
+            clock,
+            write_locks,
+        }
+    }
+
+    pub fn run_recovery_action_task(
+        &self,
+        task_id: &str,
+        request: StartRecoveryActionTaskRequest,
+    ) -> Result<Vec<TaskProgressEvent>, RecoveryActionTaskRunError> {
+        if self.task_manager.start_task(task_id).is_err() {
+            return Err(RecoveryActionTaskRunError { events: Vec::new() });
+        }
+
+        let mut events = vec![running_event(task_id, INSTALL_RECOVERY_PLANNING_PHASE)];
+        let write_lock = self
+            .write_locks
+            .lock_for(&request.game_id, &request.profile_id);
+        let action_result = {
+            let _guard = write_lock.lock().map_err(|_| {
+                self.fail_recovery_action_with_audit(
+                    task_id,
+                    &request,
+                    events.clone(),
+                    "lock",
+                    None,
+                )
+            })?;
+            if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                return Ok(events);
+            }
+            events.push(running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE));
+            self.action_executor.run_recovery_action(request.clone())
+        };
+
+        let result = match action_result {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(self.fail_recovery_action_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    recovery_action_failed_phase(&error),
+                    None,
+                ))
+            }
+        };
+
+        self.record_recovery_action_audit(task_id, &request, "success", Some(&result));
+        match self.task_manager.complete_task(task_id) {
+            Ok(task) => {
+                events.push(TaskProgressEvent::new(
+                    task.task_id,
+                    task.kind,
+                    task.status,
+                    INSTALL_RECOVERY_COMPLETED_PHASE,
+                ));
+                Ok(events)
+            }
+            Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
+                Ok(events)
+            }
+            Err(_) => Err(self.fail_recovery_action_with_audit(
+                task_id,
+                &request,
+                events,
+                "complete",
+                Some(&result),
+            )),
+        }
+    }
+
+    fn fail_recovery_action_with_audit(
+        &self,
+        task_id: &str,
+        request: &StartRecoveryActionTaskRequest,
+        mut events: Vec<TaskProgressEvent>,
+        phase: &str,
+        result: Option<&InstallRecoveryActionResult>,
+    ) -> RecoveryActionTaskRunError {
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            return RecoveryActionTaskRunError { events };
+        }
+
+        let _ = self.task_manager.fail_task(task_id);
+        events.push(failed_recovery_action_event(task_id, phase));
+        self.record_recovery_action_audit(task_id, request, "failure", result);
+        RecoveryActionTaskRunError { events }
+    }
+
+    fn record_recovery_action_audit(
+        &self,
+        task_id: &str,
+        request: &StartRecoveryActionTaskRequest,
+        result: &str,
+        action_result: Option<&InstallRecoveryActionResult>,
+    ) {
+        let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
+        let mut fields = BTreeMap::new();
+        fields.insert("task_id".to_owned(), task_id.to_owned());
+        fields.insert("game_id".to_owned(), request.game_id.as_str().to_owned());
+        fields.insert("mod_id".to_owned(), request.mod_id.as_str().to_owned());
+        fields.insert(
+            "profile_id".to_owned(),
+            request.profile_id.as_str().to_owned(),
+        );
+        fields.insert(
+            "remove_file_count".to_owned(),
+            action_result
+                .map(|result| result.remove_file_count)
+                .unwrap_or_default()
+                .to_string(),
+        );
+        fields.insert(
+            "restore_file_count".to_owned(),
+            action_result
+                .map(|result| result.restore_file_count)
+                .unwrap_or_default()
+                .to_string(),
+        );
+        fields.insert(
+            "backup_count".to_owned(),
+            action_result
+                .map(|result| result.backup_count)
+                .unwrap_or_default()
+                .to_string(),
+        );
+
+        let _ = self.audit_log.record(AuditLogEvent {
+            timestamp_unix_millis,
+            category: "install".to_owned(),
+            operation: recovery_action_operation(request.action_kind).to_owned(),
+            result: result.to_owned(),
+            fields,
+        });
+    }
+}
+
 #[derive(Default)]
 pub struct GameProfileWriteLockRegistry {
     locks: Mutex<HashMap<GameProfileLockKey, GameProfileLock>>,
@@ -528,6 +764,34 @@ fn failed_uninstall_event(task_id: &str, failed_phase: &str) -> TaskProgressEven
     );
     event.error = Some(format!("{INSTALL_UNINSTALL_FAILED_ERROR}:{failed_phase}"));
     event
+}
+
+fn failed_recovery_action_event(task_id: &str, failed_phase: &str) -> TaskProgressEvent {
+    let mut event = TaskProgressEvent::new(
+        task_id.to_owned(),
+        TaskKind::Install,
+        TaskStatus::Failed,
+        INSTALL_RECOVERY_FAILED_PHASE,
+    );
+    event.error = Some(format!("{INSTALL_RECOVERY_FAILED_ERROR}:{failed_phase}"));
+    event
+}
+
+fn recovery_action_operation(action_kind: InstallRecoveryActionKind) -> &'static str {
+    match action_kind {
+        InstallRecoveryActionKind::RollbackInstall => "rollback_install",
+    }
+}
+
+fn recovery_action_failed_phase(error: &InstallRecoveryActionError) -> &'static str {
+    match error {
+        InstallRecoveryActionError::ActionUnavailable
+        | InstallRecoveryActionError::Blocked { .. } => "planning",
+        InstallRecoveryActionError::RemoveFailed
+        | InstallRecoveryActionError::RestoreFailed
+        | InstallRecoveryActionError::RecoveryRecordSaveFailed
+        | InstallRecoveryActionError::RollbackFailed { .. } => "processing",
+    }
 }
 
 #[cfg(test)]
@@ -583,6 +847,31 @@ mod tests {
                 profile_id: ProfileId::new("default-profile"),
             })
             .expect("uninstall task starts");
+
+        assert!(task.task_id.starts_with("install-"));
+        assert!(!task.task_id.contains("visible-mod-id"));
+        assert!(!task.task_id.contains("default-profile"));
+        assert_eq!(task.kind, crate::TaskKind::Install);
+        assert_eq!(task.status, crate::TaskStatus::Queued);
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Queued)
+        );
+    }
+
+    #[test]
+    fn start_recovery_action_task_returns_queued_install_task_without_leaking_inputs() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let service = RecoveryActionTaskService::new(Arc::clone(&task_manager));
+
+        let task = service
+            .start_recovery_action_task(StartRecoveryActionTaskRequest {
+                game_id: GameId::mhw(),
+                mod_id: ModId::new("visible-mod-id"),
+                profile_id: ProfileId::new("default-profile"),
+                action_kind: crate::InstallRecoveryActionKind::RollbackInstall,
+            })
+            .expect("recovery action task starts");
 
         assert!(task.task_id.starts_with("install-"));
         assert!(!task.task_id.contains("visible-mod-id"));
@@ -725,6 +1014,136 @@ mod tests {
     }
 
     #[test]
+    fn run_recovery_action_task_executes_action_and_records_sanitized_success_audit() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let action_executor = Arc::new(RecordingRecoveryActionExecutor::new(
+            crate::InstallRecoveryActionResult {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+                action_kind: crate::InstallRecoveryActionKind::RollbackInstall,
+                remove_file_count: 1,
+                restore_file_count: 1,
+                backup_count: 1,
+            },
+        ));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = RecoveryActionTaskRunner::new(
+            Arc::clone(&task_manager),
+            action_executor.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+        let request = sample_recovery_action_request();
+
+        let events = runner
+            .run_recovery_action_task(&task.task_id, request.clone())
+            .expect("recovery action task succeeds");
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "install.recovery.planning",
+                "install.recovery.processing",
+                "install.recovery.completed"
+            ]
+        );
+        assert!(events.iter().all(|event| event.task_id == task.task_id));
+        assert!(events
+            .iter()
+            .all(|event| event.kind == crate::TaskKind::Install));
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+        assert_eq!(action_executor.take_requests(), vec![request.clone()]);
+
+        let event = audit_log.take_event().expect("audit event recorded");
+        assert_eq!(event.timestamp_unix_millis, 42);
+        assert_eq!(event.category, "install");
+        assert_eq!(event.operation, "rollback_install");
+        assert_eq!(event.result, "success");
+        assert_eq!(event.fields["task_id"], task.task_id);
+        assert_eq!(event.fields["game_id"], "mhw");
+        assert_eq!(event.fields["mod_id"], "mod-a");
+        assert_eq!(event.fields["profile_id"], "default");
+        assert_eq!(event.fields["remove_file_count"], "1");
+        assert_eq!(event.fields["restore_file_count"], "1");
+        assert_eq!(event.fields["backup_count"], "1");
+        let serialized = serde_json::to_string(&event).expect("serialize audit event");
+        assert!(!serialized.contains("nativePC/models/player.mod3"));
+        assert!(!serialized.contains("backup-original"));
+        assert!(!serialized.contains("C:/"));
+        assert!(!serialized.contains('\\'));
+    }
+
+    #[test]
+    fn run_recovery_action_task_reports_blocked_failure_without_paths() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let action_executor = Arc::new(FailingRecoveryActionExecutor {
+            error: crate::InstallRecoveryActionError::Blocked {
+                reasons: vec![crate::InstallRecoveryActionBlockReasonSummary {
+                    reason: crate::InstallRecoveryActionBlockReason::TargetChanged,
+                    count: 1,
+                }],
+            },
+        });
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = RecoveryActionTaskRunner::new(
+            Arc::clone(&task_manager),
+            action_executor,
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        let error = runner
+            .run_recovery_action_task(&task.task_id, sample_recovery_action_request())
+            .expect_err("blocked recovery action should fail the task");
+
+        assert_eq!(
+            error
+                .events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "install.recovery.planning",
+                "install.recovery.processing",
+                "install.recovery.failed"
+            ]
+        );
+        let failed = error.events.last().expect("failed event");
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("install_recovery_failed:planning")
+        );
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Failed)
+        );
+
+        let event = audit_log.take_event().expect("failure audit recorded");
+        assert_eq!(event.operation, "rollback_install");
+        assert_eq!(event.result, "failure");
+        assert_eq!(event.fields["remove_file_count"], "0");
+        assert_eq!(event.fields["restore_file_count"], "0");
+        assert_eq!(event.fields["backup_count"], "0");
+        let serialized = serde_json::to_string(&event).expect("serialize audit event");
+        assert!(!serialized.contains("nativePC/models/player.mod3"));
+        assert!(!serialized.contains("backup-original"));
+        assert!(!serialized.contains("C:/"));
+        assert!(!serialized.contains('\\'));
+    }
+
+    #[test]
     fn install_and_uninstall_share_game_profile_write_lock_when_configured() {
         let task_manager = Arc::new(crate::TaskManager::new());
         let install_task = task_manager
@@ -810,6 +1229,92 @@ mod tests {
         assert!(uninstall_handle
             .join()
             .expect("uninstall thread should not panic")
+            .is_ok());
+    }
+
+    #[test]
+    fn install_and_recovery_action_share_game_profile_write_lock_when_configured() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let install_task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("install task can be created");
+        let recovery_task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("recovery action task can be created");
+        let write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let (commit_started_tx, commit_started_rx) = mpsc::channel();
+        let (release_commit_tx, release_commit_rx) = mpsc::channel();
+        let (recovery_started_tx, recovery_started_rx) = mpsc::channel();
+
+        let install_runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            Arc::new(BlockingInstallCommitter {
+                manifest: sample_manifest(),
+                started: Mutex::new(Some(commit_started_tx)),
+                release: Mutex::new(release_commit_rx),
+            }),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::clone(&write_locks),
+        );
+        let recovery_runner = RecoveryActionTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(NotifyingRecoveryActionExecutor {
+                result: crate::InstallRecoveryActionResult {
+                    profile_id: ProfileId::new("default"),
+                    mod_id: ModId::new("mod-a"),
+                    action_kind: crate::InstallRecoveryActionKind::RollbackInstall,
+                    remove_file_count: 1,
+                    restore_file_count: 1,
+                    backup_count: 1,
+                },
+                started: Mutex::new(Some(recovery_started_tx)),
+            }),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            write_locks,
+        );
+
+        let install_task_id = install_task.task_id.clone();
+        let install_handle = thread::spawn(move || {
+            install_runner.run_install_task(&install_task_id, sample_request())
+        });
+        commit_started_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("install commit should enter write section");
+
+        let recovery_task_id = recovery_task.task_id.clone();
+        let recovery_handle = thread::spawn(move || {
+            recovery_runner
+                .run_recovery_action_task(&recovery_task_id, sample_recovery_action_request())
+        });
+
+        wait_for_status(
+            &task_manager,
+            &recovery_task.task_id,
+            crate::TaskStatus::Running,
+        );
+        assert!(
+            recovery_started_rx
+                .recv_timeout(Duration::from_millis(100))
+                .is_err(),
+            "recovery action must wait while install commit holds the same game/profile write lock"
+        );
+
+        release_commit_tx
+            .send(())
+            .expect("install commit can be released");
+        recovery_started_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("recovery action should enter after install releases write lock");
+        assert!(install_handle
+            .join()
+            .expect("install thread should not panic")
+            .is_ok());
+        assert!(recovery_handle
+            .join()
+            .expect("recovery action thread should not panic")
             .is_ok());
     }
 
@@ -938,6 +1443,15 @@ mod tests {
             mod_id: ModId::new("mod-a"),
             profile_id: ProfileId::new("default"),
             layer: FileLayer::new("base", 0),
+        }
+    }
+
+    fn sample_recovery_action_request() -> StartRecoveryActionTaskRequest {
+        StartRecoveryActionTaskRequest {
+            game_id: GameId::mhw(),
+            mod_id: ModId::new("mod-a"),
+            profile_id: ProfileId::new("default"),
+            action_kind: crate::InstallRecoveryActionKind::RollbackInstall,
         }
     }
 
@@ -1133,6 +1647,66 @@ mod tests {
         ) -> Result<UninstallModResult, UninstallModError> {
             if let Some(started) = self.started.lock().expect("started").take() {
                 started.send(()).expect("uninstall start can be signalled");
+            }
+            Ok(self.result.clone())
+        }
+    }
+
+    struct RecordingRecoveryActionExecutor {
+        result: crate::InstallRecoveryActionResult,
+        requests: Mutex<Vec<StartRecoveryActionTaskRequest>>,
+    }
+
+    impl RecordingRecoveryActionExecutor {
+        fn new(result: crate::InstallRecoveryActionResult) -> Self {
+            Self {
+                result,
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn take_requests(&self) -> Vec<StartRecoveryActionTaskRequest> {
+            std::mem::take(&mut *self.requests.lock().expect("requests"))
+        }
+    }
+
+    impl InstallRecoveryActionExecutor for RecordingRecoveryActionExecutor {
+        fn run_recovery_action(
+            &self,
+            request: StartRecoveryActionTaskRequest,
+        ) -> Result<crate::InstallRecoveryActionResult, crate::InstallRecoveryActionError> {
+            self.requests.lock().expect("requests").push(request);
+            Ok(self.result.clone())
+        }
+    }
+
+    struct FailingRecoveryActionExecutor {
+        error: crate::InstallRecoveryActionError,
+    }
+
+    impl InstallRecoveryActionExecutor for FailingRecoveryActionExecutor {
+        fn run_recovery_action(
+            &self,
+            _request: StartRecoveryActionTaskRequest,
+        ) -> Result<crate::InstallRecoveryActionResult, crate::InstallRecoveryActionError> {
+            Err(self.error.clone())
+        }
+    }
+
+    struct NotifyingRecoveryActionExecutor {
+        result: crate::InstallRecoveryActionResult,
+        started: Mutex<Option<mpsc::Sender<()>>>,
+    }
+
+    impl InstallRecoveryActionExecutor for NotifyingRecoveryActionExecutor {
+        fn run_recovery_action(
+            &self,
+            _request: StartRecoveryActionTaskRequest,
+        ) -> Result<crate::InstallRecoveryActionResult, crate::InstallRecoveryActionError> {
+            if let Some(started) = self.started.lock().expect("started").take() {
+                started
+                    .send(())
+                    .expect("recovery action start can be signalled");
             }
             Ok(self.result.clone())
         }
