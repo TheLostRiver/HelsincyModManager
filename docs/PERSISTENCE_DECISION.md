@@ -87,8 +87,8 @@
 
 | 库 | 版本 | 用途 |
 |---|---|---|
-| `rusqlite` | `0.35` + `features = ["bundled"]` | SQLite 操作，内嵌 SQLite 库 |
-| `rusqlite_migration` | `2.5` | 基于 `PRAGMA user_version` 的前向迁移 |
+| `rusqlite` | `0.40` + `features = ["bundled"]` | SQLite 操作，内嵌 SQLite 库 |
+| `rusqlite_migration` | `2.6` | 基于 `PRAGMA user_version` 的前向迁移 |
 
 ### 排除
 
@@ -104,6 +104,7 @@
 - **`bundled` feature**：静态链接 SQLite，零系统依赖，跨平台发布无额外配置
 - **同步 API**：匹配现有 trait 签名（`&self -> Result<T>`），无需 `spawn_blocking` 包装
 - **`rusqlite_migration`**：利用 SQLite 原生 `PRAGMA user_version`（文件头固定偏移），无需额外迁移跟踪表
+- **版本对齐**：`rusqlite_migration 2.6` 依赖 `rusqlite 0.40`，两者版本必须配套
 
 ---
 
@@ -135,7 +136,7 @@ pub fn open_database(path: &Path) -> Result<Connection> {
 
 ### 数据库文件位置
 
-```
+```text
 {app_data_dir}/hmm.db
 ```
 
@@ -153,7 +154,7 @@ pub fn open_database(path: &Path) -> Result<Connection> {
 
 ### 层级职责不变
 
-```
+```text
 hmm-core   — 纯领域模型，零外部依赖，不知道 SQLite
 hmm-ports  — 新增 trait（ModMetadataRepository, CategoryRepository, ...）
 hmm-app    — 消费 trait，编排业务逻辑
@@ -173,7 +174,7 @@ hmm-tauri  — AppState 接入 + Tauri commands
 
 ### 模块结构
 
-```
+```text
 src-tauri/crates/hmm-infra/src/
   sqlite/
     mod.rs                      — open_database() + 迁移入口
