@@ -668,6 +668,182 @@
   color: var(--color-success-text);
 }
 
+.recovery-center__mod-rollback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 11px;
+  color: var(--color-warning-text);
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--color-warning-bg);
+  border: 1px solid color-mix(in srgb, var(--color-warning-dot) 30%, var(--color-border-muted));
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.recovery-center__mod-rollback:not(:disabled):hover {
+  background: color-mix(in srgb, var(--color-warning-bg) 80%, var(--color-warning-dot));
+  border-color: var(--color-warning-dot);
+  transform: translateY(-1px);
+}
+
+.recovery-center__mod-rollback:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.recovery-center__mod-rollback:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.recovery-center__rollback-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 13px;
+  align-items: start;
+  min-width: 0;
+  padding: 18px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid color-mix(in srgb, var(--color-warning-dot) 38%, var(--color-border-muted));
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.recovery-center__rollback-panel.is-completed {
+  border-color: color-mix(in srgb, var(--color-success-dot) 38%, var(--color-border-muted));
+}
+
+.recovery-center__rollback-panel.is-failed {
+  border-color: color-mix(in srgb, var(--color-error-dot, var(--color-warning-dot)) 38%, var(--color-border-muted));
+}
+
+.recovery-center__rollback-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-inner);
+}
+
+.recovery-center__rollback-panel.is-completed .recovery-center__rollback-icon {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.recovery-center__rollback-panel.is-failed .recovery-center__rollback-icon {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.recovery-center__rollback-panel .recovery-center__rollback-icon svg.is-spinning {
+  animation: recovery-center-spin 0.9s linear infinite;
+}
+
+.recovery-center__rollback-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.recovery-center__rollback-body h3 {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.recovery-center__rollback-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.recovery-center__rollback-stats span {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-pill);
+}
+
+.recovery-center__rollback-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.recovery-center__rollback-blocks span {
+  display: inline-grid;
+  gap: 2px;
+  padding: 5px 8px;
+  color: var(--color-warning-text);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-pill);
+  overflow-wrap: anywhere;
+}
+
+.recovery-center__rollback-blocks strong {
+  font-size: 11px;
+}
+
+.recovery-center__rollback-blocks small {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.82;
+}
+
+.recovery-center__rollback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recovery-center__rollback-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+}
+
+.recovery-center__rollback-actions button.is-primary {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-color: color-mix(in srgb, var(--color-warning-dot) 34%, var(--color-border-muted));
+}
+
+.recovery-center__rollback-actions button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 @keyframes recovery-center-spin {
   to {
     transform: rotate(360deg);

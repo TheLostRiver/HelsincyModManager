@@ -8,6 +8,7 @@ export type RecoveryCenterManualBusyState = {
 export type RecoveryCenterManualActionHandlers = {
   onRefresh: () => void;
   onExportDiagnostics: () => void;
+  onScrollToModList: () => void;
 };
 
 export function isManualActionDisabled(
@@ -34,11 +35,15 @@ export function resolveManualActionHandler(
     return handlers.onExportDiagnostics;
   }
 
+  if (action.id === "controlled_recovery") {
+    return handlers.onScrollToModList;
+  }
+
   return undefined;
 }
 
 function isSupportedManualAction(action: RecoveryCenterManualAction) {
-  return action.id === "retry_scan" || action.id === "export_diagnostics";
+  return action.id === "retry_scan" || action.id === "export_diagnostics" || action.id === "controlled_recovery";
 }
 
 function isManualActionBusy(action: RecoveryCenterManualAction, busyState: RecoveryCenterManualBusyState) {
