@@ -10,13 +10,14 @@ use hmm_app::{
     InstallRecoveryScanService, InstallRecoverySummary, InstallTaskRunner, InstallTaskService,
     LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
     ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
-    ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
-    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
-    RecoveryActionTaskRunner, RecoveryActionTaskService, StartRecoveryActionTaskRequest,
-    StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
-    UninstallModService, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    ModMetadataService, ModUninstaller, PreviewImageCandidateListService,
+    PreviewImageCandidateSelectionService, PreviewImageDetailService,
+    PreviewImageDiagnosticsExportService, PreviewImageService, RecoveryActionTaskRunner,
+    RecoveryActionTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::MonsterHunterWorldAdapter;
@@ -27,8 +28,8 @@ use hmm_infra::{
     JsonGameConfigRepository, JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
     JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SteamGameDiscoveryService, SystemClock,
-    SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
+    SandboxPackagePreviewScanner, SqliteModMetadataRepository, SteamGameDiscoveryService,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
 use hmm_ports::{
@@ -64,6 +65,7 @@ pub struct AppState {
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
+    pub mod_metadata: Arc<ModMetadataService>,
     pub task_manager: Arc<TaskManager>,
     pub(crate) db: Arc<Mutex<rusqlite::Connection>>,
 }
@@ -83,6 +85,8 @@ impl AppState {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
+        let mod_metadata_repository =
+            Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
@@ -134,9 +138,10 @@ impl AppState {
                 Box::new(SandboxModPackageMetadataAnalyzer),
             ),
         ));
-        let mod_library = Arc::new(ModLibraryService::new(Arc::clone(
-            &mod_import_result_repository,
-        )));
+        let mod_library = Arc::new(ModLibraryService::new(
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_metadata_repository) as _,
+        ));
         let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(
             &mod_import_result_repository,
         )));
@@ -307,6 +312,10 @@ impl AppState {
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,
+            mod_metadata: Arc::new(ModMetadataService::new(
+                mod_metadata_repository,
+                Arc::new(SystemClock),
+            )),
             task_manager,
             db,
         })

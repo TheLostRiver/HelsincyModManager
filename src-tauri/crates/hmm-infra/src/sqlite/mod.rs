@@ -1,4 +1,7 @@
 mod migrations;
+mod mod_metadata_repository;
+
+pub use mod_metadata_repository::SqliteModMetadataRepository;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;

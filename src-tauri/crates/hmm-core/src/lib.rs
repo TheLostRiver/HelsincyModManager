@@ -1,5 +1,6 @@
 mod game;
 mod install;
+mod mod_metadata;
 mod preview_image;
 
 pub use game::{
@@ -12,6 +13,7 @@ pub use install::{
     InstallRecoveryRecordStatus, InstallRecoveryRecordTransitionError, InstallTargetPath,
     InstallTargetPathError, InstalledFileSummary, ModId, PackageFileId, ProfileId,
 };
+pub use mod_metadata::ModMetadataOverlay;
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,
     PreviewImageRejectionReason, PreviewImageStatus,

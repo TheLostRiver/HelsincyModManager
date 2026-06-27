@@ -5,6 +5,7 @@ mod diagnostics_environment;
 mod game_setup;
 mod install;
 mod mod_import;
+mod mod_metadata;
 mod preview_image;
 mod text_log;
 
@@ -33,6 +34,7 @@ pub use mod_import::{
     ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
     StoredModImportAnalysis, StoredModPackageMetadata,
 };
+pub use mod_metadata::ModMetadataRepository;
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,
