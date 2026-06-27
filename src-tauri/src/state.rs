@@ -38,7 +38,7 @@ use hmm_ports::{
 };
 use std::fmt::Display;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
 pub struct AppState {
@@ -65,6 +65,7 @@ pub struct AppState {
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
     pub task_manager: Arc<TaskManager>,
+    pub(crate) db: Arc<Mutex<rusqlite::Connection>>,
 }
 
 impl AppState {
@@ -77,6 +78,11 @@ impl AppState {
         let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
         let mod_import_sandbox_root = app_data_dir.join("mod-import").join("sandboxes");
+
+        let db_path = app_data_dir.join("hmm.db");
+        let db = hmm_infra::open_database(&db_path)
+            .map_err(|error| format!("failed to open database: {error}"))?;
+        let db = Arc::new(Mutex::new(db));
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
@@ -302,6 +308,7 @@ impl AppState {
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             app_settings,
             task_manager,
+            db,
         })
     }
 }

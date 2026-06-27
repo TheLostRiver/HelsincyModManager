@@ -8,6 +8,7 @@ mod install_commit;
 mod mod_import;
 mod mod_import_install_files;
 mod preview_image;
+pub mod sqlite;
 pub mod steam_discovery;
 mod text_log;
 
@@ -37,6 +38,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use steam_discovery::PlatformSteamRootProvider;
+pub use sqlite::open_database;
 pub use text_log::FileSystemTextLogReader;
 
 pub struct SystemClock;
