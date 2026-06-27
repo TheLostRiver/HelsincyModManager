@@ -143,6 +143,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 替换已有托管目标时，manifest entry 仍继承旧条目的长期 `backup_ref` 语义；但如果写入窗口后失败且 rollback 失败，留下的 `rollback_required` recovery record 会保留本次提交前创建的 pending backup ref，用于后续受控回滚恢复到“安装前一刻”的文件状态。若 `committing` 已保存后才更新某个 entry 的 pending backup，active recovery record 会立即重新持久化，避免崩溃恢复读取到旧 backup 语义。manifest 保存成功后，`completed` recovery record 会重新同步为 manifest entry 的长期 `backup_ref`，避免 completed 状态指向随后会被 best-effort 清理的 pending backup。
 - `scan_install_recovery` 已只读消费 durable recovery record：`committing` 或 `rollback_required` record 会对外返回 `rollback_required`，`planned`、`completed` 和 `rolled_back` 不会被提升为待回滚状态；空 `modIds` 全量扫描也会包含只有 recovery record、尚无 manifest 的半完成安装。
 - `preview_recovery_action` 已提供只读恢复动作预览：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁读取 durable recovery record、当前目标摘要和 backup 可读性，并只返回 `available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code。该能力不执行删除、恢复、回滚、写 manifest、写 recovery record、发送 task phase 或写 Audit Log。
+- `start_recovery_action_task` 已提供后端受控回滚任务入口：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一 `gameId/profileId` 写锁重新验证 durable recovery record、目标摘要和 backup 可读性，随后删除新增文件或从 backup 恢复覆盖文件，并将 recovery record 标记为 `rolled_back`。该能力已写最小 Audit Log；恢复中心写入型按钮尚未启用。
 
 ### Tauri command 与任务入口
 
@@ -163,6 +164,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `get_install_manifest_status`
 - `scan_install_recovery`
 - `preview_recovery_action`
+- `start_recovery_action_task`
 
 `start_install_task` 只接收：
 
@@ -191,7 +193,14 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `modId`
 - `actionKind`
 
-安装和卸载任务已接入 `TaskKind::Install`。安装 commit 阶段、卸载删除/恢复阶段均按 `gameId/profileId` 写锁串行。plan build、sandbox 文件扫描和只读分析不持有写锁。
+`start_recovery_action_task` 只接收：
+
+- `gameId`
+- `profileId`
+- `modId`
+- `actionKind`
+
+安装、卸载和恢复动作任务已接入 `TaskKind::Install`。安装 commit 阶段、卸载删除/恢复阶段、受控回滚执行阶段均按 `gameId/profileId` 写锁串行。plan build、sandbox 文件扫描和只读分析不持有写锁。
 
 当前安装任务阶段：
 
@@ -205,12 +214,17 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `install.uninstall.processing`
 - `install.uninstall.completed`
 - `install.uninstall.failed`
+- `install.recovery.queued`
+- `install.recovery.planning`
+- `install.recovery.processing`
+- `install.recovery.completed`
+- `install.recovery.failed`
 
 当前最小卸载能力基于 manifest entries、`installed_file` 摘要和 backup ref。自动卸载只处理指定 `modId` 的 manifest entries；缺少 `installed_file`、当前目标文件 size/SHA-256 与 manifest 不匹配、目标文件缺失或 backup 缺失时会阻断，不根据当前 Mod 包内容猜测。
 
 当前只读恢复扫描能力基于 durable recovery record、manifest entries、`installed_file` 摘要、当前目标文件摘要和 backup 是否存在。`scan_install_recovery` 会按 `modId` 返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed` 摘要，以及不含路径或 backup ref 的聚合 issue code；`rollback_required` 只能来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。当 `modIds` 为空时，后端会扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装，作为 Dashboard 入口级恢复健康摘要、App Frame 全局告警和独立恢复中心入口的基础。扫描会复用安装/卸载同一份 `gameId/profileId` 写锁，避免在 commit / uninstall 写入窗口内读取半完成状态。它只做检测，不自动删除、恢复、回滚或写 manifest。
 
-当前只读恢复动作预览能力基于 durable recovery record、当前目标文件摘要和 backup 可读性。`preview_recovery_action` 当前仅支持 `rollback_install`，会在同一 `gameId/profileId` 写锁下重新验证候选 entry；无 recovery record、状态不在 `committing` / `rollback_required`、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并仅暴露稳定 reason code 与聚合计数。它不自动删除、恢复、回滚、写 manifest、写 recovery record、写 backup、发送 task phase 或写 Audit Log；真正的受控回滚任务仍需后续切片。
+当前恢复动作预览与执行能力基于 durable recovery record、当前目标文件摘要和 backup 可读性。`preview_recovery_action` 当前仅支持只读预览 `rollback_install`，会在同一 `gameId/profileId` 写锁下重新验证候选 entry；无 recovery record、状态不在 `committing` / `rollback_required`、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并仅暴露稳定 reason code 与聚合计数。`start_recovery_action_task` 当前仅支持执行 `rollback_install`，会在持锁区重新验证上述条件后删除新增文件或从 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。它不写 rich manifest，不暴露 target path、backup ref/root、manifest root/path、sandbox/cache 路径或第三方 Mod 内容；恢复中心写入型按钮仍需后续切片启用。
 
 任务事件和 Audit Log 不应携带完整本地路径、用户名、Steam ID、sandbox/cache 路径、真实 Mod 包内容或 manifest 正文。
 
@@ -235,6 +249,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - `startInstallTask`
 - `startUninstallTask`
 - `previewRecoveryAction`
+- `startRecoveryActionTask`
 - 最小安装计划预览面板。
 - 从 Mod 库触发最小安装任务。
 - 按 `taskId` 订阅 `hmm://task-progress` 安装事件。
@@ -253,16 +268,17 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - 从 Mod 库触发最小卸载确认流程，并通过 `start_uninstall_task` 启动后端任务。
 - 展示 `install.uninstall.queued`、`install.uninstall.processing`、`install.uninstall.completed` 和 `install.uninstall.failed`。
 - 卸载完成后复用 manifest 状态摘要查询刷新安装事实。
-- `previewRecoveryAction` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并只接收 action kind、`available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code；当前尚未接恢复中心按钮或写入型恢复 UI。
+- `previewRecoveryAction` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并只接收 action kind、`available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code。
+- `startRecoveryActionTask` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并返回标准 `TaskStartedDto`；当前尚未接恢复中心按钮或写入型恢复 UI。
 
-前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态、manifest 查询摘要、只读恢复扫描摘要和只读恢复动作预览摘要，不应推断 MHW 路径规则或自行拼接安装/卸载/恢复路径。安装/卸载/恢复扫描/动作预览 UI 只提交 `gameId`、`modId`、`profileId`、`modIds` 和 `actionKind` 等短 id，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询和只读 recovery scan 恢复，而不是依赖内存任务状态或 mock 数据。
+前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态、manifest 查询摘要、只读恢复扫描摘要和只读恢复动作预览摘要，不应推断 MHW 路径规则或自行拼接安装/卸载/恢复路径。安装/卸载/恢复扫描/动作预览/恢复动作任务 UI 只提交 `gameId`、`modId`、`profileId`、`modIds` 和 `actionKind` 等短 id，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询和只读 recovery scan 恢复，而不是依赖内存任务状态或 mock 数据。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
-- 恢复扫描与动作预览：只读 `scan_install_recovery` 摘要已能检测 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，并会补入只有 durable recovery record 的半完成安装；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局只读告警，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。`preview_recovery_action` 已能只读预览 `rollback_install` 是否可执行，并返回聚合计数和稳定阻断 reason code；但自动回滚/恢复执行、真正的受控恢复/回滚任务和恢复中心写入型按钮尚未实现。
+- 恢复中心写入型工作流：只读 `scan_install_recovery` 摘要已能检测 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，并会补入只有 durable recovery record 的半完成安装；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局只读告警，独立恢复中心已提供只读入口、逐 Mod 安全摘要、只读 rich repair summary、完整支持诊断包导出联动和只读人工处理决策面板。`preview_recovery_action` 已能只读预览 `rollback_install` 是否可执行，`start_recovery_action_task` 已能后端执行受控 `rollback_install`；但恢复中心写入型按钮、任务 UI 编排和操作完成后的恢复中心刷新仍未实现。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
@@ -283,7 +299,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 已先补 durable recovery record 的领域模型、port、JSON 仓储、安装 commit 写入、只读扫描消费和只读动作预览；下一步应补受控回滚任务。已落地的 App Frame 全局告警、恢复中心人工处理面板和动作预览仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
+1. Crash/recovery 后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 已补 durable recovery record 的领域模型、port、JSON 仓储、安装 commit 写入、只读扫描消费、只读动作预览和后端受控回滚任务；下一步应补恢复中心写入型 UI 启用和操作完成后的重新扫描编排。已落地的 App Frame 全局告警、恢复中心人工处理面板和动作预览仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
 2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
 3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。

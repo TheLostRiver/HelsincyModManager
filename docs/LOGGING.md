@@ -228,6 +228,7 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - `Frontend`：展示用户可读信息，不直接拼接底层文件系统日志。
 
 当前已落地的最小 Audit Log 能力：
+- 安装、卸载和后端受控回滚任务会写入最小安装审计事件。`rollback_install` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、backup ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - `export_preview_image_diagnostics` 成功写入受控预览图诊断 zip 后，会在 app data 下的 `logs/audit/audit-YYYY-MM-DD.log` 写入 JSONL 审计事件，日期来自事件时间戳；若诊断 zip 写入失败，也会先写入失败审计事件。
 - 该事件只记录操作名、类别、结果、导出文件名/ID、大小、稳定错误分类和聚合计数，不记录完整本地路径、原始错误文本、`thumbnailUrl`、`contentHash`、sandbox/cache 路径、README 全文、原始 Mod 包内容或原始日志。
 - `hmm-ports` 已提供最小 `TextLogReader` port，`hmm-infra` 可从 app data 下的 `logs/app/app-YYYY-MM-DD.log` 与 `logs/tasks/task-<task_id>.log` 读取最近 N 行已校验文本；读取时会跳过不符合白名单文件名的日志、空行、包含控制字符或敏感片段的行，只返回安全文件名和文本行。该读取能力已通过 `export_support_diagnostics` 的 app service/command 链路受控使用。

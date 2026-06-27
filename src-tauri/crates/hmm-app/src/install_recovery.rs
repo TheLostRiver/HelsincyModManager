@@ -89,6 +89,13 @@ pub struct InstallRecoveryActionPreviewRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallRecoveryActionRequest {
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub action_kind: InstallRecoveryActionKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallRecoveryActionPreview {
     pub profile_id: ProfileId,
     pub mod_id: ModId,
@@ -115,6 +122,43 @@ pub enum InstallRecoveryActionPreviewError {
     GameInstanceUnavailable,
     #[error("install recovery action preview failed")]
     PreviewUnavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallRecoveryActionResult {
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub action_kind: InstallRecoveryActionKind,
+    pub remove_file_count: usize,
+    pub restore_file_count: usize,
+    pub backup_count: usize,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InstallRecoveryActionError {
+    #[error("install recovery action failed")]
+    ActionUnavailable,
+    #[error("install recovery action is blocked")]
+    Blocked {
+        reasons: Vec<InstallRecoveryActionBlockReasonSummary>,
+    },
+    #[error("failed to remove installed file during recovery rollback")]
+    RemoveFailed,
+    #[error("failed to restore backup during recovery rollback")]
+    RestoreFailed,
+    #[error("failed to save recovery record after rollback")]
+    RecoveryRecordSaveFailed,
+    #[error("failed to rollback recovery action after {failed_phase:?}")]
+    RollbackFailed {
+        failed_phase: InstallRecoveryActionPhase,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallRecoveryActionPhase {
+    Remove,
+    Restore,
+    RecoveryRecordSave,
 }
 
 #[derive(Clone)]
@@ -337,6 +381,24 @@ pub struct InstallRecoveryActionPreviewService {
     recovery_record_repository: Arc<dyn InstallRecoveryRecordRepository>,
 }
 
+#[derive(Clone)]
+pub struct InstallRecoveryActionService {
+    game_files: Arc<dyn InstallGameFileSystem>,
+    backup_store: Arc<dyn InstallBackupStore>,
+    recovery_record_repository: Arc<dyn InstallRecoveryRecordRepository>,
+}
+
+struct PreparedRecoveryAction {
+    target_path: hmm_core::InstallTargetPath,
+    current_bytes: Vec<u8>,
+    backup_bytes: Option<Vec<u8>>,
+}
+
+struct AppliedRecoveryAction {
+    target_path: hmm_core::InstallTargetPath,
+    previous_bytes: Vec<u8>,
+}
+
 impl InstallRecoveryActionPreviewService {
     pub fn new(
         game_files: Arc<dyn InstallGameFileSystem>,
@@ -468,6 +530,218 @@ impl InstallRecoveryActionPreviewService {
     }
 }
 
+impl InstallRecoveryActionService {
+    pub fn new(
+        game_files: Arc<dyn InstallGameFileSystem>,
+        backup_store: Arc<dyn InstallBackupStore>,
+        recovery_record_repository: Arc<dyn InstallRecoveryRecordRepository>,
+    ) -> Self {
+        Self {
+            game_files,
+            backup_store,
+            recovery_record_repository,
+        }
+    }
+
+    pub fn run(
+        &self,
+        request: InstallRecoveryActionRequest,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+        match request.action_kind {
+            InstallRecoveryActionKind::RollbackInstall => self.rollback_install(request),
+        }
+    }
+
+    fn rollback_install(
+        &self,
+        request: InstallRecoveryActionRequest,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+        let mut record = self
+            .recovery_record_repository
+            .load_record(&request.profile_id, &request.mod_id)
+            .map_err(|_| InstallRecoveryActionError::ActionUnavailable)?
+            .ok_or_else(|| {
+                blocked_recovery_action_error([(
+                    InstallRecoveryActionBlockReason::RollbackStateMissing,
+                    1,
+                )])
+            })?;
+
+        let is_rollback_state = matches!(
+            record.status,
+            InstallRecoveryRecordStatus::Committing | InstallRecoveryRecordStatus::RollbackRequired
+        );
+        if !is_rollback_state || record.entries.is_empty() {
+            return Err(blocked_recovery_action_error([(
+                InstallRecoveryActionBlockReason::RollbackStateMissing,
+                1,
+            )]));
+        }
+
+        let mut reasons = BTreeMap::new();
+        let mut prepared_actions = Vec::with_capacity(record.entries.len());
+        let mut remove_file_count = 0;
+        let mut restore_file_count = 0;
+        let mut backup_count = 0;
+
+        for entry in &record.entries {
+            if entry.backup_ref.is_some() {
+                restore_file_count += 1;
+                backup_count += 1;
+            } else {
+                remove_file_count += 1;
+            }
+
+            let mut current_bytes = None;
+            if let Some(expected) = entry.installed_file.as_ref() {
+                match self.game_files.read_game_file(&entry.target_path) {
+                    Ok(Some(bytes)) if installed_file_summary(&bytes) == *expected => {
+                        current_bytes = Some(bytes);
+                    }
+                    Ok(Some(_)) => add_preview_reason(
+                        &mut reasons,
+                        InstallRecoveryActionBlockReason::TargetChanged,
+                    ),
+                    Ok(None) => add_preview_reason(
+                        &mut reasons,
+                        InstallRecoveryActionBlockReason::TargetMissing,
+                    ),
+                    Err(_) => add_preview_reason(
+                        &mut reasons,
+                        InstallRecoveryActionBlockReason::TargetReadFailed,
+                    ),
+                }
+            } else {
+                add_preview_reason(
+                    &mut reasons,
+                    InstallRecoveryActionBlockReason::MissingInstalledFileSummary,
+                );
+            }
+
+            let backup_bytes = if let Some(backup_ref) = &entry.backup_ref {
+                match self.backup_store.read_backup(backup_ref) {
+                    Ok(Some(bytes)) => Some(bytes),
+                    Ok(None) => {
+                        add_preview_reason(
+                            &mut reasons,
+                            InstallRecoveryActionBlockReason::BackupMissing,
+                        );
+                        None
+                    }
+                    Err(_) => {
+                        add_preview_reason(
+                            &mut reasons,
+                            InstallRecoveryActionBlockReason::BackupReadFailed,
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Some(current_bytes) = current_bytes {
+                prepared_actions.push(PreparedRecoveryAction {
+                    target_path: entry.target_path.clone(),
+                    current_bytes,
+                    backup_bytes,
+                });
+            }
+        }
+
+        if !reasons.is_empty() {
+            return Err(InstallRecoveryActionError::Blocked {
+                reasons: preview_reason_summaries(reasons),
+            });
+        }
+
+        let mut applied_actions = Vec::with_capacity(prepared_actions.len());
+        for action in &prepared_actions {
+            if let Some(backup_bytes) = &action.backup_bytes {
+                if self
+                    .game_files
+                    .write_game_file(&action.target_path, backup_bytes)
+                    .is_err()
+                {
+                    return Err(self.rollback_or_error(
+                        &applied_actions,
+                        InstallRecoveryActionPhase::Restore,
+                        InstallRecoveryActionError::RestoreFailed,
+                    ));
+                }
+            } else if self
+                .game_files
+                .remove_game_file(&action.target_path)
+                .is_err()
+            {
+                return Err(self.rollback_or_error(
+                    &applied_actions,
+                    InstallRecoveryActionPhase::Remove,
+                    InstallRecoveryActionError::RemoveFailed,
+                ));
+            }
+
+            applied_actions.push(AppliedRecoveryAction {
+                target_path: action.target_path.clone(),
+                previous_bytes: action.current_bytes.clone(),
+            });
+        }
+
+        let committing_transition_failed = record.status == InstallRecoveryRecordStatus::Committing
+            && record
+                .transition_to(InstallRecoveryRecordStatus::RollbackRequired)
+                .is_err();
+        if committing_transition_failed
+            || record
+                .transition_to(InstallRecoveryRecordStatus::RolledBack)
+                .is_err()
+            || self
+                .recovery_record_repository
+                .save_record(&record)
+                .is_err()
+        {
+            return Err(self.rollback_or_error(
+                &applied_actions,
+                InstallRecoveryActionPhase::RecoveryRecordSave,
+                InstallRecoveryActionError::RecoveryRecordSaveFailed,
+            ));
+        }
+
+        Ok(InstallRecoveryActionResult {
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            action_kind: request.action_kind,
+            remove_file_count,
+            restore_file_count,
+            backup_count,
+        })
+    }
+
+    fn rollback_or_error(
+        &self,
+        applied_actions: &[AppliedRecoveryAction],
+        failed_phase: InstallRecoveryActionPhase,
+        fallback: InstallRecoveryActionError,
+    ) -> InstallRecoveryActionError {
+        match self.rollback_applied_actions(applied_actions) {
+            Ok(()) => fallback,
+            Err(()) => InstallRecoveryActionError::RollbackFailed { failed_phase },
+        }
+    }
+
+    fn rollback_applied_actions(
+        &self,
+        applied_actions: &[AppliedRecoveryAction],
+    ) -> Result<(), ()> {
+        for action in applied_actions.iter().rev() {
+            self.game_files
+                .write_game_file(&action.target_path, &action.previous_bytes)
+                .map_err(|_| ())?;
+        }
+        Ok(())
+    }
+}
+
 fn recovery_record_summary(
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -508,6 +782,23 @@ fn add_preview_reason(
     reason: InstallRecoveryActionBlockReason,
 ) {
     *reasons.entry(reason).or_default() += 1;
+}
+
+fn preview_reason_summaries(
+    reasons: BTreeMap<InstallRecoveryActionBlockReason, usize>,
+) -> Vec<InstallRecoveryActionBlockReasonSummary> {
+    reasons
+        .into_iter()
+        .map(|(reason, count)| InstallRecoveryActionBlockReasonSummary { reason, count })
+        .collect()
+}
+
+fn blocked_recovery_action_error(
+    reasons: impl IntoIterator<Item = (InstallRecoveryActionBlockReason, usize)>,
+) -> InstallRecoveryActionError {
+    InstallRecoveryActionError::Blocked {
+        reasons: preview_reason_summaries(reasons.into_iter().collect()),
+    }
 }
 
 fn blocked_recovery_action_preview(
@@ -601,6 +892,8 @@ mod tests {
     struct FakeGameFiles {
         files: Mutex<BTreeMap<String, Vec<u8>>>,
         error_targets: Mutex<BTreeSet<String>>,
+        writes: Mutex<Vec<String>>,
+        removals: Mutex<Vec<String>>,
     }
 
     impl InstallGameFileSystem for FakeGameFiles {
@@ -627,14 +920,30 @@ mod tests {
 
         fn write_game_file(
             &self,
-            _target_path: &InstallTargetPath,
-            _bytes: &[u8],
+            target_path: &InstallTargetPath,
+            bytes: &[u8],
         ) -> anyhow::Result<()> {
-            panic!("recovery scan must be read-only")
+            self.writes
+                .lock()
+                .expect("writes lock")
+                .push(target_path.as_str().to_owned());
+            self.files
+                .lock()
+                .expect("files lock")
+                .insert(target_path.as_str().to_owned(), bytes.to_vec());
+            Ok(())
         }
 
-        fn remove_game_file(&self, _target_path: &InstallTargetPath) -> anyhow::Result<()> {
-            panic!("recovery scan must be read-only")
+        fn remove_game_file(&self, target_path: &InstallTargetPath) -> anyhow::Result<()> {
+            self.removals
+                .lock()
+                .expect("removals lock")
+                .push(target_path.as_str().to_owned());
+            self.files
+                .lock()
+                .expect("files lock")
+                .remove(target_path.as_str());
+            Ok(())
         }
     }
 
@@ -699,6 +1008,7 @@ mod tests {
         loaded_records: Mutex<Vec<(ProfileId, ModId)>>,
         listed_profiles: Mutex<Vec<ProfileId>>,
         removed_records: Mutex<Vec<(ProfileId, ModId)>>,
+        fail_saves: Mutex<bool>,
     }
 
     impl FakeRecoveryRecords {
@@ -747,6 +1057,9 @@ mod tests {
         }
 
         fn save_record(&self, record: &InstallRecoveryRecord) -> anyhow::Result<()> {
+            if *self.fail_saves.lock().expect("fail saves lock") {
+                anyhow::bail!("simulated recovery record save failure");
+            }
             self.records.lock().expect("records lock").insert(
                 record_key(&record.profile_id, &record.mod_id),
                 record.clone(),
@@ -1212,6 +1525,262 @@ mod tests {
                 count: 1,
             }]
         );
+    }
+
+    #[test]
+    fn run_rollback_install_action_removes_new_files_restores_backups_and_marks_rolled_back() {
+        let new_target = InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
+            .expect("new target path");
+        let overwritten_target =
+            InstallTargetPath::parse("nativePC/models/overwritten.mod3", ["nativePC"])
+                .expect("overwritten target path");
+        let new_bytes = b"new modded model".to_vec();
+        let overwritten_bytes = b"overwritten modded model".to_vec();
+        let original_bytes = b"original model".to_vec();
+        let game_files = Arc::new(FakeGameFiles::default());
+        {
+            let mut files = game_files.files.lock().expect("files lock");
+            files.insert(new_target.as_str().to_owned(), new_bytes.clone());
+            files.insert(
+                overwritten_target.as_str().to_owned(),
+                overwritten_bytes.clone(),
+            );
+        }
+        let backups = Arc::new(FakeBackups::default());
+        backups
+            .backups
+            .lock()
+            .expect("backups lock")
+            .insert("backup-original".to_owned(), original_bytes.clone());
+        let recovery_records = Arc::new(FakeRecoveryRecords::default());
+        recovery_records.insert(InstallRecoveryRecord {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: InstallRecoveryRecordStatus::RollbackRequired,
+            entries: vec![
+                InstallRecoveryRecordEntry {
+                    target_path: new_target.clone(),
+                    package_file_id: PackageFileId::new("nativePC/models/new-file.mod3"),
+                    backup_ref: None,
+                    installed_file: Some(summary(&new_bytes)),
+                },
+                InstallRecoveryRecordEntry {
+                    target_path: overwritten_target.clone(),
+                    package_file_id: PackageFileId::new("nativePC/models/overwritten.mod3"),
+                    backup_ref: Some("backup-original".to_owned()),
+                    installed_file: Some(summary(&overwritten_bytes)),
+                },
+            ],
+        });
+        let service = InstallRecoveryActionService::new(
+            game_files.clone(),
+            backups,
+            recovery_records.clone(),
+        );
+
+        let result = service
+            .run(InstallRecoveryActionRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+                action_kind: InstallRecoveryActionKind::RollbackInstall,
+            })
+            .expect("rollback action should succeed");
+
+        assert_eq!(result.remove_file_count, 1);
+        assert_eq!(result.restore_file_count, 1);
+        assert_eq!(result.backup_count, 1);
+        let files = game_files.files.lock().expect("files lock");
+        assert!(!files.contains_key(new_target.as_str()));
+        assert_eq!(
+            files.get(overwritten_target.as_str()),
+            Some(&original_bytes)
+        );
+        let record = recovery_records
+            .load_record(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("record should load")
+            .expect("record should remain");
+        assert_eq!(record.status, InstallRecoveryRecordStatus::RolledBack);
+    }
+
+    #[test]
+    fn run_rollback_install_action_rolls_back_committing_record() {
+        let target = InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
+            .expect("target path");
+        let installed_bytes = b"installed modded model".to_vec();
+        let game_files = Arc::new(FakeGameFiles::default());
+        game_files
+            .files
+            .lock()
+            .expect("files lock")
+            .insert(target.as_str().to_owned(), installed_bytes.clone());
+        let backups = Arc::new(FakeBackups::default());
+        let recovery_records = Arc::new(FakeRecoveryRecords::default());
+        recovery_records.insert(recovery_record(
+            InstallRecoveryRecordStatus::Committing,
+            target.clone(),
+            ModId::new("mod-a"),
+            Some(summary(&installed_bytes)),
+            None,
+        ));
+        let service = InstallRecoveryActionService::new(
+            game_files.clone(),
+            backups,
+            recovery_records.clone(),
+        );
+
+        let result = service
+            .run(InstallRecoveryActionRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+                action_kind: InstallRecoveryActionKind::RollbackInstall,
+            })
+            .expect("committing record should roll back");
+
+        assert_eq!(result.remove_file_count, 1);
+        assert_eq!(
+            game_files
+                .files
+                .lock()
+                .expect("files lock")
+                .get(target.as_str()),
+            None
+        );
+        let record = recovery_records
+            .load_record(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("record should load")
+            .expect("record should remain");
+        assert_eq!(record.status, InstallRecoveryRecordStatus::RolledBack);
+    }
+
+    #[test]
+    fn run_rollback_install_action_blocks_when_target_changed_without_writing() {
+        let changed_target = InstallTargetPath::parse("nativePC/models/changed.mod3", ["nativePC"])
+            .expect("changed target path");
+        let expected_bytes = b"expected modded bytes".to_vec();
+        let changed_bytes = b"externally changed bytes".to_vec();
+        let game_files = Arc::new(FakeGameFiles::default());
+        game_files
+            .files
+            .lock()
+            .expect("files lock")
+            .insert(changed_target.as_str().to_owned(), changed_bytes.clone());
+        let backups = Arc::new(FakeBackups::default());
+        let recovery_records = Arc::new(FakeRecoveryRecords::default());
+        recovery_records.insert(recovery_record(
+            InstallRecoveryRecordStatus::RollbackRequired,
+            changed_target.clone(),
+            ModId::new("mod-a"),
+            Some(summary(&expected_bytes)),
+            None,
+        ));
+        let service = InstallRecoveryActionService::new(
+            game_files.clone(),
+            backups,
+            recovery_records.clone(),
+        );
+
+        let error = service
+            .run(InstallRecoveryActionRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+                action_kind: InstallRecoveryActionKind::RollbackInstall,
+            })
+            .expect_err("changed target should block rollback");
+
+        assert_eq!(
+            error,
+            InstallRecoveryActionError::Blocked {
+                reasons: vec![InstallRecoveryActionBlockReasonSummary {
+                    reason: InstallRecoveryActionBlockReason::TargetChanged,
+                    count: 1,
+                }],
+            }
+        );
+        assert_eq!(
+            game_files
+                .files
+                .lock()
+                .expect("files lock")
+                .get(changed_target.as_str()),
+            Some(&changed_bytes)
+        );
+        assert!(
+            game_files.writes.lock().expect("writes lock").is_empty(),
+            "blocked rollback must not write game files"
+        );
+        assert!(
+            game_files
+                .removals
+                .lock()
+                .expect("removals lock")
+                .is_empty(),
+            "blocked rollback must not remove game files"
+        );
+        let record = recovery_records
+            .load_record(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("record should load")
+            .expect("record should remain");
+        assert_eq!(record.status, InstallRecoveryRecordStatus::RollbackRequired);
+    }
+
+    #[test]
+    fn run_rollback_install_action_rolls_back_removed_file_when_record_save_fails() {
+        let target = InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
+            .expect("target path");
+        let installed_bytes = b"installed modded model".to_vec();
+        let game_files = Arc::new(FakeGameFiles::default());
+        game_files
+            .files
+            .lock()
+            .expect("files lock")
+            .insert(target.as_str().to_owned(), installed_bytes.clone());
+        let backups = Arc::new(FakeBackups::default());
+        let recovery_records = Arc::new(FakeRecoveryRecords::default());
+        recovery_records.insert(recovery_record(
+            InstallRecoveryRecordStatus::RollbackRequired,
+            target.clone(),
+            ModId::new("mod-a"),
+            Some(summary(&installed_bytes)),
+            None,
+        ));
+        *recovery_records.fail_saves.lock().expect("fail saves lock") = true;
+        let service = InstallRecoveryActionService::new(
+            game_files.clone(),
+            backups,
+            recovery_records.clone(),
+        );
+
+        let error = service
+            .run(InstallRecoveryActionRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+                action_kind: InstallRecoveryActionKind::RollbackInstall,
+            })
+            .expect_err("record save failure should fail the recovery action");
+
+        assert_eq!(error, InstallRecoveryActionError::RecoveryRecordSaveFailed);
+        assert_eq!(
+            game_files
+                .files
+                .lock()
+                .expect("files lock")
+                .get(target.as_str()),
+            Some(&installed_bytes),
+            "failed recovery record save must roll back the file removal"
+        );
+        assert_eq!(
+            *game_files.removals.lock().expect("removals lock"),
+            vec![target.as_str().to_owned()]
+        );
+        assert_eq!(
+            *game_files.writes.lock().expect("writes lock"),
+            vec![target.as_str().to_owned()]
+        );
+        let record = recovery_records
+            .load_record(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("record should load")
+            .expect("record should remain");
+        assert_eq!(record.status, InstallRecoveryRecordStatus::RollbackRequired);
     }
 
     #[test]
