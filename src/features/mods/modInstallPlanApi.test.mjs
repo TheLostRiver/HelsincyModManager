@@ -76,6 +76,36 @@ test("install recovery scan API invokes controlled summary command without paths
   );
 });
 
+test("install recovery action preview API invokes controlled preview command without paths", () => {
+  const source = readSource("src/features/mods/modInstallPlanApi.ts");
+  const typesSource = readSource("src/features/mods/modInstallPlanTypes.ts");
+
+  assert.match(source, /export function previewRecoveryAction/);
+  const previewCall = source.match(/export function previewRecoveryAction[\s\S]*?\n}/);
+  assert.ok(previewCall, "expected a feature-local recovery action preview wrapper");
+  assert.match(previewCall[0], /invoke<InstallRecoveryActionPreview>\("preview_recovery_action"/);
+  assert.match(previewCall[0], /request:\s*\{/);
+  assert.match(previewCall[0], /gameId:\s*input\.gameId/);
+  assert.match(previewCall[0], /profileId:\s*input\.profileId/);
+  assert.match(previewCall[0], /modId:\s*input\.modId/);
+  assert.match(previewCall[0], /actionKind:\s*input\.actionKind/);
+  assert.doesNotMatch(
+    previewCall[0],
+    /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot|backupRef|hash/i,
+  );
+
+  assert.match(typesSource, /export type InstallRecoveryActionKind\s*=\s*"rollback_install"/);
+  assert.match(typesSource, /export type InstallRecoveryActionAvailability\s*=\s*"available"\s*\|\s*"blocked"/);
+  assert.match(typesSource, /export type PreviewRecoveryActionInput/);
+  assert.match(typesSource, /export type InstallRecoveryActionPreview/);
+  assert.match(typesSource, /removeFileCount:\s*number/);
+  assert.match(typesSource, /restoreFileCount:\s*number/);
+  assert.match(typesSource, /blockingReasons:\s*InstallRecoveryActionBlockReasonSummary\[\]/);
+  const actionPreviewType = typesSource.match(/export type InstallRecoveryActionPreview[\s\S]*?};/);
+  assert.ok(actionPreviewType, "expected action preview DTO type");
+  assert.doesNotMatch(actionPreviewType[0], /targetPath|manifestPath|backupRef|backupRoot|hash/i);
+});
+
 test("install plan types expose preview DTO without filesystem paths", () => {
   assert.equal(existsSync("src/features/mods/modInstallPlanTypes.ts"), true);
   const source = readSource("src/features/mods/modInstallPlanTypes.ts");

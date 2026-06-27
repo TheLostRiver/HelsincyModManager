@@ -1,9 +1,11 @@
 use hmm_app::{
     AppSettingsServiceError, GameCandidateScan, GameSetupCandidate, GameSetupServiceError,
-    ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary, InstallRecoveryIssue,
-    InstallRecoveryIssueSummary, InstallRecoveryStatus, InstallRecoverySummary, ModDetail,
-    ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
-    TaskProgressEvent, TaskStarted, TaskStatus,
+    ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary,
+    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
+    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
+    InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
+    InstallRecoveryStatus, InstallRecoverySummary, ModDetail, ModImportTaskError, ModLibraryItem,
+    ModLibraryStatus, TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
@@ -136,6 +138,15 @@ pub struct InstallRecoveryScanRequestDto {
     pub mod_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecoveryActionPreviewRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+    pub action_kind: InstallRecoveryActionKindDto,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanPreviewDto {
@@ -199,6 +210,27 @@ pub struct InstallRecoveryIssueSummaryDto {
     pub count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecoveryActionPreviewDto {
+    pub profile_id: String,
+    pub mod_id: String,
+    pub action_kind: InstallRecoveryActionKindDto,
+    pub availability: InstallRecoveryActionAvailabilityDto,
+    pub remove_file_count: usize,
+    pub restore_file_count: usize,
+    pub backup_count: usize,
+    pub blocking_issue_count: usize,
+    pub blocking_reasons: Vec<InstallRecoveryActionBlockReasonSummaryDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecoveryActionBlockReasonSummaryDto {
+    pub reason: InstallRecoveryActionBlockReasonDto,
+    pub count: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallManifestStatusDto {
@@ -221,6 +253,31 @@ pub enum InstallRecoveryStatusDto {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallRecoveryIssueDto {
+    MissingInstalledFileSummary,
+    TargetMissing,
+    TargetChanged,
+    TargetReadFailed,
+    BackupMissing,
+    BackupReadFailed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRecoveryActionKindDto {
+    RollbackInstall,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRecoveryActionAvailabilityDto {
+    Available,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRecoveryActionBlockReasonDto {
+    RollbackStateMissing,
     MissingInstalledFileSummary,
     TargetMissing,
     TargetChanged,
@@ -319,6 +376,35 @@ impl From<InstallRecoveryIssueSummary> for InstallRecoveryIssueSummaryDto {
     }
 }
 
+impl From<InstallRecoveryActionPreview> for InstallRecoveryActionPreviewDto {
+    fn from(preview: InstallRecoveryActionPreview) -> Self {
+        Self {
+            profile_id: preview.profile_id.as_str().to_owned(),
+            mod_id: preview.mod_id.as_str().to_owned(),
+            action_kind: preview.action_kind.into(),
+            availability: preview.availability.into(),
+            remove_file_count: preview.remove_file_count,
+            restore_file_count: preview.restore_file_count,
+            backup_count: preview.backup_count,
+            blocking_issue_count: preview.blocking_issue_count,
+            blocking_reasons: preview
+                .blocking_reasons
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<InstallRecoveryActionBlockReasonSummary> for InstallRecoveryActionBlockReasonSummaryDto {
+    fn from(summary: InstallRecoveryActionBlockReasonSummary) -> Self {
+        Self {
+            reason: summary.reason.into(),
+            count: summary.count,
+        }
+    }
+}
+
 impl From<InstallManifestStatus> for InstallManifestStatusDto {
     fn from(status: InstallManifestStatus) -> Self {
         match status {
@@ -351,6 +437,39 @@ impl From<InstallRecoveryIssue> for InstallRecoveryIssueDto {
             InstallRecoveryIssue::TargetReadFailed => Self::TargetReadFailed,
             InstallRecoveryIssue::BackupMissing => Self::BackupMissing,
             InstallRecoveryIssue::BackupReadFailed => Self::BackupReadFailed,
+        }
+    }
+}
+
+impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
+    fn from(action_kind: InstallRecoveryActionKind) -> Self {
+        match action_kind {
+            InstallRecoveryActionKind::RollbackInstall => Self::RollbackInstall,
+        }
+    }
+}
+
+impl From<InstallRecoveryActionAvailability> for InstallRecoveryActionAvailabilityDto {
+    fn from(availability: InstallRecoveryActionAvailability) -> Self {
+        match availability {
+            InstallRecoveryActionAvailability::Available => Self::Available,
+            InstallRecoveryActionAvailability::Blocked => Self::Blocked,
+        }
+    }
+}
+
+impl From<InstallRecoveryActionBlockReason> for InstallRecoveryActionBlockReasonDto {
+    fn from(reason: InstallRecoveryActionBlockReason) -> Self {
+        match reason {
+            InstallRecoveryActionBlockReason::RollbackStateMissing => Self::RollbackStateMissing,
+            InstallRecoveryActionBlockReason::MissingInstalledFileSummary => {
+                Self::MissingInstalledFileSummary
+            }
+            InstallRecoveryActionBlockReason::TargetMissing => Self::TargetMissing,
+            InstallRecoveryActionBlockReason::TargetChanged => Self::TargetChanged,
+            InstallRecoveryActionBlockReason::TargetReadFailed => Self::TargetReadFailed,
+            InstallRecoveryActionBlockReason::BackupMissing => Self::BackupMissing,
+            InstallRecoveryActionBlockReason::BackupReadFailed => Self::BackupReadFailed,
         }
     }
 }
@@ -1578,5 +1697,48 @@ mod install_recovery_dto_tests {
         assert_eq!(value["status"], "rollback_required");
         assert!(value.get("targetPath").is_none());
         assert!(value.get("backupRef").is_none());
+    }
+
+    #[test]
+    fn serializes_recovery_action_preview_without_paths_or_backup_refs() {
+        let dto: InstallRecoveryActionPreviewDto = hmm_app::InstallRecoveryActionPreview {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: hmm_app::InstallRecoveryActionKind::RollbackInstall,
+            availability: hmm_app::InstallRecoveryActionAvailability::Blocked,
+            remove_file_count: 1,
+            restore_file_count: 1,
+            backup_count: 1,
+            blocking_issue_count: 2,
+            blocking_reasons: vec![
+                hmm_app::InstallRecoveryActionBlockReasonSummary {
+                    reason: hmm_app::InstallRecoveryActionBlockReason::TargetChanged,
+                    count: 1,
+                },
+                hmm_app::InstallRecoveryActionBlockReasonSummary {
+                    reason: hmm_app::InstallRecoveryActionBlockReason::BackupMissing,
+                    count: 1,
+                },
+            ],
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize recovery action preview");
+
+        assert_eq!(value["profileId"], "default");
+        assert_eq!(value["modId"], "mod-a");
+        assert_eq!(value["actionKind"], "rollback_install");
+        assert_eq!(value["availability"], "blocked");
+        assert_eq!(value["removeFileCount"], 1);
+        assert_eq!(value["restoreFileCount"], 1);
+        assert_eq!(value["backupCount"], 1);
+        assert_eq!(value["blockingIssueCount"], 2);
+        assert_eq!(value["blockingReasons"][0]["reason"], "target_changed");
+        assert_eq!(value["blockingReasons"][1]["reason"], "backup_missing");
+        assert!(value.get("targetPath").is_none());
+        assert!(value.get("backupRef").is_none());
+        assert!(value.get("manifestPath").is_none());
+        assert!(!value.to_string().contains("nativePC"));
+        assert!(!value.to_string().contains("backup-original"));
     }
 }
