@@ -29,17 +29,20 @@ pub use install_manifest_query::{
 };
 pub use install_recovery::{
     InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
-    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
-    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
-    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
-    InstallRecoveryIssueSummary, InstallRecoveryScanError, InstallRecoveryScanRequest,
-    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
+    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionError, InstallRecoveryActionKind,
+    InstallRecoveryActionPhase, InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
+    InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
+    InstallRecoveryIssue, InstallRecoveryIssueSummary, InstallRecoveryScanError,
+    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
+    InstallRecoverySummary,
 };
 pub use install_task::{
     GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, ImportedModInstallPlanner,
-    InstallPlanCommitter, InstallTaskRunError, InstallTaskRunner, InstallTaskService,
-    ModUninstaller, StartInstallTaskRequest, StartUninstallTaskRequest, UninstallTaskRunError,
-    UninstallTaskRunner, UninstallTaskService,
+    InstallPlanCommitter, InstallRecoveryActionExecutor, InstallTaskRunError, InstallTaskRunner,
+    InstallTaskService, ModUninstaller, RecoveryActionTaskRunError, RecoveryActionTaskRunner,
+    RecoveryActionTaskService, StartInstallTaskRequest, StartRecoveryActionTaskRequest,
+    StartUninstallTaskRequest, UninstallTaskRunError, UninstallTaskRunner, UninstallTaskService,
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,

@@ -147,6 +147,15 @@ pub struct InstallRecoveryActionPreviewRequestDto {
     pub action_kind: InstallRecoveryActionKindDto,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartRecoveryActionTaskRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+    pub action_kind: InstallRecoveryActionKindDto,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanPreviewDto {

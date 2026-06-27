@@ -10,6 +10,7 @@ import type {
   PreviewRecoveryActionInput,
   ScanInstallRecoveryInput,
   StartInstallTaskInput,
+  StartRecoveryActionTaskInput,
   StartUninstallTaskInput,
 } from "./modInstallPlanTypes";
 
@@ -71,6 +72,17 @@ export function scanInstallRecovery(input: ScanInstallRecoveryInput): Promise<In
 
 export function previewRecoveryAction(input: PreviewRecoveryActionInput): Promise<InstallRecoveryActionPreview> {
   return invoke<InstallRecoveryActionPreview>("preview_recovery_action", {
+    request: {
+      gameId: input.gameId,
+      profileId: input.profileId,
+      modId: input.modId,
+      actionKind: input.actionKind,
+    },
+  });
+}
+
+export function startRecoveryActionTask(input: StartRecoveryActionTaskInput): Promise<TaskStartedDto> {
+  return invoke<TaskStartedDto>("start_recovery_action_task", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,

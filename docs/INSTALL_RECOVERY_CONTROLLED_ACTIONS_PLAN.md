@@ -1,6 +1,6 @@
 # 安装恢复受控动作实施计划
 
-本文档细化 `InstallPlan` 后续“自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作”的实施边界。当前只读恢复扫描、恢复中心、Dashboard 摘要和 App Frame 全局告警已经落地，但它们只展示状态，不执行恢复、删除、回滚或 manifest 写入。
+本文档细化 `InstallPlan` 后续“自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作”的实施边界。当前只读恢复扫描、恢复中心、Dashboard 摘要和 App Frame 全局告警已经落地；后端受控回滚任务也已落地，但恢复中心写入型按钮尚未启用。
 
 本计划的目标是把后续写入动作拆成可审查、可测试的小切片，避免在状态事实不足时直接对游戏目录执行破坏性操作。
 
@@ -12,8 +12,8 @@
 - `modIds: []` 会扫描当前 profile manifest 内全部已知托管 Mod，可支撑启动级提示和恢复中心聚合。
 - `start_install_task` 和 `start_uninstall_task` 都复用 `gameId/profileId` 写锁；commit / uninstall 写入窗口串行。
 - `UninstallModService` 已有最小安全删除/恢复能力：只在 `installed_file` 摘要匹配且 backup 可读时删除新增文件或恢复覆盖文件。
-- 安装和卸载任务已写最小 Audit Log，字段只包含 task/game/profile/mod id 和聚合计数，不记录完整路径或 backup ref。
-- Durable recovery record 基础、安装 commit 写入、只读恢复扫描消费和只读动作预览已落地：`hmm-core` 提供 `InstallRecoveryRecord` / `InstallRecoveryRecordStatus` 状态模型，`hmm-ports` 提供窄 repository trait，`hmm-infra` 提供受控 JSON 仓储；`preview_recovery_action` 已能基于该记录判断 `rollback_install` 是否具备受控回滚前置条件。
+- 安装、卸载和受控回滚任务已写最小 Audit Log，字段只包含 task/game/profile/mod id 和聚合计数，不记录完整路径或 backup ref。
+- Durable recovery record 基础、安装 commit 写入、只读恢复扫描消费、只读动作预览和后端受控回滚任务已落地：`hmm-core` 提供 `InstallRecoveryRecord` / `InstallRecoveryRecordStatus` 状态模型，`hmm-ports` 提供窄 repository trait，`hmm-infra` 提供受控 JSON 仓储；`preview_recovery_action` 已能基于该记录判断 `rollback_install` 是否具备受控回滚前置条件；`start_recovery_action_task` 已能在同一 `gameId/profileId` 写锁下执行 `rollback_install`。
 - 当安装替换已有托管目标并在写入窗口后失败且 best-effort rollback 失败时，`rollback_required` recovery record 的 `backup_ref` 使用本次提交前创建的 pending backup，用于恢复到“安装前一刻”的状态；如果后续 action 才拿到该 pending backup，`committing` record 会立即重新持久化，避免崩溃恢复读取到旧 backup 语义；manifest 保存成功后，`completed` record 会重新同步为 manifest entry 的长期 backup 语义，避免指向随后会被清理的 pending backup。
 
 当前不能假设：
@@ -45,7 +45,7 @@
 | `repair_required` | manifest、backup 或目标状态不一致，但无法安全自动判断。 | 阻断破坏性操作，仅提供诊断和人工处理建议。 |
 | `unknown` | 目标或 backup 读取失败，状态不可判定。 | 阻断自动动作，提示重新扫描或导出诊断。 |
 
-`rollback_required` 不能只由当前目标文件变化推断，必须来自 durable recovery record、rich manifest status 或等价受控事务记录。当前 durable recovery record 已由安装 commit 写入，`scan_install_recovery` 已只读消费该记录，`preview_recovery_action` 已能预览 `rollback_install` 的前置条件；真正的受控回滚任务仍需后续切片落地。
+`rollback_required` 不能只由当前目标文件变化推断，必须来自 durable recovery record、rich manifest status 或等价受控事务记录。当前 durable recovery record 已由安装 commit 写入，`scan_install_recovery` 已只读消费该记录，`preview_recovery_action` 已能预览 `rollback_install` 的前置条件，后端 `start_recovery_action_task` 已能执行受控 `rollback_install`；恢复中心写入型入口仍需后续切片启用。
 
 ## 恢复动作集合
 
@@ -93,7 +93,7 @@
 
 - 新增文件：删除目标文件。
 - 覆盖文件：从 backup 恢复原始文件。
-- manifest / recovery record：记录 `rolled_back` 或移除已回滚 entry，具体行为由 rich manifest 切片定稿。
+- manifest / recovery record：当前后端任务会将 durable recovery record 标记为 `rolled_back`；rich manifest 状态和 manifest entry 迁移仍由后续切片定稿。
 - Audit Log：记录 task id、game id、profile id、mod id、removed/restored 文件计数、结果和稳定错误分类。
 
 阻断场景：
@@ -130,7 +130,8 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 - 已完成恢复扫描消费：`scan_install_recovery` 仅在 durable recovery record 为 `committing` / `rollback_required` 时对外返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装。
 - 已完成只读动作预览：`preview_recovery_action` 可对 `rollback_install` 返回 `available` / `blocked`、聚合计数和稳定阻断 reason code。
 - 已完成受控回滚任务前置安全加固：替换已有托管目标时，`committing` / `rollback_required` record 保留本次 pending backup 作为执行回滚的恢复来源；提交成功后的 `completed` record 再恢复成 manifest 的长期 backup 语义。
-- 尚未完成：受控回滚任务、恢复中心写入型按钮、执行后的 `rolled_back` 状态更新和 Audit Log。
+- 已完成后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件、从 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。
+- 尚未完成：恢复中心写入型按钮、rich manifest `rolled_back` 状态同步、批量/更丰富的 repair workflow。
 
 候选落点：
 
@@ -174,7 +175,13 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 
 目标：用户主动触发后，后端在写锁下执行 `rollback_install`，并发出可追踪任务事件。
 
-候选 phase code：
+当前进度：
+
+- 后端 `InstallRecoveryActionService` 已执行 `rollback_install`，只消费 durable recovery record、目标摘要和 backup 可读性，不消费前端路径。
+- `RecoveryActionTaskRunner` 已接入 `TaskKind::Install`，与 install / uninstall 共用 `gameId/profileId` 写锁，并写入 `rollback_install` Audit Log。
+- Tauri `start_recovery_action_task` command 与 feature-local `startRecoveryActionTask` typed API 已落地；恢复中心 UI 尚未调用该写入型入口。
+
+已注册 phase code：
 
 - `install.recovery.queued`
 - `install.recovery.planning`
@@ -213,7 +220,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 | 目标缺失 | 阻断自动动作，返回稳定 reason code。 |
 | 目标摘要变化 | 阻断自动动作，避免覆盖外部修改。 |
 | backup 缺失或读取失败 | 阻断自动动作。 |
-| manifest 保存失败 | 已执行文件动作必须 best-effort rollback，并写失败审计。 |
+| recovery record 保存失败 | 已执行文件动作必须 best-effort rollback，并写失败审计。 |
 | 写入/删除失败 | 保留可恢复状态，返回 failed task event 和 Audit Log。 |
 | 并发 | install、uninstall、recovery action 对同一 game/profile 串行。 |
 | 脱敏 | command error、task event、Audit Log 和诊断摘要不含完整路径、backup ref/root 或 manifest 正文。 |
