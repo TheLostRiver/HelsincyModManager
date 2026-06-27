@@ -32,10 +32,10 @@ impl ModMetadataService {
         let now = self.clock.now_unix_millis()?;
         let overlay = ModMetadataOverlay {
             mod_id: ModId::new(&request.mod_id),
-            display_name: request.display_name,
-            author: request.author,
-            version: request.version,
-            description: request.description,
+            display_name: normalize_optional_string(request.display_name),
+            author: normalize_optional_string(request.author),
+            version: normalize_optional_string(request.version),
+            description: normalize_optional_string(request.description),
             nexus_mod_id: request.nexus_mod_id,
             updated_at: now,
         };
@@ -49,6 +49,10 @@ impl ModMetadataService {
     pub fn get_metadata(&self, mod_id: &str) -> Result<Option<ModMetadataOverlay>> {
         self.metadata_repository.get(mod_id)
     }
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]
@@ -153,6 +157,53 @@ mod tests {
         let service = ModMetadataService::new(repo, clock);
 
         assert!(service.get_metadata("nonexistent").unwrap().is_none());
+    }
+
+    #[test]
+    fn update_metadata_normalizes_empty_strings_to_none() {
+        let repo = Arc::new(FakeMetadataRepository::new());
+        let clock = Arc::new(FixedClock(1000));
+        let service = ModMetadataService::new(Arc::clone(&repo) as _, clock);
+
+        service
+            .update_metadata(UpdateModMetadataRequest {
+                mod_id: "mod-1".to_owned(),
+                display_name: Some("".to_owned()),
+                author: Some("   ".to_owned()),
+                version: Some("  ".to_owned()),
+                description: Some("".to_owned()),
+                nexus_mod_id: Some(42),
+            })
+            .unwrap();
+
+        let overlay = repo.get("mod-1").unwrap().expect("should exist");
+        assert!(overlay.display_name.is_none());
+        assert!(overlay.author.is_none());
+        assert!(overlay.version.is_none());
+        assert!(overlay.description.is_none());
+        assert_eq!(overlay.nexus_mod_id, Some(42));
+    }
+
+    #[test]
+    fn update_metadata_trims_whitespace_from_strings() {
+        let repo = Arc::new(FakeMetadataRepository::new());
+        let clock = Arc::new(FixedClock(1000));
+        let service = ModMetadataService::new(Arc::clone(&repo) as _, clock);
+
+        service
+            .update_metadata(UpdateModMetadataRequest {
+                mod_id: "mod-1".to_owned(),
+                display_name: Some("  Trimmed Name  ".to_owned()),
+                author: Some("  Author  ".to_owned()),
+                version: None,
+                description: None,
+                nexus_mod_id: None,
+            })
+            .unwrap();
+
+        let overlay = repo.get("mod-1").unwrap().expect("should exist");
+        assert_eq!(overlay.display_name.as_deref(), Some("Trimmed Name"));
+        assert_eq!(overlay.author.as_deref(), Some("Author"));
     }
 
     // — overlay merge integration tests —
