@@ -22,4 +22,6 @@ tauri = "2.9.5"
 tauri-build = "2.5.3"
 thiserror = "2.0.17"
 tracing = "0.1.43"
+rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite_migration = "2.6"
 zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
