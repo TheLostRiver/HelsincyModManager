@@ -231,7 +231,7 @@ test("derives safe manual handling decisions for recovery attention states", () 
       {
         id: "controlled_recovery",
         label: "受控修复",
-        description: "需要后续 manifest 状态机和恢复执行器支持，当前不可用。",
+        description: "当前没有可执行受控回滚的 Mod，请保留现场并等待后续恢复能力。",
         state: "unavailable",
       },
     ],
@@ -276,4 +276,36 @@ test("derives empty recovery center state for a profile without managed installs
   assert.equal(viewModel.mods.length, 0);
   assert.equal(viewModel.overview.scannedModCount, 0);
   assert.equal(viewModel.overview.issueCount, 0);
+});
+
+test("derives available controlled_recovery action when rollback_required mods exist", () => {
+  const viewModel = deriveRecoveryCenterViewModel([
+    {
+      ...baseSummary,
+      modId: "rollback-mod",
+      status: "rollback_required",
+      managedFileCount: 3,
+      backupCount: 2,
+    },
+    {
+      ...baseSummary,
+      modId: "healthy-mod",
+      status: "completed",
+      managedFileCount: 1,
+    },
+  ]);
+
+  assert.equal(viewModel.overview.manualDecision.status, "blocked");
+  assert.equal(
+    viewModel.overview.manualDecision.recommendedAction,
+    "在下方 Mod 列表中对需要回滚的 Mod 使用受控回滚按钮。",
+  );
+
+  const recoveryAction = viewModel.overview.manualDecision.actions.find(
+    (action) => action.id === "controlled_recovery",
+  );
+  assert.ok(recoveryAction);
+  assert.equal(recoveryAction.state, "available");
+  assert.equal(recoveryAction.label, "受控回滚");
+  assert.equal(recoveryAction.description, "1 个 Mod 可在下方列表中使用逐 Mod 受控回滚。");
 });
