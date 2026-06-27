@@ -593,6 +593,8 @@ pub struct ModDetailDto {
     pub name: String,
     pub package_id: String,
     pub metadata: ModPackageMetadataDto,
+    pub description: Option<String>,
+    pub nexus_mod_id: Option<u64>,
     pub preview_image: PreviewImageDto,
 }
 
@@ -818,6 +820,8 @@ impl From<ModDetail> for ModDetailDto {
             name: detail.name,
             package_id: detail.package_id,
             metadata: detail.metadata.into(),
+            description: detail.description,
+            nexus_mod_id: detail.nexus_mod_id,
             preview_image: detail.preview_image.into(),
         }
     }
@@ -1538,6 +1542,8 @@ mod preview_image_tests {
                 tags: vec!["armor".to_owned(), "hd".to_owned()],
                 dependencies: vec!["stracker-loader".to_owned()],
             },
+            description: None,
+            nexus_mod_id: None,
             preview_image: ImportPreviewImage::Fallback {
                 reason: PreviewImageRejectionReason::Missing,
             },
