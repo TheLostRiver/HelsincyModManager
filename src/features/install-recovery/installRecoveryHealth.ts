@@ -35,7 +35,7 @@ export function deriveInstallRecoveryHealth(summaries: InstallRecoverySummary[])
   for (const summary of summaries) {
     if (summary.status === "completed") {
       completedModCount += 1;
-    } else if (summary.status === "repair_required") {
+    } else if (summary.status === "rollback_required" || summary.status === "repair_required") {
       attentionModCount += 1;
     } else if (summary.status === "unknown") {
       unknownModCount += 1;

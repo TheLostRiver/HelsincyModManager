@@ -309,13 +309,16 @@ impl ConfiguredInstallRecoveryScanner {
             .load_game_instance(&game_id)
             .map_err(|_| InstallRecoveryScanError::GameInstanceUnavailable)?
             .ok_or(InstallRecoveryScanError::GameInstanceUnavailable)?;
-        let service = InstallRecoveryScanService::new(
+        let service = InstallRecoveryScanService::new_with_recovery_records(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
                 self.app_data_dir.join("install").join("backups"),
             )),
             Arc::new(JsonInstallManifestRepository::new(
                 self.app_data_dir.join("install").join("manifests"),
+            )),
+            Arc::new(JsonInstallRecoveryRecordRepository::new(
+                self.app_data_dir.join("install").join("recovery"),
             )),
         );
 

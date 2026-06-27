@@ -160,6 +160,33 @@ test("install recovery summaries surface unsafe states and issue counts", () => 
   });
 });
 
+test("install recovery summaries surface rollback-required state as unsafe without paths", () => {
+  const result = applyInstallRecoverySummaries(fallbackItems, [
+    {
+      profileId: "default",
+      modId: "mock-mod",
+      status: "rollback_required",
+      managedFileCount: 2,
+      backupCount: 1,
+      issueCount: 0,
+      issues: [],
+    },
+  ]);
+
+  assert.equal(result[0].status, "rollback_required");
+  assert.deepEqual(result[0].installSummary, {
+    status: "rollback_required",
+    managedFileCount: 2,
+    backupCount: 1,
+    recoveryStatus: "rollback_required",
+    issueCount: 0,
+    issues: [],
+  });
+  assert.equal("targetPath" in result[0], false);
+  assert.equal("backupRef" in result[0], false);
+  assert.equal("manifestPath" in result[0], false);
+});
+
 test("unavailable install recovery degrades managed states to unknown without paths", () => {
   const result = applyInstallRecoveryUnavailable([
     {
