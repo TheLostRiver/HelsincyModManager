@@ -30,7 +30,7 @@
 - 可执行动作只来自后端生成的恢复计划或恢复任务，不接受前端传入 target path、backup ref、manifest path、sandbox/cache path 或本地路径。
 - 恢复动作只能基于 manifest、backup、受控 recovery record 和当前目标摘要；不能基于当前 Mod 包内容重新猜测。
 - 对目标缺失、目标摘要变化、backup 缺失、backup 读取失败或旧 manifest 缺少摘要的场景，默认阻断自动动作并转入人工处理。
-- 任何成功、失败、回滚成功或回滚失败都必须写 Audit Log，且只记录短 id、计数和稳定错误分类。
+- 任何成功、失败、回滚成功或回滚失败都必须写 Audit Log，且只记录短 id、聚合计数和顶层结果；稳定失败 phase / error code 留在 task event 中，不默认写入当前最小审计字段。
 - 诊断导出可以辅助用户反馈，但不能把诊断包当作恢复状态来源。
 
 ## 目标状态模型
@@ -94,7 +94,7 @@
 - 新增文件：删除目标文件。
 - 覆盖文件：从 backup 恢复原始文件。
 - manifest / recovery record：当前后端任务会将 durable recovery record 标记为 `rolled_back`；rich manifest 状态和 manifest entry 迁移仍由后续切片定稿。
-- Audit Log：记录 task id、game id、profile id、mod id、removed/restored 文件计数、结果和稳定错误分类。
+- Audit Log：记录 task id、game id、profile id、mod id、removed/restored 文件计数、backup 计数和顶层结果；稳定失败 phase / error code 由 task event 承载，当前最小审计事件不记录该字段。
 
 阻断场景：
 

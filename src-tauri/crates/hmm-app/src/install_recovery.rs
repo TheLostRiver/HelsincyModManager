@@ -156,6 +156,7 @@ pub enum InstallRecoveryActionError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallRecoveryActionPhase {
+    Revalidate,
     Remove,
     Restore,
     RecoveryRecordSave,
@@ -657,6 +658,14 @@ impl InstallRecoveryActionService {
 
         let mut applied_actions = Vec::with_capacity(prepared_actions.len());
         for action in &prepared_actions {
+            if let Err(error) = self.revalidate_prepared_action(action) {
+                return Err(self.rollback_or_error(
+                    &applied_actions,
+                    InstallRecoveryActionPhase::Revalidate,
+                    error,
+                ));
+            }
+
             if let Some(backup_bytes) = &action.backup_bytes {
                 if self
                     .game_files
@@ -715,6 +724,27 @@ impl InstallRecoveryActionService {
             restore_file_count,
             backup_count,
         })
+    }
+
+    fn revalidate_prepared_action(
+        &self,
+        action: &PreparedRecoveryAction,
+    ) -> Result<(), InstallRecoveryActionError> {
+        match self.game_files.read_game_file(&action.target_path) {
+            Ok(Some(bytes)) if bytes == action.current_bytes => Ok(()),
+            Ok(Some(_)) => Err(blocked_recovery_action_error([(
+                InstallRecoveryActionBlockReason::TargetChanged,
+                1,
+            )])),
+            Ok(None) => Err(blocked_recovery_action_error([(
+                InstallRecoveryActionBlockReason::TargetMissing,
+                1,
+            )])),
+            Err(_) => Err(blocked_recovery_action_error([(
+                InstallRecoveryActionBlockReason::TargetReadFailed,
+                1,
+            )])),
+        }
     }
 
     fn rollback_or_error(
@@ -892,6 +922,7 @@ mod tests {
     struct FakeGameFiles {
         files: Mutex<BTreeMap<String, Vec<u8>>>,
         error_targets: Mutex<BTreeSet<String>>,
+        mutate_after_read: Mutex<BTreeMap<String, Vec<u8>>>,
         writes: Mutex<Vec<String>>,
         removals: Mutex<Vec<String>>,
     }
@@ -910,12 +941,24 @@ mod tests {
                 anyhow::bail!("simulated target read failure");
             }
 
-            Ok(self
+            let current = self
                 .files
                 .lock()
                 .expect("files lock")
                 .get(target_path.as_str())
-                .cloned())
+                .cloned();
+            if let Some(replacement) = self
+                .mutate_after_read
+                .lock()
+                .expect("mutate after read lock")
+                .remove(target_path.as_str())
+            {
+                self.files
+                    .lock()
+                    .expect("files lock")
+                    .insert(target_path.as_str().to_owned(), replacement);
+            }
+            Ok(current)
         }
 
         fn write_game_file(
@@ -1653,7 +1696,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rollback_install_action_blocks_when_target_changed_without_writing() {
+    fn run_rollback_install_action_revalidates_target_before_writing() {
         let changed_target = InstallTargetPath::parse("nativePC/models/changed.mod3", ["nativePC"])
             .expect("changed target path");
         let expected_bytes = b"expected modded bytes".to_vec();
@@ -1663,6 +1706,11 @@ mod tests {
             .files
             .lock()
             .expect("files lock")
+            .insert(changed_target.as_str().to_owned(), expected_bytes.clone());
+        game_files
+            .mutate_after_read
+            .lock()
+            .expect("mutate after read lock")
             .insert(changed_target.as_str().to_owned(), changed_bytes.clone());
         let backups = Arc::new(FakeBackups::default());
         let recovery_records = Arc::new(FakeRecoveryRecords::default());
@@ -1685,7 +1733,7 @@ mod tests {
                 mod_id: ModId::new("mod-a"),
                 action_kind: InstallRecoveryActionKind::RollbackInstall,
             })
-            .expect_err("changed target should block rollback");
+            .expect_err("stale target should block rollback");
 
         assert_eq!(
             error,
