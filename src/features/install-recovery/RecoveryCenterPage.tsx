@@ -208,10 +208,10 @@ function RollbackPanel({
         </div>
         <div className="recovery-center__rollback-body">
           <h3 id="rollback-done-title">回滚完成</h3>
-          <p>{state.modId} 已恢复到安装前状态。关闭后将重新扫描。</p>
+          <p>{state.modId} 已恢复到安装前状态。已触发重新扫描。</p>
           <div className="recovery-center__rollback-actions">
             <button type="button" onClick={onDismiss}>
-              关闭并刷新
+              关闭
             </button>
           </div>
         </div>
@@ -622,8 +622,12 @@ function RecoveryModRow({
   onRequestRollback: (modId: string) => void;
 }) {
   const isRollbackTarget = mod.status === "rollback_required";
-  const isRollbackBusy = rollbackState.status !== "idle" && rollbackState.status !== "completed" && rollbackState.status !== "failed";
-  const isThisModRollingBack = rollbackState.status !== "idle" && "modId" in rollbackState && rollbackState.modId === mod.modId;
+  const isRollbackLocked = rollbackState.status !== "idle";
+  const isThisModRollingBack =
+    (rollbackState.status === "previewing" ||
+      rollbackState.status === "starting" ||
+      rollbackState.status === "running") &&
+    rollbackState.modId === mod.modId;
 
   return (
     <article className={`recovery-center__mod is-${mod.statusTone}`}>
@@ -636,7 +640,7 @@ function RecoveryModRow({
           <button
             type="button"
             className="recovery-center__mod-rollback"
-            disabled={isRollbackBusy}
+            disabled={isRollbackLocked}
             onClick={() => onRequestRollback(mod.modId)}
           >
             <RotateCcw size={13} aria-hidden="true" />
