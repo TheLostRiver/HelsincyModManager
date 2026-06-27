@@ -143,6 +143,7 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
   let completedModCount = 0;
   let attentionModCount = 0;
   let unknownModCount = 0;
+  let rollbackRequiredModCount = 0;
   let managedFileCount = 0;
   let backupCount = 0;
   let issueCount = 0;
@@ -153,6 +154,9 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
         completedModCount += 1;
       } else if (summary.status === "rollback_required" || summary.status === "repair_required") {
         attentionModCount += 1;
+        if (summary.status === "rollback_required") {
+          rollbackRequiredModCount += 1;
+        }
       } else if (summary.status === "unknown") {
         unknownModCount += 1;
       }
@@ -204,6 +208,7 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
       manualDecision: deriveManualDecision({
         attentionModCount,
         unknownModCount,
+        rollbackRequiredModCount,
       }),
     },
     mods,
@@ -327,6 +332,7 @@ function deriveModRepairSummary(summary: InstallRecoverySummary): RecoveryCenter
 function deriveManualDecision(input: {
   attentionModCount: number;
   unknownModCount: number;
+  rollbackRequiredModCount: number;
 }): RecoveryCenterManualDecision {
   const hasBlockedState = input.attentionModCount > 0 || input.unknownModCount > 0;
 
@@ -341,25 +347,37 @@ function deriveManualDecision(input: {
     };
   }
 
+  const actions = safeManualActions();
+
+  if (input.rollbackRequiredModCount > 0) {
+    actions.push({
+      id: "controlled_recovery",
+      label: "受控回滚",
+      description: `${input.rollbackRequiredModCount} 个 Mod 可在下方列表中使用逐 Mod 受控回滚。`,
+      state: "available",
+    });
+  } else {
+    actions.push({
+      id: "controlled_recovery",
+      label: "受控修复",
+      description: "当前没有可执行受控回滚的 Mod，请保留现场并等待后续恢复能力。",
+      state: "unavailable",
+    });
+  }
+
   return {
     status: "blocked",
     title: "需要人工处理",
     description: "恢复中心已阻断自动安装、卸载和恢复动作，当前只能执行只读复查或导出诊断。",
-    recommendedAction: "先重新扫描；如果仍异常，导出诊断并保留现场。",
+    recommendedAction: input.rollbackRequiredModCount > 0
+      ? "在下方 Mod 列表中对需要回滚的 Mod 使用受控回滚按钮。"
+      : "先重新扫描；如果仍异常，导出诊断并保留现场。",
     safeguards: [
       "不删除未知文件",
       "不根据当前 Mod 包猜测恢复动作",
       "不写入 manifest 或 backup 状态",
     ],
-    actions: [
-      ...safeManualActions(),
-      {
-        id: "controlled_recovery",
-        label: "受控修复",
-        description: "需要后续 manifest 状态机和恢复执行器支持，当前不可用。",
-        state: "unavailable",
-      },
-    ],
+    actions,
   };
 }
 
