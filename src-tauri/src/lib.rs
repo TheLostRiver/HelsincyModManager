@@ -12,7 +12,7 @@ use game_setup_commands::{
 };
 use install_commands::{
     get_install_manifest_status, preview_imported_mod_install_plan, preview_install_plan,
-    scan_install_recovery, start_install_task, start_uninstall_task,
+    preview_recovery_action, scan_install_recovery, start_install_task, start_uninstall_task,
 };
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
@@ -52,6 +52,7 @@ pub fn run() {
             start_uninstall_task,
             get_install_manifest_status,
             scan_install_recovery,
+            preview_recovery_action,
             start_import_mod_task,
             get_mod_library,
             get_mod_detail,

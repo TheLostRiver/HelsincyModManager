@@ -53,7 +53,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 自动回滚/恢复执行和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储、安装 commit 写入和扫描消费已落地，但只读动作预览和回滚执行仍未落地。
+- 自动回滚/恢复执行和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储、安装 commit 写入、扫描消费和只读动作预览已落地，但受控回滚任务和恢复中心写入型动作仍未落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -88,6 +88,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 只读恢复扫描消费 durable recovery record：`scan_install_recovery` 可由 `committing` / `rollback_required` record 返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装；不新增恢复执行、前端按钮、task phase 或 manifest 写入。
+- [x] 只读恢复动作预览：`preview_recovery_action` 可预览 `rollback_install` 是否满足受控回滚前置条件，只返回 `available` / `blocked`、聚合计数和稳定阻断 reason code；不新增恢复执行、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -160,6 +161,30 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - Tauri DTO 序列化：`cargo test -p hmm-tauri install_recovery`。
 - 聚焦前端：`cmd /c corepack pnpm exec node --test "src/features/dashboard/installRecoveryHealth.test.mjs" "src/features/install-recovery/recoveryCenterViewModel.test.mjs" "src/features/mods/modLibraryLoadState.test.mjs" "src/features/mods/modInstallPlanApi.test.mjs"`。
 - 全量门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
+
+### 2026-06-27 进度详情：只读恢复动作预览
+
+本切片完成 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 中“切片 2：只读恢复动作预览”。它只判断受控回滚动作是否具备前置条件，不执行删除、恢复、回滚、manifest 写入或 recovery record 写入。
+
+已落地范围：
+
+- `hmm-app` 新增 `InstallRecoveryActionPreviewService`，当前仅支持 `rollback_install`。服务读取 durable recovery record，只有 `committing` / `rollback_required` 状态可进入候选判断；每个 entry 必须有 `installed_file` 摘要，当前目标文件摘要必须匹配，覆盖文件所需 backup 必须存在且可读。
+- Tauri 新增 `preview_recovery_action` 窄 command；DTO 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，组合根复用安装/卸载/恢复扫描同一份 `gameId/profileId` 写锁，并只装配受控 game filesystem、backup store 和 recovery record repository。
+- 返回 DTO 只包含 action kind、`available` / `blocked`、将删除的新文件数、将恢复的覆盖文件数、backup 计数、阻断 issue 总数和稳定阻断 reason code：`rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing`、`backup_read_failed`。
+- 前端新增 feature-local `previewRecoveryAction` typed API 和对应 TypeScript 类型；当前没有把它接到恢复中心按钮或任何写入型 UI。
+
+仍明确未完成：
+
+- 受控回滚任务、`install.recovery.*` task phase、Audit Log 写入和执行前持锁重校验仍需后续切片。
+- 恢复中心 UI 仍不得显示可点击回滚按钮；只读人工处理决策面板中的 `controlled_recovery` 继续保持不可用。
+- `rolled_back` rich 状态和 manifest/recovery record 执行后状态更新仍未实现。
+
+验证记录：
+
+- TDD RED：`cargo test -p hmm-tauri install_recovery_action_preview` 先失败于缺少 request DTO、command 映射、错误映射和 AppState previewer。
+- 聚焦 app：`cargo test -p hmm-app preview_rollback_action`。
+- 聚焦 Tauri：`cargo test -p hmm-tauri install_recovery_action_preview`、`cargo test -p hmm-tauri recovery_action_preview_waits_for_shared_game_profile_write_lock`。
+- 聚焦前端：`cmd /c corepack pnpm exec node --test "src/features/mods/modInstallPlanApi.test.mjs"`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 

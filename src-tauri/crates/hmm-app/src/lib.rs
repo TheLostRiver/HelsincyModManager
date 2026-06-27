@@ -28,9 +28,12 @@ pub use install_manifest_query::{
     InstallManifestStatus, InstallManifestStatusSummary,
 };
 pub use install_recovery::{
-    InstallRecoveryIssue, InstallRecoveryIssueSummary, InstallRecoveryScanError,
-    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
-    InstallRecoverySummary,
+    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
+    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
+    InstallRecoveryIssueSummary, InstallRecoveryScanError, InstallRecoveryScanRequest,
+    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
 };
 pub use install_task::{
     GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, ImportedModInstallPlanner,
