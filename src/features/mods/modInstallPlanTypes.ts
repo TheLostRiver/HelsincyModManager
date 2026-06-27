@@ -28,6 +28,13 @@ export type ScanInstallRecoveryInput = {
   modIds: string[];
 };
 
+export type PreviewRecoveryActionInput = {
+  gameId: GameId;
+  profileId: string;
+  modId: string;
+  actionKind: InstallRecoveryActionKind;
+};
+
 export type InstallManifestStatus = "not_installed" | "installed" | "repair_required" | "unknown";
 
 export type InstallManifestStatusSummary = {
@@ -66,6 +73,36 @@ export type InstallRecoverySummary = {
   backupCount: number;
   issueCount: number;
   issues: InstallRecoveryIssueSummary[];
+};
+
+export type InstallRecoveryActionKind = "rollback_install";
+
+export type InstallRecoveryActionAvailability = "available" | "blocked";
+
+export type InstallRecoveryActionBlockReason =
+  | "rollback_state_missing"
+  | "missing_installed_file_summary"
+  | "target_missing"
+  | "target_changed"
+  | "target_read_failed"
+  | "backup_missing"
+  | "backup_read_failed";
+
+export type InstallRecoveryActionBlockReasonSummary = {
+  reason: InstallRecoveryActionBlockReason;
+  count: number;
+};
+
+export type InstallRecoveryActionPreview = {
+  profileId: string;
+  modId: string;
+  actionKind: InstallRecoveryActionKind;
+  availability: InstallRecoveryActionAvailability;
+  removeFileCount: number;
+  restoreFileCount: number;
+  backupCount: number;
+  blockingIssueCount: number;
+  blockingReasons: InstallRecoveryActionBlockReasonSummary[];
 };
 
 export type InstallPlanProvider = {

@@ -2,10 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type { TaskStartedDto } from "./modImportTypes";
 import type {
   GetInstallManifestStatusInput,
+  InstallRecoveryActionPreview,
   InstallManifestStatusSummary,
   InstallPlanPreview,
   InstallRecoverySummary,
   PreviewImportedModInstallPlanInput,
+  PreviewRecoveryActionInput,
   ScanInstallRecoveryInput,
   StartInstallTaskInput,
   StartUninstallTaskInput,
@@ -63,6 +65,17 @@ export function scanInstallRecovery(input: ScanInstallRecoveryInput): Promise<In
       gameId: input.gameId,
       profileId: input.profileId,
       modIds: input.modIds,
+    },
+  });
+}
+
+export function previewRecoveryAction(input: PreviewRecoveryActionInput): Promise<InstallRecoveryActionPreview> {
+  return invoke<InstallRecoveryActionPreview>("preview_recovery_action", {
+    request: {
+      gameId: input.gameId,
+      profileId: input.profileId,
+      modId: input.modId,
+      actionKind: input.actionKind,
     },
   });
 }
