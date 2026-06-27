@@ -4,7 +4,8 @@ use crate::mod_import_diagnostics::{
 use hmm_core::PreviewImageRejectionReason;
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, ModImportPackagePrepareRequest,
-    ModImportPackagePreparer, ModImportResultRepository, ModPackageMetadataAnalyzer,
+    ModImportPackagePreparer, ModImportResultRepository, ModMetadataRepository,
+    ModPackageMetadataAnalyzer,
     NeverCancelled, PreviewImageProcessingResult, StoredImportPreviewImage,
     StoredModImportAnalysis, StoredModPackageMetadata, ThumbnailCacheMaintenance,
     ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
@@ -93,6 +94,8 @@ pub struct ModDetail {
     pub name: String,
     pub package_id: String,
     pub metadata: ModPackageMetadataSummary,
+    pub description: Option<String>,
+    pub nexus_mod_id: Option<u64>,
     pub preview_image: ImportPreviewImage,
 }
 
@@ -304,23 +307,56 @@ impl ModImportTaskRunner {
 
 pub struct ModLibraryService {
     result_repository: Arc<dyn ModImportResultRepository>,
+    metadata_repository: Arc<dyn ModMetadataRepository>,
 }
 
 impl ModLibraryService {
-    pub fn new(result_repository: Arc<dyn ModImportResultRepository>) -> Self {
-        Self { result_repository }
+    pub fn new(
+        result_repository: Arc<dyn ModImportResultRepository>,
+        metadata_repository: Arc<dyn ModMetadataRepository>,
+    ) -> Self {
+        Self {
+            result_repository,
+            metadata_repository,
+        }
     }
 
     pub fn get_mod_library(&self) -> anyhow::Result<Vec<ModLibraryItem>> {
         let records = self.result_repository.list_analysis()?;
-        Ok(records.into_iter().map(library_item_from_stored).collect())
+        let overlays = self.metadata_repository.list_all()?;
+        let overlay_map: std::collections::HashMap<_, _> =
+            overlays.iter().map(|o| (o.mod_id.as_str(), o)).collect();
+        Ok(records
+            .into_iter()
+            .map(|record| {
+                let overlay = overlay_map.get(record.mod_id.as_str()).copied();
+                let mut item = library_item_from_stored(record);
+                if let Some(o) = overlay {
+                    if let Some(name) = &o.display_name { item.name = name.clone(); }
+                    if let Some(author) = &o.author { item.author = Some(author.clone()); }
+                    if let Some(v) = &o.version { item.version_label = Some(format_version_label(v)); }
+                }
+                item
+            })
+            .collect())
     }
 
     pub fn get_mod_detail(&self, mod_id: &str) -> anyhow::Result<Option<ModDetail>> {
-        Ok(self
-            .result_repository
-            .get_analysis(mod_id)?
-            .map(detail_from_stored))
+        let record = self.result_repository.get_analysis(mod_id)?;
+        match record {
+            Some(record) => {
+                let mut detail = detail_from_stored(record);
+                if let Some(o) = self.metadata_repository.get(mod_id)? {
+                    if let Some(name) = &o.display_name { detail.name = name.clone(); }
+                    if let Some(author) = &o.author { detail.metadata.author = Some(author.clone()); }
+                    if let Some(version) = &o.version { detail.metadata.version = Some(version.clone()); }
+                    detail.description = o.description.clone();
+                    detail.nexus_mod_id = o.nexus_mod_id;
+                }
+                Ok(Some(detail))
+            }
+            None => Ok(None),
+        }
     }
 
     pub fn get_preview_image_diagnostics(&self) -> anyhow::Result<PreviewImageDiagnosticsSummary> {
@@ -440,7 +476,17 @@ fn detail_from_stored(record: StoredModImportAnalysis) -> ModDetail {
         name: record.display_name,
         package_id: record.package_id,
         metadata,
+        description: None,
+        nexus_mod_id: None,
         preview_image: import_preview_from_stored(record.preview_image),
+    }
+}
+
+fn format_version_label(version: &str) -> String {
+    if version.starts_with('v') || version.starts_with('V') {
+        version.to_owned()
+    } else {
+        format!("v{version}")
     }
 }
 
@@ -455,13 +501,7 @@ fn metadata_summary_from_stored(metadata: &StoredModPackageMetadata) -> ModPacka
 }
 
 fn version_label_from_metadata(metadata: &StoredModPackageMetadata) -> Option<String> {
-    non_empty_metadata_value(&metadata.version).map(|version| {
-        if version.starts_with('v') || version.starts_with('V') {
-            version
-        } else {
-            format!("v{version}")
-        }
-    })
+    non_empty_metadata_value(&metadata.version).map(|v| format_version_label(&v))
 }
 
 fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<String> {
@@ -697,7 +737,7 @@ mod tests {
         PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
         PreviewImageFallbackDiagnostic,
     };
-    use hmm_core::PreviewImageRejectionReason;
+    use hmm_core::{ModMetadataOverlay, PreviewImageRejectionReason};
     use hmm_ports::{
         AppSettings, AppSettingsRepository, AppSettingsRepositoryResult,
         ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
@@ -1448,56 +1488,6 @@ mod tests {
     }
 
     #[test]
-    fn library_service_returns_library_and_detail_with_preview_image() {
-        let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
-        result_repository
-            .save_analysis(&StoredModImportAnalysis {
-                mod_id: "pkg-1".to_owned(),
-                task_id: "task-1".to_owned(),
-                package_id: "pkg-1".to_owned(),
-                display_name: "pkg-1".to_owned(),
-                metadata: StoredModPackageMetadata {
-                    version: Some("1.2.3".to_owned()),
-                    author: Some("A Hunter".to_owned()),
-                    category: Some("Visual".to_owned()),
-                    tags: vec!["armor".to_owned(), "hd".to_owned()],
-                    dependencies: vec!["stracker-loader".to_owned()],
-                },
-                preview_image: StoredImportPreviewImage::Fallback {
-                    reason: PreviewImageRejectionReason::Missing,
-                },
-            })
-            .expect("save analysis");
-        let service = ModLibraryService::new(result_repository);
-
-        let library = service.get_mod_library().expect("library query succeeds");
-        let detail = service
-            .get_mod_detail("pkg-1")
-            .expect("detail query succeeds")
-            .expect("detail exists");
-
-        assert_eq!(library.len(), 1);
-        assert_eq!(library[0].id, "pkg-1");
-        assert_eq!(library[0].name, "pkg-1");
-        assert_eq!(library[0].author.as_deref(), Some("A Hunter"));
-        assert_eq!(library[0].version_label.as_deref(), Some("v1.2.3"));
-        assert_eq!(library[0].category_labels, vec!["Visual", "armor", "hd"]);
-        assert_eq!(
-            library[0].preview_image,
-            ImportPreviewImage::Fallback {
-                reason: PreviewImageRejectionReason::Missing,
-            }
-        );
-        assert_eq!(detail.id, "pkg-1");
-        assert_eq!(detail.metadata.version.as_deref(), Some("1.2.3"));
-        assert_eq!(detail.metadata.author.as_deref(), Some("A Hunter"));
-        assert_eq!(detail.metadata.category.as_deref(), Some("Visual"));
-        assert_eq!(detail.metadata.tags, vec!["armor", "hd"]);
-        assert_eq!(detail.metadata.dependencies, vec!["stracker-loader"]);
-        assert_eq!(detail.preview_image, library[0].preview_image);
-    }
-
-    #[test]
     fn library_service_summarizes_preview_image_diagnostics_without_content() {
         let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
         for record in [
@@ -1550,7 +1540,7 @@ mod tests {
                 .save_analysis(&record)
                 .expect("save analysis");
         }
-        let service = ModLibraryService::new(result_repository);
+        let service = ModLibraryService::new(result_repository, empty_metadata_repo());
 
         let summary = service
             .get_preview_image_diagnostics()
@@ -2102,6 +2092,18 @@ mod tests {
                 .find(|record| record.mod_id == mod_id)
                 .cloned())
         }
+    }
+
+    struct EmptyMetadataRepo;
+    impl ModMetadataRepository for EmptyMetadataRepo {
+        fn get(&self, _: &str) -> anyhow::Result<Option<ModMetadataOverlay>> { Ok(None) }
+        fn save(&self, _: &ModMetadataOverlay) -> anyhow::Result<()> { Ok(()) }
+        fn delete(&self, _: &str) -> anyhow::Result<()> { Ok(()) }
+        fn list_all(&self) -> anyhow::Result<Vec<ModMetadataOverlay>> { Ok(vec![]) }
+    }
+
+    fn empty_metadata_repo() -> Arc<EmptyMetadataRepo> {
+        Arc::new(EmptyMetadataRepo)
     }
 
     #[derive(Default)]

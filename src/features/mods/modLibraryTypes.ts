@@ -31,6 +31,8 @@ export type ModDetail = {
   id: string;
   name: string;
   packageId: string;
+  description?: string;
+  nexusModId?: number;
   previewImage: PreviewImage;
 };
 

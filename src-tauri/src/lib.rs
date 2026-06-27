@@ -2,6 +2,7 @@ mod dto;
 mod game_setup_commands;
 mod install_commands;
 mod mod_import_commands;
+mod mod_metadata_commands;
 mod state;
 mod task_commands;
 mod task_events;
@@ -22,6 +23,7 @@ use mod_import_commands::{
     maintain_thumbnail_cache, select_preview_image_candidate, set_thumbnail_cache_settings,
     start_import_mod_task,
 };
+use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
@@ -68,7 +70,9 @@ pub fn run() {
             select_preview_image_candidate,
             maintain_thumbnail_cache,
             get_thumbnail_cache_settings,
-            set_thumbnail_cache_settings
+            set_thumbnail_cache_settings,
+            update_mod_metadata,
+            delete_mod_metadata
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");

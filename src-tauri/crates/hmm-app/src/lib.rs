@@ -9,6 +9,7 @@ mod mod_dependency_graph;
 mod mod_import;
 mod mod_import_diagnostics;
 mod mod_import_task;
+mod mod_metadata;
 mod preview_image;
 mod support_diagnostics;
 mod task_manager;
@@ -66,6 +67,7 @@ pub use mod_import_diagnostics::{
 pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,
 };
+pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageDetailService,
