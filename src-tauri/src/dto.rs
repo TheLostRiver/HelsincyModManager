@@ -213,6 +213,7 @@ pub enum InstallManifestStatusDto {
 pub enum InstallRecoveryStatusDto {
     NotInstalled,
     Completed,
+    RollbackRequired,
     RepairRequired,
     Unknown,
 }
@@ -334,6 +335,7 @@ impl From<InstallRecoveryStatus> for InstallRecoveryStatusDto {
         match status {
             InstallRecoveryStatus::NotInstalled => Self::NotInstalled,
             InstallRecoveryStatus::Completed => Self::Completed,
+            InstallRecoveryStatus::RollbackRequired => Self::RollbackRequired,
             InstallRecoveryStatus::RepairRequired => Self::RepairRequired,
             InstallRecoveryStatus::Unknown => Self::Unknown,
         }
@@ -1556,5 +1558,25 @@ mod install_recovery_dto_tests {
         assert!(value.get("backupRef").is_none());
         assert!(!value.to_string().contains("nativePC"));
         assert!(!value.to_string().contains("backup-original"));
+    }
+
+    #[test]
+    fn serializes_rollback_required_recovery_status_as_stable_snake_case() {
+        let dto: InstallRecoverySummaryDto = hmm_app::InstallRecoverySummary {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: hmm_app::InstallRecoveryStatus::RollbackRequired,
+            managed_file_count: 1,
+            backup_count: 0,
+            issue_count: 0,
+            issues: Vec::new(),
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize recovery summary");
+
+        assert_eq!(value["status"], "rollback_required");
+        assert!(value.get("targetPath").is_none());
+        assert!(value.get("backupRef").is_none());
     }
 }

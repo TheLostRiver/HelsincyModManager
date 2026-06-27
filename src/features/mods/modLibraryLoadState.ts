@@ -1,5 +1,5 @@
-import type { InstallManifestStatus, InstallManifestStatusSummary, InstallRecoverySummary } from "./modInstallPlanTypes";
-import type { ModLibraryItem } from "./modLibraryTypes";
+import type { InstallManifestStatusSummary, InstallRecoverySummary } from "./modInstallPlanTypes";
+import type { ModInstallSummaryStatus, ModLibraryItem } from "./modLibraryTypes";
 
 type ResolveLoadedModLibraryItemsInput = {
   backendItems: ModLibraryItem[] | null;
@@ -43,7 +43,7 @@ export function applyInstallManifestStatusSummaries(
   });
 }
 
-function recoveryStatusToInstallStatus(status: InstallRecoverySummary["status"]): InstallManifestStatus {
+function recoveryStatusToInstallStatus(status: InstallRecoverySummary["status"]): ModInstallSummaryStatus {
   return status === "completed" ? "installed" : status;
 }
 
@@ -65,7 +65,7 @@ export function applyInstallRecoverySummaries(
 
     const installStatus = recoveryStatusToInstallStatus(summary.status);
     const safetyStatus =
-      installStatus === "repair_required" || installStatus === "unknown"
+      installStatus === "rollback_required" || installStatus === "repair_required" || installStatus === "unknown"
         ? installStatus
         : item.status === "disabled" || item.status === "conflict"
           ? item.status

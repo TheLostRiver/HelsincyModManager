@@ -1,10 +1,11 @@
 import type { PreviewImage } from "./modPreviewImageTypes";
 import type { InstallManifestStatus, InstallRecoveryIssueSummary, InstallRecoveryStatus } from "./modInstallPlanTypes";
 
-export type ModInstallStatus = InstallManifestStatus | "disabled" | "conflict";
+export type ModInstallSummaryStatus = InstallManifestStatus | "rollback_required";
+export type ModInstallStatus = ModInstallSummaryStatus | "disabled" | "conflict";
 
 export type ModInstallSummary = {
-  status: InstallManifestStatus;
+  status: ModInstallSummaryStatus;
   managedFileCount: number;
   backupCount: number;
   recoveryStatus?: InstallRecoveryStatus;

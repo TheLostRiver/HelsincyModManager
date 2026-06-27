@@ -585,6 +585,7 @@
   color: var(--color-text-muted);
 }
 
+.mod-grid.view-tech .mod-card__tech-status[data-status="rollback_required"],
 .mod-grid.view-tech .mod-card__tech-status[data-status="repair_required"] {
   color: var(--color-danger-text);
 }
@@ -1099,11 +1100,13 @@
   color: var(--color-danger-dot);
 }
 
+.mod-card__status-pill.is-rollback_required,
 .mod-card__status-pill.is-repair_required {
   color: var(--color-danger-text);
   background: var(--color-danger-bg);
 }
 
+.mod-card__status-pill.is-rollback_required svg,
 .mod-card__status-pill.is-repair_required svg {
   color: var(--color-danger-dot);
 }

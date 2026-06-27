@@ -166,6 +166,7 @@ test("mod library page blocks install and uninstall actions during unsafe recove
   const actionPanelSource = readSource("src/features/mods/CompactActionPanel.tsx");
 
   assert.match(source, /canInstallSelected/);
+  assert.match(source, /summary\?\.status\s*===\s*"rollback_required"/);
   assert.match(source, /summary\?\.status\s*===\s*"repair_required"/);
   assert.match(source, /summary\?\.status\s*===\s*"unknown"/);
   assert.match(source, /recoveryPanelStateForItem/);

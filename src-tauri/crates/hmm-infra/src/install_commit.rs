@@ -267,6 +267,47 @@ impl InstallRecoveryRecordRepository for JsonInstallRecoveryRecordRepository {
         Ok(Some(record))
     }
 
+    fn list_records(&self, profile_id: &ProfileId) -> Result<Vec<InstallRecoveryRecord>> {
+        match fs::symlink_metadata(&self.record_root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error).context("failed to inspect install recovery root"),
+        }
+
+        ensure_existing_directory(&self.record_root, "install recovery root")?;
+        ensure_contained_existing_path(&self.record_root, &self.record_root)?;
+
+        let mut records = Vec::new();
+        for entry in
+            fs::read_dir(&self.record_root).context("failed to read install recovery root")?
+        {
+            let entry = entry.context("failed to read install recovery record entry")?;
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if !file_name.starts_with("record-") || !file_name.ends_with(".json") {
+                continue;
+            }
+
+            let record_path = entry.path();
+            let metadata = fs::symlink_metadata(&record_path)
+                .context("failed to inspect install recovery record")?;
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                anyhow::bail!("install recovery record is not a regular file");
+            }
+            ensure_contained_existing_path(&self.record_root, &record_path)?;
+
+            let serialized = fs::read_to_string(&record_path)
+                .context("failed to read install recovery record")?;
+            let record: InstallRecoveryRecord = serde_json::from_str(&serialized)
+                .context("failed to deserialize install recovery record")?;
+            if record.profile_id == *profile_id {
+                records.push(record);
+            }
+        }
+
+        records.sort_by(|left, right| left.mod_id.as_str().cmp(right.mod_id.as_str()));
+        Ok(records)
+    }
+
     fn save_record(&self, record: &InstallRecoveryRecord) -> Result<()> {
         fs::create_dir_all(&self.record_root).context("failed to create install recovery root")?;
         ensure_existing_directory(&self.record_root, "install recovery root")?;
@@ -1009,6 +1050,40 @@ mod tests {
         assert!(!file_name.contains("mod"));
         assert!(!file_name.contains('/'));
         assert!(!file_name.contains('\\'));
+    }
+
+    #[test]
+    fn json_recovery_record_repository_lists_records_for_profile_only() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let recovery_root = temp.path().join("recovery-records");
+        let repository = JsonInstallRecoveryRecordRepository::new(recovery_root.clone());
+        let record_b = recovery_record("default", "mod-b");
+        let record_a = recovery_record("default", "mod-a");
+        let other_profile = recovery_record("other", "mod-c");
+
+        repository
+            .save_record(&record_b)
+            .expect("save recovery record b");
+        repository
+            .save_record(&record_a)
+            .expect("save recovery record a");
+        repository
+            .save_record(&other_profile)
+            .expect("save other profile recovery record");
+        fs::write(recovery_root.join("scratch.tmp"), b"not a recovery record")
+            .expect("write unrelated file");
+
+        let records = repository
+            .list_records(&ProfileId::new("default"))
+            .expect("list recovery records");
+
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.mod_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mod-a", "mod-b"]
+        );
     }
 
     #[test]

@@ -135,6 +135,55 @@ test("derives read-only rich repair summary for unsafe recovery states", () => {
   assert.equal("manifestPath" in viewModel.mods[0].issues[0], false);
 });
 
+test("derives read-only rollback-required summary ahead of repair and unknown states", () => {
+  const viewModel = deriveRecoveryCenterViewModel([
+    {
+      ...baseSummary,
+      modId: "changed-mod",
+      status: "repair_required",
+      managedFileCount: 3,
+      issueCount: 1,
+      issues: [{ issue: "target_changed", count: 1 }],
+    },
+    {
+      ...baseSummary,
+      modId: "rollback-mod",
+      status: "rollback_required",
+      managedFileCount: 2,
+      backupCount: 1,
+    },
+    {
+      ...baseSummary,
+      modId: "unknown-mod",
+      status: "unknown",
+      issueCount: 1,
+      issues: [{ issue: "target_read_failed", count: 1 }],
+    },
+  ]);
+
+  assert.equal(viewModel.overview.status, "attention");
+  assert.equal(viewModel.overview.attentionModCount, 2);
+  assert.equal(viewModel.overview.unknownModCount, 1);
+  assert.deepEqual(
+    viewModel.mods.map((mod) => [mod.modId, mod.status, mod.statusLabel, mod.statusTone]),
+    [
+      ["rollback-mod", "rollback_required", "需要回滚", "attention"],
+      ["changed-mod", "repair_required", "需要修复", "attention"],
+      ["unknown-mod", "unknown", "状态未知", "unknown"],
+    ],
+  );
+  assert.deepEqual(viewModel.mods[0].repairSummary, {
+    status: "manual_required",
+    title: "需要回滚",
+    description: "该 Mod 有未完成写入窗口的持久化恢复记录，自动安装、卸载和恢复动作必须保持阻断。",
+    actionLabel: "保留现场，等待受控回滚流程",
+    blockingReason: "恢复记录要求回滚",
+  });
+  assert.equal(viewModel.overview.manualDecision.status, "blocked");
+  assert.equal("targetPath" in viewModel.mods[0].repairSummary, false);
+  assert.equal("backupRef" in viewModel.mods[0].repairSummary, false);
+});
+
 test("derives safe manual handling decisions for recovery attention states", () => {
   const viewModel = deriveRecoveryCenterViewModel([
     {

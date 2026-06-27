@@ -80,6 +80,30 @@ test("derives attention state and aggregates recovery issues without paths", () 
   assert.equal("manifestPath" in summary, false);
 });
 
+test("derives attention state from rollback-required records without issue noise", () => {
+  const summary = deriveInstallRecoveryHealth([
+    {
+      ...baseSummary,
+      modId: "rollback-mod",
+      status: "rollback_required",
+      managedFileCount: 2,
+      backupCount: 1,
+    },
+  ]);
+
+  assert.equal(summary.status, "attention");
+  assert.equal(summary.scannedModCount, 1);
+  assert.equal(summary.completedModCount, 0);
+  assert.equal(summary.attentionModCount, 1);
+  assert.equal(summary.unknownModCount, 0);
+  assert.equal(summary.managedFileCount, 2);
+  assert.equal(summary.backupCount, 1);
+  assert.equal(summary.issueCount, 0);
+  assert.deepEqual(summary.issues, []);
+  assert.equal("targetPath" in summary, false);
+  assert.equal("backupRef" in summary, false);
+});
+
 test("derives empty state when profile scan has no managed mods", () => {
   const summary = deriveInstallRecoveryHealth([]);
 

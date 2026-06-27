@@ -30,6 +30,7 @@ pub trait InstallRecoveryRecordRepository: Send + Sync {
         profile_id: &ProfileId,
         mod_id: &ModId,
     ) -> Result<Option<InstallRecoveryRecord>>;
+    fn list_records(&self, profile_id: &ProfileId) -> Result<Vec<InstallRecoveryRecord>>;
     fn save_record(&self, record: &InstallRecoveryRecord) -> Result<()>;
     fn remove_record(&self, profile_id: &ProfileId, mod_id: &ModId) -> Result<()>;
 }
