@@ -106,6 +106,30 @@ test("install recovery action preview API invokes controlled preview command wit
   assert.doesNotMatch(actionPreviewType[0], /targetPath|manifestPath|backupRef|backupRoot|hash/i);
 });
 
+test("install recovery action task API invokes controlled task command without paths", () => {
+  const source = readSource("src/features/mods/modInstallPlanApi.ts");
+  const typesSource = readSource("src/features/mods/modInstallPlanTypes.ts");
+
+  assert.match(source, /export function startRecoveryActionTask/);
+  const taskCall = source.match(/export function startRecoveryActionTask[\s\S]*?\n}/);
+  assert.ok(taskCall, "expected a feature-local recovery action task wrapper");
+  assert.match(taskCall[0], /invoke<TaskStartedDto>\("start_recovery_action_task"/);
+  assert.match(taskCall[0], /request:\s*\{/);
+  assert.match(taskCall[0], /gameId:\s*input\.gameId/);
+  assert.match(taskCall[0], /profileId:\s*input\.profileId/);
+  assert.match(taskCall[0], /modId:\s*input\.modId/);
+  assert.match(taskCall[0], /actionKind:\s*input\.actionKind/);
+  assert.doesNotMatch(
+    taskCall[0],
+    /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot|backupRef|hash/i,
+  );
+
+  assert.match(typesSource, /export type StartRecoveryActionTaskInput/);
+  const inputType = typesSource.match(/export type StartRecoveryActionTaskInput[\s\S]*?};/);
+  assert.ok(inputType, "expected recovery action task input type");
+  assert.doesNotMatch(inputType[0], /targetPath|manifestPath|backupRef|backupRoot|hash/i);
+});
+
 test("install plan types expose preview DTO without filesystem paths", () => {
   assert.equal(existsSync("src/features/mods/modInstallPlanTypes.ts"), true);
   const source = readSource("src/features/mods/modInstallPlanTypes.ts");

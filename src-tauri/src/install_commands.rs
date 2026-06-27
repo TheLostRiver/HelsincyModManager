@@ -4,7 +4,7 @@ use crate::dto::{
     InstallRecoveryActionPreviewRequestDto, InstallRecoveryScanRequestDto,
     InstallRecoverySummaryDto, PreviewImportedModInstallPlanRequestDto,
     PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartInstallTaskRequestDto,
-    StartUninstallTaskRequestDto, TaskStartedDto,
+    StartRecoveryActionTaskRequestDto, StartUninstallTaskRequestDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
@@ -13,7 +13,7 @@ use hmm_app::{
     InstallManifestQueryRequest, InstallPlanFile, InstallPlanningError, InstallRecoveryActionKind,
     InstallRecoveryActionPreviewError, InstallRecoveryActionPreviewRequest,
     InstallRecoveryScanError, InstallRecoveryScanRequest, StartInstallTaskRequest,
-    StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
+    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
 use std::sync::Arc;
@@ -21,6 +21,7 @@ use tauri::{AppHandle, State};
 
 const INSTALL_QUEUED_PHASE: &str = "install.queued";
 const INSTALL_UNINSTALL_QUEUED_PHASE: &str = "install.uninstall.queued";
+const INSTALL_RECOVERY_QUEUED_PHASE: &str = "install.recovery.queued";
 
 #[tauri::command]
 pub fn preview_install_plan(
@@ -146,6 +147,51 @@ pub fn preview_recovery_action(
     Ok(preview.into())
 }
 
+#[tauri::command]
+pub fn start_recovery_action_task(
+    request: StartRecoveryActionTaskRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let request = start_recovery_action_task_request_from_dto(request)?;
+    let runner_request = request.clone();
+    let task = state
+        .recovery_action_tasks
+        .start_recovery_action_task(request)
+        .map_err(CommandErrorDto::from_task_manager_error)?;
+
+    let _ = emit_task_progress(
+        &app_handle,
+        queued_event_for_started_recovery_action_task(&task).into(),
+    );
+    spawn_recovery_action_runner(
+        Arc::clone(&state.recovery_action_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_request,
+    );
+
+    Ok(task.into())
+}
+
+fn spawn_recovery_action_runner(
+    runner: Arc<hmm_app::RecoveryActionTaskRunner>,
+    app_handle: AppHandle,
+    task_id: String,
+    request: StartRecoveryActionTaskRequest,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_recovery_action_task(&task_id, request) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
+}
+
 fn spawn_uninstall_runner(
     runner: Arc<hmm_app::UninstallTaskRunner>,
     app_handle: AppHandle,
@@ -197,6 +243,15 @@ fn queued_event_for_started_install_task(task: &TaskStarted) -> TaskProgressEven
         task.kind,
         task.status,
         INSTALL_QUEUED_PHASE,
+    )
+}
+
+fn queued_event_for_started_recovery_action_task(task: &TaskStarted) -> TaskProgressEvent {
+    TaskProgressEvent::new(
+        task.task_id.clone(),
+        task.kind,
+        task.status,
+        INSTALL_RECOVERY_QUEUED_PHASE,
     )
 }
 
@@ -360,6 +415,28 @@ fn install_recovery_action_preview_request_from_dto(
     ))
 }
 
+fn start_recovery_action_task_request_from_dto(
+    request: StartRecoveryActionTaskRequestDto,
+) -> Result<StartRecoveryActionTaskRequest, CommandErrorDto> {
+    let game_id = GameId::parse(request.game_id).map_err(|_| CommandErrorDto {
+        code: "game_id_invalid".to_owned(),
+        message: "game id is invalid".to_owned(),
+    })?;
+    let profile_id = parse_non_empty_id(
+        request.profile_id,
+        "profile_id_empty",
+        "profile id cannot be empty",
+    )?;
+    let mod_id = parse_non_empty_id(request.mod_id, "mod_id_empty", "mod id cannot be empty")?;
+
+    Ok(StartRecoveryActionTaskRequest {
+        game_id,
+        profile_id: ProfileId::new(profile_id),
+        mod_id: ModId::new(mod_id),
+        action_kind: install_recovery_action_kind_from_dto(request.action_kind),
+    })
+}
+
 fn install_recovery_action_kind_from_dto(
     action_kind: InstallRecoveryActionKindDto,
 ) -> InstallRecoveryActionKind {
@@ -487,8 +564,8 @@ mod tests {
     use super::*;
     use crate::dto::{
         InstallPlanPreviewDto, PreviewImportedModInstallPlanRequestDto,
-        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartUninstallTaskRequestDto,
-        TaskProgressEventDto,
+        PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto,
+        StartRecoveryActionTaskRequestDto, StartUninstallTaskRequestDto, TaskProgressEventDto,
     };
     use hmm_core::{
         FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallPlan,
@@ -670,6 +747,29 @@ mod tests {
     }
 
     #[test]
+    fn start_recovery_action_task_request_deserializes_without_paths() {
+        let value = json!({
+            "gameId": "mhw",
+            "profileId": "default",
+            "modId": "mod-a",
+            "actionKind": "rollback_install"
+        });
+
+        let request: StartRecoveryActionTaskRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let app_request =
+            start_recovery_action_task_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(app_request.game_id.as_str(), "mhw");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(app_request.mod_id.as_str(), "mod-a");
+        assert_eq!(
+            app_request.action_kind,
+            hmm_app::InstallRecoveryActionKind::RollbackInstall
+        );
+    }
+
+    #[test]
     fn queued_install_event_uses_registered_phase() {
         let task = TaskStarted {
             task_id: "install-123".to_owned(),
@@ -706,6 +806,28 @@ mod tests {
         assert_eq!(value["kind"], "install");
         assert_eq!(value["status"], "queued");
         assert_eq!(value["phase"], INSTALL_UNINSTALL_QUEUED_PHASE);
+        assert!(value["current"].is_null());
+        assert!(value["total"].is_null());
+        assert!(value["message"].is_null());
+        assert!(value["error"].is_null());
+        assert!(value["resultRef"].is_null());
+    }
+
+    #[test]
+    fn queued_recovery_action_event_uses_registered_phase() {
+        let task = TaskStarted {
+            task_id: "install-123".to_owned(),
+            kind: hmm_app::TaskKind::Install,
+            status: hmm_app::TaskStatus::Queued,
+        };
+
+        let dto: TaskProgressEventDto = queued_event_for_started_recovery_action_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "install-123");
+        assert_eq!(value["kind"], "install");
+        assert_eq!(value["status"], "queued");
+        assert_eq!(value["phase"], INSTALL_RECOVERY_QUEUED_PHASE);
         assert!(value["current"].is_null());
         assert!(value["total"].is_null());
         assert!(value["message"].is_null());

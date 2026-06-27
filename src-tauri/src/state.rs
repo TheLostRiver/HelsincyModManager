@@ -3,14 +3,16 @@ use hmm_app::{
     GameProfileWriteLockRegistry, GameSetupService, ImportedModInstallCommitRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
     InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService,
-    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
-    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
-    InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
-    InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
-    ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
-    ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModUninstaller,
-    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    InstallRecoveryActionError, InstallRecoveryActionExecutor, InstallRecoveryActionPreview,
+    InstallRecoveryActionPreviewError, InstallRecoveryActionPreviewRequest,
+    InstallRecoveryActionPreviewService, InstallRecoveryActionRequest, InstallRecoveryActionResult,
+    InstallRecoveryActionService, InstallRecoveryScanError, InstallRecoveryScanRequest,
+    InstallRecoveryScanService, InstallRecoverySummary, InstallTaskRunner, InstallTaskService,
+    LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
+    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
+    ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    RecoveryActionTaskRunner, RecoveryActionTaskService, StartRecoveryActionTaskRequest,
     StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
     ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
     UninstallModService, UninstallTaskRunner, UninstallTaskService,
@@ -55,6 +57,8 @@ pub struct AppState {
     pub(crate) install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
+    pub recovery_action_task_runner: Arc<RecoveryActionTaskRunner>,
+    pub recovery_action_tasks: Arc<RecoveryActionTaskService>,
     pub uninstall_task_runner: Arc<UninstallTaskRunner>,
     pub uninstall_tasks: Arc<UninstallTaskService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
@@ -217,10 +221,22 @@ impl AppState {
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
         ));
+        let recovery_action_executor: Arc<dyn InstallRecoveryActionExecutor> =
+            Arc::new(ConfiguredInstallRecoveryActionExecutor::new(
+                Arc::clone(&game_config_repository),
+                app_data_dir.clone(),
+            ));
         let install_task_runner = Arc::new(InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             install_planning.clone(),
             install_committer,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+            Arc::clone(&install_write_locks),
+        ));
+        let recovery_action_task_runner = Arc::new(RecoveryActionTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            recovery_action_executor,
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
@@ -276,6 +292,10 @@ impl AppState {
             install_recovery_action_previewer,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
+            recovery_action_task_runner,
+            recovery_action_tasks: Arc::new(RecoveryActionTaskService::new(Arc::clone(
+                &task_manager,
+            ))),
             uninstall_task_runner,
             uninstall_tasks: Arc::new(UninstallTaskService::new(Arc::clone(&task_manager))),
             mod_import_task_runner,
@@ -380,6 +400,48 @@ impl ConfiguredInstallRecoveryActionPreviewer {
         );
 
         service.preview(request)
+    }
+}
+
+struct ConfiguredInstallRecoveryActionExecutor {
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    app_data_dir: PathBuf,
+}
+
+impl ConfiguredInstallRecoveryActionExecutor {
+    fn new(game_config_repository: Arc<dyn GameConfigRepository>, app_data_dir: PathBuf) -> Self {
+        Self {
+            game_config_repository,
+            app_data_dir,
+        }
+    }
+}
+
+impl InstallRecoveryActionExecutor for ConfiguredInstallRecoveryActionExecutor {
+    fn run_recovery_action(
+        &self,
+        request: StartRecoveryActionTaskRequest,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(&request.game_id)
+            .map_err(|_| InstallRecoveryActionError::ActionUnavailable)?
+            .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
+        let service = InstallRecoveryActionService::new(
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            Arc::new(FileSystemInstallBackupStore::new(
+                self.app_data_dir.join("install").join("backups"),
+            )),
+            Arc::new(JsonInstallRecoveryRecordRepository::new(
+                self.app_data_dir.join("install").join("recovery"),
+            )),
+        );
+
+        service.run(InstallRecoveryActionRequest {
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            action_kind: request.action_kind,
+        })
     }
 }
 
@@ -661,5 +723,90 @@ mod tests {
             Err(InstallRecoveryActionPreviewError::GameInstanceUnavailable)
         );
         assert!(load_called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn recovery_action_task_waits_for_shared_game_profile_write_lock() {
+        let game_id = GameId::mhw();
+        let profile_id = ProfileId::new("default");
+        let write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let write_lock = write_locks.lock_for(&game_id, &profile_id);
+        let guard = write_lock.lock().expect("hold shared write lock");
+        let load_called = Arc::new(AtomicBool::new(false));
+        let task_manager = Arc::new(TaskManager::new());
+        let task = task_manager
+            .create_task(hmm_app::TaskKind::Install)
+            .expect("task can be created");
+        let runner = Arc::new(hmm_app::RecoveryActionTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(ConfiguredInstallRecoveryActionExecutor::new(
+                Arc::new(NotifyingGameConfigRepository {
+                    load_called: Arc::clone(&load_called),
+                }),
+                std::env::temp_dir().join("hmm-recovery-action-task-lock-test"),
+            )),
+            Arc::new(FileSystemAuditLogWriter::new(
+                std::env::temp_dir().join("hmm-recovery-action-task-lock-test"),
+            )),
+            Arc::new(SystemClock),
+            Arc::clone(&write_locks),
+        ));
+        let barrier = Arc::new(Barrier::new(2));
+        let task_barrier = Arc::clone(&barrier);
+        let runner_for_thread = Arc::clone(&runner);
+        let task_id = task.task_id.clone();
+        let request_game_id = game_id.clone();
+        let request_profile_id = profile_id.clone();
+
+        let handle = std::thread::spawn(move || {
+            task_barrier.wait();
+            runner_for_thread.run_recovery_action_task(
+                &task_id,
+                hmm_app::StartRecoveryActionTaskRequest {
+                    game_id: request_game_id,
+                    profile_id: request_profile_id,
+                    mod_id: ModId::new("mod-a"),
+                    action_kind: hmm_app::InstallRecoveryActionKind::RollbackInstall,
+                },
+            )
+        });
+
+        barrier.wait();
+        wait_for_task_status(&task_manager, &task.task_id, hmm_app::TaskStatus::Running);
+        let deadline = Instant::now() + Duration::from_millis(150);
+        while Instant::now() < deadline {
+            if load_called.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+
+        assert!(
+            !load_called.load(Ordering::SeqCst),
+            "recovery action task entered filesystem/config work while the shared write lock was held"
+        );
+
+        drop(guard);
+        let result = handle
+            .join()
+            .expect("recovery action task thread should not panic");
+        assert!(result.is_err());
+        assert!(load_called.load(Ordering::SeqCst));
+    }
+
+    fn wait_for_task_status(
+        task_manager: &TaskManager,
+        task_id: &str,
+        expected: hmm_app::TaskStatus,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if task_manager.task_status(task_id) == Some(expected) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        panic!("task {task_id} did not reach expected status {expected:?}");
     }
 }
