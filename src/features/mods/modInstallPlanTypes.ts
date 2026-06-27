@@ -38,7 +38,12 @@ export type InstallManifestStatusSummary = {
   backupCount: number;
 };
 
-export type InstallRecoveryStatus = "not_installed" | "completed" | "repair_required" | "unknown";
+export type InstallRecoveryStatus =
+  | "not_installed"
+  | "completed"
+  | "rollback_required"
+  | "repair_required"
+  | "unknown";
 
 export type InstallRecoveryIssue =
   | "missing_installed_file_summary"

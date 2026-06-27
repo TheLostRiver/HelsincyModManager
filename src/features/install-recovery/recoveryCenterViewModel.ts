@@ -125,15 +125,17 @@ const issueMetadata: Record<
 const statusLabels: Record<InstallRecoveryStatus, string> = {
   completed: "正常",
   not_installed: "未安装",
+  rollback_required: "需要回滚",
   repair_required: "需要修复",
   unknown: "状态未知",
 };
 
 const statusSortRank: Record<InstallRecoveryStatus, number> = {
-  repair_required: 0,
-  unknown: 1,
-  completed: 2,
-  not_installed: 3,
+  rollback_required: 0,
+  repair_required: 1,
+  unknown: 2,
+  completed: 3,
+  not_installed: 4,
 };
 
 export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[]): RecoveryCenterViewModel {
@@ -149,7 +151,7 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
     .map((summary): RecoveryCenterModView => {
       if (summary.status === "completed") {
         completedModCount += 1;
-      } else if (summary.status === "repair_required") {
+      } else if (summary.status === "rollback_required" || summary.status === "repair_required") {
         attentionModCount += 1;
       } else if (summary.status === "unknown") {
         unknownModCount += 1;
@@ -273,6 +275,16 @@ function deriveOverviewRepairSummary(input: {
 }
 
 function deriveModRepairSummary(summary: InstallRecoverySummary): RecoveryCenterRepairSummary {
+  if (summary.status === "rollback_required") {
+    return {
+      status: "manual_required",
+      title: "需要回滚",
+      description: "该 Mod 有未完成写入窗口的持久化恢复记录，自动安装、卸载和恢复动作必须保持阻断。",
+      actionLabel: "保留现场，等待受控回滚流程",
+      blockingReason: "恢复记录要求回滚",
+    };
+  }
+
   if (summary.status === "unknown") {
     return {
       status: "unknown",
@@ -373,7 +385,7 @@ function statusTone(status: InstallRecoveryStatus): RecoveryCenterModView["statu
     return "healthy";
   }
 
-  if (status === "repair_required") {
+  if (status === "rollback_required" || status === "repair_required") {
     return "attention";
   }
 

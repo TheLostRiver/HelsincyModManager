@@ -41,11 +41,11 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
-- 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod。
-- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描尚未消费该记录，也不会对外返回 `rollback_required`。
+- 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
+- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
-- 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
+- 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
 - App Frame 全局只读恢复告警：游戏目录配置完成后复用空 `modIds` 全量 profile 扫描聚合，只在需要处理、状态未知或扫描不可用时显示轻量告警，并提供恢复中心导航。
 - 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、只读 rich repair summary、只读人工处理决策面板和每个托管 Mod 的安全状态摘要；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
@@ -53,7 +53,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储和安装 commit 写入已落地，但扫描消费、动作预览和回滚执行仍未落地。
+- 自动回滚/恢复执行和真正的受控恢复/回滚动作；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的模型/port/JSON 仓储、安装 commit 写入和扫描消费已落地，但只读动作预览和回滚执行仍未落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -87,6 +87,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 安装恢复受控动作实施计划，明确 durable recovery record / rich status、只读动作预览、受控回滚任务和恢复中心 UI 启用的后续拆分边界。
 - [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
+- [x] 只读恢复扫描消费 durable recovery record：`scan_install_recovery` 可由 `committing` / `rollback_required` record 返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装；不新增恢复执行、前端按钮、task phase 或 manifest 写入。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -101,7 +102,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍明确未完成：
 
 - 安装 commit 尚未写入 `planned`、`committing`、`completed` 或 `rollback_required` recovery record。
-- `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`。
+- 该切片结束时 `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`；后续扫描消费切片已补齐该只读状态。
 - 没有新增 Tauri command、DTO、task phase、前端 UI、动作预览或受控回滚执行。
 
 验证记录：
@@ -122,7 +123,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍明确未完成：
 
-- `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`。
+- 该切片结束时 `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`；后续扫描消费切片已补齐该只读状态。
 - 没有新增 Tauri command、DTO、task phase、前端 UI、只读动作预览或受控回滚执行。
 - 回滚成功后的 `rolled_back` rich 状态、只读动作预览和受控回滚任务仍需后续切片。
 
@@ -132,6 +133,32 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 聚焦 recovery record：`cargo test -p hmm-app recovery_record`（覆盖成功生命周期、rollback 成功清理记录、rollback 失败留下 `rollback_required`）。
 - 聚焦 commit plan 回归：`cargo test -p hmm-app commit_plan`。
 - Tauri 安装契约回归：`cargo test -p hmm-tauri install`。
+- 全量门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
+
+### 2026-06-27 进度详情：恢复扫描消费 durable recovery record
+
+本切片继续完成 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 中“切片 1”的扫描消费部分。它只让现有只读 `scan_install_recovery` 消费后端内部 recovery record，不启用恢复按钮、动作预览、回滚执行、task phase 或 manifest 写入。
+
+已落地范围：
+
+- `InstallRecoveryScanService` 可注入 `InstallRecoveryRecordRepository`；生产 `scan_install_recovery` 组合根读取 app data 下 `install/recovery` 的 JSON recovery records。
+- `scan_install_recovery` 仅在 durable recovery record 为 `committing` 或 `rollback_required` 时返回对外 `rollback_required`；`planned`、`completed` 和 `rolled_back` 不会被提升为待回滚状态，避免从尚未进入写入窗口的计划状态制造误报。
+- 当 `modIds` 为空时，全量 profile 扫描会合并 manifest 内已知 Mod 与 recovery record 内的 Mod；即使半完成安装尚未写入 manifest，也能被只读恢复中心发现。
+- `InstallRecoveryStatusDto` 和前端 `InstallRecoveryStatus` 增加稳定 `rollback_required`；Mod 库、Dashboard/App Frame 健康摘要和恢复中心都把它当作需要关注的阻断状态展示，但不新增任何写入型动作。
+
+仍明确未完成：
+
+- 只读动作预览、受控回滚任务、恢复中心真正写入动作和 `rolled_back` rich 状态仍需后续切片。
+- `get_install_manifest_status` 尚未自动消费 recovery scan 结果。
+- 没有新增恢复按钮、自动回滚、删除/恢复文件、task phase 或 manifest 写入。
+
+验证记录：
+
+- TDD RED：前端聚焦测试先失败于 `rollback_required` 被健康摘要误判为 `healthy`、恢复中心未计入 attention、ModLibraryPage 阻断条件未覆盖该状态。
+- 聚焦 recovery record 扫描：`cargo test -p hmm-app recovery_record`。
+- 聚焦 JSON recovery record 仓储：`cargo test -p hmm-infra json_recovery_record_repository`。
+- Tauri DTO 序列化：`cargo test -p hmm-tauri install_recovery`。
+- 聚焦前端：`cmd /c corepack pnpm exec node --test "src/features/dashboard/installRecoveryHealth.test.mjs" "src/features/install-recovery/recoveryCenterViewModel.test.mjs" "src/features/mods/modLibraryLoadState.test.mjs" "src/features/mods/modInstallPlanApi.test.mjs"`。
 - 全量门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
@@ -558,7 +585,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 | Manifest 查询 | 只返回摘要和状态，不返回路径/root/正文 | fake manifest repo | manifest 绝对路径 |
 | 卸载新增文件 | 只删除 manifest 记录且摘要匹配的文件 | temp game root | 未记录文件 |
 | 卸载覆盖文件 | backup ref 恢复旧文件，backup 缺失阻断 | fake backup store | 任意猜测恢复 |
-| 恢复扫描 | `completed`、`repair_required`、`unknown`，后续补 `committing` / `rollback_required` 分支 | fake manifest、target bytes、backup store、task/audit 状态 | Task Log 作为唯一事实来源 |
+| 恢复扫描 | `completed`、`rollback_required`、`repair_required`、`unknown`，含空 `modIds` 合并 recovery record 的全量扫描 | fake manifest、target bytes、backup store、recovery record repo | Task Log 作为唯一事实来源 |
 | Retarget staging | staging containment、最终目标路径冲突、binding snapshot | fake retarget provider | 前端拼接 `nativePC` |
 | 任务取消 | plan 阶段可取消、commit 阶段状态一致 | fake task manager / temp FS | 无 `taskId` 的事件 |
 | 审计与脱敏 | 写入、覆盖、删除、备份、manifest、回滚事件脱敏 | 人工路径和 ID | 完整本地路径、Steam ID、token |
@@ -655,15 +682,15 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储和安装 commit 写入已落地；自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作仍待后续代码切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、durable recovery record 消费、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储、安装 commit 写入和只读扫描消费已落地；自动回滚/恢复执行和真正的受控恢复/回滚动作仍待后续代码切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
 范围：
 
-- 扫描 manifest、备份记录和任务状态摘要。
-- 已能识别 `completed`、`repair_required`、`unknown` 和 `not_installed`；安装 commit 已写入 durable recovery record，但 `scan_install_recovery` 尚未消费该记录，`rollback_required` 仍需要后续扫描/rich manifest 状态切片补齐，不能只从目录内容推断。
-- 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod。
+- 扫描 durable recovery record、manifest、备份记录和任务状态摘要。
+- 已能识别 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 只能来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能只从目录内容推断。
+- 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
 - Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；App Frame 已提供全局只读恢复告警；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要、只读 rich repair summary 和完整支持诊断包导出联动；受控恢复/回滚动作仍待后续补齐。
 
 明确不做：
