@@ -3,6 +3,8 @@ use hmm_app::{
     GameProfileWriteLockRegistry, GameSetupService, ImportedModInstallCommitRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
     InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
     InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
     ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
@@ -50,6 +52,7 @@ pub struct AppState {
     pub install_planning: Arc<InstallPlanningService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub(crate) install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+    pub(crate) install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
     pub uninstall_task_runner: Arc<UninstallTaskRunner>,
@@ -197,6 +200,12 @@ impl AppState {
             app_data_dir.clone(),
             Arc::clone(&install_write_locks),
         ));
+        let install_recovery_action_previewer =
+            Arc::new(ConfiguredInstallRecoveryActionPreviewer::new(
+                Arc::clone(&game_config_repository),
+                app_data_dir.clone(),
+                Arc::clone(&install_write_locks),
+            ));
         let install_committer: Arc<dyn InstallPlanCommitter> =
             Arc::new(ConfiguredInstallCommitter::new(
                 Arc::clone(&game_config_repository),
@@ -264,6 +273,7 @@ impl AppState {
             install_planning,
             install_manifest_query,
             install_recovery_scanner,
+            install_recovery_action_previewer,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             uninstall_task_runner,
@@ -323,6 +333,53 @@ impl ConfiguredInstallRecoveryScanner {
         );
 
         service.scan(request)
+    }
+}
+
+pub(crate) struct ConfiguredInstallRecoveryActionPreviewer {
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    app_data_dir: PathBuf,
+    write_locks: Arc<GameProfileWriteLockRegistry>,
+}
+
+impl ConfiguredInstallRecoveryActionPreviewer {
+    fn new(
+        game_config_repository: Arc<dyn GameConfigRepository>,
+        app_data_dir: PathBuf,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+    ) -> Self {
+        Self {
+            game_config_repository,
+            app_data_dir,
+            write_locks,
+        }
+    }
+
+    pub(crate) fn preview(
+        &self,
+        game_id: GameId,
+        request: InstallRecoveryActionPreviewRequest,
+    ) -> Result<InstallRecoveryActionPreview, InstallRecoveryActionPreviewError> {
+        let write_lock = self.write_locks.lock_for(&game_id, &request.profile_id);
+        let _guard = write_lock
+            .lock()
+            .map_err(|_| InstallRecoveryActionPreviewError::PreviewUnavailable)?;
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(&game_id)
+            .map_err(|_| InstallRecoveryActionPreviewError::GameInstanceUnavailable)?
+            .ok_or(InstallRecoveryActionPreviewError::GameInstanceUnavailable)?;
+        let service = InstallRecoveryActionPreviewService::new(
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            Arc::new(FileSystemInstallBackupStore::new(
+                self.app_data_dir.join("install").join("backups"),
+            )),
+            Arc::new(JsonInstallRecoveryRecordRepository::new(
+                self.app_data_dir.join("install").join("recovery"),
+            )),
+        );
+
+        service.preview(request)
     }
 }
 
@@ -544,6 +601,64 @@ mod tests {
         assert_eq!(
             result,
             Err(InstallRecoveryScanError::GameInstanceUnavailable)
+        );
+        assert!(load_called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn recovery_action_preview_waits_for_shared_game_profile_write_lock() {
+        let game_id = GameId::mhw();
+        let profile_id = ProfileId::new("default");
+        let write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let write_lock = write_locks.lock_for(&game_id, &profile_id);
+        let guard = write_lock.lock().expect("hold shared write lock");
+        let load_called = Arc::new(AtomicBool::new(false));
+        let previewer = Arc::new(ConfiguredInstallRecoveryActionPreviewer::new(
+            Arc::new(NotifyingGameConfigRepository {
+                load_called: Arc::clone(&load_called),
+            }),
+            std::env::temp_dir().join("hmm-recovery-action-preview-lock-test"),
+            Arc::clone(&write_locks),
+        ));
+        let barrier = Arc::new(Barrier::new(2));
+        let preview_barrier = Arc::clone(&barrier);
+        let previewer_for_thread = Arc::clone(&previewer);
+        let preview_game_id = game_id.clone();
+        let preview_profile_id = profile_id.clone();
+
+        let handle = std::thread::spawn(move || {
+            preview_barrier.wait();
+            previewer_for_thread.preview(
+                preview_game_id,
+                InstallRecoveryActionPreviewRequest {
+                    profile_id: preview_profile_id,
+                    mod_id: ModId::new("mod-a"),
+                    action_kind: hmm_app::InstallRecoveryActionKind::RollbackInstall,
+                },
+            )
+        });
+
+        barrier.wait();
+        let deadline = Instant::now() + Duration::from_millis(150);
+        while Instant::now() < deadline {
+            if load_called.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+
+        assert!(
+            !load_called.load(Ordering::SeqCst),
+            "recovery action preview entered filesystem/config work while the shared write lock was held"
+        );
+
+        drop(guard);
+        let result = handle
+            .join()
+            .expect("recovery action preview thread should not panic");
+        assert_eq!(
+            result,
+            Err(InstallRecoveryActionPreviewError::GameInstanceUnavailable)
         );
         assert!(load_called.load(Ordering::SeqCst));
     }

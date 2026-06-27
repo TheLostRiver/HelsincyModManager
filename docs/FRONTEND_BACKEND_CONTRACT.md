@@ -53,6 +53,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - 查询安装恢复摘要：`scan_install_recovery`
+- 查询安装恢复动作预览：`preview_recovery_action`
 - 查询诊断摘要：`get_preview_image_diagnostics`
 - 导出诊断包：`export_preview_image_diagnostics`
 - 导出审计日志诊断包：`export_audit_log_diagnostics`
@@ -283,6 +284,7 @@ start_install_task(input)
 start_uninstall_task(input)
 get_install_manifest_status(input)
 scan_install_recovery(input)
+preview_recovery_action(input)
 cancel_task(taskId)
 ```
 
@@ -311,12 +313,15 @@ cancel_task(taskId)
 - `get_install_manifest_status` 读取失败使用稳定错误码 `install_manifest_unavailable`。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。
 - `scan_install_recovery` 是只读恢复扫描摘要入口。前端只提交 `gameId`、`profileId` 和 `modIds`；`modIds` 可为空，表示扫描该 profile manifest 内全部已知托管 Mod，便于启动级恢复检查或独立恢复中心先获得全局健康摘要。后端通过受控游戏配置解析 game root，并复用同一 `gameId/profileId` 的安装/卸载写锁后读取受控 manifest、目标文件摘要和 backup 是否存在。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径、游戏目录路径或 manifest 正文。
 - `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`rollback_required` 只来自 durable recovery record 中的 `committing` 或 `rollback_required` 受控状态，表示上次写入窗口未确认完成并需要后续受控回滚流程；`repair_required` 表示目标缺失、目标摘要不匹配、缺少 `installed_file` 摘要或 backup 缺失等可判断的不一致；`unknown` 表示目标或 backup 读取失败等无法安全判断状态；缺失 manifest、无匹配 entry 且没有需要处理的 recovery record 时返回 `not_installed`。当前命令只做只读检测，不自动删除、恢复、回滚或写 manifest。
+- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；当前唯一 action kind 为 `rollback_install`。后端在同一 `gameId/profileId` 写锁下读取 durable recovery record、当前目标摘要和 backup 可读性，返回 `available` 或 `blocked`、将删除的新文件数、将恢复的覆盖文件数、需要 backup 的文件数、阻断 issue 总数和稳定阻断 reason code。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容；也不执行删除、恢复、回滚、写 backup、写 manifest、写 recovery record、发送任务事件或写 Audit Log。
+- `preview_recovery_action` 只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
 - Mod 库前端可以在 `get_install_manifest_status` 摘要刷新后调用 `scan_install_recovery`。前端应把 `completed` 映射为可展示的 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载；扫描失败时应把已有非 `not_installed` manifest 摘要降级为不安全 `unknown`，不应回退为 mock 安装事实或从任务内存态推断已安装。
 - Dashboard / App Frame / 独立恢复中心可以在游戏目录配置完成后调用 `scan_install_recovery`，传入空 `modIds` 获取当前 profile 的全量托管安装健康摘要。Dashboard 等入口级摘要只能展示扫描 Mod 数、需处理数、未知数、托管文件数、backup 计数、issue 总数和 `issues[].issue/count` 等聚合信息；App Frame 全局告警只能在需要处理、状态未知或扫描不可用时展示轻量摘要和恢复中心导航；独立恢复中心可以额外展示每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类，以及由前端 view model 基于稳定 issue code 派生的只读 rich repair summary、风险等级、阻断原因、人工处理建议和只读人工处理决策面板。扫描失败必须展示状态未知，不能解释为健康或自动触发恢复。
 - 独立恢复中心可以提供用户主动触发的 `export_support_diagnostics` 入口。该入口必须通过 feature-local typed API 调用无参数 command；前端导出前先展示将包含的已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不能传入或展示输出路径、日志路径、诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。诊断导出成功不改变安装、卸载、恢复扫描或 manifest 状态。
 - 独立恢复中心的人工处理决策面板只能把 `retry_scan` 映射为重新触发只读 `scan_install_recovery`，把 `export_diagnostics` 映射为上述诊断导出确认流程；`controlled_recovery` 等未来写入型动作在后端 manifest 状态机和恢复执行器落地前必须保持不可用或禁用。该面板不得调用 `start_install_task`、`start_uninstall_task` 或任何恢复、删除、回滚、manifest 写入 command，也不得根据 Mod 包内容、展示标签或页面内存态推断修复动作。
 - `scan_install_recovery` 的前端展示只允许使用 `managedFileCount`、`backupCount`、`issueCount` 和 `issues[].issue/count` 等聚合摘要。UI 不得展示或提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文、目标文件 hash 或第三方 Mod 内容。
 - `scan_install_recovery` 读取失败使用稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；manifest 仓储不可用返回 `install_recovery_unavailable`。错误 message 不应包含完整本地路径、backup ref、manifest 路径或第三方 Mod 内容。
+- `preview_recovery_action` 读取失败使用稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；动作预览不可用返回 `install_recovery_action_preview_unavailable`。错误 message 不应包含完整本地路径、backup ref、manifest 路径、sandbox/cache 路径或第三方 Mod 内容。
 - `preview_install_plan` 的错误使用稳定 code，例如 `install_target_path_empty`、`install_target_path_absolute`、`install_target_path_parent_traversal`、`install_target_path_windows_drive_prefix`、`install_target_path_invalid_segment` 和 `install_target_root_not_allowed`；错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_imported_mod_install_plan` 的错误使用稳定 code，例如 `game_id_invalid`、`install_planning_sources_unavailable`、`install_planning_game_adapter_not_found`、`install_planning_imported_mod_not_found`、`install_planning_imported_mod_analysis_unavailable`、`install_planning_imported_mod_sandbox_unavailable`、`install_planning_imported_mod_file_scan_unavailable`，以及复用的 `install_target_*` / `install_target_root_not_allowed` 路径校验错误；错误 message 不应包含完整本地路径、sandbox/cache 路径或第三方 Mod 内容。
 
@@ -366,6 +371,15 @@ type InstallRecoveryScanRequestDto = {
   modIds: string[];
 };
 
+type InstallRecoveryActionKindDto = "rollback_install";
+
+type InstallRecoveryActionPreviewRequestDto = {
+  gameId: string;
+  profileId: string;
+  modId: string;
+  actionKind: InstallRecoveryActionKindDto;
+};
+
 type InstallManifestStatusDto =
   | "not_installed"
   | "installed"
@@ -404,6 +418,32 @@ type InstallRecoverySummaryDto = {
   issueCount: number;
   issues: Array<{
     issue: InstallRecoveryIssueDto;
+    count: number;
+  }>;
+};
+
+type InstallRecoveryActionAvailabilityDto = "available" | "blocked";
+
+type InstallRecoveryActionBlockReasonDto =
+  | "rollback_state_missing"
+  | "missing_installed_file_summary"
+  | "target_missing"
+  | "target_changed"
+  | "target_read_failed"
+  | "backup_missing"
+  | "backup_read_failed";
+
+type InstallRecoveryActionPreviewDto = {
+  profileId: string;
+  modId: string;
+  actionKind: InstallRecoveryActionKindDto;
+  availability: InstallRecoveryActionAvailabilityDto;
+  removeFileCount: number;
+  restoreFileCount: number;
+  backupCount: number;
+  blockingIssueCount: number;
+  blockingReasons: Array<{
+    reason: InstallRecoveryActionBlockReasonDto;
     count: number;
   }>;
 };
