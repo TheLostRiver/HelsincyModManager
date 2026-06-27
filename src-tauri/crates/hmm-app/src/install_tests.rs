@@ -1329,6 +1329,23 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
         Some("backup-nativePC-models-player.mod3-1"),
         "crash recovery must see the pending backup for later actions before manifest save"
     );
+
+    let completed = saved_records
+        .iter()
+        .rev()
+        .find(|record| record.status == InstallRecoveryRecordStatus::Completed)
+        .expect("completed record should be persisted after manifest save");
+    let completed_entry = completed
+        .entries
+        .iter()
+        .find(|entry| entry.target_path.as_str() == "nativePC/models/player.mod3")
+        .expect("replaced target should be tracked");
+
+    assert_eq!(
+        completed_entry.backup_ref.as_deref(),
+        Some("backup-original-player"),
+        "completed record should resync to the manifest's long-term backup"
+    );
 }
 
 #[test]
