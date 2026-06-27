@@ -610,13 +610,18 @@ impl RecoveryActionTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
-            events.push(running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE));
             self.action_executor.run_recovery_action(request.clone())
         };
 
         let result = match action_result {
-            Ok(result) => result,
+            Ok(result) => {
+                events.push(running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE));
+                result
+            }
             Err(error) => {
+                if recovery_action_failed_phase(&error) == "processing" {
+                    events.push(running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE));
+                }
                 return Err(self.fail_recovery_action_with_audit(
                     task_id,
                     &request,
@@ -1114,11 +1119,7 @@ mod tests {
                 .iter()
                 .map(|event| event.phase.as_str())
                 .collect::<Vec<_>>(),
-            vec![
-                "install.recovery.planning",
-                "install.recovery.processing",
-                "install.recovery.failed"
-            ]
+            vec!["install.recovery.planning", "install.recovery.failed"]
         );
         let failed = error.events.last().expect("failed event");
         assert_eq!(
