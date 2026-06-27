@@ -236,11 +236,13 @@ function installTaskPanelState(
 }
 
 type UnsafeRecoverySummary = ModInstallSummary & {
-  status: "repair_required" | "unknown";
+  status: "rollback_required" | "repair_required" | "unknown";
 };
 
 function isUnsafeRecoverySummary(summary: ModInstallSummary | undefined): summary is UnsafeRecoverySummary {
-  return summary?.status === "repair_required" || summary?.status === "unknown";
+  return (
+    summary?.status === "rollback_required" || summary?.status === "repair_required" || summary?.status === "unknown"
+  );
 }
 
 function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanPreviewPanelState | null {
@@ -305,6 +307,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const canUninstallSelected = selectedItem?.installSummary?.status === "installed";
   const canInstallSelected =
     selectedItem !== null &&
+    selectedItem.installSummary?.status !== "rollback_required" &&
     selectedItem.installSummary?.status !== "repair_required" &&
     selectedItem.installSummary?.status !== "unknown";
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(

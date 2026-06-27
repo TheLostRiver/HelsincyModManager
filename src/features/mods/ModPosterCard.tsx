@@ -17,6 +17,7 @@ const statusLabel: Record<ModLibraryItem["status"], string> = {
   installed: "已安装",
   disabled: "已禁用",
   conflict: "存在冲突",
+  rollback_required: "需要回滚",
   repair_required: "需要修复",
   unknown: "状态未知",
 };
@@ -26,6 +27,7 @@ const techStatusLabel: Record<ModLibraryItem["status"], string> = {
   installed: "ACTIVE",
   disabled: "DISABLED",
   conflict: "CONFLICT",
+  rollback_required: "ROLLBACK",
   repair_required: "REPAIR",
   unknown: "UNKNOWN",
 };
@@ -35,6 +37,7 @@ const techValidityLabel: Record<ModLibraryItem["status"], string> = {
   installed: "VALID",
   disabled: "STANDBY",
   conflict: "ERROR",
+  rollback_required: "RECOVER",
   repair_required: "CHECK",
   unknown: "UNKNOWN",
 };
@@ -45,7 +48,7 @@ function statusLabelForItem(item: ModLibraryItem) {
     return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
   }
 
-  if (item.status === "repair_required" && summary) {
+  if ((item.status === "rollback_required" || item.status === "repair_required") && summary) {
     if (summary.issueCount && summary.issueCount > 0) {
       return `${statusLabel[item.status]} · ${summary.issueCount} 项`;
     }

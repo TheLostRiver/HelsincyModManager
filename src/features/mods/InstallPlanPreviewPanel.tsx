@@ -10,7 +10,7 @@ export type InstallPlanPreviewPanelState =
   | {
       status: "recovery-required";
       modName: string;
-      recoveryStatus: "repair_required" | "unknown";
+      recoveryStatus: "rollback_required" | "repair_required" | "unknown";
       managedFileCount: number;
       backupCount: number;
       issueCount: number;
@@ -42,7 +42,11 @@ function panelTitle(state: InstallPlanPreviewPanelState) {
 
   switch (state.status) {
     case "recovery-required":
-      return state.recoveryStatus === "unknown" ? "安装状态未知" : "需要人工处理";
+      return state.recoveryStatus === "rollback_required"
+        ? "需要回滚"
+        : state.recoveryStatus === "unknown"
+          ? "安装状态未知"
+          : "需要人工处理";
     case "uninstall-confirming":
       return "确认卸载";
     case "uninstall-completed":
@@ -135,6 +139,7 @@ export function InstallPlanPreviewPanel({
 
       {state.status === "recovery-required" ? (
         <RecoveryRequiredSummary
+          recoveryStatus={state.recoveryStatus}
           managedFileCount={state.managedFileCount}
           backupCount={state.backupCount}
           issueCount={state.issueCount}
@@ -203,11 +208,13 @@ const recoveryIssueLabels: Record<InstallRecoveryIssueSummary["issue"], string> 
 };
 
 function RecoveryRequiredSummary({
+  recoveryStatus,
   managedFileCount,
   backupCount,
   issueCount,
   issues,
 }: {
+  recoveryStatus: "rollback_required" | "repair_required" | "unknown";
   managedFileCount: number;
   backupCount: number;
   issueCount: number;
@@ -216,7 +223,9 @@ function RecoveryRequiredSummary({
   return (
     <div className="install-plan-preview__body">
       <p className="install-plan-preview__status is-error">
-        恢复扫描发现当前安装状态不能安全自动处理。请先人工确认后再安装或卸载。
+        {recoveryStatus === "rollback_required"
+          ? "恢复记录显示上次写入未确认完成。请保留现场，等待受控回滚流程。"
+          : "恢复扫描发现当前安装状态不能安全自动处理。请先人工确认后再安装或卸载。"}
       </p>
       <div className="install-plan-preview__metrics" aria-label="恢复扫描摘要">
         <span>

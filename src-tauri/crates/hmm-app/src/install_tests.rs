@@ -1711,6 +1711,17 @@ impl InstallRecoveryRecordRepository for RecordingInstallRecoveryRecordRepositor
         Ok(None)
     }
 
+    fn list_records(&self, profile_id: &ProfileId) -> anyhow::Result<Vec<InstallRecoveryRecord>> {
+        Ok(self
+            .saved_records
+            .lock()
+            .expect("saved records")
+            .iter()
+            .filter(|record| record.profile_id == *profile_id)
+            .cloned()
+            .collect())
+    }
+
     fn save_record(&self, record: &InstallRecoveryRecord) -> anyhow::Result<()> {
         self.saved_records
             .lock()

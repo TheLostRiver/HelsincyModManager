@@ -303,15 +303,15 @@ cancel_task(taskId)
 - `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的本工具新增文件会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
 - `start_uninstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.uninstall.queued` 事件；后台 runner 会发送 `install.uninstall.processing`、`install.uninstall.completed` 或 `install.uninstall.failed`。失败事件的 `error` 使用稳定前缀 `install_uninstall_failed:<phase>`，当前 phase 可为 `lock`、`uninstall` 或 `complete`。事件 payload 不承载目标路径、完整本地路径、manifest 内容、backup ref 或第三方 Mod 内容。
 - 正式前端卸载 UI 只能在 `get_install_manifest_status` 摘要显示 `installed` 时提供单选卸载入口；typed API 只能调用 `start_uninstall_task` 并传入 `gameId`、`modId`、`profileId`。前端按 `taskId` 和 `install.uninstall.*` phase 展示任务状态，完成后重新查询 manifest 摘要；失败时不根据 Mod 包内容、展示标签或页面内存态推断修复动作。
-- 若前端额外叠加 `scan_install_recovery` 摘要，`repair_required` 或 `unknown` 必须阻断安装/重装和自动卸载入口；前端只能展示后端聚合状态、issue code 和计数，不能根据 Mod 包内容、展示标签或页面内存态推断修复动作。
+- 若前端额外叠加 `scan_install_recovery` 摘要，`rollback_required`、`repair_required` 或 `unknown` 必须阻断安装/重装和自动卸载入口；前端只能展示后端聚合状态、issue code 和计数，不能根据 Mod 包内容、展示标签或页面内存态推断修复动作。
 - `start_uninstall_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`removed_file_count` 和 `restored_file_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径、backup 路径、manifest 正文或第三方 Mod 内容。
 - 安装提交写入 manifest entry 时会记录后端内部使用的 `installed_file` 摘要（写入内容 size + SHA-256）。该摘要不进入当前前端 DTO，不暴露目标路径、backup ref、manifest path、sandbox/cache path 或文件内容；后续卸载/恢复扫描可用它判断目标文件是否仍与受控安装事实一致。
 - `get_install_manifest_status` 是只读安装状态摘要入口。前端只提交 `profileId` 和 `modIds`，后端从受控 manifest 仓储读取对应 profile 的 manifest，并按 `modId` 返回 `status`、`managedFileCount` 和 `backupCount`。该 command 不接受 `gameId`、`targetPath`、manifest root/path、backup root/ref、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `get_install_manifest_status` 的返回状态为 `not_installed`、`installed`、`repair_required` 或 `unknown`。当前 MVP 后端只根据匹配到的 manifest entries 派生 `installed`，缺失 manifest 或无匹配 entry 返回 `not_installed`；即使新 manifest entry 已包含 `installed_file` 摘要，该 command 也暂不读取目标文件或 backup 做 hash 校验。`repair_required` / `unknown` 作为契约保留给后续恢复扫描和 rich manifest 检测使用。
 - `get_install_manifest_status` 读取失败使用稳定错误码 `install_manifest_unavailable`。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。
 - `scan_install_recovery` 是只读恢复扫描摘要入口。前端只提交 `gameId`、`profileId` 和 `modIds`；`modIds` 可为空，表示扫描该 profile manifest 内全部已知托管 Mod，便于启动级恢复检查或独立恢复中心先获得全局健康摘要。后端通过受控游戏配置解析 game root，并复用同一 `gameId/profileId` 的安装/卸载写锁后读取受控 manifest、目标文件摘要和 backup 是否存在。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径、游戏目录路径或 manifest 正文。
-- `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`repair_required` 表示目标缺失、目标摘要不匹配、缺少 `installed_file` 摘要或 backup 缺失等可判断的不一致；`unknown` 表示目标或 backup 读取失败等无法安全判断状态；缺失 manifest 或无匹配 entry 返回 `not_installed`。当前命令只做只读检测，不自动删除、恢复、回滚或写 manifest。
-- Mod 库前端可以在 `get_install_manifest_status` 摘要刷新后调用 `scan_install_recovery`。前端应把 `completed` 映射为可展示的 `installed`，把 `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载；扫描失败时应把已有非 `not_installed` manifest 摘要降级为不安全 `unknown`，不应回退为 mock 安装事实或从任务内存态推断已安装。
+- `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`rollback_required` 只来自 durable recovery record 中的 `committing` 或 `rollback_required` 受控状态，表示上次写入窗口未确认完成并需要后续受控回滚流程；`repair_required` 表示目标缺失、目标摘要不匹配、缺少 `installed_file` 摘要或 backup 缺失等可判断的不一致；`unknown` 表示目标或 backup 读取失败等无法安全判断状态；缺失 manifest、无匹配 entry 且没有需要处理的 recovery record 时返回 `not_installed`。当前命令只做只读检测，不自动删除、恢复、回滚或写 manifest。
+- Mod 库前端可以在 `get_install_manifest_status` 摘要刷新后调用 `scan_install_recovery`。前端应把 `completed` 映射为可展示的 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载；扫描失败时应把已有非 `not_installed` manifest 摘要降级为不安全 `unknown`，不应回退为 mock 安装事实或从任务内存态推断已安装。
 - Dashboard / App Frame / 独立恢复中心可以在游戏目录配置完成后调用 `scan_install_recovery`，传入空 `modIds` 获取当前 profile 的全量托管安装健康摘要。Dashboard 等入口级摘要只能展示扫描 Mod 数、需处理数、未知数、托管文件数、backup 计数、issue 总数和 `issues[].issue/count` 等聚合信息；App Frame 全局告警只能在需要处理、状态未知或扫描不可用时展示轻量摘要和恢复中心导航；独立恢复中心可以额外展示每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类，以及由前端 view model 基于稳定 issue code 派生的只读 rich repair summary、风险等级、阻断原因、人工处理建议和只读人工处理决策面板。扫描失败必须展示状态未知，不能解释为健康或自动触发恢复。
 - 独立恢复中心可以提供用户主动触发的 `export_support_diagnostics` 入口。该入口必须通过 feature-local typed API 调用无参数 command；前端导出前先展示将包含的已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不能传入或展示输出路径、日志路径、诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。诊断导出成功不改变安装、卸载、恢复扫描或 manifest 状态。
 - 独立恢复中心的人工处理决策面板只能把 `retry_scan` 映射为重新触发只读 `scan_install_recovery`，把 `export_diagnostics` 映射为上述诊断导出确认流程；`controlled_recovery` 等未来写入型动作在后端 manifest 状态机和恢复执行器落地前必须保持不可用或禁用。该面板不得调用 `start_install_task`、`start_uninstall_task` 或任何恢复、删除、回滚、manifest 写入 command，也不得根据 Mod 包内容、展示标签或页面内存态推断修复动作。
@@ -383,6 +383,7 @@ type InstallManifestStatusSummaryDto = {
 type InstallRecoveryStatusDto =
   | "not_installed"
   | "completed"
+  | "rollback_required"
   | "repair_required"
   | "unknown";
 
