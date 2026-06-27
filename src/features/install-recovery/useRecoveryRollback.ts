@@ -59,7 +59,15 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const onCompletedRef = useRef(onCompleted);
+  onCompletedRef.current = onCompleted;
+
   const pendingEventsRef = useRef(new Map<string, TaskProgressEventDto>());
+
+  const markCompleted = useCallback((modId: string, taskId: string) => {
+    setState({ status: "completed", modId, taskId });
+    onCompletedRef.current();
+  }, []);
 
   const requestRollback = useCallback(
     (modId: string) => {
@@ -120,7 +128,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
 
         if (pending && isRecoveryRollbackPhase(pending.phase)) {
           if (pending.phase === "install.recovery.completed") {
-            setState({ status: "completed", modId, taskId: result.taskId });
+            markCompleted(modId, result.taskId);
           } else if (pending.phase === "install.recovery.failed") {
             setState({
               status: "failed",
@@ -149,15 +157,11 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           setState({ status: "failed", modId, message: "启动回滚任务时出错" });
         }
       });
-  }, [gameId]);
+  }, [gameId, markCompleted]);
 
   const dismiss = useCallback(() => {
-    const current = stateRef.current;
-    if (current.status === "completed") {
-      onCompleted();
-    }
     setState({ status: "idle" });
-  }, [onCompleted]);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -189,7 +193,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
       }
 
       if (phase === "install.recovery.completed") {
-        setState({ status: "completed", modId: current.modId, taskId: current.taskId });
+        markCompleted(current.modId, current.taskId);
       } else if (phase === "install.recovery.failed") {
         setState({
           status: "failed",
@@ -216,7 +220,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
       disposed = true;
       unlistenFn?.();
     };
-  }, []);
+  }, [markCompleted]);
 
   return {
     state,
