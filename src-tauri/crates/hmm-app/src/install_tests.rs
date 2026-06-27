@@ -1153,6 +1153,185 @@ fn commit_plan_marks_recovery_record_rollback_required_when_rollback_fails() {
 }
 
 #[test]
+fn commit_plan_rollback_record_uses_pending_backup_when_replacing_managed_target() {
+    let new_file_target =
+        InstallTargetPath::parse("nativePC/models/new.mod3", ["nativePC"]).expect("valid target");
+    let replaced_target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![
+        InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/new.mod3"),
+            new_file_target,
+            FileLayer::new("base", 0),
+        ),
+        InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/player-v2.mod3"),
+            replaced_target,
+            FileLayer::new("base", 0),
+        ),
+    ]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+        ("nativePC/models/new.mod3", b"new file".as_slice()),
+        (
+            "nativePC/models/player-v2.mod3",
+            b"new managed model".as_slice(),
+        ),
+    ]));
+    let game_files = Arc::new(
+        RecordingInstallGameFileSystem::with_files([(
+            "nativePC/models/player.mod3",
+            b"old managed model".as_slice(),
+        )])
+        .with_failing_removes(),
+    );
+    let backups = Arc::new(RecordingInstallBackupStore::with_backups([(
+        "backup-original-player",
+        b"original game model".as_slice(),
+    )]));
+    let existing_manifest = InstallManifest {
+        profile_id: ProfileId::new("default"),
+        entries: vec![InstallManifestEntry {
+            target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                .expect("valid target"),
+            mod_id: ModId::new("mod-old"),
+            package_file_id: PackageFileId::new("nativePC/models/player-v1.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: Some("backup-original-player".to_owned()),
+            installed_file: Some(installed_file_summary(b"old managed model")),
+        }],
+    };
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::failing().with_existing_manifest(existing_manifest),
+    );
+    let recovery_records = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        source_files,
+        game_files,
+        backups,
+        manifests,
+        recovery_records.clone(),
+    );
+
+    let error = service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect_err("manifest failure and rollback failure should leave a recovery record");
+
+    assert_eq!(
+        error,
+        InstallCommitError::RollbackFailed {
+            failed_phase: InstallCommitPhase::Manifest
+        }
+    );
+    let saved_records = recovery_records.saved_records();
+    let rollback_required = saved_records.last().expect("rollback-required record");
+    assert_eq!(
+        rollback_required.status,
+        InstallRecoveryRecordStatus::RollbackRequired
+    );
+    let replaced_entry = rollback_required
+        .entries
+        .iter()
+        .find(|entry| entry.target_path.as_str() == "nativePC/models/player.mod3")
+        .expect("replaced target should be tracked");
+
+    assert_eq!(
+        replaced_entry.backup_ref.as_deref(),
+        Some("backup-nativePC-models-player.mod3-1"),
+        "recovery rollback must restore the immediate pre-commit bytes, not the long-term manifest backup"
+    );
+}
+
+#[test]
+fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
+    let new_file_target =
+        InstallTargetPath::parse("nativePC/models/new.mod3", ["nativePC"]).expect("valid target");
+    let replaced_target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![
+        InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/new.mod3"),
+            new_file_target,
+            FileLayer::new("base", 0),
+        ),
+        InstallFileProvider::new(
+            ModId::new("mod-new"),
+            PackageFileId::new("nativePC/models/player-v2.mod3"),
+            replaced_target,
+            FileLayer::new("base", 0),
+        ),
+    ]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+        ("nativePC/models/new.mod3", b"new file".as_slice()),
+        (
+            "nativePC/models/player-v2.mod3",
+            b"new managed model".as_slice(),
+        ),
+    ]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+        "nativePC/models/player.mod3",
+        b"old managed model".as_slice(),
+    )]));
+    let backups = Arc::new(RecordingInstallBackupStore::with_backups([(
+        "backup-original-player",
+        b"original game model".as_slice(),
+    )]));
+    let existing_manifest = InstallManifest {
+        profile_id: ProfileId::new("default"),
+        entries: vec![InstallManifestEntry {
+            target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                .expect("valid target"),
+            mod_id: ModId::new("mod-old"),
+            package_file_id: PackageFileId::new("nativePC/models/player-v1.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: Some("backup-original-player".to_owned()),
+            installed_file: Some(installed_file_summary(b"old managed model")),
+        }],
+    };
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let recovery_records = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        source_files,
+        game_files,
+        backups,
+        manifests,
+        recovery_records.clone(),
+    );
+
+    service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect("commit succeeds");
+
+    let saved_records = recovery_records.saved_records();
+    let committing = saved_records
+        .iter()
+        .rev()
+        .find(|record| record.status == InstallRecoveryRecordStatus::Committing)
+        .expect("committing record should be persisted after every rollback entry update");
+    let replaced_entry = committing
+        .entries
+        .iter()
+        .find(|entry| entry.target_path.as_str() == "nativePC/models/player.mod3")
+        .expect("replaced target should be tracked");
+
+    assert_eq!(
+        replaced_entry.backup_ref.as_deref(),
+        Some("backup-nativePC-models-player.mod3-1"),
+        "crash recovery must see the pending backup for later actions before manifest save"
+    );
+}
+
+#[test]
 fn commit_plan_removes_recovery_record_when_rollback_succeeds() {
     let target = InstallTargetPath::parse("nativePC/models/new.mod3", ["nativePC"]).expect("valid");
     let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
