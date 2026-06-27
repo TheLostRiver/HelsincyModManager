@@ -43,6 +43,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
 - Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
+- 受控回滚任务前置安全加固：当安装替换已有托管目标并在写入窗口后失败且 rollback 失败时，`committing` / `rollback_required` recovery record 会使用本次提交前创建的 pending backup ref 作为恢复来源；manifest 保存成功后的 `completed` record 则重新同步为 manifest entry 的长期 backup 语义。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
@@ -89,6 +90,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 只读恢复扫描消费 durable recovery record：`scan_install_recovery` 可由 `committing` / `rollback_required` record 返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装；不新增恢复执行、前端按钮、task phase 或 manifest 写入。
 - [x] 只读恢复动作预览：`preview_recovery_action` 可预览 `rollback_install` 是否满足受控回滚前置条件，只返回 `available` / `blocked`、聚合计数和稳定阻断 reason code；不新增恢复执行、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
+- [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源，`completed` record 才恢复为 manifest 长期 backup 语义；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -185,6 +187,32 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 聚焦 app：`cargo test -p hmm-app preview_rollback_action`。
 - 聚焦 Tauri：`cargo test -p hmm-tauri install_recovery_action_preview`、`cargo test -p hmm-tauri recovery_action_preview_waits_for_shared_game_profile_write_lock`。
 - 聚焦前端：`cmd /c corepack pnpm exec node --test "src/features/mods/modInstallPlanApi.test.mjs"`。
+
+### 2026-06-27 进度详情：受控回滚任务前置安全加固
+
+本切片原计划继续推进“切片 3：受控回滚任务”，但在梳理执行前置时发现一个必须先修正的状态事实问题：替换已有托管目标时，manifest entry 需要继承旧条目的长期 `backup_ref`，而 `rollback_required` recovery record 需要保存本次提交前创建的 pending backup，才能让未来受控回滚任务恢复到安装前一刻，而不是误恢复到更早的原始游戏文件。
+
+已落地范围：
+
+- `InstallCommitService` 在进入写入窗口后更新 active recovery record 时，使用本次 pending backup ref 作为 rollback record entry 的 `backup_ref`。
+- 如果 `committing` record 已经保存，后续 action 更新 rollback entry 的 pending backup 时会立即重新持久化 active record，避免崩溃恢复读取到旧 manifest 的长期 backup 语义。
+- manifest 保存成功后，`completed` recovery record 会重新同步为 manifest entries 的长期 `backup_ref` 和 `installed_file` 摘要，避免 completed record 指向随后会被 best-effort 清理的 pending backup。
+- 新增回归测试覆盖“替换已有托管目标、manifest 保存失败且 rollback 失败”场景，断言 `rollback_required` record 使用 pending backup ref，而不是旧 manifest 的长期 backup ref。
+- 新增回归测试覆盖“后续 action 才拿到 pending backup 且 commit 成功”场景，断言最后持久化的 `committing` record 也已经包含 pending backup ref。
+
+仍明确未完成：
+
+- 本切片不新增受控回滚任务、`install.recovery.*` task phase、Tauri command、前端写入型入口、Audit Log 或 manifest 写入动作。
+- 后续仍应继续从 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 的“切片 3：受控回滚任务”推进，但执行服务必须消费上述 rollback backup 语义。
+
+验证记录：
+
+- TDD RED：`cargo test -p hmm-app commit_plan_rollback_record_uses_pending_backup_when_replacing_managed_target` 先失败于 recovery record 保存旧 manifest 的长期 `backup_ref`。
+- TDD RED：`cargo test -p hmm-app commit_plan_persists_committing_record_after_later_pending_backup_update` 先失败于最后持久化的 `committing` record 仍保存旧 manifest 的长期 `backup_ref`。
+- 聚焦 recovery record：`cargo test -p hmm-app recovery_record`。
+- 聚焦 commit plan：`cargo test -p hmm-app commit_plan`。
+- 聚焦动作预览：`cargo test -p hmm-app preview_rollback_action`。
+- 全量门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
