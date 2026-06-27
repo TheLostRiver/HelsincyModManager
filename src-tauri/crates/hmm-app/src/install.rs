@@ -293,8 +293,11 @@ impl InstallCommitService {
             };
 
             if let Some(records) = recovery_records.as_mut() {
-                records.update_entry(&entry);
-                if records.ensure_committing().is_err() {
+                if records
+                    .update_entry_for_rollback(&entry, backup_ref.clone())
+                    .and_then(|_| records.ensure_committing())
+                    .is_err()
+                {
                     let error = self.fail_or_rollback_with_pending_backup(
                         &applied_changes,
                         backup_ref.as_deref(),
@@ -342,6 +345,7 @@ impl InstallCommitService {
             return Err(error);
         }
         if let Some(records) = recovery_records.as_mut() {
+            records.update_entries_for_completed_manifest(&manifest.entries);
             records.mark_completed_best_effort();
         }
         self.remove_obsolete_pending_backups(&applied_changes);
@@ -499,19 +503,44 @@ impl ActiveInstallRecoveryRecords {
         Ok(())
     }
 
-    fn update_entry(&mut self, entry: &InstallManifestEntry) {
+    fn update_entry_for_rollback(
+        &mut self,
+        entry: &InstallManifestEntry,
+        rollback_backup_ref: Option<String>,
+    ) -> anyhow::Result<()> {
         let Some(record) = self.records.get_mut(&entry.mod_id) else {
-            return;
+            return Ok(());
         };
         let Some(record_entry) = record.entries.iter_mut().find(|record_entry| {
             record_entry.target_path == entry.target_path
                 && record_entry.package_file_id == entry.package_file_id
         }) else {
-            return;
+            return Ok(());
         };
 
-        record_entry.backup_ref = entry.backup_ref.clone();
+        record_entry.backup_ref = rollback_backup_ref;
         record_entry.installed_file = entry.installed_file.clone();
+        if self.committing_saved {
+            self.repository.save_record(record)?;
+        }
+        Ok(())
+    }
+
+    fn update_entries_for_completed_manifest(&mut self, entries: &[InstallManifestEntry]) {
+        for entry in entries {
+            let Some(record) = self.records.get_mut(&entry.mod_id) else {
+                continue;
+            };
+            let Some(record_entry) = record.entries.iter_mut().find(|record_entry| {
+                record_entry.target_path == entry.target_path
+                    && record_entry.package_file_id == entry.package_file_id
+            }) else {
+                continue;
+            };
+
+            record_entry.backup_ref = entry.backup_ref.clone();
+            record_entry.installed_file = entry.installed_file.clone();
+        }
     }
 
     fn mark_completed_best_effort(&mut self) {
