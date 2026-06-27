@@ -9,6 +9,8 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 fs2 = "0.4.3"
+rusqlite.workspace = true
+rusqlite_migration.workspace = true
 hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
