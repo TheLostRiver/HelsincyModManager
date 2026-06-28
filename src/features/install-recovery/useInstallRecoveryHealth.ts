@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { scanInstallRecovery } from "../mods/modInstallPlanApi";
 import { deriveInstallRecoveryHealth, type InstallRecoveryHealth } from "./installRecoveryHealth";
+import { subscribeInstallRecoveryRefresh } from "./installRecoveryRefresh";
 
 const DEFAULT_INSTALL_PROFILE_ID = "default";
 
@@ -18,6 +19,17 @@ type UseInstallRecoveryHealthInput = {
 
 export function useInstallRecoveryHealth(input: UseInstallRecoveryHealthInput): InstallRecoveryHealthLoadState {
   const [state, setState] = useState<InstallRecoveryHealthLoadState>({ status: "idle" });
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    if (!input.enabled) {
+      return undefined;
+    }
+
+    return subscribeInstallRecoveryRefresh(() => {
+      setRefreshToken((current) => current + 1);
+    });
+  }, [input.enabled]);
 
   useEffect(() => {
     if (!input.enabled) {
@@ -47,7 +59,7 @@ export function useInstallRecoveryHealth(input: UseInstallRecoveryHealthInput): 
     return () => {
       cancelled = true;
     };
-  }, [input.enabled, input.gameId]);
+  }, [input.enabled, input.gameId, refreshToken]);
 
   return state;
 }

@@ -44,13 +44,13 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
 - Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
 - 受控回滚任务前置安全加固：当安装替换已有托管目标并在写入窗口后失败且 rollback 失败时，`committing` / `rollback_required` recovery record 会使用本次提交前创建的 pending backup ref 作为恢复来源；manifest 保存成功后的 `completed` record 则重新同步为 manifest entry 的长期 backup 语义。
-- 后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件或从 backup 恢复覆盖文件，并把 durable recovery record 标记为 `rolled_back`。当前尚未启用恢复中心写入型按钮。
+- 后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件或从 backup 恢复覆盖文件，并把 durable recovery record 标记为 `rolled_back`。恢复中心已启用逐 Mod 写入型按钮，前端先预览、再确认、再按 `taskId` 跟踪任务。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
-- App Frame 全局只读恢复告警：游戏目录配置完成后复用空 `modIds` 全量 profile 扫描聚合，只在需要处理、状态未知或扫描不可用时显示轻量告警，并提供恢复中心导航。
-- 独立恢复中心只读入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、只读 rich repair summary、只读人工处理决策面板和每个托管 Mod 的安全状态摘要；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
+- App Frame 全局恢复告警：游戏目录配置完成后复用空 `modIds` 全量 profile 扫描聚合，只在需要处理、状态未知或扫描不可用时显示轻量告警，并提供恢复中心导航。
+- 独立恢复中心入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、rich repair summary、人工处理决策面板和每个托管 Mod 的安全状态摘要；对 `rollback_required` Mod 提供逐 Mod 受控回滚入口；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
 
 仍未完成：
 
@@ -81,11 +81,11 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端 Mod 库只读恢复扫描入口、聚合人工处理提示和不安全状态安装/卸载阻断。
 - [x] `scan_install_recovery` 支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，作为启动级恢复检查或独立恢复中心的后端基础。
 - [x] Dashboard 入口只读恢复健康摘要，基于空 `modIds` 全量 profile 扫描展示聚合健康状态。
-- [x] App Frame 全局只读恢复告警，基于空 `modIds` 全量 profile 扫描聚合只显示安全告警和恢复中心导航。
-- [x] 独立恢复中心只读入口，基于空 `modIds` 全量 profile 扫描展示 profile 聚合摘要和逐 Mod 安全状态摘要。
-- [x] 恢复中心只读 rich repair summary，基于稳定 issue code 展示风险等级、阻断理由和人工处理建议，不提供恢复/删除/回滚/manifest 写入动作。
+- [x] App Frame 全局恢复告警，基于空 `modIds` 全量 profile 扫描聚合只显示安全告警和恢复中心导航。
+- [x] 独立恢复中心入口，基于空 `modIds` 全量 profile 扫描展示 profile 聚合摘要和逐 Mod 安全状态摘要。
+- [x] 恢复中心 rich repair summary，基于稳定 issue code 展示风险等级、阻断理由和人工处理建议；写入型动作仅限 `rollback_required` Mod 的受控回滚入口。
 - [x] 恢复中心诊断导出联动，复用 `export_support_diagnostics` 展示完整支持诊断包的安全导出摘要。
-- [x] 恢复中心只读人工处理决策面板，提供重新扫描、导出诊断和不可用的受控修复占位，不提供恢复/删除/回滚/manifest 写入动作。
+- [x] 恢复中心人工处理决策面板，提供重新扫描、导出诊断，并在存在 `rollback_required` Mod 时引导用户到逐 Mod 受控回滚入口。
 - [x] 安装恢复受控动作实施计划，明确 durable recovery record / rich status、只读动作预览、受控回滚任务和恢复中心 UI 启用的后续拆分边界。
 - [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
@@ -180,7 +180,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍明确未完成：
 
 - 受控回滚任务、`install.recovery.*` task phase、Audit Log 写入和执行前持锁重校验仍需后续切片。
-- 恢复中心 UI 仍不得显示可点击回滚按钮；只读人工处理决策面板中的 `controlled_recovery` 继续保持不可用。
+- 恢复中心 UI 已显示逐 Mod 可点击回滚按钮；人工处理决策面板中的 `controlled_recovery` 只负责滚动到 Mod 列表，真正写入动作仍由单个 `rollback_required` Mod 行触发。
 - `rolled_back` rich 状态和 manifest/recovery record 执行后状态更新仍未实现。
 
 验证记录：
@@ -764,7 +764,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、durable recovery record 消费、Mod 库加载后的前端只读扫描入口、Dashboard 入口健康摘要、App Frame 全局只读恢复告警、独立恢复中心只读入口、恢复中心只读 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储、安装 commit 写入、只读扫描消费、只读动作预览和后端 `start_recovery_action_task` 受控回滚任务已落地；恢复中心写入型按钮、任务 UI 编排和 rich manifest `rolled_back` 状态仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、durable recovery record 消费、Mod 库加载后的前端扫描入口、Dashboard 入口健康摘要、App Frame 全局恢复告警、独立恢复中心入口、恢复中心 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储、安装 commit 写入、只读扫描消费、只读动作预览、后端 `start_recovery_action_task` 受控回滚任务、恢复中心逐 Mod 写入型按钮和任务 UI 编排均已落地；rich manifest `rolled_back` 状态仍待后续切片。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
@@ -773,7 +773,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 扫描 durable recovery record、manifest、备份记录和任务状态摘要。
 - 已能识别 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`；`rollback_required` 只能来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能只从目录内容推断。
 - 已提供后端 command 返回只读恢复摘要；空 `modIds` 可扫描当前 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
-- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；App Frame 已提供全局只读恢复告警；独立恢复中心已提供只读入口、逐 Mod 安全状态摘要、只读 rich repair summary 和完整支持诊断包导出联动；受控恢复/回滚动作仍待后续补齐。
+- Mod 库已在加载成功后展示人工处理提示并阻断不安全安装/卸载；Dashboard 已展示 profile 级聚合健康摘要；App Frame 已提供全局恢复告警；独立恢复中心已提供入口、逐 Mod 安全状态摘要、rich repair summary、完整支持诊断包导出联动和逐 Mod 受控回滚动作。
 
 明确不做：
 

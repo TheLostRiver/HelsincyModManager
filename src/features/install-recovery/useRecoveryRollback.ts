@@ -12,6 +12,7 @@ import {
   TASK_PROGRESS_EVENT_NAME,
   type TaskProgressEventDto,
 } from "../mods/modImportTypes";
+import { notifyInstallRecoveryRefresh } from "./installRecoveryRefresh";
 
 const DEFAULT_INSTALL_PROFILE_ID = "default";
 
@@ -66,6 +67,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
 
   const markCompleted = useCallback((modId: string, taskId: string) => {
     setState({ status: "completed", modId, taskId });
+    notifyInstallRecoveryRefresh();
     onCompletedRef.current();
   }, []);
 

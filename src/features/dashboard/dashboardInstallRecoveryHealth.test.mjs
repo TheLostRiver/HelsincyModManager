@@ -24,9 +24,11 @@ test("dashboard recovery health hook uses profile-wide readonly scan without pat
   const hookSource = readSource("src/features/install-recovery/useInstallRecoveryHealth.ts");
 
   assert.match(hookSource, /scanInstallRecovery/);
+  assert.match(hookSource, /subscribeInstallRecoveryRefresh/);
   assert.match(hookSource, /gameId:\s*input\.gameId/);
   assert.match(hookSource, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
   assert.match(hookSource, /modIds:\s*\[\]/);
+  assert.match(hookSource, /\[input\.enabled,\s*input\.gameId,\s*refreshToken\]/);
   assert.doesNotMatch(
     hookSource,
     /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|manifestRoot|backupRoot|backupRef/i,

@@ -1,6 +1,6 @@
 # 安装恢复受控动作实施计划
 
-本文档细化 `InstallPlan` 后续“自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作”的实施边界。当前只读恢复扫描、恢复中心、Dashboard 摘要和 App Frame 全局告警已经落地；后端受控回滚任务也已落地，但恢复中心写入型按钮尚未启用。
+本文档细化 `InstallPlan` 后续“自动回滚/恢复执行、`rollback_required` rich 状态和真正的受控恢复/回滚动作”的实施边界。当前只读恢复扫描、恢复中心、Dashboard 摘要、App Frame 全局告警、后端受控回滚任务和恢复中心逐 Mod 写入型按钮均已落地。
 
 本计划的目标是把后续写入动作拆成可审查、可测试的小切片，避免在状态事实不足时直接对游戏目录执行破坏性操作。
 
@@ -45,7 +45,7 @@
 | `repair_required` | manifest、backup 或目标状态不一致，但无法安全自动判断。 | 阻断破坏性操作，仅提供诊断和人工处理建议。 |
 | `unknown` | 目标或 backup 读取失败，状态不可判定。 | 阻断自动动作，提示重新扫描或导出诊断。 |
 
-`rollback_required` 不能只由当前目标文件变化推断，必须来自 durable recovery record、rich manifest status 或等价受控事务记录。当前 durable recovery record 已由安装 commit 写入，`scan_install_recovery` 已只读消费该记录，`preview_recovery_action` 已能预览 `rollback_install` 的前置条件，后端 `start_recovery_action_task` 已能执行受控 `rollback_install`；恢复中心写入型入口仍需后续切片启用。
+`rollback_required` 不能只由当前目标文件变化推断，必须来自 durable recovery record、rich manifest status 或等价受控事务记录。当前 durable recovery record 已由安装 commit 写入，`scan_install_recovery` 已只读消费该记录，`preview_recovery_action` 已能预览 `rollback_install` 的前置条件，后端 `start_recovery_action_task` 已能执行受控 `rollback_install`；恢复中心 UI 已把该能力收敛为逐 Mod、先预览后确认的受控入口。
 
 ## 恢复动作集合
 
@@ -131,7 +131,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 - 已完成只读动作预览：`preview_recovery_action` 可对 `rollback_install` 返回 `available` / `blocked`、聚合计数和稳定阻断 reason code。
 - 已完成受控回滚任务前置安全加固：替换已有托管目标时，`committing` / `rollback_required` record 保留本次 pending backup 作为执行回滚的恢复来源；提交成功后的 `completed` record 再恢复成 manifest 的长期 backup 语义。
 - 已完成后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件、从 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。
-- 尚未完成：恢复中心写入型按钮、rich manifest `rolled_back` 状态同步、批量/更丰富的 repair workflow。
+- 尚未完成：rich manifest `rolled_back` 状态同步、批量/更丰富的 repair workflow。
 
 候选落点：
 
@@ -156,7 +156,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 - 已完成后端 `InstallRecoveryActionPreviewService`：只读读取 recovery record、目标摘要和 backup 可读性，支持 `rollback_install`。
 - 已完成 Tauri `preview_recovery_action` command 与 feature-local `previewRecoveryAction` typed API；输入只允许 `gameId`、`profileId`、`modId`、`actionKind`。
 - 已覆盖 `target_changed`、`target_missing`、`target_read_failed`、`backup_missing`、`backup_read_failed`、`missing_installed_file_summary` 和 `rollback_state_missing` 的阻断 reason；返回 DTO 不包含 target path、backup ref/root、manifest path/root、sandbox/cache path、目标 hash 明文、manifest 正文或第三方 Mod 内容。
-- 尚未接入恢复中心写入型按钮；blocked/available 摘要目前只是可供后续 UI 启用的只读事实。
+- 已接入恢复中心逐 Mod 写入型按钮；blocked/available 摘要用于决定是否展示确认回滚流程。
 
 候选落点：
 
@@ -179,7 +179,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 
 - 后端 `InstallRecoveryActionService` 已执行 `rollback_install`，只消费 durable recovery record、目标摘要和 backup 可读性，不消费前端路径。
 - `RecoveryActionTaskRunner` 已接入 `TaskKind::Install`，与 install / uninstall 共用 `gameId/profileId` 写锁，并写入 `rollback_install` Audit Log。
-- Tauri `start_recovery_action_task` command 与 feature-local `startRecoveryActionTask` typed API 已落地；恢复中心 UI 尚未调用该写入型入口。
+- Tauri `start_recovery_action_task` command、feature-local `startRecoveryActionTask` typed API 和恢复中心逐 Mod 写入型入口已落地。
 
 已注册 phase code：
 
@@ -200,7 +200,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 
 ### 切片 4：恢复中心 UI 启用
 
-目标：只有后端 preview 显示 `available` 时，恢复中心才显示受控回滚按钮。
+目标：只有后端 preview 显示 `available` 时，恢复中心才允许确认受控回滚。
 
 验收：
 
@@ -208,6 +208,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 - 任务状态按 `taskId` 匹配。
 - UI 不展示 target path、backup ref、manifest path、hash、日志正文或第三方 Mod 内容。
 - 操作完成后重新调用只读 `scan_install_recovery`，不依赖内存任务态当作最终事实。
+- 操作完成后触发恢复健康摘要刷新，让恢复中心、Dashboard 摘要和 App Frame 全局告警重新读取后端事实。
 
 ## 测试矩阵
 
