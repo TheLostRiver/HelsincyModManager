@@ -360,10 +360,10 @@ mod tests {
         let (service, _) = make_service();
         let id = service.create_category("A".to_owned(), None, None).unwrap();
         service
-            .set_mod_categories("mod-1", &[id.clone()])
+            .set_mod_categories("mod-1", std::slice::from_ref(&id))
             .unwrap();
         service
-            .set_mod_categories("mod-2", &[id.clone()])
+            .set_mod_categories("mod-2", std::slice::from_ref(&id))
             .unwrap();
 
         let list = service.list_categories().unwrap();

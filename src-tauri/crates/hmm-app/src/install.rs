@@ -12,7 +12,10 @@ use hmm_ports::{
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
+
+const INSTALL_PLAN_MANIFEST_BACKEND: &str = "install_plan";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildInstallPlanRequest {
@@ -683,10 +686,15 @@ impl UninstallModService {
             });
         }
 
-        let updated_manifest = InstallManifest {
-            profile_id: request.profile_id,
-            entries: kept_entries,
-        };
+        let completed_at = current_manifest_timestamp();
+        let updated_manifest = InstallManifest::completed_with_metadata(
+            request.profile_id,
+            kept_entries,
+            Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned()),
+            Some(completed_at.clone()),
+            Some(completed_at),
+            None,
+        );
         if self
             .manifest_repository
             .save_manifest(&updated_manifest)
@@ -763,8 +771,8 @@ fn merge_install_manifest(
     existing_manifest: Option<InstallManifest>,
     applied_entries: Vec<InstallManifestEntry>,
 ) -> InstallManifest {
-    let mut entries = existing_manifest
-        .map(|manifest| manifest.entries)
+    let (mut entries, created_at) = existing_manifest
+        .map(|manifest| (manifest.entries, manifest.created_at))
         .unwrap_or_default();
 
     entries.retain(|entry| {
@@ -774,10 +782,22 @@ fn merge_install_manifest(
     });
     entries.extend(applied_entries);
 
-    InstallManifest {
+    let completed_at = current_manifest_timestamp();
+    InstallManifest::completed_with_metadata(
         profile_id,
         entries,
-    }
+        Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned()),
+        created_at.or(Some(completed_at.clone())),
+        Some(completed_at),
+        None,
+    )
+}
+
+fn current_manifest_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| format!("unix:{}", duration.as_secs()))
+        .unwrap_or_else(|_| "unix:0".to_owned())
 }
 
 fn installed_file_summary(bytes: &[u8]) -> InstalledFileSummary {

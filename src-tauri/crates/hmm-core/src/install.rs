@@ -200,6 +200,18 @@ pub struct InstalledFileSummary {
     pub sha256: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallManifestStatus {
+    Planned,
+    Committing,
+    #[default]
+    Completed,
+    RollbackRequired,
+    RolledBack,
+    RepairRequired,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallRecoveryRecordStatus {
@@ -279,7 +291,50 @@ impl InstallRecoveryRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallManifest {
     pub profile_id: ProfileId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    #[serde(default)]
+    pub status: InstallManifestStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_hash: Option<String>,
     pub entries: Vec<InstallManifestEntry>,
+}
+
+impl InstallManifest {
+    pub fn completed(profile_id: ProfileId, entries: Vec<InstallManifestEntry>) -> Self {
+        Self {
+            profile_id,
+            backend: None,
+            status: InstallManifestStatus::Completed,
+            created_at: None,
+            completed_at: None,
+            plan_hash: None,
+            entries,
+        }
+    }
+
+    pub fn completed_with_metadata(
+        profile_id: ProfileId,
+        entries: Vec<InstallManifestEntry>,
+        backend: Option<String>,
+        created_at: Option<String>,
+        completed_at: Option<String>,
+        plan_hash: Option<String>,
+    ) -> Self {
+        Self {
+            profile_id,
+            backend,
+            status: InstallManifestStatus::Completed,
+            created_at,
+            completed_at,
+            plan_hash,
+            entries,
+        }
+    }
 }
 
 fn has_duplicate_priorities(providers: &[InstallFileProvider]) -> bool {
@@ -468,6 +523,43 @@ mod tests {
         .expect("legacy manifest should remain readable");
 
         assert_eq!(manifest.entries[0].installed_file, None);
+    }
+
+    #[test]
+    fn legacy_manifest_defaults_to_completed_rich_status() {
+        let manifest: InstallManifest = serde_json::from_str(
+            r#"{
+                "profile_id": "default",
+                "entries": []
+            }"#,
+        )
+        .expect("legacy manifest should remain readable");
+
+        assert_eq!(manifest.status, InstallManifestStatus::Completed);
+        assert_eq!(manifest.backend, None);
+        assert_eq!(manifest.created_at, None);
+        assert_eq!(manifest.completed_at, None);
+        assert_eq!(manifest.plan_hash, None);
+    }
+
+    #[test]
+    fn manifest_status_serializes_as_stable_snake_case() {
+        let manifest = InstallManifest {
+            profile_id: ProfileId::new("default"),
+            backend: Some("install_plan".to_owned()),
+            status: InstallManifestStatus::RolledBack,
+            created_at: Some("2026-06-29T00:00:00Z".to_owned()),
+            completed_at: Some("2026-06-29T00:00:01Z".to_owned()),
+            plan_hash: Some("sha256:test-plan".to_owned()),
+            entries: Vec::new(),
+        };
+
+        let serialized = serde_json::to_string(&manifest).expect("serialize manifest");
+
+        assert!(serialized.contains("\"status\":\"rolled_back\""));
+        assert!(serialized.contains("\"backend\":\"install_plan\""));
+        assert!(serialized.contains("\"plan_hash\":\"sha256:test-plan\""));
+        assert!(!serialized.contains("RolledBack"));
     }
 
     #[test]

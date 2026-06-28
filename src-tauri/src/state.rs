@@ -70,6 +70,7 @@ pub struct AppState {
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
     pub task_manager: Arc<TaskManager>,
+    #[expect(dead_code, reason = "keeps the shared SQLite connection alive for repositories")]
     pub(crate) db: Arc<Mutex<rusqlite::Connection>>,
 }
 
