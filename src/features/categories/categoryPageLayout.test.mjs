@@ -75,9 +75,16 @@ test("category row editing and mutations keep accessible feedback", () => {
 
   assert.match(source, /<form[\s\S]*className="category-row is-editing"[\s\S]*role="listitem"/);
   assert.match(source, /formatCategoryMutationError/);
+  assert.match(source, /getCategoryMutationErrorMessage/);
+  assert.match(source, /isCategoryCommandError/);
   assert.match(source, /className="category-inline-error" role="alert"/);
   assert.match(source, /创建分类失败，请稍后重试。/);
   assert.match(source, /保存分类失败，请稍后重试。/);
   assert.match(source, /删除分类失败，请稍后重试。/);
   assert.match(getRuleBody(css, ".category-inline-error"), /grid-column:\s*1\s*\/\s*-1;/);
+  assert.match(getRuleBody(css, ".category-delete-confirm"), /flex-wrap:\s*wrap;/);
+  assert.match(
+    getRuleBody(css, ".category-delete-confirm .category-inline-error"),
+    /flex-basis:\s*100%;/,
+  );
 });
