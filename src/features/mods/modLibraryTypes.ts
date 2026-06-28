@@ -15,7 +15,7 @@ export type ModInstallSummary = {
 
 export type CategoryLabel = {
   name: string;
-  color?: string;
+  color?: string | null;
 };
 
 export type ModLibraryItem = {
