@@ -598,9 +598,14 @@ impl UninstallModService {
             .load_manifest(&request.profile_id)
             .map_err(|_| UninstallModError::ManifestUnavailable)?
             .ok_or(UninstallModError::ModNotInstalled)?;
+        let InstallManifest {
+            backend,
+            created_at,
+            entries,
+            ..
+        } = manifest;
 
-        let (uninstall_entries, kept_entries): (Vec<_>, Vec<_>) = manifest
-            .entries
+        let (uninstall_entries, kept_entries): (Vec<_>, Vec<_>) = entries
             .into_iter()
             .partition(|entry| entry.mod_id == request.mod_id);
 
@@ -690,8 +695,8 @@ impl UninstallModService {
         let updated_manifest = InstallManifest::completed_with_metadata(
             request.profile_id,
             kept_entries,
-            Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned()),
-            Some(completed_at.clone()),
+            backend.or_else(|| Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned())),
+            created_at.or(Some(completed_at.clone())),
             Some(completed_at),
             None,
         );
