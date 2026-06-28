@@ -52,9 +52,14 @@ impl CategoryRepository for SqliteCategoryRepository {
     fn save(&self, category: &Category) -> Result<()> {
         let conn = self.lock_db()?;
         conn.execute(
-            "INSERT OR REPLACE INTO categories
+            "INSERT INTO categories
                 (category_id, name, color, sort_order, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(category_id) DO UPDATE SET
+                name = excluded.name,
+                color = excluded.color,
+                sort_order = excluded.sort_order,
+                created_at = excluded.created_at",
             rusqlite::params![
                 category.id,
                 category.name,
@@ -252,6 +257,21 @@ mod tests {
         let loaded = repo.get("cat-1").unwrap().expect("should exist");
         assert_eq!(loaded.name, "New Name");
         assert_eq!(loaded.color, Some("#00FF00".to_owned()));
+    }
+
+    #[test]
+    fn save_update_preserves_mod_associations() {
+        let repo = test_repo();
+        repo.save(&sample_category("cat-1", "Original")).unwrap();
+        repo.set_mod_categories("mod-1", &["cat-1".to_owned()]).unwrap();
+
+        let mut updated = sample_category("cat-1", "Renamed");
+        updated.color = Some("#FF0000".to_owned());
+        repo.save(&updated).unwrap();
+
+        let cats = repo.get_mod_categories("mod-1").unwrap();
+        assert_eq!(cats.len(), 1);
+        assert_eq!(cats[0].name, "Renamed");
     }
 
     #[test]

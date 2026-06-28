@@ -159,8 +159,14 @@ impl CategoryService {
     }
 
     pub fn set_mod_categories(&self, mod_id: &str, category_ids: &[String]) -> Result<()> {
+        let mut seen = std::collections::HashSet::new();
+        let deduped: Vec<String> = category_ids
+            .iter()
+            .filter(|id| seen.insert(id.as_str()))
+            .cloned()
+            .collect();
         self.category_repository
-            .set_mod_categories(mod_id, category_ids)
+            .set_mod_categories(mod_id, &deduped)
     }
 }
 
