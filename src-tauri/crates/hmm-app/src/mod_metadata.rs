@@ -209,24 +209,13 @@ mod tests {
     // — overlay merge integration tests —
 
     use crate::ModLibraryService;
-    use hmm_core::{Category, PreviewImageRejectionReason};
+    use hmm_core::PreviewImageRejectionReason;
     use hmm_ports::{
-        CategoryRepository, ModImportResultRepository, StoredImportPreviewImage,
+        ModImportResultRepository, StoredImportPreviewImage,
         StoredModImportAnalysis, StoredModPackageMetadata,
     };
 
-    struct EmptyCategoryRepository;
-
-    impl CategoryRepository for EmptyCategoryRepository {
-        fn get(&self, _: &str) -> Result<Option<Category>> { Ok(None) }
-        fn save(&self, _: &Category) -> Result<()> { Ok(()) }
-        fn delete(&self, _: &str) -> Result<()> { Ok(()) }
-        fn list_all(&self) -> Result<Vec<Category>> { Ok(Vec::new()) }
-        fn count_mods(&self, _: &str) -> Result<u32> { Ok(0) }
-        fn get_mod_categories(&self, _: &str) -> Result<Vec<Category>> { Ok(Vec::new()) }
-        fn set_mod_categories(&self, _: &str, _: &[String]) -> Result<()> { Ok(()) }
-        fn list_mod_category_pairs(&self) -> Result<Vec<(String, Category)>> { Ok(Vec::new()) }
-    }
+    use crate::category::test_support::EmptyCategoryRepository;
 
     #[derive(Default)]
     struct FakeResultRepository {
