@@ -32,10 +32,19 @@ export type ModLibraryItem = {
   previewImage?: PreviewImage;
 };
 
+export type ModPackageMetadata = {
+  version?: string;
+  author?: string;
+  category?: string;
+  tags: string[];
+  dependencies: string[];
+};
+
 export type ModDetail = {
   id: string;
   name: string;
   packageId: string;
+  metadata: ModPackageMetadata;
   description?: string;
   nexusModId?: number;
   previewImage: PreviewImage;
