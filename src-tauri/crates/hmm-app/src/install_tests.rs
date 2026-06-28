@@ -418,6 +418,71 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
 }
 
 #[test]
+fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
+    let remove_target = InstallTargetPath::parse("nativePC/models/remove.mod3", ["nativePC"])
+        .expect("valid target");
+    let keep_target = InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
+        .expect("valid target");
+    let existing_manifest = InstallManifest::completed_with_metadata(
+        ProfileId::new("default"),
+        vec![
+            InstallManifestEntry {
+                target_path: remove_target,
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/remove.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"remove model")),
+            },
+            InstallManifestEntry {
+                target_path: keep_target,
+                mod_id: ModId::new("mod-b"),
+                package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: Some("backup-keep".to_owned()),
+                installed_file: Some(installed_file_summary(b"keep model")),
+            },
+        ],
+        Some("install_plan".to_owned()),
+        Some("2026-06-29T00:00:00Z".to_owned()),
+        Some("2026-06-29T00:00:01Z".to_owned()),
+        Some("sha256:stale-plan".to_owned()),
+    );
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+        "nativePC/models/remove.mod3",
+        b"remove model".as_slice(),
+    )]));
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = UninstallModService::new(game_files, backups, manifests.clone());
+
+    service
+        .uninstall_mod(UninstallModRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+        })
+        .expect("uninstall should preserve manifest metadata for remaining entries");
+
+    let manifest = manifests.take_manifest().expect("manifest should be saved");
+    assert_eq!(manifest.backend.as_deref(), Some("install_plan"));
+    assert_eq!(
+        manifest.created_at.as_deref(),
+        Some("2026-06-29T00:00:00Z")
+    );
+    assert_eq!(manifest.status, InstallManifestStatus::Completed);
+    assert!(manifest.completed_at.is_some());
+    assert_ne!(
+        manifest.completed_at.as_deref(),
+        Some("2026-06-29T00:00:01Z")
+    );
+    assert_eq!(manifest.plan_hash, None);
+    assert_eq!(manifest.entries.len(), 1);
+    assert_eq!(manifest.entries[0].mod_id.as_str(), "mod-b");
+}
+
+#[test]
 fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
