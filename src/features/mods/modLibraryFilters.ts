@@ -88,7 +88,7 @@ export function matchesLibraryFilter(item: ModLibraryItem, filter: ModLibraryFil
 }
 
 export function normalizeLibraryFilter(filter: ModLibraryFilter, chips: LibraryFilterChip[]) {
-  return chips.some((chip) => isSameLibraryFilter(chip.filter, filter)) ? filter : allLibraryFilter;
+  return chips.find((chip) => isSameLibraryFilter(chip.filter, filter))?.filter ?? allLibraryFilter;
 }
 
 export function visibleCategoryLabelsForCard(labels: CategoryLabel[], maxVisible = 3) {

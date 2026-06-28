@@ -687,7 +687,7 @@
   width: 8px;
   height: 8px;
   border-radius: 9999px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 12%, transparent);
 }
 
 .library-chip:hover {
@@ -1267,6 +1267,7 @@
 
 .mod-card__category-overflow {
   --category-color: var(--category-fallback-color);
+
   flex: 0 0 auto;
   color: var(--color-text-muted);
 }

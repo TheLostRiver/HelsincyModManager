@@ -84,5 +84,5 @@
 - [x] T4：后端分类 CRUD、typed API、CategoryLabel 升级、合并逻辑、6 Tauri commands（PR #112）。
 - [x] 分类管理页面：`/categories` 页面、新建/编辑/删除、悬浮色板、行内错误与 review follow-up（PR #113 / #114）。
 - [x] Mod 详情面板分类关联 UI：在 Mod 详情展示已关联分类标签，提供添加/移除操作，调用 `setModCategories`（PR #116）。
-- [x] ModLibraryPage 动态筛选 chips：从 `listCategories()` 查询替换硬编码 `libraryFilterChips`，按 sortOrder 排列，空分类不显示 chip。
-- [x] ModPosterCard 分类标签渲染：在卡片上展示分类色块/名称。
+- [x] ModLibraryPage 动态筛选 chips：从 `listCategories()` 查询替换硬编码 `libraryFilterChips`，按 sortOrder 排列，空分类不显示 chip（PR #117）。
+- [x] ModPosterCard 分类标签渲染：在卡片上展示分类色块/名称（PR #117）。

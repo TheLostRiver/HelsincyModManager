@@ -5,6 +5,7 @@ import {
   buildLibraryFilterChips,
   libraryFilterKey,
   matchesLibraryFilter,
+  normalizeLibraryFilter,
   visibleCategoryLabelsForCard,
 } from "./modLibraryFilters.ts";
 
@@ -52,6 +53,25 @@ test("library category filters do not collide with status labels of the same nam
   assert.equal(matchesLibraryFilter(weaponItem, statusChip.filter), false);
   assert.equal(matchesLibraryFilter(installedItem, categoryChip.filter), true);
   assert.equal(matchesLibraryFilter(weaponItem, categoryChip.filter), false);
+});
+
+test("normalizeLibraryFilter refreshes renamed category filters from the current chip", () => {
+  const chips = buildLibraryFilterChips([
+    { id: "cat-weapons", name: "Weapons", color: "#2563eb", sortOrder: 0, modCount: 1 },
+  ]);
+  const staleFilter = {
+    kind: "category",
+    categoryId: "cat-weapons",
+    categoryName: "Old Weapons",
+  };
+
+  const normalized = normalizeLibraryFilter(staleFilter, chips);
+
+  assert.deepEqual(normalized, {
+    kind: "category",
+    categoryId: "cat-weapons",
+    categoryName: "Weapons",
+  });
 });
 
 test("visibleCategoryLabelsForCard limits visible labels and reports overflow count", () => {
