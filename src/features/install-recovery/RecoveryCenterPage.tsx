@@ -57,7 +57,7 @@ export function RecoveryCenterPage() {
     <section className="recovery-center" aria-labelledby="recovery-center-title">
       <header className="recovery-center__hero">
         <div className="recovery-center__hero-copy">
-          <span className="recovery-center__eyebrow">只读恢复扫描</span>
+          <span className="recovery-center__eyebrow">受控恢复中心</span>
           <h2 id="recovery-center-title">恢复中心</h2>
           <p>查看当前配置档的托管安装健康状态，先定位需要人工处理的条目。</p>
         </div>

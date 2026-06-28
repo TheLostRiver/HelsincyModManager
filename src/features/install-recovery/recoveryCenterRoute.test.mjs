@@ -32,16 +32,23 @@ test("registers Recovery Center as a first-class enabled route and nav item", ()
   assert.match(main, /RecoveryCenterPage\.css/);
 });
 
-test("Recovery Center page only performs read-only recovery scan with short ids", () => {
+test("Recovery Center scans with short ids and delegates rollback to controlled hook", () => {
   const page = readSource("src/features/install-recovery/RecoveryCenterPage.tsx");
   const hook = readSource("src/features/install-recovery/useRecoveryCenterScan.ts");
+  const rollbackHook = readSource("src/features/install-recovery/useRecoveryRollback.ts");
 
   assert.match(page, /useGameSetup/);
   assert.match(page, /useRecoveryCenterScan/);
+  assert.match(page, /useRecoveryRollback/);
   assert.match(hook, /scanInstallRecovery/);
   assert.match(hook, /gameId:\s*input\.gameId/);
   assert.match(hook, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
   assert.match(hook, /modIds:\s*\[\]/);
+  assert.match(rollbackHook, /previewRecoveryAction/);
+  assert.match(rollbackHook, /startRecoveryActionTask/);
+  assert.match(rollbackHook, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
+  assert.match(rollbackHook, /actionKind:\s*"rollback_install"/);
+  assert.match(rollbackHook, /notifyInstallRecoveryRefresh/);
 
   const forbidden = [
     "targetPath",
@@ -62,10 +69,11 @@ test("Recovery Center page only performs read-only recovery scan with short ids"
   for (const token of forbidden) {
     assert.equal(page.includes(token), false, `${token} must stay out of Recovery Center UI`);
     assert.equal(hook.includes(token), false, `${token} must stay out of Recovery Center scan hook`);
+    assert.equal(rollbackHook.includes(token), false, `${token} must stay out of Recovery Center rollback hook`);
   }
 });
 
-test("Recovery Center renders rich repair summary without action commands", () => {
+test("Recovery Center renders rich repair summary without direct install commands", () => {
   const page = readSource("src/features/install-recovery/RecoveryCenterPage.tsx");
 
   assert.match(page, /RepairSummaryPanel/);
@@ -79,13 +87,14 @@ test("Recovery Center renders rich repair summary without action commands", () =
   }
 });
 
-test("Recovery Center renders manual handling decision panel with safe actions only", () => {
+test("Recovery Center renders manual handling decision panel with safe controlled recovery entry", () => {
   const page = readSource("src/features/install-recovery/RecoveryCenterPage.tsx");
 
   assert.match(page, /ManualHandlingPanel/);
   assert.match(page, /manualDecision\.actions/);
   assert.match(page, /onRefresh/);
   assert.match(page, /onExportDiagnostics/);
+  assert.match(page, /onScrollToModList/);
   assert.match(page, /isManualActionDisabled/);
   assert.match(page, /resolveManualActionHandler/);
   assert.match(page, /isRefreshing=\{scan\.state\.status === "loading"\}/);
@@ -121,8 +130,14 @@ test("manual handling actions combine action state with live busy state", () => 
   };
   const controlledRecoveryAction = {
     id: "controlled_recovery",
+    label: "受控回滚",
+    description: "在下方列表中使用逐 Mod 受控回滚。",
+    state: "available",
+  };
+  const unavailableControlledRecoveryAction = {
+    id: "controlled_recovery",
     label: "受控修复",
-    description: "当前不可用。",
+    description: "当前没有可执行受控回滚的 Mod。",
     state: "unavailable",
   };
 
@@ -132,6 +147,10 @@ test("manual handling actions combine action state with live busy state", () => 
   assert.equal(isManualActionDisabled(exportAction, { isRefreshing: false, isExporting: true }), true);
   assert.equal(
     isManualActionDisabled(controlledRecoveryAction, { isRefreshing: false, isExporting: false }),
+    false,
+  );
+  assert.equal(
+    isManualActionDisabled(unavailableControlledRecoveryAction, { isRefreshing: false, isExporting: false }),
     true,
   );
 });
@@ -139,12 +158,16 @@ test("manual handling actions combine action state with live busy state", () => 
 test("manual handling action handlers only fire for available non-busy safe actions", () => {
   let refreshCount = 0;
   let exportCount = 0;
+  let scrollCount = 0;
   const handlers = {
     onRefresh: () => {
       refreshCount += 1;
     },
     onExportDiagnostics: () => {
       exportCount += 1;
+    },
+    onScrollToModList: () => {
+      scrollCount += 1;
     },
   };
   const retryAction = {
@@ -161,25 +184,55 @@ test("manual handling action handlers only fire for available non-busy safe acti
   };
   const controlledRecoveryAction = {
     id: "controlled_recovery",
+    label: "受控回滚",
+    description: "在下方列表中使用逐 Mod 受控回滚。",
+    state: "available",
+  };
+  const unavailableControlledRecoveryAction = {
+    id: "controlled_recovery",
     label: "受控修复",
-    description: "当前不可用。",
+    description: "当前没有可执行受控回滚的 Mod。",
     state: "unavailable",
   };
 
   resolveManualActionHandler(retryAction, { isRefreshing: false, isExporting: false }, handlers)?.();
   resolveManualActionHandler(exportAction, { isRefreshing: false, isExporting: false }, handlers)?.();
+  resolveManualActionHandler(controlledRecoveryAction, { isRefreshing: false, isExporting: false }, handlers)?.();
 
   assert.equal(refreshCount, 1);
   assert.equal(exportCount, 1);
+  assert.equal(scrollCount, 1);
   assert.equal(resolveManualActionHandler(retryAction, { isRefreshing: true, isExporting: false }, handlers), undefined);
   assert.equal(
     resolveManualActionHandler(exportAction, { isRefreshing: false, isExporting: true }, handlers),
     undefined,
   );
   assert.equal(
-    resolveManualActionHandler(controlledRecoveryAction, { isRefreshing: false, isExporting: false }, handlers),
+    resolveManualActionHandler(unavailableControlledRecoveryAction, { isRefreshing: false, isExporting: false }, handlers),
     undefined,
   );
+});
+
+test("Recovery Center rollback hook tracks task progress by task id and refreshes global health on completion", () => {
+  const hook = readSource("src/features/install-recovery/useRecoveryRollback.ts");
+  const healthHook = readSource("src/features/install-recovery/useInstallRecoveryHealth.ts");
+  const refresh = readSource("src/features/install-recovery/installRecoveryRefresh.ts");
+
+  assert.match(hook, /listen<\s*TaskProgressEventDto\s*>/);
+  assert.match(hook, /event\.payload\.kind !== "install"/);
+  assert.match(hook, /isRecoveryRollbackPhase\(phase\)/);
+  assert.match(hook, /current\.status !== "running" \|\| current\.taskId !== event\.payload\.taskId/);
+  assert.match(hook, /pendingEventsRef\.current\.set\(event\.payload\.taskId,\s*event\.payload\)/);
+  assert.match(hook, /pendingEventsRef\.current\.get\(result\.taskId\)/);
+  assert.match(hook, /install\.recovery\.completed/);
+  assert.match(hook, /notifyInstallRecoveryRefresh\(\)/);
+
+  assert.match(refresh, /INSTALL_RECOVERY_REFRESH_EVENT/);
+  assert.match(refresh, /window\.dispatchEvent/);
+  assert.match(refresh, /window\.addEventListener/);
+  assert.match(healthHook, /subscribeInstallRecoveryRefresh/);
+  assert.match(healthHook, /setRefreshToken\(\(current\) => current \+ 1\)/);
+  assert.match(healthHook, /\[input\.enabled,\s*input\.gameId,\s*refreshToken\]/);
 });
 
 test("Recovery Center exposes support diagnostics export without path or raw log fields", () => {
