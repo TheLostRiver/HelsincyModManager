@@ -276,6 +276,7 @@ function CreateCategoryForm({ onCreated, onCancel }: CreateCategoryFormProps) {
   const [color, setColor] = useState("");
   const [sortOrder, setSortOrder] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const parsedSortOrder = parseSortOrder(sortOrder);
   const sortOrderValid = sortOrder.trim() === "" || parsedSortOrder !== undefined;
@@ -285,6 +286,7 @@ function CreateCategoryForm({ onCreated, onCancel }: CreateCategoryFormProps) {
     e.preventDefault();
     if (!canSubmit) return;
 
+    setError(null);
     setSubmitting(true);
     void createCategory({
       name: name.trim(),
@@ -292,7 +294,10 @@ function CreateCategoryForm({ onCreated, onCancel }: CreateCategoryFormProps) {
       sortOrder: parsedSortOrder,
     })
       .then(() => onCreated())
-      .catch(() => setSubmitting(false));
+      .catch((err: unknown) => {
+        setError(formatCategoryMutationError(err, "创建分类失败，请稍后重试。"));
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -329,6 +334,11 @@ function CreateCategoryForm({ onCreated, onCancel }: CreateCategoryFormProps) {
           取消
         </button>
       </div>
+      {error && (
+        <p className="category-inline-error" role="alert">
+          {error}
+        </p>
+      )}
     </form>
   );
 }
@@ -370,24 +380,27 @@ function CategoryColorPicker({ value, onChange }: CategoryColorPickerProps) {
       {open && (
         <div className="category-color-popover" id={popoverId} role="dialog" aria-label="选择分类颜色">
           <div className="category-color-palette" aria-label="常用颜色">
-            {CATEGORY_COLOR_OPTIONS.map((option) => (
-              <button
-                type="button"
-                className={`category-color-swatch-button ${
-                  selectedColor.toLowerCase() === option.value.toLowerCase() ? "is-selected" : ""
-                }`}
-                key={option.value}
-                onClick={() => selectColor(option.value)}
-                aria-label={`选择${option.label}`}
-                title={option.label}
-              >
-                <span
-                  className="category-swatch"
-                  style={{ background: option.value }}
-                  aria-hidden="true"
-                />
-              </button>
-            ))}
+            {CATEGORY_COLOR_OPTIONS.map((option) => {
+              const isSelected = selectedColor.toLowerCase() === option.value.toLowerCase();
+
+              return (
+                <button
+                  type="button"
+                  className={`category-color-swatch-button ${isSelected ? "is-selected" : ""}`}
+                  key={option.value}
+                  onClick={() => selectColor(option.value)}
+                  aria-label={`选择${option.label}`}
+                  aria-pressed={isSelected}
+                  title={option.label}
+                >
+                  <span
+                    className="category-swatch"
+                    style={{ background: option.value }}
+                    aria-hidden="true"
+                  />
+                </button>
+              );
+            })}
           </div>
           <label className="category-custom-color">
             <span>自定义</span>
@@ -498,6 +511,7 @@ function CategoryEditRow({ category, onCancel, onSaved }: CategoryEditRowProps) 
   const [color, setColor] = useState(category.color ?? "");
   const [sortOrder, setSortOrder] = useState(String(category.sortOrder));
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const parsedSortOrder = parseSortOrder(sortOrder);
   const sortOrderValid = sortOrder.trim() === "" || parsedSortOrder !== undefined;
@@ -510,6 +524,7 @@ function CategoryEditRow({ category, onCancel, onSaved }: CategoryEditRowProps) 
     const trimmedColor = color.trim();
     const originalColor = category.color ?? "";
 
+    setError(null);
     setSubmitting(true);
     void updateCategory({
       categoryId: category.id,
@@ -522,11 +537,19 @@ function CategoryEditRow({ category, onCancel, onSaved }: CategoryEditRowProps) 
         : undefined,
     })
       .then(() => onSaved())
-      .catch(() => setSubmitting(false));
+      .catch((err: unknown) => {
+        setError(formatCategoryMutationError(err, "保存分类失败，请稍后重试。"));
+        setSubmitting(false);
+      });
   };
 
   return (
-    <form className="category-row is-editing" onSubmit={handleSave} aria-label={`编辑 ${category.name}`}>
+    <form
+      className="category-row is-editing"
+      role="listitem"
+      onSubmit={handleSave}
+      aria-label={`编辑 ${category.name}`}
+    >
       <label className="category-edit-field category-edit-field--name">
         <span>名称</span>
         <input
@@ -562,6 +585,11 @@ function CategoryEditRow({ category, onCancel, onSaved }: CategoryEditRowProps) 
           取消
         </button>
       </div>
+      {error && (
+        <p className="category-inline-error" role="alert">
+          {error}
+        </p>
+      )}
     </form>
   );
 }
@@ -574,12 +602,17 @@ type CategoryDeleteConfirmProps = {
 
 function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDeleteConfirmProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleConfirm = () => {
+    setError(null);
     setSubmitting(true);
     void deleteCategory(category.id)
       .then(() => onDeleted())
-      .catch(() => setSubmitting(false));
+      .catch((err: unknown) => {
+        setError(formatCategoryMutationError(err, "删除分类失败，请稍后重试。"));
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -602,8 +635,32 @@ function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDelete
           取消
         </button>
       </div>
+      {error && (
+        <p className="category-inline-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
+}
+
+function formatCategoryMutationError(error: unknown, fallback: string): string {
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }
 
 function parseSortOrder(value: string): number | undefined {
