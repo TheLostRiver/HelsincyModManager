@@ -85,13 +85,16 @@ export function ModPosterCard({
   const canShowPoster = previewThumbnail !== null && !posterFailed;
   const categoryLabelLimit = isList || isTech ? 3 : 2;
   const categoryLabels = visibleCategoryLabelsForCard(item.categoryLabels, categoryLabelLimit);
+  const categorySummary =
+    showCategoryLabels && item.categoryLabels.length > 0
+      ? `，分类：${item.categoryLabels.map((label) => label.name).join("、")}`
+      : "";
   const categoryStrip =
     categoryLabels.visible.length > 0 ? (
       <div
         className="mod-card__categories"
         data-visible={showCategoryLabels ? "true" : "false"}
-        aria-hidden={!showCategoryLabels}
-        aria-label={showCategoryLabels ? `分类：${categoryLabels.visible.map((label) => label.name).join("、")}` : undefined}
+        aria-hidden="true"
       >
         {categoryLabels.visible.map((label) => (
           <span
@@ -135,7 +138,7 @@ export function ModPosterCard({
         }
       }}
       aria-pressed={selected}
-      aria-label={`选择 ${item.name}`}
+      aria-label={`选择 ${item.name}${categorySummary}`}
       data-status={item.status}
     >
       {/* 选中指示器：所有非经典视图共享 */}

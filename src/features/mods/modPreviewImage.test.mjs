@@ -74,9 +74,12 @@ test("mod poster card can hide category labels without affecting card rendering"
 
   assert.match(source, /showCategoryLabels\?:\s*boolean/);
   assert.match(source, /showCategoryLabels = true/);
+  assert.match(source, /const categorySummary/);
+  assert.match(source, /item\.categoryLabels\.map\(\(label\) => label\.name\)\.join\("、"\)/);
   assert.match(source, /categoryLabels\.visible\.length > 0/);
   assert.match(source, /data-visible=\{showCategoryLabels \? "true" : "false"\}/);
-  assert.match(source, /aria-hidden=\{!showCategoryLabels\}/);
+  assert.match(source, /aria-hidden="true"/);
+  assert.match(source, /aria-label=\{`选择 \$\{item\.name\}\$\{categorySummary\}`\}/);
 
   assert.match(css, /\.mod-card__categories\s*{[\s\S]*?max-height:\s*22px;/);
   assert.match(css, /\.mod-card__categories\s*{[\s\S]*?transition:[\s\S]*?opacity[\s\S]*?max-height[\s\S]*?transform/);
