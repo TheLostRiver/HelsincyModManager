@@ -13,3 +13,4 @@ hmm-ports = { path = "../hmm-ports" }
 serde_json.workspace = true
 sha2 = "0.10.9"
 thiserror.workspace = true
+uuid.workspace = true

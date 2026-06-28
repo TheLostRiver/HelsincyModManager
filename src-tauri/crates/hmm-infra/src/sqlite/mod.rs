@@ -1,6 +1,8 @@
+mod category_repository;
 mod migrations;
 mod mod_metadata_repository;
 
+pub use category_repository::SqliteCategoryRepository;
 pub use mod_metadata_repository::SqliteModMetadataRepository;
 
 use anyhow::{Context, Result};

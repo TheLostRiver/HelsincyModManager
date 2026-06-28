@@ -81,7 +81,7 @@ function matchesActiveFilter(item: ModLibraryItem, activeFilter: string) {
     return item.status === statusFilter;
   }
 
-  return item.categoryLabels.includes(activeFilter);
+  return item.categoryLabels.some(c => c.name === activeFilter);
 }
 
 function staggerStyle(index: number) {

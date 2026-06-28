@@ -15,7 +15,7 @@ const fallbackItems = [
     author: "Mock Author",
     versionLabel: "v1",
     status: "installed",
-    categoryLabels: ["Mock"],
+    categoryLabels: [{ name: "Mock" }],
   },
 ];
 

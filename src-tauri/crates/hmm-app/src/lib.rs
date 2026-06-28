@@ -1,4 +1,5 @@
 mod app_settings;
+mod category;
 mod game_setup;
 mod install;
 mod install_manifest_query;
@@ -15,6 +16,7 @@ mod support_diagnostics;
 mod task_manager;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
+pub use category::{CategoryService, CategoryWithCount};
 pub use game_setup::{
     GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
 };

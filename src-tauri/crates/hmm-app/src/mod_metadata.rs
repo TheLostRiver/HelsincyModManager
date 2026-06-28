@@ -209,11 +209,24 @@ mod tests {
     // — overlay merge integration tests —
 
     use crate::ModLibraryService;
-    use hmm_core::PreviewImageRejectionReason;
+    use hmm_core::{Category, PreviewImageRejectionReason};
     use hmm_ports::{
-        ModImportResultRepository, StoredImportPreviewImage, StoredModImportAnalysis,
-        StoredModPackageMetadata,
+        CategoryRepository, ModImportResultRepository, StoredImportPreviewImage,
+        StoredModImportAnalysis, StoredModPackageMetadata,
     };
+
+    struct EmptyCategoryRepository;
+
+    impl CategoryRepository for EmptyCategoryRepository {
+        fn get(&self, _: &str) -> Result<Option<Category>> { Ok(None) }
+        fn save(&self, _: &Category) -> Result<()> { Ok(()) }
+        fn delete(&self, _: &str) -> Result<()> { Ok(()) }
+        fn list_all(&self) -> Result<Vec<Category>> { Ok(Vec::new()) }
+        fn count_mods(&self, _: &str) -> Result<u32> { Ok(0) }
+        fn get_mod_categories(&self, _: &str) -> Result<Vec<Category>> { Ok(Vec::new()) }
+        fn set_mod_categories(&self, _: &str, _: &[String]) -> Result<()> { Ok(()) }
+        fn list_mod_category_pairs(&self) -> Result<Vec<(String, Category)>> { Ok(Vec::new()) }
+    }
 
     #[derive(Default)]
     struct FakeResultRepository {
@@ -272,7 +285,7 @@ mod tests {
             })
             .unwrap();
 
-        let service = ModLibraryService::new(result_repo, metadata_repo);
+        let service = ModLibraryService::new(result_repo, metadata_repo, Arc::new(EmptyCategoryRepository));
         let library = service.get_mod_library().unwrap();
 
         assert_eq!(library[0].name, "Custom Name");
@@ -298,7 +311,7 @@ mod tests {
             })
             .unwrap();
 
-        let service = ModLibraryService::new(result_repo, metadata_repo);
+        let service = ModLibraryService::new(result_repo, metadata_repo, Arc::new(EmptyCategoryRepository));
         let detail = service.get_mod_detail("pkg-1").unwrap().unwrap();
 
         assert_eq!(detail.name, "Edited");
@@ -314,7 +327,7 @@ mod tests {
         result_repo.save_analysis(&sample_analysis("pkg-1")).unwrap();
 
         let metadata_repo = Arc::new(FakeMetadataRepository::new());
-        let service = ModLibraryService::new(result_repo, metadata_repo);
+        let service = ModLibraryService::new(result_repo, metadata_repo, Arc::new(EmptyCategoryRepository));
         let library = service.get_mod_library().unwrap();
         let detail = service.get_mod_detail("pkg-1").unwrap().unwrap();
 
