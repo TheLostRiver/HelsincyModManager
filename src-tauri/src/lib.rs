@@ -1,3 +1,4 @@
+mod category_commands;
 mod dto;
 mod game_setup_commands;
 mod install_commands;
@@ -8,6 +9,10 @@ mod task_commands;
 mod task_events;
 mod thumbnail_protocol;
 
+use category_commands::{
+    create_category, delete_category, get_mod_categories, list_categories, set_mod_categories,
+    update_category,
+};
 use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
@@ -72,7 +77,13 @@ pub fn run() {
             get_thumbnail_cache_settings,
             set_thumbnail_cache_settings,
             update_mod_metadata,
-            delete_mod_metadata
+            delete_mod_metadata,
+            create_category,
+            update_category,
+            delete_category,
+            list_categories,
+            set_mod_categories,
+            get_mod_categories
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");

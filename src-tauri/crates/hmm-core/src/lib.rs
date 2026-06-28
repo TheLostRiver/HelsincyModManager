@@ -1,8 +1,10 @@
+mod category;
 mod game;
 mod install;
 mod mod_metadata;
 mod preview_image;
 
+pub use category::{Category, CategoryLabel};
 pub use game::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
     GameId, GameIdError, GameInstance, GameSetupErrorCode, GameSetupStatus, MHW_GAME_ID,

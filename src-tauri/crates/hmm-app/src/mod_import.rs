@@ -1,9 +1,10 @@
 use crate::mod_import_diagnostics::{
     preview_image_diagnostics_from_stored, PreviewImageDiagnosticsSummary,
 };
-use hmm_core::PreviewImageRejectionReason;
+use hmm_core::{CategoryLabel, PreviewImageRejectionReason};
 use hmm_ports::{
-    AppSettingsRepository, CancellationToken, ModImportPackagePrepareRequest,
+    AppSettingsRepository, CancellationToken, CategoryRepository,
+    ModImportPackagePrepareRequest,
     ModImportPackagePreparer, ModImportResultRepository, ModMetadataRepository,
     ModPackageMetadataAnalyzer,
     NeverCancelled, PreviewImageProcessingResult, StoredImportPreviewImage,
@@ -84,7 +85,7 @@ pub struct ModLibraryItem {
     pub version_label: Option<String>,
     pub status: ModLibraryStatus,
     pub size_label: String,
-    pub category_labels: Vec<String>,
+    pub category_labels: Vec<CategoryLabel>,
     pub preview_image: ImportPreviewImage,
 }
 
@@ -308,16 +309,19 @@ impl ModImportTaskRunner {
 pub struct ModLibraryService {
     result_repository: Arc<dyn ModImportResultRepository>,
     metadata_repository: Arc<dyn ModMetadataRepository>,
+    category_repository: Arc<dyn CategoryRepository>,
 }
 
 impl ModLibraryService {
     pub fn new(
         result_repository: Arc<dyn ModImportResultRepository>,
         metadata_repository: Arc<dyn ModMetadataRepository>,
+        category_repository: Arc<dyn CategoryRepository>,
     ) -> Self {
         Self {
             result_repository,
             metadata_repository,
+            category_repository,
         }
     }
 
@@ -326,15 +330,40 @@ impl ModLibraryService {
         let overlays = self.metadata_repository.list_all()?;
         let overlay_map: std::collections::HashMap<_, _> =
             overlays.iter().map(|o| (o.mod_id.as_str(), o)).collect();
+
+        let pairs = self.category_repository.list_mod_category_pairs()?;
+        let mut user_cat_map: std::collections::HashMap<String, Vec<CategoryLabel>> =
+            std::collections::HashMap::new();
+        for (mod_id, cat) in pairs {
+            user_cat_map
+                .entry(mod_id)
+                .or_default()
+                .push(CategoryLabel {
+                    name: cat.name,
+                    color: cat.color,
+                });
+        }
+
         Ok(records
             .into_iter()
             .map(|record| {
+                let mod_id = record.mod_id.clone();
                 let overlay = overlay_map.get(record.mod_id.as_str()).copied();
                 let mut item = library_item_from_stored(record);
                 if let Some(o) = overlay {
                     if let Some(name) = &o.display_name { item.name = name.clone(); }
                     if let Some(author) = &o.author { item.author = Some(author.clone()); }
                     if let Some(v) = &o.version { item.version_label = Some(format_version_label(v)); }
+                }
+                if let Some(user_cats) = user_cat_map.remove(&mod_id) {
+                    let import_labels = std::mem::take(&mut item.category_labels);
+                    let mut merged = user_cats;
+                    for label in import_labels {
+                        if !merged.iter().any(|m| m.name == label.name) {
+                            merged.push(label);
+                        }
+                    }
+                    item.category_labels = merged;
                 }
                 item
             })
@@ -504,8 +533,8 @@ fn version_label_from_metadata(metadata: &StoredModPackageMetadata) -> Option<St
     non_empty_metadata_value(&metadata.version).map(|v| format_version_label(&v))
 }
 
-fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<String> {
-    let mut labels = Vec::new();
+fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<CategoryLabel> {
+    let mut labels: Vec<String> = Vec::new();
     if let Some(category) = metadata.category.as_ref().filter(|value| !value.is_empty()) {
         labels.push(category.clone());
     }
@@ -517,6 +546,9 @@ fn category_labels_from_metadata(metadata: &StoredModPackageMetadata) -> Vec<Str
     }
 
     labels
+        .into_iter()
+        .map(|name| CategoryLabel { name, color: None })
+        .collect()
 }
 
 fn non_empty_metadata_value(value: &Option<String>) -> Option<String> {
@@ -844,7 +876,11 @@ mod tests {
         assert_eq!(result.metadata.version.as_deref(), Some("1.2.3"));
         assert_eq!(stored.metadata.author.as_deref(), Some("A Hunter"));
         assert_eq!(stored.metadata.dependencies, vec!["stracker-loader"]);
-        assert_eq!(library_item.category_labels, vec!["Visual", "armor", "hd"]);
+        assert_eq!(library_item.category_labels, vec![
+            CategoryLabel { name: "Visual".to_owned(), color: None },
+            CategoryLabel { name: "armor".to_owned(), color: None },
+            CategoryLabel { name: "hd".to_owned(), color: None },
+        ]);
     }
 
     #[test]
@@ -1540,7 +1576,7 @@ mod tests {
                 .save_analysis(&record)
                 .expect("save analysis");
         }
-        let service = ModLibraryService::new(result_repository, empty_metadata_repo());
+        let service = ModLibraryService::new(result_repository, empty_metadata_repo(), empty_category_repo());
 
         let summary = service
             .get_preview_image_diagnostics()
@@ -2104,6 +2140,22 @@ mod tests {
 
     fn empty_metadata_repo() -> Arc<EmptyMetadataRepo> {
         Arc::new(EmptyMetadataRepo)
+    }
+
+    struct EmptyCategoryRepo;
+    impl hmm_ports::CategoryRepository for EmptyCategoryRepo {
+        fn get(&self, _: &str) -> anyhow::Result<Option<hmm_core::Category>> { Ok(None) }
+        fn save(&self, _: &hmm_core::Category) -> anyhow::Result<()> { Ok(()) }
+        fn delete(&self, _: &str) -> anyhow::Result<()> { Ok(()) }
+        fn list_all(&self) -> anyhow::Result<Vec<hmm_core::Category>> { Ok(vec![]) }
+        fn count_mods(&self, _: &str) -> anyhow::Result<u32> { Ok(0) }
+        fn get_mod_categories(&self, _: &str) -> anyhow::Result<Vec<hmm_core::Category>> { Ok(vec![]) }
+        fn set_mod_categories(&self, _: &str, _: &[String]) -> anyhow::Result<()> { Ok(()) }
+        fn list_mod_category_pairs(&self) -> anyhow::Result<Vec<(String, hmm_core::Category)>> { Ok(vec![]) }
+    }
+
+    fn empty_category_repo() -> Arc<EmptyCategoryRepo> {
+        Arc::new(EmptyCategoryRepo)
     }
 
     #[derive(Default)]

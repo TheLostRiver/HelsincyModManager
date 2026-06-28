@@ -1,5 +1,6 @@
 use hmm_app::{
-    AppSettingsService, AuditLogDiagnosticsExportService, CommitInstallPlanRequest,
+    AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
+    CommitInstallPlanRequest,
     GameProfileWriteLockRegistry, GameSetupService, ImportedModInstallCommitRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
     InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService,
@@ -28,7 +29,8 @@ use hmm_infra::{
     JsonGameConfigRepository, JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
     JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SqliteModMetadataRepository, SteamGameDiscoveryService,
+    SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
+    SteamGameDiscoveryService,
     SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
@@ -66,6 +68,7 @@ pub struct AppState {
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub app_settings: Arc<AppSettingsService>,
     pub mod_metadata: Arc<ModMetadataService>,
+    pub categories: Arc<CategoryService>,
     pub task_manager: Arc<TaskManager>,
     pub(crate) db: Arc<Mutex<rusqlite::Connection>>,
 }
@@ -87,6 +90,8 @@ impl AppState {
         let db = Arc::new(Mutex::new(db));
         let mod_metadata_repository =
             Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
+        let category_repository =
+            Arc::new(SqliteCategoryRepository::new(Arc::clone(&db)));
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
@@ -141,6 +146,7 @@ impl AppState {
         let mod_library = Arc::new(ModLibraryService::new(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_metadata_repository) as _,
+            Arc::clone(&category_repository) as _,
         ));
         let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(
             &mod_import_result_repository,
@@ -314,6 +320,10 @@ impl AppState {
             app_settings,
             mod_metadata: Arc::new(ModMetadataService::new(
                 mod_metadata_repository,
+                Arc::new(SystemClock),
+            )),
+            categories: Arc::new(CategoryService::new(
+                category_repository,
                 Arc::new(SystemClock),
             )),
             task_manager,
