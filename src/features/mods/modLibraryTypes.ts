@@ -13,6 +13,11 @@ export type ModInstallSummary = {
   issues?: InstallRecoveryIssueSummary[];
 };
 
+export type CategoryLabel = {
+  name: string;
+  color?: string;
+};
+
 export type ModLibraryItem = {
   id: string;
   name: string;
@@ -21,7 +26,7 @@ export type ModLibraryItem = {
   sizeLabel: string;
   status: ModInstallStatus;
   installSummary?: ModInstallSummary;
-  categoryLabels: string[];
+  categoryLabels: CategoryLabel[];
   posterFrom?: string;
   posterTo?: string;
   previewImage?: PreviewImage;
