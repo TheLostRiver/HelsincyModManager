@@ -601,6 +601,7 @@ impl UninstallModService {
         let InstallManifest {
             backend,
             created_at,
+            status,
             entries,
             ..
         } = manifest;
@@ -692,7 +693,7 @@ impl UninstallModService {
         }
 
         let completed_at = current_manifest_timestamp();
-        let updated_manifest = InstallManifest::completed_with_metadata(
+        let mut updated_manifest = InstallManifest::completed_with_metadata(
             request.profile_id,
             kept_entries,
             backend.or_else(|| Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned())),
@@ -700,6 +701,7 @@ impl UninstallModService {
             Some(completed_at),
             None,
         );
+        updated_manifest.status = status;
         if self
             .manifest_repository
             .save_manifest(&updated_manifest)
@@ -776,8 +778,8 @@ fn merge_install_manifest(
     existing_manifest: Option<InstallManifest>,
     applied_entries: Vec<InstallManifestEntry>,
 ) -> InstallManifest {
-    let (mut entries, created_at) = existing_manifest
-        .map(|manifest| (manifest.entries, manifest.created_at))
+    let (mut entries, created_at, status) = existing_manifest
+        .map(|manifest| (manifest.entries, manifest.created_at, manifest.status))
         .unwrap_or_default();
 
     entries.retain(|entry| {
@@ -788,14 +790,16 @@ fn merge_install_manifest(
     entries.extend(applied_entries);
 
     let completed_at = current_manifest_timestamp();
-    InstallManifest::completed_with_metadata(
+    let mut manifest = InstallManifest::completed_with_metadata(
         profile_id,
         entries,
         Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned()),
         created_at.or(Some(completed_at.clone())),
         Some(completed_at),
         None,
-    )
+    );
+    manifest.status = status;
+    manifest
 }
 
 fn current_manifest_timestamp() -> String {

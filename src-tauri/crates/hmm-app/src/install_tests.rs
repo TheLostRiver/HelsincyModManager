@@ -237,6 +237,7 @@ fn commit_plan_writes_new_files_and_persists_manifest() {
     assert_eq!(manifest.profile_id.as_str(), "default");
     assert_eq!(manifest.status, InstallManifestStatus::Completed);
     assert_eq!(manifest.backend.as_deref(), Some("install_plan"));
+    assert!(manifest.created_at.is_some());
     assert!(manifest.completed_at.is_some());
     assert!(manifest.plan_hash.is_none());
     assert_eq!(manifest.entries.len(), 1);
@@ -478,6 +479,61 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
         Some("2026-06-29T00:00:01Z")
     );
     assert_eq!(manifest.plan_hash, None);
+    assert_eq!(manifest.entries.len(), 1);
+    assert_eq!(manifest.entries[0].mod_id.as_str(), "mod-b");
+}
+
+#[test]
+fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries() {
+    let remove_target = InstallTargetPath::parse("nativePC/models/remove.mod3", ["nativePC"])
+        .expect("valid target");
+    let keep_target = InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
+        .expect("valid target");
+    let mut existing_manifest = InstallManifest::completed_with_metadata(
+        ProfileId::new("default"),
+        vec![
+            InstallManifestEntry {
+                target_path: remove_target,
+                mod_id: ModId::new("mod-a"),
+                package_file_id: PackageFileId::new("nativePC/models/remove.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"remove model")),
+            },
+            InstallManifestEntry {
+                target_path: keep_target,
+                mod_id: ModId::new("mod-b"),
+                package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"keep model")),
+            },
+        ],
+        Some("install_plan".to_owned()),
+        Some("2026-06-29T00:00:00Z".to_owned()),
+        Some("2026-06-29T00:00:01Z".to_owned()),
+        None,
+    );
+    existing_manifest.status = InstallManifestStatus::RepairRequired;
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+        "nativePC/models/remove.mod3",
+        b"remove model".as_slice(),
+    )]));
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = UninstallModService::new(game_files, backups, manifests.clone());
+
+    service
+        .uninstall_mod(UninstallModRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+        })
+        .expect("uninstall should preserve sticky manifest status");
+
+    let manifest = manifests.take_manifest().expect("manifest should be saved");
+    assert_eq!(manifest.status, InstallManifestStatus::RepairRequired);
     assert_eq!(manifest.entries.len(), 1);
     assert_eq!(manifest.entries[0].mod_id.as_str(), "mod-b");
 }
@@ -808,6 +864,56 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
             ),
         ]
     );
+}
+
+#[test]
+fn commit_plan_preserves_non_completed_manifest_status_when_merging_entries() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-new"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target,
+        FileLayer::new("base", 0),
+    )]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+        "nativePC/models/player.mod3",
+        b"new model".as_slice(),
+    )]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let mut existing_manifest = InstallManifest::completed_with_metadata(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
+                .expect("valid target"),
+            mod_id: ModId::new("mod-old"),
+            package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: Some(installed_file_summary(b"keep model")),
+        }],
+        Some("install_plan".to_owned()),
+        Some("2026-06-29T00:00:00Z".to_owned()),
+        Some("2026-06-29T00:00:01Z".to_owned()),
+        None,
+    );
+    existing_manifest.status = InstallManifestStatus::RollbackRequired;
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = InstallCommitService::new(source_files, game_files, backups, manifests.clone());
+
+    service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect("commit should succeed");
+
+    let manifest = manifests.take_manifest().expect("manifest should be saved");
+    assert_eq!(manifest.status, InstallManifestStatus::RollbackRequired);
+    assert_eq!(manifest.entries.len(), 2);
 }
 
 #[test]
