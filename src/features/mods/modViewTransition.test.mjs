@@ -61,6 +61,36 @@ test("view mode toggle owns a sliding selected-state indicator", () => {
   assert.match(indicatorBody, /pointer-events:\s*none;/);
 });
 
+test("toolbar exposes an icon-only category label visibility toggle beside view modes", () => {
+  const toolbar = readProjectFile("src/features/mods/LibraryToolbar.tsx");
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+
+  assert.match(toolbar, /Tags/);
+  assert.match(toolbar, /showCardCategoryLabels:\s*boolean/);
+  assert.match(toolbar, /onToggleCardCategoryLabels:\s*\(\)\s*=>\s*void/);
+  assert.match(toolbar, /library-toolbar__display-controls/);
+  assert.match(toolbar, /className=\{`library-label-toggle\$\{showCardCategoryLabels \? " is-active" : ""\}`\}/);
+  assert.match(toolbar, /aria-pressed=\{showCardCategoryLabels\}/);
+  assert.match(toolbar, /onClick=\{onToggleCardCategoryLabels\}/);
+  assert.match(toolbar, /<Tags size=\{16\}/);
+
+  const controlsBody = getRuleBody(css, ".library-toolbar__display-controls");
+  assert.match(controlsBody, /display:\s*inline-flex;/);
+  assert.match(controlsBody, /align-items:\s*center;/);
+  assert.match(controlsBody, /flex:\s*0\s+0\s+auto;/);
+
+  const toggleBody = getRuleBody(css, ".library-label-toggle");
+  assert.match(toggleBody, /width:\s*36px;/);
+  assert.match(toggleBody, /height:\s*36px;/);
+  assert.match(toggleBody, /border-radius:\s*var\(--radius-pill\);/);
+  assert.match(toggleBody, /transition:[\s\S]*?transform/);
+  assert.match(css, /\.library-label-toggle:active\s*{[\s\S]*?transform:\s*scale\(0\.94\);/);
+  assert.match(
+    css,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*{[\s\S]*?\.library-label-toggle,[\s\S]*?\.mod-card__categories/,
+  );
+});
+
 test("mod library switches views through a visible two-phase transition", () => {
   const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
   const card = readProjectFile("src/features/mods/ModPosterCard.tsx");

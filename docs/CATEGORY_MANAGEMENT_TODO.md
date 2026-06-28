@@ -67,8 +67,6 @@
 
 ### 仍不包含的事
 
-- Mod-分类关联 UI（Mod 详情面板打标签）。
-- ModLibraryPage 动态筛选 chips（替换硬编码 `libraryFilterChips`）。
 - 拖拽排序（用数字 input 调整 sortOrder）。
 - 批量操作。
 - 后端改动。
@@ -77,9 +75,6 @@
 
 以下能力尚未开始，后续按优先级分别切 PR：
 
-- [ ] Mod 详情面板分类关联 UI：在 Mod 详情展示已关联分类标签，提供添加/移除操作，调用 `setModCategories`。
-- [ ] ModLibraryPage 动态筛选 chips：从 `listCategories()` 查询替换硬编码 `libraryFilterChips`，按 sortOrder 排列，空分类不显示 chip。
-- [ ] ModPosterCard 分类标签渲染：在卡片上展示分类色块/名称。
 - [ ] 默认分类种子数据：首次启动或首次导入时自动创建默认分类（外观、武器替换、语音替换、功能性 Mod、前置、工具）。
 - [ ] 分类拖拽排序：引入拖拽库替代数字 input 调整 sortOrder。
 - [ ] 分类批量操作：批量删除、批量改色。
@@ -88,3 +83,6 @@
 
 - [x] T4：后端分类 CRUD、typed API、CategoryLabel 升级、合并逻辑、6 Tauri commands（PR #112）。
 - [x] 分类管理页面：`/categories` 页面、新建/编辑/删除、悬浮色板、行内错误与 review follow-up（PR #113 / #114）。
+- [x] Mod 详情面板分类关联 UI：在 Mod 详情展示已关联分类标签，提供添加/移除操作，调用 `setModCategories`（PR #116）。
+- [x] ModLibraryPage 动态筛选 chips：从 `listCategories()` 查询替换硬编码 `libraryFilterChips`，按 sortOrder 排列，空分类不显示 chip。
+- [x] ModPosterCard 分类标签渲染：在卡片上展示分类色块/名称。

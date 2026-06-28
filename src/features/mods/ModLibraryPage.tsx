@@ -33,6 +33,14 @@ import {
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
+import { listCategories, type CategoryItem } from "./modCategoryApi";
+import {
+  allLibraryFilter,
+  buildLibraryFilterChips,
+  matchesLibraryFilter,
+  normalizeLibraryFilter,
+  type ModLibraryFilter,
+} from "./modLibraryFilters";
 import {
   applyInstallManifestStatusSummaries,
   applyInstallRecoveryUnavailable,
@@ -45,7 +53,7 @@ import {
   type ModLibraryLoadMode,
 } from "./modLibraryRefresh";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
-import type { ModInstallStatus, ModInstallSummary, ModLibraryItem } from "./modLibraryTypes";
+import type { ModInstallSummary, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
@@ -59,6 +67,7 @@ const viewTransitionOutMs = 220;
 const viewTransitionInMs = 420;
 const DEFAULT_INSTALL_GAME_ID = "mhw";
 const DEFAULT_INSTALL_PROFILE_ID = "default";
+const CARD_CATEGORY_LABELS_STORAGE_KEY = "hmm.modLibrary.showCardCategoryLabels";
 
 const viewTransitionVariantByMode: Record<ModViewMode, ViewTransitionVariant> = {
   classic: "morph",
@@ -71,31 +80,24 @@ type ModLibraryPageProps = {
   onAction?: (actionId: string) => void;
 };
 
-const statusFilterByLabel: Partial<Record<string, ModInstallStatus>> = {
-  已安装: "installed",
-  已禁用: "disabled",
-  存在冲突: "conflict",
-};
-
-function matchesActiveFilter(item: ModLibraryItem, activeFilter: string) {
-  if (activeFilter === "全部") {
-    return true;
-  }
-
-  const statusFilter = statusFilterByLabel[activeFilter];
-  if (statusFilter) {
-    return item.status === statusFilter;
-  }
-
-  return item.categoryLabels.some(c => c.name === activeFilter);
-}
-
 function staggerStyle(index: number) {
   return { "--stagger-idx": index } as CSSProperties;
 }
 
 function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+function readInitialCardCategoryLabelsVisibility() {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  try {
+    return window.localStorage.getItem(CARD_CATEGORY_LABELS_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
 }
 
 function useModViewTransition(viewMode: ModViewMode, setViewMode: (mode: ModViewMode) => void) {
@@ -270,8 +272,10 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanPreviewPane
 
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [query, setQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<string>("全部");
+  const [activeFilter, setActiveFilter] = useState<ModLibraryFilter>(allLibraryFilter);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
+  const [showCardCategoryLabels, setShowCardCategoryLabels] = useState(readInitialCardCategoryLabelsVisibility);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [libraryItems, setLibraryItems] = useState<ModLibraryItem[]>(fallbackModLibraryItems);
   const libraryItemsRef = useRef<ModLibraryItem[]>(fallbackModLibraryItems);
@@ -302,9 +306,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const keyword = query.trim().toLowerCase();
     return libraryItems.filter((item) => {
       const matchesKeyword = !keyword || item.name.toLowerCase().includes(keyword);
-      return matchesKeyword && matchesActiveFilter(item, activeFilter);
+      return matchesKeyword && matchesLibraryFilter(item, activeFilter);
     });
   }, [activeFilter, libraryItems, query]);
+
+  const filterChips = useMemo(() => buildLibraryFilterChips(categories), [categories]);
 
   const selectedCount = selectedIds.size;
   const selectedItem = useMemo(() => {
@@ -325,6 +331,20 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     viewMode,
     setViewMode,
   );
+
+  const toggleCardCategoryLabels = useCallback(() => {
+    setShowCardCategoryLabels((currentValue) => {
+      const nextValue = !currentValue;
+
+      try {
+        window.localStorage.setItem(CARD_CATEGORY_LABELS_STORAGE_KEY, String(nextValue));
+      } catch {
+        // The in-memory UI state still works if storage is unavailable.
+      }
+
+      return nextValue;
+    });
+  }, []);
 
   const refreshInstallManifestStatuses = useCallback((items: ModLibraryItem[]) => {
     const modIds = Array.from(new Set(items.map((item) => item.id))).filter((id) => id.length > 0);
@@ -359,9 +379,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [refreshInstallManifestStatuses]);
 
   const refreshModLibrary = useCallback(() => {
-    return loadModLibraryItems("refresh").then((result) => {
-      setLibraryItems((currentItems) => preserveItemsOnRefreshFailure(currentItems, result.items));
-    });
+    return Promise.all([
+      loadModLibraryItems("refresh").then((result) => {
+        setLibraryItems((currentItems) => preserveItemsOnRefreshFailure(currentItems, result.items));
+      }),
+      listCategories()
+        .then(setCategories)
+        .catch(() => undefined),
+    ]).then(() => undefined);
   }, [loadModLibraryItems]);
 
   useEffect(() => {
@@ -381,6 +406,26 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       cancelled = true;
     };
   }, [loadModLibraryItems]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void listCategories()
+      .then((loadedCategories) => {
+        if (!cancelled) {
+          setCategories(loadedCategories);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setActiveFilter((currentFilter) => normalizeLibraryFilter(currentFilter, filterChips));
+  }, [filterChips]);
 
   useEffect(() => {
     if (!contextNotice) {
@@ -822,9 +867,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           <LibraryToolbar
             query={query}
             activeFilter={activeFilter}
+            filterChips={filterChips}
             viewMode={viewMode}
+            showCardCategoryLabels={showCardCategoryLabels}
             onQueryChange={setQuery}
             onFilterChange={setActiveFilter}
+            onToggleCardCategoryLabels={toggleCardCategoryLabels}
             onViewModeChange={handleViewModeChange}
           />
         </div>
@@ -893,6 +941,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                   onSelect={selectCard}
                   onContextMenu={handleContextMenu}
                   index={index}
+                  showCategoryLabels={showCardCategoryLabels}
                 />
               ))}
             </div>

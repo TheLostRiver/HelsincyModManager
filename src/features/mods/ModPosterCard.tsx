@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Check } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
 import type { ModLibraryItem } from "./modLibraryTypes";
+import { visibleCategoryLabelsForCard } from "./modLibraryFilters";
 
 type ModPosterCardProps = {
   item: ModLibraryItem;
@@ -10,6 +11,7 @@ type ModPosterCardProps = {
   onSelect: (id: string) => void;
   onContextMenu?: (id: string, x: number, y: number) => void;
   index?: number;
+  showCategoryLabels?: boolean;
 };
 
 const statusLabel: Record<ModLibraryItem["status"], string> = {
@@ -65,7 +67,15 @@ function statusLabelForItem(item: ModLibraryItem) {
   return statusLabel[item.status];
 }
 
-export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMenu, index = 0 }: ModPosterCardProps) {
+export function ModPosterCard({
+  item,
+  selected,
+  viewMode,
+  onSelect,
+  onContextMenu,
+  index = 0,
+  showCategoryLabels = true,
+}: ModPosterCardProps) {
   const isTech = viewMode === "tech";
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
@@ -73,6 +83,32 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
   const [posterFailed, setPosterFailed] = useState(false);
   const previewThumbnail = item.previewImage?.kind === "thumbnail" ? item.previewImage : null;
   const canShowPoster = previewThumbnail !== null && !posterFailed;
+  const categoryLabelLimit = isList || isTech ? 3 : 2;
+  const categoryLabels = visibleCategoryLabelsForCard(item.categoryLabels, categoryLabelLimit);
+  const categoryStrip =
+    categoryLabels.visible.length > 0 ? (
+      <div
+        className="mod-card__categories"
+        data-visible={showCategoryLabels ? "true" : "false"}
+        aria-hidden={!showCategoryLabels}
+        aria-label={showCategoryLabels ? `分类：${categoryLabels.visible.map((label) => label.name).join("、")}` : undefined}
+      >
+        {categoryLabels.visible.map((label) => (
+          <span
+            className="mod-card__category"
+            key={label.name}
+            title={label.name}
+            style={label.color ? ({ "--category-color": label.color } as CSSProperties) : undefined}
+          >
+            <span className="mod-card__category-dot" aria-hidden="true" />
+            <span className="mod-card__category-name">{label.name}</span>
+          </span>
+        ))}
+        {categoryLabels.overflowCount > 0 ? (
+          <span className="mod-card__category-overflow">+{categoryLabels.overflowCount}</span>
+        ) : null}
+      </div>
+    ) : null;
 
   useEffect(() => {
     setPosterFailed(false);
@@ -83,7 +119,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
       role="button"
       tabIndex={0}
       className={`mod-card${selected ? " is-selected" : ""}`}
-      style={{ "--stagger-idx": index + 1 } as React.CSSProperties}
+      style={{ "--stagger-idx": index + 1 } as CSSProperties}
       onClick={() => onSelect(item.id)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -114,7 +150,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
         /* 其他视图（Classic, Grid, List）的封面 */
         <div
           className="mod-card__poster"
-          style={{ "--poster-from": item.posterFrom, "--poster-to": item.posterTo } as React.CSSProperties}
+          style={{ "--poster-from": item.posterFrom, "--poster-to": item.posterTo } as CSSProperties}
         >
           {isGrid && <div className="mod-card__version-badge">v1.0.0</div>}
 
@@ -152,6 +188,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
       {isClassic && (
         <div className="mod-card__meta">
           <strong className="mod-card__title">{item.name}</strong>
+          {categoryStrip}
           <span className="mod-card__size">{item.sizeLabel}</span>
         </div>
       )}
@@ -160,6 +197,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
       {isGrid && (
         <div className="mod-card__info-enhanced">
           <strong className="mod-card__title">{item.name}</strong>
+          {categoryStrip}
           <div className="mod-card__meta-row">
             <span className="mod-card__author">NexusUser123</span>
             <span className="mod-card__size">{item.sizeLabel}</span>
@@ -175,6 +213,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
               <strong className="mod-card__title">{item.name}</strong>
             </div>
             <div className="mod-card__author">by NexusUser123</div>
+            {categoryStrip}
             <div className="mod-card__desc">这是一个完全重新制作的模型替换 Mod，修复了原版服装在过场动画中的穿模问题，并提供了全套高清贴图支持。</div>
           </div>
           <div className="mod-card__footer-list">
@@ -190,6 +229,7 @@ export function ModPosterCard({ item, selected, viewMode, onSelect, onContextMen
           <div>
             <div className="mod-card__title">{item.name}</div>
             <div className="mod-card__tech-author" data-label="Author">{item.author || "NexusUser123"}</div>
+            {categoryStrip}
           </div>
           <div className="mod-card__tech-footer">
             <span className="mod-card__tech-version" data-label="Version">{item.versionLabel || "v1.0.0"}</span>
