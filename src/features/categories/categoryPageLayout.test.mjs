@@ -57,6 +57,7 @@ test("category color editing uses a visual picker instead of hex text entry", ()
   assert.match(source, /className="category-color-popover"/);
   assert.match(source, /className="category-color-palette"/);
   assert.match(source, /className=\{`category-color-swatch-button/);
+  assert.match(source, /aria-pressed=\{isSelected\}/);
   assert.match(source, /type="color"/);
   assert.match(source, /className="category-color-clear"/);
   assert.doesNotMatch(source, /placeholder="#3B82F6"/);
@@ -66,4 +67,17 @@ test("category color editing uses a visual picker instead of hex text entry", ()
   assert.match(getRuleBody(css, ".category-color-popover"), /z-index:\s*30;/);
   assert.match(css, /\.category-color-palette\s*{/);
   assert.match(css, /\.category-color-swatch-button\s*{/);
+});
+
+test("category row editing and mutations keep accessible feedback", () => {
+  const source = readProjectFile("src/features/categories/CategoryPage.tsx");
+  const css = readProjectFile("src/features/categories/CategoryPage.css");
+
+  assert.match(source, /<form[\s\S]*className="category-row is-editing"[\s\S]*role="listitem"/);
+  assert.match(source, /formatCategoryMutationError/);
+  assert.match(source, /className="category-inline-error" role="alert"/);
+  assert.match(source, /创建分类失败，请稍后重试。/);
+  assert.match(source, /保存分类失败，请稍后重试。/);
+  assert.match(source, /删除分类失败，请稍后重试。/);
+  assert.match(getRuleBody(css, ".category-inline-error"), /grid-column:\s*1\s*\/\s*-1;/);
 });
