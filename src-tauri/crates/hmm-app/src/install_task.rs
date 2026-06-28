@@ -1461,9 +1461,9 @@ mod tests {
     }
 
     fn sample_manifest() -> InstallManifest {
-        InstallManifest {
-            profile_id: ProfileId::new("default"),
-            entries: vec![InstallManifestEntry {
+        InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![InstallManifestEntry {
                 target_path: sample_target(),
                 mod_id: ModId::new("mod-a"),
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -1471,7 +1471,7 @@ mod tests {
                 backup_ref: None,
                 installed_file: None,
             }],
-        }
+        )
     }
 
     fn sample_provider() -> InstallFileProvider {

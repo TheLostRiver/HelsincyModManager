@@ -1267,9 +1267,9 @@ mod tests {
         }
         let backups = Arc::new(FakeBackups::default());
         let manifests = Arc::new(FakeManifests {
-            manifest: Some(InstallManifest {
-                profile_id: ProfileId::new("default"),
-                entries: vec![
+            manifest: Some(InstallManifest::completed(
+                ProfileId::new("default"),
+                vec![
                     InstallManifestEntry {
                         target_path: target_a,
                         mod_id: ModId::new("mod-a"),
@@ -1287,7 +1287,7 @@ mod tests {
                         installed_file: Some(summary(b"model b")),
                     },
                 ],
-            }),
+            )),
         });
         let recovery_records = Arc::new(FakeRecoveryRecords::default());
         let service = InstallRecoveryScanService::new_with_recovery_records(
@@ -1850,9 +1850,9 @@ mod tests {
             .expect("backups lock")
             .insert("backup-original".to_owned(), original_bytes);
         let manifests = Arc::new(FakeManifests {
-            manifest: Some(InstallManifest {
-                profile_id: ProfileId::new("default"),
-                entries: vec![InstallManifestEntry {
+            manifest: Some(InstallManifest::completed(
+                ProfileId::new("default"),
+                vec![InstallManifestEntry {
                     target_path: target,
                     mod_id: ModId::new("mod-a"),
                     package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -1860,7 +1860,7 @@ mod tests {
                     backup_ref: Some("backup-original".to_owned()),
                     installed_file: Some(summary(&modded_bytes)),
                 }],
-            }),
+            )),
         });
         let service = InstallRecoveryScanService::new(game_files, backups, manifests);
 
@@ -1905,9 +1905,9 @@ mod tests {
         }
         let backups = Arc::new(FakeBackups::default());
         let manifests = Arc::new(FakeManifests {
-            manifest: Some(InstallManifest {
-                profile_id: ProfileId::new("default"),
-                entries: vec![
+            manifest: Some(InstallManifest::completed(
+                ProfileId::new("default"),
+                vec![
                     InstallManifestEntry {
                         target_path: target_b,
                         mod_id: ModId::new("mod-b"),
@@ -1933,7 +1933,7 @@ mod tests {
                         installed_file: Some(summary(&bytes_a)),
                     },
                 ],
-            }),
+            )),
         });
         let service = InstallRecoveryScanService::new(game_files, backups, manifests);
 
@@ -1970,9 +1970,9 @@ mod tests {
             .insert(target.as_str().to_owned());
         let backups = Arc::new(FakeBackups::default());
         let manifests = Arc::new(FakeManifests {
-            manifest: Some(InstallManifest {
-                profile_id: ProfileId::new("default"),
-                entries: vec![InstallManifestEntry {
+            manifest: Some(InstallManifest::completed(
+                ProfileId::new("default"),
+                vec![InstallManifestEntry {
                     target_path: target,
                     mod_id: ModId::new("mod-a"),
                     package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -1980,7 +1980,7 @@ mod tests {
                     backup_ref: None,
                     installed_file: Some(summary(&modded_bytes)),
                 }],
-            }),
+            )),
         });
         let service = InstallRecoveryScanService::new(game_files, backups, manifests);
 
@@ -2017,9 +2017,9 @@ mod tests {
             .insert(target.as_str().to_owned(), modded_bytes.clone());
         let backups = Arc::new(FakeBackups::default());
         let manifests = Arc::new(FakeManifests {
-            manifest: Some(InstallManifest {
-                profile_id: ProfileId::new("default"),
-                entries: vec![InstallManifestEntry {
+            manifest: Some(InstallManifest::completed(
+                ProfileId::new("default"),
+                vec![InstallManifestEntry {
                     target_path: target,
                     mod_id: ModId::new("mod-a"),
                     package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -2027,7 +2027,7 @@ mod tests {
                     backup_ref: Some("backup-original".to_owned()),
                     installed_file: Some(summary(&modded_bytes)),
                 }],
-            }),
+            )),
         });
         let service = InstallRecoveryScanService::new(game_files, backups, manifests);
 
@@ -2084,9 +2084,9 @@ mod tests {
             .expect("backup refs lock")
             .insert(backup_error_ref.to_owned());
         let manifests = Arc::new(FakeManifests {
-            manifest: Some(InstallManifest {
-                profile_id: ProfileId::new("default"),
-                entries: vec![
+            manifest: Some(InstallManifest::completed(
+                ProfileId::new("default"),
+                vec![
                     InstallManifestEntry {
                         target_path: missing_summary_target,
                         mod_id: ModId::new("mod-a"),
@@ -2120,7 +2120,7 @@ mod tests {
                         installed_file: Some(summary(&expected_bytes)),
                     },
                 ],
-            }),
+            )),
         });
         let service = InstallRecoveryScanService::new(game_files, backups, manifests);
 
