@@ -84,7 +84,7 @@ mod tests {
     fn overlay_merges_with_real_sqlite() {
         use hmm_app::{ModLibraryService, ModMetadataService};
         use hmm_core::PreviewImageRejectionReason;
-        use hmm_infra::SqliteModMetadataRepository;
+        use hmm_infra::{SqliteCategoryRepository, SqliteModMetadataRepository};
         use hmm_ports::{
             ModImportResultRepository, StoredImportPreviewImage, StoredModImportAnalysis,
             StoredModPackageMetadata,
@@ -97,6 +97,7 @@ mod tests {
         let conn = hmm_infra::open_database(&db_path).expect("open db");
         let db = Arc::new(Mutex::new(conn));
         let metadata_repo = Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
+        let category_repo = Arc::new(SqliteCategoryRepository::new(Arc::clone(&db)));
 
         // Set up a fake import result repository with one mod
         struct InMemoryResultRepo(Mutex<Vec<StoredModImportAnalysis>>);
@@ -137,7 +138,7 @@ mod tests {
 
         // Before overlay: library shows original values
         let library_service =
-            ModLibraryService::new(Arc::clone(&result_repo) as _, Arc::clone(&metadata_repo) as _);
+            ModLibraryService::new(Arc::clone(&result_repo) as _, Arc::clone(&metadata_repo) as _, Arc::clone(&category_repo) as _);
         let before = library_service.get_mod_library().unwrap();
         assert_eq!(before[0].name, "Original Name");
         assert_eq!(before[0].author.as_deref(), Some("Original Author"));

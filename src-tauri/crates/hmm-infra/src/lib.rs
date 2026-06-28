@@ -39,6 +39,7 @@ pub use preview_image::{
 };
 pub use steam_discovery::PlatformSteamRootProvider;
 pub use sqlite::open_database;
+pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteModMetadataRepository;
 pub use text_log::FileSystemTextLogReader;
 

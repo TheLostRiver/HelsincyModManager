@@ -1,6 +1,7 @@
 mod app_settings;
 mod audit;
 mod cancellation;
+mod category;
 mod diagnostics_environment;
 mod game_setup;
 mod install;
@@ -16,6 +17,7 @@ pub use app_settings::{
 };
 pub use audit::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter};
 pub use cancellation::{CancellationToken, NeverCancelled};
+pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,

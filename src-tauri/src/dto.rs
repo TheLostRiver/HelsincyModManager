@@ -1,5 +1,6 @@
 use hmm_app::{
-    AppSettingsServiceError, GameCandidateScan, GameSetupCandidate, GameSetupServiceError,
+    AppSettingsServiceError, CategoryWithCount, GameCandidateScan, GameSetupCandidate,
+    GameSetupServiceError,
     ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary,
     InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
     InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
@@ -575,6 +576,55 @@ pub struct GameCandidateDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CategoryLabelDto {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryDto {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryWithCountDto {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub sort_order: i32,
+    pub mod_count: u32,
+}
+
+impl From<hmm_core::Category> for CategoryDto {
+    fn from(c: hmm_core::Category) -> Self {
+        Self {
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            sort_order: c.sort_order,
+        }
+    }
+}
+
+impl From<CategoryWithCount> for CategoryWithCountDto {
+    fn from(c: CategoryWithCount) -> Self {
+        Self {
+            id: c.category.id,
+            name: c.category.name,
+            color: c.category.color,
+            sort_order: c.category.sort_order,
+            mod_count: c.mod_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModLibraryItemDto {
     pub id: String,
     pub name: String,
@@ -582,7 +632,7 @@ pub struct ModLibraryItemDto {
     pub version_label: Option<String>,
     pub size_label: String,
     pub status: ModInstallStatusDto,
-    pub category_labels: Vec<String>,
+    pub category_labels: Vec<CategoryLabelDto>,
     pub preview_image: PreviewImageDto,
 }
 
@@ -807,7 +857,10 @@ impl From<ModLibraryItem> for ModLibraryItemDto {
             version_label: item.version_label,
             size_label: item.size_label,
             status: item.status.into(),
-            category_labels: item.category_labels,
+            category_labels: item.category_labels.into_iter().map(|l| CategoryLabelDto {
+                name: l.name,
+                color: l.color,
+            }).collect(),
             preview_image: item.preview_image.into(),
         }
     }
