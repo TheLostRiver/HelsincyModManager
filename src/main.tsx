@@ -13,6 +13,7 @@ import "./features/dashboard/Dashboard.css";
 import "./features/install-recovery/RecoveryCenterPage.css";
 import "./features/mods/ModLibraryPage.css";
 import "./features/settings/SettingsPage.css";
+import "./features/categories/CategoryPage.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
