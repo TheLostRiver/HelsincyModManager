@@ -12,6 +12,7 @@ import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./InstallPlanPreviewPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
+import { ModDetailDialog } from "./ModDetailDialog";
 import { ModPosterCard } from "./ModPosterCard";
 import {
   getInstallManifestStatus,
@@ -272,6 +273,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
+  const [detailDialogModId, setDetailDialogModId] = useState<string | null>(null);
+  const [contextNotice, setContextNotice] = useState<string | null>(null);
   const [installPlanPreviewState, setInstallPlanPreviewState] = useState<InstallPlanPreviewPanelState>({
     status: "idle",
   });
@@ -304,6 +307,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const [selectedId] = Array.from(selectedIds);
     return libraryItems.find((item) => item.id === selectedId) ?? null;
   }, [libraryItems, selectedIds]);
+  const detailDialogItem = useMemo(() => {
+    if (!detailDialogModId) {
+      return null;
+    }
+
+    return libraryItems.find((item) => item.id === detailDialogModId) ?? null;
+  }, [detailDialogModId, libraryItems]);
   const canUninstallSelected = selectedItem?.installSummary?.status === "installed";
   const canInstallSelected =
     selectedItem !== null &&
@@ -338,6 +348,30 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       .catch(() => items);
   }, []);
 
+  const loadModLibraryItems = useCallback(() => {
+    return getModLibrary()
+      .then((items) => {
+        const resolvedItems = resolveLoadedModLibraryItems({
+          backendItems: items,
+          fallbackItems: fallbackModLibraryItems,
+        });
+
+        return refreshInstallManifestStatuses(resolvedItems);
+      })
+      .catch(() =>
+        resolveLoadedModLibraryItems({
+          backendItems: null,
+          fallbackItems: fallbackModLibraryItems,
+        }),
+      );
+  }, [refreshInstallManifestStatuses]);
+
+  const refreshModLibrary = useCallback(() => {
+    return loadModLibraryItems().then((items) => {
+      setLibraryItems(items);
+    });
+  }, [loadModLibraryItems]);
+
   useEffect(() => {
     libraryItemsRef.current = libraryItems;
   }, [libraryItems]);
@@ -345,34 +379,25 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   useEffect(() => {
     let cancelled = false;
 
-    void getModLibrary()
-      .then((items) => {
-        const resolvedItems = resolveLoadedModLibraryItems({
-          backendItems: items,
-          fallbackItems: fallbackModLibraryItems,
-        });
-
-        return refreshInstallManifestStatuses(resolvedItems).then((itemsWithStatus) => {
-          if (!cancelled) {
-            setLibraryItems(itemsWithStatus);
-          }
-        });
-      })
-      .catch(() => {
+    void loadModLibraryItems().then((items) => {
         if (!cancelled) {
-          setLibraryItems(
-            resolveLoadedModLibraryItems({
-              backendItems: null,
-              fallbackItems: fallbackModLibraryItems,
-            }),
-          );
+          setLibraryItems(items);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [refreshInstallManifestStatuses]);
+  }, [loadModLibraryItems]);
+
+  useEffect(() => {
+    if (!contextNotice) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setContextNotice(null), 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [contextNotice]);
 
   useEffect(() => {
     if (installTaskState.status !== "completed") {
@@ -733,6 +758,20 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
   };
 
+  const handleContextMenuAction = (actionId: string, modId: string) => {
+    switch (actionId) {
+      case "info-settings":
+        setDetailDialogModId(modId);
+        break;
+      case "edit-files":
+        setContextNotice("MOD 文件修改功能开发中");
+        break;
+      default:
+        onAction?.(actionId);
+        break;
+    }
+  };
+
   const handleBackToTop = () => {
     if (typeof document === "undefined") {
       return;
@@ -818,6 +857,21 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         closeDisabled={installTaskActive}
       />
 
+      {detailDialogModId ? (
+        <ModDetailDialog
+          modId={detailDialogModId}
+          fallbackItem={detailDialogItem}
+          onClose={() => setDetailDialogModId(null)}
+          onSaved={refreshModLibrary}
+        />
+      ) : null}
+
+      {contextNotice ? (
+        <div className="mod-library__context-notice" role="status">
+          {contextNotice}
+        </div>
+      ) : null}
+
       <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
         <div ref={contentRef} className="mod-library__content">
           {showScrollUi ? (
@@ -870,10 +924,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           y={contextMenuState.y}
           modId={contextMenuState.modId}
           onClose={() => setContextMenuState(null)}
-          onAction={(actionId, modId) => {
-            console.log(`Context Menu Action: ${actionId} for Mod: ${modId}`);
-            // In a real app, you would handle the specific actions here or pass them up via onAction prop
-          }}
+          onAction={handleContextMenuAction}
         />
       )}
     </section>
