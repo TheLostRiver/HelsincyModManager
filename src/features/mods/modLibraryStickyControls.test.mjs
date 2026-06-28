@@ -46,6 +46,18 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.ok(actionsIndex < gridIndex, "actions slot should render before content");
 });
 
+test("ModLibraryPage persists card category label visibility as a local UI preference", () => {
+  const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(source, /CARD_CATEGORY_LABELS_STORAGE_KEY/);
+  assert.match(source, /readInitialCardCategoryLabelsVisibility/);
+  assert.match(source, /localStorage\.getItem\(CARD_CATEGORY_LABELS_STORAGE_KEY\)/);
+  assert.match(source, /localStorage\.setItem\(CARD_CATEGORY_LABELS_STORAGE_KEY,\s*String\(nextValue\)\)/);
+  assert.match(source, /showCardCategoryLabels=\{showCardCategoryLabels\}/);
+  assert.match(source, /onToggleCardCategoryLabels=\{toggleCardCategoryLabels\}/);
+  assert.match(source, /showCategoryLabels=\{showCardCategoryLabels\}/);
+});
+
 test("global status bar stays pinned so the sticky controls can sit beneath it", () => {
   const css = readProjectFile("src/app/frame/AppFrame.css");
 
