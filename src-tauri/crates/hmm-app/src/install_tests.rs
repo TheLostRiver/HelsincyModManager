@@ -1,7 +1,7 @@
 use super::*;
 use hmm_core::{
     FileLayer, GameDirectoryValidation, GameId, InstallRecoveryRecord, InstallRecoveryRecordStatus,
-    InstallTargetPathError, ModId, PackageFileId, ProfileId,
+    InstallManifestStatus, InstallTargetPathError, ModId, PackageFileId, ProfileId,
 };
 use hmm_ports::{
     GameAdapter, GameDirectoryProbe, InstallBackupStore, InstallGameFileSystem,
@@ -235,6 +235,10 @@ fn commit_plan_writes_new_files_and_persists_manifest() {
     assert_eq!(backups.records().len(), 0);
     let manifest = manifests.take_manifest().expect("manifest should be saved");
     assert_eq!(manifest.profile_id.as_str(), "default");
+    assert_eq!(manifest.status, InstallManifestStatus::Completed);
+    assert_eq!(manifest.backend.as_deref(), Some("install_plan"));
+    assert!(manifest.completed_at.is_some());
+    assert!(manifest.plan_hash.is_none());
     assert_eq!(manifest.entries.len(), 1);
     assert_eq!(
         manifest.entries[0].target_path.as_str(),
@@ -324,9 +328,9 @@ fn commit_plan_persists_recovery_record_lifecycle_when_commit_succeeds() {
 fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -334,7 +338,7 @@ fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
         "nativePC/models/player.mod3",
         b"new model".as_slice(),
@@ -365,9 +369,9 @@ fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
 fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matches() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -375,7 +379,7 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"modded model")),
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
         "nativePC/models/player.mod3",
         b"modded model".as_slice(),
@@ -417,9 +421,9 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
 fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -427,7 +431,7 @@ fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
         "nativePC/models/player.mod3",
         b"new model".as_slice(),
@@ -457,9 +461,9 @@ fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
 
 #[test]
 fn uninstall_mod_revalidates_target_before_removing_new_file() {
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
@@ -468,7 +472,7 @@ fn uninstall_mod_revalidates_target_before_removing_new_file() {
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
         }],
-    };
+    );
     let game_files = Arc::new(
         RecordingInstallGameFileSystem::with_files([(
             "nativePC/models/player.mod3",
@@ -501,9 +505,9 @@ fn uninstall_mod_revalidates_target_before_removing_new_file() {
 
 #[test]
 fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
@@ -512,7 +516,7 @@ fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_failing_writes([(
         "nativePC/models/player.mod3",
         b"new model".as_slice(),
@@ -542,9 +546,9 @@ fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
 
 #[test]
 fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
@@ -553,7 +557,7 @@ fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
             backup_ref: None,
             installed_file: None,
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
         "nativePC/models/player.mod3",
         b"new model".as_slice(),
@@ -583,9 +587,9 @@ fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
 
 #[test]
 fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
@@ -594,7 +598,7 @@ fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
         "nativePC/models/player.mod3",
         b"external edit".as_slice(),
@@ -624,9 +628,9 @@ fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
 
 #[test]
 fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
@@ -635,7 +639,7 @@ fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
             backup_ref: Some("missing-backup".to_owned()),
             installed_file: Some(installed_file_summary(b"new model")),
         }],
-    };
+    );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
         "nativePC/models/player.mod3",
         b"new model".as_slice(),
@@ -679,9 +683,9 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
     )]));
     let game_files = Arc::new(RecordingInstallGameFileSystem::default());
     let backups = Arc::new(RecordingInstallBackupStore::default());
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![
             InstallManifestEntry {
                 target_path: InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
                     .expect("valid target"),
@@ -701,7 +705,7 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
                 installed_file: None,
             },
         ],
-    };
+    );
     let manifests = Arc::new(
         RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
     );
@@ -760,9 +764,9 @@ fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
         b"old managed model".as_slice(),
     )]));
     let backups = Arc::new(RecordingInstallBackupStore::default());
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
@@ -771,7 +775,7 @@ fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: None,
         }],
-    };
+    );
     let manifests = Arc::new(
         RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
     );
@@ -827,9 +831,9 @@ fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
         b"old managed new file".as_slice(),
     )]));
     let backups = Arc::new(RecordingInstallBackupStore::default());
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
@@ -838,7 +842,7 @@ fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
             backup_ref: None,
             installed_file: None,
         }],
-    };
+    );
     let manifests = Arc::new(
         RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
     );
@@ -1190,9 +1194,9 @@ fn commit_plan_rollback_record_uses_pending_backup_when_replacing_managed_target
         "backup-original-player",
         b"original game model".as_slice(),
     )]));
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
@@ -1201,7 +1205,7 @@ fn commit_plan_rollback_record_uses_pending_backup_when_replacing_managed_target
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"old managed model")),
         }],
-    };
+    );
     let manifests = Arc::new(
         RecordingInstallManifestRepository::failing().with_existing_manifest(existing_manifest),
     );
@@ -1281,9 +1285,9 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
         "backup-original-player",
         b"original game model".as_slice(),
     )]));
-    let existing_manifest = InstallManifest {
-        profile_id: ProfileId::new("default"),
-        entries: vec![InstallManifestEntry {
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
@@ -1292,7 +1296,7 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"old managed model")),
         }],
-    };
+    );
     let manifests = Arc::new(
         RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
     );

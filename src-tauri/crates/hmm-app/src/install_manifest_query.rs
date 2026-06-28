@@ -148,14 +148,14 @@ mod tests {
 
     #[test]
     fn query_returns_installed_summary_without_exposing_target_paths() {
-        let manifest = InstallManifest {
-            profile_id: ProfileId::new("default"),
-            entries: vec![
+        let manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![
                 manifest_entry("mod-a", "nativePC/a.mod3", Some("backup-original-a")),
                 manifest_entry("mod-a", "nativePC/b.mod3", None),
                 manifest_entry("mod-b", "nativePC/c.mod3", Some("backup-original-b")),
             ],
-        };
+        );
         let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
             manifest: Some(manifest),
         }));

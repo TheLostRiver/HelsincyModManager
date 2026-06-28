@@ -572,8 +572,8 @@ mod tests {
     use super::*;
     use hmm_core::{
         FileLayer, InstallManifest, InstallManifestEntry, InstallRecoveryRecord,
-        InstallRecoveryRecordEntry, InstallRecoveryRecordStatus, InstallTargetPath, ModId,
-        PackageFileId, ProfileId,
+        InstallManifestStatus, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
+        InstallTargetPath, ModId, PackageFileId, ProfileId,
     };
     use hmm_ports::{
         InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -617,9 +617,9 @@ mod tests {
         game_files
             .write_game_file(&target, &source_bytes)
             .expect("write target");
-        let manifest = InstallManifest {
-            profile_id: ProfileId::new("default"),
-            entries: vec![InstallManifestEntry {
+        let manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
@@ -627,7 +627,7 @@ mod tests {
                 backup_ref: Some(backup_ref.clone()),
                 installed_file: None,
             }],
-        };
+        );
         manifest_repository
             .save_manifest(&manifest)
             .expect("save manifest");
@@ -832,9 +832,9 @@ mod tests {
         let repository = JsonInstallManifestRepository::new(manifest_root.clone());
         let target =
             InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target");
-        let first_manifest = InstallManifest {
-            profile_id: ProfileId::new("default"),
-            entries: vec![InstallManifestEntry {
+        let first_manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![InstallManifestEntry {
                 target_path: target.clone(),
                 mod_id: ModId::new("mod-a"),
                 package_file_id: PackageFileId::new("nativePC/models/old.mod3"),
@@ -842,10 +842,10 @@ mod tests {
                 backup_ref: None,
                 installed_file: None,
             }],
-        };
-        let second_manifest = InstallManifest {
-            profile_id: ProfileId::new("default"),
-            entries: vec![InstallManifestEntry {
+        );
+        let second_manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
                 package_file_id: PackageFileId::new("nativePC/models/new.mod3"),
@@ -853,7 +853,7 @@ mod tests {
                 backup_ref: None,
                 installed_file: None,
             }],
-        };
+        );
 
         repository
             .save_manifest(&first_manifest)
@@ -891,6 +891,11 @@ mod tests {
         let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
         let manifest = InstallManifest {
             profile_id: ProfileId::new("default"),
+            backend: Some("install_plan".to_owned()),
+            status: InstallManifestStatus::Completed,
+            created_at: Some("2026-06-29T00:00:00Z".to_owned()),
+            completed_at: Some("2026-06-29T00:00:01Z".to_owned()),
+            plan_hash: Some("sha256:test-plan".to_owned()),
             entries: vec![InstallManifestEntry {
                 target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                     .expect("target"),
@@ -1004,10 +1009,7 @@ mod tests {
     fn json_manifest_repository_load_rejects_profile_id_mismatch() {
         let temp = tempfile::tempdir().expect("temp dir");
         let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
-        let manifest = InstallManifest {
-            profile_id: ProfileId::new("other"),
-            entries: Vec::new(),
-        };
+        let manifest = InstallManifest::completed(ProfileId::new("other"), Vec::new());
 
         repository.save_manifest(&manifest).expect("save manifest");
         fs::rename(

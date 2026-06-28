@@ -97,9 +97,11 @@
 失败时 best-effort rollback
 ```
 
-manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。替换已有托管目标时，新的 manifest entry 会继承旧条目的长期 `backup_ref` 语义；本次提交为中间状态创建的 pending backup 只用于失败回滚，提交成功后会 best-effort 清理。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载、修复扫描和 rich status 仍需后续切片补齐。
+manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。替换已有托管目标时，新的 manifest entry 会继承旧条目的长期 `backup_ref` 语义；本次提交为中间状态创建的 pending backup 只用于失败回滚，提交成功后会 best-effort 清理。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载和修复扫描仍需后续切片继续补齐。
 
 新写入的 manifest entry 会记录 `installed_file` 摘要：写入内容的字节数和 SHA-256。该字段只描述本工具本次写入到目标路径的内容，不记录完整本地路径、sandbox/cache 路径或文件内容。旧 manifest 缺少该字段时仍可兼容读取，但后续自动卸载或修复检测不能把缺少摘要的旧 entry 当作可安全删除/恢复的充分事实。
+
+manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段可被 JSON 读写；旧 manifest 缺少这些字段时会兼容读取，并把 `status` 默认为 `completed`。当前安装提交成功会写入 `backend = "install_plan"`、`status = completed` 和 `completed_at`；`plan_hash` 仍保留为空，尚未绑定真实安装计划摘要。
 
 当前回滚能力：
 
@@ -282,8 +284,8 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；`scan_install_recovery` 已能读取 durable recovery record、真实目标文件和 backup 做只读一致性检测，并可返回由受控记录驱动的 `rollback_required`。`get_install_manifest_status` 尚未自动消费 recovery scan 结果。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
-- Rich manifest：当前 manifest 仍是 MVP 形态，尚未包含 backend、status、replacement binding snapshot、created/completed time、plan hash 等长期字段。
+- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；manifest JSON 已兼容 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段，旧 manifest 缺少 rich 字段时默认读取为 `completed`。`scan_install_recovery` 已能读取 durable recovery record、真实目标文件和 backup 做只读一致性检测，并可返回由受控记录驱动的 `rollback_required`。`get_install_manifest_status` 尚未自动消费 recovery scan 结果。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
+- Rich manifest：当前只落地了 domain 字段和 JSON 兼容基础；replacement binding snapshot、schema/migration 字段、真实 `plan_hash` 计算、rich 状态机消费以及更完整的 `repair_required` 检测仍待后续切片。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
 ## 文档现状与分工
@@ -300,7 +302,7 @@ manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入
 建议继续按下面顺序推进：
 
 1. Crash/recovery 后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 已补 durable recovery record 的领域模型、port、JSON 仓储、安装 commit 写入、只读扫描消费、只读动作预览和后端受控回滚任务；下一步应补恢复中心写入型 UI 启用和操作完成后的重新扫描编排。已落地的 App Frame 全局告警、恢复中心人工处理面板和动作预览仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
-2. Rich manifest / repair 检测：补齐 backend、status、replacement binding snapshot、plan hash 和时间字段，支持 `rollback_required` 和更完整的 `repair_required` 状态机。
+2. Rich manifest / repair 检测：补齐 replacement binding snapshot、schema/migration 字段、真实 `plan_hash` 计算和 rich 状态机消费，支持 `rollback_required` 和更完整的 `repair_required` 检测。
 3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
 5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
