@@ -55,7 +55,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍未完成：
 
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
-- 恢复中心写入型动作入口、任务 UI 编排和更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览和后端受控回滚任务已落地，但恢复中心写入型按钮仍未启用。
+- 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 字段、状态机和真实修复检测。
 - dependency/preflight 阻断。
@@ -92,7 +92,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 只读恢复扫描消费 durable recovery record：`scan_install_recovery` 可由 `committing` / `rollback_required` record 返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装；不新增恢复执行、前端按钮、task phase 或 manifest 写入。
 - [x] 只读恢复动作预览：`preview_recovery_action` 可预览 `rollback_install` 是否满足受控回滚前置条件，只返回 `available` / `blocked`、聚合计数和稳定阻断 reason code；不新增恢复执行、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源，`completed` record 才恢复为 manifest 长期 backup 语义；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
-- [x] 后端受控回滚任务：`start_recovery_action_task` 可执行 `rollback_install`，发送 `install.recovery.*` task phase，写入 `rollback_install` Audit Log，并将 durable recovery record 标记为 `rolled_back`；恢复中心写入型按钮仍未启用。
+- [x] 后端受控回滚任务：`start_recovery_action_task` 可执行 `rollback_install`，发送 `install.recovery.*` task phase，写入 `rollback_install` Audit Log，并将 durable recovery record 标记为 `rolled_back`；恢复中心已启用逐 Mod 受控回滚按钮。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -226,12 +226,12 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - `rollback_install` 执行时删除本工具新增文件，或从 recovery record 中的 backup 恢复覆盖文件；执行后将 durable recovery record 标记为 `rolled_back`。如果 recovery record 保存失败，会 best-effort 回滚已经执行的文件动作。
 - `RecoveryActionTaskRunner` 已接入 `TaskKind::Install`，复用安装/卸载同一 `gameId/profileId` 写锁，发送 `install.recovery.queued`、`install.recovery.planning`、`install.recovery.processing`、`install.recovery.completed` 和 `install.recovery.failed` 阶段事件。
 - Tauri 新增 `start_recovery_action_task` 窄 command；DTO 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，不接受 target path、backup ref/root、manifest root/path、sandbox/cache 路径或本地路径。
-- 前端新增 feature-local `startRecoveryActionTask` typed API，仅封装上述短 id 入参；当前未接恢复中心按钮或任何写入型恢复 UI。
+- 前端新增 feature-local `startRecoveryActionTask` typed API，仅封装上述短 id 入参；恢复中心后续切片已将其接入逐 Mod 受控回滚按钮。
 - Audit Log 新增 `rollback_install` operation，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数。
 
 仍明确未完成：
 
-- 恢复中心写入型按钮仍不可用；后续 UI 切片必须只在后端 preview/action 条件满足时启用，并在任务完成后重新扫描。
+- 恢复中心逐 Mod 写入型按钮已启用；该 UI 必须只在后端 preview/action 条件满足时允许确认，并在任务完成后重新扫描。
 - Rich manifest 尚未持久化 `rolled_back` 状态；当前只更新 durable recovery record。
 - 不做后台自动恢复，不根据当前 Mod 包内容猜测恢复动作。
 
