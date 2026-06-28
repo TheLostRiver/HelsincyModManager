@@ -37,8 +37,13 @@ import {
   applyInstallManifestStatusSummaries,
   applyInstallRecoveryUnavailable,
   applyInstallRecoverySummaries,
-  resolveLoadedModLibraryItems,
 } from "./modLibraryLoadState";
+import {
+  createDetailDialogState,
+  loadModLibraryItemsForMode,
+  preserveItemsOnRefreshFailure,
+  type ModLibraryLoadMode,
+} from "./modLibraryRefresh";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import type { ModInstallStatus, ModInstallSummary, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
@@ -273,7 +278,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
-  const [detailDialogModId, setDetailDialogModId] = useState<string | null>(null);
+  const [detailDialogState, setDetailDialogState] = useState<{
+    modId: string;
+    fallbackItem: ModLibraryItem | null;
+  } | null>(null);
   const [contextNotice, setContextNotice] = useState<string | null>(null);
   const [installPlanPreviewState, setInstallPlanPreviewState] = useState<InstallPlanPreviewPanelState>({
     status: "idle",
@@ -307,13 +315,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const [selectedId] = Array.from(selectedIds);
     return libraryItems.find((item) => item.id === selectedId) ?? null;
   }, [libraryItems, selectedIds]);
-  const detailDialogItem = useMemo(() => {
-    if (!detailDialogModId) {
-      return null;
-    }
-
-    return libraryItems.find((item) => item.id === detailDialogModId) ?? null;
-  }, [detailDialogModId, libraryItems]);
   const canUninstallSelected = selectedItem?.installSummary?.status === "installed";
   const canInstallSelected =
     selectedItem !== null &&
@@ -348,27 +349,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       .catch(() => items);
   }, []);
 
-  const loadModLibraryItems = useCallback(() => {
-    return getModLibrary()
-      .then((items) => {
-        const resolvedItems = resolveLoadedModLibraryItems({
-          backendItems: items,
-          fallbackItems: fallbackModLibraryItems,
-        });
-
-        return refreshInstallManifestStatuses(resolvedItems);
-      })
-      .catch(() =>
-        resolveLoadedModLibraryItems({
-          backendItems: null,
-          fallbackItems: fallbackModLibraryItems,
-        }),
-      );
+  const loadModLibraryItems = useCallback((mode: ModLibraryLoadMode) => {
+    return loadModLibraryItemsForMode({
+      mode,
+      fallbackItems: fallbackModLibraryItems,
+      getModLibrary,
+      refreshInstallManifestStatuses,
+    });
   }, [refreshInstallManifestStatuses]);
 
   const refreshModLibrary = useCallback(() => {
-    return loadModLibraryItems().then((items) => {
-      setLibraryItems(items);
+    return loadModLibraryItems("refresh").then((result) => {
+      setLibraryItems((currentItems) => preserveItemsOnRefreshFailure(currentItems, result.items));
     });
   }, [loadModLibraryItems]);
 
@@ -379,11 +371,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   useEffect(() => {
     let cancelled = false;
 
-    void loadModLibraryItems().then((items) => {
-        if (!cancelled) {
-          setLibraryItems(items);
-        }
-      });
+    void loadModLibraryItems("initial").then((result) => {
+      if (!cancelled && result.items) {
+        setLibraryItems(result.items);
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -761,7 +753,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const handleContextMenuAction = (actionId: string, modId: string) => {
     switch (actionId) {
       case "info-settings":
-        setDetailDialogModId(modId);
+        setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current));
         break;
       case "edit-files":
         setContextNotice("MOD 文件修改功能开发中");
@@ -857,11 +849,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         closeDisabled={installTaskActive}
       />
 
-      {detailDialogModId ? (
+      {detailDialogState ? (
         <ModDetailDialog
-          modId={detailDialogModId}
-          fallbackItem={detailDialogItem}
-          onClose={() => setDetailDialogModId(null)}
+          modId={detailDialogState.modId}
+          fallbackItem={detailDialogState.fallbackItem}
+          onClose={() => setDetailDialogState(null)}
           onSaved={refreshModLibrary}
         />
       ) : null}
