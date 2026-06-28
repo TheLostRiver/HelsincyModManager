@@ -80,8 +80,8 @@ T12 Mod 详情统一面板完整版 ───(T5 + T11 部分就绪)───> �
 
 ### T1: 恢复中心写入型动作 UI 启用
 
-**状态**: 后端就绪，前端 typed API 已接入，差最后一步 UI
-**预估**: 小（1 个 PR）
+**状态**: 已完成（后端任务、前端 typed API、恢复中心逐 Mod 受控回滚 UI、任务事件跟踪和完成后重新扫描均已落地）
+**预估**: 已交付
 **独立文档**: 不需要（`docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md` 已覆盖）
 
 已就绪的后端基础:
@@ -89,15 +89,15 @@ T12 Mod 详情统一面板完整版 ───(T5 + T11 部分就绪)───> �
 - `preview_recovery_action` 只读预览
 - `install.recovery.*` task phase
 - 前端 `startRecoveryActionTask` / `previewRecoveryAction` typed API
-- 恢复中心只读人工处理决策面板已有 `controlled_recovery` 不可用占位
+- 恢复中心人工处理决策面板在存在 `rollback_required` Mod 时提供 `controlled_recovery` 入口，并引导用户到逐 Mod 受控回滚按钮
 
 本切片交付:
-- [ ] 恢复中心决策面板启用 `rollback_install` 按钮
-- [ ] 点击前调用 `previewRecoveryAction` 判断可执行性
-- [ ] `available` 时启用确认流程，`blocked` 时展示阻断 reason code
-- [ ] 确认后调用 `startRecoveryActionTask` 启动后端受控回滚
-- [ ] 按 `taskId` 订阅 `install.recovery.*` phase，展示排队/执行中/完成/失败
-- [ ] 完成后触发恢复中心重新扫描 + 刷新 profile 摘要和全局告警
+- [x] 恢复中心决策面板启用 `rollback_install` 按钮
+- [x] 点击前调用 `previewRecoveryAction` 判断可执行性
+- [x] `available` 时启用确认流程，`blocked` 时展示阻断 reason code
+- [x] 确认后调用 `startRecoveryActionTask` 启动后端受控回滚
+- [x] 按 `taskId` 订阅 `install.recovery.*` phase，展示排队/执行中/完成/失败
+- [x] 完成后触发恢复中心重新扫描 + 刷新 profile 摘要和全局告警
 
 安全边界:
 - 前端只提交 `gameId`、`profileId`、`modId`、`actionKind`
