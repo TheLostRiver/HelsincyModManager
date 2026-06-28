@@ -1,8 +1,54 @@
 use anyhow::{bail, Result};
-use hmm_core::Category;
-use hmm_ports::{AppClock, CategoryRepository};
+use hmm_core::{Category, CategoryLabel};
+use hmm_ports::{AppClock, CategoryRepository, StoredModPackageMetadata};
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+
+pub(crate) fn category_labels_from_metadata(
+    metadata: &StoredModPackageMetadata,
+) -> Vec<CategoryLabel> {
+    let mut labels: Vec<String> = Vec::new();
+    if let Some(category) = metadata.category.as_ref().filter(|value| !value.is_empty()) {
+        labels.push(category.clone());
+    }
+
+    for tag in &metadata.tags {
+        if !tag.is_empty() && !labels.iter().any(|label| label == tag) {
+            labels.push(tag.clone());
+        }
+    }
+
+    labels
+        .into_iter()
+        .map(|name| CategoryLabel { name, color: None })
+        .collect()
+}
+
+pub(crate) fn build_user_category_map(
+    pairs: Vec<(String, Category)>,
+) -> HashMap<String, Vec<CategoryLabel>> {
+    let mut map: HashMap<String, Vec<CategoryLabel>> = HashMap::new();
+    for (mod_id, cat) in pairs {
+        map.entry(mod_id)
+            .or_default()
+            .push(CategoryLabel { name: cat.name, color: cat.color });
+    }
+    map
+}
+
+pub(crate) fn merge_category_labels(
+    user_cats: Vec<CategoryLabel>,
+    import_labels: Vec<CategoryLabel>,
+) -> Vec<CategoryLabel> {
+    let mut merged = user_cats;
+    for label in import_labels {
+        if !merged.iter().any(|m| m.name == label.name) {
+            merged.push(label);
+        }
+    }
+    merged
+}
 
 pub struct CategoryWithCount {
     pub category: Category,
@@ -331,5 +377,29 @@ mod tests {
 
         let cats = service.get_mod_categories("mod-1").unwrap();
         assert_eq!(cats.len(), 2);
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use hmm_core::Category;
+    use hmm_ports::CategoryRepository;
+    use std::sync::Arc;
+
+    pub(crate) struct EmptyCategoryRepository;
+
+    impl CategoryRepository for EmptyCategoryRepository {
+        fn get(&self, _: &str) -> anyhow::Result<Option<Category>> { Ok(None) }
+        fn save(&self, _: &Category) -> anyhow::Result<()> { Ok(()) }
+        fn delete(&self, _: &str) -> anyhow::Result<()> { Ok(()) }
+        fn list_all(&self) -> anyhow::Result<Vec<Category>> { Ok(vec![]) }
+        fn count_mods(&self, _: &str) -> anyhow::Result<u32> { Ok(0) }
+        fn get_mod_categories(&self, _: &str) -> anyhow::Result<Vec<Category>> { Ok(vec![]) }
+        fn set_mod_categories(&self, _: &str, _: &[String]) -> anyhow::Result<()> { Ok(()) }
+        fn list_mod_category_pairs(&self) -> anyhow::Result<Vec<(String, Category)>> { Ok(vec![]) }
+    }
+
+    pub(crate) fn empty_category_repo() -> Arc<EmptyCategoryRepository> {
+        Arc::new(EmptyCategoryRepository)
     }
 }
