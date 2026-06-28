@@ -55,6 +55,36 @@ test("mod poster card prefers unsafe recovery issue count over managed file coun
   assert.doesNotMatch(source, /item\.status === "repair_required" && summary && summary\.managedFileCount > 0/);
 });
 
+test("mod poster card renders compact category labels with overflow", () => {
+  const source = readSource("src/features/mods/ModPosterCard.tsx");
+  const css = readSource("src/features/mods/ModLibraryPage.css");
+
+  assert.match(source, /visibleCategoryLabelsForCard/);
+  assert.match(source, /categoryLabelLimit = isList \|\| isTech \? 3 : 2/);
+  assert.match(source, /className="mod-card__categories"/);
+  assert.match(source, /className="mod-card__category-dot"/);
+  assert.match(source, /className="mod-card__category-overflow"/);
+  assert.match(css, /\.mod-card__categories\s*{[\s\S]*?overflow:\s*hidden;/);
+  assert.match(css, /\.mod-card__category-name\s*{[\s\S]*?text-overflow:\s*ellipsis;/);
+});
+
+test("mod poster card can hide category labels without affecting card rendering", () => {
+  const source = readSource("src/features/mods/ModPosterCard.tsx");
+  const css = readSource("src/features/mods/ModLibraryPage.css");
+
+  assert.match(source, /showCategoryLabels\?:\s*boolean/);
+  assert.match(source, /showCategoryLabels = true/);
+  assert.match(source, /categoryLabels\.visible\.length > 0/);
+  assert.match(source, /data-visible=\{showCategoryLabels \? "true" : "false"\}/);
+  assert.match(source, /aria-hidden=\{!showCategoryLabels\}/);
+
+  assert.match(css, /\.mod-card__categories\s*{[\s\S]*?max-height:\s*22px;/);
+  assert.match(css, /\.mod-card__categories\s*{[\s\S]*?transition:[\s\S]*?opacity[\s\S]*?max-height[\s\S]*?transform/);
+  assert.match(css, /\.mod-card__categories\[data-visible="false"\]\s*{[\s\S]*?opacity:\s*0;/);
+  assert.match(css, /\.mod-card__categories\[data-visible="false"\]\s*{[\s\S]*?max-height:\s*0;/);
+  assert.match(css, /\.mod-card__categories\[data-visible="false"\]\s*{[\s\S]*?transform:\s*translateY\(-4px\);/);
+});
+
 test("mod poster image fills stable poster frame", () => {
   const css = readSource("src/features/mods/ModLibraryPage.css");
   const body = getRuleBody(css, ".mod-card__poster-img");
