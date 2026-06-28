@@ -129,3 +129,17 @@ test: 覆盖安装计划冲突检测
 ```
 
 提交前应确认工作区只包含本次任务相关文件。
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues（使用 `gh` CLI）。外部 PR 不纳入 triage 分流。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用默认标签词汇：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文布局：根目录 `CONTEXT.md` 和 `docs/adr/`。详见 `docs/agents/domain.md`。
