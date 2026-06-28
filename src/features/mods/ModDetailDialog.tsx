@@ -1,15 +1,23 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { FilePenLine, ImageIcon, Info, Save, Tag, X } from "lucide-react";
 import { getModDetail } from "./modLibraryApi";
 import type { ModDetail, ModLibraryItem } from "./modLibraryTypes";
+import { getTrappedFocusIndex } from "./modalFocusTrap";
 import {
   getModCategories,
   listCategories,
   setModCategories,
   type CategoryItem,
-  type CategoryRef,
 } from "./modCategoryApi";
 import { updateModMetadata } from "./modMetadataApi";
+import {
+  emptyForm,
+  formFromDetail,
+  parseNexusModId,
+  saveModDetailChanges,
+  selectedIdsFromCategories,
+  type FormState,
+} from "./modDetailDialogWorkflow";
 import "./ModDetailDialog.css";
 
 type ModDetailDialogProps = {
@@ -19,66 +27,35 @@ type ModDetailDialogProps = {
   onSaved: () => Promise<void> | void;
 };
 
-type FormState = {
-  displayName: string;
-  author: string;
-  version: string;
-  description: string;
-  nexusModId: string;
-};
-
 type CategoryLoadState = "idle" | "ready" | "unavailable";
 
-const emptyForm: FormState = {
-  displayName: "",
-  author: "",
-  version: "",
-  description: "",
-  nexusModId: "",
-};
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "textarea:not([disabled])",
+  "select:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
 
-function versionFromLabel(versionLabel: string | undefined) {
-  return versionLabel?.replace(/^v/i, "") ?? "";
-}
-
-function formFromDetail(detail: ModDetail | null, fallbackItem: ModLibraryItem | null | undefined): FormState {
-  return {
-    displayName: detail?.name ?? fallbackItem?.name ?? "",
-    author: detail?.metadata.author ?? fallbackItem?.author ?? "",
-    version: detail?.metadata.version ?? versionFromLabel(fallbackItem?.versionLabel),
-    description: detail?.description ?? "",
-    nexusModId: detail?.nexusModId === undefined ? "" : String(detail.nexusModId),
-  };
-}
-
-function selectedIdsFromCategories(
-  allCategories: CategoryItem[],
-  assignedCategories: CategoryRef[],
-  fallbackItem: ModLibraryItem | null | undefined,
-  assignmentLoaded: boolean,
-) {
-  if (assignmentLoaded) {
-    return new Set(assignedCategories.map((category) => category.id));
-  }
-
-  const fallbackNames = new Set((fallbackItem?.categoryLabels ?? []).map((label) => label.name));
-  return new Set(allCategories.filter((category) => fallbackNames.has(category.name)).map((category) => category.id));
-}
-
-function parseNexusModId(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  if (!/^\d+$/.test(trimmed)) {
-    return null;
-  }
-
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => element.tabIndex >= 0 && !element.hasAttribute("aria-hidden"),
+  );
 }
 
 export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDetailDialogProps) {
+  const fallbackSnapshotRef = useRef<{ modId: string; item: ModLibraryItem | null | undefined }>({
+    modId,
+    item: fallbackItem,
+  });
+  if (fallbackSnapshotRef.current.modId !== modId) {
+    fallbackSnapshotRef.current = { modId, item: fallbackItem };
+  }
+
+  const fallbackSnapshotItem = fallbackSnapshotRef.current.item;
+  const panelRef = useRef<HTMLFormElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [detail, setDetail] = useState<ModDetail | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -113,10 +90,10 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
       const categoriesReady = categoryResult.status === "fulfilled" && assignmentLoaded;
 
       setDetail(loadedDetail);
-      setForm(formFromDetail(loadedDetail, fallbackItem));
+      setForm(formFromDetail(loadedDetail, fallbackSnapshotItem));
       setCategories(loadedCategories);
       setSelectedCategoryIds(
-        selectedIdsFromCategories(loadedCategories, assignedCategories, fallbackItem, assignmentLoaded),
+        selectedIdsFromCategories(loadedCategories, assignedCategories, fallbackSnapshotItem, assignmentLoaded),
       );
       setCategoryLoadState(categoriesReady ? "ready" : "unavailable");
       setLoading(false);
@@ -133,12 +110,37 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
     return () => {
       cancelled = true;
     };
-  }, [fallbackItem, modId]);
+  }, [fallbackSnapshotItem, modId]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !saving) {
         onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const panel = panelRef.current;
+      if (!panel) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(panel);
+      const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const currentIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
+      const nextIndex = getTrappedFocusIndex({
+        currentIndex,
+        focusableCount: focusableElements.length,
+        backwards: event.shiftKey,
+      });
+
+      if (nextIndex !== null) {
+        event.preventDefault();
+        const focusTarget = nextIndex === -1 ? panel : focusableElements[nextIndex];
+        focusTarget.focus();
       }
     };
 
@@ -146,7 +148,30 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, saving]);
 
-  const previewImage = detail?.previewImage ?? fallbackItem?.previewImage ?? null;
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frameId = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) {
+        return;
+      }
+
+      const firstFocusable = getFocusableElements(panel)[0] ?? panel;
+      firstFocusable.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
+  }, [modId]);
+
+  const previewImage = detail?.previewImage ?? fallbackSnapshotItem?.previewImage ?? null;
   const previewThumbnail = previewImage?.kind === "thumbnail" ? previewImage : null;
   const selectedCategoryNames = useMemo(() => {
     const selected = new Set(selectedCategoryIds);
@@ -183,23 +208,36 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
     setMessage(null);
 
     try {
-      await updateModMetadata({
+      const saveResult = await saveModDetailChanges({
         modId,
-        displayName: form.displayName,
-        author: form.author,
-        version: form.version,
-        description: form.description,
-        nexusModId,
+        metadata: {
+          displayName: form.displayName,
+          author: form.author,
+          version: form.version,
+          description: form.description,
+          nexusModId,
+        },
+        categoryIds: Array.from(selectedCategoryIds),
+        categoriesReady: categoryLoadState === "ready",
+        updateModMetadata,
+        setModCategories,
+        onSaved,
       });
 
-      if (categoryLoadState === "ready") {
-        await setModCategories(modId, Array.from(selectedCategoryIds));
+      switch (saveResult.status) {
+        case "saved":
+          onClose();
+          break;
+        case "metadata-failure":
+          setMessage("信息保存失败，请稍后重试。");
+          break;
+        case "partial-category-failure":
+          setMessage("信息已保存，但分类关联保存失败，请稍后重试。");
+          break;
+        case "refresh-failure":
+          setMessage("保存成功，但列表刷新失败，请稍后手动刷新。");
+          break;
       }
-
-      await onSaved();
-      onClose();
-    } catch {
-      setMessage("保存失败，请稍后重试。");
     } finally {
       setSaving(false);
     }
@@ -215,7 +253,14 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
         }
       }}
     >
-      <form className="mod-detail-dialog__panel" role="dialog" aria-modal="true" onSubmit={handleSubmit}>
+      <form
+        ref={panelRef}
+        className="mod-detail-dialog__panel"
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        onSubmit={handleSubmit}
+      >
         <header className="mod-detail-dialog__header">
           <div className="mod-detail-dialog__title-block">
             <span className="mod-detail-dialog__icon" aria-hidden="true">
@@ -223,7 +268,7 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
             </span>
             <div>
               <h2>MOD 信息设置</h2>
-              <p>{fallbackItem?.name ?? modId}</p>
+              <p>{fallbackSnapshotItem?.name ?? modId}</p>
             </div>
           </div>
           <button className="mod-detail-dialog__close" type="button" onClick={onClose} disabled={saving} aria-label="关闭">
@@ -244,7 +289,7 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
             <dl className="mod-detail-dialog__summary">
               <div>
                 <dt>Package ID</dt>
-                <dd>{detail?.packageId ?? fallbackItem?.id ?? modId}</dd>
+                <dd>{detail?.packageId ?? fallbackSnapshotItem?.id ?? modId}</dd>
               </div>
               <div>
                 <dt>已选分类</dt>
