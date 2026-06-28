@@ -2,6 +2,7 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e1d4e868` (main)
+最近同步：2026-06-28，基于 `598f45e` (main)
 
 ---
 
@@ -48,12 +49,12 @@
 ```text
 T1 恢复中心写入型 UI ───(无前置)───> 可立即开始
                                       │
-T2 持久化方案决策 ───(无前置)───> 可与 T1 并行
+T2 持久化方案决策/SQLite 基础 ───(已完成)───> T3/T4 已消费
     │
-    ├──> T3 Mod 元数据更新后端
+    ├──> T3 Mod 元数据更新后端（已完成）
     │       └──> T5 Mod 信息编辑面板
     │
-    ├──> T4 分类标签 CRUD
+    ├──> T4 分类标签 CRUD（已完成）
     │       └──> T5 Mod 信息编辑面板 (分类选择)
     │
     ├──> T6 Profile 管理
@@ -107,8 +108,8 @@ T12 Mod 详情统一面板完整版 ───(T5 + T11 部分就绪)───> �
 
 ### T2: 持久化方案决策与实施
 
-**状态**: 完全空白 — 零 SQLite 依赖，所有持久化均为 JSON
-**预估**: 中-大（方案决策 + 基础设施）
+**状态**: 已完成（决策文档、SQLite 基础设施、migration 001、Mod metadata / categories / mod_categories 基线已落地）
+**预估**: 已交付；后续 Profile / ReplacementBinding 继续追加 SQLite migration
 **独立文档**: **需要** → `docs/PERSISTENCE_DECISION.md`
 
 当前 JSON 持久化:
@@ -142,12 +143,12 @@ JSON 做不好的需求:
 建议策略: SQLite 只管"用户可编辑数据"（元数据 overlay、分类、Profile、绑定），安装链路的 manifest/recovery record 暂保留 JSON（已验证稳定）。
 
 交付:
-- [ ] 决策文档：范围、依赖选型（rusqlite vs sqlx）、迁移策略
-- [ ] `hmm-infra` 引入 SQLite + migration 基础设施
-- [ ] 初始 schema：`mod_metadata`、`categories`、`mod_categories`
-- [ ] `hmm-ports` 新增 `ModMetadataRepository` trait
-- [ ] `hmm-infra` 实现 SQLite 版仓储
-- [ ] 不改变现有 JSON 仓储，两套共存
+- [x] 决策文档：范围、依赖选型（rusqlite vs sqlx）、迁移策略
+- [x] `hmm-infra` 引入 SQLite + migration 基础设施
+- [x] 初始 schema：`mod_metadata`、`categories`、`mod_categories`
+- [x] `hmm-ports` 新增 `ModMetadataRepository` trait
+- [x] `hmm-infra` 实现 SQLite 版仓储
+- [x] 不改变现有 JSON 仓储，两套共存
 
 ---
 
@@ -156,30 +157,33 @@ JSON 做不好的需求:
 ### T3: Mod 元数据更新后端
 
 **前置**: T2
-**预估**: 小-中
+**状态**: 已完成（Mod metadata overlay 后端、Tauri commands、前端 typed API、`get_mod_library` overlay 合并已落地）
+**预估**: 已交付
 **独立文档**: 不需要
 
 交付:
-- [ ] `hmm-core` 定义 `ModMetadata` 可编辑字段（名称、作者、版本、备注、nexus_mod_id）
-- [ ] `hmm-ports` 新增 `ModMetadataRepository` trait（read/update/delete overlay）
-- [ ] `hmm-app` 新增 `ModMetadataService`（读取导入快照 + 合并用户 overlay）
-- [ ] `hmm-tauri` 新增 `update_mod_metadata` 窄 command
-- [ ] `get_mod_library` 返回合并后数据（用户编辑值优先）
+- [x] `hmm-core` 定义 `ModMetadata` 可编辑字段（名称、作者、版本、备注、nexus_mod_id）
+- [x] `hmm-ports` 新增 `ModMetadataRepository` trait（read/update/delete overlay）
+- [x] `hmm-app` 新增 `ModMetadataService`（读取导入快照 + 合并用户 overlay）
+- [x] `hmm-tauri` 新增 `update_mod_metadata` / `delete_mod_metadata` 窄 command
+- [x] `get_mod_library` 返回合并后数据（用户编辑值优先）
 
 ---
 
 ### T4: 分类标签 CRUD
 
 **前置**: T2
-**预估**: 中
+**状态**: 已完成（分类 CRUD 后端、Tauri commands、前端 typed API、分类合并逻辑、分类管理页面均已落地）
+**预估**: 已交付
 **独立文档**: schema 包含在 T2 决策文档中
 
 交付:
-- [ ] 领域模型：`Category`（id, name, color?, sort_order）、`Tag`（id, name）
-- [ ] 多对多：Mod ↔ Category、Mod ↔ Tag
-- [ ] `hmm-ports` + `hmm-app` + `hmm-tauri` CRUD command
-- [ ] 前端 typed API
-- [ ] `get_mod_library` 返回真实分类标签
+- [x] 领域模型：`Category`（id, name, color?, sort_order）和 `CategoryLabel`
+- [x] 多对多：Mod ↔ Category
+- [x] `hmm-ports` + `hmm-app` + `hmm-tauri` CRUD command
+- [x] 前端 typed API
+- [x] `get_mod_library` 返回真实分类标签
+- [x] `/categories` 分类管理页面（新建/编辑/删除/悬浮色板/review follow-up）
 
 ---
 
@@ -187,7 +191,9 @@ JSON 做不好的需求:
 
 **前置**: T3 + T4
 **预估**: 中
-**独立文档**: 不需要（参考图 `C:\Users\Helsincy\Pictures\mod-manager\mod-info.png`）
+**独立文档**: 不需要（参考图由维护者在任务上下文中提供）
+
+> 注意：`docs/CATEGORY_MANAGEMENT_TODO.md` 曾把“分类管理页面”称为分类专题的 T5 当前切片；该页面已完成。本文档中的 T5 始终指 Mod 信息编辑面板。
 
 设计要点:
 - 统一悬浮对话框，合并参考图两个面板
@@ -345,17 +351,18 @@ JSON 做不好的需求:
 
 ```text
 第 1 轮: T1 恢复中心写入型 UI        ← 最后一公里
-         T2 持久化方案决策文档        ← 可与 T1 并行输出
+         T2 持久化方案决策文档        ← 已完成
 
-第 2 轮: T2 持久化实施 (SQLite 基础)
+第 2 轮: T2 持久化实施 (SQLite 基础)     ← 已完成
          T7 一键启动游戏             ← 独立，与 T2 并行
 
-第 3 轮: T3 Mod 元数据更新后端
-         T4 分类标签 CRUD
+第 3 轮: T3 Mod 元数据更新后端          ← 已完成
+         T4 分类标签 CRUD              ← 已完成
 
-第 4 轮: T5 Mod 信息编辑面板         ← 消费 T3 + T4
+第 4 轮: T5 Mod 信息编辑面板         ← 当前推荐下一步，消费 T3 + T4
 
-第 5 轮: T6 Profile 管理
+第 5 轮: 分类链路补全               ← 动态筛选 chips、卡片分类标签渲染
+         T6 Profile 管理
          T9 Rich Manifest
 
 第 6 轮: T10 依赖检查
@@ -375,9 +382,9 @@ JSON 做不好的需求:
 | 任务 | 优先级 | 状态 | 关联 PR |
 |------|--------|------|---------|
 | T1 恢复中心写入型 UI | P0 | 已完成 | #108 |
-| T2 持久化方案 | P0 | 决策文档已完成 | |
-| T3 Mod 元数据后端 | P1 | 待开始 | |
-| T4 分类标签 | P1 | 待开始 | |
+| T2 持久化方案 | P0 | 已完成 | `ce9c486` / `dff6457` |
+| T3 Mod 元数据后端 | P1 | 已完成 | `1e2c3b6` |
+| T4 分类标签 | P1 | 已完成 | #112 / #113 / #114 |
 | T5 Mod 信息面板 | P1 | 待开始 | |
 | T6 Profile 管理 | P1 | 待开始 | |
 | T7 一键启动 | P1 | 待开始 | |
