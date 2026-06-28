@@ -1,64 +1,147 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "../../..");
+import { getTrappedFocusIndex } from "./modalFocusTrap.ts";
+import {
+  createDetailDialogState,
+  loadModLibraryItemsForMode,
+  preserveItemsOnRefreshFailure,
+} from "./modLibraryRefresh.ts";
+import {
+  parseNexusModId,
+  saveModDetailChanges,
+  selectedIdsFromCategories,
+} from "./modDetailDialogWorkflow.ts";
 
-function readProjectFile(relativePath) {
-  const path = join(repoRoot, relativePath);
-  assert.ok(existsSync(path), `missing file: ${relativePath}`);
-  return readFileSync(path, "utf8");
-}
+const fallbackItems = [
+  {
+    id: "mod-a",
+    name: "Alpha",
+    status: "installed",
+    sizeLabel: "12 MB",
+    categoryLabels: [{ name: "外观" }],
+  },
+];
 
-test("mod detail dialog edits metadata and category assignments through controlled APIs", () => {
-  const source = readProjectFile("src/features/mods/ModDetailDialog.tsx");
+test("saveModDetailChanges reports category failure after metadata has been saved", async () => {
+  const calls = [];
 
-  assert.match(source, /updateModMetadata/);
-  assert.match(source, /listCategories/);
-  assert.match(source, /getModCategories/);
-  assert.match(source, /setModCategories/);
-  assert.match(source, /getModDetail/);
-  assert.match(source, /type="checkbox"/);
-  assert.match(source, /name="displayName"/);
-  assert.match(source, /name="author"/);
-  assert.match(source, /name="version"/);
-  assert.match(source, /name="nexusModId"/);
-  assert.match(source, /name="description"/);
-  assert.match(source, /className="mod-detail-dialog__preview"/);
-  assert.doesNotMatch(source, /convertFileSrc|asset:|archivePath|sandbox|cachePath|rawPath/i);
+  const result = await saveModDetailChanges({
+    modId: "mod-a",
+    metadata: {
+      displayName: "Alpha Edit",
+      author: "Helsincy",
+      version: "1.2.3",
+      description: "note",
+      nexusModId: 42,
+    },
+    categoryIds: ["cat-a"],
+    categoriesReady: true,
+    updateModMetadata: async () => {
+      calls.push("metadata");
+    },
+    setModCategories: async () => {
+      calls.push("categories");
+      throw new Error("category write failed");
+    },
+    onSaved: async () => {
+      calls.push("refresh");
+    },
+  });
+
+  assert.deepEqual(calls, ["metadata", "categories", "refresh"]);
+  assert.deepEqual(result, { status: "partial-category-failure" });
 });
 
-test("mod library page opens the dialog from the context menu and refreshes after save", () => {
-  const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+test("saveModDetailChanges skips category writes when category data is unavailable", async () => {
+  const calls = [];
 
-  assert.match(source, /ModDetailDialog/);
-  assert.match(source, /detailDialogModId/);
-  assert.match(source, /case "info-settings":/);
-  assert.match(source, /case "edit-files":/);
-  assert.match(source, /refreshModLibrary/);
-  assert.match(source, /onSaved=\{refreshModLibrary\}/);
-  assert.doesNotMatch(source, /Context Menu Action:/);
+  const result = await saveModDetailChanges({
+    modId: "mod-a",
+    metadata: { displayName: "Alpha Edit" },
+    categoryIds: ["cat-a"],
+    categoriesReady: false,
+    updateModMetadata: async () => {
+      calls.push("metadata");
+    },
+    setModCategories: async () => {
+      calls.push("categories");
+    },
+    onSaved: async () => {
+      calls.push("refresh");
+    },
+  });
+
+  assert.deepEqual(calls, ["metadata", "refresh"]);
+  assert.deepEqual(result, { status: "saved" });
 });
 
-test("mod detail styles define a floating modal, category chips, and responsive layout", () => {
-  const css = readProjectFile("src/features/mods/ModDetailDialog.css");
+test("loadModLibraryItemsForMode preserves the existing list on refresh failure", async () => {
+  const result = await loadModLibraryItemsForMode({
+    mode: "refresh",
+    fallbackItems,
+    getModLibrary: async () => {
+      throw new Error("backend unavailable");
+    },
+    refreshInstallManifestStatuses: async (items) => items,
+  });
 
-  assert.match(css, /\.mod-detail-dialog__backdrop\s*{[\s\S]*?position:\s*fixed;/);
-  assert.match(css, /\.mod-detail-dialog__panel\s*{[\s\S]*?box-shadow:/);
-  assert.match(css, /\.mod-detail-dialog__category-grid\s*{/);
-  assert.match(css, /\.mod-detail-dialog__category-chip\s*{/);
-  assert.match(css, /@media\s*\(max-width:\s*760px\)/);
+  assert.equal(result.status, "unavailable");
+  assert.equal(result.items, null);
 });
 
-test("mod detail type mirrors backend metadata DTO", () => {
-  const source = readProjectFile("src/features/mods/modLibraryTypes.ts");
+test("loadModLibraryItemsForMode uses fallback data only for initial load failure", async () => {
+  const result = await loadModLibraryItemsForMode({
+    mode: "initial",
+    fallbackItems,
+    getModLibrary: async () => {
+      throw new Error("backend unavailable");
+    },
+    refreshInstallManifestStatuses: async (items) => items,
+  });
 
-  assert.match(source, /metadata:\s*ModPackageMetadata/);
-  assert.match(source, /export type ModPackageMetadata/);
-  assert.match(source, /author\?:\s*string/);
-  assert.match(source, /version\?:\s*string/);
-  assert.match(source, /dependencies:\s*string\[]/);
+  assert.equal(result.status, "fallback");
+  assert.equal(result.items, fallbackItems);
+});
+
+test("createDetailDialogState snapshots the opened item instead of tracking live library objects", () => {
+  const state = createDetailDialogState("mod-a", fallbackItems);
+  const refreshedItems = [{ ...fallbackItems[0], name: "Refreshed Alpha" }];
+
+  assert.equal(state?.modId, "mod-a");
+  assert.equal(state?.fallbackItem?.name, "Alpha");
+  assert.notEqual(state?.fallbackItem, refreshedItems[0]);
+});
+
+test("preserveItemsOnRefreshFailure keeps current UI when refresh returns no real items", () => {
+  assert.equal(preserveItemsOnRefreshFailure(fallbackItems, null), fallbackItems);
+  assert.deepEqual(preserveItemsOnRefreshFailure(fallbackItems, []), []);
+});
+
+test("selectedIdsFromCategories uses loaded assignments before fallback labels", () => {
+  const selected = selectedIdsFromCategories(
+    [
+      { id: "cat-a", name: "外观", sortOrder: 0, modCount: 1 },
+      { id: "cat-b", name: "武器", sortOrder: 1, modCount: 1 },
+    ],
+    [{ id: "cat-b", name: "武器", sortOrder: 1 }],
+    { id: "mod-a", name: "Alpha", status: "installed", sizeLabel: "12 MB", categoryLabels: [{ name: "外观" }] },
+    true,
+  );
+
+  assert.deepEqual([...selected], ["cat-b"]);
+});
+
+test("parseNexusModId accepts empty values and positive integers only", () => {
+  assert.equal(parseNexusModId(""), undefined);
+  assert.equal(parseNexusModId(" 42 "), 42);
+  assert.equal(parseNexusModId("0"), null);
+  assert.equal(parseNexusModId("abc"), null);
+});
+
+test("getTrappedFocusIndex wraps keyboard focus inside the dialog", () => {
+  assert.equal(getTrappedFocusIndex({ currentIndex: 0, focusableCount: 3, backwards: true }), 2);
+  assert.equal(getTrappedFocusIndex({ currentIndex: 2, focusableCount: 3, backwards: false }), 0);
+  assert.equal(getTrappedFocusIndex({ currentIndex: 1, focusableCount: 3, backwards: false }), null);
+  assert.equal(getTrappedFocusIndex({ currentIndex: -1, focusableCount: 0, backwards: false }), -1);
 });
