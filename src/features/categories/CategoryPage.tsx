@@ -288,16 +288,21 @@ function CreateCategoryForm({ onCreated, onCancel }: CreateCategoryFormProps) {
 
     setError(null);
     setSubmitting(true);
-    void createCategory({
-      name: name.trim(),
-      color: color.trim() || undefined,
-      sortOrder: parsedSortOrder,
-    })
-      .then(() => onCreated())
-      .catch((err: unknown) => {
-        setError(formatCategoryMutationError(err, "创建分类失败，请稍后重试。"));
+    void (async () => {
+      try {
+        await createCategory({
+          name: name.trim(),
+          color: color.trim() || undefined,
+          sortOrder: parsedSortOrder,
+        });
+      } catch (err: unknown) {
+        setError(getCategoryMutationErrorMessage(err, "创建分类失败，请稍后重试。"));
         setSubmitting(false);
-      });
+        return;
+      }
+
+      onCreated();
+    })();
   };
 
   return (
@@ -526,21 +531,26 @@ function CategoryEditRow({ category, onCancel, onSaved }: CategoryEditRowProps) 
 
     setError(null);
     setSubmitting(true);
-    void updateCategory({
-      categoryId: category.id,
-      name: name.trim() !== category.name ? name.trim() : undefined,
-      color: trimmedColor !== originalColor
-        ? (trimmedColor === "" ? null : trimmedColor)
-        : undefined,
-      sortOrder: parsedSortOrder !== undefined && parsedSortOrder !== category.sortOrder
-        ? parsedSortOrder
-        : undefined,
-    })
-      .then(() => onSaved())
-      .catch((err: unknown) => {
-        setError(formatCategoryMutationError(err, "保存分类失败，请稍后重试。"));
+    void (async () => {
+      try {
+        await updateCategory({
+          categoryId: category.id,
+          name: name.trim() !== category.name ? name.trim() : undefined,
+          color: trimmedColor !== originalColor
+            ? (trimmedColor === "" ? null : trimmedColor)
+            : undefined,
+          sortOrder: parsedSortOrder !== undefined && parsedSortOrder !== category.sortOrder
+            ? parsedSortOrder
+            : undefined,
+        });
+      } catch (err: unknown) {
+        setError(getCategoryMutationErrorMessage(err, "保存分类失败，请稍后重试。"));
         setSubmitting(false);
-      });
+        return;
+      }
+
+      onSaved();
+    })();
   };
 
   return (
@@ -607,12 +617,17 @@ function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDelete
   const handleConfirm = () => {
     setError(null);
     setSubmitting(true);
-    void deleteCategory(category.id)
-      .then(() => onDeleted())
-      .catch((err: unknown) => {
-        setError(formatCategoryMutationError(err, "删除分类失败，请稍后重试。"));
+    void (async () => {
+      try {
+        await deleteCategory(category.id);
+      } catch (err: unknown) {
+        setError(getCategoryMutationErrorMessage(err, "删除分类失败，请稍后重试。"));
         setSubmitting(false);
-      });
+        return;
+      }
+
+      onDeleted();
+    })();
   };
 
   return (
@@ -661,6 +676,23 @@ function formatCategoryMutationError(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function getCategoryMutationErrorMessage(error: unknown, fallback: string): string {
+  if (isCategoryCommandError(error)) {
+    return fallback;
+  }
+
+  return formatCategoryMutationError(error, fallback);
+}
+
+function isCategoryCommandError(error: unknown): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === "category_error"
+  );
 }
 
 function parseSortOrder(value: string): number | undefined {
