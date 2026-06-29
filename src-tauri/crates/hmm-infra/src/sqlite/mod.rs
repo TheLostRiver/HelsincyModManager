@@ -177,17 +177,28 @@ mod tests {
         let db_path = temp.path().join("test.db");
         let conn = open_database(&db_path).unwrap();
 
-        let (profile_id, name, is_active): (String, String, i32) = conn
-            .query_row(
-                "SELECT profile_id, name, is_active FROM profiles WHERE profile_id = 'default'",
+        let (profile_id, name, is_active, created_at, updated_at): (String, String, i32, i64, i64) =
+            conn.query_row(
+                "SELECT profile_id, name, is_active, created_at, updated_at
+                 FROM profiles WHERE profile_id = 'default'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
 
         assert_eq!(profile_id, "default");
         assert_eq!(name, "Default");
         assert_eq!(is_active, 1);
+        assert!(created_at > 0);
+        assert_eq!(updated_at, created_at);
     }
 
     #[test]
