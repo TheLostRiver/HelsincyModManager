@@ -13,5 +13,8 @@ CREATE UNIQUE INDEX idx_profiles_single_active
 
 INSERT OR IGNORE INTO profiles
     (profile_id, name, description, is_active, created_at, updated_at)
-VALUES
-    ('default', 'Default', NULL, 1, 0, 0);
+SELECT
+    'default', 'Default', NULL, 1, now_ms, now_ms
+FROM (
+    SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 AS now_ms
+);
