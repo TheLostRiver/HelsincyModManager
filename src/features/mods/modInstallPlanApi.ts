@@ -54,7 +54,7 @@ export function getInstallManifestStatus(
 ): Promise<InstallManifestStatusSummary[]> {
   return invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
     request: {
-      gameId: input.gameId,
+      ...(input.gameId === undefined ? {} : { gameId: input.gameId }),
       profileId: input.profileId,
       modIds: input.modIds,
     },

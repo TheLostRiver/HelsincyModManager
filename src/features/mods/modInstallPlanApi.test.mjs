@@ -57,9 +57,10 @@ test("install manifest status API invokes controlled summary command without pat
   assert.ok(manifestStatusCall, "expected a feature-local manifest status wrapper");
   assert.match(manifestStatusCall[0], /invoke<InstallManifestStatusSummary\[\]>\("get_install_manifest_status"/);
   assert.match(manifestStatusCall[0], /request:\s*\{/);
-  assert.match(manifestStatusCall[0], /gameId:\s*input\.gameId/);
+  assert.match(manifestStatusCall[0], /input\.gameId\s*===\s*undefined\s*\?\s*\{\}\s*:\s*\{\s*gameId:\s*input\.gameId\s*\}/);
   assert.match(manifestStatusCall[0], /profileId:\s*input\.profileId/);
   assert.match(manifestStatusCall[0], /modIds:\s*input\.modIds/);
+  assert.match(typesSource, /export type GetInstallManifestStatusInput = \{\s*gameId\?:\s*GameId;/);
   const manifestStatusType = typesSource.match(/export type InstallManifestStatus[\s\S]*?;/);
   assert.ok(manifestStatusType, "expected InstallManifestStatus union");
   assert.match(manifestStatusType[0], /"rollback_required"/);
@@ -218,7 +219,10 @@ test("mod library page refreshes install status from manifest summaries", () => 
   assert.match(source, /applyInstallManifestStatusSummaries/);
   assert.match(source, /applyInstallRecoverySummaries/);
   assert.match(source, /applyInstallRecoveryUnavailable/);
-  assert.match(source, /catch\(\(\)\s*=>\s*applyInstallRecoveryUnavailable\(items\)\)/);
+  assert.match(
+    source,
+    /scanInstallRecovery\([\s\S]*?\.catch\(\(\)\s*=>\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\)\)/,
+  );
   assert.match(source, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);

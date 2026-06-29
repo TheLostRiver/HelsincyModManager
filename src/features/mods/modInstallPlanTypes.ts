@@ -18,7 +18,7 @@ export type StartUninstallTaskInput = {
 };
 
 export type GetInstallManifestStatusInput = {
-  gameId: GameId;
+  gameId?: GameId;
   profileId: string;
   modIds: string[];
 };
