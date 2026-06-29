@@ -10,9 +10,10 @@ use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallManifestQueryError,
-    InstallManifestQueryRequest, InstallPlanFile, InstallPlanningError, InstallRecoveryActionKind,
-    InstallRecoveryActionPreviewError, InstallRecoveryActionPreviewRequest,
-    InstallRecoveryScanError, InstallRecoveryScanRequest, StartInstallTaskRequest,
+    InstallManifestQueryRequest, InstallManifestStatusSummary, InstallPlanFile,
+    InstallPlanningError, InstallRecoveryActionKind, InstallRecoveryActionPreviewError,
+    InstallRecoveryActionPreviewRequest, InstallRecoveryScanError, InstallRecoveryScanRequest,
+    InstallRecoveryStatus, InstallRecoverySummary, StartInstallTaskRequest,
     StartRecoveryActionTaskRequest, StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
@@ -110,11 +111,27 @@ pub fn get_install_manifest_status(
     request: InstallManifestStatusRequestDto,
     state: State<'_, AppState>,
 ) -> Result<Vec<InstallManifestStatusSummaryDto>, CommandErrorDto> {
-    let request = install_manifest_status_request_from_dto(request)?;
-    let summaries = state
-        .install_manifest_query
-        .query_statuses(request)
-        .map_err(install_manifest_query_error_to_command_error)?;
+    let (game_id, request) = install_manifest_status_request_from_dto(request)?;
+    let summaries = if let Some(game_id) = game_id {
+        state
+            .install_recovery_scanner
+            .scan(
+                game_id,
+                InstallRecoveryScanRequest {
+                    profile_id: request.profile_id,
+                    mod_ids: request.mod_ids,
+                },
+            )
+            .map_err(install_recovery_scan_error_to_command_error)?
+            .into_iter()
+            .map(recovery_summary_to_manifest_status_summary)
+            .collect()
+    } else {
+        state
+            .install_manifest_query
+            .query_statuses(request)
+            .map_err(install_manifest_query_error_to_command_error)?
+    };
 
     Ok(summaries.into_iter().map(Into::into).collect())
 }
@@ -333,7 +350,7 @@ fn start_install_task_request_from_dto(
 
 fn install_manifest_status_request_from_dto(
     request: InstallManifestStatusRequestDto,
-) -> Result<InstallManifestQueryRequest, CommandErrorDto> {
+) -> Result<(Option<GameId>, InstallManifestQueryRequest), CommandErrorDto> {
     let profile_id = parse_non_empty_id(
         request.profile_id,
         "profile_id_empty",
@@ -355,10 +372,43 @@ fn install_manifest_status_request_from_dto(
         .map(ModId::new)
         .collect();
 
-    Ok(InstallManifestQueryRequest {
-        profile_id: ProfileId::new(profile_id),
-        mod_ids,
-    })
+    let game_id = request
+        .game_id
+        .map(|game_id| {
+            GameId::parse(game_id).map_err(|_| CommandErrorDto {
+                code: "game_id_invalid".to_owned(),
+                message: "game id is invalid".to_owned(),
+            })
+        })
+        .transpose()?;
+
+    Ok((
+        game_id,
+        InstallManifestQueryRequest {
+            profile_id: ProfileId::new(profile_id),
+            mod_ids,
+        },
+    ))
+}
+
+fn recovery_summary_to_manifest_status_summary(
+    summary: InstallRecoverySummary,
+) -> InstallManifestStatusSummary {
+    InstallManifestStatusSummary {
+        profile_id: summary.profile_id,
+        mod_id: summary.mod_id,
+        status: match summary.status {
+            InstallRecoveryStatus::NotInstalled => hmm_app::InstallManifestStatus::NotInstalled,
+            InstallRecoveryStatus::Completed => hmm_app::InstallManifestStatus::Installed,
+            InstallRecoveryStatus::RollbackRequired => {
+                hmm_app::InstallManifestStatus::RollbackRequired
+            }
+            InstallRecoveryStatus::RepairRequired => hmm_app::InstallManifestStatus::RepairRequired,
+            InstallRecoveryStatus::Unknown => hmm_app::InstallManifestStatus::Unknown,
+        },
+        managed_file_count: summary.managed_file_count,
+        backup_count: summary.backup_count,
+    }
 }
 
 fn install_recovery_scan_request_from_dto(
@@ -666,9 +716,10 @@ mod tests {
 
         let request: crate::dto::InstallManifestStatusRequestDto =
             serde_json::from_value(value).expect("request should deserialize");
-        let app_request =
+        let (game_id, app_request) =
             install_manifest_status_request_from_dto(request).expect("valid ids should map");
 
+        assert!(game_id.is_none());
         assert_eq!(app_request.profile_id.as_str(), "default");
         assert_eq!(
             app_request
@@ -678,6 +729,46 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["mod-a", "mod-b"]
         );
+    }
+
+    #[test]
+    fn install_manifest_status_request_accepts_optional_game_id_for_recovery_scan() {
+        let value = json!({
+            "gameId": "mhw",
+            "profileId": "default",
+            "modIds": ["mod-a"]
+        });
+
+        let request: crate::dto::InstallManifestStatusRequestDto =
+            serde_json::from_value(value).expect("request should deserialize");
+        let (game_id, app_request) =
+            install_manifest_status_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(game_id.expect("game id").as_str(), "mhw");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(app_request.mod_ids[0].as_str(), "mod-a");
+    }
+
+    #[test]
+    fn recovery_summary_maps_rollback_required_to_manifest_status_summary() {
+        let summary = InstallRecoverySummary {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: InstallRecoveryStatus::RollbackRequired,
+            managed_file_count: 2,
+            backup_count: 1,
+            issue_count: 0,
+            issues: Vec::new(),
+        };
+
+        let manifest_summary = recovery_summary_to_manifest_status_summary(summary);
+
+        assert_eq!(
+            manifest_summary.status,
+            hmm_app::InstallManifestStatus::RollbackRequired
+        );
+        assert_eq!(manifest_summary.managed_file_count, 2);
+        assert_eq!(manifest_summary.backup_count, 1);
     }
 
     #[test]

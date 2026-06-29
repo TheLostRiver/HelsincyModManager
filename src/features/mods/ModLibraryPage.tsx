@@ -353,6 +353,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
 
     return getInstallManifestStatus({
+      gameId: DEFAULT_INSTALL_GAME_ID,
       profileId: DEFAULT_INSTALL_PROFILE_ID,
       modIds,
     })
@@ -366,7 +367,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           .then((summaries) => applyInstallRecoverySummaries(itemsWithManifestStatus, summaries))
           .catch(() => applyInstallRecoveryUnavailable(itemsWithManifestStatus)),
       )
-      .catch(() => items);
+      .catch(() => applyInstallRecoveryUnavailable(items));
   }, []);
 
   const loadModLibraryItems = useCallback((mode: ModLibraryLoadMode) => {

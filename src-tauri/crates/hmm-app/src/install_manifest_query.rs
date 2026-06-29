@@ -13,6 +13,7 @@ pub struct InstallManifestQueryRequest {
 pub enum InstallManifestStatus {
     NotInstalled,
     Installed,
+    RollbackRequired,
     RepairRequired,
     Unknown,
 }
