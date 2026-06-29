@@ -1,9 +1,11 @@
 mod category_repository;
 mod migrations;
 mod mod_metadata_repository;
+mod profile_repository;
 
 pub use category_repository::SqliteCategoryRepository;
 pub use mod_metadata_repository::SqliteModMetadataRepository;
+pub use profile_repository::SqliteProfileRepository;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -84,6 +86,16 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+
+        // Verify profiles table exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='profiles'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -157,6 +169,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0, "cascade delete should remove mod_categories rows");
+    }
+
+    #[test]
+    fn migration_creates_default_active_profile() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db_path = temp.path().join("test.db");
+        let conn = open_database(&db_path).unwrap();
+
+        let (profile_id, name, is_active): (String, String, i32) = conn
+            .query_row(
+                "SELECT profile_id, name, is_active FROM profiles WHERE profile_id = 'default'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(profile_id, "default");
+        assert_eq!(name, "Default");
+        assert_eq!(is_active, 1);
     }
 
     #[test]

@@ -13,7 +13,8 @@ use hmm_app::{
     ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
     ModMetadataService, ModUninstaller, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService, RecoveryActionTaskRunner,
+    PreviewImageDiagnosticsExportService, PreviewImageService, ProfileService,
+    RecoveryActionTaskRunner,
     RecoveryActionTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
     SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
     UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
@@ -30,7 +31,7 @@ use hmm_infra::{
     JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
     SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
-    SteamGameDiscoveryService,
+    SqliteProfileRepository, SteamGameDiscoveryService,
     SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
@@ -69,6 +70,7 @@ pub struct AppState {
     pub app_settings: Arc<AppSettingsService>,
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
+    pub profiles: Arc<ProfileService>,
     pub task_manager: Arc<TaskManager>,
     #[expect(dead_code, reason = "keeps the shared SQLite connection alive for repositories")]
     pub(crate) db: Arc<Mutex<rusqlite::Connection>>,
@@ -93,6 +95,7 @@ impl AppState {
             Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
         let category_repository =
             Arc::new(SqliteCategoryRepository::new(Arc::clone(&db)));
+        let profile_repository = Arc::new(SqliteProfileRepository::new(Arc::clone(&db)));
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
@@ -325,6 +328,10 @@ impl AppState {
             )),
             categories: Arc::new(CategoryService::new(
                 category_repository,
+                Arc::new(SystemClock),
+            )),
+            profiles: Arc::new(ProfileService::new(
+                profile_repository,
                 Arc::new(SystemClock),
             )),
             task_manager,

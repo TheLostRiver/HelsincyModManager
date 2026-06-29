@@ -4,6 +4,7 @@ mod game_setup_commands;
 mod install_commands;
 mod mod_import_commands;
 mod mod_metadata_commands;
+mod profile_commands;
 mod state;
 mod task_commands;
 mod task_events;
@@ -29,6 +30,10 @@ use mod_import_commands::{
     start_import_mod_task,
 };
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
+use profile_commands::{
+    create_profile, delete_profile, get_active_profile, list_profiles, set_active_profile,
+    update_profile,
+};
 use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
@@ -83,7 +88,13 @@ pub fn run() {
             delete_category,
             list_categories,
             set_mod_categories,
-            get_mod_categories
+            get_mod_categories,
+            list_profiles,
+            get_active_profile,
+            create_profile,
+            update_profile,
+            delete_profile,
+            set_active_profile
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");
