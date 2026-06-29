@@ -257,9 +257,9 @@ manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`cr
 - 按 `taskId` 订阅 `hmm://task-progress` 安装事件。
 - 展示 `install.queued`、`install.plan.building`、`install.commit.processing`、`install.completed`、`install.failed` 和 `install.cancelled`。
 - 处理 `start_install_task` 返回前进度事件先到达的竞态。
-- 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新 manifest 状态摘要。
-- 展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；当前 MVP 会根据匹配 entries 派生 `installed`，缺失 manifest 或无匹配 entry 显示 `not_installed`。`installed_file` 摘要已写入新 manifest，但 manifest 查询尚未执行目标文件 hash/backup 完整性校验。
-- 在 manifest 摘要刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为前端 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为不安全安装状态展示。
+- 通过 `get_install_manifest_status` 在 Mod 库加载成功和安装任务完成后刷新安装状态摘要。Mod 库会传入 `gameId`，因此该摘要会复用只读 recovery scan，把 `completed` 映射为前端 `installed`，并把 `rollback_required` / `repair_required` / `unknown` 作为不安全安装状态展示；未传 `gameId` 的调用仍保留 manifest-only fallback。
+- 展示 `not_installed`、`installed`、`rollback_required`、`repair_required`、`unknown` 等后端摘要状态。`installed_file` 摘要已写入新 manifest；带 `gameId` 的状态摘要会读取目标文件和 backup 做只读一致性检测，不带 `gameId` 的 manifest-only 路径仍只根据匹配 entries 派生 `installed` / `not_installed`。
+- 在状态摘要刷新后继续调用只读 `scan_install_recovery` 获取 issue code、计数和恢复中心所需聚合详情。
 - 对 `rollback_required` / `repair_required` / `unknown` 只展示托管文件数、backup 计数、聚合 issue code 和计数，不展示 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文或第三方 Mod 内容。
 - 当恢复扫描返回 `rollback_required` / `repair_required` / `unknown` 时，Mod 库会阻断安装/重装入口和自动卸载入口，并展示人工处理提示。
 - Dashboard 入口在游戏目录已配置后调用只读 `scan_install_recovery`，使用空 `modIds` 扫描当前 profile 的全部托管 Mod，并在右侧状态栏展示 profile 级健康摘要。该摘要只展示扫描 Mod 数、需处理数、未知数、问题计数和聚合 issue 分类，不提供恢复、删除、回滚或 manifest 写入动作。
@@ -284,7 +284,7 @@ manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`cr
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
-- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；manifest JSON 已兼容 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段，旧 manifest 缺少 rich 字段时默认读取为 `completed`。`scan_install_recovery` 已能读取 durable recovery record、真实目标文件和 backup 做只读一致性检测，并可返回由受控记录驱动的 `rollback_required`。`get_install_manifest_status` 尚未自动消费 recovery scan 结果。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
+- Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；manifest JSON 已兼容 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段，旧 manifest 缺少 rich 字段时默认读取为 `completed`。`scan_install_recovery` 已能读取 durable recovery record、真实目标文件和 backup 做只读一致性检测，并可返回由受控记录驱动的 `rollback_required`；`get_install_manifest_status` 在传入 `gameId` 时已消费同一只读恢复扫描结果并映射为安装摘要状态，未传 `gameId` 时保留 manifest-only fallback。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
 - Rich manifest：当前只落地了 domain 字段和 JSON 兼容基础；replacement binding snapshot、schema/migration 字段、真实 `plan_hash` 计算、rich 状态机消费以及更完整的 `repair_required` 检测仍待后续切片。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 

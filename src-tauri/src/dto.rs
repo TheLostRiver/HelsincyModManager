@@ -127,6 +127,8 @@ pub struct StartUninstallTaskRequestDto {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallManifestStatusRequestDto {
+    #[serde(default)]
+    pub game_id: Option<String>,
     pub profile_id: String,
     pub mod_ids: Vec<String>,
 }
@@ -246,6 +248,7 @@ pub struct InstallRecoveryActionBlockReasonSummaryDto {
 pub enum InstallManifestStatusDto {
     NotInstalled,
     Installed,
+    RollbackRequired,
     RepairRequired,
     Unknown,
 }
@@ -420,6 +423,7 @@ impl From<InstallManifestStatus> for InstallManifestStatusDto {
         match status {
             InstallManifestStatus::NotInstalled => Self::NotInstalled,
             InstallManifestStatus::Installed => Self::Installed,
+            InstallManifestStatus::RollbackRequired => Self::RollbackRequired,
             InstallManifestStatus::RepairRequired => Self::RepairRequired,
             InstallManifestStatus::Unknown => Self::Unknown,
         }
@@ -1714,6 +1718,24 @@ mod task_dto_tests {
 mod install_recovery_dto_tests {
     use super::*;
     use hmm_core::{ModId, ProfileId};
+
+    #[test]
+    fn serializes_rollback_required_manifest_status_as_stable_snake_case() {
+        let dto: InstallManifestStatusSummaryDto = InstallManifestStatusSummary {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: InstallManifestStatus::RollbackRequired,
+            managed_file_count: 1,
+            backup_count: 0,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize manifest status summary");
+
+        assert_eq!(value["status"], "rollback_required");
+        assert!(value.get("targetPath").is_none());
+        assert!(value.get("backupRef").is_none());
+    }
 
     #[test]
     fn serializes_install_recovery_summary_without_paths_or_backup_refs() {

@@ -18,6 +18,7 @@ export type StartUninstallTaskInput = {
 };
 
 export type GetInstallManifestStatusInput = {
+  gameId: GameId;
   profileId: string;
   modIds: string[];
 };
@@ -37,7 +38,12 @@ export type PreviewRecoveryActionInput = {
 
 export type StartRecoveryActionTaskInput = PreviewRecoveryActionInput;
 
-export type InstallManifestStatus = "not_installed" | "installed" | "repair_required" | "unknown";
+export type InstallManifestStatus =
+  | "not_installed"
+  | "installed"
+  | "rollback_required"
+  | "repair_required"
+  | "unknown";
 
 export type InstallManifestStatusSummary = {
   profileId: string;
