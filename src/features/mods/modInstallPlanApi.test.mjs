@@ -51,12 +51,22 @@ test("install plan API invokes controlled uninstall task command without paths",
 
 test("install manifest status API invokes controlled summary command without paths", () => {
   const source = readSource("src/features/mods/modInstallPlanApi.ts");
+  const typesSource = readSource("src/features/mods/modInstallPlanTypes.ts");
 
-  assert.match(source, /invoke<InstallManifestStatusSummary\[\]>\("get_install_manifest_status"/);
-  assert.match(source, /get_install_manifest_status"[\s\S]*request:\s*\{/);
-  assert.match(source, /profileId:\s*input\.profileId/);
-  assert.match(source, /modIds:\s*input\.modIds/);
-  assert.doesNotMatch(source, /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot/i);
+  const manifestStatusCall = source.match(/export function getInstallManifestStatus[\s\S]*?\n}/);
+  assert.ok(manifestStatusCall, "expected a feature-local manifest status wrapper");
+  assert.match(manifestStatusCall[0], /invoke<InstallManifestStatusSummary\[\]>\("get_install_manifest_status"/);
+  assert.match(manifestStatusCall[0], /request:\s*\{/);
+  assert.match(manifestStatusCall[0], /gameId:\s*input\.gameId/);
+  assert.match(manifestStatusCall[0], /profileId:\s*input\.profileId/);
+  assert.match(manifestStatusCall[0], /modIds:\s*input\.modIds/);
+  const manifestStatusType = typesSource.match(/export type InstallManifestStatus[\s\S]*?;/);
+  assert.ok(manifestStatusType, "expected InstallManifestStatus union");
+  assert.match(manifestStatusType[0], /"rollback_required"/);
+  assert.doesNotMatch(
+    manifestStatusCall[0],
+    /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot/i,
+  );
 });
 
 test("install recovery scan API invokes controlled summary command without paths", () => {
@@ -208,6 +218,7 @@ test("mod library page refreshes install status from manifest summaries", () => 
   assert.match(source, /applyInstallManifestStatusSummaries/);
   assert.match(source, /applyInstallRecoverySummaries/);
   assert.match(source, /applyInstallRecoveryUnavailable/);
+  assert.match(source, /catch\(\(\)\s*=>\s*applyInstallRecoveryUnavailable\(items\)\)/);
   assert.match(source, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);

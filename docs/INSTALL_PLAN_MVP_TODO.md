@@ -43,12 +43,13 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
+- Manifest 状态摘要已接入恢复扫描事实：`get_install_manifest_status` 可选接收 `gameId`；传入 `gameId` 时复用只读 recovery scan 并把 `completed` 映射为 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为安装摘要状态返回；未传 `gameId` 时保留旧的 manifest-only fallback。
 - Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
 - 受控回滚任务前置安全加固：当安装替换已有托管目标并在写入窗口后失败且 rollback 失败时，`committing` / `rollback_required` recovery record 会使用本次提交前创建的 pending backup ref 作为恢复来源；manifest 保存成功后的 `completed` record 则重新同步为 manifest entry 的长期 backup 语义。
 - 后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件或从 backup 恢复覆盖文件，并把 durable recovery record 标记为 `rolled_back`。恢复中心已启用逐 Mod 写入型按钮，前端先预览、再确认、再按 `taskId` 跟踪任务。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
-- 前端 Mod 库恢复扫描入口：在 manifest 状态刷新后调用只读 `scan_install_recovery`，把 `completed` 映射为已安装，把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载入口。
+- 前端 Mod 库恢复扫描入口：`get_install_manifest_status` 传入 `gameId` 后可直接返回 `rollback_required` / `repair_required` / `unknown` 等不安全状态；随后仍调用只读 `scan_install_recovery` 获取 issue code、计数和恢复中心所需聚合详情，并阻断安装/卸载入口。
 - Dashboard 入口恢复健康摘要：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并在右侧状态栏展示只含聚合计数的健康摘要。
 - App Frame 全局恢复告警：游戏目录配置完成后复用空 `modIds` 全量 profile 扫描聚合，只在需要处理、状态未知或扫描不可用时显示轻量告警，并提供恢复中心导航。
 - 独立恢复中心入口：游戏目录配置完成后调用只读 `scan_install_recovery`，用空 `modIds` 扫描当前 profile 全部托管 Mod，并展示 profile 聚合摘要、rich repair summary、人工处理决策面板和每个托管 Mod 的安全状态摘要；对 `rollback_required` Mod 提供逐 Mod 受控回滚入口；恢复中心还提供用户主动触发的完整支持诊断包导出联动。
@@ -92,6 +93,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 只读恢复扫描消费 durable recovery record：`scan_install_recovery` 可由 `committing` / `rollback_required` record 返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装；不新增恢复执行、前端按钮、task phase 或 manifest 写入。
+- [x] Manifest 状态摘要消费只读恢复扫描事实：`get_install_manifest_status` 可选接收 `gameId`，传入后复用只读 recovery scan 并返回 `rollback_required` / `repair_required` / `unknown` 等不安全安装摘要；未传 `gameId` 时保留 manifest-only fallback。
 - [x] 只读恢复动作预览：`preview_recovery_action` 可预览 `rollback_install` 是否满足受控回滚前置条件，只返回 `available` / `blocked`、聚合计数和稳定阻断 reason code；不新增恢复执行、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源，`completed` record 才恢复为 manifest 长期 backup 语义；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 后端受控回滚任务：`start_recovery_action_task` 可执行 `rollback_install`，发送 `install.recovery.*` task phase，写入 `rollback_install` Audit Log，并将 durable recovery record 标记为 `rolled_back`；恢复中心已启用逐 Mod 受控回滚按钮。
@@ -156,7 +158,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍明确未完成：
 
 - 只读动作预览、受控回滚任务、恢复中心真正写入动作和 `rolled_back` rich 状态仍需后续切片。
-- `get_install_manifest_status` 尚未自动消费 recovery scan 结果。
+- 该切片结束时 `get_install_manifest_status` 尚未自动消费 recovery scan 结果；后续 manifest 状态消费切片已补齐该只读映射。
 - 没有新增恢复按钮、自动回滚、删除/恢复文件、task phase 或 manifest 写入。
 
 验证记录：
@@ -252,7 +254,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 已落地范围：
 
 - 后端新增 `InstallManifestQueryService`，通过受控 `InstallManifestRepository` 读取 profile manifest；缺失 manifest 时返回 `not_installed`，匹配 entry 时返回 `installed`、`managed_file_count` 和 `backup_count`。
-- Tauri 新增 `get_install_manifest_status` 窄 command；DTO 只接收 `profileId` 和 `modIds`，读取失败使用稳定错误码 `install_manifest_unavailable`。
+- Tauri 新增 `get_install_manifest_status` 窄 command；最初 DTO 只接收 `profileId` 和 `modIds`，读取失败使用稳定错误码 `install_manifest_unavailable`；后续已补充可选 `gameId`，用于在保持旧 manifest-only fallback 的同时消费只读 recovery scan 事实。
 - 前端新增 feature-local typed API；Mod 库加载成功和 `install.completed` 后刷新 manifest 摘要。
 - Mod 卡片展示 `not_installed`、`installed`、`repair_required`、`unknown` 等后端摘要状态；安装事实不再来自 mock 数据或页面内存任务状态。
 - CodeRabbit 评论修复：`applyInstallManifestStatusSummaries` 保留已有 `disabled` / `conflict` UI 状态，同时把 manifest 事实写入 `installSummary.status`；`repair_required` 仅在 `managedFileCount > 0` 时追加文件数，避免显示“需要修复 · 0 文件”。
@@ -322,7 +324,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 仍明确未完成：
 
 - rich repair summary、恢复扫描入口和批量/profile 卸载工作流。
-- `get_install_manifest_status` 尚未读取目标文件或 backup 做真实 `repair_required` 检测。
+- 该切片结束时 `get_install_manifest_status` 尚未读取目标文件或 backup 做真实 `repair_required` 检测；后续带 `gameId` 的状态摘要已通过只读 recovery scan 补齐该检测。
 - 卸载失败后的人工修复建议仍需要后续后端结构化摘要支撑。
 
 ### 2026-06-26 进度详情：只读恢复扫描摘要
@@ -342,7 +344,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 - 应用启动级自动调用恢复扫描；Mod 库加载成功后的只读扫描入口已在下一小节落地。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 独立恢复中心只读入口已在后续切片落地；自动处理动作和 rich repair summary 仍未完成。
-- `get_install_manifest_status` 尚未消费 recovery scan 结果来自动显示真实 `repair_required`。
+- 该切片结束时 `get_install_manifest_status` 尚未消费 recovery scan 结果来自动显示真实 `repair_required`；后续 manifest 状态消费切片已补齐。
 
 ### 2026-06-26 进度详情：前端恢复扫描入口
 
@@ -367,7 +369,7 @@ PR #87 已合并，完成了 P0 “Manifest 查询与安装状态摘要”切片
 - 应用启动级或独立恢复中心扫描入口。
 - 自动回滚、自动恢复执行和 `rollback_required` rich 状态机。
 - 后端 rich repair summary、人工修复决策流和批量/profile 工作流。
-- `get_install_manifest_status` 尚未在后端内部消费 recovery scan 结果；当前真实 `repair_required` 展示由 Mod 库额外调用 recovery scan 获得。
+- 该切片结束时 `get_install_manifest_status` 尚未在后端内部消费 recovery scan 结果；后续已补齐带 `gameId` 的后端映射，Mod 库仍额外调用 recovery scan 获取 issue code 和计数。
 
 ### 2026-06-26 进度详情：Recovery scan 全量 profile 扫描基础
 
@@ -678,7 +680,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P0：安装 UI 状态恢复与安装状态摘要
 
-状态：已落地 MVP。当前实现会在 Mod 库加载成功和安装任务完成后调用 `get_install_manifest_status`，并展示后端返回的摘要状态；后续 rich manifest / recovery 扫描会继续增强 `repair_required` 的真实检测。
+状态：已落地 MVP。当前实现会在 Mod 库加载成功和安装任务完成后调用带 `gameId` 的 `get_install_manifest_status`，并展示后端返回的摘要状态；该摘要已能消费只读 recovery scan 事实并返回 `rollback_required` / `repair_required` / `unknown` 等不安全状态。更完整的 rich manifest schema、迁移和 replacement binding snapshot 仍待后续切片。
 
 目标：让用户在 Mod 库重新进入、刷新或安装任务结束后，能看到来自后端 manifest 摘要的安装状态，而不是只依赖页面内存里的任务事件。
 
@@ -709,7 +711,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P0：Manifest 查询与安装状态摘要
 
-状态：已落地 MVP。当前 command 按 `profileId` + `modIds` 返回 `not_installed` / `installed` / `repair_required` / `unknown` 摘要；新 manifest entry 已记录 `installed_file` size/SHA-256，但该 command 暂只根据匹配 entry 派生 `installed`，不做目标文件 hash 校验、backup 完整性校验或卸载计划。
+状态：已落地 MVP。当前 command 按 `profileId` + `modIds` 返回安装摘要，并可选接收 `gameId`。传入 `gameId` 时复用只读 recovery scan，把 `completed` 映射为 `installed`，并返回 `rollback_required` / `repair_required` / `unknown` 等不安全状态；未传 `gameId` 时保留 manifest-only fallback，只根据匹配 entry 派生 `installed` / `not_installed`。新 manifest entry 已记录 `installed_file` size/SHA-256，但该 command 不返回目标 hash、backup ref 或卸载计划。
 
 目标：让前端能展示某个 profile / mod 的安装状态，但不暴露 manifest 文件路径或原始 manifest 正文。
 
