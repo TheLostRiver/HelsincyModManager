@@ -309,7 +309,7 @@ Profile DTO 形状：
 type ProfileDto = {
   id: string;
   name: string;
-  description?: string | null;
+  description: string | null;
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
