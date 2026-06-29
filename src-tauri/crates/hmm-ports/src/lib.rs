@@ -7,6 +7,7 @@ mod game_setup;
 mod install;
 mod mod_import;
 mod mod_metadata;
+mod profile;
 mod preview_image;
 mod text_log;
 
@@ -37,6 +38,7 @@ pub use mod_import::{
     StoredModImportAnalysis, StoredModPackageMetadata,
 };
 pub use mod_metadata::ModMetadataRepository;
+pub use profile::ProfileRepository;
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,

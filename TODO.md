@@ -215,12 +215,15 @@ JSON 做不好的需求:
 ### T6: Profile 基础管理
 
 **前置**: T2
+**状态**: 进行中（当前切片：后端 Profile 领域模型、SQLite 仓储、Tauri commands 与契约）
 **预估**: 中-大
 **独立文档**: 建议（语义较多）
 
 交付:
-- [ ] 领域模型：`Profile`（id, name, description, created_at, is_active）
-- [ ] 后端 CRUD + 切换活跃 profile
+- [x] 领域模型：`Profile`（id, name, description, created_at, updated_at, is_active）
+- [x] SQLite migration：`profiles` 表 + `default` active profile
+- [x] 后端 CRUD + 切换活跃 profile
+- [x] Tauri commands + `ProfileDto` 契约
 - [ ] 前端 Profile 列表、创建、切换、删除
 - [ ] App Shell 展示当前活跃 profile
 - [ ] 安装/卸载/恢复操作使用活跃 profile 而非硬编码 `"default"`
@@ -362,8 +365,7 @@ JSON 做不好的需求:
 
 第 4 轮: T5 Mod 信息编辑面板         ← 已完成，消费 T3 + T4
 
-第 5 轮: 分类链路补全               ← 当前切片：动态筛选 chips、卡片分类标签渲染
-         T6 Profile 管理
+第 5 轮: T6 Profile 管理            ← 当前切片：后端骨架
          T9 Rich Manifest
 
 第 6 轮: T10 依赖检查
@@ -387,7 +389,7 @@ JSON 做不好的需求:
 | T3 Mod 元数据后端 | P1 | 已完成 | `1e2c3b6` |
 | T4 分类标签 | P1 | 已完成 | #112 / #113 / #114 |
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
-| T6 Profile 管理 | P1 | 待开始 | |
+| T6 Profile 管理 | P1 | 进行中（后端骨架） | |
 | T7 一键启动 | P1 | 待开始 | |
 | T8 存档备份 | P2 | 待开始 | |
 | T9 Rich Manifest | P2 | 待开始 | |

@@ -52,6 +52,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 预览计划：`preview_install_plan`、`preview_retarget_plan`
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
+- Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
 - 查询安装恢复摘要：`scan_install_recovery`
 - 查询安装恢复动作预览：`preview_recovery_action`
 - 启动安装恢复动作任务：`start_recovery_action_task`
@@ -279,7 +280,43 @@ preview_retarget_plan({ gameId, packageId, binding })
 - MHW adapter 负责 slot 解析、catalog 归一化和路径级 plan。
 - 返回 preview 时可展示最终相对路径摘要，但前端不能自行生成路径。
 
-### 3. 安装计划预览
+### 3. Profile 管理
+
+首批 command：
+
+```text
+list_profiles()
+get_active_profile()
+create_profile({ name, description? })
+update_profile({ profileId, name?, description? })
+delete_profile(profileId)
+set_active_profile(profileId)
+```
+
+边界：
+
+- Profile 是 SQLite 中的用户可编辑关系数据；安装 manifest / recovery record 仍保留当前 JSON per profile 存储，不在本切片迁移。
+- 首次迁移会创建 `default` profile，并将其标记为 active，保证既有硬编码 `"default"` 流程有兼容承载点。
+- `create_profile` 只接收展示名和可选描述，不接收路径、game root、manifest root、backup root 或任意文件系统参数。
+- `update_profile` 只允许改展示名和描述；清空描述通过 `description: null` 表达，缺省表示不修改。
+- `delete_profile` 必须阻止删除 `default` profile 和当前 active profile，避免让现有安装/恢复链路失去安全默认 profile。
+- `set_active_profile` 只切换后端记录的 active profile，不自动改写现有安装 manifest，也不启动安装、卸载、恢复或批量切换任务。
+- 当前安装、卸载和恢复 command 仍显式接收 `profileId`；前端后续可以先读取 `get_active_profile`，再把 active id 传给这些既有 command。
+
+Profile DTO 形状：
+
+```ts
+type ProfileDto = {
+  id: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+```
+
+### 4. 安装计划预览
 
 首批 command：
 
@@ -489,7 +526,7 @@ type InstallPlanPreviewDto = {
 };
 ```
 
-### 4. Mod 预览图
+### 5. Mod 预览图
 
 Mod 预览图属于导入分析结果，不属于前端文件读取能力。具体安全策略见 [Mod 预览图安全处理设计](MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md)。
 

@@ -2,6 +2,7 @@ mod category;
 mod game;
 mod install;
 mod mod_metadata;
+mod profile;
 mod preview_image;
 
 pub use category::{Category, CategoryLabel};
@@ -17,6 +18,7 @@ pub use install::{
     ProfileId,
 };
 pub use mod_metadata::ModMetadataOverlay;
+pub use profile::{Profile, DEFAULT_PROFILE_ID};
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,
     PreviewImageRejectionReason, PreviewImageStatus,
