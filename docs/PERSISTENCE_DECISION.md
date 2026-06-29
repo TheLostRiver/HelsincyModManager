@@ -242,14 +242,21 @@ CREATE INDEX idx_mod_categories_category ON mod_categories(category_id);
 CREATE TABLE profiles (
     profile_id    TEXT    PRIMARY KEY NOT NULL,
     name          TEXT    NOT NULL,
-    description   TEXT    NOT NULL DEFAULT '',
+    description   TEXT,
     is_active     INTEGER NOT NULL DEFAULT 0,
-    created_at    INTEGER NOT NULL              -- unix millis
+    created_at    INTEGER NOT NULL,             -- unix millis
+    updated_at    INTEGER NOT NULL              -- unix millis
 );
 
+CREATE UNIQUE INDEX idx_profiles_single_active
+    ON profiles(is_active)
+    WHERE is_active = 1;
+
 -- Seed default profile for backward compatibility
-INSERT INTO profiles (profile_id, name, is_active, created_at)
-    VALUES ('default', 'Default', 1, 0);
+INSERT OR IGNORE INTO profiles
+    (profile_id, name, description, is_active, created_at, updated_at)
+VALUES
+    ('default', 'Default', NULL, 1, 0, 0);
 ```
 
 ### Migration 3：ReplacementBinding（T11）

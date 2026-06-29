@@ -604,6 +604,17 @@ pub struct CategoryWithCountDto {
     pub mod_count: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileDto {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_active: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
 impl From<hmm_core::Category> for CategoryDto {
     fn from(c: hmm_core::Category) -> Self {
         Self {
@@ -623,6 +634,19 @@ impl From<CategoryWithCount> for CategoryWithCountDto {
             color: c.category.color,
             sort_order: c.category.sort_order,
             mod_count: c.mod_count,
+        }
+    }
+}
+
+impl From<hmm_core::Profile> for ProfileDto {
+    fn from(profile: hmm_core::Profile) -> Self {
+        Self {
+            id: profile.id,
+            name: profile.name,
+            description: profile.description,
+            is_active: profile.is_active,
+            created_at: profile.created_at as u64,
+            updated_at: profile.updated_at as u64,
         }
     }
 }
@@ -1286,6 +1310,34 @@ mod app_settings_dto_tests {
         assert_eq!(error.code, "thumbnail_cache_max_age_days_invalid");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
+    }
+}
+
+#[cfg(test)]
+mod profile_dto_tests {
+    use super::*;
+
+    #[test]
+    fn serializes_profile_dto_with_camel_case_fields() {
+        let dto = ProfileDto {
+            id: "default".to_owned(),
+            name: "Default".to_owned(),
+            description: Some("Base profile".to_owned()),
+            is_active: true,
+            created_at: 1000,
+            updated_at: 2000,
+        };
+
+        let value = serde_json::to_value(dto).expect("serialize profile");
+
+        assert_eq!(value["id"], "default");
+        assert_eq!(value["name"], "Default");
+        assert_eq!(value["description"], "Base profile");
+        assert_eq!(value["isActive"], true);
+        assert_eq!(value["createdAt"], 1000);
+        assert_eq!(value["updatedAt"], 2000);
+        assert!(value.get("is_active").is_none());
+        assert!(value.get("created_at").is_none());
     }
 }
 
