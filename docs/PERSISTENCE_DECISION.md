@@ -255,8 +255,11 @@ CREATE UNIQUE INDEX idx_profiles_single_active
 -- Seed default profile for backward compatibility
 INSERT OR IGNORE INTO profiles
     (profile_id, name, description, is_active, created_at, updated_at)
-VALUES
-    ('default', 'Default', NULL, 1, 0, 0);
+SELECT
+    'default', 'Default', NULL, 1, now_ms, now_ms
+FROM (
+    SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 AS now_ms
+);
 ```
 
 ### Migration 3：ReplacementBinding（T11）
@@ -339,14 +342,19 @@ static MIGRATIONS: Migrations<'static> = Migrations::from_slice(&[
 - `hmm-app` + `hmm-tauri` CRUD commands
 - 前端 typed API + `get_mod_library` 返回真实分类
 
-### PR 4：Profile 管理（T6）
+### PR 4：Profile 后端基础（T6，已完成 #122）
 
 - `hmm-infra/src/sqlite/migrations.rs`：追加 Migration 2
 - `hmm-core`：`Profile` 领域模型
 - `hmm-ports`：`ProfileRepository` trait
 - `hmm-infra/src/sqlite/profile_repository.rs`：SQLite 实现
+- `hmm-app` + `hmm-tauri`：Profile CRUD / active profile commands
+
+### PR 4b：Profile 前端接入（T6，已完成）
+
 - 前端 Profile 列表/创建/切换/删除
-- 替换前端硬编码 `DEFAULT_INSTALL_PROFILE_ID = "default"`
+- App Shell 展示当前 active profile
+- 安装/卸载/恢复入口优先读取 active profile，替换前端硬编码 `DEFAULT_INSTALL_PROFILE_ID = "default"`
 
 ### PR 5：ReplacementBinding（T11）
 

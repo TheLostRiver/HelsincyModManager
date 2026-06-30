@@ -11,8 +11,8 @@ mod mod_import;
 mod mod_import_diagnostics;
 mod mod_import_task;
 mod mod_metadata;
-mod profile;
 mod preview_image;
+mod profile;
 mod support_diagnostics;
 mod task_manager;
 
@@ -71,11 +71,13 @@ pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,
 };
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
-pub use profile::{CreateProfileRequest, ProfileService, UpdateProfileRequest};
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageDetailService,
     PreviewImageService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+};
+pub use profile::{
+    CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
 };
 pub use support_diagnostics::{
     SupportDiagnosticsExport, SupportDiagnosticsExportService,

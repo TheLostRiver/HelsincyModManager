@@ -41,12 +41,16 @@ test("Recovery Center scans with short ids and delegates rollback to controlled 
   assert.match(page, /useRecoveryCenterScan/);
   assert.match(page, /useRecoveryRollback/);
   assert.match(hook, /scanInstallRecovery/);
+  assert.match(hook, /useActiveProfile/);
+  assert.match(hook, /activeProfile\.status\s*!==\s*"ready"/);
   assert.match(hook, /gameId:\s*input\.gameId/);
-  assert.match(hook, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
+  assert.match(hook, /profileId:\s*activeProfileId/);
   assert.match(hook, /modIds:\s*\[\]/);
   assert.match(rollbackHook, /previewRecoveryAction/);
   assert.match(rollbackHook, /startRecoveryActionTask/);
-  assert.match(rollbackHook, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
+  assert.match(rollbackHook, /useActiveProfile/);
+  assert.match(rollbackHook, /activeProfile\.status\s*!==\s*"ready"/);
+  assert.match(rollbackHook, /profileId:\s*activeProfileId/);
   assert.match(rollbackHook, /actionKind:\s*"rollback_install"/);
   assert.match(rollbackHook, /notifyInstallRecoveryRefresh/);
 
@@ -232,7 +236,7 @@ test("Recovery Center rollback hook tracks task progress by task id and refreshe
   assert.match(refresh, /window\.addEventListener/);
   assert.match(healthHook, /subscribeInstallRecoveryRefresh/);
   assert.match(healthHook, /setRefreshToken\(\(current\) => current \+ 1\)/);
-  assert.match(healthHook, /\[input\.enabled,\s*input\.gameId,\s*refreshToken\]/);
+  assert.match(healthHook, /\[activeProfile\.status,\s*activeProfileId,\s*input\.enabled,\s*input\.gameId,\s*refreshToken\]/);
 });
 
 test("Recovery Center exposes support diagnostics export without path or raw log fields", () => {

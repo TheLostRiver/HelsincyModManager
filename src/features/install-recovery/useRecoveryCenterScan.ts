@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { scanInstallRecovery } from "../mods/modInstallPlanApi";
+import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 import {
   deriveRecoveryCenterViewModel,
   type RecoveryCenterViewModel,
 } from "./recoveryCenterViewModel";
-
-const DEFAULT_INSTALL_PROFILE_ID = "default";
 
 export type RecoveryCenterScanState =
   | { status: "idle" }
@@ -20,6 +19,7 @@ type UseRecoveryCenterScanInput = {
 };
 
 export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
+  const { activeProfile, activeProfileId } = useActiveProfile();
   const [state, setState] = useState<RecoveryCenterScanState>({ status: "idle" });
   const [refreshToken, setRefreshToken] = useState(0);
 
@@ -28,7 +28,7 @@ export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
   }, []);
 
   useEffect(() => {
-    if (!input.enabled) {
+    if (!input.enabled || activeProfile.status !== "ready" || activeProfileId === null) {
       setState({ status: "idle" });
       return undefined;
     }
@@ -38,7 +38,7 @@ export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
 
     void scanInstallRecovery({
       gameId: input.gameId,
-      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      profileId: activeProfileId,
       modIds: [],
     })
       .then((summaries) => {
@@ -55,7 +55,7 @@ export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
     return () => {
       cancelled = true;
     };
-  }, [input.enabled, input.gameId, refreshToken]);
+  }, [activeProfile.status, activeProfileId, input.enabled, input.gameId, refreshToken]);
 
   return {
     state,

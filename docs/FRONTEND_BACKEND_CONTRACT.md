@@ -316,6 +316,64 @@ type ProfileDto = {
 };
 ```
 
+Profile save settings commands:
+
+```text
+get_profile_save_settings(profileId)
+validate_profile_save_directory({ gameId, profileId, directory })
+validate_profile_backup_directory({ gameId, profileId, directory })
+set_profile_save_settings(input)
+```
+
+Boundary:
+
+- These commands configure save backup settings for a profile; they do not execute backup, restore, retention cleanup, install, uninstall, manifest writes, or rollback.
+- The frontend may pass a directory selected through the system directory picker, but every command must validate it again.
+- Response DTOs expose `pathLabel`, status, schedule values, and stable validation codes. They do not expose `manifestPath`, `backupRoot`, `backupRef`, sandbox/cache paths, raw save contents, or third-party Mod content.
+- `validate_profile_save_directory` validates the source save directory using game/app rules and returns a display-safe label.
+- `validate_profile_backup_directory` validates the target backup directory and must reject locations inside the current game install directory when the backend can determine that relationship.
+- `set_profile_save_settings` stores configuration only after app-service validation and writes an Audit Log event for automatic backup setting changes once audit support is wired for this settings domain.
+
+DTO shape:
+
+```ts
+type BackupCadence = "manual" | "daily" | "weekly";
+
+type ProfileDirectoryStatusDto =
+  | "unset"
+  | "valid"
+  | "invalid"
+  | "defaulted";
+
+type ProfileDirectorySelectionDto = {
+  mode: "unset" | "custom" | "default";
+  status: ProfileDirectoryStatusDto;
+  pathLabel: string | null;
+  messages: string[];
+};
+
+type ProfileBackupScheduleDto = {
+  cadence: BackupCadence;
+  hour: number | null;
+  minute: number | null;
+  weekdays: number[];
+};
+
+type ProfileBackupRetentionDto = {
+  maxCount: number;
+  maxAgeDays: number | null;
+};
+
+type ProfileSaveSettingsDto = {
+  profileId: string;
+  saveDirectory: ProfileDirectorySelectionDto;
+  backupDirectory: ProfileDirectorySelectionDto;
+  schedule: ProfileBackupScheduleDto;
+  retention: ProfileBackupRetentionDto;
+  updatedAt: number;
+};
+```
+
 ### 4. 安装计划预览
 
 首批 command：
