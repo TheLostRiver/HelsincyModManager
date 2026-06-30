@@ -50,7 +50,8 @@ test("profile save settings API uses narrow settings commands", () => {
   const source = readSource("src/features/profiles/profileSaveSettingsApi.ts");
   const typesSource = readSource("src/features/profiles/profileSaveSettingsTypes.ts");
 
-  assert.match(source, /invoke<ProfileSaveSettingsDto>\("get_profile_save_settings"/);
+  assert.match(source, /getProfileSaveSettings\(input:\s*\{\s*gameId:\s*string;\s*profileId:\s*string;/);
+  assert.match(source, /invoke<ProfileSaveSettingsDto>\("get_profile_save_settings",\s*input\)/);
   assert.match(source, /invoke<ProfileDirectoryValidationDto>\("validate_profile_save_directory"/);
   assert.match(source, /invoke<ProfileDirectoryValidationDto>\("validate_profile_backup_directory"/);
   assert.match(source, /invoke<ProfileSaveSettingsDto>\("set_profile_save_settings"/);

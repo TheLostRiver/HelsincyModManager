@@ -316,25 +316,26 @@ type ProfileDto = {
 };
 ```
 
-Profile save settings commands:
+Profile 存档设置命令：
 
 ```text
-get_profile_save_settings(profileId)
+get_profile_save_settings({ gameId, profileId })
 validate_profile_save_directory({ gameId, profileId, directory })
 validate_profile_backup_directory({ gameId, profileId, directory })
 set_profile_save_settings(input)
 ```
 
-Boundary:
+边界：
 
-- These commands configure save backup settings for a profile; they do not execute backup, restore, retention cleanup, install, uninstall, manifest writes, or rollback.
-- The frontend may pass a directory selected through the system directory picker, but every command must validate it again.
-- Response DTOs expose `pathLabel`, status, schedule values, and stable validation codes. They do not expose `manifestPath`, `backupRoot`, `backupRef`, sandbox/cache paths, raw save contents, or third-party Mod content.
-- `validate_profile_save_directory` validates the source save directory using game/app rules and returns a display-safe label.
-- `validate_profile_backup_directory` validates the target backup directory and must reject locations inside the current game install directory when the backend can determine that relationship.
-- `set_profile_save_settings` stores configuration only after app-service validation and writes an Audit Log event for automatic backup setting changes once audit support is wired for this settings domain.
+- 这些命令用于配置指定 Profile 的存档备份设置；它们不执行备份、恢复、保留清理、安装、卸载、manifest 写入或回滚。
+- 前端可以传递用户通过系统目录选择器选中的目录，但每个命令都必须在后端重新验证。
+- `get_profile_save_settings` 使用 `gameId` 解析游戏相关默认值，并使用 `profileId` 读取对应 Profile 的配置。
+- 响应 DTO 只暴露 `pathLabel`、状态、计划值和稳定校验 code；不暴露 `manifestPath`、`backupRoot`、`backupRef`、sandbox/cache 路径、原始存档内容或第三方 Mod 内容。
+- `validate_profile_save_directory` 按游戏/应用规则校验存档源目录，并返回可安全展示的标签。
+- `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
+- `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
 
-DTO shape:
+DTO 形状：
 
 ```ts
 type BackupCadence = "manual" | "daily" | "weekly";

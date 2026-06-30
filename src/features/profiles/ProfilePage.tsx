@@ -91,6 +91,7 @@ export function ProfilePage() {
     createPreviewSaveSettings(),
   );
   const [refreshToken, setRefreshToken] = useState(0);
+  const [settingsRefreshToken, setSettingsRefreshToken] = useState(0);
   const [busyProfileId, setBusyProfileId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -153,7 +154,7 @@ export function ProfilePage() {
     setSaveError(null);
     setPendingDirectories({});
 
-    void getProfileSaveSettings(selectedProfileId)
+    void getProfileSaveSettings({ gameId: CURRENT_GAME_ID, profileId: selectedProfileId })
       .then((settings) => {
         if (!cancelled) {
           setSettingsState({ status: "ready", settings });
@@ -169,7 +170,7 @@ export function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedProfileId]);
+  }, [selectedProfileId, settingsRefreshToken]);
 
   const profiles = profileState.profiles;
   const metrics = useMemo(() => getProfileMetrics(profiles), [profiles]);
@@ -289,7 +290,7 @@ export function ProfilePage() {
               <button
                 type="button"
                 className="profile-action-button"
-                onClick={() => selectedProfileId && setSelectedProfileId(selectedProfileId)}
+                onClick={() => setSettingsRefreshToken((current) => current + 1)}
               >
                 重试
               </button>

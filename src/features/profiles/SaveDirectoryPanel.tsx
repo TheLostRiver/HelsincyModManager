@@ -34,12 +34,12 @@ export function SaveDirectoryPanel({
   const chooseDirectory = async (kind: "saveDirectory" | "backupDirectory") => {
     if (disabled) return;
     setError(null);
-    const selected = await open({ directory: true, multiple: false });
-    const directory = Array.isArray(selected) ? selected[0] : selected;
-    if (!directory) return;
-
     setBusyKind(kind);
     try {
+      const selected = await open({ directory: true, multiple: false });
+      const directory = Array.isArray(selected) ? selected[0] : selected;
+      if (!directory) return;
+
       const selection =
         kind === "saveDirectory"
           ? await validateProfileSaveDirectory({ gameId, profileId, directory })

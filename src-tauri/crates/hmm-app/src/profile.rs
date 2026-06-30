@@ -130,7 +130,11 @@ impl ProfileService {
         self.profile_repository.set_active(profile_id, now)
     }
 
-    pub fn get_profile_save_settings(&self, profile_id: &str) -> Result<ProfileSaveSettings> {
+    pub fn get_profile_save_settings(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+    ) -> Result<ProfileSaveSettings> {
         self.profile_repository
             .get(profile_id)?
             .ok_or_else(|| anyhow::anyhow!("profile not found: {profile_id}"))?;
@@ -144,7 +148,7 @@ impl ProfileService {
             save_directory: unset_save_directory(),
             backup_directory: self
                 .save_directory_validator
-                .default_backup_directory("mhw")?,
+                .default_backup_directory(game_id)?,
             schedule: ProfileBackupSchedule::manual(),
             retention: ProfileBackupRetention::default(),
             updated_at: 0,
@@ -247,13 +251,11 @@ fn validate_schedule(schedule: &ProfileBackupSchedule) -> Result<()> {
     match schedule.cadence {
         BackupCadence::Manual => Ok(()),
         BackupCadence::Daily => {
-            ensure!(schedule.hour.is_some(), "backup hour is required");
-            ensure!(schedule.minute.is_some(), "backup minute is required");
+            validate_schedule_time(schedule)?;
             Ok(())
         }
         BackupCadence::Weekly => {
-            ensure!(schedule.hour.is_some(), "backup hour is required");
-            ensure!(schedule.minute.is_some(), "backup minute is required");
+            validate_schedule_time(schedule)?;
             ensure!(
                 !schedule.weekdays.is_empty(),
                 "weekly backup days are required"
@@ -265,6 +267,18 @@ fn validate_schedule(schedule: &ProfileBackupSchedule) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn validate_schedule_time(schedule: &ProfileBackupSchedule) -> Result<()> {
+    let hour = schedule
+        .hour
+        .ok_or_else(|| anyhow::anyhow!("backup hour is required"))?;
+    let minute = schedule
+        .minute
+        .ok_or_else(|| anyhow::anyhow!("backup minute is required"))?;
+    ensure!(hour <= 23, "backup hour must be between 0 and 23");
+    ensure!(minute <= 59, "backup minute must be between 0 and 59");
+    Ok(())
 }
 
 fn validate_retention(retention: &ProfileBackupRetention) -> Result<()> {

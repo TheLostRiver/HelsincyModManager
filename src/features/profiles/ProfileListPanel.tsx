@@ -14,8 +14,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { createProfile, deleteProfile, updateProfile } from "./profileApi";
 import type { Profile } from "./profileTypes";
-
-const defaultProfileId = "default";
+import { isProfileDeletable } from "./profileViewModel";
 
 type ProfileListPanelProps = {
   profiles: Profile[];
@@ -260,7 +259,7 @@ function ProfileListItem({
   onCancelDelete: () => void;
   onDelete: () => void;
 }) {
-  const cannotDelete = profile.id === defaultProfileId || profile.isActive;
+  const cannotDelete = !isProfileDeletable(profile);
 
   return (
     <article className={`profile-list-item ${selected ? "is-selected" : ""}`} role="listitem">
@@ -295,7 +294,7 @@ function ProfileListItem({
           aria-label="删除配置档"
           onClick={onStartDelete}
           disabled={cannotDelete || busy}
-          title={profile.isActive ? "active profile cannot be deleted" : undefined}
+          title={profile.isActive ? "当前配置档不能删除" : undefined}
         >
           <Trash2 size={14} />
         </button>

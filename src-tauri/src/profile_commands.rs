@@ -84,12 +84,13 @@ pub fn set_active_profile(
 
 #[tauri::command]
 pub fn get_profile_save_settings(
+    game_id: String,
     profile_id: String,
     state: State<'_, AppState>,
 ) -> Result<ProfileSaveSettingsDto, CommandErrorDto> {
     state
         .profiles
-        .get_profile_save_settings(&profile_id)
+        .get_profile_save_settings(&game_id, &profile_id)
         .map(ProfileSaveSettingsDto::from)
         .map_err(profile_error)
 }
@@ -103,7 +104,7 @@ pub fn validate_profile_save_directory(
 ) -> Result<ProfileDirectorySelectionDto, CommandErrorDto> {
     state
         .profiles
-        .get_profile_save_settings(&profile_id)
+        .get_profile_save_settings(&game_id, &profile_id)
         .and_then(|_| {
             state
                 .profiles
@@ -122,7 +123,7 @@ pub fn validate_profile_backup_directory(
 ) -> Result<ProfileDirectorySelectionDto, CommandErrorDto> {
     state
         .profiles
-        .get_profile_save_settings(&profile_id)
+        .get_profile_save_settings(&game_id, &profile_id)
         .and_then(|_| {
             state
                 .profiles
