@@ -5,8 +5,11 @@ import type {
   SetProfileSaveSettingsInput,
 } from "./profileSaveSettingsTypes";
 
-export function getProfileSaveSettings(profileId: string): Promise<ProfileSaveSettingsDto> {
-  return invoke<ProfileSaveSettingsDto>("get_profile_save_settings", { profileId });
+export function getProfileSaveSettings(input: {
+  gameId: string;
+  profileId: string;
+}): Promise<ProfileSaveSettingsDto> {
+  return invoke<ProfileSaveSettingsDto>("get_profile_save_settings", input);
 }
 
 export function validateProfileSaveDirectory(input: {

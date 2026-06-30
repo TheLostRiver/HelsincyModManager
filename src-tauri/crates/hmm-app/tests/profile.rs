@@ -132,12 +132,12 @@ impl ProfileSaveDirectoryValidator for FakeProfileSaveDirectoryValidator {
         Ok(custom_directory_selection(directory))
     }
 
-    fn default_backup_directory(&self, _game_id: &str) -> Result<ProfileDirectorySelection> {
+    fn default_backup_directory(&self, game_id: &str) -> Result<ProfileDirectorySelection> {
         Ok(ProfileDirectorySelection {
             mode: ProfileDirectoryMode::Default,
             status: ProfileDirectoryStatus::Defaulted,
             directory: None,
-            path_label: Some("HelsincyModManager/Backups".to_owned()),
+            path_label: Some(format!("{game_id}/HelsincyModManager/Backups")),
             messages: vec!["使用默认备份目录".to_owned()],
         })
     }
@@ -290,6 +290,29 @@ fn profile_save_settings_rejects_unknown_profile() {
 }
 
 #[test]
+fn get_profile_save_settings_uses_requested_game_id_for_default_backup() {
+    let (service, repo) = make_service();
+    repo.save(&Profile {
+        id: "profile-game".to_owned(),
+        name: "Profile".to_owned(),
+        description: None,
+        is_active: false,
+        created_at: 1,
+        updated_at: 1,
+    })
+    .unwrap();
+
+    let settings = service
+        .get_profile_save_settings("mhw-test", "profile-game")
+        .expect("settings should be available");
+
+    assert_eq!(
+        settings.backup_directory.path_label.as_deref(),
+        Some("mhw-test/HelsincyModManager/Backups")
+    );
+}
+
+#[test]
 fn profile_save_settings_validates_selected_directories_before_persisting() {
     let (service, repo) = make_service();
     repo.save(&Profile {
@@ -328,4 +351,49 @@ fn profile_save_settings_validates_selected_directories_before_persisting() {
     );
     assert_eq!(settings.schedule.cadence, hmm_core::BackupCadence::Daily);
     assert_eq!(settings.retention.max_count, 20);
+}
+
+#[test]
+fn profile_save_settings_rejects_out_of_range_schedule_time() {
+    let (service, repo) = make_service();
+    repo.save(&Profile {
+        id: "profile-1".to_owned(),
+        name: "Profile".to_owned(),
+        description: None,
+        is_active: false,
+        created_at: 1,
+        updated_at: 1,
+    })
+    .unwrap();
+
+    let invalid_hour = service.set_profile_save_settings(hmm_app::SetProfileSaveSettingsRequest {
+        profile_id: "profile-1".to_owned(),
+        game_id: "mhw".to_owned(),
+        save_directory: None,
+        backup_directory: None,
+        schedule: hmm_core::ProfileBackupSchedule {
+            cadence: hmm_core::BackupCadence::Daily,
+            hour: Some(24),
+            minute: Some(0),
+            weekdays: Vec::new(),
+        },
+        retention: hmm_core::ProfileBackupRetention::default(),
+    });
+    assert!(invalid_hour.is_err());
+
+    let invalid_minute =
+        service.set_profile_save_settings(hmm_app::SetProfileSaveSettingsRequest {
+            profile_id: "profile-1".to_owned(),
+            game_id: "mhw".to_owned(),
+            save_directory: None,
+            backup_directory: None,
+            schedule: hmm_core::ProfileBackupSchedule {
+                cadence: hmm_core::BackupCadence::Weekly,
+                hour: Some(23),
+                minute: Some(60),
+                weekdays: vec![1],
+            },
+            retention: hmm_core::ProfileBackupRetention::default(),
+        });
+    assert!(invalid_minute.is_err());
 }
