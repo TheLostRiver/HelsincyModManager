@@ -24,7 +24,7 @@ export function AppHeader() {
       <div className="status-actions" aria-label="当前状态">
         <span className={`status-pill ${activeProfileTone}`}>
           <span>配置档</span>
-          <strong>{activeProfile.status === "ready" ? activeProfile.profile.name : activeProfileLabel}</strong>
+          <strong>{activeProfileLabel}</strong>
         </span>
         <span className="status-pill warning compact">
           <span className="dot warning-dot" aria-hidden="true" />

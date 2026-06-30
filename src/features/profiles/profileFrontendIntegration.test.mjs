@@ -45,6 +45,9 @@ test("profile page exposes save settings workspace panels without shell coupling
   assert.match(source, /BackupPolicyPanel/);
   assert.match(source, /listProfiles\(\)/);
   assert.match(source, /getProfileSaveSettings/);
+  assert.match(source, /settingsRefreshToken/);
+  assert.match(source, /setSettingsRefreshToken\(\(current\) => current \+ 1\)/);
+  assert.match(source, /getProfileSaveSettings\(\{\s*gameId:\s*CURRENT_GAME_ID,\s*profileId:\s*selectedProfileId\s*\}\)/);
   assert.match(source, /setProfileSaveSettings/);
   assert.match(source, /setActiveProfile/);
   assert.match(source, /refreshActiveProfile/);
@@ -74,6 +77,7 @@ test("profile create and edit forms use a floating dialog instead of inline list
   assert.match(listSource, /<textarea[\s\S]*?rows=\{4\}/);
   assert.match(listSource, /document\.addEventListener\("mousedown", handlePointerDown\)/);
   assert.match(listSource, /event\.key === "Escape"/);
+  assert.match(listSource, /当前配置档不能删除/);
   assert.doesNotMatch(listSource, /editingId === profile\.id\s*\?/);
   assert.doesNotMatch(listSource, /className="profile-list-item is-editing"/);
   assert.match(css, /\.profile-list-panel__floating-root\s*\{[\s\S]*?position:\s*relative/);
@@ -86,6 +90,16 @@ test("profile create and edit forms use a floating dialog instead of inline list
   assert.match(css, /\.profile-floating-backdrop\s*\{[\s\S]*?backdrop-filter:\s*blur\(5px\)/);
   assert.match(css, /\.profile-field textarea\s*\{[\s\S]*?min-height:\s*118px/);
   assert.match(css, /\.profile-floating-form \.profile-inline-form\s*\{[\s\S]*?background:\s*transparent/);
+});
+
+test("save directory picker catches dialog and validation failures consistently", () => {
+  const source = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
+  const chooseDirectoryBlock = source.match(/const chooseDirectory[\s\S]*?^ {2}};/m)?.[0] ?? "";
+
+  assert.match(chooseDirectoryBlock, /setBusyKind\(kind\);[\s\S]*?try\s*\{/);
+  assert.match(chooseDirectoryBlock, /const selected = await open\(\{ directory: true, multiple: false \}\);/);
+  assert.match(chooseDirectoryBlock, /catch \(err\) \{[\s\S]*setError\(getPanelErrorMessage\(err\)\)/);
+  assert.match(chooseDirectoryBlock, /finally \{[\s\S]*setBusyKind\(null\)/);
 });
 
 test("auto backup controls stay interactive when persistence is unavailable", () => {
@@ -109,7 +123,8 @@ test("auto backup controls stay interactive when persistence is unavailable", ()
   assert.match(pickerSource, /selectedIndex \+ offset/);
   assert.match(pickerSource, /getWheelItemStyle/);
   assert.match(pickerSource, /rotateX/);
-  assert.match(pickerSource, /onWheel=\{handleWheel\}/);
+  assert.match(pickerSource, /addEventListener\("wheel",\s*handleWheel,\s*\{\s*passive:\s*false\s*\}\)/);
+  assert.doesNotMatch(pickerSource, /onWheel=\{handleWheel\}/);
   assert.match(pickerSource, /onPointerMove=\{handlePointerMove\}/);
   assert.match(pickerSource, /weekdayOrder/);
   assert.match(viewModelSource, /weekdays:\s*\[1\]/);

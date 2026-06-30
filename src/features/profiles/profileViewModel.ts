@@ -5,19 +5,24 @@ import type {
 } from "./profileSaveSettingsTypes";
 import type { Profile } from "./profileTypes";
 
+const defaultProfileId = "default";
+
 export type ProfileMetrics = {
   totalCount: number;
   standbyCount: number;
   deletableCount: number;
 };
 
+export function isProfileDeletable(profile: Profile) {
+  return profile.id !== defaultProfileId && !profile.isActive;
+}
+
 export function getProfileMetrics(profiles: Profile[]): ProfileMetrics {
   return profiles.reduce<ProfileMetrics>(
     (metrics, profile) => ({
       totalCount: metrics.totalCount + 1,
       standbyCount: metrics.standbyCount + (profile.isActive ? 0 : 1),
-      deletableCount:
-        metrics.deletableCount + (profile.id !== "default" && !profile.isActive ? 1 : 0),
+      deletableCount: metrics.deletableCount + (isProfileDeletable(profile) ? 1 : 0),
     }),
     { totalCount: 0, standbyCount: 0, deletableCount: 0 },
   );

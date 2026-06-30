@@ -1,6 +1,6 @@
 import { CalendarDays, Check, Clock3 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ProfileBackupScheduleDto } from "./profileSaveSettingsTypes";
 import { defaultSchedule, formatBackupSchedule } from "./profileViewModel";
 
@@ -191,21 +191,32 @@ function ScrollPicker({
   );
   const dragStateRef = useRef<{ pointerId: number; startY: number; startIndex: number } | null>(null);
   const draggedRef = useRef(false);
+  const wheelRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
-  const updateByIndex = (index: number) => {
+  const updateByIndex = useCallback((index: number) => {
     const nextIndex = wrapIndex(index, values.length);
     const nextValue = values[nextIndex];
     if (nextValue !== undefined && nextValue !== value) {
       onChange(nextValue);
     }
-  };
+  }, [onChange, value, values]);
 
-  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((event: WheelEvent) => {
     if (disabled) return;
     event.preventDefault();
     updateByIndex(selectedIndex + (event.deltaY > 0 ? 1 : -1));
-  };
+  }, [disabled, selectedIndex, updateByIndex]);
+
+  useEffect(() => {
+    const node = wheelRef.current;
+    if (!node) return;
+
+    node.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      node.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || event.button !== 0) return;
@@ -242,6 +253,7 @@ function ScrollPicker({
 
   return (
     <div
+      ref={wheelRef}
       className={`scroll-picker-wrapper ${dragging ? "is-dragging" : ""}`}
       role="listbox"
       aria-label={suffix}
@@ -255,7 +267,6 @@ function ScrollPicker({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finishDrag}
-      onWheel={handleWheel}
     >
       <div className="scroll-picker-list">
         {visibleItems.map(({ index, item, offset }) => (
