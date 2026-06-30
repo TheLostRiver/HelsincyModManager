@@ -1,25 +1,23 @@
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
-    CommitInstallPlanRequest,
-    GameProfileWriteLockRegistry, GameSetupService, ImportedModInstallCommitRequest,
-    InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
-    InstallManifestQueryService, InstallPlanCommitter, InstallPlanningService,
-    InstallRecoveryActionError, InstallRecoveryActionExecutor, InstallRecoveryActionPreview,
-    InstallRecoveryActionPreviewError, InstallRecoveryActionPreviewRequest,
-    InstallRecoveryActionPreviewService, InstallRecoveryActionRequest, InstallRecoveryActionResult,
-    InstallRecoveryActionService, InstallRecoveryScanError, InstallRecoveryScanRequest,
-    InstallRecoveryScanService, InstallRecoverySummary, InstallTaskRunner, InstallTaskService,
-    LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
-    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryService,
-    ModMetadataService, ModUninstaller, PreviewImageCandidateListService,
-    PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService, ProfileService,
-    RecoveryActionTaskRunner,
-    RecoveryActionTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    CommitInstallPlanRequest, GameProfileWriteLockRegistry, GameSetupService,
+    ImportedModInstallCommitRequest, InstallCommitError, InstallCommitPhase, InstallCommitResult,
+    InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
+    InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
+    InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
+    InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
+    InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
+    ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
+    ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
+    ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    ProfileService, RecoveryActionTaskRunner, RecoveryActionTaskService,
+    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
+    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::MonsterHunterWorldAdapter;
@@ -31,14 +29,15 @@ use hmm_infra::{
     JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
     SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
-    SqliteProfileRepository, SteamGameDiscoveryService,
-    SystemClock, SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
+    SqliteProfileRepository, SteamGameDiscoveryService, SystemClock,
+    SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, ModImportResultRepository,
-    ModImportSandboxLocator, TextLogReader, ThumbnailCacheMaintenance,
+    ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
+    ProfileSaveSettingsRepository, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -72,7 +71,10 @@ pub struct AppState {
     pub categories: Arc<CategoryService>,
     pub profiles: Arc<ProfileService>,
     pub task_manager: Arc<TaskManager>,
-    #[expect(dead_code, reason = "keeps the shared SQLite connection alive for repositories")]
+    #[expect(
+        dead_code,
+        reason = "keeps the shared SQLite connection alive for repositories"
+    )]
     pub(crate) db: Arc<Mutex<rusqlite::Connection>>,
 }
 
@@ -91,11 +93,15 @@ impl AppState {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
-        let mod_metadata_repository =
-            Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
-        let category_repository =
-            Arc::new(SqliteCategoryRepository::new(Arc::clone(&db)));
+        let mod_metadata_repository = Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
+        let category_repository = Arc::new(SqliteCategoryRepository::new(Arc::clone(&db)));
         let profile_repository = Arc::new(SqliteProfileRepository::new(Arc::clone(&db)));
+        let profile_repository_for_profiles: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
+        let profile_save_settings_repository: Arc<dyn ProfileSaveSettingsRepository> =
+            profile_repository.clone();
+        let profile_save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator> =
+            profile_repository.clone();
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
@@ -331,7 +337,9 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             profiles: Arc::new(ProfileService::new(
-                profile_repository,
+                profile_repository_for_profiles,
+                profile_save_settings_repository,
+                profile_save_directory_validator,
                 Arc::new(SystemClock),
             )),
             task_manager,

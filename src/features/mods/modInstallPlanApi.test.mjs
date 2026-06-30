@@ -219,11 +219,13 @@ test("mod library page refreshes install status from manifest summaries", () => 
   assert.match(source, /applyInstallManifestStatusSummaries/);
   assert.match(source, /applyInstallRecoverySummaries/);
   assert.match(source, /applyInstallRecoveryUnavailable/);
+  assert.match(source, /useActiveProfile/);
+  assert.match(source, /activeProfile\.status\s*!==\s*"ready"/);
   assert.match(
     source,
     /scanInstallRecovery\([\s\S]*?\.catch\(\(\)\s*=>\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\)\)/,
   );
-  assert.match(source, /profileId:\s*DEFAULT_INSTALL_PROFILE_ID/);
+  assert.match(source, /profileId:\s*activeProfileId/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
   assert.match(source, /installTaskState\.status\s*!==\s*"completed"/);

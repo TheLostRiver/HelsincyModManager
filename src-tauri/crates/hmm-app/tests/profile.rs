@@ -1,7 +1,12 @@
 use anyhow::Result;
 use hmm_app::{CreateProfileRequest, ProfileService, UpdateProfileRequest};
-use hmm_core::Profile;
-use hmm_ports::{AppClock, ProfileRepository};
+use hmm_core::{
+    Profile, ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus,
+    ProfileSaveSettings,
+};
+use hmm_ports::{
+    AppClock, ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -73,8 +78,87 @@ impl AppClock for FixedClock {
 
 fn make_service() -> (ProfileService, Arc<FakeProfileRepository>) {
     let repo = Arc::new(FakeProfileRepository::default());
-    let service = ProfileService::new(Arc::clone(&repo) as _, Arc::new(FixedClock(7000)));
+    let settings_repo = Arc::new(FakeProfileSaveSettingsRepository::default());
+    let validator = Arc::new(FakeProfileSaveDirectoryValidator);
+    let service = ProfileService::new(
+        Arc::clone(&repo) as _,
+        settings_repo,
+        validator,
+        Arc::new(FixedClock(7000)),
+    );
     (service, repo)
+}
+
+#[derive(Default)]
+struct FakeProfileSaveSettingsRepository {
+    settings: Mutex<Vec<ProfileSaveSettings>>,
+}
+
+impl ProfileSaveSettingsRepository for FakeProfileSaveSettingsRepository {
+    fn get_settings(&self, profile_id: &str) -> Result<Option<ProfileSaveSettings>> {
+        Ok(self
+            .settings
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|settings| settings.profile_id == profile_id)
+            .cloned())
+    }
+
+    fn save_settings(&self, settings: &ProfileSaveSettings) -> Result<()> {
+        let mut all_settings = self.settings.lock().unwrap();
+        all_settings.retain(|existing| existing.profile_id != settings.profile_id);
+        all_settings.push(settings.clone());
+        Ok(())
+    }
+}
+
+struct FakeProfileSaveDirectoryValidator;
+
+impl ProfileSaveDirectoryValidator for FakeProfileSaveDirectoryValidator {
+    fn validate_save_directory(
+        &self,
+        _game_id: &str,
+        directory: &str,
+    ) -> Result<ProfileDirectorySelection> {
+        Ok(custom_directory_selection(directory))
+    }
+
+    fn validate_backup_directory(
+        &self,
+        _game_id: &str,
+        directory: &str,
+    ) -> Result<ProfileDirectorySelection> {
+        Ok(custom_directory_selection(directory))
+    }
+
+    fn default_backup_directory(&self, _game_id: &str) -> Result<ProfileDirectorySelection> {
+        Ok(ProfileDirectorySelection {
+            mode: ProfileDirectoryMode::Default,
+            status: ProfileDirectoryStatus::Defaulted,
+            directory: None,
+            path_label: Some("HelsincyModManager/Backups".to_owned()),
+            messages: vec!["使用默认备份目录".to_owned()],
+        })
+    }
+}
+
+fn custom_directory_selection(directory: &str) -> ProfileDirectorySelection {
+    ProfileDirectorySelection {
+        mode: ProfileDirectoryMode::Custom,
+        status: ProfileDirectoryStatus::Valid,
+        directory: Some(directory.to_owned()),
+        path_label: Some(path_label(directory)),
+        messages: Vec::new(),
+    }
+}
+
+fn path_label(path: &str) -> String {
+    path.replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_owned()
 }
 
 #[test]
@@ -187,4 +271,61 @@ fn delete_rejects_default_and_active_profiles() {
 
     assert!(service.delete_profile("default").is_err());
     assert!(service.delete_profile("active").is_err());
+}
+
+#[test]
+fn profile_save_settings_rejects_unknown_profile() {
+    let (service, _repo) = make_service();
+
+    let result = service.set_profile_save_settings(hmm_app::SetProfileSaveSettingsRequest {
+        profile_id: "missing".to_owned(),
+        game_id: "mhw".to_owned(),
+        save_directory: Some("C:/Users/Test/Saves".to_owned()),
+        backup_directory: None,
+        schedule: hmm_core::ProfileBackupSchedule::manual(),
+        retention: hmm_core::ProfileBackupRetention::default(),
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn profile_save_settings_validates_selected_directories_before_persisting() {
+    let (service, repo) = make_service();
+    repo.save(&Profile {
+        id: "profile-1".to_owned(),
+        name: "Profile".to_owned(),
+        description: None,
+        is_active: false,
+        created_at: 1,
+        updated_at: 1,
+    })
+    .unwrap();
+
+    let result = service.set_profile_save_settings(hmm_app::SetProfileSaveSettingsRequest {
+        profile_id: "profile-1".to_owned(),
+        game_id: "mhw".to_owned(),
+        save_directory: Some("C:/Users/Test/Saves".to_owned()),
+        backup_directory: Some("D:/HMM/Backups".to_owned()),
+        schedule: hmm_core::ProfileBackupSchedule {
+            cadence: hmm_core::BackupCadence::Daily,
+            hour: Some(3),
+            minute: Some(0),
+            weekdays: Vec::new(),
+        },
+        retention: hmm_core::ProfileBackupRetention {
+            max_count: 20,
+            max_age_days: Some(30),
+        },
+    });
+
+    let settings = result.expect("settings saved");
+    assert_eq!(settings.profile_id, "profile-1");
+    assert_eq!(settings.save_directory.path_label.as_deref(), Some("Saves"));
+    assert_eq!(
+        settings.backup_directory.path_label.as_deref(),
+        Some("Backups")
+    );
+    assert_eq!(settings.schedule.cadence, hmm_core::BackupCadence::Daily);
+    assert_eq!(settings.retention.max_count, 20);
 }

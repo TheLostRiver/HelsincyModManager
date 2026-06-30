@@ -3,6 +3,7 @@ import { RecoveryCenterPage } from "../../features/install-recovery/RecoveryCent
 import { ModLibraryPage } from "../../features/mods/ModLibraryPage";
 import { SettingsPage } from "../../features/settings/SettingsPage";
 import { CategoryPage } from "../../features/categories/CategoryPage";
+import { ProfilePage } from "../../features/profiles/ProfilePage";
 import type { AppRoute } from "./routeTypes";
 
 export const appRoutes = [
@@ -25,6 +26,11 @@ export const appRoutes = [
     id: "categories",
     path: "/categories",
     element: CategoryPage,
+  },
+  {
+    id: "profiles",
+    path: "/profiles",
+    element: ProfilePage,
   },
   {
     id: "settings",

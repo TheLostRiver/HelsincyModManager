@@ -1,6 +1,9 @@
-use crate::dto::{CommandErrorDto, ProfileDto};
+use crate::dto::{
+    CommandErrorDto, ProfileDirectorySelectionDto, ProfileDto, ProfileSaveSettingsDto,
+    SetProfileSaveSettingsRequestDto,
+};
 use crate::state::AppState;
-use hmm_app::{CreateProfileRequest, UpdateProfileRequest};
+use hmm_app::{CreateProfileRequest, SetProfileSaveSettingsRequest, UpdateProfileRequest};
 use tauri::State;
 
 fn profile_error(error: impl std::fmt::Display) -> CommandErrorDto {
@@ -76,5 +79,74 @@ pub fn set_active_profile(
     state
         .profiles
         .set_active_profile(&profile_id)
+        .map_err(profile_error)
+}
+
+#[tauri::command]
+pub fn get_profile_save_settings(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> Result<ProfileSaveSettingsDto, CommandErrorDto> {
+    state
+        .profiles
+        .get_profile_save_settings(&profile_id)
+        .map(ProfileSaveSettingsDto::from)
+        .map_err(profile_error)
+}
+
+#[tauri::command]
+pub fn validate_profile_save_directory(
+    game_id: String,
+    profile_id: String,
+    directory: String,
+    state: State<'_, AppState>,
+) -> Result<ProfileDirectorySelectionDto, CommandErrorDto> {
+    state
+        .profiles
+        .get_profile_save_settings(&profile_id)
+        .and_then(|_| {
+            state
+                .profiles
+                .validate_profile_save_directory(&game_id, &directory)
+        })
+        .map(ProfileDirectorySelectionDto::from)
+        .map_err(profile_error)
+}
+
+#[tauri::command]
+pub fn validate_profile_backup_directory(
+    game_id: String,
+    profile_id: String,
+    directory: String,
+    state: State<'_, AppState>,
+) -> Result<ProfileDirectorySelectionDto, CommandErrorDto> {
+    state
+        .profiles
+        .get_profile_save_settings(&profile_id)
+        .and_then(|_| {
+            state
+                .profiles
+                .validate_profile_backup_directory(&game_id, &directory)
+        })
+        .map(ProfileDirectorySelectionDto::from)
+        .map_err(profile_error)
+}
+
+#[tauri::command]
+pub fn set_profile_save_settings(
+    input: SetProfileSaveSettingsRequestDto,
+    state: State<'_, AppState>,
+) -> Result<ProfileSaveSettingsDto, CommandErrorDto> {
+    state
+        .profiles
+        .set_profile_save_settings(SetProfileSaveSettingsRequest {
+            profile_id: input.profile_id,
+            game_id: input.game_id,
+            save_directory: input.save_directory,
+            backup_directory: input.backup_directory,
+            schedule: input.schedule.into(),
+            retention: input.retention.into(),
+        })
+        .map(ProfileSaveSettingsDto::from)
         .map_err(profile_error)
 }
