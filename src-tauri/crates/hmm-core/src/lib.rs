@@ -2,8 +2,8 @@ mod category;
 mod game;
 mod install;
 mod mod_metadata;
-mod profile;
 mod preview_image;
+mod profile;
 
 pub use category::{Category, CategoryLabel};
 pub use game::{
@@ -18,8 +18,11 @@ pub use install::{
     ProfileId,
 };
 pub use mod_metadata::ModMetadataOverlay;
-pub use profile::{Profile, DEFAULT_PROFILE_ID};
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,
     PreviewImageRejectionReason, PreviewImageStatus,
+};
+pub use profile::{
+    BackupCadence, Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
+    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
 };

@@ -31,8 +31,9 @@ use mod_import_commands::{
 };
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use profile_commands::{
-    create_profile, delete_profile, get_active_profile, list_profiles, set_active_profile,
-    update_profile,
+    create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
+    set_active_profile, set_profile_save_settings, update_profile,
+    validate_profile_backup_directory, validate_profile_save_directory,
 };
 use state::AppState;
 use task_commands::cancel_task;
@@ -94,7 +95,11 @@ pub fn run() {
             create_profile,
             update_profile,
             delete_profile,
-            set_active_profile
+            set_active_profile,
+            get_profile_save_settings,
+            validate_profile_save_directory,
+            validate_profile_backup_directory,
+            set_profile_save_settings
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");

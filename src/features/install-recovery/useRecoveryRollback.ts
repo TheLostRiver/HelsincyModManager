@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { GameId } from "../game-setup/gameSetupTypes";
+import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 import {
   previewRecoveryAction,
   startRecoveryActionTask,
@@ -13,8 +14,6 @@ import {
   type TaskProgressEventDto,
 } from "../mods/modImportTypes";
 import { notifyInstallRecoveryRefresh } from "./installRecoveryRefresh";
-
-const DEFAULT_INSTALL_PROFILE_ID = "default";
 
 export type RecoveryRollbackPhase =
   | "install.recovery.queued"
@@ -56,6 +55,7 @@ type UseRecoveryRollbackInput = {
 
 export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
   const { gameId, onCompleted } = input;
+  const { activeProfile, activeProfileId } = useActiveProfile();
   const [state, setState] = useState<RecoveryRollbackState>({ status: "idle" });
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -77,11 +77,16 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
         return;
       }
 
+      if (activeProfile.status !== "ready" || activeProfileId === null) {
+        setState({ status: "failed", modId, message: "配置档尚未就绪" });
+        return;
+      }
+
       setState({ status: "previewing", modId });
 
       void previewRecoveryAction({
         gameId,
-        profileId: DEFAULT_INSTALL_PROFILE_ID,
+        profileId: activeProfileId,
         modId,
         actionKind: "rollback_install",
       })
@@ -102,7 +107,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           }
         });
     },
-    [gameId],
+    [activeProfile.status, activeProfileId, gameId],
   );
 
   const confirmRollback = useCallback(() => {
@@ -112,11 +117,16 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
     }
 
     const { modId } = current;
+    if (activeProfile.status !== "ready" || activeProfileId === null) {
+      setState({ status: "failed", modId, message: "配置档尚未就绪" });
+      return;
+    }
+
     setState({ status: "starting", modId });
 
     void startRecoveryActionTask({
       gameId,
-      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      profileId: activeProfileId,
       modId,
       actionKind: "rollback_install",
     })
@@ -159,7 +169,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           setState({ status: "failed", modId, message: "启动回滚任务时出错" });
         }
       });
-  }, [gameId, markCompleted]);
+  }, [activeProfile.status, activeProfileId, gameId, markCompleted]);
 
   const dismiss = useCallback(() => {
     setState({ status: "idle" });

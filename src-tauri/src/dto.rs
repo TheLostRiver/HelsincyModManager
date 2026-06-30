@@ -1,7 +1,6 @@
 use hmm_app::{
     AppSettingsServiceError, CategoryWithCount, GameCandidateScan, GameSetupCandidate,
-    GameSetupServiceError,
-    ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary,
+    GameSetupServiceError, ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary,
     InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
     InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
     InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
@@ -9,9 +8,11 @@ use hmm_app::{
     ModLibraryStatus, TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
-    GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
-    GameInstance, GameSetupErrorCode, GameSetupStatus, InstallAction, InstallConflict,
-    InstallFileProvider, InstallPlan, PreviewImageRejectionReason,
+    BackupCadence, GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
+    GameDirectoryValidation, GameInstance, GameSetupErrorCode, GameSetupStatus, InstallAction,
+    InstallConflict, InstallFileProvider, InstallPlan, PreviewImageRejectionReason,
+    ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode, ProfileDirectorySelection,
+    ProfileDirectoryStatus, ProfileSaveSettings,
 };
 use hmm_ports::{AppSettings, GameCandidateSource};
 use serde::{Deserialize, Serialize};
@@ -615,6 +616,80 @@ pub struct ProfileDto {
     pub updated_at: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackupCadenceDto {
+    Manual,
+    Daily,
+    Weekly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileDirectoryModeDto {
+    Unset,
+    Custom,
+    Default,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileDirectoryStatusDto {
+    Unset,
+    Valid,
+    Invalid,
+    Defaulted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileDirectorySelectionDto {
+    pub mode: ProfileDirectoryModeDto,
+    pub status: ProfileDirectoryStatusDto,
+    pub path_label: Option<String>,
+    pub messages: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileBackupScheduleDto {
+    pub cadence: BackupCadenceDto,
+    pub hour: Option<u8>,
+    pub minute: Option<u8>,
+    pub weekdays: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileBackupRetentionDto {
+    pub max_count: u32,
+    pub max_age_days: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSaveSettingsDto {
+    pub profile_id: String,
+    pub save_directory: ProfileDirectorySelectionDto,
+    pub backup_directory: ProfileDirectorySelectionDto,
+    pub schedule: ProfileBackupScheduleDto,
+    pub retention: ProfileBackupRetentionDto,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetProfileSaveSettingsRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    #[serde(default)]
+    pub save_directory: Option<String>,
+    #[serde(default)]
+    pub backup_directory: Option<String>,
+    pub schedule: ProfileBackupScheduleDto,
+    pub retention: ProfileBackupRetentionDto,
+}
+
 impl From<hmm_core::Category> for CategoryDto {
     fn from(c: hmm_core::Category) -> Self {
         Self {
@@ -647,6 +722,111 @@ impl From<hmm_core::Profile> for ProfileDto {
             is_active: profile.is_active,
             created_at: profile.created_at as u64,
             updated_at: profile.updated_at as u64,
+        }
+    }
+}
+
+impl From<BackupCadence> for BackupCadenceDto {
+    fn from(cadence: BackupCadence) -> Self {
+        match cadence {
+            BackupCadence::Manual => Self::Manual,
+            BackupCadence::Daily => Self::Daily,
+            BackupCadence::Weekly => Self::Weekly,
+        }
+    }
+}
+
+impl From<BackupCadenceDto> for BackupCadence {
+    fn from(cadence: BackupCadenceDto) -> Self {
+        match cadence {
+            BackupCadenceDto::Manual => Self::Manual,
+            BackupCadenceDto::Daily => Self::Daily,
+            BackupCadenceDto::Weekly => Self::Weekly,
+        }
+    }
+}
+
+impl From<ProfileDirectoryMode> for ProfileDirectoryModeDto {
+    fn from(mode: ProfileDirectoryMode) -> Self {
+        match mode {
+            ProfileDirectoryMode::Unset => Self::Unset,
+            ProfileDirectoryMode::Custom => Self::Custom,
+            ProfileDirectoryMode::Default => Self::Default,
+        }
+    }
+}
+
+impl From<ProfileDirectoryStatus> for ProfileDirectoryStatusDto {
+    fn from(status: ProfileDirectoryStatus) -> Self {
+        match status {
+            ProfileDirectoryStatus::Unset => Self::Unset,
+            ProfileDirectoryStatus::Valid => Self::Valid,
+            ProfileDirectoryStatus::Invalid => Self::Invalid,
+            ProfileDirectoryStatus::Defaulted => Self::Defaulted,
+        }
+    }
+}
+
+impl From<ProfileDirectorySelection> for ProfileDirectorySelectionDto {
+    fn from(selection: ProfileDirectorySelection) -> Self {
+        Self {
+            mode: selection.mode.into(),
+            status: selection.status.into(),
+            path_label: selection.path_label,
+            messages: selection.messages,
+        }
+    }
+}
+
+impl From<ProfileBackupSchedule> for ProfileBackupScheduleDto {
+    fn from(schedule: ProfileBackupSchedule) -> Self {
+        Self {
+            cadence: schedule.cadence.into(),
+            hour: schedule.hour,
+            minute: schedule.minute,
+            weekdays: schedule.weekdays,
+        }
+    }
+}
+
+impl From<ProfileBackupScheduleDto> for ProfileBackupSchedule {
+    fn from(schedule: ProfileBackupScheduleDto) -> Self {
+        Self {
+            cadence: schedule.cadence.into(),
+            hour: schedule.hour,
+            minute: schedule.minute,
+            weekdays: schedule.weekdays,
+        }
+    }
+}
+
+impl From<ProfileBackupRetention> for ProfileBackupRetentionDto {
+    fn from(retention: ProfileBackupRetention) -> Self {
+        Self {
+            max_count: retention.max_count,
+            max_age_days: retention.max_age_days,
+        }
+    }
+}
+
+impl From<ProfileBackupRetentionDto> for ProfileBackupRetention {
+    fn from(retention: ProfileBackupRetentionDto) -> Self {
+        Self {
+            max_count: retention.max_count,
+            max_age_days: retention.max_age_days,
+        }
+    }
+}
+
+impl From<ProfileSaveSettings> for ProfileSaveSettingsDto {
+    fn from(settings: ProfileSaveSettings) -> Self {
+        Self {
+            profile_id: settings.profile_id,
+            save_directory: settings.save_directory.into(),
+            backup_directory: settings.backup_directory.into(),
+            schedule: settings.schedule.into(),
+            retention: settings.retention.into(),
+            updated_at: settings.updated_at as u64,
         }
     }
 }
@@ -885,10 +1065,14 @@ impl From<ModLibraryItem> for ModLibraryItemDto {
             version_label: item.version_label,
             size_label: item.size_label,
             status: item.status.into(),
-            category_labels: item.category_labels.into_iter().map(|l| CategoryLabelDto {
-                name: l.name,
-                color: l.color,
-            }).collect(),
+            category_labels: item
+                .category_labels
+                .into_iter()
+                .map(|l| CategoryLabelDto {
+                    name: l.name,
+                    color: l.color,
+                })
+                .collect(),
             preview_image: item.preview_image.into(),
         }
     }
@@ -1338,6 +1522,51 @@ mod profile_dto_tests {
         assert_eq!(value["updatedAt"], 2000);
         assert!(value.get("is_active").is_none());
         assert!(value.get("created_at").is_none());
+    }
+
+    #[test]
+    fn serializes_profile_save_settings_without_raw_storage_paths() {
+        let dto: ProfileSaveSettingsDto = hmm_core::ProfileSaveSettings {
+            profile_id: "default".to_owned(),
+            save_directory: hmm_core::ProfileDirectorySelection {
+                mode: hmm_core::ProfileDirectoryMode::Custom,
+                status: hmm_core::ProfileDirectoryStatus::Valid,
+                directory: Some("C:/Users/Test/Saves".to_owned()),
+                path_label: Some("Saves".to_owned()),
+                messages: Vec::new(),
+            },
+            backup_directory: hmm_core::ProfileDirectorySelection {
+                mode: hmm_core::ProfileDirectoryMode::Default,
+                status: hmm_core::ProfileDirectoryStatus::Defaulted,
+                directory: None,
+                path_label: Some("HelsincyModManager/Backups".to_owned()),
+                messages: vec!["使用默认备份目录".to_owned()],
+            },
+            schedule: hmm_core::ProfileBackupSchedule {
+                cadence: hmm_core::BackupCadence::Weekly,
+                hour: Some(3),
+                minute: Some(0),
+                weekdays: vec![0],
+            },
+            retention: hmm_core::ProfileBackupRetention {
+                max_count: 20,
+                max_age_days: Some(30),
+            },
+            updated_at: 42,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize profile save settings");
+
+        assert_eq!(value["profileId"], "default");
+        assert_eq!(value["saveDirectory"]["pathLabel"], "Saves");
+        assert_eq!(value["backupDirectory"]["mode"], "default");
+        assert_eq!(value["schedule"]["cadence"], "weekly");
+        assert_eq!(value["schedule"]["weekdays"][0], 0);
+        assert_eq!(value["retention"]["maxCount"], 20);
+        assert!(value.get("manifestPath").is_none());
+        assert!(value.get("backupRoot").is_none());
+        assert!(!value.to_string().contains("C:/Users/"));
     }
 }
 

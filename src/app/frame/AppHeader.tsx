@@ -1,9 +1,18 @@
 import { Settings } from "lucide-react";
+import { useActiveProfile } from "../../features/profiles/ActiveProfileProvider";
 import { useAppRoute } from "../routing/useAppRoute";
 import { ThemeMenu } from "./ThemeMenu";
 
 export function AppHeader() {
   const { navigate } = useAppRoute();
+  const { activeProfile } = useActiveProfile();
+  const activeProfileLabel =
+    activeProfile.status === "ready"
+      ? activeProfile.profile.name
+      : activeProfile.status === "loading"
+        ? "读取中"
+        : "不可用";
+  const activeProfileTone = activeProfile.status === "ready" ? "neutral" : "warning";
 
   return (
     <header className="top-status-bar">
@@ -13,9 +22,9 @@ export function AppHeader() {
       </div>
 
       <div className="status-actions" aria-label="当前状态">
-        <span className="status-pill warning">
+        <span className={`status-pill ${activeProfileTone}`}>
           <span>配置档</span>
-          <strong>待初始化</strong>
+          <strong>{activeProfile.status === "ready" ? activeProfile.profile.name : activeProfileLabel}</strong>
         </span>
         <span className="status-pill warning compact">
           <span className="dot warning-dot" aria-hidden="true" />

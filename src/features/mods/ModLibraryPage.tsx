@@ -57,6 +57,7 @@ import type { ModInstallSummary, ModLibraryItem } from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
+import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -66,7 +67,6 @@ type ViewTransitionVariant = "morph" | "wave" | "flip3d" | "blur";
 const viewTransitionOutMs = 220;
 const viewTransitionInMs = 420;
 const DEFAULT_INSTALL_GAME_ID = "mhw";
-const DEFAULT_INSTALL_PROFILE_ID = "default";
 const CARD_CATEGORY_LABELS_STORAGE_KEY = "hmm.modLibrary.showCardCategoryLabels";
 
 const viewTransitionVariantByMode: Record<ModViewMode, ViewTransitionVariant> = {
@@ -271,6 +271,7 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanPreviewPane
 }
 
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
+  const { activeProfile, activeProfileId } = useActiveProfile();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ModLibraryFilter>(allLibraryFilter);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -324,6 +325,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const canUninstallSelected = selectedItem?.installSummary?.status === "installed";
   const canInstallSelected =
     selectedItem !== null &&
+    activeProfile.status === "ready" &&
     selectedItem.installSummary?.status !== "rollback_required" &&
     selectedItem.installSummary?.status !== "repair_required" &&
     selectedItem.installSummary?.status !== "unknown";
@@ -347,6 +349,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, []);
 
   const refreshInstallManifestStatuses = useCallback((items: ModLibraryItem[]) => {
+    if (activeProfile.status !== "ready" || activeProfileId === null) {
+      return Promise.resolve(items);
+    }
+
     const modIds = Array.from(new Set(items.map((item) => item.id))).filter((id) => id.length > 0);
     if (modIds.length === 0) {
       return Promise.resolve(items);
@@ -354,21 +360,21 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
     return getInstallManifestStatus({
       gameId: DEFAULT_INSTALL_GAME_ID,
-      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      profileId: activeProfileId,
       modIds,
     })
       .then((summaries) => applyInstallManifestStatusSummaries(items, summaries))
       .then((itemsWithManifestStatus) =>
         scanInstallRecovery({
           gameId: DEFAULT_INSTALL_GAME_ID,
-          profileId: DEFAULT_INSTALL_PROFILE_ID,
+          profileId: activeProfileId,
           modIds,
         })
           .then((summaries) => applyInstallRecoverySummaries(itemsWithManifestStatus, summaries))
           .catch(() => applyInstallRecoveryUnavailable(itemsWithManifestStatus)),
       )
       .catch(() => applyInstallRecoveryUnavailable(items));
-  }, []);
+  }, [activeProfile.status, activeProfileId]);
 
   const loadModLibraryItems = useCallback((mode: ModLibraryLoadMode) => {
     return loadModLibraryItemsForMode({
@@ -626,6 +632,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
     const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
+    if (activeProfile.status !== "ready" || activeProfileId === null) {
+      setInstallPlanPreviewState({
+        status: "error",
+        modName,
+        message: "配置档尚未就绪",
+      });
+      return;
+    }
     if (!canInstallSelected || recoveryPanelState) {
       if (recoveryPanelState) {
         setInstallPlanPreviewState(recoveryPanelState);
@@ -639,7 +653,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     void startInstallTask({
       gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
-      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      profileId: activeProfileId,
       layerName: "base",
       layerPriority: 0,
     })
@@ -717,6 +731,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
 
     const { modId, modName } = pendingUninstall;
+    if (activeProfile.status !== "ready" || activeProfileId === null) {
+      setInstallPlanPreviewState({
+        status: "error",
+        modName,
+        message: "配置档尚未就绪",
+      });
+      return;
+    }
+
     pendingUninstallRef.current = null;
     setInstallPlanPreviewState({ status: "idle" });
     pendingInstallProgressEventsRef.current.clear();
@@ -724,7 +747,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     void startUninstallTask({
       gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
-      profileId: DEFAULT_INSTALL_PROFILE_ID,
+      profileId: activeProfileId,
     })
       .then((task) => {
         const pendingProgressEvent = pendingInstallProgressEventsRef.current.get(task.taskId) ?? null;

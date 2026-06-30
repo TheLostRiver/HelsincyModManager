@@ -14,6 +14,7 @@ import "./features/install-recovery/RecoveryCenterPage.css";
 import "./features/mods/ModLibraryPage.css";
 import "./features/settings/SettingsPage.css";
 import "./features/categories/CategoryPage.css";
+import "./features/profiles/ProfilePage.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

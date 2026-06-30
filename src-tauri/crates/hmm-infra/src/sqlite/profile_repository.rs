@@ -1,7 +1,11 @@
 use anyhow::{anyhow, Context, Result};
-use hmm_core::Profile;
-use hmm_ports::ProfileRepository;
+use hmm_core::{
+    BackupCadence, Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
+    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings,
+};
+use hmm_ports::{ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository};
 use rusqlite::Connection;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 pub struct SqliteProfileRepository {
@@ -27,6 +31,52 @@ impl SqliteProfileRepository {
             is_active: row.get::<_, i64>(3)? != 0,
             created_at: row.get::<_, i64>(4)? as u128,
             updated_at: row.get::<_, i64>(5)? as u128,
+        })
+    }
+
+    fn row_to_profile_save_settings(
+        row: &rusqlite::Row<'_>,
+    ) -> rusqlite::Result<ProfileSaveSettings> {
+        let profile_id: String = row.get(0)?;
+        let save_directory: Option<String> = row.get(1)?;
+        let backup_directory: Option<String> = row.get(2)?;
+        let cadence: String = row.get(3)?;
+        let backup_hour: Option<i64> = row.get(4)?;
+        let backup_minute: Option<i64> = row.get(5)?;
+        let backup_weekdays_json: String = row.get(6)?;
+        let retention_max_count: i64 = row.get(7)?;
+        let retention_max_age_days: Option<i64> = row.get(8)?;
+        let updated_at: i64 = row.get(9)?;
+
+        let weekdays = serde_json::from_str::<Vec<u8>>(&backup_weekdays_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                6,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?;
+
+        Ok(ProfileSaveSettings {
+            profile_id,
+            save_directory: match save_directory {
+                Some(directory) => custom_directory_selection(&directory),
+                None => unset_save_directory(),
+            },
+            backup_directory: match backup_directory {
+                Some(directory) => custom_directory_selection(&directory),
+                None => default_backup_directory_selection(),
+            },
+            schedule: ProfileBackupSchedule {
+                cadence: parse_backup_cadence(&cadence),
+                hour: backup_hour.map(|value| value as u8),
+                minute: backup_minute.map(|value| value as u8),
+                weekdays,
+            },
+            retention: ProfileBackupRetention {
+                max_count: retention_max_count as u32,
+                max_age_days: retention_max_age_days.map(|value| value as u32),
+            },
+            updated_at: updated_at as u128,
         })
     }
 }
@@ -153,9 +203,158 @@ impl ProfileRepository for SqliteProfileRepository {
             return Err(anyhow!("profile not found: {profile_id}"));
         }
 
-        tx.commit()
-            .context("failed to commit profile activation")?;
+        tx.commit().context("failed to commit profile activation")?;
         Ok(())
+    }
+}
+
+impl ProfileSaveSettingsRepository for SqliteProfileRepository {
+    fn get_settings(&self, profile_id: &str) -> Result<Option<ProfileSaveSettings>> {
+        let conn = self.lock_db()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT profile_id, save_directory, backup_directory, backup_cadence,
+                        backup_hour, backup_minute, backup_weekdays,
+                        retention_max_count, retention_max_age_days, updated_at
+                 FROM profile_save_settings WHERE profile_id = ?1",
+            )
+            .context("failed to prepare get profile save settings query")?;
+
+        let result = stmt.query_row(
+            rusqlite::params![profile_id],
+            Self::row_to_profile_save_settings,
+        );
+
+        match result {
+            Ok(settings) => Ok(Some(settings)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error).context("failed to get profile save settings"),
+        }
+    }
+
+    fn save_settings(&self, settings: &ProfileSaveSettings) -> Result<()> {
+        let conn = self.lock_db()?;
+        let weekdays_json = serde_json::to_string(&settings.schedule.weekdays)
+            .context("failed to serialize backup weekdays")?;
+        conn.execute(
+            "INSERT INTO profile_save_settings
+                (profile_id, save_directory, backup_directory, backup_cadence,
+                 backup_hour, backup_minute, backup_weekdays,
+                 retention_max_count, retention_max_age_days, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(profile_id) DO UPDATE SET
+                save_directory = excluded.save_directory,
+                backup_directory = excluded.backup_directory,
+                backup_cadence = excluded.backup_cadence,
+                backup_hour = excluded.backup_hour,
+                backup_minute = excluded.backup_minute,
+                backup_weekdays = excluded.backup_weekdays,
+                retention_max_count = excluded.retention_max_count,
+                retention_max_age_days = excluded.retention_max_age_days,
+                updated_at = excluded.updated_at",
+            rusqlite::params![
+                settings.profile_id,
+                settings.save_directory.directory.as_deref(),
+                settings.backup_directory.directory.as_deref(),
+                format_backup_cadence(settings.schedule.cadence),
+                settings.schedule.hour.map(i64::from),
+                settings.schedule.minute.map(i64::from),
+                weekdays_json,
+                i64::from(settings.retention.max_count),
+                settings.retention.max_age_days.map(i64::from),
+                settings.updated_at as i64,
+            ],
+        )
+        .context("failed to save profile save settings")?;
+        Ok(())
+    }
+}
+
+impl ProfileSaveDirectoryValidator for SqliteProfileRepository {
+    fn validate_save_directory(
+        &self,
+        _game_id: &str,
+        directory: &str,
+    ) -> Result<ProfileDirectorySelection> {
+        validate_custom_directory(directory)
+    }
+
+    fn validate_backup_directory(
+        &self,
+        _game_id: &str,
+        directory: &str,
+    ) -> Result<ProfileDirectorySelection> {
+        validate_custom_directory(directory)
+    }
+
+    fn default_backup_directory(&self, _game_id: &str) -> Result<ProfileDirectorySelection> {
+        Ok(default_backup_directory_selection())
+    }
+}
+
+fn validate_custom_directory(directory: &str) -> Result<ProfileDirectorySelection> {
+    let directory = directory.trim();
+    if directory.is_empty() {
+        return Err(anyhow!("directory must not be empty"));
+    }
+    if !Path::new(directory).is_absolute() {
+        return Err(anyhow!("directory must be absolute"));
+    }
+
+    Ok(custom_directory_selection(directory))
+}
+
+fn custom_directory_selection(directory: &str) -> ProfileDirectorySelection {
+    ProfileDirectorySelection {
+        mode: ProfileDirectoryMode::Custom,
+        status: ProfileDirectoryStatus::Valid,
+        directory: Some(directory.to_owned()),
+        path_label: Some(path_label(directory)),
+        messages: Vec::new(),
+    }
+}
+
+fn unset_save_directory() -> ProfileDirectorySelection {
+    ProfileDirectorySelection {
+        mode: ProfileDirectoryMode::Unset,
+        status: ProfileDirectoryStatus::Unset,
+        directory: None,
+        path_label: None,
+        messages: vec!["尚未选择游戏存档目录".to_owned()],
+    }
+}
+
+fn default_backup_directory_selection() -> ProfileDirectorySelection {
+    ProfileDirectorySelection {
+        mode: ProfileDirectoryMode::Default,
+        status: ProfileDirectoryStatus::Defaulted,
+        directory: None,
+        path_label: Some("HelsincyModManager/Backups".to_owned()),
+        messages: vec!["使用默认备份目录".to_owned()],
+    }
+}
+
+fn path_label(path: &str) -> String {
+    path.replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_owned()
+}
+
+fn parse_backup_cadence(value: &str) -> BackupCadence {
+    match value {
+        "daily" => BackupCadence::Daily,
+        "weekly" => BackupCadence::Weekly,
+        _ => BackupCadence::Manual,
+    }
+}
+
+fn format_backup_cadence(value: BackupCadence) -> &'static str {
+    match value {
+        BackupCadence::Manual => "manual",
+        BackupCadence::Daily => "daily",
+        BackupCadence::Weekly => "weekly",
     }
 }
 
