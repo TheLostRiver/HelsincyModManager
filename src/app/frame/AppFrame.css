@@ -228,6 +228,11 @@
   outline-offset: 2px;
 }
 
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 @media (max-width: 1360px) {
   .top-status-bar {
     grid-template-columns: minmax(180px, 1fr) minmax(0, auto);

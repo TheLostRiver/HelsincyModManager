@@ -1,4 +1,5 @@
-import { Settings } from "lucide-react";
+import { Play, Settings } from "lucide-react";
+import { useGameLaunch } from "../../features/game-launch/useGameLaunch";
 import { useActiveProfile } from "../../features/profiles/ActiveProfileProvider";
 import { useAppRoute } from "../routing/useAppRoute";
 import { ThemeMenu } from "./ThemeMenu";
@@ -6,6 +7,7 @@ import { ThemeMenu } from "./ThemeMenu";
 export function AppHeader() {
   const { navigate } = useAppRoute();
   const { activeProfile } = useActiveProfile();
+  const { isLaunchingGame, launchGame: launchConfiguredGame } = useGameLaunch("mhw");
   const activeProfileLabel =
     activeProfile.status === "ready"
       ? activeProfile.profile.name
@@ -38,6 +40,15 @@ export function AppHeader() {
 
       <div className="window-tools" aria-label="窗口工具">
         <ThemeMenu />
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={isLaunchingGame ? "正在启动游戏" : "启动游戏"}
+          disabled={isLaunchingGame}
+          onClick={() => void launchConfiguredGame()}
+        >
+          <Play size={16} />
+        </button>
         <button type="button" className="icon-button" aria-label="打开设置" onClick={() => navigate("/settings")}>
           <Settings size={16} />
         </button>
