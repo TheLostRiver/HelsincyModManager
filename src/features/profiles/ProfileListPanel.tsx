@@ -1,16 +1,14 @@
 import {
   AlertTriangle,
-  CheckCircle2,
   Loader2,
   Pencil,
   Plus,
   RefreshCw,
   Save,
   Trash2,
-  User,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { createProfile, deleteProfile, updateProfile } from "./profileApi";
 import type { Profile } from "./profileTypes";
@@ -22,6 +20,7 @@ type ProfileListPanelProps = {
   selectedProfileId: string | null;
   busyProfileId: string | null;
   onRefresh: () => void;
+  createRequestToken?: number;
   onSelectProfile: (profileId: string) => void;
   onActivateProfile: (profileId: string) => Promise<void>;
   onProfilesChanged: () => void;
@@ -33,6 +32,7 @@ export function ProfileListPanel({
   selectedProfileId,
   busyProfileId,
   onRefresh,
+  createRequestToken,
   onSelectProfile,
   onActivateProfile,
   onProfilesChanged,
@@ -48,16 +48,22 @@ export function ProfileListPanel({
   );
   const floatingFormOpen = showCreateForm || editingProfile !== null;
 
-  const clearTransientState = () => {
+  const clearTransientState = useCallback(() => {
     setEditingId(null);
     setPendingDeleteId(null);
     setError(null);
-  };
+  }, []);
 
-  const closeFloatingForm = () => {
+  const closeFloatingForm = useCallback(() => {
     setShowCreateForm(false);
     setEditingId(null);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!createRequestToken) return;
+    clearTransientState();
+    setShowCreateForm(true);
+  }, [clearTransientState, createRequestToken]);
 
   useEffect(() => {
     if (!floatingFormOpen) return;
@@ -78,15 +84,15 @@ export function ProfileListPanel({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [floatingFormOpen]);
+  }, [closeFloatingForm, floatingFormOpen]);
 
   return (
-    <aside className="profile-list-panel" aria-labelledby="profile-list-title">
+    <aside className="profile-list-panel glass-card slot-panel" aria-labelledby="profile-list-title">
       <div className="profile-list-panel__floating-root">
-        <div className="profile-list-panel__header">
+        <div className="profile-list-panel__header panel-header-row">
           <div>
-            <h2 id="profile-list-title">配置档</h2>
-            <span>{status === "ready" ? `${profiles.length} 个槽位` : "读取中"}</span>
+            <h2 id="profile-list-title">配置卡包</h2>
+            <span>{status === "ready" ? `${profiles.length} 个本地配置` : "读取配置中"}</span>
           </div>
           <div className="profile-list-panel__tools">
             <button
@@ -98,23 +104,23 @@ export function ProfileListPanel({
             >
               <RefreshCw size={15} />
             </button>
-            <button
-              type="button"
-              className="profile-icon-button"
-              aria-label={showCreateForm ? "关闭新建配置档" : "新建配置档"}
-              onClick={() => {
-                if (showCreateForm) {
-                  closeFloatingForm();
-                  return;
-                }
-                clearTransientState();
-                setShowCreateForm(true);
-              }}
-            >
-              {showCreateForm ? <X size={15} /> : <Plus size={15} />}
-            </button>
           </div>
         </div>
+
+        {/* Create Card Button placed at the very top of the list */}
+        {status === "ready" ? (
+          <button
+            type="button"
+            className="profile-list-create-card-btn"
+            onClick={() => {
+              clearTransientState();
+              setShowCreateForm(true);
+            }}
+          >
+            <Plus size={16} />
+            新建独立游戏配置档
+          </button>
+        ) : null}
 
         {floatingFormOpen
           ? createPortal(
@@ -129,7 +135,7 @@ export function ProfileListPanel({
                 >
                   <div className="profile-floating-form__header">
                     <div>
-                      <span>配置档信息</span>
+                      <span>配置工作空间</span>
                       <strong>{showCreateForm ? "新建配置档" : "编辑配置档"}</strong>
                     </div>
                     <button
@@ -178,26 +184,26 @@ export function ProfileListPanel({
       {status === "loading" ? (
         <div className="profile-list-state" role="status">
           <Loader2 className="profile-spinner" size={18} />
-          <span>正在读取配置档</span>
+          <span>正在加载名片盒...</span>
         </div>
       ) : null}
 
       {status === "error" ? (
         <div className="profile-list-state is-error" role="alert">
           <AlertTriangle size={18} />
-          <span>配置档不可用</span>
+          <span>配置数据加载失败</span>
           <button type="button" className="profile-action-button" onClick={onRefresh}>
             重试
           </button>
         </div>
       ) : null}
-
       {status === "ready" ? (
-        <div className="profile-list" role="list" aria-label="配置档列表">
-          {profiles.map((profile) => (
+        <div className="profile-list slot-stack" role="list" aria-label="配置档列表">
+          {profiles.map((profile, index) => (
             <ProfileListItem
               key={profile.id}
               profile={profile}
+              index={index}
               selected={profile.id === selectedProfileId}
               busy={profile.id === busyProfileId}
               confirmingDelete={pendingDeleteId === profile.id}
@@ -238,6 +244,7 @@ export function ProfileListPanel({
 
 function ProfileListItem({
   profile,
+  index,
   selected,
   busy,
   confirmingDelete,
@@ -249,6 +256,7 @@ function ProfileListItem({
   onDelete,
 }: {
   profile: Profile;
+  index: number;
   selected: boolean;
   busy: boolean;
   confirmingDelete: boolean;
@@ -260,29 +268,39 @@ function ProfileListItem({
   onDelete: () => void;
 }) {
   const cannotDelete = !isProfileDeletable(profile);
+  const itemClassName = [
+    "profile-list-item",
+    "slot-item-card",
+    selected ? "is-selected" : "",
+    profile.isActive ? "is-active-profile" : "",
+  ].filter(Boolean).join(" ");
 
   return (
-    <article className={`profile-list-item ${selected ? "is-selected" : ""}`} role="listitem">
-      <button type="button" className="profile-list-item__select" onClick={onSelect}>
-        <span className="profile-list-item__avatar" aria-hidden="true">
-          <User size={17} />
-        </span>
-        <span className="profile-list-item__copy">
-          <strong>{profile.name}</strong>
-          <small>{profile.description || profile.id}</small>
-        </span>
-        {profile.isActive ? (
-          <span className="profile-status-pill is-success">
-            <CheckCircle2 size={13} />
-            当前
+    <article className={itemClassName} role="listitem">
+      {profile.isActive ? <span className="profile-active-pulse-badge" aria-hidden="true" /> : null}
+
+      <button
+        type="button"
+        className="profile-list-item__select slot-select-btn"
+        aria-current={selected ? "true" : undefined}
+        onClick={onSelect}
+      >
+        <div className="slot-meta">
+          <span className="slot-num">
+            SLOT {String(index + 1).padStart(2, "0")}
           </span>
-        ) : null}
+          <span className={`slot-badge ${profile.isActive ? "is-active-badge" : ""}`}>
+            {profile.isActive ? "活动中" : "备用档"}
+          </span>
+        </div>
+        <strong className="slot-title">{profile.name}</strong>
+        <span className="slot-desc">{profile.description || "暂无备注描述"}</span>
       </button>
 
       <div className="profile-list-item__actions">
         {!profile.isActive ? (
           <button type="button" className="profile-action-button is-primary" onClick={onActivate} disabled={busy}>
-            {busy ? "启用中" : "启用"}
+            {busy ? "激活中" : "激活"}
           </button>
         ) : null}
         <button type="button" className="profile-icon-button" aria-label="编辑配置档" onClick={onEdit}>
@@ -302,10 +320,10 @@ function ProfileListItem({
 
       {confirmingDelete && !cannotDelete ? (
         <div className="profile-delete-confirm">
-          <span>删除 {profile.name}？</span>
+          <span>确认注销并删除该配置卡？</span>
           <div>
             <button type="button" className="profile-action-button is-danger" onClick={onDelete}>
-              删除
+              注销
             </button>
             <button type="button" className="profile-action-button" onClick={onCancelDelete}>
               取消
@@ -344,17 +362,17 @@ function ProfileCreateForm({
   return (
     <form className="profile-inline-form" onSubmit={submit}>
       <label className="profile-field">
-        <span>名称</span>
+        <span>配置卡名称</span>
         <input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
       </label>
       <label className="profile-field">
-        <span>描述</span>
+        <span>描述与备注</span>
         <textarea value={description} rows={4} onChange={(event) => setDescription(event.target.value)} />
       </label>
       <div className="profile-form-actions">
         <button type="submit" className="profile-action-button is-primary" disabled={!name.trim() || submitting}>
           <Plus size={14} />
-          {submitting ? "创建中" : "创建"}
+          {submitting ? "正在创建..." : "确认创建"}
         </button>
         <button type="button" className="profile-action-button" onClick={onCancel}>
           取消
@@ -397,17 +415,17 @@ function ProfileEditForm({
   return (
     <form className="profile-inline-form" onSubmit={submit}>
       <label className="profile-field">
-        <span>名称</span>
+        <span>配置卡名称</span>
         <input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
       </label>
       <label className="profile-field">
-        <span>描述</span>
+        <span>描述与备注</span>
         <textarea value={description} rows={4} onChange={(event) => setDescription(event.target.value)} />
       </label>
       <div className="profile-form-actions">
         <button type="submit" className="profile-action-button is-primary" disabled={!name.trim() || submitting}>
           <Save size={14} />
-          {submitting ? "保存中" : "保存"}
+          {submitting ? "正在同步..." : "保存更改"}
         </button>
         <button type="button" className="profile-action-button" onClick={onCancel}>
           取消
@@ -417,7 +435,7 @@ function ProfileEditForm({
   );
 }
 
-function getProfileErrorMessage(error: unknown) {
+function getProfileErrorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = String((error as { message?: unknown }).message ?? "").trim();
     if (message) return message;

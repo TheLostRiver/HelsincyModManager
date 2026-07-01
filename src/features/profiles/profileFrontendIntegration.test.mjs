@@ -9,6 +9,7 @@ function readSource(path) {
 test("profiles route is registered and enabled from the shared navigation definition", () => {
   assert.equal(existsSync("src/features/profiles/ProfilePage.tsx"), true);
   assert.equal(existsSync("src/features/profiles/ProfilePage.css"), true);
+  assert.equal(existsSync("src/features/profiles/ProfileSaveManager.css"), true);
 
   const routeTypes = readSource("src/app/routing/routeTypes.ts");
   const routeRegistry = readSource("src/app/routing/routeRegistry.tsx");
@@ -21,6 +22,7 @@ test("profiles route is registered and enabled from the shared navigation defini
   assert.match(navItems, /\{\s*id:\s*"profiles"[\s\S]*?route:\s*"\/profiles"[\s\S]*?\}/);
   assert.doesNotMatch(navItems.match(/\{\s*id:\s*"profiles"[\s\S]*?\}/)?.[0] ?? "", /disabledReason/);
   assert.match(main, /features\/profiles\/ProfilePage\.css/);
+  assert.match(main, /features\/profiles\/ProfileSaveManager\.css/);
 });
 
 test("app shell provides and displays the active profile", () => {
@@ -56,8 +58,10 @@ test("profile page exposes save settings workspace panels without shell coupling
   assert.match(css, /\.route-transition__layer\[data-route-id="profiles"\]/);
   assert.match(css, /\.profile-workspace/);
   assert.match(css, /\.profile-settings-panel/);
-  assert.match(css, /\.profile-directory-row/);
+  assert.match(css, /\.profile-directory-grid/);
+  assert.match(css, /\.profile-directory-card/);
   assert.doesNotMatch(css, /profile-page__summary-grid|profile-main-card|profile-row/);
+  assert.doesNotMatch(css, /\.profile-directory-row/);
   assert.match(css, /@media\s*\(max-width:\s*860px\)/);
 });
 
@@ -131,4 +135,60 @@ test("auto backup controls stay interactive when persistence is unavailable", ()
   assert.match(viewModelSource, /\[0,\s*"星期日"\]/);
   assert.match(css, /perspective:\s*420px/);
   assert.match(css, /transform-style:\s*preserve-3d/);
+});
+
+test("profile save UI follows the redesigned structure without inline styling", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const listSource = readSource("src/features/profiles/ProfileListPanel.tsx");
+  const directorySource = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
+  const pickerSource = readSource("src/features/profiles/BackupSchedulePicker.tsx");
+  const css = readSource("src/features/profiles/ProfilePage.css");
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+
+  assert.match(listSource, /slot-meta/);
+  assert.match(listSource, /slot-num/);
+  assert.match(listSource, /slot-badge/);
+  assert.match(listSource, /slot-title/);
+  assert.match(listSource, /slot-desc/);
+  assert.doesNotMatch(listSource, /style=\{\{/);
+
+  assert.match(directorySource, /profile-directory-grid/);
+  assert.match(directorySource, /profile-directory-card__path/);
+  assert.doesNotMatch(pageSource, /directory-flow-connector|directory-flow-badge|directory-flow-line/);
+  assert.match(pageSource, /profile-overview__right/);
+  assert.match(pageSource, /profile-toolbar-save-box/);
+  assert.match(pageSource, /profile-save-manager-deck/);
+  assert.match(pageSource, /ActiveSavePanel/);
+  assert.match(pageSource, /BackupHistoryPanel/);
+  assert.match(pickerSource, /schedule-chip/);
+  assert.match(pickerSource, /scroll-picker-arrow/);
+
+  assert.match(css, /:root\[data-color-scheme="light"\]\s+\.profile-page/);
+  assert.match(css, /:root\[data-color-scheme="dark"\]\s+\.profile-page/);
+  assert.match(saveManagerCss, /\.profile-save-manager-deck/);
+  assert.match(saveManagerCss, /\.active-save-banner/);
+  assert.match(saveManagerCss, /\.profile-backup-table/);
+  assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
+  assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card\s*\{[\s\S]*?z-index:\s*20/);
+  assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card \.backup-schedule-popover\s*\{[\s\S]*?z-index:\s*200/);
+  assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card \.backup-schedule-popover\s*\{[\s\S]*?bottom:\s*0/);
+  assert.match(saveManagerCss, /\.profile-history-card\.history-card\s*\{[\s\S]*?z-index:\s*1/);
+  assert.doesNotMatch(css, /directory-flow-connector|directory-flow-badge|directory-flow-line/);
+  assert.doesNotMatch(css, /\.profile-save-bar\s*\{[^}]*display:\s*none/);
+});
+
+test("plain browser preview renders the redesigned profiles console instead of the error shell", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const directorySource = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
+
+  assert.match(pageSource, /PREVIEW_PROFILES/);
+  assert.match(pageSource, /function isPlainBrowserRuntime/);
+  assert.match(pageSource, /!"__TAURI_INTERNALS__" in window|!\("__TAURI_INTERNALS__" in window\)/);
+  assert.match(pageSource, /createPreviewProfiles\(\)/);
+  assert.match(pageSource, /data-preview-mode/);
+  assert.match(pageSource, /setProfileState\(\{\s*status:\s*"ready",\s*profiles:\s*previewProfiles\s*\}\)/);
+  assert.match(pageSource, /setSettingsState\(\{\s*status:\s*"ready",\s*settings\s*\}\)/);
+  assert.match(directorySource, /previewMode\?:\s*boolean/);
+  assert.match(directorySource, /if \(previewMode\)/);
+  assert.match(directorySource, /Steam\/userdata\/<steam-id>\/582010\/remote/);
 });

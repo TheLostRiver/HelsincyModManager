@@ -1,6 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Archive, CheckCircle2, FolderOpen, HardDrive } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   validateProfileBackupDirectory,
   validateProfileSaveDirectory,
@@ -17,6 +17,7 @@ type SaveDirectoryPanelProps = {
   settings: ProfileSaveSettingsDto;
   onSettingsChange: (settings: ProfileSaveSettingsDto) => void;
   onDirectorySelected: (kind: "saveDirectory" | "backupDirectory", directory: string) => void;
+  previewMode?: boolean;
   disabled?: boolean;
 };
 
@@ -26,6 +27,7 @@ export function SaveDirectoryPanel({
   settings,
   onSettingsChange,
   onDirectorySelected,
+  previewMode = false,
   disabled = false,
 }: SaveDirectoryPanelProps) {
   const [busyKind, setBusyKind] = useState<"saveDirectory" | "backupDirectory" | null>(null);
@@ -36,6 +38,22 @@ export function SaveDirectoryPanel({
     setError(null);
     setBusyKind(kind);
     try {
+      if (previewMode) {
+        const directory =
+          kind === "saveDirectory"
+            ? "Steam/userdata/<steam-id>/582010/remote"
+            : "HelsincyModManager/Backups/MHW";
+        const selection: ProfileDirectorySelectionDto = {
+          mode: "custom",
+          status: "valid",
+          pathLabel: directory,
+          messages: ["预览环境已模拟校验通过"],
+        };
+        onDirectorySelected(kind, directory);
+        onSettingsChange({ ...settings, [kind]: selection });
+        return;
+      }
+
       const selected = await open({ directory: true, multiple: false });
       const directory = Array.isArray(selected) ? selected[0] : selected;
       if (!directory) return;
@@ -54,8 +72,8 @@ export function SaveDirectoryPanel({
   };
 
   return (
-    <section className={`profile-settings-panel ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-save-directories-title">
-      <div className="profile-settings-panel__header">
+    <section className={`profile-directory-console ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-save-directories-title">
+      <div className="profile-directory-console__header panel-header-row">
         <div>
           <h2 id="profile-save-directories-title">存档目录</h2>
           <span>Save source and backup target</span>
@@ -63,22 +81,24 @@ export function SaveDirectoryPanel({
         <HardDrive size={18} aria-hidden="true" />
       </div>
 
-      <DirectoryRow
-        icon={<FolderOpen size={18} />}
-        label="游戏存档目录"
-        selection={settings.saveDirectory}
-        actionLabel={busyKind === "saveDirectory" ? "校验中" : "选择"}
-        disabled={disabled || busyKind !== null}
-        onChoose={() => void chooseDirectory("saveDirectory")}
-      />
-      <DirectoryRow
-        icon={<Archive size={18} />}
-        label="备份存档目录"
-        selection={settings.backupDirectory}
-        actionLabel={busyKind === "backupDirectory" ? "校验中" : "选择"}
-        disabled={disabled || busyKind !== null}
-        onChoose={() => void chooseDirectory("backupDirectory")}
-      />
+      <div className="profile-directory-grid paths-setup-grid">
+        <DirectoryCard
+          icon={<FolderOpen size={20} />}
+          label="游戏存档目录"
+          selection={settings.saveDirectory}
+          actionLabel={busyKind === "saveDirectory" ? "校验中..." : "选择路径"}
+          disabled={disabled || busyKind !== null}
+          onChoose={() => void chooseDirectory("saveDirectory")}
+        />
+        <DirectoryCard
+          icon={<Archive size={20} />}
+          label="备份存档目录"
+          selection={settings.backupDirectory}
+          actionLabel={busyKind === "backupDirectory" ? "校验中..." : "选择路径"}
+          disabled={disabled || busyKind !== null}
+          onChoose={() => void chooseDirectory("backupDirectory")}
+        />
+      </div>
 
       {error ? (
         <p className="profile-settings-alert" role="alert">
@@ -90,7 +110,7 @@ export function SaveDirectoryPanel({
   );
 }
 
-function DirectoryRow({
+function DirectoryCard({
   icon,
   label,
   selection,
@@ -98,7 +118,7 @@ function DirectoryRow({
   disabled,
   onChoose,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   selection: ProfileDirectorySelectionDto;
   actionLabel: string;
@@ -108,23 +128,35 @@ function DirectoryRow({
   const status = formatDirectoryStatus(selection);
 
   return (
-    <div className="profile-directory-row">
-      <div className="profile-directory-row__main">
-        <span className="profile-directory-row__icon" aria-hidden="true">
+    <div className={`profile-directory-card path-card status-${status.tone}`}>
+      <div className="profile-directory-card__header path-card-top">
+        <span className="profile-directory-card__icon path-icon-container" aria-hidden="true">
           {icon}
         </span>
-        <div>
-          <strong>{label}</strong>
-          <span>{status.label}</span>
-          {selection.messages.length > 0 ? <small>{selection.messages[0]}</small> : null}
+        <div className="profile-directory-card__body path-card-details">
+          <span>{label}</span>
+          <strong className="profile-directory-card__path" title={status.label || "未选择"}>
+            {status.label || "未选择"}
+          </strong>
         </div>
       </div>
-      <div className="profile-directory-row__actions">
-        <span className={`profile-status-pill is-${status.tone}`}>
+
+      <div className="profile-directory-card__footer path-card-footer">
+        <span className={`profile-status-pill path-badge is-${status.tone}`}>
           {status.tone === "success" ? <CheckCircle2 size={13} /> : null}
           {selection.status}
         </span>
-        <button type="button" className="profile-action-button" disabled={disabled} onClick={onChoose}>
+        {selection.messages.length > 0 ? (
+          <small className="profile-directory-card__msg">{selection.messages[0]}</small>
+        ) : (
+          <small className="profile-directory-card__msg-placeholder">&nbsp;</small>
+        )}
+        <button
+          type="button"
+          className="profile-action-button is-primary"
+          disabled={disabled}
+          onClick={onChoose}
+        >
           {actionLabel}
         </button>
       </div>
