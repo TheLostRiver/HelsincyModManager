@@ -39,7 +39,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目，并在替换已有托管目标时保留旧 `backup_ref` 恢复语义。
 - 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
-- Rich manifest domain/JSON 兼容基础：`InstallManifest` 已支持 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段；旧 manifest 缺少 rich 字段时兼容读取并默认 `status = completed`；安装提交成功会写入 `backend = "install_plan"`、`status = completed` 和 `completed_at`，但尚未计算真实 `plan_hash`。
+- Rich manifest domain/JSON 兼容基础：`InstallManifest` 已支持 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段；旧 manifest 缺少 rich 字段时兼容读取并默认 `status = completed`；安装提交成功会写入 `backend = "install_plan"`、`status = completed`、`completed_at` 和真实 `plan_hash`。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
@@ -59,7 +59,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
-- rich manifest 的 replacement binding snapshot、真实 `plan_hash` 计算、schema/migration 字段、状态机消费和真实修复检测。
+- rich manifest 的 replacement binding snapshot、schema/migration 字段、状态机消费和真实修复检测。
 - dependency/preflight 阻断。
 
 ## 已完成切片记录
@@ -78,6 +78,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
 - [x] Manifest entry 写入 `installed_file` size/SHA-256 摘要，并兼容读取缺少摘要的旧 manifest。
 - [x] Rich manifest domain/JSON 兼容基础：`backend`、`status`、`created_at`、`completed_at`、`plan_hash` 字段，旧 manifest 默认 `completed`，安装提交成功写入 `install_plan` 后端和完成时间。
+- [x] 安装提交成功写入真实 `plan_hash`：使用稳定 `sha256:` 摘要绑定本次提交消费的计划事实，不记录完整本地路径、backup root/ref、manifest path、sandbox/cache path 或第三方 Mod 内容。
 - [x] 后端最小 manifest 驱动卸载服务、backup 受控读取、卸载任务 runner 和 `start_uninstall_task` Tauri 入口。
 - [x] 前端最小卸载 UI、`startUninstallTask` typed API、`install.uninstall.*` 任务展示和完成后 manifest 摘要刷新。
 - [x] 后端只读恢复扫描摘要 command：`scan_install_recovery`。
@@ -818,7 +819,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 目标：把当前 MVP manifest 扩展为可支撑卸载、恢复、修复、retarget 和后续虚拟映射的事实记录。
 
-状态：domain 字段和 JSON 向后兼容基础已落地；状态机消费、replacement binding snapshot、schema/migration 字段、真实 `plan_hash` 计算和修复检测仍待后续切片。
+状态：domain 字段、JSON 向后兼容基础和真实 `plan_hash` 计算已落地；状态机消费、replacement binding snapshot、schema/migration 字段和修复检测仍待后续切片。
 
 候选字段：
 
