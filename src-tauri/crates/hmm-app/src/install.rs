@@ -233,6 +233,7 @@ impl InstallCommitService {
             return Err(InstallCommitError::PlanHasBlockingConflicts);
         }
 
+        let plan_hash = install_plan_hash(&plan);
         let existing_manifest = self
             .manifest_repository
             .load_manifest(&profile_id)
@@ -340,6 +341,7 @@ impl InstallCommitService {
                 .iter()
                 .map(|change| change.entry.clone())
                 .collect(),
+            plan_hash,
         );
 
         if self.manifest_repository.save_manifest(&manifest).is_err() {
@@ -777,6 +779,7 @@ fn merge_install_manifest(
     profile_id: ProfileId,
     existing_manifest: Option<InstallManifest>,
     applied_entries: Vec<InstallManifestEntry>,
+    plan_hash: String,
 ) -> InstallManifest {
     let (mut entries, created_at, status) = existing_manifest
         .map(|manifest| (manifest.entries, manifest.created_at, manifest.status))
@@ -796,10 +799,50 @@ fn merge_install_manifest(
         Some(INSTALL_PLAN_MANIFEST_BACKEND.to_owned()),
         created_at.or(Some(completed_at.clone())),
         Some(completed_at),
-        None,
+        Some(plan_hash),
     );
     manifest.status = status;
     manifest
+}
+
+fn install_plan_hash(plan: &InstallPlan) -> String {
+    let mut actions = plan.actions.iter().collect::<Vec<_>>();
+    actions.sort_by(|left, right| {
+        left.target_path
+            .cmp(&right.target_path)
+            .then_with(|| left.provider.mod_id.cmp(&right.provider.mod_id))
+            .then_with(|| {
+                left.provider
+                    .package_file_id
+                    .cmp(&right.provider.package_file_id)
+            })
+            .then_with(|| {
+                left.provider
+                    .layer
+                    .priority
+                    .cmp(&right.provider.layer.priority)
+            })
+            .then_with(|| left.provider.layer.name.cmp(&right.provider.layer.name))
+    });
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"hmm-install-plan-v1");
+    hasher.update((actions.len() as u64).to_be_bytes());
+    for action in actions {
+        update_hash_str(&mut hasher, action.target_path.as_str());
+        update_hash_str(&mut hasher, action.provider.mod_id.as_str());
+        update_hash_str(&mut hasher, action.provider.package_file_id.as_str());
+        update_hash_str(&mut hasher, &action.provider.layer.name);
+        hasher.update(action.provider.layer.priority.to_be_bytes());
+    }
+
+    let digest = hasher.finalize();
+    format!("sha256:{}", digest_to_hex(&digest))
+}
+
+fn update_hash_str(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value.as_bytes());
 }
 
 fn current_manifest_timestamp() -> String {
@@ -818,7 +861,11 @@ fn installed_file_summary(bytes: &[u8]) -> InstalledFileSummary {
 
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    digest_to_hex(&digest)
+}
+
+fn digest_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl InstallPlanningService {
