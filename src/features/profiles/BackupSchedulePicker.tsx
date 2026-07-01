@@ -1,8 +1,8 @@
-import { CalendarDays, Check, Clock3 } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronUp, Clock3, PauseCircle, Star } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ProfileBackupScheduleDto } from "./profileSaveSettingsTypes";
-import { defaultSchedule, formatBackupSchedule } from "./profileViewModel";
+import { defaultSchedule } from "./profileViewModel";
 
 const hours = Array.from({ length: 24 }, (_, index) => index);
 const minutes = Array.from({ length: 60 }, (_, index) => index);
@@ -16,6 +16,22 @@ const weekdays = [
   { value: 0, label: "星期日" },
 ];
 const weekdayOrder = new Map(weekdays.map((day, index) => [day.value, index]));
+
+function formatWeeklyDaysAbbr(days: number[]) {
+  if (!days || days.length === 0) return "周日";
+  const map: Record<number, string> = { 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 0: "日" };
+  const sorted = [...days].sort((a, b) => {
+    const oa = weekdayOrder.get(a) ?? 0;
+    const ob = weekdayOrder.get(b) ?? 0;
+    return oa - ob;
+  });
+  return "周" + sorted.map((day) => map[day] || "").join(",");
+}
+
+function formatTime(hour: number | null | undefined, minute: number | null | undefined) {
+  return `${String(hour ?? 3).padStart(2, "0")}:${String(minute ?? 0).padStart(2, "0")}`;
+}
+
 const scrollPickerItemHeight = 38;
 const scrollPickerDisplayOffsets = [-2, -1, 0, 1, 2];
 
@@ -43,6 +59,8 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const usesTime = schedule.cadence !== "manual" && !disabled;
+  const dailyChipTime = schedule.cadence === "daily" ? formatTime(schedule.hour, schedule.minute) : "03:00";
+  const weeklyChipTime = schedule.cadence === "weekly" ? formatTime(schedule.hour, schedule.minute) : "03:00";
 
   useEffect(() => {
     if (!open) return;
@@ -78,39 +96,63 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
         );
     onChange({ ...schedule, weekdays: nextDays.length > 0 ? nextDays : [day] });
   };
-
   return (
     <div className="backup-schedule-picker" ref={wrapperRef}>
-      <div className="backup-schedule-picker__segments" role="group" aria-label="备份频率">
-        {(["manual", "daily", "weekly"] as const).map((cadence) => (
-          <button
-            key={cadence}
-            type="button"
-            className={schedule.cadence === cadence ? "is-selected" : ""}
-            aria-pressed={schedule.cadence === cadence}
-            disabled={disabled}
-            onClick={() => {
-              onChange(defaultSchedule(cadence));
-              setOpen(cadence !== "manual");
-            }}
-          >
-            {schedule.cadence === cadence ? <Check size={13} /> : null}
-            {cadence === "manual" ? "手动" : cadence === "daily" ? "每日" : "每周"}
-          </button>
-        ))}
+      <div className="chip-deck">
+        <button
+          type="button"
+          className={`schedule-chip ${schedule.cadence === "manual" ? "is-selected" : ""}`}
+          aria-pressed={schedule.cadence === "manual"}
+          disabled={disabled}
+          onClick={() => {
+            onChange(defaultSchedule("manual"));
+            setOpen(false);
+          }}
+        >
+          <PauseCircle size={14} />
+          <span>手动</span>
+        </button>
+
+        <button
+          type="button"
+          className={`schedule-chip ${schedule.cadence === "daily" ? "is-selected" : ""}`}
+          aria-pressed={schedule.cadence === "daily"}
+          disabled={disabled}
+          onClick={() => {
+            if (schedule.cadence !== "daily") {
+              onChange(defaultSchedule("daily"));
+              setOpen(true);
+              return;
+            }
+            setOpen((current) => !current);
+          }}
+        >
+          <Clock3 size={14} />
+          <span>每日备份</span>
+          <span className="schedule-chip-sub">{dailyChipTime}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`schedule-chip ${schedule.cadence === "weekly" ? "is-selected" : ""}`}
+          aria-pressed={schedule.cadence === "weekly"}
+          disabled={disabled}
+          onClick={() => {
+            if (schedule.cadence !== "weekly") {
+              onChange(defaultSchedule("weekly"));
+              setOpen(true);
+              return;
+            }
+            setOpen((current) => !current);
+          }}
+        >
+          <CalendarDays size={14} />
+          <span>每周备份</span>
+          <span className="schedule-chip-sub">
+            {formatWeeklyDaysAbbr(schedule.weekdays)} {weeklyChipTime}
+          </span>
+        </button>
       </div>
-
-      <button
-        type="button"
-        className="backup-schedule-picker__trigger"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => (usesTime ? !current : false))}
-        disabled={disabled || !usesTime}
-      >
-        {schedule.cadence === "weekly" ? <CalendarDays size={15} /> : <Clock3 size={15} />}
-        {formatBackupSchedule(schedule)}
-      </button>
-
       {open && usesTime ? (
         <div className="backup-schedule-popover" role="dialog" aria-label="自动备份时间">
           {schedule.cadence === "weekly" ? (
@@ -124,7 +166,8 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
                   disabled={disabled}
                   onClick={() => toggleWeekday(day.value)}
                 >
-                  {day.label}
+                  <Star size={12} fill={schedule.weekdays.includes(day.value) ? "currentColor" : "none"} />
+                  <span>{day.label.slice(-1)}</span>
                 </button>
               ))}
             </div>
@@ -193,6 +236,7 @@ function ScrollPicker({
   const draggedRef = useRef(false);
   const wheelRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
 
   const updateByIndex = useCallback((index: number) => {
     const nextIndex = wrapIndex(index, values.length);
@@ -202,9 +246,17 @@ function ScrollPicker({
     }
   }, [onChange, value, values]);
 
+  const lastWheelTimeRef = useRef(0);
   const handleWheel = useCallback((event: WheelEvent) => {
     if (disabled) return;
     event.preventDefault();
+
+    const now = Date.now();
+    if (now - lastWheelTimeRef.current < 120) {
+      return;
+    }
+    lastWheelTimeRef.current = now;
+
     updateByIndex(selectedIndex + (event.deltaY > 0 ? 1 : -1));
   }, [disabled, selectedIndex, updateByIndex]);
 
@@ -228,6 +280,7 @@ function ScrollPicker({
     draggedRef.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
+    setDragOffset(0);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -238,7 +291,9 @@ function ScrollPicker({
     if (Math.abs(delta) >= 4) {
       draggedRef.current = true;
     }
-    updateByIndex(dragState.startIndex + Math.round(delta / scrollPickerItemHeight));
+    const steps = Math.round(delta / scrollPickerItemHeight);
+    updateByIndex(dragState.startIndex + steps);
+    setDragOffset(delta - steps * scrollPickerItemHeight);
   };
 
   const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -249,41 +304,70 @@ function ScrollPicker({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     setDragging(false);
+    setDragOffset(0);
   };
 
   return (
-    <div
-      ref={wheelRef}
-      className={`scroll-picker-wrapper ${dragging ? "is-dragging" : ""}`}
-      role="listbox"
-      aria-label={suffix}
-      onClickCapture={(event) => {
-        if (!draggedRef.current) return;
-        event.preventDefault();
-        event.stopPropagation();
-        draggedRef.current = false;
-      }}
-      onPointerCancel={finishDrag}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={finishDrag}
-    >
-      <div className="scroll-picker-list">
-        {visibleItems.map(({ index, item, offset }) => (
-          <button
-            key={index}
-            type="button"
-            className={`scroll-picker-item ${offset === 0 ? "is-selected" : ""}`}
-            aria-selected={offset === 0}
-            disabled={disabled}
-            onClick={() => onChange(item)}
-            style={getWheelItemStyle(offset)}
-          >
-            {String(item).padStart(2, "0")}
-            <span>{suffix}</span>
-          </button>
-        ))}
+    <div className="scroll-picker-container">
+      <button
+        type="button"
+        className="scroll-picker-arrow is-up"
+        onClick={() => updateByIndex(selectedIndex - 1)}
+        disabled={disabled}
+        aria-label={`减少${suffix}`}
+      >
+        <ChevronUp size={15} />
+      </button>
+
+      <div
+        ref={wheelRef}
+        className={`scroll-picker-wrapper ${dragging ? "is-dragging" : ""}`}
+        role="listbox"
+        aria-label={suffix}
+        onClickCapture={(event) => {
+          if (!draggedRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          draggedRef.current = false;
+        }}
+        onPointerCancel={finishDrag}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+      >
+        <div className="scroll-picker-list">
+          {visibleItems.map(({ index, item, offset }) => {
+            const renderOffset = offset - (dragOffset / scrollPickerItemHeight);
+            return (
+              <button
+                key={index}
+                type="button"
+                className={`scroll-picker-item ${offset === 0 ? "is-selected" : ""}`}
+                aria-selected={offset === 0}
+                disabled={disabled}
+                onClick={() => onChange(item)}
+                style={{
+                  ...getWheelItemStyle(renderOffset),
+                  transition: dragging ? "none" : undefined,
+                }}
+              >
+                {String(item).padStart(2, "0")}
+                <span>{suffix}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      <button
+        type="button"
+        className="scroll-picker-arrow is-down"
+        onClick={() => updateByIndex(selectedIndex + 1)}
+        disabled={disabled}
+        aria-label={`增加${suffix}`}
+      >
+        <ChevronDown size={15} />
+      </button>
     </div>
   );
 }

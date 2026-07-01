@@ -20,8 +20,8 @@ export function BackupPolicyPanel({
   disabled = false,
 }: BackupPolicyPanelProps) {
   return (
-    <section className={`profile-settings-panel ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-backup-policy-title">
-      <div className="profile-settings-panel__header">
+    <section className={`profile-policy-card ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-backup-policy-title">
+      <div className="profile-policy-card__header panel-header-row">
         <div>
           <h2 id="profile-backup-policy-title">自动备份</h2>
           <span>Schedule and retention</span>
