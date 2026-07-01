@@ -28,6 +28,26 @@ fn install_file(
     }
 }
 
+fn commit_plan_for_hash_test(plan: InstallPlan) -> InstallManifest {
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+        ("nativePC/models/player.mod3", b"new player".as_slice()),
+        ("nativePC/models/weapon.mod3", b"new weapon".as_slice()),
+    ]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let manifests = Arc::new(RecordingInstallManifestRepository::default());
+    let service = InstallCommitService::new(source_files, game_files, backups, manifests.clone());
+
+    service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect("commit should succeed");
+
+    manifests.take_manifest().expect("manifest should be saved")
+}
+
 #[test]
 fn build_plan_parses_allowed_target_paths_into_core_plan() {
     let service = InstallPlanningService::new();
@@ -239,7 +259,12 @@ fn commit_plan_writes_new_files_and_persists_manifest() {
     assert_eq!(manifest.backend.as_deref(), Some("install_plan"));
     assert!(manifest.created_at.is_some());
     assert!(manifest.completed_at.is_some());
-    assert!(manifest.plan_hash.is_none());
+    let plan_hash = manifest
+        .plan_hash
+        .as_deref()
+        .expect("manifest should record committed plan hash");
+    assert!(plan_hash.starts_with("sha256:"));
+    assert_eq!(plan_hash.len(), "sha256:".len() + 64);
     assert_eq!(manifest.entries.len(), 1);
     assert_eq!(
         manifest.entries[0].target_path.as_str(),
@@ -256,6 +281,70 @@ fn commit_plan_writes_new_files_and_persists_manifest() {
         "d556e02a85803b1d71c94a462432da55b16b443f7579c8bfdc4a44a4c7d6a17a"
     );
     assert_eq!(result.manifest, manifest);
+}
+
+#[test]
+fn commit_plan_hash_is_stable_for_same_plan_facts() {
+    let first_target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target");
+    let second_target =
+        InstallTargetPath::parse("nativePC/models/weapon.mod3", ["nativePC"]).expect("target");
+    let plan = InstallPlan::from_providers(vec![
+        InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/player.mod3"),
+            first_target,
+            FileLayer::new("base", 0),
+        ),
+        InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/weapon.mod3"),
+            second_target,
+            FileLayer::new("base", 1),
+        ),
+    ]);
+    let first_manifest = commit_plan_for_hash_test(plan.clone());
+    let second_manifest = commit_plan_for_hash_test(plan);
+
+    let first_hash = first_manifest
+        .plan_hash
+        .as_deref()
+        .expect("first commit should record plan hash");
+    let second_hash = second_manifest
+        .plan_hash
+        .as_deref()
+        .expect("second commit should record plan hash");
+
+    assert_eq!(first_hash, second_hash);
+}
+
+#[test]
+fn commit_plan_hash_changes_when_plan_facts_change() {
+    let player_target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target");
+    let weapon_target =
+        InstallTargetPath::parse("nativePC/models/weapon.mod3", ["nativePC"]).expect("target");
+    let player_plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        player_target,
+        FileLayer::new("base", 0),
+    )]);
+    let weapon_plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/weapon.mod3"),
+        weapon_target,
+        FileLayer::new("base", 0),
+    )]);
+
+    let player_hash = commit_plan_for_hash_test(player_plan)
+        .plan_hash
+        .expect("player commit should record plan hash");
+    let weapon_hash = commit_plan_for_hash_test(weapon_plan)
+        .plan_hash
+        .expect("weapon commit should record plan hash");
+
+    assert_ne!(player_hash, weapon_hash);
 }
 
 #[test]
