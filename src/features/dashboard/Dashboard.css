@@ -152,6 +152,18 @@
   gap: 12px;
 }
 
+.setup-actions--launch {
+  align-items: center;
+}
+
+.launch-status-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .primary-action,
 .secondary-action {
   display: inline-flex;

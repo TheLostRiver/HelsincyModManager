@@ -234,14 +234,15 @@ JSON 做不好的需求:
 ### T7: 一键启动游戏
 
 **前置**: 无
+**状态**: 已完成（`GameLauncher` port、MHW:I Steam protocol launcher、`launch_game` command、Dashboard / App Header 启动入口已落地）
 **预估**: 小
 **独立文档**: 不需要
 
 交付:
-- [ ] `hmm-ports` 新增 `GameLauncher` trait
-- [ ] `hmm-games-mhw` 实现 MHW:I launcher（Steam protocol 优先）
-- [ ] `hmm-tauri` 新增 `launch_game` command
-- [ ] Dashboard / App Header 启动按钮
+- [x] `hmm-ports` 新增 `GameLauncher` trait
+- [x] `hmm-games-mhw` 实现 MHW:I launcher（Steam protocol 优先）
+- [x] `hmm-tauri` 新增 `launch_game` command
+- [x] Dashboard / App Header 启动按钮
 
 ---
 
@@ -391,7 +392,7 @@ JSON 做不好的需求:
 | T4 分类标签 | P1 | 已完成 | #112 / #113 / #114 |
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
-| T7 一键启动 | P1 | 待开始 | |
+| T7 一键启动 | P1 | 已完成（PR 待创建） | |
 | T8 存档备份 | P2 | 待开始 | |
 | T9 Rich Manifest | P2 | 待开始 | |
 | T10 依赖检查 | P2 | 待开始 | |
