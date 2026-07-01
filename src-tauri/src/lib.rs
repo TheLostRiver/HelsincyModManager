@@ -1,5 +1,7 @@
 mod category_commands;
 mod dto;
+mod game_launch_commands;
+mod game_launch_dto;
 mod game_setup_commands;
 mod install_commands;
 mod mod_import_commands;
@@ -14,6 +16,7 @@ use category_commands::{
     create_category, delete_category, get_mod_categories, list_categories, set_mod_categories,
     update_category,
 };
+use game_launch_commands::launch_game;
 use game_setup_commands::{
     get_game_setup_status, save_game_directory, scan_game_candidates, validate_game_directory,
 };
@@ -55,6 +58,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_health,
+            launch_game,
             get_game_setup_status,
             validate_game_directory,
             save_game_directory,

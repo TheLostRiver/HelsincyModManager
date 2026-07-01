@@ -1,6 +1,6 @@
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
-    CommitInstallPlanRequest, GameProfileWriteLockRegistry, GameSetupService,
+    CommitInstallPlanRequest, GameLaunchService, GameProfileWriteLockRegistry, GameSetupService,
     ImportedModInstallCommitRequest, InstallCommitError, InstallCommitPhase, InstallCommitResult,
     InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
     InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
@@ -20,7 +20,7 @@ use hmm_app::{
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
-use hmm_games_mhw::MonsterHunterWorldAdapter;
+use hmm_games_mhw::{MonsterHunterWorldAdapter, MonsterHunterWorldLauncher};
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
     FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemTextLogReader,
@@ -30,14 +30,15 @@ use hmm_infra::{
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
     SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
     SqliteProfileRepository, SteamGameDiscoveryService, SystemClock,
-    SystemDiagnosticsEnvironmentProvider, TaskScopedModImportSandboxLocator,
-    ZipModImportPackagePreparer,
+    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, ModImportResultRepository,
-    ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository, TextLogReader, ThumbnailCacheMaintenance,
+    DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
+    ModImportResultRepository, ModImportSandboxLocator, ProfileRepository,
+    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository, TextLogReader,
+    ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -46,6 +47,7 @@ use tauri::{AppHandle, Manager};
 
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
+    pub game_launch: Arc<GameLaunchService>,
     pub mod_library: Arc<ModLibraryService>,
     pub mod_dependency_graph: Arc<ModDependencyGraphService>,
     pub preview_image_candidates: Arc<PreviewImageCandidateListService>,
@@ -105,6 +107,9 @@ impl AppState {
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
+        let mhw_launcher: Arc<dyn GameLauncher> = Arc::new(MonsterHunterWorldLauncher::new(
+            Arc::new(SystemGameLaunchRunner),
+        ));
         let game_config_repository: Arc<dyn GameConfigRepository> =
             Arc::new(JsonGameConfigRepository::new(config_path));
         let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
@@ -304,6 +309,10 @@ impl AppState {
                     PlatformSteamRootProvider,
                 ))),
                 Arc::new(SystemClock),
+            )),
+            game_launch: Arc::new(GameLaunchService::new(
+                vec![mhw_launcher],
+                Arc::clone(&game_config_repository),
             )),
             mod_library,
             mod_dependency_graph,

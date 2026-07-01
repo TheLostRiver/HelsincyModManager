@@ -1,8 +1,13 @@
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryValidation, GameId,
+    GameInstance,
     GameSetupErrorCode,
 };
-use hmm_ports::{GameAdapter, GameDirectoryProbe};
+use hmm_ports::{
+    GameAdapter, GameDirectoryProbe, GameLaunchError, GameLaunchMethod, GameLaunchReceipt,
+    GameLaunchRunner, GameLauncher,
+};
+use std::sync::Arc;
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
 const STEAM_APP_ID: u32 = 582010;
@@ -10,6 +15,32 @@ const EXECUTABLE_NAME: &str = "MonsterHunterWorld.exe";
 const NATIVE_PC_DIR: &str = "nativePC";
 
 pub struct MonsterHunterWorldAdapter;
+
+pub struct MonsterHunterWorldLauncher {
+    runner: Arc<dyn GameLaunchRunner>,
+}
+
+impl MonsterHunterWorldLauncher {
+    pub fn new(runner: Arc<dyn GameLaunchRunner>) -> Self {
+        Self { runner }
+    }
+}
+
+impl GameLauncher for MonsterHunterWorldLauncher {
+    fn game_id(&self) -> GameId {
+        GameId::mhw()
+    }
+
+    fn launch(&self, instance: &GameInstance) -> Result<GameLaunchReceipt, GameLaunchError> {
+        self.runner
+            .open_uri(&format!("steam://rungameid/{STEAM_APP_ID}"))?;
+
+        Ok(GameLaunchReceipt {
+            game_id: instance.game_id.clone(),
+            method: GameLaunchMethod::SteamProtocol,
+        })
+    }
+}
 
 impl GameAdapter for MonsterHunterWorldAdapter {
     fn game_id(&self) -> GameId {

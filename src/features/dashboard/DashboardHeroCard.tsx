@@ -1,15 +1,23 @@
+import { Play } from "lucide-react";
 import { GameDirectoryActions } from "../game-setup/GameDirectoryActions";
 import { GameDirectoryCandidateList } from "../game-setup/GameDirectoryCandidateList";
 import type { GameDirectoryCandidate, GameSetupStatus } from "../game-setup/gameSetupTypes";
 import { supportCards } from "./dashboardData";
+
+type DashboardLaunchState = {
+  isLaunchingGame: boolean;
+  message: string | null;
+};
 
 type DashboardHeroCardProps = {
   status: GameSetupStatus;
   candidates: GameDirectoryCandidate[];
   isBusy: boolean;
   actionMessage: string | null;
+  launchState: DashboardLaunchState;
   onDirectorySelected: (directory: string) => Promise<void>;
   onActionError: (message: string) => void;
+  onLaunchGame: () => Promise<unknown>;
   onScanSteam: () => Promise<void>;
 };
 
@@ -18,8 +26,10 @@ export function DashboardHeroCard({
   candidates,
   isBusy,
   actionMessage,
+  launchState,
   onDirectorySelected,
   onActionError,
+  onLaunchGame,
   onScanSteam,
 }: DashboardHeroCardProps) {
   const copy = heroCopyForStatus(status, actionMessage);
@@ -35,18 +45,39 @@ export function DashboardHeroCard({
         <p>{copy.description}</p>
       </div>
 
-      <GameDirectoryActions
-        isBusy={isBusy}
-        onDirectorySelected={onDirectorySelected}
-        onActionError={onActionError}
-        onScanSteam={onScanSteam}
-      />
+      {status.kind === "configured" ? (
+        <div className="setup-actions setup-actions--launch">
+          <button
+            type="button"
+            className="primary-action"
+            disabled={launchState.isLaunchingGame}
+            onClick={() => void onLaunchGame()}
+          >
+            <Play size={16} />
+            {launchState.isLaunchingGame ? "正在启动" : "启动游戏"}
+          </button>
+          {launchState.message ? (
+            <p className="launch-status-note" role="status">
+              {launchState.message}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <GameDirectoryActions
+          isBusy={isBusy}
+          onDirectorySelected={onDirectorySelected}
+          onActionError={onActionError}
+          onScanSteam={onScanSteam}
+        />
+      )}
 
-      <GameDirectoryCandidateList
-        candidates={candidates}
-        isBusy={isBusy}
-        onCandidateSelected={onDirectorySelected}
-      />
+      {status.kind !== "configured" ? (
+        <GameDirectoryCandidateList
+          candidates={candidates}
+          isBusy={isBusy}
+          onCandidateSelected={onDirectorySelected}
+        />
+      ) : null}
 
       <div className="support-grid" aria-label="支持信息">
         {supportCards.map((card) => (

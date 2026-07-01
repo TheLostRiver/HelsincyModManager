@@ -53,6 +53,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
+- 游戏启动：`launch_game(gameId)`
 - 查询安装恢复摘要：`scan_install_recovery`
 - 查询安装恢复动作预览：`preview_recovery_action`
 - 启动安装恢复动作任务：`start_recovery_action_task`
@@ -375,7 +376,46 @@ type ProfileSaveSettingsDto = {
 };
 ```
 
-### 4. 安装计划预览
+### 4. 游戏启动
+
+首批 command：
+
+```text
+launch_game(gameId)
+```
+
+边界：
+
+- `launch_game` 是短命令，不创建 long-running task，不发送 `hmm://task-progress` 事件。
+- 前端只提交稳定 `gameId`，不提交 exe 路径、游戏目录、Steam URI、shell 命令或任意本地路径。
+- 后端通过已保存的 `GameInstance` 判断是否已配置；没有配置或配置状态不可用时返回 `game_not_configured`。
+- 游戏专属启动方式留在对应 game adapter；MHW:I 当前优先使用 Steam protocol。
+- 平台打开 URI 的细节留在 infra runner；自动化测试必须使用 fake runner，不能启动真实 Steam 或真实游戏。
+- 返回 DTO 只包含 `gameId` 和 `method`，不包含完整本地路径、Steam URI、Steam ID、启动器进程信息或游戏目录。
+
+DTO 形状：
+
+```ts
+type GameLaunchMethod = "steam_protocol" | "direct_executable";
+
+type GameLaunchReceiptDto = {
+  gameId: string;
+  method: GameLaunchMethod;
+};
+```
+
+稳定错误码：
+
+```text
+unsupported_game
+game_not_configured
+storage_corrupted
+storage_failed
+launcher_unavailable
+launch_failed
+```
+
+### 5. 安装计划预览
 
 首批 command：
 
@@ -585,7 +625,7 @@ type InstallPlanPreviewDto = {
 };
 ```
 
-### 5. Mod 预览图
+### 6. Mod 预览图
 
 Mod 预览图属于导入分析结果，不属于前端文件读取能力。具体安全策略见 [Mod 预览图安全处理设计](MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md)。
 
