@@ -145,7 +145,7 @@ manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`cr
 - 替换已有托管目标时，manifest entry 仍继承旧条目的长期 `backup_ref` 语义；但如果写入窗口后失败且 rollback 失败，留下的 `rollback_required` recovery record 会保留本次提交前创建的 pending backup ref，用于后续受控回滚恢复到“安装前一刻”的文件状态。若 `committing` 已保存后才更新某个 entry 的 pending backup，active recovery record 会立即重新持久化，避免崩溃恢复读取到旧 backup 语义。manifest 保存成功后，`completed` recovery record 会重新同步为 manifest entry 的长期 `backup_ref`，避免 completed 状态指向随后会被 best-effort 清理的 pending backup。
 - `scan_install_recovery` 已只读消费 durable recovery record：`committing` 或 `rollback_required` record 会对外返回 `rollback_required`，`planned`、`completed` 和 `rolled_back` 不会被提升为待回滚状态；空 `modIds` 全量扫描也会包含只有 recovery record、尚无 manifest 的半完成安装。
 - `preview_recovery_action` 已提供只读恢复动作预览：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁读取 durable recovery record、当前目标摘要和 backup 可读性，并只返回 `available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code。该能力不执行删除、恢复、回滚、写 manifest、写 recovery record、发送 task phase 或写 Audit Log。
-- `start_recovery_action_task` 已提供后端受控回滚任务入口：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一 `gameId/profileId` 写锁重新验证 durable recovery record、目标摘要和 backup 可读性，随后删除新增文件或从 backup 恢复覆盖文件，并将 recovery record 标记为 `rolled_back`。该能力已写最小 Audit Log；恢复中心已提供逐 Mod 写入型按钮，前端先调用 `preview_recovery_action`，后端返回 `available` 后才允许确认并启动任务。
+- `start_recovery_action_task` 已提供后端受控回滚任务入口：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一 `gameId/profileId` 写锁重新验证 durable recovery record、目标摘要和 backup 可读性，随后删除新增文件或从 backup 恢复覆盖文件，将 recovery record 标记为 `rolled_back`，并在已有 rich manifest 时移除该 Mod 的 stale entries、把 manifest status 持久化为 `rolled_back`。该能力已写最小 Audit Log；恢复中心已提供逐 Mod 写入型按钮，前端先调用 `preview_recovery_action`，后端返回 `available` 后才允许确认并启动任务。
 
 ### Tauri command 与任务入口
 
@@ -226,7 +226,7 @@ manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`cr
 
 当前只读恢复扫描能力基于 durable recovery record、manifest entries、`installed_file` 摘要、当前目标文件摘要和 backup 是否存在。`scan_install_recovery` 会按 `modId` 返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed` 摘要，以及不含路径或 backup ref 的聚合 issue code；`rollback_required` 只能来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。当 `modIds` 为空时，后端会扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装，作为 Dashboard 入口级恢复健康摘要、App Frame 全局告警和独立恢复中心入口的基础。扫描会复用安装/卸载同一份 `gameId/profileId` 写锁，避免在 commit / uninstall 写入窗口内读取半完成状态。它只做检测，不自动删除、恢复、回滚或写 manifest。
 
-当前恢复动作预览与执行能力基于 durable recovery record、当前目标文件摘要和 backup 可读性。`preview_recovery_action` 当前仅支持只读预览 `rollback_install`，会在同一 `gameId/profileId` 写锁下重新验证候选 entry；无 recovery record、状态不在 `committing` / `rollback_required`、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并仅暴露稳定 reason code 与聚合计数。`start_recovery_action_task` 当前仅支持执行 `rollback_install`，会在持锁区重新验证上述条件后删除新增文件或从 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。它不写 rich manifest，不暴露 target path、backup ref/root、manifest root/path、sandbox/cache 路径或第三方 Mod 内容；恢复中心已提供逐 Mod 写入型按钮，前端必须先预览、再确认、再按 `taskId` 跟踪任务并在完成后重新扫描。
+当前恢复动作预览与执行能力基于 durable recovery record、当前目标文件摘要和 backup 可读性。`preview_recovery_action` 当前仅支持只读预览 `rollback_install`，会在同一 `gameId/profileId` 写锁下重新验证候选 entry；无 recovery record、状态不在 `committing` / `rollback_required`、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并仅暴露稳定 reason code 与聚合计数。`start_recovery_action_task` 当前仅支持执行 `rollback_install`，会在持锁区重新验证上述条件后删除新增文件或从 backup 恢复覆盖文件，将 durable recovery record 标记为 `rolled_back`，并在已有 rich manifest 时移除该 Mod 的 stale entries、把 manifest status 持久化为 `rolled_back`。manifest 保存失败或后续 recovery record 保存失败时会 best-effort 回滚已执行文件动作；若 manifest 已被写入而 recovery record 保存失败，还会 best-effort 写回原 manifest，避免文件、manifest 与 recovery record 状态互相矛盾。该能力不暴露 target path、backup ref/root、manifest root/path、sandbox/cache 路径或第三方 Mod 内容；恢复中心已提供逐 Mod 写入型按钮，前端必须先预览、再确认、再按 `taskId` 跟踪任务并在完成后重新扫描。
 
 任务事件和 Audit Log 不应携带完整本地路径、用户名、Steam ID、sandbox/cache 路径、真实 Mod 包内容或 manifest 正文。
 
@@ -285,7 +285,7 @@ manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`cr
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
 - ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
 - Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；manifest JSON 已兼容 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段，旧 manifest 缺少 rich 字段时默认读取为 `completed`。`scan_install_recovery` 已能读取 durable recovery record、真实目标文件和 backup 做只读一致性检测，并可返回由受控记录驱动的 `rollback_required`；`get_install_manifest_status` 在传入 `gameId` 时已消费同一只读恢复扫描结果并映射为安装摘要状态，未传 `gameId` 时保留 manifest-only fallback。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
-- Rich manifest：当前已落地 domain 字段、JSON 兼容基础和真实 `plan_hash` 计算；replacement binding snapshot、schema/migration 字段、rich 状态机消费以及更完整的 `repair_required` 检测仍待后续切片。
+- Rich manifest：当前已落地 domain 字段、JSON 兼容基础、真实 `plan_hash` 计算，以及受控回滚成功后的 `rolled_back` status 持久化；replacement binding snapshot、schema/migration 字段、其余 rich 状态机消费以及更完整的 `repair_required` 检测仍待后续切片。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
 ## 文档现状与分工
@@ -302,7 +302,7 @@ manifest 已具备最小 rich metadata 兼容基础：`backend`、`status`、`cr
 建议继续按下面顺序推进：
 
 1. Crash/recovery 后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 已补 durable recovery record 的领域模型、port、JSON 仓储、安装 commit 写入、只读扫描消费、只读动作预览和后端受控回滚任务；下一步应补恢复中心写入型 UI 启用和操作完成后的重新扫描编排。已落地的 App Frame 全局告警、恢复中心人工处理面板和动作预览仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
-2. Rich manifest / repair 检测：补齐 replacement binding snapshot、schema/migration 字段和 rich 状态机消费，支持 `rollback_required`、`rolled_back` 持久化和更完整的 `repair_required` 检测。
+2. Rich manifest / repair 检测：补齐 replacement binding snapshot、schema/migration 字段和其余 rich 状态机消费，继续完善 `rollback_required` 状态持久化和更完整的 `repair_required` 检测。
 3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
 4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
 5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
