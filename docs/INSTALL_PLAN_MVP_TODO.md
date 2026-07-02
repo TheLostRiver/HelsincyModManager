@@ -46,7 +46,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - Manifest 状态摘要已接入恢复扫描事实：`get_install_manifest_status` 可选接收 `gameId`；传入 `gameId` 时复用只读 recovery scan 并把 `completed` 映射为 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为安装摘要状态返回；未传 `gameId` 时保留旧的 manifest-only fallback。
 - Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
 - 受控回滚任务前置安全加固：当安装替换已有托管目标并在写入窗口后失败且 rollback 失败时，`committing` / `rollback_required` recovery record 会使用本次提交前创建的 pending backup ref 作为恢复来源；manifest 保存成功后的 `completed` record 则重新同步为 manifest entry 的长期 backup 语义。
-- 后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件或从 backup 恢复覆盖文件，并把 durable recovery record 标记为 `rolled_back`。恢复中心已启用逐 Mod 写入型按钮，前端先预览、再确认、再按 `taskId` 跟踪任务。
+- 后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件或从 backup 恢复覆盖文件，把 durable recovery record 标记为 `rolled_back`，并在已有 rich manifest 时移除该 Mod 的 stale entries、把 manifest status 持久化为 `rolled_back`。恢复中心已启用逐 Mod 写入型按钮，前端先预览、再确认、再按 `taskId` 跟踪任务。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
 - 前端 Mod 库恢复扫描入口：`get_install_manifest_status` 传入 `gameId` 后可直接返回 `rollback_required` / `repair_required` / `unknown` 等不安全状态；随后仍调用只读 `scan_install_recovery` 获取 issue code、计数和恢复中心所需聚合详情，并阻断安装/卸载入口。
@@ -59,7 +59,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
-- rich manifest 的 replacement binding snapshot、schema/migration 字段、状态机消费和真实修复检测。
+- rich manifest 的 replacement binding snapshot、schema/migration 字段、除受控回滚 `rolled_back` 外的状态机消费和真实修复检测。
 - dependency/preflight 阻断。
 
 ## 已完成切片记录
@@ -98,6 +98,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 只读恢复动作预览：`preview_recovery_action` 可预览 `rollback_install` 是否满足受控回滚前置条件，只返回 `available` / `blocked`、聚合计数和稳定阻断 reason code；不新增恢复执行、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源，`completed` record 才恢复为 manifest 长期 backup 语义；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 后端受控回滚任务：`start_recovery_action_task` 可执行 `rollback_install`，发送 `install.recovery.*` task phase，写入 `rollback_install` Audit Log，并将 durable recovery record 标记为 `rolled_back`；恢复中心已启用逐 Mod 受控回滚按钮。
+- [x] Rich manifest `rolled_back` 同步：受控 `rollback_install` 成功后，在已有 manifest 中移除该 Mod 的 stale entries 并把 manifest status 持久化为 `rolled_back`；manifest 或 recovery record 保存失败时会 best-effort 回滚文件动作并避免持久状态互相矛盾。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -135,7 +136,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 - 该切片结束时 `scan_install_recovery` 尚未消费 recovery record，也不会返回 `rollback_required`；后续扫描消费切片已补齐该只读状态。
 - 没有新增 Tauri command、DTO、task phase、前端 UI、只读动作预览或受控回滚执行。
-- 回滚成功后的 `rolled_back` rich 状态、只读动作预览和受控回滚任务仍需后续切片。
+- 回滚成功后的 `rolled_back` rich 状态、只读动作预览和受控回滚任务当时仍需后续切片；这些能力后续已分步补齐。
 
 验证记录：
 
@@ -158,7 +159,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍明确未完成：
 
-- 只读动作预览、受控回滚任务、恢复中心真正写入动作和 `rolled_back` rich 状态仍需后续切片。
+- 只读动作预览、受控回滚任务、恢复中心真正写入动作和 `rolled_back` rich 状态当时仍需后续切片；这些能力后续已分步补齐。
 - 该切片结束时 `get_install_manifest_status` 尚未自动消费 recovery scan 结果；后续 manifest 状态消费切片已补齐该只读映射。
 - 没有新增恢复按钮、自动回滚、删除/恢复文件、task phase 或 manifest 写入。
 
@@ -186,7 +187,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 - 受控回滚任务、`install.recovery.*` task phase、Audit Log 写入和执行前持锁重校验仍需后续切片。
 - 恢复中心 UI 已显示逐 Mod 可点击回滚按钮；人工处理决策面板中的 `controlled_recovery` 只负责滚动到 Mod 列表，真正写入动作仍由单个 `rollback_required` Mod 行触发。
-- `rolled_back` rich 状态和 manifest/recovery record 执行后状态更新仍未实现。
+- `rolled_back` rich 状态和 manifest/recovery record 执行后状态更新当时仍未实现；manifest `rolled_back` 同步已在 2026-07-02 切片补齐。
 
 验证记录：
 
@@ -237,7 +238,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍明确未完成：
 
 - 恢复中心逐 Mod 写入型按钮已启用；该 UI 必须只在后端 preview/action 条件满足时允许确认，并在任务完成后重新扫描。
-- Rich manifest 尚未持久化 `rolled_back` 状态；当前只更新 durable recovery record。
+- Rich manifest `rolled_back` 持久化当时尚未完成；后续 2026-07-02 切片已补齐受控回滚成功后的 manifest 同步。
 - 不做后台自动恢复，不根据当前 Mod 包内容猜测恢复动作。
 
 验证记录：
@@ -247,6 +248,31 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 聚焦 Tauri：`cargo test -p hmm-tauri recovery_action`。
 - 聚焦前端 typed API：`cmd /c corepack pnpm exec node --test "src/features/mods/modInstallPlanApi.test.mjs"`。
 - 全量门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
+
+### 2026-07-02 进度详情：Rich manifest rolled_back 同步
+
+本切片完成 T9 Rich Manifest 的一个小范围状态机消费点：受控 `rollback_install` 成功后，后端不仅持久化 durable recovery record 的 `rolled_back` 状态，也会同步已有 rich manifest，避免后续恢复扫描把已删除/已恢复的 stale manifest entries 误判为 `repair_required`。
+
+已落地范围：
+
+- `InstallRecoveryActionService` 新增 manifest repository 注入入口；生产 `start_recovery_action_task` 组合根接入 `JsonInstallManifestRepository`。
+- `rollback_install` 在持锁执行并通过目标/backup 重新验证后，会删除本工具新增文件或从 recovery record 的 backup 恢复覆盖文件；随后在已有 manifest 中移除该 `modId` 的 entries，并把 manifest status 标记为 `rolled_back`。
+- 如果 manifest 保存失败，后端会 best-effort 回滚已执行的文件动作，并保留 recovery record 的 `rollback_required` 状态。
+- 如果 manifest 已保存但 recovery record 保存失败，后端会 best-effort 回滚已执行的文件动作，并把原 manifest 写回，避免文件、manifest 和 recovery record 状态互相矛盾。
+
+仍明确未完成：
+
+- 不新增 Tauri command、DTO、task phase、前端入口或 Audit Log 字段。
+- 不处理 `manifest_id`、schema/migration metadata、replacement binding snapshot。
+- 不实现完整 `rollback_required` rich manifest 持久化、批量 repair workflow 或真实 `repair_required` 自动修复。
+
+验证记录：
+
+- TDD RED：`cargo test -p hmm-app run_rollback_install_action_persists_manifest_rolled_back_without_stale_mod_entries` 先失败于 `InstallRecoveryActionService::new_with_manifest` 不存在。
+- 聚焦 action：`cargo test -p hmm-app run_rollback_install_action`。
+- 聚焦 recovery scan/action：`cargo test -p hmm-app install_recovery`。
+- 聚焦 Tauri 桥接：`cargo test -p hmm-tauri recovery_action`。
+- 全量门禁：本切片完成前需再次执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
 
@@ -769,7 +795,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：崩溃恢复扫描
 
-状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、durable recovery record 消费、Mod 库加载后的前端扫描入口、Dashboard 入口健康摘要、App Frame 全局恢复告警、独立恢复中心入口、恢复中心 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储、安装 commit 写入、只读扫描消费、只读动作预览、后端 `start_recovery_action_task` 受控回滚任务、恢复中心逐 Mod 写入型按钮和任务 UI 编排均已落地；rich manifest `rolled_back` 状态仍待后续切片。
+状态：后端只读恢复扫描摘要、`scan_install_recovery` 窄 command、空 `modIds` 全量 profile 扫描基础、durable recovery record 消费、Mod 库加载后的前端扫描入口、Dashboard 入口健康摘要、App Frame 全局恢复告警、独立恢复中心入口、恢复中心 rich repair summary 和诊断导出联动已落地；受控恢复/回滚动作的实施计划已落地到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record 的基础模型/仓储、安装 commit 写入、只读扫描消费、只读动作预览、后端 `start_recovery_action_task` 受控回滚任务、恢复中心逐 Mod 写入型按钮、任务 UI 编排，以及受控回滚成功后的 rich manifest `rolled_back` 同步均已落地。
 
 目标：启动或进入安装页时发现半完成安装，并给出可恢复、可重试或人工处理的明确状态。
 
@@ -819,7 +845,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 目标：把当前 MVP manifest 扩展为可支撑卸载、恢复、修复、retarget 和后续虚拟映射的事实记录。
 
-状态：domain 字段、JSON 向后兼容基础和真实 `plan_hash` 计算已落地；状态机消费、replacement binding snapshot、schema/migration 字段和修复检测仍待后续切片。
+状态：domain 字段、JSON 向后兼容基础、真实 `plan_hash` 计算，以及受控 `rollback_install` 成功后的 rich manifest `rolled_back` 同步已落地；replacement binding snapshot、schema/migration 字段、其余状态机消费和修复检测仍待后续切片。
 
 候选字段：
 
