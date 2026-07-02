@@ -18,7 +18,7 @@
 
 当前不能假设：
 
-- MVP manifest 还没有持久化 `planned`、`committing`、`rollback_required`、`rolled_back` 等 rich 状态。
+- MVP manifest 已在受控 `rollback_install` 成功后持久化 `rolled_back` 状态并移除该 Mod 的 stale entries；`planned`、`committing`、`rollback_required` 等其余 rich 状态持久化和 schema/migration 仍待后续切片。
 - 安装进程在写入文件但尚未保存 manifest 时崩溃，当前系统不能仅凭目录内容安全推断“本工具写过哪些目标”。
 - Task Log / Audit Log 不能成为唯一事实来源；它们只能辅助诊断，不能替代 manifest、backup 和受控目标摘要。
 - `repair_required` 不等于“可以自动覆盖或删除”。目标被外部工具或玩家修改时，自动恢复可能误伤玩家文件。
@@ -93,7 +93,7 @@
 
 - 新增文件：删除目标文件。
 - 覆盖文件：从 backup 恢复原始文件。
-- manifest / recovery record：当前后端任务会将 durable recovery record 标记为 `rolled_back`；rich manifest 状态和 manifest entry 迁移仍由后续切片定稿。
+- manifest / recovery record：当前后端任务会将 durable recovery record 标记为 `rolled_back`；如果已存在 rich manifest，也会移除该 Mod 的 stale entries 并将 manifest status 持久化为 `rolled_back`。如果 manifest 或 recovery record 保存失败，后端会 best-effort 回滚已执行文件动作；若 manifest 已写入但 recovery record 保存失败，还会 best-effort 写回原 manifest。
 - Audit Log：记录 task id、game id、profile id、mod id、removed/restored 文件计数、backup 计数和顶层结果；稳定失败 phase / error code 由 task event 承载，当前最小审计事件不记录该字段。
 
 阻断场景：
@@ -130,8 +130,8 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 - 已完成恢复扫描消费：`scan_install_recovery` 仅在 durable recovery record 为 `committing` / `rollback_required` 时对外返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装。
 - 已完成只读动作预览：`preview_recovery_action` 可对 `rollback_install` 返回 `available` / `blocked`、聚合计数和稳定阻断 reason code。
 - 已完成受控回滚任务前置安全加固：替换已有托管目标时，`committing` / `rollback_required` record 保留本次 pending backup 作为执行回滚的恢复来源；提交成功后的 `completed` record 再恢复成 manifest 的长期 backup 语义。
-- 已完成后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件、从 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。
-- 尚未完成：rich manifest `rolled_back` 状态同步、批量/更丰富的 repair workflow。
+- 已完成后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件、从 backup 恢复覆盖文件，将 durable recovery record 标记为 `rolled_back`，并同步已有 rich manifest 的 `rolled_back` 状态。
+- 尚未完成：批量/更丰富的 repair workflow、`planned` / `committing` / `rollback_required` 等其余 rich manifest 状态持久化、schema/migration metadata 和 replacement binding snapshot。
 
 候选落点：
 

@@ -628,7 +628,7 @@ impl RecoveryActionTaskRunner {
                     events,
                     recovery_action_failed_phase(&error),
                     None,
-                ))
+                ));
             }
         };
 
@@ -794,6 +794,7 @@ fn recovery_action_failed_phase(error: &InstallRecoveryActionError) -> &'static 
         | InstallRecoveryActionError::Blocked { .. } => "planning",
         InstallRecoveryActionError::RemoveFailed
         | InstallRecoveryActionError::RestoreFailed
+        | InstallRecoveryActionError::ManifestSaveFailed
         | InstallRecoveryActionError::RecoveryRecordSaveFailed
         | InstallRecoveryActionError::RollbackFailed { .. } => "processing",
     }
