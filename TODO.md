@@ -265,7 +265,7 @@ JSON 做不好的需求:
 ### T9: Rich Manifest 与状态机
 
 **前置**: T1
-**状态**: 进行中（`plan_hash` 真实计算与安装提交持久化已落地）
+**状态**: 进行中（`plan_hash` 真实计算与受控回滚后的 `rolled_back` 持久化已落地）
 **预估**: 中
 **独立文档**: 不需要（`docs/INSTALL_PLAN_MVP_TODO.md` 已有设计）
 
@@ -274,7 +274,7 @@ JSON 做不好的需求:
 - [ ] 待补字段：`manifest_id`、schema/migration 元数据、后续 replacement binding snapshot
 - [x] `get_install_manifest_status` 消费 recovery scan
 - [ ] rich manifest 状态机消费规则
-- [ ] `rolled_back` 状态持久化
+- [x] `rolled_back` 状态持久化：受控 `rollback_install` 成功后同步 rich manifest status，并移除已回滚 Mod 的 stale entries
 
 ---
 
@@ -396,7 +396,7 @@ JSON 做不好的需求:
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
 | T8 存档备份 | P2 | 待开始 | |
-| T9 Rich Manifest | P2 | 进行中（plan_hash 已落地） | |
+| T9 Rich Manifest | P2 | 进行中（plan_hash / rolled_back 已落地） | |
 | T10 依赖检查 | P2 | 待开始 | |
 | T11 ARMOR_RETARGET | P3 | 待开始 | |
 | T12 Mod 详情完整版 | P3 | 待开始 | |

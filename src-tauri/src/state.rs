@@ -478,13 +478,16 @@ impl InstallRecoveryActionExecutor for ConfiguredInstallRecoveryActionExecutor {
             .load_game_instance(&request.game_id)
             .map_err(|_| InstallRecoveryActionError::ActionUnavailable)?
             .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
-        let service = InstallRecoveryActionService::new(
+        let service = InstallRecoveryActionService::new_with_manifest(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
                 self.app_data_dir.join("install").join("backups"),
             )),
             Arc::new(JsonInstallRecoveryRecordRepository::new(
                 self.app_data_dir.join("install").join("recovery"),
+            )),
+            Arc::new(JsonInstallManifestRepository::new(
+                self.app_data_dir.join("install").join("manifests"),
             )),
         );
 
