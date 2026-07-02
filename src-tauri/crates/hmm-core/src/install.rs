@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
@@ -288,9 +288,15 @@ impl InstallRecoveryRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub const INSTALL_MANIFEST_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallManifest {
     pub profile_id: ProfileId,
+    pub manifest_id: String,
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_migration: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend: Option<String>,
     #[serde(default)]
@@ -304,10 +310,64 @@ pub struct InstallManifest {
     pub entries: Vec<InstallManifestEntry>,
 }
 
+#[derive(Deserialize)]
+struct InstallManifestWire {
+    profile_id: ProfileId,
+    #[serde(default)]
+    manifest_id: Option<String>,
+    #[serde(default)]
+    schema_version: Option<u32>,
+    #[serde(default)]
+    schema_migration: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
+    #[serde(default)]
+    status: InstallManifestStatus,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    completed_at: Option<String>,
+    #[serde(default)]
+    plan_hash: Option<String>,
+    entries: Vec<InstallManifestEntry>,
+}
+
+impl<'de> Deserialize<'de> for InstallManifest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = InstallManifestWire::deserialize(deserializer)?;
+        let manifest_id = wire
+            .manifest_id
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| manifest_id_for_profile(&wire.profile_id));
+
+        Ok(Self {
+            profile_id: wire.profile_id,
+            manifest_id,
+            schema_version: wire
+                .schema_version
+                .unwrap_or(INSTALL_MANIFEST_SCHEMA_VERSION),
+            schema_migration: wire.schema_migration,
+            backend: wire.backend,
+            status: wire.status,
+            created_at: wire.created_at,
+            completed_at: wire.completed_at,
+            plan_hash: wire.plan_hash,
+            entries: wire.entries,
+        })
+    }
+}
+
 impl InstallManifest {
     pub fn completed(profile_id: ProfileId, entries: Vec<InstallManifestEntry>) -> Self {
+        let manifest_id = manifest_id_for_profile(&profile_id);
         Self {
             profile_id,
+            manifest_id,
+            schema_version: INSTALL_MANIFEST_SCHEMA_VERSION,
+            schema_migration: None,
             backend: None,
             status: InstallManifestStatus::Completed,
             created_at: None,
@@ -325,8 +385,12 @@ impl InstallManifest {
         completed_at: Option<String>,
         plan_hash: Option<String>,
     ) -> Self {
+        let manifest_id = manifest_id_for_profile(&profile_id);
         Self {
             profile_id,
+            manifest_id,
+            schema_version: INSTALL_MANIFEST_SCHEMA_VERSION,
+            schema_migration: None,
             backend,
             status: InstallManifestStatus::Completed,
             created_at,
@@ -335,6 +399,10 @@ impl InstallManifest {
             entries,
         }
     }
+}
+
+fn manifest_id_for_profile(profile_id: &ProfileId) -> String {
+    format!("profile:{}", profile_id.as_str())
 }
 
 fn has_duplicate_priorities(providers: &[InstallFileProvider]) -> bool {
@@ -536,6 +604,9 @@ mod tests {
         .expect("legacy manifest should remain readable");
 
         assert_eq!(manifest.status, InstallManifestStatus::Completed);
+        assert_eq!(manifest.manifest_id, "profile:default");
+        assert_eq!(manifest.schema_version, 1);
+        assert_eq!(manifest.schema_migration, None);
         assert_eq!(manifest.backend, None);
         assert_eq!(manifest.created_at, None);
         assert_eq!(manifest.completed_at, None);
@@ -546,6 +617,9 @@ mod tests {
     fn manifest_status_serializes_as_stable_snake_case() {
         let manifest = InstallManifest {
             profile_id: ProfileId::new("default"),
+            manifest_id: "profile:default".to_owned(),
+            schema_version: 1,
+            schema_migration: None,
             backend: Some("install_plan".to_owned()),
             status: InstallManifestStatus::RolledBack,
             created_at: Some("2026-06-29T00:00:00Z".to_owned()),
@@ -560,6 +634,17 @@ mod tests {
         assert!(serialized.contains("\"backend\":\"install_plan\""));
         assert!(serialized.contains("\"plan_hash\":\"sha256:test-plan\""));
         assert!(!serialized.contains("RolledBack"));
+    }
+
+    #[test]
+    fn manifest_metadata_serializes_with_stable_schema_fields() {
+        let manifest = InstallManifest::completed(ProfileId::new("default"), Vec::new());
+
+        let serialized = serde_json::to_string(&manifest).expect("serialize manifest");
+
+        assert!(serialized.contains("\"manifest_id\":\"profile:default\""));
+        assert!(serialized.contains("\"schema_version\":1"));
+        assert!(!serialized.contains("schema_migration"));
     }
 
     #[test]
