@@ -4,6 +4,8 @@ import { GameDirectoryCandidateList } from "../game-setup/GameDirectoryCandidate
 import type { GameDirectoryCandidate, GameSetupStatus } from "../game-setup/gameSetupTypes";
 import { supportCards } from "./dashboardData";
 
+const launchBlockedDescription = "配置游戏目录后即可启动。";
+
 type DashboardLaunchState = {
   isLaunchingGame: boolean;
   message: string | null;
@@ -130,13 +132,13 @@ function launchCopyForStatus(status: GameSetupStatus) {
   if (status.kind === "invalid") {
     return {
       status: "需要重新选择目录",
-      description: "配置游戏目录后即可启动。",
+      description: launchBlockedDescription,
     };
   }
 
   return {
     status: "等待目录配置",
-    description: "配置游戏目录后即可启动。",
+    description: launchBlockedDescription,
   };
 }
 
