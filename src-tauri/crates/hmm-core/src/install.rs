@@ -212,6 +212,35 @@ pub enum InstallManifestStatus {
     RepairRequired,
 }
 
+/// profile 级 manifest status 的只读消费规则。
+///
+/// manifest 是 profile 聚合文档，status 描述整个 manifest 的状态机位置；
+/// 只读消费方（状态摘要查询、恢复扫描）必须先经过该规则，
+/// 保证失败状态不会被误报为已完成。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallManifestStatusConsumption {
+    /// entries 是已固化事实，可继续按 entry 消费（`completed` / `rolled_back`）。
+    /// `rolled_back` 只代表某次受控回滚已完成，剩余 entries 仍然可信。
+    TrustEntries,
+    /// 提交进行中（`planned` / `committing`），entries 不可当作已固化事实。
+    InFlight,
+    /// manifest 处于 `rollback_required` 失败态。
+    RollbackRequired,
+    /// manifest 处于 `repair_required` 失败态。
+    RepairRequired,
+}
+
+impl InstallManifestStatus {
+    pub fn consumption(self) -> InstallManifestStatusConsumption {
+        match self {
+            Self::Completed | Self::RolledBack => InstallManifestStatusConsumption::TrustEntries,
+            Self::Planned | Self::Committing => InstallManifestStatusConsumption::InFlight,
+            Self::RollbackRequired => InstallManifestStatusConsumption::RollbackRequired,
+            Self::RepairRequired => InstallManifestStatusConsumption::RepairRequired,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallRecoveryRecordStatus {
@@ -645,6 +674,26 @@ mod tests {
         assert!(serialized.contains("\"manifest_id\":\"profile:default\""));
         assert!(serialized.contains("\"schema_version\":1"));
         assert!(!serialized.contains("schema_migration"));
+    }
+
+    #[test]
+    fn manifest_status_consumption_classifies_read_side_rules() {
+        use InstallManifestStatusConsumption::{
+            InFlight, RepairRequired, RollbackRequired, TrustEntries,
+        };
+
+        assert_eq!(InstallManifestStatus::Completed.consumption(), TrustEntries);
+        assert_eq!(InstallManifestStatus::RolledBack.consumption(), TrustEntries);
+        assert_eq!(InstallManifestStatus::Planned.consumption(), InFlight);
+        assert_eq!(InstallManifestStatus::Committing.consumption(), InFlight);
+        assert_eq!(
+            InstallManifestStatus::RollbackRequired.consumption(),
+            RollbackRequired
+        );
+        assert_eq!(
+            InstallManifestStatus::RepairRequired.consumption(),
+            RepairRequired
+        );
     }
 
     #[test]
