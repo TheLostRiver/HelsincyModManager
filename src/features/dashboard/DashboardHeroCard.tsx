@@ -1,8 +1,10 @@
-import { Play } from "lucide-react";
+import { CheckCircle2, CircleDashed, Play } from "lucide-react";
 import { GameDirectoryActions } from "../game-setup/GameDirectoryActions";
 import { GameDirectoryCandidateList } from "../game-setup/GameDirectoryCandidateList";
 import type { GameDirectoryCandidate, GameSetupStatus } from "../game-setup/gameSetupTypes";
 import { supportCards } from "./dashboardData";
+
+const launchBlockedDescription = "配置游戏目录后即可启动。";
 
 type DashboardLaunchState = {
   isLaunchingGame: boolean;
@@ -33,6 +35,9 @@ export function DashboardHeroCard({
   onScanSteam,
 }: DashboardHeroCardProps) {
   const copy = heroCopyForStatus(status, actionMessage);
+  const isLaunchReady = status.kind === "configured";
+  const launchCopy = launchCopyForStatus(status);
+  const LaunchStatusIcon = isLaunchReady ? CheckCircle2 : CircleDashed;
 
   return (
     <section className="setup-panel" aria-labelledby="setup-title">
@@ -45,31 +50,46 @@ export function DashboardHeroCard({
         <p>{copy.description}</p>
       </div>
 
-      {status.kind === "configured" ? (
-        <div className="setup-actions setup-actions--launch">
-          <button
-            type="button"
-            className="primary-action"
-            disabled={launchState.isLaunchingGame}
-            onClick={() => void onLaunchGame()}
-          >
-            <Play size={16} />
-            {launchState.isLaunchingGame ? "正在启动" : "启动游戏"}
-          </button>
-          {launchState.message ? (
-            <p className="launch-status-note" role="status">
-              {launchState.message}
-            </p>
-          ) : null}
-        </div>
-      ) : (
+      {status.kind !== "configured" ? (
         <GameDirectoryActions
           isBusy={isBusy}
           onDirectorySelected={onDirectorySelected}
           onActionError={onActionError}
           onScanSteam={onScanSteam}
         />
-      )}
+      ) : null}
+
+      <div className={`launch-action-card${isLaunchReady ? "" : " is-disabled"}`} role="group" aria-label="游戏启动">
+        <div className={`launch-action-copy${isLaunchReady ? "" : " is-muted"}`}>
+          <span>
+            <LaunchStatusIcon size={14} aria-hidden="true" />
+            {launchCopy.status}
+          </span>
+          <p>{launchCopy.description}</p>
+        </div>
+        <button
+          type="button"
+          className="launch-action-button"
+          disabled={!isLaunchReady || launchState.isLaunchingGame}
+          aria-busy={launchState.isLaunchingGame ? "true" : undefined}
+          onClick={() => {
+            if (!isLaunchReady) {
+              return;
+            }
+            void onLaunchGame();
+          }}
+        >
+          <span className="launch-action-button__icon" aria-hidden="true">
+            <Play size={17} fill="currentColor" />
+          </span>
+          <span>{launchState.isLaunchingGame ? "正在启动" : "启动游戏"}</span>
+        </button>
+        {launchState.message ? (
+          <p className="launch-status-note" role="status">
+            {launchState.message}
+          </p>
+        ) : null}
+      </div>
 
       {status.kind !== "configured" ? (
         <GameDirectoryCandidateList
@@ -92,6 +112,34 @@ export function DashboardHeroCard({
       </div>
     </section>
   );
+}
+
+function launchCopyForStatus(status: GameSetupStatus) {
+  if (status.kind === "configured") {
+    return {
+      status: "已准备就绪",
+      description: "当前配置档可用，游戏目录已通过校验。",
+    };
+  }
+
+  if (status.kind === "validating") {
+    return {
+      status: "等待目录校验",
+      description: "目录校验完成后即可启动。",
+    };
+  }
+
+  if (status.kind === "invalid") {
+    return {
+      status: "需要重新选择目录",
+      description: launchBlockedDescription,
+    };
+  }
+
+  return {
+    status: "等待目录配置",
+    description: launchBlockedDescription,
+  };
 }
 
 function heroCopyForStatus(status: GameSetupStatus, actionMessage: string | null) {
