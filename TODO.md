@@ -173,7 +173,7 @@ JSON 做不好的需求:
 ### T4: 分类标签 CRUD
 
 **前置**: T2
-**状态**: 已完成（分类 CRUD 后端、Tauri commands、前端 typed API、分类合并逻辑、分类管理页面均已落地）
+**状态**: 已完成（分类 CRUD 后端、Tauri commands、前端 typed API、分类合并逻辑、分类管理页面与管理工作台 UI 重构均已落地）
 **预估**: 已交付
 **独立文档**: schema 包含在 T2 决策文档中
 
@@ -183,7 +183,7 @@ JSON 做不好的需求:
 - [x] `hmm-ports` + `hmm-app` + `hmm-tauri` CRUD command
 - [x] 前端 typed API
 - [x] `get_mod_library` 返回真实分类标签
-- [x] `/categories` 分类管理页面（新建/编辑/删除/悬浮色板/review follow-up）
+- [x] `/categories` 分类管理页面（新建/编辑/删除/悬浮色板/review follow-up、搜索/排序/批量管理、悬浮新建面板）
 
 ---
 
