@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listCategories, type CategoryItem } from "../mods/modCategoryApi";
+import { listCategories, type CategoryItem } from "./categoryApi";
 
 export type CategoryListState =
   | { status: "loading" }
