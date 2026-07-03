@@ -22,14 +22,27 @@ test("game launch API exposes a narrow launch_game command without path inputs",
   assert.match(hook, /game_not_configured/);
 });
 
-test("dashboard and app header expose controlled game launch actions", () => {
+test("dashboard exposes launch while app header stays status-only", () => {
   const dashboard = readSource("src/features/dashboard/DashboardPage.tsx");
   const hero = readSource("src/features/dashboard/DashboardHeroCard.tsx");
+  const dashboardCss = readSource("src/features/dashboard/Dashboard.css");
   const header = readSource("src/app/frame/AppHeader.tsx");
 
   assert.match(dashboard, /useGameLaunch\("mhw"\)/);
   assert.match(hero, /onLaunchGame/);
   assert.match(hero, /启动游戏/);
-  assert.match(header, /useGameLaunch\("mhw"\)/);
-  assert.match(header, /aria-label=\{isLaunchingGame \? "正在启动游戏" : "启动游戏"\}/);
+  assert.match(hero, /className=\{`launch-action-card\$\{isLaunchReady \? "" : " is-disabled"\}`\}/);
+  assert.match(hero, /role="group"/);
+  assert.match(hero, /aria-label="游戏启动"/);
+  assert.match(hero, /className="launch-action-button"/);
+  assert.match(hero, /const isLaunchReady = status\.kind === "configured"/);
+  assert.match(hero, /disabled=\{!isLaunchReady \|\| launchState\.isLaunchingGame\}/);
+  assert.match(hero, /当前配置档可用，游戏目录已通过校验。/);
+  assert.match(hero, /配置游戏目录后即可启动。/);
+  assert.equal(hero.match(/配置游戏目录后即可启动。/g)?.length, 1);
+  assert.match(dashboardCss, /\.launch-action-card\s*\{/);
+  assert.match(dashboardCss, /\.launch-action-button\s*\{/);
+  assert.match(dashboardCss, /\.launch-action-button[\s\S]*?border-radius:\s*var\(--radius-inner\);/);
+  assert.doesNotMatch(header, /useGameLaunch\("mhw"\)/);
+  assert.doesNotMatch(header, /aria-label=\{isLaunchingGame \? "正在启动游戏" : "启动游戏"\}/);
 });
