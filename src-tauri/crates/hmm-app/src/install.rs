@@ -601,6 +601,9 @@ impl UninstallModService {
             .map_err(|_| UninstallModError::ManifestUnavailable)?
             .ok_or(UninstallModError::ModNotInstalled)?;
         let InstallManifest {
+            manifest_id,
+            schema_version,
+            schema_migration,
             backend,
             created_at,
             status,
@@ -703,6 +706,9 @@ impl UninstallModService {
             Some(completed_at),
             None,
         );
+        updated_manifest.manifest_id = manifest_id;
+        updated_manifest.schema_version = schema_version;
+        updated_manifest.schema_migration = schema_migration;
         updated_manifest.status = status;
         if self
             .manifest_repository
@@ -781,9 +787,19 @@ fn merge_install_manifest(
     applied_entries: Vec<InstallManifestEntry>,
     plan_hash: String,
 ) -> InstallManifest {
-    let (mut entries, created_at, status) = existing_manifest
-        .map(|manifest| (manifest.entries, manifest.created_at, manifest.status))
-        .unwrap_or_default();
+    let (mut entries, created_at, status, manifest_id, schema_version, schema_migration) =
+        existing_manifest
+            .map(|manifest| {
+                (
+                    manifest.entries,
+                    manifest.created_at,
+                    manifest.status,
+                    Some(manifest.manifest_id),
+                    Some(manifest.schema_version),
+                    manifest.schema_migration,
+                )
+            })
+            .unwrap_or_default();
 
     entries.retain(|entry| {
         !applied_entries
@@ -801,6 +817,13 @@ fn merge_install_manifest(
         Some(completed_at),
         Some(plan_hash),
     );
+    if let Some(manifest_id) = manifest_id {
+        manifest.manifest_id = manifest_id;
+    }
+    if let Some(schema_version) = schema_version {
+        manifest.schema_version = schema_version;
+    }
+    manifest.schema_migration = schema_migration;
     manifest.status = status;
     manifest
 }

@@ -1,4 +1,4 @@
-use hmm_core::{InstallManifest, ModId, ProfileId};
+use hmm_core::{InstallManifest, InstallManifestStatusConsumption, ModId, ProfileId};
 use hmm_ports::InstallManifestRepository;
 use std::sync::Arc;
 use thiserror::Error;
@@ -85,7 +85,17 @@ fn summary_for_mod(
     let status = if managed_file_count == 0 {
         InstallManifestStatus::NotInstalled
     } else {
-        InstallManifestStatus::Installed
+        let manifest_status = manifest.map(|manifest| manifest.status).unwrap_or_default();
+        match manifest_status.consumption() {
+            InstallManifestStatusConsumption::TrustEntries => InstallManifestStatus::Installed,
+            InstallManifestStatusConsumption::InFlight => InstallManifestStatus::Unknown,
+            InstallManifestStatusConsumption::RollbackRequired => {
+                InstallManifestStatus::RollbackRequired
+            }
+            InstallManifestStatusConsumption::RepairRequired => {
+                InstallManifestStatus::RepairRequired
+            }
+        }
     };
 
     InstallManifestStatusSummary {
@@ -101,8 +111,8 @@ fn summary_for_mod(
 mod tests {
     use super::*;
     use hmm_core::{
-        FileLayer, InstallManifest, InstallManifestEntry, InstallTargetPath, ModId, PackageFileId,
-        ProfileId,
+        FileLayer, InstallManifest, InstallManifestEntry, InstallManifestStatus as CoreManifestStatus,
+        InstallTargetPath, ModId, PackageFileId, ProfileId,
     };
     use hmm_ports::InstallManifestRepository;
     use std::sync::Arc;
@@ -193,5 +203,85 @@ mod tests {
             backup_ref: backup_ref.map(str::to_owned),
             installed_file: None,
         }
+    }
+
+    fn manifest_with_status(status: CoreManifestStatus) -> InstallManifest {
+        let mut manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![manifest_entry("mod-a", "nativePC/a.mod3", None)],
+        );
+        manifest.status = status;
+        manifest
+    }
+
+    fn query_status_for_mod(manifest: InstallManifest, mod_id: &str) -> InstallManifestStatus {
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        let summaries = service
+            .query_statuses(InstallManifestQueryRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: vec![ModId::new(mod_id)],
+            })
+            .expect("manifest query should succeed");
+
+        summaries[0].status
+    }
+
+    #[test]
+    fn query_reports_rollback_required_when_manifest_status_requires_rollback() {
+        assert_eq!(
+            query_status_for_mod(
+                manifest_with_status(CoreManifestStatus::RollbackRequired),
+                "mod-a"
+            ),
+            InstallManifestStatus::RollbackRequired
+        );
+    }
+
+    #[test]
+    fn query_reports_repair_required_when_manifest_status_requires_repair() {
+        assert_eq!(
+            query_status_for_mod(
+                manifest_with_status(CoreManifestStatus::RepairRequired),
+                "mod-a"
+            ),
+            InstallManifestStatus::RepairRequired
+        );
+    }
+
+    #[test]
+    fn query_reports_unknown_while_manifest_commit_is_in_flight() {
+        assert_eq!(
+            query_status_for_mod(manifest_with_status(CoreManifestStatus::Planned), "mod-a"),
+            InstallManifestStatus::Unknown
+        );
+        assert_eq!(
+            query_status_for_mod(
+                manifest_with_status(CoreManifestStatus::Committing),
+                "mod-a"
+            ),
+            InstallManifestStatus::Unknown
+        );
+    }
+
+    #[test]
+    fn query_keeps_installed_for_remaining_mods_when_manifest_was_rolled_back() {
+        assert_eq!(
+            query_status_for_mod(manifest_with_status(CoreManifestStatus::RolledBack), "mod-a"),
+            InstallManifestStatus::Installed
+        );
+    }
+
+    #[test]
+    fn query_keeps_not_installed_for_unmanaged_mods_when_manifest_status_is_failure() {
+        assert_eq!(
+            query_status_for_mod(
+                manifest_with_status(CoreManifestStatus::RollbackRequired),
+                "mod-b"
+            ),
+            InstallManifestStatus::NotInstalled
+        );
     }
 }
