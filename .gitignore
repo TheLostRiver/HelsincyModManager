@@ -39,6 +39,9 @@ src-tauri/gen/
 .claude/
 .planning/
 .plan-attestation
+/task_plan.md
+/findings.md
+/progress.md
 tmp/
 temp/
 cache/
