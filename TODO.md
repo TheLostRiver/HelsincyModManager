@@ -265,15 +265,15 @@ JSON 做不好的需求:
 ### T9: Rich Manifest 与状态机
 
 **前置**: T1
-**状态**: 进行中（`plan_hash` 真实计算与受控回滚后的 `rolled_back` 持久化已落地）
+**状态**: 进行中（`manifest_id` / schema metadata、`plan_hash`、`rolled_back` 持久化与读侧状态机消费规则已落地）
 **预估**: 中
 **独立文档**: 不需要（`docs/INSTALL_PLAN_MVP_TODO.md` 已有设计）
 
 概要:
-- [x] 已落地：`backend`、`status`、`created_at`、`completed_at`、`plan_hash` JSON 兼容层；安装提交成功会写入 `backend`、完成时间和真实 `plan_hash`
-- [ ] 待补字段：`manifest_id`、schema/migration 元数据、后续 replacement binding snapshot
+- [x] 已落地：`manifest_id`、`schema_version` / `schema_migration`、`backend`、`status`、`created_at`、`completed_at`、`plan_hash` JSON 兼容层；安装提交成功会写入 schema metadata、`backend`、完成时间和真实 `plan_hash`
+- [ ] 待补字段：后续 replacement binding snapshot；`game_id` / `game_instance_id` / 顶层 `mod_id` 语义需结合 profile 聚合模型另行定稿
 - [x] `get_install_manifest_status` 消费 recovery scan
-- [ ] rich manifest 状态机消费规则
+- [x] rich manifest 读侧状态机消费规则：`InstallManifestStatus::consumption()` 分类（completed/rolled_back→信任 entries，planned/committing→unknown，rollback_required/repair_required→对应失败态），manifest 状态摘要查询 fallback 与恢复扫描均已消费；写侧门禁另行切片
 - [x] `rolled_back` 状态持久化：受控 `rollback_install` 成功后同步 rich manifest status，并移除已回滚 Mod 的 stale entries
 
 ---
@@ -396,7 +396,7 @@ JSON 做不好的需求:
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
 | T8 存档备份 | P2 | 待开始 | |
-| T9 Rich Manifest | P2 | 进行中（plan_hash / rolled_back 已落地） | |
+| T9 Rich Manifest | P2 | 进行中（manifest metadata / plan_hash / rolled_back / 读侧状态机消费已落地） | |
 | T10 依赖检查 | P2 | 待开始 | |
 | T11 ARMOR_RETARGET | P3 | 待开始 | |
 | T12 Mod 详情完整版 | P3 | 待开始 | |

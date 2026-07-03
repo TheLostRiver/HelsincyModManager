@@ -39,7 +39,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目，并在替换已有托管目标时保留旧 `backup_ref` 恢复语义。
 - 新写入的 manifest entry 会记录 `installed_file` 摘要（写入内容 size + SHA-256），作为后续安全卸载、恢复扫描和真实 `repair_required` 检测的目标状态事实；旧 manifest 缺少该字段时兼容读取，但不能自动承诺可安全卸载。
-- Rich manifest domain/JSON 兼容基础：`InstallManifest` 已支持 `backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段；旧 manifest 缺少 rich 字段时兼容读取并默认 `status = completed`；安装提交成功会写入 `backend = "install_plan"`、`status = completed`、`completed_at` 和真实 `plan_hash`。
+- Rich manifest domain/JSON 兼容基础：`InstallManifest` 已支持 `manifest_id`、`schema_version`、`schema_migration`、`backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段；旧 manifest 缺少 rich 字段时兼容读取并默认 `manifest_id = profile:<profile_id>`、`schema_version = 1`、`status = completed`；安装提交成功会写入 schema metadata、`backend = "install_plan"`、`status = completed`、`completed_at` 和真实 `plan_hash`。
 - Tauri `start_install_task`、`TaskKind::Install`、安装任务事件、game/profile 写锁和最小 Audit Log。
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
@@ -59,7 +59,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
-- rich manifest 的 replacement binding snapshot、schema/migration 字段、除受控回滚 `rolled_back` 外的状态机消费和真实修复检测。
+- rich manifest 的 replacement binding snapshot、`game_id` / `game_instance_id` / 顶层 `mod_id` 语义、写侧状态机门禁和真实修复检测。
 - dependency/preflight 阻断。
 
 ## 已完成切片记录
@@ -77,7 +77,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 前端最小安装任务流程与进度事件竞态处理。
 - [x] Manifest 状态摘要查询 command、前端 typed API 和 Mod 库状态恢复展示。
 - [x] Manifest entry 写入 `installed_file` size/SHA-256 摘要，并兼容读取缺少摘要的旧 manifest。
-- [x] Rich manifest domain/JSON 兼容基础：`backend`、`status`、`created_at`、`completed_at`、`plan_hash` 字段，旧 manifest 默认 `completed`，安装提交成功写入 `install_plan` 后端和完成时间。
+- [x] Rich manifest domain/JSON 兼容基础：`manifest_id`、`schema_version`、`schema_migration`、`backend`、`status`、`created_at`、`completed_at`、`plan_hash` 字段，旧 manifest 默认 `manifest_id = profile:<profile_id>`、`schema_version = 1`、`status = completed`，安装提交成功写入 schema metadata、`install_plan` 后端和完成时间。
 - [x] 安装提交成功写入真实 `plan_hash`：使用稳定 `sha256:` 摘要绑定本次提交消费的计划事实，不记录完整本地路径、backup root/ref、manifest path、sandbox/cache path 或第三方 Mod 内容。
 - [x] 后端最小 manifest 驱动卸载服务、backup 受控读取、卸载任务 runner 和 `start_uninstall_task` Tauri 入口。
 - [x] 前端最小卸载 UI、`startUninstallTask` typed API、`install.uninstall.*` 任务展示和完成后 manifest 摘要刷新。
@@ -99,6 +99,8 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源，`completed` record 才恢复为 manifest 长期 backup 语义；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 后端受控回滚任务：`start_recovery_action_task` 可执行 `rollback_install`，发送 `install.recovery.*` task phase，写入 `rollback_install` Audit Log，并将 durable recovery record 标记为 `rolled_back`；恢复中心已启用逐 Mod 受控回滚按钮。
 - [x] Rich manifest `rolled_back` 同步：受控 `rollback_install` 成功后，在已有 manifest 中移除该 Mod 的 stale entries 并把 manifest status 持久化为 `rolled_back`；manifest 或 recovery record 保存失败时会 best-effort 回滚文件动作并避免持久状态互相矛盾。
+- [x] Rich manifest schema metadata：`InstallManifest` 新增 `manifest_id`、`schema_version` 和可选 `schema_migration`；旧 manifest 缺字段时兼容读取，新写出的安装提交 manifest 会携带稳定 profile-scoped `manifest_id` 和 schema version，commit merge / uninstall 会保留已有 schema metadata。
+- [x] Rich manifest 读侧状态机消费规则：`InstallManifestStatus::consumption()` 在 hmm-core 定义统一分类，manifest 状态摘要查询 fallback 和只读恢复扫描都先消费 profile 级 manifest status（`rollback_required` / `repair_required` → 对应失败态，`planned` / `committing` → unknown，`completed` / `rolled_back` → 继续按 entries / 文件校验），保证失败状态不会被误报为已完成。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -263,7 +265,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 仍明确未完成：
 
 - 不新增 Tauri command、DTO、task phase、前端入口或 Audit Log 字段。
-- 不处理 `manifest_id`、schema/migration metadata、replacement binding snapshot。
+- 不处理 `manifest_id`、schema/migration metadata、replacement binding snapshot；前两项已在后续 2026-07-02 schema metadata 切片补齐。
 - 不实现完整 `rollback_required` rich manifest 持久化、批量 repair workflow 或真实 `repair_required` 自动修复。
 
 验证记录：
@@ -272,6 +274,59 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 聚焦 action：`cargo test -p hmm-app run_rollback_install_action`。
 - 聚焦 recovery scan/action：`cargo test -p hmm-app install_recovery`。
 - 聚焦 Tauri 桥接：`cargo test -p hmm-tauri recovery_action`。
+- 全量门禁：本切片完成前需再次执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
+
+### 2026-07-02 进度详情：Rich manifest 读侧状态机消费规则
+
+本切片让已持久化的 profile 级 rich manifest `status` 参与只读消费路径。此前 `rollback_required` / `repair_required` / `planned` / `committing` 的 manifest 在状态摘要查询 fallback 和恢复扫描里会被误报为 `installed` / `completed`，违反「失败状态不会被误报为已完成」验收标准。
+
+已落地范围：
+
+- `hmm-core` 新增 `InstallManifestStatusConsumption` 读侧消费分类和 `InstallManifestStatus::consumption()`：`completed` / `rolled_back` → 信任 entries，`planned` / `committing` → in-flight，`rollback_required` / `repair_required` → 对应失败态。
+- `InstallManifestQueryService`（manifest-only fallback）：有 entries 的 Mod 先经消费规则映射（失败态 → `rollback_required` / `repair_required`，in-flight → `unknown`），无 entries 的 Mod 仍报 `not_installed`。
+- `InstallRecoveryScanService::scan_mod`：durable recovery record 仍然优先；无 record 时在逐 entry 文件校验前先消费 manifest status，失败/in-flight 状态直接返回对应摘要状态且不产生 issue code。
+- `rolled_back` 对剩余 Mod 不降级：受控回滚只移除该 Mod 的 entries，剩余 entries 继续按文件校验消费。
+
+仍明确未完成：
+
+- 不新增 Tauri command、DTO、issue code、task phase、前端入口或 Audit Log 字段（既有 DTO 变体已覆盖全部输出状态）。
+- 不做写侧状态机门禁（manifest 失败态时阻断安装 commit / 卸载），需要新错误码与 contract 变更，另行切片。
+- 不处理 replacement binding snapshot、真实 `repair_required` 自动修复或 schema 迁移。
+
+验证记录：
+
+- TDD RED：`cargo test -p hmm-core manifest_status_consumption` 先失败于缺少 `InstallManifestStatusConsumption`。
+- TDD RED：`cargo test -p hmm-app query_reports` 3 个测试先失败于 fallback 忽略 manifest status；`cargo test -p hmm-app scan_reports_rollback_required_when_manifest_status` 先失败于 `left: Completed / right: RollbackRequired`。
+- 聚焦 core：`cargo test -p hmm-core`（25 通过）。
+- 聚焦 app：`cargo test -p hmm-app`（164 通过，含 9 个新消费测试）。
+- 全量：`cargo test --workspace` 通过；全量门禁 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1` 于切片完成前执行。
+- 文件大小硬性线预防：`install_recovery.rs` 内联 tests 拆分到 `install_recovery_tests.rs`（998 / 1176 行）。
+
+### 2026-07-02 进度详情：Rich manifest schema metadata
+
+本切片补齐 T9 Rich Manifest 的最小 schema/identity metadata：`InstallManifest` 新增稳定 `manifest_id`、`schema_version` 和可选 `schema_migration` 字段，旧 JSON 缺字段时兼容读取，新写出的安装提交 manifest 会携带这些字段。
+
+已落地范围：
+
+- `manifest_id` 当前采用 profile-scoped 稳定 ID：`profile:<profile_id>`，匹配现有 profile 聚合 manifest 文件语义。
+- `schema_version` 默认并写出为 `1`；旧 manifest 缺字段时按 v1 兼容读取。
+- `schema_migration` 是可选字段；当前不执行真实迁移，缺失时保持 `None`。
+- 安装提交合并已有 manifest、卸载保留剩余 entries 时，会保留已有 `manifest_id` / `schema_version` / `schema_migration`，避免后续迁移信息被重置。
+
+仍明确未完成：
+
+- 不新增 Tauri command、DTO、task phase、前端入口或 UI 展示。
+- 不处理 replacement binding snapshot。
+- 不在本切片定稿 `game_id`、`game_instance_id` 或顶层 `mod_id` 语义；这些字段需要结合 profile 聚合 manifest 和未来多游戏/profile 存储边界另行设计。
+- 不实现完整 `planned` / `committing` / `rollback_required` rich manifest 状态持久化或 repair workflow。
+
+验证记录：
+
+- TDD RED：`cargo test -p hmm-core manifest_metadata_serializes_with_stable_schema_fields` 先失败于 `InstallManifest` 缺少 `manifest_id` / `schema_version` / `schema_migration` 字段。
+- TDD RED：`cargo test -p hmm-app preserves_ -- --nocapture` 先失败于 commit merge / uninstall 将已有 `manifest_id` 重置为默认值。
+- 聚焦 core：`cargo test -p hmm-core manifest`。
+- 聚焦 install/app：`cargo test -p hmm-app install`。
+- 聚焦 infra manifest 仓储：`cargo test -p hmm-infra json_manifest_repository`。
 - 全量门禁：本切片完成前需再次执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`。
 
 ### 2026-06-26 进度详情：PR #87 Manifest 状态摘要查询
@@ -845,7 +900,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 目标：把当前 MVP manifest 扩展为可支撑卸载、恢复、修复、retarget 和后续虚拟映射的事实记录。
 
-状态：domain 字段、JSON 向后兼容基础、真实 `plan_hash` 计算，以及受控 `rollback_install` 成功后的 rich manifest `rolled_back` 同步已落地；replacement binding snapshot、schema/migration 字段、其余状态机消费和修复检测仍待后续切片。
+状态：domain 字段、JSON 向后兼容基础、`manifest_id` 与 schema/migration metadata、真实 `plan_hash` 计算、受控 `rollback_install` 成功后的 rich manifest `rolled_back` 同步，以及读侧状态机消费规则（状态摘要查询 fallback 与恢复扫描消费 profile 级 manifest status）已落地；replacement binding snapshot、写侧状态机门禁和修复检测仍待后续切片。
 
 候选字段：
 

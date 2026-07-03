@@ -12,10 +12,10 @@ pub use game::{
 };
 pub use install::{
     FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallManifest,
-    InstallManifestEntry, InstallManifestStatus, InstallPlan, InstallRecoveryRecord,
-    InstallRecoveryRecordEntry, InstallRecoveryRecordStatus, InstallRecoveryRecordTransitionError,
-    InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, PackageFileId,
-    ProfileId,
+    InstallManifestEntry, InstallManifestStatus, InstallManifestStatusConsumption, InstallPlan,
+    InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
+    InstallRecoveryRecordTransitionError, InstallTargetPath, InstallTargetPathError,
+    InstalledFileSummary, ModId, PackageFileId, ProfileId,
 };
 pub use mod_metadata::ModMetadataOverlay;
 pub use preview_image::{

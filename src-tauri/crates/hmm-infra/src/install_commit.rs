@@ -891,6 +891,9 @@ mod tests {
         let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
         let manifest = InstallManifest {
             profile_id: ProfileId::new("default"),
+            manifest_id: "profile:default".to_owned(),
+            schema_version: 1,
+            schema_migration: None,
             backend: Some("install_plan".to_owned()),
             status: InstallManifestStatus::Completed,
             created_at: Some("2026-06-29T00:00:00Z".to_owned()),
