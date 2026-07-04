@@ -1,7 +1,8 @@
 import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
 import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
-import { setupLogs, setupSteps } from "./dashboardData";
+import { setupLogs } from "./dashboardData";
 import { InstallRecoveryHealthPanel } from "./InstallRecoveryHealthPanel";
+import { resolveSetupSteps, type SetupStepItem } from "./setupStatusSteps";
 
 type SetupStatusPanelProps = {
   status: GameSetupStatus;
@@ -11,7 +12,7 @@ type SetupStatusPanelProps = {
 
 export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: SetupStatusPanelProps) {
   const copy = statusPanelCopy(status, actionMessage);
-  const activeStepIndex = resolveActiveSetupStepIndex(status);
+  const stepItems = resolveSetupSteps(status);
 
   return (
     <aside className="setup-rail" aria-label="首次启动设置状态">
@@ -36,13 +37,12 @@ export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: Setu
           <span>{copy.stepLabel}</span>
         </div>
         <div className="step-list">
-          {setupSteps.map((step, index) => (
+          {stepItems.map((step, index) => (
             <StepItem
               key={step.title}
               index={index + 1}
               step={step}
-              isActive={index === activeStepIndex}
-              isLast={index === setupSteps.length - 1}
+              isLast={index === stepItems.length - 1}
             />
           ))}
         </div>
@@ -133,31 +133,17 @@ function statusPanelCopy(status: GameSetupStatus, actionMessage: string | null) 
   };
 }
 
-function resolveActiveSetupStepIndex(status: GameSetupStatus) {
-  if (status.kind === "configured") {
-    return 3;
-  }
-
-  if (status.kind === "validating" || status.kind === "invalid") {
-    return 1;
-  }
-
-  return 0;
-}
-
 function StepItem({
   index,
   step,
-  isActive,
   isLast,
 }: {
   index: number;
-  step: { readonly title: string; readonly meta: string };
-  isActive: boolean;
+  step: SetupStepItem;
   isLast: boolean;
 }) {
   return (
-    <article className={`step-item ${isActive ? "is-active" : ""}`}>
+    <article className={`step-item ${step.isActive ? "is-active" : ""}`}>
       <div className="step-rail" aria-hidden="true">
         <span>{index}</span>
         {!isLast && <i />}
