@@ -2,11 +2,11 @@ use hmm_app::{
     AppSettingsServiceError, CategoryWithCount, GameAutoDetection, GameAutoDetectionOutcome,
     GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
     InstallManifestStatus, InstallManifestStatusSummary, InstallRecoveryActionAvailability,
-    InstallRecoveryActionBlockReason,
-    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
-    InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
-    InstallRecoveryStatus, InstallRecoverySummary, ModDetail, ModImportTaskError, ModLibraryItem,
-    ModLibraryStatus, TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
+    InstallRecoveryActionBlockReason, InstallRecoveryActionBlockReasonSummary,
+    InstallRecoveryActionKind, InstallRecoveryActionPreview, InstallRecoveryIssue,
+    InstallRecoveryIssueSummary, InstallRecoveryStatus, InstallRecoverySummary, ModDetail,
+    ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
+    TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     BackupCadence, GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
@@ -517,6 +517,7 @@ pub struct TaskProgressEventDto {
 pub enum TaskKindDto {
     ModImport,
     Install,
+    SaveBackup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1323,6 +1324,7 @@ impl From<TaskKind> for TaskKindDto {
         match kind {
             TaskKind::ModImport => Self::ModImport,
             TaskKind::Install => Self::Install,
+            TaskKind::SaveBackup => Self::SaveBackup,
         }
     }
 }
@@ -1992,6 +1994,22 @@ mod task_dto_tests {
 
         assert_eq!(value["taskId"], "install-123");
         assert_eq!(value["kind"], "install");
+        assert_eq!(value["status"], "queued");
+    }
+
+    #[test]
+    fn serializes_save_backup_task_kind_as_stable_snake_case() {
+        let dto: TaskStartedDto = TaskStarted {
+            task_id: "save-backup-123".to_owned(),
+            kind: TaskKind::SaveBackup,
+            status: TaskStatus::Queued,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize dto");
+
+        assert_eq!(value["taskId"], "save-backup-123");
+        assert_eq!(value["kind"], "save_backup");
         assert_eq!(value["status"], "queued");
     }
 

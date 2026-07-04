@@ -1,0 +1,46 @@
+use anyhow::Result;
+use hmm_core::{
+    GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId, SaveBackupStatus,
+    SaveBackupSummary, SaveBackupTrigger,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupWriteRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub trigger: SaveBackupTrigger,
+    pub source_directory: Option<String>,
+    pub source_directory_selection: ProfileDirectorySelection,
+    pub backup_directory: ProfileDirectorySelection,
+    pub retention: ProfileBackupRetention,
+    pub note: Option<String>,
+    pub created_at_unix_millis: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupWriteResult {
+    pub summary: SaveBackupSummary,
+}
+
+pub trait SaveBackupWriter: Send + Sync {
+    fn write_backup(&self, request: SaveBackupWriteRequest) -> Result<SaveBackupWriteResult>;
+
+    fn delete_backup_files(
+        &self,
+        backup_directory: &ProfileDirectorySelection,
+        summary: &SaveBackupSummary,
+    ) -> Result<()>;
+}
+
+pub trait SaveBackupRepository: Send + Sync {
+    fn save(&self, summary: &SaveBackupSummary) -> Result<()>;
+
+    fn list_for_profile(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        limit: Option<usize>,
+    ) -> Result<Vec<SaveBackupSummary>>;
+
+    fn mark_status(&self, backup_id: &str, status: SaveBackupStatus) -> Result<()>;
+}

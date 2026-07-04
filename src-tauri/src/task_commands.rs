@@ -6,6 +6,7 @@ use tauri::{AppHandle, State};
 
 const MOD_IMPORT_CANCELLED_PHASE: &str = "mod_import.cancelled";
 const INSTALL_CANCELLED_PHASE: &str = "install.cancelled";
+const SAVE_BACKUP_CANCELLED_PHASE: &str = "save_backup.cancelled";
 
 #[tauri::command]
 pub fn cancel_task(
@@ -42,6 +43,7 @@ fn cancelled_phase_for_kind(kind: TaskKind) -> &'static str {
     match kind {
         TaskKind::ModImport => MOD_IMPORT_CANCELLED_PHASE,
         TaskKind::Install => INSTALL_CANCELLED_PHASE,
+        TaskKind::SaveBackup => SAVE_BACKUP_CANCELLED_PHASE,
     }
 }
 
@@ -109,6 +111,23 @@ mod tests {
         assert_eq!(value["kind"], "install");
         assert_eq!(value["status"], "cancelled");
         assert_eq!(value["phase"], "install.cancelled");
+    }
+
+    #[test]
+    fn cancelled_event_for_save_backup_task_uses_save_backup_phase() {
+        let task = TaskSnapshot {
+            task_id: "save-backup-123".to_owned(),
+            kind: TaskKind::SaveBackup,
+            status: TaskStatus::Cancelled,
+        };
+
+        let dto: TaskProgressEventDto = cancelled_event_for_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "save-backup-123");
+        assert_eq!(value["kind"], "save_backup");
+        assert_eq!(value["status"], "cancelled");
+        assert_eq!(value["phase"], "save_backup.cancelled");
     }
 
     #[test]

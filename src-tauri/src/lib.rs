@@ -7,6 +7,8 @@ mod install_commands;
 mod mod_import_commands;
 mod mod_metadata_commands;
 mod profile_commands;
+mod save_backup_commands;
+mod save_backup_dto;
 mod state;
 mod task_commands;
 mod task_events;
@@ -39,6 +41,7 @@ use profile_commands::{
     set_active_profile, set_profile_save_settings, update_profile,
     validate_profile_backup_directory, validate_profile_save_directory,
 };
+use save_backup_commands::{list_save_backups, start_save_backup_task};
 use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
@@ -105,7 +108,9 @@ pub fn run() {
             get_profile_save_settings,
             validate_profile_save_directory,
             validate_profile_backup_directory,
-            set_profile_save_settings
+            set_profile_save_settings,
+            start_save_backup_task,
+            list_save_backups
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");

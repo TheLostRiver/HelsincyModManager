@@ -14,6 +14,8 @@ mod mod_import_task;
 mod mod_metadata;
 mod preview_image;
 mod profile;
+mod save_backup;
+mod save_backup_task;
 mod support_diagnostics;
 mod task_manager;
 
@@ -81,6 +83,11 @@ pub use preview_image::{
 };
 pub use profile::{
     CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
+};
+pub use save_backup::{CreateSaveBackupRequest, SaveBackupError, SaveBackupService};
+pub use save_backup_task::{
+    SaveBackupExecutor, SaveBackupTaskRunError, SaveBackupTaskRunner, SaveBackupTaskService,
+    StartSaveBackupTaskRequest,
 };
 pub use support_diagnostics::{
     SupportDiagnosticsExport, SupportDiagnosticsExportService,

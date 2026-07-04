@@ -2,10 +2,12 @@ mod category_repository;
 mod migrations;
 mod mod_metadata_repository;
 mod profile_repository;
+mod save_backup_repository;
 
 pub use category_repository::SqliteCategoryRepository;
 pub use mod_metadata_repository::SqliteModMetadataRepository;
 pub use profile_repository::SqliteProfileRepository;
+pub use save_backup_repository::SqliteSaveBackupRepository;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -14,12 +16,13 @@ use std::time::Duration;
 
 pub fn open_database(path: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create database directory: {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!("failed to create database directory: {}", parent.display())
+        })?;
     }
 
-    let mut conn =
-        Connection::open(path).with_context(|| format!("failed to open database: {}", path.display()))?;
+    let mut conn = Connection::open(path)
+        .with_context(|| format!("failed to open database: {}", path.display()))?;
 
     conn.pragma_update(None, "foreign_keys", "ON")
         .context("failed to enable foreign keys")?;
@@ -29,9 +32,7 @@ pub fn open_database(path: &Path) -> Result<Connection> {
         .context("failed to set WAL journal mode")?;
 
     if journal_mode.to_lowercase() != "wal" {
-        anyhow::bail!(
-            "expected WAL journal mode but got '{journal_mode}'"
-        );
+        anyhow::bail!("expected WAL journal mode but got '{journal_mode}'");
     }
 
     conn.busy_timeout(Duration::from_secs(5))
