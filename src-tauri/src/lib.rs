@@ -9,6 +9,8 @@ mod mod_metadata_commands;
 mod profile_commands;
 mod save_backup_commands;
 mod save_backup_dto;
+mod save_directory_discovery_commands;
+mod save_directory_discovery_dto;
 mod state;
 mod task_commands;
 mod task_events;
@@ -42,6 +44,9 @@ use profile_commands::{
     validate_profile_backup_directory, validate_profile_save_directory,
 };
 use save_backup_commands::{list_save_backups, start_save_backup_task};
+use save_directory_discovery_commands::{
+    confirm_profile_save_directory_candidate, discover_profile_save_directories,
+};
 use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
@@ -109,6 +114,8 @@ pub fn run() {
             validate_profile_save_directory,
             validate_profile_backup_directory,
             set_profile_save_settings,
+            discover_profile_save_directories,
+            confirm_profile_save_directory_candidate,
             start_save_backup_task,
             list_save_backups
         ])

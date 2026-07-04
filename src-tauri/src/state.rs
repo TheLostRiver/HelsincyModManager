@@ -13,26 +13,31 @@ use hmm_app::{
     ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
     ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
-    ProfileService, RecoveryActionTaskRunner, RecoveryActionTaskService, SaveBackupExecutor,
-    SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskService, StartRecoveryActionTaskRequest,
-    StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
-    UninstallModService, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
+    RecoveryActionTaskService, SaveBackupExecutor, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
-use hmm_games_mhw::{MonsterHunterWorldAdapter, MonsterHunterWorldLauncher};
+use hmm_games_mhw::{
+    MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
+};
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
     FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemSaveBackupWriter,
     FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
-    JsonAppSettingsRepository, JsonGameConfigRepository, JsonInstallManifestRepository,
-    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
-    RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner,
+    InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
+    JsonGameConfigRepository, JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
+    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
+    ReqwestSteamProfileHttpTransport, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteCategoryRepository,
     SqliteModMetadataRepository, SqliteProfileRepository, SqliteSaveBackupRepository,
-    SteamGameDiscoveryService, SystemClock, SystemDiagnosticsEnvironmentProvider,
-    SystemGameLaunchRunner, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
@@ -73,6 +78,7 @@ pub struct AppState {
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
     pub profiles: Arc<ProfileService>,
+    pub save_directory_discovery: Arc<ProfileSaveDirectoryDiscoveryService>,
     pub save_backups: Arc<SaveBackupService>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
@@ -104,15 +110,23 @@ impl AppState {
         let profile_repository = Arc::new(SqliteProfileRepository::new(Arc::clone(&db)));
         let profile_repository_for_profiles: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_directory_discovery: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_repository_for_save_backups: Arc<dyn ProfileRepository> =
             profile_repository.clone();
         let profile_save_settings_repository: Arc<dyn ProfileSaveSettingsRepository> =
             profile_repository.clone();
+        let profile_save_settings_repository_for_save_directory_discovery: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backups: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator> =
             profile_repository.clone();
+        let profile_save_directory_validator_for_save_directory_discovery: Arc<
+            dyn ProfileSaveDirectoryValidator,
+        > = profile_repository.clone();
         let profile_save_directory_validator_for_save_backups: Arc<
             dyn ProfileSaveDirectoryValidator,
         > = profile_repository.clone();
@@ -243,6 +257,21 @@ impl AppState {
             profile_save_directory_validator_for_save_backups,
             save_backup_repository,
             save_backup_writer,
+            Arc::new(SystemClock),
+        ));
+        let save_directory_discovery = Arc::new(ProfileSaveDirectoryDiscoveryService::new(
+            Arc::clone(&game_config_repository),
+            profile_repository_for_save_directory_discovery,
+            profile_save_settings_repository_for_save_directory_discovery,
+            profile_save_directory_validator_for_save_directory_discovery,
+            vec![Arc::new(MonsterHunterWorldSaveDirectoryRule)],
+            Arc::new(SteamUserdataSaveDirectoryScanner::new(Arc::new(
+                PlatformSteamRootProvider,
+            ))),
+            Arc::new(SteamCommunityProfileClient::new(Box::new(
+                ReqwestSteamProfileHttpTransport,
+            ))),
+            Arc::new(InMemoryPendingSaveDirectoryCandidateStore::default()),
             Arc::new(SystemClock),
         ));
         let save_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
@@ -376,6 +405,7 @@ impl AppState {
                 profile_save_directory_validator,
                 Arc::new(SystemClock),
             )),
+            save_directory_discovery,
             save_backup_task_runner: Arc::new(SaveBackupTaskRunner::new(
                 Arc::clone(&task_manager),
                 save_backup_executor,
