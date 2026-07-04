@@ -25,6 +25,7 @@
 - InstallPlan MVP: `docs/INSTALL_PLAN_STATUS.md` + `docs/INSTALL_PLAN_MVP_TODO.md`
 - 恢复受控动作: `docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md`
 - Mod 预览图: `docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md` + `docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md`
+- T8 存档目录自动发现: `docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md` + `docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
 ### 需要新建独立文档的任务
 
@@ -253,7 +254,7 @@ JSON 做不好的需求:
 **前置**: T2
 **状态**: 进行中（手动备份后端 MVP 已落地，Profile 页面接入、存档目录自动发现和自动备份仍待后续切片）
 **预估**: 大
-**独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`
+**独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
 概要:
 - [x] 手动备份后端 MVP（`start_save_backup_task` / `list_save_backups`、zip + manifest、SQLite 历史、任务事件、最小审计）
