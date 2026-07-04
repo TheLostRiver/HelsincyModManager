@@ -13,6 +13,7 @@ mod save_backup;
 mod save_directory_scanner;
 pub mod sqlite;
 pub mod steam_discovery;
+mod steam_profile;
 mod text_log;
 
 use anyhow::Result;
@@ -49,6 +50,10 @@ pub use sqlite::SqliteModMetadataRepository;
 pub use sqlite::SqliteProfileRepository;
 pub use sqlite::SqliteSaveBackupRepository;
 pub use steam_discovery::PlatformSteamRootProvider;
+pub use steam_profile::{
+    parse_steam_profile_xml, ReqwestSteamProfileHttpTransport, SteamCommunityProfileClient,
+    SteamProfileHttpTransport,
+};
 pub use text_log::FileSystemTextLogReader;
 
 pub struct SystemClock;
