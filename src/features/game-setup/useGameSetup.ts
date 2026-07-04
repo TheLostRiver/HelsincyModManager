@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { getGameSetupStatus, saveGameDirectory, scanGameCandidates } from "../../shared/api/tauri";
-import type { GameDirectoryCandidate, GameId, GameSetupStatus } from "./gameSetupTypes";
+import {
+  autoDetectGameDirectory,
+  getGameSetupStatus,
+  saveGameDirectory,
+  scanGameCandidates,
+} from "./gameSetupApi";
+import type {
+  GameAutoDetectionDto,
+  GameDirectoryCandidate,
+  GameId,
+  GameSetupStartupNotice,
+  GameSetupStatus,
+} from "./gameSetupTypes";
 import {
   mapCandidateScanDto,
   mapCommandError,
@@ -13,6 +24,7 @@ type GameSetupState = {
   isBusy: boolean;
   actionMessage: string | null;
   candidates: GameDirectoryCandidate[];
+  startupNotice: GameSetupStartupNotice | null;
 };
 
 const DEFAULT_GAME_ID: GameId = "mhw";
@@ -23,6 +35,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     isBusy: false,
     actionMessage: null,
     candidates: [],
+    startupNotice: null,
   });
 
   const refresh = useCallback(async () => {
@@ -32,6 +45,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
         ...current,
         status: mapStatusDto(dto),
         actionMessage: null,
+        startupNotice: dto.kind === "configured" ? null : current.startupNotice,
       }));
     } catch (error) {
       const mapped = mapCommandError(error);
@@ -57,6 +71,39 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     }
   }, [gameId]);
 
+  const runStartupDetection = useCallback(async () => {
+    setState((current) => ({
+      ...current,
+      isBusy: true,
+      actionMessage: null,
+    }));
+
+    try {
+      const detection = await autoDetectGameDirectory(gameId);
+      setState((current) => ({
+        ...current,
+        status: mapStatusDto(detection.status),
+        isBusy: false,
+        actionMessage: null,
+        candidates: detection.outcome === "detected_and_saved" ? [] : current.candidates,
+        startupNotice: setStartupNoticeForDetection(detection),
+      }));
+    } catch (error) {
+      const mapped = mapCommandError(error);
+      setState((current) => ({
+        ...current,
+        isBusy: false,
+        actionMessage: null,
+        startupNotice: {
+          title: "需要配置游戏目录",
+          message: messageForError(mapped.code),
+          detail: mapped.message,
+          errorCode: mapped.code,
+        },
+      }));
+    }
+  }, [gameId]);
+
   const saveDirectory = useCallback(
     async (directory: string) => {
       setState((current) => ({
@@ -73,6 +120,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
           isBusy: false,
           actionMessage: "游戏目录已保存。",
           candidates: [],
+          startupNotice: null,
         });
       } catch (error) {
         const mapped = mapCommandError(error);
@@ -87,6 +135,7 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
           isBusy: false,
           actionMessage: message,
           candidates: current.candidates,
+          startupNotice: current.startupNotice,
         }));
       }
     },
@@ -97,12 +146,31 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     setState((current) => ({ ...current, isBusy: true, actionMessage: null }));
 
     try {
+      const detection = await autoDetectGameDirectory(gameId);
+
+      if (detection.outcome === "already_configured" || detection.outcome === "detected_and_saved") {
+        setState((current) => ({
+          ...current,
+          status: mapStatusDto(detection.status),
+          candidates: [],
+          isBusy: false,
+          startupNotice: null,
+          actionMessage:
+            detection.outcome === "detected_and_saved"
+              ? "已自动识别并保存 Steam 游戏目录。"
+              : "游戏目录已准备就绪。",
+        }));
+        return;
+      }
+
       const dto = await scanGameCandidates(gameId);
       const candidates = mapCandidateScanDto(dto);
       setState((current) => ({
         ...current,
+        status: mapStatusDto(detection.status),
         candidates,
         isBusy: false,
+        startupNotice: setStartupNoticeForDetection(detection),
         actionMessage:
           candidates.length > 0 ? "已发现 Steam 候选目录。" : "未发现 Steam 候选目录，可手动选择游戏目录。",
       }));
@@ -124,18 +192,47 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     }));
   }, []);
 
+  const dismissStartupNotice = useCallback(() => {
+    setState((current) => ({
+      ...current,
+      startupNotice: null,
+    }));
+  }, []);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void runStartupDetection();
+  }, [runStartupDetection]);
 
   return {
     status: state.status,
     isBusy: state.isBusy,
     actionMessage: state.actionMessage,
     candidates: state.candidates,
+    startupNotice: state.startupNotice,
+    dismissStartupNotice,
     refresh,
     reportActionError,
+    retryStartupDetection: runStartupDetection,
     saveDirectory,
     scanSteam,
+  };
+}
+
+function setStartupNoticeForDetection(detection: GameAutoDetectionDto): GameSetupStartupNotice | null {
+  if (detection.outcome === "already_configured" || detection.outcome === "detected_and_saved") {
+    return null;
+  }
+
+  const errorCode = detection.errorCode ?? "directory_not_found";
+  const detail =
+    detection.outcome === "invalid_candidate" && detection.candidateCount > 0
+      ? "Steam 返回了候选目录，但校验未通过。"
+      : "没有找到可直接保存的 Steam 安装目录。";
+
+  return {
+    title: "需要配置游戏目录",
+    message: messageForError(errorCode),
+    detail,
+    errorCode,
   };
 }

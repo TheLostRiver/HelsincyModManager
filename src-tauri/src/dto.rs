@@ -1,7 +1,8 @@
 use hmm_app::{
-    AppSettingsServiceError, CategoryWithCount, GameCandidateScan, GameSetupCandidate,
-    GameSetupServiceError, ImportPreviewImage, InstallManifestStatus, InstallManifestStatusSummary,
-    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
+    AppSettingsServiceError, CategoryWithCount, GameAutoDetection, GameAutoDetectionOutcome,
+    GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
+    InstallManifestStatus, InstallManifestStatusSummary, InstallRecoveryActionAvailability,
+    InstallRecoveryActionBlockReason,
     InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionKind,
     InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
     InstallRecoveryStatus, InstallRecoverySummary, ModDetail, ModImportTaskError, ModLibraryItem,
@@ -537,6 +538,16 @@ pub struct GameSetupStatusDto {
     pub path_label: Option<String>,
     pub error_code: Option<String>,
     pub message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameAutoDetectionDto {
+    pub game_id: String,
+    pub outcome: String,
+    pub status: GameSetupStatusDto,
+    pub error_code: Option<String>,
+    pub candidate_count: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -1351,6 +1362,16 @@ pub fn status_to_dto(status: GameSetupStatus) -> GameSetupStatusDto {
     }
 }
 
+pub fn auto_detection_to_dto(detection: GameAutoDetection) -> GameAutoDetectionDto {
+    GameAutoDetectionDto {
+        game_id: detection.game_id.as_str().to_owned(),
+        outcome: auto_detection_outcome_to_string(detection.outcome),
+        status: status_to_dto(detection.status),
+        error_code: detection.error_code.map(error_code_to_string),
+        candidate_count: detection.candidate_count,
+    }
+}
+
 pub fn candidate_scan_to_dto(scan: GameCandidateScan) -> GameCandidateScanDto {
     GameCandidateScanDto {
         game_id: scan.game_id.as_str().to_owned(),
@@ -1375,6 +1396,17 @@ pub fn validation_to_dto(validation: GameDirectoryValidation) -> GameDirectoryVa
             .collect(),
         path_label: path_label_from_path(&validation.directory),
     }
+}
+
+fn auto_detection_outcome_to_string(outcome: GameAutoDetectionOutcome) -> String {
+    match outcome {
+        GameAutoDetectionOutcome::AlreadyConfigured => "already_configured",
+        GameAutoDetectionOutcome::DetectedAndSaved => "detected_and_saved",
+        GameAutoDetectionOutcome::NotFound => "not_found",
+        GameAutoDetectionOutcome::InvalidCandidate => "invalid_candidate",
+        GameAutoDetectionOutcome::ScanFailed => "scan_failed",
+    }
+    .to_owned()
 }
 
 fn candidate_to_dto(candidate: GameSetupCandidate) -> GameCandidateDto {
