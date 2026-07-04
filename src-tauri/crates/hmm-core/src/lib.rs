@@ -4,6 +4,7 @@ mod install;
 mod mod_metadata;
 mod preview_image;
 mod profile;
+mod save_backup;
 
 pub use category::{Category, CategoryLabel};
 pub use game::{
@@ -25,4 +26,8 @@ pub use preview_image::{
 pub use profile::{
     BackupCadence, Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
     ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
+};
+pub use save_backup::{
+    SaveBackupManifest, SaveBackupManifestFile, SaveBackupManifestSource, SaveBackupStatus,
+    SaveBackupSummary, SaveBackupTrigger, SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
 };

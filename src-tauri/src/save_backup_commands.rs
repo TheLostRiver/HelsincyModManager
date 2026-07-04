@@ -1,0 +1,183 @@
+use crate::dto::{CommandErrorDto, TaskStartedDto};
+use crate::save_backup_dto::{
+    ListSaveBackupsRequestDto, SaveBackupSummaryDto, StartSaveBackupTaskRequestDto,
+};
+use crate::state::AppState;
+use crate::task_events::emit_task_progress;
+use hmm_app::{SaveBackupError, StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted};
+use hmm_core::{GameId, ProfileId};
+use std::sync::Arc;
+use tauri::{AppHandle, State};
+
+const SAVE_BACKUP_QUEUED_PHASE: &str = "save_backup.queued";
+
+#[tauri::command]
+pub fn start_save_backup_task(
+    request: StartSaveBackupTaskRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let request = start_save_backup_task_request_from_dto(request)?;
+    let runner_request = request.clone();
+    let task = state
+        .save_backup_tasks
+        .start_save_backup_task(request)
+        .map_err(CommandErrorDto::from_task_manager_error)?;
+
+    let _ = emit_task_progress(
+        &app_handle,
+        queued_event_for_started_save_backup_task(&task).into(),
+    );
+    spawn_save_backup_runner(
+        Arc::clone(&state.save_backup_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_request,
+    );
+
+    Ok(task.into())
+}
+
+#[tauri::command]
+pub fn list_save_backups(
+    request: ListSaveBackupsRequestDto,
+    state: State<'_, AppState>,
+) -> Result<Vec<SaveBackupSummaryDto>, CommandErrorDto> {
+    let game_id = parse_game_id(request.game_id)?;
+    let profile_id = parse_profile_id(request.profile_id)?;
+    let backups = state
+        .save_backups
+        .list_backups(
+            &game_id,
+            &profile_id,
+            request.limit.map(|value| value as usize),
+        )
+        .map_err(save_backup_error_to_command_error)?;
+
+    Ok(backups.into_iter().map(Into::into).collect())
+}
+
+fn spawn_save_backup_runner(
+    runner: Arc<hmm_app::SaveBackupTaskRunner>,
+    app_handle: AppHandle,
+    task_id: String,
+    request: StartSaveBackupTaskRequest,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_save_backup_task(&task_id, request) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
+}
+
+fn queued_event_for_started_save_backup_task(task: &TaskStarted) -> TaskProgressEvent {
+    TaskProgressEvent::new(
+        task.task_id.clone(),
+        task.kind,
+        task.status,
+        SAVE_BACKUP_QUEUED_PHASE,
+    )
+}
+
+fn start_save_backup_task_request_from_dto(
+    request: StartSaveBackupTaskRequestDto,
+) -> Result<StartSaveBackupTaskRequest, CommandErrorDto> {
+    Ok(StartSaveBackupTaskRequest {
+        game_id: parse_game_id(request.game_id)?,
+        profile_id: parse_profile_id(request.profile_id)?,
+        note: normalize_note(request.note),
+    })
+}
+
+fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
+    GameId::parse(value).map_err(|_| CommandErrorDto {
+        code: "game_id_invalid".to_owned(),
+        message: "game id is invalid".to_owned(),
+    })
+}
+
+fn parse_profile_id(value: String) -> Result<ProfileId, CommandErrorDto> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(CommandErrorDto {
+            code: "profile_id_empty".to_owned(),
+            message: "profile id cannot be empty".to_owned(),
+        });
+    }
+
+    Ok(ProfileId::new(trimmed.to_owned()))
+}
+
+fn normalize_note(note: Option<String>) -> Option<String> {
+    note.map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn save_backup_error_to_command_error(error: SaveBackupError) -> CommandErrorDto {
+    CommandErrorDto {
+        code: error.code().to_owned(),
+        message: "save backup operation failed".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dto::TaskProgressEventDto;
+    use crate::save_backup_dto::StartSaveBackupTaskRequestDto;
+    use hmm_app::{SaveBackupError, TaskStarted};
+    use serde_json::{json, Value};
+
+    #[test]
+    fn start_save_backup_task_request_maps_to_app_request_without_paths() {
+        let request: StartSaveBackupTaskRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "profileId": "default",
+            "note": " before hunt "
+        }))
+        .expect("deserialize request");
+
+        let app_request =
+            start_save_backup_task_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(app_request.game_id.as_str(), "mhw");
+        assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(app_request.note.as_deref(), Some("before hunt"));
+    }
+
+    #[test]
+    fn queued_save_backup_event_uses_registered_phase() {
+        let task = TaskStarted {
+            task_id: "save-backup-123".to_owned(),
+            kind: hmm_app::TaskKind::SaveBackup,
+            status: hmm_app::TaskStatus::Queued,
+        };
+
+        let dto: TaskProgressEventDto = queued_event_for_started_save_backup_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "save-backup-123");
+        assert_eq!(value["kind"], "save_backup");
+        assert_eq!(value["status"], "queued");
+        assert_eq!(value["phase"], "save_backup.queued");
+        assert!(value["current"].is_null());
+        assert!(value["total"].is_null());
+        assert!(value["message"].is_null());
+        assert!(value["error"].is_null());
+        assert!(value["resultRef"].is_null());
+    }
+
+    #[test]
+    fn save_backup_error_maps_to_stable_command_error_without_paths() {
+        let error = save_backup_error_to_command_error(SaveBackupError::SourceUnset);
+
+        assert_eq!(error.code, "save_backup_source_unset");
+        assert!(!error.message.contains("C:/"));
+        assert!(!error.message.contains('\\'));
+    }
+}

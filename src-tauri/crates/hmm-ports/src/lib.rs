@@ -10,6 +10,7 @@ mod mod_import;
 mod mod_metadata;
 mod preview_image;
 mod profile;
+mod save_backup;
 mod text_log;
 
 use anyhow::Result;
@@ -50,6 +51,9 @@ pub use preview_image::{
 };
 pub use profile::{
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+};
+pub use save_backup::{
+    SaveBackupRepository, SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
 };
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
 
