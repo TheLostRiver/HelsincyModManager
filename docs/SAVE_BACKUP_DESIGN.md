@@ -110,7 +110,7 @@ profile-550e8400-e29b-41d4-a716-446655440000
 
 字段规则：
 
-- 时间使用本地时间格式，便于用户按文件名排序和肉眼识别；manifest 内同时保存 UTC 时间戳和本地偏移。
+- 时间使用 UTC 派生的稳定格式，便于排序和跨平台校验；manifest 内保存 UTC 时间戳和明确标注 UTC 的展示标签。后续如果引入可靠本地时区转换，可新增本地展示字段而不是复用 UTC 字段。
 - `gameId` 使用稳定短 id，例如 `mhw`。
 - `profileId` 使用安全文件名片段，不使用 profile 显示名。
 - `trigger` 初始支持 `manual`，后续扩展 `auto`、`pre_install`。
@@ -130,7 +130,7 @@ profile-550e8400-e29b-41d4-a716-446655440000
   "profileId": "default",
   "trigger": "manual",
   "createdAtUtc": "2026-07-04T14:15:30Z",
-  "createdAtLocalLabel": "2026-07-04 22:15:30",
+  "createdAtUtcLabel": "2026-07-04 14:15:30 UTC",
   "archiveFileName": "20260704-221530_mhw_profile-default_manual.zip",
   "archiveSizeBytes": 3981200,
   "archiveSha256": "sha256:...",
@@ -173,6 +173,8 @@ save_backups
   created_at INTEGER NOT NULL
   source_path_label TEXT
   source_path_hash TEXT NOT NULL
+  backup_directory_mode TEXT NOT NULL
+  backup_directory TEXT
   status TEXT NOT NULL
   notes TEXT
 ```
@@ -184,7 +186,7 @@ save_backups
 - `missing`
 - `invalid`
 
-历史表不保存完整备份根目录。真实文件定位由当前 profile 设置和后端受控目录解析得到；如果用户更换备份根目录，旧历史可能变成 `missing`，UI 应提示“历史文件不在当前备份位置”。
+历史表保存一份最小备份目录快照：`backup_directory_mode` 和可选 `backup_directory`。这只供后端保留策略、后续恢复校验和缺失检测定位旧备份文件使用，不进入前端 DTO、任务事件或日志。用户更换备份根目录后，旧备份仍应按创建时的目录快照清理或校验。
 
 ## 后端边界
 
@@ -302,8 +304,9 @@ max_total_bytes: 512 MiB
 
 - 只针对同一 `gameId/profileId` 的 completed 备份。
 - 按 `createdAt` 从新到旧保留最新 N 个。
-- 删除旧 zip 和同名 manifest。
-- 将历史状态更新为 `deleted_by_retention` 或删除历史记录；推荐保留摘要状态，便于解释为什么历史消失。
+- 删除旧 zip 和同名 manifest 时使用该备份历史记录中的备份目录快照，而不是当前 profile 设置。
+- 删除文件成功后再将历史状态更新为 `deleted_by_retention`；单个旧备份删除或状态更新失败时继续尝试后续过期备份。
+- 保留策略清理失败不应反向判定本次新备份失败；任务应完成，并通过 warning/audit 记录 `save_backup_retention_failed`。
 
 `maxAgeDays` 可与首个切片一起实现，也可以第二切片实现。空间上限需要额外设计，不作为首个切片目标。
 
@@ -338,6 +341,7 @@ save_backup_profile_missing
 save_backup_source_unset
 save_backup_source_invalid
 save_backup_source_unreadable
+save_backup_clock_unavailable
 save_backup_destination_unavailable
 save_backup_destination_contains_source
 save_backup_source_contains_destination

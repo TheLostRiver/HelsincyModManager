@@ -84,7 +84,10 @@ pub use preview_image::{
 pub use profile::{
     CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
 };
-pub use save_backup::{CreateSaveBackupRequest, SaveBackupError, SaveBackupService};
+pub use save_backup::{
+    CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
+    SaveBackupWarning,
+};
 pub use save_backup_task::{
     SaveBackupExecutor, SaveBackupTaskRunError, SaveBackupTaskRunner, SaveBackupTaskService,
     StartSaveBackupTaskRequest,

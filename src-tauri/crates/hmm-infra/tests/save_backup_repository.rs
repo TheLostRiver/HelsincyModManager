@@ -1,4 +1,7 @@
-use hmm_core::{GameId, ProfileId, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
+use hmm_core::{
+    GameId, ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
+    SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+};
 use hmm_infra::{open_database, SqliteSaveBackupRepository};
 use hmm_ports::SaveBackupRepository;
 use std::sync::{Arc, Mutex};
@@ -22,6 +25,14 @@ fn sqlite_save_backup_repository_round_trips_latest_first_and_updates_status() {
     assert_eq!(latest[0].backup_id, "backup-new");
     assert_eq!(latest[0].source_path_label.as_deref(), Some("remote"));
     assert_eq!(latest[0].source_path_hash, "sha256:source");
+    assert_eq!(
+        latest[0].backup_directory.mode,
+        ProfileDirectoryMode::Custom
+    );
+    assert_eq!(
+        latest[0].backup_directory.directory.as_deref(),
+        Some("D:/Backups")
+    );
 
     repo.mark_status("backup-new", SaveBackupStatus::DeletedByRetention)
         .expect("status update");
@@ -48,6 +59,17 @@ fn sample_summary(backup_id: &str, created_at: u128) -> SaveBackupSummary {
         created_at,
         source_path_label: Some("remote".to_owned()),
         source_path_hash: "sha256:source".to_owned(),
+        backup_directory: custom_backup_directory_selection("D:/Backups"),
         notes: Some("note".to_owned()),
+    }
+}
+
+fn custom_backup_directory_selection(directory: &str) -> ProfileDirectorySelection {
+    ProfileDirectorySelection {
+        mode: ProfileDirectoryMode::Custom,
+        status: ProfileDirectoryStatus::Valid,
+        directory: Some(directory.to_owned()),
+        path_label: Some("Backups".to_owned()),
+        messages: Vec::new(),
     }
 }

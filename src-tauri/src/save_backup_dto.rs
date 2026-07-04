@@ -128,6 +128,13 @@ mod tests {
             created_at: 42,
             source_path_label: Some("remote".to_owned()),
             source_path_hash: "sha256:source".to_owned(),
+            backup_directory: hmm_core::ProfileDirectorySelection {
+                mode: hmm_core::ProfileDirectoryMode::Custom,
+                status: hmm_core::ProfileDirectoryStatus::Valid,
+                directory: Some("D:/Backups".to_owned()),
+                path_label: Some("Backups".to_owned()),
+                messages: Vec::new(),
+            },
             notes: Some("manual note".to_owned()),
         }
         .into();
@@ -150,8 +157,10 @@ mod tests {
         assert_eq!(value["notes"], "manual note");
         assert!(value.get("archiveSha256").is_none());
         assert!(value.get("sourcePathHash").is_none());
+        assert!(value.get("backupDirectory").is_none());
         assert!(value.get("manifest").is_none());
         assert!(value.get("path").is_none());
+        assert!(!value.to_string().contains("D:/Backups"));
         assert!(!value.to_string().contains("C:/"));
         assert!(!value.to_string().contains("sha256:"));
     }

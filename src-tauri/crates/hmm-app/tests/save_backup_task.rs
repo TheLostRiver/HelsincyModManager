@@ -1,7 +1,8 @@
 use anyhow::Result;
 use hmm_app::{
-    CreateSaveBackupRequest, SaveBackupError, SaveBackupExecutor, SaveBackupTaskRunner,
-    SaveBackupTaskService, StartSaveBackupTaskRequest, TaskKind, TaskManager, TaskStatus,
+    CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupExecutor,
+    SaveBackupTaskRunner, SaveBackupTaskService, SaveBackupWarning, StartSaveBackupTaskRequest,
+    TaskKind, TaskManager, TaskStatus,
 };
 use hmm_core::{GameId, ProfileId, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
@@ -31,7 +32,7 @@ fn run_save_backup_task_emits_registered_phases_and_records_success_audit() {
     let task = task_manager
         .create_task(TaskKind::SaveBackup)
         .expect("task can be created");
-    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_summary()));
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
     let audit_log = Arc::new(RecordingAuditLogWriter::default());
     let runner = SaveBackupTaskRunner::new(
         Arc::clone(&task_manager),
@@ -66,7 +67,7 @@ fn run_save_backup_task_emits_registered_phases_and_records_success_audit() {
         Some("manual note")
     );
 
-    let event = audit_log.take_event().expect("success audit event");
+    let event = audit_log.take_events().pop().expect("success audit event");
     assert_eq!(event.timestamp_unix_millis, 42);
     assert_eq!(event.category, "save_backup");
     assert_eq!(event.operation, "manual_backup");
@@ -81,6 +82,82 @@ fn run_save_backup_task_emits_registered_phases_and_records_success_audit() {
     assert!(!serde_json::to_string(&event.fields)
         .expect("serialize audit fields")
         .contains("C:/"));
+}
+
+#[test]
+fn run_save_backup_task_does_not_replay_running_events_after_concurrent_cancel() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let executor = Arc::new(CancellingSaveBackupExecutor {
+        task_manager: Arc::clone(&task_manager),
+        task_id: task.task_id.clone(),
+    });
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = SaveBackupTaskRunner::new(
+        Arc::clone(&task_manager),
+        executor,
+        audit_log.clone(),
+        Arc::new(FixedClock),
+    );
+
+    let events = runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect("cancelled task should not be treated as runner failure");
+
+    assert!(events.is_empty());
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Cancelled)
+    );
+
+    let events = audit_log.take_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].result, "success");
+    assert_eq!(events[0].fields["backup_id"], "backup-1");
+}
+
+#[test]
+fn run_save_backup_task_records_retention_warning_audit_without_failing_task() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(CreateSaveBackupResult {
+        summary: sample_summary(),
+        warnings: vec![SaveBackupWarning::RetentionFailed],
+    }));
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = SaveBackupTaskRunner::new(
+        Arc::clone(&task_manager),
+        executor,
+        audit_log.clone(),
+        Arc::new(FixedClock),
+    );
+
+    let events = runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect("retention warning should not fail save backup task");
+
+    assert_eq!(
+        events.last().map(|event| event.phase.as_str()),
+        Some("save_backup.completed")
+    );
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Completed)
+    );
+
+    let events = audit_log.take_events();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].result, "success");
+    assert_eq!(events[1].operation, "retention_pruning");
+    assert_eq!(events[1].result, "warning");
+    assert_eq!(
+        events[1].fields["error_code"],
+        "save_backup_retention_failed"
+    );
 }
 
 #[test]
@@ -124,7 +201,7 @@ fn run_save_backup_task_records_failure_audit_with_stable_error_code() {
         Some(TaskStatus::Failed)
     );
 
-    let event = audit_log.take_event().expect("failure audit event");
+    let event = audit_log.take_events().pop().expect("failure audit event");
     assert_eq!(event.result, "failure");
     assert_eq!(event.fields["task_id"], task.task_id);
     assert_eq!(event.fields["error_code"], "save_backup_source_unset");
@@ -156,19 +233,33 @@ fn sample_summary() -> SaveBackupSummary {
         created_at: 42,
         source_path_label: Some("Saves".to_owned()),
         source_path_hash: "sha256:source".to_owned(),
+        backup_directory: hmm_core::ProfileDirectorySelection {
+            mode: hmm_core::ProfileDirectoryMode::Default,
+            status: hmm_core::ProfileDirectoryStatus::Defaulted,
+            directory: None,
+            path_label: Some("HelsincyModManager/backups/saves/mhw/profile-default".to_owned()),
+            messages: Vec::new(),
+        },
         notes: Some("manual note".to_owned()),
     }
 }
 
+fn sample_result() -> CreateSaveBackupResult {
+    CreateSaveBackupResult {
+        summary: sample_summary(),
+        warnings: Vec::new(),
+    }
+}
+
 struct RecordingSaveBackupExecutor {
-    result: Mutex<Result<SaveBackupSummary, SaveBackupError>>,
+    result: Mutex<Result<CreateSaveBackupResult, SaveBackupError>>,
     requests: Mutex<Vec<CreateSaveBackupRequest>>,
 }
 
 impl RecordingSaveBackupExecutor {
-    fn ok(summary: SaveBackupSummary) -> Self {
+    fn ok(result: CreateSaveBackupResult) -> Self {
         Self {
-            result: Mutex::new(Ok(summary)),
+            result: Mutex::new(Ok(result)),
             requests: Mutex::new(Vec::new()),
         }
     }
@@ -189,26 +280,43 @@ impl SaveBackupExecutor for RecordingSaveBackupExecutor {
     fn create_manual_backup(
         &self,
         request: CreateSaveBackupRequest,
-    ) -> Result<SaveBackupSummary, SaveBackupError> {
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
         self.requests.lock().unwrap().push(request);
         self.result.lock().unwrap().clone()
     }
 }
 
+struct CancellingSaveBackupExecutor {
+    task_manager: Arc<TaskManager>,
+    task_id: String,
+}
+
+impl SaveBackupExecutor for CancellingSaveBackupExecutor {
+    fn create_manual_backup(
+        &self,
+        _request: CreateSaveBackupRequest,
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
+        self.task_manager
+            .cancel_task(&self.task_id)
+            .expect("running task can be cancelled");
+        Ok(sample_result())
+    }
+}
+
 #[derive(Default)]
 struct RecordingAuditLogWriter {
-    event: Mutex<Option<AuditLogEvent>>,
+    events: Mutex<Vec<AuditLogEvent>>,
 }
 
 impl RecordingAuditLogWriter {
-    fn take_event(&self) -> Option<AuditLogEvent> {
-        self.event.lock().unwrap().take()
+    fn take_events(&self) -> Vec<AuditLogEvent> {
+        std::mem::take(&mut *self.events.lock().unwrap())
     }
 }
 
 impl AuditLogWriter for RecordingAuditLogWriter {
     fn record(&self, event: AuditLogEvent) -> Result<()> {
-        *self.event.lock().unwrap() = Some(event);
+        self.events.lock().unwrap().push(event);
         Ok(())
     }
 }

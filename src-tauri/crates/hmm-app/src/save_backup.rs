@@ -16,6 +16,25 @@ pub struct CreateSaveBackupRequest {
     pub note: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateSaveBackupResult {
+    pub summary: SaveBackupSummary,
+    pub warnings: Vec<SaveBackupWarning>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveBackupWarning {
+    RetentionFailed,
+}
+
+impl SaveBackupWarning {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::RetentionFailed => "save_backup_retention_failed",
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SaveBackupError {
     #[error("profile is missing")]
@@ -24,6 +43,10 @@ pub enum SaveBackupError {
     SourceUnset,
     #[error("save source directory is invalid")]
     SourceInvalid,
+    #[error("app clock is unavailable")]
+    ClockUnavailable,
+    #[error("save backup destination is unavailable")]
+    DestinationUnavailable,
     #[error("save backup writer is unavailable")]
     WriterUnavailable,
     #[error("save backup history is unavailable")]
@@ -38,6 +61,8 @@ impl SaveBackupError {
             Self::ProfileMissing => "save_backup_profile_missing",
             Self::SourceUnset => "save_backup_source_unset",
             Self::SourceInvalid => "save_backup_source_invalid",
+            Self::ClockUnavailable => "save_backup_clock_unavailable",
+            Self::DestinationUnavailable => "save_backup_destination_unavailable",
             Self::WriterUnavailable => "save_backup_archive_write_failed",
             Self::HistoryUnavailable => "save_backup_history_unavailable",
             Self::RetentionFailed => "save_backup_retention_failed",
@@ -76,13 +101,13 @@ impl SaveBackupService {
     pub fn create_manual_backup(
         &self,
         request: CreateSaveBackupRequest,
-    ) -> Result<SaveBackupSummary, SaveBackupError> {
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
         let settings = self.settings_for(&request)?;
         let source_directory = validated_source_directory(&settings.save_directory)?;
         let created_at_unix_millis = self
             .clock
             .now_unix_millis()
-            .map_err(|_| SaveBackupError::WriterUnavailable)?;
+            .map_err(|_| SaveBackupError::ClockUnavailable)?;
 
         let write_result = self
             .backup_writer
@@ -102,14 +127,23 @@ impl SaveBackupService {
         self.backup_repository
             .save(&write_result.summary)
             .map_err(|_| SaveBackupError::HistoryUnavailable)?;
-        self.apply_max_count_retention(
-            &request.game_id,
-            &request.profile_id,
-            &settings.backup_directory,
-            settings.retention.max_count,
-        )?;
 
-        Ok(write_result.summary)
+        let mut warnings = Vec::new();
+        if self
+            .apply_max_count_retention(
+                &request.game_id,
+                &request.profile_id,
+                settings.retention.max_count,
+            )
+            .is_err()
+        {
+            warnings.push(SaveBackupWarning::RetentionFailed);
+        }
+
+        Ok(CreateSaveBackupResult {
+            summary: write_result.summary,
+            warnings,
+        })
     }
 
     pub fn list_backups(
@@ -146,7 +180,7 @@ impl SaveBackupService {
             backup_directory: self
                 .save_directory_validator
                 .default_backup_directory(request.game_id.as_str())
-                .map_err(|_| SaveBackupError::WriterUnavailable)?,
+                .map_err(|_| SaveBackupError::DestinationUnavailable)?,
             schedule: hmm_core::ProfileBackupSchedule::manual(),
             retention: hmm_core::ProfileBackupRetention::default(),
             updated_at: 0,
@@ -157,13 +191,12 @@ impl SaveBackupService {
         &self,
         game_id: &GameId,
         profile_id: &ProfileId,
-        backup_directory: &ProfileDirectorySelection,
         max_count: u32,
     ) -> Result<(), SaveBackupError> {
         let mut summaries = self
             .backup_repository
             .list_for_profile(game_id, profile_id, None)
-            .map_err(|_| SaveBackupError::HistoryUnavailable)?
+            .map_err(|_| SaveBackupError::RetentionFailed)?
             .into_iter()
             .filter(|summary| summary.status == SaveBackupStatus::Completed)
             .collect::<Vec<_>>();
@@ -175,13 +208,29 @@ impl SaveBackupService {
                 .then_with(|| right.backup_id.cmp(&left.backup_id))
         });
 
+        let mut failed = false;
         for summary in summaries.into_iter().skip(max_count as usize) {
-            self.backup_writer
-                .delete_backup_files(backup_directory, &summary)
-                .map_err(|_| SaveBackupError::RetentionFailed)?;
-            self.backup_repository
+            if self
+                .backup_writer
+                .delete_backup_files(&summary.backup_directory, &summary)
+                .is_err()
+            {
+                failed = true;
+                continue;
+            }
+
+            if self
+                .backup_repository
                 .mark_status(&summary.backup_id, SaveBackupStatus::DeletedByRetention)
-                .map_err(|_| SaveBackupError::RetentionFailed)?;
+                .is_err()
+            {
+                failed = true;
+                continue;
+            }
+        }
+
+        if failed {
+            return Err(SaveBackupError::RetentionFailed);
         }
 
         Ok(())

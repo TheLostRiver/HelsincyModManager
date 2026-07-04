@@ -1,4 +1,4 @@
-use crate::{GameId, ProfileId};
+use crate::{GameId, ProfileDirectorySelection, ProfileId};
 use serde::{Deserialize, Serialize};
 
 pub const SAVE_BACKUP_MANIFEST_SCHEMA_VERSION: u32 = 1;
@@ -56,6 +56,7 @@ pub struct SaveBackupSummary {
     pub created_at: u128,
     pub source_path_label: Option<String>,
     pub source_path_hash: String,
+    pub backup_directory: ProfileDirectorySelection,
     pub notes: Option<String>,
 }
 
@@ -68,7 +69,7 @@ pub struct SaveBackupManifest {
     pub profile_id: ProfileId,
     pub trigger: SaveBackupTrigger,
     pub created_at_utc: String,
-    pub created_at_local_label: String,
+    pub created_at_utc_label: String,
     pub archive_file_name: String,
     pub archive_size_bytes: u64,
     pub archive_sha256: String,
@@ -99,26 +100,30 @@ impl SaveBackupManifest {
         backup_id: impl Into<String>,
         game_id: GameId,
         profile_id: ProfileId,
+        trigger: SaveBackupTrigger,
+        created_at_utc: impl Into<String>,
+        created_at_utc_label: impl Into<String>,
         archive_file_name: impl Into<String>,
         archive_size_bytes: u64,
         archive_sha256: impl Into<String>,
         source: SaveBackupManifestSource,
         files: Vec<SaveBackupManifestFile>,
+        notes: Option<String>,
     ) -> Self {
         Self {
             schema_version: SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
             backup_id: backup_id.into(),
             game_id,
             profile_id,
-            trigger: SaveBackupTrigger::Manual,
-            created_at_utc: String::new(),
-            created_at_local_label: String::new(),
+            trigger,
+            created_at_utc: created_at_utc.into(),
+            created_at_utc_label: created_at_utc_label.into(),
             archive_file_name: archive_file_name.into(),
             archive_size_bytes,
             archive_sha256: archive_sha256.into(),
             source,
             files,
-            notes: None,
+            notes,
         }
     }
 }
