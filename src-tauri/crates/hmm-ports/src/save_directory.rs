@@ -59,6 +59,8 @@ pub trait SteamAccountProfileClient: Send + Sync {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingSaveDirectoryCandidate {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
     pub summary: SaveDirectoryCandidateSummary,
     pub account_id_32: u32,
     pub directory: PathBuf,
