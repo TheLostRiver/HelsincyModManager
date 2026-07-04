@@ -6,6 +6,11 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
+const forbiddenDiscoveryFields = new RegExp(
+  ["steam" + "Id64", "account" + "Id", "raw" + "Path", "full" + "Path", "x" + "ml"].join("|"),
+  "i",
+);
+
 test("profiles route is registered and enabled from the shared navigation definition", () => {
   assert.equal(existsSync("src/features/profiles/ProfilePage.tsx"), true);
   assert.equal(existsSync("src/features/profiles/ProfilePage.css"), true);
@@ -191,4 +196,30 @@ test("plain browser preview renders the redesigned profiles console instead of t
   assert.match(directorySource, /previewMode\?:\s*boolean/);
   assert.match(directorySource, /if \(previewMode\)/);
   assert.match(directorySource, /Steam\/userdata\/<steam-id>\/582010\/remote/);
+});
+
+test("profile save discovery uses a floating notice and candidate confirmation UI", () => {
+  const app = readSource("src/App.tsx");
+  const main = readSource("src/main.tsx");
+  const page = readSource("src/features/profiles/ProfilePage.tsx");
+  const panel = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
+  const notice = readSource("src/features/profiles/ProfileSaveDirectoryFloatingNotice.tsx");
+  const candidates = readSource("src/features/profiles/ProfileSaveDirectoryCandidateList.tsx");
+  const css = readSource("src/features/profiles/ProfileSaveDirectoryDiscovery.css");
+
+  assert.match(app, /ProfileSaveDirectoryDiscoveryProvider/);
+  assert.match(main, /ProfileSaveDirectoryDiscovery\.css/);
+  assert.match(page, /ProfileSaveDirectoryCandidateList/);
+  assert.match(panel, /自动检测/);
+  assert.match(notice, /positioned by CSS/);
+  assert.match(notice, /window\.setTimeout/);
+  assert.match(notice, /AUTO_DISMISS_TIMEOUT_MS\s*=\s*6000/);
+  assert.match(candidates, /accountName/);
+  assert.match(candidates, /avatarUrl/);
+  assert.match(candidates, /recommended/);
+  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?position:\s*fixed/);
+  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?top:\s*clamp\(72px,\s*14vh,\s*128px\)/);
+  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?left:\s*50%/);
+  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?transform:\s*translateX\(-50%\)/);
+  assert.doesNotMatch(page + panel + notice + candidates, forbiddenDiscoveryFields);
 });
