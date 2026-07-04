@@ -28,25 +28,6 @@ export const previewCards = [
   { label: "最近备份", shortWidth: "70px" },
 ] as const;
 
-export const setupSteps = [
-  {
-    title: "扫描 Steam 游戏库",
-    meta: "检测已安装游戏和可用候选项。",
-  },
-  {
-    title: "验证游戏目录",
-    meta: "确认可执行文件、数据目录和写入权限。",
-  },
-  {
-    title: "创建默认配置档案",
-    meta: "在导入前准备一份干净的基线。",
-  },
-  {
-    title: "开始导入模组",
-    meta: "仅在目录和配置检查通过后启用。",
-  },
-] as const;
-
 export const setupLogs = [
   { time: "09:42", message: "首次启动设置已打开" },
   { time: "09:42", message: "等待扫描 Steam 游戏库" },
