@@ -29,7 +29,7 @@
 ### 需要新建独立文档的任务
 
 - ~~**T2 持久化方案**: → `docs/PERSISTENCE_DECISION.md` — SQLite vs JSON 架构决策~~ ✅ 已创建
-- **T8 存档备份**: → `docs/SAVE_BACKUP_DESIGN.md` — 涉及定时调度、保留策略等设计
+- ~~**T8 存档备份**: → `docs/SAVE_BACKUP_DESIGN.md` — 涉及定时调度、保留策略等设计~~ ✅ 已创建，首个实现切片建议为手动备份 MVP
 
 ---
 
@@ -251,13 +251,17 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
+**状态**: 进行中（手动备份后端 MVP 已落地，Profile 页面接入和自动备份仍待后续切片）
 **预估**: 大
-**独立文档**: **需要** → `docs/SAVE_BACKUP_DESIGN.md`
+**独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`
 
 概要:
-- [ ] 手动备份 + 自动备份（可配置间隔）
-- [ ] 保留策略（数量/时间/空间）
-- [ ] 备份目录可选择（默认 app data）
+- [x] 手动备份后端 MVP（`start_save_backup_task` / `list_save_backups`、zip + manifest、SQLite 历史、任务事件、最小审计）
+- [ ] Profile 页面接入手动备份按钮、任务进度和历史刷新
+- [ ] 自动备份（可配置间隔）
+- [x] 保留策略（数量）
+- [ ] 保留策略（时间/空间）
+- [x] 备份目录可选择（未手动选择时使用默认 app data）
 - [ ] 前端 `features/backups/` 页面
 
 ---
@@ -395,7 +399,7 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| T8 存档备份 | P2 | 待开始 | |
+| T8 存档备份 | P2 | 进行中（手动备份后端 MVP 已落地，Profile 页面接入待后续切片） | |
 | T9 Rich Manifest | P2 | 进行中（manifest metadata / plan_hash / rolled_back / 读侧状态机消费已落地） | |
 | T10 依赖检查 | P2 | 待开始 | |
 | T11 ARMOR_RETARGET | P3 | 待开始 | |

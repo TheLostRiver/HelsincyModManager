@@ -54,6 +54,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
+- Profile 存档备份：`start_save_backup_task`、`list_save_backups`
 - 游戏启动：`launch_game(gameId)`
 - 查询安装恢复摘要：`scan_install_recovery`
 - 查询安装恢复动作预览：`preview_recovery_action`
@@ -223,6 +224,14 @@ TaskProgressEventDto
 | `install` | `install.recovery.processing` | 后端正在执行受写锁保护的恢复动作 |
 | `install` | `install.recovery.completed` | 恢复动作已完成，durable recovery record 已更新 |
 | `install` | `install.recovery.failed` | 恢复动作失败；后端会 best-effort 回滚已应用的删除或恢复 |
+| `save_backup` | `save_backup.queued` | 存档备份任务已登记，等待后续执行 |
+| `save_backup` | `save_backup.scanning` | 后端正在校验并扫描受控存档源目录 |
+| `save_backup` | `save_backup.archiving` | 后端正在写入受控 zip 备份 |
+| `save_backup` | `save_backup.manifest_writing` | 后端正在写入 sidecar manifest 和 SQLite 历史摘要 |
+| `save_backup` | `save_backup.retention_pruning` | 后端正在按保留策略清理旧备份 |
+| `save_backup` | `save_backup.completed` | 存档备份已完成 |
+| `save_backup` | `save_backup.failed` | 存档备份失败；事件只携带稳定错误 code，不携带完整路径 |
+| `save_backup` | `save_backup.cancelled` | 存档备份任务被取消；已进入一致性收尾阶段时以后端状态为准 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -377,6 +386,46 @@ type ProfileSaveSettingsDto = {
   updatedAt: number;
 };
 ```
+
+Profile 存档备份命令：
+
+```text
+start_save_backup_task({ request: { gameId, profileId, note? } })
+list_save_backups({ request: { gameId, profileId, limit? } })
+```
+
+边界：
+
+- `start_save_backup_task` 是手动存档备份的长任务入口，返回 `TaskStartedDto`；前端按 `taskId` 监听 `save_backup.*` phase。
+- `list_save_backups` 只查询后端持久化的备份历史摘要，用于 Profile 页面或后续备份中心刷新历史。
+- 前端只能传递 `gameId`、`profileId`、可选 `note` 和可选 `limit`；不得传入存档源路径、备份根目录、文件名、manifest 正文、文件列表、hash、sandbox/cache 路径或 backup ref。
+- Tauri command 只做 DTO 映射和 app service 转发；目录解析、默认备份目录、自选根目录子目录、压缩、manifest、SQLite 历史、保留策略和审计均由后端服务处理。
+
+DTO 形状：
+
+```ts
+type TaskStartedDto = {
+  taskId: string;
+  kind: "save_backup";
+  status: "queued";
+};
+
+type SaveBackupSummaryDto = {
+  backupId: string;
+  gameId: string;
+  profileId: string;
+  trigger: "manual" | "auto" | "pre_install";
+  status: "completed" | "deleted_by_retention" | "missing" | "invalid";
+  fileName: string;
+  createdAt: number;
+  sizeBytes: number;
+  fileCount: number;
+  sourcePathLabel: string | null;
+  notes: string | null;
+};
+```
+
+`SaveBackupSummaryDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表或真实存档内容。
 
 ### 4. 游戏启动
 

@@ -9,6 +9,7 @@ use thiserror::Error;
 pub enum TaskKind {
     ModImport,
     Install,
+    SaveBackup,
 }
 
 impl TaskKind {
@@ -16,6 +17,7 @@ impl TaskKind {
         match self {
             Self::ModImport => "mod-import",
             Self::Install => "install",
+            Self::SaveBackup => "save-backup",
         }
     }
 }
@@ -228,6 +230,22 @@ mod tests {
         assert!(!task.task_id.contains('\\'));
         assert!(!task.task_id.contains('/'));
         assert_eq!(task.kind, TaskKind::Install);
+        assert_eq!(task.status, TaskStatus::Queued);
+        assert_eq!(manager.task_status(&task.task_id), Some(TaskStatus::Queued));
+    }
+
+    #[test]
+    fn creates_queued_save_backup_task_with_safe_task_id() {
+        let manager = TaskManager::new();
+
+        let task = manager
+            .create_task(TaskKind::SaveBackup)
+            .expect("save backup task can be created");
+
+        assert!(task.task_id.starts_with("save-backup-"));
+        assert!(!task.task_id.contains('\\'));
+        assert!(!task.task_id.contains('/'));
+        assert_eq!(task.kind, TaskKind::SaveBackup);
         assert_eq!(task.status, TaskStatus::Queued);
         assert_eq!(manager.task_status(&task.task_id), Some(TaskStatus::Queued));
     }

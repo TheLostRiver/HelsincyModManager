@@ -59,3 +59,34 @@ test("profile save settings API uses narrow settings commands", () => {
   assert.match(typesSource, /pathLabel:\s*string\s*\|\s*null/);
   assert.doesNotMatch(typesSource, /manifestPath|backupRoot|backupRef|targetPath|sandbox|cache/i);
 });
+
+test("profile save backup API invokes task and history commands without filesystem details", () => {
+  assert.equal(existsSync("src/features/profiles/profileSaveBackupApi.ts"), true);
+  assert.equal(existsSync("src/features/profiles/profileSaveBackupTypes.ts"), true);
+
+  const source = readSource("src/features/profiles/profileSaveBackupApi.ts");
+  const typesSource = readSource("src/features/profiles/profileSaveBackupTypes.ts");
+
+  assert.match(source, /startProfileSaveBackup\(input:\s*StartProfileSaveBackupInput\)/);
+  assert.match(source, /invoke<TaskStartedDto>\("start_save_backup_task",\s*\{/);
+  assert.match(source, /request:\s*\{/);
+  assert.match(source, /gameId:\s*input\.gameId/);
+  assert.match(source, /profileId:\s*input\.profileId/);
+  assert.match(source, /note:\s*input\.note/);
+  assert.match(source, /listProfileSaveBackups\(input:\s*ListProfileSaveBackupsInput\)/);
+  assert.match(source, /invoke<SaveBackupSummaryDto\[\]>\("list_save_backups",\s*\{/);
+  assert.match(source, /limit:\s*input\.limit/);
+  assert.doesNotMatch(source, /path|root|manifest|backupRef|sandbox|cache|hash/i);
+
+  assert.match(typesSource, /export type StartProfileSaveBackupInput = \{/);
+  assert.match(typesSource, /export type ListProfileSaveBackupsInput = \{/);
+  assert.match(typesSource, /export type TaskStartedDto = \{/);
+  assert.match(typesSource, /kind:\s*"save_backup"/);
+  assert.match(typesSource, /status:\s*"queued"/);
+  assert.match(typesSource, /export type SaveBackupSummaryDto = \{/);
+  assert.match(typesSource, /trigger:\s*"manual" \| "auto" \| "pre_install"/);
+  assert.match(typesSource, /status:\s*"completed" \| "deleted_by_retention" \| "missing" \| "invalid"/);
+  assert.match(typesSource, /fileName:\s*string/);
+  assert.match(typesSource, /sourcePathLabel:\s*string\s*\|\s*null/);
+  assert.doesNotMatch(typesSource, /manifestPath|backupRoot|backupRef|targetPath|sandbox|cache|hash/i);
+});
