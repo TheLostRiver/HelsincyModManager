@@ -9,6 +9,10 @@ use hmm_ports::{
 };
 use std::sync::Arc;
 
+mod save_directory;
+
+pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
+
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
 const STEAM_APP_ID: u32 = 582010;
 const EXECUTABLE_NAME: &str = "MonsterHunterWorld.exe";

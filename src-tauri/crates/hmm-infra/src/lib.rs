@@ -10,6 +10,7 @@ mod mod_import;
 mod mod_import_install_files;
 mod preview_image;
 mod save_backup;
+mod save_directory_scanner;
 pub mod sqlite;
 pub mod steam_discovery;
 mod text_log;
@@ -41,6 +42,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use save_backup::FileSystemSaveBackupWriter;
+pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
 pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteModMetadataRepository;
