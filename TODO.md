@@ -251,13 +251,14 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 进行中（手动备份后端 MVP 已落地，Profile 页面接入和自动备份仍待后续切片）
+**状态**: 进行中（手动备份后端 MVP 已落地，Profile 页面接入、存档目录自动发现和自动备份仍待后续切片）
 **预估**: 大
-**独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`
+**独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`
 
 概要:
 - [x] 手动备份后端 MVP（`start_save_backup_task` / `list_save_backups`、zip + manifest、SQLite 历史、任务事件、最小审计）
 - [ ] Profile 页面接入手动备份按钮、任务进度和历史刷新
+- [ ] 存档目录自动发现：唯一候选自动写入，多 Steam 用户候选默认推荐最近修改项但必须确认
 - [ ] 自动备份（可配置间隔）
 - [x] 保留策略（数量）
 - [ ] 保留策略（时间/空间）
