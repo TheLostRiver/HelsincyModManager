@@ -40,6 +40,24 @@ pub struct GameSetupCandidate {
     pub validation: GameDirectoryValidation,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameAutoDetectionOutcome {
+    AlreadyConfigured,
+    DetectedAndSaved,
+    NotFound,
+    InvalidCandidate,
+    ScanFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameAutoDetection {
+    pub game_id: GameId,
+    pub outcome: GameAutoDetectionOutcome,
+    pub status: GameSetupStatus,
+    pub error_code: Option<GameSetupErrorCode>,
+    pub candidate_count: usize,
+}
+
 pub struct GameSetupService {
     adapters: Vec<Arc<dyn GameAdapter>>,
     repository: Arc<dyn GameConfigRepository>,
@@ -170,6 +188,84 @@ impl GameSetupService {
         Ok(GameCandidateScan {
             game_id,
             candidates,
+        })
+    }
+
+    pub fn auto_detect_game_directory(
+        &self,
+        game_id: GameId,
+    ) -> Result<GameAutoDetection, GameSetupServiceError> {
+        let current_status = self.get_status(game_id.clone())?;
+
+        if current_status.status == GameDirectoryStatus::Configured {
+            return Ok(GameAutoDetection {
+                game_id,
+                outcome: GameAutoDetectionOutcome::AlreadyConfigured,
+                status: current_status,
+                error_code: None,
+                candidate_count: 0,
+            });
+        }
+
+        let scan = match self.scan_candidates(game_id.clone()) {
+            Ok(scan) => scan,
+            Err(GameSetupServiceError::ScanFailed(_)) => {
+                return Ok(GameAutoDetection {
+                    game_id,
+                    outcome: GameAutoDetectionOutcome::ScanFailed,
+                    status: current_status,
+                    error_code: Some(GameSetupErrorCode::ScanFailed),
+                    candidate_count: 0,
+                });
+            }
+            Err(GameSetupServiceError::ScanNotImplemented) => {
+                return Ok(GameAutoDetection {
+                    game_id,
+                    outcome: GameAutoDetectionOutcome::ScanFailed,
+                    status: current_status,
+                    error_code: Some(GameSetupErrorCode::ScanNotImplemented),
+                    candidate_count: 0,
+                });
+            }
+            Err(error) => return Err(error),
+        };
+
+        if let Some(valid_candidate) = scan
+            .candidates
+            .iter()
+            .find(|candidate| candidate.validation.is_valid)
+        {
+            let status = self.save_game_directory(
+                game_id.clone(),
+                valid_candidate.candidate.root_dir.clone(),
+            )?;
+
+            return Ok(GameAutoDetection {
+                game_id,
+                outcome: GameAutoDetectionOutcome::DetectedAndSaved,
+                status,
+                error_code: None,
+                candidate_count: scan.candidates.len(),
+            });
+        }
+
+        let error_code = scan
+            .candidates
+            .iter()
+            .find_map(|candidate| candidate.validation.errors.first().cloned())
+            .unwrap_or(GameSetupErrorCode::DirectoryNotFound);
+        let outcome = if scan.candidates.is_empty() {
+            GameAutoDetectionOutcome::NotFound
+        } else {
+            GameAutoDetectionOutcome::InvalidCandidate
+        };
+
+        Ok(GameAutoDetection {
+            game_id,
+            outcome,
+            status: current_status,
+            error_code: Some(error_code),
+            candidate_count: scan.candidates.len(),
         })
     }
 
@@ -464,6 +560,20 @@ mod tests {
         )
     }
 
+    fn service_with_repository_and_discovery(
+        adapter: FakeAdapter,
+        repository: Arc<dyn GameConfigRepository>,
+        discovery: Arc<dyn GameDiscoveryService>,
+    ) -> GameSetupService {
+        GameSetupService::new(
+            vec![Arc::new(adapter)],
+            repository,
+            Arc::new(FakeProbeFactory),
+            discovery,
+            Arc::new(FakeClock),
+        )
+    }
+
     fn stored_instance(root: &str) -> GameInstance {
         GameInstance {
             id: "mhw-default".to_owned(),
@@ -587,6 +697,161 @@ mod tests {
             .expect_err("scan failure should map to service error");
 
         assert_eq!(error.error_code(), GameSetupErrorCode::ScanFailed);
+    }
+
+    #[test]
+    fn auto_detect_saves_first_valid_discovered_directory() {
+        let repository = Arc::new(FakeRepository::empty());
+        let service = service_with_repository_and_discovery(
+            FakeAdapter::with_invalid_roots(vec!["C:/Broken"]),
+            repository.clone(),
+            Arc::new(FakeDiscovery::ok(vec![
+                steam_candidate("C:/Broken"),
+                steam_candidate("C:/MHW"),
+            ])),
+        );
+
+        let detection = service
+            .auto_detect_game_directory(GameId::mhw())
+            .expect("valid candidate should auto-save");
+
+        assert_eq!(detection.outcome, GameAutoDetectionOutcome::DetectedAndSaved);
+        assert_eq!(detection.candidate_count, 2);
+        assert_eq!(detection.status.status, GameDirectoryStatus::Configured);
+        assert_eq!(
+            repository
+                .load_game_instance(&GameId::mhw())
+                .expect("repo should load")
+                .expect("saved instance")
+                .root_dir,
+            PathBuf::from("C:/MHW")
+        );
+    }
+
+    #[test]
+    fn auto_detect_reports_not_found_without_persisting_when_scan_has_no_candidates() {
+        let repository = Arc::new(FakeRepository::empty());
+        let service = service_with_repository_and_discovery(
+            FakeAdapter::valid(),
+            repository.clone(),
+            Arc::new(FakeDiscovery::ok(Vec::new())),
+        );
+
+        let detection = service
+            .auto_detect_game_directory(GameId::mhw())
+            .expect("empty scan should be reported as recoverable detection result");
+
+        assert_eq!(detection.outcome, GameAutoDetectionOutcome::NotFound);
+        assert_eq!(detection.candidate_count, 0);
+        assert_eq!(detection.error_code, Some(GameSetupErrorCode::DirectoryNotFound));
+        assert_eq!(detection.status.status, GameDirectoryStatus::NotConfigured);
+        assert!(repository
+            .load_game_instance(&GameId::mhw())
+            .expect("repo should load")
+            .is_none());
+    }
+
+    #[test]
+    fn auto_detect_reports_already_configured_without_scanning() {
+        let repository = Arc::new(FakeRepository {
+            stored: Mutex::new(Some(stored_instance("C:/MHW"))),
+        });
+        let service = service_with_repository_and_discovery(
+            FakeAdapter::valid(),
+            repository,
+            Arc::new(FakeDiscovery::error(GameDiscoveryError::ScanFailed(
+                "should not scan".to_owned(),
+            ))),
+        );
+
+        let detection = service
+            .auto_detect_game_directory(GameId::mhw())
+            .expect("configured directory should short-circuit detection");
+
+        assert_eq!(
+            detection.outcome,
+            GameAutoDetectionOutcome::AlreadyConfigured
+        );
+        assert_eq!(detection.candidate_count, 0);
+        assert_eq!(detection.error_code, None);
+        assert_eq!(detection.status.status, GameDirectoryStatus::Configured);
+    }
+
+    #[test]
+    fn auto_detect_reports_invalid_candidate_without_persisting() {
+        let repository = Arc::new(FakeRepository::empty());
+        let service = service_with_repository_and_discovery(
+            FakeAdapter::with_invalid_roots(vec!["C:/Broken"]),
+            repository.clone(),
+            Arc::new(FakeDiscovery::ok(vec![steam_candidate("C:/Broken")])),
+        );
+
+        let detection = service
+            .auto_detect_game_directory(GameId::mhw())
+            .expect("invalid candidates should be reported as recoverable detection result");
+
+        assert_eq!(
+            detection.outcome,
+            GameAutoDetectionOutcome::InvalidCandidate
+        );
+        assert_eq!(detection.candidate_count, 1);
+        assert_eq!(detection.error_code, Some(GameSetupErrorCode::MissingExecutable));
+        assert_eq!(detection.status.status, GameDirectoryStatus::NotConfigured);
+        assert!(repository
+            .load_game_instance(&GameId::mhw())
+            .expect("repo should load")
+            .is_none());
+    }
+
+    #[test]
+    fn auto_detect_reports_scan_failed_without_persisting() {
+        let repository = Arc::new(FakeRepository::empty());
+        let service = service_with_repository_and_discovery(
+            FakeAdapter::valid(),
+            repository.clone(),
+            Arc::new(FakeDiscovery::error(GameDiscoveryError::ScanFailed(
+                "boom".to_owned(),
+            ))),
+        );
+
+        let detection = service
+            .auto_detect_game_directory(GameId::mhw())
+            .expect("scan failure should be reported as recoverable detection result");
+
+        assert_eq!(detection.outcome, GameAutoDetectionOutcome::ScanFailed);
+        assert_eq!(detection.candidate_count, 0);
+        assert_eq!(detection.error_code, Some(GameSetupErrorCode::ScanFailed));
+        assert_eq!(detection.status.status, GameDirectoryStatus::NotConfigured);
+        assert!(repository
+            .load_game_instance(&GameId::mhw())
+            .expect("repo should load")
+            .is_none());
+    }
+
+    #[test]
+    fn auto_detect_reports_scan_not_implemented_without_persisting() {
+        let repository = Arc::new(FakeRepository::empty());
+        let service = service_with_repository_and_discovery(
+            FakeAdapter::valid(),
+            repository.clone(),
+            Arc::new(FakeDiscovery::error(GameDiscoveryError::ScanNotImplemented)),
+        );
+
+        let detection = service
+            .auto_detect_game_directory(GameId::mhw())
+            .expect("unimplemented scan should be reported as recoverable detection result");
+
+        assert_eq!(detection.outcome, GameAutoDetectionOutcome::ScanFailed);
+        assert_eq!(detection.candidate_count, 0);
+        assert_eq!(
+            detection.error_code,
+            Some(GameSetupErrorCode::ScanNotImplemented)
+        );
+        assert_eq!(detection.status.status, GameDirectoryStatus::NotConfigured);
+        assert!(repository
+            .load_game_instance(&GameId::mhw())
+            .expect("repo should load")
+            .is_none());
     }
 
     fn steam_candidate(root: &str) -> GameCandidate {

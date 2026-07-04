@@ -20,6 +20,21 @@ export type GameSetupStatusDto = {
   message: string | null;
 };
 
+export type GameAutoDetectionOutcome =
+  | "already_configured"
+  | "detected_and_saved"
+  | "not_found"
+  | "invalid_candidate"
+  | "scan_failed";
+
+export type GameAutoDetectionDto = {
+  gameId: string;
+  outcome: GameAutoDetectionOutcome;
+  status: GameSetupStatusDto;
+  errorCode: GameSetupErrorCode | null;
+  candidateCount: number;
+};
+
 export type GameDirectoryEvidenceDto = {
   kind: string;
   label: string;
@@ -69,3 +84,10 @@ export type GameSetupStatus =
   | { kind: "validating"; gameId: GameId }
   | { kind: "invalid"; gameId: GameId; errorCode: GameSetupErrorCode; message: string }
   | { kind: "configured"; gameId: GameId; displayName: string; pathLabel: string };
+
+export type GameSetupStartupNotice = {
+  title: string;
+  message: string;
+  detail: string;
+  errorCode: GameSetupErrorCode;
+};
