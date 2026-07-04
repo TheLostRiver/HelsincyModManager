@@ -1,7 +1,8 @@
 import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
 import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
-import { setupLogs, setupSteps } from "./dashboardData";
+import { setupLogs } from "./dashboardData";
 import { InstallRecoveryHealthPanel } from "./InstallRecoveryHealthPanel";
+import { resolveSetupSteps, type SetupStepItem } from "./setupStatusSteps";
 
 type SetupStatusPanelProps = {
   status: GameSetupStatus;
@@ -11,6 +12,7 @@ type SetupStatusPanelProps = {
 
 export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: SetupStatusPanelProps) {
   const copy = statusPanelCopy(status, actionMessage);
+  const stepItems = resolveSetupSteps(status);
 
   return (
     <aside className="setup-rail" aria-label="首次启动设置状态">
@@ -35,8 +37,13 @@ export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: Setu
           <span>{copy.stepLabel}</span>
         </div>
         <div className="step-list">
-          {setupSteps.map((step, index) => (
-            <StepItem key={step.title} index={index + 1} step={step} isLast={index === setupSteps.length - 1} />
+          {stepItems.map((step, index) => (
+            <StepItem
+              key={step.title}
+              index={index + 1}
+              step={step}
+              isLast={index === stepItems.length - 1}
+            />
           ))}
         </div>
       </section>
@@ -77,7 +84,7 @@ function statusPanelCopy(status: GameSetupStatus, actionMessage: string | null) 
       description: `已识别 ${status.displayName}，目录摘要：${status.pathLabel}。`,
       badge: "配置完成",
       dotClass: "success-dot",
-      stepLabel: "第 3 / 4 步",
+      stepLabel: "第 4 / 4 步",
       summaryStatus: "已配置",
       summaryRisk: "低：等待 Mod 导入",
       noteTitle: "可以继续",
@@ -132,11 +139,11 @@ function StepItem({
   isLast,
 }: {
   index: number;
-  step: { readonly title: string; readonly meta: string; readonly active?: boolean };
+  step: SetupStepItem;
   isLast: boolean;
 }) {
   return (
-    <article className={`step-item ${step.active ? "is-active" : ""}`}>
+    <article className={`step-item ${step.isActive ? "is-active" : ""}`}>
       <div className="step-rail" aria-hidden="true">
         <span>{index}</span>
         {!isLast && <i />}
