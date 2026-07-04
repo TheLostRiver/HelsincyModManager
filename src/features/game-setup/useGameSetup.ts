@@ -28,6 +28,7 @@ type GameSetupState = {
 };
 
 const DEFAULT_GAME_ID: GameId = "mhw";
+const STARTUP_DETECTION_TIMEOUT_MS = 10000;
 
 export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
   const [state, setState] = useState<GameSetupState>({
@@ -79,13 +80,17 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     }));
 
     try {
-      const detection = await autoDetectGameDirectory(gameId);
+      const detection = await withTimeout(
+        autoDetectGameDirectory(gameId),
+        STARTUP_DETECTION_TIMEOUT_MS,
+        "启动自检超时，请重试或手动选择游戏目录。",
+      );
       setState((current) => ({
         ...current,
         status: mapStatusDto(detection.status),
         isBusy: false,
         actionMessage: null,
-        candidates: detection.outcome === "detected_and_saved" ? [] : current.candidates,
+        candidates: isDetectionReady(detection) ? [] : current.candidates,
         startupNotice: setStartupNoticeForDetection(detection),
       }));
     } catch (error) {
@@ -94,6 +99,15 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
         ...current,
         isBusy: false,
         actionMessage: null,
+        status:
+          mapped.code === "unknown"
+            ? current.status
+            : {
+                kind: "invalid",
+                gameId,
+                errorCode: mapped.code,
+                message: messageForError(mapped.code),
+              },
         startupNotice: {
           title: "需要配置游戏目录",
           message: messageForError(mapped.code),
@@ -146,19 +160,20 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     setState((current) => ({ ...current, isBusy: true, actionMessage: null }));
 
     try {
-      const detection = await autoDetectGameDirectory(gameId);
+      const detection = await withTimeout(
+        autoDetectGameDirectory(gameId),
+        STARTUP_DETECTION_TIMEOUT_MS,
+        "自动扫描超时，请重试或手动选择游戏目录。",
+      );
 
-      if (detection.outcome === "already_configured" || detection.outcome === "detected_and_saved") {
+      if (isDetectionReady(detection)) {
         setState((current) => ({
           ...current,
           status: mapStatusDto(detection.status),
           candidates: [],
           isBusy: false,
           startupNotice: null,
-          actionMessage:
-            detection.outcome === "detected_and_saved"
-              ? "已自动识别并保存 Steam 游戏目录。"
-              : "游戏目录已准备就绪。",
+          actionMessage: messageForReadyDetection(detection),
         }));
         return;
       }
@@ -219,11 +234,12 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
 }
 
 function setStartupNoticeForDetection(detection: GameAutoDetectionDto): GameSetupStartupNotice | null {
-  if (detection.outcome === "already_configured" || detection.outcome === "detected_and_saved") {
+  if (isDetectionReady(detection)) {
     return null;
   }
 
-  const errorCode = detection.errorCode ?? "directory_not_found";
+  const errorCode =
+    detection.errorCode ?? (detection.outcome === "scan_failed" ? "scan_failed" : "directory_not_found");
   const detail =
     detection.outcome === "invalid_candidate" && detection.candidateCount > 0
       ? "Steam 返回了候选目录，但校验未通过。"
@@ -235,4 +251,34 @@ function setStartupNoticeForDetection(detection: GameAutoDetectionDto): GameSetu
     detail,
     errorCode,
   };
+}
+
+function isDetectionReady(detection: GameAutoDetectionDto): boolean {
+  return detection.outcome === "already_configured" || detection.outcome === "detected_and_saved";
+}
+
+function messageForReadyDetection(detection: GameAutoDetectionDto): string {
+  return detection.outcome === "detected_and_saved" ? "已自动识别并保存 Steam 游戏目录。" : "游戏目录已准备就绪。";
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject({
+        code: "scan_failed",
+        message: timeoutMessage,
+      });
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }

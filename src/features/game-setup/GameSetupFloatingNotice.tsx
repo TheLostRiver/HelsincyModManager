@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, Search, X } from "lucide-react";
 import type { GameSetupStartupNotice } from "./gameSetupTypes";
@@ -24,15 +24,23 @@ export function GameSetupFloatingNotice({
   onActionError,
   onDismiss,
 }: GameSetupFloatingNoticeProps) {
+  const [isDismissPaused, setIsDismissPaused] = useState(false);
+
   useEffect(() => {
     if (!notice) {
+      setIsDismissPaused(false);
+    }
+  }, [notice]);
+
+  useEffect(() => {
+    if (!notice || isDismissPaused) {
       return undefined;
     }
 
     const dismissTimer = window.setTimeout(() => onDismiss(), AUTO_DISMISS_TIMEOUT_MS);
 
     return () => window.clearTimeout(dismissTimer);
-  }, [notice, onDismiss]);
+  }, [isDismissPaused, notice, onDismiss]);
 
   if (!notice) {
     return null;
@@ -63,7 +71,15 @@ export function GameSetupFloatingNotice({
   }
 
   return (
-    <aside className="game-setup-floating-notice" role="status" aria-live="polite">
+    <aside
+      className="game-setup-floating-notice"
+      role="status"
+      aria-live="polite"
+      onPointerEnter={() => setIsDismissPaused(true)}
+      onPointerLeave={() => setIsDismissPaused(false)}
+      onFocus={() => setIsDismissPaused(true)}
+      onBlur={() => setIsDismissPaused(false)}
+    >
       <div className="game-setup-floating-notice__copy">
         <strong>{notice.title}</strong>
         <p>{notice.message}</p>

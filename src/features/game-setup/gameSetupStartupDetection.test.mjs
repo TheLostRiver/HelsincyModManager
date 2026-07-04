@@ -28,7 +28,11 @@ test("game setup startup auto detection uses a narrow backend command and persis
   assert.match(types, /GameAutoDetectionOutcome[\s\S]*"already_configured"[\s\S]*"detected_and_saved"[\s\S]*"not_found"[\s\S]*"invalid_candidate"[\s\S]*"scan_failed"/);
   assert.match(hook, /from "\.\/gameSetupApi"/);
   assert.match(hook, /autoDetectGameDirectory\(gameId\)/);
+  assert.match(hook, /withTimeout\(\s*autoDetectGameDirectory\(gameId\)/);
+  assert.match(hook, /STARTUP_DETECTION_TIMEOUT_MS\s*=\s*10000/);
+  assert.match(hook, /mapped\.code === "unknown"[\s\S]*current\.status[\s\S]*kind: "invalid"/);
   assert.match(hook, /setStartupNoticeForDetection/);
+  assert.match(hook, /detection\.errorCode \?\? \(detection\.outcome === "scan_failed" \? "scan_failed" : "directory_not_found"\)/);
   assert.match(hook, /startupNotice/);
   assert.match(sharedApi, /autoDetectGameDirectory/);
 });
@@ -68,6 +72,11 @@ test("startup floating notice auto dismisses after a short idle window", () => {
 
   assert.match(notice, /AUTO_DISMISS_TIMEOUT_MS\s*=\s*6000/);
   assert.match(notice, /useEffect/);
+  assert.match(notice, /isDismissPaused/);
   assert.match(notice, /window\.setTimeout\(\(\)\s*=>\s*onDismiss\(\),\s*AUTO_DISMISS_TIMEOUT_MS\)/);
   assert.match(notice, /window\.clearTimeout\(dismissTimer\)/);
+  assert.match(notice, /onPointerEnter=\{\(\)\s*=>\s*setIsDismissPaused\(true\)\}/);
+  assert.match(notice, /onPointerLeave=\{\(\)\s*=>\s*setIsDismissPaused\(false\)\}/);
+  assert.match(notice, /onFocus=\{\(\)\s*=>\s*setIsDismissPaused\(true\)\}/);
+  assert.match(notice, /onBlur=\{\(\)\s*=>\s*setIsDismissPaused\(false\)\}/);
 });
