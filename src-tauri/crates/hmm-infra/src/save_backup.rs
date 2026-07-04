@@ -7,7 +7,7 @@ use hmm_ports::{SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter}
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use zip::write::SimpleFileOptions;
 
@@ -55,7 +55,7 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
         let archive_path = backup_dir.join(&archive_file_name);
         let manifest_path = backup_dir.join(&manifest_file_name);
 
-        write_zip_archive(&source_root, &archive_path, &scanned_files)?;
+        let archived_files = write_zip_archive(&source_root, &archive_path, &scanned_files)?;
         let archive_size_bytes = fs::metadata(&archive_path)
             .context("failed to inspect save backup archive")?
             .len();
@@ -78,7 +78,7 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
             profile_id: request.profile_id.clone(),
             trigger: request.trigger,
             created_at_utc: timestamp.utc_label,
-            created_at_local_label: timestamp.local_label,
+            created_at_utc_label: timestamp.utc_display_label,
             archive_file_name: archive_file_name.clone(),
             archive_size_bytes,
             archive_sha256: archive_sha256.clone(),
@@ -91,7 +91,7 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
                 path_label: source_path_label.clone(),
                 path_hash: source_path_hash.clone(),
             },
-            files: scanned_files
+            files: archived_files
                 .iter()
                 .map(|file| SaveBackupManifestFile {
                     relative_path: file.relative_path.clone(),
@@ -117,10 +117,11 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
                 manifest_file_name,
                 archive_size_bytes,
                 archive_sha256,
-                file_count: scanned_files.len() as u32,
+                file_count: archived_files.len() as u32,
                 created_at: request.created_at_unix_millis,
                 source_path_label,
                 source_path_hash,
+                backup_directory: request.backup_directory,
                 notes: request.note,
             },
         })
@@ -184,6 +185,11 @@ impl FileSystemSaveBackupWriter {
 struct ScannedSaveFile {
     absolute_path: PathBuf,
     relative_path: String,
+}
+
+#[derive(Debug, Clone)]
+struct ArchivedSaveFile {
+    relative_path: String,
     size_bytes: u64,
     sha256: String,
     modified_at_utc: Option<String>,
@@ -193,7 +199,7 @@ struct ScannedSaveFile {
 struct TimestampParts {
     file_label: String,
     utc_label: String,
-    local_label: String,
+    utc_display_label: String,
 }
 
 fn canonical_existing_directory(path: impl AsRef<Path>) -> Result<PathBuf> {
@@ -269,15 +275,8 @@ fn scan_directory(
         }
 
         files.push(ScannedSaveFile {
-            sha256: sha256_file(&path)?,
-            modified_at_utc: metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|duration| timestamp_parts(duration.as_millis()).utc_label),
             absolute_path: path,
             relative_path,
-            size_bytes: metadata.len(),
         });
     }
 
@@ -305,30 +304,96 @@ fn write_zip_archive(
     source_root: &Path,
     archive_path: &Path,
     files: &[ScannedSaveFile],
-) -> Result<()> {
+) -> Result<Vec<ArchivedSaveFile>> {
     let archive_file = fs::File::create(archive_path).context("failed to create backup archive")?;
     let mut zip = zip::ZipWriter::new(archive_file);
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut archived_files = Vec::new();
+    let mut total_bytes = 0_u64;
 
     for file in files {
-        let absolute_path = source_root.join(Path::new(&file.relative_path));
-        if absolute_path != file.absolute_path {
-            let canonical = file
-                .absolute_path
-                .canonicalize()
-                .context("failed to revalidate save file")?;
-            if !canonical.starts_with(source_root) {
-                bail!("save file escaped source directory");
-            }
-        }
+        revalidate_scanned_file(source_root, file)?;
+
+        let mut input = fs::File::open(&file.absolute_path).context("failed to read save file")?;
+        revalidate_scanned_file(source_root, file)?;
+
         zip.start_file(&file.relative_path, options)
             .context("failed to add save file to archive")?;
-        let mut input = fs::File::open(&file.absolute_path).context("failed to read save file")?;
-        std::io::copy(&mut input, &mut zip).context("failed to write save file to archive")?;
+
+        let mut hasher = Sha256::new();
+        let mut archived_size_bytes = 0_u64;
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let read = input
+                .read(&mut buffer)
+                .context("failed to read save file")?;
+            if read == 0 {
+                break;
+            }
+
+            archived_size_bytes = archived_size_bytes
+                .checked_add(read as u64)
+                .ok_or_else(|| anyhow!("save backup size limit exceeded"))?;
+            if archived_size_bytes > MAX_SINGLE_FILE_BYTES {
+                bail!("save backup single file size limit exceeded");
+            }
+            total_bytes = total_bytes
+                .checked_add(read as u64)
+                .ok_or_else(|| anyhow!("save backup size limit exceeded"))?;
+            if total_bytes > MAX_TOTAL_BYTES {
+                bail!("save backup total size limit exceeded");
+            }
+
+            hasher.update(&buffer[..read]);
+            zip.write_all(&buffer[..read])
+                .context("failed to write save file to archive")?;
+        }
+
+        let metadata = revalidate_scanned_file(source_root, file)?;
+        if metadata.len() != archived_size_bytes {
+            bail!("save file changed during backup");
+        }
+
+        archived_files.push(ArchivedSaveFile {
+            relative_path: file.relative_path.clone(),
+            size_bytes: archived_size_bytes,
+            sha256: sha256_from_hasher(hasher),
+            modified_at_utc: metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| timestamp_parts(duration.as_millis()).utc_label),
+        });
     }
 
     zip.finish().context("failed to finish backup archive")?;
-    Ok(())
+    Ok(archived_files)
+}
+
+fn revalidate_scanned_file(source_root: &Path, file: &ScannedSaveFile) -> Result<fs::Metadata> {
+    let metadata = fs::symlink_metadata(&file.absolute_path)
+        .context("failed to revalidate save file before archiving")?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        bail!("save file changed during backup");
+    }
+    if metadata.len() > MAX_SINGLE_FILE_BYTES {
+        bail!("save backup single file size limit exceeded");
+    }
+
+    let canonical = file
+        .absolute_path
+        .canonicalize()
+        .context("failed to canonicalize save file before archiving")?;
+    if !canonical.starts_with(source_root) {
+        bail!("save file escaped source directory");
+    }
+
+    let relative_path = relative_path_label(source_root, &canonical)?;
+    if relative_path != file.relative_path {
+        bail!("save file changed during backup");
+    }
+
+    Ok(metadata)
 }
 
 fn reject_containment(source_root: &Path, backup_dir: &Path) -> Result<()> {
@@ -450,16 +515,22 @@ fn sha256_file(path: &Path) -> Result<String> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(format!(
-        "sha256:{}",
-        hex_digest(hasher.finalize().as_slice())
-    ))
+    Ok(sha256_from_hasher(hasher))
 }
 
 fn sha256_string(value: &str) -> String {
+    sha256_bytes(value.as_bytes())
+}
+
+fn sha256_bytes(value: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(value.as_bytes());
-    format!("sha256:{}", hex_digest(hasher.finalize().as_slice()))
+    hasher.update(value);
+    sha256_from_hasher(hasher)
+}
+
+fn sha256_from_hasher(hasher: Sha256) -> String {
+    let digest = hasher.finalize();
+    format!("sha256:{}", hex_digest(&digest))
 }
 
 fn hex_digest(bytes: &[u8]) -> String {
@@ -472,7 +543,9 @@ fn timestamp_parts(timestamp_unix_millis: u128) -> TimestampParts {
     TimestampParts {
         file_label: format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}"),
         utc_label: format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"),
-        local_label: format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}"),
+        utc_display_label: format!(
+            "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} UTC"
+        ),
     }
 }
 
@@ -509,5 +582,63 @@ fn remove_safe_child_file(root: &Path, file_name: &str) -> Result<()> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error).context("failed to remove save backup file"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use zip::ZipArchive;
+
+    #[test]
+    fn write_zip_archive_reports_hashes_from_archived_bytes_after_scan_time_mutation() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let source_root = temp.path().join("save-root");
+        fs::create_dir_all(&source_root).expect("create source");
+        let source_root = source_root.canonicalize().expect("canonical source");
+        let save_file = source_root.join("SAVEDATA1000");
+        fs::write(&save_file, b"old-save").expect("write old save");
+
+        let scanned_files = scan_save_files(&source_root).expect("scan save files");
+        fs::write(&save_file, b"new-save").expect("mutate save after scan");
+
+        let archive_path = temp.path().join("backup.zip");
+        let archived_files =
+            write_zip_archive(&source_root, &archive_path, &scanned_files).expect("write archive");
+
+        let mut archive = ZipArchive::new(fs::File::open(&archive_path).expect("open archive"))
+            .expect("read archive");
+        let mut archived_bytes = Vec::new();
+        archive
+            .by_name("SAVEDATA1000")
+            .expect("zip entry")
+            .read_to_end(&mut archived_bytes)
+            .expect("read entry");
+
+        assert_eq!(archived_bytes, b"new-save");
+        assert_eq!(archived_files.len(), 1);
+        assert_eq!(archived_files[0].size_bytes, archived_bytes.len() as u64);
+        assert_eq!(archived_files[0].sha256, sha256_bytes(&archived_bytes));
+    }
+
+    #[test]
+    fn write_zip_archive_revalidates_scanned_file_before_archiving() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let source_root = temp.path().join("save-root");
+        fs::create_dir_all(&source_root).expect("create source");
+        let source_root = source_root.canonicalize().expect("canonical source");
+        let save_file = source_root.join("SAVEDATA1000");
+        fs::write(&save_file, b"save").expect("write save");
+
+        let scanned_files = scan_save_files(&source_root).expect("scan save files");
+        fs::remove_file(&save_file).expect("remove scanned file");
+        fs::create_dir(&save_file).expect("replace file with directory");
+
+        let archive_path = temp.path().join("backup.zip");
+        let error = write_zip_archive(&source_root, &archive_path, &scanned_files)
+            .expect_err("changed file type should be rejected");
+
+        assert!(error.to_string().contains("changed"));
     }
 }

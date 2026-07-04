@@ -5,8 +5,9 @@ use hmm_core::{GameId, ProfileId, SaveBackupSummary};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 
 use crate::{
-    CreateSaveBackupRequest, SaveBackupError, SaveBackupService, TaskKind, TaskManager,
-    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
+    CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
+    SaveBackupWarning, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskStarted,
+    TaskStatus,
 };
 
 const SAVE_BACKUP_SCANNING_PHASE: &str = "save_backup.scanning";
@@ -33,14 +34,14 @@ pub trait SaveBackupExecutor: Send + Sync {
     fn create_manual_backup(
         &self,
         request: CreateSaveBackupRequest,
-    ) -> Result<SaveBackupSummary, SaveBackupError>;
+    ) -> Result<CreateSaveBackupResult, SaveBackupError>;
 }
 
 impl SaveBackupExecutor for SaveBackupService {
     fn create_manual_backup(
         &self,
         request: CreateSaveBackupRequest,
-    ) -> Result<SaveBackupSummary, SaveBackupError> {
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
         SaveBackupService::create_manual_backup(self, request)
     }
 }
@@ -104,7 +105,7 @@ impl SaveBackupTaskRunner {
             running_event(task_id, SAVE_BACKUP_ARCHIVING_PHASE),
         ];
 
-        let summary = match self.executor.create_manual_backup(CreateSaveBackupRequest {
+        let result = match self.executor.create_manual_backup(CreateSaveBackupRequest {
             game_id: request.game_id.clone(),
             profile_id: request.profile_id.clone(),
             note: request.note.clone(),
@@ -115,12 +116,12 @@ impl SaveBackupTaskRunner {
             }
         };
 
-        events.push(running_event(task_id, SAVE_BACKUP_MANIFEST_WRITING_PHASE));
-        events.push(running_event(task_id, SAVE_BACKUP_RETENTION_PRUNING_PHASE));
-        self.record_success_audit(task_id, &request, &summary);
-
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
+                events.push(running_event(task_id, SAVE_BACKUP_MANIFEST_WRITING_PHASE));
+                events.push(running_event(task_id, SAVE_BACKUP_RETENTION_PRUNING_PHASE));
+                self.record_success_audit(task_id, &request, &result.summary);
+                self.record_warning_audits(task_id, &request, &result.warnings);
                 events.push(TaskProgressEvent::new(
                     task.task_id,
                     task.kind,
@@ -130,7 +131,9 @@ impl SaveBackupTaskRunner {
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
-                Ok(events)
+                self.record_success_audit(task_id, &request, &result.summary);
+                self.record_warning_audits(task_id, &request, &result.warnings);
+                Ok(Vec::new())
             }
             Err(_) => Err(self.fail_with_audit(
                 task_id,
@@ -183,6 +186,19 @@ impl SaveBackupTaskRunner {
         self.record_audit("success", fields);
     }
 
+    fn record_warning_audits(
+        &self,
+        task_id: &str,
+        request: &StartSaveBackupTaskRequest,
+        warnings: &[SaveBackupWarning],
+    ) {
+        for warning in warnings {
+            let mut fields = audit_fields(task_id, request);
+            fields.insert("error_code".to_owned(), warning.code().to_owned());
+            self.record_audit_for_operation("retention_pruning", "warning", fields);
+        }
+    }
+
     fn record_failure_audit(
         &self,
         task_id: &str,
@@ -196,11 +212,20 @@ impl SaveBackupTaskRunner {
     }
 
     fn record_audit(&self, result: &str, fields: BTreeMap<String, String>) {
+        self.record_audit_for_operation("manual_backup", result, fields);
+    }
+
+    fn record_audit_for_operation(
+        &self,
+        operation: &str,
+        result: &str,
+        fields: BTreeMap<String, String>,
+    ) {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let _ = self.audit_log.record(AuditLogEvent {
             timestamp_unix_millis,
             category: "save_backup".to_owned(),
-            operation: "manual_backup".to_owned(),
+            operation: operation.to_owned(),
             result: result.to_owned(),
             fields,
         });

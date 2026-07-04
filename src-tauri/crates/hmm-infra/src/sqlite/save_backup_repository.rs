@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Context, Result};
-use hmm_core::{GameId, ProfileId, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
+use hmm_core::{
+    GameId, ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
+    SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+};
 use hmm_ports::SaveBackupRepository;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -23,6 +26,8 @@ impl SqliteSaveBackupRepository {
         let game_id: String = row.get(1)?;
         let trigger: String = row.get(3)?;
         let status: String = row.get(4)?;
+        let backup_directory_mode: String = row.get(14)?;
+        let backup_directory: Option<String> = row.get(15)?;
 
         Ok(SaveBackupSummary {
             backup_id: row.get(0)?,
@@ -57,6 +62,17 @@ impl SqliteSaveBackupRepository {
             source_path_label: row.get(11)?,
             source_path_hash: row.get(12)?,
             notes: row.get(13)?,
+            backup_directory: backup_directory_selection_from_row(
+                &backup_directory_mode,
+                backup_directory,
+            )
+            .map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    14,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
+                )
+            })?,
         })
     }
 }
@@ -68,8 +84,9 @@ impl SaveBackupRepository for SqliteSaveBackupRepository {
             "INSERT INTO save_backups
                 (backup_id, game_id, profile_id, trigger, status, archive_file_name,
                  manifest_file_name, archive_size_bytes, archive_sha256, file_count,
-                 created_at, source_path_label, source_path_hash, notes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 created_at, source_path_label, source_path_hash, notes,
+                 backup_directory_mode, backup_directory)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT(backup_id) DO UPDATE SET
                 game_id = excluded.game_id,
                 profile_id = excluded.profile_id,
@@ -83,7 +100,9 @@ impl SaveBackupRepository for SqliteSaveBackupRepository {
                 created_at = excluded.created_at,
                 source_path_label = excluded.source_path_label,
                 source_path_hash = excluded.source_path_hash,
-                notes = excluded.notes",
+                notes = excluded.notes,
+                backup_directory_mode = excluded.backup_directory_mode,
+                backup_directory = excluded.backup_directory",
             rusqlite::params![
                 summary.backup_id,
                 summary.game_id.as_str(),
@@ -99,6 +118,8 @@ impl SaveBackupRepository for SqliteSaveBackupRepository {
                 summary.source_path_label,
                 summary.source_path_hash,
                 summary.notes,
+                format_directory_mode(summary.backup_directory.mode),
+                summary.backup_directory.directory.as_deref(),
             ],
         )
         .context("failed to save save backup summary")?;
@@ -116,7 +137,8 @@ impl SaveBackupRepository for SqliteSaveBackupRepository {
             Some(_) => {
                 "SELECT backup_id, game_id, profile_id, trigger, status, archive_file_name,
                         manifest_file_name, archive_size_bytes, archive_sha256, file_count,
-                        created_at, source_path_label, source_path_hash, notes
+                        created_at, source_path_label, source_path_hash, notes,
+                        backup_directory_mode, backup_directory
                  FROM save_backups
                  WHERE game_id = ?1 AND profile_id = ?2
                  ORDER BY created_at DESC, backup_id DESC
@@ -125,7 +147,8 @@ impl SaveBackupRepository for SqliteSaveBackupRepository {
             None => {
                 "SELECT backup_id, game_id, profile_id, trigger, status, archive_file_name,
                         manifest_file_name, archive_size_bytes, archive_sha256, file_count,
-                        created_at, source_path_label, source_path_hash, notes
+                        created_at, source_path_label, source_path_hash, notes,
+                        backup_directory_mode, backup_directory
                  FROM save_backups
                  WHERE game_id = ?1 AND profile_id = ?2
                  ORDER BY created_at DESC, backup_id DESC"
@@ -193,4 +216,51 @@ fn parse_status(value: &str) -> std::result::Result<SaveBackupStatus, String> {
         "invalid" => Ok(SaveBackupStatus::Invalid),
         other => Err(format!("unknown save backup status: {other}")),
     }
+}
+
+fn format_directory_mode(value: ProfileDirectoryMode) -> &'static str {
+    match value {
+        ProfileDirectoryMode::Unset => "unset",
+        ProfileDirectoryMode::Custom => "custom",
+        ProfileDirectoryMode::Default => "default",
+    }
+}
+
+fn parse_directory_mode(value: &str) -> std::result::Result<ProfileDirectoryMode, String> {
+    match value {
+        "unset" => Ok(ProfileDirectoryMode::Unset),
+        "custom" => Ok(ProfileDirectoryMode::Custom),
+        "default" => Ok(ProfileDirectoryMode::Default),
+        other => Err(format!("unknown backup directory mode: {other}")),
+    }
+}
+
+fn backup_directory_selection_from_row(
+    mode: &str,
+    directory: Option<String>,
+) -> std::result::Result<ProfileDirectorySelection, String> {
+    let mode = parse_directory_mode(mode)?;
+    let status = match mode {
+        ProfileDirectoryMode::Unset => ProfileDirectoryStatus::Unset,
+        ProfileDirectoryMode::Default => ProfileDirectoryStatus::Defaulted,
+        ProfileDirectoryMode::Custom if directory.is_some() => ProfileDirectoryStatus::Valid,
+        ProfileDirectoryMode::Custom => ProfileDirectoryStatus::Invalid,
+    };
+    let path_label = directory.as_deref().map(path_label);
+
+    Ok(ProfileDirectorySelection {
+        mode,
+        status,
+        directory,
+        path_label,
+        messages: Vec::new(),
+    })
+}
+
+fn path_label(path: &str) -> String {
+    path.replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_owned()
 }
