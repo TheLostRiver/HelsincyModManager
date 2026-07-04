@@ -243,6 +243,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 使用临时目录模拟存档目录。
 - 不读取或写入真实玩家存档。
 - 不依赖真实 MHW:I 安装目录、真实 Steam userdata 或真实玩家存档。
+- 存档目录自动发现测试必须使用 temp Steam root、fake HTTP/profile transport 和人工 XML fixture；不得依赖真实 Steam 账号、真实游戏安装、真实网络或真实存档目录。
 - 手动备份后端 MVP 至少运行聚焦测试：
 
 ```powershell
@@ -252,6 +253,19 @@ cargo test -p hmm-infra --test save_backup_repository
 cargo test -p hmm-infra --test save_backup_writer
 cargo test -p hmm-tauri save_backup
 cmd /c corepack pnpm run test -- src/features/profiles/profileApi.test.mjs
+```
+
+存档目录自动发现切片至少运行聚焦测试：
+
+```powershell
+cargo test -p hmm-core save_directory
+cargo test -p hmm-games-mhw save_directory
+cargo test -p hmm-infra save_directory_scanner
+cargo test -p hmm-infra steam_profile
+cargo test -p hmm-infra pending_save_directory
+cargo test -p hmm-app --test save_directory_discovery
+cargo test -p hmm-tauri save_directory_discovery
+cmd /c corepack pnpm run test -- src/features/profiles/profileSaveDirectoryDiscovery.test.mjs src/features/profiles/profileFrontendIntegration.test.mjs src/features/profiles/profileApi.test.mjs
 ```
 
 ## 并发与任务系统

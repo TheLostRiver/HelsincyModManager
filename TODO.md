@@ -252,14 +252,14 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 进行中（手动备份后端 MVP 已落地，Profile 页面接入、存档目录自动发现和自动备份仍待后续切片）
+**状态**: 进行中（手动备份后端 MVP、Profile 存档设置 UI 和存档目录自动发现已落地；备份执行 UI、自动备份和完整备份中心仍待后续切片）
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
 概要:
 - [x] 手动备份后端 MVP（`start_save_backup_task` / `list_save_backups`、zip + manifest、SQLite 历史、任务事件、最小审计）
 - [ ] Profile 页面接入手动备份按钮、任务进度和历史刷新
-- [ ] 存档目录自动发现：唯一候选自动写入，多 Steam 用户候选默认推荐最近修改项但必须确认
+- [x] 存档目录自动发现：后端扫描 MHW:I Steam userdata，唯一高置信候选自动写入，多 Steam 用户候选默认推荐最近修改项但必须确认，Profile UI 和启动自检悬浮提示已接入
 - [ ] 自动备份（可配置间隔）
 - [x] 保留策略（数量）
 - [ ] 保留策略（时间/空间）
@@ -401,7 +401,7 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| T8 存档备份 | P2 | 进行中（手动备份后端 MVP 已落地，Profile 页面接入待后续切片） | |
+| T8 存档备份 | P2 | 进行中（手动备份后端 MVP、Profile 存档设置 UI、存档目录自动发现已落地；备份执行 UI、自动备份和备份中心待后续切片） | |
 | T9 Rich Manifest | P2 | 进行中（manifest metadata / plan_hash / rolled_back / 读侧状态机消费已落地） | |
 | T10 依赖检查 | P2 | 待开始 | |
 | T11 ARMOR_RETARGET | P3 | 待开始 | |

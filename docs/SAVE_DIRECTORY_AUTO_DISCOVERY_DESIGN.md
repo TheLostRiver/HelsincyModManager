@@ -6,6 +6,12 @@
 
 实现计划：[`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`](superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md)。
 
+## 实现状态
+
+当前实现切片已落地后端领域模型、MHW:I 存档目录规则、Steam userdata 扫描、后端 Steam profile XML 查询与解析、短期候选缓存、Tauri command、前端 typed API、Profile 页确认 UI 和启动自检悬浮提示。实现遵守本文的后端边界：SteamID64 转换、profile XML 请求与解析、候选真实路径和 account id 都只停留在后端；前端只消费候选摘要、头像 URL、脱敏标签和 opaque id。
+
+本切片只负责“发现并确认存档源目录”，不改变备份执行链路。自动定时备份、完整备份中心页面、恢复流程和更完整的备份历史交互仍按 `docs/SAVE_BACKUP_DESIGN.md` 与 `TODO.md` T8 后续切片推进。
+
 ## 背景
 
 当前项目已经具备两块基础：
@@ -104,7 +110,8 @@ type SaveDirectoryDiscoveryDto = {
     | "scan_failed";
   recommendedCandidateId: string | null;
   candidates: SaveDirectoryCandidateDto[];
-  savedSettings?: ProfileSaveSettingsDto;
+  savedSettings?: ProfileDirectorySelectionDto | null;
+  errorCode?: string | null;
 };
 
 type SaveDirectoryCandidateDto = {
@@ -270,21 +277,26 @@ Tauri command 保持薄边界，只做 DTO 映射和调用 app service。真实�
 
 ## 错误码
 
-建议稳定错误码：
+当前实现使用的稳定错误码：
 
 ```text
 save_directory_discovery_game_unconfigured
+save_directory_discovery_game_id_invalid
+save_directory_discovery_profile_id_invalid
+save_directory_discovery_discovery_id_invalid
+save_directory_discovery_candidate_id_invalid
 save_directory_discovery_profile_missing
 save_directory_discovery_scan_failed
-save_directory_discovery_not_found
-save_directory_discovery_multiple_candidates
 save_directory_discovery_candidate_expired
 save_directory_discovery_candidate_invalid
-save_directory_discovery_profile_lookup_failed
+save_directory_discovery_repository_unavailable
+save_directory_discovery_clock_unavailable
+save_directory_discovery_rule_unavailable
+save_directory_discovery_pending_store_unavailable
 save_directory_discovery_settings_unavailable
 ```
 
-错误 message 不包含完整路径、完整 Steam ID、account id 或 XML 原文。前端基于 code 显示用户文案。
+`not_found` 和 `confirmation_required` 是发现结果 `outcome`，不是 command 失败。Steam profile 查询失败会降级候选展示，不阻断选择，因此当前不作为 command 错误码暴露。错误 message 不包含完整路径、完整 Steam ID、account id、profile URL 或 XML 原文。前端基于 code 和 outcome 显示用户文案。
 
 ## 测试要求
 
