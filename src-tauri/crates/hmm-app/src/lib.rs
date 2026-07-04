@@ -15,6 +15,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod save_backup;
+mod save_directory_discovery;
 mod save_backup_task;
 mod support_diagnostics;
 mod task_manager;
@@ -87,6 +88,10 @@ pub use profile::{
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
     SaveBackupWarning,
+};
+pub use save_directory_discovery::{
+    ConfirmProfileSaveDirectoryCandidateRequest, DiscoverProfileSaveDirectoriesRequest,
+    ProfileSaveDirectoryDiscoveryService, SaveDirectoryDiscoveryError,
 };
 pub use save_backup_task::{
     SaveBackupExecutor, SaveBackupTaskRunError, SaveBackupTaskRunner, SaveBackupTaskService,
