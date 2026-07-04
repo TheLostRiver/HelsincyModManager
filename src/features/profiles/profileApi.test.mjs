@@ -6,6 +6,18 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
+const forbiddenDiscoveryFields = new RegExp(
+  [
+    "raw" + "Path",
+    "full" + "Path",
+    "steam" + "Id64",
+    "account" + "Id",
+    "x" + "ml",
+    "profile" + "Url",
+  ].join("|"),
+  "i",
+);
+
 test("profile typed API invokes narrow profile commands without paths", () => {
   assert.equal(existsSync("src/features/profiles/profileApi.ts"), true);
   assert.equal(existsSync("src/features/profiles/profileTypes.ts"), true);
@@ -89,4 +101,22 @@ test("profile save backup API invokes task and history commands without filesyst
   assert.match(typesSource, /fileName:\s*string/);
   assert.match(typesSource, /sourcePathLabel:\s*string\s*\|\s*null/);
   assert.doesNotMatch(typesSource, /manifestPath|backupRoot|backupRef|targetPath|sandbox|cache|hash/i);
+});
+
+test("profile save directory discovery API avoids raw paths and steam identifiers", () => {
+  const source = readSource("src/features/profiles/profileSaveDirectoryDiscoveryApi.ts");
+  const typesSource = readSource("src/features/profiles/profileSaveDirectoryDiscoveryTypes.ts");
+
+  assert.match(source, /discoverProfileSaveDirectories/);
+  assert.match(source, /confirmProfileSaveDirectoryCandidate/);
+  assert.match(source, /discoveryId:\s*input\.discoveryId/);
+  assert.match(source, /candidateId:\s*input\.candidateId/);
+  assert.doesNotMatch(source, forbiddenDiscoveryFields);
+
+  assert.match(typesSource, /candidateId:\s*string/);
+  assert.match(typesSource, /discoveryId:\s*string/);
+  assert.match(typesSource, /accountName:\s*string\s*\|\s*null/);
+  assert.match(typesSource, /avatarUrl:\s*string\s*\|\s*null/);
+  assert.match(typesSource, /savedSettings\?:\s*ProfileDirectorySelectionDto\s*\|\s*null/);
+  assert.doesNotMatch(typesSource, forbiddenDiscoveryFields);
 });
