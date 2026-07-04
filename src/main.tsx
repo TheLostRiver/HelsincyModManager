@@ -16,6 +16,7 @@ import "./features/settings/SettingsPage.css";
 import "./features/categories/CategoryPage.css";
 import "./features/profiles/ProfilePage.css";
 import "./features/profiles/ProfileSaveManager.css";
+import "./features/profiles/ProfileSaveDirectoryDiscovery.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

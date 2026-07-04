@@ -4,6 +4,7 @@ import { AppRouteProvider } from "./app/routing/AppRouteProvider";
 import { RouterOutlet } from "./app/routing/RouterOutlet";
 import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
+import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
 
 export function App() {
   return (
@@ -11,9 +12,11 @@ export function App() {
       <SidebarModeProvider>
         <AppRouteProvider>
           <ActiveProfileProvider>
-            <AppShell>
-              <RouterOutlet />
-            </AppShell>
+            <ProfileSaveDirectoryDiscoveryProvider>
+              <AppShell>
+                <RouterOutlet />
+              </AppShell>
+            </ProfileSaveDirectoryDiscoveryProvider>
           </ActiveProfileProvider>
         </AppRouteProvider>
       </SidebarModeProvider>

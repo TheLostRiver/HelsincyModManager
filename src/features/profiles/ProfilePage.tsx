@@ -15,6 +15,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useActiveProfile } from "./ActiveProfileProvider";
 import { BackupPolicyPanel } from "./BackupPolicyPanel";
 import { ProfileListPanel } from "./ProfileListPanel";
+import { ProfileSaveDirectoryCandidateList } from "./ProfileSaveDirectoryCandidateList";
+import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscoveryProvider";
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { listProfiles } from "./profileApi";
 import {
@@ -158,6 +160,7 @@ type SaveSettingsState =
 
 export function ProfilePage() {
   const { activeProfile, refreshActiveProfile, setActiveProfile } = useActiveProfile();
+  const { latestDiscovery, isDiscovering, runDiscovery } = useProfileSaveDirectoryDiscovery();
   const previewMode = isPlainBrowserRuntime();
   const [profileState, setProfileState] = useState<ProfileListState>({
     status: "loading",
@@ -267,6 +270,13 @@ export function ProfilePage() {
       cancelled = true;
     };
   }, [previewMode, selectedProfileId, settingsRefreshToken]);
+
+  useEffect(() => {
+    if (latestDiscovery?.outcome !== "auto_saved") return;
+    if (selectedProfileId && latestDiscovery.profileId !== selectedProfileId) return;
+
+    setSettingsRefreshToken((current) => current + 1);
+  }, [latestDiscovery, selectedProfileId]);
 
   const profiles = profileState.profiles;
   const selectedProfile = useMemo(
@@ -440,17 +450,33 @@ export function ProfilePage() {
             ) : null}
 
             {settingsState.status === "ready" ? (
-              <SaveDirectoryPanel
-                gameId={CURRENT_GAME_ID}
-                profileId={selectedProfileId ?? PREVIEW_SAVE_SETTINGS.profileId}
-                settings={visibleSettings}
-                previewMode={previewMode}
-                disabled={!settingsEditable}
-                onSettingsChange={updateSettings}
-                onDirectorySelected={(kind, directory) =>
-                  setPendingDirectories((current) => ({ ...current, [kind]: directory }))
-                }
-              />
+              <>
+                <SaveDirectoryPanel
+                  gameId={CURRENT_GAME_ID}
+                  profileId={selectedProfileId ?? PREVIEW_SAVE_SETTINGS.profileId}
+                  settings={visibleSettings}
+                  previewMode={previewMode}
+                  disabled={!settingsEditable}
+                  autoDetecting={isDiscovering}
+                  hasDiscoveryCandidates={
+                    latestDiscovery?.outcome === "confirmation_required" &&
+                    latestDiscovery.profileId === selectedProfileId
+                  }
+                  onAutoDetect={() => {
+                    if (!selectedProfileId) return;
+                    void runDiscovery({
+                      gameId: CURRENT_GAME_ID,
+                      profileId: selectedProfileId,
+                      reason: "manual",
+                    });
+                  }}
+                  onSettingsChange={updateSettings}
+                  onDirectorySelected={(kind, directory) =>
+                    setPendingDirectories((current) => ({ ...current, [kind]: directory }))
+                  }
+                />
+                <ProfileSaveDirectoryCandidateList />
+              </>
             ) : null}
           </section>
 
