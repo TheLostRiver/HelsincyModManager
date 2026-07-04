@@ -10,6 +10,7 @@ export {
 } from "../../features/mods/modImportApi";
 
 export {
+  autoDetectGameDirectory,
   getGameSetupStatus,
   saveGameDirectory,
   scanGameCandidates,

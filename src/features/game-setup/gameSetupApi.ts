@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  GameAutoDetectionDto,
   GameCandidateScanDto,
   GameDirectoryValidationDto,
   GameId,
@@ -8,6 +9,10 @@ import type {
 
 export async function getGameSetupStatus(gameId: GameId): Promise<GameSetupStatusDto> {
   return invoke<GameSetupStatusDto>("get_game_setup_status", { gameId });
+}
+
+export async function autoDetectGameDirectory(gameId: GameId): Promise<GameAutoDetectionDto> {
+  return invoke<GameAutoDetectionDto>("auto_detect_game_directory", { gameId });
 }
 
 export async function validateGameDirectory(gameId: GameId, directory: string): Promise<GameDirectoryValidationDto> {

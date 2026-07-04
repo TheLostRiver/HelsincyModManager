@@ -21,7 +21,8 @@ pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use category::{CategoryService, CategoryWithCount};
 pub use game_launch::{GameLaunchService, GameLaunchServiceError};
 pub use game_setup::{
-    GameCandidateScan, GameSetupCandidate, GameSetupService, GameSetupServiceError,
+    GameAutoDetection, GameAutoDetectionOutcome, GameCandidateScan, GameSetupCandidate,
+    GameSetupService, GameSetupServiceError,
 };
 pub use install::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,

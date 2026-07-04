@@ -49,6 +49,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 校验输入：`validate_game_directory`
 - 保存配置：`save_game_directory`
 - 扫描候选：`scan_game_candidates`
+- 启动自检并自动保存有效发现：`auto_detect_game_directory`
 - 预览计划：`preview_install_plan`、`preview_retarget_plan`
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
@@ -263,6 +264,7 @@ TaskProgressEventDto
 - 前端 API 改用 `invokeCommand` helper。
 - 错误 code 与 TypeScript union 对齐。
 - 对真实目录只返回必要 `pathLabel`，完整路径只在明确需要时返回。
+- `auto_detect_game_directory(gameId)` 只接收稳定 `gameId`，由后端复用 Steam discovery、adapter 校验与 `save_game_directory` 持久化有效候选；返回稳定 `outcome`、状态摘要、错误码和候选数量，不返回自动保存过程中使用的真实目录。
 
 ### 2. `replacement / retarget`
 
