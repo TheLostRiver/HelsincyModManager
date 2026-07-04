@@ -11,6 +11,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod save_backup;
+mod save_directory;
 mod text_log;
 
 use anyhow::Result;
@@ -54,6 +55,11 @@ pub use profile::{
 };
 pub use save_backup::{
     SaveBackupRepository, SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
+};
+pub use save_directory::{
+    GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,
+    PendingSaveDirectoryDiscovery, ScannedSaveDirectoryCandidate, SteamAccountProfileClient,
+    SteamUserdataScanRequest, SteamUserdataScanner,
 };
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
 

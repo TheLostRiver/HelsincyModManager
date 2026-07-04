@@ -5,6 +5,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod save_backup;
+mod save_directory;
 
 pub use category::{Category, CategoryLabel};
 pub use game::{
@@ -30,4 +31,9 @@ pub use profile::{
 pub use save_backup::{
     SaveBackupManifest, SaveBackupManifestFile, SaveBackupManifestSource, SaveBackupStatus,
     SaveBackupSummary, SaveBackupTrigger, SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
+};
+pub use save_directory::{
+    steam_id64_from_account_id32, SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource,
+    SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
+    SteamAccountProfileSummary, STEAM_ID64_ACCOUNT_ID_OFFSET,
 };
