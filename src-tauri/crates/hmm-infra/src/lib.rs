@@ -9,6 +9,7 @@ mod install_commit;
 mod mod_import;
 mod mod_import_install_files;
 mod preview_image;
+mod save_backup;
 pub mod sqlite;
 pub mod steam_discovery;
 mod text_log;
@@ -39,11 +40,13 @@ pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
-pub use steam_discovery::PlatformSteamRootProvider;
+pub use save_backup::FileSystemSaveBackupWriter;
 pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteModMetadataRepository;
 pub use sqlite::SqliteProfileRepository;
+pub use sqlite::SqliteSaveBackupRepository;
+pub use steam_discovery::PlatformSteamRootProvider;
 pub use text_log::FileSystemTextLogReader;
 
 pub struct SystemClock;

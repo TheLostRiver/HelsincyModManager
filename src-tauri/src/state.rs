@@ -13,32 +13,33 @@ use hmm_app::{
     ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
     ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
-    ProfileService, RecoveryActionTaskRunner, RecoveryActionTaskService,
-    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
-    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    ProfileService, RecoveryActionTaskRunner, RecoveryActionTaskService, SaveBackupExecutor,
+    SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskService, StartRecoveryActionTaskRequest,
+    StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
+    UninstallModService, UninstallTaskRunner, UninstallTaskService,
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::{MonsterHunterWorldAdapter, MonsterHunterWorldLauncher};
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
-    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemTextLogReader,
-    FileSystemThumbnailStore, ImageCratePreviewImageProcessor, JsonAppSettingsRepository,
-    JsonGameConfigRepository, JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
-    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
-    SqliteProfileRepository, SteamGameDiscoveryService, SystemClock,
-    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemSaveBackupWriter,
+    FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
+    JsonAppSettingsRepository, JsonGameConfigRepository, JsonInstallManifestRepository,
+    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
+    RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteCategoryRepository,
+    SqliteModMetadataRepository, SqliteProfileRepository, SqliteSaveBackupRepository,
+    SteamGameDiscoveryService, SystemClock, SystemDiagnosticsEnvironmentProvider,
+    SystemGameLaunchRunner, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
     ModImportResultRepository, ModImportSandboxLocator, ProfileRepository,
-    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository, TextLogReader,
-    ThumbnailCacheMaintenance,
+    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository, SaveBackupRepository,
+    SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -72,6 +73,9 @@ pub struct AppState {
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
     pub profiles: Arc<ProfileService>,
+    pub save_backups: Arc<SaveBackupService>,
+    pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
+    pub save_backup_tasks: Arc<SaveBackupTaskService>,
     pub task_manager: Arc<TaskManager>,
     #[expect(
         dead_code,
@@ -100,10 +104,22 @@ impl AppState {
         let profile_repository = Arc::new(SqliteProfileRepository::new(Arc::clone(&db)));
         let profile_repository_for_profiles: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_backups: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_save_settings_repository: Arc<dyn ProfileSaveSettingsRepository> =
             profile_repository.clone();
+        let profile_save_settings_repository_for_save_backups: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
         let profile_save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator> =
             profile_repository.clone();
+        let profile_save_directory_validator_for_save_backups: Arc<
+            dyn ProfileSaveDirectoryValidator,
+        > = profile_repository.clone();
+        let save_backup_repository: Arc<dyn SaveBackupRepository> =
+            Arc::new(SqliteSaveBackupRepository::new(Arc::clone(&db)));
+        let save_backup_writer: Arc<dyn SaveBackupWriter> =
+            Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
         let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
@@ -221,6 +237,15 @@ impl AppState {
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
         ));
+        let save_backups = Arc::new(SaveBackupService::new(
+            profile_repository_for_save_backups,
+            profile_save_settings_repository_for_save_backups,
+            profile_save_directory_validator_for_save_backups,
+            save_backup_repository,
+            save_backup_writer,
+            Arc::new(SystemClock),
+        ));
+        let save_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
@@ -351,6 +376,14 @@ impl AppState {
                 profile_save_directory_validator,
                 Arc::new(SystemClock),
             )),
+            save_backup_task_runner: Arc::new(SaveBackupTaskRunner::new(
+                Arc::clone(&task_manager),
+                save_backup_executor,
+                Arc::clone(&audit_log_writer),
+                Arc::new(SystemClock),
+            )),
+            save_backup_tasks: Arc::new(SaveBackupTaskService::new(Arc::clone(&task_manager))),
+            save_backups,
             task_manager,
             db,
         })

@@ -225,15 +225,34 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - 默认备份目录。
 - 用户自选备份目录。
+- 每个 profile 的独立备份子目录。
+- 稳定文件命名和同秒重名序号。
 - 备份 manifest。
+- manifest 不包含完整本地路径、Steam ID 或真实存档内容。
 - 恢复前校验。
 - 保留数量限制。
 - 备份目录不可写。
+- 源目录与备份目录包含关系拒绝。
+- symlink/junction 逃逸拒绝。
+- 大小写路径碰撞拒绝。
+- `save_backup.*` 任务事件携带 `taskId`。
+- 前端 typed API 只传 `gameId`、`profileId`、`note` 和 `limit`，不传路径、manifest、backup ref、sandbox/cache 或 hash。
 
 测试要求：
 
 - 使用临时目录模拟存档目录。
 - 不读取或写入真实玩家存档。
+- 不依赖真实 MHW:I 安装目录、真实 Steam userdata 或真实玩家存档。
+- 手动备份后端 MVP 至少运行聚焦测试：
+
+```powershell
+cargo test -p hmm-app --test save_backup
+cargo test -p hmm-app --test save_backup_task
+cargo test -p hmm-infra --test save_backup_repository
+cargo test -p hmm-infra --test save_backup_writer
+cargo test -p hmm-tauri save_backup
+cmd /c corepack pnpm run test -- src/features/profiles/profileApi.test.mjs
+```
 
 ## 并发与任务系统
 
