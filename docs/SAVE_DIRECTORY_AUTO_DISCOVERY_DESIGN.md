@@ -4,6 +4,8 @@
 
 关联任务：`TODO.md` T8。
 
+实现计划：[`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`](superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md)。
+
 ## 背景
 
 当前项目已经具备两块基础：
