@@ -32,7 +32,6 @@ export const setupSteps = [
   {
     title: "扫描 Steam 游戏库",
     meta: "检测已安装游戏和可用候选项。",
-    active: true,
   },
   {
     title: "验证游戏目录",
