@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { AlertTriangle, Archive, CheckCircle2, FolderOpen, HardDrive } from "lucide-react";
+import { AlertTriangle, Archive, CheckCircle2, FolderOpen, HardDrive, Search } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
   validateProfileBackupDirectory,
@@ -19,6 +19,9 @@ type SaveDirectoryPanelProps = {
   onDirectorySelected: (kind: "saveDirectory" | "backupDirectory", directory: string) => void;
   previewMode?: boolean;
   disabled?: boolean;
+  onAutoDetect?: () => void;
+  autoDetecting?: boolean;
+  hasDiscoveryCandidates?: boolean;
 };
 
 export function SaveDirectoryPanel({
@@ -29,6 +32,9 @@ export function SaveDirectoryPanel({
   onDirectorySelected,
   previewMode = false,
   disabled = false,
+  onAutoDetect,
+  autoDetecting = false,
+  hasDiscoveryCandidates = false,
 }: SaveDirectoryPanelProps) {
   const [busyKind, setBusyKind] = useState<"saveDirectory" | "backupDirectory" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +93,20 @@ export function SaveDirectoryPanel({
           label="游戏存档目录"
           selection={settings.saveDirectory}
           actionLabel={busyKind === "saveDirectory" ? "校验中..." : "选择路径"}
-          disabled={disabled || busyKind !== null}
+          disabled={disabled || busyKind !== null || autoDetecting}
+          extraAction={
+            onAutoDetect ? (
+              <button
+                type="button"
+                className={`profile-action-button ${hasDiscoveryCandidates ? "is-primary" : ""}`}
+                disabled={disabled || busyKind !== null || autoDetecting}
+                onClick={onAutoDetect}
+              >
+                <Search size={14} />
+                {autoDetecting ? "检测中..." : "自动检测"}
+              </button>
+            ) : null
+          }
           onChoose={() => void chooseDirectory("saveDirectory")}
         />
         <DirectoryCard
@@ -116,6 +135,7 @@ function DirectoryCard({
   selection,
   actionLabel,
   disabled,
+  extraAction,
   onChoose,
 }: {
   icon: ReactNode;
@@ -123,6 +143,7 @@ function DirectoryCard({
   selection: ProfileDirectorySelectionDto;
   actionLabel: string;
   disabled: boolean;
+  extraAction?: ReactNode;
   onChoose: () => void;
 }) {
   const status = formatDirectoryStatus(selection);
@@ -159,6 +180,7 @@ function DirectoryCard({
         >
           {actionLabel}
         </button>
+        {extraAction}
       </div>
     </div>
   );
