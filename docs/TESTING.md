@@ -344,6 +344,23 @@ cmd /c corepack pnpm run test -- src/features/profiles/profileSaveDirectoryDisco
 - 平台相关逻辑用 trait 隔离。
 - 不能要求测试机实际安装游戏才能跑基础测试。
 - 真实游戏验证只作为手动 smoke test 记录。
+- 前置依赖检测必须使用临时游戏目录 fixture，不读取真实用户游戏目录，也不能依赖 `D:\G\mh\mod-config` 之类的本地测试路径。
+- MHW:I 前置依赖首批场景至少覆盖：
+  - 必需文件缺失。
+  - `loader-config.json` 无法读取。
+  - `loader-config.json` 不是合法 JSON。
+  - `enablePluginLoader` 不等于 `true`。
+  - 已知签名命中后进入 `installed_verified`。
+  - 签名未命中时降级为 `installed_unverified`，且只做 warning。
+  - 本地规则文件缺失或损坏时映射为稳定的 `rules_unavailable` / `storage_*` 语义。
+- 这一类改动建议至少运行以下聚焦验证：
+
+```powershell
+cargo test -p hmm-games-mhw prerequisite
+cargo test -p hmm-app game_setup
+cargo test -p hmm-tauri prerequisite
+cmd /c corepack pnpm run test -- src/features/game-setup/gamePrerequisite.test.mjs src/features/dashboard/dashboardSetupStatusPanel.test.mjs
+```
 
 ## 发布与打包
 

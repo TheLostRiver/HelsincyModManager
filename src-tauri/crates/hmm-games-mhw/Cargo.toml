@@ -9,3 +9,4 @@ repository.workspace = true
 [dependencies]
 hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
+serde_json.workspace = true
