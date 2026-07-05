@@ -124,6 +124,14 @@ export function ProfileSaveDirectoryDiscoveryProvider({
     async (candidateId: string) => {
       if (!latestDiscovery) return;
 
+      const requestSeq = discoveryRequestSeqRef.current + 1;
+      discoveryRequestSeqRef.current = requestSeq;
+      const requestSnapshot = {
+        gameId: latestDiscovery.gameId,
+        profileId: latestDiscovery.profileId,
+        requestSeq,
+      };
+      activeDiscoveryRequestRef.current = requestSnapshot;
       setIsDiscovering(true);
       setDiscoveringTarget({ gameId: latestDiscovery.gameId, profileId: latestDiscovery.profileId });
       try {
@@ -131,9 +139,11 @@ export function ProfileSaveDirectoryDiscoveryProvider({
           discoveryId: latestDiscovery.discoveryId,
           candidateId,
         });
+        if (!isCurrentDiscoveryRequest(activeDiscoveryRequestRef.current, requestSnapshot)) return;
         setLatestDiscovery(discovery);
         setNotice(noticeForDiscovery(discovery, "manual"));
       } catch {
+        if (!isCurrentDiscoveryRequest(activeDiscoveryRequestRef.current, requestSnapshot)) return;
         setNotice({
           id: `confirm-failed-${latestDiscovery.discoveryId}-${Date.now()}`,
           tone: "warning",
@@ -145,8 +155,11 @@ export function ProfileSaveDirectoryDiscoveryProvider({
           profileId: latestDiscovery.profileId,
         });
       } finally {
-        setDiscoveringTarget(null);
-        setIsDiscovering(false);
+        if (isCurrentDiscoveryRequest(activeDiscoveryRequestRef.current, requestSnapshot)) {
+          activeDiscoveryRequestRef.current = null;
+          setDiscoveringTarget(null);
+          setIsDiscovering(false);
+        }
       }
     },
     [latestDiscovery],
