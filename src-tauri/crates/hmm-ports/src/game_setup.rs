@@ -1,3 +1,4 @@
+use crate::game_prerequisites::GamePrerequisiteReport;
 use hmm_core::{GameDirectoryValidation, GameId, GameInstance};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -18,6 +19,8 @@ pub trait GameDirectoryProbe: Send + Sync {
     fn exists(&self, relative_path: &str) -> bool;
     fn is_file(&self, relative_path: &str) -> bool;
     fn is_dir(&self, relative_path: &str) -> bool;
+    fn read_text_file(&self, relative_path: &str) -> anyhow::Result<String>;
+    fn sha256_hex(&self, relative_path: &str) -> anyhow::Result<String>;
 }
 
 pub trait GameDirectoryProbeFactory: Send + Sync {
@@ -28,6 +31,7 @@ pub trait GameAdapter: Send + Sync {
     fn game_id(&self) -> GameId;
     fn display_name(&self) -> &'static str;
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation;
+    fn inspect_prerequisites(&self, probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport;
 
     fn allowed_install_roots(&self) -> Vec<String> {
         Vec::new()
