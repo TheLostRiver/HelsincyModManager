@@ -94,6 +94,7 @@ export function SaveDirectoryPanel({
           selection={settings.saveDirectory}
           actionLabel={busyKind === "saveDirectory" ? "校验中..." : "选择路径"}
           disabled={disabled || busyKind !== null || autoDetecting}
+          primaryAction={!hasDiscoveryCandidates}
           extraAction={
             onAutoDetect ? (
               <button
@@ -115,6 +116,7 @@ export function SaveDirectoryPanel({
           selection={settings.backupDirectory}
           actionLabel={busyKind === "backupDirectory" ? "校验中..." : "选择路径"}
           disabled={disabled || busyKind !== null}
+          primaryAction
           onChoose={() => void chooseDirectory("backupDirectory")}
         />
       </div>
@@ -135,6 +137,7 @@ function DirectoryCard({
   selection,
   actionLabel,
   disabled,
+  primaryAction = true,
   extraAction,
   onChoose,
 }: {
@@ -143,6 +146,7 @@ function DirectoryCard({
   selection: ProfileDirectorySelectionDto;
   actionLabel: string;
   disabled: boolean;
+  primaryAction?: boolean;
   extraAction?: ReactNode;
   onChoose: () => void;
 }) {
@@ -174,7 +178,7 @@ function DirectoryCard({
         )}
         <button
           type="button"
-          className="profile-action-button is-primary"
+          className={`profile-action-button ${primaryAction ? "is-primary" : ""}`}
           disabled={disabled}
           onClick={onChoose}
         >

@@ -14,8 +14,5 @@ export function discoverProfileSaveDirectories(
 export function confirmProfileSaveDirectoryCandidate(
   input: ConfirmProfileSaveDirectoryCandidateInput,
 ): Promise<SaveDirectoryDiscoveryDto> {
-  return invoke<SaveDirectoryDiscoveryDto>("confirm_profile_save_directory_candidate", {
-    discoveryId: input.discoveryId,
-    candidateId: input.candidateId,
-  });
+  return invoke<SaveDirectoryDiscoveryDto>("confirm_profile_save_directory_candidate", input);
 }

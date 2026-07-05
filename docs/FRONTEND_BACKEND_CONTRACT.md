@@ -350,7 +350,7 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
 - `discover_profile_save_directories` 由后端基于已保存游戏配置、Steam root、MHW:I 存档规则和 Profile 设置执行存档源目录发现；前端只提交 `gameId` 和 `profileId`，不提交 Steam userdata 路径、account id、SteamID64、profile URL 或 XML。
-- `confirm_profile_save_directory_candidate` 只接收后端生成的 `discoveryId` 和 `candidateId`；后端从短期候选缓存恢复真实目录并重新验证后，才写入对应 Profile 的存档设置。
+- `confirm_profile_save_directory_candidate` 只接收后端生成的 `discoveryId` 和 `candidateId`；后端从短期候选缓存恢复真实目录并重新验证后，才写入对应 Profile 的存档设置。确认成功会消费该 pending discovery，同一组 opaque id 不能重复确认。
 - 存档目录发现命令的错误使用稳定 `save_directory_discovery_*` code，`message` 固定为泛化文案，不包含完整本地路径、Steam ID、account id、profile URL、XML 原文或存档文件内容。
 
 DTO 形状：
