@@ -9,6 +9,7 @@ mod install_commit;
 mod mod_import;
 mod mod_import_install_files;
 mod preview_image;
+mod prerequisite_rules_repository;
 mod save_backup;
 mod save_directory_pending_store;
 mod save_directory_scanner;
@@ -43,6 +44,7 @@ pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
+pub use prerequisite_rules_repository::JsonGamePrerequisiteRuleRepository;
 pub use save_backup::FileSystemSaveBackupWriter;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
