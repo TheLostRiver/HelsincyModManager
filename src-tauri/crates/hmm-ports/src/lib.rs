@@ -17,6 +17,8 @@ mod text_log;
 
 use anyhow::Result;
 
+pub type PortResult<T> = anyhow::Result<T>;
+
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
 };
