@@ -11,3 +11,6 @@ anyhow.workspace = true
 hmm-core = { path = "../hmm-core" }
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
