@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "gameId": "mhw",
+  "prerequisites": [
+    {
+      "id": "stracker_loader",
+      "displayName": "Stracker's Loader",
+      "requiredFiles": [
+        "dinput8.dll",
+        "loader.dll",
+        "loader-config.json",
+        "nativePC/plugins/MonsterLoader.dll",
+        "nativePC/plugins/QuestLoader.dll"
+      ],
+      "signatureFiles": [
+        {
+          "path": "dinput8.dll",
+          "sha256": [
+            "6E38BAFF0BDDC5014046E3BA5A733814F95F65D5CA67E2FB15D18C5106D4E059"
+          ]
+        },
+        {
+          "path": "loader.dll",
+          "sha256": [
+            "17EC93D9D57809E4968666961CAF996F7D819C05B280FBB6D444B95920A801EE"
+          ]
+        },
+        {
+          "path": "nativePC/plugins/MonsterLoader.dll",
+          "sha256": [
+            "F307FD30C30D708980990062C0344C0034FB4363BB6FB85D8217E0134CEA7D9B"
+          ]
+        },
+        {
+          "path": "nativePC/plugins/QuestLoader.dll",
+          "sha256": [
+            "97380A19C12822C318EBC7EF09DF601823CBF33EC674E1AEE9F8A690D5422C08"
+          ]
+        }
+      ],
+      "jsonChecks": [
+        {
+          "path": "loader-config.json",
+          "requiredBooleanFields": {
+            "enablePluginLoader": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "crc_bypass",
+      "displayName": "CRCBypass",
+      "requiredFiles": [
+        "nativePC/plugins/!CRCBypass.dll"
+      ],
+      "signatureFiles": [
+        {
+          "path": "nativePC/plugins/!CRCBypass.dll",
+          "sha256": [
+            "6F5EC7D28B9EE4CFBB341B778B710F3646CAEBA1A213FF0DB85281E1A972D058"
+          ]
+        }
+      ],
+      "jsonChecks": []
+    }
+  ]
+}

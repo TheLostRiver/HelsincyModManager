@@ -30,21 +30,22 @@ use hmm_infra::{
     FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemSaveBackupWriter,
     FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
-    JsonGameConfigRepository, JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
-    JsonModImportResultRepository, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    ReqwestSteamProfileHttpTransport, SandboxModPackageInstallFileScanner,
-    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteCategoryRepository,
-    SqliteModMetadataRepository, SqliteProfileRepository, SqliteSaveBackupRepository,
-    SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
-    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
+    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
+    RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
+    SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
+    SqliteProfileRepository, SqliteSaveBackupRepository, SteamCommunityProfileClient,
+    SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
+    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
     TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
-    ModImportResultRepository, ModImportSandboxLocator, ProfileRepository,
-    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository, SaveBackupRepository,
-    SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
+    GamePrerequisiteRuleRepository, ModImportResultRepository, ModImportSandboxLocator,
+    ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    SaveBackupRepository, SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -136,7 +137,15 @@ impl AppState {
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
-        let mhw_adapter: Arc<dyn GameAdapter> = Arc::new(MonsterHunterWorldAdapter);
+        let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
+            Arc::new(JsonGamePrerequisiteRuleRepository::new(
+                app_data_dir
+                    .join("config")
+                    .join("prerequisite-rules")
+                    .join("mhw.json"),
+            ));
+        let mhw_adapter: Arc<dyn GameAdapter> =
+            Arc::new(MonsterHunterWorldAdapter::new(mhw_prerequisite_rules));
         let mhw_launcher: Arc<dyn GameLauncher> = Arc::new(MonsterHunterWorldLauncher::new(
             Arc::new(SystemGameLaunchRunner),
         ));

@@ -1,5 +1,7 @@
 import { Bell, Check, Database, FileArchive, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
+import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
 
 type ToggleSettingId =
   | "compactPanels"
@@ -73,6 +75,7 @@ const initialSettings: SettingsState = {
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+  const prerequisites = useGamePrerequisites("mhw");
 
   const hasSessionChanges = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(initialSettings),
@@ -161,6 +164,14 @@ export function SettingsPage() {
             checked={settings.confirmBeforeConflict}
             onChange={() => updateToggle("confirmBeforeConflict")}
           />
+        </SettingsSection>
+
+        <SettingsSection
+          title="前置环境"
+          description="只读检查当前已配置游戏目录中的 Stracker's Loader 与 CRCBypass，不访问测试目录。"
+          icon={ShieldCheck}
+        >
+          <GamePrerequisitePanel state={prerequisites.state} onRefresh={prerequisites.refresh} />
         </SettingsSection>
 
         <SettingsSection

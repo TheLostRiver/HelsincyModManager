@@ -1,14 +1,15 @@
 use hmm_core::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryValidation, GameId,
-    GameInstance,
-    GameSetupErrorCode,
+    GameInstance, GameSetupErrorCode,
 };
 use hmm_ports::{
     GameAdapter, GameDirectoryProbe, GameLaunchError, GameLaunchMethod, GameLaunchReceipt,
     GameLaunchRunner, GameLauncher, GamePrerequisiteReport, GamePrerequisiteReportState,
+    GamePrerequisiteRuleRepository, GamePrerequisiteRuleRepositoryError,
 };
 use std::sync::Arc;
 
+mod prerequisites;
 mod save_directory;
 
 pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
@@ -17,11 +18,20 @@ const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
 const STEAM_APP_ID: u32 = 582010;
 const EXECUTABLE_NAME: &str = "MonsterHunterWorld.exe";
 const NATIVE_PC_DIR: &str = "nativePC";
+const BUNDLED_PREREQUISITE_RULES: &str = include_str!("../data/mhw-prerequisites.default.json");
 
-pub struct MonsterHunterWorldAdapter;
+pub struct MonsterHunterWorldAdapter {
+    prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository>,
+}
 
 pub struct MonsterHunterWorldLauncher {
     runner: Arc<dyn GameLaunchRunner>,
+}
+
+impl MonsterHunterWorldAdapter {
+    pub fn new(prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository>) -> Self {
+        Self { prerequisite_rules }
+    }
 }
 
 impl MonsterHunterWorldLauncher {
@@ -108,14 +118,34 @@ impl GameAdapter for MonsterHunterWorldAdapter {
         validation
     }
 
-    fn inspect_prerequisites(&self, _probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport {
-        GamePrerequisiteReport {
-            game_id: self.game_id(),
-            state: GamePrerequisiteReportState::RulesUnavailable,
-            summary_status: None,
-            items: Vec::new(),
-            error_code: None,
-            message: Some("prerequisite rules are not wired for MHW yet".to_owned()),
+    fn inspect_prerequisites(&self, probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport {
+        match self
+            .prerequisite_rules
+            .load_rules(&self.game_id(), BUNDLED_PREREQUISITE_RULES)
+        {
+            Ok(rules) => prerequisites::inspect_mhw_prerequisites(probe, rules),
+            Err(error) => GamePrerequisiteReport {
+                game_id: self.game_id(),
+                state: GamePrerequisiteReportState::RulesUnavailable,
+                summary_status: None,
+                items: Vec::new(),
+                error_code: Some(match &error {
+                    GamePrerequisiteRuleRepositoryError::StorageFailed(_) => {
+                        GameSetupErrorCode::StorageFailed
+                    }
+                    GamePrerequisiteRuleRepositoryError::StorageCorrupted => {
+                        GameSetupErrorCode::StorageCorrupted
+                    }
+                }),
+                message: Some(match &error {
+                    GamePrerequisiteRuleRepositoryError::StorageFailed(_) => {
+                        "prerequisite rules are unavailable".to_owned()
+                    }
+                    GamePrerequisiteRuleRepositoryError::StorageCorrupted => {
+                        "prerequisite rules are corrupted".to_owned()
+                    }
+                }),
+            },
         }
     }
 }
@@ -124,9 +154,13 @@ impl GameAdapter for MonsterHunterWorldAdapter {
 mod tests {
     use super::MonsterHunterWorldAdapter;
     use hmm_core::{GameDirectoryEvidenceKind, GameSetupErrorCode};
-    use hmm_ports::{GameAdapter, GameDirectoryProbe};
+    use hmm_ports::{
+        GameAdapter, GameDirectoryProbe, GamePrerequisiteRuleRepository,
+        GamePrerequisiteRuleRepositoryError, GamePrerequisiteRuleSet,
+    };
     use std::collections::HashSet;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct FakeProbe {
@@ -196,27 +230,55 @@ mod tests {
         }
     }
 
+    struct NoopRuleRepository;
+
+    impl GamePrerequisiteRuleRepository for NoopRuleRepository {
+        fn load_rules(
+            &self,
+            _game_id: &hmm_core::GameId,
+            _bundled_default: &str,
+        ) -> Result<GamePrerequisiteRuleSet, GamePrerequisiteRuleRepositoryError> {
+            panic!("directory validation tests must not load prerequisite rules")
+        }
+    }
+
+    struct CorruptedRuleRepository;
+
+    impl GamePrerequisiteRuleRepository for CorruptedRuleRepository {
+        fn load_rules(
+            &self,
+            _game_id: &hmm_core::GameId,
+            _bundled_default: &str,
+        ) -> Result<GamePrerequisiteRuleSet, GamePrerequisiteRuleRepositoryError> {
+            Err(GamePrerequisiteRuleRepositoryError::StorageCorrupted)
+        }
+    }
+
+    fn test_adapter() -> MonsterHunterWorldAdapter {
+        MonsterHunterWorldAdapter::new(Arc::new(NoopRuleRepository))
+    }
+
     #[test]
     fn adapter_reports_game_id() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         assert_eq!(adapter.game_id().as_str(), "mhw");
     }
 
     #[test]
     fn adapter_reports_steam_app_id() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         assert_eq!(adapter.steam_app_id(), Some(582010));
     }
 
     #[test]
     fn adapter_reports_allowed_install_roots() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         assert_eq!(adapter.allowed_install_roots(), vec!["nativePC".to_owned()]);
     }
 
     #[test]
     fn validates_directory_with_executable() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         let probe = FakeProbe::at("C:/Monster Hunter World").with_file("MonsterHunterWorld.exe");
 
         let validation = adapter.validate_directory(&probe);
@@ -231,7 +293,7 @@ mod tests {
 
     #[test]
     fn native_pc_is_evidence_but_not_required() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         let probe = FakeProbe::at("C:/Monster Hunter World")
             .with_file("MonsterHunterWorld.exe")
             .with_dir("nativePC");
@@ -247,7 +309,7 @@ mod tests {
 
     #[test]
     fn rejects_directory_missing_executable() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         let probe = FakeProbe::at("C:/Not MHW");
 
         let validation = adapter.validate_directory(&probe);
@@ -261,7 +323,7 @@ mod tests {
 
     #[test]
     fn rejects_missing_root_directory() {
-        let adapter = MonsterHunterWorldAdapter;
+        let adapter = test_adapter();
         let probe = FakeProbe::missing_root("C:/Missing");
 
         let validation = adapter.validate_directory(&probe);
@@ -270,6 +332,23 @@ mod tests {
         assert_eq!(
             validation.errors,
             vec![GameSetupErrorCode::DirectoryNotFound]
+        );
+    }
+
+    #[test]
+    fn prerequisite_report_returns_rules_unavailable_when_repository_is_corrupted() {
+        let adapter = MonsterHunterWorldAdapter::new(Arc::new(CorruptedRuleRepository));
+        let probe = FakeProbe::at("C:/Monster Hunter World");
+
+        let report = adapter.inspect_prerequisites(&probe);
+
+        assert_eq!(
+            report.state,
+            hmm_ports::GamePrerequisiteReportState::RulesUnavailable
+        );
+        assert_eq!(
+            report.error_code,
+            Some(GameSetupErrorCode::StorageCorrupted)
         );
     }
 }

@@ -1,6 +1,8 @@
 import { CheckCircle2, CircleDashed, Play } from "lucide-react";
 import { GameDirectoryActions } from "../game-setup/GameDirectoryActions";
 import { GameDirectoryCandidateList } from "../game-setup/GameDirectoryCandidateList";
+import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
+import type { GamePrerequisiteLoadState } from "../game-setup/gamePrerequisiteTypes";
 import type { GameDirectoryCandidate, GameSetupStatus } from "../game-setup/gameSetupTypes";
 import { supportCards } from "./dashboardData";
 
@@ -17,9 +19,11 @@ type DashboardHeroCardProps = {
   isBusy: boolean;
   actionMessage: string | null;
   launchState: DashboardLaunchState;
+  prerequisiteState: GamePrerequisiteLoadState;
   onDirectorySelected: (directory: string) => Promise<void>;
   onActionError: (message: string) => void;
   onLaunchGame: () => Promise<unknown>;
+  onRefreshPrerequisites: () => Promise<void>;
   onScanSteam: () => Promise<void>;
 };
 
@@ -29,9 +33,11 @@ export function DashboardHeroCard({
   isBusy,
   actionMessage,
   launchState,
+  prerequisiteState,
   onDirectorySelected,
   onActionError,
   onLaunchGame,
+  onRefreshPrerequisites,
   onScanSteam,
 }: DashboardHeroCardProps) {
   const copy = heroCopyForStatus(status, actionMessage);
@@ -98,6 +104,8 @@ export function DashboardHeroCard({
           onCandidateSelected={onDirectorySelected}
         />
       ) : null}
+
+      <GamePrerequisitePanel state={prerequisiteState} onRefresh={onRefreshPrerequisites} />
 
       <div className="support-grid" aria-label="支持信息">
         {supportCards.map((card) => (

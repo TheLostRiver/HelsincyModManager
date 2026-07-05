@@ -1,7 +1,7 @@
 use crate::dto::{
-    auto_detection_to_dto, candidate_scan_to_dto, status_to_dto, validation_to_dto,
-    CommandErrorDto, GameAutoDetectionDto, GameCandidateScanDto, GameDirectoryValidationDto,
-    GameSetupStatusDto,
+    auto_detection_to_dto, candidate_scan_to_dto, prerequisite_report_to_dto, status_to_dto,
+    validation_to_dto, CommandErrorDto, GameAutoDetectionDto, GameCandidateScanDto,
+    GameDirectoryValidationDto, GamePrerequisiteReportDto, GameSetupStatusDto,
 };
 use crate::state::AppState;
 use hmm_core::GameId;
@@ -19,6 +19,20 @@ pub fn get_game_setup_status(
         .game_setup
         .get_status(game_id)
         .map(status_to_dto)
+        .map_err(CommandErrorDto::from_service_error)
+}
+
+#[tauri::command]
+pub fn get_game_prerequisite_status(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> Result<GamePrerequisiteReportDto, CommandErrorDto> {
+    let game_id = parse_game_id(game_id)?;
+
+    state
+        .game_setup
+        .get_prerequisite_status(game_id)
+        .map(prerequisite_report_to_dto)
         .map_err(CommandErrorDto::from_service_error)
 }
 

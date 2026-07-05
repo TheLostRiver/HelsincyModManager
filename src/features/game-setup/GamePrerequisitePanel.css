@@ -1,0 +1,214 @@
+.game-prerequisite-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.game-prerequisite-panel__toolbar {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.game-prerequisite-panel__heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.game-prerequisite-panel__heading h4,
+.game-prerequisite-panel__heading p,
+.game-prerequisite-note strong,
+.game-prerequisite-note span,
+.game-prerequisite-item__note {
+  margin: 0;
+}
+
+.game-prerequisite-panel__heading h4 {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.game-prerequisite-panel__heading p,
+.game-prerequisite-note,
+.game-prerequisite-item__note {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.game-prerequisite-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.game-prerequisite-summary.is-success {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.game-prerequisite-summary.is-warning,
+.game-prerequisite-summary.is-loading {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.game-prerequisite-summary.is-error {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+.game-prerequisite-panel__refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.18s ease;
+}
+
+.game-prerequisite-panel__refresh:not(:disabled):hover {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+  transform: translateY(-1px);
+}
+
+.game-prerequisite-panel__refresh:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.game-prerequisite-panel__refresh:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.game-prerequisite-note {
+  display: grid;
+  gap: 4px;
+}
+
+.game-prerequisite-list {
+  display: grid;
+  gap: 0;
+}
+
+.game-prerequisite-item {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.game-prerequisite-item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.game-prerequisite-item__top {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.game-prerequisite-item__top strong {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.game-prerequisite-item__status {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.game-prerequisite-item.is-success .game-prerequisite-item__status {
+  color: var(--color-success-text);
+}
+
+.game-prerequisite-item.is-warning .game-prerequisite-item__status {
+  color: var(--color-warning-text);
+}
+
+.game-prerequisite-item.is-error .game-prerequisite-item__status {
+  color: var(--color-danger-text);
+}
+
+.game-prerequisite-issues {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game-prerequisite-issues li {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.game-prerequisite-issues code {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: var(--color-text-soft);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--color-surface-subtle);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.game-prerequisite-issues span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .game-prerequisite-item__top {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .game-prerequisite-item__status {
+    text-align: left;
+  }
+
+  .game-prerequisite-issues li {
+    grid-template-columns: 1fr;
+  }
+}

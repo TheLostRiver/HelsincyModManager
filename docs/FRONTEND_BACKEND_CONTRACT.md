@@ -50,6 +50,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 保存配置：`save_game_directory`
 - 扫描候选：`scan_game_candidates`
 - 启动自检并自动保存有效发现：`auto_detect_game_directory`
+- 查询前置依赖状态：`get_game_prerequisite_status`
 - 预览计划：`preview_install_plan`、`preview_retarget_plan`
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
@@ -275,6 +276,65 @@ TaskProgressEventDto
 - 错误 code 与 TypeScript union 对齐。
 - 对真实目录只返回必要 `pathLabel`，完整路径只在明确需要时返回。
 - `auto_detect_game_directory(gameId)` 只接收稳定 `gameId`，由后端复用 Steam discovery、adapter 校验与 `save_game_directory` 持久化有效候选；返回稳定 `outcome`、状态摘要、错误码和候选数量，不返回自动保存过程中使用的真实目录。
+
+`get_game_prerequisite_status(gameId)` 是只读前置依赖诊断入口。前端只提交稳定 `gameId`；后端先读取已保存的游戏目录配置，再在当前已配置游戏目录内检查受控规则，不接受测试目录、任意本地路径、archive 路径或前端拼接的文件名。当前第一版只覆盖 `Stracker's Loader` 和 `CRCBypass`，`loader-config.json` 只校验 `enablePluginLoader = true`，不做自动安装、自动修复或 preflight 阻断。
+
+返回 DTO 形状：
+
+```ts
+type GamePrerequisiteReportState =
+  | "not_configured"
+  | "game_directory_invalid"
+  | "rules_unavailable"
+  | "ready";
+
+type GamePrerequisiteSummaryStatus = "verified" | "warning" | "error";
+
+type GamePrerequisiteItemStatus =
+  | "missing"
+  | "misconfigured"
+  | "installed_verified"
+  | "installed_unverified";
+
+type GamePrerequisiteIssueCode =
+  | "missing_required_file"
+  | "signature_unverified"
+  | "config_read_failed"
+  | "config_invalid_json"
+  | "config_field_mismatch"
+  | "rules_unavailable"
+  | "rules_corrupted";
+
+type GamePrerequisiteIssueDto = {
+  code: GamePrerequisiteIssueCode;
+  path: string;
+};
+
+type GamePrerequisiteItemDto = {
+  id: string;
+  displayName: string;
+  status: GamePrerequisiteItemStatus;
+  issues: GamePrerequisiteIssueDto[];
+};
+
+type GamePrerequisiteReportDto = {
+  gameId: string;
+  state: GamePrerequisiteReportState;
+  summaryStatus: GamePrerequisiteSummaryStatus | null;
+  items: GamePrerequisiteItemDto[];
+  errorCode: GameSetupErrorCode | null;
+  message: string | null;
+};
+```
+
+边界：
+
+- `not_configured` 表示当前游戏尚未保存有效目录；前端只做空状态提示。
+- `game_directory_invalid` 表示已保存目录重新校验失败；前端可展示稳定 `errorCode` 和用户可读 `message`，但不能把它解释为前置缺失。
+- `rules_unavailable` 表示本地前置规则文件不可读或已损坏；前端只能做只读告警，不得降级为“已验证通过”。
+- `ready` 表示规则已加载并完成检查；`summaryStatus` 只用于展示聚合诊断，逐项判断应基于 `items[].status` 和 `issues[].code`。
+- `installed_unverified` 表示检测到文件存在但签名未命中当前已知规则集；这是 warning，不是阻断或自动修复信号。
+- `issues[].path` 只能返回脱敏后的相对路径片段，例如 `dinput8.dll`、`loader-config.json`、`nativePC/plugins/QuestLoader.dll`；DTO、错误消息和日志都不能暴露绝对盘符、用户名或真实游戏目录。
 
 ### 2. `replacement / retarget`
 

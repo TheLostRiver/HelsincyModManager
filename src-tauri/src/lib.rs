@@ -22,8 +22,8 @@ use category_commands::{
 };
 use game_launch_commands::launch_game;
 use game_setup_commands::{
-    auto_detect_game_directory, get_game_setup_status, save_game_directory, scan_game_candidates,
-    validate_game_directory,
+    auto_detect_game_directory, get_game_prerequisite_status, get_game_setup_status,
+    save_game_directory, scan_game_candidates, validate_game_directory,
 };
 use install_commands::{
     get_install_manifest_status, preview_imported_mod_install_plan, preview_install_plan,
@@ -68,6 +68,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_health,
             launch_game,
+            get_game_prerequisite_status,
             get_game_setup_status,
             auto_detect_game_directory,
             validate_game_directory,
