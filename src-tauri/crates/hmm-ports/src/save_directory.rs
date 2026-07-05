@@ -76,9 +76,16 @@ pub struct PendingSaveDirectoryDiscovery {
 }
 
 pub trait PendingSaveDirectoryCandidateStore: Send + Sync {
-    fn put(&self, discovery: PendingSaveDirectoryDiscovery) -> Result<()>;
+    fn put(&self, discovery: PendingSaveDirectoryDiscovery, now_unix_millis: u128) -> Result<()>;
 
     fn get_candidate(
+        &self,
+        discovery_id: &str,
+        candidate_id: &str,
+        now_unix_millis: u128,
+    ) -> Result<Option<PendingSaveDirectoryCandidate>>;
+
+    fn consume_candidate(
         &self,
         discovery_id: &str,
         candidate_id: &str,

@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   confirmProfileSaveDirectoryCandidate,
@@ -23,10 +24,20 @@ export type ProfileSaveDirectoryNotice = {
 type ProfileSaveDirectoryDiscoveryContextValue = {
   latestDiscovery: SaveDirectoryDiscoveryDto | null;
   isDiscovering: boolean;
+  discoveringTarget: DiscoveryTarget | null;
   notice: ProfileSaveDirectoryNotice | null;
   runDiscovery: (input: { gameId: string; profileId: string; reason: DiscoveryReason }) => Promise<void>;
   confirmCandidate: (candidateId: string) => Promise<void>;
   dismissNotice: () => void;
+};
+
+type DiscoveryTarget = {
+  gameId: string;
+  profileId: string;
+};
+
+type DiscoveryRequestSnapshot = DiscoveryTarget & {
+  requestSeq: number;
 };
 
 const ProfileSaveDirectoryDiscoveryContext =
@@ -41,9 +52,12 @@ export function ProfileSaveDirectoryDiscoveryProvider({
 }: ProfileSaveDirectoryDiscoveryProviderProps) {
   const { activeProfile } = useActiveProfile();
   const checkedProfileIdsRef = useRef<Set<string>>(new Set());
+  const discoveryRequestSeqRef = useRef(0);
+  const activeDiscoveryRequestRef = useRef<DiscoveryRequestSnapshot | null>(null);
   const [latestDiscovery, setLatestDiscovery] = useState<SaveDirectoryDiscoveryDto | null>(null);
   const [notice, setNotice] = useState<ProfileSaveDirectoryNotice | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveringTarget, setDiscoveringTarget] = useState<DiscoveryTarget | null>(null);
 
   const dismissNotice = useCallback(() => setNotice(null), []);
 
@@ -65,15 +79,26 @@ export function ProfileSaveDirectoryDiscoveryProvider({
         return;
       }
 
+      const requestSeq = discoveryRequestSeqRef.current + 1;
+      discoveryRequestSeqRef.current = requestSeq;
+      const requestSnapshot = {
+        gameId: input.gameId,
+        profileId: input.profileId,
+        requestSeq,
+      };
+      activeDiscoveryRequestRef.current = requestSnapshot;
+      setDiscoveringTarget({ gameId: input.gameId, profileId: input.profileId });
       setIsDiscovering(true);
       try {
         const discovery = await discoverProfileSaveDirectories({
           gameId: input.gameId,
           profileId: input.profileId,
         });
+        if (!isCurrentDiscoveryRequest(activeDiscoveryRequestRef.current, requestSnapshot)) return;
         setLatestDiscovery(discovery);
         setNotice(noticeForDiscovery(discovery, input.reason));
       } catch {
+        if (!isCurrentDiscoveryRequest(activeDiscoveryRequestRef.current, requestSnapshot)) return;
         setNotice({
           id: `failed-${input.profileId}-${Date.now()}`,
           tone: "warning",
@@ -85,7 +110,11 @@ export function ProfileSaveDirectoryDiscoveryProvider({
           profileId: input.profileId,
         });
       } finally {
-        setIsDiscovering(false);
+        if (isCurrentDiscoveryRequest(activeDiscoveryRequestRef.current, requestSnapshot)) {
+          activeDiscoveryRequestRef.current = null;
+          setDiscoveringTarget(null);
+          setIsDiscovering(false);
+        }
       }
     },
     [],
@@ -96,6 +125,7 @@ export function ProfileSaveDirectoryDiscoveryProvider({
       if (!latestDiscovery) return;
 
       setIsDiscovering(true);
+      setDiscoveringTarget({ gameId: latestDiscovery.gameId, profileId: latestDiscovery.profileId });
       try {
         const discovery = await confirmProfileSaveDirectoryCandidate({
           discoveryId: latestDiscovery.discoveryId,
@@ -115,6 +145,7 @@ export function ProfileSaveDirectoryDiscoveryProvider({
           profileId: latestDiscovery.profileId,
         });
       } finally {
+        setDiscoveringTarget(null);
         setIsDiscovering(false);
       }
     },
@@ -146,12 +177,13 @@ export function ProfileSaveDirectoryDiscoveryProvider({
     () => ({
       latestDiscovery,
       isDiscovering,
+      discoveringTarget,
       notice,
       runDiscovery,
       confirmCandidate,
       dismissNotice,
     }),
-    [confirmCandidate, dismissNotice, isDiscovering, latestDiscovery, notice, runDiscovery],
+    [confirmCandidate, dismissNotice, discoveringTarget, isDiscovering, latestDiscovery, notice, runDiscovery],
   );
 
   return (
@@ -179,7 +211,18 @@ export function useProfileSaveDirectoryDiscovery() {
 }
 
 function isTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return typeof window !== "undefined" && isTauri();
+}
+
+function isCurrentDiscoveryRequest(
+  current: DiscoveryRequestSnapshot | null,
+  request: DiscoveryRequestSnapshot,
+) {
+  return (
+    current?.requestSeq === request.requestSeq &&
+    current.gameId === request.gameId &&
+    current.profileId === request.profileId
+  );
 }
 
 function noticeForDiscovery(
@@ -216,12 +259,34 @@ function noticeForDiscovery(
     };
   }
 
+  if (discovery.outcome === "not_found") {
+    return {
+      ...base,
+      tone: "warning",
+      title: "未发现可用存档目录",
+      message: "没有发现可用的 MHW:I Steam 存档目录。",
+      detail: "可以重新检测，或继续使用手动选择入口。",
+      action: "retry",
+    };
+  }
+
+  if (discovery.outcome === "scan_failed") {
+    return {
+      ...base,
+      tone: "warning",
+      title: "存档目录检测失败",
+      message: "检测过程中遇到系统或读取问题。",
+      detail: "可以稍后重试；如果 Steam 或游戏正在更新，请等待完成后再检测。",
+      action: "retry",
+    };
+  }
+
   return {
     ...base,
     tone: "warning",
-    title: "未能自动关联存档目录",
-    message: discovery.outcome === "not_found" ? "没有发现可用的 MHW:I Steam 存档目录。" : "当前存档目录需要重新确认。",
-    detail: "可以重新检测，或继续使用手动选择入口。",
+    title: "当前存档目录需要重新确认",
+    message: discovery.outcome === "existing_invalid" ? "已保存的存档目录未能通过结构校验。" : "当前存档目录需要重新确认。",
+    detail: "可以重新检测，或使用手动选择入口重新绑定。",
     action: "retry",
   };
 }

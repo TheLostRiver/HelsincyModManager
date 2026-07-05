@@ -160,7 +160,7 @@ type SaveSettingsState =
 
 export function ProfilePage() {
   const { activeProfile, refreshActiveProfile, setActiveProfile } = useActiveProfile();
-  const { latestDiscovery, isDiscovering, runDiscovery } = useProfileSaveDirectoryDiscovery();
+  const { latestDiscovery, isDiscovering, discoveringTarget, runDiscovery } = useProfileSaveDirectoryDiscovery();
   const previewMode = isPlainBrowserRuntime();
   const [profileState, setProfileState] = useState<ProfileListState>({
     status: "loading",
@@ -457,7 +457,7 @@ export function ProfilePage() {
                   settings={visibleSettings}
                   previewMode={previewMode}
                   disabled={!settingsEditable}
-                  autoDetecting={isDiscovering}
+                  autoDetecting={isDiscovering && discoveringTarget?.profileId === selectedProfileId}
                   hasDiscoveryCandidates={
                     latestDiscovery?.outcome === "confirmation_required" &&
                     latestDiscovery.profileId === selectedProfileId

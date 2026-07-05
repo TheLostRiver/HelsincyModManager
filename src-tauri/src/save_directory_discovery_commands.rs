@@ -6,31 +6,35 @@ use hmm_app::{
     SaveDirectoryDiscoveryError,
 };
 use hmm_core::{GameId, ProfileId};
+use std::sync::Arc;
 use tauri::State;
 
 const SAVE_DIRECTORY_DISCOVERY_FAILED_MESSAGE: &str = "save directory discovery failed";
 
 #[tauri::command]
-pub fn discover_profile_save_directories(
+pub async fn discover_profile_save_directories(
     game_id: String,
     profile_id: String,
     state: State<'_, AppState>,
 ) -> Result<SaveDirectoryDiscoveryDto, CommandErrorDto> {
     let game_id = parse_game_id(game_id)?;
     let profile_id = parse_profile_id(profile_id)?;
+    let service = Arc::clone(&state.save_directory_discovery);
 
-    state
-        .save_directory_discovery
-        .discover(DiscoverProfileSaveDirectoriesRequest {
+    tauri::async_runtime::spawn_blocking(move || {
+        service.discover(DiscoverProfileSaveDirectoriesRequest {
             game_id,
             profile_id,
         })
-        .map(SaveDirectoryDiscoveryDto::from)
-        .map_err(save_directory_discovery_error)
+    })
+    .await
+    .map_err(|_| save_directory_discovery_task_error())?
+    .map(SaveDirectoryDiscoveryDto::from)
+    .map_err(save_directory_discovery_error)
 }
 
 #[tauri::command]
-pub fn confirm_profile_save_directory_candidate(
+pub async fn confirm_profile_save_directory_candidate(
     discovery_id: String,
     candidate_id: String,
     state: State<'_, AppState>,
@@ -43,15 +47,18 @@ pub fn confirm_profile_save_directory_candidate(
         candidate_id,
         "save_directory_discovery_candidate_id_invalid",
     )?;
+    let service = Arc::clone(&state.save_directory_discovery);
 
-    state
-        .save_directory_discovery
-        .confirm_candidate(ConfirmProfileSaveDirectoryCandidateRequest {
+    tauri::async_runtime::spawn_blocking(move || {
+        service.confirm_candidate(ConfirmProfileSaveDirectoryCandidateRequest {
             discovery_id,
             candidate_id,
         })
-        .map(SaveDirectoryDiscoveryDto::from)
-        .map_err(save_directory_discovery_error)
+    })
+    .await
+    .map_err(|_| save_directory_discovery_task_error())?
+    .map(SaveDirectoryDiscoveryDto::from)
+    .map_err(save_directory_discovery_error)
 }
 
 fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
@@ -84,6 +91,13 @@ fn save_directory_discovery_error(error: SaveDirectoryDiscoveryError) -> Command
     }
 }
 
+fn save_directory_discovery_task_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "save_directory_discovery_scan_failed".to_owned(),
+        message: SAVE_DIRECTORY_DISCOVERY_FAILED_MESSAGE.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +113,15 @@ mod tests {
 
         let error = parse_profile_id("  ".to_owned()).expect_err("empty profile id");
         assert_eq!(error.code, "save_directory_discovery_profile_id_invalid");
+        assert!(!error.message.contains('/') && !error.message.contains('\\'));
+    }
+
+    #[test]
+    fn parse_game_id_rejects_unknown_values_without_leaking_details() {
+        let error = parse_game_id("not-a-real-game".to_owned()).expect_err("invalid game id");
+
+        assert_eq!(error.code, "save_directory_discovery_game_id_invalid");
+        assert_eq!(error.message, SAVE_DIRECTORY_DISCOVERY_FAILED_MESSAGE);
         assert!(!error.message.contains('/') && !error.message.contains('\\'));
     }
 
