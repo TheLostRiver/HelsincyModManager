@@ -163,6 +163,30 @@ mod pending_save_directory_tests {
     }
 
     #[test]
+    fn consume_candidate_invalidates_sibling_candidates_in_same_discovery() {
+        let store = InMemoryPendingSaveDirectoryCandidateStore::default();
+        store
+            .put(
+                discovery(
+                    "discovery-a",
+                    3_000,
+                    vec![candidate("candidate-a"), candidate("candidate-b")],
+                ),
+                1_000,
+            )
+            .expect("put");
+
+        assert!(store
+            .consume_candidate("discovery-a", "candidate-a", 1_000)
+            .expect("consume a")
+            .is_some());
+        assert!(store
+            .get_candidate("discovery-a", "candidate-b", 1_000)
+            .expect("sibling lookup")
+            .is_none());
+    }
+
+    #[test]
     fn put_sweeps_expired_entries_using_supplied_now() {
         let store = InMemoryPendingSaveDirectoryCandidateStore::default();
         store

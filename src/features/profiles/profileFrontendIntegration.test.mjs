@@ -232,6 +232,25 @@ test("profile save discovery guards stale async results and scopes busy state pe
   assert.match(provider, /isTauri\(\)/);
   assert.match(provider, /discovery\.outcome === "scan_failed"/);
   assert.match(provider, /discovery\.outcome === "existing_invalid"/);
+
+  const confirmCandidate = provider.slice(
+    provider.indexOf("const confirmCandidate"),
+    provider.indexOf("useEffect(() =>"),
+  );
+  assert.match(confirmCandidate, /const requestSeq = discoveryRequestSeqRef\.current \+ 1/);
+  assert.match(confirmCandidate, /activeDiscoveryRequestRef\.current = requestSnapshot/);
+  assert.match(
+    confirmCandidate,
+    /const discovery = await confirmProfileSaveDirectoryCandidate[\s\S]*?if \(!isCurrentDiscoveryRequest\(activeDiscoveryRequestRef\.current, requestSnapshot\)\) return;[\s\S]*?setLatestDiscovery\(discovery\)/,
+  );
+  assert.match(
+    confirmCandidate,
+    /catch \{[\s\S]*?if \(!isCurrentDiscoveryRequest\(activeDiscoveryRequestRef\.current, requestSnapshot\)\) return;[\s\S]*?setNotice/,
+  );
+  assert.match(
+    confirmCandidate,
+    /finally \{[\s\S]*?if \(isCurrentDiscoveryRequest\(activeDiscoveryRequestRef\.current, requestSnapshot\)\) \{[\s\S]*?activeDiscoveryRequestRef\.current = null;[\s\S]*?setDiscoveringTarget\(null\);[\s\S]*?setIsDiscovering\(false\);[\s\S]*?\}/,
+  );
   assert.match(page, /autoDetecting=\{isDiscovering\s*&&\s*discoveringTarget\?\.profileId === selectedProfileId/);
   assert.match(panel, /primaryAction=\{!hasDiscoveryCandidates\}/);
 });
