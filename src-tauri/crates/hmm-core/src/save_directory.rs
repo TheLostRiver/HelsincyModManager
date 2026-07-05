@@ -3,6 +3,7 @@ use crate::{GameId, ProfileDirectorySelection, ProfileId};
 pub const STEAM_ID64_ACCOUNT_ID_OFFSET: u64 = 76_561_197_960_265_728;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SaveDirectoryDiscoveryOutcome {
     AutoSaved,
     ConfirmationRequired,
@@ -13,11 +14,13 @@ pub enum SaveDirectoryDiscoveryOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SaveDirectoryCandidateSource {
     SteamUserdata,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum SaveDirectoryCandidateConfidence {
     Low,
     Medium,

@@ -1,22 +1,11 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { forbiddenDiscoveryFields } from "./testSupport/forbiddenDiscoveryFields.mjs";
 
 function readSource(path) {
   return readFileSync(path, "utf8");
 }
-
-const forbiddenDiscoveryFields = new RegExp(
-  [
-    "raw" + "Path",
-    "full" + "Path",
-    "steam" + "Id64",
-    "account" + "Id",
-    "x" + "ml",
-    "profile" + "Url",
-  ].join("|"),
-  "i",
-);
 
 test("profile typed API invokes narrow profile commands without paths", () => {
   assert.equal(existsSync("src/features/profiles/profileApi.ts"), true);
@@ -109,8 +98,8 @@ test("profile save directory discovery API avoids raw paths and steam identifier
 
   assert.match(source, /discoverProfileSaveDirectories/);
   assert.match(source, /confirmProfileSaveDirectoryCandidate/);
-  assert.match(source, /discoveryId:\s*input\.discoveryId/);
-  assert.match(source, /candidateId:\s*input\.candidateId/);
+  assert.match(source, /invoke<SaveDirectoryDiscoveryDto>\("discover_profile_save_directories",\s*input\)/);
+  assert.match(source, /invoke<SaveDirectoryDiscoveryDto>\("confirm_profile_save_directory_candidate",\s*input\)/);
   assert.doesNotMatch(source, forbiddenDiscoveryFields);
 
   assert.match(typesSource, /candidateId:\s*string/);

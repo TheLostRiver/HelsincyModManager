@@ -78,6 +78,7 @@ fn outcome_to_string(outcome: SaveDirectoryDiscoveryOutcome) -> String {
         SaveDirectoryDiscoveryOutcome::ExistingValid => "existing_valid",
         SaveDirectoryDiscoveryOutcome::ExistingInvalid => "existing_invalid",
         SaveDirectoryDiscoveryOutcome::ScanFailed => "scan_failed",
+        _ => "scan_failed",
     }
     .to_owned()
 }
@@ -85,6 +86,7 @@ fn outcome_to_string(outcome: SaveDirectoryDiscoveryOutcome) -> String {
 fn source_to_string(source: SaveDirectoryCandidateSource) -> String {
     match source {
         SaveDirectoryCandidateSource::SteamUserdata => "steam_userdata",
+        _ => "steam_userdata",
     }
     .to_owned()
 }
@@ -94,6 +96,7 @@ fn confidence_to_string(confidence: SaveDirectoryCandidateConfidence) -> String 
         SaveDirectoryCandidateConfidence::High => "high",
         SaveDirectoryCandidateConfidence::Medium => "medium",
         SaveDirectoryCandidateConfidence::Low => "low",
+        _ => "low",
     }
     .to_owned()
 }

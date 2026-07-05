@@ -3,6 +3,7 @@ use hmm_core::{
     ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
     ProfileSaveSettings, SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource,
     SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
+    SteamAccountProfileSummary,
 };
 use hmm_ports::{
     AppClock, GameConfigRepository, GameSaveDirectoryRule, PendingSaveDirectoryCandidate,
@@ -147,29 +148,42 @@ impl ProfileSaveDirectoryDiscoveryService {
                     .scanner
                     .validate_save_directory(&scan_request, Path::new(directory))
                 {
-                    Ok(candidate)
-                        if candidate.confidence >= SaveDirectoryCandidateConfidence::Medium =>
-                    {
-                        Ok(SaveDirectoryDiscoveryResult {
-                            discovery_id,
-                            game_id: request.game_id,
-                            profile_id: request.profile_id,
-                            outcome: SaveDirectoryDiscoveryOutcome::ExistingValid,
-                            recommended_candidate_id: None,
-                            candidates: vec![candidate_summary(candidate, None, false)],
-                            saved_settings: Some(settings.save_directory.clone()),
-                            error_code: None,
-                        })
+                    Ok(candidate) => {
+                        if candidate.confidence >= SaveDirectoryCandidateConfidence::Medium {
+                            Ok(SaveDirectoryDiscoveryResult {
+                                discovery_id,
+                                game_id: request.game_id,
+                                profile_id: request.profile_id,
+                                outcome: SaveDirectoryDiscoveryOutcome::ExistingValid,
+                                recommended_candidate_id: None,
+                                candidates: vec![candidate_summary(candidate, None, false)],
+                                saved_settings: Some(settings.save_directory.clone()),
+                                error_code: None,
+                            })
+                        } else {
+                            Ok(SaveDirectoryDiscoveryResult {
+                                discovery_id,
+                                game_id: request.game_id,
+                                profile_id: request.profile_id,
+                                outcome: SaveDirectoryDiscoveryOutcome::ExistingInvalid,
+                                recommended_candidate_id: None,
+                                candidates: Vec::new(),
+                                saved_settings: Some(settings.save_directory.clone()),
+                                error_code: Some(
+                                    "save_directory_discovery_candidate_invalid".to_owned(),
+                                ),
+                            })
+                        }
                     }
-                    _ => Ok(SaveDirectoryDiscoveryResult {
+                    Err(_) => Ok(SaveDirectoryDiscoveryResult {
                         discovery_id,
                         game_id: request.game_id,
                         profile_id: request.profile_id,
-                        outcome: SaveDirectoryDiscoveryOutcome::ExistingInvalid,
+                        outcome: SaveDirectoryDiscoveryOutcome::ScanFailed,
                         recommended_candidate_id: None,
                         candidates: Vec::new(),
                         saved_settings: Some(settings.save_directory.clone()),
-                        error_code: Some("save_directory_discovery_candidate_invalid".to_owned()),
+                        error_code: Some("save_directory_discovery_scan_failed".to_owned()),
                     }),
                 };
             }
@@ -223,16 +237,11 @@ impl ProfileSaveDirectoryDiscoveryService {
         let recommended_candidate_id = scanned
             .first()
             .map(|candidate| candidate.candidate_id.clone());
+        let profiles = self.fetch_candidate_profiles(&scanned);
         let summaries = scanned
             .iter()
-            .map(|candidate| {
-                let profile = if scanned.len() > 1 {
-                    self.profile_client
-                        .fetch_profile(candidate.account_id_32, STEAM_PROFILE_TIMEOUT)
-                        .ok()
-                } else {
-                    None
-                };
+            .zip(profiles)
+            .map(|(candidate, profile)| {
                 candidate_summary(
                     candidate.clone(),
                     profile,
@@ -246,23 +255,26 @@ impl ProfileSaveDirectoryDiscoveryService {
             .map_err(|_| SaveDirectoryDiscoveryError::ClockUnavailable)?;
 
         self.pending_store
-            .put(PendingSaveDirectoryDiscovery {
-                discovery_id: discovery_id.clone(),
-                game_id: request.game_id.clone(),
-                profile_id: request.profile_id.clone(),
-                expires_at_unix_millis: now + DISCOVERY_TTL_MILLIS,
-                candidates: scanned
-                    .into_iter()
-                    .zip(summaries.iter().cloned())
-                    .map(|(candidate, summary)| PendingSaveDirectoryCandidate {
-                        game_id: request.game_id.clone(),
-                        profile_id: request.profile_id.clone(),
-                        summary,
-                        account_id_32: candidate.account_id_32,
-                        directory: candidate.directory,
-                    })
-                    .collect(),
-            })
+            .put(
+                PendingSaveDirectoryDiscovery {
+                    discovery_id: discovery_id.clone(),
+                    game_id: request.game_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    expires_at_unix_millis: now + DISCOVERY_TTL_MILLIS,
+                    candidates: scanned
+                        .into_iter()
+                        .zip(summaries.iter().cloned())
+                        .map(|(candidate, summary)| PendingSaveDirectoryCandidate {
+                            game_id: request.game_id.clone(),
+                            profile_id: request.profile_id.clone(),
+                            summary,
+                            account_id_32: candidate.account_id_32,
+                            directory: candidate.directory,
+                        })
+                        .collect(),
+                },
+                now,
+            )
             .map_err(|_| SaveDirectoryDiscoveryError::PendingStoreUnavailable)?;
 
         Ok(SaveDirectoryDiscoveryResult {
@@ -287,7 +299,7 @@ impl ProfileSaveDirectoryDiscoveryService {
             .map_err(|_| SaveDirectoryDiscoveryError::ClockUnavailable)?;
         let pending = self
             .pending_store
-            .get_candidate(&request.discovery_id, &request.candidate_id, now)
+            .consume_candidate(&request.discovery_id, &request.candidate_id, now)
             .map_err(|_| SaveDirectoryDiscoveryError::PendingStoreUnavailable)?
             .ok_or(SaveDirectoryDiscoveryError::CandidateExpired)?;
 
@@ -394,6 +406,33 @@ impl ProfileSaveDirectoryDiscoveryService {
             .map_err(|_| SaveDirectoryDiscoveryError::SettingsUnavailable)?;
         Ok(settings)
     }
+
+    fn fetch_candidate_profiles(
+        &self,
+        candidates: &[ScannedSaveDirectoryCandidate],
+    ) -> Vec<Option<SteamAccountProfileSummary>> {
+        if candidates.len() <= 1 {
+            return vec![None; candidates.len()];
+        }
+
+        std::thread::scope(|scope| {
+            candidates
+                .iter()
+                .map(|candidate| {
+                    let profile_client = Arc::clone(&self.profile_client);
+                    let account_id_32 = candidate.account_id_32;
+                    scope.spawn(move || {
+                        profile_client
+                            .fetch_profile(account_id_32, STEAM_PROFILE_TIMEOUT)
+                            .ok()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|handle| handle.join().unwrap_or(None))
+                .collect()
+        })
+    }
 }
 
 fn scan_request_for(
@@ -416,7 +455,7 @@ fn scan_request_for(
 
 fn candidate_summary(
     candidate: ScannedSaveDirectoryCandidate,
-    profile: Option<hmm_core::SteamAccountProfileSummary>,
+    profile: Option<SteamAccountProfileSummary>,
     recommended: bool,
 ) -> SaveDirectoryCandidateSummary {
     SaveDirectoryCandidateSummary {

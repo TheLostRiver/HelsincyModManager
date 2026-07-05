@@ -1,15 +1,11 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { forbiddenDiscoveryFields } from "./testSupport/forbiddenDiscoveryFields.mjs";
 
 function readSource(path) {
   return readFileSync(path, "utf8");
 }
-
-const forbiddenDiscoveryFields = new RegExp(
-  ["steam" + "Id64", "account" + "Id", "raw" + "Path", "full" + "Path", "x" + "ml"].join("|"),
-  "i",
-);
 
 test("profiles route is registered and enabled from the shared navigation definition", () => {
   assert.equal(existsSync("src/features/profiles/ProfilePage.tsx"), true);
@@ -222,4 +218,20 @@ test("profile save discovery uses a floating notice and candidate confirmation U
   assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?left:\s*50%/);
   assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?transform:\s*translateX\(-50%\)/);
   assert.doesNotMatch(page + panel + notice + candidates, forbiddenDiscoveryFields);
+});
+
+test("profile save discovery guards stale async results and scopes busy state per profile", () => {
+  const page = readSource("src/features/profiles/ProfilePage.tsx");
+  const provider = readSource("src/features/profiles/ProfileSaveDirectoryDiscoveryProvider.tsx");
+  const panel = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
+
+  assert.match(provider, /discoveryRequestSeqRef/);
+  assert.match(provider, /discoveringTarget/);
+  assert.match(provider, /isCurrentDiscoveryRequest/);
+  assert.match(provider, /requestSeq/);
+  assert.match(provider, /isTauri\(\)/);
+  assert.match(provider, /discovery\.outcome === "scan_failed"/);
+  assert.match(provider, /discovery\.outcome === "existing_invalid"/);
+  assert.match(page, /autoDetecting=\{isDiscovering\s*&&\s*discoveringTarget\?\.profileId === selectedProfileId/);
+  assert.match(panel, /primaryAction=\{!hasDiscoveryCandidates\}/);
 });
