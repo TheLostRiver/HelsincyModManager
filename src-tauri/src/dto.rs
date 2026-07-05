@@ -18,6 +18,10 @@ use hmm_core::{
 use hmm_ports::{AppSettings, GameCandidateSource};
 use serde::{Deserialize, Serialize};
 
+mod game_prerequisites;
+
+pub use game_prerequisites::{prerequisite_report_to_dto, GamePrerequisiteReportDto};
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandErrorDto {

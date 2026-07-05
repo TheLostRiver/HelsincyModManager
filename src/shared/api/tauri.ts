@@ -16,3 +16,5 @@ export {
   scanGameCandidates,
   validateGameDirectory,
 } from "../../features/game-setup/gameSetupApi";
+
+export { getGamePrerequisiteStatus } from "../../features/game-setup/gamePrerequisiteApi";

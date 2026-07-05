@@ -5,6 +5,7 @@ use hmm_core::{
 use hmm_ports::{
     AppClock, GameAdapter, GameCandidate, GameConfigRepository, GameConfigRepositoryError,
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
+    GamePrerequisiteReport,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -95,6 +96,34 @@ impl GameSetupService {
             Some(instance) => self.status_for_loaded_instance(instance)?,
             None => GameSetupStatus::not_configured(game_id),
         })
+    }
+
+    pub fn get_prerequisite_status(
+        &self,
+        game_id: GameId,
+    ) -> Result<GamePrerequisiteReport, GameSetupServiceError> {
+        let status = self.get_status(game_id.clone())?;
+
+        match status.status {
+            GameDirectoryStatus::NotConfigured => {
+                Ok(GamePrerequisiteReport::not_configured(game_id))
+            }
+            GameDirectoryStatus::Invalid => Ok(GamePrerequisiteReport::game_directory_invalid(
+                game_id,
+                status.error_code.unwrap_or(GameSetupErrorCode::Unknown),
+                status
+                    .message
+                    .unwrap_or_else(|| "saved game directory is no longer valid".to_owned()),
+            )),
+            GameDirectoryStatus::Configured => {
+                let instance = status
+                    .instance
+                    .expect("configured status should include a game instance");
+                let adapter = self.require_adapter(&game_id)?;
+                let probe = self.probe_factory.create(instance.root_dir);
+                Ok(adapter.inspect_prerequisites(probe.as_ref()))
+            }
+        }
     }
 
     pub fn validate_directory(
@@ -235,10 +264,8 @@ impl GameSetupService {
             .iter()
             .find(|candidate| candidate.validation.is_valid)
         {
-            let status = self.save_game_directory(
-                game_id.clone(),
-                valid_candidate.candidate.root_dir.clone(),
-            )?;
+            let status = self
+                .save_game_directory(game_id.clone(), valid_candidate.candidate.root_dir.clone())?;
 
             return Ok(GameAutoDetection {
                 game_id,
@@ -356,7 +383,8 @@ mod tests {
     use hmm_core::{GameDirectoryEvidence, GameDirectoryEvidenceKind};
     use hmm_ports::{
         GameCandidate, GameCandidateSource, GameConfigRepositoryResult, GameDirectoryProbe,
-        GameDiscoveryRequest, GameDiscoveryService, GamePrerequisiteReport,
+        GameDiscoveryRequest, GameDiscoveryService, GamePrerequisiteItem,
+        GamePrerequisiteItemStatus, GamePrerequisiteReport, GamePrerequisiteSummaryStatus,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -442,6 +470,7 @@ mod tests {
     struct FakeAdapter {
         valid: bool,
         invalid_roots: Vec<PathBuf>,
+        prerequisite_report: Option<GamePrerequisiteReport>,
     }
 
     impl FakeAdapter {
@@ -449,6 +478,7 @@ mod tests {
             Self {
                 valid: true,
                 invalid_roots: Vec::new(),
+                prerequisite_report: None,
             }
         }
 
@@ -456,6 +486,7 @@ mod tests {
             Self {
                 valid: false,
                 invalid_roots: Vec::new(),
+                prerequisite_report: None,
             }
         }
 
@@ -463,6 +494,15 @@ mod tests {
             Self {
                 valid: true,
                 invalid_roots: roots.into_iter().map(PathBuf::from).collect(),
+                prerequisite_report: None,
+            }
+        }
+
+        fn with_prerequisite_report(report: GamePrerequisiteReport) -> Self {
+            Self {
+                valid: true,
+                invalid_roots: Vec::new(),
+                prerequisite_report: Some(report),
             }
         }
     }
@@ -496,7 +536,9 @@ mod tests {
         }
 
         fn inspect_prerequisites(&self, _probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport {
-            unreachable!("game setup tests do not inspect prerequisites")
+            self.prerequisite_report
+                .clone()
+                .expect("game setup prerequisite tests must configure a fake report")
         }
     }
 
@@ -609,6 +651,20 @@ mod tests {
     }
 
     #[test]
+    fn prerequisite_report_returns_not_configured_when_game_is_not_saved() {
+        let service = service_with(FakeAdapter::valid());
+
+        let report = service
+            .get_prerequisite_status(GameId::mhw())
+            .expect("report should load");
+
+        assert_eq!(
+            report.state,
+            hmm_ports::GamePrerequisiteReportState::NotConfigured
+        );
+    }
+
+    #[test]
     fn save_directory_validates_before_persisting() {
         let service = service_with(FakeAdapter::valid());
 
@@ -651,6 +707,57 @@ mod tests {
             Some(GameSetupErrorCode::MissingExecutable)
         );
         assert!(status.instance.is_none());
+    }
+
+    #[test]
+    fn prerequisite_report_returns_game_directory_invalid_when_saved_directory_is_invalid() {
+        let repository = Arc::new(FakeRepository {
+            stored: Mutex::new(Some(stored_instance("C:/Moved"))),
+        });
+        let service = service_with_repository(FakeAdapter::invalid(), repository);
+
+        let report = service
+            .get_prerequisite_status(GameId::mhw())
+            .expect("report should load");
+
+        assert_eq!(
+            report.state,
+            hmm_ports::GamePrerequisiteReportState::GameDirectoryInvalid
+        );
+        assert_eq!(
+            report.error_code,
+            Some(GameSetupErrorCode::MissingExecutable)
+        );
+    }
+
+    #[test]
+    fn prerequisite_report_uses_adapter_when_saved_directory_is_valid() {
+        let repository = Arc::new(FakeRepository {
+            stored: Mutex::new(Some(stored_instance("C:/MHW"))),
+        });
+        let service = service_with_repository(
+            FakeAdapter::with_prerequisite_report(GamePrerequisiteReport::ready(
+                GameId::mhw(),
+                GamePrerequisiteSummaryStatus::Warning,
+                vec![GamePrerequisiteItem::new(
+                    "crc_bypass",
+                    "CRCBypass",
+                    GamePrerequisiteItemStatus::InstalledUnverified,
+                )],
+            )),
+            repository,
+        );
+
+        let report = service
+            .get_prerequisite_status(GameId::mhw())
+            .expect("report should load");
+
+        assert_eq!(
+            report.summary_status,
+            Some(GamePrerequisiteSummaryStatus::Warning)
+        );
+        assert_eq!(report.items.len(), 1);
+        assert_eq!(report.items[0].id, "crc_bypass");
     }
 
     #[test]
@@ -727,7 +834,10 @@ mod tests {
             .auto_detect_game_directory(GameId::mhw())
             .expect("valid candidate should auto-save");
 
-        assert_eq!(detection.outcome, GameAutoDetectionOutcome::DetectedAndSaved);
+        assert_eq!(
+            detection.outcome,
+            GameAutoDetectionOutcome::DetectedAndSaved
+        );
         assert_eq!(detection.candidate_count, 2);
         assert_eq!(detection.status.status, GameDirectoryStatus::Configured);
         assert_eq!(
@@ -755,7 +865,10 @@ mod tests {
 
         assert_eq!(detection.outcome, GameAutoDetectionOutcome::NotFound);
         assert_eq!(detection.candidate_count, 0);
-        assert_eq!(detection.error_code, Some(GameSetupErrorCode::DirectoryNotFound));
+        assert_eq!(
+            detection.error_code,
+            Some(GameSetupErrorCode::DirectoryNotFound)
+        );
         assert_eq!(detection.status.status, GameDirectoryStatus::NotConfigured);
         assert!(repository
             .load_game_instance(&GameId::mhw())
@@ -807,7 +920,10 @@ mod tests {
             GameAutoDetectionOutcome::InvalidCandidate
         );
         assert_eq!(detection.candidate_count, 1);
-        assert_eq!(detection.error_code, Some(GameSetupErrorCode::MissingExecutable));
+        assert_eq!(
+            detection.error_code,
+            Some(GameSetupErrorCode::MissingExecutable)
+        );
         assert_eq!(detection.status.status, GameDirectoryStatus::NotConfigured);
         assert!(repository
             .load_game_instance(&GameId::mhw())

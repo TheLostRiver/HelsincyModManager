@@ -1,0 +1,193 @@
+import { AlertTriangle, CheckCircle2, CircleAlert, RefreshCw } from "lucide-react";
+import type {
+  GamePrerequisiteIssueCode,
+  GamePrerequisiteItemStatus,
+  GamePrerequisiteLoadState,
+  GamePrerequisiteSummaryStatus,
+} from "./gamePrerequisiteTypes";
+
+type GamePrerequisitePanelProps = {
+  state: GamePrerequisiteLoadState;
+  onRefresh: () => Promise<void>;
+};
+
+export function GamePrerequisitePanel({ state, onRefresh }: GamePrerequisitePanelProps) {
+  const summary = summaryCopyForState(state);
+  const SummaryIcon = summary.icon;
+
+  return (
+    <section className="game-prerequisite-panel" aria-labelledby="game-prerequisite-title">
+      <div className="game-prerequisite-panel__toolbar">
+        <div className="game-prerequisite-panel__heading">
+          <span className={`game-prerequisite-summary ${summary.tone}`}>
+            <SummaryIcon size={14} aria-hidden="true" />
+            {summary.label}
+          </span>
+          <h4 id="game-prerequisite-title">前置环境</h4>
+          <p>{summary.description}</p>
+        </div>
+        <button
+          type="button"
+          className="game-prerequisite-panel__refresh"
+          disabled={state.status === "loading"}
+          onClick={() => void onRefresh()}
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+          重新检查
+        </button>
+      </div>
+
+      {state.status === "loading" ? (
+        <p className="game-prerequisite-note" role="status">
+          正在检查前置环境…
+        </p>
+      ) : null}
+
+      {state.status === "not_configured" ? (
+        <p className="game-prerequisite-note">配置游戏目录后即可检查前置环境。</p>
+      ) : null}
+
+      {state.status === "game_directory_invalid" || state.status === "rules_unavailable" ? (
+        <div className="game-prerequisite-note" role="status">
+          <strong>{state.status === "rules_unavailable" ? "暂时无法读取前置规则。" : "游戏目录当前不可用。"}</strong>
+          <span>{state.message}</span>
+        </div>
+      ) : null}
+
+      {state.status === "ready" ? (
+        <div className="game-prerequisite-list">
+          {state.items.map((item) => (
+            <article key={item.id} className={`game-prerequisite-item ${statusClassName(item.status)}`}>
+              <div className="game-prerequisite-item__top">
+                <strong>{item.displayName}</strong>
+                <span className="game-prerequisite-item__status">{statusLabel(item.status)}</span>
+              </div>
+              {item.issues.length > 0 ? (
+                <ul className="game-prerequisite-issues">
+                  {item.issues.map((issue) => (
+                    <li key={`${item.id}-${issue.code}-${issue.path}`}>
+                      <code>{issue.path}</code>
+                      <span>{issueLabel(issue.code)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="game-prerequisite-item__note">关键文件、配置和已知签名都已通过检查。</p>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function summaryCopyForState(state: GamePrerequisiteLoadState) {
+  if (state.status === "ready") {
+    return summaryCopyForReadyState(state.summaryStatus);
+  }
+
+  if (state.status === "loading") {
+    return {
+      label: "检查中",
+      description: "只读检查当前已配置游戏目录中的已知前置文件。",
+      tone: "is-loading",
+      icon: CircleAlert,
+    };
+  }
+
+  if (state.status === "rules_unavailable") {
+    return {
+      label: "规则不可用",
+      description: "无法完成签名校验，但不会写入游戏目录。",
+      tone: "is-error",
+      icon: AlertTriangle,
+    };
+  }
+
+  if (state.status === "game_directory_invalid") {
+    return {
+      label: "目录失效",
+      description: "请先修正当前保存的游戏目录，再重新检查前置环境。",
+      tone: "is-error",
+      icon: AlertTriangle,
+    };
+  }
+
+  return {
+    label: "等待配置",
+    description: "配置游戏目录后即可检查 Stracker's Loader 和 CRCBypass。",
+    tone: "is-warning",
+    icon: CircleAlert,
+  };
+}
+
+function summaryCopyForReadyState(summaryStatus: GamePrerequisiteSummaryStatus) {
+  switch (summaryStatus) {
+    case "verified":
+      return {
+        label: "已验证",
+        description: "两个已知前置都通过了文件、配置和签名检查。",
+        tone: "is-success",
+        icon: CheckCircle2,
+      };
+    case "warning":
+      return {
+        label: "存在警告",
+        description: "已检测到前置文件，但至少有一个签名不在当前已知集合内。",
+        tone: "is-warning",
+        icon: CircleAlert,
+      };
+    case "error":
+      return {
+        label: "需要处理",
+        description: "至少有一个前置缺失，或关键配置不正确。",
+        tone: "is-error",
+        icon: AlertTriangle,
+      };
+  }
+}
+
+function statusClassName(status: GamePrerequisiteItemStatus) {
+  switch (status) {
+    case "missing":
+    case "misconfigured":
+      return "is-error";
+    case "installed_unverified":
+      return "is-warning";
+    case "installed_verified":
+      return "is-success";
+  }
+}
+
+function statusLabel(status: GamePrerequisiteItemStatus) {
+  switch (status) {
+    case "missing":
+      return "缺少必需文件";
+    case "misconfigured":
+      return "配置不正确";
+    case "installed_verified":
+      return "已安装，版本已验证";
+    case "installed_unverified":
+      return "已安装，但版本未验证";
+  }
+}
+
+function issueLabel(code: GamePrerequisiteIssueCode) {
+  switch (code) {
+    case "missing_required_file":
+      return "缺少必需文件";
+    case "signature_unverified":
+      return "签名未命中当前已知集合";
+    case "config_read_failed":
+      return "配置文件无法读取";
+    case "config_invalid_json":
+      return "配置文件不是有效 JSON";
+    case "config_field_mismatch":
+      return "关键字段未满足 enablePluginLoader = true";
+    case "rules_unavailable":
+      return "规则暂不可用";
+    case "rules_corrupted":
+      return "规则文件已损坏";
+  }
+}

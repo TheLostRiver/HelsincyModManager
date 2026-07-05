@@ -1396,6 +1396,7 @@ version = "0.1.0-alpha.0"
 dependencies = [
  "hmm-core",
  "hmm-ports",
+ "serde_json",
 ]
 
 [[package]]
