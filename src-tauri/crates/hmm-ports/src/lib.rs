@@ -4,6 +4,7 @@ mod cancellation;
 mod category;
 mod diagnostics_environment;
 mod game_launch;
+mod game_prerequisites;
 mod game_setup;
 mod install;
 mod mod_import;
@@ -25,6 +26,13 @@ pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use game_launch::{
     GameLaunchError, GameLaunchMethod, GameLaunchReceipt, GameLaunchRunner, GameLauncher,
+};
+pub use game_prerequisites::{
+    summarize_prerequisite_items, GamePrerequisiteIssue, GamePrerequisiteIssueCode,
+    GamePrerequisiteItem, GamePrerequisiteItemStatus, GamePrerequisiteJsonCheckRule,
+    GamePrerequisiteReport, GamePrerequisiteReportState, GamePrerequisiteRule,
+    GamePrerequisiteRuleRepository, GamePrerequisiteRuleRepositoryError,
+    GamePrerequisiteRuleSet, GamePrerequisiteSignatureRule, GamePrerequisiteSummaryStatus,
 };
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
