@@ -210,7 +210,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn summarize_items_treats_missing_and_misconfigured_as_error() {
+    fn summarize_items_treats_missing_as_error() {
         let items = vec![
             GamePrerequisiteItem::new(
                 "stracker_loader",
@@ -221,6 +221,27 @@ mod tests {
                 "crc_bypass",
                 "CRCBypass",
                 GamePrerequisiteItemStatus::Missing,
+            ),
+        ];
+
+        assert_eq!(
+            summarize_prerequisite_items(&items),
+            GamePrerequisiteSummaryStatus::Error
+        );
+    }
+
+    #[test]
+    fn summarize_items_treats_misconfigured_as_error() {
+        let items = vec![
+            GamePrerequisiteItem::new(
+                "stracker_loader",
+                "Stracker's Loader",
+                GamePrerequisiteItemStatus::InstalledVerified,
+            ),
+            GamePrerequisiteItem::new(
+                "crc_bypass",
+                "CRCBypass",
+                GamePrerequisiteItemStatus::Misconfigured,
             ),
         ];
 

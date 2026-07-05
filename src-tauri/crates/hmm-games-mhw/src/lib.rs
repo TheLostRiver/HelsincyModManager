@@ -5,7 +5,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     GameAdapter, GameDirectoryProbe, GameLaunchError, GameLaunchMethod, GameLaunchReceipt,
-    GameLaunchRunner, GameLauncher,
+    GameLaunchRunner, GameLauncher, GamePrerequisiteReport, GamePrerequisiteReportState,
 };
 use std::sync::Arc;
 
@@ -107,6 +107,17 @@ impl GameAdapter for MonsterHunterWorldAdapter {
 
         validation
     }
+
+    fn inspect_prerequisites(&self, _probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport {
+        GamePrerequisiteReport {
+            game_id: self.game_id(),
+            state: GamePrerequisiteReportState::RulesUnavailable,
+            summary_status: None,
+            items: Vec::new(),
+            error_code: None,
+            message: Some("prerequisite rules are not wired for MHW yet".to_owned()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -174,6 +185,14 @@ mod tests {
 
         fn is_dir(&self, relative_path: &str) -> bool {
             self.dirs.contains(relative_path)
+        }
+
+        fn read_text_file(&self, _relative_path: &str) -> hmm_ports::PortResult<String> {
+            unreachable!("MHW adapter tests do not read prerequisite text files")
+        }
+
+        fn sha256_hex(&self, _relative_path: &str) -> hmm_ports::PortResult<String> {
+            unreachable!("MHW adapter tests do not hash prerequisite files")
         }
     }
 

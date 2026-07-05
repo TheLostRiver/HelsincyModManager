@@ -356,7 +356,7 @@ mod tests {
     use hmm_core::{GameDirectoryEvidence, GameDirectoryEvidenceKind};
     use hmm_ports::{
         GameCandidate, GameCandidateSource, GameConfigRepositoryResult, GameDirectoryProbe,
-        GameDiscoveryRequest, GameDiscoveryService,
+        GameDiscoveryRequest, GameDiscoveryService, GamePrerequisiteReport,
     };
     use std::path::Path;
     use std::sync::Mutex;
@@ -418,6 +418,14 @@ mod tests {
 
         fn is_dir(&self, _relative_path: &str) -> bool {
             false
+        }
+
+        fn read_text_file(&self, _relative_path: &str) -> anyhow::Result<String> {
+            unreachable!("game setup tests do not read prerequisite text files")
+        }
+
+        fn sha256_hex(&self, _relative_path: &str) -> anyhow::Result<String> {
+            unreachable!("game setup tests do not hash prerequisite files")
         }
     }
 
@@ -485,6 +493,10 @@ mod tests {
                 validation.add_error(GameSetupErrorCode::MissingExecutable);
             }
             validation
+        }
+
+        fn inspect_prerequisites(&self, _probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport {
+            unreachable!("game setup tests do not inspect prerequisites")
         }
     }
 

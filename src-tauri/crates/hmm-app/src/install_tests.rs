@@ -8,7 +8,7 @@ use hmm_ports::{
     InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
     ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, StoredImportPreviewImage,
-    StoredModImportAnalysis, StoredModPackageMetadata,
+    StoredModImportAnalysis, StoredModPackageMetadata, GamePrerequisiteReport,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -1424,6 +1424,10 @@ impl GameAdapter for FakeGameAdapter {
 
     fn validate_directory(&self, _probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation {
         unreachable!("install planning must not probe game directories")
+    }
+
+    fn inspect_prerequisites(&self, _probe: &dyn GameDirectoryProbe) -> GamePrerequisiteReport {
+        unreachable!("install planning must not inspect prerequisites")
     }
 
     fn allowed_install_roots(&self) -> Vec<String> {
