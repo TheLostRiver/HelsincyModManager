@@ -141,7 +141,7 @@ type SaveDirectoryCandidateDto = {
 confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 ```
 
-后端根据短期缓存取回真实路径并重新验证。缓存过期时返回稳定错误，前端重新触发发现流程。
+后端根据短期缓存取回真实路径并重新验证。确认成功后该 pending discovery 会被消费；缓存过期或重复确认时返回稳定错误，前端重新触发发现流程。
 
 ### 4. 已有有效设置不被覆盖
 
@@ -255,6 +255,7 @@ Tauri command 保持薄边界，只做 DTO 映射和调用 app service。真实�
 
 - 前端调用 `confirm_profile_save_directory_candidate`。
 - 后端重新验证并写入 `ProfileSaveSettings`。
+- 后端消费本次 pending discovery，避免同一候选被 replay 重复写入。
 - UI 刷新 settings 和备份按钮状态。
 
 ### 没找到或失败

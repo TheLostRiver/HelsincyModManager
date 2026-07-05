@@ -109,7 +109,7 @@ fn discovery_does_not_overwrite_existing_valid_setting() {
 }
 
 #[test]
-fn discovery_reports_existing_invalid_setting_without_auto_overwrite() {
+fn discovery_reports_scan_failed_when_existing_setting_cannot_be_validated() {
     let harness = Harness::new();
     harness
         .settings_repo
@@ -118,6 +118,34 @@ fn discovery_reports_existing_invalid_setting_without_auto_overwrite() {
         ))
         .unwrap();
     harness.scanner.set_validate_error(true);
+
+    let result = harness.discover_default();
+
+    assert_eq!(result.outcome, SaveDirectoryDiscoveryOutcome::ScanFailed);
+    assert_eq!(
+        result.error_code.as_deref(),
+        Some("save_directory_discovery_scan_failed")
+    );
+    assert_eq!(harness.settings_repo.save_count(), 1);
+}
+
+#[test]
+fn discovery_reports_existing_invalid_for_low_confidence_existing_setting() {
+    let harness = Harness::new();
+    harness
+        .settings_repo
+        .save_settings(&settings_with_save_directory(
+            "C:/Synthetic/Steam/userdata/9999/582010/remote",
+        ))
+        .unwrap();
+    harness
+        .scanner
+        .set_validate_candidate(candidate_with_confidence(
+            "existing-low-confidence",
+            9999,
+            1_500,
+            SaveDirectoryCandidateConfidence::Low,
+        ));
 
     let result = harness.discover_default();
 
@@ -157,7 +185,7 @@ fn discovery_degrades_when_steam_profile_lookup_fails() {
 fn confirm_candidate_revalidates_and_saves_selected_directory() {
     let harness = Harness::new();
     let pending = pending_discovery(11_000, vec![pending_candidate("candidate-a", 1234)]);
-    harness.pending_store.put(pending).unwrap();
+    harness.pending_store.put(pending, 10_000).unwrap();
     harness
         .scanner
         .set_validate_candidate(candidate("candidate-a", 1234, 3_000));
@@ -184,10 +212,39 @@ fn confirm_candidate_revalidates_and_saves_selected_directory() {
 }
 
 #[test]
+fn confirm_candidate_consumes_pending_candidate_after_success() {
+    let harness = Harness::new();
+    let pending = pending_discovery(11_000, vec![pending_candidate("candidate-a", 1234)]);
+    harness.pending_store.put(pending, 10_000).unwrap();
+    harness
+        .scanner
+        .set_validate_candidate(candidate("candidate-a", 1234, 3_000));
+
+    harness
+        .service
+        .confirm_candidate(ConfirmProfileSaveDirectoryCandidateRequest {
+            discovery_id: "discovery-a".to_owned(),
+            candidate_id: "candidate-a".to_owned(),
+        })
+        .expect("first confirmation succeeds");
+
+    let replay_error = harness
+        .service
+        .confirm_candidate(ConfirmProfileSaveDirectoryCandidateRequest {
+            discovery_id: "discovery-a".to_owned(),
+            candidate_id: "candidate-a".to_owned(),
+        })
+        .expect_err("candidate should be single-use");
+
+    assert_eq!(replay_error, SaveDirectoryDiscoveryError::CandidateExpired);
+    assert_eq!(harness.settings_repo.save_count(), 1);
+}
+
+#[test]
 fn confirm_candidate_rejects_expired_candidate() {
     let harness = Harness::new();
     let pending = pending_discovery(1_000, vec![pending_candidate("candidate-a", 1234)]);
-    harness.pending_store.put(pending).unwrap();
+    harness.pending_store.put(pending, 10_000).unwrap();
 
     let error = harness
         .service
@@ -542,7 +599,7 @@ impl FakePendingSaveDirectoryCandidateStore {
 }
 
 impl PendingSaveDirectoryCandidateStore for FakePendingSaveDirectoryCandidateStore {
-    fn put(&self, discovery: PendingSaveDirectoryDiscovery) -> Result<()> {
+    fn put(&self, discovery: PendingSaveDirectoryDiscovery, _now_unix_millis: u128) -> Result<()> {
         let mut discoveries = self.discoveries.lock().unwrap();
         discoveries.retain(|existing| existing.discovery_id != discovery.discovery_id);
         discoveries.push(discovery);
@@ -572,6 +629,33 @@ impl PendingSaveDirectoryCandidateStore for FakePendingSaveDirectoryCandidateSto
                     .cloned()
             }))
     }
+
+    fn consume_candidate(
+        &self,
+        discovery_id: &str,
+        candidate_id: &str,
+        now_unix_millis: u128,
+    ) -> Result<Option<PendingSaveDirectoryCandidate>> {
+        let mut discoveries = self.discoveries.lock().unwrap();
+        discoveries.retain(|discovery| discovery.expires_at_unix_millis > now_unix_millis);
+
+        let candidate = discoveries
+            .iter()
+            .find(|discovery| discovery.discovery_id == discovery_id)
+            .and_then(|discovery| {
+                discovery
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.summary.candidate_id == candidate_id)
+                    .cloned()
+            });
+
+        if candidate.is_some() {
+            discoveries.retain(|discovery| discovery.discovery_id != discovery_id);
+        }
+
+        Ok(candidate)
+    }
 }
 
 struct FixedClock(u128);
@@ -587,13 +671,27 @@ fn candidate(
     account_id_32: u32,
     last_modified_at: u128,
 ) -> ScannedSaveDirectoryCandidate {
+    candidate_with_confidence(
+        candidate_id,
+        account_id_32,
+        last_modified_at,
+        SaveDirectoryCandidateConfidence::High,
+    )
+}
+
+fn candidate_with_confidence(
+    candidate_id: &str,
+    account_id_32: u32,
+    last_modified_at: u128,
+    confidence: SaveDirectoryCandidateConfidence,
+) -> ScannedSaveDirectoryCandidate {
     ScannedSaveDirectoryCandidate {
         candidate_id: candidate_id.to_owned(),
         account_id_32,
         directory: PathBuf::from(format!(
             "C:/Synthetic/Steam/userdata/{account_id_32}/582010/remote"
         )),
-        confidence: SaveDirectoryCandidateConfidence::High,
+        confidence,
         last_modified_at: Some(last_modified_at),
         evidence: vec!["Found MHW:I save file".to_owned()],
         account_label: format!("Steam user ****{account_id_32}"),
