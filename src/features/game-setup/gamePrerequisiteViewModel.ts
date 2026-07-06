@@ -34,7 +34,11 @@ export function mapPrerequisiteReportDto(dto: GamePrerequisiteReportDto): GamePr
 }
 
 function normalizeGameId(value: string): GameId {
-  return value === "mhw" ? "mhw" : "mhw";
+  if (value !== "mhw") {
+    throw new Error(`Unexpected gameId from backend: ${value}`);
+  }
+
+  return value;
 }
 
 function normalizeErrorCode(value: GameSetupErrorCode | null): GameSetupErrorCode {

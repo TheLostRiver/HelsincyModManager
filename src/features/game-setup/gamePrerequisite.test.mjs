@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import ts from "typescript";
 
 function readSource(path) {
   return readFileSync(path, "utf8");
+}
+
+async function importTsModule(path) {
+  const source = readSource(path);
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  });
+
+  return import(`data:text/javascript;charset=utf-8,${encodeURIComponent(outputText)}`);
 }
 
 test("game prerequisite API uses a narrow backend command", () => {
@@ -32,4 +45,21 @@ test("dashboard and settings render the shared prerequisite panel", () => {
   assert.match(panel, /role="status"/);
   assert.match(css, /\.game-prerequisite-panel/);
   assert.match(css, /\.game-prerequisite-item\.is-warning/);
+});
+
+test("game prerequisite view model rejects unexpected backend game ids", async () => {
+  const { mapPrerequisiteReportDto } = await importTsModule("src/features/game-setup/gamePrerequisiteViewModel.ts");
+
+  assert.throws(
+    () =>
+      mapPrerequisiteReportDto({
+        gameId: "rise",
+        state: "ready",
+        summaryStatus: "verified",
+        items: [],
+        errorCode: null,
+        message: null,
+      }),
+    /Unexpected gameId from backend: rise/,
+  );
 });
