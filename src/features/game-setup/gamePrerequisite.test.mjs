@@ -41,9 +41,15 @@ test("dashboard and settings render the shared prerequisite panel", () => {
   assert.match(dashboard, /useGamePrerequisites/);
   assert.match(hero, /<GamePrerequisitePanel/);
   assert.match(settings, /<GamePrerequisitePanel/);
+  assert.match(settings, /variant="embedded"/);
+  assert.match(panel, /variant === "embedded"/);
+  assert.match(panel, /game-prerequisite-panel--embedded/);
+  assert.match(panel, /game-prerequisite-panel__content/);
   assert.match(panel, /installed_unverified/);
   assert.match(panel, /role="status"/);
   assert.match(css, /\.game-prerequisite-panel/);
+  assert.match(css, /\.game-prerequisite-panel--embedded/);
+  assert.match(css, /\.game-prerequisite-panel__content/);
   assert.match(css, /\.game-prerequisite-item\.is-warning/);
 });
 
