@@ -1,25 +1,30 @@
 .game-prerequisite-panel {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 
 .game-prerequisite-panel__toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 14px;
 }
 
 .game-prerequisite-panel__heading {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.game-prerequisite-panel__summary-copy {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
 .game-prerequisite-panel__heading h4,
-.game-prerequisite-panel__heading p,
+.game-prerequisite-panel__summary-copy p,
 .game-prerequisite-note strong,
 .game-prerequisite-note span,
 .game-prerequisite-item__note {
@@ -28,15 +33,15 @@
 
 .game-prerequisite-panel__heading h4 {
   color: var(--color-text);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
 }
 
-.game-prerequisite-panel__heading p,
+.game-prerequisite-panel__summary-copy p,
 .game-prerequisite-note,
 .game-prerequisite-item__note {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -107,27 +112,96 @@
   outline-offset: 2px;
 }
 
+.game-prerequisite-panel__content {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, var(--color-surface-subtle), color-mix(in srgb, var(--color-surface-subtle) 55%, var(--color-surface)));
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+}
+
+.game-prerequisite-panel--embedded {
+  gap: 12px;
+  padding: 16px 20px 18px;
+}
+
+.game-prerequisite-panel--embedded .game-prerequisite-panel__content {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.game-prerequisite-panel--embedded .game-prerequisite-panel__heading {
+  gap: 6px;
+}
+
+.game-prerequisite-panel--embedded .game-prerequisite-panel__summary-copy p {
+  font-size: 12px;
+}
+
 .game-prerequisite-note {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 12px;
+}
+
+.game-prerequisite-note.is-warning,
+.game-prerequisite-note.is-loading {
+  border-color: color-mix(in srgb, var(--color-warning-text) 18%, var(--color-border-muted));
+  background: color-mix(in srgb, var(--color-warning-bg) 40%, var(--color-surface));
+}
+
+.game-prerequisite-note.is-error {
+  border-color: color-mix(in srgb, var(--color-danger-text) 18%, var(--color-border-muted));
+  background: color-mix(in srgb, var(--color-danger-bg) 48%, var(--color-surface));
+}
+
+.game-prerequisite-note strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.game-prerequisite-note span {
+  overflow-wrap: anywhere;
 }
 
 .game-prerequisite-list {
   display: grid;
-  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
 }
 
 .game-prerequisite-item {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  padding: 12px 0;
-  border-top: 1px solid var(--color-border-muted);
+  align-content: start;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 12px;
 }
 
-.game-prerequisite-item:first-child {
-  padding-top: 0;
-  border-top: none;
+.game-prerequisite-item.is-success {
+  border-color: color-mix(in srgb, var(--color-success-text) 16%, var(--color-border-muted));
+  background: color-mix(in srgb, var(--color-success-bg) 32%, var(--color-surface));
+}
+
+.game-prerequisite-item.is-warning {
+  border-color: color-mix(in srgb, var(--color-warning-text) 16%, var(--color-border-muted));
+  background: color-mix(in srgb, var(--color-warning-bg) 32%, var(--color-surface));
+}
+
+.game-prerequisite-item.is-error {
+  border-color: color-mix(in srgb, var(--color-danger-text) 16%, var(--color-border-muted));
+  background: color-mix(in srgb, var(--color-danger-bg) 32%, var(--color-surface));
 }
 
 .game-prerequisite-item__top {
@@ -137,30 +211,48 @@
   gap: 12px;
 }
 
-.game-prerequisite-item__top strong {
+.game-prerequisite-item__title {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.game-prerequisite-item__title strong {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .game-prerequisite-item__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  font-size: 12px;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
   font-weight: 700;
-  text-align: right;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  background: var(--color-surface);
 }
 
 .game-prerequisite-item.is-success .game-prerequisite-item__status {
   color: var(--color-success-text);
+  background: var(--color-success-bg);
 }
 
 .game-prerequisite-item.is-warning .game-prerequisite-item__status {
   color: var(--color-warning-text);
+  background: var(--color-warning-bg);
 }
 
 .game-prerequisite-item.is-error .game-prerequisite-item__status {
   color: var(--color-danger-text);
+  background: var(--color-danger-bg);
 }
 
 .game-prerequisite-issues {
@@ -198,7 +290,22 @@
   overflow-wrap: anywhere;
 }
 
+@media (max-width: 720px) {
+  .game-prerequisite-panel__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .game-prerequisite-panel__refresh {
+    justify-self: start;
+  }
+}
+
 @media (max-width: 600px) {
+  .game-prerequisite-panel__content,
+  .game-prerequisite-panel--embedded {
+    padding: 14px;
+  }
+
   .game-prerequisite-item__top {
     flex-direction: column;
     align-items: start;
@@ -206,6 +313,7 @@
 
   .game-prerequisite-item__status {
     text-align: left;
+    white-space: normal;
   }
 
   .game-prerequisite-issues li {

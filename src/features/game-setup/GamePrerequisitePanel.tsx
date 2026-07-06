@@ -9,22 +9,34 @@ import type {
 type GamePrerequisitePanelProps = {
   state: GamePrerequisiteLoadState;
   onRefresh: () => Promise<void>;
+  variant?: "default" | "embedded";
 };
 
-export function GamePrerequisitePanel({ state, onRefresh }: GamePrerequisitePanelProps) {
+export function GamePrerequisitePanel({
+  state,
+  onRefresh,
+  variant = "default",
+}: GamePrerequisitePanelProps) {
   const summary = summaryCopyForState(state);
   const SummaryIcon = summary.icon;
+  const isEmbedded = variant === "embedded";
 
   return (
-    <section className="game-prerequisite-panel" aria-labelledby="game-prerequisite-title">
+    <section
+      className={`game-prerequisite-panel${isEmbedded ? " game-prerequisite-panel--embedded" : ""}`}
+      aria-label={isEmbedded ? "前置环境" : undefined}
+      aria-labelledby={isEmbedded ? undefined : "game-prerequisite-title"}
+    >
       <div className="game-prerequisite-panel__toolbar">
         <div className="game-prerequisite-panel__heading">
           <span className={`game-prerequisite-summary ${summary.tone}`}>
             <SummaryIcon size={14} aria-hidden="true" />
             {summary.label}
           </span>
-          <h4 id="game-prerequisite-title">前置环境</h4>
-          <p>{summary.description}</p>
+          <div className="game-prerequisite-panel__summary-copy">
+            {variant === "embedded" ? null : <h4 id="game-prerequisite-title">前置环境</h4>}
+            <p>{summary.description}</p>
+          </div>
         </div>
         <button
           type="button"
@@ -37,47 +49,54 @@ export function GamePrerequisitePanel({ state, onRefresh }: GamePrerequisitePane
         </button>
       </div>
 
-      {state.status === "loading" ? (
-        <p className="game-prerequisite-note" role="status">
-          正在检查前置环境…
-        </p>
-      ) : null}
+      <div className="game-prerequisite-panel__content">
+        {state.status === "loading" ? (
+          <div className={`game-prerequisite-note ${summary.tone}`} role="status">
+            <span>正在检查前置环境…</span>
+          </div>
+        ) : null}
 
-      {state.status === "not_configured" ? (
-        <p className="game-prerequisite-note">配置游戏目录后即可检查前置环境。</p>
-      ) : null}
+        {state.status === "not_configured" ? (
+          <div className={`game-prerequisite-note ${summary.tone}`}>
+            <span>配置游戏目录后即可检查前置环境。</span>
+          </div>
+        ) : null}
 
-      {state.status === "game_directory_invalid" || state.status === "rules_unavailable" ? (
-        <div className="game-prerequisite-note" role="status">
-          <strong>{state.status === "rules_unavailable" ? "暂时无法读取前置规则。" : "游戏目录当前不可用。"}</strong>
-          <span>{state.message}</span>
-        </div>
-      ) : null}
+        {state.status === "game_directory_invalid" || state.status === "rules_unavailable" ? (
+          <div className={`game-prerequisite-note ${summary.tone}`} role="status">
+            <strong>{state.status === "rules_unavailable" ? "暂时无法读取前置规则。" : "游戏目录当前不可用。"}</strong>
+            <span>{state.message}</span>
+          </div>
+        ) : null}
 
-      {state.status === "ready" ? (
-        <div className="game-prerequisite-list">
-          {state.items.map((item) => (
-            <article key={item.id} className={`game-prerequisite-item ${statusClassName(item.status)}`}>
-              <div className="game-prerequisite-item__top">
-                <strong>{item.displayName}</strong>
-                <span className="game-prerequisite-item__status">{statusLabel(item.status)}</span>
-              </div>
-              {item.issues.length > 0 ? (
-                <ul className="game-prerequisite-issues">
-                  {item.issues.map((issue) => (
-                    <li key={`${item.id}-${issue.code}-${issue.path}`}>
-                      <code>{issue.path}</code>
-                      <span>{issueLabel(issue.code)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="game-prerequisite-item__note">关键文件、配置和已知签名都已通过检查。</p>
-              )}
-            </article>
-          ))}
-        </div>
-      ) : null}
+        {state.status === "ready" ? (
+          <div className="game-prerequisite-list">
+            {state.items.map((item) => (
+              <article key={item.id} className={`game-prerequisite-item ${statusClassName(item.status)}`}>
+                <div className="game-prerequisite-item__top">
+                  <div className="game-prerequisite-item__title">
+                    <strong>{item.displayName}</strong>
+                    {item.issues.length === 0 ? (
+                      <p className="game-prerequisite-item__note">关键文件、配置和已知签名都已通过检查。</p>
+                    ) : null}
+                  </div>
+                  <span className="game-prerequisite-item__status">{statusLabel(item.status)}</span>
+                </div>
+                {item.issues.length > 0 ? (
+                  <ul className="game-prerequisite-issues">
+                    {item.issues.map((issue) => (
+                      <li key={`${item.id}-${issue.code}-${issue.path}`}>
+                        <code>{issue.path}</code>
+                        <span>{issueLabel(issue.code)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }

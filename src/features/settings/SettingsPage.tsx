@@ -171,7 +171,7 @@ export function SettingsPage() {
           description="只读检查当前已配置游戏目录中的 Stracker's Loader 与 CRCBypass，不访问测试目录。"
           icon={ShieldCheck}
         >
-          <GamePrerequisitePanel state={prerequisites.state} onRefresh={prerequisites.refresh} />
+          <GamePrerequisitePanel state={prerequisites.state} onRefresh={prerequisites.refresh} variant="embedded" />
         </SettingsSection>
 
         <SettingsSection
