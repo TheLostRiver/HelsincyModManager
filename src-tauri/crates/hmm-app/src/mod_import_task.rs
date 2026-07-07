@@ -98,6 +98,9 @@ impl From<TaskManagerError> for ModImportTaskError {
             TaskManagerError::TaskCannotTransition { .. } => {
                 Self::TaskRegistrationFailed(error.to_string())
             }
+            TaskManagerError::TaskScopeBusy { .. } => {
+                Self::TaskRegistrationFailed(error.to_string())
+            }
             TaskManagerError::TaskStoreUnavailable => {
                 Self::TaskRegistrationFailed(error.to_string())
             }

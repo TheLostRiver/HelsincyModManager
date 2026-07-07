@@ -10,10 +10,27 @@ export type ListProfileSaveBackupsInput = {
   limit?: number | null;
 };
 
+export type CheckProfileAutoSaveBackupInput = {
+  gameId: string;
+  profileId: string;
+};
+
 export type TaskStartedDto = {
   taskId: string;
   kind: "save_backup";
   status: "queued";
+};
+
+export type ProfileAutoSaveBackupCheckDto = {
+  gameId: string;
+  profileId: string;
+  clientRuntimeOnly: true;
+  status: "manual_only" | "not_due" | "due";
+  checkedAt: number;
+  lastDueAt: number | null;
+  nextDueAt: number | null;
+  lastAutoBackupAt: number | null;
+  startedTask: TaskStartedDto | null;
 };
 
 export type SaveBackupSummaryDto = {

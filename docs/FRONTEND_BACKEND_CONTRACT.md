@@ -55,7 +55,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
-- Profile 存档备份：`start_save_backup_task`、`list_save_backups`
+- Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`
 - Profile 存档目录发现：`discover_profile_save_directories`、`confirm_profile_save_directory_candidate`
 - 游戏启动：`launch_game(gameId)`
 - 查询安装恢复摘要：`scan_install_recovery`
@@ -492,14 +492,18 @@ Profile 存档备份命令：
 ```text
 start_save_backup_task({ request: { gameId, profileId, note? } })
 list_save_backups({ request: { gameId, profileId, limit? } })
+check_auto_save_backup({ request: { gameId, profileId } })
 ```
 
 边界：
 
 - `start_save_backup_task` 是手动存档备份的长任务入口，返回 `TaskStartedDto`；前端按 `taskId` 监听 `save_backup.*` phase。
 - `list_save_backups` 只查询后端持久化的备份历史摘要，用于 Profile 页面或后续备份中心刷新历史。
+- `check_auto_save_backup` 是客户端运行期/启动时的自动备份检查入口；它根据后端持久化的 Profile 存档设置和备份历史判断当前计划是否到期。若到期，后端会以 `trigger = "auto"` 复用存档备份任务链路并返回 `startedTask`。
 - 前端只能传递 `gameId`、`profileId`、可选 `note` 和可选 `limit`；不得传入存档源路径、备份根目录、文件名、manifest 正文、文件列表、hash、sandbox/cache 路径或 backup ref。
 - Tauri command 只做 DTO 映射和 app service 转发；目录解析、默认备份目录、自选根目录子目录、压缩、manifest、SQLite 历史、保留策略和审计均由后端服务处理。
+- 同一 `gameId + profileId` 同时只允许一个存档备份任务处于 queued/running 范围；重复启动会返回稳定错误码 `task_scope_busy`，避免自动检查和手动按钮并发写同一份存档。
+- 当前 `check_auto_save_backup` 返回 `clientRuntimeOnly: true`，表示本切片只在主客户端/Tauri 运行期间检查计划；退出主客户端后的后台保障尚未启用，不能作为后台守护或系统计划任务的完成语义。
 
 DTO 形状：
 
@@ -523,9 +527,21 @@ type SaveBackupSummaryDto = {
   sourcePathLabel: string | null;
   notes: string | null;
 };
+
+type ProfileAutoSaveBackupCheckDto = {
+  gameId: string;
+  profileId: string;
+  clientRuntimeOnly: true;
+  status: "manual_only" | "not_due" | "due";
+  checkedAt: number;
+  lastDueAt: number | null;
+  nextDueAt: number | null;
+  lastAutoBackupAt: number | null;
+  startedTask: TaskStartedDto | null;
+};
 ```
 
-`SaveBackupSummaryDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表或真实存档内容。
+`SaveBackupSummaryDto` 和 `ProfileAutoSaveBackupCheckDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表或真实存档内容。
 
 ### 4. 游戏启动
 

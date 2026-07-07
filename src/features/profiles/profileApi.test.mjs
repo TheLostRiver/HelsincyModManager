@@ -77,13 +77,19 @@ test("profile save backup API invokes task and history commands without filesyst
   assert.match(source, /listProfileSaveBackups\(input:\s*ListProfileSaveBackupsInput\)/);
   assert.match(source, /invoke<SaveBackupSummaryDto\[\]>\("list_save_backups",\s*\{/);
   assert.match(source, /limit:\s*input\.limit/);
+  assert.match(source, /checkProfileAutoSaveBackup\(input:\s*CheckProfileAutoSaveBackupInput\)/);
+  assert.match(source, /invoke<ProfileAutoSaveBackupCheckDto>\("check_auto_save_backup",\s*\{/);
   assert.doesNotMatch(source, /path|root|manifest|backupRef|sandbox|cache|hash/i);
 
   assert.match(typesSource, /export type StartProfileSaveBackupInput = \{/);
   assert.match(typesSource, /export type ListProfileSaveBackupsInput = \{/);
+  assert.match(typesSource, /export type CheckProfileAutoSaveBackupInput = \{/);
   assert.match(typesSource, /export type TaskStartedDto = \{/);
   assert.match(typesSource, /kind:\s*"save_backup"/);
   assert.match(typesSource, /status:\s*"queued"/);
+  assert.match(typesSource, /export type ProfileAutoSaveBackupCheckDto = \{/);
+  assert.match(typesSource, /clientRuntimeOnly:\s*true/);
+  assert.match(typesSource, /startedTask:\s*TaskStartedDto\s*\|\s*null/);
   assert.match(typesSource, /export type SaveBackupSummaryDto = \{/);
   assert.match(typesSource, /trigger:\s*"manual" \| "auto" \| "pre_install"/);
   assert.match(typesSource, /status:\s*"completed" \| "deleted_by_retention" \| "missing" \| "invalid"/);
