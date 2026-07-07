@@ -232,6 +232,8 @@ export function ProfilePage() {
   const [manualBackupNotice, setManualBackupNotice] = useState<ManualBackupNotice | null>(null);
   const [autoBackupCheckState, setAutoBackupCheckState] = useState<AutoBackupCheckState>({ status: "idle" });
   const [autoBackupCheckRefreshToken, setAutoBackupCheckRefreshToken] = useState(0);
+  const previewAutoBackupSettings =
+    previewMode && settingsState.status === "ready" ? settingsState.settings : null;
 
   const attachStartedSaveBackupTask = useCallback((task: TaskStartedDto) => {
     const initialTaskState: ProfileSaveBackupTaskState = {
@@ -405,7 +407,11 @@ export function ProfilePage() {
     setAutoBackupCheckState({ status: "checking" });
 
     if (previewMode) {
-      setAutoBackupCheckState(createPreviewAutoBackupCheckState(CURRENT_GAME_ID, selectedProfileId, settingsState.settings));
+      if (!previewAutoBackupSettings) {
+        setAutoBackupCheckState({ status: "idle" });
+        return;
+      }
+      setAutoBackupCheckState(createPreviewAutoBackupCheckState(CURRENT_GAME_ID, selectedProfileId, previewAutoBackupSettings));
       return;
     }
 
@@ -430,7 +436,14 @@ export function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [attachStartedSaveBackupTask, autoBackupCheckRefreshToken, previewMode, selectedProfileId, settingsState]);
+  }, [
+    attachStartedSaveBackupTask,
+    autoBackupCheckRefreshToken,
+    previewAutoBackupSettings,
+    previewMode,
+    selectedProfileId,
+    settingsState.status,
+  ]);
 
   useEffect(() => {
     if (previewMode) return undefined;
