@@ -79,46 +79,48 @@ export function SaveDirectoryPanel({
 
   return (
     <section className={`profile-directory-console ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-save-directories-title">
-      <div className="profile-directory-console__header panel-header-row">
-        <div>
-          <h2 id="profile-save-directories-title">存档目录</h2>
-          <span>Save source and backup target</span>
+      <div className="profile-directory-summary">
+        <div className="profile-directory-summary__header">
+          <span className="profile-directory-summary__icon" aria-hidden="true">
+            <HardDrive size={15} />
+          </span>
+          <div>
+            <h2 id="profile-save-directories-title">存档路径</h2>
+            <span>源目录 / 备份目录</span>
+          </div>
         </div>
-        <HardDrive size={18} aria-hidden="true" />
-      </div>
 
-      <div className="profile-directory-grid paths-setup-grid">
-        <DirectoryCard
-          icon={<FolderOpen size={20} />}
-          label="游戏存档目录"
-          selection={settings.saveDirectory}
-          actionLabel={busyKind === "saveDirectory" ? "校验中..." : "选择路径"}
-          disabled={disabled || busyKind !== null || autoDetecting}
-          primaryAction={!hasDiscoveryCandidates}
-          extraAction={
-            onAutoDetect ? (
-              <button
-                type="button"
-                className={`profile-action-button ${hasDiscoveryCandidates ? "is-primary" : ""}`}
-                disabled={disabled || busyKind !== null || autoDetecting}
-                onClick={onAutoDetect}
-              >
-                <Search size={14} />
-                {autoDetecting ? "检测中..." : "自动检测"}
-              </button>
-            ) : null
-          }
-          onChoose={() => void chooseDirectory("saveDirectory")}
-        />
-        <DirectoryCard
-          icon={<Archive size={20} />}
-          label="备份存档目录"
-          selection={settings.backupDirectory}
-          actionLabel={busyKind === "backupDirectory" ? "校验中..." : "选择路径"}
-          disabled={disabled || busyKind !== null}
-          primaryAction
-          onChoose={() => void chooseDirectory("backupDirectory")}
-        />
+        <div className="profile-directory-summary__rows">
+          <DirectoryRow
+            icon={<FolderOpen size={15} />}
+            label="游戏存档"
+            selection={settings.saveDirectory}
+            actionLabel={busyKind === "saveDirectory" ? "校验中" : "选择"}
+            disabled={disabled || busyKind !== null || autoDetecting}
+            extraAction={
+              onAutoDetect ? (
+                <button
+                  type="button"
+                  className={`profile-directory-row__button ${hasDiscoveryCandidates ? "is-primary" : ""}`}
+                  disabled={disabled || busyKind !== null || autoDetecting}
+                  onClick={onAutoDetect}
+                >
+                  <Search size={13} />
+                  {autoDetecting ? "检测中" : "自动检测"}
+                </button>
+              ) : null
+            }
+            onChoose={() => void chooseDirectory("saveDirectory")}
+          />
+          <DirectoryRow
+            icon={<Archive size={15} />}
+            label="备份目录"
+            selection={settings.backupDirectory}
+            actionLabel={busyKind === "backupDirectory" ? "校验中" : "选择"}
+            disabled={disabled || busyKind !== null}
+            onChoose={() => void chooseDirectory("backupDirectory")}
+          />
+        </div>
       </div>
 
       {error ? (
@@ -131,13 +133,12 @@ export function SaveDirectoryPanel({
   );
 }
 
-function DirectoryCard({
+function DirectoryRow({
   icon,
   label,
   selection,
   actionLabel,
   disabled,
-  primaryAction = true,
   extraAction,
   onChoose,
 }: {
@@ -146,39 +147,31 @@ function DirectoryCard({
   selection: ProfileDirectorySelectionDto;
   actionLabel: string;
   disabled: boolean;
-  primaryAction?: boolean;
   extraAction?: ReactNode;
   onChoose: () => void;
 }) {
   const status = formatDirectoryStatus(selection);
 
   return (
-    <div className={`profile-directory-card path-card status-${status.tone}`}>
-      <div className="profile-directory-card__header path-card-top">
-        <span className="profile-directory-card__icon path-icon-container" aria-hidden="true">
-          {icon}
-        </span>
-        <div className="profile-directory-card__body path-card-details">
-          <span>{label}</span>
-          <strong className="profile-directory-card__path" title={status.label || "未选择"}>
-            {status.label || "未选择"}
-          </strong>
-        </div>
+    <div className={`profile-directory-row is-${status.tone}`}>
+      <span className="profile-directory-row__icon" aria-hidden="true">
+        {icon}
+      </span>
+      <div className="profile-directory-row__copy">
+        <span>{label}</span>
+        <strong className="profile-directory-row__path" title={status.label || "未选择"}>
+          {status.label || "未选择"}
+        </strong>
       </div>
 
-      <div className="profile-directory-card__footer path-card-footer">
-        <span className={`profile-status-pill path-badge is-${status.tone}`}>
+      <div className="profile-directory-row__actions">
+        <span className={`profile-status-pill profile-directory-row__status is-${status.tone}`}>
           {status.tone === "success" ? <CheckCircle2 size={13} /> : null}
           {selection.status}
         </span>
-        {selection.messages.length > 0 ? (
-          <small className="profile-directory-card__msg">{selection.messages[0]}</small>
-        ) : (
-          <small className="profile-directory-card__msg-placeholder">&nbsp;</small>
-        )}
         <button
           type="button"
-          className={`profile-action-button ${primaryAction ? "is-primary" : ""}`}
+          className="profile-directory-row__button"
           disabled={disabled}
           onClick={onChoose}
         >
