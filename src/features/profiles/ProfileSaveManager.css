@@ -249,25 +249,10 @@
   font-weight: 600;
 }
 
-.profile-page__summary.header-status-deck {
+.profile-page__actions.header-status-deck {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-}
-
-.profile-page__summary.header-status-deck .profile-metric {
-  min-width: 76px;
-  padding: 6px 12px;
-  border-radius: var(--radius-pill);
-  box-shadow: none;
-}
-
-.profile-page__summary.header-status-deck .profile-metric span {
-  font-size: 10px;
-}
-
-.profile-page__summary.header-status-deck .profile-metric strong {
-  font-size: 13px;
 }
 
 .profile-workspace {
@@ -374,64 +359,10 @@
   overflow: hidden;
 }
 
-.profile-overview.profile-info-deck {
-  display: flex;
-  grid-template-columns: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 0 0 20px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--profile-console-border);
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.profile-overview.profile-info-deck::after {
-  content: none;
-}
-
-.profile-overview__identity {
-  gap: 14px;
-}
-
-.profile-overview__mark {
-  width: 46px;
-  height: 46px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 62%, #60a5fa));
-  border: 0;
-}
-
-.profile-overview__identity h2 {
-  font-size: 20px;
-}
-
-.profile-overview__right {
-  flex: 0 1 auto;
-  justify-content: flex-end;
-  width: auto;
-  padding-top: 0;
-  border-top: 0;
-}
-
-.profile-overview__facts {
-  display: none;
-}
-
-.profile-toolbar-save-box {
-  padding: 8px 10px;
-  background: var(--profile-console-card-soft);
-  border-color: var(--profile-console-border);
-  border-radius: var(--radius-inner);
-  box-shadow: none;
-}
-
 .profile-directory-console {
   display: grid;
   gap: 16px;
-  padding-top: 20px;
+  padding-top: 0;
 }
 
 .profile-directory-console__header {
@@ -816,12 +747,7 @@
     grid-template-columns: 1fr;
   }
 
-  .profile-page__header,
-  .profile-overview.profile-info-deck {
+  .profile-page__header {
     align-items: stretch;
-  }
-
-  .profile-overview.profile-info-deck {
-    display: grid;
   }
 }
