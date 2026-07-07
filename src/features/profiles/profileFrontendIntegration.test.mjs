@@ -156,18 +156,28 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(directorySource, /profile-directory-grid/);
   assert.match(directorySource, /profile-directory-card__path/);
   assert.doesNotMatch(pageSource, /directory-flow-connector|directory-flow-badge|directory-flow-line/);
-  assert.match(pageSource, /profile-overview__right/);
-  assert.match(pageSource, /profile-toolbar-save-box/);
+  assert.match(pageSource, /ProfileHeaderSaveAction/);
+  assert.match(pageSource, /className="profile-page__actions/);
+  assert.match(pageSource, /className=\{`profile-header-save-action/);
+  assert.match(pageSource, /onSave=\{\(\) => void saveSettings\(\)\}/);
+  assert.doesNotMatch(pageSource, /function ProfileOverview|function ProfileMetric/);
+  assert.doesNotMatch(pageSource, /profile-overview|profile-toolbar-save-box|profile-metric/);
   assert.match(pageSource, /profile-save-manager-deck/);
   assert.match(pageSource, /ActiveSavePanel/);
   assert.match(pageSource, /BackupHistoryPanel/);
+  assert.doesNotMatch(pageSource, /存档沙盒隔离|安装 Mod 前备份|自动归档计划/);
+  assert.doesNotMatch(pageSource, /profile-policy-flags|PolicyFlag/);
   assert.match(pickerSource, /schedule-chip/);
   assert.match(pickerSource, /scroll-picker-arrow/);
 
   assert.match(css, /:root\[data-color-scheme="light"\]\s+\.profile-page/);
   assert.match(css, /:root\[data-color-scheme="dark"\]\s+\.profile-page/);
+  assert.match(css, /\.profile-header-save-action/);
+  assert.doesNotMatch(css, /profile-overview|profile-toolbar-save-box|profile-metric/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck/);
   assert.match(saveManagerCss, /\.active-save-banner/);
+  assert.doesNotMatch(saveManagerCss, /profile-overview|profile-toolbar-save-box|profile-metric/);
+  assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
   assert.match(saveManagerCss, /\.profile-backup-table/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
   assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card\s*\{[\s\S]*?z-index:\s*20/);
@@ -176,6 +186,34 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(saveManagerCss, /\.profile-history-card\.history-card\s*\{[\s\S]*?z-index:\s*1/);
   assert.doesNotMatch(css, /directory-flow-connector|directory-flow-badge|directory-flow-line/);
   assert.doesNotMatch(css, /\.profile-save-bar\s*\{[^}]*display:\s*none/);
+});
+
+test("profile page wires manual save backup execution, progress, and history refresh", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const taskStateSource = readSource("src/features/profiles/profileSaveBackupTaskState.ts");
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+  const startBackupCall = pageSource.match(/startProfileSaveBackup\(\{[\s\S]*?\}\);/)?.[0] ?? "";
+
+  assert.match(pageSource, /startProfileSaveBackup/);
+  assert.match(pageSource, /listProfileSaveBackups/);
+  assert.match(pageSource, /listen<TaskProgressEventDto>\(TASK_PROGRESS_EVENT_NAME/);
+  assert.match(pageSource, /nextProfileSaveBackupTaskStateFromProgress/);
+  assert.match(pageSource, /shouldRefreshProfileSaveBackupHistory/);
+  assert.match(pageSource, /setBackupHistoryRefreshToken\(\(current\) => current \+ 1\)/);
+  assert.match(pageSource, /onClick=\{\(\) => void startManualSaveBackup\(\)\}/);
+  assert.match(pageSource, /disabled=\{!canStartManualSaveBackup\}/);
+  assert.doesNotMatch(pageSource, /profile-create-backup-button" disabled/);
+  assert.doesNotMatch(startBackupCall, /saveDirectory|backupDirectory|path|manifest|backupRef|hash/i);
+
+  assert.match(taskStateSource, /save_backup\.queued/);
+  assert.match(taskStateSource, /save_backup\.retention_pruning/);
+  assert.match(taskStateSource, /event\.kind !== "save_backup"/);
+  assert.match(taskStateSource, /current\.taskId !== event\.taskId/);
+
+  assert.match(saveManagerCss, /\.profile-manual-backup-card/);
+  assert.match(saveManagerCss, /\.profile-manual-backup-status/);
+  assert.match(saveManagerCss, /\.profile-create-backup-button\.profile-action-button\.is-primary\s*\{[\s\S]*?color:\s*#fff/);
+  assert.match(saveManagerCss, /\.profile-backup-table/);
 });
 
 test("plain browser preview renders the redesigned profiles console instead of the error shell", () => {
