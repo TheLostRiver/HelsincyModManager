@@ -238,6 +238,13 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   const typesSource = readSource("src/features/profiles/profileSaveBackupTypes.ts");
   const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
   const autoCheckCall = pageSource.match(/checkProfileAutoSaveBackup\(\{[\s\S]*?\}\);/)?.[0] ?? "";
+  const autoCheckEffect = pageSource.match(/useEffect\(\(\) => \{[\s\S]*?checkProfileAutoSaveBackup[\s\S]*?\}, \[[^\]]+\]\);/)?.[0] ?? "";
+  const autoCheckDependencyMatches = [...autoCheckEffect.matchAll(/\}, \[([^\]]+)\]\);/g)];
+  const autoCheckDependencies = autoCheckDependencyMatches.at(-1)?.[1] ?? "";
+  const autoCheckDependencyNames = autoCheckDependencies
+    .split(",")
+    .map((dependency) => dependency.trim())
+    .filter(Boolean);
 
   assert.match(apiSource, /checkProfileAutoSaveBackup/);
   assert.match(apiSource, /check_auto_save_backup/);
@@ -251,6 +258,9 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.match(pageSource, /disabledReason=\{autoBackupCheckBlockedReason\}/);
   assert.match(pageSource, /const disabled = checking \|\| disabledReason !== null/);
   assert.match(pageSource, /setSaveBackupTaskState/);
+  assert.match(autoCheckEffect, /settingsState\.status/);
+  assert.ok(autoCheckDependencyNames.includes("settingsState.status"));
+  assert.equal(autoCheckDependencyNames.includes("settingsState"), false);
   assert.doesNotMatch(autoCheckCall, /saveDirectory|backupDirectory|path|manifest|backupRef|hash/i);
   assert.match(saveManagerCss, /\.profile-auto-backup-card/);
 });
