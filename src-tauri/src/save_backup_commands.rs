@@ -1,11 +1,15 @@
 use crate::dto::{CommandErrorDto, TaskStartedDto};
 use crate::save_backup_dto::{
-    ListSaveBackupsRequestDto, SaveBackupSummaryDto, StartSaveBackupTaskRequestDto,
+    CheckAutoSaveBackupRequestDto, ListSaveBackupsRequestDto, ProfileAutoSaveBackupCheckDto,
+    SaveBackupSummaryDto, StartSaveBackupTaskRequestDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
-use hmm_app::{SaveBackupError, StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted};
-use hmm_core::{GameId, ProfileId};
+use hmm_app::{
+    SaveBackupAutoCheckRequest, SaveBackupAutoSchedulerError, SaveBackupError,
+    StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted,
+};
+use hmm_core::{GameId, ProfileId, SaveBackupTrigger};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -57,6 +61,47 @@ pub fn list_save_backups(
     Ok(backups.into_iter().map(Into::into).collect())
 }
 
+#[tauri::command]
+pub fn check_auto_save_backup(
+    request: CheckAutoSaveBackupRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<ProfileAutoSaveBackupCheckDto, CommandErrorDto> {
+    let request = check_auto_save_backup_request_from_dto(request)?;
+    let mut result = state
+        .save_backup_auto_scheduler
+        .check_profile(request)
+        .map_err(auto_save_backup_error_to_command_error)?;
+    let due_task = result.due_task.take();
+    let started_task = if let Some(request) = due_task {
+        let runner_request = request.clone();
+        let task = state
+            .save_backup_tasks
+            .start_save_backup_task(request)
+            .map_err(CommandErrorDto::from_task_manager_error)?;
+
+        let _ = emit_task_progress(
+            &app_handle,
+            queued_event_for_started_save_backup_task(&task).into(),
+        );
+        spawn_save_backup_runner(
+            Arc::clone(&state.save_backup_task_runner),
+            app_handle,
+            task.task_id.clone(),
+            runner_request,
+        );
+
+        Some(TaskStartedDto::from(task))
+    } else {
+        None
+    };
+
+    Ok(ProfileAutoSaveBackupCheckDto::from_result(
+        result,
+        started_task,
+    ))
+}
+
 fn spawn_save_backup_runner(
     runner: Arc<hmm_app::SaveBackupTaskRunner>,
     app_handle: AppHandle,
@@ -90,7 +135,17 @@ fn start_save_backup_task_request_from_dto(
     Ok(StartSaveBackupTaskRequest {
         game_id: parse_game_id(request.game_id)?,
         profile_id: parse_profile_id(request.profile_id)?,
+        trigger: SaveBackupTrigger::Manual,
         note: normalize_note(request.note),
+    })
+}
+
+fn check_auto_save_backup_request_from_dto(
+    request: CheckAutoSaveBackupRequestDto,
+) -> Result<SaveBackupAutoCheckRequest, CommandErrorDto> {
+    Ok(SaveBackupAutoCheckRequest {
+        game_id: parse_game_id(request.game_id)?,
+        profile_id: parse_profile_id(request.profile_id)?,
     })
 }
 
@@ -125,11 +180,18 @@ fn save_backup_error_to_command_error(error: SaveBackupError) -> CommandErrorDto
     }
 }
 
+fn auto_save_backup_error_to_command_error(error: SaveBackupAutoSchedulerError) -> CommandErrorDto {
+    CommandErrorDto {
+        code: error.code().to_owned(),
+        message: "auto save backup check failed".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dto::TaskProgressEventDto;
-    use crate::save_backup_dto::StartSaveBackupTaskRequestDto;
+    use crate::save_backup_dto::{CheckAutoSaveBackupRequestDto, StartSaveBackupTaskRequestDto};
     use hmm_app::{SaveBackupError, TaskStarted};
     use serde_json::{json, Value};
 
@@ -147,7 +209,23 @@ mod tests {
 
         assert_eq!(app_request.game_id.as_str(), "mhw");
         assert_eq!(app_request.profile_id.as_str(), "default");
+        assert_eq!(app_request.trigger, hmm_core::SaveBackupTrigger::Manual);
         assert_eq!(app_request.note.as_deref(), Some("before hunt"));
+    }
+
+    #[test]
+    fn check_auto_save_backup_request_maps_to_app_request_without_paths() {
+        let request: CheckAutoSaveBackupRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "profileId": "default"
+        }))
+        .expect("deserialize request");
+
+        let app_request =
+            check_auto_save_backup_request_from_dto(request).expect("valid ids should map");
+
+        assert_eq!(app_request.game_id.as_str(), "mhw");
+        assert_eq!(app_request.profile_id.as_str(), "default");
     }
 
     #[test]

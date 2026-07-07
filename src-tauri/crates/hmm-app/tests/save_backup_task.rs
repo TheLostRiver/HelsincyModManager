@@ -2,7 +2,7 @@ use anyhow::Result;
 use hmm_app::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupExecutor,
     SaveBackupTaskRunner, SaveBackupTaskService, SaveBackupWarning, StartSaveBackupTaskRequest,
-    TaskKind, TaskManager, TaskStatus,
+    TaskKind, TaskManager, TaskManagerError, TaskStatus,
 };
 use hmm_core::{GameId, ProfileId, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
@@ -24,6 +24,47 @@ fn start_save_backup_task_returns_queued_save_backup_task() {
         task_manager.task_status(&task.task_id),
         Some(TaskStatus::Queued)
     );
+}
+
+#[test]
+fn save_backup_task_scope_rejects_duplicate_profile_work_until_runner_finishes() {
+    let task_manager = Arc::new(TaskManager::new());
+    let scope_registry = Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default());
+    let service = SaveBackupTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::clone(&scope_registry),
+    );
+    let task = service
+        .start_save_backup_task(sample_request())
+        .expect("first save backup task starts");
+
+    let duplicate = service
+        .start_save_backup_task(sample_request())
+        .expect_err("same game/profile save backup task is already active");
+
+    assert_eq!(
+        duplicate,
+        TaskManagerError::TaskScopeBusy {
+            kind: TaskKind::SaveBackup,
+            task_id: task.task_id.clone(),
+        }
+    );
+
+    let runner = SaveBackupTaskRunner::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::new(RecordingSaveBackupExecutor::ok(sample_result())),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        scope_registry,
+    );
+    runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect("finished task releases profile scope");
+
+    let next = service
+        .start_save_backup_task(sample_request())
+        .expect("same profile can start again after previous task finishes");
+    assert_ne!(next.task_id, task.task_id);
 }
 
 #[test]
@@ -63,7 +104,7 @@ fn run_save_backup_task_emits_registered_phases_and_records_success_audit() {
         Some(TaskStatus::Completed)
     );
     assert_eq!(
-        executor.take_requests()[0].note.as_deref(),
+        executor.take_requests()[0].0.note.as_deref(),
         Some("manual note")
     );
 
@@ -214,6 +255,7 @@ fn sample_request() -> StartSaveBackupTaskRequest {
     StartSaveBackupTaskRequest {
         game_id: GameId::mhw(),
         profile_id: ProfileId::new("default"),
+        trigger: SaveBackupTrigger::Manual,
         note: Some("manual note".to_owned()),
     }
 }
@@ -253,7 +295,7 @@ fn sample_result() -> CreateSaveBackupResult {
 
 struct RecordingSaveBackupExecutor {
     result: Mutex<Result<CreateSaveBackupResult, SaveBackupError>>,
-    requests: Mutex<Vec<CreateSaveBackupRequest>>,
+    requests: Mutex<Vec<(CreateSaveBackupRequest, SaveBackupTrigger)>>,
 }
 
 impl RecordingSaveBackupExecutor {
@@ -271,17 +313,18 @@ impl RecordingSaveBackupExecutor {
         }
     }
 
-    fn take_requests(&self) -> Vec<CreateSaveBackupRequest> {
+    fn take_requests(&self) -> Vec<(CreateSaveBackupRequest, SaveBackupTrigger)> {
         std::mem::take(&mut *self.requests.lock().unwrap())
     }
 }
 
 impl SaveBackupExecutor for RecordingSaveBackupExecutor {
-    fn create_manual_backup(
+    fn create_backup(
         &self,
         request: CreateSaveBackupRequest,
+        trigger: SaveBackupTrigger,
     ) -> Result<CreateSaveBackupResult, SaveBackupError> {
-        self.requests.lock().unwrap().push(request);
+        self.requests.lock().unwrap().push((request, trigger));
         self.result.lock().unwrap().clone()
     }
 }
@@ -292,9 +335,10 @@ struct CancellingSaveBackupExecutor {
 }
 
 impl SaveBackupExecutor for CancellingSaveBackupExecutor {
-    fn create_manual_backup(
+    fn create_backup(
         &self,
         _request: CreateSaveBackupRequest,
+        _trigger: SaveBackupTrigger,
     ) -> Result<CreateSaveBackupResult, SaveBackupError> {
         self.task_manager
             .cancel_task(&self.task_id)

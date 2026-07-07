@@ -216,6 +216,29 @@ test("profile page wires manual save backup execution, progress, and history ref
   assert.match(saveManagerCss, /\.profile-backup-table/);
 });
 
+test("profile page wires client runtime auto backup checks honestly", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const apiSource = readSource("src/features/profiles/profileSaveBackupApi.ts");
+  const typesSource = readSource("src/features/profiles/profileSaveBackupTypes.ts");
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+  const autoCheckCall = pageSource.match(/checkProfileAutoSaveBackup\(\{[\s\S]*?\}\);/)?.[0] ?? "";
+
+  assert.match(apiSource, /checkProfileAutoSaveBackup/);
+  assert.match(apiSource, /check_auto_save_backup/);
+  assert.match(typesSource, /ProfileAutoSaveBackupCheckDto/);
+  assert.match(pageSource, /checkProfileAutoSaveBackup/);
+  assert.match(pageSource, /仅在客户端运行时/);
+  assert.match(pageSource, /退出主客户端后的后台保障尚未启用/);
+  assert.match(pageSource, /startedTask/);
+  assert.match(pageSource, /AutoSaveBackupRuntimePanel/);
+  assert.match(pageSource, /getAutoBackupCheckBlockedReason\(saveBackupTaskState\)/);
+  assert.match(pageSource, /disabledReason=\{autoBackupCheckBlockedReason\}/);
+  assert.match(pageSource, /const disabled = checking \|\| disabledReason !== null/);
+  assert.match(pageSource, /setSaveBackupTaskState/);
+  assert.doesNotMatch(autoCheckCall, /saveDirectory|backupDirectory|path|manifest|backupRef|hash/i);
+  assert.match(saveManagerCss, /\.profile-auto-backup-card/);
+});
+
 test("plain browser preview renders the redesigned profiles console instead of the error shell", () => {
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
   const directorySource = readSource("src/features/profiles/SaveDirectoryPanel.tsx");

@@ -1,3 +1,5 @@
+use crate::dto::TaskStartedDto;
+use hmm_app::{SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus};
 use hmm_core::{SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +19,35 @@ pub struct ListSaveBackupsRequestDto {
     pub profile_id: String,
     #[serde(default)]
     pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckAutoSaveBackupRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileAutoSaveBackupCheckDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub client_runtime_only: bool,
+    pub status: ProfileAutoSaveBackupCheckStatusDto,
+    pub checked_at: u64,
+    pub last_due_at: Option<u64>,
+    pub next_due_at: Option<u64>,
+    pub last_auto_backup_at: Option<u64>,
+    pub started_task: Option<TaskStartedDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileAutoSaveBackupCheckStatusDto {
+    ManualOnly,
+    NotDue,
+    Due,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -70,6 +101,35 @@ impl From<SaveBackupSummary> for SaveBackupSummaryDto {
     }
 }
 
+impl ProfileAutoSaveBackupCheckDto {
+    pub fn from_result(
+        result: SaveBackupAutoCheckResult,
+        started_task: Option<TaskStartedDto>,
+    ) -> Self {
+        Self {
+            game_id: result.game_id.as_str().to_owned(),
+            profile_id: result.profile_id.as_str().to_owned(),
+            client_runtime_only: true,
+            status: result.status.into(),
+            checked_at: result.checked_at as u64,
+            last_due_at: result.last_due_at.map(|value| value as u64),
+            next_due_at: result.next_due_at.map(|value| value as u64),
+            last_auto_backup_at: result.last_auto_backup_at.map(|value| value as u64),
+            started_task,
+        }
+    }
+}
+
+impl From<SaveBackupAutoCheckStatus> for ProfileAutoSaveBackupCheckStatusDto {
+    fn from(status: SaveBackupAutoCheckStatus) -> Self {
+        match status {
+            SaveBackupAutoCheckStatus::ManualOnly => Self::ManualOnly,
+            SaveBackupAutoCheckStatus::NotDue => Self::NotDue,
+            SaveBackupAutoCheckStatus::Due => Self::Due,
+        }
+    }
+}
+
 impl From<SaveBackupTrigger> for SaveBackupTriggerDto {
     fn from(trigger: SaveBackupTrigger) -> Self {
         match trigger {
@@ -109,6 +169,42 @@ mod tests {
         assert_eq!(request.game_id, "mhw");
         assert_eq!(request.profile_id, "default");
         assert_eq!(request.note.as_deref(), Some("before hunt"));
+    }
+
+    #[test]
+    fn serializes_auto_save_backup_check_without_paths_or_scheduler_state() {
+        let dto = ProfileAutoSaveBackupCheckDto {
+            game_id: "mhw".to_owned(),
+            profile_id: "default".to_owned(),
+            client_runtime_only: true,
+            status: ProfileAutoSaveBackupCheckStatusDto::Due,
+            checked_at: 42,
+            last_due_at: Some(40),
+            next_due_at: Some(80),
+            last_auto_backup_at: Some(10),
+            started_task: Some(TaskStartedDto {
+                task_id: "save-backup-1".to_owned(),
+                kind: crate::dto::TaskKindDto::SaveBackup,
+                status: crate::dto::TaskStatusDto::Queued,
+            }),
+        };
+
+        let value = serde_json::to_value(dto).expect("serialize auto check");
+
+        assert_eq!(value["gameId"], "mhw");
+        assert_eq!(value["profileId"], "default");
+        assert_eq!(value["clientRuntimeOnly"], true);
+        assert_eq!(value["status"], "due");
+        assert_eq!(value["checkedAt"], 42);
+        assert_eq!(value["lastDueAt"], 40);
+        assert_eq!(value["nextDueAt"], 80);
+        assert_eq!(value["lastAutoBackupAt"], 10);
+        assert_eq!(value["startedTask"]["taskId"], "save-backup-1");
+        assert!(value.get("path").is_none());
+        assert!(value.get("manifest").is_none());
+        assert!(value.get("backupRef").is_none());
+        assert!(value.get("hash").is_none());
+        assert!(!value.to_string().contains("C:/"));
     }
 
     #[test]

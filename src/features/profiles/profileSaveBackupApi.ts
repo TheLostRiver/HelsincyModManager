@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CheckProfileAutoSaveBackupInput,
   ListProfileSaveBackupsInput,
+  ProfileAutoSaveBackupCheckDto,
   SaveBackupSummaryDto,
   StartProfileSaveBackupInput,
   TaskStartedDto,
@@ -22,6 +24,15 @@ export function listProfileSaveBackups(input: ListProfileSaveBackupsInput): Prom
       gameId: input.gameId,
       profileId: input.profileId,
       limit: input.limit,
+    },
+  });
+}
+
+export function checkProfileAutoSaveBackup(input: CheckProfileAutoSaveBackupInput): Promise<ProfileAutoSaveBackupCheckDto> {
+  return invoke<ProfileAutoSaveBackupCheckDto>("check_auto_save_backup", {
+    request: {
+      gameId: input.gameId,
+      profileId: input.profileId,
     },
   });
 }

@@ -23,6 +23,7 @@ import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscover
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { listProfiles } from "./profileApi";
 import {
+  checkProfileAutoSaveBackup,
   listProfileSaveBackups,
   startProfileSaveBackup,
 } from "./profileSaveBackupApi";
@@ -33,7 +34,11 @@ import {
   shouldRefreshProfileSaveBackupHistory,
   type ProfileSaveBackupTaskState,
 } from "./profileSaveBackupTaskState";
-import type { SaveBackupSummaryDto } from "./profileSaveBackupTypes";
+import type {
+  ProfileAutoSaveBackupCheckDto,
+  SaveBackupSummaryDto,
+  TaskStartedDto,
+} from "./profileSaveBackupTypes";
 import {
   getProfileSaveSettings,
   setProfileSaveSettings,
@@ -44,7 +49,7 @@ import type {
   ProfileSaveSettingsDto,
 } from "./profileSaveSettingsTypes";
 import type { Profile } from "./profileTypes";
-import { formatDirectoryStatus } from "./profileViewModel";
+import { formatBackupSchedule, formatDirectoryStatus } from "./profileViewModel";
 
 const CURRENT_GAME_ID = "mhw";
 const PREVIEW_PROFILES: Profile[] = [
@@ -176,6 +181,14 @@ type BackupHistoryState =
   | { status: "ready"; backups: SaveBackupSummaryDto[] }
   | { status: "error"; backups: SaveBackupSummaryDto[]; message: string };
 
+type AutoBackupCheckState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "manual"; result: ProfileAutoSaveBackupCheckDto }
+  | { status: "notDue"; result: ProfileAutoSaveBackupCheckDto }
+  | { status: "due"; result: ProfileAutoSaveBackupCheckDto }
+  | { status: "error"; message: string };
+
 type ManualBackupNotice = {
   id: string;
   tone: "success" | "warning";
@@ -217,6 +230,23 @@ export function ProfilePage() {
   const pendingSaveBackupProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const lastBackupHistoryRefreshTaskIdRef = useRef<string | null>(null);
   const [manualBackupNotice, setManualBackupNotice] = useState<ManualBackupNotice | null>(null);
+  const [autoBackupCheckState, setAutoBackupCheckState] = useState<AutoBackupCheckState>({ status: "idle" });
+  const [autoBackupCheckRefreshToken, setAutoBackupCheckRefreshToken] = useState(0);
+
+  const attachStartedSaveBackupTask = useCallback((task: TaskStartedDto) => {
+    const initialTaskState: ProfileSaveBackupTaskState = {
+      status: "running",
+      taskId: task.taskId,
+      phase: "save_backup.queued",
+    };
+    const pendingEvent = pendingSaveBackupProgressEventsRef.current.get(task.taskId);
+    pendingSaveBackupProgressEventsRef.current.delete(task.taskId);
+    setSaveBackupTaskState(
+      pendingEvent
+        ? nextProfileSaveBackupTaskStateFromProgress(initialTaskState, pendingEvent)
+        : initialTaskState,
+    );
+  }, []);
 
   const refreshProfiles = useCallback(() => {
     setRefreshToken((current) => current + 1);
@@ -366,6 +396,43 @@ export function ProfilePage() {
   }, [backupHistoryRefreshToken, previewMode, selectedProfileId]);
 
   useEffect(() => {
+    if (!selectedProfileId || settingsState.status !== "ready") {
+      setAutoBackupCheckState({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setAutoBackupCheckState({ status: "checking" });
+
+    if (previewMode) {
+      setAutoBackupCheckState(createPreviewAutoBackupCheckState(CURRENT_GAME_ID, selectedProfileId, settingsState.settings));
+      return;
+    }
+
+    void (async () => {
+      try {
+        const result = await checkProfileAutoSaveBackup({
+          gameId: CURRENT_GAME_ID,
+          profileId: selectedProfileId,
+        });
+        if (cancelled) return;
+        setAutoBackupCheckState(autoBackupCheckStateFromResult(result));
+        if (result.startedTask) {
+          attachStartedSaveBackupTask(result.startedTask);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAutoBackupCheckState({ status: "error", message: getErrorMessage(error, "自动备份检查失败") });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attachStartedSaveBackupTask, autoBackupCheckRefreshToken, previewMode, selectedProfileId, settingsState]);
+
+  useEffect(() => {
     if (previewMode) return undefined;
 
     let disposed = false;
@@ -407,6 +474,7 @@ export function ProfilePage() {
       if (lastBackupHistoryRefreshTaskIdRef.current !== saveBackupTaskState.taskId) {
         lastBackupHistoryRefreshTaskIdRef.current = saveBackupTaskState.taskId;
         setBackupHistoryRefreshToken((current) => current + 1);
+        setAutoBackupCheckRefreshToken((current) => current + 1);
         setManualBackupNotice({
           id: `save-backup-completed-${saveBackupTaskState.taskId}`,
           tone: "success",
@@ -448,6 +516,7 @@ export function ProfilePage() {
     taskState: saveBackupTaskState,
   });
   const canStartManualSaveBackup = manualBackupBlockedReason === null;
+  const autoBackupCheckBlockedReason = getAutoBackupCheckBlockedReason(saveBackupTaskState);
 
   const updateSettings = (settings: ProfileSaveSettingsDto) => {
     setDraftSettings(settings);
@@ -544,18 +613,7 @@ export function ProfilePage() {
         profileId: selectedProfileId,
         note: selectedProfile ? `手动备份：${selectedProfile.name}` : null,
       });
-      const initialTaskState: ProfileSaveBackupTaskState = {
-        status: "running",
-        taskId: task.taskId,
-        phase: "save_backup.queued",
-      };
-      const pendingEvent = pendingSaveBackupProgressEventsRef.current.get(task.taskId);
-      pendingSaveBackupProgressEventsRef.current.delete(task.taskId);
-      setSaveBackupTaskState(
-        pendingEvent
-          ? nextProfileSaveBackupTaskStateFromProgress(initialTaskState, pendingEvent)
-          : initialTaskState,
-      );
+      attachStartedSaveBackupTask(task);
     } catch (error) {
       setSaveBackupTaskState({
         status: "failed",
@@ -564,7 +622,7 @@ export function ProfilePage() {
         message: getErrorMessage(error, "启动备份失败"),
       });
     }
-  }, [canStartManualSaveBackup, previewMode, selectedProfile, selectedProfileId]);
+  }, [attachStartedSaveBackupTask, canStartManualSaveBackup, previewMode, selectedProfile, selectedProfileId]);
 
   return (
     <section className="profile-page" data-preview-mode={previewMode ? "true" : undefined} aria-labelledby="profile-page-title">
@@ -699,6 +757,12 @@ export function ProfilePage() {
                     canStartManualSaveBackup={canStartManualSaveBackup}
                     onClick={() => void startManualSaveBackup()}
                   />
+                  <AutoSaveBackupRuntimePanel
+                    settings={visibleSettings}
+                    checkState={autoBackupCheckState}
+                    disabledReason={autoBackupCheckBlockedReason}
+                    onCheck={() => setAutoBackupCheckRefreshToken((current) => current + 1)}
+                  />
                   <ActiveSavePanel profile={selectedProfile} settings={visibleSettings} />
                   <BackupPolicyPanel
                     settings={visibleSettings}
@@ -788,6 +852,60 @@ function ManualSaveBackupPanel({
       >
         <Save size={14} />
         {running ? "备份中" : "立即归档当前存档"}
+      </button>
+    </section>
+  );
+}
+
+function AutoSaveBackupRuntimePanel({
+  settings,
+  checkState,
+  disabledReason,
+  onCheck,
+}: {
+  settings: ProfileSaveSettingsDto;
+  checkState: AutoBackupCheckState;
+  disabledReason: string | null;
+  onCheck: () => void;
+}) {
+  const checking = checkState.status === "checking";
+  const disabled = checking || disabledReason !== null;
+  const statusCopy = getAutoBackupStatusCopy(checkState);
+  const lastAutoCheck = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.checkedAt) : "尚未检查";
+  const nextDue = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.nextDueAt) : "等待调度信息";
+
+  return (
+    <section className="profile-auto-backup-card" aria-labelledby="profile-auto-backup-title">
+      <div className="profile-auto-backup-card__header">
+        <div>
+          <h2 id="profile-auto-backup-title">自动备份运行期</h2>
+          <p>{formatBackupSchedule(settings.schedule)}</p>
+        </div>
+        <span className="profile-auto-backup-card__badge">仅在客户端运行时</span>
+      </div>
+
+      <div className={`profile-auto-backup-status is-${statusCopy.tone}`} role="status" aria-live="polite">
+        {checking ? <Loader2 className="profile-spinner" size={16} /> : statusCopy.icon}
+        <span>{statusCopy.label}</span>
+      </div>
+
+      <div className="profile-auto-backup-card__meta">
+        <span>最近检查：{lastAutoCheck}</span>
+        <span>下次计划：{nextDue}</span>
+      </div>
+
+      <p className="profile-auto-backup-card__warning">
+        退出主客户端后的后台保障尚未启用
+      </p>
+
+      <button
+        type="button"
+        className="profile-action-button"
+        disabled={disabled}
+        onClick={onCheck}
+      >
+        {checking ? <Loader2 className="profile-spinner" size={14} /> : <RefreshCw size={14} />}
+        {disabledReason ?? "立即检查"}
       </button>
     </section>
   );
@@ -925,6 +1043,33 @@ function createPreviewSaveBackups(profileId: string | null): SaveBackupSummaryDt
   return rows;
 }
 
+function createPreviewAutoBackupCheckState(
+  gameId: string,
+  profileId: string,
+  settings: ProfileSaveSettingsDto,
+): AutoBackupCheckState {
+  const now = Date.now();
+  const result: ProfileAutoSaveBackupCheckDto = {
+    gameId,
+    profileId,
+    clientRuntimeOnly: true,
+    status: settings.schedule.cadence === "manual" ? "manual_only" : "not_due",
+    checkedAt: now,
+    lastDueAt: settings.schedule.cadence === "manual" ? null : now - 60 * 60 * 1000,
+    nextDueAt: settings.schedule.cadence === "manual" ? null : now + 2 * 60 * 60 * 1000,
+    lastAutoBackupAt: null,
+    startedTask: null,
+  };
+
+  return autoBackupCheckStateFromResult(result);
+}
+
+function autoBackupCheckStateFromResult(result: ProfileAutoSaveBackupCheckDto): AutoBackupCheckState {
+  if (result.status === "manual_only") return { status: "manual", result };
+  if (result.status === "due") return { status: "due", result };
+  return { status: "notDue", result };
+}
+
 function toBackupHistoryRow(backup: SaveBackupSummaryDto) {
   return {
     id: backup.backupId,
@@ -1033,6 +1178,11 @@ function getManualBackupBlockedReason({
   return null;
 }
 
+function getAutoBackupCheckBlockedReason(taskState: ProfileSaveBackupTaskState) {
+  if (taskState.status === "starting" || taskState.status === "running") return "备份任务正在执行";
+  return null;
+}
+
 function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabledReason: string | null) {
   if (taskState.status === "starting") {
     return {
@@ -1079,6 +1229,68 @@ function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabl
     label: disabledReason ?? "可以创建手动备份",
     icon: disabledReason ? <AlertTriangle size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />,
   };
+}
+
+function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
+  if (checkState.status === "checking") {
+    return {
+      tone: "running",
+      label: "正在检查自动备份计划",
+      icon: null,
+    };
+  }
+
+  if (checkState.status === "manual") {
+    return {
+      tone: "waiting",
+      label: "当前配置为仅手动备份",
+      icon: <AlertTriangle size={16} aria-hidden="true" />,
+    };
+  }
+
+  if (checkState.status === "due") {
+    return {
+      tone: checkState.result.startedTask ? "running" : "warning",
+      label: checkState.result.startedTask ? "自动备份已排队" : "自动备份计划已到期",
+      icon: checkState.result.startedTask ? <Archive size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />,
+    };
+  }
+
+  if (checkState.status === "notDue") {
+    return {
+      tone: "success",
+      label: "自动备份计划尚未到期",
+      icon: <CheckCircle2 size={16} aria-hidden="true" />,
+    };
+  }
+
+  if (checkState.status === "error") {
+    return {
+      tone: "warning",
+      label: checkState.message,
+      icon: <AlertTriangle size={16} aria-hidden="true" />,
+    };
+  }
+
+  return {
+    tone: "waiting",
+    label: "等待自动备份检查",
+    icon: <Archive size={16} aria-hidden="true" />,
+  };
+}
+
+function formatAutoBackupTimestamp(timestamp: number | null) {
+  if (!timestamp) return "暂无";
+  if (timestamp > Date.now()) {
+    return new Date(timestamp).toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  return formatRelativeTime(timestamp);
 }
 
 function formatBytes(bytes: number) {
