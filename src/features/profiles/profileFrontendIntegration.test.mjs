@@ -41,6 +41,7 @@ test("app shell provides and displays the active profile", () => {
 test("profile page exposes save settings workspace panels without shell coupling", () => {
   const source = readSource("src/features/profiles/ProfilePage.tsx");
   const css = readSource("src/features/profiles/ProfilePage.css");
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
 
   assert.match(source, /className="profile-page__header"/);
   assert.match(source, /ProfileListPanel/);
@@ -59,10 +60,9 @@ test("profile page exposes save settings workspace panels without shell coupling
   assert.match(css, /\.route-transition__layer\[data-route-id="profiles"\]/);
   assert.match(css, /\.profile-workspace/);
   assert.match(css, /\.profile-settings-panel/);
-  assert.match(css, /\.profile-directory-grid/);
-  assert.match(css, /\.profile-directory-card/);
+  assert.match(saveManagerCss, /\.profile-directory-summary/);
+  assert.match(saveManagerCss, /\.profile-directory-row/);
   assert.doesNotMatch(css, /profile-page__summary-grid|profile-main-card|profile-row/);
-  assert.doesNotMatch(css, /\.profile-directory-row/);
   assert.match(css, /@media\s*\(max-width:\s*860px\)/);
 });
 
@@ -153,8 +153,8 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(listSource, /slot-desc/);
   assert.doesNotMatch(listSource, /style=\{\{/);
 
-  assert.match(directorySource, /profile-directory-grid/);
-  assert.match(directorySource, /profile-directory-card__path/);
+  assert.match(directorySource, /profile-directory-summary/);
+  assert.match(directorySource, /profile-directory-row__path/);
   assert.doesNotMatch(pageSource, /directory-flow-connector|directory-flow-badge|directory-flow-line/);
   assert.match(pageSource, /ProfileHeaderSaveAction/);
   assert.match(pageSource, /className="profile-page__actions/);
@@ -180,6 +180,10 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
   assert.match(saveManagerCss, /\.profile-backup-table/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
+  assert.match(saveManagerCss, /\.profile-directory-summary\s*\{[\s\S]*?padding:\s*12px/);
+  assert.match(saveManagerCss, /\.profile-directory-row\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/);
+  assert.doesNotMatch(saveManagerCss, /\.profile-directory-grid\.paths-setup-grid/);
+  assert.doesNotMatch(saveManagerCss, /\.profile-directory-card\.path-card/);
   assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card\s*\{[\s\S]*?z-index:\s*20/);
   assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card \.backup-schedule-popover\s*\{[\s\S]*?z-index:\s*200/);
   assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card \.backup-schedule-popover\s*\{[\s\S]*?bottom:\s*0/);
@@ -313,5 +317,5 @@ test("profile save discovery guards stale async results and scopes busy state pe
     /finally \{[\s\S]*?if \(isCurrentDiscoveryRequest\(activeDiscoveryRequestRef\.current, requestSnapshot\)\) \{[\s\S]*?activeDiscoveryRequestRef\.current = null;[\s\S]*?setDiscoveringTarget\(null\);[\s\S]*?setIsDiscovering\(false\);[\s\S]*?\}/,
   );
   assert.match(page, /autoDetecting=\{isDiscovering\s*&&\s*discoveringTarget\?\.profileId === selectedProfileId/);
-  assert.match(panel, /primaryAction=\{!hasDiscoveryCandidates\}/);
+  assert.match(panel, /profile-directory-row__button \$\{hasDiscoveryCandidates \? "is-primary" : ""\}/);
 });
