@@ -53,6 +53,7 @@ pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteModMetadataRepository;
 pub use sqlite::SqliteProfileRepository;
 pub use sqlite::SqliteSaveBackupRepository;
+pub use sqlite::SqliteSaveBackupSchedulerStateRepository;
 pub use steam_discovery::PlatformSteamRootProvider;
 pub use steam_profile::{
     parse_steam_profile_xml, ReqwestSteamProfileHttpTransport, SteamCommunityProfileClient,

@@ -445,6 +445,7 @@ save_backup_retention_failed
 ### 切片 4b：自动备份后台保障
 
 - 按 [自动备份后台保障设计](SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md) 新增用户级后台守护或系统计划任务。
+- 调度状态、租约去重和 worker 健康内核按 [后台自动备份调度内核实现计划](SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md) 分切片落地。
 - 新增调度状态、worker 健康检查和后台保障状态展示。
 - 支持主客户端退出后的计划检查、overdue 追赶和 pending 备份。
 - 覆盖后台守护与主客户端调度器并发时的去重。

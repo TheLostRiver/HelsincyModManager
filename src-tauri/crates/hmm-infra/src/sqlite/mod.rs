@@ -3,11 +3,13 @@ mod migrations;
 mod mod_metadata_repository;
 mod profile_repository;
 mod save_backup_repository;
+mod save_backup_scheduler_repository;
 
 pub use category_repository::SqliteCategoryRepository;
 pub use mod_metadata_repository::SqliteModMetadataRepository;
 pub use profile_repository::SqliteProfileRepository;
 pub use save_backup_repository::SqliteSaveBackupRepository;
+pub use save_backup_scheduler_repository::SqliteSaveBackupSchedulerStateRepository;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;

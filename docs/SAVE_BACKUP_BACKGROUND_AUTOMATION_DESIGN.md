@@ -432,6 +432,7 @@ MVP 平台。推荐：
 
 ### 切片 3：后台守护 MVP
 
+- 调度状态、租约去重和 worker 健康内核按 [后台自动备份调度内核实现计划](SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md) 先行落地。
 - 新增 headless worker 或独立守护二进制。
 - 新增 scheduler state repository。
 - 新增 worker 心跳和健康状态。

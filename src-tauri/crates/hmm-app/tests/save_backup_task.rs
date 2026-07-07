@@ -4,8 +4,12 @@ use hmm_app::{
     SaveBackupTaskRunner, SaveBackupTaskService, SaveBackupWarning, StartSaveBackupTaskRequest,
     TaskKind, TaskManager, TaskManagerError, TaskStatus,
 };
-use hmm_core::{GameId, ProfileId, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+use hmm_core::{
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
+    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+    SaveBackupWorkerHeartbeat,
+};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -95,6 +99,115 @@ fn run_save_backup_task_releases_profile_scope_when_executor_panics() {
         .start_save_backup_task(sample_request())
         .expect("panic still releases profile scope");
     assert_ne!(next.task_id, task.task_id);
+}
+
+#[test]
+fn run_save_backup_task_records_scheduler_success_and_releases_auto_lease() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+        Arc::clone(&task_manager),
+        Arc::new(RecordingSaveBackupExecutor::ok(sample_result())),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+        scheduler_state.clone(),
+    );
+
+    let events = runner
+        .run_save_backup_task(&task.task_id, auto_request("auto-lease"))
+        .expect("save backup task succeeds");
+
+    assert_eq!(
+        events.last().map(|event| event.phase.as_str()),
+        Some("save_backup.completed")
+    );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state should be updated");
+    assert_eq!(state.last_attempt_at, Some(42));
+    assert_eq!(state.last_success_at, Some(42));
+    assert_eq!(state.last_error_code, None);
+    assert_eq!(
+        scheduler_state.release_calls(),
+        vec!["auto-lease".to_owned()]
+    );
+}
+
+#[test]
+fn run_save_backup_task_records_scheduler_failure_and_releases_auto_lease() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+        Arc::clone(&task_manager),
+        Arc::new(RecordingSaveBackupExecutor::err(
+            SaveBackupError::SourceUnset,
+        )),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+        scheduler_state.clone(),
+    );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, auto_request("auto-lease"))
+        .expect_err("save backup task fails");
+
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_source_unset")
+    );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state should be updated");
+    assert_eq!(state.last_attempt_at, Some(42));
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_source_unset")
+    );
+    assert_eq!(
+        scheduler_state.release_calls(),
+        vec!["auto-lease".to_owned()]
+    );
+}
+
+#[test]
+fn run_save_backup_task_releases_scheduler_lease_when_executor_panics() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+        Arc::clone(&task_manager),
+        Arc::new(PanickingSaveBackupExecutor),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+        scheduler_state.clone(),
+    );
+
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = runner.run_save_backup_task(&task.task_id, auto_request("auto-lease"));
+    }));
+
+    assert!(panic.is_err());
+    assert_eq!(
+        scheduler_state.release_calls(),
+        vec!["auto-lease".to_owned()]
+    );
 }
 
 #[test]
@@ -287,6 +400,37 @@ fn sample_request() -> StartSaveBackupTaskRequest {
         profile_id: ProfileId::new("default"),
         trigger: SaveBackupTrigger::Manual,
         note: Some("manual note".to_owned()),
+        scheduler_lease_owner: None,
+    }
+}
+
+fn auto_request(lease_owner: &str) -> StartSaveBackupTaskRequest {
+    StartSaveBackupTaskRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("default"),
+        trigger: SaveBackupTrigger::Auto,
+        note: None,
+        scheduler_lease_owner: Some(lease_owner.to_owned()),
+    }
+}
+
+fn sample_scheduler_state(lease_owner: &str) -> SaveBackupSchedulerState {
+    SaveBackupSchedulerState {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("default"),
+        enabled: true,
+        background_protection_enabled: false,
+        background_status: SaveBackupBackgroundProtectionStatus::TrayOnly,
+        last_checked_at: Some(40),
+        last_attempt_at: None,
+        last_success_at: None,
+        next_due_at: Some(80),
+        pending_reason: None,
+        last_error_code: None,
+        worker_instance_id: None,
+        lease_owner: Some(lease_owner.to_owned()),
+        lease_expires_at: Some(120),
+        updated_at: 40,
     }
 }
 
@@ -403,6 +547,78 @@ impl RecordingAuditLogWriter {
 impl AuditLogWriter for RecordingAuditLogWriter {
     fn record(&self, event: AuditLogEvent) -> Result<()> {
         self.events.lock().unwrap().push(event);
+        Ok(())
+    }
+}
+
+struct RecordingSchedulerStateRepository {
+    states: Mutex<Vec<SaveBackupSchedulerState>>,
+    release_calls: Mutex<Vec<String>>,
+}
+
+impl RecordingSchedulerStateRepository {
+    fn with_state(state: SaveBackupSchedulerState) -> Self {
+        Self {
+            states: Mutex::new(vec![state]),
+            release_calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn latest_state(&self) -> Option<SaveBackupSchedulerState> {
+        self.states.lock().unwrap().last().cloned()
+    }
+
+    fn release_calls(&self) -> Vec<String> {
+        self.release_calls.lock().unwrap().clone()
+    }
+}
+
+impl SaveBackupSchedulerStateRepository for RecordingSchedulerStateRepository {
+    fn get_state(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<Option<SaveBackupSchedulerState>> {
+        Ok(self
+            .states
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|state| &state.game_id == game_id && &state.profile_id == profile_id)
+            .cloned())
+    }
+
+    fn upsert_state(&self, state: &SaveBackupSchedulerState) -> Result<()> {
+        let mut states = self.states.lock().unwrap();
+        states.retain(|existing| {
+            existing.game_id != state.game_id || existing.profile_id != state.profile_id
+        });
+        states.push(state.clone());
+        Ok(())
+    }
+
+    fn acquire_due_lease(
+        &self,
+        _request: SaveBackupSchedulerLeaseRequest,
+    ) -> Result<Option<SaveBackupSchedulerState>> {
+        panic!("task runner tests do not acquire leases")
+    }
+
+    fn release_lease(
+        &self,
+        _game_id: &GameId,
+        _profile_id: &ProfileId,
+        lease_owner: &str,
+    ) -> Result<()> {
+        self.release_calls
+            .lock()
+            .unwrap()
+            .push(lease_owner.to_owned());
+        Ok(())
+    }
+
+    fn record_worker_heartbeat(&self, _heartbeat: SaveBackupWorkerHeartbeat) -> Result<()> {
         Ok(())
     }
 }

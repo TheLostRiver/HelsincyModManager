@@ -35,9 +35,9 @@ use hmm_infra::{
     RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
     SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
-    SqliteProfileRepository, SqliteSaveBackupRepository, SteamCommunityProfileClient,
-    SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
-    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    SqliteProfileRepository, SqliteSaveBackupRepository, SqliteSaveBackupSchedulerStateRepository,
+    SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
     TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
@@ -45,7 +45,8 @@ use hmm_ports::{
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
     GamePrerequisiteRuleRepository, ModImportResultRepository, ModImportSandboxLocator,
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
-    SaveBackupRepository, SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
+    SaveBackupRepository, SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader,
+    ThumbnailCacheMaintenance,
 };
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -139,6 +140,10 @@ impl AppState {
         > = profile_repository.clone();
         let save_backup_repository: Arc<dyn SaveBackupRepository> =
             Arc::new(SqliteSaveBackupRepository::new(Arc::clone(&db)));
+        let save_backup_scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository> =
+            Arc::new(SqliteSaveBackupSchedulerStateRepository::new(Arc::clone(
+                &db,
+            )));
         let save_backup_writer: Arc<dyn SaveBackupWriter> =
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
@@ -278,6 +283,7 @@ impl AppState {
             profile_repository_for_save_backup_auto_scheduler,
             profile_save_settings_repository_for_save_backup_auto_scheduler,
             Arc::clone(&save_backup_repository),
+            Arc::clone(&save_backup_scheduler_state_repository),
             Arc::new(SystemClock),
         ));
         let save_directory_discovery = Arc::new(ProfileSaveDirectoryDiscoveryService::new(
@@ -428,13 +434,16 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             save_directory_discovery,
-            save_backup_task_runner: Arc::new(SaveBackupTaskRunner::with_scope_registry(
-                Arc::clone(&task_manager),
-                save_backup_executor,
-                Arc::clone(&audit_log_writer),
-                Arc::new(SystemClock),
-                Arc::clone(&save_backup_task_scopes),
-            )),
+            save_backup_task_runner: Arc::new(
+                SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+                    Arc::clone(&task_manager),
+                    save_backup_executor,
+                    Arc::clone(&audit_log_writer),
+                    Arc::new(SystemClock),
+                    Arc::clone(&save_backup_task_scopes),
+                    save_backup_scheduler_state_repository,
+                ),
+            ),
             save_backup_tasks: Arc::new(SaveBackupTaskService::with_scope_registry(
                 Arc::clone(&task_manager),
                 save_backup_task_scopes,
