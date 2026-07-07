@@ -86,6 +86,18 @@ impl SaveBackupTaskScopeRegistry {
     }
 }
 
+struct SaveBackupTaskScopeReleaseGuard<'a> {
+    registry: &'a SaveBackupTaskScopeRegistry,
+    request: &'a StartSaveBackupTaskRequest,
+    task_id: &'a str,
+}
+
+impl Drop for SaveBackupTaskScopeReleaseGuard<'_> {
+    fn drop(&mut self) {
+        self.registry.release_task(self.request, self.task_id);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupTaskRunError {
     pub events: Vec<TaskProgressEvent>,
@@ -193,9 +205,12 @@ impl SaveBackupTaskRunner {
         task_id: &str,
         request: StartSaveBackupTaskRequest,
     ) -> Result<Vec<TaskProgressEvent>, SaveBackupTaskRunError> {
-        let result = self.run_save_backup_task_inner(task_id, request.clone());
-        self.scope_registry.release_task(&request, task_id);
-        result
+        let _scope_release = SaveBackupTaskScopeReleaseGuard {
+            registry: self.scope_registry.as_ref(),
+            request: &request,
+            task_id,
+        };
+        self.run_save_backup_task_inner(task_id, request.clone())
     }
 
     fn run_save_backup_task_inner(
