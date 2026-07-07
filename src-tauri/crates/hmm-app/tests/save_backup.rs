@@ -67,6 +67,48 @@ fn manual_backup_uses_default_backup_directory_when_custom_backup_root_is_unset(
 }
 
 #[test]
+fn auto_backup_passes_auto_trigger_to_writer_and_history() {
+    let harness = Harness::new();
+    harness.insert_profile("default");
+    harness.insert_settings(ProfileSaveSettings {
+        profile_id: "default".to_owned(),
+        save_directory: custom_directory_selection("C:/Users/Test/Saves"),
+        backup_directory: default_backup_directory_selection(),
+        schedule: ProfileBackupSchedule {
+            cadence: hmm_core::BackupCadence::Daily,
+            hour: Some(3),
+            minute: Some(0),
+            weekdays: Vec::new(),
+        },
+        retention: ProfileBackupRetention::default(),
+        updated_at: 10,
+    });
+
+    let summary = harness
+        .service
+        .create_backup(
+            CreateSaveBackupRequest {
+                game_id: GameId::mhw(),
+                profile_id: ProfileId::new("default"),
+                note: Some("client runtime auto check".to_owned()),
+            },
+            SaveBackupTrigger::Auto,
+        )
+        .expect("auto backup should reuse the save backup service")
+        .summary;
+
+    assert_eq!(summary.trigger, SaveBackupTrigger::Auto);
+
+    let writer_requests = harness.writer.take_requests();
+    assert_eq!(writer_requests.len(), 1);
+    assert_eq!(writer_requests[0].trigger, SaveBackupTrigger::Auto);
+
+    let saved = harness.repository.take_saved();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].trigger, SaveBackupTrigger::Auto);
+}
+
+#[test]
 fn manual_backup_rejects_unset_save_directory_before_writer_runs() {
     let harness = Harness::new();
     harness.insert_profile("default");
@@ -535,7 +577,7 @@ impl SaveBackupWriter for FakeSaveBackupWriter {
                 backup_id: "backup-1".to_owned(),
                 game_id: request.game_id,
                 profile_id: request.profile_id,
-                trigger: SaveBackupTrigger::Manual,
+                trigger: request.trigger,
                 status: SaveBackupStatus::Completed,
                 archive_file_name: "20260704-221530_mhw_profile-default_manual.zip".to_owned(),
                 manifest_file_name: "20260704-221530_mhw_profile-default_manual.manifest.json"

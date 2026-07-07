@@ -52,6 +52,7 @@ impl CommandErrorDto {
             TaskManagerError::TaskNotFound(_) => "task_not_found",
             TaskManagerError::TaskCannotBeCancelled { .. } => "task_cannot_be_cancelled",
             TaskManagerError::TaskCannotTransition { .. } => "task_cannot_transition",
+            TaskManagerError::TaskScopeBusy { .. } => "task_scope_busy",
             TaskManagerError::TaskStoreUnavailable => "task_store_unavailable",
         };
 

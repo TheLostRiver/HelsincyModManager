@@ -14,12 +14,12 @@ use hmm_app::{
     ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
-    RecoveryActionTaskService, SaveBackupExecutor, SaveBackupService, SaveBackupTaskRunner,
-    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupExecutor,
+    SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
+    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
+    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::{
@@ -81,6 +81,7 @@ pub struct AppState {
     pub profiles: Arc<ProfileService>,
     pub save_directory_discovery: Arc<ProfileSaveDirectoryDiscoveryService>,
     pub save_backups: Arc<SaveBackupService>,
+    pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
     pub task_manager: Arc<TaskManager>,
@@ -115,12 +116,17 @@ impl AppState {
             profile_repository.clone();
         let profile_repository_for_save_backups: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_backup_auto_scheduler: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_save_settings_repository: Arc<dyn ProfileSaveSettingsRepository> =
             profile_repository.clone();
         let profile_save_settings_repository_for_save_directory_discovery: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backups: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_backup_auto_scheduler: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator> =
@@ -264,8 +270,14 @@ impl AppState {
             profile_repository_for_save_backups,
             profile_save_settings_repository_for_save_backups,
             profile_save_directory_validator_for_save_backups,
-            save_backup_repository,
+            Arc::clone(&save_backup_repository),
             save_backup_writer,
+            Arc::new(SystemClock),
+        ));
+        let save_backup_auto_scheduler = Arc::new(SaveBackupAutoSchedulerService::new(
+            profile_repository_for_save_backup_auto_scheduler,
+            profile_save_settings_repository_for_save_backup_auto_scheduler,
+            Arc::clone(&save_backup_repository),
             Arc::new(SystemClock),
         ));
         let save_directory_discovery = Arc::new(ProfileSaveDirectoryDiscoveryService::new(
@@ -284,6 +296,7 @@ impl AppState {
             Arc::new(SystemClock),
         ));
         let save_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
+        let save_backup_task_scopes = Arc::new(SaveBackupTaskScopeRegistry::default());
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
@@ -415,13 +428,18 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             save_directory_discovery,
-            save_backup_task_runner: Arc::new(SaveBackupTaskRunner::new(
+            save_backup_task_runner: Arc::new(SaveBackupTaskRunner::with_scope_registry(
                 Arc::clone(&task_manager),
                 save_backup_executor,
                 Arc::clone(&audit_log_writer),
                 Arc::new(SystemClock),
+                Arc::clone(&save_backup_task_scopes),
             )),
-            save_backup_tasks: Arc::new(SaveBackupTaskService::new(Arc::clone(&task_manager))),
+            save_backup_tasks: Arc::new(SaveBackupTaskService::with_scope_registry(
+                Arc::clone(&task_manager),
+                save_backup_task_scopes,
+            )),
+            save_backup_auto_scheduler,
             save_backups,
             task_manager,
             db,

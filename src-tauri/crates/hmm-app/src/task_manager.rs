@@ -86,6 +86,8 @@ pub enum TaskManagerError {
         from: TaskStatus,
         to: TaskStatus,
     },
+    #[error("task scope is already active for {kind:?}: {task_id}")]
+    TaskScopeBusy { kind: TaskKind, task_id: String },
     #[error("task store is unavailable")]
     TaskStoreUnavailable,
 }

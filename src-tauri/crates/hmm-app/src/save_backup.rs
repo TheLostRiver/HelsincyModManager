@@ -102,6 +102,14 @@ impl SaveBackupService {
         &self,
         request: CreateSaveBackupRequest,
     ) -> Result<CreateSaveBackupResult, SaveBackupError> {
+        self.create_backup(request, SaveBackupTrigger::Manual)
+    }
+
+    pub fn create_backup(
+        &self,
+        request: CreateSaveBackupRequest,
+        trigger: SaveBackupTrigger,
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
         let settings = self.settings_for(&request)?;
         let source_directory = validated_source_directory(&settings.save_directory)?;
         let created_at_unix_millis = self
@@ -114,7 +122,7 @@ impl SaveBackupService {
             .write_backup(SaveBackupWriteRequest {
                 game_id: request.game_id.clone(),
                 profile_id: request.profile_id.clone(),
-                trigger: SaveBackupTrigger::Manual,
+                trigger,
                 source_directory: Some(source_directory),
                 source_directory_selection: settings.save_directory.clone(),
                 backup_directory: settings.backup_directory.clone(),
