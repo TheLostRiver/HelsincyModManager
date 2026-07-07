@@ -60,6 +60,93 @@ pub struct SaveBackupSummary {
     pub notes: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveBackupBackgroundProtectionStatus {
+    Protected,
+    TrayOnly,
+    NotEnabled,
+    RegistrationFailed,
+    WorkerUnhealthy,
+    PermissionRequired,
+    UnsupportedPlatform,
+}
+
+impl SaveBackupBackgroundProtectionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Protected => "protected",
+            Self::TrayOnly => "tray_only",
+            Self::NotEnabled => "not_enabled",
+            Self::RegistrationFailed => "registration_failed",
+            Self::WorkerUnhealthy => "worker_unhealthy",
+            Self::PermissionRequired => "permission_required",
+            Self::UnsupportedPlatform => "unsupported_platform",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveBackupSchedulerPendingReason {
+    GameRunning,
+    GameRunningUnknown,
+    SourceInvalid,
+    DestinationUnavailable,
+    TaskConflict,
+}
+
+impl SaveBackupSchedulerPendingReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GameRunning => "game_running",
+            Self::GameRunningUnknown => "game_running_unknown",
+            Self::SourceInvalid => "source_invalid",
+            Self::DestinationUnavailable => "destination_unavailable",
+            Self::TaskConflict => "task_conflict",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupSchedulerState {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub enabled: bool,
+    pub background_protection_enabled: bool,
+    pub background_status: SaveBackupBackgroundProtectionStatus,
+    pub last_checked_at: Option<u128>,
+    pub last_attempt_at: Option<u128>,
+    pub last_success_at: Option<u128>,
+    pub next_due_at: Option<u128>,
+    pub pending_reason: Option<SaveBackupSchedulerPendingReason>,
+    pub last_error_code: Option<String>,
+    pub worker_instance_id: Option<String>,
+    pub lease_owner: Option<String>,
+    pub lease_expires_at: Option<u128>,
+    pub updated_at: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupSchedulerLeaseRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub lease_owner: String,
+    pub lease_expires_at: u128,
+    pub now_unix_millis: u128,
+    pub last_checked_at: Option<u128>,
+    pub next_due_at: Option<u128>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupWorkerHeartbeat {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub worker_instance_id: String,
+    pub checked_at: u128,
+    pub status: SaveBackupBackgroundProtectionStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveBackupManifest {

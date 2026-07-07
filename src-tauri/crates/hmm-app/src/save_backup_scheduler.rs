@@ -1,10 +1,14 @@
 use std::sync::Arc;
 
 use hmm_core::{
-    BackupCadence, GameId, ProfileBackupSchedule, ProfileId, SaveBackupStatus, SaveBackupSummary,
+    BackupCadence, GameId, ProfileBackupSchedule, ProfileId, SaveBackupBackgroundProtectionStatus,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
     SaveBackupTrigger,
 };
-use hmm_ports::{AppClock, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository};
+use hmm_ports::{
+    AppClock, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository,
+};
 use thiserror::Error;
 
 use crate::StartSaveBackupTaskRequest;
@@ -13,6 +17,7 @@ const MILLIS_PER_MINUTE: u128 = 60_000;
 const MILLIS_PER_DAY: u128 = 86_400_000;
 const MINUTES_PER_DAY: u32 = 24 * 60;
 const UNIX_EPOCH_WEEKDAY: u8 = 4;
+const SCHEDULER_LEASE_TTL_MILLIS: u128 = 5 * MILLIS_PER_MINUTE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupAutoCheckRequest {
@@ -47,6 +52,8 @@ pub enum SaveBackupAutoSchedulerError {
     SettingsUnavailable,
     #[error("save backup history is unavailable")]
     HistoryUnavailable,
+    #[error("save backup scheduler state is unavailable")]
+    SchedulerStateUnavailable,
     #[error("app clock is unavailable")]
     ClockUnavailable,
 }
@@ -57,6 +64,7 @@ impl SaveBackupAutoSchedulerError {
             Self::ProfileMissing => "save_backup_auto_profile_missing",
             Self::SettingsUnavailable => "save_backup_auto_settings_unavailable",
             Self::HistoryUnavailable => "save_backup_auto_history_unavailable",
+            Self::SchedulerStateUnavailable => "save_backup_scheduler_unavailable",
             Self::ClockUnavailable => "save_backup_auto_clock_unavailable",
         }
     }
@@ -66,6 +74,7 @@ pub struct SaveBackupAutoSchedulerService {
     profile_repository: Arc<dyn ProfileRepository>,
     save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
     backup_repository: Arc<dyn SaveBackupRepository>,
+    scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
     clock: Arc<dyn AppClock>,
 }
 
@@ -74,12 +83,14 @@ impl SaveBackupAutoSchedulerService {
         profile_repository: Arc<dyn ProfileRepository>,
         save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
         backup_repository: Arc<dyn SaveBackupRepository>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
         Self {
             profile_repository,
             save_settings_repository,
             backup_repository,
+            scheduler_state_repository,
             clock,
         }
     }
@@ -103,6 +114,17 @@ impl SaveBackupAutoSchedulerService {
             .map_err(|_| SaveBackupAutoSchedulerError::SettingsUnavailable)?;
 
         let Some(settings) = settings else {
+            self.save_scheduler_state(
+                &request.game_id,
+                &request.profile_id,
+                None,
+                SchedulerStateUpdate {
+                    enabled: false,
+                    checked_at,
+                    next_due_at: None,
+                    last_success_at: None,
+                },
+            )?;
             return Ok(SaveBackupAutoCheckResult {
                 game_id: request.game_id,
                 profile_id: request.profile_id,
@@ -120,6 +142,17 @@ impl SaveBackupAutoSchedulerService {
                 &self.backup_repository,
                 &request.game_id,
                 &request.profile_id,
+            )?;
+            self.save_scheduler_state(
+                &request.game_id,
+                &request.profile_id,
+                None,
+                SchedulerStateUpdate {
+                    enabled: false,
+                    checked_at,
+                    next_due_at: None,
+                    last_success_at: last_auto_backup_at,
+                },
             )?;
             return Ok(SaveBackupAutoCheckResult {
                 game_id: request.game_id,
@@ -144,12 +177,44 @@ impl SaveBackupAutoSchedulerService {
             .map(|last_due_at| last_auto_backup_at.is_none_or(|backup_at| backup_at < last_due_at))
             .unwrap_or(false);
 
-        let due_task = due.then(|| StartSaveBackupTaskRequest {
-            game_id: request.game_id.clone(),
-            profile_id: request.profile_id.clone(),
-            trigger: SaveBackupTrigger::Auto,
-            note: None,
-        });
+        self.save_scheduler_state(
+            &request.game_id,
+            &request.profile_id,
+            None,
+            SchedulerStateUpdate {
+                enabled: true,
+                checked_at,
+                next_due_at: schedule_window.next_due_at,
+                last_success_at: last_auto_backup_at,
+            },
+        )?;
+
+        let due_task = if due {
+            let lease_owner =
+                scheduler_lease_owner(&request.game_id, &request.profile_id, checked_at);
+            let acquired = self
+                .scheduler_state_repository
+                .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+                    game_id: request.game_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    lease_owner: lease_owner.clone(),
+                    lease_expires_at: checked_at + SCHEDULER_LEASE_TTL_MILLIS,
+                    now_unix_millis: checked_at,
+                    last_checked_at: Some(checked_at),
+                    next_due_at: schedule_window.next_due_at,
+                })
+                .map_err(|_| SaveBackupAutoSchedulerError::SchedulerStateUnavailable)?;
+
+            acquired.map(|_| StartSaveBackupTaskRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                trigger: SaveBackupTrigger::Auto,
+                note: None,
+                scheduler_lease_owner: Some(lease_owner),
+            })
+        } else {
+            None
+        };
 
         Ok(SaveBackupAutoCheckResult {
             game_id: request.game_id,
@@ -166,6 +231,103 @@ impl SaveBackupAutoSchedulerService {
             due_task,
         })
     }
+
+    fn save_scheduler_state(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        existing: Option<SaveBackupSchedulerState>,
+        update: SchedulerStateUpdate,
+    ) -> Result<(), SaveBackupAutoSchedulerError> {
+        let existing = match existing {
+            Some(state) => Some(state),
+            None => self
+                .scheduler_state_repository
+                .get_state(game_id, profile_id)
+                .map_err(|_| SaveBackupAutoSchedulerError::SchedulerStateUnavailable)?,
+        };
+        let state = scheduler_state_for_check(game_id, profile_id, existing, update);
+        self.scheduler_state_repository
+            .upsert_state(&state)
+            .map_err(|_| SaveBackupAutoSchedulerError::SchedulerStateUnavailable)
+    }
+}
+
+struct SchedulerStateUpdate {
+    enabled: bool,
+    checked_at: u128,
+    next_due_at: Option<u128>,
+    last_success_at: Option<u128>,
+}
+
+fn scheduler_state_for_check(
+    game_id: &GameId,
+    profile_id: &ProfileId,
+    existing: Option<SaveBackupSchedulerState>,
+    update: SchedulerStateUpdate,
+) -> SaveBackupSchedulerState {
+    let background_status = if update.enabled {
+        existing
+            .as_ref()
+            .map(|state| match state.background_status {
+                SaveBackupBackgroundProtectionStatus::NotEnabled => {
+                    SaveBackupBackgroundProtectionStatus::TrayOnly
+                }
+                status => status,
+            })
+            .unwrap_or(SaveBackupBackgroundProtectionStatus::TrayOnly)
+    } else {
+        SaveBackupBackgroundProtectionStatus::NotEnabled
+    };
+
+    SaveBackupSchedulerState {
+        game_id: game_id.clone(),
+        profile_id: profile_id.clone(),
+        enabled: update.enabled,
+        background_protection_enabled: update.enabled
+            && existing
+                .as_ref()
+                .is_some_and(|state| state.background_protection_enabled),
+        background_status,
+        last_checked_at: Some(update.checked_at),
+        last_attempt_at: existing.as_ref().and_then(|state| state.last_attempt_at),
+        last_success_at: update
+            .last_success_at
+            .or_else(|| existing.as_ref().and_then(|state| state.last_success_at)),
+        next_due_at: update.next_due_at,
+        pending_reason: if update.enabled {
+            existing.as_ref().and_then(|state| state.pending_reason)
+        } else {
+            None
+        },
+        last_error_code: existing
+            .as_ref()
+            .and_then(|state| state.last_error_code.clone()),
+        worker_instance_id: existing
+            .as_ref()
+            .and_then(|state| state.worker_instance_id.clone()),
+        lease_owner: if update.enabled {
+            existing
+                .as_ref()
+                .and_then(|state| state.lease_owner.clone())
+        } else {
+            None
+        },
+        lease_expires_at: if update.enabled {
+            existing.as_ref().and_then(|state| state.lease_expires_at)
+        } else {
+            None
+        },
+        updated_at: update.checked_at,
+    }
+}
+
+fn scheduler_lease_owner(game_id: &GameId, profile_id: &ProfileId, checked_at: u128) -> String {
+    format!(
+        "client-runtime:{}:{}:{checked_at}",
+        game_id.as_str(),
+        profile_id.as_str()
+    )
 }
 
 struct ScheduleWindow {

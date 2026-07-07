@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use hmm_core::{GameId, ProfileId, SaveBackupSummary, SaveBackupTrigger};
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+use hmm_core::{GameId, ProfileId, SaveBackupSchedulerState, SaveBackupSummary, SaveBackupTrigger};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
 
 use crate::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
@@ -24,6 +24,7 @@ pub struct StartSaveBackupTaskRequest {
     pub profile_id: ProfileId,
     pub trigger: SaveBackupTrigger,
     pub note: Option<String>,
+    pub scheduler_lease_owner: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -98,6 +99,25 @@ impl Drop for SaveBackupTaskScopeReleaseGuard<'_> {
     }
 }
 
+struct SaveBackupSchedulerLeaseReleaseGuard<'a> {
+    repository: Option<&'a dyn SaveBackupSchedulerStateRepository>,
+    request: &'a StartSaveBackupTaskRequest,
+}
+
+impl Drop for SaveBackupSchedulerLeaseReleaseGuard<'_> {
+    fn drop(&mut self) {
+        let Some(repository) = self.repository else {
+            return;
+        };
+        let Some(lease_owner) = self.request.scheduler_lease_owner.as_deref() else {
+            return;
+        };
+
+        let _ =
+            repository.release_lease(&self.request.game_id, &self.request.profile_id, lease_owner);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupTaskRunError {
     pub events: Vec<TaskProgressEvent>,
@@ -166,6 +186,7 @@ pub struct SaveBackupTaskRunner {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     scope_registry: Arc<SaveBackupTaskScopeRegistry>,
+    scheduler_state_repository: Option<Arc<dyn SaveBackupSchedulerStateRepository>>,
 }
 
 impl SaveBackupTaskRunner {
@@ -197,6 +218,25 @@ impl SaveBackupTaskRunner {
             audit_log,
             clock,
             scope_registry,
+            scheduler_state_repository: None,
+        }
+    }
+
+    pub fn with_scope_registry_and_scheduler_state(
+        task_manager: Arc<TaskManager>,
+        executor: Arc<dyn SaveBackupExecutor>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        scope_registry: Arc<SaveBackupTaskScopeRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+    ) -> Self {
+        Self {
+            task_manager,
+            executor,
+            audit_log,
+            clock,
+            scope_registry,
+            scheduler_state_repository: Some(scheduler_state_repository),
         }
     }
 
@@ -210,6 +250,10 @@ impl SaveBackupTaskRunner {
             request: &request,
             task_id,
         };
+        let _scheduler_lease_release = SaveBackupSchedulerLeaseReleaseGuard {
+            repository: self.scheduler_state_repository.as_deref(),
+            request: &request,
+        };
         self.run_save_backup_task_inner(task_id, request.clone())
     }
 
@@ -221,6 +265,7 @@ impl SaveBackupTaskRunner {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(SaveBackupTaskRunError { events: Vec::new() });
         }
+        self.record_scheduler_attempt(&request);
 
         let mut events = vec![
             running_event(task_id, SAVE_BACKUP_SCANNING_PHASE),
@@ -245,6 +290,7 @@ impl SaveBackupTaskRunner {
             Ok(task) => {
                 events.push(running_event(task_id, SAVE_BACKUP_MANIFEST_WRITING_PHASE));
                 events.push(running_event(task_id, SAVE_BACKUP_RETENTION_PRUNING_PHASE));
+                self.record_scheduler_success(&request, &result.summary);
                 self.record_success_audit(task_id, &request, &result.summary);
                 self.record_warning_audits(task_id, &request, &result.warnings);
                 events.push(TaskProgressEvent::new(
@@ -256,6 +302,7 @@ impl SaveBackupTaskRunner {
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
+                self.record_scheduler_success(&request, &result.summary);
                 self.record_success_audit(task_id, &request, &result.summary);
                 self.record_warning_audits(task_id, &request, &result.warnings);
                 Ok(Vec::new())
@@ -289,8 +336,63 @@ impl SaveBackupTaskRunner {
         );
         event.error = Some(format!("{}:{}", SAVE_BACKUP_FAILED_ERROR, error.code()));
         events.push(event);
+        self.record_scheduler_failure(request, error.code());
         self.record_failure_audit(task_id, request, error.code());
         SaveBackupTaskRunError { events }
+    }
+
+    fn record_scheduler_attempt(&self, request: &StartSaveBackupTaskRequest) {
+        self.update_scheduler_state(request, |state, now| {
+            state.last_attempt_at = Some(now);
+            state.pending_reason = None;
+            state.last_error_code = None;
+            state.updated_at = now;
+        });
+    }
+
+    fn record_scheduler_success(
+        &self,
+        request: &StartSaveBackupTaskRequest,
+        summary: &SaveBackupSummary,
+    ) {
+        self.update_scheduler_state(request, |state, now| {
+            state.last_attempt_at = Some(now);
+            state.last_success_at = Some(summary.created_at);
+            state.pending_reason = None;
+            state.last_error_code = None;
+            state.updated_at = now;
+        });
+    }
+
+    fn record_scheduler_failure(&self, request: &StartSaveBackupTaskRequest, error_code: &str) {
+        self.update_scheduler_state(request, |state, now| {
+            state.last_attempt_at = Some(now);
+            state.last_error_code = Some(error_code.to_owned());
+            state.updated_at = now;
+        });
+    }
+
+    fn update_scheduler_state(
+        &self,
+        request: &StartSaveBackupTaskRequest,
+        update: impl FnOnce(&mut SaveBackupSchedulerState, u128),
+    ) {
+        if request.scheduler_lease_owner.is_none() {
+            return;
+        }
+        let Some(repository) = self.scheduler_state_repository.as_deref() else {
+            return;
+        };
+        let Ok(now) = self.clock.now_unix_millis() else {
+            return;
+        };
+        let Ok(Some(mut state)) = repository.get_state(&request.game_id, &request.profile_id)
+        else {
+            return;
+        };
+
+        update(&mut state, now);
+        let _ = repository.upsert_state(&state);
     }
 
     fn record_success_audit(

@@ -5,9 +5,14 @@ use hmm_app::{
 use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
     ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
-    ProfileSaveSettings, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+    ProfileSaveSettings, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
+    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+    SaveBackupWorkerHeartbeat,
 };
-use hmm_ports::{AppClock, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository};
+use hmm_ports::{
+    AppClock, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository,
+};
 use std::sync::{Arc, Mutex};
 
 const DAY_MS: u128 = 86_400_000;
@@ -60,6 +65,84 @@ fn daily_schedule_due_without_prior_auto_backup_returns_auto_task_request() {
 }
 
 #[test]
+fn daily_schedule_due_acquires_scheduler_lease_before_returning_auto_task() {
+    let now = 2 * DAY_MS + 4 * HOUR_MS;
+    let harness = Harness::new(now);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(3),
+        minute: Some(0),
+        weekdays: Vec::new(),
+    }));
+
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("daily schedule should be due");
+
+    let lease_requests = harness.scheduler_state_repository.lease_requests();
+    assert_eq!(lease_requests.len(), 1);
+    let lease_request = &lease_requests[0];
+    assert_eq!(lease_request.game_id, GameId::mhw());
+    assert_eq!(lease_request.profile_id, ProfileId::new("default"));
+    assert_eq!(lease_request.now_unix_millis, now);
+    assert_eq!(lease_request.last_checked_at, Some(now));
+    assert_eq!(lease_request.next_due_at, Some(3 * DAY_MS + 3 * HOUR_MS));
+    assert!(lease_request.lease_expires_at > now);
+
+    let task = result.due_task.expect("lease holder returns auto task");
+    assert_eq!(
+        task.scheduler_lease_owner.as_deref(),
+        Some(lease_request.lease_owner.as_str())
+    );
+
+    let state = harness
+        .scheduler_state_repository
+        .latest_state()
+        .expect("scheduler state saved");
+    assert!(state.enabled);
+    assert!(!state.background_protection_enabled);
+    assert_eq!(
+        state.background_status,
+        SaveBackupBackgroundProtectionStatus::TrayOnly
+    );
+    assert_eq!(state.last_checked_at, Some(now));
+    assert_eq!(state.next_due_at, Some(3 * DAY_MS + 3 * HOUR_MS));
+    assert_eq!(state.last_success_at, None);
+}
+
+#[test]
+fn due_schedule_without_scheduler_lease_does_not_return_auto_task() {
+    let harness = Harness::new(2 * DAY_MS + 4 * HOUR_MS);
+    harness
+        .scheduler_state_repository
+        .set_lease_available(false);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(3),
+        minute: Some(0),
+        weekdays: Vec::new(),
+    }));
+
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("daily schedule should be checked");
+
+    assert_eq!(result.status, SaveBackupAutoCheckStatus::Due);
+    assert!(result.due_task.is_none());
+    assert_eq!(harness.scheduler_state_repository.lease_requests().len(), 1);
+}
+
+#[test]
 fn daily_schedule_not_due_after_auto_backup_in_current_slot() {
     let harness = Harness::new(2 * DAY_MS + 4 * HOUR_MS);
     harness.insert_profile("default");
@@ -82,6 +165,44 @@ fn daily_schedule_not_due_after_auto_backup_in_current_slot() {
     assert_eq!(result.status, SaveBackupAutoCheckStatus::NotDue);
     assert!(result.due_task.is_none());
     assert_eq!(result.next_due_at, Some(3 * DAY_MS + 3 * HOUR_MS));
+}
+
+#[test]
+fn manual_schedule_records_disabled_scheduler_state() {
+    let now = DAY_MS + 4 * HOUR_MS;
+    let harness = Harness::new(now);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule::manual()));
+
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("manual schedule should be checked");
+
+    assert_eq!(result.status, SaveBackupAutoCheckStatus::ManualOnly);
+    assert!(result.due_task.is_none());
+    assert!(harness
+        .scheduler_state_repository
+        .lease_requests()
+        .is_empty());
+
+    let state = harness
+        .scheduler_state_repository
+        .latest_state()
+        .expect("disabled scheduler state saved");
+    assert_eq!(state.game_id, GameId::mhw());
+    assert_eq!(state.profile_id, ProfileId::new("default"));
+    assert!(!state.enabled);
+    assert!(!state.background_protection_enabled);
+    assert_eq!(
+        state.background_status,
+        SaveBackupBackgroundProtectionStatus::NotEnabled
+    );
+    assert_eq!(state.last_checked_at, Some(now));
+    assert_eq!(state.next_due_at, None);
 }
 
 #[test]
@@ -125,6 +246,7 @@ struct Harness {
     profile_repository: Arc<FakeProfileRepository>,
     settings_repository: Arc<FakeProfileSaveSettingsRepository>,
     backup_repository: Arc<FakeSaveBackupRepository>,
+    scheduler_state_repository: Arc<FakeSaveBackupSchedulerStateRepository>,
 }
 
 impl Harness {
@@ -132,10 +254,13 @@ impl Harness {
         let profile_repository = Arc::new(FakeProfileRepository::default());
         let settings_repository = Arc::new(FakeProfileSaveSettingsRepository::default());
         let backup_repository = Arc::new(FakeSaveBackupRepository::default());
+        let scheduler_state_repository =
+            Arc::new(FakeSaveBackupSchedulerStateRepository::default());
         let scheduler = SaveBackupAutoSchedulerService::new(
             profile_repository.clone(),
             settings_repository.clone(),
             backup_repository.clone(),
+            scheduler_state_repository.clone(),
             Arc::new(FixedClock { now_unix_millis }),
         );
 
@@ -144,6 +269,7 @@ impl Harness {
             profile_repository,
             settings_repository,
             backup_repository,
+            scheduler_state_repository,
         }
     }
 
@@ -285,6 +411,107 @@ impl SaveBackupRepository for FakeSaveBackupRepository {
                 summary.status = status;
             }
         }
+        Ok(())
+    }
+}
+
+struct FakeSaveBackupSchedulerStateRepository {
+    states: Mutex<Vec<SaveBackupSchedulerState>>,
+    lease_requests: Mutex<Vec<SaveBackupSchedulerLeaseRequest>>,
+    lease_available: Mutex<bool>,
+}
+
+impl Default for FakeSaveBackupSchedulerStateRepository {
+    fn default() -> Self {
+        Self {
+            states: Mutex::new(Vec::new()),
+            lease_requests: Mutex::new(Vec::new()),
+            lease_available: Mutex::new(true),
+        }
+    }
+}
+
+impl FakeSaveBackupSchedulerStateRepository {
+    fn latest_state(&self) -> Option<SaveBackupSchedulerState> {
+        self.states.lock().unwrap().last().cloned()
+    }
+
+    fn lease_requests(&self) -> Vec<SaveBackupSchedulerLeaseRequest> {
+        self.lease_requests.lock().unwrap().clone()
+    }
+
+    fn set_lease_available(&self, available: bool) {
+        *self.lease_available.lock().unwrap() = available;
+    }
+
+    fn replace_state(&self, state: SaveBackupSchedulerState) {
+        let mut states = self.states.lock().unwrap();
+        states.retain(|existing| {
+            existing.game_id != state.game_id || existing.profile_id != state.profile_id
+        });
+        states.push(state);
+    }
+}
+
+impl SaveBackupSchedulerStateRepository for FakeSaveBackupSchedulerStateRepository {
+    fn get_state(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<Option<SaveBackupSchedulerState>> {
+        Ok(self
+            .states
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|state| &state.game_id == game_id && &state.profile_id == profile_id)
+            .cloned())
+    }
+
+    fn upsert_state(&self, state: &SaveBackupSchedulerState) -> Result<()> {
+        self.replace_state(state.clone());
+        Ok(())
+    }
+
+    fn acquire_due_lease(
+        &self,
+        request: SaveBackupSchedulerLeaseRequest,
+    ) -> Result<Option<SaveBackupSchedulerState>> {
+        self.lease_requests.lock().unwrap().push(request.clone());
+        if !*self.lease_available.lock().unwrap() {
+            return Ok(None);
+        }
+
+        let Some(mut state) = self.get_state(&request.game_id, &request.profile_id)? else {
+            return Ok(None);
+        };
+        state.lease_owner = Some(request.lease_owner);
+        state.lease_expires_at = Some(request.lease_expires_at);
+        state.last_checked_at = request.last_checked_at;
+        state.next_due_at = request.next_due_at;
+        state.updated_at = request.now_unix_millis;
+        self.replace_state(state.clone());
+        Ok(Some(state))
+    }
+
+    fn release_lease(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        lease_owner: &str,
+    ) -> Result<()> {
+        if let Some(mut state) = self.get_state(game_id, profile_id)? {
+            if state.lease_owner.as_deref() == Some(lease_owner) {
+                state.lease_owner = None;
+                state.lease_expires_at = None;
+                self.replace_state(state);
+            }
+        }
+        Ok(())
+    }
+
+    fn record_worker_heartbeat(&self, _heartbeat: SaveBackupWorkerHeartbeat) -> Result<()> {
         Ok(())
     }
 }

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use hmm_core::{
-    GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId, SaveBackupStatus,
-    SaveBackupSummary, SaveBackupTrigger,
+    GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
+    SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,4 +44,28 @@ pub trait SaveBackupRepository: Send + Sync {
     ) -> Result<Vec<SaveBackupSummary>>;
 
     fn mark_status(&self, backup_id: &str, status: SaveBackupStatus) -> Result<()>;
+}
+
+pub trait SaveBackupSchedulerStateRepository: Send + Sync {
+    fn get_state(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<Option<SaveBackupSchedulerState>>;
+
+    fn upsert_state(&self, state: &SaveBackupSchedulerState) -> Result<()>;
+
+    fn acquire_due_lease(
+        &self,
+        request: SaveBackupSchedulerLeaseRequest,
+    ) -> Result<Option<SaveBackupSchedulerState>>;
+
+    fn release_lease(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        lease_owner: &str,
+    ) -> Result<()>;
+
+    fn record_worker_heartbeat(&self, heartbeat: SaveBackupWorkerHeartbeat) -> Result<()>;
 }
