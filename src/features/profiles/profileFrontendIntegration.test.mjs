@@ -178,6 +178,34 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.doesNotMatch(css, /\.profile-save-bar\s*\{[^}]*display:\s*none/);
 });
 
+test("profile page wires manual save backup execution, progress, and history refresh", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const taskStateSource = readSource("src/features/profiles/profileSaveBackupTaskState.ts");
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+  const startBackupCall = pageSource.match(/startProfileSaveBackup\(\{[\s\S]*?\}\);/)?.[0] ?? "";
+
+  assert.match(pageSource, /startProfileSaveBackup/);
+  assert.match(pageSource, /listProfileSaveBackups/);
+  assert.match(pageSource, /listen<TaskProgressEventDto>\(TASK_PROGRESS_EVENT_NAME/);
+  assert.match(pageSource, /nextProfileSaveBackupTaskStateFromProgress/);
+  assert.match(pageSource, /shouldRefreshProfileSaveBackupHistory/);
+  assert.match(pageSource, /setBackupHistoryRefreshToken\(\(current\) => current \+ 1\)/);
+  assert.match(pageSource, /onClick=\{\(\) => void startManualSaveBackup\(\)\}/);
+  assert.match(pageSource, /disabled=\{!canStartManualSaveBackup\}/);
+  assert.doesNotMatch(pageSource, /profile-create-backup-button" disabled/);
+  assert.doesNotMatch(startBackupCall, /saveDirectory|backupDirectory|path|manifest|backupRef|hash/i);
+
+  assert.match(taskStateSource, /save_backup\.queued/);
+  assert.match(taskStateSource, /save_backup\.retention_pruning/);
+  assert.match(taskStateSource, /event\.kind !== "save_backup"/);
+  assert.match(taskStateSource, /current\.taskId !== event\.taskId/);
+
+  assert.match(saveManagerCss, /\.profile-manual-backup-card/);
+  assert.match(saveManagerCss, /\.profile-manual-backup-status/);
+  assert.match(saveManagerCss, /\.profile-create-backup-button\.profile-action-button\.is-primary\s*\{[\s\S]*?color:\s*#fff/);
+  assert.match(saveManagerCss, /\.profile-backup-table/);
+});
+
 test("plain browser preview renders the redesigned profiles console instead of the error shell", () => {
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
   const directorySource = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
