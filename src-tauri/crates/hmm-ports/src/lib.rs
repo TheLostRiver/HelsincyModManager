@@ -33,8 +33,8 @@ pub use game_prerequisites::{
     summarize_prerequisite_items, GamePrerequisiteIssue, GamePrerequisiteIssueCode,
     GamePrerequisiteItem, GamePrerequisiteItemStatus, GamePrerequisiteJsonCheckRule,
     GamePrerequisiteReport, GamePrerequisiteReportState, GamePrerequisiteRule,
-    GamePrerequisiteRuleRepository, GamePrerequisiteRuleRepositoryError,
-    GamePrerequisiteRuleSet, GamePrerequisiteSignatureRule, GamePrerequisiteSummaryStatus,
+    GamePrerequisiteRuleRepository, GamePrerequisiteRuleRepositoryError, GamePrerequisiteRuleSet,
+    GamePrerequisiteSignatureRule, GamePrerequisiteSummaryStatus,
 };
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
@@ -64,7 +64,8 @@ pub use profile::{
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
 };
 pub use save_backup::{
-    SaveBackupRepository, SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
+    SaveBackupRepository, SaveBackupSchedulerStateRepository, SaveBackupWriteRequest,
+    SaveBackupWriteResult, SaveBackupWriter,
 };
 pub use save_directory::{
     GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,

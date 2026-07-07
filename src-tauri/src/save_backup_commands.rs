@@ -137,6 +137,7 @@ fn start_save_backup_task_request_from_dto(
         profile_id: parse_profile_id(request.profile_id)?,
         trigger: SaveBackupTrigger::Manual,
         note: normalize_note(request.note),
+        scheduler_lease_owner: None,
     })
 }
 

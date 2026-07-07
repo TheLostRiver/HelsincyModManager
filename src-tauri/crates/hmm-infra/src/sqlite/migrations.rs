@@ -9,5 +9,8 @@ pub(crate) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "migrations/005_save_backup_directory_snapshot.sql"
         )),
+        M::up(include_str!(
+            "migrations/006_save_backup_scheduler_state.sql"
+        )),
     ])
 }
