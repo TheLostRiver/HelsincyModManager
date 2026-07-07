@@ -161,6 +161,8 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(pageSource, /profile-save-manager-deck/);
   assert.match(pageSource, /ActiveSavePanel/);
   assert.match(pageSource, /BackupHistoryPanel/);
+  assert.doesNotMatch(pageSource, /存档沙盒隔离|安装 Mod 前备份|自动归档计划/);
+  assert.doesNotMatch(pageSource, /profile-policy-flags|PolicyFlag/);
   assert.match(pickerSource, /schedule-chip/);
   assert.match(pickerSource, /scroll-picker-arrow/);
 
@@ -168,6 +170,7 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(css, /:root\[data-color-scheme="dark"\]\s+\.profile-page/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck/);
   assert.match(saveManagerCss, /\.active-save-banner/);
+  assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
   assert.match(saveManagerCss, /\.profile-backup-table/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
   assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card\s*\{[\s\S]*?z-index:\s*20/);

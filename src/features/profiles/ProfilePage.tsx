@@ -734,7 +734,6 @@ function ActiveSavePanel({
   settings: ProfileSaveSettingsDto;
 }) {
   const saveStatus = formatDirectoryStatus(settings.saveDirectory);
-  const scheduleLabel = formatBackupSchedule(settings.schedule);
   const ready = settings.saveDirectory.status === "valid";
 
   return (
@@ -758,26 +757,8 @@ function ActiveSavePanel({
             <span>{ready ? saveStatus.label : "等待关联存档源目录"}</span>
           </div>
         </div>
-
-        <div className="profile-policy-flags" aria-label="配置档策略摘要">
-          <PolicyFlag label="存档沙盒隔离" value={ready ? "已就绪" : "待配置"} active={ready} />
-          <PolicyFlag label="安装 Mod 前备份" value="建议开启" active />
-          <PolicyFlag label="自动归档计划" value={scheduleLabel} active={settings.schedule.cadence !== "manual"} />
-        </div>
       </div>
     </section>
-  );
-}
-
-function PolicyFlag({ label, value, active }: { label: string; value: string; active: boolean }) {
-  return (
-    <div className="profile-policy-flag">
-      <div>
-        <strong>{label}</strong>
-        <span>{value}</span>
-      </div>
-      <span className={`profile-policy-switch ${active ? "is-on" : ""}`} aria-hidden="true" />
-    </div>
   );
 }
 
