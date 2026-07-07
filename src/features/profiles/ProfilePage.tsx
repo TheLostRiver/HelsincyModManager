@@ -44,10 +44,7 @@ import type {
   ProfileSaveSettingsDto,
 } from "./profileSaveSettingsTypes";
 import type { Profile } from "./profileTypes";
-import {
-  formatBackupSchedule,
-  formatDirectoryStatus,
-} from "./profileViewModel";
+import { formatDirectoryStatus } from "./profileViewModel";
 
 const CURRENT_GAME_ID = "mhw";
 const PREVIEW_PROFILES: Profile[] = [
@@ -586,7 +583,14 @@ export function ProfilePage() {
             管理当前游戏实例的多套存档配置、目录映射与自动备份策略
           </p>
         </div>
-        <div className="profile-page__summary header-status-deck" aria-label="配置档操作">
+        <div className="profile-page__actions header-status-deck" aria-label="配置档操作">
+          <ProfileHeaderSaveAction
+            dirty={dirty}
+            saveError={saveError}
+            savingSettings={savingSettings}
+            settingsEditable={settingsEditable}
+            onSave={() => void saveSettings()}
+          />
           <button
             type="button"
             className="profile-action-button"
@@ -600,7 +604,7 @@ export function ProfilePage() {
           </button>
           <button
             type="button"
-            className="profile-action-button is-primary"
+            className="profile-action-button"
             onClick={() => setCreateProfileRequestToken((current) => current + 1)}
           >
             <Plus size={14} />
@@ -627,16 +631,6 @@ export function ProfilePage() {
 
         <main className="profile-settings-stack detail-column" aria-live="polite">
           <section className="profile-settings-panel glass-card profile-detail-console" aria-label="配置档详情与存档目录">
-            <ProfileOverview
-              profile={selectedProfile}
-              settings={settingsState.status === "ready" ? settingsState.settings : null}
-              dirty={dirty}
-              saveError={saveError}
-              savingSettings={savingSettings}
-              settingsEditable={settingsEditable}
-              onSave={() => void saveSettings()}
-            />
-
             {settingsState.status === "idle" ? (
               <div className="profile-settings-state" role="status">
                 <span>选择配置档后显示存档设置</span>
@@ -941,76 +935,52 @@ function toBackupHistoryRow(backup: SaveBackupSummaryDto) {
   };
 }
 
-function ProfileOverview({
-  profile,
-  settings,
+function ProfileHeaderSaveAction({
   dirty,
   saveError,
   savingSettings,
   settingsEditable,
   onSave,
 }: {
-  profile: Profile | null;
-  settings: ProfileSaveSettingsDto | null;
   dirty: boolean;
   saveError: string | null;
   savingSettings: boolean;
   settingsEditable: boolean;
   onSave: () => void;
 }) {
-  const saveStatus = settings ? formatDirectoryStatus(settings.saveDirectory) : null;
-  const backupStatus = settings ? formatDirectoryStatus(settings.backupDirectory) : null;
-
-  return (
-    <div className="profile-overview profile-info-deck" aria-label="当前配置档">
-      <div className="profile-overview__identity">
-        <span className="profile-overview__mark" aria-hidden="true">
-          <CheckCircle2 size={20} />
-        </span>
-        <div>
-          <h2>{profile?.name ?? "未选择配置档"}</h2>
-          <p>{profile?.description || profile?.id || "选择一个配置档开始配置"}</p>
-        </div>
-      </div>
-      <div className="profile-overview__right">
-        <div className="profile-overview__facts">
-          <ProfileMetric label="存档目录" value={saveStatus?.label ?? "-"} />
-          <ProfileMetric label="备份目录" value={backupStatus?.label ?? "-"} />
-          <ProfileMetric label="自动备份" value={settings ? formatBackupSchedule(settings.schedule) : "-"} />
-        </div>
-        {settingsEditable ? (
-          <div className="profile-save-bar profile-toolbar-save-box">
-            {saveError ? (
-              <span className="profile-save-bar__error" role="alert">
-                <AlertTriangle size={14} />
-                {saveError}
-              </span>
-            ) : dirty ? (
-              <span className="profile-save-pulse-tip">有未保存的更改</span>
-            ) : (
-              <span className="profile-save-synced-tip">设置已同步</span>
-            )}
-            <button
-              type="button"
-              className={`profile-action-button is-primary ${dirty ? "is-pulse-glow" : ""}`}
-              onClick={onSave}
-              disabled={!dirty || savingSettings}
-            >
-              <Save size={14} />
-              {savingSettings ? "保存中" : "保存设置"}
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </div>
+  const tone = saveError ? "error" : dirty ? "dirty" : settingsEditable ? "synced" : "disabled";
+  const label = saveError
+    ? saveError
+    : savingSettings
+      ? "正在保存设置"
+      : dirty
+        ? "有未保存的更改"
+        : settingsEditable
+          ? "设置已同步"
+          : "设置未就绪";
+  const icon = savingSettings ? (
+    <Loader2 className="profile-spinner" size={15} aria-hidden="true" />
+  ) : saveError || dirty ? (
+    <AlertTriangle size={15} aria-hidden="true" />
+  ) : (
+    <CheckCircle2 size={15} aria-hidden="true" />
   );
-}
 
-function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="profile-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className={`profile-header-save-action is-${tone}`} role={saveError ? "alert" : "status"} aria-live="polite">
+      <span className="profile-header-save-action__status">
+        {icon}
+        <span>{label}</span>
+      </span>
+      <button
+        type="button"
+        className={`profile-action-button profile-header-save-action__button ${dirty ? "is-primary is-pulse-glow" : ""}`}
+        onClick={onSave}
+        disabled={!settingsEditable || !dirty || savingSettings}
+      >
+        <Save size={14} />
+        {savingSettings ? "保存中" : "保存设置"}
+      </button>
     </div>
   );
 }

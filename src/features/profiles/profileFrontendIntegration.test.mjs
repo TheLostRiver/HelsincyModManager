@@ -156,8 +156,12 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(directorySource, /profile-directory-grid/);
   assert.match(directorySource, /profile-directory-card__path/);
   assert.doesNotMatch(pageSource, /directory-flow-connector|directory-flow-badge|directory-flow-line/);
-  assert.match(pageSource, /profile-overview__right/);
-  assert.match(pageSource, /profile-toolbar-save-box/);
+  assert.match(pageSource, /ProfileHeaderSaveAction/);
+  assert.match(pageSource, /className="profile-page__actions/);
+  assert.match(pageSource, /className=\{`profile-header-save-action/);
+  assert.match(pageSource, /onSave=\{\(\) => void saveSettings\(\)\}/);
+  assert.doesNotMatch(pageSource, /function ProfileOverview|function ProfileMetric/);
+  assert.doesNotMatch(pageSource, /profile-overview|profile-toolbar-save-box|profile-metric/);
   assert.match(pageSource, /profile-save-manager-deck/);
   assert.match(pageSource, /ActiveSavePanel/);
   assert.match(pageSource, /BackupHistoryPanel/);
@@ -168,8 +172,11 @@ test("profile save UI follows the redesigned structure without inline styling", 
 
   assert.match(css, /:root\[data-color-scheme="light"\]\s+\.profile-page/);
   assert.match(css, /:root\[data-color-scheme="dark"\]\s+\.profile-page/);
+  assert.match(css, /\.profile-header-save-action/);
+  assert.doesNotMatch(css, /profile-overview|profile-toolbar-save-box|profile-metric/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck/);
   assert.match(saveManagerCss, /\.active-save-banner/);
+  assert.doesNotMatch(saveManagerCss, /profile-overview|profile-toolbar-save-box|profile-metric/);
   assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
   assert.match(saveManagerCss, /\.profile-backup-table/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
