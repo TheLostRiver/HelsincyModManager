@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use hmm_core::{GameId, ProfileId, SaveBackupSummary};
+use hmm_core::{GameId, ProfileId, SaveBackupSummary, SaveBackupTrigger};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 
 use crate::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
-    SaveBackupWarning, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskStarted,
-    TaskStatus,
+    SaveBackupWarning, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot,
+    TaskStarted, TaskStatus,
 };
 
 const SAVE_BACKUP_SCANNING_PHASE: &str = "save_backup.scanning";
@@ -22,7 +22,68 @@ const SAVE_BACKUP_FAILED_ERROR: &str = "save_backup_failed";
 pub struct StartSaveBackupTaskRequest {
     pub game_id: GameId,
     pub profile_id: ProfileId,
+    pub trigger: SaveBackupTrigger,
     pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SaveBackupTaskScope {
+    game_id: String,
+    profile_id: String,
+}
+
+impl From<&StartSaveBackupTaskRequest> for SaveBackupTaskScope {
+    fn from(request: &StartSaveBackupTaskRequest) -> Self {
+        Self {
+            game_id: request.game_id.as_str().to_owned(),
+            profile_id: request.profile_id.as_str().to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SaveBackupTaskScopeRegistry {
+    active_tasks: Mutex<BTreeMap<SaveBackupTaskScope, String>>,
+}
+
+impl SaveBackupTaskScopeRegistry {
+    pub fn reserve_task(
+        &self,
+        request: &StartSaveBackupTaskRequest,
+        create_task: impl FnOnce() -> Result<TaskSnapshot, TaskManagerError>,
+    ) -> Result<TaskSnapshot, TaskManagerError> {
+        let scope = SaveBackupTaskScope::from(request);
+        let mut active_tasks = self
+            .active_tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+
+        if let Some(task_id) = active_tasks.get(&scope) {
+            return Err(TaskManagerError::TaskScopeBusy {
+                kind: TaskKind::SaveBackup,
+                task_id: task_id.clone(),
+            });
+        }
+
+        let task = create_task()?;
+        active_tasks.insert(scope, task.task_id.clone());
+
+        Ok(task)
+    }
+
+    pub fn release_task(&self, request: &StartSaveBackupTaskRequest, task_id: &str) {
+        let scope = SaveBackupTaskScope::from(request);
+        let Ok(mut active_tasks) = self.active_tasks.lock() else {
+            return;
+        };
+
+        if active_tasks
+            .get(&scope)
+            .is_some_and(|active_task_id| active_task_id == task_id)
+        {
+            active_tasks.remove(&scope);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,35 +92,53 @@ pub struct SaveBackupTaskRunError {
 }
 
 pub trait SaveBackupExecutor: Send + Sync {
-    fn create_manual_backup(
+    fn create_backup(
         &self,
         request: CreateSaveBackupRequest,
+        trigger: SaveBackupTrigger,
     ) -> Result<CreateSaveBackupResult, SaveBackupError>;
 }
 
 impl SaveBackupExecutor for SaveBackupService {
-    fn create_manual_backup(
+    fn create_backup(
         &self,
         request: CreateSaveBackupRequest,
+        trigger: SaveBackupTrigger,
     ) -> Result<CreateSaveBackupResult, SaveBackupError> {
-        SaveBackupService::create_manual_backup(self, request)
+        SaveBackupService::create_backup(self, request, trigger)
     }
 }
 
 pub struct SaveBackupTaskService {
     task_manager: Arc<TaskManager>,
+    scope_registry: Arc<SaveBackupTaskScopeRegistry>,
 }
 
 impl SaveBackupTaskService {
     pub fn new(task_manager: Arc<TaskManager>) -> Self {
-        Self { task_manager }
+        Self::with_scope_registry(
+            task_manager,
+            Arc::new(SaveBackupTaskScopeRegistry::default()),
+        )
+    }
+
+    pub fn with_scope_registry(
+        task_manager: Arc<TaskManager>,
+        scope_registry: Arc<SaveBackupTaskScopeRegistry>,
+    ) -> Self {
+        Self {
+            task_manager,
+            scope_registry,
+        }
     }
 
     pub fn start_save_backup_task(
         &self,
-        _request: StartSaveBackupTaskRequest,
+        request: StartSaveBackupTaskRequest,
     ) -> Result<TaskStarted, TaskManagerError> {
-        let task = self.task_manager.create_task(TaskKind::SaveBackup)?;
+        let task = self.scope_registry.reserve_task(&request, || {
+            self.task_manager.create_task(TaskKind::SaveBackup)
+        })?;
 
         Ok(TaskStarted {
             task_id: task.task_id,
@@ -74,6 +153,7 @@ pub struct SaveBackupTaskRunner {
     executor: Arc<dyn SaveBackupExecutor>,
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
+    scope_registry: Arc<SaveBackupTaskScopeRegistry>,
 }
 
 impl SaveBackupTaskRunner {
@@ -83,15 +163,42 @@ impl SaveBackupTaskRunner {
         audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
+        Self::with_scope_registry(
+            task_manager,
+            executor,
+            audit_log,
+            clock,
+            Arc::new(SaveBackupTaskScopeRegistry::default()),
+        )
+    }
+
+    pub fn with_scope_registry(
+        task_manager: Arc<TaskManager>,
+        executor: Arc<dyn SaveBackupExecutor>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        scope_registry: Arc<SaveBackupTaskScopeRegistry>,
+    ) -> Self {
         Self {
             task_manager,
             executor,
             audit_log,
             clock,
+            scope_registry,
         }
     }
 
     pub fn run_save_backup_task(
+        &self,
+        task_id: &str,
+        request: StartSaveBackupTaskRequest,
+    ) -> Result<Vec<TaskProgressEvent>, SaveBackupTaskRunError> {
+        let result = self.run_save_backup_task_inner(task_id, request.clone());
+        self.scope_registry.release_task(&request, task_id);
+        result
+    }
+
+    fn run_save_backup_task_inner(
         &self,
         task_id: &str,
         request: StartSaveBackupTaskRequest,
@@ -105,11 +212,14 @@ impl SaveBackupTaskRunner {
             running_event(task_id, SAVE_BACKUP_ARCHIVING_PHASE),
         ];
 
-        let result = match self.executor.create_manual_backup(CreateSaveBackupRequest {
-            game_id: request.game_id.clone(),
-            profile_id: request.profile_id.clone(),
-            note: request.note.clone(),
-        }) {
+        let result = match self.executor.create_backup(
+            CreateSaveBackupRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                note: request.note.clone(),
+            },
+            request.trigger,
+        ) {
             Ok(summary) => summary,
             Err(error) => {
                 return Err(self.fail_with_audit(task_id, &request, events, error));
@@ -183,7 +293,7 @@ impl SaveBackupTaskRunner {
             summary.archive_size_bytes.to_string(),
         );
 
-        self.record_audit("success", fields);
+        self.record_audit(request.trigger, "success", fields);
     }
 
     fn record_warning_audits(
@@ -208,11 +318,16 @@ impl SaveBackupTaskRunner {
         let mut fields = audit_fields(task_id, request);
         fields.insert("error_code".to_owned(), error_code.to_owned());
 
-        self.record_audit("failure", fields);
+        self.record_audit(request.trigger, "failure", fields);
     }
 
-    fn record_audit(&self, result: &str, fields: BTreeMap<String, String>) {
-        self.record_audit_for_operation("manual_backup", result, fields);
+    fn record_audit(
+        &self,
+        trigger: SaveBackupTrigger,
+        result: &str,
+        fields: BTreeMap<String, String>,
+    ) {
+        self.record_audit_for_operation(backup_operation(trigger), result, fields);
     }
 
     fn record_audit_for_operation(
@@ -229,6 +344,14 @@ impl SaveBackupTaskRunner {
             result: result.to_owned(),
             fields,
         });
+    }
+}
+
+fn backup_operation(trigger: SaveBackupTrigger) -> &'static str {
+    match trigger {
+        SaveBackupTrigger::Manual => "manual_backup",
+        SaveBackupTrigger::Auto => "auto_backup",
+        SaveBackupTrigger::PreInstall => "pre_install_backup",
     }
 }
 
@@ -249,5 +372,6 @@ fn audit_fields(task_id: &str, request: &StartSaveBackupTaskRequest) -> BTreeMap
             "profile_id".to_owned(),
             request.profile_id.as_str().to_owned(),
         ),
+        ("trigger".to_owned(), request.trigger.as_str().to_owned()),
     ])
 }

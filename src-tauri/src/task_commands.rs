@@ -144,5 +144,12 @@ mod tests {
             },
         );
         assert_eq!(cannot_cancel.code, "task_cannot_be_cancelled");
+
+        let scope_busy =
+            CommandErrorDto::from_task_manager_error(hmm_app::TaskManagerError::TaskScopeBusy {
+                kind: TaskKind::SaveBackup,
+                task_id: "save-backup-123".to_owned(),
+            });
+        assert_eq!(scope_busy.code, "task_scope_busy");
     }
 }
