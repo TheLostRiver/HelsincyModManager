@@ -263,6 +263,7 @@
 .glass-card,
 .profile-list-panel.glass-card,
 .profile-detail-console.glass-card,
+.profile-directory-console,
 .profile-save-strategy-stack.glass-card,
 .profile-history-card.glass-card {
   background: var(--profile-console-glass);
@@ -274,6 +275,7 @@
 
 .glass-card::before,
 .profile-detail-console::before,
+.profile-directory-console::before,
 .profile-save-strategy-stack::before,
 .profile-history-card::before {
   content: "";
@@ -360,9 +362,12 @@
 }
 
 .profile-directory-console {
+  position: relative;
   display: grid;
-  gap: 10px;
-  padding-top: 0;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  overflow: hidden;
 }
 
 .profile-directory-summary {
@@ -521,13 +526,26 @@
 
 .profile-save-manager-deck.save-manager-deck {
   position: relative;
-  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  grid-template-areas:
+    "strategy directories"
+    "strategy history";
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: start;
   gap: 20px;
   overflow: visible;
 }
 
+.profile-directory-zone {
+  display: grid;
+  grid-area: directories;
+  gap: 12px;
+  min-width: 0;
+}
+
 .profile-save-strategy-stack.strategy-card {
   position: relative;
+  grid-area: strategy;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -847,6 +865,7 @@
 
 .profile-history-card.history-card {
   position: relative;
+  grid-area: history;
   z-index: 1;
   min-height: 100%;
   overflow: hidden;
@@ -915,6 +934,11 @@
 
   .profile-save-manager-deck.save-manager-deck {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "strategy"
+      "directories"
+      "history";
+    grid-template-rows: auto;
   }
 }
 

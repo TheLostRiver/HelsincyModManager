@@ -688,7 +688,8 @@ export function ProfilePage() {
         />
 
         <main className="profile-settings-stack detail-column" aria-live="polite">
-          <section className="profile-settings-panel glass-card profile-detail-console" aria-label="配置档详情与存档目录">
+          {settingsState.status !== "ready" ? (
+            <section className="profile-settings-panel glass-card profile-detail-console" aria-label="配置档详情与存档目录">
             {settingsState.status === "idle" ? (
               <div className="profile-settings-state" role="status">
                 <span>选择配置档后显示存档设置</span>
@@ -715,37 +716,8 @@ export function ProfilePage() {
                 </button>
               </div>
             ) : null}
-
-            {settingsState.status === "ready" ? (
-              <>
-                <SaveDirectoryPanel
-                  gameId={CURRENT_GAME_ID}
-                  profileId={selectedProfileId ?? PREVIEW_SAVE_SETTINGS.profileId}
-                  settings={visibleSettings}
-                  previewMode={previewMode}
-                  disabled={!settingsEditable}
-                  autoDetecting={isDiscovering && discoveringTarget?.profileId === selectedProfileId}
-                  hasDiscoveryCandidates={
-                    latestDiscovery?.outcome === "confirmation_required" &&
-                    latestDiscovery.profileId === selectedProfileId
-                  }
-                  onAutoDetect={() => {
-                    if (!selectedProfileId) return;
-                    void runDiscovery({
-                      gameId: CURRENT_GAME_ID,
-                      profileId: selectedProfileId,
-                      reason: "manual",
-                    });
-                  }}
-                  onSettingsChange={updateSettings}
-                  onDirectorySelected={(kind, directory) =>
-                    setPendingDirectories((current) => ({ ...current, [kind]: directory }))
-                  }
-                />
-                <ProfileSaveDirectoryCandidateList />
-              </>
-            ) : null}
-          </section>
+            </section>
+          ) : null}
 
           {settingsState.status === "ready" ? (
             <>
@@ -769,6 +741,33 @@ export function ProfilePage() {
                     onScheduleChange={updateSchedule}
                     onRetentionChange={updateRetention}
                   />
+                </div>
+                <div className="profile-directory-zone">
+                  <SaveDirectoryPanel
+                    gameId={CURRENT_GAME_ID}
+                    profileId={selectedProfileId ?? PREVIEW_SAVE_SETTINGS.profileId}
+                    settings={visibleSettings}
+                    previewMode={previewMode}
+                    disabled={!settingsEditable}
+                    autoDetecting={isDiscovering && discoveringTarget?.profileId === selectedProfileId}
+                    hasDiscoveryCandidates={
+                      latestDiscovery?.outcome === "confirmation_required" &&
+                      latestDiscovery.profileId === selectedProfileId
+                    }
+                    onAutoDetect={() => {
+                      if (!selectedProfileId) return;
+                      void runDiscovery({
+                        gameId: CURRENT_GAME_ID,
+                        profileId: selectedProfileId,
+                        reason: "manual",
+                      });
+                    }}
+                    onSettingsChange={updateSettings}
+                    onDirectorySelected={(kind, directory) =>
+                      setPendingDirectories((current) => ({ ...current, [kind]: directory }))
+                    }
+                  />
+                  <ProfileSaveDirectoryCandidateList />
                 </div>
                 <BackupHistoryPanel
                   profile={selectedProfile}
