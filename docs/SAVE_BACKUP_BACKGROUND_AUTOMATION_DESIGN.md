@@ -159,6 +159,8 @@ save_backup_scheduler_state
   pending_reason TEXT
   last_error_code TEXT
   worker_instance_id TEXT
+  lease_owner TEXT
+  lease_expires_at INTEGER
   updated_at INTEGER NOT NULL
   PRIMARY KEY (game_id, profile_id)
 ```
@@ -170,6 +172,7 @@ save_backup_scheduler_state
 - 不保存存档内容或 manifest 正文。
 - `pending_reason` 和 `last_error_code` 使用稳定短码。
 - `worker_instance_id` 是本机内部短 id，只用于诊断同一时间是否有多个 worker 竞争。
+- `lease_owner` 和 `lease_expires_at` 是持久化调度租约字段，用于主客户端调度器和后台守护之间去重；重启后过期租约可被接管，未过期租约必须等待或由健康检查判定失效后释放。
 
 ## 调度规则
 
@@ -211,18 +214,18 @@ save_backup_scheduler_state
 ### 并发与锁
 
 - 同一 `gameId/profileId` 的备份任务必须串行。
-- 主客户端调度器和后台守护可能同时存在，必须通过数据库锁、任务锁或调度租约避免重复执行。
+- 主客户端调度器和后台守护可能同时存在，必须通过数据库锁、任务锁或持久化调度租约避免重复执行。
 - 获得调度租约不等于获得文件写入许可；备份执行前仍由 `SaveBackupService` 重新校验所有目录与安全上限。
 - 长时间扫描、压缩、hash 不应持有不必要的全局锁。
 
-建议租约字段：
+租约协议使用 `save_backup_scheduler_state` 中的持久化字段：
 
 ```text
 lease_owner
 lease_expires_at
 ```
 
-租约过期后其他 worker 可以接管；接管前必须重新读取状态并再次判断 due。
+租约过期后其他 worker 可以接管；接管前必须重新读取状态并再次判断 due。守护或主客户端重启时不得把本地内存状态视为有效租约，只能以数据库中的 `lease_owner`、`lease_expires_at` 和 worker 健康状态为准。
 
 ## 后台保障状态
 
@@ -335,6 +338,19 @@ save_backup_auto_task_conflict
 - `file_count`
 - `archive_size_bytes`
 - `scheduler_state`
+
+`scheduler_state` 不能序列化完整调度状态对象，只能是显式白名单内的小型标量摘要：
+
+```text
+status
+pending_reason
+last_error_code
+background_protection_enabled
+worker_health
+lease_age_seconds
+```
+
+这些字段只能使用布尔值、短枚举、短错误码或整数秒数，不得包含路径、账号标识、manifest、hash 列表、原始错误文本或任意嵌套对象。
 
 禁止字段：
 
