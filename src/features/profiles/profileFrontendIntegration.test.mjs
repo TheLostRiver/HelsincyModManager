@@ -145,6 +145,9 @@ test("profile save UI follows the redesigned structure without inline styling", 
   const pickerSource = readSource("src/features/profiles/BackupSchedulePicker.tsx");
   const css = readSource("src/features/profiles/ProfilePage.css");
   const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+  const detailConsoleStart = pageSource.indexOf("profile-detail-console");
+  const readyDeckStart = pageSource.indexOf('{settingsState.status === "ready" ? (', detailConsoleStart);
+  const detailConsoleBlock = pageSource.slice(detailConsoleStart, readyDeckStart);
 
   assert.match(listSource, /slot-meta/);
   assert.match(listSource, /slot-num/);
@@ -165,6 +168,11 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(pageSource, /profile-save-manager-deck/);
   assert.match(pageSource, /ActiveSavePanel/);
   assert.match(pageSource, /BackupHistoryPanel/);
+  assert.match(
+    pageSource,
+    /<div className="profile-save-manager-deck save-manager-deck">[\s\S]*?<div className="profile-save-strategy-stack[\s\S]*?<div className="profile-directory-zone">[\s\S]*?<SaveDirectoryPanel[\s\S]*?<BackupHistoryPanel/,
+  );
+  assert.doesNotMatch(detailConsoleBlock, /SaveDirectoryPanel/);
   assert.doesNotMatch(pageSource, /存档沙盒隔离|安装 Mod 前备份|自动归档计划/);
   assert.doesNotMatch(pageSource, /profile-policy-flags|PolicyFlag/);
   assert.match(pickerSource, /schedule-chip/);
@@ -180,6 +188,10 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
   assert.match(saveManagerCss, /\.profile-backup-table/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
+  assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?grid-template-areas:\s*"strategy directories"\s*"strategy history"/);
+  assert.match(saveManagerCss, /\.profile-directory-zone\s*\{[\s\S]*?grid-area:\s*directories/);
+  assert.match(saveManagerCss, /\.profile-save-strategy-stack\.strategy-card\s*\{[\s\S]*?grid-area:\s*strategy/);
+  assert.match(saveManagerCss, /\.profile-history-card\.history-card\s*\{[\s\S]*?grid-area:\s*history/);
   assert.match(saveManagerCss, /\.profile-directory-summary\s*\{[\s\S]*?padding:\s*12px/);
   assert.match(saveManagerCss, /\.profile-directory-row\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/);
   assert.doesNotMatch(saveManagerCss, /\.profile-directory-grid\.paths-setup-grid/);
