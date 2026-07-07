@@ -10,8 +10,11 @@ import {
   Save,
   Search,
   ShieldCheck,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import { useActiveProfile } from "./ActiveProfileProvider";
 import { BackupPolicyPanel } from "./BackupPolicyPanel";
 import { ProfileListPanel } from "./ProfileListPanel";
@@ -19,6 +22,18 @@ import { ProfileSaveDirectoryCandidateList } from "./ProfileSaveDirectoryCandida
 import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscoveryProvider";
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { listProfiles } from "./profileApi";
+import {
+  listProfileSaveBackups,
+  startProfileSaveBackup,
+} from "./profileSaveBackupApi";
+import {
+  getProfileSaveBackupTaskPhaseLabel,
+  isProfileSaveBackupTaskPhase,
+  nextProfileSaveBackupTaskStateFromProgress,
+  shouldRefreshProfileSaveBackupHistory,
+  type ProfileSaveBackupTaskState,
+} from "./profileSaveBackupTaskState";
+import type { SaveBackupSummaryDto } from "./profileSaveBackupTypes";
 import {
   getProfileSaveSettings,
   setProfileSaveSettings,
@@ -158,6 +173,19 @@ type SaveSettingsState =
   | { status: "ready"; settings: ProfileSaveSettingsDto }
   | { status: "error"; message: string };
 
+type BackupHistoryState =
+  | { status: "idle"; backups: SaveBackupSummaryDto[] }
+  | { status: "loading"; backups: SaveBackupSummaryDto[] }
+  | { status: "ready"; backups: SaveBackupSummaryDto[] }
+  | { status: "error"; backups: SaveBackupSummaryDto[]; message: string };
+
+type ManualBackupNotice = {
+  id: string;
+  tone: "success" | "warning";
+  title: string;
+  message: string;
+};
+
 export function ProfilePage() {
   const { activeProfile, refreshActiveProfile, setActiveProfile } = useActiveProfile();
   const { latestDiscovery, isDiscovering, discoveringTarget, runDiscovery } = useProfileSaveDirectoryDiscovery();
@@ -182,6 +210,16 @@ export function ProfilePage() {
     saveDirectory?: string;
     backupDirectory?: string;
   }>({});
+  const [backupHistoryState, setBackupHistoryState] = useState<BackupHistoryState>({
+    status: "idle",
+    backups: [],
+  });
+  const [backupHistoryRefreshToken, setBackupHistoryRefreshToken] = useState(0);
+  const [saveBackupTaskState, setSaveBackupTaskState] = useState<ProfileSaveBackupTaskState>({ status: "idle" });
+  const saveBackupTaskStateRef = useRef<ProfileSaveBackupTaskState>({ status: "idle" });
+  const pendingSaveBackupProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
+  const lastBackupHistoryRefreshTaskIdRef = useRef<string | null>(null);
+  const [manualBackupNotice, setManualBackupNotice] = useState<ManualBackupNotice | null>(null);
 
   const refreshProfiles = useCallback(() => {
     setRefreshToken((current) => current + 1);
@@ -278,6 +316,127 @@ export function ProfilePage() {
     setSettingsRefreshToken((current) => current + 1);
   }, [latestDiscovery, selectedProfileId]);
 
+  useEffect(() => {
+    saveBackupTaskStateRef.current = saveBackupTaskState;
+  }, [saveBackupTaskState]);
+
+  useEffect(() => {
+    setSaveBackupTaskState({ status: "idle" });
+    pendingSaveBackupProgressEventsRef.current.clear();
+    lastBackupHistoryRefreshTaskIdRef.current = null;
+  }, [selectedProfileId]);
+
+  useEffect(() => {
+    if (!selectedProfileId) {
+      setBackupHistoryState({ status: "idle", backups: [] });
+      return;
+    }
+
+    let cancelled = false;
+    setBackupHistoryState((current) => ({ status: "loading", backups: current.backups }));
+
+    if (previewMode) {
+      setBackupHistoryState({
+        status: "ready",
+        backups: createPreviewSaveBackups(selectedProfileId),
+      });
+      return;
+    }
+
+    void listProfileSaveBackups({
+      gameId: CURRENT_GAME_ID,
+      profileId: selectedProfileId,
+      limit: 12,
+    })
+      .then((backups) => {
+        if (!cancelled) {
+          setBackupHistoryState({ status: "ready", backups });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setBackupHistoryState((current) => ({
+            status: "error",
+            backups: current.backups,
+            message: getErrorMessage(error, "备份历史不可用"),
+          }));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backupHistoryRefreshToken, previewMode, selectedProfileId]);
+
+  useEffect(() => {
+    if (previewMode) return undefined;
+
+    let disposed = false;
+    let unlistenTaskProgress: (() => void) | null = null;
+
+    void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, (event) => {
+      if (disposed) return;
+      if (event.payload.kind !== "save_backup") return;
+      if (!isProfileSaveBackupTaskPhase(event.payload.phase)) return;
+
+      const currentTaskState = saveBackupTaskStateRef.current;
+      if (!("taskId" in currentTaskState) || currentTaskState.taskId === null) {
+        if (currentTaskState.status === "starting") {
+          pendingSaveBackupProgressEventsRef.current.set(event.payload.taskId, event.payload);
+        }
+        return;
+      }
+
+      if (event.payload.taskId !== currentTaskState.taskId) return;
+
+      setSaveBackupTaskState((current) => nextProfileSaveBackupTaskStateFromProgress(current, event.payload));
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+        return;
+      }
+
+      unlistenTaskProgress = unlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlistenTaskProgress?.();
+    };
+  }, [previewMode]);
+
+  useEffect(() => {
+    if (shouldRefreshProfileSaveBackupHistory(saveBackupTaskState)) {
+      if (lastBackupHistoryRefreshTaskIdRef.current !== saveBackupTaskState.taskId) {
+        lastBackupHistoryRefreshTaskIdRef.current = saveBackupTaskState.taskId;
+        setBackupHistoryRefreshToken((current) => current + 1);
+        setManualBackupNotice({
+          id: `save-backup-completed-${saveBackupTaskState.taskId}`,
+          tone: "success",
+          title: "存档备份完成",
+          message: "新的备份历史点已经写入当前配置档。",
+        });
+      }
+      return;
+    }
+
+    if (saveBackupTaskState.status === "failed") {
+      setManualBackupNotice({
+        id: `save-backup-failed-${saveBackupTaskState.taskId ?? "start"}`,
+        tone: "warning",
+        title: "存档备份失败",
+        message: saveBackupTaskState.message,
+      });
+    }
+  }, [saveBackupTaskState]);
+
+  useEffect(() => {
+    if (!manualBackupNotice) return undefined;
+
+    const dismissTimer = window.setTimeout(() => setManualBackupNotice(null), 6000);
+    return () => window.clearTimeout(dismissTimer);
+  }, [manualBackupNotice]);
+
   const profiles = profileState.profiles;
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
@@ -285,6 +444,13 @@ export function ProfilePage() {
   );
   const visibleSettings = draftSettings;
   const settingsEditable = settingsState.status === "ready" && selectedProfileId !== null;
+  const manualBackupBlockedReason = getManualBackupBlockedReason({
+    dirty,
+    selectedProfileId,
+    settingsState,
+    taskState: saveBackupTaskState,
+  });
+  const canStartManualSaveBackup = manualBackupBlockedReason === null;
 
   const updateSettings = (settings: ProfileSaveSettingsDto) => {
     setDraftSettings(settings);
@@ -358,8 +524,57 @@ export function ProfilePage() {
     }
   };
 
+  const startManualSaveBackup = useCallback(async () => {
+    if (!selectedProfileId || !canStartManualSaveBackup) return;
+
+    setSaveBackupTaskState({ status: "starting" });
+    setManualBackupNotice(null);
+
+    if (previewMode) {
+      const taskId = `preview-save-backup-${Date.now()}`;
+      setSaveBackupTaskState({
+        status: "completed",
+        taskId,
+        phase: "save_backup.completed",
+        resultRef: `preview-backup-${taskId}`,
+      });
+      return;
+    }
+
+    try {
+      const task = await startProfileSaveBackup({
+        gameId: CURRENT_GAME_ID,
+        profileId: selectedProfileId,
+        note: selectedProfile ? `手动备份：${selectedProfile.name}` : null,
+      });
+      const initialTaskState: ProfileSaveBackupTaskState = {
+        status: "running",
+        taskId: task.taskId,
+        phase: "save_backup.queued",
+      };
+      const pendingEvent = pendingSaveBackupProgressEventsRef.current.get(task.taskId);
+      pendingSaveBackupProgressEventsRef.current.delete(task.taskId);
+      setSaveBackupTaskState(
+        pendingEvent
+          ? nextProfileSaveBackupTaskStateFromProgress(initialTaskState, pendingEvent)
+          : initialTaskState,
+      );
+    } catch (error) {
+      setSaveBackupTaskState({
+        status: "failed",
+        taskId: null,
+        phase: "save_backup.failed",
+        message: getErrorMessage(error, "启动备份失败"),
+      });
+    }
+  }, [canStartManualSaveBackup, previewMode, selectedProfile, selectedProfileId]);
+
   return (
     <section className="profile-page" data-preview-mode={previewMode ? "true" : undefined} aria-labelledby="profile-page-title">
+      <ProfileManualBackupFloatingNotice
+        notice={manualBackupNotice}
+        onDismiss={() => setManualBackupNotice(null)}
+      />
       <header className="profile-page__header">
         <div className="profile-page__title-block">
           <span className="profile-page__eyebrow">
@@ -484,18 +699,24 @@ export function ProfilePage() {
             <>
               <div className="profile-save-manager-deck save-manager-deck">
                 <div className="profile-save-strategy-stack profile-settings-panel glass-card strategy-card">
+                  <ManualSaveBackupPanel
+                    taskState={saveBackupTaskState}
+                    disabledReason={manualBackupBlockedReason}
+                    canStartManualSaveBackup={canStartManualSaveBackup}
+                    onClick={() => void startManualSaveBackup()}
+                  />
                   <ActiveSavePanel profile={selectedProfile} settings={visibleSettings} />
                   <BackupPolicyPanel
                     settings={visibleSettings}
                     onScheduleChange={updateSchedule}
                     onRetentionChange={updateRetention}
                   />
-                  <button type="button" className="profile-action-button is-primary profile-create-backup-button" disabled>
-                    <Save size={14} />
-                    立即归档当前存档
-                  </button>
                 </div>
-                <BackupHistoryPanel profile={selectedProfile} previewMode={previewMode} />
+                <BackupHistoryPanel
+                  profile={selectedProfile}
+                  historyState={backupHistoryState}
+                  onRefresh={() => setBackupHistoryRefreshToken((current) => current + 1)}
+                />
               </div>
             </>
           ) : null}
@@ -560,24 +781,73 @@ function PolicyFlag({ label, value, active }: { label: string; value: string; ac
   );
 }
 
+function ManualSaveBackupPanel({
+  taskState,
+  disabledReason,
+  canStartManualSaveBackup,
+  onClick,
+}: {
+  taskState: ProfileSaveBackupTaskState;
+  disabledReason: string | null;
+  canStartManualSaveBackup: boolean;
+  onClick: () => void;
+}) {
+  const statusCopy = getManualBackupStatusCopy(taskState, disabledReason);
+  const running = taskState.status === "starting" || taskState.status === "running";
+
+  return (
+    <section className="profile-manual-backup-card" aria-labelledby="profile-manual-backup-title">
+      <div className="profile-manual-backup-card__copy">
+        <h2 id="profile-manual-backup-title">手动备份</h2>
+        <p>立即为当前配置档创建一个受控存档归档点。</p>
+      </div>
+      <div className={`profile-manual-backup-status is-${statusCopy.tone}`} role="status" aria-live="polite">
+        {running ? <Loader2 className="profile-spinner" size={16} /> : statusCopy.icon}
+        <span>{statusCopy.label}</span>
+      </div>
+      <button
+        type="button"
+        className="profile-action-button is-primary profile-create-backup-button"
+        disabled={!canStartManualSaveBackup}
+        onClick={onClick}
+      >
+        <Save size={14} />
+        {running ? "备份中" : "立即归档当前存档"}
+      </button>
+    </section>
+  );
+}
+
 function BackupHistoryPanel({
   profile,
-  previewMode,
+  historyState,
+  onRefresh,
 }: {
   profile: Profile | null;
-  previewMode: boolean;
+  historyState: BackupHistoryState;
+  onRefresh: () => void;
 }) {
-  const rows = getBackupHistoryRows(profile?.id ?? null, previewMode);
+  const rows = historyState.backups.map(toBackupHistoryRow);
+  const countLabel = historyState.status === "loading" ? "刷新中" : `${rows.length} 个归档包`;
 
   return (
     <section className="profile-settings-panel glass-card history-card profile-history-card" aria-labelledby="profile-history-title">
       <div className="profile-settings-panel__header profile-history-header">
         <div>
           <h2 id="profile-history-title">备份历史点</h2>
-          <span>{rows.length} 个归档包</span>
+          <span>{profile?.name ? `${profile.name} · ${countLabel}` : countLabel}</span>
         </div>
-        <History size={18} aria-hidden="true" />
+        <button type="button" className="profile-icon-button" aria-label="刷新备份历史" onClick={onRefresh}>
+          {historyState.status === "loading" ? <Loader2 className="profile-spinner" size={16} /> : <History size={16} />}
+        </button>
       </div>
+
+      {historyState.status === "error" ? (
+        <div className="profile-history-error" role="alert">
+          <AlertTriangle size={16} />
+          <span>{historyState.message}</span>
+        </div>
+      ) : null}
 
       <label className="profile-history-search search-row">
         <Search size={14} aria-hidden="true" />
@@ -601,7 +871,7 @@ function BackupHistoryPanel({
                 <tr key={row.id}>
                   <td>
                     <strong>{row.name}</strong>
-                    <span>{row.hash}</span>
+                    <span>{row.detail}</span>
                   </td>
                   <td>{row.size}</td>
                   <td>{row.createdAt}</td>
@@ -626,39 +896,68 @@ function BackupHistoryPanel({
   );
 }
 
-function getBackupHistoryRows(profileId: string | null, previewMode: boolean) {
-  if (!previewMode || profileId === "preview-online-test" || profileId === null) return [];
+function createPreviewSaveBackups(profileId: string | null): SaveBackupSummaryDto[] {
+  if (profileId === "preview-online-test" || profileId === null) return [];
 
-  const rows = [
+  const now = Date.now();
+  const rows: SaveBackupSummaryDto[] = [
     {
-      id: "preview-backup-fatalis",
-      name: "讨伐黑龙前夕",
-      size: "3.8 MB",
-      createdAt: "1 小时前",
-      hash: "Hash 已校验",
+      backupId: "preview-backup-fatalis",
+      gameId: CURRENT_GAME_ID,
+      profileId,
+      trigger: "manual",
+      status: "completed",
+      fileName: "mhw-preview-default-20260707-150000.zip",
+      createdAt: now - 60 * 60 * 1000,
+      sizeBytes: 3_800_000,
+      fileCount: 8,
+      sourcePathLabel: "Steam/userdata/<steam-id>/582010/remote",
+      notes: "讨伐黑龙前夕",
     },
     {
-      id: "preview-backup-iceborne",
-      name: "冰原通关节点",
-      size: "3.6 MB",
-      createdAt: "昨天",
-      hash: "Hash 已校验",
+      backupId: "preview-backup-iceborne",
+      gameId: CURRENT_GAME_ID,
+      profileId,
+      trigger: "manual",
+      status: "completed",
+      fileName: "mhw-preview-default-20260706-210000.zip",
+      createdAt: now - 24 * 60 * 60 * 1000,
+      sizeBytes: 3_600_000,
+      fileCount: 8,
+      sourcePathLabel: "Steam/userdata/<steam-id>/582010/remote",
+      notes: "冰原通关节点",
     },
   ];
 
   if (profileId === "preview-taichi") {
     return [
       {
-        id: "preview-backup-taichi",
-        name: "迅龙速刷备份",
-        size: "3.4 MB",
-        createdAt: "12 小时前",
-        hash: "Hash 已校验",
+        backupId: "preview-backup-taichi",
+        gameId: CURRENT_GAME_ID,
+        profileId,
+        trigger: "manual",
+        status: "completed",
+        fileName: "mhw-preview-taichi-20260707-030000.zip",
+        createdAt: now - 12 * 60 * 60 * 1000,
+        sizeBytes: 3_400_000,
+        fileCount: 7,
+        sourcePathLabel: "Steam/userdata/<steam-id>/582010/remote-taichi",
+        notes: "迅龙速刷备份",
       },
     ];
   }
 
   return rows;
+}
+
+function toBackupHistoryRow(backup: SaveBackupSummaryDto) {
+  return {
+    id: backup.backupId,
+    name: backup.notes?.trim() || backup.fileName,
+    size: formatBytes(backup.sizeBytes),
+    createdAt: formatRelativeTime(backup.createdAt),
+    detail: `${formatBackupTrigger(backup.trigger)} · ${formatBackupStatus(backup.status)} · ${backup.fileCount} 个文件`,
+  };
 }
 
 function ProfileOverview({
@@ -733,6 +1032,140 @@ function ProfileMetric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function ProfileManualBackupFloatingNotice({
+  notice,
+  onDismiss,
+}: {
+  notice: ManualBackupNotice | null;
+  onDismiss: () => void;
+}) {
+  if (!notice) return null;
+
+  return (
+    <aside className={`profile-manual-backup-floating-notice is-${notice.tone}`} role="status" aria-live="polite">
+      <div className="profile-manual-backup-floating-notice__copy">
+        <strong>{notice.title}</strong>
+        <span>{notice.message}</span>
+      </div>
+      <button
+        type="button"
+        className="profile-manual-backup-floating-notice__dismiss"
+        aria-label="关闭备份提示"
+        onClick={onDismiss}
+      >
+        <X size={16} aria-hidden="true" />
+      </button>
+    </aside>
+  );
+}
+
+function getManualBackupBlockedReason({
+  dirty,
+  selectedProfileId,
+  settingsState,
+  taskState,
+}: {
+  dirty: boolean;
+  selectedProfileId: string | null;
+  settingsState: SaveSettingsState;
+  taskState: ProfileSaveBackupTaskState;
+}) {
+  if (!selectedProfileId) return "请选择配置档";
+  if (settingsState.status !== "ready") {
+    return settingsState.status === "error" ? "存档设置不可用" : "读取存档设置后可备份";
+  }
+  if (settingsState.settings.saveDirectory.status !== "valid") return "请先关联有效存档目录";
+  if (dirty) return "请先保存存档设置";
+  if (taskState.status === "starting" || taskState.status === "running") return "备份任务正在执行";
+  return null;
+}
+
+function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabledReason: string | null) {
+  if (taskState.status === "starting") {
+    return {
+      tone: "running",
+      label: "正在启动备份任务",
+      icon: null,
+    };
+  }
+
+  if (taskState.status === "running") {
+    return {
+      tone: "running",
+      label: getProfileSaveBackupTaskPhaseLabel(taskState.phase),
+      icon: null,
+    };
+  }
+
+  if (taskState.status === "completed") {
+    return {
+      tone: "success",
+      label: "最近一次备份完成",
+      icon: <CheckCircle2 size={16} aria-hidden="true" />,
+    };
+  }
+
+  if (taskState.status === "failed") {
+    return {
+      tone: "warning",
+      label: taskState.message,
+      icon: <AlertTriangle size={16} aria-hidden="true" />,
+    };
+  }
+
+  if (taskState.status === "cancelled") {
+    return {
+      tone: "warning",
+      label: "备份任务已取消",
+      icon: <AlertTriangle size={16} aria-hidden="true" />,
+    };
+  }
+
+  return {
+    tone: disabledReason ? "waiting" : "ready",
+    label: disabledReason ?? "可以创建手动备份",
+    icon: disabledReason ? <AlertTriangle size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />,
+  };
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatRelativeTime(timestamp: number) {
+  const diffMs = Date.now() - timestamp;
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "刚刚";
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} 天前`;
+  return new Date(timestamp).toLocaleDateString("zh-CN");
+}
+
+function formatBackupTrigger(trigger: SaveBackupSummaryDto["trigger"]) {
+  if (trigger === "auto") return "自动备份";
+  if (trigger === "pre_install") return "安装前备份";
+  return "手动备份";
+}
+
+function formatBackupStatus(status: SaveBackupSummaryDto["status"]) {
+  if (status === "deleted_by_retention") return "已按保留策略清理";
+  if (status === "missing") return "文件缺失";
+  if (status === "invalid") return "需要检查";
+  return "已完成";
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
