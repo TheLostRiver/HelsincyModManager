@@ -68,6 +68,36 @@ fn save_backup_task_scope_rejects_duplicate_profile_work_until_runner_finishes()
 }
 
 #[test]
+fn run_save_backup_task_releases_profile_scope_when_executor_panics() {
+    let task_manager = Arc::new(TaskManager::new());
+    let scope_registry = Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default());
+    let service = SaveBackupTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::clone(&scope_registry),
+    );
+    let task = service
+        .start_save_backup_task(sample_request())
+        .expect("save backup task starts");
+    let runner = SaveBackupTaskRunner::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::new(PanickingSaveBackupExecutor),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        scope_registry,
+    );
+
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = runner.run_save_backup_task(&task.task_id, sample_request());
+    }));
+
+    assert!(panic.is_err());
+    let next = service
+        .start_save_backup_task(sample_request())
+        .expect("panic still releases profile scope");
+    assert_ne!(next.task_id, task.task_id);
+}
+
+#[test]
 fn run_save_backup_task_emits_registered_phases_and_records_success_audit() {
     let task_manager = Arc::new(TaskManager::new());
     let task = task_manager
@@ -344,6 +374,18 @@ impl SaveBackupExecutor for CancellingSaveBackupExecutor {
             .cancel_task(&self.task_id)
             .expect("running task can be cancelled");
         Ok(sample_result())
+    }
+}
+
+struct PanickingSaveBackupExecutor;
+
+impl SaveBackupExecutor for PanickingSaveBackupExecutor {
+    fn create_backup(
+        &self,
+        _request: CreateSaveBackupRequest,
+        _trigger: SaveBackupTrigger,
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
+        panic!("simulated save backup executor panic");
     }
 }
 
