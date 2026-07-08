@@ -1,6 +1,7 @@
 use crate::dto::{CommandErrorDto, TaskStartedDto};
 use crate::save_backup_dto::{
-    CheckAutoSaveBackupRequestDto, ListSaveBackupsRequestDto, ProfileAutoSaveBackupCheckDto,
+    CheckAutoSaveBackupRequestDto, GetSaveBackupBackgroundStatusRequestDto,
+    ListSaveBackupsRequestDto, ProfileAutoSaveBackupCheckDto, SaveBackupBackgroundStatusDto,
     SaveBackupSummaryDto, StartSaveBackupTaskRequestDto,
 };
 use crate::state::AppState;
@@ -99,6 +100,25 @@ pub fn check_auto_save_backup(
     Ok(ProfileAutoSaveBackupCheckDto::from_result(
         result,
         started_task,
+    ))
+}
+
+#[tauri::command]
+pub fn get_save_backup_background_status(
+    request: GetSaveBackupBackgroundStatusRequestDto,
+    state: State<'_, AppState>,
+) -> Result<SaveBackupBackgroundStatusDto, CommandErrorDto> {
+    let game_id = parse_game_id(request.game_id)?;
+    let profile_id = parse_profile_id(request.profile_id)?;
+    let scheduler_state = state
+        .save_backup_auto_scheduler
+        .background_status(&game_id, &profile_id)
+        .map_err(auto_save_backup_error_to_command_error)?;
+
+    Ok(SaveBackupBackgroundStatusDto::from_state(
+        &game_id,
+        &profile_id,
+        scheduler_state,
     ))
 }
 
@@ -227,6 +247,20 @@ mod tests {
 
         assert_eq!(app_request.game_id.as_str(), "mhw");
         assert_eq!(app_request.profile_id.as_str(), "default");
+    }
+
+    #[test]
+    fn background_status_request_rejects_invalid_ids_with_stable_codes() {
+        let request: GetSaveBackupBackgroundStatusRequestDto = serde_json::from_value(json!({
+            "gameId": "unknown-game",
+            "profileId": "default"
+        }))
+        .expect("deserialize request");
+        let error = parse_game_id(request.game_id).expect_err("unknown game id is rejected");
+        assert_eq!(error.code, "game_id_invalid");
+
+        let error = parse_profile_id("   ".to_owned()).expect_err("blank profile id is rejected");
+        assert_eq!(error.code, "profile_id_empty");
     }
 
     #[test]

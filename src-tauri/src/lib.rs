@@ -43,7 +43,10 @@ use profile_commands::{
     set_active_profile, set_profile_save_settings, update_profile,
     validate_profile_backup_directory, validate_profile_save_directory,
 };
-use save_backup_commands::{check_auto_save_backup, list_save_backups, start_save_backup_task};
+use save_backup_commands::{
+    check_auto_save_backup, get_save_backup_background_status, list_save_backups,
+    start_save_backup_task,
+};
 use save_directory_discovery_commands::{
     confirm_profile_save_directory_candidate, discover_profile_save_directories,
 };
@@ -119,6 +122,7 @@ pub fn run() {
             confirm_profile_save_directory_candidate,
             start_save_backup_task,
             check_auto_save_backup,
+            get_save_backup_background_status,
             list_save_backups
         ])
         .run(tauri::generate_context!())

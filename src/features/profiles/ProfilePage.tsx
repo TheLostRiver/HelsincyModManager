@@ -9,7 +9,10 @@ import {
   RefreshCw,
   Save,
   Search,
+  Shield,
+  ShieldAlert,
   ShieldCheck,
+  ShieldOff,
   X,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
@@ -24,6 +27,7 @@ import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { listProfiles } from "./profileApi";
 import {
   checkProfileAutoSaveBackup,
+  getSaveBackupBackgroundStatus,
   listProfileSaveBackups,
   startProfileSaveBackup,
 } from "./profileSaveBackupApi";
@@ -36,6 +40,7 @@ import {
 } from "./profileSaveBackupTaskState";
 import type {
   ProfileAutoSaveBackupCheckDto,
+  SaveBackupBackgroundStatusDto,
   SaveBackupSummaryDto,
   TaskStartedDto,
 } from "./profileSaveBackupTypes";
@@ -189,6 +194,11 @@ type AutoBackupCheckState =
   | { status: "due"; result: ProfileAutoSaveBackupCheckDto }
   | { status: "error"; message: string };
 
+type BackgroundProtectionState =
+  | { status: "loading" }
+  | { status: "ready"; result: SaveBackupBackgroundStatusDto }
+  | { status: "unavailable" };
+
 type ManualBackupNotice = {
   id: string;
   tone: "success" | "warning";
@@ -232,6 +242,9 @@ export function ProfilePage() {
   const [manualBackupNotice, setManualBackupNotice] = useState<ManualBackupNotice | null>(null);
   const [autoBackupCheckState, setAutoBackupCheckState] = useState<AutoBackupCheckState>({ status: "idle" });
   const [autoBackupCheckRefreshToken, setAutoBackupCheckRefreshToken] = useState(0);
+  const [backgroundProtectionState, setBackgroundProtectionState] = useState<BackgroundProtectionState>({
+    status: "loading",
+  });
   const previewAutoBackupSettings =
     previewMode && settingsState.status === "ready" ? settingsState.settings : null;
 
@@ -438,6 +451,50 @@ export function ProfilePage() {
     };
   }, [
     attachStartedSaveBackupTask,
+    autoBackupCheckRefreshToken,
+    previewAutoBackupSettings,
+    previewMode,
+    selectedProfileId,
+    settingsState.status,
+  ]);
+
+  useEffect(() => {
+    if (!selectedProfileId || settingsState.status !== "ready") {
+      setBackgroundProtectionState({ status: "loading" });
+      return;
+    }
+
+    if (previewMode) {
+      if (!previewAutoBackupSettings) {
+        setBackgroundProtectionState({ status: "loading" });
+        return;
+      }
+      setBackgroundProtectionState({
+        status: "ready",
+        result: createPreviewBackgroundStatus(CURRENT_GAME_ID, selectedProfileId, previewAutoBackupSettings),
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setBackgroundProtectionState({ status: "loading" });
+
+    void getSaveBackupBackgroundStatus({
+      gameId: CURRENT_GAME_ID,
+      profileId: selectedProfileId,
+    })
+      .then((result) => {
+        if (!cancelled) setBackgroundProtectionState({ status: "ready", result });
+      })
+      .catch(() => {
+        // 状态查询失败静默降级，不阻塞 Profile 页其它内容。
+        if (!cancelled) setBackgroundProtectionState({ status: "unavailable" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
     autoBackupCheckRefreshToken,
     previewAutoBackupSettings,
     previewMode,
@@ -745,6 +802,7 @@ export function ProfilePage() {
                   <AutoSaveBackupRuntimePanel
                     settings={visibleSettings}
                     checkState={autoBackupCheckState}
+                    backgroundState={backgroundProtectionState}
                     disabledReason={autoBackupCheckBlockedReason}
                     onCheck={() => setAutoBackupCheckRefreshToken((current) => current + 1)}
                   />
@@ -872,17 +930,20 @@ function ManualSaveBackupPanel({
 function AutoSaveBackupRuntimePanel({
   settings,
   checkState,
+  backgroundState,
   disabledReason,
   onCheck,
 }: {
   settings: ProfileSaveSettingsDto;
   checkState: AutoBackupCheckState;
+  backgroundState: BackgroundProtectionState;
   disabledReason: string | null;
   onCheck: () => void;
 }) {
   const checking = checkState.status === "checking";
   const disabled = checking || disabledReason !== null;
   const statusCopy = getAutoBackupStatusCopy(checkState);
+  const protectionCopy = getBackgroundProtectionCopy(backgroundState);
   const lastAutoCheck = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.checkedAt) : "尚未检查";
   const nextDue = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.nextDueAt) : "等待调度信息";
 
@@ -906,9 +967,13 @@ function AutoSaveBackupRuntimePanel({
         <span>下次计划：{nextDue}</span>
       </div>
 
-      <p className="profile-auto-backup-card__warning">
-        退出主客户端后的后台保障尚未启用
-      </p>
+      <div className={`profile-auto-backup-protection is-${protectionCopy.tone}`} role="status">
+        {protectionCopy.icon}
+        <div className="profile-auto-backup-protection__copy">
+          <strong>{protectionCopy.label}</strong>
+          <span>{protectionCopy.hint}</span>
+        </div>
+      </div>
 
       <button
         type="button"
@@ -1288,6 +1353,103 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
     tone: "waiting",
     label: "等待自动备份检查",
     icon: <Archive size={16} aria-hidden="true" />,
+  };
+}
+
+function getBackgroundProtectionCopy(state: BackgroundProtectionState) {
+  if (state.status === "loading") {
+    return {
+      tone: "waiting",
+      label: "正在读取后台保护状态",
+      hint: "查询后台备份保障的最近记录",
+      icon: <Shield size={16} aria-hidden="true" />,
+    };
+  }
+
+  if (state.status === "unavailable") {
+    return {
+      tone: "warning",
+      label: "后台保护状态不可用",
+      hint: "暂时无法读取调度状态，自动备份仍按客户端计划执行",
+      icon: <ShieldAlert size={16} aria-hidden="true" />,
+    };
+  }
+
+  const { result } = state;
+  const lastSuccess =
+    result.lastSuccessAt !== null ? `上次成功备份：${formatAutoBackupTimestamp(result.lastSuccessAt)}` : null;
+
+  switch (result.status) {
+    case "protected":
+      return {
+        tone: "success",
+        label: "已受后台保护",
+        hint: lastSuccess ?? "退出主客户端后仍会继续检查备份计划",
+        icon: <ShieldCheck size={16} aria-hidden="true" />,
+      };
+    case "tray_only":
+      return {
+        tone: "waiting",
+        label: "仅客户端运行期保护",
+        hint: lastSuccess ?? "退出主客户端后自动备份暂不受后台保障",
+        icon: <Shield size={16} aria-hidden="true" />,
+      };
+    case "registration_failed":
+      return {
+        tone: "warning",
+        label: "后台保护注册失败",
+        hint: "计划任务或自启动注册失败，退出客户端后不会自动备份",
+        icon: <ShieldAlert size={16} aria-hidden="true" />,
+      };
+    case "worker_unhealthy":
+      return {
+        tone: "warning",
+        label: "后台保护异常",
+        hint: "后台守护最近没有心跳，请重新检查备份计划",
+        icon: <ShieldAlert size={16} aria-hidden="true" />,
+      };
+    case "permission_required":
+      return {
+        tone: "warning",
+        label: "需要系统权限",
+        hint: "当前环境需要额外权限才能启用后台保护",
+        icon: <ShieldAlert size={16} aria-hidden="true" />,
+      };
+    case "unsupported_platform":
+      return {
+        tone: "waiting",
+        label: "当前平台暂不支持后台保护",
+        hint: "自动备份仅在客户端运行时执行",
+        icon: <ShieldOff size={16} aria-hidden="true" />,
+      };
+    case "not_enabled":
+    default:
+      return {
+        tone: "waiting",
+        label: "未启用后台保护",
+        hint: "自动备份仅在客户端运行时执行",
+        icon: <ShieldOff size={16} aria-hidden="true" />,
+      };
+  }
+}
+
+function createPreviewBackgroundStatus(
+  gameId: string,
+  profileId: string,
+  settings: ProfileSaveSettingsDto,
+): SaveBackupBackgroundStatusDto {
+  const autoEnabled = settings.schedule.cadence !== "manual";
+  return {
+    gameId,
+    profileId,
+    status: autoEnabled ? "tray_only" : "not_enabled",
+    backgroundProtectionEnabled: false,
+    lastCheckedAt: autoEnabled ? Date.now() - 5 * 60_000 : null,
+    lastAttemptAt: null,
+    lastSuccessAt: autoEnabled ? Date.now() - 6 * 60 * 60_000 : null,
+    nextDueAt: autoEnabled ? Date.now() + 18 * 60 * 60_000 : null,
+    pendingReason: null,
+    lastErrorCode: null,
   };
 }
 

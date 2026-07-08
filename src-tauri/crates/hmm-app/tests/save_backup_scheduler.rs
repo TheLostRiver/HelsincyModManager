@@ -291,6 +291,57 @@ fn weekly_schedule_uses_latest_elapsed_weekday_slot() {
     );
 }
 
+#[test]
+fn background_status_returns_saved_state_or_none() {
+    let harness = Harness::new(DAY_MS);
+
+    let missing = harness
+        .scheduler
+        .background_status(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("missing state is not an error");
+    assert_eq!(missing, None);
+
+    let state = SaveBackupSchedulerState {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("default"),
+        enabled: true,
+        background_protection_enabled: false,
+        background_status: SaveBackupBackgroundProtectionStatus::TrayOnly,
+        last_checked_at: Some(DAY_MS),
+        last_attempt_at: None,
+        last_success_at: None,
+        next_due_at: Some(2 * DAY_MS),
+        pending_reason: None,
+        last_error_code: None,
+        worker_instance_id: None,
+        lease_owner: None,
+        lease_expires_at: None,
+        updated_at: DAY_MS,
+    };
+    harness
+        .scheduler_state_repository
+        .upsert_state(&state)
+        .expect("state seeded");
+
+    let loaded = harness
+        .scheduler
+        .background_status(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("saved state can be read");
+    assert_eq!(loaded, Some(state));
+}
+
+#[test]
+fn background_status_maps_repository_failure_to_stable_error_code() {
+    let harness = Harness::new(DAY_MS);
+    harness.scheduler_state_repository.set_fail_get_state(true);
+
+    let error = harness
+        .scheduler
+        .background_status(&GameId::mhw(), &ProfileId::new("default"))
+        .expect_err("repository failure surfaces as scheduler error");
+    assert_eq!(error.code(), "save_backup_scheduler_unavailable");
+}
+
 struct Harness {
     scheduler: SaveBackupAutoSchedulerService,
     profile_repository: Arc<FakeProfileRepository>,
@@ -469,6 +520,7 @@ struct FakeSaveBackupSchedulerStateRepository {
     states: Mutex<Vec<SaveBackupSchedulerState>>,
     lease_requests: Mutex<Vec<SaveBackupSchedulerLeaseRequest>>,
     lease_available: Mutex<bool>,
+    fail_get_state: Mutex<bool>,
 }
 
 impl Default for FakeSaveBackupSchedulerStateRepository {
@@ -477,6 +529,7 @@ impl Default for FakeSaveBackupSchedulerStateRepository {
             states: Mutex::new(Vec::new()),
             lease_requests: Mutex::new(Vec::new()),
             lease_available: Mutex::new(true),
+            fail_get_state: Mutex::new(false),
         }
     }
 }
@@ -494,6 +547,10 @@ impl FakeSaveBackupSchedulerStateRepository {
         *self.lease_available.lock().unwrap() = available;
     }
 
+    fn set_fail_get_state(&self, fail: bool) {
+        *self.fail_get_state.lock().unwrap() = fail;
+    }
+
     fn replace_state(&self, state: SaveBackupSchedulerState) {
         let mut states = self.states.lock().unwrap();
         states.retain(|existing| {
@@ -509,6 +566,9 @@ impl SaveBackupSchedulerStateRepository for FakeSaveBackupSchedulerStateReposito
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<Option<SaveBackupSchedulerState>> {
+        if *self.fail_get_state.lock().unwrap() {
+            anyhow::bail!("scheduler state unavailable");
+        }
         Ok(self
             .states
             .lock()
