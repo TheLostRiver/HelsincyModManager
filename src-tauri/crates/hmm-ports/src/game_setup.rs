@@ -40,6 +40,12 @@ pub trait GameAdapter: Send + Sync {
     fn steam_app_id(&self) -> Option<u32> {
         None
     }
+
+    /// 游戏主进程的映像名（如 `MonsterHunterWorld.exe`），供游戏运行检测使用。
+    /// 返回空表示该游戏尚不支持运行检测。
+    fn process_image_names(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 pub trait GameConfigRepository: Send + Sync {

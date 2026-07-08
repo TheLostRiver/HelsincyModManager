@@ -42,6 +42,7 @@ pub struct ProfileAutoSaveBackupCheckDto {
     pub last_due_at: Option<u64>,
     pub next_due_at: Option<u64>,
     pub last_auto_backup_at: Option<u64>,
+    pub pending_reason: Option<SaveBackupPendingReasonDto>,
     pub started_task: Option<TaskStartedDto>,
 }
 
@@ -227,6 +228,7 @@ impl ProfileAutoSaveBackupCheckDto {
             last_due_at: result.last_due_at.map(|value| value as u64),
             next_due_at: result.next_due_at.map(|value| value as u64),
             last_auto_backup_at: result.last_auto_backup_at.map(|value| value as u64),
+            pending_reason: result.pending_reason.map(Into::into),
             started_task,
         }
     }
@@ -294,6 +296,7 @@ mod tests {
             last_due_at: Some(40),
             next_due_at: Some(80),
             last_auto_backup_at: Some(10),
+            pending_reason: Some(SaveBackupPendingReasonDto::GameRunning),
             started_task: Some(TaskStartedDto {
                 task_id: "save-backup-1".to_owned(),
                 kind: crate::dto::TaskKindDto::SaveBackup,
@@ -311,6 +314,7 @@ mod tests {
         assert_eq!(value["lastDueAt"], 40);
         assert_eq!(value["nextDueAt"], 80);
         assert_eq!(value["lastAutoBackupAt"], 10);
+        assert_eq!(value["pendingReason"], "game_running");
         assert_eq!(value["startedTask"]["taskId"], "save-backup-1");
         assert!(value.get("path").is_none());
         assert!(value.get("manifest").is_none());
