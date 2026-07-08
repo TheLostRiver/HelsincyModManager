@@ -73,6 +73,10 @@ impl GameAdapter for MonsterHunterWorldAdapter {
         vec![NATIVE_PC_DIR.to_owned()]
     }
 
+    fn process_image_names(&self) -> Vec<String> {
+        vec![EXECUTABLE_NAME.to_owned()]
+    }
+
     fn validate_directory(&self, probe: &dyn GameDirectoryProbe) -> GameDirectoryValidation {
         let mut validation =
             GameDirectoryValidation::new(self.game_id(), probe.root_dir().to_path_buf());
@@ -274,6 +278,15 @@ mod tests {
     fn adapter_reports_allowed_install_roots() {
         let adapter = test_adapter();
         assert_eq!(adapter.allowed_install_roots(), vec!["nativePC".to_owned()]);
+    }
+
+    #[test]
+    fn adapter_reports_process_image_names() {
+        let adapter = test_adapter();
+        assert_eq!(
+            adapter.process_image_names(),
+            vec!["MonsterHunterWorld.exe".to_owned()]
+        );
     }
 
     #[test]
