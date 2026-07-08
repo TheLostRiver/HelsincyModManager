@@ -6,11 +6,12 @@ use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
     ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
     ProfileSaveSettings, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
-    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
-    SaveBackupWorkerHeartbeat,
+    SaveBackupSchedulerPendingReason, SaveBackupSchedulerState, SaveBackupStatus,
+    SaveBackupSummary, SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{
-    AppClock, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, GameRunningDetector, GameRunningStatus,
+    ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository,
 };
 use std::sync::{Arc, Mutex};
@@ -140,6 +141,175 @@ fn due_schedule_without_scheduler_lease_does_not_return_auto_task() {
     assert_eq!(result.status, SaveBackupAutoCheckStatus::Due);
     assert!(result.due_task.is_none());
     assert_eq!(harness.scheduler_state_repository.lease_requests().len(), 1);
+}
+
+#[test]
+fn due_schedule_with_running_game_defers_without_lease_or_task() {
+    let harness = Harness::new(2 * DAY_MS + 4 * HOUR_MS);
+    harness
+        .game_running_detector
+        .set_status(GameRunningStatus::Running);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(3),
+        minute: Some(0),
+        weekdays: Vec::new(),
+    }));
+
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("daily schedule should be checked");
+
+    assert_eq!(result.status, SaveBackupAutoCheckStatus::Due);
+    assert_eq!(
+        result.pending_reason,
+        Some(SaveBackupSchedulerPendingReason::GameRunning)
+    );
+    assert!(result.due_task.is_none());
+    assert!(harness
+        .scheduler_state_repository
+        .lease_requests()
+        .is_empty());
+
+    let state = harness
+        .scheduler_state_repository
+        .latest_state()
+        .expect("scheduler state saved");
+    assert_eq!(
+        state.pending_reason,
+        Some(SaveBackupSchedulerPendingReason::GameRunning)
+    );
+
+    let events = harness.audit_log.events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].category, "save_backup");
+    assert_eq!(events[0].operation, "auto_backup");
+    assert_eq!(events[0].result, "deferred");
+    assert_eq!(
+        events[0].fields.get("error_code").map(String::as_str),
+        Some("save_backup_auto_skipped_game_running")
+    );
+    assert!(events[0]
+        .fields
+        .values()
+        .all(|value| !value.contains(":\\") && !value.contains('/')));
+}
+
+#[test]
+fn due_schedule_with_unknown_game_state_defers_conservatively() {
+    let harness = Harness::new(2 * DAY_MS + 4 * HOUR_MS);
+    harness
+        .game_running_detector
+        .set_status(GameRunningStatus::Unknown);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(3),
+        minute: Some(0),
+        weekdays: Vec::new(),
+    }));
+
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("daily schedule should be checked");
+
+    assert_eq!(
+        result.pending_reason,
+        Some(SaveBackupSchedulerPendingReason::GameRunningUnknown)
+    );
+    assert!(result.due_task.is_none());
+    assert!(harness
+        .scheduler_state_repository
+        .lease_requests()
+        .is_empty());
+    assert_eq!(
+        harness.audit_log.events()[0]
+            .fields
+            .get("error_code")
+            .map(String::as_str),
+        Some("save_backup_auto_skipped_game_running_unknown")
+    );
+}
+
+#[test]
+fn repeated_running_checks_record_deferred_audit_once() {
+    let harness = Harness::new(2 * DAY_MS + 4 * HOUR_MS);
+    harness
+        .game_running_detector
+        .set_status(GameRunningStatus::Running);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(3),
+        minute: Some(0),
+        weekdays: Vec::new(),
+    }));
+
+    for _ in 0..3 {
+        harness
+            .scheduler
+            .check_profile(SaveBackupAutoCheckRequest {
+                game_id: GameId::mhw(),
+                profile_id: ProfileId::new("default"),
+            })
+            .expect("check succeeds");
+    }
+
+    assert_eq!(harness.audit_log.events().len(), 1);
+}
+
+#[test]
+fn due_task_resumes_after_game_exits() {
+    let harness = Harness::new(2 * DAY_MS + 4 * HOUR_MS);
+    harness
+        .game_running_detector
+        .set_status(GameRunningStatus::Running);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(3),
+        minute: Some(0),
+        weekdays: Vec::new(),
+    }));
+
+    let deferred = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("deferred check succeeds");
+    assert!(deferred.due_task.is_none());
+
+    harness
+        .game_running_detector
+        .set_status(GameRunningStatus::NotRunning);
+    let resumed = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("resumed check succeeds");
+
+    assert_eq!(resumed.pending_reason, None);
+    let task = resumed.due_task.expect("game exit resumes auto task");
+    assert_eq!(task.trigger, SaveBackupTrigger::Auto);
+
+    let state = harness
+        .scheduler_state_repository
+        .latest_state()
+        .expect("scheduler state saved");
+    assert_eq!(state.pending_reason, None);
 }
 
 #[test]
@@ -348,6 +518,8 @@ struct Harness {
     settings_repository: Arc<FakeProfileSaveSettingsRepository>,
     backup_repository: Arc<FakeSaveBackupRepository>,
     scheduler_state_repository: Arc<FakeSaveBackupSchedulerStateRepository>,
+    game_running_detector: Arc<FakeGameRunningDetector>,
+    audit_log: Arc<RecordingAuditLogWriter>,
 }
 
 impl Harness {
@@ -357,11 +529,15 @@ impl Harness {
         let backup_repository = Arc::new(FakeSaveBackupRepository::default());
         let scheduler_state_repository =
             Arc::new(FakeSaveBackupSchedulerStateRepository::default());
+        let game_running_detector = Arc::new(FakeGameRunningDetector::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
         let scheduler = SaveBackupAutoSchedulerService::new(
             profile_repository.clone(),
             settings_repository.clone(),
             backup_repository.clone(),
             scheduler_state_repository.clone(),
+            game_running_detector.clone(),
+            audit_log.clone(),
             Arc::new(FixedClock { now_unix_millis }),
         );
 
@@ -371,6 +547,8 @@ impl Harness {
             settings_repository,
             backup_repository,
             scheduler_state_repository,
+            game_running_detector,
+            audit_log,
         }
     }
 
@@ -633,6 +811,48 @@ struct FixedClock {
 impl AppClock for FixedClock {
     fn now_unix_millis(&self) -> Result<u128> {
         Ok(self.now_unix_millis)
+    }
+}
+
+struct FakeGameRunningDetector {
+    status: Mutex<GameRunningStatus>,
+}
+
+impl Default for FakeGameRunningDetector {
+    fn default() -> Self {
+        Self {
+            status: Mutex::new(GameRunningStatus::NotRunning),
+        }
+    }
+}
+
+impl FakeGameRunningDetector {
+    fn set_status(&self, status: GameRunningStatus) {
+        *self.status.lock().unwrap() = status;
+    }
+}
+
+impl GameRunningDetector for FakeGameRunningDetector {
+    fn game_running_status(&self, _game_id: &GameId) -> GameRunningStatus {
+        *self.status.lock().unwrap()
+    }
+}
+
+#[derive(Default)]
+struct RecordingAuditLogWriter {
+    events: Mutex<Vec<AuditLogEvent>>,
+}
+
+impl RecordingAuditLogWriter {
+    fn events(&self) -> Vec<AuditLogEvent> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+impl AuditLogWriter for RecordingAuditLogWriter {
+    fn record(&self, event: AuditLogEvent) -> Result<()> {
+        self.events.lock().unwrap().push(event);
+        Ok(())
     }
 }
 

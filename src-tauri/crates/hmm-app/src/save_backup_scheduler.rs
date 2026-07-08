@@ -1,12 +1,14 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use hmm_core::{
     BackupCadence, GameId, ProfileBackupSchedule, ProfileId, SaveBackupBackgroundProtectionStatus,
-    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
-    SaveBackupTrigger,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason, SaveBackupSchedulerState,
+    SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
 };
 use hmm_ports::{
-    AppClock, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, GameRunningDetector, GameRunningStatus,
+    ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository,
 };
 use thiserror::Error;
@@ -41,6 +43,7 @@ pub struct SaveBackupAutoCheckResult {
     pub last_due_at: Option<u128>,
     pub next_due_at: Option<u128>,
     pub last_auto_backup_at: Option<u128>,
+    pub pending_reason: Option<SaveBackupSchedulerPendingReason>,
     pub due_task: Option<StartSaveBackupTaskRequest>,
 }
 
@@ -75,6 +78,8 @@ pub struct SaveBackupAutoSchedulerService {
     save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
     backup_repository: Arc<dyn SaveBackupRepository>,
     scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+    game_running_detector: Arc<dyn GameRunningDetector>,
+    audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
 }
 
@@ -84,6 +89,8 @@ impl SaveBackupAutoSchedulerService {
         save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
         backup_repository: Arc<dyn SaveBackupRepository>,
         scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        game_running_detector: Arc<dyn GameRunningDetector>,
+        audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
         Self {
@@ -91,6 +98,8 @@ impl SaveBackupAutoSchedulerService {
             save_settings_repository,
             backup_repository,
             scheduler_state_repository,
+            game_running_detector,
+            audit_log,
             clock,
         }
     }
@@ -123,6 +132,7 @@ impl SaveBackupAutoSchedulerService {
                     checked_at,
                     next_due_at: None,
                     last_success_at: None,
+                    pending_reason: None,
                 },
             )?;
             return Ok(SaveBackupAutoCheckResult {
@@ -133,6 +143,7 @@ impl SaveBackupAutoSchedulerService {
                 last_due_at: None,
                 next_due_at: None,
                 last_auto_backup_at: None,
+                pending_reason: None,
                 due_task: None,
             });
         };
@@ -152,6 +163,7 @@ impl SaveBackupAutoSchedulerService {
                     checked_at,
                     next_due_at: None,
                     last_success_at: last_auto_backup_at,
+                    pending_reason: None,
                 },
             )?;
             return Ok(SaveBackupAutoCheckResult {
@@ -162,6 +174,7 @@ impl SaveBackupAutoSchedulerService {
                 last_due_at: None,
                 next_due_at: None,
                 last_auto_backup_at,
+                pending_reason: None,
                 due_task: None,
             });
         }
@@ -177,19 +190,57 @@ impl SaveBackupAutoSchedulerService {
             .map(|last_due_at| last_auto_backup_at.is_none_or(|backup_at| backup_at < last_due_at))
             .unwrap_or(false);
 
+        // due 时先做游戏运行检测：运行中或无法判断都保守延后，
+        // 不获取租约、不启动任务，避免复制游戏正在写入的存档。
+        let pending_reason = if due {
+            match self
+                .game_running_detector
+                .game_running_status(&request.game_id)
+            {
+                GameRunningStatus::Running => Some(SaveBackupSchedulerPendingReason::GameRunning),
+                GameRunningStatus::Unknown => {
+                    Some(SaveBackupSchedulerPendingReason::GameRunningUnknown)
+                }
+                GameRunningStatus::NotRunning => None,
+            }
+        } else {
+            None
+        };
+
+        let existing_state = self
+            .scheduler_state_repository
+            .get_state(&request.game_id, &request.profile_id)
+            .map_err(|_| SaveBackupAutoSchedulerError::SchedulerStateUnavailable)?;
+        let previous_pending_reason = existing_state
+            .as_ref()
+            .and_then(|state| state.pending_reason);
+
         self.save_scheduler_state(
             &request.game_id,
             &request.profile_id,
-            None,
+            existing_state,
             SchedulerStateUpdate {
                 enabled: true,
                 checked_at,
                 next_due_at: schedule_window.next_due_at,
                 last_success_at: last_auto_backup_at,
+                pending_reason,
             },
         )?;
 
-        let due_task = if due {
+        // 只在 pending 原因翻转时记一条审计，避免游戏运行期间每次检查都刷屏。
+        if pending_reason != previous_pending_reason {
+            if let Some(reason) = pending_reason {
+                self.record_deferred_audit(
+                    &request.game_id,
+                    &request.profile_id,
+                    reason,
+                    checked_at,
+                );
+            }
+        }
+
+        let due_task = if due && pending_reason.is_none() {
             let lease_owner =
                 scheduler_lease_owner(&request.game_id, &request.profile_id, checked_at);
             let acquired = self
@@ -228,6 +279,7 @@ impl SaveBackupAutoSchedulerService {
             last_due_at: schedule_window.last_due_at,
             next_due_at: schedule_window.next_due_at,
             last_auto_backup_at,
+            pending_reason,
             due_task,
         })
     }
@@ -240,6 +292,40 @@ impl SaveBackupAutoSchedulerService {
         self.scheduler_state_repository
             .get_state(game_id, profile_id)
             .map_err(|_| SaveBackupAutoSchedulerError::SchedulerStateUnavailable)
+    }
+
+    fn record_deferred_audit(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        reason: SaveBackupSchedulerPendingReason,
+        checked_at: u128,
+    ) {
+        let error_code = match reason {
+            SaveBackupSchedulerPendingReason::GameRunning => "save_backup_auto_skipped_game_running",
+            SaveBackupSchedulerPendingReason::GameRunningUnknown => {
+                "save_backup_auto_skipped_game_running_unknown"
+            }
+            SaveBackupSchedulerPendingReason::SourceInvalid => "save_backup_auto_source_invalid",
+            SaveBackupSchedulerPendingReason::DestinationUnavailable => {
+                "save_backup_auto_destination_unavailable"
+            }
+            SaveBackupSchedulerPendingReason::TaskConflict => "save_backup_auto_task_conflict",
+        };
+        let fields = BTreeMap::from([
+            ("game_id".to_owned(), game_id.as_str().to_owned()),
+            ("profile_id".to_owned(), profile_id.as_str().to_owned()),
+            ("trigger".to_owned(), SaveBackupTrigger::Auto.as_str().to_owned()),
+            ("error_code".to_owned(), error_code.to_owned()),
+        ]);
+        // 审计写失败不阻塞调度检查。
+        let _ = self.audit_log.record(AuditLogEvent {
+            timestamp_unix_millis: checked_at,
+            category: "save_backup".to_owned(),
+            operation: "auto_backup".to_owned(),
+            result: "deferred".to_owned(),
+            fields,
+        });
     }
 
     fn save_scheduler_state(
@@ -268,6 +354,7 @@ struct SchedulerStateUpdate {
     checked_at: u128,
     next_due_at: Option<u128>,
     last_success_at: Option<u128>,
+    pending_reason: Option<SaveBackupSchedulerPendingReason>,
 }
 
 fn scheduler_state_for_check(
@@ -306,7 +393,7 @@ fn scheduler_state_for_check(
             .or_else(|| existing.as_ref().and_then(|state| state.last_success_at)),
         next_due_at: update.next_due_at,
         pending_reason: if update.enabled {
-            existing.as_ref().and_then(|state| state.pending_reason)
+            update.pending_reason
         } else {
             None
         },

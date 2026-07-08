@@ -1135,6 +1135,7 @@ function createPreviewAutoBackupCheckState(
     lastDueAt: settings.schedule.cadence === "manual" ? null : now - 60 * 60 * 1000,
     nextDueAt: settings.schedule.cadence === "manual" ? null : now + 2 * 60 * 60 * 1000,
     lastAutoBackupAt: null,
+    pendingReason: null,
     startedTask: null,
   };
 
@@ -1326,6 +1327,20 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
   }
 
   if (checkState.status === "due") {
+    if (checkState.result.pendingReason === "game_running") {
+      return {
+        tone: "waiting",
+        label: "游戏运行中，自动备份已延后",
+        icon: <AlertTriangle size={16} aria-hidden="true" />,
+      };
+    }
+    if (checkState.result.pendingReason === "game_running_unknown") {
+      return {
+        tone: "waiting",
+        label: "暂时无法确认游戏状态，备份已延后",
+        icon: <AlertTriangle size={16} aria-hidden="true" />,
+      };
+    }
     return {
       tone: checkState.result.startedTask ? "running" : "warning",
       label: checkState.result.startedTask ? "自动备份已排队" : "自动备份计划已到期",

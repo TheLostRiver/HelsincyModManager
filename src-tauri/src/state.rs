@@ -38,7 +38,7 @@ use hmm_infra::{
     SqliteProfileRepository, SqliteSaveBackupRepository, SqliteSaveBackupSchedulerStateRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
     SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    TaskScopedModImportSandboxLocator, TasklistGameRunningDetector, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
@@ -48,6 +48,7 @@ use hmm_ports::{
     SaveBackupRepository, SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader,
     ThumbnailCacheMaintenance,
 };
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -284,6 +285,11 @@ impl AppState {
             profile_save_settings_repository_for_save_backup_auto_scheduler,
             Arc::clone(&save_backup_repository),
             Arc::clone(&save_backup_scheduler_state_repository),
+            Arc::new(TasklistGameRunningDetector::new(HashMap::from([(
+                mhw_adapter.game_id(),
+                mhw_adapter.process_image_names(),
+            )]))),
+            Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
         ));
         let save_directory_discovery = Arc::new(ProfileSaveDirectoryDiscoveryService::new(

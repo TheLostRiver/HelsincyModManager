@@ -5,6 +5,7 @@ mod category;
 mod diagnostics_environment;
 mod game_launch;
 mod game_prerequisites;
+mod game_running;
 mod game_setup;
 mod install;
 mod mod_import;
@@ -36,6 +37,7 @@ pub use game_prerequisites::{
     GamePrerequisiteRuleRepository, GamePrerequisiteRuleRepositoryError, GamePrerequisiteRuleSet,
     GamePrerequisiteSignatureRule, GamePrerequisiteSummaryStatus,
 };
+pub use game_running::{GameRunningDetector, GameRunningStatus};
 pub use game_setup::{
     GameAdapter, GameCandidate, GameCandidateSource, GameConfigRepository,
     GameConfigRepositoryError, GameConfigRepositoryResult, GameDirectoryProbe,
