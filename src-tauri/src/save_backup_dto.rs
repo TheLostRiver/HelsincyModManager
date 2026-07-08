@@ -1,6 +1,9 @@
 use crate::dto::TaskStartedDto;
 use hmm_app::{SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus};
-use hmm_core::{SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger};
+use hmm_core::{
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerPendingReason,
+    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -81,6 +84,115 @@ pub enum SaveBackupStatusDto {
     DeletedByRetention,
     Missing,
     Invalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSaveBackupBackgroundStatusRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveBackupBackgroundStatusDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub status: SaveBackupBackgroundStatusKindDto,
+    pub background_protection_enabled: bool,
+    pub last_checked_at: Option<u64>,
+    pub last_attempt_at: Option<u64>,
+    pub last_success_at: Option<u64>,
+    pub next_due_at: Option<u64>,
+    pub pending_reason: Option<SaveBackupPendingReasonDto>,
+    pub last_error_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveBackupBackgroundStatusKindDto {
+    Protected,
+    TrayOnly,
+    NotEnabled,
+    RegistrationFailed,
+    WorkerUnhealthy,
+    PermissionRequired,
+    UnsupportedPlatform,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveBackupPendingReasonDto {
+    GameRunning,
+    GameRunningUnknown,
+    SourceInvalid,
+    DestinationUnavailable,
+    TaskConflict,
+}
+
+impl SaveBackupBackgroundStatusDto {
+    pub fn from_state(
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        state: Option<SaveBackupSchedulerState>,
+    ) -> Self {
+        // 白名单映射：lease_owner、lease_expires_at、worker_instance_id 和任何路径
+        // 都不得进入前端 DTO。
+        match state {
+            Some(state) => Self {
+                game_id: game_id.as_str().to_owned(),
+                profile_id: profile_id.as_str().to_owned(),
+                status: state.background_status.into(),
+                background_protection_enabled: state.background_protection_enabled,
+                last_checked_at: state.last_checked_at.map(|value| value as u64),
+                last_attempt_at: state.last_attempt_at.map(|value| value as u64),
+                last_success_at: state.last_success_at.map(|value| value as u64),
+                next_due_at: state.next_due_at.map(|value| value as u64),
+                pending_reason: state.pending_reason.map(Into::into),
+                last_error_code: state.last_error_code,
+            },
+            None => Self {
+                game_id: game_id.as_str().to_owned(),
+                profile_id: profile_id.as_str().to_owned(),
+                status: SaveBackupBackgroundStatusKindDto::NotEnabled,
+                background_protection_enabled: false,
+                last_checked_at: None,
+                last_attempt_at: None,
+                last_success_at: None,
+                next_due_at: None,
+                pending_reason: None,
+                last_error_code: None,
+            },
+        }
+    }
+}
+
+impl From<SaveBackupBackgroundProtectionStatus> for SaveBackupBackgroundStatusKindDto {
+    fn from(status: SaveBackupBackgroundProtectionStatus) -> Self {
+        match status {
+            SaveBackupBackgroundProtectionStatus::Protected => Self::Protected,
+            SaveBackupBackgroundProtectionStatus::TrayOnly => Self::TrayOnly,
+            SaveBackupBackgroundProtectionStatus::NotEnabled => Self::NotEnabled,
+            SaveBackupBackgroundProtectionStatus::RegistrationFailed => Self::RegistrationFailed,
+            SaveBackupBackgroundProtectionStatus::WorkerUnhealthy => Self::WorkerUnhealthy,
+            SaveBackupBackgroundProtectionStatus::PermissionRequired => Self::PermissionRequired,
+            SaveBackupBackgroundProtectionStatus::UnsupportedPlatform => Self::UnsupportedPlatform,
+        }
+    }
+}
+
+impl From<SaveBackupSchedulerPendingReason> for SaveBackupPendingReasonDto {
+    fn from(reason: SaveBackupSchedulerPendingReason) -> Self {
+        match reason {
+            SaveBackupSchedulerPendingReason::GameRunning => Self::GameRunning,
+            SaveBackupSchedulerPendingReason::GameRunningUnknown => Self::GameRunningUnknown,
+            SaveBackupSchedulerPendingReason::SourceInvalid => Self::SourceInvalid,
+            SaveBackupSchedulerPendingReason::DestinationUnavailable => {
+                Self::DestinationUnavailable
+            }
+            SaveBackupSchedulerPendingReason::TaskConflict => Self::TaskConflict,
+        }
+    }
 }
 
 impl From<SaveBackupSummary> for SaveBackupSummaryDto {
@@ -205,6 +317,69 @@ mod tests {
         assert!(value.get("backupRef").is_none());
         assert!(value.get("hash").is_none());
         assert!(!value.to_string().contains("C:/"));
+    }
+
+    #[test]
+    fn serializes_background_status_without_lease_worker_or_paths() {
+        let dto = SaveBackupBackgroundStatusDto::from_state(
+            &hmm_core::GameId::mhw(),
+            &hmm_core::ProfileId::new("default"),
+            Some(hmm_core::SaveBackupSchedulerState {
+                game_id: hmm_core::GameId::mhw(),
+                profile_id: hmm_core::ProfileId::new("default"),
+                enabled: true,
+                background_protection_enabled: false,
+                background_status: SaveBackupBackgroundProtectionStatus::TrayOnly,
+                last_checked_at: Some(100),
+                last_attempt_at: Some(90),
+                last_success_at: Some(80),
+                next_due_at: Some(200),
+                pending_reason: Some(SaveBackupSchedulerPendingReason::GameRunning),
+                last_error_code: Some("save_backup_auto_skipped_game_running".to_owned()),
+                worker_instance_id: Some("worker-a".to_owned()),
+                lease_owner: Some("client-runtime:mhw:default:1".to_owned()),
+                lease_expires_at: Some(300),
+                updated_at: 100,
+            }),
+        );
+
+        let value = serde_json::to_value(dto).expect("serialize background status");
+
+        assert_eq!(value["gameId"], "mhw");
+        assert_eq!(value["profileId"], "default");
+        assert_eq!(value["status"], "tray_only");
+        assert_eq!(value["backgroundProtectionEnabled"], false);
+        assert_eq!(value["lastCheckedAt"], 100);
+        assert_eq!(value["lastAttemptAt"], 90);
+        assert_eq!(value["lastSuccessAt"], 80);
+        assert_eq!(value["nextDueAt"], 200);
+        assert_eq!(value["pendingReason"], "game_running");
+        assert_eq!(value["lastErrorCode"], "save_backup_auto_skipped_game_running");
+        assert!(value.get("leaseOwner").is_none());
+        assert!(value.get("leaseExpiresAt").is_none());
+        assert!(value.get("workerInstanceId").is_none());
+        assert!(value.get("enabled").is_none());
+        assert!(value.get("path").is_none());
+        assert!(!value.to_string().contains("worker-a"));
+        assert!(!value.to_string().contains("client-runtime:"));
+        assert!(!value.to_string().contains("C:/"));
+    }
+
+    #[test]
+    fn missing_background_state_maps_to_not_enabled() {
+        let dto = SaveBackupBackgroundStatusDto::from_state(
+            &hmm_core::GameId::mhw(),
+            &hmm_core::ProfileId::new("default"),
+            None,
+        );
+
+        let value = serde_json::to_value(dto).expect("serialize missing state");
+
+        assert_eq!(value["status"], "not_enabled");
+        assert_eq!(value["backgroundProtectionEnabled"], false);
+        assert_eq!(value["lastCheckedAt"], serde_json::Value::Null);
+        assert_eq!(value["pendingReason"], serde_json::Value::Null);
+        assert_eq!(value["lastErrorCode"], serde_json::Value::Null);
     }
 
     #[test]

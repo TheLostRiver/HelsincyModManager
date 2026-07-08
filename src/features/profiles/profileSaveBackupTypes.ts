@@ -15,6 +15,40 @@ export type CheckProfileAutoSaveBackupInput = {
   profileId: string;
 };
 
+export type GetSaveBackupBackgroundStatusInput = {
+  gameId: string;
+  profileId: string;
+};
+
+export type SaveBackupBackgroundStatus =
+  | "protected"
+  | "tray_only"
+  | "not_enabled"
+  | "registration_failed"
+  | "worker_unhealthy"
+  | "permission_required"
+  | "unsupported_platform";
+
+export type SaveBackupPendingReason =
+  | "game_running"
+  | "game_running_unknown"
+  | "source_invalid"
+  | "destination_unavailable"
+  | "task_conflict";
+
+export type SaveBackupBackgroundStatusDto = {
+  gameId: string;
+  profileId: string;
+  status: SaveBackupBackgroundStatus;
+  backgroundProtectionEnabled: boolean;
+  lastCheckedAt: number | null;
+  lastAttemptAt: number | null;
+  lastSuccessAt: number | null;
+  nextDueAt: number | null;
+  pendingReason: SaveBackupPendingReason | null;
+  lastErrorCode: string | null;
+};
+
 export type TaskStartedDto = {
   taskId: string;
   kind: "save_backup";
