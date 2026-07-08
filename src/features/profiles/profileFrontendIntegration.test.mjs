@@ -251,7 +251,12 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.match(typesSource, /ProfileAutoSaveBackupCheckDto/);
   assert.match(pageSource, /checkProfileAutoSaveBackup/);
   assert.match(pageSource, /仅在客户端运行时/);
-  assert.match(pageSource, /退出主客户端后的后台保障尚未启用/);
+  assert.match(pageSource, /getSaveBackupBackgroundStatus/);
+  assert.match(pageSource, /仅客户端运行期保护/);
+  assert.match(pageSource, /未启用后台保护/);
+  assert.match(apiSource, /get_save_backup_background_status/);
+  assert.match(typesSource, /SaveBackupBackgroundStatusDto/);
+  assert.doesNotMatch(typesSource, /leaseOwner|leaseExpiresAt|workerInstanceId/);
   assert.match(pageSource, /startedTask/);
   assert.match(pageSource, /AutoSaveBackupRuntimePanel/);
   assert.match(pageSource, /getAutoBackupCheckBlockedReason\(saveBackupTaskState\)/);
@@ -263,6 +268,7 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.equal(autoCheckDependencyNames.includes("settingsState"), false);
   assert.doesNotMatch(autoCheckCall, /saveDirectory|backupDirectory|path|manifest|backupRef|hash/i);
   assert.match(saveManagerCss, /\.profile-auto-backup-card/);
+  assert.match(saveManagerCss, /\.profile-auto-backup-protection/);
 });
 
 test("plain browser preview renders the redesigned profiles console instead of the error shell", () => {
