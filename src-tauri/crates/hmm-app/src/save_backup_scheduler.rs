@@ -306,18 +306,12 @@ fn scheduler_state_for_check(
         worker_instance_id: existing
             .as_ref()
             .and_then(|state| state.worker_instance_id.clone()),
-        lease_owner: if update.enabled {
-            existing
-                .as_ref()
-                .and_then(|state| state.lease_owner.clone())
-        } else {
-            None
-        },
-        lease_expires_at: if update.enabled {
-            existing.as_ref().and_then(|state| state.lease_expires_at)
-        } else {
-            None
-        },
+        // 租约字段只能由 release_lease 按 owner 清理；
+        // 禁用/切换 Manual 时保留在途租约，避免重新启用后并发启动第二个 auto 任务。
+        lease_owner: existing
+            .as_ref()
+            .and_then(|state| state.lease_owner.clone()),
+        lease_expires_at: existing.as_ref().and_then(|state| state.lease_expires_at),
         updated_at: update.checked_at,
     }
 }
