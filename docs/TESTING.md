@@ -260,11 +260,13 @@ cmd /c corepack pnpm run test -- src/features/profiles/profileApi.test.mjs
 ```powershell
 cargo test -p hmm-app --test save_backup_scheduler
 cargo test -p hmm-infra --test save_backup_scheduler_repository
+cargo test -p hmm-infra game_running
+cargo test -p hmm-games-mhw adapter_reports
 cargo test -p hmm-tauri save_backup
 cmd /c corepack pnpm run test -- src/features/profiles/profileFrontendIntegration.test.mjs
 ```
 
-要求：调度器测试使用 fake repository / fake clock；scheduler state repository 测试使用临时 SQLite；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
+要求：调度器测试使用 fake repository / fake clock / fake game running detector；scheduler state repository 测试使用临时 SQLite；游戏运行检测测试只用 fixture 字符串，不依赖真实进程或真实游戏；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
 
 存档目录自动发现切片至少运行聚焦测试：
 

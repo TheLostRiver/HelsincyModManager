@@ -64,6 +64,7 @@ export type ProfileAutoSaveBackupCheckDto = {
   lastDueAt: number | null;
   nextDueAt: number | null;
   lastAutoBackupAt: number | null;
+  pendingReason: SaveBackupPendingReason | null;
   startedTask: TaskStartedDto | null;
 };
 

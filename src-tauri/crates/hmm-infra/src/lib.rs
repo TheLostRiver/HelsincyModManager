@@ -5,6 +5,7 @@ mod game_config_repository;
 mod game_directory_probe;
 mod game_discovery;
 mod game_launcher;
+mod game_running_detector;
 mod install_commit;
 mod mod_import;
 mod mod_import_install_files;
@@ -29,6 +30,7 @@ pub use game_config_repository::JsonGameConfigRepository;
 pub use game_directory_probe::{RealGameDirectoryProbe, RealGameDirectoryProbeFactory};
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
 pub use game_launcher::SystemGameLaunchRunner;
+pub use game_running_detector::TasklistGameRunningDetector;
 pub use install_commit::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonInstallManifestRepository,

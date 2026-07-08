@@ -258,6 +258,9 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.match(typesSource, /SaveBackupBackgroundStatusDto/);
   assert.doesNotMatch(typesSource, /leaseOwner|leaseExpiresAt|workerInstanceId/);
   assert.match(pageSource, /startedTask/);
+  assert.match(typesSource, /pendingReason: SaveBackupPendingReason \| null/);
+  assert.match(pageSource, /游戏运行中，自动备份已延后/);
+  assert.match(pageSource, /暂时无法确认游戏状态，备份已延后/);
   assert.match(pageSource, /AutoSaveBackupRuntimePanel/);
   assert.match(pageSource, /getAutoBackupCheckBlockedReason\(saveBackupTaskState\)/);
   assert.match(pageSource, /disabledReason=\{autoBackupCheckBlockedReason\}/);
