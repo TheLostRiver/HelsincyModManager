@@ -55,7 +55,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
-- Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`
+- Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`
 - Profile 存档目录发现：`discover_profile_save_directories`、`confirm_profile_save_directory_candidate`
 - 游戏启动：`launch_game(gameId)`
 - 查询安装恢复摘要：`scan_install_recovery`
@@ -493,6 +493,7 @@ Profile 存档备份命令：
 start_save_backup_task({ request: { gameId, profileId, note? } })
 list_save_backups({ request: { gameId, profileId, limit? } })
 check_auto_save_backup({ request: { gameId, profileId } })
+get_save_backup_background_status({ request: { gameId, profileId } })
 ```
 
 边界：
@@ -504,6 +505,9 @@ check_auto_save_backup({ request: { gameId, profileId } })
 - Tauri command 只做 DTO 映射和 app service 转发；目录解析、默认备份目录、自选根目录子目录、压缩、manifest、SQLite 历史、保留策略和审计均由后端服务处理。
 - 同一 `gameId + profileId` 同时只允许一个存档备份任务处于 queued/running 范围；重复启动会返回稳定错误码 `task_scope_busy`，避免自动检查和手动按钮并发写同一份存档。
 - 当前 `check_auto_save_backup` 返回 `clientRuntimeOnly: true`，表示本切片只在主客户端/Tauri 运行期间检查计划；退出主客户端后的后台保障尚未启用，不能作为后台守护或系统计划任务的完成语义。
+- `get_save_backup_background_status` 是只读查询，读取后端持久化的调度状态（`save_backup_scheduler_state`），不触发检查、不启动任务、不获取租约。没有持久化状态时返回 `status: "not_enabled"`。
+- `SaveBackupBackgroundStatusDto` 只包含白名单字段；不得包含 `lease_owner`、`lease_expires_at`、`worker_instance_id`、完整路径、Steam ID、manifest 正文或 hash 列表。
+- 在后台守护落地前，`status` 实际最多为 `tray_only`；前端不得把该状态展示为"退出客户端后仍受保护"。
 
 DTO 形状：
 
@@ -539,9 +543,35 @@ type ProfileAutoSaveBackupCheckDto = {
   lastAutoBackupAt: number | null;
   startedTask: TaskStartedDto | null;
 };
+
+type SaveBackupBackgroundStatusDto = {
+  gameId: string;
+  profileId: string;
+  status:
+    | "protected"
+    | "tray_only"
+    | "not_enabled"
+    | "registration_failed"
+    | "worker_unhealthy"
+    | "permission_required"
+    | "unsupported_platform";
+  backgroundProtectionEnabled: boolean;
+  lastCheckedAt: number | null;
+  lastAttemptAt: number | null;
+  lastSuccessAt: number | null;
+  nextDueAt: number | null;
+  pendingReason:
+    | "game_running"
+    | "game_running_unknown"
+    | "source_invalid"
+    | "destination_unavailable"
+    | "task_conflict"
+    | null;
+  lastErrorCode: string | null;
+};
 ```
 
-`SaveBackupSummaryDto` 和 `ProfileAutoSaveBackupCheckDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表或真实存档内容。
+`SaveBackupSummaryDto`、`ProfileAutoSaveBackupCheckDto` 和 `SaveBackupBackgroundStatusDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表、调度租约字段、worker 实例 id 或真实存档内容。
 
 ### 4. 游戏启动
 

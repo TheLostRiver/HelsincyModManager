@@ -712,8 +712,7 @@
   font-weight: 900;
 }
 
-.profile-auto-backup-card__header p,
-.profile-auto-backup-card__warning {
+.profile-auto-backup-card__header p {
   margin: 0;
   color: var(--color-text-soft);
   font-size: 12px;
@@ -788,6 +787,56 @@
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.profile-auto-backup-protection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--color-text-soft);
+  background: var(--profile-console-card);
+  border: 1px solid var(--profile-console-border);
+  border-radius: var(--radius-inner);
+}
+
+.profile-auto-backup-protection svg {
+  flex: 0 0 auto;
+}
+
+.profile-auto-backup-protection__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-auto-backup-protection__copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-auto-backup-protection__copy span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-auto-backup-protection.is-success {
+  color: var(--color-success-dot);
+  border-color: color-mix(in srgb, var(--color-success-dot) 25%, var(--profile-console-border));
+}
+
+.profile-auto-backup-protection.is-warning {
+  color: var(--color-warning-dot);
+  border-color: color-mix(in srgb, var(--color-warning-dot) 25%, var(--profile-console-border));
 }
 
 .profile-auto-backup-card > .profile-action-button {

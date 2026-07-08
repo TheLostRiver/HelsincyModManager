@@ -255,6 +255,17 @@ cargo test -p hmm-tauri save_backup
 cmd /c corepack pnpm run test -- src/features/profiles/profileApi.test.mjs
 ```
 
+自动备份调度状态与后台保护状态查询切片至少运行聚焦测试：
+
+```powershell
+cargo test -p hmm-app --test save_backup_scheduler
+cargo test -p hmm-infra --test save_backup_scheduler_repository
+cargo test -p hmm-tauri save_backup
+cmd /c corepack pnpm run test -- src/features/profiles/profileFrontendIntegration.test.mjs
+```
+
+要求：调度器测试使用 fake repository / fake clock；scheduler state repository 测试使用临时 SQLite；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
+
 存档目录自动发现切片至少运行聚焦测试：
 
 ```powershell
