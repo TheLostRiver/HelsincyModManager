@@ -206,6 +206,56 @@ fn manual_schedule_records_disabled_scheduler_state() {
 }
 
 #[test]
+fn switching_to_manual_preserves_in_flight_scheduler_lease() {
+    let now = DAY_MS + 4 * HOUR_MS;
+    let harness = Harness::new(now);
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule::manual()));
+    harness
+        .scheduler_state_repository
+        .upsert_state(&SaveBackupSchedulerState {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            enabled: true,
+            background_protection_enabled: false,
+            background_status: SaveBackupBackgroundProtectionStatus::TrayOnly,
+            last_checked_at: Some(now - HOUR_MS),
+            last_attempt_at: Some(now - HOUR_MS),
+            last_success_at: None,
+            next_due_at: Some(now + DAY_MS),
+            pending_reason: None,
+            last_error_code: None,
+            worker_instance_id: None,
+            lease_owner: Some("client-runtime:in-flight".to_owned()),
+            lease_expires_at: Some(now + HOUR_MS),
+            updated_at: now - HOUR_MS,
+        })
+        .expect("in-flight lease state seeded");
+
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .expect("manual schedule should be checked");
+
+    assert_eq!(result.status, SaveBackupAutoCheckStatus::ManualOnly);
+    let state = harness
+        .scheduler_state_repository
+        .latest_state()
+        .expect("disabled scheduler state saved");
+    assert!(!state.enabled);
+    // 在途租约必须保留，只允许 release_lease 按 owner 清理，
+    // 否则重新启用后会并发启动第二个 auto 备份任务。
+    assert_eq!(
+        state.lease_owner.as_deref(),
+        Some("client-runtime:in-flight")
+    );
+    assert_eq!(state.lease_expires_at, Some(now + HOUR_MS));
+}
+
+#[test]
 fn weekly_schedule_uses_latest_elapsed_weekday_slot() {
     let wednesday_day = 6;
     let harness = Harness::new(wednesday_day * DAY_MS + 4 * HOUR_MS);
