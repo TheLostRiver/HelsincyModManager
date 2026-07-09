@@ -1,8 +1,9 @@
 use anyhow::Result;
 use hmm_core::{
     GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId,
-    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
-    SaveBackupTrigger, SaveBackupWorkerHeartbeat,
+    SaveBackupBackgroundRegistrationStatus, SaveBackupSchedulerLeaseRequest,
+    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+    SaveBackupWorkerHeartbeat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +22,14 @@ pub struct SaveBackupWriteRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupWriteResult {
     pub summary: SaveBackupSummary,
+}
+
+pub trait SaveBackupBackgroundRegistry: Send + Sync {
+    fn inspect(&self) -> Result<SaveBackupBackgroundRegistrationStatus>;
+
+    fn register(&self) -> Result<SaveBackupBackgroundRegistrationStatus>;
+
+    fn unregister(&self) -> Result<SaveBackupBackgroundRegistrationStatus>;
 }
 
 pub trait SaveBackupWriter: Send + Sync {
