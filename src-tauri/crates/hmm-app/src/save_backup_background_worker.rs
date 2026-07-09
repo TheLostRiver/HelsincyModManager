@@ -143,6 +143,9 @@ impl SaveBackupBackgroundWorker {
                     })
                     .is_err()
                 {
+                    if let Some(request) = check.due_task.as_ref() {
+                        self.release_task_start_lease(request);
+                    }
                     summary.failed_profiles += 1;
                     self.record_profile_error(
                         worker_started_at,

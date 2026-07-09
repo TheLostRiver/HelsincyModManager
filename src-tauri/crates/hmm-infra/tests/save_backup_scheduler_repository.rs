@@ -61,6 +61,45 @@ fn acquire_due_lease_allows_one_owner_until_expired() {
 }
 
 #[test]
+fn acquire_due_lease_rejects_the_same_owner_while_unexpired() {
+    let (_temp, repo) = scheduler_repo();
+    repo.upsert_state(&sample_state()).expect("seed state");
+
+    let first = repo
+        .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-a".to_owned(),
+            lease_expires_at: 1_500,
+            now_unix_millis: 1_000,
+            last_checked_at: Some(1_000),
+            next_due_at: Some(1_200),
+        })
+        .expect("first lease succeeds");
+    assert!(first.is_some());
+
+    let second = repo
+        .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-a".to_owned(),
+            lease_expires_at: 1_700,
+            now_unix_millis: 1_100,
+            last_checked_at: Some(1_100),
+            next_due_at: Some(1_200),
+        })
+        .expect("busy lease is not fatal");
+    assert!(second.is_none());
+
+    let loaded = repo
+        .get_state(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("load state")
+        .expect("state exists");
+    assert_eq!(loaded.lease_owner.as_deref(), Some("worker-a"));
+    assert_eq!(loaded.lease_expires_at, Some(1_500));
+}
+
+#[test]
 fn expired_lease_can_be_taken_over_and_release_is_owner_scoped() {
     let (_temp, repo) = scheduler_repo();
     repo.upsert_state(&SaveBackupSchedulerState {
