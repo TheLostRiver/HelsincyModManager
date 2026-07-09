@@ -15,6 +15,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod save_backup;
+mod save_backup_background_worker;
 mod save_backup_scheduler;
 mod save_backup_task;
 mod save_directory_discovery;
@@ -89,6 +90,10 @@ pub use profile::{
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
     SaveBackupWarning,
+};
+pub use save_backup_background_worker::{
+    SaveBackupBackgroundWorker, SaveBackupBackgroundWorkerError,
+    SaveBackupBackgroundWorkerRunSummary,
 };
 pub use save_backup_scheduler::{
     SaveBackupAutoCheckRequest, SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus,
