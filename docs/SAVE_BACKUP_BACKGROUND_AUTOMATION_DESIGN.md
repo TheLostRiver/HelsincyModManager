@@ -2,6 +2,20 @@
 
 本文档定义存档自动备份在主客户端关闭后的保障语义、后台执行架构、调度规则、UI 提示、安全边界和分阶段落地计划。它补充 [存档备份系统设计](SAVE_BACKUP_DESIGN.md)，不替代手动备份、manifest、历史记录、恢复流程或存档目录自动发现设计。
 
+## 当前实施状态（P7.1）
+
+P7.1 已完成平台注册前的基础能力，但尚未交付退出主客户端后的真实后台保障：
+
+- 已定义稳定的后台 registry contract，并提供始终返回 `UnsupportedPlatform` 的安全 fallback；它不会误报平台注册成功。
+- 已落地 SQLite 持久化 scheduler state、lease 与 worker heartbeat。
+- 已提供只接受 `--once` 的单次 headless worker binary；该入口不初始化 WebView 或 Tauri GUI runtime。
+- worker 复用既有 scheduler、task runner、`SaveBackupService`、SQLite 历史、manifest 和 Audit Log 链路，不实现第二套备份写入逻辑。
+- 聚焦测试仅使用 fake ports、固定 clock 和临时 SQLite/目录，不使用真实系统计划任务、游戏安装或玩家存档。
+
+P7.1 尚未实现真实 Windows 用户级 Scheduled Task 的注册/移除、平台注册健康检查、Settings/Profile 的真实启用开关，以及退出前“启用并退出”提示。这些属于 P7.2；在它们完成并通过健康确认前，不得将 P7.1 标为 `protected`、完整后台保障，或表述为主客户端退出后已自动运行。
+
+因此，当前自动备份的产品语义仍是 `tray_only`：托盘常驻的主客户端可以执行自动备份，真正退出后不受保护。headless binary 只是未来平台注册的基础能力，不是已注册的退出后调度机制。
+
 ## 背景
 
 自动备份如果只依赖主窗口打开期间的前端定时器或 Tauri 主进程内 tick，就无法覆盖用户真正退出客户端后的时间段。对存档管理工具来说，“用户以为开启了自动备份，但退出客户端后实际没有备份”是不可接受的产品风险。
@@ -45,7 +59,7 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 退出程序
 
-用户选择“退出程序”表示主客户端进程结束。若后台保障已启用，自动备份应由用户级后台守护继续生效；若后台保障未启用，退出前必须提示：
+用户选择“退出程序”表示主客户端进程结束。以下“后台保障已启用”和退出提示是 P7.2 的目标行为；P7.1 当前没有可满足该条件的平台注册，因此保持 `tray_only`，不能表述为退出后仍会自动运行。P7.2 完成后，若后台保障未启用，退出前必须提示：
 
 ```text
 退出主客户端后，自动备份将不再受后台保障。
@@ -131,7 +145,7 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 系统计划任务
 
-Windows 第一阶段建议使用用户级 Scheduled Task：
+Windows 第一阶段建议使用用户级 Scheduled Task；这是 P7.2 未实现的平台注册工作，不是 P7.1 已交付行为：
 
 - 在用户登录时启动后台守护。
 - 可选择每隔固定时间唤醒一次守护执行单次检查。
@@ -430,21 +444,21 @@ MVP 平台。推荐：
 - 关闭窗口进入托盘仍可执行。
 - UI 明确显示“仅客户端运行时受保护”。
 
-### 切片 3：后台守护 MVP
+### 切片 3：P7.1 后台 worker 基础能力
 
 - 调度状态、租约去重和 worker 健康内核按 [后台自动备份调度内核实现计划](SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md) 先行落地。
-- 新增 headless worker 或独立守护二进制。
-- 新增 scheduler state repository。
-- 新增 worker 心跳和健康状态。
-- 新增 fake registry 测试。
-- Windows 使用用户级 Scheduled Task 注册。
+- 已新增 SQLite scheduler state repository、持久化 lease 和 worker heartbeat。
+- 已新增只接受 `--once` 的无 WebView headless worker binary，并复用既有备份链路。
+- 已新增 stable registry contract 与 `UnsupportedPlatform` fallback，以及 fake/临时依赖测试。
+- 当前状态固定为 `tray_only`；该 binary 是平台注册前基础能力，不代表退出后已自动运行。
 
-### 切片 4：主客户端状态与提示
+### 切片 4：P7.2 平台注册与主客户端状态/提示
 
-- 设置页展示后台保障状态。
-- Profile 页展示 profile 级自动备份状态。
-- 启动时读取后台结果并展示页面内状态和短时悬浮 UI。
-- 退出主客户端时根据后台保障状态提示用户。
+- Windows 用户级 Scheduled Task 注册与移除。
+- 注册健康检查，并且只有已注册且健康时才可显示 `protected`。
+- Settings/Profile 的真实后台保障启用开关。
+- 退出主客户端前的“启用并退出”提示。
+- 设置页和 Profile 页展示受支持的后台保障状态。
 
 ### 切片 5：跨平台扩展
 
