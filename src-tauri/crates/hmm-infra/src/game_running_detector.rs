@@ -104,7 +104,11 @@ fn query_pgrep_process_running(image_name: &str) -> GameRunningStatus {
         return GameRunningStatus::Unknown;
     }
 
-    match Command::new("pgrep").arg("-f").arg(image_name).output() {
+    match Command::new("pgrep")
+        .arg("-f")
+        .arg(pgrep_literal_pattern(image_name))
+        .output()
+    {
         Ok(output) => {
             pgrep_status_to_game_running_status(output.status.success(), output.status.code())
         }
@@ -115,6 +119,21 @@ fn query_pgrep_process_running(image_name: &str) -> GameRunningStatus {
 #[cfg(target_os = "windows")]
 fn query_pgrep_process_running(_image_name: &str) -> GameRunningStatus {
     GameRunningStatus::Unknown
+}
+
+#[cfg(any(not(target_os = "windows"), test))]
+fn pgrep_literal_pattern(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if matches!(
+            ch,
+            '.' | '[' | ']' | '\\' | '(' | ')' | '*' | '+' | '?' | '{' | '}' | '|' | '^' | '$'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
 }
 
 #[cfg(any(not(target_os = "windows"), test))]
@@ -200,6 +219,18 @@ mod tests {
         assert_eq!(
             detector.game_running_status(&GameId::mhw()),
             GameRunningStatus::Unknown
+        );
+    }
+
+    #[test]
+    fn pgrep_literal_pattern_escapes_regex_metacharacters() {
+        assert_eq!(
+            pgrep_literal_pattern("MonsterHunterWorld.exe"),
+            "MonsterHunterWorld\\.exe"
+        );
+        assert_eq!(
+            pgrep_literal_pattern("Game+[test](x)"),
+            "Game\\+\\[test\\]\\(x\\)"
         );
     }
 
