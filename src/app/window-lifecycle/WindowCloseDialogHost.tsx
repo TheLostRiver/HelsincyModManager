@@ -1,14 +1,11 @@
 import { useCallback, useState } from "react";
 import { WindowCloseDialog } from "./WindowCloseDialog";
 import { exitApplication, hideMainWindowToTray } from "./windowLifecycleApi";
+import { getWindowLifecycleErrorMessage } from "./windowLifecycleError";
 import { saveWindowClosePreference, type WindowClosePreference } from "./windowClosePreference";
 import { useWindowCloseRequest } from "./useWindowCloseRequest";
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  return "窗口关闭操作失败";
-}
+const WINDOW_CLOSE_PREFERENCE_SAVE_ERROR = "关闭行为偏好保存失败，请检查应用存储权限后重试。";
 
 export function WindowCloseDialogHost() {
   const [open, setOpen] = useState(false);
@@ -24,17 +21,19 @@ export function WindowCloseDialogHost() {
 
   const runAction = useCallback(async (action: WindowClosePreference, remember: boolean) => {
     try {
+      if (remember && !saveWindowClosePreference(undefined, action)) {
+        throw new Error(WINDOW_CLOSE_PREFERENCE_SAVE_ERROR);
+      }
+
       if (action === "tray") {
         await hideMainWindowToTray();
-        if (remember) saveWindowClosePreference(undefined, action);
         setOpen(false);
         return;
       }
 
-      if (remember) saveWindowClosePreference(undefined, action);
       await exitApplication();
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getWindowLifecycleErrorMessage(error));
       throw error;
     }
   }, []);
