@@ -29,9 +29,14 @@ export function loadWindowClosePreference(storage: PreferenceStorage = defaultSt
 export function saveWindowClosePreference(
   storage: PreferenceStorage = defaultStorage(),
   preference: WindowClosePreference,
-): void {
-  if (!storage) return;
-  storage.setItem(CLOSE_BEHAVIOR_STORAGE_KEY, JSON.stringify(parseWindowClosePreference(preference)));
+): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(CLOSE_BEHAVIOR_STORAGE_KEY, JSON.stringify(parseWindowClosePreference(preference)));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function resolveWindowCloseAction(preference: WindowClosePreference): WindowCloseAction {
