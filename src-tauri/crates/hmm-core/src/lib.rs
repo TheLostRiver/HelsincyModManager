@@ -29,10 +29,11 @@ pub use profile::{
     ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
 };
 pub use save_backup::{
-    SaveBackupBackgroundProtectionStatus, SaveBackupManifest, SaveBackupManifestFile,
-    SaveBackupManifestSource, SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason,
-    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
-    SaveBackupWorkerHeartbeat, SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
+    SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,
+    SaveBackupManifest, SaveBackupManifestFile, SaveBackupManifestSource,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason, SaveBackupSchedulerState,
+    SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger, SaveBackupWorkerHeartbeat,
+    SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
 };
 pub use save_directory::{
     steam_id64_from_account_id32, SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource,

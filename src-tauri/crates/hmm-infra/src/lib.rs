@@ -12,6 +12,7 @@ mod mod_import_install_files;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod save_backup;
+mod save_backup_background_registry;
 mod save_directory_pending_store;
 mod save_directory_scanner;
 pub mod sqlite;
@@ -48,6 +49,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use save_backup::FileSystemSaveBackupWriter;
+pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
 pub use sqlite::open_database;
