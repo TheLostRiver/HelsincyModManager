@@ -187,6 +187,59 @@ fn task_reservation_failure_releases_the_scheduler_lease() {
 }
 
 #[test]
+fn heartbeat_failure_releases_due_lease_without_starting_a_task() {
+    let harness = Harness::new();
+    harness.insert_profile("default");
+    harness.insert_settings(daily_settings("default"));
+    harness.scheduler_state_repository.set_fail_heartbeat(true);
+
+    let summary = harness
+        .worker()
+        .run_once("worker-a")
+        .expect("heartbeat failure is isolated");
+
+    assert_eq!(summary.started_tasks, 0);
+    assert_eq!(summary.failed_profiles, 1);
+    assert!(harness.executor.triggers().is_empty());
+
+    let lease_owner = harness
+        .scheduler_state_repository
+        .lease_requests()
+        .into_iter()
+        .next()
+        .expect("due check acquired a lease")
+        .lease_owner;
+    assert_eq!(
+        harness.scheduler_state_repository.release_calls(),
+        vec![lease_owner]
+    );
+
+    let state = harness
+        .scheduler_state_repository
+        .state(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("scheduler state exists");
+    assert_eq!(state.lease_owner, None);
+    assert_eq!(state.lease_expires_at, None);
+
+    let event = harness
+        .audit_log
+        .events()
+        .into_iter()
+        .find(|event| event.operation == "background_worker")
+        .expect("heartbeat failure is audited");
+    assert_eq!(event.category, "save_backup");
+    assert_eq!(event.result, "failure");
+    assert_eq!(
+        event.fields.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec!["error_code", "game_id", "profile_id", "trigger"]
+    );
+    assert_eq!(
+        event.fields["error_code"],
+        "save_backup_scheduler_unavailable"
+    );
+}
+
+#[test]
 fn client_due_lease_prevents_a_second_worker_from_starting_the_same_backup() {
     let harness = Harness::new();
     harness.insert_profile("default");
@@ -538,6 +591,7 @@ struct FakeSaveBackupSchedulerStateRepository {
     lease_requests: Mutex<Vec<SaveBackupSchedulerLeaseRequest>>,
     release_calls: Mutex<Vec<String>>,
     heartbeats: Mutex<Vec<SaveBackupWorkerHeartbeat>>,
+    fail_heartbeat: Mutex<bool>,
 }
 
 impl FakeSaveBackupSchedulerStateRepository {
@@ -567,6 +621,10 @@ impl FakeSaveBackupSchedulerStateRepository {
 
     fn heartbeats(&self) -> Vec<SaveBackupWorkerHeartbeat> {
         self.heartbeats.lock().expect("heartbeats lock").clone()
+    }
+
+    fn set_fail_heartbeat(&self, fail: bool) {
+        *self.fail_heartbeat.lock().expect("heartbeat failure lock") = fail;
     }
 }
 
@@ -646,6 +704,10 @@ impl SaveBackupSchedulerStateRepository for FakeSaveBackupSchedulerStateReposito
     }
 
     fn record_worker_heartbeat(&self, heartbeat: SaveBackupWorkerHeartbeat) -> Result<()> {
+        if *self.fail_heartbeat.lock().expect("heartbeat failure lock") {
+            anyhow::bail!("heartbeat write unavailable");
+        }
+
         if let Some(state) = self
             .states
             .lock()

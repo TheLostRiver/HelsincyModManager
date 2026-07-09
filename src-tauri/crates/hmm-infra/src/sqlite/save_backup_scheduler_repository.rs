@@ -93,10 +93,7 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
             return Ok(None);
         };
 
-        let lease_is_busy = state
-            .lease_owner
-            .as_deref()
-            .is_some_and(|owner| owner != request.lease_owner)
+        let lease_is_busy = state.lease_owner.is_some()
             && state
                 .lease_expires_at
                 .is_some_and(|expires_at| expires_at > request.now_unix_millis);
