@@ -53,8 +53,6 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
                 pending_reason = excluded.pending_reason,
                 last_error_code = excluded.last_error_code,
                 worker_instance_id = excluded.worker_instance_id,
-                lease_owner = excluded.lease_owner,
-                lease_expires_at = excluded.lease_expires_at,
                 updated_at = excluded.updated_at",
             params![
                 state.game_id.as_str(),
