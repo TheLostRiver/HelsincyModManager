@@ -51,3 +51,6 @@ backups/
 # Test coverage
 coverage/
 lcov.info
+
+# Local agent worktrees
+.worktrees/
