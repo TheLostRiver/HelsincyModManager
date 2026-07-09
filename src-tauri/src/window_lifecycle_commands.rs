@@ -18,9 +18,15 @@ fn window_lifecycle_error(code: &'static str, message: impl Into<String>) -> Com
 
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        if let Err(error) = window.show() {
+            tracing::warn!(error = %error, "failed to show main window from tray");
+        }
+        if let Err(error) = window.unminimize() {
+            tracing::warn!(error = %error, "failed to unminimize main window from tray");
+        }
+        if let Err(error) = window.set_focus() {
+            tracing::warn!(error = %error, "failed to focus main window from tray");
+        }
     }
 }
 

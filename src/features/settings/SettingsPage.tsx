@@ -84,6 +84,7 @@ export function SettingsPage() {
   const [windowClosePreference, setWindowClosePreference] = useState<WindowClosePreference>(() =>
     typeof window === "undefined" ? "ask" : loadWindowClosePreference(),
   );
+  const [windowClosePreferenceError, setWindowClosePreferenceError] = useState<string | null>(null);
 
   const hasSessionChanges = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(initialSettings),
@@ -103,8 +104,14 @@ export function SettingsPage() {
   };
 
   const updateWindowClosePreference = (value: WindowClosePreference) => {
+    const saveSucceeded = saveWindowClosePreference(undefined, value);
+    if (!saveSucceeded) {
+      setWindowClosePreferenceError("关闭行为偏好保存失败，请检查应用存储权限后重试。");
+      return;
+    }
+
     setWindowClosePreference(value);
-    saveWindowClosePreference(undefined, value);
+    setWindowClosePreferenceError(null);
   };
 
   return (
@@ -175,6 +182,12 @@ export function SettingsPage() {
             ]}
             onChange={updateWindowClosePreference}
           />
+          {windowClosePreferenceError ? (
+            <div className="settings-callout" role="alert">
+              <Bell size={16} strokeWidth={2.1} />
+              <span>{windowClosePreferenceError}</span>
+            </div>
+          ) : null}
           <div className="settings-callout settings-callout--neutral" role="note">
             <Bell size={16} strokeWidth={2.1} />
             <span>当前真正后台守护尚未落地；选择退出应用后，客户端运行期自动备份不会继续检查。</span>
