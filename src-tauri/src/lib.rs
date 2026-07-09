@@ -1,3 +1,4 @@
+mod background_worker;
 mod category_commands;
 mod dto;
 mod game_launch_commands;
@@ -57,9 +58,15 @@ use tauri::Manager;
 use thumbnail_protocol::register_thumbnail_protocol;
 use window_lifecycle_commands::{exit_app, hide_main_window_to_tray, register_window_lifecycle};
 
+pub use background_worker::BackgroundWorkerEntryError;
+
 #[tauri::command]
 fn app_health() -> &'static str {
     "ok"
+}
+
+pub fn run_save_backup_worker_once_from_env() -> Result<(), BackgroundWorkerEntryError> {
+    background_worker::run_save_backup_worker_once_from_env()
 }
 
 pub fn run() {

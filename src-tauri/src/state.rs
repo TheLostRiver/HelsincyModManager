@@ -14,12 +14,13 @@ use hmm_app::{
     ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
-    RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupExecutor,
-    SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
-    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
-    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupBackgroundWorker,
+    SaveBackupExecutor, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
+    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::{
@@ -88,6 +89,7 @@ pub struct AppState {
     pub save_directory_discovery: Arc<ProfileSaveDirectoryDiscoveryService>,
     pub save_backups: Arc<SaveBackupService>,
     pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
+    pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
     pub task_manager: Arc<TaskManager>,
@@ -104,6 +106,10 @@ impl AppState {
             .path()
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
+        Self::from_app_data_dir(app_data_dir)
+    }
+
+    pub fn from_app_data_dir(app_data_dir: PathBuf) -> Result<Self, String> {
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
@@ -124,6 +130,8 @@ impl AppState {
             profile_repository.clone();
         let profile_repository_for_save_backup_auto_scheduler: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_backup_background_worker: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_save_settings_repository: Arc<dyn ProfileSaveSettingsRepository> =
             profile_repository.clone();
         let profile_save_settings_repository_for_save_directory_discovery: Arc<
@@ -133,6 +141,9 @@ impl AppState {
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backup_auto_scheduler: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_backup_background_worker: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator> =
@@ -163,6 +174,7 @@ impl AppState {
         let mhw_adapter: Arc<dyn GameAdapter> =
             Arc::new(MonsterHunterWorldAdapter::new(mhw_prerequisite_rules));
         let game_adapters: Vec<Arc<dyn GameAdapter>> = vec![Arc::clone(&mhw_adapter)];
+        let game_ids = game_ids_from_adapters(&game_adapters);
         let mhw_launcher: Arc<dyn GameLauncher> = Arc::new(MonsterHunterWorldLauncher::new(
             Arc::new(SystemGameLaunchRunner),
         ));
@@ -183,7 +195,10 @@ impl AppState {
         let diagnostics_environment_provider: Arc<dyn DiagnosticsEnvironmentProvider> =
             Arc::new(SystemDiagnosticsEnvironmentProvider::new(
                 env!("CARGO_PKG_VERSION").to_owned(),
-                game_ids_from_adapters(&game_adapters),
+                game_ids
+                    .iter()
+                    .map(|game_id| game_id.as_str().to_owned())
+                    .collect(),
             ));
         let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
@@ -311,6 +326,31 @@ impl AppState {
         ));
         let save_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
         let save_backup_task_scopes = Arc::new(SaveBackupTaskScopeRegistry::default());
+        let save_backup_task_runner = Arc::new(
+            SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+                Arc::clone(&task_manager),
+                save_backup_executor,
+                Arc::clone(&audit_log_writer),
+                Arc::new(SystemClock),
+                Arc::clone(&save_backup_task_scopes),
+                Arc::clone(&save_backup_scheduler_state_repository),
+            ),
+        );
+        let save_backup_tasks = Arc::new(SaveBackupTaskService::with_scope_registry(
+            Arc::clone(&task_manager),
+            save_backup_task_scopes,
+        ));
+        let save_backup_background_worker = Arc::new(SaveBackupBackgroundWorker::new(
+            game_ids,
+            profile_repository_for_save_backup_background_worker,
+            profile_save_settings_repository_for_save_backup_background_worker,
+            Arc::clone(&save_backup_auto_scheduler),
+            Arc::clone(&save_backup_tasks),
+            Arc::clone(&save_backup_task_runner),
+            Arc::clone(&save_backup_scheduler_state_repository),
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+        ));
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
@@ -442,21 +482,10 @@ impl AppState {
                 Arc::new(SystemClock),
             )),
             save_directory_discovery,
-            save_backup_task_runner: Arc::new(
-                SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
-                    Arc::clone(&task_manager),
-                    save_backup_executor,
-                    Arc::clone(&audit_log_writer),
-                    Arc::new(SystemClock),
-                    Arc::clone(&save_backup_task_scopes),
-                    save_backup_scheduler_state_repository,
-                ),
-            ),
-            save_backup_tasks: Arc::new(SaveBackupTaskService::with_scope_registry(
-                Arc::clone(&task_manager),
-                save_backup_task_scopes,
-            )),
+            save_backup_task_runner,
+            save_backup_tasks,
             save_backup_auto_scheduler,
+            save_backup_background_worker,
             save_backups,
             task_manager,
             db,
@@ -724,11 +753,8 @@ fn clone_game_adapters(adapters: &[Arc<dyn GameAdapter>]) -> Vec<Arc<dyn GameAda
     adapters.to_vec()
 }
 
-fn game_ids_from_adapters(adapters: &[Arc<dyn GameAdapter>]) -> Vec<String> {
-    adapters
-        .iter()
-        .map(|adapter| adapter.game_id().as_str().to_owned())
-        .collect()
+fn game_ids_from_adapters(adapters: &[Arc<dyn GameAdapter>]) -> Vec<GameId> {
+    adapters.iter().map(|adapter| adapter.game_id()).collect()
 }
 
 fn game_process_names_by_game(adapters: &[Arc<dyn GameAdapter>]) -> HashMap<GameId, Vec<String>> {

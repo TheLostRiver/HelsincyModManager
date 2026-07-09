@@ -1437,6 +1437,7 @@ name = "hmm-tauri"
 version = "0.1.0-alpha.0"
 dependencies = [
  "anyhow",
+ "dirs",
  "hmm-app",
  "hmm-core",
  "hmm-games-mhw",
@@ -1450,6 +1451,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tempfile",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
