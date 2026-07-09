@@ -25,6 +25,10 @@ use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::{
     MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
 };
+#[cfg(not(target_os = "windows"))]
+use hmm_infra::PgrepGameRunningDetector;
+#[cfg(target_os = "windows")]
+use hmm_infra::TasklistGameRunningDetector;
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
     FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemSaveBackupWriter,
@@ -38,15 +42,15 @@ use hmm_infra::{
     SqliteProfileRepository, SqliteSaveBackupRepository, SqliteSaveBackupSchedulerStateRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
     SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
-    TaskScopedModImportSandboxLocator, TasklistGameRunningDetector, ZipModImportPackagePreparer,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
     AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
-    GamePrerequisiteRuleRepository, ModImportResultRepository, ModImportSandboxLocator,
-    ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
-    SaveBackupRepository, SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader,
-    ThumbnailCacheMaintenance,
+    GamePrerequisiteRuleRepository, GameRunningDetector, ModImportResultRepository,
+    ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
+    ProfileSaveSettingsRepository, SaveBackupRepository, SaveBackupSchedulerStateRepository,
+    SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -158,6 +162,7 @@ impl AppState {
             ));
         let mhw_adapter: Arc<dyn GameAdapter> =
             Arc::new(MonsterHunterWorldAdapter::new(mhw_prerequisite_rules));
+        let game_adapters: Vec<Arc<dyn GameAdapter>> = vec![Arc::clone(&mhw_adapter)];
         let mhw_launcher: Arc<dyn GameLauncher> = Arc::new(MonsterHunterWorldLauncher::new(
             Arc::new(SystemGameLaunchRunner),
         ));
@@ -178,7 +183,7 @@ impl AppState {
         let diagnostics_environment_provider: Arc<dyn DiagnosticsEnvironmentProvider> =
             Arc::new(SystemDiagnosticsEnvironmentProvider::new(
                 env!("CARGO_PKG_VERSION").to_owned(),
-                vec![mhw_adapter.game_id().as_str().to_owned()],
+                game_ids_from_adapters(&game_adapters),
             ));
         let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
@@ -285,10 +290,7 @@ impl AppState {
             profile_save_settings_repository_for_save_backup_auto_scheduler,
             Arc::clone(&save_backup_repository),
             Arc::clone(&save_backup_scheduler_state_repository),
-            Arc::new(TasklistGameRunningDetector::new(HashMap::from([(
-                mhw_adapter.game_id(),
-                mhw_adapter.process_image_names(),
-            )]))),
+            game_running_detector_for_platform(&game_adapters),
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
         ));
@@ -313,7 +315,7 @@ impl AppState {
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
             Arc::new(SandboxModPackageInstallFileScanner),
-            vec![Arc::clone(&mhw_adapter)],
+            clone_game_adapters(&game_adapters),
         ));
         let install_manifest_query = Arc::new(InstallManifestQueryService::new(
             install_manifest_repository.clone(),
@@ -390,7 +392,7 @@ impl AppState {
 
         Ok(Self {
             game_setup: Arc::new(GameSetupService::new(
-                vec![mhw_adapter],
+                game_adapters,
                 Arc::clone(&game_config_repository),
                 Arc::new(RealGameDirectoryProbeFactory),
                 Arc::new(SteamGameDiscoveryService::new(Arc::new(
@@ -718,6 +720,38 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
     }
 }
 
+fn clone_game_adapters(adapters: &[Arc<dyn GameAdapter>]) -> Vec<Arc<dyn GameAdapter>> {
+    adapters.to_vec()
+}
+
+fn game_ids_from_adapters(adapters: &[Arc<dyn GameAdapter>]) -> Vec<String> {
+    adapters
+        .iter()
+        .map(|adapter| adapter.game_id().as_str().to_owned())
+        .collect()
+}
+
+fn game_process_names_by_game(adapters: &[Arc<dyn GameAdapter>]) -> HashMap<GameId, Vec<String>> {
+    adapters
+        .iter()
+        .map(|adapter| (adapter.game_id(), adapter.process_image_names()))
+        .collect()
+}
+
+fn game_running_detector_for_platform(
+    adapters: &[Arc<dyn GameAdapter>],
+) -> Arc<dyn GameRunningDetector> {
+    let process_names = game_process_names_by_game(adapters);
+    #[cfg(target_os = "windows")]
+    {
+        Arc::new(TasklistGameRunningDetector::new(process_names))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Arc::new(PgrepGameRunningDetector::new(process_names))
+    }
+}
+
 fn start_best_effort_background_task<E>(
     task_name: &'static str,
     spawn: impl FnOnce() -> Result<(), E>,
@@ -760,6 +794,52 @@ mod tests {
         fn save_game_instance(&self, _instance: &GameInstance) -> GameConfigRepositoryResult<()> {
             panic!("recovery scanner lock test must not save game config")
         }
+    }
+
+    struct TestGameAdapter {
+        process_names: Vec<String>,
+    }
+
+    impl GameAdapter for TestGameAdapter {
+        fn game_id(&self) -> GameId {
+            GameId::mhw()
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Test Game"
+        }
+
+        fn validate_directory(
+            &self,
+            probe: &dyn hmm_ports::GameDirectoryProbe,
+        ) -> hmm_core::GameDirectoryValidation {
+            hmm_core::GameDirectoryValidation::new(GameId::mhw(), probe.root_dir().to_path_buf())
+        }
+
+        fn inspect_prerequisites(
+            &self,
+            _probe: &dyn hmm_ports::GameDirectoryProbe,
+        ) -> hmm_ports::GamePrerequisiteReport {
+            hmm_ports::GamePrerequisiteReport::not_configured(GameId::mhw())
+        }
+
+        fn process_image_names(&self) -> Vec<String> {
+            self.process_names.clone()
+        }
+    }
+
+    #[test]
+    fn game_process_names_are_derived_from_registered_adapters() {
+        let adapter: Arc<dyn GameAdapter> = Arc::new(TestGameAdapter {
+            process_names: vec!["ExampleGame.exe".to_owned()],
+        });
+
+        let process_names = game_process_names_by_game(&[adapter]);
+
+        assert_eq!(
+            process_names.get(&GameId::mhw()),
+            Some(&vec!["ExampleGame.exe".to_owned()])
+        );
     }
 
     #[test]
