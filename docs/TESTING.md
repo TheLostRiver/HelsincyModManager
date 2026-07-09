@@ -279,6 +279,19 @@ cmd /c corepack pnpm run test -- src/features/profiles/profileFrontendIntegratio
 
 要求：调度器测试使用 fake repository / fake clock / fake game running detector；scheduler state repository 测试使用临时 SQLite；游戏运行检测测试只用 fixture 字符串，不依赖真实进程或真实游戏；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
 
+P7.1 后台备份 headless worker 与调度租约基础能力至少运行以下可复制的聚焦验证：
+
+```powershell
+cargo test -p hmm-app --test save_backup_background_worker
+cargo test -p hmm-app --test save_backup_scheduler
+cargo test -p hmm-app --test save_backup_task
+cargo test -p hmm-infra --test save_backup_scheduler_repository
+cargo test -p hmm-tauri background_worker
+cargo check -p hmm-tauri --bin hmm-save-backup-worker
+```
+
+要求：worker 与 scheduler 测试使用 fake ports、固定 clock 和临时 SQLite/目录；不得使用真实 Windows Scheduled Task、真实游戏进程、真实 MHW 安装、Steam userdata 或玩家存档。该切片验证的是 `tray_only` 下的单次 `--once` worker、持久化 lease/heartbeat 与既有任务链路复用，不证明主客户端退出后已经自动运行，也不构成 `protected` 或完整后台保障。
+
 存档目录自动发现切片至少运行聚焦测试：
 
 ```powershell

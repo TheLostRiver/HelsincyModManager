@@ -1,6 +1,17 @@
 # 后台自动备份调度内核实现计划
 
-本文档定义 `SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md` 中“后台守护 MVP”的第一实现切片。目标是先落地可测试的调度状态、租约去重和 worker 健康状态内核，为后续 Windows 用户级 Scheduled Task / headless worker 注册打基础。
+本文档定义 `SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md` 中后台自动备份的调度内核，以及已完成的 P7.1 worker 基础能力。P7.1 已落地可测试的调度状态、租约去重、worker heartbeat 和单次 headless worker；真实 Windows 用户级 Scheduled Task 注册仍属于后续 P7.2。
+
+## 当前实施状态
+
+P7.1 已完成：
+
+- 稳定的后台 registry contract 与 `UnsupportedPlatform` fallback，未注册平台不会误报为已注册。
+- SQLite 持久化 scheduler state、lease 与 worker heartbeat。
+- 只接受 `--once` 的 headless worker binary；它复用既有 scheduler、task runner、备份历史、manifest 和 Audit Log 链路，并且不初始化 WebView。
+- fake ports、固定 clock、临时 SQLite/目录覆盖的聚焦测试。
+
+P7.1 没有注册或移除真实 Windows 用户级 Scheduled Task，也没有平台注册健康检查、Settings/Profile 的真实启用开关或退出前“启用并退出”提示。因此当前产品语义仍是 `tray_only`：headless binary 是平台注册前的基础能力，不是已注册的退出后自动运行机制；不得标为 `protected` 或完整后台保障。
 
 ## 目标
 
@@ -14,7 +25,7 @@
 
 - 本切片不注册真实 Windows Scheduled Task。
 - 本切片不新增 Windows Service。
-- 本切片不实现独立 guardian 二进制打包。
+- P7.1 的 `--once` headless worker 不等于独立 guardian 或已注册的系统调度机制。
 - 本切片不实现存档恢复。
 - 本切片不新增第二套备份文件写入逻辑。
 - 本切片不让前端传入存档路径、备份路径、manifest、hash 或 scheduler lease 字段。
@@ -92,7 +103,7 @@ save_backup_scheduler_state
 
 ### `src-tauri`
 
-本切片可以只暴露查询状态 command；如需要前端展示，新增：
+P7.1 不新增 Tauri command、DTO 或 UI。后续 P7.2 如需前端展示，可在平台注册和健康检查完成后受控地新增查询入口：
 
 ```text
 get_save_backup_background_status({ gameId, profileId })
@@ -115,7 +126,7 @@ DTO 不返回 lease owner、worker id、真实路径或任何备份文件系统�
 
 ### 前端
 
-若本切片包含 UI，则 Profile 页面只展示后台保护状态摘要：
+P7.1 不实现前端开关或状态页。P7.2 的 Profile/Settings UI 才可展示后台保护状态摘要：
 
 - 已受后台保护
 - 仅客户端运行期保护
@@ -130,12 +141,17 @@ DTO 不返回 lease owner、worker id、真实路径或任何备份文件系统�
 1. 调度器读取 profile/save settings 和 backup history。
 2. 未启用自动备份时写入 `enabled = 0`，不启动任务。
 3. 到期时先尝试获取持久化 lease。
-4. lease 未过期且属于其他 worker 时，本次检查跳过。
+4. 同一 `gameId/profileId` 存在任意未过期 lease 时，本次检查都视为 busy 并跳过，包括 lease owner 与当前请求相同的情况。
 5. lease 已过期时可以接管，但必须重新读取状态并重新判断 due。
 6. 获取 lease 不等于获得文件写入许可；备份前仍由 `SaveBackupService` 重验源目录、目标目录、包含关系、symlink/junction、大小上限和 retention。
 7. 单次 catch-up 只启动一次备份，不为错过的多个窗口连续补多个备份。
 8. 任务完成后更新 `last_success_at`、`last_attempt_at`、`next_due_at` 并释放 lease。
 9. 任务失败后更新 `last_attempt_at`、`last_error_code` 并释放 lease。
+
+### P7.1 已实现的额外保护
+
+- `upsert_state` 刷新检查字段时不会覆盖已有的 `lease_owner` 或 `lease_expires_at`；lease 只能由过期接管或按 owner 的 `release_lease` 清理。
+- worker 已取得 due lease 后，若 heartbeat 写入失败或任务 reservation/start 失败，必须立即释放该 lease，避免后续检查被虚假的在途状态阻塞。
 
 ## 错误码
 
@@ -160,22 +176,23 @@ save_backup_auto_task_conflict
 
 - due profile 会生成一次 `SaveBackupTrigger::Auto` 任务请求。
 - 错过多个窗口只 catch-up 一次。
-- 已有未过期 lease 时不会重复启动任务。
+- 同一 `gameId/profileId` 的任意未过期 lease（包括相同 owner）都会阻止重复启动任务。
 - 过期 lease 会被接管，并重新判断 due。
+- heartbeat 或 task reservation/start 失败会立即释放已取得 lease。
 - 手动 schedule 不会启动自动备份。
 - settings/history/clock/repository 失败会返回稳定错误码。
 
 ### Rust infra 层
 
 - SQLite migration 创建 `save_backup_scheduler_state`。
-- `upsert_state` 不保存路径字段。
+- `upsert_state` 不保存路径字段，且不会覆盖已有 lease。
 - `acquire_due_lease` 在事务内只允许一个 owner 获得 lease。
 - `release_lease` 只释放当前 owner 的 lease。
 - 过期 lease 可被新 owner 接管。
 
 ### Tauri/前端
 
-若本切片新增 DTO/command/UI：
+P7.1 没有新增 DTO/command/UI。P7.2 若新增这些内容：
 
 - DTO 序列化为 camelCase。
 - command 参数只接受 `gameId/profileId`，不接受路径或 lease 字段。
@@ -201,8 +218,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 ## 后续切片
 
-1. Windows 用户级 Scheduled Task 注册与移除。
-2. headless worker 或独立 guardian 二进制打包。
-3. Profile/Settings 后台保护 UI 完整接入。
-4. 退出主客户端时根据后台保护状态提示用户。
+1. P7.2：Windows 用户级 Scheduled Task 注册与移除。
+2. P7.2：平台注册健康检查，以及已注册且健康时的 `protected` 状态。
+3. P7.2：Profile/Settings 后台保护真实启用开关。
+4. P7.2：退出主客户端时的“启用并退出”提示。
 5. Linux / Steam Deck user service 或 autostart 实验支持。

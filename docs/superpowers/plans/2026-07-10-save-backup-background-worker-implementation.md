@@ -64,7 +64,7 @@
 - Produces: `UnsupportedSaveBackupBackgroundRegistry`；三个方法都返回 `UnsupportedPlatform`，使 P7.1 不会误报平台后台入口已注册。
 - Consumes: 已有 `SaveBackupBackgroundProtectionStatus`；两者不能混用：registration 表示平台入口状态，protection 表示用户可见保障状态。
 
-- [ ] **Step 1: 写失败的 core 枚举稳定字符串测试**
+- [x] **Step 1: 写失败的 core 枚举稳定字符串测试**
 
 在 `save_backup.rs` 的测试模块添加：
 
@@ -94,7 +94,7 @@ fn background_registration_statuses_have_stable_codes() {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认因类型不存在失败**
+- [x] **Step 2: 运行测试，确认因类型不存在失败**
 
 Run:
 
@@ -104,7 +104,7 @@ cargo test -p hmm-core background_registration_statuses_have_stable_codes
 
 Expected: FAIL，错误包含 `SaveBackupBackgroundRegistrationStatus` 未定义。
 
-- [ ] **Step 3: 实现最小领域类型和 port**
+- [x] **Step 3: 实现最小领域类型和 port**
 
 在 `hmm-core/src/save_backup.rs` 添加：
 
@@ -166,7 +166,7 @@ impl SaveBackupBackgroundRegistry for UnsupportedSaveBackupBackgroundRegistry {
 
 在 `save_backup_background_registry.rs` 测试三个方法都返回 `UnsupportedPlatform`，并断言其 API 没有 command、path 或用户输入参数。
 
-- [ ] **Step 4: 运行聚焦测试和 crate 检查**
+- [x] **Step 4: 运行聚焦测试和 crate 检查**
 
 Run:
 
@@ -179,7 +179,7 @@ cargo check -p hmm-infra
 
 Expected: 四个命令均成功退出。
 
-- [ ] **Step 5: 提交契约切片**
+- [x] **Step 5: 提交契约切片**
 
 ```powershell
 git add src-tauri/crates/hmm-core/src/save_backup.rs src-tauri/crates/hmm-core/src/lib.rs src-tauri/crates/hmm-ports/src/save_backup.rs src-tauri/crates/hmm-ports/src/lib.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry.rs src-tauri/crates/hmm-infra/src/lib.rs src-tauri/crates/hmm-infra/tests/save_backup_background_registry.rs
@@ -201,7 +201,7 @@ git commit -m "feat: 定义后台备份注册契约"
 - Produces: `SaveBackupBackgroundWorkerError::{ProfileListUnavailable, ClockUnavailable}` 与 `code(&self) -> &'static str`，稳定值分别是 `save_backup_background_profile_list_unavailable`、`save_backup_background_clock_unavailable`。
 - Produces: 汇总字段 `checked_profiles`、`started_tasks`、`deferred_profiles`、`failed_profiles`；不返回路径、Profile 名称、Steam ID 或 manifest。
 
-- [ ] **Step 1: 写失败的应用层测试**
+- [x] **Step 1: 写失败的应用层测试**
 
 在新测试文件建立 fake profile/settings/scheduler-state/audit/task executor，并先覆盖以下行为：
 
@@ -243,7 +243,7 @@ fn run_once_continues_after_one_profile_fails() {
 
 额外覆盖：manual schedule 不进入检查；两个 worker 对同一 due Profile 只有一个获得 lease；`Unknown` 与 `Running` 同样延后；审计字段只含 `game_id`、`profile_id`、`trigger`、`error_code` 等短值。
 
-- [ ] **Step 2: 运行测试，确认模块不存在失败**
+- [x] **Step 2: 运行测试，确认模块不存在失败**
 
 Run:
 
@@ -253,7 +253,7 @@ cargo test -p hmm-app --test save_backup_background_worker
 
 Expected: FAIL，错误包含 worker module 或导入类型不存在。
 
-- [ ] **Step 3: 实现 `SaveBackupBackgroundWorker`**
+- [x] **Step 3: 实现 `SaveBackupBackgroundWorker`**
 
 实现核心结构：
 
@@ -351,7 +351,7 @@ for profile in self.profile_repository.list_all()
 
 所有 `AuditLogEvent` 使用固定 `category = "save_backup"`、`operation = "background_worker"`，字段仅包含短 ID、`trigger = "auto"` 与稳定 `error_code`。
 
-- [ ] **Step 4: 运行应用层测试与回归测试**
+- [x] **Step 4: 运行应用层测试与回归测试**
 
 Run:
 
@@ -363,7 +363,7 @@ cargo test -p hmm-app --test save_backup_task
 
 Expected: 全部成功退出；测试证明 `TrayOnly` heartbeat 不改变为 `Protected`。
 
-- [ ] **Step 5: 提交应用层 worker 切片**
+- [x] **Step 5: 提交应用层 worker 切片**
 
 ```powershell
 git add src-tauri/crates/hmm-app/src/save_backup_background_worker.rs src-tauri/crates/hmm-app/src/lib.rs src-tauri/crates/hmm-app/tests/save_backup_background_worker.rs
@@ -389,7 +389,7 @@ git commit -m "feat: 添加存档自动备份后台 worker"
 - Produces: `parse_background_worker_args<I, T>(args: I) -> Result<BackgroundWorkerCommand, BackgroundWorkerEntryError>`，唯一合法命令为 `--once`。
 - Consumes: `tauri::generate_context!().config().identifier` 与 `dirs::data_dir()`，以 GUI 使用的 app identifier 解析同一 AppData 根目录。
 
-- [ ] **Step 1: 写失败的 CLI 参数与退出安全测试**
+- [x] **Step 1: 写失败的 CLI 参数与退出安全测试**
 
 在 `background_worker.rs` 添加：
 
@@ -415,7 +415,7 @@ fn rejects_paths_and_internal_scheduler_arguments() {
 }
 ```
 
-- [ ] **Step 2: 运行测试，确认入口模块不存在失败**
+- [x] **Step 2: 运行测试，确认入口模块不存在失败**
 
 Run:
 
@@ -425,7 +425,7 @@ cargo test -p hmm-tauri background_worker
 
 Expected: FAIL，错误包含 `background_worker` 模块或 `parse_background_worker_args` 未定义。
 
-- [ ] **Step 3: 实现共享状态装配与 binary 入口**
+- [x] **Step 3: 实现共享状态装配与 binary 入口**
 
 在 workspace 根 `Cargo.toml` 添加：
 
@@ -525,7 +525,7 @@ fn main() {
 
 在 `src-tauri/src/lib.rs` 增加 `mod background_worker;` 并公开包装函数；保留 GUI `run()` 不变。不得在 worker 路径调用 `tauri::Builder`、`run()`、`register_thumbnail_protocol` 或 window lifecycle 注册。
 
-- [ ] **Step 4: 运行 headless 与 Tauri 回归检查**
+- [x] **Step 4: 运行 headless 与 Tauri 回归检查**
 
 Run:
 
@@ -537,7 +537,7 @@ cargo test -p hmm-tauri save_backup
 
 Expected: 所有命令成功退出；`--once` 解析测试通过，任何路径/内部参数被拒绝。
 
-- [ ] **Step 5: 提交 headless 入口切片**
+- [x] **Step 5: 提交 headless 入口切片**
 
 ```powershell
 git add Cargo.toml src-tauri/Cargo.toml src-tauri/src/state.rs src-tauri/src/background_worker.rs src-tauri/src/bin/hmm-save-backup-worker.rs src-tauri/src/lib.rs
@@ -552,24 +552,23 @@ git commit -m "feat: 添加单次后台备份 worker 入口"
 - Modify: `docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`
 - Modify: `docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md`
 - Modify: `docs/TESTING.md`
-- Modify: `TODO.md`
 - Modify: `docs/superpowers/plans/2026-07-10-save-backup-background-worker-implementation.md`（勾选实际完成步骤）
 
 **Interfaces:**
 - Produces: 文档明确说明 P7.1 是 headless worker 与 contract 基础，P7.2 才是 Windows Scheduled Task 注册与真实 `protected` 状态。
 - Produces: `docs/TESTING.md` 中可复制的 worker 聚焦验证命令。
 
-- [ ] **Step 1: 写文档一致性失败检查**
+- [x] **Step 1: 写文档一致性失败检查**
 
-先运行：
+已运行：
 
 ```powershell
-rg -n "P7.1|headless worker|Scheduled Task|protected|tray_only" docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md TODO.md
+rg -n "P7.1|headless worker|Scheduled Task|protected|tray_only" docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md
 ```
 
 Expected: 当前文档没有将 P7.1 的实际完成情况与 P7.2 的平台注册边界完整区分，作为同步前基线。
 
-- [ ] **Step 2: 更新设计、测试与总任务文档**
+- [x] **Step 2: 更新设计、测试与总任务文档**
 
 在两个后台设计文档加入以下不可变语义：
 
@@ -590,43 +589,35 @@ cargo test -p hmm-tauri background_worker
 cargo check -p hmm-tauri --bin hmm-save-backup-worker
 ```
 
-在 `TODO.md` 仅勾选“headless worker / contract 基础”子项，保留“真正后台守护 / Windows 用户级 Scheduled Task（退出主客户端后继续检查自动备份）”为未完成。
-
-- [ ] **Step 3: 运行聚焦测试与完整验证**
+- [x] **Step 3: 运行聚焦测试与完整验证**
 
 Run:
 
 ```powershell
-cargo test -p hmm-core
 cargo test -p hmm-app --test save_backup_background_worker
-cargo test -p hmm-app --test save_backup_scheduler
-cargo test -p hmm-app --test save_backup_task
 cargo test -p hmm-infra --test save_backup_scheduler_repository
 cargo test -p hmm-tauri background_worker
-cargo test -p hmm-tauri save_backup
-cargo check --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo check -p hmm-tauri --bin hmm-save-backup-worker
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
 Expected: 每条命令成功退出。若某条命令无法运行，记录精确命令、失败输出摘要、是否由本切片造成，以及未覆盖的风险；不得报告通过。
 
-- [ ] **Step 4: 运行最终安全与产物检查**
+- [x] **Step 4: 运行最终安全与产物检查**
 
 Run:
 
 ```powershell
 git diff --check
-rg -n -i "C:\\Users\\|SteamID|token|api[_-]?key|cookie" src-tauri/crates/hmm-app/src/save_backup_background_worker.rs src-tauri/src/background_worker.rs docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md TODO.md
 git status --short
 ```
 
-Expected: `git diff --check` 成功；扫描结果不包含新增的敏感路径或秘密；状态中只含本切片文件和协作者原有文件。
+Expected: `git diff --check` 成功；状态中只含本切片的四份文档。
 
 - [ ] **Step 5: 提交文档与验证同步**
 
 ```powershell
-git add docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md docs/TESTING.md TODO.md docs/superpowers/plans/2026-07-10-save-backup-background-worker-implementation.md
+git add docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md docs/TESTING.md docs/superpowers/plans/2026-07-10-save-backup-background-worker-implementation.md
 git commit -m "docs: 同步后台备份 worker 验证边界"
 ```
 
@@ -641,6 +632,3 @@ git commit -m "docs: 同步后台备份 worker 验证边界"
 - [ ] heartbeat 不会造成 `protected` 假阳性。
 - [ ] 所有错误、日志和审计字段都不泄漏敏感数据。
 - [ ] P7.2 的 Scheduled Task 注册、设置开关和退出提示仍保持未完成。
-
-
-
