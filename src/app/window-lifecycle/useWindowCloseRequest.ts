@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { exitApplication, hideMainWindowToTray, WINDOW_CLOSE_REQUESTED_EVENT } from "./windowLifecycleApi";
+import { getWindowLifecycleErrorMessage } from "./windowLifecycleError";
 import { loadWindowClosePreference, resolveWindowCloseAction } from "./windowClosePreference";
 
 type UseWindowCloseRequestOptions = {
@@ -8,13 +9,10 @@ type UseWindowCloseRequestOptions = {
   onError: (message: string) => void;
 };
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  return "窗口关闭操作失败";
-}
-
 export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseRequestOptions) {
+  const callbacksRef = useRef({ onShowDialog, onError });
+  callbacksRef.current = { onShowDialog, onError };
+
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -22,14 +20,14 @@ export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseR
     void listen(WINDOW_CLOSE_REQUESTED_EVENT, () => {
       const action = resolveWindowCloseAction(loadWindowClosePreference());
       if (action === "show_dialog") {
-        onShowDialog();
+        callbacksRef.current.onShowDialog();
         return;
       }
 
       const command = action === "hide_to_tray" ? hideMainWindowToTray : exitApplication;
       void command().catch((error: unknown) => {
-        onError(getErrorMessage(error));
-        onShowDialog();
+        callbacksRef.current.onError(getWindowLifecycleErrorMessage(error));
+        callbacksRef.current.onShowDialog();
       });
     })
       .then((dispose) => {
@@ -44,5 +42,5 @@ export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseR
       disposed = true;
       unlisten?.();
     };
-  }, [onError, onShowDialog]);
+  }, []);
 }

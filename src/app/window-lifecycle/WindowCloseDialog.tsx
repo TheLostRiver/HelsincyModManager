@@ -13,6 +13,20 @@ type WindowCloseDialogProps = {
 type ExecutingAction = "tray" | "exit" | null;
 
 const EXECUTION_FEEDBACK_DELAY_MS = 360;
+const FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "a[href]",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+function getFocusableDialogElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => !element.getAttribute("aria-hidden") && element.tabIndex >= 0,
+  );
+}
 
 export function WindowCloseDialog({ open, errorMessage, onCancel, onConfirm }: WindowCloseDialogProps) {
   const [remember, setRemember] = useState(false);
@@ -25,13 +39,45 @@ export function WindowCloseDialog({ open, errorMessage, onCancel, onConfirm }: W
     setRemember(false);
     setExecuting(null);
     setSuccessText(null);
-    window.setTimeout(() => dialogRef.current?.focus(), 0);
+    const focusTimer = window.setTimeout(() => dialogRef.current?.focus(), 0);
+    return () => window.clearTimeout(focusTimer);
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !executing) onCancel();
+      if (event.key === "Escape" && !executing) {
+        onCancel();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusableElements = getFocusableDialogElements(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey) {
+        if (activeElement === firstFocusable || !dialog.contains(activeElement)) {
+          event.preventDefault();
+          lastFocusable.focus();
+        }
+        return;
+      }
+
+      if (activeElement === lastFocusable || !dialog.contains(activeElement)) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
