@@ -759,6 +759,12 @@
   line-height: 1.5;
 }
 
+.settings-callout--neutral {
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+  border-left-color: var(--color-neutral-dot);
+}
+
 .settings-callout svg {
   flex-shrink: 0;
   animation: callout-pulse 2.5s ease-in-out infinite;

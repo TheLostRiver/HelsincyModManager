@@ -1028,6 +1028,14 @@ type SupportDiagnosticsExportDto = {
 
 `fileName` 只是文件名，不是完整本地路径；前端不能传入或拼接导出路径。当前导出包可包含已脱敏平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和最多 200 条已校验 Audit Log 事件，但命令 DTO 本身不返回日志正文、事件正文、诊断包路径、本地路径、原始 Mod 包内容、缩略图 URL、`contentHash`、缓存/sandbox 路径、原始日志或未脱敏错误文本。
 
+## 窗口关闭与托盘生命周期
+
+- `hmm://window-close-requested` 由 Tauri 后端在主窗口收到关闭请求时发出；后端会先阻止默认关闭，前端必须显示关闭选择或按已保存偏好调用窄命令。
+- `hide_main_window_to_tray` 只隐藏当前主窗口，不执行备份、不修改 Profile、不读取路径。
+- `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
+- 当前真正后台守护 / Windows Scheduled Task 尚未落地；前端文案必须区分“托盘后台运行”与“完全退出应用”。完全退出后，客户端运行期自动备份不会继续检查。
+- 前端不得通过宽泛 window/filesystem API 重建生命周期逻辑；只调用本节列出的窄命令。
+
 ## 测试要求
 
 Tauri / Rust 桥接改动至少运行：

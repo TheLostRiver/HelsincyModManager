@@ -15,6 +15,7 @@ mod state;
 mod task_commands;
 mod task_events;
 mod thumbnail_protocol;
+mod window_lifecycle_commands;
 
 use category_commands::{
     create_category, delete_category, get_mod_categories, list_categories, set_mod_categories,
@@ -54,6 +55,7 @@ use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
 use thumbnail_protocol::register_thumbnail_protocol;
+use window_lifecycle_commands::{exit_app, hide_main_window_to_tray, register_window_lifecycle};
 
 #[tauri::command]
 fn app_health() -> &'static str {
@@ -66,6 +68,7 @@ pub fn run() {
         .setup(|app| {
             let state = AppState::new(app.handle())?;
             app.manage(state);
+            register_window_lifecycle(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -123,7 +126,9 @@ pub fn run() {
             start_save_backup_task,
             check_auto_save_backup,
             get_save_backup_background_status,
-            list_save_backups
+            list_save_backups,
+            hide_main_window_to_tray,
+            exit_app
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Helsincy Mod Manager");
