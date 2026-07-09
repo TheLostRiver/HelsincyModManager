@@ -54,3 +54,6 @@ lcov.info
 
 # Local agent worktrees
 .worktrees/
+
+# Subagent execution ledger
+.superpowers/
