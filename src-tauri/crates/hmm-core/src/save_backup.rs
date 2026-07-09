@@ -60,6 +60,27 @@ pub struct SaveBackupSummary {
     pub notes: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveBackupBackgroundRegistrationStatus {
+    NotRegistered,
+    Registered,
+    RegistrationFailed,
+    PermissionRequired,
+    UnsupportedPlatform,
+}
+
+impl SaveBackupBackgroundRegistrationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRegistered => "not_registered",
+            Self::Registered => "registered",
+            Self::RegistrationFailed => "registration_failed",
+            Self::PermissionRequired => "permission_required",
+            Self::UnsupportedPlatform => "unsupported_platform",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveBackupBackgroundProtectionStatus {
@@ -212,5 +233,34 @@ impl SaveBackupManifest {
             files,
             notes,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn background_registration_statuses_have_stable_codes() {
+        assert_eq!(
+            SaveBackupBackgroundRegistrationStatus::NotRegistered.as_str(),
+            "not_registered"
+        );
+        assert_eq!(
+            SaveBackupBackgroundRegistrationStatus::Registered.as_str(),
+            "registered"
+        );
+        assert_eq!(
+            SaveBackupBackgroundRegistrationStatus::RegistrationFailed.as_str(),
+            "registration_failed"
+        );
+        assert_eq!(
+            SaveBackupBackgroundRegistrationStatus::PermissionRequired.as_str(),
+            "permission_required"
+        );
+        assert_eq!(
+            SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform.as_str(),
+            "unsupported_platform"
+        );
     }
 }
