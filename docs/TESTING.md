@@ -105,6 +105,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 涉及真实桌面交互、窗口、文件选择器或 Tauri command 调用时，需要启动本地应用进行手动 smoke test。
 
+窗口关闭与托盘生命周期切片至少运行：
+
+- `cmd /c corepack pnpm run test -- src/app/window-lifecycle/windowClosePreference.test.mjs`
+- `cmd /c corepack pnpm run typecheck`
+- `cmd /c corepack pnpm run lint`
+- `cmd /c corepack pnpm run build`
+- `cargo test -p hmm-tauri window_lifecycle`
+- `cargo check -p hmm-tauri`
+
+可视化检查需要覆盖：关闭按钮弹窗、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。当前阶段不得把完全退出描述为后台自动备份仍受保护。
+
 ## Tauri / Rust 桥接改动
 
 适用范围：

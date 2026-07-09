@@ -1,7 +1,12 @@
-import { Bell, Check, Database, FileArchive, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Bell, Check, Database, FileArchive, MonitorCog, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
+import {
+  loadWindowClosePreference,
+  saveWindowClosePreference,
+  type WindowClosePreference,
+} from "../../app/window-lifecycle/windowClosePreference";
 
 type ToggleSettingId =
   | "compactPanels"
@@ -76,6 +81,9 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
   const prerequisites = useGamePrerequisites("mhw");
+  const [windowClosePreference, setWindowClosePreference] = useState<WindowClosePreference>(() =>
+    typeof window === "undefined" ? "ask" : loadWindowClosePreference(),
+  );
 
   const hasSessionChanges = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(initialSettings),
@@ -92,6 +100,11 @@ export function SettingsPage() {
 
   const resetSessionPreview = () => {
     setSettings(initialSettings);
+  };
+
+  const updateWindowClosePreference = (value: WindowClosePreference) => {
+    setWindowClosePreference(value);
+    saveWindowClosePreference(undefined, value);
   };
 
   return (
@@ -147,6 +160,26 @@ export function SettingsPage() {
           />
         </SettingsSection>
 
+        <SettingsSection
+          title="窗口行为"
+          description="控制点击窗口关闭按钮时的默认动作；这不会改变后台守护是否已启用。"
+          icon={MonitorCog}
+        >
+          <ChoiceGroup
+            label="关闭主窗口时"
+            value={windowClosePreference}
+            options={[
+              { value: "ask", label: "每次询问" },
+              { value: "tray", label: "收起至托盘" },
+              { value: "exit", label: "退出应用" },
+            ]}
+            onChange={updateWindowClosePreference}
+          />
+          <div className="settings-callout settings-callout--neutral" role="note">
+            <Bell size={16} strokeWidth={2.1} />
+            <span>当前真正后台守护尚未落地；选择退出应用后，客户端运行期自动备份不会继续检查。</span>
+          </div>
+        </SettingsSection>
         <SettingsSection
           title="Mod 导入"
           description="这些选项只影响未来导入流程的前端意图表达，不在前端判断文件安全。"
