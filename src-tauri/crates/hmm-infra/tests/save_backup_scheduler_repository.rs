@@ -22,6 +22,40 @@ fn sqlite_scheduler_state_round_trips_without_path_fields() {
 }
 
 #[test]
+fn upsert_state_preserves_existing_lease_while_updating_stale_check_fields() {
+    let (_temp, repo) = scheduler_repo();
+    repo.upsert_state(&SaveBackupSchedulerState {
+        lease_owner: Some("worker-a".to_owned()),
+        lease_expires_at: Some(1_500),
+        ..sample_state()
+    })
+    .expect("seed leased state");
+
+    let stale_state = SaveBackupSchedulerState {
+        last_checked_at: Some(1_100),
+        next_due_at: Some(1_200),
+        pending_reason: None,
+        updated_at: 1_100,
+        lease_owner: None,
+        lease_expires_at: None,
+        ..sample_state()
+    };
+    repo.upsert_state(&stale_state)
+        .expect("stale check state can be saved");
+
+    let loaded = repo
+        .get_state(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("load state")
+        .expect("state exists");
+    assert_eq!(loaded.lease_owner.as_deref(), Some("worker-a"));
+    assert_eq!(loaded.lease_expires_at, Some(1_500));
+    assert_eq!(loaded.last_checked_at, Some(1_100));
+    assert_eq!(loaded.next_due_at, Some(1_200));
+    assert_eq!(loaded.pending_reason, None);
+    assert_eq!(loaded.updated_at, 1_100);
+}
+
+#[test]
 fn acquire_due_lease_allows_one_owner_until_expired() {
     let (_temp, repo) = scheduler_repo();
     repo.upsert_state(&sample_state()).expect("seed state");
