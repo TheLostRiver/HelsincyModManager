@@ -54,10 +54,15 @@ use hmm_ports::{
     SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
 };
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
+
+#[derive(Clone, Copy)]
+enum AppStateStartup {
+    Headless,
+    Gui,
+}
 
 pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
@@ -106,10 +111,22 @@ impl AppState {
             .path()
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
-        Self::from_app_data_dir(app_data_dir)
+        Self::from_app_data_dir_with_startup(
+            app_data_dir,
+            AppStateStartup::Gui,
+            Self::start_thumbnail_cache_maintenance,
+        )
     }
 
     pub fn from_app_data_dir(app_data_dir: PathBuf) -> Result<Self, String> {
+        Self::from_app_data_dir_with_startup(app_data_dir, AppStateStartup::Headless, |_| {})
+    }
+
+    fn from_app_data_dir_with_startup(
+        app_data_dir: PathBuf,
+        startup: AppStateStartup,
+        start_background_work: impl FnOnce(&Self),
+    ) -> Result<Self, String> {
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
@@ -419,18 +436,7 @@ impl AppState {
             .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance)
             .with_app_settings_repository(app_settings_repository),
         );
-        let thumbnail_cache_scheduler = ThumbnailCacheMaintenanceScheduler::new(
-            Arc::clone(&mod_import_task_runner),
-            DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
-        );
-        start_best_effort_background_task("thumbnail-cache-maintenance", || {
-            std::thread::Builder::new()
-                .name("thumbnail-cache-maintenance".to_owned())
-                .spawn(move || thumbnail_cache_scheduler.run_forever())
-                .map(|_| ())
-        });
-
-        Ok(Self {
+        let state = Self {
             game_setup: Arc::new(GameSetupService::new(
                 game_adapters,
                 Arc::clone(&game_config_repository),
@@ -489,7 +495,26 @@ impl AppState {
             save_backups,
             task_manager,
             db,
-        })
+        };
+
+        if matches!(startup, AppStateStartup::Gui) {
+            start_background_work(&state);
+        }
+
+        Ok(state)
+    }
+
+    fn start_thumbnail_cache_maintenance(&self) {
+        let thumbnail_cache_scheduler = ThumbnailCacheMaintenanceScheduler::new(
+            Arc::clone(&self.mod_import_task_runner),
+            DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+        );
+        start_best_effort_background_task("thumbnail-cache-maintenance", || {
+            std::thread::Builder::new()
+                .name("thumbnail-cache-maintenance".to_owned())
+                .spawn(move || thumbnail_cache_scheduler.run_forever())
+                .map(|_| ())
+        });
     }
 }
 
@@ -781,13 +806,11 @@ fn game_running_detector_for_platform(
 fn start_best_effort_background_task<E>(
     task_name: &'static str,
     spawn: impl FnOnce() -> Result<(), E>,
-) where
-    E: Display,
-{
-    if let Err(error) = spawn() {
+) {
+    if spawn().is_err() {
         tracing::warn!(
             task = task_name,
-            error = %error,
+            error_code = "background_task_spawn_failed",
             "failed to start best-effort background task"
         );
     }
@@ -873,6 +896,50 @@ mod tests {
         start_best_effort_background_task("thumbnail-cache-maintenance", || -> Result<(), &str> {
             Err("spawn failed")
         });
+    }
+
+    #[test]
+    fn headless_state_composition_does_not_invoke_background_startup() {
+        let app_data_dir = std::env::temp_dir().join(format!(
+            "hmm-headless-state-composition-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let start_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let start_count_for_startup = Arc::clone(&start_count);
+
+        AppState::from_app_data_dir_with_startup(
+            app_data_dir.clone(),
+            AppStateStartup::Headless,
+            move |_| {
+                start_count_for_startup.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .expect("headless state composition succeeds");
+
+        assert_eq!(start_count.load(Ordering::SeqCst), 0);
+        std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
+    }
+
+    #[test]
+    fn gui_state_composition_invokes_background_startup_once() {
+        let app_data_dir = std::env::temp_dir().join(format!(
+            "hmm-gui-state-composition-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let start_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let start_count_for_startup = Arc::clone(&start_count);
+
+        AppState::from_app_data_dir_with_startup(
+            app_data_dir.clone(),
+            AppStateStartup::Gui,
+            move |_| {
+                start_count_for_startup.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .expect("GUI state composition succeeds");
+
+        assert_eq!(start_count.load(Ordering::SeqCst), 1);
+        std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
     }
 
     #[test]
