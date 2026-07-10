@@ -1,5 +1,6 @@
 use hmm_core::{
-    GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
     SaveBackupSchedulerPendingReason, SaveBackupSchedulerState, SaveBackupWorkerHeartbeat,
 };
 use hmm_infra::{open_database, SqliteSaveBackupSchedulerStateRepository};
@@ -176,6 +177,73 @@ fn expired_lease_can_be_taken_over_and_release_is_owner_scoped() {
 }
 
 #[test]
+fn renew_lease_extends_only_the_unexpired_owner_lease_across_repositories() {
+    let (_temp, first, second) = independent_scheduler_repositories();
+    first.upsert_state(&sample_state()).expect("seed state");
+
+    first
+        .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-a".to_owned(),
+            lease_expires_at: 1_500,
+            now_unix_millis: 1_000,
+            last_checked_at: Some(1_000),
+            next_due_at: Some(1_200),
+        })
+        .expect("first lease succeeds");
+
+    assert!(second
+        .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-a".to_owned(),
+            lease_expires_at: 2_000,
+            now_unix_millis: 1_400,
+        })
+        .expect("owner renewal succeeds"));
+
+    let competing = first
+        .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-b".to_owned(),
+            lease_expires_at: 2_500,
+            now_unix_millis: 1_600,
+            last_checked_at: Some(1_600),
+            next_due_at: Some(1_800),
+        })
+        .expect("competing due check is not fatal");
+    assert!(competing.is_none());
+
+    assert!(!second
+        .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-b".to_owned(),
+            lease_expires_at: 2_500,
+            now_unix_millis: 1_700,
+        })
+        .expect("wrong owner renewal fails closed"));
+    assert!(!second
+        .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "worker-a".to_owned(),
+            lease_expires_at: 2_500,
+            now_unix_millis: 2_000,
+        })
+        .expect("expired owner renewal fails closed"));
+
+    let state = first
+        .get_state(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("load state")
+        .expect("state exists");
+    assert_eq!(state.lease_owner.as_deref(), Some("worker-a"));
+    assert_eq!(state.lease_expires_at, Some(2_000));
+}
+
+#[test]
 fn worker_heartbeat_updates_worker_health_without_leaking_paths() {
     let (_temp, repo) = scheduler_repo();
     repo.upsert_state(&sample_state()).expect("seed state");
@@ -207,6 +275,22 @@ fn scheduler_repo() -> (tempfile::TempDir, SqliteSaveBackupSchedulerStateReposit
     (
         temp,
         SqliteSaveBackupSchedulerStateRepository::new(Arc::new(Mutex::new(conn))),
+    )
+}
+
+fn independent_scheduler_repositories() -> (
+    tempfile::TempDir,
+    SqliteSaveBackupSchedulerStateRepository,
+    SqliteSaveBackupSchedulerStateRepository,
+) {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let database_path = temp.path().join("test.db");
+    let first = open_database(&database_path).expect("open first database connection");
+    let second = open_database(&database_path).expect("open second database connection");
+    (
+        temp,
+        SqliteSaveBackupSchedulerStateRepository::new(Arc::new(Mutex::new(first))),
+        SqliteSaveBackupSchedulerStateRepository::new(Arc::new(Mutex::new(second))),
     )
 }
 

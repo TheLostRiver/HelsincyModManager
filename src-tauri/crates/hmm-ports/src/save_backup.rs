@@ -1,9 +1,9 @@
 use anyhow::Result;
 use hmm_core::{
     GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId,
-    SaveBackupBackgroundRegistrationStatus, SaveBackupSchedulerLeaseRequest,
-    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
-    SaveBackupWorkerHeartbeat,
+    SaveBackupBackgroundRegistrationStatus, SaveBackupSchedulerLeaseRenewalRequest,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
+    SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +68,10 @@ pub trait SaveBackupSchedulerStateRepository: Send + Sync {
         &self,
         request: SaveBackupSchedulerLeaseRequest,
     ) -> Result<Option<SaveBackupSchedulerState>>;
+
+    fn renew_lease(&self, _request: SaveBackupSchedulerLeaseRenewalRequest) -> Result<bool> {
+        Ok(false)
+    }
 
     fn release_lease(
         &self,
