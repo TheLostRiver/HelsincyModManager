@@ -403,6 +403,9 @@ fn scheduler_state_for_check(
         worker_instance_id: existing
             .as_ref()
             .and_then(|state| state.worker_instance_id.clone()),
+        worker_heartbeat_at: existing
+            .as_ref()
+            .and_then(|state| state.worker_heartbeat_at),
         // 租约字段只能由 release_lease 按 owner 清理；
         // 禁用/切换 Manual 时保留在途租约，避免重新启用后并发启动第二个 auto 任务。
         lease_owner: existing

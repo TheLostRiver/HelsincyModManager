@@ -959,6 +959,7 @@ fn sample_scheduler_state(lease_owner: &str) -> SaveBackupSchedulerState {
         pending_reason: None,
         last_error_code: None,
         worker_instance_id: None,
+        worker_heartbeat_at: None,
         lease_owner: Some(lease_owner.to_owned()),
         lease_expires_at: Some(120),
         updated_at: 40,

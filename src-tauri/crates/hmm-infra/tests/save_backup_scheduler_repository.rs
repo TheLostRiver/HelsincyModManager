@@ -7,6 +7,9 @@ use hmm_infra::{open_database, SqliteSaveBackupSchedulerStateRepository};
 use hmm_ports::SaveBackupSchedulerStateRepository;
 use std::sync::{Arc, Mutex};
 
+#[cfg(target_os = "windows")]
+use std::path::PathBuf;
+
 #[test]
 fn sqlite_scheduler_state_round_trips_without_path_fields() {
     let (_temp, repo) = scheduler_repo();
@@ -244,16 +247,20 @@ fn renew_lease_extends_only_the_unexpired_owner_lease_across_repositories() {
 }
 
 #[test]
-fn worker_heartbeat_updates_worker_health_without_leaking_paths() {
+fn worker_heartbeat_updates_only_worker_health_fields() {
     let (_temp, repo) = scheduler_repo();
-    repo.upsert_state(&sample_state()).expect("seed state");
+    repo.upsert_state(&SaveBackupSchedulerState {
+        lease_owner: Some("lease-owner".to_owned()),
+        lease_expires_at: Some(2_000),
+        ..sample_state()
+    })
+    .expect("seed state");
 
     repo.record_worker_heartbeat(SaveBackupWorkerHeartbeat {
         game_id: GameId::mhw(),
         profile_id: ProfileId::new("default"),
-        worker_instance_id: "worker-a".to_owned(),
-        checked_at: 1_234,
-        status: SaveBackupBackgroundProtectionStatus::Protected,
+        worker_instance_id: "worker-b".to_owned(),
+        heartbeat_at: 1_234,
     })
     .expect("heartbeat can be saved");
 
@@ -261,12 +268,53 @@ fn worker_heartbeat_updates_worker_health_without_leaking_paths() {
         .get_state(&GameId::mhw(), &ProfileId::new("default"))
         .expect("load state")
         .expect("state exists");
-    assert_eq!(loaded.worker_instance_id.as_deref(), Some("worker-a"));
-    assert_eq!(loaded.last_checked_at, Some(1_234));
+    assert_eq!(loaded.worker_instance_id.as_deref(), Some("worker-b"));
+    assert_eq!(loaded.worker_heartbeat_at, Some(1_234));
+    assert_eq!(loaded.last_checked_at, Some(10));
     assert_eq!(
         loaded.background_status,
-        SaveBackupBackgroundProtectionStatus::Protected
+        SaveBackupBackgroundProtectionStatus::TrayOnly
     );
+    assert_eq!(loaded.lease_owner.as_deref(), Some("lease-owner"));
+    assert_eq!(loaded.lease_expires_at, Some(2_000));
+    assert_eq!(loaded.updated_at, 1_234);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "reads disposable smoke AppData after a real Scheduled Task trigger"]
+fn windows_smoke_probe_sees_fresh_worker_heartbeat() {
+    assert_eq!(
+        std::env::var("HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE").as_deref(),
+        Ok("1"),
+        "explicit smoke authorization is required",
+    );
+    let database_path = PathBuf::from(
+        std::env::var_os("HMM_WINDOWS_SMOKE_DATABASE_PATH")
+            .expect("disposable smoke database path is required"),
+    );
+    let profile_id = std::env::var("HMM_WINDOWS_SMOKE_PROFILE_ID")
+        .expect("synthetic smoke profile id is required");
+    let conn = rusqlite::Connection::open_with_flags(
+        database_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .expect("open disposable database read-only");
+    let heartbeat: Option<i64> = conn
+        .query_row(
+            "SELECT worker_heartbeat_at FROM save_backup_scheduler_state
+             WHERE game_id = 'mhw' AND profile_id = ?1",
+            [&profile_id],
+            |row| row.get(0),
+        )
+        .expect("synthetic scheduler state exists");
+    let heartbeat = heartbeat.expect("worker heartbeat exists") as u128;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is after epoch")
+        .as_millis();
+    assert!(heartbeat <= now);
+    assert!(now - heartbeat <= 45 * 60_000, "worker heartbeat is stale");
 }
 
 fn scheduler_repo() -> (tempfile::TempDir, SqliteSaveBackupSchedulerStateRepository) {
@@ -308,6 +356,7 @@ fn sample_state() -> SaveBackupSchedulerState {
         pending_reason: Some(SaveBackupSchedulerPendingReason::GameRunning),
         last_error_code: Some("save_backup_auto_skipped_game_running".to_owned()),
         worker_instance_id: Some("worker-a".to_owned()),
+        worker_heartbeat_at: Some(5),
         lease_owner: None,
         lease_expires_at: None,
         updated_at: 50,

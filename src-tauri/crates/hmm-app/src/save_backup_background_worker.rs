@@ -1,10 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use hmm_core::{
-    BackupCadence, GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupTrigger,
-    SaveBackupWorkerHeartbeat,
-};
+use hmm_core::{BackupCadence, GameId, ProfileId, SaveBackupTrigger, SaveBackupWorkerHeartbeat};
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, ProfileRepository, ProfileSaveSettingsRepository,
     SaveBackupSchedulerStateRepository,
@@ -138,8 +135,7 @@ impl SaveBackupBackgroundWorker {
                         game_id: game_id.clone(),
                         profile_id: profile_id.clone(),
                         worker_instance_id: worker_instance_id.to_owned(),
-                        checked_at: check.checked_at,
-                        status: SaveBackupBackgroundProtectionStatus::TrayOnly,
+                        heartbeat_at: check.checked_at,
                     })
                     .is_err()
                 {

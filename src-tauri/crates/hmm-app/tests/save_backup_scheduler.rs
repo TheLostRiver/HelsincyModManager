@@ -396,6 +396,7 @@ fn switching_to_manual_preserves_in_flight_scheduler_lease() {
             pending_reason: None,
             last_error_code: None,
             worker_instance_id: None,
+            worker_heartbeat_at: Some(now - HOUR_MS),
             lease_owner: Some("client-runtime:in-flight".to_owned()),
             lease_expires_at: Some(now + HOUR_MS),
             updated_at: now - HOUR_MS,
@@ -423,6 +424,7 @@ fn switching_to_manual_preserves_in_flight_scheduler_lease() {
         Some("client-runtime:in-flight")
     );
     assert_eq!(state.lease_expires_at, Some(now + HOUR_MS));
+    assert_eq!(state.worker_heartbeat_at, Some(now - HOUR_MS));
 }
 
 #[test]
@@ -484,6 +486,7 @@ fn background_status_returns_saved_state_or_none() {
         pending_reason: None,
         last_error_code: None,
         worker_instance_id: None,
+        worker_heartbeat_at: None,
         lease_owner: None,
         lease_expires_at: None,
         updated_at: DAY_MS,

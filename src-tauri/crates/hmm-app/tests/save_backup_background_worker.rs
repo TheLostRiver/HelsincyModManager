@@ -25,7 +25,7 @@ const HOUR_MS: u128 = 3_600_000;
 const NOW: u128 = 2 * DAY_MS + 4 * HOUR_MS;
 
 #[test]
-fn due_auto_profile_starts_auto_task_and_records_tray_only_heartbeat() {
+fn due_auto_profile_starts_auto_task_and_records_independent_heartbeat() {
     let harness = Harness::new();
     harness.insert_profile("default");
     harness.insert_settings(daily_settings("default"));
@@ -42,9 +42,9 @@ fn due_auto_profile_starts_auto_task_and_records_tray_only_heartbeat() {
             .scheduler_state_repository
             .heartbeats()
             .into_iter()
-            .map(|heartbeat| heartbeat.status)
+            .map(|heartbeat| heartbeat.heartbeat_at)
             .collect::<Vec<_>>(),
-        vec![SaveBackupBackgroundProtectionStatus::TrayOnly]
+        vec![NOW]
     );
 
     let state = harness
@@ -56,6 +56,7 @@ fn due_auto_profile_starts_auto_task_and_records_tray_only_heartbeat() {
         state.background_status,
         SaveBackupBackgroundProtectionStatus::TrayOnly
     );
+    assert_eq!(state.worker_heartbeat_at, Some(NOW));
 }
 
 #[test]
@@ -743,9 +744,8 @@ impl SaveBackupSchedulerStateRepository for FakeSaveBackupSchedulerStateReposito
             })
         {
             state.worker_instance_id = Some(heartbeat.worker_instance_id.clone());
-            state.last_checked_at = Some(heartbeat.checked_at);
-            state.background_status = heartbeat.status;
-            state.updated_at = heartbeat.checked_at;
+            state.worker_heartbeat_at = Some(heartbeat.heartbeat_at);
+            state.updated_at = heartbeat.heartbeat_at;
         }
         self.heartbeats
             .lock()
