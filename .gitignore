@@ -33,6 +33,7 @@ release-artifacts/
 target/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/binaries/
 
 # App data generated during local development
 .hmm/

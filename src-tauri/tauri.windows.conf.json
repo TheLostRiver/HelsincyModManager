@@ -1,0 +1,9 @@
+{
+  "build": {
+    "beforeDevCommand": "corepack pnpm run prepare:save-backup-worker-sidecar:dev && corepack pnpm dev",
+    "beforeBuildCommand": "corepack pnpm build && corepack pnpm run prepare:save-backup-worker-sidecar"
+  },
+  "bundle": {
+    "externalBin": ["binaries/hmm-save-backup-worker"]
+  }
+}
