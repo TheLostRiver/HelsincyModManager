@@ -66,8 +66,10 @@ pub use profile::{
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
 };
 pub use save_backup::{
-    SaveBackupBackgroundRegistry, SaveBackupRepository, SaveBackupSchedulerStateRepository,
+    SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
+    SaveBackupBackgroundRegistryResult, SaveBackupRepository, SaveBackupSchedulerStateRepository,
     SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
+    SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
 pub use save_directory::{
     GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,

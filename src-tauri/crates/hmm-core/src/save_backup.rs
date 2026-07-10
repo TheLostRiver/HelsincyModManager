@@ -64,6 +64,7 @@ pub struct SaveBackupSummary {
 pub enum SaveBackupBackgroundRegistrationStatus {
     NotRegistered,
     Registered,
+    ConfigurationDrift,
     RegistrationFailed,
     PermissionRequired,
     UnsupportedPlatform,
@@ -74,6 +75,7 @@ impl SaveBackupBackgroundRegistrationStatus {
         match self {
             Self::NotRegistered => "not_registered",
             Self::Registered => "registered",
+            Self::ConfigurationDrift => "configuration_drift",
             Self::RegistrationFailed => "registration_failed",
             Self::PermissionRequired => "permission_required",
             Self::UnsupportedPlatform => "unsupported_platform",
@@ -258,6 +260,10 @@ mod tests {
         assert_eq!(
             SaveBackupBackgroundRegistrationStatus::Registered.as_str(),
             "registered"
+        );
+        assert_eq!(
+            SaveBackupBackgroundRegistrationStatus::ConfigurationDrift.as_str(),
+            "configuration_drift"
         );
         assert_eq!(
             SaveBackupBackgroundRegistrationStatus::RegistrationFailed.as_str(),
