@@ -1,0 +1,323 @@
+use hmm_core::{
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
+    SaveBackupBackgroundRegistrationStatus, SaveBackupSchedulerState,
+};
+use hmm_ports::{
+    AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
+    SaveBackupBackgroundRegistryError, SaveBackupSchedulerStateRepository,
+    SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
+};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use thiserror::Error;
+
+pub const SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS: u128 = 45 * 60_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupBackgroundStatus {
+    pub scheduler_state: Option<SaveBackupSchedulerState>,
+    pub status: SaveBackupBackgroundProtectionStatus,
+    pub last_error_code: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupBackgroundRegistrationResult {
+    pub status: SaveBackupBackgroundRegistrationStatus,
+    pub error_code: Option<String>,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum SaveBackupBackgroundServiceError {
+    #[error("save backup scheduler state is unavailable")]
+    SchedulerStateUnavailable,
+    #[error("app clock is unavailable")]
+    ClockUnavailable,
+    #[error("audit log is unavailable")]
+    AuditUnavailable,
+}
+
+impl SaveBackupBackgroundServiceError {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::SchedulerStateUnavailable => "save_backup_scheduler_unavailable",
+            Self::ClockUnavailable => "save_backup_clock_unavailable",
+            Self::AuditUnavailable => "save_backup_background_audit_unavailable",
+        }
+    }
+}
+
+pub struct SaveBackupBackgroundService {
+    registry: Arc<dyn SaveBackupBackgroundRegistry>,
+    scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+    audit_log: Arc<dyn AuditLogWriter>,
+    clock: Arc<dyn AppClock>,
+}
+
+impl SaveBackupBackgroundService {
+    pub fn new(
+        registry: Arc<dyn SaveBackupBackgroundRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+    ) -> Self {
+        Self {
+            registry,
+            scheduler_state_repository,
+            audit_log,
+            clock,
+        }
+    }
+
+    pub fn status(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<SaveBackupBackgroundStatus, SaveBackupBackgroundServiceError> {
+        let state = self
+            .scheduler_state_repository
+            .get_state(game_id, profile_id)
+            .map_err(|_| SaveBackupBackgroundServiceError::SchedulerStateUnavailable)?;
+        let Some(state) = state else {
+            return Ok(status_result(
+                None,
+                SaveBackupBackgroundProtectionStatus::NotEnabled,
+                None,
+            ));
+        };
+        if !state.enabled {
+            return Ok(status_result(
+                Some(state),
+                SaveBackupBackgroundProtectionStatus::NotEnabled,
+                None,
+            ));
+        }
+        if !state.background_protection_enabled {
+            let error = retained_scheduler_error(state.last_error_code.clone());
+            return Ok(status_result(
+                Some(state),
+                SaveBackupBackgroundProtectionStatus::TrayOnly,
+                error,
+            ));
+        }
+
+        let registration = match self.registry.inspect() {
+            Ok(status) => status,
+            Err(error) => {
+                return Ok(status_result(
+                    Some(state),
+                    SaveBackupBackgroundProtectionStatus::RegistrationFailed,
+                    Some(error.code().to_owned()),
+                ));
+            }
+        };
+        if registration != SaveBackupBackgroundRegistrationStatus::Registered {
+            let (status, code) = registration_failure(registration);
+            return Ok(status_result(Some(state), status, Some(code.to_owned())));
+        }
+
+        let now = self
+            .clock
+            .now_unix_millis()
+            .map_err(|_| SaveBackupBackgroundServiceError::ClockUnavailable)?;
+        let fresh = state.worker_heartbeat_at.is_some_and(|heartbeat| {
+            heartbeat <= now && now - heartbeat <= SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS
+        });
+        if !fresh {
+            return Ok(status_result(
+                Some(state),
+                SaveBackupBackgroundProtectionStatus::WorkerUnhealthy,
+                Some("save_backup_background_worker_unhealthy".to_owned()),
+            ));
+        }
+
+        let error = retained_scheduler_error(state.last_error_code.clone());
+        Ok(status_result(
+            Some(state),
+            SaveBackupBackgroundProtectionStatus::Protected,
+            error,
+        ))
+    }
+
+    pub fn register(
+        &self,
+    ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        self.change_registration(RegistrationOperation::Register)
+    }
+
+    pub fn unregister(
+        &self,
+    ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        self.change_registration(RegistrationOperation::Unregister)
+    }
+
+    fn change_registration(
+        &self,
+        operation: RegistrationOperation,
+    ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let timestamp_unix_millis = self
+            .clock
+            .now_unix_millis()
+            .map_err(|_| SaveBackupBackgroundServiceError::ClockUnavailable)?;
+        let operation_result = match operation {
+            RegistrationOperation::Register => self.registry.register(),
+            RegistrationOperation::Unregister => self.registry.unregister(),
+        };
+
+        let result = match operation_result {
+            Err(error) => registry_error_result(error),
+            Ok(status) if status == operation.expected_status() => match self.registry.inspect() {
+                Err(error) => registry_error_result(error),
+                Ok(readback) => registration_readback_result(operation, readback),
+            },
+            Ok(status) => registration_operation_failure(operation, status),
+        };
+
+        let success = result.status == operation.expected_status() && result.error_code.is_none();
+        self.audit_log
+            .record(AuditLogEvent {
+                timestamp_unix_millis,
+                category: "save_backup".to_owned(),
+                operation: "background_registration".to_owned(),
+                result: if success { "success" } else { "failure" }.to_owned(),
+                fields: BTreeMap::from([
+                    (
+                        "registration_status".to_owned(),
+                        result.status.as_str().to_owned(),
+                    ),
+                    (
+                        "task_schema_version".to_owned(),
+                        SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION.to_string(),
+                    ),
+                    (
+                        "error_code".to_owned(),
+                        result.error_code.clone().unwrap_or_default(),
+                    ),
+                ]),
+            })
+            .map_err(|_| SaveBackupBackgroundServiceError::AuditUnavailable)?;
+
+        Ok(result)
+    }
+}
+
+fn status_result(
+    scheduler_state: Option<SaveBackupSchedulerState>,
+    status: SaveBackupBackgroundProtectionStatus,
+    last_error_code: Option<String>,
+) -> SaveBackupBackgroundStatus {
+    SaveBackupBackgroundStatus {
+        scheduler_state,
+        status,
+        last_error_code,
+    }
+}
+
+fn retained_scheduler_error(error_code: Option<String>) -> Option<String> {
+    error_code.filter(|code| !code.starts_with("save_backup_background_"))
+}
+
+fn registration_failure(
+    status: SaveBackupBackgroundRegistrationStatus,
+) -> (SaveBackupBackgroundProtectionStatus, &'static str) {
+    match status {
+        SaveBackupBackgroundRegistrationStatus::NotRegistered => (
+            SaveBackupBackgroundProtectionStatus::RegistrationFailed,
+            "save_backup_background_not_registered",
+        ),
+        SaveBackupBackgroundRegistrationStatus::ConfigurationDrift => (
+            SaveBackupBackgroundProtectionStatus::RegistrationFailed,
+            "save_backup_background_configuration_drift",
+        ),
+        SaveBackupBackgroundRegistrationStatus::RegistrationFailed => (
+            SaveBackupBackgroundProtectionStatus::RegistrationFailed,
+            "save_backup_background_registration_failed",
+        ),
+        SaveBackupBackgroundRegistrationStatus::PermissionRequired => (
+            SaveBackupBackgroundProtectionStatus::PermissionRequired,
+            "save_backup_background_permission_required",
+        ),
+        SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform => (
+            SaveBackupBackgroundProtectionStatus::UnsupportedPlatform,
+            "save_backup_background_unsupported_platform",
+        ),
+        SaveBackupBackgroundRegistrationStatus::Registered => {
+            unreachable!("registered handled before failure mapping")
+        }
+    }
+}
+
+fn registration_result(
+    status: SaveBackupBackgroundRegistrationStatus,
+    error_code: Option<&str>,
+) -> SaveBackupBackgroundRegistrationResult {
+    SaveBackupBackgroundRegistrationResult {
+        status,
+        error_code: error_code.map(str::to_owned),
+    }
+}
+
+fn registry_error_result(
+    error: SaveBackupBackgroundRegistryError,
+) -> SaveBackupBackgroundRegistrationResult {
+    registration_result(
+        SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+        Some(error.code()),
+    )
+}
+
+fn registration_operation_failure(
+    operation: RegistrationOperation,
+    status: SaveBackupBackgroundRegistrationStatus,
+) -> SaveBackupBackgroundRegistrationResult {
+    if operation == RegistrationOperation::Unregister
+        && status == SaveBackupBackgroundRegistrationStatus::Registered
+    {
+        return registration_result(
+            SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+            Some("save_backup_background_registration_failed"),
+        );
+    }
+    let (_, code) = registration_failure(status);
+    registration_result(status, Some(code))
+}
+
+fn registration_readback_result(
+    operation: RegistrationOperation,
+    status: SaveBackupBackgroundRegistrationStatus,
+) -> SaveBackupBackgroundRegistrationResult {
+    match operation {
+        RegistrationOperation::Register => {
+            if status == SaveBackupBackgroundRegistrationStatus::Registered {
+                registration_result(status, None)
+            } else {
+                let (_, code) = registration_failure(status);
+                registration_result(status, Some(code))
+            }
+        }
+        RegistrationOperation::Unregister => {
+            if status == SaveBackupBackgroundRegistrationStatus::NotRegistered {
+                registration_result(status, None)
+            } else {
+                registration_result(
+                    SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+                    Some("save_backup_background_registration_failed"),
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegistrationOperation {
+    Register,
+    Unregister,
+}
+
+impl RegistrationOperation {
+    fn expected_status(self) -> SaveBackupBackgroundRegistrationStatus {
+        match self {
+            Self::Register => SaveBackupBackgroundRegistrationStatus::Registered,
+            Self::Unregister => SaveBackupBackgroundRegistrationStatus::NotRegistered,
+        }
+    }
+}
