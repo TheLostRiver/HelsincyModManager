@@ -1,19 +1,25 @@
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(any(windows, test))]
 mod task_spec;
 
 #[cfg(windows)]
-#[cfg_attr(not(test), allow(dead_code))]
 mod powershell;
+
+#[cfg(any(windows, test))]
+mod registry;
 
 #[cfg(test)]
 mod tests;
 
+#[cfg(windows)]
+mod windows;
+
 use hmm_core::SaveBackupBackgroundRegistrationStatus;
 use hmm_ports::{SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryResult};
 
+#[cfg(any(windows, test))]
 use task_spec::{ScheduledTaskReadback, ScheduledTaskSpec};
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ScheduledTaskCommand {
     Identity,
@@ -28,7 +34,7 @@ enum ScheduledTaskCommand {
     },
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ScheduledTaskCommandOutcome {
     Identity(String),
@@ -40,13 +46,16 @@ enum ScheduledTaskCommandOutcome {
     OwnershipConflict,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(any(windows, test))]
 trait ScheduledTaskCommandRunner: Send + Sync {
     fn run(
         &self,
         command: ScheduledTaskCommand,
     ) -> SaveBackupBackgroundRegistryResult<ScheduledTaskCommandOutcome>;
 }
+
+#[cfg(windows)]
+pub use windows::WindowsScheduledTaskRegistry;
 
 #[derive(Debug, Default)]
 pub struct UnsupportedSaveBackupBackgroundRegistry;

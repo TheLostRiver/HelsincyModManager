@@ -60,25 +60,13 @@ pub(super) enum ScheduledTaskSpecMatch {
 
 impl ScheduledTaskSpec {
     pub fn new(user_sid: &str, worker_path: PathBuf) -> Result<Self, &'static str> {
-        let sid_segments = user_sid.split('-').collect::<Vec<_>>();
-        let valid_sid = user_sid.len() <= 184
-            && sid_segments.len() >= 3
-            && sid_segments[0] == "S"
-            && sid_segments[1..].iter().all(|segment| {
-                !segment.is_empty() && segment.bytes().all(|value| value.is_ascii_digit())
-            });
-        if !valid_sid || !worker_path.is_absolute() {
+        let task_name = task_name_for_sid(user_sid)?;
+        if !worker_path.is_absolute() {
             return Err("invalid scheduled task identity");
         }
 
-        let digest = Sha256::digest(user_sid.as_bytes());
-        let suffix = digest[..8]
-            .iter()
-            .map(|value| format!("{value:02x}"))
-            .collect::<String>();
-
         Ok(Self {
-            task_name: format!("HelsincyModManager.SaveBackup.{suffix}"),
+            task_name,
             task_path: TASK_PATH.to_owned(),
             owner_marker: TASK_OWNER_MARKER.to_owned(),
             user_sid: user_sid.to_owned(),
@@ -126,4 +114,24 @@ impl ScheduledTaskSpec {
             ScheduledTaskSpecMatch::OwnedDrift
         }
     }
+}
+
+pub(super) fn task_name_for_sid(user_sid: &str) -> Result<String, &'static str> {
+    let sid_segments = user_sid.split('-').collect::<Vec<_>>();
+    let valid_sid = user_sid.len() <= 184
+        && sid_segments.len() >= 3
+        && sid_segments[0] == "S"
+        && sid_segments[1..].iter().all(|segment| {
+            !segment.is_empty() && segment.bytes().all(|value| value.is_ascii_digit())
+        });
+    if !valid_sid {
+        return Err("invalid scheduled task identity");
+    }
+
+    let digest = Sha256::digest(user_sid.as_bytes());
+    let suffix = digest[..8]
+        .iter()
+        .map(|value| format!("{value:02x}"))
+        .collect::<String>();
+    Ok(format!("HelsincyModManager.SaveBackup.{suffix}"))
 }
