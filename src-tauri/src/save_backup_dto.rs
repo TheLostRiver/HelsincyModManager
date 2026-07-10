@@ -137,7 +137,7 @@ impl SaveBackupBackgroundStatusDto {
         profile_id: &ProfileId,
         state: Option<SaveBackupSchedulerState>,
     ) -> Self {
-        // 白名单映射：lease_owner、lease_expires_at、worker_instance_id 和任何路径
+        // 白名单映射：lease_owner、lease_expires_at、worker_instance_id、worker_heartbeat_at 和任何路径
         // 都不得进入前端 DTO。
         match state {
             Some(state) => Self {
@@ -341,6 +341,7 @@ mod tests {
                 pending_reason: Some(SaveBackupSchedulerPendingReason::GameRunning),
                 last_error_code: Some("save_backup_auto_skipped_game_running".to_owned()),
                 worker_instance_id: Some("worker-a".to_owned()),
+                worker_heartbeat_at: Some(95),
                 lease_owner: Some("client-runtime:mhw:default:1".to_owned()),
                 lease_expires_at: Some(300),
                 updated_at: 100,
@@ -362,6 +363,7 @@ mod tests {
         assert!(value.get("leaseOwner").is_none());
         assert!(value.get("leaseExpiresAt").is_none());
         assert!(value.get("workerInstanceId").is_none());
+        assert!(value.get("workerHeartbeatAt").is_none());
         assert!(value.get("enabled").is_none());
         assert!(value.get("path").is_none());
         assert!(!value.to_string().contains("worker-a"));

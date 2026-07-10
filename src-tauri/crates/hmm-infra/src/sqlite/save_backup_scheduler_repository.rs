@@ -40,9 +40,9 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
             "INSERT INTO save_backup_scheduler_state
                 (game_id, profile_id, enabled, background_protection_enabled, background_status,
                  last_checked_at, last_attempt_at, last_success_at, next_due_at,
-                 pending_reason, last_error_code, worker_instance_id, lease_owner,
-                 lease_expires_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                 pending_reason, last_error_code, worker_instance_id, worker_heartbeat_at,
+                 lease_owner, lease_expires_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT(game_id, profile_id) DO UPDATE SET
                 enabled = excluded.enabled,
                 background_protection_enabled = excluded.background_protection_enabled,
@@ -54,6 +54,7 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
                 pending_reason = excluded.pending_reason,
                 last_error_code = excluded.last_error_code,
                 worker_instance_id = excluded.worker_instance_id,
+                worker_heartbeat_at = excluded.worker_heartbeat_at,
                 updated_at = excluded.updated_at",
             params![
                 state.game_id.as_str(),
@@ -68,6 +69,7 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
                 state.pending_reason.map(|reason| reason.as_str()),
                 state.last_error_code.as_deref(),
                 state.worker_instance_id.as_deref(),
+                state.worker_heartbeat_at.map(to_i64),
                 state.lease_owner.as_deref(),
                 state.lease_expires_at.map(to_i64),
                 to_i64(state.updated_at),
@@ -160,16 +162,14 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
         conn.execute(
             "UPDATE save_backup_scheduler_state
              SET worker_instance_id = ?3,
-                 last_checked_at = ?4,
-                 background_status = ?5,
+                 worker_heartbeat_at = ?4,
                  updated_at = ?4
              WHERE game_id = ?1 AND profile_id = ?2",
             params![
                 heartbeat.game_id.as_str(),
                 heartbeat.profile_id.as_str(),
                 heartbeat.worker_instance_id,
-                to_i64(heartbeat.checked_at),
-                heartbeat.status.as_str(),
+                to_i64(heartbeat.heartbeat_at),
             ],
         )
         .context("failed to record save backup worker heartbeat")?;
@@ -185,8 +185,8 @@ fn select_state(
     conn.query_row(
         "SELECT game_id, profile_id, enabled, background_protection_enabled, background_status,
                 last_checked_at, last_attempt_at, last_success_at, next_due_at,
-                pending_reason, last_error_code, worker_instance_id, lease_owner,
-                lease_expires_at, updated_at
+                pending_reason, last_error_code, worker_instance_id, worker_heartbeat_at,
+                lease_owner, lease_expires_at, updated_at
          FROM save_backup_scheduler_state
          WHERE game_id = ?1 AND profile_id = ?2",
         params![game_id.as_str(), profile_id.as_str()],
@@ -237,9 +237,10 @@ fn row_to_state(row: &rusqlite::Row<'_>) -> rusqlite::Result<SaveBackupScheduler
             })?,
         last_error_code: row.get(10)?,
         worker_instance_id: row.get(11)?,
-        lease_owner: row.get(12)?,
-        lease_expires_at: optional_i64_to_u128(row.get(13)?),
-        updated_at: i64_to_u128(row.get(14)?),
+        worker_heartbeat_at: optional_i64_to_u128(row.get(12)?),
+        lease_owner: row.get(13)?,
+        lease_expires_at: optional_i64_to_u128(row.get(14)?),
+        updated_at: i64_to_u128(row.get(15)?),
     })
 }
 
@@ -256,9 +257,10 @@ fn update_state_in_transaction(conn: &Connection, state: &SaveBackupSchedulerSta
              pending_reason = ?10,
              last_error_code = ?11,
              worker_instance_id = ?12,
-             lease_owner = ?13,
-             lease_expires_at = ?14,
-             updated_at = ?15
+             worker_heartbeat_at = ?13,
+             lease_owner = ?14,
+             lease_expires_at = ?15,
+             updated_at = ?16
          WHERE game_id = ?1 AND profile_id = ?2",
         params![
             state.game_id.as_str(),
@@ -273,6 +275,7 @@ fn update_state_in_transaction(conn: &Connection, state: &SaveBackupSchedulerSta
             state.pending_reason.map(|reason| reason.as_str()),
             state.last_error_code.as_deref(),
             state.worker_instance_id.as_deref(),
+            state.worker_heartbeat_at.map(to_i64),
             state.lease_owner.as_deref(),
             state.lease_expires_at.map(to_i64),
             to_i64(state.updated_at),
