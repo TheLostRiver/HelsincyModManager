@@ -284,16 +284,6 @@ impl SaveBackupAutoSchedulerService {
         })
     }
 
-    pub fn background_status(
-        &self,
-        game_id: &GameId,
-        profile_id: &ProfileId,
-    ) -> Result<Option<SaveBackupSchedulerState>, SaveBackupAutoSchedulerError> {
-        self.scheduler_state_repository
-            .get_state(game_id, profile_id)
-            .map_err(|_| SaveBackupAutoSchedulerError::SchedulerStateUnavailable)
-    }
-
     fn record_deferred_audit(
         &self,
         game_id: &GameId,

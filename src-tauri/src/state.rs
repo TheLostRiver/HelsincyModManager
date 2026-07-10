@@ -14,9 +14,10 @@ use hmm_app::{
     ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
-    RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupBackgroundWorker,
-    SaveBackupExecutor, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
-    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
+    RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupBackgroundService,
+    SaveBackupBackgroundWorker, SaveBackupExecutor, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, StartRecoveryActionTaskRequest,
+    StartUninstallTaskRequest,
     SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
     UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
     UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
@@ -28,8 +29,12 @@ use hmm_games_mhw::{
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
+#[cfg(not(target_os = "windows"))]
+use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(target_os = "windows")]
 use hmm_infra::TasklistGameRunningDetector;
+#[cfg(target_os = "windows")]
+use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
     FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemSaveBackupWriter,
@@ -50,8 +55,9 @@ use hmm_ports::{
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
     GamePrerequisiteRuleRepository, GameRunningDetector, ModImportResultRepository,
     ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository, SaveBackupRepository, SaveBackupSchedulerStateRepository,
-    SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
+    ProfileSaveSettingsRepository, SaveBackupBackgroundRegistry, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader,
+    ThumbnailCacheMaintenance,
 };
 #[cfg(test)]
 use std::cell::RefCell;
@@ -96,6 +102,7 @@ pub struct AppState {
     pub save_directory_discovery: Arc<ProfileSaveDirectoryDiscoveryService>,
     pub save_backups: Arc<SaveBackupService>,
     pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
+    pub save_backup_background: Arc<SaveBackupBackgroundService>,
     pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
@@ -221,6 +228,22 @@ impl AppState {
         let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
+        let save_backup_background_registry: Arc<dyn SaveBackupBackgroundRegistry> = {
+            #[cfg(target_os = "windows")]
+            {
+                Arc::new(WindowsScheduledTaskRegistry::from_current_exe())
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                Arc::new(UnsupportedSaveBackupBackgroundRegistry)
+            }
+        };
+        let save_backup_background = Arc::new(SaveBackupBackgroundService::new(
+            save_backup_background_registry,
+            Arc::clone(&save_backup_scheduler_state_repository),
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+        ));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
         let install_manifest_repository = Arc::new(JsonInstallManifestRepository::new(
@@ -492,6 +515,7 @@ impl AppState {
             save_backup_task_runner,
             save_backup_tasks,
             save_backup_auto_scheduler,
+            save_backup_background,
             save_backup_background_worker,
             save_backups,
             task_manager,
