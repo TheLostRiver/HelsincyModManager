@@ -8,7 +8,8 @@ use hmm_app::{
 use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
     ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
-    ProfileSaveSettings, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
+    ProfileSaveSettings, SaveBackupBackgroundProtectionStatus,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
     SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
     SaveBackupWorkerHeartbeat,
 };
@@ -675,6 +676,29 @@ impl SaveBackupSchedulerStateRepository for FakeSaveBackupSchedulerStateReposito
         state.next_due_at = request.next_due_at;
         state.updated_at = request.now_unix_millis;
         Ok(Some(state.clone()))
+    }
+
+    fn renew_lease(&self, request: SaveBackupSchedulerLeaseRenewalRequest) -> Result<bool> {
+        let mut states = self.states.lock().expect("scheduler state lock");
+        let Some(state) = states.iter_mut().rev().find(|state| {
+            state.game_id == request.game_id && state.profile_id == request.profile_id
+        }) else {
+            return Ok(false);
+        };
+        if state.lease_owner.as_deref() != Some(request.lease_owner.as_str())
+            || state
+                .lease_expires_at
+                .is_none_or(|expires_at| expires_at <= request.now_unix_millis)
+            || state
+                .lease_expires_at
+                .is_some_and(|expires_at| expires_at > request.lease_expires_at)
+        {
+            return Ok(false);
+        }
+
+        state.lease_expires_at = Some(request.lease_expires_at);
+        state.updated_at = request.now_unix_millis;
+        Ok(true)
     }
 
     fn release_lease(

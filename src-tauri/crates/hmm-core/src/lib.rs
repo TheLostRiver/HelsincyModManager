@@ -31,8 +31,9 @@ pub use profile::{
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,
     SaveBackupManifest, SaveBackupManifestFile, SaveBackupManifestSource,
-    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason, SaveBackupSchedulerState,
-    SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger, SaveBackupWorkerHeartbeat,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
+    SaveBackupSchedulerPendingReason, SaveBackupSchedulerState, SaveBackupStatus,
+    SaveBackupSummary, SaveBackupTrigger, SaveBackupWorkerHeartbeat,
     SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
 };
 pub use save_directory::{

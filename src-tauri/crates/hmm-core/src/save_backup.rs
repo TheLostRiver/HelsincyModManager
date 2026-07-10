@@ -160,6 +160,15 @@ pub struct SaveBackupSchedulerLeaseRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupSchedulerLeaseRenewalRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub lease_owner: String,
+    pub lease_expires_at: u128,
+    pub now_unix_millis: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupWorkerHeartbeat {
     pub game_id: GameId,
     pub profile_id: ProfileId,
