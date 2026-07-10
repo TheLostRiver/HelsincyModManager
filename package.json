@@ -12,6 +12,8 @@
     "generate:mods-mock": "node scripts/generate-mod-library-mock-data.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "prepare:save-backup-worker-sidecar": "node scripts/prepare-save-backup-worker-sidecar.mjs",
+    "prepare:save-backup-worker-sidecar:dev": "node scripts/prepare-save-backup-worker-sidecar.mjs --debug",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

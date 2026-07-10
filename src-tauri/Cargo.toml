@@ -3,6 +3,7 @@ name = "hmm-tauri"
 version = "0.1.0-alpha.0"
 description = "Tauri shell for Helsincy Mod Manager"
 edition.workspace = true
+default-run = "hmm-tauri"
 license.workspace = true
 repository.workspace = true
 
