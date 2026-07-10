@@ -50,6 +50,8 @@ pub use preview_image::{
 };
 pub use save_backup::FileSystemSaveBackupWriter;
 pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry;
+#[cfg(windows)]
+pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
 pub use sqlite::open_database;
