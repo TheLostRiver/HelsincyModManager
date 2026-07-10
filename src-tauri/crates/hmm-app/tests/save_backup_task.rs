@@ -647,12 +647,22 @@ fn auto_backup_lease_failure_prevents_cancelled_success_audit() {
         .expect_err("lease loss must take precedence over cancelled-success handling");
 
     assert_eq!(
-        error.events.last().and_then(|event| event.error.as_deref()),
-        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Cancelled)
     );
+    assert!(
+        error.events.is_empty(),
+        "a cancelled task must not replay running or failed events"
+    );
+
     let audit_events = audit_log.take_events();
-    assert_eq!(audit_events.len(), 1);
-    assert_eq!(audit_events[0].result, "failure");
+    assert_eq!(
+        audit_events
+            .iter()
+            .map(|event| event.result.as_str())
+            .collect::<Vec<_>>(),
+        vec!["failure"]
+    );
     assert_eq!(
         audit_events[0].fields.get("error_code").map(String::as_str),
         Some("save_backup_scheduler_lease_unavailable")
@@ -792,6 +802,35 @@ fn run_save_backup_task_does_not_replay_running_events_after_concurrent_cancel()
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].result, "success");
     assert_eq!(events[0].fields["backup_id"], "backup-1");
+}
+
+#[test]
+fn cancelled_save_backup_failure_does_not_replay_task_events() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = SaveBackupTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::new(CancellingFailingSaveBackupExecutor {
+            task_manager: Arc::clone(&task_manager),
+            task_id: task.task_id.clone(),
+        }),
+        audit_log.clone(),
+        Arc::new(FixedClock),
+    );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect_err("cancelled backup failure must not replay task events");
+
+    assert!(error.events.is_empty());
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Cancelled)
+    );
+    assert!(audit_log.take_events().is_empty());
 }
 
 #[test]
@@ -1010,6 +1049,24 @@ impl SaveBackupExecutor for CancellingSaveBackupExecutor {
             .cancel_task(&self.task_id)
             .expect("running task can be cancelled");
         Ok(sample_result())
+    }
+}
+
+struct CancellingFailingSaveBackupExecutor {
+    task_manager: Arc<TaskManager>,
+    task_id: String,
+}
+
+impl SaveBackupExecutor for CancellingFailingSaveBackupExecutor {
+    fn create_backup(
+        &self,
+        _request: CreateSaveBackupRequest,
+        _trigger: SaveBackupTrigger,
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
+        self.task_manager
+            .cancel_task(&self.task_id)
+            .expect("running task can be cancelled");
+        Err(SaveBackupError::SourceUnset)
     }
 }
 
