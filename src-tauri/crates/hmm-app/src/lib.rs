@@ -15,6 +15,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod save_backup;
+mod save_backup_background;
 mod save_backup_background_worker;
 mod save_backup_scheduler;
 mod save_backup_task;
@@ -90,6 +91,11 @@ pub use profile::{
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
     SaveBackupWarning,
+};
+pub use save_backup_background::{
+    SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundService,
+    SaveBackupBackgroundServiceError, SaveBackupBackgroundStatus,
+    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
 };
 pub use save_backup_background_worker::{
     SaveBackupBackgroundWorker, SaveBackupBackgroundWorkerError,
