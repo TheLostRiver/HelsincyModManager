@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use hmm_core::{
-    GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
     SaveBackupSchedulerPendingReason, SaveBackupSchedulerState, SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::SaveBackupSchedulerStateRepository;
@@ -111,6 +112,30 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
         tx.commit()
             .context("failed to commit scheduler lease transaction")?;
         Ok(Some(state))
+    }
+
+    fn renew_lease(&self, request: SaveBackupSchedulerLeaseRenewalRequest) -> Result<bool> {
+        if request.lease_expires_at <= request.now_unix_millis {
+            return Ok(false);
+        }
+
+        let conn = self.lock_db()?;
+        let updated = conn
+            .execute(
+                "UPDATE save_backup_scheduler_state
+                 SET lease_expires_at = ?1, updated_at = ?2
+                 WHERE game_id = ?3 AND profile_id = ?4 AND lease_owner = ?5
+                   AND lease_expires_at > ?2 AND lease_expires_at <= ?1",
+                params![
+                    to_i64(request.lease_expires_at),
+                    to_i64(request.now_unix_millis),
+                    request.game_id.as_str(),
+                    request.profile_id.as_str(),
+                    request.lease_owner,
+                ],
+            )
+            .context("failed to renew save backup scheduler lease")?;
+        Ok(updated == 1)
     }
 
     fn release_lease(

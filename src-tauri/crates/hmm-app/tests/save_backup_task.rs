@@ -5,12 +5,15 @@ use hmm_app::{
     TaskKind, TaskManager, TaskManagerError, TaskStatus,
 };
 use hmm_core::{
-    GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerLeaseRequest,
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
     SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
     SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[test]
 fn start_save_backup_task_returns_queued_save_backup_task() {
@@ -207,6 +210,147 @@ fn run_save_backup_task_releases_scheduler_lease_when_executor_panics() {
     assert_eq!(
         scheduler_state.release_calls(),
         vec!["auto-lease".to_owned()]
+    );
+}
+
+#[test]
+fn auto_backup_renews_lease_while_executor_is_blocked() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let clock = Arc::new(ControllableClock::new(0));
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        SaveBackupSchedulerState {
+            lease_expires_at: Some(300_000),
+            ..sample_scheduler_state("auto-lease")
+        },
+    ));
+    let executor = Arc::new(BlockingSaveBackupExecutor::new());
+    let runner = Arc::new(
+        SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            Arc::clone(&task_manager),
+            executor.clone(),
+            Arc::new(RecordingAuditLogWriter::default()),
+            clock.clone(),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            scheduler_state.clone(),
+            Duration::from_millis(1),
+        ),
+    );
+    let task_id = task.task_id.clone();
+    let run =
+        thread::spawn(move || runner.run_save_backup_task(&task_id, auto_request("auto-lease")));
+
+    executor.wait_until_started();
+    clock.set(299_999);
+    wait_until(|| {
+        scheduler_state
+            .latest_state()
+            .is_some_and(|state| state.lease_expires_at == Some(599_999))
+    });
+    clock.set(300_001);
+
+    let competing = scheduler_state
+        .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "competing-worker".to_owned(),
+            lease_expires_at: 600_001,
+            now_unix_millis: 300_001,
+            last_checked_at: Some(300_001),
+            next_due_at: Some(400_000),
+        })
+        .expect("competing due check is not fatal");
+    assert!(competing.is_none());
+
+    executor.release();
+    assert!(run.join().expect("task thread does not panic").is_ok());
+}
+
+#[test]
+fn auto_backup_does_not_invoke_executor_when_initial_lease_renewal_fails() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    scheduler_state.set_renewal_available(false);
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
+    let runner =
+        SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            Arc::clone(&task_manager),
+            executor.clone(),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            scheduler_state,
+            Duration::from_millis(1),
+        );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, auto_request("auto-lease"))
+        .expect_err("unconfirmed lease must stop the task before backup execution");
+
+    assert!(executor.take_requests().is_empty());
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn auto_backup_fails_when_keepalive_cannot_renew_lease() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let executor = Arc::new(BlockingSaveBackupExecutor::new());
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = Arc::new(
+        SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            Arc::clone(&task_manager),
+            executor.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            scheduler_state.clone(),
+            Duration::from_millis(1),
+        ),
+    );
+    let task_id = task.task_id.clone();
+    let run =
+        thread::spawn(move || runner.run_save_backup_task(&task_id, auto_request("auto-lease")));
+
+    executor.wait_until_started();
+    let initial_renewal_calls = scheduler_state.renewal_calls();
+    scheduler_state.set_renewal_available(false);
+    wait_until(|| scheduler_state.renewal_calls() > initial_renewal_calls);
+
+    executor.release();
+    let error = run
+        .join()
+        .expect("task thread does not panic")
+        .expect_err("a lost scheduler lease must prevent a successful task result");
+
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Failed)
+    );
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+    let audit_event = audit_log.take_events().pop().expect("failure audit event");
+    assert_eq!(audit_event.result, "failure");
+    assert_eq!(
+        audit_event.fields.get("error_code").map(String::as_str),
+        Some("save_backup_scheduler_lease_unavailable")
     );
 }
 
@@ -554,6 +698,8 @@ impl AuditLogWriter for RecordingAuditLogWriter {
 struct RecordingSchedulerStateRepository {
     states: Mutex<Vec<SaveBackupSchedulerState>>,
     release_calls: Mutex<Vec<String>>,
+    renewal_available: Mutex<bool>,
+    renewal_calls: Mutex<usize>,
 }
 
 impl RecordingSchedulerStateRepository {
@@ -561,6 +707,8 @@ impl RecordingSchedulerStateRepository {
         Self {
             states: Mutex::new(vec![state]),
             release_calls: Mutex::new(Vec::new()),
+            renewal_available: Mutex::new(true),
+            renewal_calls: Mutex::new(0),
         }
     }
 
@@ -570,6 +718,14 @@ impl RecordingSchedulerStateRepository {
 
     fn release_calls(&self) -> Vec<String> {
         self.release_calls.lock().unwrap().clone()
+    }
+
+    fn set_renewal_available(&self, available: bool) {
+        *self.renewal_available.lock().unwrap() = available;
+    }
+
+    fn renewal_calls(&self) -> usize {
+        *self.renewal_calls.lock().unwrap()
     }
 }
 
@@ -600,9 +756,54 @@ impl SaveBackupSchedulerStateRepository for RecordingSchedulerStateRepository {
 
     fn acquire_due_lease(
         &self,
-        _request: SaveBackupSchedulerLeaseRequest,
+        request: SaveBackupSchedulerLeaseRequest,
     ) -> Result<Option<SaveBackupSchedulerState>> {
-        panic!("task runner tests do not acquire leases")
+        let mut states = self.states.lock().unwrap();
+        let Some(state) = states.iter_mut().rev().find(|state| {
+            state.game_id == request.game_id && state.profile_id == request.profile_id
+        }) else {
+            return Ok(None);
+        };
+        if state
+            .lease_expires_at
+            .is_some_and(|expires_at| expires_at > request.now_unix_millis)
+        {
+            return Ok(None);
+        }
+
+        state.lease_owner = Some(request.lease_owner);
+        state.lease_expires_at = Some(request.lease_expires_at);
+        state.last_checked_at = request.last_checked_at;
+        state.next_due_at = request.next_due_at;
+        state.updated_at = request.now_unix_millis;
+        Ok(Some(state.clone()))
+    }
+
+    fn renew_lease(&self, request: SaveBackupSchedulerLeaseRenewalRequest) -> Result<bool> {
+        *self.renewal_calls.lock().unwrap() += 1;
+        if !*self.renewal_available.lock().unwrap() {
+            return Ok(false);
+        }
+        let mut states = self.states.lock().unwrap();
+        let Some(state) = states.iter_mut().rev().find(|state| {
+            state.game_id == request.game_id && state.profile_id == request.profile_id
+        }) else {
+            return Ok(false);
+        };
+        if state.lease_owner.as_deref() != Some(request.lease_owner.as_str())
+            || state
+                .lease_expires_at
+                .is_none_or(|expires_at| expires_at <= request.now_unix_millis)
+            || state
+                .lease_expires_at
+                .is_some_and(|expires_at| expires_at > request.lease_expires_at)
+        {
+            return Ok(false);
+        }
+
+        state.lease_expires_at = Some(request.lease_expires_at);
+        state.updated_at = request.now_unix_millis;
+        Ok(true)
     }
 
     fn release_lease(
@@ -628,5 +829,98 @@ struct FixedClock;
 impl AppClock for FixedClock {
     fn now_unix_millis(&self) -> Result<u128> {
         Ok(42)
+    }
+}
+
+struct ControllableClock {
+    now_unix_millis: Mutex<u128>,
+}
+
+impl ControllableClock {
+    fn new(now_unix_millis: u128) -> Self {
+        Self {
+            now_unix_millis: Mutex::new(now_unix_millis),
+        }
+    }
+
+    fn set(&self, now_unix_millis: u128) {
+        *self.now_unix_millis.lock().unwrap() = now_unix_millis;
+    }
+}
+
+impl AppClock for ControllableClock {
+    fn now_unix_millis(&self) -> Result<u128> {
+        Ok(*self.now_unix_millis.lock().unwrap())
+    }
+}
+
+struct BlockingSaveBackupExecutor {
+    started: Mutex<mpsc::Receiver<()>>,
+    started_sender: Mutex<Option<mpsc::Sender<()>>>,
+    release: Mutex<mpsc::Receiver<()>>,
+    release_sender: Mutex<Option<mpsc::Sender<()>>>,
+}
+
+impl BlockingSaveBackupExecutor {
+    fn new() -> Self {
+        let (started_sender, started) = mpsc::channel();
+        let (release_sender, release) = mpsc::channel();
+        Self {
+            started: Mutex::new(started),
+            started_sender: Mutex::new(Some(started_sender)),
+            release: Mutex::new(release),
+            release_sender: Mutex::new(Some(release_sender)),
+        }
+    }
+
+    fn wait_until_started(&self) {
+        self.started
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(1))
+            .expect("executor starts within timeout");
+    }
+
+    fn release(&self) {
+        self.release_sender
+            .lock()
+            .unwrap()
+            .take()
+            .expect("executor release sender is available")
+            .send(())
+            .expect("executor receives release");
+    }
+}
+
+impl SaveBackupExecutor for BlockingSaveBackupExecutor {
+    fn create_backup(
+        &self,
+        _request: CreateSaveBackupRequest,
+        _trigger: SaveBackupTrigger,
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
+        self.started_sender
+            .lock()
+            .unwrap()
+            .take()
+            .expect("executor start sender is available")
+            .send(())
+            .expect("test receives executor start");
+        self.release
+            .lock()
+            .unwrap()
+            .recv()
+            .expect("test releases executor");
+        Ok(sample_result())
+    }
+}
+
+fn wait_until(condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while !condition() {
+        assert!(
+            Instant::now() < deadline,
+            "condition was not met within timeout"
+        );
+        thread::sleep(Duration::from_millis(1));
     }
 }

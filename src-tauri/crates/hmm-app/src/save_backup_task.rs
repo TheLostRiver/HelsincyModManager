@@ -1,7 +1,13 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
-use hmm_core::{GameId, ProfileId, SaveBackupSchedulerState, SaveBackupSummary, SaveBackupTrigger};
+use hmm_core::{
+    GameId, ProfileId, SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerState,
+    SaveBackupSummary, SaveBackupTrigger,
+};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
 
 use crate::{
@@ -17,6 +23,10 @@ const SAVE_BACKUP_RETENTION_PRUNING_PHASE: &str = "save_backup.retention_pruning
 const SAVE_BACKUP_COMPLETED_PHASE: &str = "save_backup.completed";
 const SAVE_BACKUP_FAILED_PHASE: &str = "save_backup.failed";
 const SAVE_BACKUP_FAILED_ERROR: &str = "save_backup_failed";
+const SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR: &str =
+    "save_backup_scheduler_lease_unavailable";
+const SCHEDULER_LEASE_TTL_MILLIS: u128 = 5 * 60_000;
+const DEFAULT_SCHEDULER_LEASE_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartSaveBackupTaskRequest {
@@ -109,12 +119,36 @@ impl Drop for SaveBackupSchedulerLeaseReleaseGuard<'_> {
         let Some(repository) = self.repository else {
             return;
         };
-        let Some(lease_owner) = self.request.scheduler_lease_owner.as_deref() else {
+        let Some(lease_owner) = auto_lease_owner(self.request) else {
             return;
         };
 
         let _ =
             repository.release_lease(&self.request.game_id, &self.request.profile_id, lease_owner);
+    }
+}
+
+struct SaveBackupSchedulerLeaseKeepalive {
+    stop_sender: Option<mpsc::Sender<()>>,
+    join_handle: Option<thread::JoinHandle<()>>,
+    renewal_failed: Arc<AtomicBool>,
+}
+
+impl SaveBackupSchedulerLeaseKeepalive {
+    fn stop_and_join(&mut self) -> bool {
+        if let Some(stop_sender) = self.stop_sender.take() {
+            let _ = stop_sender.send(());
+        }
+        if let Some(join_handle) = self.join_handle.take() {
+            let _ = join_handle.join();
+        }
+        self.renewal_failed.load(Ordering::Acquire)
+    }
+}
+
+impl Drop for SaveBackupSchedulerLeaseKeepalive {
+    fn drop(&mut self) {
+        let _ = self.stop_and_join();
     }
 }
 
@@ -187,6 +221,7 @@ pub struct SaveBackupTaskRunner {
     clock: Arc<dyn AppClock>,
     scope_registry: Arc<SaveBackupTaskScopeRegistry>,
     scheduler_state_repository: Option<Arc<dyn SaveBackupSchedulerStateRepository>>,
+    scheduler_lease_keepalive_interval: Duration,
 }
 
 impl SaveBackupTaskRunner {
@@ -219,6 +254,7 @@ impl SaveBackupTaskRunner {
             clock,
             scope_registry,
             scheduler_state_repository: None,
+            scheduler_lease_keepalive_interval: DEFAULT_SCHEDULER_LEASE_KEEPALIVE_INTERVAL,
         }
     }
 
@@ -230,6 +266,26 @@ impl SaveBackupTaskRunner {
         scope_registry: Arc<SaveBackupTaskScopeRegistry>,
         scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
     ) -> Self {
+        Self::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            task_manager,
+            executor,
+            audit_log,
+            clock,
+            scope_registry,
+            scheduler_state_repository,
+            DEFAULT_SCHEDULER_LEASE_KEEPALIVE_INTERVAL,
+        )
+    }
+
+    pub fn with_scope_registry_and_scheduler_state_and_keepalive_interval(
+        task_manager: Arc<TaskManager>,
+        executor: Arc<dyn SaveBackupExecutor>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        scope_registry: Arc<SaveBackupTaskScopeRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        scheduler_lease_keepalive_interval: Duration,
+    ) -> Self {
         Self {
             task_manager,
             executor,
@@ -237,6 +293,8 @@ impl SaveBackupTaskRunner {
             clock,
             scope_registry,
             scheduler_state_repository: Some(scheduler_state_repository),
+            scheduler_lease_keepalive_interval: scheduler_lease_keepalive_interval
+                .max(Duration::from_millis(1)),
         }
     }
 
@@ -265,21 +323,46 @@ impl SaveBackupTaskRunner {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(SaveBackupTaskRunError { events: Vec::new() });
         }
-        self.record_scheduler_attempt(&request);
-
         let mut events = vec![
             running_event(task_id, SAVE_BACKUP_SCANNING_PHASE),
             running_event(task_id, SAVE_BACKUP_ARCHIVING_PHASE),
         ];
+        self.record_scheduler_attempt(&request);
 
-        let result = match self.executor.create_backup(
+        let mut lease_keepalive = match self.start_scheduler_lease_keepalive(&request) {
+            Ok(lease_keepalive) => lease_keepalive,
+            Err(()) => {
+                return Err(self.fail_with_audit_code(
+                    task_id,
+                    &request,
+                    events,
+                    SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR,
+                ));
+            }
+        };
+
+        let result = self.executor.create_backup(
             CreateSaveBackupRequest {
                 game_id: request.game_id.clone(),
                 profile_id: request.profile_id.clone(),
                 note: request.note.clone(),
             },
             request.trigger,
-        ) {
+        );
+
+        if lease_keepalive
+            .as_mut()
+            .is_some_and(SaveBackupSchedulerLeaseKeepalive::stop_and_join)
+        {
+            return Err(self.fail_with_audit_code(
+                task_id,
+                &request,
+                events,
+                SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR,
+            ));
+        }
+
+        let result = match result {
             Ok(summary) => summary,
             Err(error) => {
                 return Err(self.fail_with_audit(task_id, &request, events, error));
@@ -320,8 +403,18 @@ impl SaveBackupTaskRunner {
         &self,
         task_id: &str,
         request: &StartSaveBackupTaskRequest,
-        mut events: Vec<TaskProgressEvent>,
+        events: Vec<TaskProgressEvent>,
         error: SaveBackupError,
+    ) -> SaveBackupTaskRunError {
+        self.fail_with_audit_code(task_id, request, events, error.code())
+    }
+
+    fn fail_with_audit_code(
+        &self,
+        task_id: &str,
+        request: &StartSaveBackupTaskRequest,
+        mut events: Vec<TaskProgressEvent>,
+        error_code: &str,
     ) -> SaveBackupTaskRunError {
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
             return SaveBackupTaskRunError { events };
@@ -334,11 +427,77 @@ impl SaveBackupTaskRunner {
             TaskStatus::Failed,
             SAVE_BACKUP_FAILED_PHASE,
         );
-        event.error = Some(format!("{}:{}", SAVE_BACKUP_FAILED_ERROR, error.code()));
+        event.error = Some(format!("{}:{}", SAVE_BACKUP_FAILED_ERROR, error_code));
         events.push(event);
-        self.record_scheduler_failure(request, error.code());
-        self.record_failure_audit(task_id, request, error.code());
+        self.record_scheduler_failure(request, error_code);
+        self.record_failure_audit(task_id, request, error_code);
         SaveBackupTaskRunError { events }
+    }
+
+    fn start_scheduler_lease_keepalive(
+        &self,
+        request: &StartSaveBackupTaskRequest,
+    ) -> Result<Option<SaveBackupSchedulerLeaseKeepalive>, ()> {
+        let Some(lease_owner) = auto_lease_owner(request) else {
+            return Ok(None);
+        };
+        let Some(repository) = self.scheduler_state_repository.as_ref() else {
+            return Err(());
+        };
+        let now_unix_millis = self.clock.now_unix_millis().map_err(|_| ())?;
+        let lease_expires_at = now_unix_millis.saturating_add(SCHEDULER_LEASE_TTL_MILLIS);
+        if !repository
+            .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                lease_owner: lease_owner.to_owned(),
+                lease_expires_at,
+                now_unix_millis,
+            })
+            .unwrap_or(false)
+        {
+            return Err(());
+        }
+
+        let (stop_sender, stop_receiver) = mpsc::channel();
+        let renewal_failed = Arc::new(AtomicBool::new(false));
+        let renewal_failed_for_thread = Arc::clone(&renewal_failed);
+        let repository = Arc::clone(repository);
+        let clock = Arc::clone(&self.clock);
+        let game_id = request.game_id.clone();
+        let profile_id = request.profile_id.clone();
+        let lease_owner = lease_owner.to_owned();
+        let interval = self.scheduler_lease_keepalive_interval;
+        let join_handle = thread::spawn(move || loop {
+            match stop_receiver.recv_timeout(interval) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+
+            let Ok(now_unix_millis) = clock.now_unix_millis() else {
+                renewal_failed_for_thread.store(true, Ordering::Release);
+                break;
+            };
+            let renewed = repository
+                .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
+                    game_id: game_id.clone(),
+                    profile_id: profile_id.clone(),
+                    lease_owner: lease_owner.clone(),
+                    lease_expires_at: now_unix_millis.saturating_add(SCHEDULER_LEASE_TTL_MILLIS),
+                    now_unix_millis,
+                })
+                .unwrap_or(false);
+            if !renewed {
+                renewal_failed_for_thread.store(true, Ordering::Release);
+                break;
+            }
+        });
+
+        Ok(Some(SaveBackupSchedulerLeaseKeepalive {
+            stop_sender: Some(stop_sender),
+            join_handle: Some(join_handle),
+            renewal_failed,
+        }))
     }
 
     fn record_scheduler_attempt(&self, request: &StartSaveBackupTaskRequest) {
@@ -470,6 +629,12 @@ fn backup_operation(trigger: SaveBackupTrigger) -> &'static str {
         SaveBackupTrigger::Auto => "auto_backup",
         SaveBackupTrigger::PreInstall => "pre_install_backup",
     }
+}
+
+fn auto_lease_owner(request: &StartSaveBackupTaskRequest) -> Option<&str> {
+    (request.trigger == SaveBackupTrigger::Auto)
+        .then_some(request.scheduler_lease_owner.as_deref())
+        .flatten()
 }
 
 fn running_event(task_id: &str, phase: &str) -> TaskProgressEvent {
