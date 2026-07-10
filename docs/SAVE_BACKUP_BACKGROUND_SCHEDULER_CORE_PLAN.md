@@ -218,8 +218,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 ## 后续切片
 
-1. P7.2：Windows 用户级 Scheduled Task 注册与移除。
-2. P7.2：平台注册健康检查，以及已注册且健康时的 `protected` 状态。
-3. P7.2：Profile/Settings 后台保护真实启用开关。
-4. P7.2：退出主客户端时的“启用并退出”提示。
+1. P7.2a（下一任务）：完成 Windows 用户级 Scheduled Task 注册/更新/移除、健康检查和 `protected` 判定的设计与实施计划，再落地受控平台注册核心。
+2. P7.2a：用 fake registry/command runner 覆盖生命周期和状态映射，并定义不接触真实玩家数据的 Windows 人工 smoke 策略。
+3. P7.2b：在平台注册和 heartbeat 健康确认通过后，接入 Profile/Settings 后台保护真实启用开关。
+4. P7.2b：接入退出主客户端时的“启用并退出”提示，未受保护时保持明确警示。
 5. Linux / Steam Deck user service 或 autostart 实验支持。
