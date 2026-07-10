@@ -16,6 +16,18 @@ P7.1 尚未实现真实 Windows 用户级 Scheduled Task 的注册/移除、平�
 
 因此，当前自动备份的产品语义仍是 `tray_only`：托盘常驻的主客户端可以执行自动备份，真正退出后不受保护。headless binary 只是未来平台注册的基础能力，不是已注册的退出后调度机制。
 
+## 下一任务（P7.2a 设计与实施计划）
+
+下一会话首先完成 P7.2a 的设计与实施计划，确认以下边界后再修改代码。P7.2b 的 Profile/Settings 开关和退出前提示必须等待 P7.2a 通过 review gate：
+
+1. 仅支持 Windows 用户级 Scheduled Task，不要求管理员权限，不创建 Windows Service，也不在自动化测试中操作真实系统任务。
+2. 注册、更新、检查和移除必须由受控 backend use case 完成；任务名、worker 二进制定位、固定 `--once` 参数和触发策略由应用内部决定，前端和外部参数不得传入任意命令或路径。
+3. `protected` 只能由“已正确注册且可检查”与“未过期的 worker heartbeat”共同得出。注册成功、单次 heartbeat 或 `tray_only` 均不足以提升为 `protected`。
+4. 平台失败必须映射为稳定状态/错误码，覆盖未注册、权限不足、注册失败、配置漂移和 worker 不健康；日志、DTO 和 UI 不得泄漏任务 XML、完整路径、用户名或存档内容。
+5. 先以 fake registry/command runner 和临时数据覆盖注册生命周期、状态映射和升级/卸载行为；真实 Windows Scheduled Task 只做受控人工 smoke，不能使用真实玩家存档或游戏目录。
+
+建议将 P7.2 拆为两个 review gate：先交付平台注册与健康核心，再在其通过后接入 Profile/Settings 开关和退出前提示。两者都必须继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
+
 ## 背景
 
 自动备份如果只依赖主窗口打开期间的前端定时器或 Tauri 主进程内 tick，就无法覆盖用户真正退出客户端后的时间段。对存档管理工具来说，“用户以为开启了自动备份，但退出客户端后实际没有备份”是不可接受的产品风险。
