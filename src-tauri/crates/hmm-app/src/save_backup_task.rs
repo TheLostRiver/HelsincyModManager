@@ -435,13 +435,16 @@ impl SaveBackupTaskRunner {
         mut events: Vec<TaskProgressEvent>,
         error_code: &str,
     ) -> SaveBackupTaskRunError {
-        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled)
-            && error_code != SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR
+        if self.task_manager.fail_task(task_id).is_err()
+            && self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled)
         {
-            return SaveBackupTaskRunError { events };
+            if error_code == SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR {
+                self.record_scheduler_failure(request, error_code);
+                self.record_failure_audit(task_id, request, error_code);
+            }
+            return SaveBackupTaskRunError { events: Vec::new() };
         }
 
-        let _ = self.task_manager.fail_task(task_id);
         let mut event = TaskProgressEvent::new(
             task_id.to_owned(),
             TaskKind::SaveBackup,

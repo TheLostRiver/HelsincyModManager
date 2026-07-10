@@ -614,7 +614,7 @@ git status --short
 
 Expected: `git diff --check` 成功；状态中只含本切片的四份文档。
 
-- [ ] **Step 5: 提交文档与验证同步**
+- [x] **Step 5: 提交文档与验证同步**
 
 ```powershell
 git add docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md docs/TESTING.md docs/superpowers/plans/2026-07-10-save-backup-background-worker-implementation.md
@@ -625,10 +625,10 @@ git commit -m "docs: 同步后台备份 worker 验证边界"
 
 ## Final Review Checklist
 
-- [ ] 只存在一个存档写入路径，worker 没有直接执行文件复制、删除、重命名或路径计算。
-- [ ] worker 不初始化 WebView 或 Tauri GUI runtime。
-- [ ] worker 与客户端的重复执行由 SQLite lease 去重。
-- [ ] `Running` / `Unknown` 不会启动自动备份。
-- [ ] heartbeat 不会造成 `protected` 假阳性。
-- [ ] 所有错误、日志和审计字段都不泄漏敏感数据。
-- [ ] P7.2 的 Scheduled Task 注册、设置开关和退出提示仍保持未完成。
+- [x] 只存在一个存档写入路径，worker 没有直接执行文件复制、删除、重命名或路径计算。
+- [x] worker 不初始化 WebView 或 Tauri GUI runtime。
+- [x] worker 与客户端的重复执行由 SQLite lease 去重。
+- [x] `Running` / `Unknown` 不会启动自动备份。
+- [x] heartbeat 不会造成 `protected` 假阳性。
+- [x] 所有错误、日志和审计字段都不泄漏敏感数据。
+- [x] P7.2 的 Scheduled Task 注册、设置开关和退出提示仍保持未完成。
