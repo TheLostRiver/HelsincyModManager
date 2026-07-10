@@ -53,12 +53,14 @@ use hmm_ports::{
     ProfileSaveSettingsRepository, SaveBackupRepository, SaveBackupSchedulerStateRepository,
     SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
 };
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AppStateStartup {
     Headless,
     Gui,
@@ -111,21 +113,20 @@ impl AppState {
             .path()
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
-        Self::from_app_data_dir_with_startup(
-            app_data_dir,
-            AppStateStartup::Gui,
-            Self::start_thumbnail_cache_maintenance,
-        )
+        Self::from_gui_app_data_dir(app_data_dir)
     }
 
     pub fn from_app_data_dir(app_data_dir: PathBuf) -> Result<Self, String> {
-        Self::from_app_data_dir_with_startup(app_data_dir, AppStateStartup::Headless, |_| {})
+        Self::from_app_data_dir_with_startup(app_data_dir, AppStateStartup::Headless)
+    }
+
+    fn from_gui_app_data_dir(app_data_dir: PathBuf) -> Result<Self, String> {
+        Self::from_app_data_dir_with_startup(app_data_dir, AppStateStartup::Gui)
     }
 
     fn from_app_data_dir_with_startup(
         app_data_dir: PathBuf,
         startup: AppStateStartup,
-        start_background_work: impl FnOnce(&Self),
     ) -> Result<Self, String> {
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
@@ -497,9 +498,7 @@ impl AppState {
             db,
         };
 
-        if matches!(startup, AppStateStartup::Gui) {
-            start_background_work(&state);
-        }
+        run_state_startup(startup, &state);
 
         Ok(state)
     }
@@ -516,6 +515,41 @@ impl AppState {
                 .map(|_| ())
         });
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static STATE_STARTUP_OBSERVER: RefCell<Option<Box<dyn Fn(AppStateStartup)>>> = const { RefCell::new(None) };
+}
+
+fn run_state_startup(startup: AppStateStartup, state: &AppState) {
+    #[cfg(test)]
+    if STATE_STARTUP_OBSERVER.with(|observer| {
+        let observer = observer.borrow();
+        observer
+            .as_ref()
+            .map(|observer| observer(startup))
+            .is_some()
+    }) {
+        return;
+    }
+
+    if matches!(startup, AppStateStartup::Gui) {
+        state.start_thumbnail_cache_maintenance();
+    }
+}
+
+#[cfg(test)]
+fn with_state_startup_observer<R>(
+    observer: impl Fn(AppStateStartup) + 'static,
+    action: impl FnOnce() -> R,
+) -> R {
+    STATE_STARTUP_OBSERVER.with(|active_observer| {
+        let previous = active_observer.replace(Some(Box::new(observer)));
+        let result = action();
+        active_observer.replace(previous);
+        result
+    })
 }
 
 pub(crate) struct ConfiguredInstallRecoveryScanner {
@@ -899,46 +933,66 @@ mod tests {
     }
 
     #[test]
-    fn headless_state_composition_does_not_invoke_background_startup() {
+    fn public_headless_entry_selects_headless_startup() {
         let app_data_dir = std::env::temp_dir().join(format!(
             "hmm-headless-state-composition-{}",
             uuid::Uuid::new_v4()
         ));
-        let start_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let start_count_for_startup = Arc::clone(&start_count);
+        let selected_startup = Arc::new(Mutex::new(Vec::new()));
+        let selected_startup_for_observer = Arc::clone(&selected_startup);
 
-        AppState::from_app_data_dir_with_startup(
-            app_data_dir.clone(),
-            AppStateStartup::Headless,
-            move |_| {
-                start_count_for_startup.fetch_add(1, Ordering::SeqCst);
+        with_state_startup_observer(
+            move |startup| {
+                selected_startup_for_observer
+                    .lock()
+                    .expect("startup observer lock")
+                    .push(startup);
             },
-        )
-        .expect("headless state composition succeeds");
+            || {
+                AppState::from_app_data_dir(app_data_dir.clone())
+                    .expect("headless state composition succeeds");
+            },
+        );
 
-        assert_eq!(start_count.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            selected_startup
+                .lock()
+                .expect("startup observer lock")
+                .as_slice(),
+            [AppStateStartup::Headless]
+        );
         std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
     }
 
     #[test]
-    fn gui_state_composition_invokes_background_startup_once() {
+    fn gui_app_data_entry_selects_gui_startup_once() {
         let app_data_dir = std::env::temp_dir().join(format!(
             "hmm-gui-state-composition-{}",
             uuid::Uuid::new_v4()
         ));
-        let start_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let start_count_for_startup = Arc::clone(&start_count);
+        let selected_startup = Arc::new(Mutex::new(Vec::new()));
+        let selected_startup_for_observer = Arc::clone(&selected_startup);
 
-        AppState::from_app_data_dir_with_startup(
-            app_data_dir.clone(),
-            AppStateStartup::Gui,
-            move |_| {
-                start_count_for_startup.fetch_add(1, Ordering::SeqCst);
+        with_state_startup_observer(
+            move |startup| {
+                selected_startup_for_observer
+                    .lock()
+                    .expect("startup observer lock")
+                    .push(startup);
             },
-        )
-        .expect("GUI state composition succeeds");
+            || {
+                AppState::from_gui_app_data_dir(app_data_dir.clone())
+                    .expect("GUI state composition succeeds");
+            },
+        );
 
-        assert_eq!(start_count.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            selected_startup
+                .lock()
+                .expect("startup observer lock")
+                .as_slice(),
+            [AppStateStartup::Gui]
+        );
         std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
     }
 
