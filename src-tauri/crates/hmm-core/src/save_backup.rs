@@ -145,6 +145,7 @@ pub struct SaveBackupSchedulerState {
     pub pending_reason: Option<SaveBackupSchedulerPendingReason>,
     pub last_error_code: Option<String>,
     pub worker_instance_id: Option<String>,
+    pub worker_heartbeat_at: Option<u128>,
     pub lease_owner: Option<String>,
     pub lease_expires_at: Option<u128>,
     pub updated_at: u128,
@@ -175,8 +176,7 @@ pub struct SaveBackupWorkerHeartbeat {
     pub game_id: GameId,
     pub profile_id: ProfileId,
     pub worker_instance_id: String,
-    pub checked_at: u128,
-    pub status: SaveBackupBackgroundProtectionStatus,
+    pub heartbeat_at: u128,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

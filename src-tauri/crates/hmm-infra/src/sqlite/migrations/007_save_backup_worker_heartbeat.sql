@@ -1,0 +1,2 @@
+ALTER TABLE save_backup_scheduler_state
+ADD COLUMN worker_heartbeat_at INTEGER;
