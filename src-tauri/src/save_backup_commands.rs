@@ -7,8 +7,8 @@ use crate::save_backup_dto::{
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{
-    SaveBackupAutoCheckRequest, SaveBackupAutoSchedulerError, SaveBackupError,
-    StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted,
+    SaveBackupAutoCheckRequest, SaveBackupAutoSchedulerError, SaveBackupBackgroundServiceError,
+    SaveBackupError, StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{GameId, ProfileId, SaveBackupTrigger};
 use std::sync::Arc;
@@ -104,21 +104,29 @@ pub fn check_auto_save_backup(
 }
 
 #[tauri::command]
-pub fn get_save_backup_background_status(
+pub async fn get_save_backup_background_status(
     request: GetSaveBackupBackgroundStatusRequestDto,
     state: State<'_, AppState>,
 ) -> Result<SaveBackupBackgroundStatusDto, CommandErrorDto> {
     let game_id = parse_game_id(request.game_id)?;
     let profile_id = parse_profile_id(request.profile_id)?;
-    let scheduler_state = state
-        .save_backup_auto_scheduler
-        .background_status(&game_id, &profile_id)
-        .map_err(auto_save_backup_error_to_command_error)?;
+    let service = Arc::clone(&state.save_backup_background);
+    let query_game_id = game_id.clone();
+    let query_profile_id = profile_id.clone();
+    let background = tauri::async_runtime::spawn_blocking(move || {
+        service.status(&query_game_id, &query_profile_id)
+    })
+    .await
+    .map_err(|_| CommandErrorDto {
+        code: "save_backup_background_status_unavailable".to_owned(),
+        message: "save backup background status is unavailable".to_owned(),
+    })?
+    .map_err(save_backup_background_error_to_command_error)?;
 
-    Ok(SaveBackupBackgroundStatusDto::from_state(
+    Ok(SaveBackupBackgroundStatusDto::from_status(
         &game_id,
         &profile_id,
-        scheduler_state,
+        background,
     ))
 }
 
@@ -208,12 +216,21 @@ fn auto_save_backup_error_to_command_error(error: SaveBackupAutoSchedulerError) 
     }
 }
 
+fn save_backup_background_error_to_command_error(
+    error: SaveBackupBackgroundServiceError,
+) -> CommandErrorDto {
+    CommandErrorDto {
+        code: error.code().to_owned(),
+        message: "save backup background status is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dto::TaskProgressEventDto;
     use crate::save_backup_dto::{CheckAutoSaveBackupRequestDto, StartSaveBackupTaskRequestDto};
-    use hmm_app::{SaveBackupError, TaskStarted};
+    use hmm_app::{SaveBackupBackgroundServiceError, SaveBackupError, TaskStarted};
     use serde_json::{json, Value};
 
     #[test]
@@ -261,6 +278,27 @@ mod tests {
 
         let error = parse_profile_id("   ".to_owned()).expect_err("blank profile id is rejected");
         assert_eq!(error.code, "profile_id_empty");
+    }
+
+    #[test]
+    fn background_status_errors_map_to_stable_codes_without_details() {
+        for (error, expected) in [
+            (
+                SaveBackupBackgroundServiceError::SchedulerStateUnavailable,
+                "save_backup_scheduler_unavailable",
+            ),
+            (
+                SaveBackupBackgroundServiceError::ClockUnavailable,
+                "save_backup_clock_unavailable",
+            ),
+        ] {
+            let command_error = save_backup_background_error_to_command_error(error);
+            assert_eq!(command_error.code, expected);
+            assert_eq!(
+                command_error.message,
+                "save backup background status is unavailable"
+            );
+        }
     }
 
     #[test]

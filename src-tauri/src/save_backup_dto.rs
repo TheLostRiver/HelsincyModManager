@@ -1,8 +1,10 @@
 use crate::dto::TaskStartedDto;
-use hmm_app::{SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus};
+use hmm_app::{
+    SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus, SaveBackupBackgroundStatus,
+};
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerPendingReason,
-    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+    SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
 };
 use serde::{Deserialize, Serialize};
 
@@ -132,37 +134,42 @@ pub enum SaveBackupPendingReasonDto {
 }
 
 impl SaveBackupBackgroundStatusDto {
-    pub fn from_state(
+    pub fn from_status(
         game_id: &GameId,
         profile_id: &ProfileId,
-        state: Option<SaveBackupSchedulerState>,
+        background: SaveBackupBackgroundStatus,
     ) -> Self {
         // 白名单映射：lease_owner、lease_expires_at、worker_instance_id、worker_heartbeat_at 和任何路径
         // 都不得进入前端 DTO。
-        match state {
+        let SaveBackupBackgroundStatus {
+            scheduler_state,
+            status,
+            last_error_code,
+        } = background;
+        match scheduler_state {
             Some(state) => Self {
                 game_id: game_id.as_str().to_owned(),
                 profile_id: profile_id.as_str().to_owned(),
-                status: state.background_status.into(),
+                status: status.into(),
                 background_protection_enabled: state.background_protection_enabled,
                 last_checked_at: state.last_checked_at.map(|value| value as u64),
                 last_attempt_at: state.last_attempt_at.map(|value| value as u64),
                 last_success_at: state.last_success_at.map(|value| value as u64),
                 next_due_at: state.next_due_at.map(|value| value as u64),
                 pending_reason: state.pending_reason.map(Into::into),
-                last_error_code: state.last_error_code,
+                last_error_code,
             },
             None => Self {
                 game_id: game_id.as_str().to_owned(),
                 profile_id: profile_id.as_str().to_owned(),
-                status: SaveBackupBackgroundStatusKindDto::NotEnabled,
+                status: status.into(),
                 background_protection_enabled: false,
                 last_checked_at: None,
                 last_attempt_at: None,
                 last_success_at: None,
                 next_due_at: None,
                 pending_reason: None,
-                last_error_code: None,
+                last_error_code,
             },
         }
     }
@@ -324,59 +331,68 @@ mod tests {
     }
 
     #[test]
-    fn serializes_background_status_without_lease_worker_or_paths() {
-        let dto = SaveBackupBackgroundStatusDto::from_state(
+    fn background_status_dto_uses_derived_health_without_internal_fields() {
+        let dto = SaveBackupBackgroundStatusDto::from_status(
             &hmm_core::GameId::mhw(),
             &hmm_core::ProfileId::new("default"),
-            Some(hmm_core::SaveBackupSchedulerState {
-                game_id: hmm_core::GameId::mhw(),
-                profile_id: hmm_core::ProfileId::new("default"),
-                enabled: true,
-                background_protection_enabled: false,
-                background_status: SaveBackupBackgroundProtectionStatus::TrayOnly,
-                last_checked_at: Some(100),
-                last_attempt_at: Some(90),
-                last_success_at: Some(80),
-                next_due_at: Some(200),
-                pending_reason: Some(SaveBackupSchedulerPendingReason::GameRunning),
-                last_error_code: Some("save_backup_auto_skipped_game_running".to_owned()),
-                worker_instance_id: Some("worker-a".to_owned()),
-                worker_heartbeat_at: Some(95),
-                lease_owner: Some("client-runtime:mhw:default:1".to_owned()),
-                lease_expires_at: Some(300),
-                updated_at: 100,
-            }),
+            hmm_app::SaveBackupBackgroundStatus {
+                scheduler_state: Some(hmm_core::SaveBackupSchedulerState {
+                    game_id: hmm_core::GameId::mhw(),
+                    profile_id: hmm_core::ProfileId::new("default"),
+                    enabled: true,
+                    background_protection_enabled: true,
+                    background_status: SaveBackupBackgroundProtectionStatus::TrayOnly,
+                    last_checked_at: Some(100),
+                    last_attempt_at: Some(90),
+                    last_success_at: Some(80),
+                    next_due_at: Some(200),
+                    pending_reason: Some(SaveBackupSchedulerPendingReason::GameRunning),
+                    last_error_code: Some("stale-internal-error".to_owned()),
+                    worker_instance_id: Some("worker-private".to_owned()),
+                    worker_heartbeat_at: Some(95),
+                    lease_owner: Some("lease-private".to_owned()),
+                    lease_expires_at: Some(300),
+                    updated_at: 100,
+                }),
+                status: SaveBackupBackgroundProtectionStatus::Protected,
+                last_error_code: None,
+            },
         );
 
         let value = serde_json::to_value(dto).expect("serialize background status");
 
         assert_eq!(value["gameId"], "mhw");
         assert_eq!(value["profileId"], "default");
-        assert_eq!(value["status"], "tray_only");
-        assert_eq!(value["backgroundProtectionEnabled"], false);
+        assert_eq!(value["status"], "protected");
+        assert_eq!(value["backgroundProtectionEnabled"], true);
         assert_eq!(value["lastCheckedAt"], 100);
         assert_eq!(value["lastAttemptAt"], 90);
         assert_eq!(value["lastSuccessAt"], 80);
         assert_eq!(value["nextDueAt"], 200);
         assert_eq!(value["pendingReason"], "game_running");
-        assert_eq!(value["lastErrorCode"], "save_backup_auto_skipped_game_running");
+        assert!(value["lastErrorCode"].is_null());
         assert!(value.get("leaseOwner").is_none());
         assert!(value.get("leaseExpiresAt").is_none());
         assert!(value.get("workerInstanceId").is_none());
         assert!(value.get("workerHeartbeatAt").is_none());
         assert!(value.get("enabled").is_none());
         assert!(value.get("path").is_none());
-        assert!(!value.to_string().contains("worker-a"));
-        assert!(!value.to_string().contains("client-runtime:"));
+        assert!(!value.to_string().contains("worker-private"));
+        assert!(!value.to_string().contains("lease-private"));
+        assert!(!value.to_string().contains("stale-internal-error"));
         assert!(!value.to_string().contains("C:/"));
     }
 
     #[test]
     fn missing_background_state_maps_to_not_enabled() {
-        let dto = SaveBackupBackgroundStatusDto::from_state(
+        let dto = SaveBackupBackgroundStatusDto::from_status(
             &hmm_core::GameId::mhw(),
             &hmm_core::ProfileId::new("default"),
-            None,
+            hmm_app::SaveBackupBackgroundStatus {
+                scheduler_state: None,
+                status: SaveBackupBackgroundProtectionStatus::NotEnabled,
+                last_error_code: None,
+            },
         );
 
         let value = serde_json::to_value(dto).expect("serialize missing state");
