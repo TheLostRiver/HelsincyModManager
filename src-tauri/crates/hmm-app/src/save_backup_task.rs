@@ -27,6 +27,8 @@ const SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR: &str =
     "save_backup_scheduler_lease_unavailable";
 const SCHEDULER_LEASE_TTL_MILLIS: u128 = 5 * 60_000;
 const DEFAULT_SCHEDULER_LEASE_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
+const MIN_SCHEDULER_LEASE_KEEPALIVE_INTERVAL: Duration = Duration::from_millis(1);
+const MAX_SCHEDULER_LEASE_KEEPALIVE_INTERVAL: Duration = DEFAULT_SCHEDULER_LEASE_KEEPALIVE_INTERVAL;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartSaveBackupTaskRequest {
@@ -135,14 +137,22 @@ struct SaveBackupSchedulerLeaseKeepalive {
 }
 
 impl SaveBackupSchedulerLeaseKeepalive {
-    fn stop_and_join(&mut self) -> bool {
-        if let Some(stop_sender) = self.stop_sender.take() {
-            let _ = stop_sender.send(());
+    fn stop_and_join(&mut self) -> Result<(), ()> {
+        let stop_failed = self
+            .stop_sender
+            .take()
+            .is_none_or(|stop_sender| stop_sender.send(()).is_err());
+        let join_failed = self
+            .join_handle
+            .take()
+            .is_none_or(|join_handle| join_handle.join().is_err());
+        let renewal_failed = self.renewal_failed.load(Ordering::Acquire);
+
+        if stop_failed || join_failed || renewal_failed {
+            Err(())
+        } else {
+            Ok(())
         }
-        if let Some(join_handle) = self.join_handle.take() {
-            let _ = join_handle.join();
-        }
-        self.renewal_failed.load(Ordering::Acquire)
     }
 }
 
@@ -294,8 +304,13 @@ impl SaveBackupTaskRunner {
             scope_registry,
             scheduler_state_repository: Some(scheduler_state_repository),
             scheduler_lease_keepalive_interval: scheduler_lease_keepalive_interval
-                .max(Duration::from_millis(1)),
+                .max(MIN_SCHEDULER_LEASE_KEEPALIVE_INTERVAL)
+                .min(MAX_SCHEDULER_LEASE_KEEPALIVE_INTERVAL),
         }
+    }
+
+    pub fn scheduler_lease_keepalive_interval(&self) -> Duration {
+        self.scheduler_lease_keepalive_interval
     }
 
     pub fn run_save_backup_task(
@@ -350,10 +365,14 @@ impl SaveBackupTaskRunner {
             request.trigger,
         );
 
-        if lease_keepalive
-            .as_mut()
-            .is_some_and(SaveBackupSchedulerLeaseKeepalive::stop_and_join)
-        {
+        let scheduler_lease_failed = if let Some(keepalive) = lease_keepalive.as_mut() {
+            let keepalive_failed = keepalive.stop_and_join().is_err();
+            let final_confirmation_failed = self.renew_scheduler_lease(&request).is_err();
+            keepalive_failed || final_confirmation_failed
+        } else {
+            false
+        };
+        if scheduler_lease_failed {
             return Err(self.fail_with_audit_code(
                 task_id,
                 &request,
@@ -416,7 +435,9 @@ impl SaveBackupTaskRunner {
         mut events: Vec<TaskProgressEvent>,
         error_code: &str,
     ) -> SaveBackupTaskRunError {
-        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled)
+            && error_code != SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR
+        {
             return SaveBackupTaskRunError { events };
         }
 
@@ -438,26 +459,17 @@ impl SaveBackupTaskRunner {
         &self,
         request: &StartSaveBackupTaskRequest,
     ) -> Result<Option<SaveBackupSchedulerLeaseKeepalive>, ()> {
-        let Some(lease_owner) = auto_lease_owner(request) else {
+        if request.trigger != SaveBackupTrigger::Auto {
             return Ok(None);
+        }
+        self.renew_scheduler_lease(request)?;
+
+        let Some(lease_owner) = auto_lease_owner(request) else {
+            return Err(());
         };
         let Some(repository) = self.scheduler_state_repository.as_ref() else {
             return Err(());
         };
-        let now_unix_millis = self.clock.now_unix_millis().map_err(|_| ())?;
-        let lease_expires_at = now_unix_millis.saturating_add(SCHEDULER_LEASE_TTL_MILLIS);
-        if !repository
-            .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
-                game_id: request.game_id.clone(),
-                profile_id: request.profile_id.clone(),
-                lease_owner: lease_owner.to_owned(),
-                lease_expires_at,
-                now_unix_millis,
-            })
-            .unwrap_or(false)
-        {
-            return Err(());
-        }
 
         let (stop_sender, stop_receiver) = mpsc::channel();
         let renewal_failed = Arc::new(AtomicBool::new(false));
@@ -500,6 +512,23 @@ impl SaveBackupTaskRunner {
         }))
     }
 
+    fn renew_scheduler_lease(&self, request: &StartSaveBackupTaskRequest) -> Result<(), ()> {
+        let lease_owner = auto_lease_owner(request).ok_or(())?;
+        let repository = self.scheduler_state_repository.as_ref().ok_or(())?;
+        let now_unix_millis = self.clock.now_unix_millis().map_err(|_| ())?;
+        let renewed = repository
+            .renew_lease(SaveBackupSchedulerLeaseRenewalRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                lease_owner: lease_owner.to_owned(),
+                lease_expires_at: now_unix_millis.saturating_add(SCHEDULER_LEASE_TTL_MILLIS),
+                now_unix_millis,
+            })
+            .unwrap_or(false);
+
+        renewed.then_some(()).ok_or(())
+    }
+
     fn record_scheduler_attempt(&self, request: &StartSaveBackupTaskRequest) {
         self.update_scheduler_state(request, |state, now| {
             state.last_attempt_at = Some(now);
@@ -536,7 +565,7 @@ impl SaveBackupTaskRunner {
         request: &StartSaveBackupTaskRequest,
         update: impl FnOnce(&mut SaveBackupSchedulerState, u128),
     ) {
-        if request.scheduler_lease_owner.is_none() {
+        if request.trigger != SaveBackupTrigger::Auto {
             return;
         }
         let Some(repository) = self.scheduler_state_repository.as_deref() else {
@@ -635,6 +664,7 @@ fn auto_lease_owner(request: &StartSaveBackupTaskRequest) -> Option<&str> {
     (request.trigger == SaveBackupTrigger::Auto)
         .then_some(request.scheduler_lease_owner.as_deref())
         .flatten()
+        .filter(|lease_owner| !lease_owner.trim().is_empty())
 }
 
 fn running_event(task_id: &str, phase: &str) -> TaskProgressEvent {

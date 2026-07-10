@@ -11,6 +11,7 @@ use hmm_core::{
     SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -279,14 +280,15 @@ fn auto_backup_does_not_invoke_executor_when_initial_lease_renewal_fails() {
     ));
     scheduler_state.set_renewal_available(false);
     let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
     let runner =
         SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
             Arc::clone(&task_manager),
             executor.clone(),
-            Arc::new(RecordingAuditLogWriter::default()),
+            audit_log.clone(),
             Arc::new(FixedClock),
             Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
-            scheduler_state,
+            scheduler_state.clone(),
             Duration::from_millis(1),
         );
 
@@ -298,6 +300,21 @@ fn auto_backup_does_not_invoke_executor_when_initial_lease_renewal_fails() {
     assert_eq!(
         error.events.last().and_then(|event| event.error.as_deref()),
         Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+    let audit_events = audit_log.take_events();
+    assert_eq!(audit_events.len(), 1);
+    assert_eq!(audit_events[0].result, "failure");
+    assert_eq!(
+        audit_events[0].fields.get("error_code").map(String::as_str),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state exists");
+    assert_eq!(state.last_success_at, None);
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_scheduler_lease_unavailable")
     );
 }
 
@@ -346,12 +363,343 @@ fn auto_backup_fails_when_keepalive_cannot_renew_lease() {
         error.events.last().and_then(|event| event.error.as_deref()),
         Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
     );
-    let audit_event = audit_log.take_events().pop().expect("failure audit event");
-    assert_eq!(audit_event.result, "failure");
+    let audit_events = audit_log.take_events();
+    assert_eq!(audit_events.len(), 1);
+    assert_eq!(audit_events[0].result, "failure");
     assert_eq!(
-        audit_event.fields.get("error_code").map(String::as_str),
+        audit_events[0].fields.get("error_code").map(String::as_str),
         Some("save_backup_scheduler_lease_unavailable")
     );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state exists");
+    assert_eq!(state.last_success_at, None);
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn auto_backup_without_lease_owner_fails_before_invoking_executor() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+        Arc::clone(&task_manager),
+        executor.clone(),
+        audit_log.clone(),
+        Arc::new(FixedClock),
+        Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+        scheduler_state.clone(),
+    );
+    let mut request = auto_request("unused-owner");
+    request.scheduler_lease_owner = None;
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, request)
+        .expect_err("auto backup without a persisted lease owner must fail closed");
+
+    assert!(executor.take_requests().is_empty());
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Failed)
+    );
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+    assert_eq!(scheduler_state.renewal_calls(), 0);
+    assert!(scheduler_state.release_calls().is_empty());
+    let audit_events = audit_log.take_events();
+    assert_eq!(audit_events.len(), 1);
+    assert_eq!(audit_events[0].result, "failure");
+    assert_eq!(
+        audit_events[0].fields.get("error_code").map(String::as_str),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state exists");
+    assert_eq!(state.last_success_at, None);
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn auto_backup_with_blank_lease_owner_fails_without_renew_or_release() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
+    let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+        Arc::clone(&task_manager),
+        executor.clone(),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+        scheduler_state.clone(),
+    );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, auto_request("   "))
+        .expect_err("blank scheduler lease ownership is invalid");
+
+    assert!(executor.take_requests().is_empty());
+    assert_eq!(scheduler_state.renewal_calls(), 0);
+    assert!(scheduler_state.release_calls().is_empty());
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn oversized_keepalive_interval_is_bounded_below_scheduler_lease_ttl() {
+    let runner =
+        SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            Arc::new(TaskManager::new()),
+            Arc::new(RecordingSaveBackupExecutor::ok(sample_result())),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            Arc::new(RecordingSchedulerStateRepository::with_state(
+                sample_scheduler_state("auto-lease"),
+            )),
+            Duration::MAX,
+        );
+
+    let interval = runner.scheduler_lease_keepalive_interval();
+    assert!(interval >= Duration::from_millis(1));
+    assert!(interval < Duration::from_millis(300_000));
+}
+
+#[test]
+fn auto_backup_fails_when_expired_lease_is_acquired_by_competing_owner_before_completion() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let clock = Arc::new(ControllableClock::new(0));
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        SaveBackupSchedulerState {
+            lease_expires_at: Some(300_000),
+            ..sample_scheduler_state("auto-lease")
+        },
+    ));
+    let executor = Arc::new(BlockingSaveBackupExecutor::new());
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = Arc::new(
+        SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            Arc::clone(&task_manager),
+            executor.clone(),
+            audit_log.clone(),
+            clock.clone(),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            scheduler_state.clone(),
+            Duration::from_secs(60),
+        ),
+    );
+    let task_id = task.task_id.clone();
+    let run =
+        thread::spawn(move || runner.run_save_backup_task(&task_id, auto_request("auto-lease")));
+
+    executor.wait_until_started();
+    clock.set(300_001);
+    let competing = scheduler_state
+        .acquire_due_lease(SaveBackupSchedulerLeaseRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            lease_owner: "competing-worker".to_owned(),
+            lease_expires_at: 600_001,
+            now_unix_millis: 300_001,
+            last_checked_at: Some(300_001),
+            next_due_at: Some(400_000),
+        })
+        .expect("competing owner can inspect the expired lease");
+    assert!(competing.is_some());
+
+    executor.release();
+    let error = run
+        .join()
+        .expect("task thread does not panic")
+        .expect_err("ownership lost before completion must fail closed");
+
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Failed)
+    );
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+    let audit_events = audit_log.take_events();
+    assert_eq!(audit_events.len(), 1);
+    assert_eq!(audit_events[0].result, "failure");
+    assert_eq!(
+        audit_events[0].fields.get("error_code").map(String::as_str),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state exists");
+    assert_eq!(state.lease_owner.as_deref(), Some("competing-worker"));
+    assert_eq!(state.last_success_at, None);
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn auto_backup_fails_when_keepalive_thread_panics() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let clock = Arc::new(PanickingKeepaliveClock::default());
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let executor = Arc::new(BlockingSaveBackupExecutor::new());
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = Arc::new(
+        SaveBackupTaskRunner::with_scope_registry_and_scheduler_state_and_keepalive_interval(
+            Arc::clone(&task_manager),
+            executor.clone(),
+            audit_log.clone(),
+            clock.clone(),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            scheduler_state.clone(),
+            Duration::from_millis(1),
+        ),
+    );
+    let task_id = task.task_id.clone();
+    let run =
+        thread::spawn(move || runner.run_save_backup_task(&task_id, auto_request("auto-lease")));
+
+    executor.wait_until_started();
+    wait_until(|| clock.keepalive_panicked.load(Ordering::Acquire));
+    executor.release();
+    let error = run
+        .join()
+        .expect("task runner contains the keepalive panic")
+        .expect_err("keepalive join failure must fail closed");
+
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Failed)
+    );
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+    let audit_events = audit_log.take_events();
+    assert_eq!(audit_events.len(), 1);
+    assert_eq!(audit_events[0].result, "failure");
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state exists");
+    assert_eq!(state.last_success_at, None);
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn auto_backup_lease_failure_prevents_cancelled_success_audit() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+        sample_scheduler_state("auto-lease"),
+    ));
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+        Arc::clone(&task_manager),
+        Arc::new(CancellingAndLosingLeaseExecutor {
+            task_manager: Arc::clone(&task_manager),
+            task_id: task.task_id.clone(),
+            scheduler_state: scheduler_state.clone(),
+        }),
+        audit_log.clone(),
+        Arc::new(FixedClock),
+        Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+        scheduler_state.clone(),
+    );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, auto_request("auto-lease"))
+        .expect_err("lease loss must take precedence over cancelled-success handling");
+
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:save_backup_scheduler_lease_unavailable")
+    );
+    let audit_events = audit_log.take_events();
+    assert_eq!(audit_events.len(), 1);
+    assert_eq!(audit_events[0].result, "failure");
+    assert_eq!(
+        audit_events[0].fields.get("error_code").map(String::as_str),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+    let state = scheduler_state
+        .latest_state()
+        .expect("scheduler state exists");
+    assert_eq!(state.last_success_at, None);
+    assert_eq!(
+        state.last_error_code.as_deref(),
+        Some("save_backup_scheduler_lease_unavailable")
+    );
+}
+
+#[test]
+fn manual_and_pre_install_backups_ignore_scheduler_lease_repository() {
+    for trigger in [SaveBackupTrigger::Manual, SaveBackupTrigger::PreInstall] {
+        let task_manager = Arc::new(TaskManager::new());
+        let task = task_manager
+            .create_task(TaskKind::SaveBackup)
+            .expect("task can be created");
+        let initial_state = sample_scheduler_state("auto-lease");
+        let scheduler_state = Arc::new(RecordingSchedulerStateRepository::with_state(
+            initial_state.clone(),
+        ));
+        let runner = SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingSaveBackupExecutor::ok(sample_result())),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(hmm_app::SaveBackupTaskScopeRegistry::default()),
+            scheduler_state.clone(),
+        );
+        let request = StartSaveBackupTaskRequest {
+            trigger,
+            scheduler_lease_owner: Some("must-be-ignored".to_owned()),
+            ..sample_request()
+        };
+
+        runner
+            .run_save_backup_task(&task.task_id, request)
+            .expect("non-auto backup remains outside scheduler lease lifecycle");
+
+        assert_eq!(scheduler_state.renewal_calls(), 0);
+        assert!(scheduler_state.release_calls().is_empty());
+        assert_eq!(scheduler_state.latest_state(), Some(initial_state));
+    }
 }
 
 #[test]
@@ -665,6 +1013,26 @@ impl SaveBackupExecutor for CancellingSaveBackupExecutor {
     }
 }
 
+struct CancellingAndLosingLeaseExecutor {
+    task_manager: Arc<TaskManager>,
+    task_id: String,
+    scheduler_state: Arc<RecordingSchedulerStateRepository>,
+}
+
+impl SaveBackupExecutor for CancellingAndLosingLeaseExecutor {
+    fn create_backup(
+        &self,
+        _request: CreateSaveBackupRequest,
+        _trigger: SaveBackupTrigger,
+    ) -> Result<CreateSaveBackupResult, SaveBackupError> {
+        self.task_manager
+            .cancel_task(&self.task_id)
+            .expect("running task can be cancelled");
+        self.scheduler_state.set_renewal_available(false);
+        Ok(sample_result())
+    }
+}
+
 struct PanickingSaveBackupExecutor;
 
 impl SaveBackupExecutor for PanickingSaveBackupExecutor {
@@ -851,6 +1219,23 @@ impl ControllableClock {
 impl AppClock for ControllableClock {
     fn now_unix_millis(&self) -> Result<u128> {
         Ok(*self.now_unix_millis.lock().unwrap())
+    }
+}
+
+#[derive(Default)]
+struct PanickingKeepaliveClock {
+    calls: AtomicUsize,
+    keepalive_panicked: AtomicBool,
+}
+
+impl AppClock for PanickingKeepaliveClock {
+    fn now_unix_millis(&self) -> Result<u128> {
+        let call = self.calls.fetch_add(1, Ordering::AcqRel);
+        if call == 2 {
+            self.keepalive_panicked.store(true, Ordering::Release);
+            panic!("simulated keepalive clock panic");
+        }
+        Ok(42)
     }
 }
 
