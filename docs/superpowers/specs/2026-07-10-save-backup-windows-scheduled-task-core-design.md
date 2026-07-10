@@ -3,7 +3,7 @@
 - 日期：2026-07-10
 - 对应总任务：T8 存档备份系统 / Phase 7「真实后台守护与计划任务 MVP」
 - 前置切片：P7.1 单次 headless worker、scheduler lease 与 heartbeat 基础
-- 状态：设计已批准，待实施计划
+- 状态：设计已批准，实施计划已完成
 
 ## 1. 背景与问题
 
@@ -64,7 +64,14 @@ Windows adapter 使用系统自带的 PowerShell `ScheduledTasks` 模块。`hmm-
   不拼接进 PowerShell 源码。
 - PowerShell 强制输出 UTF-8、schema-versioned、结构化 JSON。
 - Rust 只解析白名单字段，不记录原始 stdout/stderr。
+- missing/permission 分类使用 PowerShell `ErrorCategory` 和稳定 `FullyQualifiedErrorId`，不依赖
+  本地化 message 或可能为空的 CIM `NativeErrorCode`；missing 同时要求
+  `ObjectNotFound` 和 `CmdletizationQuery_NotFound` 前缀。
 - command runner 使用隐藏窗口和固定超时，超时后终止子进程并返回稳定错误码。
+- PowerShell executable 通过 Windows `GetSystemDirectoryW` 派生绝对系统路径，不使用 PATH
+  搜索或可伪造的 `SystemRoot` 环境变量。
+- `ScheduledTasks.psd1` 也从同一系统目录派生绝对 manifest path 并按 path 导入，不按
+  `PSModulePath` 搜索同名用户模块。
 - inline command 不使用 `ExecutionPolicy Bypass`，不降低系统脚本策略。
 
 这个方案避免 `schtasks.exe` 的本地化错误文本和 XML 编码问题，同时比直接维护
@@ -129,13 +136,20 @@ backup service 完成全部业务判断。
 继续使用无外部参数的 `SaveBackupBackgroundRegistry`：
 
 ```text
-inspect() -> registration status
-register() -> registration status
-unregister() -> registration status
+inspect() -> typed result<registration status>
+register() -> typed result<registration status>
+unregister() -> typed result<registration status>
 ```
 
 port 不接受 worker path、task name、命令、参数、SID、XML、Profile 或存档路径。
 Windows adapter 在构造时获得内部 worker locator 和受控 command runner。
+
+port error 只包含稳定内部 code：`save_backup_background_task_ownership_conflict`、
+`save_backup_background_worker_binary_unavailable`、`save_backup_background_command_timeout`、
+`save_backup_background_command_invalid_output`、`save_backup_background_registration_failed`。
+它不包含原始 PowerShell/CIM message、stdout/stderr 或路径。app service
+把这些 code 映射为既有 public `registration_failed` 和对应 `lastErrorCode`，不扩展前端
+status union。
 
 `SaveBackupSchedulerStateRepository::record_worker_heartbeat` 继续作为 heartbeat
 持久化入口，但只能更新 `worker_instance_id`、`worker_heartbeat_at` 和必要的
@@ -170,7 +184,11 @@ PowerShell 或误报 registered。
 ### 6.5 `src-tauri`
 
 - `AppState` 按平台装配 registry 和 `SaveBackupBackgroundService`。
-- 现有 `get_save_backup_background_status` 改为调用 app service，但 DTO shape 不扩展。
+- registry locator 初始化失败不阻断主应用/headless worker 启动；inspect/register 稳定返回
+  worker-binary-unavailable，unregister 仍可通过 raw identity/ownership 路径清理 owned task。
+- 现有 `get_save_backup_background_status` 改为 async command，通过 `spawn_blocking` 调用同步
+  app service/PowerShell read-back，避免最长 15 秒的平台查询阻塞 Tauri command runtime；DTO
+  shape 不扩展。
 - P7.2a 不新增前端 register/unregister command；P7.2b 再暴露用户启用/停用入口。
 - `--once` worker parser 保持不变，不增加路径、Profile 或内部维护参数。
 
@@ -187,13 +205,14 @@ HelsincyModManager.SaveBackup.<16-hex-user-digest>
 约束：
 
 - task name 不包含用户名、完整 SID、路径、game id 或 profile id。
-- description 写固定 ownership marker 和 schema version，不写 worker 路径。
+- description 只写跨版本稳定的 ownership marker，不写 worker 路径或 schema version。
 - inspect 发现同名任务但 marker 不属于本应用时，返回 ownership conflict，不能覆盖。
 - unregister 删除前再次校验 marker；marker 不匹配时 fail closed。
 - register 只允许覆盖属于本应用、但 spec 已漂移的旧任务。
 
-任务 ownership marker 固定为应用内部常量。改变任务 schema 时递增 marker 中的 schema
-version，并由 register 的 create-or-update 语义完成升级。
+任务 ownership marker 固定为跨版本不变的应用内部常量；`task_schema_version` 是独立内部/audit
+常量，不参与 ownership。改变任务 schema 时递增内部版本并改变 expected semantic fields，由
+register 的 create-or-update 语义完成升级，旧任务不会因版本号变化被误判为外部 owner。
 
 ## 8. Scheduled Task 规范
 
@@ -201,6 +220,7 @@ P7.2a 固定以下内部规范，不提供用户配置：
 
 | 属性 | 固定值 |
 | --- | --- |
+| Task path | Task Scheduler root `\` |
 | Principal | 当前 Windows 用户 |
 | Logon type | Interactive token，仅用户登录时运行 |
 | Run level | Least privilege / Limited |
@@ -216,8 +236,9 @@ P7.2a 固定以下内部规范，不提供用户配置：
 | Action arguments | 严格等于 `--once` |
 | Working directory | 不设置 |
 
-read-back 不比较动态生成的 start boundary 原始字符串，但必须比较 trigger 类型、interval、
-principal、settings、ownership marker、canonical worker path 和 exact arguments。
+read-back 不比较动态生成的 start boundary 原始字符串，但必须比较固定 task path、trigger 类型/
+用户/enabled/interval/无期限 duration、principal、settings、ownership marker、canonical worker
+path、exact arguments 和空 working directory。
 
 `MultipleInstances = IgnoreNew` 只避免同一 Scheduled Task 重叠。数据库 scheduler lease 仍是
 主客户端与 worker、多个 worker 之间的最终去重边界，不能删除。
@@ -242,7 +263,8 @@ inspect 只读系统状态，不修改任务、不启动 worker、不写 schedul
 2. inspect 当前任务。
 3. 已正确注册时幂等返回 registered。
 4. 未注册时创建任务。
-5. 属于本应用但配置漂移时以完整 expected spec 更新。
+5. 属于本应用但配置漂移时以 `Set-ScheduledTask` 完整更新 expected spec；missing create 不用
+   `-Force`，避免竞态覆盖刚出现的外部任务。
 6. ownership conflict 或权限不足时不写入。
 7. 写入后再次 inspect；read-back 不是 registered 时，register 失败。
 
@@ -252,7 +274,7 @@ inspect 只读系统状态，不修改任务、不启动 worker、不写 schedul
 
 1. 任务不存在时幂等返回 not_registered。
 2. 任务属于本应用时删除。
-3. marker 不匹配时拒绝删除。
+3. marker 不匹配时拒绝删除；删除使用复核后的 task input object，不按宽泛名称删除。
 4. 删除后再次 inspect；仍存在时返回失败。
 
 unregister 不依赖 worker 文件仍存在，因此应用升级或文件缺失时仍可清理任务。
@@ -323,6 +345,8 @@ save_backup_background_worker_unhealthy
 save_backup_background_worker_binary_unavailable
 save_backup_background_command_timeout
 save_backup_background_command_invalid_output
+save_backup_background_audit_unavailable
+save_backup_background_status_unavailable
 ```
 
 允许的 Audit Log 字段：
@@ -351,10 +375,19 @@ P7.2a 将 `hmm-save-backup-worker` 作为 Tauri `bundle.externalBin` sidecar 随
 要求：
 
 - 构建步骤生成 Tauri 需要的 target-triple 文件名，生成物不提交 Git。
+- `externalBin` 和 sidecar build hooks 放在 Windows 平台配置中，不改变非 Windows 的普通
+  dev/build hooks。
+- Windows dev/release 都有确定性准备步骤；native build 使用 rustc host triple，cross-target
+  build 必须显式提供并校验相同 target triple。
+- 产物目录从 `cargo metadata` 获取，不能假设固定仓库 `target/` 或忽略
+  `CARGO_TARGET_DIR`。
 - 安装后 worker 与主程序位于受控 sibling 位置。
 - registry 只从当前主程序位置派生 worker path，不读取用户配置或前端参数。
 - register 前 canonicalize 并确认 worker 是文件。
-- read-back 时 canonicalize 实际 action path；旧路径、不存在路径或不同文件均判定 drift。
+- register 前拒绝 worker symlink，并确认 canonical worker parent 等于 canonical sibling parent，
+  防止通过 symlink/junction alias 把 action 指向应用目录外。
+- read-back 同时要求 raw action path 精确等于写入的 canonical path，并再次 canonicalize 验证；
+  alias、旧路径、不存在路径或不同文件均判定 drift。
 - worker 继续自行使用 Tauri identifier 解析同一 AppData/SQLite，不从 Scheduled Task 接收
   app-data、Profile、存档或备份目录参数。
 
@@ -406,15 +439,19 @@ P7.2a 的 bundle smoke 必须检查安装产物确实包含 worker。仅通过
 2. backend inspect 确认初始状态为 not_registered。
 3. register 后 inspect 确认 exact registered。
 4. 再次 register，确认幂等且没有第二个任务。
-5. 在测试环境中受控修改 owned task 的一个字段，确认 inspect 报 drift。
-6. register 修复 drift，并再次 read-back。
-7. 启动任务或等待触发，确认 synthetic Profile 写入新 heartbeat。
-8. 在真实任务触发并写入新 heartbeat 后确认 protected。future/stale heartbeat 的
-   worker_unhealthy 分支只在 fixed-clock 自动化测试中验证，不修改测试机系统时间或
-   人工篡改真实运行状态。
-9. unregister 两次，确认幂等。
-10. 最终 inspect 必须为 not_registered，并确认没有残留应用任务。
-11. 删除 synthetic save、backup 和测试账户/VM 状态。
+5. 在 harness 等待期间从 Task Scheduler 人工运行该任务，确认 action 指向安装态 sibling
+   worker 且 arguments 为 exact `--once`。
+6. 在第二终端用默认 ignored、只读 probe 确认 synthetic Profile 写入新鲜的
+   `worker_heartbeat_at`；probe 不运行 migration、不修改 DB、不输出路径或原始时间。
+7. unregister 两次，确认幂等。
+8. 最终 inspect 必须为 not_registered，并确认没有残留应用任务。
+9. 删除 synthetic save、backup 和测试账户/VM 状态。
+
+配置漂移逐字段识别/修复由 fake runner 自动化测试覆盖，不在真实系统任务上主动制造危险
+配置。P7.2a 尚无用户启用入口，因此 real smoke 不持久化篡改
+`background_protection_enabled` 来制造 UI `protected`；app 层的 exact + fresh -> protected、
+future/stale -> worker_unhealthy 使用 fixed-clock 自动化测试覆盖。P7.2b 再完成真实启用入口和
+UI/退出后的端到端 protected 验收。
 
 smoke 记录只能包含状态、稳定错误码、测试版本和时间，不附 task XML、完整路径、用户名、
 SID、存档内容或原始系统输出。
@@ -429,8 +466,9 @@ P7.2a 完成时必须同时满足：
 4. worker heartbeat 与 scheduler check 时间已分离。
 5. `protected` 只能由 exact registration 与 fresh heartbeat 双条件产生。
 6. 自动化测试不触碰真实系统任务或玩家数据。
-7. Windows 人工 smoke 完成创建、漂移修复、真实触发、fresh heartbeat 健康和最终
-   清理闭环；future/stale heartbeat 由自动化测试覆盖。
+7. Windows 人工 smoke 完成创建/read-back、幂等注册、安装态 worker 真实触发、fresh
+   heartbeat 只读确认和最终清理闭环；配置漂移与 protected/future/stale 状态矩阵由自动化
+   测试覆盖，P7.2b 再做真实 UI protected 验收。
 8. 安装产物包含可定位的 worker sidecar。
 9. P7.1 scheduler lease、game-running guard、backup task/audit/history 链路回归通过。
 10. 文档明确 P7.2b UI/退出体验和安装器自动清理仍未完成。
