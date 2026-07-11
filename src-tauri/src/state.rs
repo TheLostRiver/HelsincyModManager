@@ -104,10 +104,6 @@ pub struct AppState {
     pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
     pub save_backup_background: Arc<SaveBackupBackgroundService>,
     pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
-    #[expect(
-        dead_code,
-        reason = "the exit guard is wired before exit lifecycle commands consume it"
-    )]
     pub save_backup_exit_guard: Arc<SaveBackupExitGuard>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
