@@ -231,6 +231,8 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 当前已落地的最小 Audit Log 能力：
 - 安装、卸载和后端受控回滚任务会写入最小安装审计事件。`rollback_install` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、backup ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
+- P7.2a 后台平台注册生命周期会写入 category `save_backup`、operation `background_registration` 的最小审计事件。除顶层 result 外，fields 只允许 `registration_status`、`task_schema_version` 和稳定 `error_code`；不得记录 task name、SID、worker path、PowerShell executable/script、task XML、原始 stdout/stderr、CIM exception、Profile/save/backup 路径或用户名。
+- 后台状态查询本身只读且不写重复审计；register/update/unregister 只有在受控 app use case 中才记录结果。ownership conflict、permission、invalid output 和 timeout 只映射稳定 code，不持久化原始平台错误。
 - `export_preview_image_diagnostics` 成功写入受控预览图诊断 zip 后，会在 app data 下的 `logs/audit/audit-YYYY-MM-DD.log` 写入 JSONL 审计事件，日期来自事件时间戳；若诊断 zip 写入失败，也会先写入失败审计事件。
 - 该事件只记录操作名、类别、结果、导出文件名/ID、大小、稳定错误分类和聚合计数，不记录完整本地路径、原始错误文本、`thumbnailUrl`、`contentHash`、sandbox/cache 路径、README 全文、原始 Mod 包内容或原始日志。
 - `hmm-ports` 已提供最小 `TextLogReader` port，`hmm-infra` 可从 app data 下的 `logs/app/app-YYYY-MM-DD.log` 与 `logs/tasks/task-<task_id>.log` 读取最近 N 行已校验文本；读取时会跳过不符合白名单文件名的日志、空行、包含控制字符或敏感片段的行，只返回安全文件名和文本行。该读取能力已通过 `export_support_diagnostics` 的 app service/command 链路受控使用。
@@ -264,6 +266,7 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - token、API key、cookie 脱敏。
 - `task_id` 在任务日志和进度事件中一致传播。
 - 文件写入、覆盖、删除、备份、回滚都会产生 Audit Log。
+- 后台 register/update/unregister 审计字段满足白名单，且不包含 task/SID/path/PowerShell/XML/raw output。
 - 诊断包不包含真实存档、第三方 Mod 包、完整本地路径或明显敏感信息。
 
 测试必须使用人工构造的路径、临时目录和最小样本，不能依赖真实游戏安装目录或真实玩家存档。
