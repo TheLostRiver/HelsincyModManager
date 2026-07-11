@@ -58,6 +58,7 @@ pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteModMetadataRepository;
 pub use sqlite::SqliteProfileRepository;
+pub use sqlite::SqliteSaveBackupBackgroundSettingsRepository;
 pub use sqlite::SqliteSaveBackupRepository;
 pub use sqlite::SqliteSaveBackupSchedulerStateRepository;
 pub use steam_discovery::PlatformSteamRootProvider;
