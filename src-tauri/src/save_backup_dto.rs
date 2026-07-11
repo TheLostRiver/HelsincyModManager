@@ -1,6 +1,7 @@
 use crate::dto::TaskStartedDto;
 use hmm_app::{
-    SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus, SaveBackupBackgroundStatus,
+    SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus, SaveBackupBackgroundControlStatus,
+    SaveBackupBackgroundStatus,
 };
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupSchedulerPendingReason,
@@ -111,6 +112,16 @@ pub struct SaveBackupBackgroundStatusDto {
     pub last_error_code: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveBackupBackgroundControlStatusDto {
+    pub desired_enabled: bool,
+    pub status: SaveBackupBackgroundStatusKindDto,
+    pub enabled_at: Option<u64>,
+    pub last_heartbeat_at: Option<u64>,
+    pub last_error_code: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveBackupBackgroundStatusKindDto {
@@ -172,6 +183,18 @@ impl SaveBackupBackgroundStatusDto {
                 pending_reason: None,
                 last_error_code,
             },
+        }
+    }
+}
+
+impl From<SaveBackupBackgroundControlStatus> for SaveBackupBackgroundControlStatusDto {
+    fn from(status: SaveBackupBackgroundControlStatus) -> Self {
+        Self {
+            desired_enabled: status.desired_enabled,
+            status: status.status.into(),
+            enabled_at: status.enabled_at.map(|value| value as u64),
+            last_heartbeat_at: status.last_heartbeat_at.map(|value| value as u64),
+            last_error_code: status.last_error_code,
         }
     }
 }
@@ -277,6 +300,41 @@ impl From<SaveBackupStatus> for SaveBackupStatusDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_control_dto_exposes_only_whitelisted_fields() {
+        let dto = SaveBackupBackgroundControlStatusDto::from(
+            hmm_app::SaveBackupBackgroundControlStatus {
+                desired_enabled: true,
+                status: SaveBackupBackgroundProtectionStatus::Starting,
+                enabled_at: Some(100),
+                last_heartbeat_at: None,
+                last_error_code: Some("save_backup_background_worker_unhealthy".to_owned()),
+            },
+        );
+
+        let value = serde_json::to_value(dto).expect("serialize background control status");
+
+        assert_eq!(value["desiredEnabled"], true);
+        assert_eq!(value["status"], "starting");
+        assert_eq!(value["enabledAt"], 100);
+        assert_eq!(value["lastHeartbeatAt"], serde_json::Value::Null);
+        assert_eq!(
+            value["lastErrorCode"],
+            "save_backup_background_worker_unhealthy"
+        );
+        for forbidden in [
+            "taskName",
+            "sid",
+            "workerPath",
+            "leaseOwner",
+            "workerInstanceId",
+            "schedulerState",
+            "profileIds",
+        ] {
+            assert!(value.get(forbidden).is_none());
+        }
+    }
 
     #[test]
     fn background_status_kind_maps_and_serializes_starting() {
