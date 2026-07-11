@@ -17,6 +17,7 @@ mod profile;
 mod save_backup;
 mod save_backup_background;
 mod save_backup_background_worker;
+mod save_backup_exit_guard;
 mod save_backup_scheduler;
 mod save_backup_task;
 mod save_directory_discovery;
@@ -100,6 +101,9 @@ pub use save_backup_background::{
 pub use save_backup_background_worker::{
     SaveBackupBackgroundWorker, SaveBackupBackgroundWorkerError,
     SaveBackupBackgroundWorkerRunSummary,
+};
+pub use save_backup_exit_guard::{
+    SaveBackupExitDecision, SaveBackupExitGuard, SaveBackupExitGuardError, SaveBackupExitReason,
 };
 pub use save_backup_scheduler::{
     SaveBackupAutoCheckRequest, SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus,
