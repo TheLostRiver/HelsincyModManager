@@ -14,7 +14,12 @@ export function hostTripleFromRustc(output) {
 }
 
 export function targetDirectoryFromCargoMetadata(output) {
-  const metadata = JSON.parse(output);
+  let metadata;
+  try {
+    metadata = JSON.parse(output);
+  } catch {
+    throw new Error("cargo metadata output is not valid JSON");
+  }
   if (
     typeof metadata.target_directory !== "string" ||
     metadata.target_directory.length === 0
@@ -102,9 +107,30 @@ function capture(command, args) {
     encoding: "utf8",
   });
   if (result.error || result.status !== 0) {
-    throw result.error ?? new Error(`${command} exited with ${result.status}`);
+    throw (
+      result.error ??
+      capturedCommandFailure(command, result.status, result.stderr)
+    );
   }
   return result.stdout ?? "";
+}
+
+export function capturedCommandFailure(command, status, stderr) {
+  const detail =
+    typeof stderr === "string" ? stderr.trim().slice(0, 4_000) : "";
+  const suffix = detail.length > 0 ? `: ${detail}` : "";
+  return new Error(`${command} exited with ${status}${suffix}`);
+}
+
+export function assertSidecarBuildOutput(source) {
+  try {
+    if (statSync(source).isFile()) {
+      return;
+    }
+  } catch {
+    // Normalize missing and unreadable build outputs to one stable build error.
+  }
+  throw new Error("worker sidecar build output is missing");
 }
 
 export function prepareSidecar(args = []) {
@@ -146,9 +172,7 @@ export function prepareSidecar(args = []) {
     profile,
     `hmm-save-backup-worker${extension}`,
   );
-  if (!statSync(source).isFile()) {
-    throw new Error("worker sidecar build output is missing");
-  }
+  assertSidecarBuildOutput(source);
 
   const destinationDirectory = path.join(repoRoot, "src-tauri", "binaries");
   mkdirSync(destinationDirectory, { recursive: true });

@@ -296,6 +296,7 @@ P7.2a Windows Scheduled Task 平台核心、独立 heartbeat、健康派生和 s
 
 ```powershell
 cargo test -p hmm-core background_registration_statuses_have_stable_codes
+cargo test -p hmm-ports background_registry_errors_have_stable_codes
 cargo test -p hmm-infra --test save_backup_scheduler_repository
 cargo test -p hmm-infra save_backup_background_registry::tests
 cargo test -p hmm-app --test save_backup_background
