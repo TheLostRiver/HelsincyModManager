@@ -8,15 +8,15 @@ use hmm_app::{
 use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
     ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
-    ProfileSaveSettings, SaveBackupBackgroundProtectionStatus,
+    ProfileSaveSettings, SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundSettings,
     SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
     SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
     SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, GameRunningDetector, GameRunningStatus,
-    ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository,
+    ProfileRepository, ProfileSaveSettingsRepository, SaveBackupBackgroundSettingsRepository,
+    SaveBackupRepository, SaveBackupSchedulerStateRepository,
 };
 use std::sync::{Arc, Mutex};
 
@@ -25,8 +25,91 @@ const HOUR_MS: u128 = 3_600_000;
 const NOW: u128 = 2 * DAY_MS + 4 * HOUR_MS;
 
 #[test]
+fn worker_records_one_global_heartbeat_after_completed_cycle() {
+    let harness = Harness::new();
+    harness.enable_background();
+    harness.insert_profile("manual");
+    harness.insert_settings(manual_settings("manual"));
+
+    let summary = harness.worker().run_once("worker-a").expect("worker runs");
+
+    assert_eq!(summary.checked_profiles, 0);
+    assert!(harness.executor.triggers().is_empty());
+    assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
+}
+
+#[test]
+fn profile_list_failure_does_not_record_global_heartbeat() {
+    let harness = Harness::new();
+    harness.enable_background();
+    harness.profile_repository.set_fail_list(true);
+
+    let error = harness
+        .worker()
+        .run_once("worker-a")
+        .expect_err("profile list failure");
+
+    assert_eq!(
+        error.code(),
+        "save_backup_background_profile_list_unavailable"
+    );
+    assert!(harness.background_settings.heartbeats().is_empty());
+}
+
+#[test]
+fn disabled_background_intent_makes_worker_a_noop() {
+    let harness = Harness::new();
+    harness.insert_profile("default");
+    harness.insert_settings(daily_settings("default"));
+    harness.profile_repository.set_fail_list(true);
+
+    let summary = harness
+        .worker_with_clock(Arc::new(FixedClock::failing()))
+        .run_once("worker-a")
+        .expect("disabled worker is a no-op");
+
+    assert_eq!(summary, Default::default());
+    assert!(harness.executor.triggers().is_empty());
+    assert!(harness
+        .scheduler_state_repository
+        .lease_requests()
+        .is_empty());
+    assert!(harness.background_settings.heartbeats().is_empty());
+}
+
+#[test]
+fn global_settings_and_heartbeat_failures_have_stable_top_level_errors() {
+    let settings_failure = Harness::new();
+    settings_failure.background_settings.set_fail_load(true);
+    let error = settings_failure
+        .worker_with_clock(Arc::new(FixedClock::failing()))
+        .run_once("worker-a")
+        .expect_err("settings load failure");
+    assert_eq!(error.code(), "save_backup_background_settings_unavailable");
+    assert!(settings_failure.background_settings.heartbeats().is_empty());
+
+    let heartbeat_failure = Harness::new();
+    heartbeat_failure.enable_background();
+    heartbeat_failure.insert_profile("manual");
+    heartbeat_failure.insert_settings(manual_settings("manual"));
+    heartbeat_failure
+        .background_settings
+        .set_fail_heartbeat(true);
+    let error = heartbeat_failure
+        .worker()
+        .run_once("worker-a")
+        .expect_err("global heartbeat failure");
+    assert_eq!(error.code(), "save_backup_background_heartbeat_unavailable");
+    assert!(heartbeat_failure
+        .background_settings
+        .heartbeats()
+        .is_empty());
+}
+
+#[test]
 fn due_auto_profile_starts_auto_task_and_records_independent_heartbeat() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("default");
     harness.insert_settings(daily_settings("default"));
 
@@ -63,6 +146,7 @@ fn due_auto_profile_starts_auto_task_and_records_independent_heartbeat() {
 fn running_and_unknown_profiles_are_deferred_without_task_or_second_lease() {
     for status in [GameRunningStatus::Running, GameRunningStatus::Unknown] {
         let harness = Harness::new();
+        harness.enable_background();
         harness.insert_profile("default");
         harness.insert_settings(daily_settings("default"));
         harness.game_running_detector.set_status(status);
@@ -79,12 +163,14 @@ fn running_and_unknown_profiles_are_deferred_without_task_or_second_lease() {
             .is_empty());
         assert!(harness.executor.triggers().is_empty());
         assert_eq!(harness.scheduler_state_repository.heartbeats().len(), 1);
+        assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
     }
 }
 
 #[test]
 fn manual_and_missing_settings_profiles_are_skipped() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("manual");
     harness.insert_profile("missing-settings");
     harness.insert_settings(manual_settings("manual"));
@@ -106,6 +192,7 @@ fn manual_and_missing_settings_profiles_are_skipped() {
 #[test]
 fn settings_failure_is_audited_and_does_not_stop_next_due_profile() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("broken");
     harness.insert_profile("due");
     harness.settings_repository.fail_for("broken");
@@ -121,6 +208,7 @@ fn settings_failure_is_audited_and_does_not_stop_next_due_profile() {
     assert_eq!(summary.deferred_profiles, 0);
     assert_eq!(summary.failed_profiles, 1);
     assert_eq!(harness.executor.triggers(), vec![SaveBackupTrigger::Auto]);
+    assert!(harness.background_settings.heartbeats().is_empty());
 
     let event = harness
         .audit_log
@@ -146,6 +234,7 @@ fn settings_failure_is_audited_and_does_not_stop_next_due_profile() {
 #[test]
 fn task_reservation_failure_releases_the_scheduler_lease() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("default");
     harness.insert_settings(daily_settings("default"));
     harness
@@ -169,6 +258,7 @@ fn task_reservation_failure_releases_the_scheduler_lease() {
     assert_eq!(summary.deferred_profiles, 0);
     assert_eq!(summary.failed_profiles, 1);
     assert_eq!(harness.scheduler_state_repository.release_calls().len(), 1);
+    assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
     let state = harness
         .scheduler_state_repository
         .state(&GameId::mhw(), &ProfileId::new("default"))
@@ -191,6 +281,7 @@ fn task_reservation_failure_releases_the_scheduler_lease() {
 #[test]
 fn heartbeat_failure_releases_due_lease_without_starting_a_task() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("default");
     harness.insert_settings(daily_settings("default"));
     harness.scheduler_state_repository.set_fail_heartbeat(true);
@@ -203,6 +294,7 @@ fn heartbeat_failure_releases_due_lease_without_starting_a_task() {
     assert_eq!(summary.started_tasks, 0);
     assert_eq!(summary.failed_profiles, 1);
     assert!(harness.executor.triggers().is_empty());
+    assert!(harness.background_settings.heartbeats().is_empty());
 
     let lease_owner = harness
         .scheduler_state_repository
@@ -244,6 +336,7 @@ fn heartbeat_failure_releases_due_lease_without_starting_a_task() {
 #[test]
 fn client_due_lease_prevents_a_second_worker_from_starting_the_same_backup() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("default");
     harness.insert_settings(daily_settings("default"));
 
@@ -270,6 +363,7 @@ fn client_due_lease_prevents_a_second_worker_from_starting_the_same_backup() {
     assert_eq!(summary.failed_profiles, 0);
     assert_eq!(harness.scheduler_state_repository.lease_requests().len(), 2);
     assert!(harness.executor.triggers().is_empty());
+    assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
     let state = harness
         .scheduler_state_repository
         .state(&GameId::mhw(), &ProfileId::new("default"))
@@ -283,6 +377,7 @@ fn client_due_lease_prevents_a_second_worker_from_starting_the_same_backup() {
 #[test]
 fn runner_failure_is_isolated_and_the_next_due_profile_still_runs() {
     let harness = Harness::new();
+    harness.enable_background();
     harness.insert_profile("failing-runner");
     harness.insert_profile("due");
     harness.insert_settings(daily_settings("failing-runner"));
@@ -302,6 +397,7 @@ fn runner_failure_is_isolated_and_the_next_due_profile_still_runs() {
         harness.executor.profile_ids(),
         vec!["failing-runner".to_owned(), "due".to_owned()]
     );
+    assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
     assert!(harness.audit_log.events().iter().any(|event| {
         event.operation == "background_worker"
             && event.fields.get("error_code").map(String::as_str)
@@ -310,20 +406,9 @@ fn runner_failure_is_isolated_and_the_next_due_profile_still_runs() {
 }
 
 #[test]
-fn list_and_worker_clock_failures_are_the_only_top_level_errors() {
-    let list_failure = Harness::new();
-    list_failure.profile_repository.set_fail_list(true);
-
-    let list_error = list_failure
-        .worker()
-        .run_once("worker-a")
-        .expect_err("profile listing failure is top-level");
-    assert_eq!(
-        list_error.code(),
-        "save_backup_background_profile_list_unavailable"
-    );
-
+fn worker_clock_failure_is_a_top_level_error_without_global_heartbeat() {
     let clock_failure = Harness::new();
+    clock_failure.enable_background();
     let clock_error = clock_failure
         .worker_with_clock(Arc::new(FixedClock::failing()))
         .run_once("worker-a")
@@ -332,9 +417,11 @@ fn list_and_worker_clock_failures_are_the_only_top_level_errors() {
         clock_error.code(),
         "save_backup_background_clock_unavailable"
     );
+    assert!(clock_failure.background_settings.heartbeats().is_empty());
 }
 
 struct Harness {
+    background_settings: Arc<FakeBackgroundSettingsRepository>,
     profile_repository: Arc<FakeProfileRepository>,
     settings_repository: Arc<FakeProfileSaveSettingsRepository>,
     scheduler_state_repository: Arc<FakeSaveBackupSchedulerStateRepository>,
@@ -349,6 +436,7 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
+        let background_settings = Arc::new(FakeBackgroundSettingsRepository::default());
         let profile_repository = Arc::new(FakeProfileRepository::default());
         let settings_repository = Arc::new(FakeProfileSaveSettingsRepository::default());
         let backup_repository = Arc::new(FakeSaveBackupRepository::default());
@@ -386,6 +474,7 @@ impl Harness {
         );
 
         Self {
+            background_settings,
             profile_repository,
             settings_repository,
             scheduler_state_repository,
@@ -404,7 +493,7 @@ impl Harness {
     }
 
     fn worker_with_clock(&self, clock: Arc<dyn AppClock>) -> SaveBackupBackgroundWorker {
-        SaveBackupBackgroundWorker::new(
+        SaveBackupBackgroundWorker::new_with_settings_repository(
             vec![GameId::mhw()],
             self.profile_repository.clone(),
             self.settings_repository.clone(),
@@ -412,9 +501,14 @@ impl Harness {
             self.task_service.clone(),
             self.task_runner.clone(),
             self.scheduler_state_repository.clone(),
+            self.background_settings.clone(),
             self.audit_log.clone(),
             clock,
         )
+    }
+
+    fn enable_background(&self) {
+        self.background_settings.enable_at(NOW - 1);
     }
 
     fn insert_profile(&self, profile_id: &str) {
@@ -434,6 +528,100 @@ impl Harness {
         self.settings_repository
             .save_settings(&settings)
             .expect("settings saved");
+    }
+}
+
+struct FakeBackgroundSettingsRepository {
+    state: Mutex<SaveBackupBackgroundSettings>,
+    heartbeats: Mutex<Vec<u128>>,
+    fail_load: Mutex<bool>,
+    fail_heartbeat: Mutex<bool>,
+}
+
+impl Default for FakeBackgroundSettingsRepository {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(SaveBackupBackgroundSettings::disabled()),
+            heartbeats: Mutex::new(Vec::new()),
+            fail_load: Mutex::new(false),
+            fail_heartbeat: Mutex::new(false),
+        }
+    }
+}
+
+impl FakeBackgroundSettingsRepository {
+    fn enable_at(&self, enabled_at: u128) {
+        *self.state.lock().expect("background settings lock") = SaveBackupBackgroundSettings {
+            desired_enabled: true,
+            enabled_at: Some(enabled_at),
+            last_worker_heartbeat_at: None,
+            updated_at: enabled_at,
+        };
+    }
+
+    fn heartbeats(&self) -> Vec<u128> {
+        self.heartbeats
+            .lock()
+            .expect("global heartbeats lock")
+            .clone()
+    }
+
+    fn set_fail_load(&self, fail: bool) {
+        *self.fail_load.lock().expect("settings load failure lock") = fail;
+    }
+
+    fn set_fail_heartbeat(&self, fail: bool) {
+        *self
+            .fail_heartbeat
+            .lock()
+            .expect("global heartbeat failure lock") = fail;
+    }
+}
+
+impl SaveBackupBackgroundSettingsRepository for FakeBackgroundSettingsRepository {
+    fn load(&self) -> Result<SaveBackupBackgroundSettings> {
+        if *self.fail_load.lock().expect("settings load failure lock") {
+            anyhow::bail!("background settings unavailable");
+        }
+        Ok(self.state.lock().expect("background settings lock").clone())
+    }
+
+    fn begin_enable(&self, enabled_at: u128) -> Result<()> {
+        self.enable_at(enabled_at);
+        Ok(())
+    }
+
+    fn finish_disable(&self, updated_at: u128) -> Result<()> {
+        *self.state.lock().expect("background settings lock") = SaveBackupBackgroundSettings {
+            desired_enabled: false,
+            enabled_at: None,
+            last_worker_heartbeat_at: None,
+            updated_at,
+        };
+        Ok(())
+    }
+
+    fn record_worker_heartbeat(&self, heartbeat_at: u128) -> Result<()> {
+        if *self
+            .fail_heartbeat
+            .lock()
+            .expect("global heartbeat failure lock")
+        {
+            anyhow::bail!("global heartbeat unavailable");
+        }
+        {
+            let mut state = self.state.lock().expect("background settings lock");
+            if !state.desired_enabled {
+                anyhow::bail!("background protection disabled");
+            }
+            state.last_worker_heartbeat_at = Some(heartbeat_at);
+            state.updated_at = heartbeat_at;
+        }
+        self.heartbeats
+            .lock()
+            .expect("global heartbeats lock")
+            .push(heartbeat_at);
+        Ok(())
     }
 }
 

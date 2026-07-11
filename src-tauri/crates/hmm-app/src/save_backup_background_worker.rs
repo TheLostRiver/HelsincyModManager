@@ -4,7 +4,7 @@ use std::sync::Arc;
 use hmm_core::{BackupCadence, GameId, ProfileId, SaveBackupTrigger, SaveBackupWorkerHeartbeat};
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, ProfileRepository, ProfileSaveSettingsRepository,
-    SaveBackupSchedulerStateRepository,
+    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
 };
 use thiserror::Error;
 
@@ -23,17 +23,23 @@ pub struct SaveBackupBackgroundWorkerRunSummary {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum SaveBackupBackgroundWorkerError {
+    #[error("background settings unavailable")]
+    SettingsUnavailable,
     #[error("profile list unavailable")]
     ProfileListUnavailable,
     #[error("worker clock unavailable")]
     ClockUnavailable,
+    #[error("global worker heartbeat unavailable")]
+    HeartbeatUnavailable,
 }
 
 impl SaveBackupBackgroundWorkerError {
     pub fn code(&self) -> &'static str {
         match self {
+            Self::SettingsUnavailable => "save_backup_background_settings_unavailable",
             Self::ProfileListUnavailable => "save_backup_background_profile_list_unavailable",
             Self::ClockUnavailable => "save_backup_background_clock_unavailable",
+            Self::HeartbeatUnavailable => "save_backup_background_heartbeat_unavailable",
         }
     }
 }
@@ -46,6 +52,7 @@ pub struct SaveBackupBackgroundWorker {
     task_service: Arc<SaveBackupTaskService>,
     task_runner: Arc<SaveBackupTaskRunner>,
     scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+    background_settings_repository: Option<Arc<dyn SaveBackupBackgroundSettingsRepository>>,
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
 }
@@ -71,6 +78,34 @@ impl SaveBackupBackgroundWorker {
             task_service,
             task_runner,
             scheduler_state_repository,
+            background_settings_repository: None,
+            audit_log,
+            clock,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_settings_repository(
+        game_ids: Vec<GameId>,
+        profile_repository: Arc<dyn ProfileRepository>,
+        save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
+        scheduler: Arc<SaveBackupAutoSchedulerService>,
+        task_service: Arc<SaveBackupTaskService>,
+        task_runner: Arc<SaveBackupTaskRunner>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        background_settings_repository: Arc<dyn SaveBackupBackgroundSettingsRepository>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+    ) -> Self {
+        Self {
+            game_ids,
+            profile_repository,
+            save_settings_repository,
+            scheduler,
+            task_service,
+            task_runner,
+            scheduler_state_repository,
+            background_settings_repository: Some(background_settings_repository),
             audit_log,
             clock,
         }
@@ -80,6 +115,15 @@ impl SaveBackupBackgroundWorker {
         &self,
         worker_instance_id: &str,
     ) -> Result<SaveBackupBackgroundWorkerRunSummary, SaveBackupBackgroundWorkerError> {
+        if let Some(repository) = &self.background_settings_repository {
+            let settings = repository
+                .load()
+                .map_err(|_| SaveBackupBackgroundWorkerError::SettingsUnavailable)?;
+            if !settings.desired_enabled {
+                return Ok(SaveBackupBackgroundWorkerRunSummary::default());
+            }
+        }
+
         let worker_started_at = self
             .clock
             .now_unix_millis()
@@ -89,6 +133,7 @@ impl SaveBackupBackgroundWorker {
             .list_all()
             .map_err(|_| SaveBackupBackgroundWorkerError::ProfileListUnavailable)?;
         let mut summary = SaveBackupBackgroundWorkerRunSummary::default();
+        let mut cycle_infrastructure_failed = false;
 
         for game_id in &self.game_ids {
             for profile in &profiles {
@@ -96,6 +141,7 @@ impl SaveBackupBackgroundWorker {
                     Ok(Some(settings)) => settings,
                     Ok(None) => continue,
                     Err(_) => {
+                        cycle_infrastructure_failed = true;
                         summary.failed_profiles += 1;
                         self.record_profile_error(
                             worker_started_at,
@@ -118,6 +164,7 @@ impl SaveBackupBackgroundWorker {
                 }) {
                     Ok(check) => check,
                     Err(error) => {
+                        cycle_infrastructure_failed = true;
                         summary.failed_profiles += 1;
                         self.record_profile_error(
                             worker_started_at,
@@ -139,6 +186,7 @@ impl SaveBackupBackgroundWorker {
                     })
                     .is_err()
                 {
+                    cycle_infrastructure_failed = true;
                     if let Some(request) = check.due_task.as_ref() {
                         self.release_task_start_lease(request);
                     }
@@ -194,6 +242,15 @@ impl SaveBackupBackgroundWorker {
 
                 summary.checked_profiles += 1;
             }
+        }
+
+        if cycle_infrastructure_failed {
+            return Ok(summary);
+        }
+        if let Some(repository) = &self.background_settings_repository {
+            repository
+                .record_worker_heartbeat(worker_started_at)
+                .map_err(|_| SaveBackupBackgroundWorkerError::HeartbeatUnavailable)?;
         }
 
         Ok(summary)
