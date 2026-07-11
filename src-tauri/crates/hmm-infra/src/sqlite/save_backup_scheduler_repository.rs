@@ -44,6 +44,7 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
                  lease_owner, lease_expires_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT(game_id, profile_id) DO UPDATE SET
+                -- Active lease fields are intentionally omitted; only lease lifecycle methods mutate them.
                 enabled = excluded.enabled,
                 background_protection_enabled = excluded.background_protection_enabled,
                 background_status = excluded.background_status,
@@ -159,20 +160,26 @@ impl SaveBackupSchedulerStateRepository for SqliteSaveBackupSchedulerStateReposi
 
     fn record_worker_heartbeat(&self, heartbeat: SaveBackupWorkerHeartbeat) -> Result<()> {
         let conn = self.lock_db()?;
-        conn.execute(
-            "UPDATE save_backup_scheduler_state
+        let updated = conn
+            .execute(
+                "UPDATE save_backup_scheduler_state
              SET worker_instance_id = ?3,
                  worker_heartbeat_at = ?4,
                  updated_at = ?4
              WHERE game_id = ?1 AND profile_id = ?2",
-            params![
-                heartbeat.game_id.as_str(),
-                heartbeat.profile_id.as_str(),
-                heartbeat.worker_instance_id,
-                to_i64(heartbeat.heartbeat_at),
-            ],
-        )
-        .context("failed to record save backup worker heartbeat")?;
+                params![
+                    heartbeat.game_id.as_str(),
+                    heartbeat.profile_id.as_str(),
+                    heartbeat.worker_instance_id,
+                    to_i64(heartbeat.heartbeat_at),
+                ],
+            )
+            .context("failed to record save backup worker heartbeat")?;
+        if updated == 0 {
+            return Err(anyhow!(
+                "no scheduler state row exists for worker heartbeat"
+            ));
+        }
         Ok(())
     }
 }
