@@ -57,7 +57,9 @@ use state::AppState;
 use task_commands::cancel_task;
 use tauri::Manager;
 use thumbnail_protocol::register_thumbnail_protocol;
-use window_lifecycle_commands::{exit_app, hide_main_window_to_tray, register_window_lifecycle};
+use window_lifecycle_commands::{
+    exit_app, get_app_exit_guard, hide_main_window_to_tray, register_window_lifecycle,
+};
 
 pub use background_worker::BackgroundWorkerEntryError;
 
@@ -139,6 +141,7 @@ pub fn run() {
             disable_save_backup_background_protection,
             list_save_backups,
             hide_main_window_to_tray,
+            get_app_exit_guard,
             exit_app
         ])
         .run(tauri::generate_context!())
