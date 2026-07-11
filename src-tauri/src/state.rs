@@ -15,13 +15,12 @@ use hmm_app::{
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
     RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupBackgroundService,
-    SaveBackupBackgroundWorker, SaveBackupExecutor, SaveBackupService, SaveBackupTaskRunner,
-    SaveBackupTaskScopeRegistry, SaveBackupTaskService, StartRecoveryActionTaskRequest,
-    StartUninstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    SaveBackupBackgroundWorker, SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService,
+    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
+    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
+    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, PreviewImagePolicy};
 use hmm_games_mhw::{
@@ -45,19 +44,20 @@ use hmm_infra::{
     RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
     SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
-    SqliteProfileRepository, SqliteSaveBackupRepository, SqliteSaveBackupSchedulerStateRepository,
+    SqliteProfileRepository, SqliteSaveBackupBackgroundSettingsRepository,
+    SqliteSaveBackupRepository, SqliteSaveBackupSchedulerStateRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
     SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
     TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
-    AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
+    AppClock, AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
     GamePrerequisiteRuleRepository, GameRunningDetector, ModImportResultRepository,
     ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository, SaveBackupBackgroundRegistry, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader,
-    ThumbnailCacheMaintenance,
+    ProfileSaveSettingsRepository, SaveBackupBackgroundRegistry,
+    SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
 };
 #[cfg(test)]
 use std::cell::RefCell;
@@ -104,6 +104,11 @@ pub struct AppState {
     pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
     pub save_backup_background: Arc<SaveBackupBackgroundService>,
     pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
+    #[expect(
+        dead_code,
+        reason = "the exit guard is wired before exit lifecycle commands consume it"
+    )]
+    pub save_backup_exit_guard: Arc<SaveBackupExitGuard>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
     pub task_manager: Arc<TaskManager>,
@@ -157,6 +162,8 @@ impl AppState {
             profile_repository.clone();
         let profile_repository_for_save_backup_background_worker: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_backup_exit_guard: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_save_settings_repository: Arc<dyn ProfileSaveSettingsRepository> =
             profile_repository.clone();
         let profile_save_settings_repository_for_save_directory_discovery: Arc<
@@ -169,6 +176,9 @@ impl AppState {
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backup_background_worker: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_backup_exit_guard: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator> =
@@ -185,6 +195,13 @@ impl AppState {
             Arc::new(SqliteSaveBackupSchedulerStateRepository::new(Arc::clone(
                 &db,
             )));
+        let save_backup_background_settings_repository = Arc::new(
+            SqliteSaveBackupBackgroundSettingsRepository::new(Arc::clone(&db)),
+        );
+        let settings_for_service: Arc<dyn SaveBackupBackgroundSettingsRepository> =
+            save_backup_background_settings_repository.clone();
+        let settings_for_worker: Arc<dyn SaveBackupBackgroundSettingsRepository> =
+            save_backup_background_settings_repository;
         let save_backup_writer: Arc<dyn SaveBackupWriter> =
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
@@ -228,6 +245,7 @@ impl AppState {
         let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
+        let save_backup_background_clock: Arc<dyn AppClock> = Arc::new(SystemClock);
         let save_backup_background_registry: Arc<dyn SaveBackupBackgroundRegistry> = {
             #[cfg(target_os = "windows")]
             {
@@ -238,11 +256,20 @@ impl AppState {
                 Arc::new(UnsupportedSaveBackupBackgroundRegistry)
             }
         };
-        let save_backup_background = Arc::new(SaveBackupBackgroundService::new(
-            save_backup_background_registry,
-            Arc::clone(&save_backup_scheduler_state_repository),
+        let save_backup_background =
+            Arc::new(SaveBackupBackgroundService::new_with_settings_repository(
+                save_backup_background_registry,
+                Arc::clone(&save_backup_scheduler_state_repository),
+                settings_for_service,
+                Arc::clone(&audit_log_writer),
+                Arc::clone(&save_backup_background_clock),
+            ));
+        let save_backup_exit_guard = Arc::new(SaveBackupExitGuard::new(
+            profile_repository_for_save_backup_exit_guard,
+            profile_save_settings_repository_for_save_backup_exit_guard,
+            Arc::clone(&save_backup_background),
             Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
+            Arc::clone(&save_backup_background_clock),
         ));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
@@ -381,17 +408,19 @@ impl AppState {
             Arc::clone(&task_manager),
             save_backup_task_scopes,
         ));
-        let save_backup_background_worker = Arc::new(SaveBackupBackgroundWorker::new(
-            game_ids,
-            profile_repository_for_save_backup_background_worker,
-            profile_save_settings_repository_for_save_backup_background_worker,
-            Arc::clone(&save_backup_auto_scheduler),
-            Arc::clone(&save_backup_tasks),
-            Arc::clone(&save_backup_task_runner),
-            Arc::clone(&save_backup_scheduler_state_repository),
-            Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
-        ));
+        let save_backup_background_worker =
+            Arc::new(SaveBackupBackgroundWorker::new_with_settings_repository(
+                game_ids,
+                profile_repository_for_save_backup_background_worker,
+                profile_save_settings_repository_for_save_backup_background_worker,
+                Arc::clone(&save_backup_auto_scheduler),
+                Arc::clone(&save_backup_tasks),
+                Arc::clone(&save_backup_task_runner),
+                Arc::clone(&save_backup_scheduler_state_repository),
+                settings_for_worker,
+                Arc::clone(&audit_log_writer),
+                save_backup_background_clock,
+            ));
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
@@ -517,6 +546,7 @@ impl AppState {
             save_backup_auto_scheduler,
             save_backup_background,
             save_backup_background_worker,
+            save_backup_exit_guard,
             save_backups,
             task_manager,
             db,
@@ -878,7 +908,10 @@ fn start_best_effort_background_task<E>(
 mod tests {
     use super::*;
     use hmm_core::{GameId, GameInstance, ModId, ProfileId};
-    use hmm_ports::{GameConfigRepositoryError, GameConfigRepositoryResult};
+    use hmm_ports::{
+        GameConfigRepositoryError, GameConfigRepositoryResult,
+        SaveBackupBackgroundSettingsRepository,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Barrier};
     use std::time::{Duration, Instant};
@@ -1017,6 +1050,47 @@ mod tests {
                 .as_slice(),
             [AppStateStartup::Gui]
         );
+        std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
+    }
+
+    #[test]
+    fn state_composes_shared_background_settings_for_service_and_worker() {
+        let app_data_dir = std::env::temp_dir().join(format!(
+            "hmm-background-settings-composition-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let state = AppState::from_app_data_dir(app_data_dir.clone())
+            .expect("headless state composition succeeds");
+
+        let control = state
+            .save_backup_background
+            .control_status()
+            .expect("default background control status");
+        assert_eq!(
+            control.status,
+            hmm_core::SaveBackupBackgroundProtectionStatus::NotEnabled
+        );
+
+        let settings_db = Arc::new(Mutex::new(
+            hmm_infra::open_database(&app_data_dir.join("hmm.db"))
+                .expect("open background settings test database"),
+        ));
+        let settings =
+            hmm_infra::SqliteSaveBackupBackgroundSettingsRepository::new(Arc::clone(&settings_db));
+        settings.begin_enable(1).expect("enable background intent");
+        state
+            .save_backup_background_worker
+            .run_once("worker-composition-test")
+            .expect("settings-aware worker cycle");
+        assert!(settings
+            .load()
+            .expect("load background settings")
+            .last_worker_heartbeat_at
+            .is_some());
+
+        drop(settings);
+        drop(settings_db);
+        drop(state);
         std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
     }
 

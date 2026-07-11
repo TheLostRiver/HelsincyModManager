@@ -46,8 +46,9 @@ use profile_commands::{
     validate_profile_backup_directory, validate_profile_save_directory,
 };
 use save_backup_commands::{
-    check_auto_save_backup, get_save_backup_background_status, list_save_backups,
-    start_save_backup_task,
+    check_auto_save_backup, disable_save_backup_background_protection,
+    enable_save_backup_background_protection, get_save_backup_background_control_status,
+    get_save_backup_background_status, list_save_backups, start_save_backup_task,
 };
 use save_directory_discovery_commands::{
     confirm_profile_save_directory_candidate, discover_profile_save_directories,
@@ -133,6 +134,9 @@ pub fn run() {
             start_save_backup_task,
             check_auto_save_backup,
             get_save_backup_background_status,
+            get_save_backup_background_control_status,
+            enable_save_backup_background_protection,
+            disable_save_backup_background_protection,
             list_save_backups,
             hide_main_window_to_tray,
             exit_app

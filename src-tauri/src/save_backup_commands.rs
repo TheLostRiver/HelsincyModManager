@@ -1,20 +1,25 @@
 use crate::dto::{CommandErrorDto, TaskStartedDto};
 use crate::save_backup_dto::{
     CheckAutoSaveBackupRequestDto, GetSaveBackupBackgroundStatusRequestDto,
-    ListSaveBackupsRequestDto, ProfileAutoSaveBackupCheckDto, SaveBackupBackgroundStatusDto,
-    SaveBackupSummaryDto, StartSaveBackupTaskRequestDto,
+    ListSaveBackupsRequestDto, ProfileAutoSaveBackupCheckDto, SaveBackupBackgroundControlStatusDto,
+    SaveBackupBackgroundStatusDto, SaveBackupSummaryDto, StartSaveBackupTaskRequestDto,
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
 use hmm_app::{
-    SaveBackupAutoCheckRequest, SaveBackupAutoSchedulerError, SaveBackupBackgroundServiceError,
-    SaveBackupError, StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted,
+    SaveBackupAutoCheckRequest, SaveBackupAutoSchedulerError, SaveBackupBackgroundControlStatus,
+    SaveBackupBackgroundService, SaveBackupBackgroundServiceError, SaveBackupError,
+    StartSaveBackupTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{GameId, ProfileId, SaveBackupTrigger};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 const SAVE_BACKUP_QUEUED_PHASE: &str = "save_backup.queued";
+type BackgroundControlOperation =
+    fn(
+        &SaveBackupBackgroundService,
+    ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError>;
 
 #[tauri::command]
 pub fn start_save_backup_task(
@@ -117,10 +122,7 @@ pub async fn get_save_backup_background_status(
         service.status(&query_game_id, &query_profile_id)
     })
     .await
-    .map_err(|_| CommandErrorDto {
-        code: "save_backup_background_status_unavailable".to_owned(),
-        message: "save backup background status is unavailable".to_owned(),
-    })?
+    .map_err(|_| save_backup_background_status_unavailable_error())?
     .map_err(save_backup_background_error_to_command_error)?;
 
     Ok(SaveBackupBackgroundStatusDto::from_status(
@@ -128,6 +130,39 @@ pub async fn get_save_backup_background_status(
         &profile_id,
         background,
     ))
+}
+
+#[tauri::command]
+pub async fn get_save_backup_background_control_status(
+    state: State<'_, AppState>,
+) -> Result<SaveBackupBackgroundControlStatusDto, CommandErrorDto> {
+    run_background_control(state, SaveBackupBackgroundService::control_status).await
+}
+
+#[tauri::command]
+pub async fn enable_save_backup_background_protection(
+    state: State<'_, AppState>,
+) -> Result<SaveBackupBackgroundControlStatusDto, CommandErrorDto> {
+    run_background_control(state, SaveBackupBackgroundService::enable).await
+}
+
+#[tauri::command]
+pub async fn disable_save_backup_background_protection(
+    state: State<'_, AppState>,
+) -> Result<SaveBackupBackgroundControlStatusDto, CommandErrorDto> {
+    run_background_control(state, SaveBackupBackgroundService::disable).await
+}
+
+async fn run_background_control(
+    state: State<'_, AppState>,
+    operation: BackgroundControlOperation,
+) -> Result<SaveBackupBackgroundControlStatusDto, CommandErrorDto> {
+    let service = Arc::clone(&state.save_backup_background);
+    let status = tauri::async_runtime::spawn_blocking(move || operation(&service))
+        .await
+        .map_err(|_| save_backup_background_status_unavailable_error())?
+        .map_err(save_backup_background_error_to_command_error)?;
+    Ok(status.into())
 }
 
 fn spawn_save_backup_runner(
@@ -225,6 +260,13 @@ fn save_backup_background_error_to_command_error(
     }
 }
 
+fn save_backup_background_status_unavailable_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "save_backup_background_status_unavailable".to_owned(),
+        message: "save backup background status is unavailable".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,8 +330,16 @@ mod tests {
                 "save_backup_scheduler_unavailable",
             ),
             (
+                SaveBackupBackgroundServiceError::SettingsUnavailable,
+                "save_backup_background_settings_unavailable",
+            ),
+            (
                 SaveBackupBackgroundServiceError::ClockUnavailable,
                 "save_backup_clock_unavailable",
+            ),
+            (
+                SaveBackupBackgroundServiceError::AuditUnavailable,
+                "save_backup_background_audit_unavailable",
             ),
         ] {
             let command_error = save_backup_background_error_to_command_error(error);
@@ -298,7 +348,29 @@ mod tests {
                 command_error.message,
                 "save backup background status is unavailable"
             );
+            assert!(!command_error.message.contains("C:/Users"));
+            assert!(!command_error.message.contains("S-1-5-21"));
         }
+    }
+
+    #[test]
+    fn background_control_join_failure_uses_stable_sanitized_error() {
+        let error = save_backup_background_status_unavailable_error();
+
+        assert_eq!(error.code, "save_backup_background_status_unavailable");
+        assert_eq!(
+            error.message,
+            "save backup background status is unavailable"
+        );
+        assert!(!error.message.contains("C:/Users"));
+        assert!(!error.message.contains("S-1-5-21"));
+    }
+
+    #[test]
+    fn background_control_commands_are_exposed() {
+        let _ = get_save_backup_background_control_status;
+        let _ = enable_save_backup_background_protection;
+        let _ = disable_save_backup_background_protection;
     }
 
     #[test]
