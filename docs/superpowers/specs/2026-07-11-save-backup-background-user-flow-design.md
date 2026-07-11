@@ -207,8 +207,10 @@ invalid output 或 unknown failure 都保留 desired enabled，并提示用户�
 headless `--once` worker 在以下条件满足后记录一次全局 heartbeat：
 
 1. AppData 和 SQLite 成功打开。
-2. 共享 scheduler、profile/save settings、game-running detector 和 task service 装配成功。
-3. 本轮 profile 枚举与调度检查完成，没有 infrastructure-level 中止。
+2. 读取全局设置；`desired_enabled = false` 时立即成功 no-op，不枚举 Profile、不触发备份、
+   不写 heartbeat。该检查防止禁用后的残留任务继续工作。
+3. 共享 scheduler、profile/save settings、game-running detector 和 task service 装配成功。
+4. 本轮 profile 枚举与调度检查完成，没有 infrastructure-level 中止。
 
 单个 Profile 因游戏运行、source invalid、destination unavailable 或 task conflict 被正常延后，
 不阻止 heartbeat；这些是成功完成的保守业务结果。数据库不可用、profile 列表不可读、clock
@@ -253,6 +255,27 @@ type ExitAppRequestDto = {
 
 普通窗口关闭、已记住的退出偏好和托盘退出流程只能传 `false`；只有危险退出对话框中的
 当次明确确认可以传 `true`。后端不信任前端缓存状态，两个分支都必须重新计算 exit guard。
+
+窗口生命周期另新增只读 `get_app_exit_guard`，返回结构化决策：
+
+```ts
+type AppExitGuardDto = {
+  decision: "safe" | "confirmation_required";
+  reason:
+    | "background_starting"
+    | "background_not_enabled"
+    | "registration_failed"
+    | "worker_unhealthy"
+    | "permission_required"
+    | "unsupported_platform"
+    | "status_unavailable"
+    | null;
+};
+```
+
+前端只按 `reason` 稳定值显示文案，不解析 `CommandErrorDto.message`。`exit_app(false)`
+仍在真正退出前重检；若查询后状态发生变化，它返回 generic
+`exit_confirmation_required`，前端重新读取 `get_app_exit_guard` 并显示对话框。
 
 不得返回 task name、task XML、SID、worker id/path、PowerShell/module path、lease owner、
 完整本地路径或原始 stdout/stderr。
@@ -311,7 +334,8 @@ Profile 不提供第二个 toggle，不调用 enable/disable，也不根据路�
 
 托盘菜单不再直接 `app.exit(0)`；它显示/聚焦主窗口并发出同一 exit request。普通
 `exit_app` 命令在后端重新计算决策。unsafe 且没有 override 时返回稳定
-`exit_confirmation_required`；前端随后显示危险退出对话框。
+`exit_confirmation_required`；前端重新读取结构化 exit guard 后显示危险退出对话框，
+不得从错误 message 猜 reason。
 
 危险退出对话框：
 
