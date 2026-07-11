@@ -2,19 +2,615 @@ use anyhow::Result;
 use hmm_app::{
     SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundService,
     SaveBackupBackgroundServiceError, SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
+    SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
 };
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
-    SaveBackupBackgroundRegistrationStatus, SaveBackupSchedulerLeaseRequest,
-    SaveBackupSchedulerState, SaveBackupWorkerHeartbeat,
+    SaveBackupBackgroundRegistrationStatus, SaveBackupBackgroundSettings,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundRegistryError, SaveBackupBackgroundRegistryResult,
-    SaveBackupSchedulerStateRepository,
+    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
 };
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+
+#[test]
+fn exact_registration_waits_for_current_enable_heartbeat() {
+    let enabled_at = 1_000_000;
+    let harness = ControlHarness::with_global_settings(
+        enabled_at + SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
+        SaveBackupBackgroundSettings {
+            desired_enabled: true,
+            enabled_at: Some(enabled_at),
+            last_worker_heartbeat_at: None,
+            updated_at: enabled_at,
+        },
+        SaveBackupBackgroundRegistrationStatus::Registered,
+    );
+
+    assert_eq!(
+        harness
+            .service
+            .control_status()
+            .expect("starting status")
+            .status,
+        SaveBackupBackgroundProtectionStatus::Starting
+    );
+
+    harness
+        .clock
+        .set(enabled_at + SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS + 1);
+    assert_eq!(
+        harness
+            .service
+            .control_status()
+            .expect("unhealthy status")
+            .status,
+        SaveBackupBackgroundProtectionStatus::WorkerUnhealthy
+    );
+}
+
+#[test]
+fn global_heartbeat_health_uses_enable_time_ttl_and_future_boundaries() {
+    let enabled_at = 1_000_000;
+    let grace = SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS;
+    let ttl = SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS;
+    let cases = [
+        (
+            enabled_at + grace,
+            Some(enabled_at - 1),
+            SaveBackupBackgroundProtectionStatus::Starting,
+        ),
+        (
+            enabled_at + grace + 1,
+            Some(enabled_at - 1),
+            SaveBackupBackgroundProtectionStatus::WorkerUnhealthy,
+        ),
+        (
+            enabled_at + ttl,
+            Some(enabled_at),
+            SaveBackupBackgroundProtectionStatus::Protected,
+        ),
+        (
+            enabled_at + ttl + 1,
+            Some(enabled_at),
+            SaveBackupBackgroundProtectionStatus::WorkerUnhealthy,
+        ),
+        (
+            enabled_at + 10,
+            Some(enabled_at + 11),
+            SaveBackupBackgroundProtectionStatus::WorkerUnhealthy,
+        ),
+    ];
+
+    for (now, heartbeat, expected) in cases {
+        let harness = ControlHarness::with_global_settings(
+            now,
+            SaveBackupBackgroundSettings {
+                desired_enabled: true,
+                enabled_at: Some(enabled_at),
+                last_worker_heartbeat_at: heartbeat,
+                updated_at: heartbeat.unwrap_or(enabled_at),
+            },
+            SaveBackupBackgroundRegistrationStatus::Registered,
+        );
+        let status = harness.service.control_status().expect("control status");
+        assert_eq!(status.status, expected);
+        assert!(status.desired_enabled);
+        assert_eq!(status.enabled_at, Some(enabled_at));
+        assert_eq!(status.last_heartbeat_at, heartbeat);
+        assert_eq!(
+            status.last_error_code.as_deref(),
+            (expected == SaveBackupBackgroundProtectionStatus::WorkerUnhealthy)
+                .then_some("save_backup_background_worker_unhealthy")
+        );
+    }
+
+    let future_enable = ControlHarness::with_global_settings(
+        enabled_at - 1,
+        SaveBackupBackgroundSettings {
+            desired_enabled: true,
+            enabled_at: Some(enabled_at),
+            last_worker_heartbeat_at: None,
+            updated_at: enabled_at,
+        },
+        SaveBackupBackgroundRegistrationStatus::Registered,
+    );
+    assert_eq!(
+        future_enable
+            .service
+            .control_status()
+            .expect("future enable status")
+            .status,
+        SaveBackupBackgroundProtectionStatus::WorkerUnhealthy
+    );
+}
+
+#[test]
+fn global_control_status_maps_registration_and_dependency_failures() {
+    let now = 1_000_000;
+    let settings = SaveBackupBackgroundSettings {
+        desired_enabled: true,
+        enabled_at: Some(now),
+        last_worker_heartbeat_at: None,
+        updated_at: now,
+    };
+    for (registration, expected, expected_error) in [
+        (
+            SaveBackupBackgroundRegistrationStatus::ConfigurationDrift,
+            SaveBackupBackgroundProtectionStatus::RegistrationFailed,
+            "save_backup_background_configuration_drift",
+        ),
+        (
+            SaveBackupBackgroundRegistrationStatus::PermissionRequired,
+            SaveBackupBackgroundProtectionStatus::PermissionRequired,
+            "save_backup_background_permission_required",
+        ),
+        (
+            SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform,
+            SaveBackupBackgroundProtectionStatus::UnsupportedPlatform,
+            "save_backup_background_unsupported_platform",
+        ),
+    ] {
+        let harness = ControlHarness::with_global_settings(now, settings.clone(), registration);
+        let status = harness.service.control_status().expect("control status");
+        assert_eq!(status.status, expected);
+        assert_eq!(status.last_error_code.as_deref(), Some(expected_error));
+    }
+
+    let registry = Arc::new(FakeRegistry::for_inspect(Err(
+        SaveBackupBackgroundRegistryError::CommandTimeout,
+    )));
+    let service = service_with_global_settings(
+        registry,
+        Arc::new(FakeBackgroundSettingsRepository::with_state(
+            settings.clone(),
+        )),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(now)),
+    );
+    let status = service.control_status().expect("registry error status");
+    assert_eq!(
+        status.status,
+        SaveBackupBackgroundProtectionStatus::RegistrationFailed
+    );
+    assert_eq!(
+        status.last_error_code.as_deref(),
+        Some("save_backup_background_command_timeout")
+    );
+
+    let registry = Arc::new(FakeRegistry::for_inspect(Ok(
+        SaveBackupBackgroundRegistrationStatus::Registered,
+    )));
+    let service = service_with_global_settings(
+        Arc::clone(&registry),
+        Arc::new(FakeBackgroundSettingsRepository::failing_load()),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(now)),
+    );
+    let error = service.control_status().expect_err("settings load failure");
+    assert_eq!(error, SaveBackupBackgroundServiceError::SettingsUnavailable);
+    assert_eq!(error.code(), "save_backup_background_settings_unavailable");
+    assert!(registry.calls().is_empty());
+
+    let registry = Arc::new(FakeRegistry::new(
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
+        Vec::new(),
+    ));
+    let service = service_with_global_settings(
+        Arc::clone(&registry),
+        Arc::new(FakeBackgroundSettingsRepository::with_state(settings)),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::failing()),
+    );
+    assert_eq!(
+        service.control_status().expect_err("clock failure"),
+        SaveBackupBackgroundServiceError::ClockUnavailable
+    );
+    assert_eq!(registry.calls(), vec!["inspect"]);
+
+    let registry = Arc::new(FakeRegistry::for_inspect(Ok(
+        SaveBackupBackgroundRegistrationStatus::Registered,
+    )));
+    let service = service_with_global_settings(
+        Arc::clone(&registry),
+        Arc::new(FakeBackgroundSettingsRepository::with_state(
+            SaveBackupBackgroundSettings::disabled(),
+        )),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::failing()),
+    );
+    assert_eq!(
+        service.control_status().expect("disabled status").status,
+        SaveBackupBackgroundProtectionStatus::NotEnabled
+    );
+    assert!(registry.calls().is_empty());
+}
+
+#[test]
+fn enable_persists_intent_before_register_and_returns_starting() {
+    let now = 2_000_000;
+    let harness = OperationHarness::new(
+        now,
+        SaveBackupBackgroundSettings {
+            desired_enabled: true,
+            enabled_at: Some(1_000_000),
+            last_worker_heartbeat_at: Some(1_100_000),
+            updated_at: 1_100_000,
+        },
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
+    );
+
+    let result = harness.service.enable().expect("enable");
+
+    assert!(result.desired_enabled);
+    assert_eq!(
+        result.status,
+        SaveBackupBackgroundProtectionStatus::Starting
+    );
+    assert_eq!(result.enabled_at, Some(now));
+    assert_eq!(result.last_heartbeat_at, None);
+    assert_eq!(result.last_error_code, None);
+    assert_eq!(
+        harness.calls(),
+        vec![
+            "settings.begin_enable",
+            "registry.register",
+            "registry.inspect",
+            "audit.record",
+        ]
+    );
+    assert_eq!(
+        harness.settings.state(),
+        SaveBackupBackgroundSettings {
+            desired_enabled: true,
+            enabled_at: Some(now),
+            last_worker_heartbeat_at: None,
+            updated_at: now,
+        }
+    );
+    assert_registration_audit(&harness.audit.events()[0], "registered", "success", None);
+}
+
+#[test]
+fn disable_confirms_task_missing_before_persisting_disabled() {
+    let now = 2_000_000;
+    let harness = OperationHarness::new(
+        now,
+        enabled_settings(1_000_000, Some(1_100_000)),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Vec::new(),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+    );
+
+    let result = harness.service.disable().expect("disable");
+
+    assert_eq!(
+        result,
+        hmm_app::SaveBackupBackgroundControlStatus {
+            desired_enabled: false,
+            status: SaveBackupBackgroundProtectionStatus::NotEnabled,
+            enabled_at: None,
+            last_heartbeat_at: None,
+            last_error_code: None,
+        }
+    );
+    assert_eq!(
+        harness.calls(),
+        vec![
+            "registry.unregister",
+            "registry.inspect",
+            "settings.finish_disable",
+            "audit.record",
+        ]
+    );
+    assert_eq!(
+        harness.settings.state(),
+        SaveBackupBackgroundSettings {
+            desired_enabled: false,
+            enabled_at: None,
+            last_worker_heartbeat_at: None,
+            updated_at: now,
+        }
+    );
+    assert_registration_audit(
+        &harness.audit.events()[0],
+        "not_registered",
+        "success",
+        None,
+    );
+}
+
+#[test]
+fn lifecycle_failures_preserve_recoverable_global_intent() {
+    let now = 2_000_000;
+    let enable = OperationHarness::new(
+        now,
+        SaveBackupBackgroundSettings::disabled(),
+        Vec::new(),
+        vec![Err(SaveBackupBackgroundRegistryError::CommandTimeout)],
+        Vec::new(),
+    );
+    let enabled = enable.service.enable().expect("typed enable failure");
+    assert!(enabled.desired_enabled);
+    assert_eq!(
+        enabled.status,
+        SaveBackupBackgroundProtectionStatus::RegistrationFailed
+    );
+    assert_eq!(
+        enabled.last_error_code.as_deref(),
+        Some("save_backup_background_command_timeout")
+    );
+    assert!(enable.settings.state().desired_enabled);
+    assert_eq!(
+        enable.calls(),
+        vec!["settings.begin_enable", "registry.register", "audit.record",]
+    );
+
+    let disable = OperationHarness::new(
+        now,
+        enabled_settings(1_000_000, Some(1_100_000)),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+    );
+    let still_enabled = disable
+        .service
+        .disable()
+        .expect("read-back mismatch is recoverable");
+    assert!(still_enabled.desired_enabled);
+    assert_eq!(
+        still_enabled.status,
+        SaveBackupBackgroundProtectionStatus::RegistrationFailed
+    );
+    assert_eq!(
+        still_enabled.last_error_code.as_deref(),
+        Some("save_backup_background_registration_failed")
+    );
+    assert!(disable.settings.state().desired_enabled);
+    assert_eq!(
+        disable.calls(),
+        vec!["registry.unregister", "registry.inspect", "audit.record",]
+    );
+}
+
+#[test]
+fn per_profile_status_combines_auto_plan_with_global_control() {
+    let now = 3_000_000;
+    let mut scheduler_state = sample_state(true, false, None);
+    scheduler_state.last_error_code = Some("save_backup_auto_skipped_game_running".to_owned());
+    let disabled_registry = Arc::new(FakeRegistry::for_inspect(Ok(
+        SaveBackupBackgroundRegistrationStatus::Registered,
+    )));
+    let service = service_with_global_settings_and_scheduler_state(
+        Arc::clone(&disabled_registry),
+        Arc::new(FakeBackgroundSettingsRepository::with_state(
+            SaveBackupBackgroundSettings::disabled(),
+        )),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(now)),
+        Some(scheduler_state.clone()),
+    );
+    let tray_only = service
+        .status(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("tray-only profile status");
+    assert_eq!(
+        tray_only.status,
+        SaveBackupBackgroundProtectionStatus::TrayOnly
+    );
+    assert_eq!(
+        tray_only.last_error_code.as_deref(),
+        Some("save_backup_auto_skipped_game_running")
+    );
+    assert!(disabled_registry.calls().is_empty());
+
+    let protected_registry = Arc::new(FakeRegistry::for_inspect(Ok(
+        SaveBackupBackgroundRegistrationStatus::Registered,
+    )));
+    let service = service_with_global_settings_and_scheduler_state(
+        protected_registry,
+        Arc::new(FakeBackgroundSettingsRepository::with_state(
+            enabled_settings(1_000_000, Some(now)),
+        )),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(now)),
+        Some(scheduler_state),
+    );
+    let protected = service
+        .status(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("protected profile status");
+    assert_eq!(
+        protected.status,
+        SaveBackupBackgroundProtectionStatus::Protected
+    );
+    assert_eq!(
+        protected.last_error_code.as_deref(),
+        Some("save_backup_auto_skipped_game_running")
+    );
+}
+
+#[test]
+fn lifecycle_dependency_failures_do_not_claim_success() {
+    let now = 2_000_000;
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let registry = Arc::new(FakeRegistry::with_shared_calls(
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Arc::clone(&calls),
+    ));
+    let settings = Arc::new(
+        FakeBackgroundSettingsRepository::with_shared_calls_and_failures(
+            SaveBackupBackgroundSettings::disabled(),
+            Arc::clone(&calls),
+            true,
+            false,
+        ),
+    );
+    let audit = Arc::new(RecordingAuditLog::with_shared_calls(Arc::clone(&calls)));
+    let service = service_with_global_settings(
+        Arc::clone(&registry),
+        Arc::clone(&settings),
+        Arc::clone(&audit),
+        Arc::new(FixedClock::new(now)),
+    );
+    assert_eq!(
+        service.enable().expect_err("begin-enable failure"),
+        SaveBackupBackgroundServiceError::SettingsUnavailable
+    );
+    assert_eq!(
+        calls.lock().expect("shared calls lock").as_slice(),
+        ["settings.begin_enable"]
+    );
+    assert_eq!(settings.state(), SaveBackupBackgroundSettings::disabled());
+    assert!(registry.calls().is_empty());
+    assert!(audit.events().is_empty());
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let registry = Arc::new(FakeRegistry::with_shared_calls(
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Vec::new(),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Arc::clone(&calls),
+    ));
+    let settings = Arc::new(
+        FakeBackgroundSettingsRepository::with_shared_calls_and_failures(
+            enabled_settings(1_000_000, Some(1_100_000)),
+            Arc::clone(&calls),
+            false,
+            true,
+        ),
+    );
+    let audit = Arc::new(RecordingAuditLog::with_shared_calls(Arc::clone(&calls)));
+    let service = service_with_global_settings(
+        registry,
+        Arc::clone(&settings),
+        Arc::clone(&audit),
+        Arc::new(FixedClock::new(now)),
+    );
+    assert_eq!(
+        service.disable().expect_err("finish-disable failure"),
+        SaveBackupBackgroundServiceError::SettingsUnavailable
+    );
+    assert!(settings.state().desired_enabled);
+    assert_eq!(
+        calls.lock().expect("shared calls lock").as_slice(),
+        [
+            "registry.unregister",
+            "registry.inspect",
+            "settings.finish_disable",
+            "audit.record",
+        ]
+    );
+    assert_registration_audit(
+        &audit.events()[0],
+        "not_registered",
+        "failure",
+        Some("save_backup_background_settings_unavailable"),
+    );
+}
+
+#[test]
+fn lifecycle_clock_and_audit_failures_preserve_observable_state() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let registry = Arc::new(FakeRegistry::with_shared_calls(
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Arc::clone(&calls),
+    ));
+    let settings = Arc::new(FakeBackgroundSettingsRepository::with_shared_calls(
+        SaveBackupBackgroundSettings::disabled(),
+        Arc::clone(&calls),
+    ));
+    let service = service_with_global_settings(
+        Arc::clone(&registry),
+        Arc::clone(&settings),
+        Arc::new(RecordingAuditLog::with_shared_calls(Arc::clone(&calls))),
+        Arc::new(FixedClock::failing()),
+    );
+    assert_eq!(
+        service.enable().expect_err("clock failure"),
+        SaveBackupBackgroundServiceError::ClockUnavailable
+    );
+    assert!(calls.lock().expect("shared calls lock").is_empty());
+    assert_eq!(settings.state(), SaveBackupBackgroundSettings::disabled());
+    assert!(registry.calls().is_empty());
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let registry = Arc::new(FakeRegistry::with_shared_calls(
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
+        Arc::clone(&calls),
+    ));
+    let settings = Arc::new(FakeBackgroundSettingsRepository::with_shared_calls(
+        SaveBackupBackgroundSettings::disabled(),
+        Arc::clone(&calls),
+    ));
+    let audit = Arc::new(RecordingAuditLog::with_shared_calls_and_failure(
+        Arc::clone(&calls),
+    ));
+    let service = service_with_global_settings(
+        registry,
+        Arc::clone(&settings),
+        audit,
+        Arc::new(FixedClock::new(2_000_000)),
+    );
+    assert_eq!(
+        service.enable().expect_err("audit failure"),
+        SaveBackupBackgroundServiceError::AuditUnavailable
+    );
+    assert!(settings.state().desired_enabled);
+    assert_eq!(
+        calls.lock().expect("shared calls lock").as_slice(),
+        [
+            "settings.begin_enable",
+            "registry.register",
+            "registry.inspect",
+            "audit.record",
+        ]
+    );
+}
+
+fn assert_registration_audit(
+    event: &AuditLogEvent,
+    registration_status: &str,
+    result: &str,
+    error_code: Option<&str>,
+) {
+    assert_eq!(event.category, "save_backup");
+    assert_eq!(event.operation, "background_registration");
+    assert_eq!(event.result, result);
+    assert_eq!(
+        event.fields.keys().map(String::as_str).collect::<Vec<_>>(),
+        vec!["error_code", "registration_status", "task_schema_version"]
+    );
+    assert_eq!(
+        event.fields.get("registration_status").map(String::as_str),
+        Some(registration_status)
+    );
+    assert_eq!(
+        event.fields.get("error_code").map(String::as_str),
+        Some(error_code.unwrap_or_default())
+    );
+}
+
+fn enabled_settings(enabled_at: u128, heartbeat: Option<u128>) -> SaveBackupBackgroundSettings {
+    SaveBackupBackgroundSettings {
+        desired_enabled: true,
+        enabled_at: Some(enabled_at),
+        last_worker_heartbeat_at: heartbeat,
+        updated_at: heartbeat.unwrap_or(enabled_at),
+    }
+}
 
 #[test]
 fn protection_status_requires_enabled_exact_registration_and_fresh_heartbeat() {
@@ -452,6 +1048,88 @@ fn clock_failure_prevents_registry_change_and_audit_failure_requires_reinspectio
     assert_eq!(registry.calls(), vec!["register", "inspect"]);
 }
 
+struct ControlHarness {
+    service: SaveBackupBackgroundService,
+    clock: Arc<FixedClock>,
+}
+
+impl ControlHarness {
+    fn with_global_settings(
+        now: u128,
+        settings: SaveBackupBackgroundSettings,
+        registration: SaveBackupBackgroundRegistrationStatus,
+    ) -> Self {
+        let registry = Arc::new(FakeRegistry::new(
+            vec![Ok(registration), Ok(registration)],
+            Vec::new(),
+            Vec::new(),
+        ));
+        let clock = Arc::new(FixedClock::new(now));
+        Self {
+            service: service_with_global_settings(
+                registry,
+                Arc::new(FakeBackgroundSettingsRepository::with_state(settings)),
+                Arc::new(RecordingAuditLog::default()),
+                Arc::clone(&clock),
+            ),
+            clock,
+        }
+    }
+}
+
+struct OperationHarness {
+    service: SaveBackupBackgroundService,
+    settings: Arc<FakeBackgroundSettingsRepository>,
+    audit: Arc<RecordingAuditLog>,
+    shared_calls: Arc<Mutex<Vec<&'static str>>>,
+}
+
+impl OperationHarness {
+    fn new(
+        now: u128,
+        settings_state: SaveBackupBackgroundSettings,
+        inspect_results: Vec<
+            SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>,
+        >,
+        register_results: Vec<
+            SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>,
+        >,
+        unregister_results: Vec<
+            SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>,
+        >,
+    ) -> Self {
+        let shared_calls = Arc::new(Mutex::new(Vec::new()));
+        let registry = Arc::new(FakeRegistry::with_shared_calls(
+            inspect_results,
+            register_results,
+            unregister_results,
+            Arc::clone(&shared_calls),
+        ));
+        let settings = Arc::new(FakeBackgroundSettingsRepository::with_shared_calls(
+            settings_state,
+            Arc::clone(&shared_calls),
+        ));
+        let audit = Arc::new(RecordingAuditLog::with_shared_calls(Arc::clone(
+            &shared_calls,
+        )));
+        Self {
+            service: service_with_global_settings(
+                registry,
+                Arc::clone(&settings),
+                Arc::clone(&audit),
+                Arc::new(FixedClock::new(now)),
+            ),
+            settings,
+            audit,
+            shared_calls,
+        }
+    }
+
+    fn calls(&self) -> Vec<&'static str> {
+        self.shared_calls.lock().expect("shared calls lock").clone()
+    }
+}
+
 struct Harness {
     service: SaveBackupBackgroundService,
     registry: Arc<FakeRegistry>,
@@ -490,6 +1168,31 @@ fn service_with(
     )
 }
 
+fn service_with_global_settings(
+    registry: Arc<FakeRegistry>,
+    settings: Arc<FakeBackgroundSettingsRepository>,
+    audit: Arc<RecordingAuditLog>,
+    clock: Arc<FixedClock>,
+) -> SaveBackupBackgroundService {
+    service_with_global_settings_and_scheduler_state(registry, settings, audit, clock, None)
+}
+
+fn service_with_global_settings_and_scheduler_state(
+    registry: Arc<FakeRegistry>,
+    settings: Arc<FakeBackgroundSettingsRepository>,
+    audit: Arc<RecordingAuditLog>,
+    clock: Arc<FixedClock>,
+    scheduler_state: Option<SaveBackupSchedulerState>,
+) -> SaveBackupBackgroundService {
+    SaveBackupBackgroundService::new_with_settings_repository(
+        registry,
+        Arc::new(FakeSchedulerRepository::with_state(scheduler_state)),
+        settings,
+        audit,
+        clock,
+    )
+}
+
 fn sample_state(
     enabled: bool,
     background_protection_enabled: bool,
@@ -516,17 +1219,27 @@ fn sample_state(
 }
 
 struct FixedClock {
-    now: u128,
+    now: Mutex<u128>,
     fail: bool,
 }
 
 impl FixedClock {
     fn new(now: u128) -> Self {
-        Self { now, fail: false }
+        Self {
+            now: Mutex::new(now),
+            fail: false,
+        }
     }
 
     fn failing() -> Self {
-        Self { now: 0, fail: true }
+        Self {
+            now: Mutex::new(0),
+            fail: true,
+        }
+    }
+
+    fn set(&self, now: u128) {
+        *self.now.lock().expect("clock lock") = now;
     }
 }
 
@@ -535,7 +1248,7 @@ impl AppClock for FixedClock {
         if self.fail {
             anyhow::bail!("clock unavailable");
         }
-        Ok(self.now)
+        Ok(*self.now.lock().expect("clock lock"))
     }
 }
 
@@ -547,6 +1260,7 @@ struct FakeRegistry {
     unregister_results:
         Mutex<VecDeque<SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>>>,
     calls: Mutex<Vec<&'static str>>,
+    shared_calls: Option<Arc<Mutex<Vec<&'static str>>>>,
 }
 
 impl FakeRegistry {
@@ -566,6 +1280,28 @@ impl FakeRegistry {
             register_results: Mutex::new(register_results.into()),
             unregister_results: Mutex::new(unregister_results.into()),
             calls: Mutex::new(Vec::new()),
+            shared_calls: None,
+        }
+    }
+
+    fn with_shared_calls(
+        inspect_results: Vec<
+            SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>,
+        >,
+        register_results: Vec<
+            SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>,
+        >,
+        unregister_results: Vec<
+            SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>,
+        >,
+        shared_calls: Arc<Mutex<Vec<&'static str>>>,
+    ) -> Self {
+        Self {
+            inspect_results: Mutex::new(inspect_results.into()),
+            register_results: Mutex::new(register_results.into()),
+            unregister_results: Mutex::new(unregister_results.into()),
+            calls: Mutex::new(Vec::new()),
+            shared_calls: Some(shared_calls),
         }
     }
 
@@ -578,13 +1314,23 @@ impl FakeRegistry {
     fn calls(&self) -> Vec<&'static str> {
         self.calls.lock().expect("calls lock").clone()
     }
+
+    fn record_call(&self, call: &'static str, shared_call: &'static str) {
+        self.calls.lock().expect("calls lock").push(call);
+        if let Some(shared_calls) = &self.shared_calls {
+            shared_calls
+                .lock()
+                .expect("shared calls lock")
+                .push(shared_call);
+        }
+    }
 }
 
 impl SaveBackupBackgroundRegistry for FakeRegistry {
     fn inspect(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
-        self.calls.lock().expect("calls lock").push("inspect");
+        self.record_call("inspect", "registry.inspect");
         self.inspect_results
             .lock()
             .expect("inspect lock")
@@ -595,7 +1341,7 @@ impl SaveBackupBackgroundRegistry for FakeRegistry {
     fn register(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
-        self.calls.lock().expect("calls lock").push("register");
+        self.record_call("register", "registry.register");
         self.register_results
             .lock()
             .expect("register lock")
@@ -606,7 +1352,7 @@ impl SaveBackupBackgroundRegistry for FakeRegistry {
     fn unregister(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
-        self.calls.lock().expect("calls lock").push("unregister");
+        self.record_call("unregister", "registry.unregister");
         self.unregister_results
             .lock()
             .expect("unregister lock")
@@ -619,6 +1365,7 @@ impl SaveBackupBackgroundRegistry for FakeRegistry {
 struct RecordingAuditLog {
     events: Mutex<Vec<AuditLogEvent>>,
     fail: bool,
+    shared_calls: Option<Arc<Mutex<Vec<&'static str>>>>,
 }
 
 impl RecordingAuditLog {
@@ -626,6 +1373,23 @@ impl RecordingAuditLog {
         Self {
             events: Mutex::new(Vec::new()),
             fail: true,
+            shared_calls: None,
+        }
+    }
+
+    fn with_shared_calls(shared_calls: Arc<Mutex<Vec<&'static str>>>) -> Self {
+        Self {
+            events: Mutex::new(Vec::new()),
+            fail: false,
+            shared_calls: Some(shared_calls),
+        }
+    }
+
+    fn with_shared_calls_and_failure(shared_calls: Arc<Mutex<Vec<&'static str>>>) -> Self {
+        Self {
+            events: Mutex::new(Vec::new()),
+            fail: true,
+            shared_calls: Some(shared_calls),
         }
     }
 
@@ -636,11 +1400,126 @@ impl RecordingAuditLog {
 
 impl AuditLogWriter for RecordingAuditLog {
     fn record(&self, event: AuditLogEvent) -> Result<()> {
+        if let Some(shared_calls) = &self.shared_calls {
+            shared_calls
+                .lock()
+                .expect("shared calls lock")
+                .push("audit.record");
+        }
         if self.fail {
             anyhow::bail!("audit unavailable");
         }
         self.events.lock().expect("audit lock").push(event);
         Ok(())
+    }
+}
+
+struct FakeBackgroundSettingsRepository {
+    state: Mutex<SaveBackupBackgroundSettings>,
+    fail_load: bool,
+    fail_begin: bool,
+    fail_finish: bool,
+    shared_calls: Option<Arc<Mutex<Vec<&'static str>>>>,
+}
+
+impl FakeBackgroundSettingsRepository {
+    fn with_state(state: SaveBackupBackgroundSettings) -> Self {
+        Self {
+            state: Mutex::new(state),
+            fail_load: false,
+            fail_begin: false,
+            fail_finish: false,
+            shared_calls: None,
+        }
+    }
+
+    fn with_shared_calls(
+        state: SaveBackupBackgroundSettings,
+        shared_calls: Arc<Mutex<Vec<&'static str>>>,
+    ) -> Self {
+        Self {
+            state: Mutex::new(state),
+            fail_load: false,
+            fail_begin: false,
+            fail_finish: false,
+            shared_calls: Some(shared_calls),
+        }
+    }
+
+    fn with_shared_calls_and_failures(
+        state: SaveBackupBackgroundSettings,
+        shared_calls: Arc<Mutex<Vec<&'static str>>>,
+        fail_begin: bool,
+        fail_finish: bool,
+    ) -> Self {
+        Self {
+            state: Mutex::new(state),
+            fail_load: false,
+            fail_begin,
+            fail_finish,
+            shared_calls: Some(shared_calls),
+        }
+    }
+
+    fn failing_load() -> Self {
+        Self {
+            state: Mutex::new(SaveBackupBackgroundSettings::disabled()),
+            fail_load: true,
+            fail_begin: false,
+            fail_finish: false,
+            shared_calls: None,
+        }
+    }
+
+    fn state(&self) -> SaveBackupBackgroundSettings {
+        self.state.lock().expect("settings lock").clone()
+    }
+
+    fn record_call(&self, call: &'static str) {
+        if let Some(shared_calls) = &self.shared_calls {
+            shared_calls.lock().expect("shared calls lock").push(call);
+        }
+    }
+}
+
+impl SaveBackupBackgroundSettingsRepository for FakeBackgroundSettingsRepository {
+    fn load(&self) -> Result<SaveBackupBackgroundSettings> {
+        if self.fail_load {
+            anyhow::bail!("settings unavailable");
+        }
+        Ok(self.state.lock().expect("settings lock").clone())
+    }
+
+    fn begin_enable(&self, enabled_at: u128) -> Result<()> {
+        self.record_call("settings.begin_enable");
+        if self.fail_begin {
+            anyhow::bail!("begin enable unavailable");
+        }
+        *self.state.lock().expect("settings lock") = SaveBackupBackgroundSettings {
+            desired_enabled: true,
+            enabled_at: Some(enabled_at),
+            last_worker_heartbeat_at: None,
+            updated_at: enabled_at,
+        };
+        Ok(())
+    }
+
+    fn finish_disable(&self, updated_at: u128) -> Result<()> {
+        self.record_call("settings.finish_disable");
+        if self.fail_finish {
+            anyhow::bail!("finish disable unavailable");
+        }
+        *self.state.lock().expect("settings lock") = SaveBackupBackgroundSettings {
+            desired_enabled: false,
+            enabled_at: None,
+            last_worker_heartbeat_at: None,
+            updated_at,
+        };
+        Ok(())
+    }
+
+    fn record_worker_heartbeat(&self, _heartbeat_at: u128) -> Result<()> {
+        panic!("unused")
     }
 }
 

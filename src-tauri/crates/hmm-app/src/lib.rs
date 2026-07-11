@@ -93,9 +93,9 @@ pub use save_backup::{
     SaveBackupWarning,
 };
 pub use save_backup_background::{
-    SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundService,
-    SaveBackupBackgroundServiceError, SaveBackupBackgroundStatus,
-    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
+    SaveBackupBackgroundControlStatus, SaveBackupBackgroundRegistrationResult,
+    SaveBackupBackgroundService, SaveBackupBackgroundServiceError, SaveBackupBackgroundStatus,
+    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS, SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
 };
 pub use save_backup_background_worker::{
     SaveBackupBackgroundWorker, SaveBackupBackgroundWorkerError,
