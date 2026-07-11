@@ -280,6 +280,24 @@ fn worker_heartbeat_updates_only_worker_health_fields() {
     assert_eq!(loaded.updated_at, 1_234);
 }
 
+#[test]
+fn worker_heartbeat_rejects_missing_scheduler_state() {
+    let (_temp, repo) = scheduler_repo();
+
+    let error = repo
+        .record_worker_heartbeat(SaveBackupWorkerHeartbeat {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("missing"),
+            worker_instance_id: "worker-b".to_owned(),
+            heartbeat_at: 1_234,
+        })
+        .expect_err("missing scheduler state must reject heartbeat");
+
+    assert!(error
+        .to_string()
+        .contains("no scheduler state row exists for worker heartbeat"));
+}
+
 #[cfg(target_os = "windows")]
 #[test]
 #[ignore = "reads disposable smoke AppData after a real Scheduled Task trigger"]

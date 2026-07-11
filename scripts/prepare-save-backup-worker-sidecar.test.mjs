@@ -4,7 +4,9 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertSidecarBuildOutput,
   buildProfile,
+  capturedCommandFailure,
   hostTripleFromRustc,
   resolveTargetTriple,
   sidecarFileName,
@@ -49,6 +51,33 @@ test("uses cargo metadata target directory and explicit profiles", () => {
     () => targetDirectoryFromCargoMetadata("{}"),
     /target directory/,
   );
+  assert.throws(
+    () => targetDirectoryFromCargoMetadata("{invalid"),
+    /cargo metadata output is not valid JSON/,
+  );
+});
+
+test("reports missing sidecar output with a stable error", () => {
+  assert.throws(
+    () =>
+      assertSidecarBuildOutput(
+        path.join(process.cwd(), "missing-sidecar-output"),
+      ),
+    /worker sidecar build output is missing/,
+  );
+  assert.throws(
+    () => assertSidecarBuildOutput(process.cwd()),
+    /worker sidecar build output is missing/,
+  );
+});
+
+test("bounds captured command stderr diagnostics", () => {
+  assert.equal(
+    capturedCommandFailure("cargo", 17, "metadata failed\n").message,
+    "cargo exited with 17: metadata failed",
+  );
+  const bounded = capturedCommandFailure("cargo", 1, "x".repeat(5_000));
+  assert.ok(bounded.message.length < 4_100);
 });
 
 test("rejects unsafe or conflicting target triple input", () => {
