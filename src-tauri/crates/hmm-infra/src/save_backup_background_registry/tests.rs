@@ -12,8 +12,9 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(windows)]
 use super::powershell::{
-    build_command, parse_script_output, system_powershell_runtime,
-    PowerShellScheduledTaskCommandRunner, COMMAND_TIMEOUT, MAX_OUTPUT_BYTES, SCRIPT,
+    build_command, module_preflight_outcome, parse_script_output, system_powershell_runtime,
+    PowerShellScheduledTaskCommandRunner, SystemPowerShellRuntime, COMMAND_TIMEOUT,
+    MAX_OUTPUT_BYTES, SCRIPT,
 };
 
 #[cfg(windows)]
@@ -320,7 +321,7 @@ fn exact_registration_is_a_noop() {
 }
 
 #[test]
-fn register_repairs_owned_drift_but_never_overwrites_foreign_owner() {
+fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutation() {
     let fixture = RegistryFixture::new();
     let mut drift = fixture.exact_readback.clone();
     drift.action_arguments = "--once --profile default".to_owned();
@@ -814,6 +815,31 @@ fn operation_failed_maps_to_typed_error_without_raw_output() {
     assert_eq!(
         parse_script_output(br#"{"schemaVersion":1,"status":"operation_failed"}"#),
         Err(SaveBackupBackgroundRegistryError::OperationFailed)
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn missing_scheduled_tasks_module_is_classified_without_spawning() {
+    let directory = tempfile::tempdir().expect("temporary runtime directory");
+    let runtime = SystemPowerShellRuntime {
+        executable: directory.path().join("powershell.exe"),
+        scheduled_tasks_module: directory.path().join("ScheduledTasks.psd1"),
+    };
+
+    assert_eq!(
+        module_preflight_outcome(&ScheduledTaskCommand::Identity, &runtime),
+        None
+    );
+    assert_eq!(
+        module_preflight_outcome(
+            &ScheduledTaskCommand::Inspect {
+                task_name: "task-name".to_owned(),
+                owner_marker: "owner-marker".to_owned(),
+            },
+            &runtime,
+        ),
+        Some(ScheduledTaskCommandOutcome::ModuleUnavailable)
     );
 }
 

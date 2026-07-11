@@ -63,11 +63,7 @@ pub(super) fn system_powershell_runtime(
         .join("Modules")
         .join("ScheduledTasks")
         .join("ScheduledTasks.psd1");
-    if !executable.is_absolute()
-        || !executable.is_file()
-        || !scheduled_tasks_module.is_absolute()
-        || !scheduled_tasks_module.is_file()
-    {
+    if !executable.is_absolute() || !executable.is_file() || !scheduled_tasks_module.is_absolute() {
         return Err(SaveBackupBackgroundRegistryError::OperationFailed);
     }
 
@@ -77,10 +73,23 @@ pub(super) fn system_powershell_runtime(
     })
 }
 
-pub(super) fn build_command(
+pub(super) fn module_preflight_outcome(
     request: &ScheduledTaskCommand,
-) -> SaveBackupBackgroundRegistryResult<Command> {
-    let runtime = system_powershell_runtime()?;
+    runtime: &SystemPowerShellRuntime,
+) -> Option<ScheduledTaskCommandOutcome> {
+    if !matches!(request, ScheduledTaskCommand::Identity)
+        && !runtime.scheduled_tasks_module.is_file()
+    {
+        Some(ScheduledTaskCommandOutcome::ModuleUnavailable)
+    } else {
+        None
+    }
+}
+
+fn build_command_with_runtime(
+    request: &ScheduledTaskCommand,
+    runtime: &SystemPowerShellRuntime,
+) -> Command {
     let mut command = Command::new(&runtime.executable);
     command.args([
         "-NoLogo",
@@ -139,7 +148,15 @@ pub(super) fn build_command(
 
     command.stdout(Stdio::piped()).stderr(Stdio::null());
     command.creation_flags(CREATE_NO_WINDOW);
-    Ok(command)
+    command
+}
+
+#[cfg(test)]
+pub(super) fn build_command(
+    request: &ScheduledTaskCommand,
+) -> SaveBackupBackgroundRegistryResult<Command> {
+    let runtime = system_powershell_runtime()?;
+    Ok(build_command_with_runtime(request, &runtime))
 }
 
 pub(super) fn parse_script_output(
@@ -215,7 +232,11 @@ impl ScheduledTaskCommandRunner for PowerShellScheduledTaskCommandRunner {
         &self,
         request: ScheduledTaskCommand,
     ) -> SaveBackupBackgroundRegistryResult<ScheduledTaskCommandOutcome> {
-        let mut command = build_command(&request)?;
+        let runtime = system_powershell_runtime()?;
+        if let Some(outcome) = module_preflight_outcome(&request, &runtime) {
+            return Ok(outcome);
+        }
+        let mut command = build_command_with_runtime(&request, &runtime);
         let mut child = command
             .spawn()
             .map_err(|_| SaveBackupBackgroundRegistryError::OperationFailed)?;
