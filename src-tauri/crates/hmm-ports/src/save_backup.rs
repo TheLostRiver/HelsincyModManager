@@ -1,9 +1,10 @@
 use anyhow::Result;
 use hmm_core::{
     GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId,
-    SaveBackupBackgroundRegistrationStatus, SaveBackupSchedulerLeaseRenewalRequest,
-    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
-    SaveBackupTrigger, SaveBackupWorkerHeartbeat,
+    SaveBackupBackgroundRegistrationStatus, SaveBackupBackgroundSettings,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
+    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
+    SaveBackupWorkerHeartbeat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +70,16 @@ pub trait SaveBackupBackgroundRegistry: Send + Sync {
     fn unregister(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
+}
+
+pub trait SaveBackupBackgroundSettingsRepository: Send + Sync {
+    fn load(&self) -> Result<SaveBackupBackgroundSettings>;
+
+    fn begin_enable(&self, enabled_at: u128) -> Result<()>;
+
+    fn finish_disable(&self, updated_at: u128) -> Result<()>;
+
+    fn record_worker_heartbeat(&self, heartbeat_at: u128) -> Result<()>;
 }
 
 pub trait SaveBackupWriter: Send + Sync {

@@ -117,6 +117,7 @@ pub enum SaveBackupBackgroundStatusKindDto {
     Protected,
     TrayOnly,
     NotEnabled,
+    Starting,
     RegistrationFailed,
     WorkerUnhealthy,
     PermissionRequired,
@@ -181,6 +182,7 @@ impl From<SaveBackupBackgroundProtectionStatus> for SaveBackupBackgroundStatusKi
             SaveBackupBackgroundProtectionStatus::Protected => Self::Protected,
             SaveBackupBackgroundProtectionStatus::TrayOnly => Self::TrayOnly,
             SaveBackupBackgroundProtectionStatus::NotEnabled => Self::NotEnabled,
+            SaveBackupBackgroundProtectionStatus::Starting => Self::Starting,
             SaveBackupBackgroundProtectionStatus::RegistrationFailed => Self::RegistrationFailed,
             SaveBackupBackgroundProtectionStatus::WorkerUnhealthy => Self::WorkerUnhealthy,
             SaveBackupBackgroundProtectionStatus::PermissionRequired => Self::PermissionRequired,
@@ -275,6 +277,18 @@ impl From<SaveBackupStatus> for SaveBackupStatusDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_status_kind_maps_and_serializes_starting() {
+        let dto =
+            SaveBackupBackgroundStatusKindDto::from(SaveBackupBackgroundProtectionStatus::Starting);
+
+        assert_eq!(dto, SaveBackupBackgroundStatusKindDto::Starting);
+        assert_eq!(
+            serde_json::to_value(dto).expect("serialize starting background status"),
+            serde_json::json!("starting")
+        );
+    }
 
     #[test]
     fn start_save_backup_task_request_deserializes_without_paths() {

@@ -89,6 +89,7 @@ pub enum SaveBackupBackgroundProtectionStatus {
     Protected,
     TrayOnly,
     NotEnabled,
+    Starting,
     RegistrationFailed,
     WorkerUnhealthy,
     PermissionRequired,
@@ -101,10 +102,30 @@ impl SaveBackupBackgroundProtectionStatus {
             Self::Protected => "protected",
             Self::TrayOnly => "tray_only",
             Self::NotEnabled => "not_enabled",
+            Self::Starting => "starting",
             Self::RegistrationFailed => "registration_failed",
             Self::WorkerUnhealthy => "worker_unhealthy",
             Self::PermissionRequired => "permission_required",
             Self::UnsupportedPlatform => "unsupported_platform",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupBackgroundSettings {
+    pub desired_enabled: bool,
+    pub enabled_at: Option<u128>,
+    pub last_worker_heartbeat_at: Option<u128>,
+    pub updated_at: u128,
+}
+
+impl SaveBackupBackgroundSettings {
+    pub fn disabled() -> Self {
+        Self {
+            desired_enabled: false,
+            enabled_at: None,
+            last_worker_heartbeat_at: None,
+            updated_at: 0,
         }
     }
 }
@@ -250,6 +271,19 @@ impl SaveBackupManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_control_statuses_have_stable_codes() {
+        assert_eq!(
+            SaveBackupBackgroundProtectionStatus::Starting.as_str(),
+            "starting"
+        );
+
+        let state = SaveBackupBackgroundSettings::disabled();
+        assert!(!state.desired_enabled);
+        assert_eq!(state.enabled_at, None);
+        assert_eq!(state.last_worker_heartbeat_at, None);
+    }
 
     #[test]
     fn background_registration_statuses_have_stable_codes() {
