@@ -1,17 +1,18 @@
 # 后台自动备份调度内核实现计划
 
-本文档定义 `SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md` 中后台自动备份的调度内核，以及已完成的 P7.1 worker 基础能力。P7.1 已落地可测试的调度状态、租约去重、worker heartbeat 和单次 headless worker；真实 Windows 用户级 Scheduled Task 注册仍属于后续 P7.2。
+本文档定义 `SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md` 中的后台调度内核，以及 P7.1 worker 基础和 P7.2a Windows 平台核心。P7.2a 已落地用户级 Scheduled Task 注册/read-back/移除、独立 heartbeat 健康派生和 worker sidecar 基础；P7.2b 用户启用与退出流程仍未实现。
 
 ## 当前实施状态
 
-P7.1 已完成：
+P7.1 已完成 scheduler state、lease 和单次 worker。P7.2a 进一步完成：
 
-- 稳定的后台 registry contract 与 `UnsupportedPlatform` fallback，未注册平台不会误报为已注册。
-- SQLite 持久化 scheduler state、lease 与 worker heartbeat。
-- 只接受 `--once` 的 headless worker binary；它复用既有 scheduler、task runner、备份历史、manifest 和 Audit Log 链路，并且不初始化 WebView。
-- fake ports、固定 clock、临时 SQLite/目录覆盖的聚焦测试。
+- Windows 用户级 registry adapter、固定 Scheduled Task spec、幂等写入与 ownership-checked read-back/unregister。
+- 独立 `worker_heartbeat_at` 和 45 分钟 TTL；heartbeat 不覆盖 scheduler check、background status 或 lease。
+- 只读 `get_save_backup_background_status` 健康派生；只有 enabled + exact registration + fresh heartbeat 才返回 `protected`。
+- dev/release worker sidecar 准备与 Windows `externalBin` 配置。
+- fake registry/runner、固定 clock、临时 SQLite/目录覆盖的自动化测试；不操作真实系统任务。
 
-P7.1 没有注册或移除真实 Windows 用户级 Scheduled Task，也没有平台注册健康检查、Settings/Profile 的真实启用开关或退出前“启用并退出”提示。因此当前产品语义仍是 `tray_only`：headless binary 是平台注册前的基础能力，不是已注册的退出后自动运行机制；不得标为 `protected` 或完整后台保障。
+P7.2a 没有 Profile/Settings 真实启用开关或退出前提示，安装态人工 smoke 也尚未在一次性账户/VM 完成。因此普通产品流程仍保持 `tray_only`，不得表述为已通过 Windows runtime acceptance 或完整退出后保障。
 
 ## 目标
 
@@ -23,9 +24,10 @@ P7.1 没有注册或移除真实 Windows 用户级 Scheduled Task，也没有平
 
 ## 非目标
 
-- 本切片不注册真实 Windows Scheduled Task。
+- 自动化测试不注册、更新、启动或删除真实 Windows Scheduled Task。
 - 本切片不新增 Windows Service。
-- P7.1 的 `--once` headless worker 不等于独立 guardian 或已注册的系统调度机制。
+- P7.2a 不新增前端 register/unregister surface、Profile/Settings 启用入口或退出提示。
+- P7.2a 不实现 NSIS/WiX 自动卸载 cleanup；这是独立 release packaging gate。
 - 本切片不实现存档恢复。
 - 本切片不新增第二套备份文件写入逻辑。
 - 本切片不让前端传入存档路径、备份路径、manifest、hash 或 scheduler lease 字段。
@@ -103,7 +105,7 @@ save_backup_scheduler_state
 
 ### `src-tauri`
 
-P7.1 不新增 Tauri command、DTO 或 UI。后续 P7.2 如需前端展示，可在平台注册和健康检查完成后受控地新增查询入口：
+P7.2a 复用既有查询入口，并把 owner 切换为应用层健康服务：
 
 ```text
 get_save_backup_background_status({ gameId, profileId })
@@ -122,11 +124,11 @@ get_save_backup_background_status({ gameId, profileId })
 - `pendingReason`
 - `lastErrorCode`
 
-DTO 不返回 lease owner、worker id、真实路径或任何备份文件系统细节。
+该查询只读，不注册、不修复、不启动 worker、不获取 lease。DTO 不返回 lease owner、worker id、task name、SID、worker path、PowerShell、XML、原始命令输出或任何备份文件系统细节。
 
 ### 前端
 
-P7.1 不实现前端开关或状态页。P7.2 的 Profile/Settings UI 才可展示后台保护状态摘要：
+P7.2a 不新增前端开关。P7.2b 的 Profile/Settings UI 才可消费真实启用流程并展示后台保护状态摘要：
 
 - 已受后台保护
 - 仅客户端运行期保护
@@ -192,7 +194,7 @@ save_backup_auto_task_conflict
 
 ### Tauri/前端
 
-P7.1 没有新增 DTO/command/UI。P7.2 若新增这些内容：
+P7.2a 保持既有 DTO shape 和 command name，只把只读查询切换到派生健康服务；P7.2b 新增 UI/启用流程时继续满足：
 
 - DTO 序列化为 camelCase。
 - command 参数只接受 `gameId/profileId`，不接受路径或 lease 字段。
@@ -218,8 +220,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 ## 后续切片
 
-1. P7.2a（下一任务）：完成 Windows 用户级 Scheduled Task 注册/更新/移除、健康检查和 `protected` 判定的设计与实施计划，再落地受控平台注册核心。
-2. P7.2a：用 fake registry/command runner 覆盖生命周期和状态映射，并定义不接触真实玩家数据的 Windows 人工 smoke 策略。
-3. P7.2b：在平台注册和 heartbeat 健康确认通过后，接入 Profile/Settings 后台保护真实启用开关。
-4. P7.2b：接入退出主客户端时的“启用并退出”提示，未受保护时保持明确警示。
+1. 在已授权的一次性 Windows 账户/VM 按 smoke 文档完成安装态 sibling worker、真实触发、fresh heartbeat 与 cleanup 验收。
+2. P7.2b：接入 Profile/Settings 后台保护真实启用开关。
+3. P7.2b：接入退出主客户端时的“启用并退出”提示和真实启用后的端到端 `protected` 验收。
+4. 发布 gate：补 NSIS/WiX 自动卸载 cleanup，并分别验证安装器包含 sidecar 和卸载无残留任务。
 5. Linux / Steam Deck user service 或 autostart 实验支持。

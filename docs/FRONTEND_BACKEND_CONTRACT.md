@@ -505,10 +505,11 @@ get_save_backup_background_status({ request: { gameId, profileId } })
 - 前端只能传递 `gameId`、`profileId`、可选 `note` 和可选 `limit`；不得传入存档源路径、备份根目录、文件名、manifest 正文、文件列表、hash、sandbox/cache 路径或 backup ref。
 - Tauri command 只做 DTO 映射和 app service 转发；目录解析、默认备份目录、自选根目录子目录、压缩、manifest、SQLite 历史、保留策略和审计均由后端服务处理。
 - 同一 `gameId + profileId` 同时只允许一个存档备份任务处于 queued/running 范围；重复启动会返回稳定错误码 `task_scope_busy`，避免自动检查和手动按钮并发写同一份存档。
-- 当前 `check_auto_save_backup` 返回 `clientRuntimeOnly: true`，表示本切片只在主客户端/Tauri 运行期间检查计划；退出主客户端后的后台保障尚未启用，不能作为后台守护或系统计划任务的完成语义。
-- `get_save_backup_background_status` 是只读查询，读取后端持久化的调度状态（`save_backup_scheduler_state`），不触发检查、不启动任务、不获取租约。没有持久化状态时返回 `status: "not_enabled"`。
-- `SaveBackupBackgroundStatusDto` 只包含白名单字段；不得包含 `lease_owner`、`lease_expires_at`、`worker_instance_id`、完整路径、Steam ID、manifest 正文或 hash 列表。
-- 在后台守护落地前，`status` 实际最多为 `tray_only`；前端不得把该状态展示为"退出客户端后仍受保护"。
+- 当前 `check_auto_save_backup` 返回 `clientRuntimeOnly: true`，它仍只表示本次 due check 发生在主客户端/Tauri 运行期间，不代表已经启用退出后保护。
+- `get_save_backup_background_status` 是只读查询：后端读取 scheduler state、inspect Windows registry 并按固定 clock/45 分钟 TTL 派生健康状态；它不注册、不修复、不启动 worker、不获取租约。没有持久化状态或未启用后台保护时返回 `status: "not_enabled"`。
+- `protected` 必须同时满足 `backgroundProtectionEnabled = true`、Scheduled Task read-back 完全匹配，以及 `worker_heartbeat_at` 位于 `[now - 45m, now]`；未来时间、过期心跳、配置漂移和检查不确定性都 fail closed 为非保护状态。
+- `SaveBackupBackgroundStatusDto` 只包含白名单字段；不得包含 `lease_owner`、`lease_expires_at`、`worker_instance_id`、task name、SID、worker path、PowerShell、task XML、原始命令输出、完整路径、Steam ID、manifest 正文或 hash 列表。
+- P7.2a 不新增 register/unregister 前端命令；Profile/Settings 真实启用、退出提示和端到端 UI `protected` 验收属于 P7.2b。当前前端不得把平台核心存在等同于用户已启用退出后保护。
 
 DTO 形状：
 
@@ -1033,7 +1034,7 @@ type SupportDiagnosticsExportDto = {
 - `hmm://window-close-requested` 由 Tauri 后端在主窗口收到关闭请求时发出；后端会先阻止默认关闭，前端必须显示关闭选择或按已保存偏好调用窄命令。
 - `hide_main_window_to_tray` 只隐藏当前主窗口，不执行备份、不修改 Profile、不读取路径。
 - `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
-- 当前真正后台守护 / Windows Scheduled Task 尚未落地；前端文案必须区分“托盘后台运行”与“完全退出应用”。完全退出后，客户端运行期自动备份不会继续检查。
+- P7.2a 已落地 Windows Scheduled Task 平台注册与健康核心，但 P7.2b 的用户启用和退出提示尚未接入；前端文案仍必须区分“托盘后台运行”与“完全退出应用”，不能因平台核心存在就承诺退出后保护。
 - 前端不得通过宽泛 window/filesystem API 重建生命周期逻辑；只调用本节列出的窄命令。
 
 ## 测试要求
