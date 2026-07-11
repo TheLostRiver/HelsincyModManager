@@ -3,7 +3,7 @@
 - 日期：2026-07-10
 - 对应总任务：T8 存档备份系统 / Phase 7「真实后台守护与计划任务 MVP」
 - 前置切片：P7.1 单次 headless worker、scheduler lease 与 heartbeat 基础
-- 状态：设计已批准，实施计划已完成
+- 状态：平台核心已实现；安装态 bundle/runtime smoke 与 P7.2b 尚未完成
 
 ## 1. 背景与问题
 
@@ -29,7 +29,7 @@ P7.2a 交付 Windows 用户级 Scheduled Task 的受控注册核心、独立 hea
 2. 任务 action 只能启动随应用交付的 worker，并固定传入 `--once`。
 3. 注册、更新、检查和移除均由无外部路径参数的 backend use case 控制。
 4. register 是幂等 create-or-update；每次写入后必须 read-back 验证。
-5. unregister 是幂等操作，并且只删除具有本应用 ownership marker 的任务。
+5. unregister 是幂等操作，删除前必须确认当前读到的任务具有本应用 ownership marker。
 6. 只有“平台注册配置正确”和“当前 Profile 的 worker heartbeat 新鲜”同时成立时，
    才派生 `protected`。
 7. 自动化测试使用 fake registry、fake command runner、固定 clock 和临时 SQLite，
@@ -72,6 +72,8 @@ Windows adapter 使用系统自带的 PowerShell `ScheduledTasks` 模块。`hmm-
   搜索或可伪造的 `SystemRoot` 环境变量。
 - `ScheduledTasks.psd1` 也从同一系统目录派生绝对 manifest path 并按 path 导入，不按
   `PSModulePath` 搜索同名用户模块。
+- module manifest 缺失时在 spawn 前返回 `module_unavailable`，并映射为
+  `unsupported_platform`，不能折叠为 generic registration failure。
 - inline command 不使用 `ExecutionPolicy Bypass`，不降低系统脚本策略。
 
 这个方案避免 `schtasks.exe` 的本地化错误文本和 XML 编码问题，同时比直接维护
@@ -210,6 +212,12 @@ HelsincyModManager.SaveBackup.<16-hex-user-digest>
 - unregister 删除前再次校验 marker；marker 不匹配时 fail closed。
 - register 只允许覆盖属于本应用、但 spec 已漂移的旧任务。
 
+ownership marker 防止误碰预先存在或检查时已可见的 foreign task，但 Windows
+`ScheduledTasks` cmdlet 不提供把 Description 比较与 update/delete 绑定为原子 CAS 的能力。
+已登录的同用户恶意进程可在检查与写入之间替换用户级任务，也可修改该用户可写的应用
+二进制和 AppData；这种已失陷用户会话不属于 P7.2a 防御边界。写入后 read-back 仍必须
+fail closed，验收不得宣称能够阻止该同用户 TOCTOU。
+
 任务 ownership marker 固定为跨版本不变的应用内部常量；`task_schema_version` 是独立内部/audit
 常量，不参与 ownership。改变任务 schema 时递增内部版本并改变 expected semantic fields，由
 register 的 create-or-update 语义完成升级，旧任务不会因版本号变化被误判为外部 owner。
@@ -265,7 +273,7 @@ inspect 只读系统状态，不修改任务、不启动 worker、不写 schedul
 4. 未注册时创建任务。
 5. 属于本应用但配置漂移时以 `Set-ScheduledTask` 完整更新 expected spec；missing create 不用
    `-Force`，避免竞态覆盖刚出现的外部任务。
-6. ownership conflict 或权限不足时不写入。
+6. mutation 前观察到 ownership conflict 或权限不足时不写入。
 7. 写入后再次 inspect；read-back 不是 registered 时，register 失败。
 
 注册成功本身不能产生 `protected`。只有后续 worker heartbeat 新鲜时才能提升状态。
@@ -354,7 +362,6 @@ save_backup_background_status_unavailable
 - `operation = background_registration`
 - `result`
 - `registration_status`
-- `protection_status`
 - `error_code`
 - `task_schema_version`
 
@@ -381,6 +388,10 @@ P7.2a 将 `hmm-save-backup-worker` 作为 Tauri `bundle.externalBin` sidecar 随
   build 必须显式提供并校验相同 target triple。
 - 产物目录从 `cargo metadata` 获取，不能假设固定仓库 `target/` 或忽略
   `CARGO_TARGET_DIR`。
+- helper 内部 worker `cargo build` 使用局部 `TAURI_CONFIG` merge patch 清空
+  `bundle.externalBin`，避免 sidecar 尚未生成时发生自举校验；正式 Tauri build 不使用该覆盖。
+- Cargo package 显式设置 GUI `default-run`，防止新增 worker bin 后打包器把 headless worker
+  误选为主应用。
 - 安装后 worker 与主程序位于受控 sibling 位置。
 - registry 只从当前主程序位置派生 worker path，不读取用户配置或前端参数。
 - register 前 canonicalize 并确认 worker 是文件。
@@ -412,7 +423,7 @@ P7.2a 的 bundle smoke 必须检查安装产物确实包含 worker。仅通过
 - missing task、permission、module unavailable、timeout、invalid JSON 和非零退出稳定映射。
 - exact spec read-back 返回 registered。
 - action path、arguments、principal、trigger、interval、settings、marker 任一漂移都被识别。
-- ownership conflict 不覆盖、不删除。
+- fake inspect 已观察到 ownership conflict 时不发出 register/unregister mutation。
 - register 对 missing 创建、对 owned drift 更新、对 exact spec 幂等。
 - unregister 对 missing 幂等，对 owned task 删除并复查。
 - fake 记录的 command request 不接受任意程序、脚本、路径或 task XML 输入。
@@ -432,6 +443,8 @@ P7.2a 的 bundle smoke 必须检查安装产物确实包含 worker。仅通过
 
 人工 smoke 只在一次性 Windows 测试账户或 VM 中执行，使用干净 AppData、人工 Profile、
 临时存档目录和最小文本 fixture。
+
+可执行步骤见 [Windows 存档后台任务人工 Smoke](../../testing/windows-save-backup-scheduled-task-smoke.md)。普通自动化和开发者日常账户不得运行 ignored smoke。
 
 顺序固定为：
 
@@ -461,7 +474,8 @@ SID、存档内容或原始系统输出。
 P7.2a 完成时必须同时满足：
 
 1. Windows registry adapter 能在普通用户权限下 inspect/register/update/unregister。
-2. 所有写操作都有 read-back，ownership conflict 不会覆盖或删除其他任务。
+2. 所有写操作都有 read-back；mutation 前已观察到的 ownership conflict 必须阻断，且同用户
+   恶意进程造成的 check/write TOCTOU 明确记录为超出防御边界的残余风险。
 3. Scheduled Task action 只能是已打包 worker 和 exact `--once`。
 4. worker heartbeat 与 scheduler check 时间已分离。
 5. `protected` 只能由 exact registration 与 fresh heartbeat 双条件产生。
@@ -475,3 +489,5 @@ P7.2a 完成时必须同时满足：
 
 达到这些条件后，P7.2a 可进入独立 review gate。只有 P7.2b 启用入口和退出体验通过后，
 产品 UI 才能向用户提供完整的“启用后台保护并退出”工作流。
+
+当前实现与 fake/临时自动化已覆盖 2-6、9-10；普通用户真实平台行为、安装态 sidecar bundle 和一次性账户/VM smoke 对应 1、7-8，仍为未完成验收项。因此当前不宣称 Windows runtime acceptance。

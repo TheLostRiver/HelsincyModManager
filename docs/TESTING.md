@@ -292,6 +292,25 @@ cargo check -p hmm-tauri --bin hmm-save-backup-worker
 
 要求：worker 与 scheduler 测试使用 fake ports、固定 clock 和临时 SQLite/目录；不得使用真实 Windows Scheduled Task、真实游戏进程、真实 MHW 安装、Steam userdata 或玩家存档。该切片验证的是 `tray_only` 下的单次 `--once` worker、持久化 lease/heartbeat 与既有任务链路复用，不证明主客户端退出后已经自动运行，也不构成 `protected` 或完整后台保障。
 
+P7.2a Windows Scheduled Task 平台核心、独立 heartbeat、健康派生和 sidecar 至少运行：
+
+```powershell
+cargo test -p hmm-core background_registration_statuses_have_stable_codes
+cargo test -p hmm-infra --test save_backup_scheduler_repository
+cargo test -p hmm-infra save_backup_background_registry::tests
+cargo test -p hmm-app --test save_backup_background
+cargo test -p hmm-app --test save_backup_background_worker
+cargo test -p hmm-app --test save_backup_scheduler
+cargo test -p hmm-app --test save_backup_task
+cargo test -p hmm-tauri save_backup
+cargo check -p hmm-tauri --bin hmm-save-backup-worker
+node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
+```
+
+要求：平台注册自动化只能使用 fake registry/command runner；健康矩阵使用 fixed clock；repository 使用临时 SQLite；sidecar 测试只检查构建配置和 Cargo metadata。普通测试和 `verify.ps1` 不得创建、更新、启动或删除真实 Scheduled Task。`get_save_backup_background_status` 必须保持只读，并覆盖 exact + fresh、future、stale、drift、permission 和 unsupported 等 fail-closed 状态。
+
+真实 Windows 验收只允许人工在一次性本地账户或 VM 按 [Windows 存档后台任务人工 Smoke](testing/windows-save-backup-scheduled-task-smoke.md) 执行。只有安装态 sibling worker、任务真实触发、fresh heartbeat 和最终 cleanup 全部通过，才能记录 Windows runtime acceptance；不得在开发者日常账户为了完成 checklist 运行 ignored smoke。
+
 存档目录自动发现切片至少运行聚焦测试：
 
 ```powershell
@@ -418,6 +437,8 @@ cargo test --workspace
 建议补充：
 
 ```powershell
+cmd /c corepack pnpm run prepare:save-backup-worker-sidecar:dev
+cmd /c corepack pnpm run prepare:save-backup-worker-sidecar
 cmd /c corepack pnpm run tauri:build
 ```
 
@@ -425,6 +446,9 @@ cmd /c corepack pnpm run tauri:build
 
 - 产物名称是否正确。
 - Windows 打包是否正常。
+- Windows 安装目录是否同时包含 GUI 主程序和 sibling `hmm-save-backup-worker.exe`。
+- target-triple sidecar 源产物是否保持 ignored/untracked。
+- installer 自动 cleanup 是否作为独立 gate 验证，不能由“bundle 包含 sidecar”代替。
 - Linux / Steam Deck 相关说明是否仍为实验性。
 - 自动更新策略是否与安全策略一致。
 

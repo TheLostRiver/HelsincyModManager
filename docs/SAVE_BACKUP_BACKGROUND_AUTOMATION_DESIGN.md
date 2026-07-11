@@ -2,31 +2,22 @@
 
 本文档定义存档自动备份在主客户端关闭后的保障语义、后台执行架构、调度规则、UI 提示、安全边界和分阶段落地计划。它补充 [存档备份系统设计](SAVE_BACKUP_DESIGN.md)，不替代手动备份、manifest、历史记录、恢复流程或存档目录自动发现设计。
 
-## 当前实施状态（P7.1）
+## 当前实施状态（P7.2a 平台核心）
 
-P7.1 已完成平台注册前的基础能力，但尚未交付退出主客户端后的真实后台保障：
+P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 
-- 已定义稳定的后台 registry contract，并提供始终返回 `UnsupportedPlatform` 的安全 fallback；它不会误报平台注册成功。
-- 已落地 SQLite 持久化 scheduler state、lease 与 worker heartbeat。
-- 已提供只接受 `--once` 的单次 headless worker binary；该入口不初始化 WebView 或 Tauri GUI runtime。
-- worker 复用既有 scheduler、task runner、`SaveBackupService`、SQLite 历史、manifest 和 Audit Log 链路，不实现第二套备份写入逻辑。
-- 聚焦测试仅使用 fake ports、固定 clock 和临时 SQLite/目录，不使用真实系统计划任务、游戏安装或玩家存档。
+- 用户级 Scheduled Task adapter 支持受控 inspect、幂等 register/update、逐字段 read-back 和 ownership-checked unregister；固定任务每 15 分钟运行，并在用户登录后延迟 1 分钟触发。
+- task action 只能启动内部定位的 sibling worker，参数严格固定为 `--once`；前端和外部输入不能提供 task name、SID、命令、路径、参数、PowerShell 或 XML。
+- `worker_heartbeat_at` 已与 scheduler `last_checked_at` 分离。只有后台保护已启用、read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才派生 `protected`。
+- `get_save_backup_background_status` 只读执行注册检查和健康派生，不注册、不修复、不启动任务，也不获取 scheduler lease。
+- worker sidecar 的 dev/release 准备脚本和 Windows `externalBin` 已接入；target-triple 源产物被 Git 忽略。
+- 自动化测试仅使用 fake registry/command runner、固定 clock、临时 SQLite/目录和人工 fixture，不创建、更新、启动或删除真实 Scheduled Task。
 
-P7.1 尚未实现真实 Windows 用户级 Scheduled Task 的注册/移除、平台注册健康检查、Settings/Profile 的真实启用开关，以及退出前“启用并退出”提示。这些属于 P7.2；在它们完成并通过健康确认前，不得将 P7.1 标为 `protected`、完整后台保障，或表述为主客户端退出后已自动运行。
+P7.2a 尚未提供 Profile/Settings 真实启用入口或退出前提示，因此普通用户流程仍不能启用完整退出后保护，当前产品文案继续保持 `tray_only`。安装态 sibling worker、真实触发、fresh heartbeat 和最终 cleanup 的人工 smoke 也尚未在一次性账户/VM 完成，所以当前不宣称 Windows runtime acceptance。
 
-因此，当前自动备份的产品语义仍是 `tray_only`：托盘常驻的主客户端可以执行自动备份，真正退出后不受保护。headless binary 只是未来平台注册的基础能力，不是已注册的退出后调度机制。
+## 下一任务（P7.2b 用户流程）
 
-## 下一任务（P7.2a 设计与实施计划）
-
-下一会话首先完成 P7.2a 的设计与实施计划，确认以下边界后再修改代码。P7.2b 的 Profile/Settings 开关和退出前提示必须等待 P7.2a 通过 review gate：
-
-1. 仅支持 Windows 用户级 Scheduled Task，不要求管理员权限，不创建 Windows Service，也不在自动化测试中操作真实系统任务。
-2. 注册、更新、检查和移除必须由受控 backend use case 完成；任务名、worker 二进制定位、固定 `--once` 参数和触发策略由应用内部决定，前端和外部参数不得传入任意命令或路径。
-3. `protected` 只能由“已正确注册且可检查”与“未过期的 worker heartbeat”共同得出。注册成功、单次 heartbeat 或 `tray_only` 均不足以提升为 `protected`。
-4. 平台失败必须映射为稳定状态/错误码，覆盖未注册、权限不足、注册失败、配置漂移和 worker 不健康；日志、DTO 和 UI 不得泄漏任务 XML、完整路径、用户名或存档内容。
-5. 先以 fake registry/command runner 和临时数据覆盖注册生命周期、状态映射和升级/卸载行为；真实 Windows Scheduled Task 只做受控人工 smoke，不能使用真实玩家存档或游戏目录。
-
-建议将 P7.2 拆为两个 review gate：先交付平台注册与健康核心，再在其通过后接入 Profile/Settings 开关和退出前提示。两者都必须继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
+P7.2b 才接入 Profile/Settings 后台保护开关、退出前提示和真实启用后的 UI/退出端到端 `protected` 验收。NSIS/WiX 自动卸载 cleanup 仍是独立 release packaging gate。所有后续工作继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
 
 ## 背景
 
@@ -71,7 +62,7 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 退出程序
 
-用户选择“退出程序”表示主客户端进程结束。以下“后台保障已启用”和退出提示是 P7.2 的目标行为；P7.1 当前没有可满足该条件的平台注册，因此保持 `tray_only`，不能表述为退出后仍会自动运行。P7.2 完成后，若后台保障未启用，退出前必须提示：
+用户选择“退出程序”表示主客户端进程结束。P7.2a 已具备平台注册核心，但 P7.2b 尚未提供真实启用入口和退出提示，因此当前产品流程保持 `tray_only`，不能表述为退出后仍会自动运行。P7.2b 完成后，若后台保障未启用，退出前必须提示：
 
 ```text
 退出主客户端后，自动备份将不再受后台保障。
@@ -157,12 +148,12 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 系统计划任务
 
-Windows 第一阶段建议使用用户级 Scheduled Task；这是 P7.2 未实现的平台注册工作，不是 P7.1 已交付行为：
+Windows P7.2a 已实现用户级 Scheduled Task 平台核心：
 
-- 在用户登录时启动后台守护。
-- 可选择每隔固定时间唤醒一次守护执行单次检查。
+- 用户登录后延迟 1 分钟执行一次。
+- 每隔 15 分钟唤醒一次 worker 执行单次检查。
 - 不要求管理员权限。
-- 安装、更新、卸载时由受控后端流程维护。
+- 注册、更新、检查和移除由受控后端流程维护；安装器自动 cleanup 尚未接入。
 
 计划任务只负责拉起守护，不负责备份逻辑。
 
@@ -269,7 +260,7 @@ unsupported_platform
 
 含义：
 
-- `protected`：后台守护已注册且最近健康检查正常。
+- `protected`：后台保护已启用、Scheduled Task read-back 完全匹配，且 worker heartbeat 位于 `[now - 45m, now]`。
 - `tray_only`：主客户端托盘常驻可执行自动备份，但真正退出后不受保护。
 - `not_enabled`：用户未启用后台保障。
 - `registration_failed`：计划任务或自启动注册失败。
@@ -464,10 +455,14 @@ MVP 平台。推荐：
 - 已新增 stable registry contract 与 `UnsupportedPlatform` fallback，以及 fake/临时依赖测试。
 - 当前状态固定为 `tray_only`；该 binary 是平台注册前基础能力，不代表退出后已自动运行。
 
-### 切片 4：P7.2 平台注册与主客户端状态/提示
+### 切片 4a：P7.2a Windows 平台注册与健康核心
 
-- Windows 用户级 Scheduled Task 注册与移除。
-- 注册健康检查，并且只有已注册且健康时才可显示 `protected`。
+- 已实现 Windows 用户级 Scheduled Task inspect/register/update/unregister 和 ownership/read-back 保护。
+- 已实现独立 worker heartbeat、45 分钟 TTL 和 exact registration + fresh heartbeat 的 `protected` 派生。
+- 已实现 Windows worker sidecar 准备与打包配置；安装态人工 smoke 尚未完成，不构成 Windows runtime acceptance。
+
+### 切片 4b：P7.2b 主客户端状态与提示
+
 - Settings/Profile 的真实后台保障启用开关。
 - 退出主客户端前的“启用并退出”提示。
 - 设置页和 Profile 页展示受支持的后台保障状态。

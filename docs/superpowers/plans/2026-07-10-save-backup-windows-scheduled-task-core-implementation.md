@@ -81,7 +81,7 @@ RED/GREEN 命令和安全 smoke cleanup 写成可直接执行的完整内容。�
 - Produces: `ScheduledTaskReadback` 和 `ScheduledTaskSpecMatch::{Exact, OwnedDrift, OwnershipConflict}`。
 - Preserves: public `UnsupportedSaveBackupBackgroundRegistry` fallback 行为。
 
-- [ ] **Step 1: 写任务 identity 和逐字段漂移 RED 测试**
+- [x] **Step 1: 写任务 identity 和逐字段漂移 RED 测试**
 
 先在 core stable-code test 加入：
 ```rust
@@ -195,7 +195,7 @@ fn exact_readback(spec: &ScheduledTaskSpec) -> ScheduledTaskReadback {
 action 不作为 constructor 输入；它们必须分别通过 `action_arguments` 和 `action_count`
 read-back drift case 证明会被拒绝为 `OwnedDrift`。
 
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -205,7 +205,7 @@ cargo test -p hmm-infra save_backup_background_registry::tests
 ```
 Expected: FAIL，错误包含 `ConfigurationDrift`、`ScheduledTaskSpec` 或 `ScheduledTaskSpecMatch` 未定义。
 
-- [ ] **Step 3: 重组 module 并保持 fallback**
+- [x] **Step 3: 重组 module 并保持 fallback**
 
 先在 core enum 加入：
 ```rust
@@ -278,7 +278,7 @@ Task 2 再加入 Windows-only `powershell` module；Task 3 加入跨平台 priva
 Windows-only `windows` constructor 和 public export。这样 fake lifecycle tests 在所有 target 编译，
 每个 task 的提交也可独立编译。
 
-- [ ] **Step 4: 实现 pure task spec**
+- [x] **Step 4: 实现 pure task spec**
 
 `task_spec.rs` 使用以下完整字段：
 ```rust
@@ -395,7 +395,7 @@ impl ScheduledTaskSpec {
     }
 }
 ```
-- [ ] **Step 5: 运行 GREEN 和 fallback 回归**
+- [x] **Step 5: 运行 GREEN 和 fallback 回归**
 
 Run:
 ```powershell
@@ -407,7 +407,7 @@ cargo clippy -p hmm-infra --all-targets -- -D warnings
 ```
 Expected: 全部 PASS；non-Windows fallback 仍只返回 unsupported。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```powershell
 git add src-tauri/crates/hmm-core/src/save_backup.rs src-tauri/crates/hmm-ports/src/save_backup.rs src-tauri/crates/hmm-ports/src/lib.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry src-tauri/crates/hmm-infra/src/lib.rs src-tauri/crates/hmm-infra/tests/save_backup_background_registry.rs
 git commit -m "refactor: define scheduled task registration spec"
@@ -431,7 +431,7 @@ git commit -m "refactor: define scheduled task registration spec"
 - Produces: `system_powershell_runtime()`，通过 `GetSystemDirectoryW` 返回可信 executable/module absolute paths。
 - Consumes: Task 1 的 `ScheduledTaskSpec` / `ScheduledTaskReadback`。
 
-- [ ] **Step 1: 写 runner parser/timeout/forbidden-input RED 测试**
+- [x] **Step 1: 写 runner parser/timeout/forbidden-input RED 测试**
 
 测试固定 JSON schema：
 ```rust
@@ -470,7 +470,7 @@ assert!(!script.contains("ExecutionPolicy"));
 assert!(!script.contains("Invoke-Expression"));
 assert!(!script.lines().any(|line| line.contains("Register-ScheduledTask") && line.contains("-Force")));
 ```
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -478,7 +478,7 @@ cargo test -p hmm-infra save_backup_background_registry::tests
 ```
 Expected: FAIL，错误包含 `parse_script_output` / runner types 不存在。
 
-- [ ] **Step 3: 添加 Windows-only timeout 依赖与 runner contract**
+- [x] **Step 3: 添加 Windows-only timeout 依赖与 runner contract**
 
 workspace dependencies 加入：
 ```toml
@@ -521,7 +521,7 @@ trait ScheduledTaskCommandRunner: Send + Sync {
 分别转成 `CommandTimeout` / `CommandInvalidOutput`，不创建 `Failed(String)` 之类携带原文的
 outcome。
 
-- [ ] **Step 4: 创建固定 ScheduledTasks 脚本**
+- [x] **Step 4: 创建固定 ScheduledTasks 脚本**
 
 `scheduled_task.ps1` 使用以下完整流程；所有动态值来自 Rust 设置的固定环境键：
 ```powershell
@@ -677,7 +677,7 @@ register branch 在构造完整 spec 后立即重新读取 owner：missing 使�
 使用 `Set-ScheduledTask` + `Enable-ScheduledTask`，foreign 返回 conflict；unregister 通过复核后的
 `InputObject` 删除。仍需在 final review 记录同一用户恶意进程可在 read/write 间竞争的残余风险。
 
-- [ ] **Step 5: 实现 Rust subprocess 与 JSON 白名单 parser**
+- [x] **Step 5: 实现 Rust subprocess 与 JSON 白名单 parser**
 
 parser DTO 使用 `deny_unknown_fields`，避免 PowerShell 输出悄悄扩展为未 review 的 contract：
 ```rust
@@ -853,7 +853,7 @@ command -> env 映射固定为：Identity 只设置 `HMM_OPERATION=identity`；I
 Unregister 设置 `unregister + system module path + task_name + owner_marker`。runner API 不接受 executable、script、task path、
 arguments 或 XML；task path `\` 和 `--once` 都在编译期脚本内固定。
 
-- [ ] **Step 6: 运行 GREEN、脚本静态边界和 crate 检查**
+- [x] **Step 6: 运行 GREEN、脚本静态边界和 crate 检查**
 
 Run:
 ```powershell
@@ -866,7 +866,7 @@ if ($LASTEXITCODE -ne 1) { throw 'runner boundary search failed' }
 ```
 Expected: tests/check/clippy PASS；边界搜索无命中。自动测试不得调用 real runner。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 ```powershell
 git add Cargo.toml Cargo.lock src-tauri/crates/hmm-infra/Cargo.toml src-tauri/crates/hmm-infra/src/save_backup_background_registry/mod.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry/powershell.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry/scheduled_task.ps1 src-tauri/crates/hmm-infra/src/save_backup_background_registry/tests.rs
 git commit -m "feat: add controlled scheduled task runner"
@@ -889,7 +889,7 @@ git commit -m "feat: add controlled scheduled task runner"
 - Consumes: Tasks 1/2 的 task spec、runner operation/outcome。
 - Preserves: `SaveBackupBackgroundRegistry` 无输入 contract。
 
-- [ ] **Step 1: 写完整 fake lifecycle RED 测试**
+- [x] **Step 1: 写完整 fake lifecycle RED 测试**
 
 fake runner 必须可排队 outcomes 并记录 operations。先实现完整 harness：
 ```rust
@@ -959,7 +959,7 @@ fn register_creates_missing_task_then_requires_exact_readback() {
     assert!(matches!(runner.commands().as_slice(), [ScheduledTaskCommand::Identity, ScheduledTaskCommand::Inspect { .. }, ScheduledTaskCommand::Register(_), ScheduledTaskCommand::Inspect { .. }]));
 }
 #[test]
-fn register_repairs_owned_drift_but_never_overwrites_foreign_owner() {
+fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutation() {
     let fixture = RegistryFixture::new();
     let mut drift = fixture.exact_readback.clone();
     drift.action_arguments = "--once --profile default".to_owned();
@@ -1013,7 +1013,7 @@ fn runner_errors_remain_typed_and_fail_closed() {
 canonical worker 的 missing/non-file/symlink 拒绝、exact register no-op、post-write 仍 drift、
 permission/module unavailable 和 foreign unregister tests，不增加 real runner 调用。
 
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -1021,7 +1021,7 @@ cargo test -p hmm-infra save_backup_background_registry::tests
 ```
 Expected: FAIL，错误包含 `ScheduledTaskRegistry` / `WindowsScheduledTaskRegistry` 未定义。
 
-- [ ] **Step 3: 实现 expected spec 和 inspect 映射**
+- [x] **Step 3: 实现 expected spec 和 inspect 映射**
 
 `ScheduledTaskRegistry<R>` 保存 `runner: R` 和可注入 `worker_path: Option<PathBuf>`；tests 的
 `new(runner, path)` 包装为 `Some(path)`，production locator 可传 None。health inspect/register：
@@ -1102,7 +1102,7 @@ public `inspect()` 只返回 `inspect_internal()?.status`；`register()` 使用�
 `RegistryInspection` 取得 write 所需 spec；`unregister()` 只使用 `inspect_owned_raw()`，因此
 不会间接依赖 worker 文件。
 
-- [ ] **Step 4: 实现幂等 register/update/unregister**
+- [x] **Step 4: 实现幂等 register/update/unregister**
 
 register algorithm：
 
@@ -1169,7 +1169,7 @@ locator 为 None 时 inspect/register 返回 typed `WorkerBinaryUnavailable`，�
 PowerShell inspect/register；unregister 仍执行 identity + raw ownership inspect。fake lifecycle
 补测 None locator 下 inspect/register fail closed、unregister owned/missing 仍成功。
 
-- [ ] **Step 5: 添加默认不运行的 Windows smoke harness**
+- [x] **Step 5: 添加默认不运行的 Windows smoke harness**
 
 在 private module tests 中添加：
 
@@ -1244,7 +1244,7 @@ Rust cleanup，因此人工 smoke 文档必须保留独立的最终 Task Schedul
 它不接受 task name，内部 raw inspect 会再次验证 ownership marker，且 unregister 不要求 worker
 文件存在。ownership conflict 时必须停止并交由人工调查，不能调用 `schtasks /Delete`。
 
-- [ ] **Step 6: 运行 GREEN、fallback 和公开 API 检查**
+- [x] **Step 6: 运行 GREEN、fallback 和公开 API 检查**
 
 Run:
 ```powershell
@@ -1255,7 +1255,7 @@ cargo clippy -p hmm-infra --all-targets -- -D warnings
 ```
 Expected: 全部 PASS；fake tests 在不创建真实 Scheduled Task 的情况下覆盖完整生命周期。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src-tauri/crates/hmm-infra/src/save_backup_background_registry/registry.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry/windows.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry/mod.rs src-tauri/crates/hmm-infra/src/save_backup_background_registry/tests.rs src-tauri/crates/hmm-infra/src/lib.rs src-tauri/crates/hmm-infra/tests/save_backup_background_registry.rs
@@ -1283,7 +1283,7 @@ git commit -m "feat: register Windows save backup task"
 - Produces: `SaveBackupWorkerHeartbeat { game_id, profile_id, worker_instance_id, heartbeat_at }`，不再包含 protection status。
 - Preserves: `last_checked_at` 只表示 scheduler check；lease fields 的 owner-scoped 更新规则不变。
 
-- [ ] **Step 1: 写 RED 测试，锁住 heartbeat 隔离**
+- [x] **Step 1: 写 RED 测试，锁住 heartbeat 隔离**
 
 将 infra heartbeat 测试改成以下断言；修改实现前应因字段不存在/旧字段仍必需而编译失败：
 
@@ -1384,7 +1384,7 @@ fn windows_smoke_probe_sees_fresh_worker_heartbeat() {
 probe 不输出 DB path、profile id 或 heartbeat 原值。future/stale 分支仍只用 Task 5 fixed clock
 自动化测试验证，不修改测试机时钟或数据库。
 
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -1393,7 +1393,7 @@ cargo test -p hmm-infra --test save_backup_scheduler_repository scheduler_migrat
 ```
 Expected: 至少一个命令 FAIL，错误包含 `heartbeat_at` 或 `worker_heartbeat_at` 未定义；不能是 fixture/真实路径错误。
 
-- [ ] **Step 3: 实现领域字段和 migration**
+- [x] **Step 3: 实现领域字段和 migration**
 
 将 heartbeat/state 更新为：
 
@@ -1419,7 +1419,7 @@ ADD COLUMN worker_heartbeat_at INTEGER;
 ```
 在 `migrations.rs` 的 `006` 后注册 `007_save_backup_worker_heartbeat.sql`。旧行保持 null，禁止迁移时填充 `last_checked_at`。
 
-- [ ] **Step 4: 更新 repository SQL 和所有构造点**
+- [x] **Step 4: 更新 repository SQL 和所有构造点**
 
 repository 的 heartbeat 写入必须严格为：
 
@@ -1468,7 +1468,7 @@ SaveBackupWorkerHeartbeat {
     heartbeat_at: check.checked_at,
 }
 ```
-- [ ] **Step 5: 运行 GREEN 与回归**
+- [x] **Step 5: 运行 GREEN 与回归**
 
 Run:
 ```powershell
@@ -1480,7 +1480,7 @@ cargo test -p hmm-tauri save_backup
 ```
 Expected: 全部 PASS；heartbeat 测试证明 `last_checked_at`、`background_status` 和 lease 未被覆盖。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src-tauri/crates/hmm-core/src/save_backup.rs src-tauri/crates/hmm-app/src/save_backup_background_worker.rs src-tauri/crates/hmm-app/src/save_backup_scheduler.rs src-tauri/crates/hmm-app/tests/save_backup_background_worker.rs src-tauri/crates/hmm-app/tests/save_backup_scheduler.rs src-tauri/crates/hmm-app/tests/save_backup_task.rs src-tauri/crates/hmm-infra/src/sqlite/migrations.rs src-tauri/crates/hmm-infra/src/sqlite/migrations/007_save_backup_worker_heartbeat.sql src-tauri/crates/hmm-infra/src/sqlite/save_backup_scheduler_repository.rs src-tauri/crates/hmm-infra/tests/save_backup_scheduler_repository.rs src-tauri/src/save_backup_dto.rs
@@ -1502,7 +1502,7 @@ git commit -m "refactor: split save backup worker heartbeat"
 - Produces: `SaveBackupBackgroundService::{status, register, unregister}`。
 - Consumes: Task 1 的 `ConfigurationDrift` / registry schema constant 和 Task 4 的 `worker_heartbeat_at`。
 
-- [ ] **Step 1: 写 fail-closed 状态矩阵 RED 测试**
+- [x] **Step 1: 写 fail-closed 状态矩阵 RED 测试**
 
 使用一个 table-driven 测试覆盖全部优先级：
 
@@ -1631,7 +1631,7 @@ Audit Log fields 不包含 `path`、`sid`、`task_name`、`command`、`xml`。
 在 `tray_only` / `protected` 输出中被清空，而 `save_backup_auto_skipped_game_running` 这类
 scheduler/auto-backup 错误仍被保留。
 
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -1639,7 +1639,7 @@ cargo test -p hmm-app --test save_backup_background
 ```
 Expected: FAIL，错误包含 module/type `save_backup_background` 不存在。
 
-- [ ] **Step 3: 实现 service 类型和状态派生**
+- [x] **Step 3: 实现 service 类型和状态派生**
 
 新增以下 public shape：
 
@@ -1782,7 +1782,7 @@ fn registration_failure(
 `ConfigurationDrift`、`RegistrationFailed`、`PermissionRequired`、`UnsupportedPlatform`
 分别映射规格中的稳定 code。`Registered` 分支使用 `unreachable!`，因为调用方已排除。
 
-- [ ] **Step 4: 实现 register/unregister read-back 和白名单审计**
+- [x] **Step 4: 实现 register/unregister read-back 和白名单审计**
 
 register 只有在 `registry.register()` 和随后 `registry.inspect()` 都返回 `Registered`
 时才成功；unregister 只有在 operation 和 read-back 都返回 `NotRegistered` 时成功。
@@ -1857,7 +1857,7 @@ AuditLogEvent {
 测试用 fake registry 记录调用顺序，fake audit writer 保存 event；不要在 production
 service 中加入 task name/path/SID 参数。
 
-- [ ] **Step 5: 运行 GREEN、clippy 和边界搜索**
+- [x] **Step 5: 运行 GREEN、clippy 和边界搜索**
 
 Run:
 ```powershell
@@ -1870,7 +1870,7 @@ if ($LASTEXITCODE -ne 1) { throw 'background service boundary search failed' }
 Expected: tests/clippy PASS；production `rg` 无输出；integration test 自身断言 Audit Log field
 白名单和 forbidden key 不泄漏。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src-tauri/crates/hmm-app/src/save_backup_background.rs src-tauri/crates/hmm-app/tests/save_backup_background.rs src-tauri/crates/hmm-app/src/lib.rs
@@ -1895,7 +1895,7 @@ git commit -m "feat: derive save backup background health"
 - Produces: async command + `tauri::async_runtime::spawn_blocking`；15 秒 PowerShell timeout 不直接阻塞 command runtime。
 - Removes: `SaveBackupAutoSchedulerService::background_status` passthrough，避免两个 status owner。
 
-- [ ] **Step 1: 写 DTO 派生状态和敏感字段 RED 测试**
+- [x] **Step 1: 写 DTO 派生状态和敏感字段 RED 测试**
 
 ```rust
 #[test]
@@ -1938,7 +1938,7 @@ command 的 source boundary 不写成 self-reading unit test（forbidden string 
 Step 5 使用定向 `rg` 检查 `save_backup_commands.rs` 不含 `hmm_infra`、`PowerShell`、
 `worker_path` 或 `task_name`。
 
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -1947,7 +1947,7 @@ cargo test -p hmm-tauri save_backup_commands
 ```
 Expected: FAIL，错误包含 `from_status` 或 `save_backup_background` 不存在。
 
-- [ ] **Step 3: 装配 platform registry 和 app service**
+- [x] **Step 3: 装配 platform registry 和 app service**
 
 `state.rs` 按平台导入：
 
@@ -1982,7 +1982,7 @@ let save_backup_background = Arc::new(SaveBackupBackgroundService::new(
 把 service 加入 `AppState`。构造 registry 不执行 PowerShell；只有显式
 status/register/unregister 才调用 runner，因此 headless worker 启动不会查询系统任务。
 
-- [ ] **Step 4: 切换 command 和 DTO mapper**
+- [x] **Step 4: 切换 command 和 DTO mapper**
 
 command 改为 async，并在取得 owned ids/service 后把同步平台查询移入 blocking pool：
 
@@ -2035,7 +2035,7 @@ DTO mapper 用 `background.status` / `background.last_error_code`，其余时间
 删除 `SaveBackupAutoSchedulerService::background_status` 及其三个 passthrough tests；scheduler
 只负责 due/state/lease，不再拥有平台保护 health。
 
-- [ ] **Step 5: 运行 GREEN 和 bridge 边界验证**
+- [x] **Step 5: 运行 GREEN 和 bridge 边界验证**
 
 Run:
 ```powershell
@@ -2050,7 +2050,7 @@ if ($LASTEXITCODE -ne 1) { throw 'Tauri command boundary search failed' }
 ```
 Expected: tests/check/clippy 全部 PASS；`rg` 无输出；测试不得调用真实 ScheduledTasks module。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src-tauri/src/state.rs src-tauri/src/save_backup_commands.rs src-tauri/src/save_backup_dto.rs src-tauri/crates/hmm-app/src/save_backup_scheduler.rs src-tauri/crates/hmm-app/tests/save_backup_scheduler.rs
@@ -2076,7 +2076,7 @@ git commit -m "feat: wire save backup background health"
 - Preserves: base `tauri.conf.json` 的跨平台 hooks；externalBin 只在 Windows config 合并。
 - Preserves: generated target-triple binaries 不进入 Git。
 
-- [ ] **Step 1: 写 sidecar 命名 RED 测试**
+- [x] **Step 1: 写 sidecar 命名 RED 测试**
 
 ```javascript
 import test from "node:test";
@@ -2123,7 +2123,7 @@ test("rejects unsafe or conflicting target triple input", () => {
   );
 });
 ```
-- [ ] **Step 2: 运行 RED 测试**
+- [x] **Step 2: 运行 RED 测试**
 
 Run:
 ```powershell
@@ -2131,7 +2131,7 @@ node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
 ```
 Expected: FAIL with `ERR_MODULE_NOT_FOUND`。
 
-- [ ] **Step 3: 实现 deterministic sidecar helper**
+- [x] **Step 3: 实现 deterministic sidecar helper**
 
 ```javascript
 import { spawnSync } from "node:child_process";
@@ -2230,7 +2230,7 @@ if (
   prepareSidecar(process.argv.slice(2));
 }
 ```
-- [ ] **Step 4: 接入 pnpm/Tauri 并忽略生成物**
+- [x] **Step 4: 接入 pnpm/Tauri 并忽略生成物**
 
 `package.json` scripts 加入：
 
@@ -2262,7 +2262,7 @@ DTO 或 Scheduled Task action。
 ```text
 src-tauri/binaries/
 ```
-- [ ] **Step 5: 运行 GREEN、构建 helper 与 ignore 检查**
+- [x] **Step 5: 运行 GREEN、构建 helper 与 ignore 检查**
 
 Run:
 ```powershell
@@ -2295,7 +2295,7 @@ worker。另一个 installer 格式和自动卸载清理仍属于 release packag
 WiX/NSIS 工具或下载条件，记录未执行原因，但在完成 P7.2a Windows runtime acceptance 前必须
 在 Windows packaging 环境补跑。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add .gitignore package.json src-tauri/tauri.windows.conf.json scripts/prepare-save-backup-worker-sidecar.mjs scripts/prepare-save-backup-worker-sidecar.test.mjs
@@ -2323,7 +2323,7 @@ git commit -m "build: bundle save backup worker sidecar"
 - Preserves: P7.2b UI/exit work 和 installer cleanup 仍未完成。
 - Verifies: P7.1 worker/scheduler/task safety regression and full repository gate。
 
-- [ ] **Step 1: 先写可执行的 Windows smoke 文档**
+- [x] **Step 1: 先写可执行的 Windows smoke 文档**
 
 文档必须包含以下边界与顺序：
 
@@ -2339,7 +2339,7 @@ cleanup：最后 inspect 必须 missing；删除 synthetic fixture；不保留 t
 识别/修复由 fake runner 自动化覆盖，不在真实系统任务上主动制造危险 drift；P7.2a real smoke
 也不修改 DB 中的 `background_protection_enabled` 来伪造 UI `protected`。
 
-- [ ] **Step 2: 同步文档中的已实现与未实现边界**
+- [x] **Step 2: 同步文档中的已实现与未实现边界**
 
 逐份写明以下事实，不使用“完整后台保障已完成”这类扩大表述：
 
@@ -2358,7 +2358,7 @@ cleanup：最后 inspect 必须 missing；删除 synthetic fixture；不保留 t
 
 更新 `TODO.md` 时，不得把整个 T8 或 P7.2b 标为完成。
 
-- [ ] **Step 3: 运行聚焦 Rust/Node 回归**
+- [x] **Step 3: 运行聚焦 Rust/Node 回归**
 
 Run:
 ```powershell
@@ -2375,7 +2375,7 @@ node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
 ```
 Expected: 全部 PASS；过程中不出现 real Scheduled Task create/update/delete。
 
-- [ ] **Step 4: 运行完整 repository gate**
+- [x] **Step 4: 运行完整 repository gate**
 
 Run:
 ```powershell
@@ -2385,7 +2385,7 @@ git status --short --branch
 ```
 Expected: `verify.ps1` exit 0；diff check 无输出；status 只包含本 task 预期文档文件。
 
-- [ ] **Step 5: 执行或明确推迟 Windows 人工 smoke**
+- [x] **Step 5: 执行或明确推迟 Windows 人工 smoke**
 
 仅当当前环境明确是一次性 Windows 测试账户/VM 且用户授权真实 Scheduled Task 操作时，
 按 smoke 文档执行。Terminal A 使用安装后的 sibling worker 启动 lifecycle harness；它会在任务
@@ -2454,7 +2454,7 @@ cleanup-only test 内部重新派生 task identity 并校验 ownership marker；
 ```
 禁止为了完成 checklist 在用户日常 Windows 账户中创建测试任务。
 
-- [ ] **Step 6: 更新计划状态并 Commit**
+- [x] **Step 6: 更新计划状态并 Commit**
 
 仅在聚焦/完整自动化通过后勾选自动化 checklist；只有真实 smoke 完成并 cleanup 后才能勾选
 Windows smoke 项。然后提交：
@@ -2467,17 +2467,17 @@ git commit -m "docs: record Windows background protection gate"
 
 ## Final Review Checklist
 
-- [ ] Current diff contains only P7.2a files and no `.planning/`, sidecar binaries, logs, backups or fixtures.
-- [ ] Core/app/infra/Tauri dependency direction matches the approved design.
-- [ ] No automated test or verification command created/updated/deleted a real Scheduled Task.
-- [ ] No frontend/CLI input can provide command, script, task name, SID, worker path, arguments or XML.
-- [ ] Ownership conflict never overwrites or deletes another task.
-- [ ] Register/update/unregister all perform read-back and fail closed.
-- [ ] Heartbeat does not mutate scheduler `last_checked_at`, `background_status` or lease.
-- [ ] `protected` requires exact registration and heartbeat in `[now-45m, now]`.
-- [ ] DTO/log/audit scans show no task name, SID, worker path, raw command output or task XML.
+- [x] Current diff contains only P7.2a files and no `.planning/`, sidecar binaries, logs, backups or fixtures.
+- [x] Core/app/infra/Tauri dependency direction matches the approved design.
+- [x] No automated test or verification command created/updated/deleted a real Scheduled Task.
+- [x] No frontend/CLI input can provide command, script, task name, SID, worker path, arguments or XML.
+- [x] Observed ownership conflicts block mutation; active same-user TOCTOU is a documented residual risk.
+- [x] Register/update/unregister all perform read-back and fail closed.
+- [x] Heartbeat does not mutate scheduler `last_checked_at`, `background_status` or lease.
+- [x] `protected` requires exact registration and heartbeat in `[now-45m, now]`.
+- [x] DTO/log/audit scans show no task name, SID, worker path, raw command output or task XML.
 - [ ] Sidecar artifact is ignored by Git and present in a successful Windows bundle.
 - [ ] `scripts/` and `tauri.windows.conf.json` changes received explicit human governance/packaging review.
-- [ ] P7.1 worker/scheduler/task tests and full `verify.ps1` pass after the final change.
-- [ ] Windows smoke status is honest: either executed in disposable environment with cleanup proof, or explicitly not executed with no runtime acceptance claim.
-- [ ] P7.2b UI/exit behavior and NSIS/WiX uninstall cleanup remain explicitly incomplete.
+- [x] P7.1 worker/scheduler/task tests and full `verify.ps1` pass after the final change.
+- [x] Windows smoke status is honest: either executed in disposable environment with cleanup proof, or explicitly not executed with no runtime acceptance claim.
+- [x] P7.2b UI/exit behavior and NSIS/WiX uninstall cleanup remain explicitly incomplete.
