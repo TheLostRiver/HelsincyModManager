@@ -1,7 +1,7 @@
 # Core Mod Lifecycle CL0 验收基线
 
 - 日期：2026-07-12
-- 状态：CL0 已完成；Gate A 尚未认证
+- 状态：CL0 已完成；CL1 Task 1 已通过；Gate A 尚未认证
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - 下一切片：[CL1 安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
 
@@ -99,10 +99,10 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL0-C2 | persisted import + MHW adapter 重建 4-action InstallPlan | 通过 | CL0 AppState harness |
 | CL0-C3 | drop/recreate AppState 后 game config/library/plan 一致 | 通过 | CL0 AppState harness |
 | CL0-C4 | CL0 plan-only harness 不修改 temp game root | 通过 | 覆盖基线字节与新增 target 不存在断言 |
-| CL1-C1 | v1 install：3 个新增文件 + 1 个覆盖文件 | 待实施 | CL1 L2 composition |
-| CL1-C2 | 安装后 restart：manifest/recovery 状态为 installed | 待实施 | CL1 L2 composition |
-| CL1-C3 | uninstall：新增文件删除、覆盖文件恢复、再重启为 not installed | 待实施 | CL1 L2 composition |
-| CL1-C4 | 最终 game root 与安装前基线逐字节一致 | 待实施 | CL1 L2 composition |
+| CL1-C1 | v1 install：3 个新增文件 + 1 个覆盖文件 | 通过 | `headless_composition_installs_restarts_uninstalls_and_restores_baseline` |
+| CL1-C2 | 安装后 restart：manifest/recovery 状态为 installed | 通过 | 同一 L2 composition；4 managed files、1 backup、0 issues |
+| CL1-C3 | uninstall：新增文件删除、覆盖文件恢复、再重启为 not installed | 通过 | 同一 L2 composition；manifest 驱动卸载 |
+| CL1-C4 | 最终 game root 与安装前基线逐字节一致 | 通过 | 同一 L2 composition；相对文件路径与精确人工 bytes 快照 |
 | CL1-F1 | source read failure 零误报/可恢复 | 缺直接测试 | CL1 L1 fault test |
 | CL1-F2 | backup store failure 在任何 target write 前阻断 | 缺直接测试 | CL1 L1 fault test |
 | CL1-F3 | game write / manifest save / rollback failure | 已有聚焦证据 | CL1 复用并建立证据映射 |
@@ -118,11 +118,12 @@ cargo test -p hmm-tauri state::core_mod_lifecycle_tests
 
 ## 6. 当前缺口清单
 
-### G1：缺少 AppState 安装/卸载纵向 acceptance
+### G1：AppState 安装/卸载纵向 acceptance（已解决）
 
-现有 commit/uninstall/task/recovery tests 主要使用 fake ports。CL1 应扩展同一 CL0 harness，使用真实
-filesystem/JSON/SQLite composition 完成 v1 install -> restart -> uninstall -> baseline，不另造
-安装链路。
+CL1 Task 1 已扩展同一 CL0 harness，使用真实 filesystem/JSON/SQLite composition 完成 v1 install
+-> restart -> uninstall -> restart -> baseline。成功 commit 会先持久化 `completed` 关闭崩溃窗口，
+再 best-effort 清理 active recovery record；重启状态来自 manifest、目标摘要和 backup 事实，不依赖
+旧 TaskManager 状态或另造安装链路。
 
 ### G2：缺少两个直接 fault tests
 
@@ -229,8 +230,8 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - [x] 当前 composition、证据层级和缺口已记录。
 - [x] 桌面 smoke 有安全前置、步骤、停止条件和清理边界。
 - [x] CL1 最小实施计划已创建。
-- [ ] CL1 install/uninstall acceptance 通过。
+- [x] CL1 install/uninstall acceptance 通过。
 - [ ] CL2 桌面 smoke 实际执行。
 - [ ] CL3 真正重装实现并通过。
 
-后三项不属于 CL0，未完成时 Gate A 必须保持未认证。
+CL1 fault tests、CL2 桌面 smoke 和 CL3 真正重装仍未完成，Gate A 必须保持未认证。

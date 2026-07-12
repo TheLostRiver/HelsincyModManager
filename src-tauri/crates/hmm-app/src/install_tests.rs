@@ -354,7 +354,7 @@ fn commit_plan_hash_changes_when_plan_facts_change() {
 }
 
 #[test]
-fn commit_plan_persists_recovery_record_lifecycle_when_commit_succeeds() {
+fn commit_plan_persists_then_removes_recovery_record_when_commit_succeeds() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
     let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
@@ -417,7 +417,10 @@ fn commit_plan_persists_recovery_record_lifecycle_when_commit_succeeds() {
         installed_file.sha256,
         "d556e02a85803b1d71c94a462432da55b16b443f7579c8bfdc4a44a4c7d6a17a"
     );
-    assert!(recovery_records.removed_records().is_empty());
+    assert_eq!(
+        recovery_records.removed_records(),
+        vec![("default".to_owned(), "mod-a".to_owned())]
+    );
 }
 
 #[test]

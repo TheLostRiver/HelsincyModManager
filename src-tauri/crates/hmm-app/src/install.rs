@@ -549,12 +549,8 @@ impl ActiveInstallRecoveryRecords {
     }
 
     fn mark_completed_best_effort(&mut self) {
-        if self
-            .transition_all_to(InstallRecoveryRecordStatus::Completed)
-            .is_err()
-        {
-            self.remove_all_best_effort();
-        }
+        let _ = self.transition_all_to(InstallRecoveryRecordStatus::Completed);
+        self.remove_all_best_effort();
     }
 
     fn mark_rollback_required_best_effort(&mut self) {
