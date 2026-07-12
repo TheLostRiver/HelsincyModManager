@@ -284,8 +284,9 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 
 以下能力仍不能视为已完成：
 
-- 核心生命周期认证：尚无独立、可重复的 temp-root install -> restart -> uninstall -> baseline
-  acceptance 与实际 Tauri 桌面 smoke 记录；现有单元/集成测试不能替代该产品 gate。
+- 核心生命周期认证：CL1 已有独立、可重复的 temp-root install -> restart -> uninstall -> baseline
+  acceptance、source/backup fault tests 与审计脱敏证据；实际 Tauri 桌面 smoke、真正重装和 Gate A
+  认证记录仍未完成，自动化不能替代这些产品 gate。
 - 真正重装：前端 `reinstall` 当前复用 `start_install_task`；manifest merge 会保留新计划未触达的
   旧条目，尚无 retained/replaced/added/stale 分类、独立重装 task 或恢复到重装前版本的失败链路。
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
@@ -314,9 +315,9 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 
 1. **CL0（已完成）：** 已固定 `v1/v2` 人工 fixture、test-only AppState import/plan/restart
    harness、acceptance matrix、桌面 smoke 文档和 composition 缺口清单。
-2. **CL1（下一项）：** 认证 import record -> InstallPlan -> install -> restart -> uninstall ->
-   baseline 自动化闭环；只修复阻断该闭环的问题。
-3. **CL2：** 在 disposable account/VM 实际执行 Tauri 桌面 smoke 与清理证明。
+2. **CL1（已完成）：** 已认证 import record -> InstallPlan -> install -> restart -> uninstall ->
+   baseline 自动化闭环、准备阶段 fault ordering 与审计脱敏证据。
+3. **CL2（下一项）：** 在 disposable account/VM 实际执行 Tauri 桌面 smoke 与清理证明。
 4. **CL3：** 新增独立真正重装 use case/task，处理 retained/replaced/added/stale entries，并使
    失败恢复到重装前版本。
 5. **CL4 / Gate A：** 完整验证、安全复审和 `certified` 状态记录。
