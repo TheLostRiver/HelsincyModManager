@@ -1,8 +1,10 @@
 use super::AppState;
 use hmm_app::{
-    BuildImportedModInstallPlanRequest, StartImportModTaskRequest, TaskKind, TaskStatus,
+    BuildImportedModInstallPlanRequest, InstallManifestQueryRequest, InstallManifestStatus,
+    InstallRecoveryScanRequest, InstallRecoveryStatus, StartImportModTaskRequest,
+    StartInstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
 };
-use hmm_core::{FileLayer, GameDirectoryStatus, GameId, ModId};
+use hmm_core::{FileLayer, GameDirectoryStatus, GameId, InstallManifest, ModId, ProfileId};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
@@ -137,6 +139,213 @@ fn headless_composition_imports_v1_and_rebuilds_plan_after_restart() {
     assert_game_root_unchanged(&game_root);
 }
 
+#[test]
+fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
+    let temp = tempfile::tempdir().expect("create lifecycle temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let game_root = temp.path().join("game");
+    let archive_path = temp.path().join("lifecycle-v1.zip");
+    prepare_game_root(&game_root);
+    create_fixture_zip(&archive_path, V1_FILES);
+    let baseline = snapshot_file_tree(&game_root);
+
+    let state = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("compose headless state from temp AppData");
+    state
+        .game_setup
+        .save_game_directory(GameId::mhw(), game_root.clone())
+        .expect("save validated temp game directory");
+
+    let import_task = state
+        .mod_import_tasks
+        .start_import_mod_task(StartImportModTaskRequest {
+            archive_path: archive_path.clone(),
+        })
+        .expect("register fixture import task");
+    state
+        .mod_import_task_runner
+        .run_prepare_task(&import_task.task_id, archive_path)
+        .expect("prepare and persist fixture import");
+
+    let profile_id = ProfileId::new("default");
+    let mod_id = ModId::new(import_task.task_id);
+    let install_request = StartInstallTaskRequest {
+        game_id: GameId::mhw(),
+        mod_id: mod_id.clone(),
+        profile_id: profile_id.clone(),
+        layer: FileLayer::new("base", 0),
+    };
+    let install_task = state
+        .install_tasks
+        .start_install_task(install_request.clone())
+        .expect("register fixture install task");
+    assert_eq!(install_task.kind, TaskKind::Install);
+    assert_eq!(install_task.status, TaskStatus::Queued);
+
+    let install_events = state
+        .install_task_runner
+        .run_install_task(&install_task.task_id, install_request)
+        .expect("install fixture through AppState composition");
+    assert!(install_events
+        .iter()
+        .all(|event| event.task_id == install_task.task_id));
+    assert_eq!(
+        install_events
+            .iter()
+            .map(|event| event.phase.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "install.plan.building",
+            "install.commit.processing",
+            "install.completed",
+        ]
+    );
+    assert_eq!(
+        state.task_manager.task_status(&install_task.task_id),
+        Some(TaskStatus::Completed)
+    );
+
+    for (logical_path, expected_bytes) in V1_FILES {
+        assert_eq!(
+            fs::read(game_root.join(logical_path)).expect("read installed fixture target"),
+            *expected_bytes,
+            "installed bytes differ for {logical_path}"
+        );
+    }
+
+    let manifest_path = app_data_dir
+        .join("install")
+        .join("manifests")
+        .join("default.json");
+    let manifest: InstallManifest = serde_json::from_str(
+        &fs::read_to_string(&manifest_path).expect("read persisted fixture manifest"),
+    )
+    .expect("deserialize persisted fixture manifest");
+    assert_eq!(manifest.entries.len(), V1_FILES.len());
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .filter(|entry| entry.backup_ref.is_some())
+            .count(),
+        1
+    );
+    assert!(manifest.entries.iter().any(|entry| {
+        entry.target_path.as_str() == OVERWRITTEN_TARGET && entry.backup_ref.is_some()
+    }));
+    assert_no_recovery_records(&app_data_dir);
+
+    drop(state);
+
+    let restarted = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("recompose installed fixture state from persisted AppData");
+    let manifest_statuses = restarted
+        .install_manifest_query
+        .query_statuses(InstallManifestQueryRequest {
+            profile_id: profile_id.clone(),
+            mod_ids: vec![mod_id.clone()],
+        })
+        .expect("query installed fixture manifest status");
+    assert_eq!(manifest_statuses.len(), 1);
+    assert_eq!(
+        manifest_statuses[0].status,
+        InstallManifestStatus::Installed
+    );
+    assert_eq!(manifest_statuses[0].managed_file_count, V1_FILES.len());
+    assert_eq!(manifest_statuses[0].backup_count, 1);
+
+    let recovery_statuses = restarted
+        .install_recovery_scanner
+        .scan(
+            GameId::mhw(),
+            InstallRecoveryScanRequest {
+                profile_id: profile_id.clone(),
+                mod_ids: vec![mod_id.clone()],
+            },
+        )
+        .expect("scan installed fixture recovery status");
+    assert_eq!(recovery_statuses.len(), 1);
+    assert_eq!(
+        recovery_statuses[0].status,
+        InstallRecoveryStatus::Completed
+    );
+    assert_eq!(recovery_statuses[0].managed_file_count, V1_FILES.len());
+    assert_eq!(recovery_statuses[0].backup_count, 1);
+    assert_eq!(recovery_statuses[0].issue_count, 0);
+
+    let uninstall_request = StartUninstallTaskRequest {
+        game_id: GameId::mhw(),
+        mod_id: mod_id.clone(),
+        profile_id: profile_id.clone(),
+    };
+    let uninstall_task = restarted
+        .uninstall_tasks
+        .start_uninstall_task(uninstall_request.clone())
+        .expect("register fixture uninstall task");
+    assert_eq!(uninstall_task.kind, TaskKind::Install);
+    assert_eq!(uninstall_task.status, TaskStatus::Queued);
+
+    let uninstall_events = restarted
+        .uninstall_task_runner
+        .run_uninstall_task(&uninstall_task.task_id, uninstall_request)
+        .expect("uninstall fixture through AppState composition");
+    assert!(uninstall_events
+        .iter()
+        .all(|event| event.task_id == uninstall_task.task_id));
+    assert_eq!(
+        uninstall_events
+            .iter()
+            .map(|event| event.phase.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "install.uninstall.processing",
+            "install.uninstall.completed",
+        ]
+    );
+    assert_eq!(snapshot_file_tree(&game_root), baseline);
+    assert_no_recovery_records(&app_data_dir);
+
+    drop(restarted);
+
+    let restarted_after_uninstall = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("recompose uninstalled fixture state from persisted AppData");
+    let manifest_statuses = restarted_after_uninstall
+        .install_manifest_query
+        .query_statuses(InstallManifestQueryRequest {
+            profile_id: profile_id.clone(),
+            mod_ids: vec![mod_id.clone()],
+        })
+        .expect("query uninstalled fixture manifest status");
+    assert_eq!(manifest_statuses.len(), 1);
+    assert_eq!(
+        manifest_statuses[0].status,
+        InstallManifestStatus::NotInstalled
+    );
+    assert_eq!(manifest_statuses[0].managed_file_count, 0);
+    assert_eq!(manifest_statuses[0].backup_count, 0);
+
+    let recovery_statuses = restarted_after_uninstall
+        .install_recovery_scanner
+        .scan(
+            GameId::mhw(),
+            InstallRecoveryScanRequest {
+                profile_id,
+                mod_ids: vec![mod_id],
+            },
+        )
+        .expect("scan uninstalled fixture recovery status");
+    assert_eq!(recovery_statuses.len(), 1);
+    assert_eq!(
+        recovery_statuses[0].status,
+        InstallRecoveryStatus::NotInstalled
+    );
+    assert_eq!(recovery_statuses[0].managed_file_count, 0);
+    assert_eq!(recovery_statuses[0].backup_count, 0);
+    assert_eq!(recovery_statuses[0].issue_count, 0);
+    assert_eq!(snapshot_file_tree(&game_root), baseline);
+    assert_no_recovery_records(&app_data_dir);
+}
+
 fn fixture_map(
     files: &'static [(&'static str, &'static [u8])],
 ) -> BTreeMap<&'static str, &'static [u8]> {
@@ -218,5 +427,51 @@ fn assert_game_root_unchanged(game_root: &Path) {
                 "CL0 planning harness must not write {logical_path}"
             );
         }
+    }
+}
+
+fn snapshot_file_tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
+    fn collect(root: &Path, current: &Path, files: &mut BTreeMap<String, Vec<u8>>) {
+        let mut entries = fs::read_dir(current)
+            .expect("read fixture directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read fixture directory entries");
+        entries.sort_by_key(|entry| entry.file_name());
+
+        for entry in entries {
+            let path = entry.path();
+            let file_type = entry.file_type().expect("inspect fixture entry type");
+            assert!(
+                !file_type.is_symlink(),
+                "fixture tree must not contain links"
+            );
+            if file_type.is_dir() {
+                collect(root, &path, files);
+            } else if file_type.is_file() {
+                let relative = path
+                    .strip_prefix(root)
+                    .expect("fixture entry stays below root")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                files.insert(relative, fs::read(path).expect("read fixture file bytes"));
+            }
+        }
+    }
+
+    let mut files = BTreeMap::new();
+    collect(root, root, &mut files);
+    files
+}
+
+fn assert_no_recovery_records(app_data_dir: &Path) {
+    let recovery_root = app_data_dir.join("install").join("recovery");
+    if recovery_root.exists() {
+        assert_eq!(
+            fs::read_dir(recovery_root)
+                .expect("read fixture recovery directory")
+                .count(),
+            0,
+            "fixture recovery records must be cleared"
+        );
     }
 }

@@ -48,8 +48,8 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 后端最小 manifest 驱动卸载：`UninstallModService` 只处理指定 Mod 的 manifest entries，要求 `installed_file` 摘要匹配，新增文件删除、覆盖文件从 backup 恢复，目标不一致、缺少摘要或 backup 缺失时阻断；`start_uninstall_task` 提供只接收短 id 的 Tauri 任务入口。
 - 后端只读恢复扫描摘要：`scan_install_recovery` 只接收 `gameId`、`profileId`、`modIds`，基于 durable recovery record、受控 manifest、目标文件摘要和 backup 是否存在返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed`，以及不含路径/backup ref 的聚合 issue code；当 `modIds` 为空时，后端扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装。
 - Manifest 状态摘要已接入恢复扫描事实：`get_install_manifest_status` 可选接收 `gameId`；传入 `gameId` 时复用只读 recovery scan 并把 `completed` 映射为 `installed`，把 `rollback_required` / `repair_required` / `unknown` 作为安装摘要状态返回；未传 `gameId` 时保留旧的 manifest-only fallback。
-- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing` / `completed`，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
-- 受控回滚任务前置安全加固：当安装替换已有托管目标并在写入窗口后失败且 rollback 失败时，`committing` / `rollback_required` recovery record 会使用本次提交前创建的 pending backup ref 作为恢复来源；manifest 保存成功后的 `completed` record 则重新同步为 manifest entry 的长期 backup 语义。
+- Durable recovery record 基础：`hmm-core` 已提供 `InstallRecoveryRecord`、`InstallRecoveryRecordEntry`、`InstallRecoveryRecordStatus` 和受控状态迁移；`hmm-ports` 已提供窄 `InstallRecoveryRecordRepository`；`hmm-infra` 已提供受控 app data root 下的 JSON 仓储；安装 commit 已受控写入 `planned` / `committing`，manifest 成功后先写 `completed` 再 best-effort 清理，并且只在写入窗口后 rollback 失败时留下 `rollback_required`。当前恢复扫描已只读消费该记录；`rollback_required` 只来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。
+- 受控回滚任务前置安全加固：当安装替换已有托管目标并在写入窗口后失败且 rollback 失败时，`committing` / `rollback_required` recovery record 会使用本次提交前创建的 pending backup ref 作为恢复来源；manifest 保存成功后则先把 `completed` record 同步为 manifest entry 的长期 backup 语义，再 best-effort 清理。
 - 后端受控回滚任务：`start_recovery_action_task` 只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁执行 `rollback_install`，执行前重新验证目标摘要和 backup，可删除新增文件或从 backup 恢复覆盖文件，把 durable recovery record 标记为 `rolled_back`，并在已有 rich manifest 时移除该 Mod 的 stale entries、把 manifest status 持久化为 `rolled_back`。恢复中心已启用逐 Mod 写入型按钮，前端先预览、再确认、再按 `taskId` 跟踪任务。
 - 前端最小安装任务工作流：从 Mod 库触发 `start_install_task`，按 `taskId` 订阅安装任务事件，展示 queued / planning / committing / completed / failed / cancelled，并处理进度事件早于 command 返回的竞态。
 - 前端最小卸载 UI：只在后端 manifest 摘要为 `installed` 时启用单选卸载入口，确认后调用 `start_uninstall_task`，按 `taskId` 展示 `install.uninstall.*` 任务状态，并在完成后刷新 manifest 摘要。
@@ -101,11 +101,11 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] 恢复中心人工处理决策面板，提供重新扫描、导出诊断，并在存在 `rollback_required` Mod 时引导用户到逐 Mod 受控回滚入口。
 - [x] 安装恢复受控动作实施计划，明确 durable recovery record / rich status、只读动作预览、受控回滚任务和恢复中心 UI 启用的后续拆分边界。
 - [x] Durable recovery record 基础模型、port 和 JSON 仓储：只提供后端内部状态事实的持久化基础，不新增 command、前端按钮、恢复执行或 `rollback_required` 扫描分支。
-- [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing` / `completed`，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
+- [x] 安装 commit 写入 durable recovery record：提交编排受控写入 `planned` / `committing`，manifest 成功后先写 `completed` 再 best-effort 清理，并且仅在写入窗口后 rollback 失败时留下 `rollback_required`；不新增 command、DTO、前端按钮、恢复执行或 `rollback_required` 扫描分支。
 - [x] 只读恢复扫描消费 durable recovery record：`scan_install_recovery` 可由 `committing` / `rollback_required` record 返回 `rollback_required`，空 `modIds` 全量扫描会补入只有 recovery record 的半完成安装；不新增恢复执行、前端按钮、task phase 或 manifest 写入。
 - [x] Manifest 状态摘要消费只读恢复扫描事实：`get_install_manifest_status` 可选接收 `gameId`，传入后复用只读 recovery scan 并返回 `rollback_required` / `repair_required` / `unknown` 等不安全安装摘要；未传 `gameId` 时保留 manifest-only fallback。
 - [x] 只读恢复动作预览：`preview_recovery_action` 可预览 `rollback_install` 是否满足受控回滚前置条件，只返回 `available` / `blocked`、聚合计数和稳定阻断 reason code；不新增恢复执行、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
-- [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源，`completed` record 才恢复为 manifest 长期 backup 语义；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
+- [x] 受控回滚任务前置安全加固：`committing` / `rollback_required` record 对覆盖文件保留本次 pending backup 作为“安装前一刻”的回滚来源；manifest 成功后先以 `completed` record 恢复 manifest 长期 backup 语义，再 best-effort 清理；不新增 command、DTO、task phase、Audit Log、manifest 写入或恢复中心写入型按钮。
 - [x] 后端受控回滚任务：`start_recovery_action_task` 可执行 `rollback_install`，发送 `install.recovery.*` task phase，写入 `rollback_install` Audit Log，并将 durable recovery record 标记为 `rolled_back`；恢复中心已启用逐 Mod 受控回滚按钮。
 - [x] Rich manifest `rolled_back` 同步：受控 `rollback_install` 成功后，在已有 manifest 中移除该 Mod 的 stale entries 并把 manifest status 持久化为 `rolled_back`；manifest 或 recovery record 保存失败时会 best-effort 回滚文件动作并避免持久状态互相矛盾。
 - [x] Rich manifest schema metadata：`InstallManifest` 新增 `manifest_id`、`schema_version` 和可选 `schema_migration`；旧 manifest 缺字段时兼容读取，新写出的安装提交 manifest 会携带稳定 profile-scoped `manifest_id` 和 schema version，commit merge / uninstall 会保留已有 schema metadata。
@@ -139,7 +139,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 已落地范围：
 
 - `InstallCommitService` 新增可选 `InstallRecoveryRecordRepository` 注入；旧构造函数保持兼容，生产 `start_install_task` 组合根接入 `JsonInstallRecoveryRecordRepository`，记录保存在 app data 下的 `install/recovery`。
-- 安装 commit 在 manifest 读取成功后按 `profileId/modId` 写入 `planned`，进入真实写入窗口前写入 `committing`，manifest 保存成功后 best-effort 写入 `completed`。
+- 安装 commit 在 manifest 读取成功后按 `profileId/modId` 写入 `planned`，进入真实写入窗口前写入 `committing`，manifest 保存成功后 best-effort 写入 `completed` 并清理本次 active record。
 - 如果进入写入窗口后失败，现有 best-effort rollback 成功时会 best-effort 清理本次 recovery record，避免制造假的待恢复状态；只有 rollback 失败时才通过受控迁移留下 `rollback_required`。
 - recovery record entry 只记录受控 target path、package file id、backup ref 和 installed file 摘要，不新增前端 DTO，也不向任务事件暴露路径、backup root、manifest root、sandbox/cache 路径或第三方 Mod 内容。
 
@@ -215,7 +215,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 - `InstallCommitService` 在进入写入窗口后更新 active recovery record 时，使用本次 pending backup ref 作为 rollback record entry 的 `backup_ref`。
 - 如果 `committing` record 已经保存，后续 action 更新 rollback entry 的 pending backup 时会立即重新持久化 active record，避免崩溃恢复读取到旧 manifest 的长期 backup 语义。
-- manifest 保存成功后，`completed` recovery record 会重新同步为 manifest entries 的长期 `backup_ref` 和 `installed_file` 摘要，避免 completed record 指向随后会被 best-effort 清理的 pending backup。
+- manifest 保存成功后，`completed` recovery record 会重新同步为 manifest entries 的长期 `backup_ref` 和 `installed_file` 摘要，再 best-effort 清理；若清理失败，残留 completed record 也不会指向随后会被清理的 pending backup。
 - 新增回归测试覆盖“替换已有托管目标、manifest 保存失败且 rollback 失败”场景，断言 `rollback_required` record 使用 pending backup ref，而不是旧 manifest 的长期 backup ref。
 - 新增回归测试覆盖“后续 action 才拿到 pending backup 且 commit 成功”场景，断言最后持久化的 `committing` record 也已经包含 pending backup ref。
 
