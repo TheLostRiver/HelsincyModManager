@@ -714,6 +714,160 @@ fn commit_plan_aborts_before_writes_when_manifest_load_fails() {
 }
 
 #[test]
+fn commit_plan_aborts_without_writes_when_source_read_fails() {
+    let plan = InstallPlan::from_providers(vec![
+        InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/first.mod3"),
+            InstallTargetPath::parse("nativePC/models/first.mod3", ["nativePC"])
+                .expect("valid first target"),
+            FileLayer::new("base", 0),
+        ),
+        InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/second.mod3"),
+            InstallTargetPath::parse("nativePC/models/second.mod3", ["nativePC"])
+                .expect("valid second target"),
+            FileLayer::new("base", 0),
+        ),
+    ]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::with_failing_read(
+        [
+            ("nativePC/models/first.mod3", b"new first".as_slice()),
+            ("nativePC/models/second.mod3", b"new second".as_slice()),
+        ],
+        "nativePC/models/second.mod3",
+    ));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let manifests = Arc::new(RecordingInstallManifestRepository::default());
+    let recovery_records = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        source_files.clone(),
+        game_files.clone(),
+        backups.clone(),
+        manifests.clone(),
+        recovery_records.clone(),
+    );
+
+    let error = service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect_err("source read failure must abort before target writes");
+
+    assert_eq!(
+        error,
+        InstallCommitError::Failed {
+            phase: InstallCommitPhase::SourceRead
+        }
+    );
+    assert_eq!(
+        source_files.read_requests(),
+        vec![
+            "nativePC/models/first.mod3".to_owned(),
+            "nativePC/models/second.mod3".to_owned(),
+        ]
+    );
+    assert!(game_files.write_requests().is_empty());
+    assert!(backups.store_attempts().is_empty());
+    assert_eq!(manifests.save_attempts(), 0);
+    assert_eq!(
+        recovery_records
+            .saved_records()
+            .iter()
+            .map(|record| record.status)
+            .collect::<Vec<_>>(),
+        vec![InstallRecoveryRecordStatus::Planned]
+    );
+    assert_eq!(
+        recovery_records.removed_records(),
+        vec![("default".to_owned(), "mod-a".to_owned())]
+    );
+}
+
+#[test]
+fn commit_plan_aborts_before_target_write_when_backup_store_fails() {
+    let plan = InstallPlan::from_providers(vec![
+        InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/first.mod3"),
+            InstallTargetPath::parse("nativePC/models/first.mod3", ["nativePC"])
+                .expect("valid first target"),
+            FileLayer::new("base", 0),
+        ),
+        InstallFileProvider::new(
+            ModId::new("mod-a"),
+            PackageFileId::new("nativePC/models/second.mod3"),
+            InstallTargetPath::parse("nativePC/models/second.mod3", ["nativePC"])
+                .expect("valid second target"),
+            FileLayer::new("base", 0),
+        ),
+    ]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([
+        ("nativePC/models/first.mod3", b"new first".as_slice()),
+        ("nativePC/models/second.mod3", b"new second".as_slice()),
+    ]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([
+        ("nativePC/models/first.mod3", b"old first".as_slice()),
+        ("nativePC/models/second.mod3", b"old second".as_slice()),
+    ]));
+    let backups = Arc::new(
+        RecordingInstallBackupStore::default()
+            .with_failing_store_for("nativePC/models/second.mod3"),
+    );
+    let manifests = Arc::new(RecordingInstallManifestRepository::default());
+    let recovery_records = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        source_files,
+        game_files.clone(),
+        backups.clone(),
+        manifests.clone(),
+        recovery_records.clone(),
+    );
+
+    let error = service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect_err("backup store failure must abort before target writes");
+
+    assert_eq!(
+        error,
+        InstallCommitError::Failed {
+            phase: InstallCommitPhase::Backup
+        }
+    );
+    assert!(game_files.write_requests().is_empty());
+    assert_eq!(
+        backups.store_attempts(),
+        vec![
+            "nativePC/models/first.mod3".to_owned(),
+            "nativePC/models/second.mod3".to_owned(),
+        ]
+    );
+    assert_eq!(
+        backups.removed_refs(),
+        vec!["backup-nativePC-models-first.mod3".to_owned()]
+    );
+    assert_eq!(manifests.save_attempts(), 0);
+    assert_eq!(
+        recovery_records
+            .saved_records()
+            .iter()
+            .map(|record| record.status)
+            .collect::<Vec<_>>(),
+        vec![InstallRecoveryRecordStatus::Planned]
+    );
+    assert_eq!(
+        recovery_records.removed_records(),
+        vec![("default".to_owned(), "mod-a".to_owned())]
+    );
+}
+
+#[test]
 fn commit_plan_backs_up_overwritten_files_before_writing_manifest() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
@@ -1440,6 +1594,8 @@ impl GameAdapter for FakeGameAdapter {
 
 struct RecordingInstallSourceFileReader {
     files: BTreeMap<String, Vec<u8>>,
+    failing_read: Option<String>,
+    read_requests: Mutex<Vec<String>>,
 }
 
 impl RecordingInstallSourceFileReader {
@@ -1449,12 +1605,31 @@ impl RecordingInstallSourceFileReader {
                 .into_iter()
                 .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
                 .collect(),
+            failing_read: None,
+            read_requests: Mutex::new(Vec::new()),
         }
+    }
+
+    fn with_failing_read<const N: usize>(files: [(&str, &[u8]); N], package_file_id: &str) -> Self {
+        let mut reader = Self::new(files);
+        reader.failing_read = Some(package_file_id.to_owned());
+        reader
+    }
+
+    fn read_requests(&self) -> Vec<String> {
+        self.read_requests.lock().expect("read requests").clone()
     }
 }
 
 impl InstallSourceFileReader for RecordingInstallSourceFileReader {
     fn read_source_file(&self, package_file_id: &PackageFileId) -> anyhow::Result<Vec<u8>> {
+        self.read_requests
+            .lock()
+            .expect("read requests")
+            .push(package_file_id.as_str().to_owned());
+        if self.failing_read.as_deref() == Some(package_file_id.as_str()) {
+            anyhow::bail!("source read failed");
+        }
         self.files
             .get(package_file_id.as_str())
             .cloned()
@@ -1466,6 +1641,7 @@ impl InstallSourceFileReader for RecordingInstallSourceFileReader {
 struct RecordingInstallGameFileSystem {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     read_mutation: Mutex<Option<(String, Vec<u8>)>>,
+    write_requests: Mutex<Vec<String>>,
     fail_writes: bool,
     fail_removes: bool,
 }
@@ -1480,6 +1656,7 @@ impl RecordingInstallGameFileSystem {
                     .collect(),
             ),
             read_mutation: Mutex::new(None),
+            write_requests: Mutex::new(Vec::new()),
             fail_writes: false,
             fail_removes: false,
         }
@@ -1494,6 +1671,7 @@ impl RecordingInstallGameFileSystem {
                     .collect(),
             ),
             read_mutation: Mutex::new(None),
+            write_requests: Mutex::new(Vec::new()),
             fail_writes: true,
             fail_removes: false,
         }
@@ -1513,6 +1691,10 @@ impl RecordingInstallGameFileSystem {
     fn file_bytes(&self, target_path: &str) -> Option<Vec<u8>> {
         self.files.lock().expect("files").get(target_path).cloned()
     }
+
+    fn write_requests(&self) -> Vec<String> {
+        self.write_requests.lock().expect("write requests").clone()
+    }
 }
 
 impl InstallGameFileSystem for RecordingInstallGameFileSystem {
@@ -1531,6 +1713,10 @@ impl InstallGameFileSystem for RecordingInstallGameFileSystem {
     }
 
     fn write_game_file(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> anyhow::Result<()> {
+        self.write_requests
+            .lock()
+            .expect("write requests")
+            .push(target_path.as_str().to_owned());
         if self.fail_writes {
             anyhow::bail!("write failed");
         }
@@ -1556,7 +1742,9 @@ impl InstallGameFileSystem for RecordingInstallGameFileSystem {
 #[derive(Default)]
 struct RecordingInstallBackupStore {
     records: Mutex<Vec<(String, String, Vec<u8>)>>,
+    store_attempts: Mutex<Vec<String>>,
     removed_refs: Mutex<Vec<String>>,
+    failing_store_target: Option<String>,
     fail_removals: bool,
 }
 
@@ -1575,7 +1763,9 @@ impl RecordingInstallBackupStore {
                     })
                     .collect(),
             ),
+            store_attempts: Mutex::new(Vec::new()),
             removed_refs: Mutex::new(Vec::new()),
+            failing_store_target: None,
             fail_removals: false,
         }
     }
@@ -1583,9 +1773,16 @@ impl RecordingInstallBackupStore {
     fn failing_removals() -> Self {
         Self {
             records: Mutex::new(Vec::new()),
+            store_attempts: Mutex::new(Vec::new()),
             removed_refs: Mutex::new(Vec::new()),
+            failing_store_target: None,
             fail_removals: true,
         }
+    }
+
+    fn with_failing_store_for(mut self, target_path: &str) -> Self {
+        self.failing_store_target = Some(target_path.to_owned());
+        self
     }
 
     fn records(&self) -> Vec<(String, Vec<u8>)> {
@@ -1600,6 +1797,10 @@ impl RecordingInstallBackupStore {
     fn removed_refs(&self) -> Vec<String> {
         self.removed_refs.lock().expect("removed refs").clone()
     }
+
+    fn store_attempts(&self) -> Vec<String> {
+        self.store_attempts.lock().expect("store attempts").clone()
+    }
 }
 
 impl InstallBackupStore for RecordingInstallBackupStore {
@@ -1608,6 +1809,13 @@ impl InstallBackupStore for RecordingInstallBackupStore {
         target_path: &InstallTargetPath,
         bytes: &[u8],
     ) -> anyhow::Result<String> {
+        self.store_attempts
+            .lock()
+            .expect("store attempts")
+            .push(target_path.as_str().to_owned());
+        if self.failing_store_target.as_deref() == Some(target_path.as_str()) {
+            anyhow::bail!("backup store failed");
+        }
         let mut records = self.records.lock().expect("records");
         let base_ref = format!("backup-{}", target_path.as_str().replace('/', "-"));
         let backup_ref = if records.is_empty() {
@@ -1649,6 +1857,7 @@ impl InstallBackupStore for RecordingInstallBackupStore {
 struct RecordingInstallManifestRepository {
     existing_manifest: Option<InstallManifest>,
     saved_manifest: Mutex<Option<InstallManifest>>,
+    save_attempts: Mutex<usize>,
     fail_load: bool,
     fail_save: bool,
 }
@@ -1658,6 +1867,7 @@ impl RecordingInstallManifestRepository {
         Self {
             existing_manifest: None,
             saved_manifest: Mutex::new(None),
+            save_attempts: Mutex::new(0),
             fail_load: true,
             fail_save: false,
         }
@@ -1667,6 +1877,7 @@ impl RecordingInstallManifestRepository {
         Self {
             existing_manifest: None,
             saved_manifest: Mutex::new(None),
+            save_attempts: Mutex::new(0),
             fail_load: false,
             fail_save: true,
         }
@@ -1680,6 +1891,10 @@ impl RecordingInstallManifestRepository {
     fn take_manifest(&self) -> Option<InstallManifest> {
         self.saved_manifest.lock().expect("manifest").take()
     }
+
+    fn save_attempts(&self) -> usize {
+        *self.save_attempts.lock().expect("save attempts")
+    }
 }
 
 impl InstallManifestRepository for RecordingInstallManifestRepository {
@@ -1691,6 +1906,7 @@ impl InstallManifestRepository for RecordingInstallManifestRepository {
     }
 
     fn save_manifest(&self, manifest: &InstallManifest) -> anyhow::Result<()> {
+        *self.save_attempts.lock().expect("save attempts") += 1;
         if self.fail_save {
             anyhow::bail!("manifest save failed");
         }
