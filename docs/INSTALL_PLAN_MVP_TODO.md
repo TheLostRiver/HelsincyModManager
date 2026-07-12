@@ -60,9 +60,9 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍未完成：
 
-- 核心生命周期认证：CL0 的 `v1/v2` fixture contract、test-only AppState import/plan/restart
-  harness 已完成；CL1 的 install -> restart -> uninstall -> baseline 自动化 acceptance、CL2 的
-  实际 Tauri 桌面 smoke 和 Gate A 认证记录仍未完成。
+- 核心生命周期认证：CL0 fixture/harness 与 CL1 install -> restart -> uninstall -> baseline、
+  source/backup fault ordering、manifest/recovery/Audit Log 脱敏证据已完成；CL2 实际 Tauri 桌面
+  smoke、CL3 真正重装和 Gate A 认证记录仍未完成。
 - 独立真正重装：当前 UI 仍把普通 `start_install_task` 作为 reinstall；尚未分类
   retained/replaced/added/stale entries，也没有恢复到重装前版本的独立 task/recovery contract。
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
@@ -110,6 +110,7 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - [x] Rich manifest `rolled_back` 同步：受控 `rollback_install` 成功后，在已有 manifest 中移除该 Mod 的 stale entries 并把 manifest status 持久化为 `rolled_back`；manifest 或 recovery record 保存失败时会 best-effort 回滚文件动作并避免持久状态互相矛盾。
 - [x] Rich manifest schema metadata：`InstallManifest` 新增 `manifest_id`、`schema_version` 和可选 `schema_migration`；旧 manifest 缺字段时兼容读取，新写出的安装提交 manifest 会携带稳定 profile-scoped `manifest_id` 和 schema version，commit merge / uninstall 会保留已有 schema metadata。
 - [x] Rich manifest 读侧状态机消费规则：`InstallManifestStatus::consumption()` 在 hmm-core 定义统一分类，manifest 状态摘要查询 fallback 和只读恢复扫描都先消费 profile 级 manifest status（`rollback_required` / `repair_required` → 对应失败态，`planned` / `committing` → unknown，`completed` / `rolled_back` → 继续按 entries / 文件校验），保证失败状态不会被误报为已完成。
+- [x] CL1 核心生命周期自动化：人工 v1 fixture 经真实 AppState composition 完成 install -> restart -> uninstall -> baseline；source read / backup store failure 在零 target mutation 下停止；manifest/recovery/task phase 与 Audit Log 脱敏证据已锁定。
 
 ### 2026-06-27 进度详情：Durable recovery record 基础
 
@@ -771,7 +772,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P0：核心生命周期认证与真正重装（当前）
 
-**状态：** CL0 已完成，下一项 CL1；详见
+**状态：** CL0、CL1 已完成，下一项 CL2；详见
 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 与
 [CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。
 
@@ -779,7 +780,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 1. CL0 已固定人工 `v1/v2` fixture、test-only AppState import/plan/restart harness、acceptance
    matrix、桌面 smoke 文档和缺口清单。
-2. CL1 认证 install/restart/uninstall/baseline 自动化闭环。
+2. CL1 已认证 install/restart/uninstall/baseline、准备阶段 fault ordering 与审计脱敏自动化闭环。
 3. CL2 在 disposable account/VM 认证 Tauri 桌面工作流。
 4. CL3 新增独立 reinstall use case/task，按最终 target 分类 retained/replaced/added/stale。
 5. CL4 完整验证与 Gate A `certified` 记录。
