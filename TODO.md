@@ -333,10 +333,10 @@ JSON 做不好的需求:
 
 范围:
 - [x] 设计来源 adapter、批次预览、去重/冲突、取消/重试和安全边界
-- [ ] Slice 1：无路径领域契约、ports、仓储基准/决策和人工 fixtures
+- [ ] Slice 1：无路径领域/selection 契约、批次选择上限、ports、仓储基准/决策和人工 fixtures
 - [ ] Slice 2：`hunting_box_directory_v1` 只读扫描、内容指纹、分页预览和 scan task
 - [ ] Slice 3：安全物化、复用单包导入链路、partial success、幂等和恢复对账
-- [ ] Slice 4：来源选择、候选选择、分类映射、冲突决定、进度/结果 UI 和完整加固
+- [ ] Slice 4：来源选择、候选选择/服务端全选、分类映射、冲突决定、进度/结果 UI 和完整加固
 
 硬边界:
 - 默认只导入，不自动安装、启用或写游戏目录

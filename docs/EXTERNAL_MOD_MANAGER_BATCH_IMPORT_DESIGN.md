@@ -16,7 +16,7 @@ Helsincy Mod Manager 已有单个压缩包的安全导入链路，也规划了 M
 
 首个兼容来源采用狩技盒子常见的目录布局。已核对的参考行为是：玩家选择一个根目录，工具扫描数字命名的直接子目录，每个候选包含 `files/` 和 `info.xml`，再尽量保留名称、作者、类型和版本。HMM 只兼容这一可观察的数据契约，不复制参考工具的直接目录复制、覆盖或安装策略。
 
-本设计只借鉴可独立观察的产品流程与输入格式。后续实现必须独立完成，不复制任何第三方源码、素材、UI、文案或项目内部标识，也不在正式文档、代码、提交说明或产品界面中使用第三方项目名称。
+本设计只借鉴可独立观察的产品流程与输入格式。后续实现必须独立完成，不复制任何第三方源码、素材、UI、文案或项目内部标识。为准确描述互操作范围，正式文档、来源 adapter、提交说明和产品界面可以使用玩家识别兼容来源所必需的公开来源名称；不得出现仅用于研究参考的第三方实现项目名称，也不得暗示授权、隶属、背书或代码来源关系。
 
 本文所说的“无缝衔接”是一次性迁移体验：一次选择、统一预览、批量导入、结果汇总和失败重试。它不表示两个管理器之间实时同步，也不表示继承外部管理器的启用、安装或冲突事实。
 
@@ -101,10 +101,11 @@ selected-root/
 4. 玩家启动扫描任务，立即得到 `taskId` 和 `batchId`。
 5. 后端只读发现候选、解析受限元数据、计算大小和内容指纹，并持续发送聚合进度。
 6. 前端按页查询批次预览，展示可导入、重复、同名、阻断和结构不完整项。
-7. 玩家选择候选、分类映射和允许的冲突策略，再启动一个批量导入任务。
-8. 后端逐项重新校验来源，将选中候选物化为受控的内部包，再复用现有单包 prepare/analyze/persist 流程。
-9. 前端按页查询结果，展示成功、已存在、跳过、阻断、失败和取消项，并只重试可重试项。
-10. 导入完成后刷新 Mod 库；安装和启用仍由现有工作流单独触发。
+7. 前端创建后端 selection snapshot；分页选择通过每次不超过 200 项的 mutation 更新，“选择全部”由后端按当前查询执行，不把全部候选 ID 展开到前端。
+8. 玩家完成候选、分类映射和允许的冲突决定后，前端用 `selectionId + expectedRevision` 启动批量导入；后端原子校验并封存该选择快照。
+9. 后端逐项重新校验来源，将快照中的候选物化为受控的内部包，再复用现有单包 prepare/analyze/persist 流程。
+10. 前端按页查询结果，展示成功、已存在、跳过、阻断、失败和取消项，并只重试可重试项。
+11. 导入完成后刷新 Mod 库；安装和启用仍由现有工作流单独触发。
 
 扫描和导入之间如果来源发生变化，该候选必须返回 `source_changed` 并要求重新扫描，不得继续使用过期预览做决定。
 
@@ -140,6 +141,20 @@ ExternalImportBatch
   scan_status
   import_status
   created_at
+
+ExternalImportSelection
+  selection_id              # 对前端公开的 opaque id
+  batch_id
+  revision                  # optimistic concurrency / stale-write guard
+  status                    # editing | sealed | expired
+  selected_count
+  expires_at
+
+ExternalImportSelectionEntry
+  selection_id
+  candidate_id              # 存在即表示选中，只引用同 batch 的后端候选
+  decision?                 # 稳定 enum + 已有 category id
+  updated_at
 
 ExternalImportCandidate
   candidate_id              # 对前端公开的 opaque id
@@ -235,6 +250,17 @@ materializer 必须：
 - 批次级仓储故障、来源整体失效或无法保证结果持久化时，应停止调度新项。
 - source root 默认不持久化；应用重启后要继续重试，玩家必须重新选择来源，由后端用 source fingerprint 和批次记录完成对账。
 
+批量选择必须存为后端权威 snapshot，不能把分页结果重新展开成一次无上限的 Tauri 请求：
+
+- `selectionId` 由后端签发并绑定唯一 `batchId`；selection entry 只保存后端候选 ID 和已校验决定，不保存来源路径。
+- 单次 selection mutation 最多包含 `200` 个候选变更；超过上限整体拒绝，不截断、不部分应用。
+- 单个批次最多选择 `10,000` 个候选；同时继续受集中配置的批次总文件数、总字节数和物化预算约束。mutation、服务端全选和启动都会校验这些上限；任一上限超出都整体拒绝且保持旧 snapshot/revision。
+- “选择全部”由后端针对 batch preview 的稳定 query/filter 执行，不接受前端展开的全量 ID；blocked 项和仍缺少显式冲突决定的项不会被静默选中。
+- 每次 mutation 使用 `expectedRevision` 做 compare-and-swap，并返回新 revision、选中计数和聚合预算；revision 不匹配返回稳定冲突错误。
+- 启动导入时后端在短事务中复核 batch/source revision、selection revision、总量上限和全部决定，再把 snapshot 从 `editing` 原子切换到 `sealed`。sealed snapshot 不再修改，重试继续引用同一不可变选择事实。
+- selection snapshot 与 batch journal 一起通过短事务持久化；应用重启后仍能恢复 revision 和 sealed 事实，但来源失效时仍须玩家重新选择并完成 source fingerprint 对账。
+- `expiresAt` 只限制仍处于 `editing` 的选择会话；snapshot 一旦 sealed，就按 batch journal 生命周期保留，不能在运行、取消或重试期间因编辑 TTL 到期而消失。
+
 当前 `ModImportResultRepository` 仍是 JSON 单文件。实施批量功能前必须补充批量写入策略，禁止每个候选都完整重写一次结果文件。首个实施切片应在以下路径中选择并记录基准：
 
 - 为现有仓储增加分块 `upsert_many` 和原子替换，每个 chunk 最多写一次。
@@ -277,8 +303,11 @@ phase code 一经写入前后端契约就必须保持稳定。部分成功的明
 ```text
 select_external_import_source(adapterId)
 start_external_import_scan(sourceId)
-get_external_import_preview(batchId, cursor, limit)
-start_external_import_batch(batchId, selectedCandidateIds, decisions)
+get_external_import_preview(batchId, selectionId?, cursor, limit)
+create_external_import_selection(batchId)
+update_external_import_selection(selectionId, expectedRevision, entries)
+select_all_external_import_candidates(selectionId, expectedRevision, query)
+start_external_import_batch(batchId, selectionId, expectedRevision)
 get_external_import_batch_result(batchId, cursor, limit)
 cancel_task(taskId)
 ```
@@ -287,8 +316,12 @@ cancel_task(taskId)
 
 - 来源选择命令返回 opaque `sourceId` 和不含完整路径的显示标签。
 - scan start 返回小型 `{ task, batchId }`；不得把候选数组塞进启动响应或完成事件。
-- preview/result query 必须分页并限制 `limit`。
-- decisions 只接受后端签发的 candidate id、稳定 enum 和已有 category id。
+- preview/result query 必须分页；默认 `limit = 50`，最大 `limit = 100`，非法值整体拒绝。
+- selection create 返回小型 `{ selectionId, revision, selectedCount, expiresAt }`；preview 可以用绑定同一 batch 的 selection id 返回当前页选择状态，但不得返回全部 selected IDs。
+- selection update 的 `entries` 形如 `{ candidateId, selected, decision? }`，每次必须包含 `1..=200` 项；只接受同一 batch 的后端 candidate id、稳定 enum 和已有 category id，重复、未知或跨 batch candidate 整体拒绝。`selected = true` 拒绝 blocked 候选；`selected = false` 可以移除同 batch 的已有 entry，且不保留孤立 decision。
+- `select_all_external_import_candidates` 只接受稳定 query/filter，不接受候选 ID 数组；后端在 `10,000` 项总上限和资源预算内更新 selection snapshot。
+- `start_external_import_batch` 只接受 `batchId + selectionId + expectedRevision`；不接受 candidate ID 或 decision 数组，并在启动前封存选择快照。
+- selection 相关稳定错误至少包括 `selection_revision_conflict`、`selection_empty`、`selection_mutation_empty`、`selection_mutation_limit_exceeded`、`selection_total_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。
 - DTO 不接受或返回 root/path/archive/sandbox/cache/hash 原文。
 - 前端将入口放在 `features/mods/` 的导入工作流内，不新建营销式页面，也不在浏览器侧读取目录。
 - 前端需要完整覆盖 loading、empty、partial、cancelled、stale source、retry 和分页状态。
@@ -322,7 +355,7 @@ cancel_task(taskId)
 
 ### Slice 1：领域契约、仓储决策与人工 fixtures
 
-- 定义无路径的 batch/candidate/provenance/status/reason 模型。
+- 定义无路径的 batch/candidate/selection/provenance/status/reason 模型，以及 200 项 mutation、10,000 项批次选择和资源预算策略。
 - 定义 scanner、materializer 和 batch repository ports。
 - 对 `ModImportResultRepository` 做批量写入基准，决定 JSON `upsert_many` 或 SQLite 迁移。
 - 建立完全人工构造的目录/XML fixtures 和安全拒绝矩阵。
@@ -382,8 +415,11 @@ cancel_task(taskId)
 - 所有 task event 都携带正确 `taskId`，且不承载候选列表。
 - DTO 和日志不包含 path/root/archive/sandbox/cache/XML/hash 原文。
 - preview/result query 的 cursor 和 limit 校验。
+- selection mutation 覆盖 0/1/199/200/201 项、累计 9,999/10,000/10,001 项、重复/未知/跨 batch candidate、blocked 项的选择与移除、stale revision、expired 和 sealed snapshot。
+- 服务端“选择全部”不接收 ID 数组，不包含 blocked 或缺少决定的项；超过 10,000 项或资源预算时整体拒绝且 selection 不变。
+- start command 只消费 `batchId + selectionId + expectedRevision`，selection 为空、revision 不一致或决定不完整时不创建 task。
 - 未知 status/reason code 前端 fail closed，并显示通用可恢复文案。
-- 全选不包含 blocked 项；默认冲突策略不会覆盖已有导入。
+- 默认冲突策略不会覆盖已有导入。
 - 取消、部分成功、过期来源、重试和刷新 Mod 库流程。
 
 ### 验证入口
@@ -399,6 +435,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ## 验收标准
 
 - 一次选择可以得到完整、分页、可解释的候选预览。
+- 分页选择由后端 snapshot 承载；单次 mutation 和批次总选择均有硬上限，启动请求不携带 O(N) candidate IDs/decisions。
 - 非数字和结构异常项可见且带稳定 reason code，不被静默忽略。
 - 默认只导入，整个任务不获取 game/profile 写锁，也不触碰游戏目录。
 - 外部来源在成功、失败和取消路径都保持只读。
@@ -417,6 +454,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 - 集中资源上限应复用单包导入默认值，还是为整个批次增加独立总预算。
 - `ModImportResultRepository` 采用分块 JSON 原子写还是迁移 SQLite。
 - 外部 `modType` 到 HMM 分类的默认映射表是否需要随 adapter 版本发布。
-- 首版性能验收的候选数量、总文件数和总字节基准。
+- 在最多 10,000 个选中候选的硬上限内，定稿首版性能验收的候选数量、总文件数和总字节预算；基准只能收紧上限，放宽必须另行 review。
 
 这些确认项只影响实现细节，不改变本文的只读来源、显式预览、复用安全导入链路和默认不安装边界。
