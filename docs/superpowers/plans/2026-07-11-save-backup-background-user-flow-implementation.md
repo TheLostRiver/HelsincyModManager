@@ -1,12 +1,12 @@
-# P7.2b 后台自动备份用户流程 Implementation Plan
+# P7.2b 后台自动备份用户流程实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向自动化执行者：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 逐任务执行本计划。步骤使用复选框（`- [ ]`）跟踪。
 
-**Goal:** 为 P7.2a Windows Scheduled Task 平台核心增加应用级持久化启停、首次 heartbeat 验证、Settings/Profile 用户状态和统一的 fail-closed 退出流程。
+**目标：** 为 P7.2a Windows Scheduled Task 平台核心增加应用级持久化启停、首次 heartbeat 验证、Settings/Profile 用户状态和统一的 fail-closed 退出流程。
 
-**Architecture:** 以 SQLite 单例行保存应用级用户意图、启用时间和全局 worker heartbeat；`hmm-app` 组合该状态、Scheduled Task read-back 和 Profile 自动备份计划，派生控制状态与退出决策。Tauri 只暴露窄命令和白名单 DTO，前端只展示后端事实；所有备份仍走既有 scheduler/lease/task/backup/audit 链路。
+**架构：** 以 SQLite 单例行保存应用级用户意图、启用时间和全局 worker heartbeat；`hmm-app` 组合该状态、Scheduled Task read-back 和 Profile 自动备份计划，派生控制状态与退出决策。Tauri 只暴露窄命令和白名单 DTO，前端只展示后端事实；所有备份仍走既有 scheduler/lease/task/backup/audit 链路。
 
-**Tech Stack:** Rust 2021、rusqlite/rusqlite_migration、Tauri 2、React 19、TypeScript、Node test runner、PowerShell verification scripts。
+**技术栈：** Rust 2021、rusqlite/rusqlite_migration、Tauri 2、React 19、TypeScript、Node test runner、PowerShell verification scripts。
 
 ---
 
@@ -343,6 +343,8 @@ fn disable_confirms_task_missing_before_persisting_disabled() {
 - `enable()`：clock -> begin_enable -> register -> inspect exact -> audit -> 返回重新查询的
   `starting`。
 - `disable()`：unregister -> inspect not registered -> finish_disable -> audit -> not enabled。
+- register/unregister/enable/disable 在任何转换工作前获取同一个 service-level mutex，并持有到
+  审计和返回状态构造完成；不持有 game/profile 写锁。
 - ownership/permission/timeout/read-back 失败时不得写 disabled。
 - 保留 desired true 的失败必须能由 `control_status()` 解释并允许重试。
 
@@ -425,11 +427,12 @@ Expected: FAIL，worker constructor 尚无 global repository。
 
 worker 首先 load global settings。`desired_enabled = false` 时立即返回空 summary，不枚举
 Profile、不启动任务、不写 heartbeat。enabled 时才执行既有 loop，并在成功完成 profile
-枚举和逐 profile 检查后、返回 summary 前执行：
+枚举和逐 profile 检查后重新读取 clock，再在返回 summary 前执行：
 
 ```rust
+let cycle_completed_at = self.clock.now_unix_millis()?;
 self.background_settings_repository
-    .record_worker_heartbeat(now)
+    .record_worker_heartbeat(cycle_completed_at)
     .map_err(|_| SaveBackupBackgroundWorkerError::HeartbeatUnavailable)?;
 ```
 

@@ -124,7 +124,7 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
       <div
         ref={dialogRef}
         className={`window-close-dialog is-${mode.kind}`}
-        role="dialog"
+        role={mode.kind === "unsafe" ? "alertdialog" : "dialog"}
         aria-modal="true"
         aria-labelledby="window-close-title"
         aria-describedby="window-close-description"

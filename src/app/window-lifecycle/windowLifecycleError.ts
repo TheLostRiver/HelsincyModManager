@@ -19,7 +19,7 @@ export function getWindowLifecycleErrorCode(error: unknown): string | null {
 
 export function getWindowLifecycleErrorMessage(error: unknown): string {
   const code = getWindowLifecycleErrorCode(error);
-  return code && code in WINDOW_LIFECYCLE_ERROR_MESSAGES
+  return code && Object.prototype.hasOwnProperty.call(WINDOW_LIFECYCLE_ERROR_MESSAGES, code)
     ? WINDOW_LIFECYCLE_ERROR_MESSAGES[code as WindowLifecycleErrorCode]
     : FALLBACK_WINDOW_LIFECYCLE_ERROR_MESSAGE;
 }

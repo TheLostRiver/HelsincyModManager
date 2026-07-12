@@ -524,6 +524,8 @@ disable_save_backup_background_protection()
 - 三个命令都不接受 `gameId`、`profileId`、路径、task name、SID、worker 参数或平台命令。
 - 全局 SQLite 设置保存用户意图、当前启用时间和 worker heartbeat；这些字段只由 app service/repository/worker 修改，前端不能提交。
 - 启用先持久化 intent，再执行受控 register/read-back；成功返回 `starting`，不能直接返回 `protected`。停用只有在 owned task 已确认移除后才清除 intent/heartbeat；部分失败保持可重试事实。
+- 同一 AppState 内的 register/unregister/enable/disable 会由 app service 串行执行完整转换，包括设置写入、平台注册/read-back、审计和返回状态构造，避免并发命令留下 intent 与平台注册不一致。
+- 停用会阻止后续 Scheduled Task invocation，但不会取消已经启动的 `--once` worker cycle；已启动 cycle 仍沿用 scheduler lease 与存档备份安全链完成。停用完成后新启动的 worker 必须读取 disabled intent 并立即 no-op。
 - `starting` 使用 5 分钟启动宽限；`protected` 要求当前启用周期的 heartbeat 位于 `[now - 45m, now]`。未来、过期、早于 `enabledAt` 的 heartbeat 都 fail closed。
 
 ```ts
@@ -1069,7 +1071,7 @@ type SupportDiagnosticsExportDto = {
 - `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
 - `get_app_exit_guard()` 是只读结构化决策；所有真正退出入口，包括主窗口关闭、remembered exit 和托盘“退出程序”，都必须经过同一流程。
 - `exit_app({ request: { overrideUnprotected } })` 要求显式布尔值。普通退出只能传 `false`；只有危险退出对话框的当次明确确认可以传 `true`。后端在真正退出前始终重新计算 guard，不信任前端缓存。
-- `exit_app(false)` 若在查询后因状态竞态变为不安全，会返回稳定 code `exit_confirmation_required`；前端必须重新读取 `get_app_exit_guard`，不得解析 `CommandErrorDto.message` 猜测原因。
+- `exit_app({ request: { overrideUnprotected: false } })` 若在查询后因状态竞态变为不安全，会返回稳定 code `exit_confirmation_required`；前端必须重新读取 `get_app_exit_guard`，不得解析 `CommandErrorDto.message` 猜测原因。
 - 危险退出默认操作和初始焦点为留在托盘，不显示 remember；Escape、overlay 和关闭按钮都只取消。`starting` override 不 unregister、不清除 `desiredEnabled`。
 
 ```ts

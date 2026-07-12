@@ -63,6 +63,8 @@ test("maps only stable Tauri command error codes to local messages", () => {
   assert.equal(getWindowLifecycleErrorMessage(new Error("C:/Users/Alice/save")), "窗口关闭操作失败");
   assert.equal(getWindowLifecycleErrorMessage("raw backend message"), "窗口关闭操作失败");
   assert.equal(getWindowLifecycleErrorMessage({ code: "missing_message" }), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage({ code: "toString" }), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage({ code: "constructor" }), "窗口关闭操作失败");
 });
 
 test("extracts stable error codes without reading backend messages", () => {

@@ -73,6 +73,7 @@ test("unsafe dialog defaults focus to tray and cannot persist an exit preference
   const source = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.tsx");
 
   assert.match(source, /mode\.kind === "unsafe"/);
+  assert.match(source, /role=\{mode\.kind === "unsafe" \? "alertdialog" : "dialog"\}/);
   assert.match(source, /trayButtonRef/);
   assert.match(source, /mode\.kind === "unsafe"[\s\S]*?trayButtonRef\.current\?\.focus\(\)/);
   assert.match(source, /mode\.kind === "normal"[\s\S]*?window-close-dialog__remember/);
