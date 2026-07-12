@@ -23,6 +23,27 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 
 这些能力完成的是应用级启停、状态展示和 fail-closed 退出保护，不等于 Windows 安装态 runtime acceptance。安装态 sibling worker、真实 Scheduled Task 触发、fresh heartbeat 和 cleanup 的人工 smoke 尚未在一次性账户/VM 完成；P7.2c NSIS/WiX owned-task 自动卸载 cleanup 也仍是独立 release packaging gate。所有后续工作继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
 
+### P7.2c 卸载 cleanup 规划状态
+
+P7.2c 已完成 [设计规格](superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md) 与
+[实施计划](superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md)，但尚未实现
+helper、NSIS hook、WiX custom action 或 disposable VM gate。规划固定以下边界：
+
+- 安装器调用独立、无参数的 installer cleanup helper；不调用 Settings `disable()`，也不扩展
+  worker 固定 `--once` CLI。
+- helper 直接复用 infra 的 current-user identity、固定 ownership marker、受控 unregister 和
+  post-delete read-back；不读取 AppData、SQLite、Audit Log、Profile/save/backup/game 路径或网络。
+- missing、owned exact 和 owned drift 允许幂等清理；foreign task 必须保留并允许产品卸载继续。
+- owned task running/queued，或 identity、ownership、state、delete/read-back 无法确认时，真正
+  卸载 fail closed；不得强杀正在备份的 worker。
+- 升级、repair、modify 跳过 cleanup。NSIS 使用生成模板证明过的 `NSIS_HOOK_PREUNINSTALL`；
+  WiX 必须以生成模板证明 custom action 在 `RemoveFiles` 前、以发起卸载的交互用户身份运行。
+- NSIS 与 WiX 的 static/build/runtime gate 分别记录；自动化只使用 fake runner 和静态检查，真实
+  task 验收只在一次性 Windows 账户或 VM 执行。
+
+在 helper、两个 installer 接入和 disposable VM 矩阵全部完成前，不得把 P7.2c 标为实现完成，
+也不得用该规划替代 P7.2a 安装态 worker/heartbeat runtime acceptance。
+
 ## 背景
 
 自动备份如果只依赖主窗口打开期间的前端定时器或 Tauri 主进程内 tick，就无法覆盖用户真正退出客户端后的时间段。对存档管理工具来说，“用户以为开启了自动备份，但退出客户端后实际没有备份”是不可接受的产品风险。
