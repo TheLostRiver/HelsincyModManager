@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getWindowLifecycleErrorMessage } from "./windowLifecycleError.ts";
+import {
+  getWindowLifecycleErrorCode,
+  getWindowLifecycleErrorMessage,
+} from "./windowLifecycleError.ts";
 import {
   CLOSE_BEHAVIOR_STORAGE_KEY,
   loadWindowClosePreference,
@@ -48,12 +51,22 @@ test("resolves stored preferences to close actions", () => {
   assert.equal(resolveWindowCloseAction("exit"), "exit_app");
 });
 
-test("extracts user visible messages from Tauri command error DTOs", () => {
+test("maps only stable Tauri command error codes to local messages", () => {
   assert.equal(
-    getWindowLifecycleErrorMessage({ code: "window_hide_failed", message: "窗口隐藏失败" }),
-    "窗口隐藏失败",
+    getWindowLifecycleErrorMessage({ code: "window_hide_failed", message: "C:/Users/Alice/save" }),
+    "窗口隐藏失败，请重试。",
   );
-  assert.equal(getWindowLifecycleErrorMessage(new Error("原生错误")), "原生错误");
-  assert.equal(getWindowLifecycleErrorMessage("字符串错误"), "字符串错误");
+  assert.equal(
+    getWindowLifecycleErrorMessage({ code: "exit_confirmation_required", message: "raw backend message" }),
+    "退出前需要确认后台保护状态。",
+  );
+  assert.equal(getWindowLifecycleErrorMessage(new Error("C:/Users/Alice/save")), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage("raw backend message"), "窗口关闭操作失败");
   assert.equal(getWindowLifecycleErrorMessage({ code: "missing_message" }), "窗口关闭操作失败");
+});
+
+test("extracts stable error codes without reading backend messages", () => {
+  assert.equal(getWindowLifecycleErrorCode({ code: "exit_confirmation_required", message: "ignored" }), "exit_confirmation_required");
+  assert.equal(getWindowLifecycleErrorCode({ code: 42, message: "ignored" }), null);
+  assert.equal(getWindowLifecycleErrorCode(new Error("exit_confirmation_required")), null);
 });
