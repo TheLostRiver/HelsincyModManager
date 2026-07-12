@@ -2,7 +2,7 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e1d4e868` (main)
-最近同步：2026-07-02，基于 `7ed2e90` (main)
+最近同步：2026-07-12，基于 `9618cfc`（P7.2c docs-only 规划基线）
 
 ---
 
@@ -23,6 +23,7 @@
 
 - ARMOR_RETARGET: `docs/ARMOR_RETARGET_DESIGN.md` + `docs/ARMOR_RETARGET_IMPLEMENTATION.md` + `docs/ARMOR_RETARGET_REVIEW.md`
 - InstallPlan MVP: `docs/INSTALL_PLAN_STATUS.md` + `docs/INSTALL_PLAN_MVP_TODO.md`
+- 核心 Mod 生命周期优先级: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md`
 - 恢复受控动作: `docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md`
 - Mod 预览图: `docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md` + `docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md`
 - 第三方 Mod 管理器批量迁移: `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
@@ -45,47 +46,52 @@
 | **P2** | 重要增强 — 提升完整度和用户体验 | P1 基本就绪后推进 |
 | **P3** | 长线 feature — Phase 4+ 的大型功能 | 按 Roadmap 节奏 |
 
+### 当前执行覆盖规则（2026-07-12）
+
+[核心 Mod 生命周期优先级计划](docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 在 Gate B 完成前覆盖本文件
+旧的推荐执行顺序，但不覆盖架构和玩家数据安全规则：
+
+1. P0：认证安装/卸载闭环并实现真正重装（Gate A）。
+2. P1：完成 ARMOR_RETARGET 最窄纵向切片（Gate B）。
+3. T9/T10 只做解除 Gate A/Gate B 阻断的最小 manifest/preflight 子集。
+4. 其他未完成 feature 暂停实施；已完成能力和既有设计继续保留。
+
 ---
 
 ## 任务依赖图
 
 ```text
-T1 恢复中心写入型 UI ───(无前置)───> 可立即开始
-                                      │
-T2 持久化方案决策/SQLite 基础 ───(已完成)───> T3/T4 已消费
-    │
-    ├──> T3 Mod 元数据更新后端（已完成）
-    │       └──> T5 Mod 信息编辑面板
-    │
-    ├──> T4 分类标签 CRUD（已完成）
-    │       └──> T5 Mod 信息编辑面板 (分类选择)
-    │
-    ├──> T6 Profile 管理
-    │
-    ├──> T8 存档备份 (备份历史需要存储)
-    │
-    └──> T11 ARMOR_RETARGET (binding 持久化)
-
-T7 一键启动游戏 ───(无前置)───> 独立，可任意时机插入
-
-T9 Rich Manifest ───(T1 完成后)───> 在 MVP manifest 上扩展
-
-T10 Dependency/Preflight ───(T3 + T4)───> 需要元数据和分类
-
-T11 ARMOR_RETARGET ───(T2 + T9 + InstallPlan staging)───> 最重依赖链
-
-T12 Mod 详情统一面板完整版 ───(T5 + T11 部分就绪)───> 合并信息 + 替换目标
-
-T17 第三方管理器批量迁移 ───(安全导入链路 + TaskManager + 导入结果持久化)───> 狩技盒子兼容来源
-
-T18 Mod 库分页 ───(现有 Mod 库 + profile 状态查询)───> 大型 Mod 库可操作性
-    ├──> T13 跨页批量选择消费 query/filter contract
-    └──> T17 Slice 4 对外完成前的 UI gate
+已完成安全基础（T1-T7 + InstallPlan/manifest/backup/rollback MVP）
+  -> CL0 生命周期验收基线
+  -> CL1 install/uninstall 自动化纵向闭环
+  -> CL2 桌面 smoke
+  -> CL3 真正 reinstall
+  -> Gate A: Core Mod Lifecycle certified
+  -> T11 ARMOR_RETARGET 最窄纵向切片
+       ├──> T9 最小 replacement binding snapshot / write-state gate
+       └──> T10 最小 path-family / source / target preflight
+  -> Gate B: ARMOR install/switch-target/uninstall certified
+  -> 重新排序并恢复 T8/T12/T13/T14/T17/T18
 ```
 
 ---
 
 ## P0 — 关键路径
+
+### Core Mod Lifecycle Gate A
+
+**状态**: 已规划，待实施；当前唯一 P0 主线
+**独立文档**: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md`
+
+- [ ] CL0：固定 `v1/v2` 人工 fixture、temp-root acceptance matrix、桌面 smoke 文档和缺口清单
+- [ ] CL1：认证导入记录 -> InstallPlan -> install -> restart -> uninstall -> baseline 自动化闭环
+- [ ] CL2：实际 Tauri 桌面 smoke、状态恢复、错误脱敏和清理证明
+- [ ] CL3：独立真正重装 use case，覆盖 retained/replaced/added/stale 与失败恢复
+- [ ] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
+
+Gate A 前不得开始 P7.2c、分页、批量迁移、批量操作、任务队列或新的非阻断视觉工作。
+
+---
 
 ### T1: 恢复中心写入型动作 UI 启用
 
@@ -255,12 +261,12 @@ JSON 做不好的需求:
 
 ---
 
-## P2 — 重要增强
+## P2 — 重要增强（Gate B 前暂停或受限）
 
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 进行中（P7.2b 应用级用户意图、Settings/Profile 状态与退出保护已落地；P7.2c 卸载 cleanup 已完成规格与实施计划但尚未实现；P7.2a 安装态 runtime smoke 和完整备份中心仍待后续切片）
+**状态**: 已完成部分保留；P7.2a 安装态 acceptance、P7.2c 实现、retention 扩展和备份中心暂停到 Gate B 后重排
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`、`docs/superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md`、`docs/superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md`
 
@@ -272,27 +278,28 @@ JSON 做不好的需求:
 - [x] 自动备份游戏运行保护（运行中或状态未知时延后，不获取 lease、不启动备份任务）
 - [x] P7.1 headless worker 基础（固定 `--once` 入口、共享 scheduler/备份链路、heartbeat 与 fallback registry；当前仍为 `tray_only`）
 - [x] P7.2a Windows 平台核心（用户级 Scheduled Task 注册/更新/移除、read-back、独立 heartbeat、双条件 `protected` 派生和 sidecar；自动化仅使用 fake/临时依赖）
-- [ ] P7.2a Windows 安装态 runtime acceptance（一次性账户/VM 中验证 sibling worker、真实触发、fresh heartbeat 和 cleanup）
+- [ ] P7.2a Windows 安装态 runtime acceptance（暂停；Gate B 后按发布风险重排）
 - [x] P7.2b Settings 全局后台保障开关、Profile 只读状态、5 分钟 `starting` / 45 分钟 `protected` 健康派生与统一退出保护
 - [x] P7.2c NSIS/WiX owned Scheduled Task 卸载 cleanup 设计规格与实施计划（本项仅代表 docs 完成）
-- [ ] P7.2c helper、NSIS PREUNINSTALL、WiX custom action 与 disposable VM gate（不得删除 foreign task）
+- [ ] P7.2c helper、NSIS PREUNINSTALL、WiX custom action 与 disposable VM gate（已规划、暂停；不得删除 foreign task）
 - [x] 保留策略（数量）
-- [ ] 保留策略（时间/空间）
+- [ ] 保留策略（时间/空间，暂停）
 - [x] 备份目录可选择（未手动选择时使用默认 app data）
-- [ ] 前端 `features/backups/` 页面
+- [ ] 前端 `features/backups/` 页面（暂停）
 
 ---
 
 ### T9: Rich Manifest 与状态机
 
 **前置**: T1
-**状态**: 进行中（`manifest_id` / schema metadata、`plan_hash`、`rolled_back` 持久化与读侧状态机消费规则已落地）
+**状态**: 已有基础保留；仅允许 Gate A 重装/写侧状态门禁和 Gate B binding snapshot 的最小阻断子集
 **预估**: 中
 **独立文档**: 不需要（`docs/INSTALL_PLAN_MVP_TODO.md` 已有设计）
 
 概要:
 - [x] 已落地：`manifest_id`、`schema_version` / `schema_migration`、`backend`、`status`、`created_at`、`completed_at`、`plan_hash` JSON 兼容层；安装提交成功会写入 schema metadata、`backend`、完成时间和真实 `plan_hash`
-- [ ] 待补字段：后续 replacement binding snapshot；`game_id` / `game_instance_id` / 顶层 `mod_id` 语义需结合 profile 聚合模型另行定稿
+- [ ] Gate B 必需：replacement binding snapshot
+- [ ] 延后：与 Gate A/Gate B 无关的 `game_id` / `game_instance_id` / 顶层 `mod_id` 泛化
 - [x] `get_install_manifest_status` 消费 recovery scan
 - [x] rich manifest 读侧状态机消费规则：`InstallManifestStatus::consumption()` 分类（completed/rolled_back→信任 entries，planned/committing→unknown，rollback_required/repair_required→对应失败态），manifest 状态摘要查询 fallback 与恢复扫描均已消费；写侧门禁另行切片
 - [x] `rolled_back` 状态持久化：受控 `rollback_install` 成功后同步 rich manifest status，并移除已回滚 Mod 的 stale entries
@@ -302,6 +309,7 @@ JSON 做不好的需求:
 ### T10: 前置依赖检查
 
 **前置**: T3 + T4
+**状态**: 受限；只做 Gate A/Gate B 的 source/target/path-family/冲突阻断，通用依赖平台延后
 **预估**: 中
 **独立文档**: 不需要
 
@@ -315,6 +323,7 @@ JSON 做不好的需求:
 ### T13: 批量操作
 
 **前置**: T6
+**状态**: 暂停；单项 install/uninstall/reinstall certified 后重新设计批量队列语义
 **预估**: 中
 **独立文档**: 不需要
 
@@ -328,7 +337,7 @@ JSON 做不好的需求:
 ### T17: 第三方 Mod 管理器批量迁移（狩技盒子兼容）
 
 **前置**: 单包安全导入链路 + TaskManager/取消 + Mod 导入结果持久化
-**状态**: 已规划，待实施（本轮仅完成文档，不代表功能可用）
+**状态**: 已规划、暂停；Gate B 和单包生命周期认证后恢复
 **预估**: 大，建议拆为 4 个独立 review 切片
 **独立文档**: **已创建** → `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
 
@@ -351,7 +360,7 @@ JSON 做不好的需求:
 ### T18: Mod 库分页
 
 **前置**: 现有 Mod 库 + Profile install/recovery 状态查询
-**状态**: 已规划，待实施（本轮仅完成文档，不代表分页可用）
+**状态**: 已规划、暂停；Gate B 后仅在大库数据证明成为主要阻塞时恢复
 **预估**: 中-大，建议拆为 4 个独立 review 切片
 **独立文档**: **已创建** → `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
 
@@ -372,11 +381,13 @@ JSON 做不好的需求:
 
 ---
 
-## P3 — 长线 Feature
+## P1 核心差异能力 / P3 长线 Feature
 
 ### T11: ARMOR_RETARGET 全链路
 
-**前置**: T2 + T9 + InstallPlan staging
+**优先级**: P1，Gate A 通过后立即开始
+**状态**: 已规划，待 Gate A；当前源码尚无 replacement/retarget 实现
+**前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
 
@@ -397,6 +408,7 @@ JSON 做不好的需求:
 ### T12: Mod 详情统一面板 (完整版)
 
 **前置**: T5 + T11 部分就绪
+**状态**: 暂停；Gate B 内只实现 ARMOR 最小 target 选择 UI
 **预估**: 中
 **独立文档**: 不需要
 
@@ -411,6 +423,7 @@ JSON 做不好的需求:
 ### T14: 任务队列 UI
 
 **前置**: T13
+**状态**: 暂停；T13 恢复且出现真实多任务需求后再开始
 **预估**: 小-中
 **独立文档**: 不需要
 
@@ -426,30 +439,14 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-第 1 轮: T1 恢复中心写入型 UI        ← 最后一公里
-         T2 持久化方案决策文档        ← 已完成
-
-第 2 轮: T2 持久化实施 (SQLite 基础)     ← 已完成
-         T7 一键启动游戏             ← 独立，与 T2 并行
-
-第 3 轮: T3 Mod 元数据更新后端          ← 已完成
-         T4 分类标签 CRUD              ← 已完成
-
-第 4 轮: T5 Mod 信息编辑面板         ← 已完成，消费 T3 + T4
-
-第 5 轮: T6 Profile 管理            ← 已完成（后端基础 + 前端 UI / active profile 接入）
-         T9 Rich Manifest
-
-第 6 轮: T10 依赖检查
-         T18 Mod 库分页
-         T13 批量操作
-         T17 第三方管理器批量迁移
-         T8 存档备份
-
-第 7 轮: T11 ARMOR_RETARGET
-
-第 8 轮: T12 Mod 详情完整版
-         T14 任务队列 UI
+当前: CL0 核心生命周期验收基线与缺口清单
+  -> CL1 install/uninstall 自动化闭环
+  -> CL2 桌面 smoke
+  -> CL3 真正 reinstall
+  -> CL4 Gate A 认证
+  -> T11 ARMOR_RETARGET AR1-AR5 最窄纵向闭环
+  -> Gate B 认证
+  -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
 ```
 
 ---
@@ -465,12 +462,13 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| T8 存档备份 | P2 | 进行中（P7.2b 应用级用户流程已落地；P7.2c 卸载 cleanup 已规划但未实现；P7.2a 安装态 runtime smoke 和备份中心待后续切片） | |
-| T9 Rich Manifest | P2 | 进行中（manifest metadata / plan_hash / rolled_back / 读侧状态机消费已落地） | |
-| T10 依赖检查 | P2 | 待开始 | |
-| T11 ARMOR_RETARGET | P3 | 待开始 | |
-| T12 Mod 详情完整版 | P3 | 待开始 | |
-| T13 批量操作 | P2 | 待开始 | |
-| T14 任务队列 UI | P3 | 待开始 | |
-| T17 第三方管理器批量迁移 | P2 | 已规划，待实施 | |
-| T18 Mod 库分页 | P2 | 已规划，待实施 | |
+| Core Mod Lifecycle Gate A | P0 | 已规划，下一项 CL0 | |
+| T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
+| T9 Rich Manifest | P0/P1 支撑 | 仅允许 Gate A/B 最小阻断子集 | |
+| T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
+| T11 ARMOR_RETARGET | P1 | 已规划，待 Gate A 后立即开始 | |
+| T12 Mod 详情完整版 | P3 | 暂停；仅 Gate B 最小 UI 例外 | |
+| T13 批量操作 | P2 | 暂停 | |
+| T14 任务队列 UI | P3 | 暂停 | |
+| T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
+| T18 Mod 库分页 | P2 | 已规划、暂停 | |
