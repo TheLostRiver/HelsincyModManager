@@ -901,6 +901,10 @@ fn start_best_effort_background_task<E>(
 }
 
 #[cfg(test)]
+#[path = "state_core_mod_lifecycle_tests.rs"]
+mod core_mod_lifecycle_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use hmm_core::{GameId, GameInstance, ModId, ProfileId};
