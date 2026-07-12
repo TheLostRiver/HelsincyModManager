@@ -169,6 +169,7 @@ pub struct UninstallModService {
 #[derive(Clone)]
 struct AppliedInstallChange {
     target_path: InstallTargetPath,
+    source_bytes: Vec<u8>,
     previous_bytes: Option<Vec<u8>>,
     pending_backup_ref: Option<String>,
     entry: InstallManifestEntry,
@@ -246,7 +247,7 @@ impl InstallCommitService {
             .map_err(|_| InstallCommitError::Failed {
                 phase: InstallCommitPhase::Manifest,
             })?;
-        let mut applied_changes = Vec::new();
+        let mut sourced_actions = Vec::with_capacity(plan.actions.len());
 
         for action in plan.actions {
             let source_bytes = match self
@@ -255,27 +256,44 @@ impl InstallCommitService {
             {
                 Ok(bytes) => bytes,
                 Err(_) => {
-                    let error =
-                        self.fail_or_rollback(&applied_changes, InstallCommitPhase::SourceRead);
+                    let error = InstallCommitError::Failed {
+                        phase: InstallCommitPhase::SourceRead,
+                    };
                     Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
                     return Err(error);
                 }
             };
-            let previous_bytes = match self.game_files.read_game_file(&action.target_path) {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    let error =
-                        self.fail_or_rollback(&applied_changes, InstallCommitPhase::TargetRead);
-                    Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
-                    return Err(error);
+            sourced_actions.push((action, source_bytes));
+        }
+
+        let mut prepared_changes = Vec::with_capacity(sourced_actions.len());
+        let mut prepared_target_bytes = HashMap::<InstallTargetPath, Vec<u8>>::new();
+
+        for (action, source_bytes) in sourced_actions {
+            let previous_bytes = if let Some(bytes) = prepared_target_bytes.get(&action.target_path)
+            {
+                Some(bytes.clone())
+            } else {
+                match self.game_files.read_game_file(&action.target_path) {
+                    Ok(bytes) => bytes,
+                    Err(_) => {
+                        let error = InstallCommitError::Failed {
+                            phase: InstallCommitPhase::TargetRead,
+                        };
+                        self.remove_pending_backups(&prepared_changes);
+                        Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
+                        return Err(error);
+                    }
                 }
             };
             let backup_ref = if let Some(bytes) = previous_bytes.as_deref() {
                 match self.backup_store.store_backup(&action.target_path, bytes) {
                     Ok(backup_ref) => Some(backup_ref),
                     Err(_) => {
-                        let error =
-                            self.fail_or_rollback(&applied_changes, InstallCommitPhase::Backup);
+                        let error = InstallCommitError::Failed {
+                            phase: InstallCommitPhase::Backup,
+                        };
+                        self.remove_pending_backups(&prepared_changes);
                         Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
                         return Err(error);
                     }
@@ -296,17 +314,29 @@ impl InstallCommitService {
                 installed_file: Some(installed_file_summary(&source_bytes)),
             };
 
+            prepared_target_bytes.insert(action.target_path.clone(), source_bytes.clone());
+            prepared_changes.push(AppliedInstallChange {
+                target_path: action.target_path,
+                source_bytes,
+                previous_bytes,
+                pending_backup_ref: backup_ref,
+                entry,
+            });
+        }
+
+        for (index, change) in prepared_changes.iter().enumerate() {
             if let Some(records) = recovery_records.as_mut() {
                 if records
-                    .update_entry_for_rollback(&entry, backup_ref.clone())
+                    .update_entry_for_rollback(&change.entry, change.pending_backup_ref.clone())
                     .and_then(|_| records.ensure_committing())
                     .is_err()
                 {
                     let error = self.fail_or_rollback_with_pending_backup(
-                        &applied_changes,
-                        backup_ref.as_deref(),
+                        &prepared_changes[..index],
+                        change.pending_backup_ref.as_deref(),
                         InstallCommitPhase::Manifest,
                     );
+                    self.remove_pending_backups(&prepared_changes[index + 1..]);
                     Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
                     return Err(error);
                 }
@@ -314,30 +344,24 @@ impl InstallCommitService {
 
             if self
                 .game_files
-                .write_game_file(&action.target_path, &source_bytes)
+                .write_game_file(&change.target_path, &change.source_bytes)
                 .is_err()
             {
                 let error = self.fail_or_rollback_with_pending_backup(
-                    &applied_changes,
-                    backup_ref.as_deref(),
+                    &prepared_changes[..index],
+                    change.pending_backup_ref.as_deref(),
                     InstallCommitPhase::Write,
                 );
+                self.remove_pending_backups(&prepared_changes[index + 1..]);
                 Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
                 return Err(error);
             }
-
-            applied_changes.push(AppliedInstallChange {
-                target_path: action.target_path.clone(),
-                previous_bytes,
-                pending_backup_ref: backup_ref,
-                entry,
-            });
         }
 
         let manifest = merge_install_manifest(
             profile_id,
             existing_manifest,
-            applied_changes
+            prepared_changes
                 .iter()
                 .map(|change| change.entry.clone())
                 .collect(),
@@ -345,7 +369,7 @@ impl InstallCommitService {
         );
 
         if self.manifest_repository.save_manifest(&manifest).is_err() {
-            let error = self.fail_or_rollback(&applied_changes, InstallCommitPhase::Manifest);
+            let error = self.fail_or_rollback(&prepared_changes, InstallCommitPhase::Manifest);
             Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
             return Err(error);
         }
@@ -353,7 +377,7 @@ impl InstallCommitService {
             records.update_entries_for_completed_manifest(&manifest.entries);
             records.mark_completed_best_effort();
         }
-        self.remove_obsolete_pending_backups(&applied_changes);
+        self.remove_obsolete_pending_backups(&prepared_changes);
 
         Ok(InstallCommitResult { manifest })
     }
@@ -476,6 +500,14 @@ impl InstallCommitService {
         match rollback_error {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+
+    fn remove_pending_backups(&self, changes: &[AppliedInstallChange]) {
+        for change in changes.iter().rev() {
+            if let Some(backup_ref) = &change.pending_backup_ref {
+                let _ = self.backup_store.remove_backup(backup_ref);
+            }
         }
     }
 
