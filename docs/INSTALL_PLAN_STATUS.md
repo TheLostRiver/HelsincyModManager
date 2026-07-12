@@ -2,6 +2,11 @@
 
 本文档记录当前 `InstallPlan` 模块已经落地的能力、尚未落地的边界和后续切片顺序。它用于回答“现在能依赖什么”，长期设计仍参考 [Mod 安装方案规划](mod_installation_strategy.md)，跨前后端通信契约参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
+当前实施顺序由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 覆盖：先把
+安装/卸载闭环补齐并实现真正重装，使 Core Mod Lifecycle Gate A 从 `implemented/planned` 达到
+`certified`，随后立即进入 ARMOR_RETARGET 最窄纵向切片。本文的能力清单仍是实现事实来源，
+但旧的后续建议不再优先于该计划。
+
 ## 模块目标
 
 `InstallPlan` 是 Mod 安装链路的安全边界之一。任何真实游戏目录写入都必须从后端生成或重建的安装计划开始，再进入备份、提交、manifest 和回滚链路。
@@ -279,6 +284,10 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 
 以下能力仍不能视为已完成：
 
+- 核心生命周期认证：尚无独立、可重复的 temp-root install -> restart -> uninstall -> baseline
+  acceptance 与实际 Tauri 桌面 smoke 记录；现有单元/集成测试不能替代该产品 gate。
+- 真正重装：前端 `reinstall` 当前复用 `start_install_task`；manifest merge 会保留新计划未触达的
+  旧条目，尚无 retained/replaced/added/stale 分类、独立重装 task 或恢复到重装前版本的失败链路。
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
 - 恢复中心写入型工作流：只读 `scan_install_recovery` 摘要已能检测 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，并会补入只有 durable recovery record 的半完成安装；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局告警，独立恢复中心已提供入口、逐 Mod 安全摘要、rich repair summary、完整支持诊断包导出联动和人工处理决策面板。`preview_recovery_action` 已能只读预览 `rollback_install` 是否可执行，`start_recovery_action_task` 已能后端执行受控 `rollback_install`；恢复中心写入型按钮、任务 UI 编排和操作完成后的恢复中心/全局健康刷新均已实现。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
@@ -295,17 +304,25 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)：记录当前 Tauri command、DTO、错误码和任务事件契约。
 - [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)：记录后续切片、验收标准、安全门禁，以及 manifest 状态、卸载/恢复、安装 UI、retarget staging 和测试矩阵的细化规则。
 - [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)：记录 `rollback_required`、只读动作预览、受控回滚任务和恢复中心写入动作启用前的安全拆分。
+- [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)：记录当前 Gate A/Gate B、真正重装 contract、暂停清单和恢复门禁。
 - 本文档：记录当前实现状态和后续切片判断。
 
 ## 后续建议切片
 
 建议继续按下面顺序推进：
 
-1. Crash/recovery 后续：按 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md) 已补 durable recovery record 的领域模型、port、JSON 仓储、安装 commit 写入、只读扫描消费、只读动作预览和后端受控回滚任务；下一步应补恢复中心写入型 UI 启用和操作完成后的重新扫描编排。已落地的 App Frame 全局告警、恢复中心人工处理面板和动作预览仍只是只读提示/决策面，不绕过 manifest、backup、Audit Log 和恢复扫描事实。
-2. Rich manifest / repair 检测：补齐 replacement binding snapshot、写侧状态机门禁（manifest 失败态时阻断安装/卸载），继续完善 `rollback_required` 状态持久化和更完整的 `repair_required` 检测；`game_id` / `game_instance_id` / 顶层 `mod_id` 语义需结合 profile 聚合 manifest 模型另行定稿。
-3. 卸载后续 UI：补充批量/profile 工作流和更明确的人工修复入口。
-4. ARMOR_RETARGET staging 接入：让 retarget 产物作为受控 provider 输入 InstallPlan。
-5. 依赖/preflight：在提交前阻断缺失必需前置和高风险安装状态。
+1. **CL0：** 固定 `v1/v2` 人工 fixture、temp-root acceptance matrix、桌面 smoke 文档和当前
+   composition 缺口清单。
+2. **CL1/CL2：** 认证 import record -> InstallPlan -> install -> restart -> uninstall -> baseline
+   自动化闭环，并实际执行 Tauri 桌面 smoke；只修复阻断该闭环的问题。
+3. **CL3：** 新增独立真正重装 use case/task，处理 retained/replaced/added/stale entries，并使
+   失败恢复到重装前版本。
+4. **CL4 / Gate A：** 完整验证、安全复审和 `certified` 状态记录。
+5. **ARMOR_RETARGET Gate B：** 按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
+   binding snapshot、选择目标、安装、切换目标和卸载。
+
+Rich manifest、repair 和 preflight 只在解除上述步骤阻断时取最小切片。批量/profile 卸载、完整
+repair 中心和通用依赖 catalog 延后；恢复中心写入型 UI 已落地，不再作为下一项工作重复实施。
 
 ## 验证基线
 

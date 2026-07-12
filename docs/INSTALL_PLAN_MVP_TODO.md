@@ -4,6 +4,10 @@
 
 当前实现事实以 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md) 为准；长期方案和可选后端设计参考 [Mod 安装方案规划](mod_installation_strategy.md)；前后端通信形状参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
+当前执行优先级以 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准。
+Gate A 前只推进生命周期验收、阻断缺陷和真正重装；Gate A 后立即推进 ARMOR_RETARGET Gate B。
+本文其余历史切片继续保留作事实记录，但不构成并行开工授权。
+
 ## 目标
 
 MVP 的目标不是一次性完成所有安装管理能力，而是先形成一条可测试、可审计、可回滚的最小安全链路：
@@ -56,6 +60,10 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍未完成：
 
+- 固定 `v1/v2` 人工 fixture 的 install -> restart -> uninstall -> baseline 自动化 acceptance、实际
+  Tauri 桌面 smoke 和 Gate A 认证记录。
+- 独立真正重装：当前 UI 仍把普通 `start_install_task` 作为 reinstall；尚未分类
+  retained/replaced/added/stale entries，也没有恢复到重装前版本的独立 task/recovery contract。
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
@@ -760,6 +768,30 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ## 后续切片优先级
 
+### P0：核心生命周期认证与真正重装（当前）
+
+**状态：** 下一执行轨道，详见 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)。
+
+顺序：
+
+1. CL0 固定人工 `v1/v2` fixture、temp-root acceptance matrix、桌面 smoke 文档和缺口清单。
+2. CL1/CL2 认证 install/restart/uninstall/baseline 自动化与 Tauri 桌面工作流。
+3. CL3 新增独立 reinstall use case/task，按最终 target 分类 retained/replaced/added/stale。
+4. CL4 完整验证与 Gate A `certified` 记录。
+
+真正重装必须：
+
+- mutation 前读取并验证新 source、旧 manifest、当前 target 摘要和所需 backup。
+- 同一 `gameId/profileId` 写锁内执行一个受控 ReinstallPlan。
+- 使用 pending recovery facts 使失败恢复到重装前版本。
+- 成功后替换该 Mod 的 manifest entry set，移除 stale entries，同时保留未来完整卸载所需的
+  长期 backup 语义。
+- 对 target 漂移、backup 缺失、旧摘要缺失或不安全 manifest 状态零写入阻断。
+- 在真正 contract 完成前，不把普通覆盖安装宣称为完整重装。
+
+验收矩阵至少覆盖新增文件、覆盖文件、内容变化、新增 target、stale target、重启恢复、卸载回
+基线，以及 source/backup/write/manifest failure rollback。
+
 ### P0：安装 UI 状态恢复与安装状态摘要
 
 状态：已落地 MVP。当前实现会在 Mod 库加载成功和安装任务完成后调用带 `gameId` 的 `get_install_manifest_status`，并展示后端返回的摘要状态；该摘要已能消费只读 recovery scan 事实并返回 `rollback_required` / `repair_required` / `unknown` 等不安全状态。更完整的 rich manifest schema、迁移和 replacement binding snapshot 仍待后续切片。
@@ -874,6 +906,9 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 不输出本地真实路径。
 
 ### P1：ARMOR_RETARGET staging 接入
+
+**优先级覆盖：** Gate A certified 后立即进入 Gate B；不再等待分页、批量迁移、备份中心或任务
+队列。切换 replacement target 必须复用 CL3 的真正重装，不能在游戏目录原地改名。
 
 目标：让 retarget materialize 产物作为受控 provider 输入 `InstallPlan`，而不是绕过安装链路。
 
