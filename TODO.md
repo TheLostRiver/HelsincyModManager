@@ -26,6 +26,7 @@
 - 恢复受控动作: `docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md`
 - Mod 预览图: `docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md` + `docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md`
 - 第三方 Mod 管理器批量迁移: `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
+- Mod 库分页: `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
 - T8 存档目录自动发现: `docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md` + `docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
 ### 需要新建独立文档的任务
@@ -76,6 +77,10 @@ T11 ARMOR_RETARGET ───(T2 + T9 + InstallPlan staging)───> 最重依�
 T12 Mod 详情统一面板完整版 ───(T5 + T11 部分就绪)───> 合并信息 + 替换目标
 
 T17 第三方管理器批量迁移 ───(安全导入链路 + TaskManager + 导入结果持久化)───> 狩技盒子兼容来源
+
+T18 Mod 库分页 ───(现有 Mod 库 + profile 状态查询)───> 大型 Mod 库可操作性
+    ├──> T13 跨页批量选择消费 query/filter contract
+    └──> T17 Slice 4 对外完成前的 UI gate
 ```
 
 ---
@@ -342,6 +347,30 @@ JSON 做不好的需求:
 
 ---
 
+### T18: Mod 库分页
+
+**前置**: 现有 Mod 库 + Profile install/recovery 状态查询
+**状态**: 已规划，待实施（本轮仅完成文档，不代表分页可用）
+**预估**: 中-大，建议拆为 4 个独立 review 切片
+**独立文档**: **已创建** → `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
+
+范围:
+- [x] 设计后端权威查询分页、搜索/filter/稳定排序、page-local selection 和 UI 状态边界
+- [ ] Slice 1：app-level query/filter/sort/page 类型、兼容聚合服务和 fake repository 测试
+- [ ] Slice 2：`query_mod_library` Tauri DTO、稳定错误、feature-local typed API 和 contract 文档
+- [ ] Slice 3：数字分页 footer、debounce/stale response、loading/error/empty 和本页选择 UI
+- [ ] Slice 4：与 T17 共用可查询 read model/持久化决策、大库基准、视觉 smoke 和性能门禁
+
+关键语义:
+- 默认每页 24，可选 12/24/48/96；使用 1-based 数字页
+- 搜索、分类/状态筛选、稳定排序、总数和 page 必须由同一后端查询快照决定
+- 首版只提供“选择本页/反选本页”；跨页全选和批量写操作留给 T13
+- T18 不依赖 T17，但应在 T17 Slice 4 完整迁移 UI 对外完成前落地
+- 当前 JSON 全量读取只允许作为兼容阶段，不能把 bridge payload 变小等同于大库性能完成
+- 本轮不修改前端、Tauri、Rust、依赖或 migration
+
+---
+
 ## P3 — 长线 Feature
 
 ### T11: ARMOR_RETARGET 全链路
@@ -411,6 +440,7 @@ JSON 做不好的需求:
          T9 Rich Manifest
 
 第 6 轮: T10 依赖检查
+         T18 Mod 库分页
          T13 批量操作
          T17 第三方管理器批量迁移
          T8 存档备份
@@ -442,3 +472,4 @@ JSON 做不好的需求:
 | T13 批量操作 | P2 | 待开始 | |
 | T14 任务队列 UI | P3 | 待开始 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划，待实施 | |
+| T18 Mod 库分页 | P2 | 已规划，待实施 | |

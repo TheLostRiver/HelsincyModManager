@@ -41,6 +41,7 @@ InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS
 - 添加缺失前置警告。
 - 添加自动存档备份调度。
 - 添加 Mod 批量启用 / 禁用。
+- 添加 Mod 库后端查询分页、稳定排序和本页选择语义，支撑大规模 Mod 库。详见 [Mod 库分页设计](MOD_LIBRARY_PAGINATION_DESIGN.md)。
 - 添加第三方 Mod 管理器批量迁移，首个兼容来源为狩技盒子目录，默认只导入而不安装或启用。详见 [第三方 Mod 管理器批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)。
 - 添加任务进度和取消 UI。
 
