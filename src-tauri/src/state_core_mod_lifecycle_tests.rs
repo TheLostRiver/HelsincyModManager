@@ -5,6 +5,8 @@ use hmm_app::{
     StartInstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
 };
 use hmm_core::{FileLayer, GameDirectoryStatus, GameId, InstallManifest, ModId, ProfileId};
+use hmm_infra::FileSystemAuditLogWriter;
+use hmm_ports::{AuditLogEvent, AuditLogReadRequest, AuditLogReader};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
@@ -305,6 +307,63 @@ fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
     assert_eq!(snapshot_file_tree(&game_root), baseline);
     assert_no_recovery_records(&app_data_dir);
 
+    let install_audit_events = read_install_audit_events(&app_data_dir);
+    assert_eq!(install_audit_events.len(), 2);
+    let install_audit = install_audit_events
+        .iter()
+        .find(|event| event.operation == "commit_imported_mod")
+        .expect("install success audit event");
+    assert_eq!(install_audit.result, "success");
+    assert_eq!(
+        &install_audit.fields,
+        &BTreeMap::from([
+            ("action_count".to_owned(), V1_FILES.len().to_string()),
+            ("game_id".to_owned(), "mhw".to_owned()),
+            ("mod_id".to_owned(), mod_id.as_str().to_owned()),
+            ("profile_id".to_owned(), "default".to_owned()),
+            ("task_id".to_owned(), install_task.task_id.clone()),
+        ])
+    );
+
+    let uninstall_audit = install_audit_events
+        .iter()
+        .find(|event| event.operation == "uninstall_mod")
+        .expect("uninstall success audit event");
+    assert_eq!(uninstall_audit.result, "success");
+    assert_eq!(
+        &uninstall_audit.fields,
+        &BTreeMap::from([
+            ("game_id".to_owned(), "mhw".to_owned()),
+            ("mod_id".to_owned(), mod_id.as_str().to_owned()),
+            ("profile_id".to_owned(), "default".to_owned()),
+            ("removed_file_count".to_owned(), "3".to_owned()),
+            ("restored_file_count".to_owned(), "1".to_owned()),
+            ("task_id".to_owned(), uninstall_task.task_id.clone()),
+        ])
+    );
+
+    let serialized_public_evidence =
+        serde_json::to_string(&install_audit_events).expect("serialize public audit evidence");
+    let pending_backup_ref = manifest
+        .entries
+        .iter()
+        .find_map(|entry| entry.backup_ref.as_deref())
+        .expect("fixture overwrite backup ref");
+    for forbidden in [
+        game_root.to_string_lossy().into_owned(),
+        app_data_dir.to_string_lossy().into_owned(),
+        manifest_path.to_string_lossy().into_owned(),
+        pending_backup_ref.to_owned(),
+        OVERWRITTEN_TARGET.to_owned(),
+        "sandbox".to_owned(),
+        "installedFile".to_owned(),
+    ] {
+        assert!(
+            !serialized_public_evidence.contains(&forbidden),
+            "public lifecycle evidence must not expose {forbidden}"
+        );
+    }
+
     drop(restarted);
 
     let restarted_after_uninstall = AppState::from_app_data_dir(app_data_dir.clone())
@@ -474,4 +533,13 @@ fn assert_no_recovery_records(app_data_dir: &Path) {
             "fixture recovery records must be cleared"
         );
     }
+}
+
+fn read_install_audit_events(app_data_dir: &Path) -> Vec<AuditLogEvent> {
+    FileSystemAuditLogWriter::new(app_data_dir.to_path_buf())
+        .read_recent_sanitized(AuditLogReadRequest { max_events: 100 })
+        .expect("read sanitized fixture audit events")
+        .into_iter()
+        .filter(|event| event.category == "install")
+        .collect()
 }
