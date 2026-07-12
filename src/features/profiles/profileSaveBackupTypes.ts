@@ -22,6 +22,7 @@ export type GetSaveBackupBackgroundStatusInput = {
 
 export type SaveBackupBackgroundStatus =
   | "protected"
+  | "starting"
   | "tray_only"
   | "not_enabled"
   | "registration_failed"
