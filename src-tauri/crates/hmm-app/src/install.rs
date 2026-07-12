@@ -266,13 +266,15 @@ impl InstallCommitService {
             sourced_actions.push((action, source_bytes));
         }
 
-        let mut prepared_changes = Vec::with_capacity(sourced_actions.len());
-        let mut prepared_target_bytes = HashMap::<InstallTargetPath, Vec<u8>>::new();
+        let mut prepared_changes =
+            Vec::<AppliedInstallChange>::with_capacity(sourced_actions.len());
+        let mut prepared_target_indexes = HashMap::<InstallTargetPath, usize>::new();
 
         for (action, source_bytes) in sourced_actions {
-            let previous_bytes = if let Some(bytes) = prepared_target_bytes.get(&action.target_path)
+            let previous_bytes = if let Some(index) =
+                prepared_target_indexes.get(&action.target_path)
             {
-                Some(bytes.clone())
+                Some(prepared_changes[*index].source_bytes.clone())
             } else {
                 match self.game_files.read_game_file(&action.target_path) {
                     Ok(bytes) => bytes,
@@ -314,7 +316,7 @@ impl InstallCommitService {
                 installed_file: Some(installed_file_summary(&source_bytes)),
             };
 
-            prepared_target_bytes.insert(action.target_path.clone(), source_bytes.clone());
+            prepared_target_indexes.insert(action.target_path.clone(), prepared_changes.len());
             prepared_changes.push(AppliedInstallChange {
                 target_path: action.target_path,
                 source_bytes,
