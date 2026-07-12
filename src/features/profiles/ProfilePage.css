@@ -474,6 +474,40 @@
   box-shadow: var(--shadow-primary-action-active);
 }
 
+.profile-auto-backup-card__badge.is-protected {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+  border-color: color-mix(in srgb, var(--color-success-dot) 20%, transparent);
+}
+
+.profile-auto-backup-card__badge.is-starting {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-color: color-mix(in srgb, var(--color-warning-dot) 20%, transparent);
+}
+
+.profile-auto-backup-card__badge.is-client-only,
+.profile-auto-backup-card__badge.is-manual {
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+  border-color: color-mix(in srgb, var(--color-neutral-dot) 20%, transparent);
+}
+
+.profile-background-settings-link {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.profile-auto-backup-card .profile-auto-backup-protection__copy strong,
+.profile-auto-backup-card .profile-auto-backup-protection__copy span {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .profile-header-save-action {
   display: inline-flex;
   align-items: center;

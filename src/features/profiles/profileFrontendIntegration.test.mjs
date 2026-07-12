@@ -274,6 +274,42 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.match(saveManagerCss, /\.profile-auto-backup-protection/);
 });
 
+test("profile background status supports starting without an enable toggle", () => {
+  const typesSource = readSource("src/features/profiles/profileSaveBackupTypes.ts");
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const pageCss = readSource("src/features/profiles/ProfilePage.css");
+  const badgeHelper =
+    pageSource.match(/function getBackgroundProtectionBadge[\s\S]*?function getBackgroundProtectionCopy/)?.[0] ?? "";
+  const settingsNavigationHelper =
+    pageSource.match(/function shouldOfferBackgroundSettingsNavigation[\s\S]*?^}/m)?.[0] ?? "";
+
+  assert.match(typesSource, /"starting"/);
+  assert.match(pageSource, /case "starting"/);
+  assert.match(pageSource, /正在验证后台保护/);
+  assert.match(pageSource, /退出后受保护/);
+  assert.match(pageSource, /等待后台验证/);
+  assert.match(pageSource, /未启用自动备份/);
+  assert.match(pageSource, /navigate\("\/settings"\)/);
+  assert.match(pageSource, /前往设置处理/);
+  assert.match(pageSource, /getBackgroundProtectionBadge/);
+  assert.match(pageCss, /\.profile-background-settings-link/);
+  assert.match(
+    pageCss,
+    /\.profile-auto-backup-card \.profile-auto-backup-protection__copy (?:strong|span)[\s\S]*?white-space:\s*normal/,
+  );
+  assert.match(badgeHelper, /cadence === "manual"[\s\S]*?未启用自动备份/);
+  assert.match(badgeHelper, /status === "protected"[\s\S]*?退出后受保护/);
+  assert.match(badgeHelper, /status === "starting"[\s\S]*?等待后台验证/);
+  assert.match(badgeHelper, /client-only[\s\S]*?仅客户端运行时/);
+  assert.match(settingsNavigationHelper, /registration_failed/);
+  assert.match(settingsNavigationHelper, /worker_unhealthy/);
+  assert.match(settingsNavigationHelper, /permission_required/);
+  assert.doesNotMatch(settingsNavigationHelper, /protected|starting|not_enabled|unsupported_platform/);
+  assert.doesNotMatch(pageSource, /enable_save_backup_background_protection/);
+  assert.doesNotMatch(pageSource, /disable_save_backup_background_protection/);
+  assert.doesNotMatch(pageSource, /status:\s*"protected"/);
+});
+
 test("plain browser preview renders the redesigned profiles console instead of the error shell", () => {
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
   const directorySource = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
