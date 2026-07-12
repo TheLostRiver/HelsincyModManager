@@ -7,6 +7,7 @@ import {
   saveWindowClosePreference,
   type WindowClosePreference,
 } from "../../app/window-lifecycle/windowClosePreference";
+import { BackgroundProtectionPanel } from "./BackgroundProtectionPanel";
 
 type ToggleSettingId =
   | "compactPanels"
@@ -121,7 +122,7 @@ export function SettingsPage() {
           <span className="settings-hero__eyebrow">应用设置</span>
           <h2 id="settings-title">调整管理器的工作方式</h2>
           <p>
-            这些选项现在只在本次会话中交互预览。后续接入正式设置存储后，会通过统一配置服务保存。
+            后台保护与窗口关闭偏好会正式保存；其余标记为预览的选项只在当前会话中生效。
           </p>
         </div>
 
@@ -190,7 +191,7 @@ export function SettingsPage() {
           ) : null}
           <div className="settings-callout settings-callout--neutral" role="note">
             <Bell size={16} strokeWidth={2.1} />
-            <span>当前真正后台守护尚未落地；选择退出应用后，客户端运行期自动备份不会继续检查。</span>
+            <span>关闭行为偏好与后台保护是独立设置；退出后的保护状态以“存档备份”区域为准。</span>
           </div>
         </SettingsSection>
         <SettingsSection
@@ -222,9 +223,10 @@ export function SettingsPage() {
 
         <SettingsSection
           title="存档备份"
-          description="当前不选择目录、不读取真实存档。这里仅预览未来备份策略入口。"
+          description="后台保护会正式保存；备份提醒和节奏仍是当前会话预览，不读取真实存档。"
           icon={ShieldCheck}
         >
+          <BackgroundProtectionPanel />
           <ToggleRow
             title="安装前提醒备份"
             description="在执行会写入游戏目录的任务前提示检查存档备份状态。"
