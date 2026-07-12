@@ -28,6 +28,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [InstallPlan 模块现状](docs/INSTALL_PLAN_STATUS.md)
 - [InstallPlan MVP 待办](docs/INSTALL_PLAN_MVP_TODO.md)
 - [安装恢复受控动作实施计划](docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)
+- [第三方 Mod 管理器批量迁移设计（狩技盒子兼容）](docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)
 - [存档备份系统设计](docs/SAVE_BACKUP_DESIGN.md)
 - [自动备份后台保障设计](docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md)
 - [后台自动备份调度内核实现计划](docs/SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md)
