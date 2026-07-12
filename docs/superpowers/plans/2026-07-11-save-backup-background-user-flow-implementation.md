@@ -55,7 +55,7 @@
 - Modify: `src-tauri/crates/hmm-ports/src/save_backup.rs`
 - Modify: `src-tauri/crates/hmm-ports/src/lib.rs`
 
-- [ ] **Step 1: 先写失败的 core 状态测试**
+- [x] **Step 1: 先写失败的 core 状态测试**
 
 在 `save_backup.rs` 现有 tests 中加入：
 
@@ -71,7 +71,7 @@ fn background_control_statuses_have_stable_codes() {
 }
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run:
 
@@ -81,7 +81,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-core background_control_s
 
 Expected: FAIL，`Starting` / `SaveBackupBackgroundSettings` 尚未定义。
 
-- [ ] **Step 3: 增加最小 domain 类型**
+- [x] **Step 3: 增加最小 domain 类型**
 
 在 `save_backup.rs` 增加：
 
@@ -109,7 +109,7 @@ impl SaveBackupBackgroundSettings {
 给 `SaveBackupBackgroundProtectionStatus` 增加 `Starting`，并在 `as_str()` 映射为
 `"starting"`。在 `hmm-core/src/lib.rs` re-export `SaveBackupBackgroundSettings`。
 
-- [ ] **Step 4: 定义 repository port**
+- [x] **Step 4: 定义 repository port**
 
 在 `hmm-ports/src/save_backup.rs` 增加：
 
@@ -124,7 +124,7 @@ pub trait SaveBackupBackgroundSettingsRepository: Send + Sync {
 
 导入 domain type，并从 `hmm-ports/src/lib.rs` re-export trait。
 
-- [ ] **Step 5: 运行 GREEN 与格式检查**
+- [x] **Step 5: 运行 GREEN 与格式检查**
 
 Run:
 
@@ -136,7 +136,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
 Expected: 两个测试通过，fmt exit 0。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add src-tauri/crates/hmm-core/src/save_backup.rs src-tauri/crates/hmm-core/src/lib.rs src-tauri/crates/hmm-ports/src/save_backup.rs src-tauri/crates/hmm-ports/src/lib.rs
@@ -155,7 +155,7 @@ git commit -m "feat: define background protection settings"
 - Modify: `src-tauri/crates/hmm-infra/src/sqlite/mod.rs`
 - Modify: `src-tauri/crates/hmm-infra/src/lib.rs`
 
-- [ ] **Step 1: 写 repository RED 测试**
+- [x] **Step 1: 写 repository RED 测试**
 
 测试必须覆盖默认关闭、重新启用清旧 heartbeat、停用清状态、reopen 持久化：
 
@@ -180,7 +180,7 @@ fn background_settings_round_trip_and_reset_old_heartbeat() {
 }
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 Run:
 
@@ -190,7 +190,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra --test save_backup_
 
 Expected: FAIL，repository/module 尚不存在。
 
-- [ ] **Step 3: 增加 migration 008**
+- [x] **Step 3: 增加 migration 008**
 
 ```sql
 CREATE TABLE save_backup_background_settings (
@@ -210,7 +210,7 @@ CREATE TABLE save_backup_background_settings (
 将 migration 追加到 `migrations.rs`。新增 migration test：先迁移到 version 7、写一条既有
 scheduler row，再迁移 latest，断言旧行仍存在且新表无 singleton 行。
 
-- [ ] **Step 4: 实现 repository**
+- [x] **Step 4: 实现 repository**
 
 实现 `SqliteSaveBackupBackgroundSettingsRepository`，复用
 `Arc<Mutex<rusqlite::Connection>>`。关键 SQL：
@@ -231,7 +231,7 @@ ON CONFLICT(singleton_id) DO UPDATE SET
 `record_worker_heartbeat` 使用 `UPDATE ... WHERE singleton_id = 1 AND desired_enabled = 1`，
 并要求 exactly one row，否则返回错误，防止未启用时伪造健康。
 
-- [ ] **Step 5: 运行 GREEN 和 migration 测试**
+- [x] **Step 5: 运行 GREEN 和 migration 测试**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra --test save_backup_background_settings_repository
@@ -240,7 +240,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra sqlite::migrations
 
 Expected: repository tests 全部通过；migration 007 -> latest 保留旧数据。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add src-tauri/crates/hmm-infra/src/sqlite/migrations/008_save_backup_background_settings.sql src-tauri/crates/hmm-infra/src/sqlite/save_backup_background_settings_repository.rs src-tauri/crates/hmm-infra/tests/save_backup_background_settings_repository.rs src-tauri/crates/hmm-infra/src/sqlite/migrations.rs src-tauri/crates/hmm-infra/src/sqlite/mod.rs src-tauri/crates/hmm-infra/src/lib.rs
@@ -256,7 +256,7 @@ git commit -m "feat: persist background protection settings"
 - Modify: `src-tauri/crates/hmm-app/src/lib.rs`
 - Modify: `src-tauri/crates/hmm-app/tests/save_backup_background.rs`
 
-- [ ] **Step 1: 用新 Harness 写状态矩阵 RED**
+- [x] **Step 1: 用新 Harness 写状态矩阵 RED**
 
 将 Harness 改为注入 fake global settings repository。新增固定边界：
 
@@ -283,7 +283,7 @@ fn exact_registration_waits_for_current_enable_heartbeat() {
 另覆盖 heartbeat == enabled_at、45 分钟 TTL 边界、future、旧启用 heartbeat、drift、
 permission、unsupported 和 repository/clock failures。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_background
@@ -291,7 +291,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_ba
 
 Expected: FAIL，constructor 和 `control_status` 仍使用 per-profile scheduler state。
 
-- [ ] **Step 3: 定义控制结果与 5 分钟常量**
+- [x] **Step 3: 定义控制结果与 5 分钟常量**
 
 ```rust
 pub const SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS: u128 = 5 * 60_000;
@@ -311,7 +311,7 @@ pub struct SaveBackupBackgroundControlStatus {
 现有 per-profile `status(game_id, profile_id)` 先读取 scheduler enabled；manual/no state 返回
 `not_enabled`，自动计划再组合 `control_status()`。
 
-- [ ] **Step 4: 写 enable/disable 顺序 RED**
+- [x] **Step 4: 写 enable/disable 顺序 RED**
 
 Fake repositories 记录调用：
 
@@ -338,7 +338,7 @@ fn disable_confirms_task_missing_before_persisting_disabled() {
 }
 ```
 
-- [ ] **Step 5: 实现 enable/disable**
+- [x] **Step 5: 实现 enable/disable**
 
 - `enable()`：clock -> begin_enable -> register -> inspect exact -> audit -> 返回重新查询的
   `starting`。
@@ -346,7 +346,7 @@ fn disable_confirms_task_missing_before_persisting_disabled() {
 - ownership/permission/timeout/read-back 失败时不得写 disabled。
 - 保留 desired true 的失败必须能由 `control_status()` 解释并允许重试。
 
-- [ ] **Step 6: 运行 GREEN**
+- [x] **Step 6: 运行 GREEN**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_background
@@ -354,7 +354,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_ba
 
 Expected: 全部通过；测试输出包含 starting、partial failure 和调用顺序 cases。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```powershell
 git add src-tauri/crates/hmm-app/src/save_backup_background.rs src-tauri/crates/hmm-app/src/lib.rs src-tauri/crates/hmm-app/tests/save_backup_background.rs
@@ -369,7 +369,7 @@ git commit -m "feat: orchestrate background protection control"
 - Modify: `src-tauri/crates/hmm-app/src/save_backup_background_worker.rs`
 - Modify: `src-tauri/crates/hmm-app/tests/save_backup_background_worker.rs`
 
-- [ ] **Step 1: 写 RED 测试**
+- [x] **Step 1: 写 RED 测试**
 
 将 worker Harness 注入 fake `SaveBackupBackgroundSettingsRepository`：
 
@@ -413,7 +413,7 @@ fn disabled_background_intent_makes_worker_a_noop() {
 
 保留既有 per-profile heartbeat 测试，确保迁移期间不回退 P7.2a 行为。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_background_worker
@@ -421,7 +421,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_ba
 
 Expected: FAIL，worker constructor 尚无 global repository。
 
-- [ ] **Step 3: 实现最小写入**
+- [x] **Step 3: 实现最小写入**
 
 worker 首先 load global settings。`desired_enabled = false` 时立即返回空 summary，不枚举
 Profile、不启动任务、不写 heartbeat。enabled 时才执行既有 loop，并在成功完成 profile
@@ -436,7 +436,7 @@ self.background_settings_repository
 业务 skip（manual、game running、unknown、source invalid）仍算完成；profile list/clock/global
 heartbeat repository failure返回稳定 worker error，不写伪健康。
 
-- [ ] **Step 4: 运行 GREEN**
+- [x] **Step 4: 运行 GREEN**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_background_worker
@@ -445,7 +445,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_sc
 
 Expected: 两组通过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add src-tauri/crates/hmm-app/src/save_backup_background_worker.rs src-tauri/crates/hmm-app/tests/save_backup_background_worker.rs
@@ -461,7 +461,7 @@ git commit -m "feat: record global background worker heartbeat"
 - Create: `src-tauri/crates/hmm-app/tests/save_backup_exit_guard.rs`
 - Modify: `src-tauri/crates/hmm-app/src/lib.rs`
 
-- [ ] **Step 1: 写退出决策 RED**
+- [x] **Step 1: 写退出决策 RED**
 
 定义期望值并覆盖无自动计划、protected、starting、查询失败：
 
@@ -486,7 +486,7 @@ fn no_auto_profile_can_exit_without_background_protection() {
 }
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_exit_guard
@@ -494,7 +494,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_ex
 
 Expected: FAIL，module/types 尚不存在。
 
-- [ ] **Step 3: 实现 guard**
+- [x] **Step 3: 实现 guard**
 
 定义稳定 enum：
 
@@ -528,7 +528,7 @@ pub enum SaveBackupExitDecision {
 `record_override(reason)` 只写 `protection_status` 与 `error_code`；audit failure 返回错误给
 Tauri 层记录 sanitized warning，但不得成为永久无法退出的条件。
 
-- [ ] **Step 4: 运行 GREEN**
+- [x] **Step 4: 运行 GREEN**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_exit_guard
@@ -536,7 +536,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --test save_backup_ex
 
 Expected: safe/confirmation/failure/审计字段白名单全部通过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add src-tauri/crates/hmm-app/src/save_backup_exit_guard.rs src-tauri/crates/hmm-app/tests/save_backup_exit_guard.rs src-tauri/crates/hmm-app/src/lib.rs
@@ -553,7 +553,7 @@ git commit -m "feat: add save backup exit guard"
 - Modify: `src-tauri/src/save_backup_commands.rs`
 - Modify: `src-tauri/src/lib.rs`
 
-- [ ] **Step 1: 写 DTO 与 command mapping RED**
+- [x] **Step 1: 写 DTO 与 command mapping RED**
 
 在 `save_backup_dto.rs` tests 增加：
 
@@ -580,7 +580,7 @@ fn background_control_dto_exposes_only_whitelisted_fields() {
 
 在 `save_backup_commands.rs` tests 断言 service error 只映射稳定 code，不携带原始 details。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri save_backup
@@ -588,7 +588,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri save_backup
 
 Expected: FAIL，control DTO/commands 尚不存在。
 
-- [ ] **Step 3: 装配 SQLite repository**
+- [x] **Step 3: 装配 SQLite repository**
 
 在 `AppState::from_app_data_dir_with_startup` 创建一个共享
 `SqliteSaveBackupBackgroundSettingsRepository`，分别转为 port trait object 并注入：
@@ -606,7 +606,7 @@ let settings_for_worker: Arc<dyn SaveBackupBackgroundSettingsRepository> =
 向 `AppState` 增加 `save_backup_exit_guard: Arc<SaveBackupExitGuard>`，复用 profile/settings、
 background service、audit 和 clock。
 
-- [ ] **Step 4: 增加白名单 DTO**
+- [x] **Step 4: 增加白名单 DTO**
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -623,7 +623,7 @@ pub struct SaveBackupBackgroundControlStatusDto {
 给 `SaveBackupBackgroundStatusKindDto` 增加 `Starting`。时间转换沿用现有 u128 -> u64
 白名单映射，不包含 task/SID/path/lease/worker id。
 
-- [ ] **Step 5: 增加三个 async blocking commands**
+- [x] **Step 5: 增加三个 async blocking commands**
 
 ```rust
 #[tauri::command]
@@ -651,7 +651,7 @@ pub async fn disable_save_backup_background_protection(
 helper 使用 `spawn_blocking`，join failure 返回
 `save_backup_background_status_unavailable`。在 `src-tauri/src/lib.rs` 注册三个 command。
 
-- [ ] **Step 6: 运行 GREEN 与 composition tests**
+- [x] **Step 6: 运行 GREEN 与 composition tests**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri save_backup
@@ -660,7 +660,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri state::tests
 
 Expected: DTO、commands、GUI/headless composition tests 全部通过。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```powershell
 git add src-tauri/src/state.rs src-tauri/src/save_backup_dto.rs src-tauri/src/save_backup_commands.rs src-tauri/src/lib.rs
@@ -675,7 +675,7 @@ git commit -m "feat: expose background protection controls"
 - Modify: `src-tauri/src/window_lifecycle_commands.rs`
 - Modify: `src-tauri/src/lib.rs`
 
-- [ ] **Step 1: 写 request 和菜单行为 RED**
+- [x] **Step 1: 写 request 和菜单行为 RED**
 
 在 Rust tests 增加：
 
@@ -706,7 +706,7 @@ fn tray_exit_uses_the_same_window_close_event() {
 
 把 exit 决策抽为可单测 helper，覆盖 safe、unsafe ordinary、unsafe override 和 guard error。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri window_lifecycle
@@ -714,7 +714,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri window_lifecycle
 
 Expected: FAIL，request/guard helper 尚不存在。
 
-- [ ] **Step 3: 实现显式 request 与后端重检**
+- [x] **Step 3: 实现显式 request 与后端重检**
 
 ```rust
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -751,7 +751,7 @@ pub struct AppExitGuardDto {
 decision/reason 使用 snake_case enum。前端不得解析 `exit_app` 的 message；race 导致 generic
 `exit_confirmation_required` 时重新查询该 DTO。
 
-- [ ] **Step 4: 移除托盘直接退出旁路**
+- [x] **Step 4: 移除托盘直接退出旁路**
 
 `MENU_EXIT_ID` 分支执行：
 
@@ -764,7 +764,7 @@ if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
 
 不得保留任何 `MENU_EXIT_ID => app.exit(0)`。
 
-- [ ] **Step 5: 运行 GREEN**
+- [x] **Step 5: 运行 GREEN**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri window_lifecycle
@@ -772,7 +772,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri window_lifecycle
 
 Expected: 普通 unsafe 被拒绝；override、safe、tray event tests 通过。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add src-tauri/src/window_lifecycle_commands.rs src-tauri/src/lib.rs
@@ -792,7 +792,7 @@ git commit -m "feat: guard application exit"
 - Modify: `src/features/settings/SettingsPage.tsx`
 - Modify: `src/features/settings/SettingsPage.css`
 
-- [ ] **Step 1: 写 typed API RED**
+- [x] **Step 1: 写 typed API RED**
 
 ```javascript
 test("background protection API uses only global narrow commands", () => {
@@ -804,7 +804,7 @@ test("background protection API uses only global narrow commands", () => {
 });
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 node --test src/features/settings/backgroundProtectionApi.test.mjs
@@ -812,7 +812,7 @@ node --test src/features/settings/backgroundProtectionApi.test.mjs
 
 Expected: FAIL，API file 不存在。
 
-- [ ] **Step 3: 实现 types 与 API**
+- [x] **Step 3: 实现 types 与 API**
 
 ```ts
 export type BackgroundProtectionStatus =
@@ -835,7 +835,7 @@ export type BackgroundProtectionControlDto = {
 
 `backgroundProtectionApi.ts` 使用 feature-local `invoke`，三个函数均无参数。
 
-- [ ] **Step 4: 写面板行为 RED**
+- [x] **Step 4: 写面板行为 RED**
 
 source tests 至少锁定：
 
@@ -850,7 +850,7 @@ assert.match(source, /disabled=\{busy/);
 
 另用纯 helper test 覆盖 status -> label/tone/action 映射。
 
-- [ ] **Step 5: 实现 BackgroundProtectionPanel**
+- [x] **Step 5: 实现 BackgroundProtectionPanel**
 
 组件自行 load/refresh，toggle 操作期间保持稳定尺寸并禁用重复操作：
 
@@ -873,7 +873,7 @@ assert.match(source, /disabled=\{busy/);
 `starting` 文案必须是“正在验证后台保护”，`protected` 才能写“已保护”。失败显示重试或停用；
 不能显示 raw error message。
 
-- [ ] **Step 6: 接入 Settings 并修正文案**
+- [x] **Step 6: 接入 Settings 并修正文案**
 
 在“存档备份”section 顶部渲染 `BackgroundProtectionPanel`。将 hero 总括文案改为：
 
@@ -881,7 +881,7 @@ assert.match(source, /disabled=\{busy/);
 
 不把全局开关加入 session-preview `SettingsState` 或 reset preview。
 
-- [ ] **Step 7: 运行 GREEN**
+- [x] **Step 7: 运行 GREEN**
 
 ```powershell
 node --test src/features/settings/backgroundProtectionApi.test.mjs src/features/settings/backgroundProtectionPanel.test.mjs
@@ -891,7 +891,7 @@ cmd /c corepack pnpm run lint
 
 Expected: tests、typecheck、lint 通过。
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```powershell
 git add src/features/settings/backgroundProtectionTypes.ts src/features/settings/backgroundProtectionApi.ts src/features/settings/BackgroundProtectionPanel.tsx src/features/settings/backgroundProtectionApi.test.mjs src/features/settings/backgroundProtectionPanel.test.mjs src/features/settings/SettingsPage.tsx src/features/settings/SettingsPage.css
@@ -908,7 +908,7 @@ git commit -m "feat: add background protection settings"
 - Modify: `src/features/profiles/ProfilePage.css`
 - Modify: `src/features/profiles/profileFrontendIntegration.test.mjs`
 
-- [ ] **Step 1: 写 RED source/view-model tests**
+- [x] **Step 1: 写 RED source/view-model tests**
 
 ```javascript
 test("profile background status supports starting without an enable toggle", () => {
@@ -921,7 +921,7 @@ test("profile background status supports starting without an enable toggle", () 
 });
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 node --test src/features/profiles/profileFrontendIntegration.test.mjs
@@ -929,7 +929,7 @@ node --test src/features/profiles/profileFrontendIntegration.test.mjs
 
 Expected: FAIL，`starting` 和动态 badge 尚未实现。
 
-- [ ] **Step 3: 更新只读状态**
+- [x] **Step 3: 更新只读状态**
 
 - 在 union 增加 `"starting"`。
 - `getBackgroundProtectionCopy` 增加 starting 文案。
@@ -938,7 +938,7 @@ Expected: FAIL，`starting` 和动态 badge 尚未实现。
 - failure hint 提供 Settings 导航，不提供本地 toggle。
 - preview fixture 使用 `starting` 或 `tray_only`，不能伪造 protected heartbeat。
 
-- [ ] **Step 4: 运行 GREEN**
+- [x] **Step 4: 运行 GREEN**
 
 ```powershell
 node --test src/features/profiles/profileFrontendIntegration.test.mjs src/features/profiles/profileApi.test.mjs
@@ -947,7 +947,7 @@ cmd /c corepack pnpm run typecheck
 
 Expected: tests/typecheck 通过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add src/features/profiles/profileSaveBackupTypes.ts src/features/profiles/ProfilePage.tsx src/features/profiles/ProfilePage.css src/features/profiles/profileFrontendIntegration.test.mjs
@@ -968,7 +968,7 @@ git commit -m "feat: show profile background protection"
 - Modify: `src/app/window-lifecycle/windowLifecycleUi.test.mjs`
 - Modify: `src/app/window-lifecycle/windowClosePreference.test.mjs`
 
-- [ ] **Step 1: 写 API/偏好 RED**
+- [x] **Step 1: 写 API/偏好 RED**
 
 ```javascript
 test("ordinary and override exits use explicit flags", () => {
@@ -985,7 +985,7 @@ test("unsafe dialog cannot persist exit preference", () => {
 });
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
@@ -993,7 +993,7 @@ node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-l
 
 Expected: FAIL，API 无 request，dialog 无 unsafe mode。
 
-- [ ] **Step 3: 更新 API 与普通关闭 hook**
+- [x] **Step 3: 更新 API 与普通关闭 hook**
 
 ```ts
 export function exitApplication(overrideUnprotected = false): Promise<void> {
@@ -1008,7 +1008,7 @@ exit 先读 guard；safe 才调用 `exitApplication(false)`，confirmation requi
 reason 打开 unsafe dialog。`exitApplication(false)` 若因 race 返回 generic
 `exit_confirmation_required`，重新查询 guard，不解析 error message。
 
-- [ ] **Step 4: 扩展 Dialog state**
+- [x] **Step 4: 扩展 Dialog state**
 
 定义：
 
@@ -1038,7 +1038,7 @@ unsafe mode：
 
 normal mode 保留现有 ask/tray/exit 和 remember 行为。
 
-- [ ] **Step 5: 映射稳定错误码**
+- [x] **Step 5: 映射稳定错误码**
 
 `windowLifecycleError.ts` 只解析：
 
@@ -1048,7 +1048,7 @@ normal mode 保留现有 ask/tray/exit 和 remember 行为。
 危险原因文案只映射 `AppExitGuardDto.reason`。不得把 raw backend message 直接展示。
 override audit failure 不会由后端阻止退出。
 
-- [ ] **Step 6: 运行 GREEN 与 frontend build**
+- [x] **Step 6: 运行 GREEN 与 frontend build**
 
 ```powershell
 node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
@@ -1061,6 +1061,8 @@ Expected: tests/typecheck/lint/build 全部通过。
 
 - [ ] **Step 7: Browser/manual visual smoke**
 
+执行记录：已用受控 browser harness 检查 normal、`starting`、`worker_unhealthy` 在 `1440x900`、`1366x768`、`1280x800`、`960x640` 的布局、默认 tray 焦点、unsafe no-remember、Escape/关闭按钮和 console；浏览器控制层未触发 Tab/Shift+Tab 原生默认焦点移动，也未在真实 WebView 手工复验，因此本项保持未勾选。
+
 在 `1440x900`、`1366x768`、`1280x800` 和最小窗口 `960x640` 检查：
 
 - normal dialog。
@@ -1071,7 +1073,7 @@ Expected: tests/typecheck/lint/build 全部通过。
 
 记录截图或人工结果；未运行时在最终交接明确原因。
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```powershell
 git add src/app/window-lifecycle/windowLifecycleApi.ts src/app/window-lifecycle/windowLifecycleError.ts src/app/window-lifecycle/useWindowCloseRequest.ts src/app/window-lifecycle/WindowCloseDialogHost.tsx src/app/window-lifecycle/WindowCloseDialog.tsx src/app/window-lifecycle/WindowCloseDialog.css src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
@@ -1091,7 +1093,7 @@ git commit -m "feat: warn before unprotected exit"
 - Modify: `TODO.md`
 - Modify: `docs/superpowers/plans/2026-07-11-save-backup-background-user-flow-implementation.md`
 
-- [ ] **Step 1: 同步正式文档**
+- [x] **Step 1: 同步正式文档**
 
 必须写明：
 
@@ -1104,7 +1106,7 @@ git commit -m "feat: warn before unprotected exit"
 - 安装态 runtime acceptance 未完成。
 - P7.2c NSIS/WiX cleanup 仍未实现。
 
-- [ ] **Step 2: 更新 TODO 状态但不提前宣称完成**
+- [x] **Step 2: 更新 TODO 状态但不提前宣称完成**
 
 将 P7.2b 项标记为已实现仅在所有代码/测试任务完成后；仍保留：
 
@@ -1115,7 +1117,7 @@ git commit -m "feat: warn before unprotected exit"
 
 T8 总状态必须继续是进行中。
 
-- [ ] **Step 3: 运行全部聚焦测试**
+- [x] **Step 3: 运行全部聚焦测试**
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -p hmm-core background
@@ -1134,7 +1136,7 @@ node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-l
 
 Expected: 全部 exit 0；真实 task smoke 保持 ignored/未运行。
 
-- [ ] **Step 4: 运行完整验证**
+- [x] **Step 4: 运行完整验证**
 
 先确保 dev sidecar 存在：
 
@@ -1145,7 +1147,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 Expected: `Verification passed.`。
 
-- [ ] **Step 5: 本地 review gate**
+- [x] **Step 5: 本地 review gate**
 
 ```powershell
 git status --short --branch
@@ -1164,7 +1166,7 @@ git ls-files --others --exclude-standard
 - unsafe override 不写 localStorage preference。
 - P7.2c installer 文件没有变化。
 
-- [ ] **Step 6: 更新计划执行状态并提交文档**
+- [x] **Step 6: 更新计划执行状态并提交文档**
 
 只把实际完成的 checkbox 从 `[ ]` 改为 `[x]`。未执行的 Windows/manual/visual gate 保持未勾选并写明原因。
 
