@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **当前优先级（2026-07-12）：** 本计划为 Gate A 后立即执行的 P1 / Gate B 主线，当前状态为
+> `planned`，源码尚未落地 replacement/retarget 能力。执行顺序以
+> [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；Gate A 前不得提前并行
+> 实现本计划任一运行时 Task；Gate A 后按 AR1-AR5 重组执行，target switch 必须复用 Gate A 的
+> 真正重装 contract。
+
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。
 
 **Architecture:** 通用 replacement/retarget 模型放在 `hmm-core`，应用层只编排用例，MHW:I 的 catalog、路径解析和 slot 改写规则全部收敛到 `hmm-games-mhw`。原始导入包保持只读，retarget 只写 staging；冲突检测和真实游戏目录写入继续由安装链路负责。
@@ -35,26 +41,27 @@
 
 ## Dependency Gate
 
-armor-retarget 依赖 Mod 安装 MVP 的部分能力。执行时按下面的门槛切分：
+armor-retarget 不再只以“安装 MVP 接口存在”为开工条件。开始任一运行时 Task 前，Core Mod
+Lifecycle Gate A 必须达到 `certified`：安装/卸载纵向 acceptance、桌面 smoke、独立真正重装和
+失败恢复证据全部通过。
 
 ```text
-可独立先做：
-  core replacement 模型
-  ports replacement trait
-  MHW catalog
-  MHW path parser
-  RetargetPlan builder
-  单元测试
-
-需要安装 MVP 或等价接口到位后再接：
-  staging materialize 的真实文件复制
-  InstallPlan 输入集成
-  manifest 持久化
-  冲突检测 UI
-  安装 / 卸载 / 切换 target 工作流
+Gate A certified
+  -> AR1 replacement model / ports / 最小 catalog
+  -> AR2 单 source f_equip parser / analyzer / RetargetPlan
+  -> AR3 staging materialize / InstallPlan / binding snapshot
+  -> AR4 target selection / preview / install UI
+  -> AR5 true reinstall target switch / uninstall / Gate B
 ```
 
-如果 `docs/superpowers/plans/2026-06-19-mod-installation-mvp-implementation.md` 尚未落地，先完成本计划 Task 1 到 Task 5；Task 6 之后等待安装 MVP 提供 staging、manifest、InstallPlan 边界。
+旧计划中“Task 1-5 可在安装 MVP 前独立先做”的并行策略失效。这样做会再次扩大未被玩家闭环消费
+的基础设施。Gate A 后仍可复用本计划的详细 RED/GREEN 步骤，但应按 AR1-AR5 重新分组提交，并
+遵守以下范围：
+
+- 第一条闭环只支持单 source `f_equip` 路径级 retarget。
+- T9 只补 replacement binding snapshot；T10 只补 source/target/path-family 必要 preflight。
+- 完整 catalog、本地化筛选、多 source、`m_equip`、武器/语音和高级 transformer 延后。
+- target switch 不实现独立删除/复制旁路，必须生成新 plan 并调用真正重装链路。
 
 ## Target File Structure
 
