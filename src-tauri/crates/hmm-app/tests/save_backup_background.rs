@@ -15,7 +15,9 @@ use hmm_ports::{
     SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
 };
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn exact_registration_waits_for_current_enable_heartbeat() {
@@ -324,6 +326,98 @@ fn disable_confirms_task_missing_before_persisting_disabled() {
         "not_registered",
         "success",
         None,
+    );
+}
+
+#[test]
+fn enable_waits_for_in_flight_disable_transition() {
+    let now = 2_000_000;
+    let shared_calls = Arc::new(Mutex::new(Vec::new()));
+    let registry = Arc::new(FakeRegistry::with_shared_calls(
+        vec![
+            Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered),
+            Ok(SaveBackupBackgroundRegistrationStatus::Registered),
+        ],
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Arc::clone(&shared_calls),
+    ));
+    let (finish_entered_tx, finish_entered_rx) = mpsc::channel();
+    let (finish_release_tx, finish_release_rx) = mpsc::channel();
+    let (begin_entered_tx, begin_entered_rx) = mpsc::channel();
+    let settings = Arc::new(
+        FakeBackgroundSettingsRepository::with_shared_calls_and_transition_gate(
+            enabled_settings(1_000_000, Some(1_100_000)),
+            Arc::clone(&shared_calls),
+            finish_entered_tx,
+            finish_release_rx,
+            begin_entered_tx,
+        ),
+    );
+    let service = Arc::new(SaveBackupBackgroundService::new_with_settings_repository(
+        registry,
+        Arc::new(FakeSchedulerRepository::with_state(None)),
+        settings.clone(),
+        Arc::new(RecordingAuditLog::with_shared_calls(Arc::clone(
+            &shared_calls,
+        ))),
+        Arc::new(FixedClock::new(now)),
+    ));
+
+    let disable_service = Arc::clone(&service);
+    let disable_thread = thread::spawn(move || disable_service.disable());
+    finish_entered_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("disable reaches final settings write");
+
+    let enable_service = Arc::clone(&service);
+    let enable_thread = thread::spawn(move || enable_service.enable());
+    let enable_entered_before_disable_finished = begin_entered_rx
+        .recv_timeout(Duration::from_millis(100))
+        .is_ok();
+
+    finish_release_tx
+        .send(())
+        .expect("release final disable write");
+    let disabled = disable_thread
+        .join()
+        .expect("disable thread")
+        .expect("disable transition");
+    if !enable_entered_before_disable_finished {
+        begin_entered_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("enable starts after disable finishes");
+    }
+    let enabled = enable_thread
+        .join()
+        .expect("enable thread")
+        .expect("enable transition");
+
+    assert!(
+        !enable_entered_before_disable_finished,
+        "enable must not enter while disable owns the transition"
+    );
+    assert_eq!(
+        disabled.status,
+        SaveBackupBackgroundProtectionStatus::NotEnabled
+    );
+    assert_eq!(
+        enabled.status,
+        SaveBackupBackgroundProtectionStatus::Starting
+    );
+    assert!(settings.state().desired_enabled);
+    assert_eq!(
+        shared_calls.lock().expect("shared calls lock").as_slice(),
+        [
+            "registry.unregister",
+            "registry.inspect",
+            "settings.finish_disable",
+            "audit.record",
+            "settings.begin_enable",
+            "registry.register",
+            "registry.inspect",
+            "audit.record",
+        ]
     );
 }
 
@@ -1420,6 +1514,13 @@ struct FakeBackgroundSettingsRepository {
     fail_begin: bool,
     fail_finish: bool,
     shared_calls: Option<Arc<Mutex<Vec<&'static str>>>>,
+    transition_gate: Option<TransitionGate>,
+}
+
+struct TransitionGate {
+    finish_entered: mpsc::Sender<()>,
+    finish_release: Mutex<mpsc::Receiver<()>>,
+    begin_entered: mpsc::Sender<()>,
 }
 
 impl FakeBackgroundSettingsRepository {
@@ -1430,6 +1531,7 @@ impl FakeBackgroundSettingsRepository {
             fail_begin: false,
             fail_finish: false,
             shared_calls: None,
+            transition_gate: None,
         }
     }
 
@@ -1443,6 +1545,28 @@ impl FakeBackgroundSettingsRepository {
             fail_begin: false,
             fail_finish: false,
             shared_calls: Some(shared_calls),
+            transition_gate: None,
+        }
+    }
+
+    fn with_shared_calls_and_transition_gate(
+        state: SaveBackupBackgroundSettings,
+        shared_calls: Arc<Mutex<Vec<&'static str>>>,
+        finish_entered: mpsc::Sender<()>,
+        finish_release: mpsc::Receiver<()>,
+        begin_entered: mpsc::Sender<()>,
+    ) -> Self {
+        Self {
+            state: Mutex::new(state),
+            fail_load: false,
+            fail_begin: false,
+            fail_finish: false,
+            shared_calls: Some(shared_calls),
+            transition_gate: Some(TransitionGate {
+                finish_entered,
+                finish_release: Mutex::new(finish_release),
+                begin_entered,
+            }),
         }
     }
 
@@ -1458,6 +1582,7 @@ impl FakeBackgroundSettingsRepository {
             fail_begin,
             fail_finish,
             shared_calls: Some(shared_calls),
+            transition_gate: None,
         }
     }
 
@@ -1468,6 +1593,7 @@ impl FakeBackgroundSettingsRepository {
             fail_begin: false,
             fail_finish: false,
             shared_calls: None,
+            transition_gate: None,
         }
     }
 
@@ -1492,6 +1618,11 @@ impl SaveBackupBackgroundSettingsRepository for FakeBackgroundSettingsRepository
 
     fn begin_enable(&self, enabled_at: u128) -> Result<()> {
         self.record_call("settings.begin_enable");
+        if let Some(gate) = &self.transition_gate {
+            gate.begin_entered
+                .send(())
+                .expect("signal begin enable entry");
+        }
         if self.fail_begin {
             anyhow::bail!("begin enable unavailable");
         }
@@ -1506,6 +1637,16 @@ impl SaveBackupBackgroundSettingsRepository for FakeBackgroundSettingsRepository
 
     fn finish_disable(&self, updated_at: u128) -> Result<()> {
         self.record_call("settings.finish_disable");
+        if let Some(gate) = &self.transition_gate {
+            gate.finish_entered
+                .send(())
+                .expect("signal finish disable entry");
+            gate.finish_release
+                .lock()
+                .expect("finish release lock")
+                .recv()
+                .expect("wait for finish disable release");
+        }
         if self.fail_finish {
             anyhow::bail!("finish disable unavailable");
         }

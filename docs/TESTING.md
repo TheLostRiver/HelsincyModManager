@@ -329,7 +329,7 @@ node --test src/features/profiles/profileFrontendIntegration.test.mjs src/featur
 node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
 ```
 
-要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed clock；前端测试锁定 Settings 唯一控制入口、Profile 只读、稳定 status/reason/code 和 unsafe no-remember。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 5 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
+要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed/sequence clock；enable/disable 必须覆盖并发转换串行，global heartbeat 必须覆盖 cycle completion timestamp 与正常业务 skip。前端测试锁定 Settings 唯一控制入口、Profile 只读、稳定 status/reason/code、未知 runtime 值的 fail-closed fallback 和 unsafe no-remember。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 5 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
 
 存档目录自动发现切片至少运行聚焦测试：
 

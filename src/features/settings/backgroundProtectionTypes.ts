@@ -78,6 +78,13 @@ export function getBackgroundProtectionCopy(status: BackgroundProtectionStatus):
         tone: "neutral",
         action: "none",
       };
+    default:
+      return {
+        label: "状态不可用",
+        description: "无法识别后台保护状态，请重新检查。",
+        tone: "danger",
+        action: "retry",
+      };
   }
 }
 

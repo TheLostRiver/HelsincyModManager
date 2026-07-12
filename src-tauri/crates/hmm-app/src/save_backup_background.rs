@@ -8,7 +8,7 @@ use hmm_ports::{
     SaveBackupSchedulerStateRepository, SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
 
 pub const SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS: u128 = 45 * 60_000;
@@ -65,6 +65,7 @@ pub struct SaveBackupBackgroundService {
     background_settings_repository: Option<Arc<dyn SaveBackupBackgroundSettingsRepository>>,
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
+    registration_transition: Mutex<()>,
 }
 
 impl SaveBackupBackgroundService {
@@ -80,6 +81,7 @@ impl SaveBackupBackgroundService {
             background_settings_repository: None,
             audit_log,
             clock,
+            registration_transition: Mutex::new(()),
         }
     }
 
@@ -96,6 +98,7 @@ impl SaveBackupBackgroundService {
             background_settings_repository: Some(background_settings_repository),
             audit_log,
             clock,
+            registration_transition: Mutex::new(()),
         }
     }
 
@@ -256,18 +259,21 @@ impl SaveBackupBackgroundService {
     pub fn register(
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let _transition = self.lock_registration_transition();
         self.change_registration(RegistrationOperation::Register)
     }
 
     pub fn unregister(
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let _transition = self.lock_registration_transition();
         self.change_registration(RegistrationOperation::Unregister)
     }
 
     pub fn enable(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
+        let _transition = self.lock_registration_transition();
         let settings_repository = self.settings_repository()?;
         let timestamp_unix_millis = self
             .clock
@@ -308,6 +314,7 @@ impl SaveBackupBackgroundService {
     pub fn disable(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
+        let _transition = self.lock_registration_transition();
         let settings_repository = self.settings_repository()?;
         let settings = settings_repository
             .load()
@@ -384,6 +391,12 @@ impl SaveBackupBackgroundService {
         self.background_settings_repository
             .as_ref()
             .ok_or(SaveBackupBackgroundServiceError::SettingsUnavailable)
+    }
+
+    fn lock_registration_transition(&self) -> MutexGuard<'_, ()> {
+        self.registration_transition
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn registration_operation_result(

@@ -59,6 +59,12 @@ test("background protection status helper maps every stable status", async () =>
   }
 
   assert.doesNotMatch(module.getBackgroundProtectionCopy("starting").description, /已保护/);
+  assert.deepEqual(module.getBackgroundProtectionCopy("future_status"), {
+    label: "状态不可用",
+    description: "无法识别后台保护状态，请重新检查。",
+    tone: "danger",
+    action: "retry",
+  });
 });
 
 test("background protection errors map to fixed local copy", async () => {

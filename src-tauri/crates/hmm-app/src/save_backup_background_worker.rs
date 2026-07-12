@@ -248,8 +248,12 @@ impl SaveBackupBackgroundWorker {
             return Ok(summary);
         }
         if let Some(repository) = &self.background_settings_repository {
+            let worker_completed_at = self
+                .clock
+                .now_unix_millis()
+                .map_err(|_| SaveBackupBackgroundWorkerError::ClockUnavailable)?;
             repository
-                .record_worker_heartbeat(worker_started_at)
+                .record_worker_heartbeat(worker_completed_at)
                 .map_err(|_| SaveBackupBackgroundWorkerError::HeartbeatUnavailable)?;
         }
 
