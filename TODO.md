@@ -252,7 +252,7 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 进行中（P7.2a Windows Scheduled Task 平台注册、健康核心和 sidecar 基础已落地；安装态 runtime smoke、P7.2b 用户启用/退出体验和完整备份中心仍待后续切片）
+**状态**: 进行中（P7.2b 应用级用户意图、Settings/Profile 状态与退出保护已落地；P7.2a 安装态 runtime smoke、P7.2c 卸载 cleanup 和完整备份中心仍待后续切片）
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
@@ -265,7 +265,8 @@ JSON 做不好的需求:
 - [x] P7.1 headless worker 基础（固定 `--once` 入口、共享 scheduler/备份链路、heartbeat 与 fallback registry；当前仍为 `tray_only`）
 - [x] P7.2a Windows 平台核心（用户级 Scheduled Task 注册/更新/移除、read-back、独立 heartbeat、双条件 `protected` 派生和 sidecar；自动化仅使用 fake/临时依赖）
 - [ ] P7.2a Windows 安装态 runtime acceptance（一次性账户/VM 中验证 sibling worker、真实触发、fresh heartbeat 和 cleanup）
-- [ ] P7.2b Profile/Settings 后台保障开关与退出前提示（依赖 P7.2a 平台注册和健康检查）
+- [x] P7.2b Settings 全局后台保障开关、Profile 只读状态、5 分钟 `starting` / 45 分钟 `protected` 健康派生与统一退出保护
+- [ ] P7.2c NSIS/WiX owned Scheduled Task 自动卸载 cleanup（不得删除 foreign task）
 - [x] 保留策略（数量）
 - [ ] 保留策略（时间/空间）
 - [x] 备份目录可选择（未手动选择时使用默认 app data）
@@ -406,7 +407,7 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| T8 存档备份 | P2 | 进行中（P7.2a Windows 平台核心与 sidecar 已落地；安装态 runtime smoke、P7.2b 用户启用/退出体验和备份中心待后续切片） | |
+| T8 存档备份 | P2 | 进行中（P7.2b 应用级用户流程已落地；P7.2a 安装态 runtime smoke、P7.2c 卸载 cleanup 和备份中心待后续切片） | |
 | T9 Rich Manifest | P2 | 进行中（manifest metadata / plan_hash / rolled_back / 读侧状态机消费已落地） | |
 | T10 依赖检查 | P2 | 待开始 | |
 | T11 ARMOR_RETARGET | P3 | 待开始 | |
