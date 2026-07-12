@@ -1,9 +1,10 @@
 # Core Mod Lifecycle CL0 验收基线
 
 - 日期：2026-07-12
-- 状态：CL0 已完成；CL1 Task 1 已通过；Gate A 尚未认证
+- 状态：CL0、CL1 已完成；Gate A 尚未认证
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
-- 下一切片：[CL1 安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
+- CL1 实施记录：[安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
+- 下一切片：CL2 disposable desktop smoke（见本文第 7 节）
 
 ## 1. 目的与边界
 
@@ -103,10 +104,11 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL1-C2 | 安装后 restart：manifest/recovery 状态为 installed | 通过 | 同一 L2 composition；4 managed files、1 backup、0 issues |
 | CL1-C3 | uninstall：新增文件删除、覆盖文件恢复、再重启为 not installed | 通过 | 同一 L2 composition；manifest 驱动卸载 |
 | CL1-C4 | 最终 game root 与安装前基线逐字节一致 | 通过 | 同一 L2 composition；相对文件路径与精确人工 bytes 快照 |
-| CL1-F1 | source read failure 零误报/可恢复 | 缺直接测试 | CL1 L1 fault test |
-| CL1-F2 | backup store failure 在任何 target write 前阻断 | 缺直接测试 | CL1 L1 fault test |
+| CL1-F1 | source read failure 零误报/可恢复 | 通过 | `commit_plan_aborts_without_writes_when_source_read_fails`；零 game writes / manifest saves |
+| CL1-F2 | backup store failure 在任何 target write 前阻断 | 通过 | `commit_plan_aborts_before_target_write_when_backup_store_fails`；前缀 pending backup 清理 |
 | CL1-F3 | game write / manifest save / rollback failure | 已有聚焦证据 | CL1 复用并建立证据映射 |
 | CL1-S1 | drift、missing summary、missing backup fail closed | 已有聚焦证据 | CL1 复用并建立证据映射 |
+| CL1-A1 | install/uninstall success Audit Log 与公开证据脱敏 | 通过 | 同一 L2 composition；只含 task/game/mod/profile 与动作/删除/恢复计数 |
 | CL2-D1 | 文件选择器 -> import -> preview -> install -> restart -> uninstall | 未执行 | CL2 disposable desktop smoke |
 | CL3-R1 | v1 -> v2 真正重装与最终卸载回基线 | 阻断 | 稳定 Mod/package revision + ReinstallPlan 尚未实现 |
 
@@ -125,11 +127,11 @@ CL1 Task 1 已扩展同一 CL0 harness，使用真实 filesystem/JSON/SQLite com
 再 best-effort 清理 active recovery record；重启状态来自 manifest、目标摘要和 backup 事实，不依赖
 旧 TaskManager 状态或另造安装链路。
 
-### G2：缺少两个直接 fault tests
+### G2：两个直接 fault tests（已解决）
 
-现有测试覆盖 manifest load/save、game write/remove、rollback、backup cleanup 与卸载安全阻断，
-但未直接覆盖 source read failure 和 `store_backup` failure。CL1 在 app service test doubles 中补齐，
-不把 fault injection 放进生产 AppState。
+CL1 已在 app service recording fakes 中直接注入第二个 source read 与第二次 `store_backup` failure，
+证明完整 source preload 和 backup prepare 成功前不会发生任何 target mutation 或 manifest save；已创建的
+pending backup 和 planned recovery facts 会安全清理。Fault injection 没有进入生产 AppState。
 
 ### G3：稳定 Mod 身份与 package revision 未建模
 
@@ -231,7 +233,9 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - [x] 桌面 smoke 有安全前置、步骤、停止条件和清理边界。
 - [x] CL1 最小实施计划已创建。
 - [x] CL1 install/uninstall acceptance 通过。
+- [x] CL1 source read / backup store fault tests 通过。
+- [x] CL1 manifest/recovery/Audit Log/task phase 与脱敏证据通过。
 - [ ] CL2 桌面 smoke 实际执行。
 - [ ] CL3 真正重装实现并通过。
 
-CL1 fault tests、CL2 桌面 smoke 和 CL3 真正重装仍未完成，Gate A 必须保持未认证。
+CL2 桌面 smoke 和 CL3 真正重装仍未完成，Gate A 必须保持未认证。

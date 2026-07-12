@@ -225,18 +225,23 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ### Core Mod Lifecycle Gate A
 
-CL0 test-only composition harness 使用人工 zip、temp AppData 与 temp MHW:I-like game root，覆盖
-fixture 分类、真实 importer、持久化 import/game config、MHW adapter InstallPlan 和 AppState
-restart。它只构建 plan，不执行 game writes：
+CL0/CL1 test-only composition harness 使用人工 zip、temp AppData 与 temp MHW:I-like game root。
+CL0 覆盖 fixture 分类、真实 importer、持久化 import/game config、MHW adapter InstallPlan 和
+AppState restart；CL1 在同一 harness 上覆盖 install -> restart -> uninstall -> baseline、manifest/
+recovery counts、task identity/phase、Audit Log 字段白名单和公开证据脱敏：
 
 ```powershell
 cargo test -p hmm-tauri state::core_mod_lifecycle_tests
+cargo test -p hmm-app install
 ```
 
-CL0 的 fixture、证据矩阵、缺口和桌面 smoke 见
-[Core Mod Lifecycle CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。CL1 才扩展为
-install -> restart -> uninstall -> baseline；CL2 桌面 smoke 只允许在 disposable account/VM 执行，
-不得使用维护者日常 AppData 或真实游戏目录；CL3 才验证 v1 -> v2 真正重装。
+`hmm-app install` 必须包含 source read 与 backup store failure 的双 action 注入，证明完整 source/
+backup prepare 成功前 game writes 和 manifest saves 都为零，并覆盖 pending backup/recovery cleanup。
+
+CL0/CL1 的 fixture、证据矩阵、缺口和桌面 smoke 见
+[Core Mod Lifecycle CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。CL2 桌面 smoke 只允许在
+disposable account/VM 执行，不得使用维护者日常 AppData 或真实游戏目录；CL3 才验证 v1 -> v2
+真正重装。CL1 自动化通过不代表 Gate A `certified`。
 
 ## 存档备份
 
