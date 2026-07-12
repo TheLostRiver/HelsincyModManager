@@ -25,6 +25,7 @@
 - InstallPlan MVP: `docs/INSTALL_PLAN_STATUS.md` + `docs/INSTALL_PLAN_MVP_TODO.md`
 - 恢复受控动作: `docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md`
 - Mod 预览图: `docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md` + `docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md`
+- 第三方 Mod 管理器批量迁移: `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
 - T8 存档目录自动发现: `docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md` + `docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
 ### 需要新建独立文档的任务
@@ -73,6 +74,8 @@ T10 Dependency/Preflight ───(T3 + T4)───> 需要元数据和分类
 T11 ARMOR_RETARGET ───(T2 + T9 + InstallPlan staging)───> 最重依赖链
 
 T12 Mod 详情统一面板完整版 ───(T5 + T11 部分就绪)───> 合并信息 + 替换目标
+
+T17 第三方管理器批量迁移 ───(安全导入链路 + TaskManager + 导入结果持久化)───> 狩技盒子兼容来源
 ```
 
 ---
@@ -316,6 +319,29 @@ JSON 做不好的需求:
 
 ---
 
+### T17: 第三方 Mod 管理器批量迁移（狩技盒子兼容）
+
+**前置**: 单包安全导入链路 + TaskManager/取消 + Mod 导入结果持久化
+**状态**: 已规划，待实施（本轮仅完成文档，不代表功能可用）
+**预估**: 大，建议拆为 4 个独立 review 切片
+**独立文档**: **已创建** → `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
+
+范围:
+- [x] 设计来源 adapter、批次预览、去重/冲突、取消/重试和安全边界
+- [ ] Slice 1：无路径领域契约、ports、仓储基准/决策和人工 fixtures
+- [ ] Slice 2：`hunting_box_directory_v1` 只读扫描、内容指纹、分页预览和 scan task
+- [ ] Slice 3：安全物化、复用单包导入链路、partial success、幂等和恢复对账
+- [ ] Slice 4：来源选择、候选选择、分类映射、冲突决定、进度/结果 UI 和完整加固
+
+硬边界:
+- 默认只导入，不自动安装、启用或写游戏目录
+- 不读取第三方数据库/账号，不同步启用状态、优先级或安装事实
+- 前端不接触来源路径、XML 解析、hash、sandbox/cache 或去重规则
+- 与 T13 的批量安装/卸载队列正交，不能借批量导入绕过 `InstallPlan` / manifest / backup / rollback
+- 自动化只用临时目录与人工 fixture，不提交或读取真实第三方 Mod
+
+---
+
 ## P3 — 长线 Feature
 
 ### T11: ARMOR_RETARGET 全链路
@@ -386,6 +412,7 @@ JSON 做不好的需求:
 
 第 6 轮: T10 依赖检查
          T13 批量操作
+         T17 第三方管理器批量迁移
          T8 存档备份
 
 第 7 轮: T11 ARMOR_RETARGET
@@ -414,3 +441,4 @@ JSON 做不好的需求:
 | T12 Mod 详情完整版 | P3 | 待开始 | |
 | T13 批量操作 | P2 | 待开始 | |
 | T14 任务队列 UI | P3 | 待开始 | |
+| T17 第三方管理器批量迁移 | P2 | 已规划，待实施 | |
