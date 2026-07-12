@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Settings2,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAppRoute } from "../../app/routing/useAppRoute";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import { useActiveProfile } from "./ActiveProfileProvider";
 import { BackupPolicyPanel } from "./BackupPolicyPanel";
@@ -207,6 +209,7 @@ type ManualBackupNotice = {
 };
 
 export function ProfilePage() {
+  const { navigate } = useAppRoute();
   const { activeProfile, refreshActiveProfile, setActiveProfile } = useActiveProfile();
   const { latestDiscovery, isDiscovering, discoveringTarget, runDiscovery } = useProfileSaveDirectoryDiscovery();
   const previewMode = isPlainBrowserRuntime();
@@ -805,6 +808,7 @@ export function ProfilePage() {
                     backgroundState={backgroundProtectionState}
                     disabledReason={autoBackupCheckBlockedReason}
                     onCheck={() => setAutoBackupCheckRefreshToken((current) => current + 1)}
+                    onOpenSettings={() => navigate("/settings")}
                   />
                   <ActiveSavePanel profile={selectedProfile} settings={visibleSettings} />
                   <BackupPolicyPanel
@@ -933,17 +937,24 @@ function AutoSaveBackupRuntimePanel({
   backgroundState,
   disabledReason,
   onCheck,
+  onOpenSettings,
 }: {
   settings: ProfileSaveSettingsDto;
   checkState: AutoBackupCheckState;
   backgroundState: BackgroundProtectionState;
   disabledReason: string | null;
   onCheck: () => void;
+  onOpenSettings: () => void;
 }) {
   const checking = checkState.status === "checking";
   const disabled = checking || disabledReason !== null;
   const statusCopy = getAutoBackupStatusCopy(checkState);
-  const protectionCopy = getBackgroundProtectionCopy(backgroundState);
+  const protectionCopy = getBackgroundProtectionCopy(settings.schedule.cadence, backgroundState);
+  const protectionBadge = getBackgroundProtectionBadge(settings.schedule.cadence, backgroundState);
+  const showSettingsLink = shouldOfferBackgroundSettingsNavigation(
+    settings.schedule.cadence,
+    backgroundState,
+  );
   const lastAutoCheck = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.checkedAt) : "尚未检查";
   const nextDue = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.nextDueAt) : "等待调度信息";
 
@@ -954,7 +965,9 @@ function AutoSaveBackupRuntimePanel({
           <h2 id="profile-auto-backup-title">自动备份运行期</h2>
           <p>{formatBackupSchedule(settings.schedule)}</p>
         </div>
-        <span className="profile-auto-backup-card__badge">仅在客户端运行时</span>
+        <span className={`profile-auto-backup-card__badge is-${protectionBadge.tone}`}>
+          {protectionBadge.label}
+        </span>
       </div>
 
       <div className={`profile-auto-backup-status is-${statusCopy.tone}`} role="status" aria-live="polite">
@@ -974,6 +987,17 @@ function AutoSaveBackupRuntimePanel({
           <span>{protectionCopy.hint}</span>
         </div>
       </div>
+
+      {showSettingsLink ? (
+        <button
+          type="button"
+          className="profile-action-button profile-background-settings-link"
+          onClick={onOpenSettings}
+        >
+          <Settings2 size={14} aria-hidden="true" />
+          前往设置处理
+        </button>
+      ) : null}
 
       <button
         type="button"
@@ -1371,7 +1395,38 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
   };
 }
 
-function getBackgroundProtectionCopy(state: BackgroundProtectionState) {
+function getBackgroundProtectionBadge(
+  cadence: ProfileBackupScheduleDto["cadence"],
+  state: BackgroundProtectionState,
+) {
+  if (cadence === "manual") {
+    return { tone: "manual", label: "未启用自动备份" };
+  }
+
+  if (state.status === "ready" && state.result.status === "protected") {
+    return { tone: "protected", label: "退出后受保护" };
+  }
+
+  if (state.status === "ready" && state.result.status === "starting") {
+    return { tone: "starting", label: "等待后台验证" };
+  }
+
+  return { tone: "client-only", label: "仅客户端运行时" };
+}
+
+function getBackgroundProtectionCopy(
+  cadence: ProfileBackupScheduleDto["cadence"],
+  state: BackgroundProtectionState,
+) {
+  if (cadence === "manual") {
+    return {
+      tone: "waiting",
+      label: "未启用自动备份",
+      hint: "此 Profile 使用手动备份，不参与后台调度",
+      icon: <ShieldOff size={16} aria-hidden="true" />,
+    };
+  }
+
   if (state.status === "loading") {
     return {
       tone: "waiting",
@@ -1401,6 +1456,13 @@ function getBackgroundProtectionCopy(state: BackgroundProtectionState) {
         label: "已受后台保护",
         hint: lastSuccess ?? "退出主客户端后仍会继续检查备份计划",
         icon: <ShieldCheck size={16} aria-hidden="true" />,
+      };
+    case "starting":
+      return {
+        tone: "waiting",
+        label: "正在验证后台保护",
+        hint: "后台任务已注册，正在等待首次运行验证",
+        icon: <Shield size={16} aria-hidden="true" />,
       };
     case "tray_only":
       return {
@@ -1446,6 +1508,19 @@ function getBackgroundProtectionCopy(state: BackgroundProtectionState) {
         icon: <ShieldOff size={16} aria-hidden="true" />,
       };
   }
+}
+
+function shouldOfferBackgroundSettingsNavigation(
+  cadence: ProfileBackupScheduleDto["cadence"],
+  state: BackgroundProtectionState,
+) {
+  if (cadence === "manual" || state.status !== "ready") return false;
+
+  return (
+    state.result.status === "registration_failed" ||
+    state.result.status === "worker_unhealthy" ||
+    state.result.status === "permission_required"
+  );
 }
 
 function createPreviewBackgroundStatus(
