@@ -874,7 +874,7 @@ Mod 预览图属于导入分析结果，不属于前端文件读取能力。具�
 
 ```text
 start_import_mod_task(input)
-get_mod_library(query)
+get_mod_library()
 get_mod_detail(modId)
 get_mod_dependency_graph()
 get_mod_detail_preview_image(modId)
