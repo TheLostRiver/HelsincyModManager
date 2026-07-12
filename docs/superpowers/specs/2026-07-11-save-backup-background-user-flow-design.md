@@ -173,6 +173,9 @@ UI 状态。
 
 `enable_save_backup_background_protection` 不接受路径或平台参数：
 
+同一 AppState 的 register/unregister/enable/disable 使用 app service 专用转换锁串行执行。锁覆盖
+设置写入、registry operation/read-back、审计与返回状态构造，不复用或延长 game/profile 写锁。
+
 1. 从 `AppClock` 取得当前时间。
 2. `begin_enable(now)` 写入 desired enabled、新 enabled_at 并清空旧 heartbeat。
 3. 调用既有 registry register/update。
@@ -202,6 +205,11 @@ invalid output 或 unknown failure 都保留 desired enabled，并提示用户�
 重复停用在任务已不存在时成功。停用不修改任何 Profile 的自动备份计划；主客户端运行时
 调度仍可继续工作，Profile 状态降级为 `tray_only`。
 
+停用只阻止后续 Scheduled Task invocation，不取消已经启动的 `--once` worker cycle。已启动
+cycle 可以继续走 scheduler lease 与既有备份安全链；`finish_disable` 完成后新启动的 worker
+读取到 disabled intent，必须在枚举 Profile 前立即 no-op。更强的 in-flight cancellation 需要
+独立跨进程协议，不由一次设置重读冒充原子保证。
+
 ## 11. Worker 全局 heartbeat
 
 headless `--once` worker 在以下条件满足后记录一次全局 heartbeat：
@@ -216,7 +224,8 @@ headless `--once` worker 在以下条件满足后记录一次全局 heartbeat：
 不阻止 heartbeat；这些是成功完成的保守业务结果。数据库不可用、profile 列表不可读、clock
 失败或 worker panic 不写新 heartbeat。
 
-heartbeat 不声明备份成功，只证明系统任务启动的 worker 完成了一轮受控调度检查。
+heartbeat 不声明备份成功，只证明系统任务启动的 worker 完成了一轮受控调度检查；写入时间
+必须在本轮检查结束后重新读取，不能复用 cycle 开始时间。
 
 ## 12. Tauri 契约
 
@@ -273,7 +282,8 @@ type AppExitGuardDto = {
 };
 ```
 
-前端只按 `reason` 稳定值显示文案，不解析 `CommandErrorDto.message`。`exit_app(false)`
+前端只按 `reason` 稳定值显示文案，不解析 `CommandErrorDto.message`。
+`exit_app({ request: { overrideUnprotected: false } })`
 仍在真正退出前重检；若查询后状态发生变化，它返回 generic
 `exit_confirmation_required`，前端重新读取 `get_app_exit_guard` 并显示对话框。
 
@@ -403,13 +413,13 @@ PowerShell 输出或第三方 Mod 内容。
 
 ### 17.2 App service
 
-- enable/disable 调用顺序和 read-back。
+- enable/disable 调用顺序、read-back 与并发转换串行。
 - 幂等重试。
 - starting 0-5 分钟边界。
 - fresh、stale、future、旧启用 heartbeat。
 - drift、ownership conflict、permission、unsupported、timeout、invalid output。
 - 每个部分失败后的重启派生与恢复动作。
-- worker 正常 skip 写 heartbeat；infrastructure failure 不写。
+- worker 正常 skip 写 completion-time heartbeat；infrastructure failure 不写。
 - exit guard 覆盖无自动计划、protected、starting、所有失败和查询失败。
 - override audit 字段白名单与 audit failure 仍可退出。
 

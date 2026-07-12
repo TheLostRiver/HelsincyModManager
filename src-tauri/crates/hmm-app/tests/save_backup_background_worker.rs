@@ -18,6 +18,7 @@ use hmm_ports::{
     ProfileRepository, ProfileSaveSettingsRepository, SaveBackupBackgroundSettingsRepository,
     SaveBackupRepository, SaveBackupSchedulerStateRepository,
 };
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 const DAY_MS: u128 = 86_400_000;
@@ -36,6 +37,22 @@ fn worker_records_one_global_heartbeat_after_completed_cycle() {
     assert_eq!(summary.checked_profiles, 0);
     assert!(harness.executor.triggers().is_empty());
     assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
+}
+
+#[test]
+fn global_heartbeat_uses_cycle_completion_time() {
+    let harness = Harness::new();
+    harness.enable_background();
+    harness.insert_profile("manual");
+    harness.insert_settings(manual_settings("manual"));
+    let completed_at = NOW + HOUR_MS;
+
+    harness
+        .worker_with_clock(Arc::new(SequenceClock::new([NOW, completed_at])))
+        .run_once("worker-a")
+        .expect("worker runs");
+
+    assert_eq!(harness.background_settings.heartbeats(), vec![completed_at]);
 }
 
 #[test]
@@ -187,6 +204,7 @@ fn manual_and_missing_settings_profiles_are_skipped() {
         .is_empty());
     assert!(harness.scheduler_state_repository.heartbeats().is_empty());
     assert!(harness.executor.triggers().is_empty());
+    assert_eq!(harness.background_settings.heartbeats(), vec![NOW]);
 }
 
 #[test]
@@ -1089,6 +1107,28 @@ impl AppClock for FixedClock {
             anyhow::bail!("clock unavailable");
         }
         Ok(self.now_unix_millis)
+    }
+}
+
+struct SequenceClock {
+    values: Mutex<VecDeque<u128>>,
+}
+
+impl SequenceClock {
+    fn new(values: impl IntoIterator<Item = u128>) -> Self {
+        Self {
+            values: Mutex::new(values.into_iter().collect()),
+        }
+    }
+}
+
+impl AppClock for SequenceClock {
+    fn now_unix_millis(&self) -> Result<u128> {
+        self.values
+            .lock()
+            .expect("clock values lock")
+            .pop_front()
+            .ok_or_else(|| anyhow::anyhow!("clock value unavailable"))
     }
 }
 
