@@ -223,6 +223,21 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 不直接操作真实 MHW:I 安装目录。
 - 每个测试结束后校验临时目录状态。
 
+### Core Mod Lifecycle Gate A
+
+CL0 test-only composition harness 使用人工 zip、temp AppData 与 temp MHW:I-like game root，覆盖
+fixture 分类、真实 importer、持久化 import/game config、MHW adapter InstallPlan 和 AppState
+restart。它只构建 plan，不执行 game writes：
+
+```powershell
+cargo test -p hmm-tauri state::core_mod_lifecycle_tests
+```
+
+CL0 的 fixture、证据矩阵、缺口和桌面 smoke 见
+[Core Mod Lifecycle CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。CL1 才扩展为
+install -> restart -> uninstall -> baseline；CL2 桌面 smoke 只允许在 disposable account/VM 执行，
+不得使用维护者日常 AppData 或真实游戏目录；CL3 才验证 v1 -> v2 真正重装。
+
 ## 存档备份
 
 适用范围：

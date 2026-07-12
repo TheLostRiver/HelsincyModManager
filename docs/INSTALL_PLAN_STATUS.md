@@ -276,7 +276,7 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - 展示 `install.uninstall.queued`、`install.uninstall.processing`、`install.uninstall.completed` 和 `install.uninstall.failed`。
 - 卸载完成后复用 manifest 状态摘要查询刷新安装事实。
 - `previewRecoveryAction` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并只接收 action kind、`available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code。
-- `startRecoveryActionTask` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并返回标准 `TaskStartedDto`；当前尚未接恢复中心按钮或写入型恢复 UI。
+- `startRecoveryActionTask` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并返回标准 `TaskStartedDto`；恢复中心逐 Mod 按钮和任务 UI 编排已接入。
 
 前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态、manifest 查询摘要、只读恢复扫描摘要和只读恢复动作预览摘要，不应推断 MHW 路径规则或自行拼接安装/卸载/恢复路径。安装/卸载/恢复扫描/动作预览/恢复动作任务 UI 只提交 `gameId`、`modId`、`profileId`、`modIds` 和 `actionKind` 等短 id，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询和只读 recovery scan 恢复，而不是依赖内存任务状态或 mock 数据。
 
@@ -305,20 +305,22 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)：记录后续切片、验收标准、安全门禁，以及 manifest 状态、卸载/恢复、安装 UI、retarget staging 和测试矩阵的细化规则。
 - [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)：记录 `rollback_required`、只读动作预览、受控回滚任务和恢复中心写入动作启用前的安全拆分。
 - [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)：记录当前 Gate A/Gate B、真正重装 contract、暂停清单和恢复门禁。
+- [CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)：记录人工 fixture、test-only AppState harness、证据矩阵、当前缺口和桌面 smoke 安全边界。
 - 本文档：记录当前实现状态和后续切片判断。
 
 ## 后续建议切片
 
 建议继续按下面顺序推进：
 
-1. **CL0：** 固定 `v1/v2` 人工 fixture、temp-root acceptance matrix、桌面 smoke 文档和当前
-   composition 缺口清单。
-2. **CL1/CL2：** 认证 import record -> InstallPlan -> install -> restart -> uninstall -> baseline
-   自动化闭环，并实际执行 Tauri 桌面 smoke；只修复阻断该闭环的问题。
-3. **CL3：** 新增独立真正重装 use case/task，处理 retained/replaced/added/stale entries，并使
+1. **CL0（已完成）：** 已固定 `v1/v2` 人工 fixture、test-only AppState import/plan/restart
+   harness、acceptance matrix、桌面 smoke 文档和 composition 缺口清单。
+2. **CL1（下一项）：** 认证 import record -> InstallPlan -> install -> restart -> uninstall ->
+   baseline 自动化闭环；只修复阻断该闭环的问题。
+3. **CL2：** 在 disposable account/VM 实际执行 Tauri 桌面 smoke 与清理证明。
+4. **CL3：** 新增独立真正重装 use case/task，处理 retained/replaced/added/stale entries，并使
    失败恢复到重装前版本。
-4. **CL4 / Gate A：** 完整验证、安全复审和 `certified` 状态记录。
-5. **ARMOR_RETARGET Gate B：** 按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
+5. **CL4 / Gate A：** 完整验证、安全复审和 `certified` 状态记录。
+6. **ARMOR_RETARGET Gate B：** 按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
    binding snapshot、选择目标、安装、切换目标和卸载。
 
 Rich manifest、repair 和 preflight 只在解除上述步骤阻断时取最小切片。批量/profile 卸载、完整

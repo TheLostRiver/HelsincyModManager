@@ -71,6 +71,11 @@ CL0 事实基线与可重复验收入口
 
 ### CL0：建立事实基线与验收入口
 
+**状态（2026-07-12）：** 已完成。fixture contract、test-only AppState import/plan/restart harness、
+验收矩阵、composition 缺口与桌面 smoke 见
+[CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。CL0 不执行 install/uninstall game writes，
+因此不代表 CL1、CL2 或 Gate A 完成。
+
 目标不是重写已有安装模块，而是建立一套能证明完整闭环的证据：
 
 - 固定两个完全人工构造的 Mod fixture：`v1` 与 `v2`。
@@ -235,22 +240,23 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 - 任一破坏性动作必须先 revalidate，并保留 manifest/backup/recovery/Audit Log 证据。
 - 文档状态只根据当前已执行证据更新，不因代码行数、计划完整或单元测试数量宣称 certified。
 
-## 10. 下一项任务
+## 10. 当前下一项任务
 
-下一项工作固定为 **CL0：核心生命周期验收基线与缺口清单**，不是 P7.2c Task 1，也不是
-ARMOR_RETARGET 领域模型。
+CL0 已完成。下一项工作固定为 **CL1：安装/卸载自动化纵向闭环**，不是 P7.2c Task 1、
+ARMOR_RETARGET，也不提前实现 CL3 真正重装。
 
-CL0 只交付：
+CL1 只交付：
 
-1. `v1/v2` 人工 fixture contract。
-2. 可执行的 temp-root install/uninstall/reinstall acceptance matrix。
-3. 当前 composition 能直接覆盖与仍需修复的缺口清单。
-4. 桌面 smoke 文档与安全停止条件。
-5. 后续 CL1 的最小实施计划。
+1. 在 CL0 test-only harness 上完成 v1 install -> restart -> uninstall -> baseline。
+2. 补 source read 与 backup store failure 的直接聚焦测试。
+3. 建立 manifest/recovery/Audit Log/task phase 的纵向证据映射。
+4. 更新 CL1 状态与验证记录，但不执行 CL2 桌面 smoke。
 
-CL0 不应直接实现 ARMOR、分页、备份、installer hook 或新的通用测试框架。
+实施顺序见 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)。
+CL1 不应实现 package revision、真正重装、ARMOR、分页、备份、installer hook 或新的通用测试框架。
 
-## 11. 本轮边界
+## 11. 优先级重排提交边界（历史）
 
-本轮只创建和同步规划文档，不修改 Rust、TypeScript、Tauri config、数据库 migration、依赖、
-installer、fixture 或测试代码。完成本轮不代表 Gate A/Gate B 已开始或通过。
+2026-07-12 的优先级重排提交只创建和同步规划文档，未修改 Rust、TypeScript、Tauri config、
+数据库 migration、依赖、installer、fixture 或测试代码。后续 CL0 已按第 5 节新增 test-only harness；
+该历史边界不限制后续切片，但 Gate A/Gate B 仍须按各自完成定义认证。

@@ -60,8 +60,9 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍未完成：
 
-- 固定 `v1/v2` 人工 fixture 的 install -> restart -> uninstall -> baseline 自动化 acceptance、实际
-  Tauri 桌面 smoke 和 Gate A 认证记录。
+- 核心生命周期认证：CL0 的 `v1/v2` fixture contract、test-only AppState import/plan/restart
+  harness 已完成；CL1 的 install -> restart -> uninstall -> baseline 自动化 acceptance、CL2 的
+  实际 Tauri 桌面 smoke 和 Gate A 认证记录仍未完成。
 - 独立真正重装：当前 UI 仍把普通 `start_install_task` 作为 reinstall；尚未分类
   retained/replaced/added/stale entries，也没有恢复到重装前版本的独立 task/recovery contract。
 - 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
@@ -770,14 +771,18 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P0：核心生命周期认证与真正重装（当前）
 
-**状态：** 下一执行轨道，详见 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)。
+**状态：** CL0 已完成，下一项 CL1；详见
+[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 与
+[CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。
 
 顺序：
 
-1. CL0 固定人工 `v1/v2` fixture、temp-root acceptance matrix、桌面 smoke 文档和缺口清单。
-2. CL1/CL2 认证 install/restart/uninstall/baseline 自动化与 Tauri 桌面工作流。
-3. CL3 新增独立 reinstall use case/task，按最终 target 分类 retained/replaced/added/stale。
-4. CL4 完整验证与 Gate A `certified` 记录。
+1. CL0 已固定人工 `v1/v2` fixture、test-only AppState import/plan/restart harness、acceptance
+   matrix、桌面 smoke 文档和缺口清单。
+2. CL1 认证 install/restart/uninstall/baseline 自动化闭环。
+3. CL2 在 disposable account/VM 认证 Tauri 桌面工作流。
+4. CL3 新增独立 reinstall use case/task，按最终 target 分类 retained/replaced/added/stale。
+5. CL4 完整验证与 Gate A `certified` 记录。
 
 真正重装必须：
 

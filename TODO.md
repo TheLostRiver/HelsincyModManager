@@ -80,10 +80,10 @@
 
 ### Core Mod Lifecycle Gate A
 
-**状态**: 已规划，待实施；当前唯一 P0 主线
-**独立文档**: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md`
+**状态**: CL0 已完成；下一项 CL1，Gate A 尚未认证
+**独立文档**: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md` + `docs/CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md`
 
-- [ ] CL0：固定 `v1/v2` 人工 fixture、temp-root acceptance matrix、桌面 smoke 文档和缺口清单
+- [x] CL0：固定 `v1/v2` 人工 fixture、test-only AppState import/plan/restart harness、acceptance matrix、桌面 smoke 文档和缺口清单
 - [ ] CL1：认证导入记录 -> InstallPlan -> install -> restart -> uninstall -> baseline 自动化闭环
 - [ ] CL2：实际 Tauri 桌面 smoke、状态恢复、错误脱敏和清理证明
 - [ ] CL3：独立真正重装 use case，覆盖 retained/replaced/added/stale 与失败恢复
@@ -439,8 +439,7 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: CL0 核心生命周期验收基线与缺口清单
-  -> CL1 install/uninstall 自动化闭环
+当前: CL1 install/uninstall 自动化闭环
   -> CL2 桌面 smoke
   -> CL3 真正 reinstall
   -> CL4 Gate A 认证
@@ -462,7 +461,7 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| Core Mod Lifecycle Gate A | P0 | 已规划，下一项 CL0 | |
+| Core Mod Lifecycle Gate A | P0 | CL0 已完成，下一项 CL1；Gate A 未认证 | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | 仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
