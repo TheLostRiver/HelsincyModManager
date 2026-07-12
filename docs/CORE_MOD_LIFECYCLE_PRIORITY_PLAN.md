@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期优先级计划
 
 - 日期：2026-07-12
-- 状态：生效；仅完成优先级与实施规划，尚未开始运行时代码
+- 状态：生效；CL0、CL1 已完成，下一项 CL2；Gate A 尚未认证
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -88,6 +88,12 @@ CL0 事实基线与可重复验收入口
 CL0 的产物应是一份可执行 smoke/acceptance 文档和自动化 harness，不是新的安装抽象。
 
 ### CL1：安装与卸载自动化纵向闭环
+
+**状态（2026-07-13）：** 已完成。L2 AppState composition 已使用人工 v1 zip、temp AppData 和
+temp game root 完成 install -> restart -> uninstall -> baseline；L1 已直接覆盖 source read 与
+backup store failure 在任何 target mutation 前停止，并复用既有 write/manifest/rollback/drift
+安全证据。成功 install/uninstall Audit Log 只保留稳定 id 和计数。CL1 不代表 CL2、CL3 或 Gate A
+完成。
 
 至少覆盖：
 
@@ -242,18 +248,17 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 10. 当前下一项任务
 
-CL0 已完成。下一项工作固定为 **CL1：安装/卸载自动化纵向闭环**，不是 P7.2c Task 1、
+CL0、CL1 已完成。下一项工作固定为 **CL2：桌面应用手动 smoke**，不是 P7.2c、
 ARMOR_RETARGET，也不提前实现 CL3 真正重装。
 
-CL1 只交付：
+CL2 必须在 disposable Windows account/VM 使用人工 fixture 和隔离 AppData，实际验证文件选择器、
+任务事件、安装状态恢复、卸载、错误脱敏和最终清理。不得为了完成 checklist 使用维护者日常
+AppData、真实游戏目录、真实 Mod 或玩家数据。
 
-1. 在 CL0 test-only harness 上完成 v1 install -> restart -> uninstall -> baseline。
-2. 补 source read 与 backup store failure 的直接聚焦测试。
-3. 建立 manifest/recovery/Audit Log/task phase 的纵向证据映射。
-4. 更新 CL1 状态与验证记录，但不执行 CL2 桌面 smoke。
-
-实施顺序见 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)。
-CL1 不应实现 package revision、真正重装、ARMOR、分页、备份、installer hook 或新的通用测试框架。
+CL1 的已执行范围和证据见
+[CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
+[CL0/CL1 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装仍归 CL3；Gate A 只有 CL2、
+CL3 和 CL4 全部完成后才能标记 `certified`。
 
 ## 11. 优先级重排提交边界（历史）
 
