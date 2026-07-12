@@ -107,14 +107,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 窗口关闭与托盘生命周期切片至少运行：
 
-- `cmd /c corepack pnpm run test -- src/app/window-lifecycle/windowClosePreference.test.mjs`
+- `node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs`
 - `cmd /c corepack pnpm run typecheck`
 - `cmd /c corepack pnpm run lint`
 - `cmd /c corepack pnpm run build`
 - `cargo test -p hmm-tauri window_lifecycle`
 - `cargo check -p hmm-tauri`
 
-可视化检查需要覆盖：关闭按钮弹窗、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。当前阶段不得把完全退出描述为后台自动备份仍受保护。
+可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
 
 ## Tauri / Rust 桥接改动
 
@@ -311,6 +311,25 @@ node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
 要求：平台注册自动化只能使用 fake registry/command runner；健康矩阵使用 fixed clock；repository 使用临时 SQLite；sidecar 测试只检查构建配置和 Cargo metadata。普通测试和 `verify.ps1` 不得创建、更新、启动或删除真实 Scheduled Task。`get_save_backup_background_status` 必须保持只读，并覆盖 exact + fresh、future、stale、drift、permission 和 unsupported 等 fail-closed 状态。
 
 真实 Windows 验收只允许人工在一次性本地账户或 VM 按 [Windows 存档后台任务人工 Smoke](testing/windows-save-backup-scheduled-task-smoke.md) 执行。只有安装态 sibling worker、任务真实触发、fresh heartbeat 和最终 cleanup 全部通过，才能记录 Windows runtime acceptance；不得在开发者日常账户为了完成 checklist 运行 ignored smoke。
+
+P7.2b 全局用户意图、Settings/Profile 边界和统一退出保护至少运行：
+
+```powershell
+cargo test -p hmm-core background
+cargo test -p hmm-ports background
+cargo test -p hmm-infra --test save_backup_background_settings_repository
+cargo test -p hmm-infra --test save_backup_scheduler_repository
+cargo test -p hmm-app --test save_backup_background
+cargo test -p hmm-app --test save_backup_background_worker
+cargo test -p hmm-app --test save_backup_exit_guard
+cargo test -p hmm-tauri save_backup
+cargo test -p hmm-tauri window_lifecycle
+node --test src/features/settings/backgroundProtectionApi.test.mjs src/features/settings/backgroundProtectionPanel.test.mjs
+node --test src/features/profiles/profileFrontendIntegration.test.mjs src/features/profiles/profileApi.test.mjs
+node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
+```
+
+要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed clock；前端测试锁定 Settings 唯一控制入口、Profile 只读、稳定 status/reason/code 和 unsafe no-remember。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 5 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
 
 存档目录自动发现切片至少运行聚焦测试：
 

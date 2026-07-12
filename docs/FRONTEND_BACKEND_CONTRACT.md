@@ -56,7 +56,9 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
 - Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`
+- 全局存档后台保护：`get_save_backup_background_control_status`、`enable_save_backup_background_protection`、`disable_save_backup_background_protection`
 - Profile 存档目录发现：`discover_profile_save_directories`、`confirm_profile_save_directory_candidate`
+- 窗口生命周期：`hide_main_window_to_tray`、`get_app_exit_guard`、`exit_app`
 - 游戏启动：`launch_game(gameId)`
 - 查询安装恢复摘要：`scan_install_recovery`
 - 查询安装恢复动作预览：`preview_recovery_action`
@@ -509,7 +511,37 @@ get_save_backup_background_status({ request: { gameId, profileId } })
 - `get_save_backup_background_status` 是只读查询：后端读取 scheduler state、inspect Windows registry 并按固定 clock/45 分钟 TTL 派生健康状态；它不注册、不修复、不启动 worker、不获取租约。没有持久化状态或未启用后台保护时返回 `status: "not_enabled"`。
 - `protected` 必须同时满足 `backgroundProtectionEnabled = true`、Scheduled Task read-back 完全匹配，以及 `worker_heartbeat_at` 位于 `[now - 45m, now]`；未来时间、过期心跳、配置漂移和检查不确定性都 fail closed 为非保护状态。
 - `SaveBackupBackgroundStatusDto` 只包含白名单字段；不得包含 `lease_owner`、`lease_expires_at`、`worker_instance_id`、task name、SID、worker path、PowerShell、task XML、原始命令输出、完整路径、Steam ID、manifest 正文或 hash 列表。
-- P7.2a 不新增 register/unregister 前端命令；Profile/Settings 真实启用、退出提示和端到端 UI `protected` 验收属于 P7.2b。当前前端不得把平台核心存在等同于用户已启用退出后保护。
+- P7.2b 增加三个无参数的全局控制命令。Settings 是唯一调用方；Profile 继续只读调用 per-profile status，不得启用、停用或修复全局注册。
+
+全局后台保护控制命令：
+
+```text
+get_save_backup_background_control_status()
+enable_save_backup_background_protection()
+disable_save_backup_background_protection()
+```
+
+- 三个命令都不接受 `gameId`、`profileId`、路径、task name、SID、worker 参数或平台命令。
+- 全局 SQLite 设置保存用户意图、当前启用时间和 worker heartbeat；这些字段只由 app service/repository/worker 修改，前端不能提交。
+- 启用先持久化 intent，再执行受控 register/read-back；成功返回 `starting`，不能直接返回 `protected`。停用只有在 owned task 已确认移除后才清除 intent/heartbeat；部分失败保持可重试事实。
+- `starting` 使用 5 分钟启动宽限；`protected` 要求当前启用周期的 heartbeat 位于 `[now - 45m, now]`。未来、过期、早于 `enabledAt` 的 heartbeat 都 fail closed。
+
+```ts
+type SaveBackupBackgroundControlStatusDto = {
+  desiredEnabled: boolean;
+  status:
+    | "not_enabled"
+    | "starting"
+    | "protected"
+    | "registration_failed"
+    | "worker_unhealthy"
+    | "permission_required"
+    | "unsupported_platform";
+  enabledAt: number | null;
+  lastHeartbeatAt: number | null;
+  lastErrorCode: string | null;
+};
+```
 
 DTO 形状：
 
@@ -560,6 +592,7 @@ type SaveBackupBackgroundStatusDto = {
     | "protected"
     | "tray_only"
     | "not_enabled"
+    | "starting"
     | "registration_failed"
     | "worker_unhealthy"
     | "permission_required"
@@ -1034,7 +1067,32 @@ type SupportDiagnosticsExportDto = {
 - `hmm://window-close-requested` 由 Tauri 后端在主窗口收到关闭请求时发出；后端会先阻止默认关闭，前端必须显示关闭选择或按已保存偏好调用窄命令。
 - `hide_main_window_to_tray` 只隐藏当前主窗口，不执行备份、不修改 Profile、不读取路径。
 - `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
-- P7.2a 已落地 Windows Scheduled Task 平台注册与健康核心，但 P7.2b 的用户启用和退出提示尚未接入；前端文案仍必须区分“托盘后台运行”与“完全退出应用”，不能因平台核心存在就承诺退出后保护。
+- `get_app_exit_guard()` 是只读结构化决策；所有真正退出入口，包括主窗口关闭、remembered exit 和托盘“退出程序”，都必须经过同一流程。
+- `exit_app({ request: { overrideUnprotected } })` 要求显式布尔值。普通退出只能传 `false`；只有危险退出对话框的当次明确确认可以传 `true`。后端在真正退出前始终重新计算 guard，不信任前端缓存。
+- `exit_app(false)` 若在查询后因状态竞态变为不安全，会返回稳定 code `exit_confirmation_required`；前端必须重新读取 `get_app_exit_guard`，不得解析 `CommandErrorDto.message` 猜测原因。
+- 危险退出默认操作和初始焦点为留在托盘，不显示 remember；Escape、overlay 和关闭按钮都只取消。`starting` override 不 unregister、不清除 `desiredEnabled`。
+
+```ts
+type AppExitGuardReason =
+  | "background_starting"
+  | "background_not_enabled"
+  | "registration_failed"
+  | "worker_unhealthy"
+  | "permission_required"
+  | "unsupported_platform"
+  | "status_unavailable";
+
+type AppExitGuardDto =
+  | { decision: "safe"; reason: null }
+  | { decision: "confirmation_required"; reason: AppExitGuardReason };
+
+type ExitAppRequestDto = {
+  overrideUnprotected: boolean;
+};
+```
+
+- Settings 全局控制与 exit guard 均只消费稳定 snake_case status/reason/code；UI 不展示 raw backend message。
+- P7.2b 实现了应用级启停、状态和退出警告，但安装态 sibling worker/真实触发/fresh heartbeat 验收仍未完成，不能把自动化结果描述为 Windows runtime acceptance。
 - 前端不得通过宽泛 window/filesystem API 重建生命周期逻辑；只调用本节列出的窄命令。
 
 ## 测试要求

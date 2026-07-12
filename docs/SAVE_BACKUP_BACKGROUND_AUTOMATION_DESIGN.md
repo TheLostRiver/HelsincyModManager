@@ -2,7 +2,7 @@
 
 本文档定义存档自动备份在主客户端关闭后的保障语义、后台执行架构、调度规则、UI 提示、安全边界和分阶段落地计划。它补充 [存档备份系统设计](SAVE_BACKUP_DESIGN.md)，不替代手动备份、manifest、历史记录、恢复流程或存档目录自动发现设计。
 
-## 当前实施状态（P7.2a 平台核心）
+## 当前实施状态（P7.2b 应用级用户流程）
 
 P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 
@@ -13,11 +13,15 @@ P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 - worker sidecar 的 dev/release 准备脚本和 Windows `externalBin` 已接入；target-triple 源产物被 Git 忽略。
 - 自动化测试仅使用 fake registry/command runner、固定 clock、临时 SQLite/目录和人工 fixture，不创建、更新、启动或删除真实 Scheduled Task。
 
-P7.2a 尚未提供 Profile/Settings 真实启用入口或退出前提示，因此普通用户流程仍不能启用完整退出后保护，当前产品文案继续保持 `tray_only`。安装态 sibling worker、真实触发、fresh heartbeat 和最终 cleanup 的人工 smoke 也尚未在一次性账户/VM 完成，所以当前不宣称 Windows runtime acceptance。
+P7.2b 已在上述平台核心上接入应用级用户流程：
 
-## 下一任务（P7.2b 用户流程）
+- 全局 SQLite 设置持久化 `desired_enabled`、`enabled_at`、`last_worker_heartbeat_at` 和更新时间；worker 在禁用时立即 no-op，不枚举 Profile、不触发备份、不写 heartbeat。
+- Settings 是唯一的全局启停入口；Profile 只读展示当前 profile 的备份节奏和全局后台保护状态，不提供第二个开关。
+- 启用成功先进入 `starting`。当前启用周期在 5 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。
+- 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
+- `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
 
-P7.2b 才接入 Profile/Settings 后台保护开关、退出前提示和真实启用后的 UI/退出端到端 `protected` 验收。NSIS/WiX 自动卸载 cleanup 仍是独立 release packaging gate。所有后续工作继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
+这些能力完成的是应用级启停、状态展示和 fail-closed 退出保护，不等于 Windows 安装态 runtime acceptance。安装态 sibling worker、真实 Scheduled Task 触发、fresh heartbeat 和 cleanup 的人工 smoke 尚未在一次性账户/VM 完成；P7.2c NSIS/WiX owned-task 自动卸载 cleanup 也仍是独立 release packaging gate。所有后续工作继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
 
 ## 背景
 
@@ -62,7 +66,7 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 退出程序
 
-用户选择“退出程序”表示主客户端进程结束。P7.2a 已具备平台注册核心，但 P7.2b 尚未提供真实启用入口和退出提示，因此当前产品流程保持 `tray_only`，不能表述为退出后仍会自动运行。P7.2b 完成后，若后台保障未启用，退出前必须提示：
+用户选择“退出程序”表示主客户端进程结束。所有真正退出入口必须先读取后端结构化 exit guard；普通退出只能在没有自动计划或全局状态为 `protected` 时继续。`starting`、未启用、注册失败、worker 不健康、权限不足、不支持或状态不可用时，必须显示原因明确的危险退出提示：
 
 ```text
 退出主客户端后，自动备份将不再受后台保障。
@@ -70,9 +74,11 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 提示应提供：
 
-- 启用后台保障并退出。
-- 仅退出本次。
-- 取消。
+- 留在托盘，作为默认和初始焦点操作。
+- 仍然退出，仅对当次生效。
+- 取消退出。
+
+危险退出提示不显示“记住选择”，也不能写入退出偏好。用户需要启用或修复后台保障时，应回到 Settings 的唯一全局开关；退出对话框不重复实现注册控制。
 
 ### 系统未运行
 
@@ -252,6 +258,7 @@ lease_expires_at
 protected
 tray_only
 not_enabled
+starting
 registration_failed
 worker_unhealthy
 permission_required
@@ -263,6 +270,7 @@ unsupported_platform
 - `protected`：后台保护已启用、Scheduled Task read-back 完全匹配，且 worker heartbeat 位于 `[now - 45m, now]`。
 - `tray_only`：主客户端托盘常驻可执行自动备份，但真正退出后不受保护。
 - `not_enabled`：用户未启用后台保障。
+- `starting`：任务已完成注册 read-back，但当前启用周期仍在 5 分钟启动宽限内，尚无有效 worker heartbeat；不能提前声称已保护。
 - `registration_failed`：计划任务或自启动注册失败。
 - `worker_unhealthy`：已注册但最近没有心跳或连续失败。
 - `permission_required`：当前环境需要额外权限或系统设置。
@@ -274,15 +282,14 @@ unsupported_platform
 
 ### 设置页
 
-设置页应提供：
+设置页是后台保障的唯一全局控制入口，应提供：
 
-- 自动备份总开关。
-- 后台保障开关。
+- 后台保障全局开关。
 - 当前保障状态。
-- 上次后台检查时间。
-- 上次成功备份时间。
+- 当前启用时间。
+- 最近 worker heartbeat 时间。
 - 最近失败原因。
-- “立即检查”按钮。
+- “重新检查”按钮。
 
 当用户启用自动备份但未启用后台保障时，应显示明确提示：
 
@@ -292,13 +299,15 @@ unsupported_platform
 
 ### Profile 页
 
-Profile 页应展示与当前 profile 相关的：
+Profile 页只读展示与当前 profile 相关的：
 
 - schedule 摘要。
 - 下一次计划时间。
 - 是否有 pending 备份。
 - 最近一次自动备份结果。
 - 后台保障是否覆盖该 profile。
+
+Profile 页不得启用、停用或重试全局注册；失败状态只导航到 Settings。
 
 ### 悬浮 UI
 
@@ -463,9 +472,11 @@ MVP 平台。推荐：
 
 ### 切片 4b：P7.2b 主客户端状态与提示
 
-- Settings/Profile 的真实后台保障启用开关。
-- 退出主客户端前的“启用并退出”提示。
-- 设置页和 Profile 页展示受支持的后台保障状态。
+- 已实现全局 SQLite 用户意图、启用时间和独立 worker heartbeat。
+- 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
+- 已实现 5 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生。
+- 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
+- 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 和 P7.2c installer cleanup 仍未完成。
 
 ### 切片 5：跨平台扩展
 
@@ -475,7 +486,7 @@ MVP 平台。推荐：
 
 ## 验收标准
 
-正式宣称“自动备份可用”前必须满足：
+正式宣称“Windows 安装态退出后自动备份可用”前必须满足：
 
 - 主窗口关闭后仍会按计划备份。
 - 主客户端退出后，后台保障启用时仍会按计划备份。
@@ -484,3 +495,5 @@ MVP 平台。推荐：
 - 所有自动备份结果都有 manifest、历史记录和 Audit Log。
 - 所有高风险路径都有临时目录或 fake 依赖测试覆盖。
 - 文档、契约、测试说明和日志说明同步更新。
+
+P7.2b 已满足应用级启停、状态 UI、退出保护和自动化门禁，但没有执行真实安装态 Scheduled Task，因此不能仅凭本切片勾选“主客户端退出后仍会按计划备份”。

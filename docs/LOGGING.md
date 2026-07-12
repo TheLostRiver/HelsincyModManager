@@ -233,6 +233,8 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
 - P7.2a 后台平台注册生命周期会写入 category `save_backup`、operation `background_registration` 的最小审计事件。除顶层 result 外，fields 只允许 `registration_status`、`task_schema_version` 和稳定 `error_code`；不得记录 task name、SID、worker path、PowerShell executable/script、task XML、原始 stdout/stderr、CIM exception、Profile/save/backup 路径或用户名。
 - 后台状态查询本身只读且不写重复审计；register/update/unregister 只有在受控 app use case 中才记录结果。ownership conflict、permission、invalid output 和 timeout 只映射稳定 code，不持久化原始平台错误。
+- 用户在 fail-closed 退出提示中明确选择当次仍然退出时，后端写入 category `save_backup`、operation `background_exit_override`、result `success` 的最小审计事件。fields 只允许 `protection_status` 和稳定 `error_code`；`starting` 的 error code 为空字符串，不得为补齐字段而记录原始错误。
+- `background_exit_override` 不记录 Profile/game id、task name、SID、worker id/path、PowerShell/XML、lease、完整本地路径、存档/备份内容或前端文案。override command 会在后端重新计算 guard；若审计不可用，只写脱敏 warning 并允许这次已经明确确认的退出，不能永久困住用户。
 - `export_preview_image_diagnostics` 成功写入受控预览图诊断 zip 后，会在 app data 下的 `logs/audit/audit-YYYY-MM-DD.log` 写入 JSONL 审计事件，日期来自事件时间戳；若诊断 zip 写入失败，也会先写入失败审计事件。
 - 该事件只记录操作名、类别、结果、导出文件名/ID、大小、稳定错误分类和聚合计数，不记录完整本地路径、原始错误文本、`thumbnailUrl`、`contentHash`、sandbox/cache 路径、README 全文、原始 Mod 包内容或原始日志。
 - `hmm-ports` 已提供最小 `TextLogReader` port，`hmm-infra` 可从 app data 下的 `logs/app/app-YYYY-MM-DD.log` 与 `logs/tasks/task-<task_id>.log` 读取最近 N 行已校验文本；读取时会跳过不符合白名单文件名的日志、空行、包含控制字符或敏感片段的行，只返回安全文件名和文本行。该读取能力已通过 `export_support_diagnostics` 的 app service/command 链路受控使用。
