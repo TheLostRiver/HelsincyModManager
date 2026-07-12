@@ -1454,6 +1454,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "uuid",
+ "zip",
 ]
 
 [[package]]
