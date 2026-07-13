@@ -46,11 +46,9 @@
 
 InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md)，后续切片见 [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)。
 
-本 Phase 的安装/卸载代码与聚焦自动化已经达到 `implemented`，但不能仅凭这些条目宣称玩家核心
-闭环完成。当前必须补齐：
+本 Phase 的安装/卸载代码、固定人工 fixture 的 temp-root acceptance 和 disposable Windows Sandbox
+桌面 smoke 已完成，但不能据此宣称 Gate A `certified`。当前仍必须补齐：
 
-- 固定人工 fixture 的 temp-root install/restart/uninstall/baseline acceptance。
-- 实际 Tauri 桌面 smoke 与状态恢复证据。
 - 独立真正重装 use case，安全处理 retained/replaced/added/stale entries。
 - Gate A 本地 review 与 `certified` 状态记录。
 
