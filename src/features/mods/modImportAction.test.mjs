@@ -14,6 +14,9 @@ test("mod import action opens a ZIP picker and starts the controlled task", () =
   assert.match(source, /startImportModTask\(\{\s*archivePath:\s*selected\s*\}\)/);
   assert.match(source, /event\.payload\.kind\s*!==\s*"mod_import"/);
   assert.match(source, /event\.payload\.taskId\s*!==\s*taskId/);
+  assert.match(source, /setListenerAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
+  assert.match(source, /listenerStatus\s*===\s*"failed"[\s\S]*retryTaskProgressListener\(\)/);
+  assert.match(source, /isImportTaskTerminal\(next\)[\s\S]*taskIdRef\.current\s*=\s*null/);
   assert.doesNotMatch(source, /convertFileSrc|readFile|writeFile|removeFile|asset:|thumbnail:/);
   assert.doesNotMatch(source, /event\.payload\.(message|error)/);
 });

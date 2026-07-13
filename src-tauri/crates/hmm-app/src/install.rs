@@ -336,6 +336,7 @@ impl InstallCommitService {
                     let error = self.fail_or_rollback_with_pending_backup(
                         &prepared_changes[..index],
                         change.pending_backup_ref.as_deref(),
+                        &mut recovery_records,
                         InstallCommitPhase::Manifest,
                     );
                     self.remove_pending_backups(&prepared_changes[index + 1..]);
@@ -349,8 +350,11 @@ impl InstallCommitService {
                 .write_game_file(&change.target_path, &change.source_bytes)
                 .is_err()
             {
-                let error =
-                    self.fail_or_rollback(&prepared_changes[..=index], InstallCommitPhase::Write);
+                let error = self.fail_or_rollback(
+                    &prepared_changes[..=index],
+                    &mut recovery_records,
+                    InstallCommitPhase::Write,
+                );
                 self.remove_pending_backups(&prepared_changes[index + 1..]);
                 Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
                 return Err(error);
@@ -368,7 +372,11 @@ impl InstallCommitService {
         );
 
         if self.manifest_repository.save_manifest(&manifest).is_err() {
-            let error = self.fail_or_rollback(&prepared_changes, InstallCommitPhase::Manifest);
+            let error = self.fail_or_rollback(
+                &prepared_changes,
+                &mut recovery_records,
+                InstallCommitPhase::Manifest,
+            );
             Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
             return Err(error);
         }
@@ -445,15 +453,22 @@ impl InstallCommitService {
     fn fail_or_rollback(
         &self,
         applied_changes: &[AppliedInstallChange],
+        recovery_records: &mut Option<ActiveInstallRecoveryRecords>,
         failed_phase: InstallCommitPhase,
     ) -> InstallCommitError {
-        self.fail_or_rollback_with_pending_backup(applied_changes, None, failed_phase)
+        self.fail_or_rollback_with_pending_backup(
+            applied_changes,
+            None,
+            recovery_records,
+            failed_phase,
+        )
     }
 
     fn fail_or_rollback_with_pending_backup(
         &self,
         applied_changes: &[AppliedInstallChange],
         pending_backup_ref: Option<&str>,
+        recovery_records: &mut Option<ActiveInstallRecoveryRecords>,
         failed_phase: InstallCommitPhase,
     ) -> InstallCommitError {
         if applied_changes.is_empty() && pending_backup_ref.is_none() {
@@ -462,7 +477,7 @@ impl InstallCommitService {
             };
         }
 
-        let rollback_result = self.rollback(applied_changes);
+        let rollback_result = self.rollback(applied_changes, recovery_records);
         if let Some(backup_ref) = pending_backup_ref {
             let _ = self.backup_store.remove_backup(backup_ref);
         }
@@ -474,7 +489,11 @@ impl InstallCommitService {
         }
     }
 
-    fn rollback(&self, applied_changes: &[AppliedInstallChange]) -> anyhow::Result<()> {
+    fn rollback(
+        &self,
+        applied_changes: &[AppliedInstallChange],
+        recovery_records: &mut Option<ActiveInstallRecoveryRecords>,
+    ) -> anyhow::Result<()> {
         let mut rollback_error = None;
 
         for change in applied_changes.iter().rev() {
@@ -487,8 +506,19 @@ impl InstallCommitService {
 
             match restore_result {
                 Ok(()) => {
-                    if let Some(backup_ref) = &change.pending_backup_ref {
-                        let _ = self.backup_store.remove_backup(backup_ref);
+                    let recovery_result = match recovery_records.as_mut() {
+                        Some(records) => records.remove_rolled_back_entry(change),
+                        None => Ok(()),
+                    };
+                    match recovery_result {
+                        Ok(()) => {
+                            if let Some(backup_ref) = &change.pending_backup_ref {
+                                let _ = self.backup_store.remove_backup(backup_ref);
+                            }
+                        }
+                        Err(error) => {
+                            rollback_error.get_or_insert(error);
+                        }
                     }
                 }
                 Err(error) => {
@@ -578,6 +608,30 @@ impl ActiveInstallRecoveryRecords {
             record_entry.backup_ref = entry.backup_ref.clone();
             record_entry.installed_file = entry.installed_file.clone();
         }
+    }
+
+    fn remove_rolled_back_entry(&mut self, change: &AppliedInstallChange) -> anyhow::Result<()> {
+        let Some(record) = self.records.get(&change.entry.mod_id) else {
+            return Ok(());
+        };
+        let mut updated = record.clone();
+        let Some(index) = updated.entries.iter().position(|entry| {
+            entry.target_path == change.entry.target_path
+                && entry.package_file_id == change.entry.package_file_id
+        }) else {
+            return Ok(());
+        };
+        updated.entries.remove(index);
+
+        if updated.entries.is_empty() {
+            self.repository
+                .remove_record(&updated.profile_id, &updated.mod_id)?;
+            self.records.remove(&updated.mod_id);
+        } else {
+            self.repository.save_record(&updated)?;
+            self.records.insert(updated.mod_id.clone(), updated);
+        }
+        Ok(())
     }
 
     fn mark_completed_best_effort(&mut self) {
