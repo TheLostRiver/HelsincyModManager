@@ -908,6 +908,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             installTaskActive={installTaskActive}
             canInstallSelection={canInstallSelected}
             canUninstallSelection={canUninstallSelected}
+            onImportCompleted={refreshModLibrary}
             onAction={handleAction}
           />
         </div>
