@@ -66,8 +66,11 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 
 如果 Helsincy Mod Manager 对你有帮助，欢迎通过以下方式支持项目的持续开发与维护。支持完全自愿，不影响项目功能、更新或开源协作。
 
-- [爱发电：Helsincy](https://afdian.com/a/Helsincy)
-- 微信赞赏码：
+### [通过爱发电支持 Helsincy](https://afdian.com/a/Helsincy)
+
+### [通过 Ko-fi 支持 Helsincy](https://ko-fi.com/helsincy)
+
+### 微信赞赏码
 
 <img src="docs/assets/support/wechat-reward-code.jpg" alt="微信赞赏码" width="320">
 
