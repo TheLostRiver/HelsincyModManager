@@ -1,10 +1,10 @@
 # Core Mod Lifecycle CL0 验收基线
 
 - 日期：2026-07-12
-- 状态：CL0、CL1 已完成；Gate A 尚未认证
+- 状态：CL0、CL1、CL2 已完成；Gate A 尚未认证
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - CL1 实施记录：[安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
-- 下一切片：CL2 disposable desktop smoke（见本文第 7 节）
+- 下一切片：CL3 真正重装 contract 与实现
 
 ## 1. 目的与边界
 
@@ -38,10 +38,10 @@ CL0 不执行 install/uninstall game writes，不实现 package revision 更新�
 | Mod 导入 | synthetic zip -> real importer -> sandbox -> JSON analysis | 可用；`mod_id == package_id == import task_id` |
 | 安装计划 | persisted analysis + sandbox scanner + MHW adapter -> `InstallPlan` | 可用；只消费 `nativePC` 下普通相对文件 |
 | 重启事实恢复 | drop/recreate AppState | game config、import library 和 plan 可恢复；TaskManager 状态按设计不持久化 |
-| 安装/卸载服务 | app/infra/Tauri/UI 与聚焦测试已存在 | `implemented`，但缺 AppState filesystem lifecycle acceptance |
+| 安装/卸载服务 | L2 AppState composition 与 L3 disposable desktop smoke 已通过 | CL1/CL2 已完成；Gate A 仍等待 CL3/CL4 |
 | 真正重装 | UI `reinstall` 复用普通 install；manifest merge 保留未触达旧 entry | 未实现，归 CL3 |
 | package revision | 每次 import 生成新 task/package/mod id | 未实现“同一稳定 Mod 身份绑定新 package revision”，归 CL3 |
-| 桌面隔离 | GUI 只使用 Tauri OS AppData | 无 test AppData override；CL2 只能在 disposable account/VM 执行 |
+| 桌面隔离 | Windows Sandbox + 人工 TEMP game/archive + disposable AppData | CL2 已执行并清理；日常账户/真实游戏仍不在验收范围 |
 
 ## 3. 固定 Fixture Contract
 
@@ -109,7 +109,7 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL1-F3 | game write / manifest save / rollback failure | 已有聚焦证据 | CL1 复用并建立证据映射 |
 | CL1-S1 | drift、missing summary、missing backup fail closed | 已有聚焦证据 | CL1 复用并建立证据映射 |
 | CL1-A1 | install/uninstall success Audit Log 与公开证据脱敏 | 通过 | 同一 L2 composition；只含 task/game/mod/profile 与动作/删除/恢复计数 |
-| CL2-D1 | 文件选择器 -> import -> preview -> install -> restart -> uninstall | 未执行 | CL2 disposable desktop smoke |
+| CL2-D1 | 文件选择器 -> import -> preview -> install -> restart -> uninstall | 通过 | Windows Sandbox 实际 Tauri smoke；4 actions / 0 blocking conflicts / baseline restored |
 | CL3-R1 | v1 -> v2 真正重装与最终卸载回基线 | 阻断 | 稳定 Mod/package revision + ReinstallPlan 尚未实现 |
 
 聚焦执行入口：
@@ -169,7 +169,8 @@ TaskManager 持久化，也不得用 Task Log 代替 manifest。
 - smoke 前完整验证通过；本地应用可用 `cmd /c corepack pnpm tauri dev` 启动。
 - 任何步骤出现非临时路径、无法确认 AppData 所属账户、异常后台任务或无法清理状态，立即停止。
 
-CL0 只定义步骤，本轮没有执行桌面 smoke。
+CL2 已于 2026-07-13 在 Windows Sandbox 中执行；使用人工 TEMP game/archive 和 disposable AppData，
+未接触真实 MHW:I、真实 Mod、Steam userdata 或玩家存档。
 
 ### 7.2 创建人工输入
 
@@ -225,6 +226,16 @@ Remove-Item -LiteralPath $resolvedSmokeRoot -Recurse -Force
 
 AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工递归删除日常账户 AppData。
 
+### 7.5 执行结果（2026-07-13）
+
+- 实际 Tauri 应用通过系统文件选择器导入四文件 v1 人工 ZIP；计划预览为 4 actions、0 blocking conflicts。
+- CL2 首轮暴露两个阻断：前端缺少 archive picker/import task 入口；Windows mapped-folder rename 已生效后父目录 sync 报错时，app rollback 遗漏当前 change 并过早删除 pending backup。
+- 最小修复后安装完成；重启从 manifest/recovery 恢复 installed，卸载删除 3 个新增文件并恢复 1 个覆盖文件，再次重启为 not installed 且无 rollback/repair/unknown 状态。
+- 主机在安装态和卸载态分别校验人工文件长度/hash；最终 game root 与安装前两文件 baseline 逐字节一致。
+- 支持诊断包只包含四个固定 JSON 条目；App/Task 日志为 0 行，两条 install Audit 仅含短 id 和动作/删除/恢复计数，敏感路径模式命中 0。
+- 应用和 Sandbox 退出后，旧失败现场与新通过现场的唯一 TEMP roots 均在 containment 校验后删除；Sandbox AppData 随 VM 销毁。
+- 本次没有执行真实游戏 smoke，也没有把现有“安装 / 重装”按钮当作 v1 -> v2 证明；真正重装仍归 CL3。
+
 ## 8. CL0 完成定义
 
 - [x] v1/v2 fixture contract 固定并由 test 锁定分类。
@@ -235,7 +246,7 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - [x] CL1 install/uninstall acceptance 通过。
 - [x] CL1 source read / backup store fault tests 通过。
 - [x] CL1 manifest/recovery/Audit Log/task phase 与脱敏证据通过。
-- [ ] CL2 桌面 smoke 实际执行。
+- [x] CL2 桌面 smoke 实际执行。
 - [ ] CL3 真正重装实现并通过。
 
-CL2 桌面 smoke 和 CL3 真正重装仍未完成，Gate A 必须保持未认证。
+CL2 桌面 smoke 已完成；CL3 真正重装和 CL4 最终复审仍未完成，Gate A 必须保持未认证。
