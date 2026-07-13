@@ -568,8 +568,11 @@ impl AppState {
 }
 
 #[cfg(test)]
+type StateStartupObserver = Box<dyn Fn(AppStateStartup)>;
+
+#[cfg(test)]
 thread_local! {
-    static STATE_STARTUP_OBSERVER: RefCell<Option<Box<dyn Fn(AppStateStartup)>>> = const { RefCell::new(None) };
+    static STATE_STARTUP_OBSERVER: RefCell<Option<StateStartupObserver>> = const { RefCell::new(None) };
 }
 
 fn run_state_startup(startup: AppStateStartup, state: &AppState) {
