@@ -263,12 +263,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - fixture preview 返回 retained=1、replaced=2、added=1、stale=1。
 - preview 只读：game write/remove、manifest save、recovery save、backup store 全为 0。
-- candidate missing/unready/owner mismatch/already installed 返回稳定 blocking reason。
+- candidate missing/unready/owner mismatch/already installed 返回稳定 blocking reason；
+  `candidate_not_found` 的 public preview 返回 null candidate/token。
 - unsafe manifest status、legacy revision 无法唯一解析、mixed set 阻断。
 - source read、target missing/changed/read error、backup missing/read error 阻断。
 - candidate plan blocking conflict、其他 Mod provider/target ownership 阻断。
 - token 对 manifest entry set、candidate revision/source summary、layer 变化敏感。
-- public preview 只含短 revision id、四类计数、reason code、token，不含 path/ref/hash/content。
+- public preview 只含短 revision id、四类计数、reason code、token，不含 path/ref/hash/content；ready 必须
+  同时有 installed/candidate revision 与 token，blocked 不生成 token。
 
 ```powershell
 cargo test -p hmm-app reinstall::tests::preview -- --nocapture
@@ -331,6 +333,7 @@ cargo clippy -p hmm-app --all-targets -- -D warnings
 | manifest error but candidate visible | 原子恢复 old manifest snapshot，再 rollback v1；恢复失败进入 repair_required，绝不完成 |
 | rollback one target fails | 只保留未恢复 target 与所需 snapshot，状态 rollback_required |
 | recovery update fails during rollback | snapshot 不被提前删除，状态 repair_required |
+| transaction completed save after successful manifest save | v2 manifest 保持权威，不 rollback；transaction/snapshot 保持 committing，task 返回 `install_reinstall_failed:post_commit` 与 committed_cleanup_pending |
 | post-commit cleanup fails | v2 manifest 仍 completed；保留可清理 orphan，不回滚已提交 v2 |
 
 同时覆盖 lock-time revalidation：preview 后 manifest/source/target/backup/ownership 任一变化，第一次 game
@@ -346,8 +349,9 @@ cargo test -p hmm-app reinstall::tests::fault -- --nocapture
 严格实现设计文档第 10 节顺序。不要复用当前 `merge_install_manifest` 的按 target 删除语义；调用
 Task 1 的 `replace_entries_for_mod`。commit 内只消费锁外 prepared source bytes，并做短时 revalidation。
 
-同步错误 rollback 到 pre-reinstall；崩溃/未知状态留 durable transaction。任何 failure path 都要先
-收敛 recovery facts，再清理 snapshot。
+同步错误 rollback 到 pre-reinstall；崩溃/未知状态留 durable transaction。任何 pre-commit failure
+path 都要先收敛 recovery facts，再清理 snapshot。manifest 成功返回后已越过 commit point；此后的
+completed bookkeeping failure 只能进入 post_commit reconciliation，不能复用普通 rollback。
 
 ### 验收
 
@@ -376,13 +380,18 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - start 创建 `TaskKind::Install` queued task，不泄漏 request。
 - events 使用完整 `install.reinstall.*` phase 集并始终携带同一 taskId。
-- failure error 为 `install_reinstall_failed:<phase>`，message 不参与分支。
+- failure error 为 `install_reinstall_failed:<phase>`，包含独立 `post_commit` phase，message 不参与分支。
 - prepare 可与另一个 game/profile commit 并行，且不持有 write lock。
 - 同一 game/profile 的 install、uninstall、reinstall、controlled recovery 两两串行。
 - queued/prepare cancellation 不产生 game write；committing 后 cancellation 不截断 commit/rollback。
 - crash transaction 被 recovery scan 映射为 rollback_required/repair_required；manifest candidate 已固化时
-  可收敛 completed。
+  映射为 committed_cleanup_pending，并由受控 reconciliation 持久化 completed 后 cleanup。
+- 注入 completed bookkeeping 持久化失败时，task 返回 `install_reinstall_failed:post_commit`，v2
+  manifest/target 不回滚、snapshot 不提前清理；Audit 顶层 result 为 failure，稳定 rollback result 为
+  not_attempted_post_commit。
 - manifest/recovery unsafe 状态阻断新的 install/uninstall/reinstall。
+- committed_cleanup_pending/cleanup_pending 是 scan 派生分类而非 transaction status，并在受控
+  reconciliation 完成前阻断同 game/profile 的新写入。
 - `reinstall_mod` Audit 只含白名单 id/count/result/error/rollback fields。
 
 并发测试使用 channels/barriers，不靠长 `sleep` 判断锁顺序。
@@ -399,6 +408,8 @@ cargo test -p hmm-app install_recovery
 - phases、failure mapping、Audit helper 保持独立 module，避免继续膨胀 `install_task.rs`。
 - 进入 committing 后设置明确 cancellation barrier；最终 task 状态以 commit/rollback 结果为准。
 - recovery scan 只读；任何写入型收敛/rollback 继续走受控 action 与同一写锁。
+- post_commit reconciliation 重新验证 candidate manifest/target summaries；无法证明时进入
+  repair_required，不自动回滚已越过 commit point 的 v2。
 
 ### 验收
 
@@ -433,9 +444,12 @@ DTO serialization tests 锁定：
 
 - `PreviewReinstallPlanRequestDto` / `StartReinstallTaskRequestDto` 为 camelCase。
 - revision/preview/count/reason DTO 不含 path、backup ref、hash、manifest/source content。
+- preview DTO 按 `status` 序列化为 discriminated union：ready 的 installed/candidate/token 均非空且
+  reasons 为空；blocked 的 token 为 null，revision 可空，`candidate_not_found` 的 candidate 为 null。
 - start response 为 `{ taskId, kind: "install", status: "queued" }`。
 - queued event 为 `install.reinstall.queued`；runner events 保持 task identity。
 - invalid IDs、preview unavailable、start unavailable 使用稳定 code 和 sanitized message。
+- task error serialization 覆盖 `install_reinstall_failed:post_commit`，且不把它映射为 rolled_back。
 
 Command tests 锁定：
 
@@ -458,6 +472,7 @@ cargo test -p hmm-tauri install_commands
 - command names、request/result DTO；
 - `install.reinstall.*` phase table；
 - stable error/blocking reason；
+- committed_cleanup_pending/cleanup_pending 派生状态与 `post_commit` error/Audit 映射；
 - archive path 仅属于受控 revision import，reinstall command 不接受任何 path；
 - installed/display/candidate revision 的权威来源说明。
 
@@ -501,12 +516,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps
 - revision import 调 `start_import_mod_revision_task` 并传已有 `modId`。
 - reinstall wrapper 只传 ids/layer/token，不传 target/delete/path/ref/manifest。
 - `ready` preview 显示 retained/replaced/added/stale 四类聚合计数。
-- blocked preview 按稳定 reason code 映射状态，不用 message 分支。
+- blocked preview 按稳定 reason code 映射状态，不用 message 分支；`candidate_not_found` 可安全渲染 null
+  candidate。
+- frontend 先按 `status` narrowing；只有 ready branch 可读取 candidate/token 并启用确认，禁止对 blocked
+  branch 使用非空断言。
 - 只有 installed + candidate ready 才可 preview/confirm。
 - rollback_required/repair_required/unknown/unavailable/preview stale 全部禁用确认。
 - reinstall 不再调用普通 `startInstallTask`。
 - listener 只匹配返回 taskId 与 `install.reinstall.*`。
 - completed/failed/cancelled 都重新获取 revisions 与 manifest/recovery status。
+- post_commit failure refetch 后显示 candidate 已提交但 cleanup pending，保持写入动作禁用，且不提供
+  rollback v1 快捷动作。
 
 ```powershell
 cmd /c corepack pnpm run test

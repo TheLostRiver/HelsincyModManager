@@ -265,8 +265,8 @@ prepare outside lock
   -> atomically mark transaction committing
   -> apply retained/replaced/added/stale in deterministic target order
   -> build candidate manifest by replacing only this Mod entry set
-  -> atomically save manifest once
-  -> mark transaction completed
+  -> atomically save manifest once (commit point)
+  -> persist transaction completed (post-commit bookkeeping)
   -> cleanup non-promoted transaction snapshots and unreferenced stale original backups
   -> remove completed transaction best-effort
   -> complete task
@@ -278,6 +278,20 @@ replaced/stale，v1 transaction snapshot 永远不能覆盖原有 original backu
 cleanup 是 commit 后的非破坏性收敛：失败可以保留受控 orphan backup/完成记录等待后续维护，但不能
 把已经固化的 v2 报成 rollback_required。任何 original backup 只有在 manifest 已不再引用且对应
 target 已成功恢复后才能删除。
+
+`save_manifest` 成功返回是唯一 commit point。其后的 completed 状态持久化属于 post-commit
+bookkeeping；若该持久化返回错误：
+
+1. v2 manifest 继续作为权威事实，绝不能进入普通 rollback 或报告 `rolled_back`；
+2. 保留最后一个 durable `committing` transaction 和全部待清理 snapshot，不提前 cleanup；
+3. task 以稳定错误 `install_reinstall_failed:post_commit` 结束，公开恢复分类为
+   `committed_cleanup_pending`，不能伪报 task completed；
+4. 后续受控 reconciliation 在同一 game/profile 写锁下重新验证 candidate manifest 与 target 摘要，
+   再持久化 completed bookkeeping 并执行 cleanup；若现场已无法证明 candidate-state，则进入
+   `repair_required`，但仍不得自动回滚已经越过 commit point 的 v2。
+
+completed 已持久化后的纯 cleanup failure 可以保留 completed transaction/orphan backup 并让后续维护
+继续清理；它与上述 `post_commit` bookkeeping failure 是两个独立 fault point。
 
 ### 10.3 同步失败
 
@@ -298,7 +312,8 @@ manifest save 返回错误时不能假设 rename 未发生。实现必须重新�
 
 只要 `save_manifest` 向本次 runner 返回错误，该 task 就不能把 candidate 当作成功提交。与之不同，
 进程在成功 save 后、mark-completed 前崩溃时没有“save 返回错误”事实；该现场由重启 reconciliation
-按完整 candidate manifest + target summaries 单独判断。
+按完整 candidate manifest + target summaries 单独判断。若 save 已成功返回、但 mark-completed 向当前
+runner 返回错误，则按 10.2 的 `post_commit` 规则结束当前 task，再由同一 reconciliation 收敛。
 
 聚焦 fault tests 必须证明“可控制的 manifest save failure”最终恢复 v1 bytes 与旧 manifest。无法保证
 存储结果的真实异常必须被持久化为受控恢复状态，而不是伪造成功。
@@ -311,9 +326,13 @@ manifest save 返回错误时不能假设 rename 未发生。实现必须重新�
 | --- | --- |
 | planned，全部 target 仍是 pre-state | 无 game mutation；可安全清理 transaction snapshots |
 | committing，manifest 仍是旧 set，target 为 pre/candidate 混合 | 提供受控 rollback 到 v1 |
-| committing，manifest 已是完整 candidate set，全部 target 为 candidate-state | 判定为 committed-cleanup-pending；后续受控 reconciliation 收敛 |
-| completed，manifest/target 为 candidate-state | 判定为 cleanup-pending；后续受控 reconciliation 清理 |
+| committing，manifest 已是完整 candidate set，全部 target 为 candidate-state | 判定为 `committed_cleanup_pending`；后续受控 reconciliation 收敛 |
+| completed，manifest/target 为 candidate-state | 判定为 `cleanup_pending`；后续受控 reconciliation 清理 |
 | 任一 target、backup 或 manifest 无法判断 | repair_required；所有 install/uninstall/reinstall 阻断 |
+
+`committed_cleanup_pending` 与 `cleanup_pending` 是 recovery scan 的派生分类，不是新增的 durable
+transaction status；底层 transaction 分别仍为 `committing` 与 `completed`。两者在 reconciliation 完成
+前都阻断同一 game/profile 的新 install、uninstall 或 reinstall，避免新的写入与旧 snapshot cleanup 竞态。
 
 恢复动作与 reconciliation 仍使用同一个写锁 registry。扫描只读，只报告稳定分类，不直接改游戏
 文件、manifest、transaction 或 backup；任何写入型恢复必须走受控 app use case，涉及游戏目录时还要
@@ -351,8 +370,9 @@ layered reinstall 必须另行设计，CL3 只返回 `cross_mod_target_conflict`
 | `install.reinstall.cancelled` | 仅在 queued/prepare 安全点取消 |
 
 失败 event 的 `error` 使用 `install_reinstall_failed:<phase>`，phase 至少覆盖 `planning`、`preflight`、
-`lock`、`backup`、`commit`、`manifest`、`rollback` 和 `complete`。event 始终携带 task id，前端不能按
-“当前唯一任务”匹配。
+`lock`、`backup`、`commit`、`manifest`、`post_commit`、`rollback` 和 `complete`。event 始终携带
+task id，前端不能按“当前唯一任务”匹配。`post_commit` 明确表示 candidate manifest 已越过 commit
+point、但 completed bookkeeping 尚待 reconciliation；它绝不等价于 `rolled_back`。
 
 一旦 durable transaction 进入 committing，cancellation 变为 deferred/rejected：runner 必须完成
 commit 或 rollback，再落最终 task 状态。不能因 UI 已显示 cancelled 而留下已提交 manifest。
@@ -398,15 +418,29 @@ type ReinstallTargetCountsDto = {
   stale: number;
 };
 
-type ReinstallPlanPreviewDto = {
-  status: "ready" | "blocked";
-  planToken: string | null;
-  installedRevision: ModRevisionSummaryDto | null;
-  candidateRevision: ModRevisionSummaryDto;
-  counts: ReinstallTargetCountsDto;
-  blockingReasons: Array<{ code: string; count: number }>;
-};
+type ReinstallPlanPreviewDto =
+  | {
+      status: "ready";
+      planToken: string;
+      installedRevision: ModRevisionSummaryDto;
+      candidateRevision: ModRevisionSummaryDto;
+      counts: ReinstallTargetCountsDto;
+      blockingReasons: [];
+    }
+  | {
+      status: "blocked";
+      planToken: null;
+      installedRevision: ModRevisionSummaryDto | null;
+      candidateRevision: ModRevisionSummaryDto | null;
+      counts: ReinstallTargetCountsDto;
+      blockingReasons: Array<{ code: string; count: number }>;
+    };
 ```
+
+`status` 是 DTO 的判别字段：`ready` 必须同时提供非空 candidate、installed revision 与 token，且没有
+blocking reason；`blocked` 不生成 token，并允许缺失尚未解析出的 revision。特别是
+`candidate_not_found` 必须返回 `candidateRevision: null`，不能伪造 revision summary。前端必须先按
+`status` narrowing，再读取 candidate 或提交 token。
 
 窄 command 集合：
 
@@ -443,12 +477,14 @@ command error 负责“用例不可用/输入无效”，blocking reason 负责�
 1. Mod 库仍以 logical `modId` 展示一张卡，分别展示 installed revision 与可用 revision 摘要。
 2. 用户通过“导入新版本”把 archive 附加到当前 Mod，不能靠展示名自动合并。
 3. 只有 manifest/recovery 摘要为 `installed` 且 candidate 为 ready 时启用重装 preview。
-4. `rollback_required`、`repair_required`、`unknown`、candidate unavailable 一律禁用确认。
+4. `committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required`、`unknown`、
+   candidate unavailable 一律禁用确认。
 5. preview 使用独立 `ReinstallPlanPreviewPanel` 或明确 discriminated state，展示四类聚合计数与阻断。
 6. 确认时提交同一 candidate id 与 `planToken`；后端仍重新 prepare/revalidate。
 7. task listener 按返回的 `taskId` 匹配 `install.reinstall.*`，不复用“普通 install 即重装”的分支。
 8. completed 后重新查询 Mod revisions、manifest/recovery 状态和动作可用性；不从 task 内存推断 v2。
-9. failed/cancelled 后同样 refetch；如果后端返回 rollback/repair 状态，进入现有恢复中心入口。
+9. failed/cancelled 后同样 refetch；如果后端返回 rollback/repair/cleanup-pending 状态，进入受控恢复或
+   reconciliation 入口。`post_commit` 必须展示“candidate 已提交、等待收敛”，不能提供回滚到 v1 的快捷动作。
 
 现有 `CompactActionPanel` 的 reinstall 分支、`modInstallTaskState.ts` 的 `install | uninstall` union 和普通
 `InstallPlanPreviewPanel` 都需要在 Task 8 中校正，但不进行无关页面重构、主题或分页工作。
@@ -464,6 +500,9 @@ Audit `operation` 固定为 `reinstall_mod`。允许字段白名单：
 
 禁止 target 列表、完整 path、用户名、Steam ID、backup ref/root、manifest/source 正文、raw hash、
 sandbox/cache path 和第三方 Mod 内容。Task Log 同样只记录 task id、phase、结果和稳定错误分类。
+completed bookkeeping 失败时 Audit 使用顶层 `result: "failure"`，fields 使用稳定
+`error_code: "install_reinstall_failed:post_commit"` 与 `rollback_result: "not_attempted_post_commit"`；不能
+记录 `rolled_back` 或泄漏 transaction/snapshot ref。
 
 ## 17. 验收矩阵
 
@@ -474,12 +513,12 @@ sandbox/cache path 和第三方 Mod 内容。Task Log 同样只记录 task id、
 | Core classifier | 四类完整且互斥；provider/layer 改变不误判 retained；跨 Mod ownership 阻断 |
 | Catalog v1 -> v2 | 一张 logical Mod 卡、一个 migrated revision；追加 v2 不覆盖 v1；migration failure 保留 v1 |
 | Manifest compatibility | legacy v1 可唯一解析；mixed/unknown revision 阻断；candidate entries 全带 revision id |
-| Preview/preflight | read-only；四类计数正确；source/target/backup/manifest 任一失败时零 game write |
+| Preview/preflight | read-only；四类计数正确；`candidate_not_found` 返回 null candidate/token；ready 必有 candidate/token；source/target/backup/manifest 任一失败时零 game write |
 | Backup ownership | replaced 保留 original backup；transaction snapshot 成功后清理；added backup 可晋升 |
-| Commit/rollback | 每个 write/remove/manifest failure 回到 v1；部分 rollback 只保留未恢复 facts |
+| Commit/rollback | 每个 pre-commit write/remove/manifest failure 回到 v1；部分 rollback 只保留未恢复 facts；completed bookkeeping failure 保留 v2 并进入 post_commit reconciliation |
 | Entry-set replacement | 只替换指定 Mod；stale 消失；其他 Mod facts 不变；冲突 fail closed |
-| Task/lock | taskId/phases/error 稳定；prepare 在锁外；四种写入用例共享 registry；commit 不被取消中断 |
-| DTO/Audit/frontend | camelCase/snake_case shape 稳定；无 path/ref/content；完成后 refetch |
+| Task/lock | taskId/phases/error 稳定；prepare 在锁外；四种写入用例共享 registry；commit 不被取消中断；post_commit 收敛仍使用同一锁 |
+| DTO/Audit/frontend | status union 与 camelCase/snake_case shape 稳定；无 path/ref/content；post_commit 使用 failure/error/rollback 白名单并在最终状态后 refetch |
 
 ### L2 AppState composition
 
