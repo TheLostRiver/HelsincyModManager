@@ -671,6 +671,7 @@ mod tests {
             vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some(backup_ref.clone()),
@@ -886,6 +887,7 @@ mod tests {
             vec![InstallManifestEntry {
                 target_path: target.clone(),
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/old.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -897,6 +899,7 @@ mod tests {
             vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/new.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -952,6 +955,7 @@ mod tests {
                 target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                     .expect("target"),
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-player".to_owned()),

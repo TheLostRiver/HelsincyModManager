@@ -198,6 +198,7 @@ mod tests {
         InstallManifestEntry {
             target_path: InstallTargetPath::parse(target_path, ["nativePC"]).expect("target path"),
             mod_id: ModId::new(mod_id),
+            revision_id: None,
             package_file_id: PackageFileId::new(target_path),
             layer: FileLayer::new("base", 0),
             backup_ref: backup_ref.map(str::to_owned),
