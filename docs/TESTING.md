@@ -243,6 +243,22 @@ CL0/CL1 的 fixture、证据矩阵、缺口和桌面 smoke 见
 disposable account/VM 执行，不得使用维护者日常 AppData 或真实游戏目录；CL3 才验证 v1 -> v2
 真正重装。CL1 自动化通过不代表 Gate A `certified`。
 
+CL3 的计划测试矩阵见
+[真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
+[逐任务实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
+这些是未来实现门禁，不表示当前命令已存在或 CL3 已通过。实现完成前至少要补齐：
+
+- `hmm-core` 四类 target 分类、provider/layer 变化和按 Mod entry-set replacement。
+- `hmm-infra` catalog v1 -> v2 migration、manifest revision 与 recovery transaction 原子持久化。
+- `hmm-app` preview/preflight 零写入、commit/rollback fault matrix、共享写锁和 cancellation barrier。
+- `hmm-tauri` revision/reinstall DTO、taskId/phase/error serialization 与 AppState composition。
+- 前端 candidate revision、四类聚合 preview、确认/taskId 匹配和完成后持久化状态 refetch。
+- L2 `v1 -> v2 -> restart -> uninstall -> baseline` 与一次 manifest failure -> v1 recovery。
+- L3 Windows Sandbox 人工 fixture、disposable AppData、诊断脱敏和 containment cleanup。
+
+CL3 自动化与桌面证据全部通过后仍只能进入 CL4 复审；不得在 CL3 实现 PR 中提前把 Gate A 标为
+`certified`。
+
 ## 存档备份
 
 适用范围：

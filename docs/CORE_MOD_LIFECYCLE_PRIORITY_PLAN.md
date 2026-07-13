@@ -129,6 +129,11 @@ backup store failure 在任何 target mutation 前停止，并复用既有 write
 
 ### CL3：真正重装
 
+**规划状态（2026-07-14）：** 正式 contract/spec 与逐任务实施计划已固定，见
+[CL3 真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 和
+[CL3 真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
+当前仍是 `planned`：尚未落地 Rust/Tauri/frontend/migration，也未执行 v1 -> v2 验收。
+
 当前 `reinstall` 只是普通 install 的 UI 别名，必须新增独立 backend use case/task。真正重装的
 事实来源为“旧 manifest + 新 InstallPlan + 当前目标摘要 + backup”，不能根据展示名或当前包
 内容直接覆盖。
@@ -264,6 +269,11 @@ CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
 [CL0/CL1/CL2 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装仍归 CL3；Gate A 只有
 CL3 和 CL4 继续完成后才能标记 `certified`。
+
+CL3 已固定的实施入口见
+[真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
+[真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
+规划文档完成不改变 `planned` 状态；下一次实现必须从计划 Task 0/Task 1 开始，不得提前进入 CL4。
 
 ## 11. 优先级重排提交边界（历史）
 

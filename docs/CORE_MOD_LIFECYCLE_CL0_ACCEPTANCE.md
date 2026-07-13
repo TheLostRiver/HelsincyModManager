@@ -4,6 +4,8 @@
 - 状态：CL0、CL1、CL2 已完成；Gate A 尚未认证
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - CL1 实施记录：[安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
+- CL3 设计：[真正重装 contract/spec](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)
+- CL3 实施入口：[真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)
 - 下一切片：CL3 真正重装 contract 与实现
 
 ## 1. 目的与边界
@@ -110,13 +112,23 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL1-S1 | drift、missing summary、missing backup fail closed | 已有聚焦证据 | CL1 复用并建立证据映射 |
 | CL1-A1 | install/uninstall success Audit Log 与公开证据脱敏 | 通过 | 同一 L2 composition；只含 task/game/mod/profile 与动作/删除/恢复计数 |
 | CL2-D1 | 文件选择器 -> import -> preview -> install -> restart -> uninstall | 通过 | Windows Sandbox 实际 Tauri smoke；4 actions / 0 blocking conflicts / baseline restored |
-| CL3-R1 | v1 -> v2 真正重装与最终卸载回基线 | 阻断 | 稳定 Mod/package revision + ReinstallPlan 尚未实现 |
+| CL3-I1 | schema v1 导入记录迁移为稳定 logical Mod + revision catalog | 阻断 | CL3 Task 2；规划见真正重装 spec/plan |
+| CL3-P1 | 四类 ReinstallPlan、全量 preflight 与零写入阻断 | 阻断 | CL3 Task 1/4；预期 1 retained / 2 replaced / 1 added / 1 stale |
+| CL3-R1 | v1 -> v2 -> restart -> uninstall -> baseline | 阻断 | CL3 Task 5/9；必须保留 original backup 并移除 old/stale entries |
+| CL3-F1 | source/backup/write/delete/manifest/rollback failure 回到 v1 | 阻断 | CL3 Task 3/5；部分恢复只保留未恢复 durable facts |
+| CL3-T1 | shared lock、task phase/cancellation barrier 与 Audit 脱敏 | 阻断 | CL3 Task 6/7；install/uninstall/reinstall/recovery 同锁 |
+| CL3-D1 | Windows Sandbox revision import -> reinstall -> restart -> uninstall | 阻断 | CL3 Task 10；只用人工 TEMP fixture 与 disposable AppData |
 
 聚焦执行入口：
 
 ```powershell
 cargo test -p hmm-tauri state::core_mod_lifecycle_tests
 ```
+
+CL3 各行仍是预期证据，不是当前已通过测试。正式 contract 与测试/清理矩阵见
+[CL3 真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)，
+逐提交执行顺序见
+[CL3 真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
 
 ## 6. 当前缺口清单
 
