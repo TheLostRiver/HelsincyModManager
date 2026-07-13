@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期优先级计划
 
 - 日期：2026-07-12
-- 状态：生效；CL0、CL1 已完成，下一项 CL2；Gate A 尚未认证
+- 状态：生效；CL0、CL1、CL2 已完成，下一项 CL3；Gate A 尚未认证
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -109,6 +109,12 @@ backup store failure 在任何 target mutation 前停止，并复用既有 write
 自动化不得依赖真实 MHW:I 安装、真实玩家文件、Steam userdata、第三方 Mod 或日常账户。
 
 ### CL2：桌面应用手动 smoke
+
+**状态（2026-07-13）：** 已完成。Windows Sandbox 中的实际 Tauri 应用使用人工 TEMP game/archive
+完成 picker -> import -> 4-action preview -> install -> restart -> uninstall -> restart -> baseline；
+支持诊断包只含短 id、计数和稳定 operation/result，受控 TEMP 与 disposable AppData 已清理。首次
+执行发现的 import UI 缺口和 mapped-folder commit/rollback 安全缺口已最小修复并回归。未执行真实
+游戏 smoke，也未验证 v1 -> v2；因此 CL2 不代表 CL3 或 Gate A 完成。
 
 在专用测试环境运行实际 Tauri 应用，验证：
 
@@ -248,17 +254,16 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 10. 当前下一项任务
 
-CL0、CL1 已完成。下一项工作固定为 **CL2：桌面应用手动 smoke**，不是 P7.2c、
-ARMOR_RETARGET，也不提前实现 CL3 真正重装。
+CL0、CL1、CL2 已完成。下一项工作固定为 **CL3：真正重装 contract 与实现**，不是 P7.2c、
+ARMOR_RETARGET，也不提前执行 CL4 认证。
 
-CL2 必须在 disposable Windows account/VM 使用人工 fixture 和隔离 AppData，实际验证文件选择器、
-任务事件、安装状态恢复、卸载、错误脱敏和最终清理。不得为了完成 checklist 使用维护者日常
-AppData、真实游戏目录、真实 Mod 或玩家数据。
+CL3 必须建立稳定 Mod/package revision、独立 reinstall use case 和 retained/replaced/added/stale
+计划语义；不得把现有普通 install 入口或第二个新 mod id 误报为真正重装。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
-[CL0/CL1 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装仍归 CL3；Gate A 只有 CL2、
-CL3 和 CL4 全部完成后才能标记 `certified`。
+[CL0/CL1/CL2 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装仍归 CL3；Gate A 只有
+CL3 和 CL4 继续完成后才能标记 `certified`。
 
 ## 11. 优先级重排提交边界（历史）
 
