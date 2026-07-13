@@ -236,6 +236,7 @@ pub struct SaveBackupManifestFile {
 }
 
 impl SaveBackupManifest {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         backup_id: impl Into<String>,
         game_id: GameId,

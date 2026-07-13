@@ -1,5 +1,5 @@
 use hmm_core::{
-    GameDirectoryStatus, GameId, ProfileBackupRetention, ProfileBackupSchedule,
+    GameDirectoryStatus, GameId, ProfileBackupSchedule,
     ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
     ProfileSaveSettings, SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource,
     SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
@@ -397,7 +397,7 @@ impl ProfileSaveDirectoryDiscoveryService {
                 .unwrap_or_else(ProfileBackupSchedule::manual),
             retention: existing_settings
                 .map(|settings| settings.retention.clone())
-                .unwrap_or_else(ProfileBackupRetention::default),
+                .unwrap_or_default(),
             updated_at: now,
         };
 
