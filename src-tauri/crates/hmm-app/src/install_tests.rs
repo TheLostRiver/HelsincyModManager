@@ -1,16 +1,16 @@
 use super::*;
 use hmm_core::{
-    FileLayer, GameDirectoryValidation, GameId, InstallRecoveryRecord, InstallRecoveryRecordStatus,
-    InstallManifestStatus, InstallTargetPathError, ModId, PackageFileId, ProfileId,
+    FileLayer, GameDirectoryValidation, GameId, InstallManifestStatus, InstallRecoveryRecord,
+    InstallRecoveryRecordStatus, InstallTargetPathError, ModId, PackageFileId, ProfileId,
 };
 use hmm_ports::{
-    GameAdapter, GameDirectoryProbe, InstallBackupStore, InstallGameFileSystem,
-    InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, StoredImportPreviewImage,
-    StoredModImportAnalysis, StoredModPackageMetadata, GamePrerequisiteReport,
+    GameAdapter, GameDirectoryProbe, GamePrerequisiteReport, InstallBackupStore,
+    InstallGameFileSystem, InstallManifestRepository, InstallRecoveryRecordRepository,
+    InstallSourceFileReader, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFile, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    StoredImportPreviewImage, StoredModImportAnalysis, StoredModPackageMetadata,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -1430,6 +1430,133 @@ fn commit_plan_cleans_pending_backup_when_write_fails() {
 }
 
 #[test]
+fn commit_plan_rolls_back_current_change_when_write_fails_after_mutation() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target,
+        FileLayer::new("base", 0),
+    )]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+        "nativePC/models/player.mod3",
+        b"new model".as_slice(),
+    )]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_write_failures(
+        [("nativePC/models/player.mod3", b"old model".as_slice())],
+        [RecordingWriteFailure::AfterMutation],
+    ));
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let manifests = Arc::new(RecordingInstallManifestRepository::default());
+    let service = InstallCommitService::new(
+        source_files,
+        game_files.clone(),
+        backups.clone(),
+        manifests.clone(),
+    );
+
+    let error = service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect_err("post-mutation write failure should abort commit");
+
+    assert_eq!(
+        error,
+        InstallCommitError::RollbackSucceeded {
+            failed_phase: InstallCommitPhase::Write
+        }
+    );
+    assert_eq!(
+        game_files
+            .file_bytes("nativePC/models/player.mod3")
+            .as_deref(),
+        Some(b"old model".as_slice())
+    );
+    assert_eq!(
+        backups.removed_refs(),
+        vec!["backup-nativePC-models-player.mod3".to_owned()]
+    );
+    assert!(manifests.take_manifest().is_none());
+}
+
+#[test]
+fn commit_plan_preserves_backup_and_recovery_when_current_change_rollback_fails() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target,
+        FileLayer::new("base", 0),
+    )]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+        "nativePC/models/player.mod3",
+        b"new model".as_slice(),
+    )]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_write_failures(
+        [("nativePC/models/player.mod3", b"old model".as_slice())],
+        [
+            RecordingWriteFailure::AfterMutation,
+            RecordingWriteFailure::BeforeMutation,
+        ],
+    ));
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let manifests = Arc::new(RecordingInstallManifestRepository::default());
+    let recovery_records = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        source_files,
+        game_files.clone(),
+        backups.clone(),
+        manifests.clone(),
+        recovery_records.clone(),
+    );
+
+    let error = service
+        .commit_plan(CommitInstallPlanRequest {
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect_err("rollback failure should retain durable recovery state");
+
+    assert_eq!(
+        error,
+        InstallCommitError::RollbackFailed {
+            failed_phase: InstallCommitPhase::Write
+        }
+    );
+    assert_eq!(
+        game_files
+            .file_bytes("nativePC/models/player.mod3")
+            .as_deref(),
+        Some(b"new model".as_slice())
+    );
+    assert!(backups.removed_refs().is_empty());
+    assert!(manifests.take_manifest().is_none());
+
+    let saved_records = recovery_records.saved_records();
+    assert_eq!(
+        saved_records
+            .iter()
+            .map(|record| record.status)
+            .collect::<Vec<_>>(),
+        vec![
+            InstallRecoveryRecordStatus::Planned,
+            InstallRecoveryRecordStatus::Committing,
+            InstallRecoveryRecordStatus::RollbackRequired,
+        ]
+    );
+    let rollback_required = saved_records.last().expect("rollback-required record");
+    assert_eq!(
+        rollback_required.entries[0].backup_ref.as_deref(),
+        Some("backup-nativePC-models-player.mod3")
+    );
+    assert!(recovery_records.removed_records().is_empty());
+}
+
+#[test]
 fn commit_plan_restores_all_files_even_when_backup_cleanup_fails() {
     let first_target =
         InstallTargetPath::parse("nativePC/models/first.mod3", ["nativePC"]).expect("valid");
@@ -1642,8 +1769,14 @@ struct RecordingInstallGameFileSystem {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     read_mutation: Mutex<Option<(String, Vec<u8>)>>,
     write_requests: Mutex<Vec<String>>,
-    fail_writes: bool,
+    write_failures: Mutex<VecDeque<RecordingWriteFailure>>,
     fail_removes: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RecordingWriteFailure {
+    BeforeMutation,
+    AfterMutation,
 }
 
 impl RecordingInstallGameFileSystem {
@@ -1657,24 +1790,23 @@ impl RecordingInstallGameFileSystem {
             ),
             read_mutation: Mutex::new(None),
             write_requests: Mutex::new(Vec::new()),
-            fail_writes: false,
+            write_failures: Mutex::new(VecDeque::new()),
             fail_removes: false,
         }
     }
 
     fn with_failing_writes<const N: usize>(files: [(&str, &[u8]); N]) -> Self {
-        Self {
-            files: Mutex::new(
-                files
-                    .into_iter()
-                    .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
-                    .collect(),
-            ),
-            read_mutation: Mutex::new(None),
-            write_requests: Mutex::new(Vec::new()),
-            fail_writes: true,
-            fail_removes: false,
-        }
+        Self::with_write_failures(files, [RecordingWriteFailure::BeforeMutation])
+    }
+
+    fn with_write_failures<const FILES: usize, const FAILURES: usize>(
+        files: [(&str, &[u8]); FILES],
+        failures: [RecordingWriteFailure; FAILURES],
+    ) -> Self {
+        let file_system = Self::with_files(files);
+        *file_system.write_failures.lock().expect("write failures") =
+            failures.into_iter().collect();
+        file_system
     }
 
     fn with_failing_removes(mut self) -> Self {
@@ -1717,13 +1849,21 @@ impl InstallGameFileSystem for RecordingInstallGameFileSystem {
             .lock()
             .expect("write requests")
             .push(target_path.as_str().to_owned());
-        if self.fail_writes {
+        let failure = self
+            .write_failures
+            .lock()
+            .expect("write failures")
+            .pop_front();
+        if failure == Some(RecordingWriteFailure::BeforeMutation) {
             anyhow::bail!("write failed");
         }
         self.files
             .lock()
             .expect("files")
             .insert(target_path.as_str().to_owned(), bytes.to_vec());
+        if failure == Some(RecordingWriteFailure::AfterMutation) {
+            anyhow::bail!("write failed after mutation");
+        }
         Ok(())
     }
 
