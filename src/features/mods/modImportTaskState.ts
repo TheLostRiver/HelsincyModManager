@@ -35,6 +35,14 @@ export function nextModImportTaskStateFromProgress(
   event: TaskProgressEventDto,
 ): ModImportTaskState {
   if (
+    current.status === "completed" ||
+    current.status === "cancelled" ||
+    current.status === "failed"
+  ) {
+    return current;
+  }
+
+  if (
     event.kind !== "mod_import" ||
     !isModImportTaskPhase(event.phase) ||
     !("taskId" in current) ||

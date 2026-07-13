@@ -14,6 +14,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+#[path = "install_rollback_tests.rs"]
+mod install_rollback_tests;
 #[path = "install_uninstall_tests.rs"]
 mod install_uninstall_tests;
 
@@ -1123,7 +1125,7 @@ fn commit_plan_marks_recovery_record_rollback_required_when_rollback_fails() {
 }
 
 #[test]
-fn commit_plan_rollback_record_uses_pending_backup_when_replacing_managed_target() {
+fn commit_plan_rollback_record_retains_only_unresolved_changes() {
     let new_file_target =
         InstallTargetPath::parse("nativePC/models/new.mod3", ["nativePC"]).expect("valid target");
     let replaced_target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
@@ -1203,17 +1205,12 @@ fn commit_plan_rollback_record_uses_pending_backup_when_replacing_managed_target
         rollback_required.status,
         InstallRecoveryRecordStatus::RollbackRequired
     );
-    let replaced_entry = rollback_required
-        .entries
-        .iter()
-        .find(|entry| entry.target_path.as_str() == "nativePC/models/player.mod3")
-        .expect("replaced target should be tracked");
-
+    assert_eq!(rollback_required.entries.len(), 1);
     assert_eq!(
-        replaced_entry.backup_ref.as_deref(),
-        Some("backup-nativePC-models-player.mod3-1"),
-        "recovery rollback must restore the immediate pre-commit bytes, not the long-term manifest backup"
+        rollback_required.entries[0].target_path.as_str(),
+        "nativePC/models/new.mod3"
     );
+    assert_eq!(rollback_required.entries[0].backup_ref, None);
 }
 
 #[test]
@@ -1775,6 +1772,7 @@ struct RecordingInstallGameFileSystem {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RecordingWriteFailure {
+    NoFailure,
     BeforeMutation,
     AfterMutation,
 }

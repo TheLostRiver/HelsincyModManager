@@ -35,6 +35,10 @@ function isImportTaskActive(state: ModImportTaskState) {
   return state.status === "choosing" || state.status === "starting" || state.status === "running";
 }
 
+function isImportTaskTerminal(state: ModImportTaskState) {
+  return state.status === "completed" || state.status === "cancelled" || state.status === "failed";
+}
+
 function importActionLabel(label: string, state: ModImportTaskState) {
   switch (state.status) {
     case "choosing":
@@ -74,6 +78,7 @@ function importStatusText(state: ModImportTaskState) {
 
 export function ModImportAction({ label, onImported }: ModImportActionProps) {
   const [listenerStatus, setListenerStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [listenerAttempt, setListenerAttempt] = useState(0);
   const [taskState, setTaskState] = useState<ModImportTaskState>({ status: "idle" });
   const taskStateRef = useRef<ModImportTaskState>(taskState);
   const taskIdRef = useRef<string | null>(null);
@@ -95,6 +100,17 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
     completedTaskIdsRef.current.add(state.taskId);
     void Promise.resolve(onImportedRef.current()).catch(() => undefined);
   }, []);
+
+  const applyProgressState = useCallback(
+    (next: ModImportTaskState) => {
+      if (isImportTaskTerminal(next)) {
+        taskIdRef.current = null;
+      }
+      setTrackedTaskState(next);
+      finishCompletedImport(next);
+    },
+    [finishCompletedImport, setTrackedTaskState],
+  );
 
   useEffect(() => {
     onImportedRef.current = onImported;
@@ -121,8 +137,7 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
       }
 
       const next = nextModImportTaskStateFromProgress(taskStateRef.current, event.payload);
-      setTrackedTaskState(next);
-      finishCompletedImport(next);
+      applyProgressState(next);
     })
       .then((unlisten) => {
         if (disposed) {
@@ -149,7 +164,17 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
       disposed = true;
       unlistenTaskProgress?.();
     };
-  }, [finishCompletedImport, setTrackedTaskState]);
+  }, [applyProgressState, listenerAttempt, setTrackedTaskState]);
+
+  function retryTaskProgressListener() {
+    if (listenerStatus !== "failed") {
+      return;
+    }
+
+    setListenerStatus("loading");
+    setTrackedTaskState({ status: "idle" });
+    setListenerAttempt((attempt) => attempt + 1);
+  }
 
   async function handleImport() {
     if (listenerStatus !== "ready" || isImportTaskActive(taskStateRef.current)) {
@@ -212,8 +237,7 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
       if (pendingProgressEvent) {
         next = nextModImportTaskStateFromProgress(next, pendingProgressEvent);
       }
-      setTrackedTaskState(next);
-      finishCompletedImport(next);
+      applyProgressState(next);
     } catch (error: unknown) {
       startPendingRef.current = false;
       pendingProgressEventsRef.current.clear();
@@ -236,8 +260,14 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
         type="button"
         className="compact-action compact-import-action is-primary"
         data-variant="primary"
-        onClick={() => void handleImport()}
-        disabled={listenerStatus !== "ready" || taskActive}
+        onClick={() => {
+          if (listenerStatus === "failed") {
+            retryTaskProgressListener();
+            return;
+          }
+          void handleImport();
+        }}
+        disabled={listenerLoading || taskActive}
         aria-describedby={statusText ? "mod-import-status" : undefined}
       >
         <span className="compact-action__left">
@@ -247,7 +277,11 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
             <FileArchive size={14} strokeWidth={2.6} aria-hidden="true" />
           )}
           <span className="compact-action__label">
-            {listenerLoading ? "准备导入..." : importActionLabel(label, taskState)}
+            {listenerLoading
+              ? "准备导入..."
+              : listenerStatus === "failed"
+                ? "重试导入连接"
+                : importActionLabel(label, taskState)}
           </span>
         </span>
       </button>
