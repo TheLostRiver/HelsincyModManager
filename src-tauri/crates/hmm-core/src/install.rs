@@ -20,6 +20,7 @@ macro_rules! string_id {
 }
 
 string_id!(ModId);
+string_id!(ModRevisionId);
 string_id!(ProfileId);
 string_id!(PackageFileId);
 
@@ -187,6 +188,8 @@ impl InstallPlan {
 pub struct InstallManifestEntry {
     pub target_path: InstallTargetPath,
     pub mod_id: ModId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision_id: Option<ModRevisionId>,
     pub package_file_id: PackageFileId,
     pub layer: FileLayer,
     pub backup_ref: Option<String>,
@@ -620,6 +623,39 @@ mod tests {
         .expect("legacy manifest should remain readable");
 
         assert_eq!(manifest.entries[0].installed_file, None);
+        assert_eq!(manifest.entries[0].revision_id, None);
+    }
+
+    #[test]
+    fn manifest_entry_revision_round_trips_with_stable_field_name() {
+        let manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![InstallManifestEntry {
+                target_path: InstallTargetPath::parse(
+                    "content/models/player.mod3",
+                    allowed_roots(),
+                )
+                .expect("target should be valid"),
+                mod_id: ModId::new("mod-a"),
+                revision_id: Some(ModRevisionId::new("revision-v2")),
+                package_file_id: PackageFileId::new("content/models/player.mod3"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: None,
+            }],
+        );
+
+        let serialized = serde_json::to_value(&manifest).expect("serialize revisioned manifest");
+        let entry = &serialized["entries"][0];
+        assert_eq!(entry["revision_id"], serde_json::json!("revision-v2"));
+        assert!(entry.get("revisionId").is_none());
+
+        let round_trip: InstallManifest =
+            serde_json::from_value(serialized).expect("deserialize revisioned manifest");
+        assert_eq!(
+            round_trip.entries[0].revision_id,
+            Some(ModRevisionId::new("revision-v2"))
+        );
     }
 
     #[test]

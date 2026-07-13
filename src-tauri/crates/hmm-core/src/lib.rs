@@ -4,6 +4,7 @@ mod install;
 mod mod_metadata;
 mod preview_image;
 mod profile;
+mod reinstall;
 mod save_backup;
 mod save_directory;
 
@@ -17,7 +18,7 @@ pub use install::{
     InstallManifestEntry, InstallManifestStatus, InstallManifestStatusConsumption, InstallPlan,
     InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
     InstallRecoveryRecordTransitionError, InstallTargetPath, InstallTargetPathError,
-    InstalledFileSummary, ModId, PackageFileId, ProfileId,
+    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
 };
 pub use mod_metadata::ModMetadataOverlay;
 pub use preview_image::{
@@ -27,6 +28,11 @@ pub use preview_image::{
 pub use profile::{
     BackupCadence, Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
     ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
+};
+pub use reinstall::{
+    classify_reinstall_targets, replace_entries_for_mod, resolve_installed_revision,
+    ReinstallClassificationError, ReinstallManifestError, ReinstallTargetClass,
+    ReinstallTargetClassification, ReinstallTargetState,
 };
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,

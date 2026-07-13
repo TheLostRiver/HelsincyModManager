@@ -367,6 +367,7 @@ fn scan_empty_mod_ids_uses_listed_recovery_records_without_per_mod_record_probes
                 InstallManifestEntry {
                     target_path: target_a,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/player-a.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -375,6 +376,7 @@ fn scan_empty_mod_ids_uses_listed_recovery_records_without_per_mod_record_probes
                 InstallManifestEntry {
                     target_path: target_b,
                     mod_id: ModId::new("mod-b"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/player-b.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -839,6 +841,7 @@ fn scan_marks_completed_when_target_summary_matches_and_backup_exists() {
             vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-original".to_owned()),
@@ -895,6 +898,7 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
                 InstallManifestEntry {
                     target_path: target_b,
                     mod_id: ModId::new("mod-b"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/weapon.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -903,6 +907,7 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
                 InstallManifestEntry {
                     target_path: target_a,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -911,6 +916,7 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
                 InstallManifestEntry {
                     target_path: target_a_extra,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/player-extra.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -959,6 +965,7 @@ fn scan_marks_unknown_when_target_state_cannot_be_read() {
             vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -1006,6 +1013,7 @@ fn scan_reports_repair_issue_when_backup_is_missing_without_exposing_backup_ref(
             vec![InstallManifestEntry {
                 target_path: target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-original".to_owned()),
@@ -1074,6 +1082,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                 InstallManifestEntry {
                     target_path: missing_summary_target,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/missing-summary.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -1082,6 +1091,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                 InstallManifestEntry {
                     target_path: missing_target,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/missing-target.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -1090,6 +1100,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                 InstallManifestEntry {
                     target_path: changed_target,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/changed-target.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
@@ -1098,6 +1109,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                 InstallManifestEntry {
                     target_path: backup_error_target,
                     mod_id: ModId::new("mod-a"),
+                    revision_id: None,
                     package_file_id: PackageFileId::new("nativePC/models/backup-error.mod3"),
                     layer: FileLayer::new("base", 0),
                     backup_ref: Some(backup_error_ref.to_owned()),
@@ -1193,6 +1205,7 @@ fn scan_status_for_manifest_status(
         vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,

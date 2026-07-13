@@ -1467,6 +1467,7 @@ mod tests {
             vec![InstallManifestEntry {
                 target_path: sample_target(),
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
