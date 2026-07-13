@@ -497,10 +497,43 @@ fn unique_temp_path(path: &Path) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(temp_name))
 }
 
+#[cfg(not(windows))]
 fn sync_directory(path: &Path) -> Result<()> {
     open_directory_for_sync(path)
         .and_then(|directory| directory.sync_all())
         .context("failed to sync directory")
+}
+
+#[cfg(windows)]
+fn sync_directory(path: &Path) -> Result<()> {
+    match open_directory_for_sync(path).and_then(|directory| directory.sync_all()) {
+        Ok(()) => Ok(()),
+        Err(error) if is_windows_directory_sync_capability_error(&error) => Ok(()),
+        Err(error) => Err(error).context("failed to sync directory"),
+    }
+}
+
+#[cfg(windows)]
+fn is_windows_directory_sync_capability_error(error: &std::io::Error) -> bool {
+    // Windows-backed mapped directories can allow the rename but reject opening or flushing a
+    // directory handle. Only these capability errors downgrade the optional parent barrier; temp
+    // file creation, write, sync, and rename failures still propagate.
+    const ERROR_INVALID_FUNCTION: i32 = 1;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const ERROR_INVALID_HANDLE: i32 = 6;
+    const ERROR_NOT_SUPPORTED: i32 = 50;
+    const ERROR_INVALID_PARAMETER: i32 = 87;
+
+    matches!(
+        error.raw_os_error(),
+        Some(
+            ERROR_INVALID_FUNCTION
+                | ERROR_ACCESS_DENIED
+                | ERROR_INVALID_HANDLE
+                | ERROR_NOT_SUPPORTED
+                | ERROR_INVALID_PARAMETER
+        )
+    )
 }
 
 #[cfg(not(windows))]
@@ -571,8 +604,8 @@ fn recovery_record_file_name(profile_id: &ProfileId, mod_id: &ModId) -> String {
 mod tests {
     use super::*;
     use hmm_core::{
-        FileLayer, InstallManifest, InstallManifestEntry, InstallRecoveryRecord,
-        InstallManifestStatus, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
+        FileLayer, InstallManifest, InstallManifestEntry, InstallManifestStatus,
+        InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
         InstallTargetPath, ModId, PackageFileId, ProfileId,
     };
     use hmm_ports::{
@@ -580,6 +613,22 @@ mod tests {
         InstallRecoveryRecordRepository, InstallSourceFileReader,
     };
     use std::fs;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_directory_sync_capability_errors_use_a_narrow_allowlist() {
+        for code in [1, 5, 6, 50, 87] {
+            assert!(is_windows_directory_sync_capability_error(
+                &std::io::Error::from_raw_os_error(code)
+            ));
+        }
+
+        for code in [2, 3, 32, 112] {
+            assert!(!is_windows_directory_sync_capability_error(
+                &std::io::Error::from_raw_os_error(code)
+            ));
+        }
+    }
 
     #[test]
     fn filesystem_install_adapters_read_write_backup_and_manifest_inside_roots() {

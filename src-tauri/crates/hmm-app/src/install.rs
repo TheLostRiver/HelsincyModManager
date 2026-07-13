@@ -349,11 +349,8 @@ impl InstallCommitService {
                 .write_game_file(&change.target_path, &change.source_bytes)
                 .is_err()
             {
-                let error = self.fail_or_rollback_with_pending_backup(
-                    &prepared_changes[..index],
-                    change.pending_backup_ref.as_deref(),
-                    InstallCommitPhase::Write,
-                );
+                let error =
+                    self.fail_or_rollback(&prepared_changes[..=index], InstallCommitPhase::Write);
                 self.remove_pending_backups(&prepared_changes[index + 1..]);
                 Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
                 return Err(error);
@@ -488,14 +485,15 @@ impl InstallCommitService {
                 self.game_files.remove_game_file(&change.target_path)
             };
 
-            if let Err(error) = restore_result {
-                rollback_error.get_or_insert(error);
-            }
-        }
-
-        for change in applied_changes.iter().rev() {
-            if let Some(backup_ref) = &change.pending_backup_ref {
-                let _ = self.backup_store.remove_backup(backup_ref);
+            match restore_result {
+                Ok(()) => {
+                    if let Some(backup_ref) = &change.pending_backup_ref {
+                        let _ = self.backup_store.remove_backup(backup_ref);
+                    }
+                }
+                Err(error) => {
+                    rollback_error.get_or_insert(error);
+                }
             }
         }
 
