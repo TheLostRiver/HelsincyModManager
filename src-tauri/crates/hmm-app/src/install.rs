@@ -310,6 +310,7 @@ impl InstallCommitService {
             let entry = InstallManifestEntry {
                 target_path: action.target_path.clone(),
                 mod_id: action.provider.mod_id.clone(),
+                revision_id: None,
                 package_file_id: action.provider.package_file_id.clone(),
                 layer: action.provider.layer.clone(),
                 backup_ref: manifest_backup_ref,

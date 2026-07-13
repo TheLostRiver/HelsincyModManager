@@ -400,6 +400,7 @@ fn manifest_entry(
     bytes: &[u8],
 ) -> InstallManifestEntry {
     InstallManifestEntry {
+        revision_id: None,
         package_file_id: PackageFileId::new(target_path.as_str()),
         target_path,
         mod_id: ModId::new(mod_id),

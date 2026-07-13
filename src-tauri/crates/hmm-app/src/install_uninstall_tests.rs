@@ -9,6 +9,7 @@ fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
         vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -50,6 +51,7 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
         vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
@@ -105,6 +107,7 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
             InstallManifestEntry {
                 target_path: remove_target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/remove.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -113,6 +116,7 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
             InstallManifestEntry {
                 target_path: keep_target,
                 mod_id: ModId::new("mod-b"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-keep".to_owned()),
@@ -176,6 +180,7 @@ fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries()
             InstallManifestEntry {
                 target_path: remove_target,
                 mod_id: ModId::new("mod-a"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/remove.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -184,6 +189,7 @@ fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries()
             InstallManifestEntry {
                 target_path: keep_target,
                 mod_id: ModId::new("mod-b"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -228,6 +234,7 @@ fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
         vec![InstallManifestEntry {
             target_path: target,
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -269,6 +276,7 @@ fn uninstall_mod_revalidates_target_before_removing_new_file() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -313,6 +321,7 @@ fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -354,6 +363,7 @@ fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -395,6 +405,7 @@ fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -436,6 +447,7 @@ fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-a"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: Some("missing-backup".to_owned()),

@@ -448,6 +448,7 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
                 target_path: InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
                     .expect("valid target"),
                 mod_id: ModId::new("mod-new"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
@@ -457,6 +458,7 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
                 target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                     .expect("valid target"),
                 mod_id: ModId::new("mod-old"),
+                revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-old-player".to_owned()),
@@ -525,6 +527,7 @@ fn commit_plan_preserves_non_completed_manifest_status_when_merging_entries() {
             target_path: InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/keep.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -584,6 +587,7 @@ fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
@@ -651,6 +655,7 @@ fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
             target_path: InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/new-file-v1.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: None,
@@ -1168,6 +1173,7 @@ fn commit_plan_rollback_record_retains_only_unresolved_changes() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player-v1.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
@@ -1254,6 +1260,7 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
             mod_id: ModId::new("mod-old"),
+            revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player-v1.mod3"),
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
