@@ -1,6 +1,7 @@
 import { Ban, BadgeCheck, CheckCheck, ClipboardList, Plus, RefreshCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
+import { ModImportAction } from "./ModImportAction";
 import { compactActions } from "./modsLibraryData";
 
 type CompactActionPanelProps = {
@@ -9,6 +10,7 @@ type CompactActionPanelProps = {
   installTaskActive?: boolean;
   canInstallSelection?: boolean;
   canUninstallSelection?: boolean;
+  onImportCompleted: () => Promise<void> | void;
   onAction: (actionId: string) => void;
 };
 
@@ -30,6 +32,7 @@ export function CompactActionPanel({
   installTaskActive = false,
   canInstallSelection = true,
   canUninstallSelection = false,
+  onImportCompleted,
   onAction,
 }: CompactActionPanelProps) {
   const addAction = compactActions.find((a) => a.id === "add");
@@ -42,19 +45,7 @@ export function CompactActionPanel({
       </header>
 
       <div className="compact-panel__stack">
-        {addAction && (
-          <button
-            type="button"
-            className={`compact-action is-${addAction.variant}`}
-            data-variant={addAction.variant}
-            onClick={() => onAction(addAction.id)}
-          >
-            <span className="compact-action__left">
-              <Plus size={14} strokeWidth={3} aria-hidden="true" />
-              <span className="compact-action__label">{addAction.label}</span>
-            </span>
-          </button>
-        )}
+        {addAction ? <ModImportAction label={addAction.label} onImported={onImportCompleted} /> : null}
 
         <div className="compact-action-group">
           {compactActions

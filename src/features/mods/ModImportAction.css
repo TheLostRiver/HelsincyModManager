@@ -1,0 +1,27 @@
+.compact-import-action__spinner {
+  animation: compact-import-action-spin 0.9s linear infinite;
+}
+
+.compact-import-action__status {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-import-action__status.is-completed {
+  color: var(--color-success-text);
+}
+
+.compact-import-action__status.is-failed {
+  color: var(--color-danger-text);
+}
+
+@keyframes compact-import-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
