@@ -44,6 +44,13 @@ test("mod import progress only updates the matching task identity", () => {
     nextModImportTaskStateFromProgress(current, progress({ kind: "install" })),
     current,
   );
+  assert.equal(
+    nextModImportTaskStateFromProgress(
+      current,
+      progress({ phase: "mod_import.unregistered.future_phase" }),
+    ),
+    current,
+  );
 });
 
 test("mod import terminal events map to stable safe states", () => {
@@ -80,4 +87,29 @@ test("mod import terminal events map to stable safe states", () => {
     message: "导入失败，请检查压缩包后重试",
   });
   assert.doesNotMatch(failed.message, /Users|unsafe\.zip/);
+});
+
+test("mod import terminal states ignore late progress events", () => {
+  const terminalStates = [
+    {
+      status: "completed",
+      taskId: "task-a",
+      phase: "mod_import.prepare.completed",
+    },
+    {
+      status: "cancelled",
+      taskId: "task-a",
+      phase: "mod_import.cancelled",
+    },
+    {
+      status: "failed",
+      taskId: "task-a",
+      phase: "mod_import.unpack.failed",
+      message: "导入失败，请检查压缩包后重试",
+    },
+  ];
+
+  for (const current of terminalStates) {
+    assert.equal(nextModImportTaskStateFromProgress(current, progress()), current);
+  }
 });

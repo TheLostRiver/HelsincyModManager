@@ -230,6 +230,7 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 
 - 实际 Tauri 应用通过系统文件选择器导入四文件 v1 人工 ZIP；计划预览为 4 actions、0 blocking conflicts。
 - CL2 首轮暴露两个阻断：前端缺少 archive picker/import task 入口；Windows mapped-folder rename 已生效后父目录 sync 报错时，app rollback 遗漏当前 change 并过早删除 pending backup。
+- Review follow-up 覆盖混合回滚结果：成功恢复的项先从 durable recovery record 移除，再清理对应 pending backup；`rollback_required` 只保留真正未恢复的项，避免后续受控恢复被已恢复目标阻断。
 - 最小修复后安装完成；重启从 manifest/recovery 恢复 installed，卸载删除 3 个新增文件并恢复 1 个覆盖文件，再次重启为 not installed 且无 rollback/repair/unknown 状态。
 - 主机在安装态和卸载态分别校验人工文件长度/hash；最终 game root 与安装前两文件 baseline 逐字节一致。
 - 支持诊断包只包含四个固定 JSON 条目；App/Task 日志为 0 行，两条 install Audit 仅含短 id 和动作/删除/恢复计数，敏感路径模式命中 0。
