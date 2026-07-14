@@ -1,0 +1,520 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use hmm_core::{FileLayer, GameId, ModId, ModRevisionId, ProfileId};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+
+use crate::reinstall::{PreparedReinstall, ReinstallPreparation};
+use crate::{
+    GameProfileWriteLockRegistry, ReinstallCommitError, ReinstallCommitPhase,
+    ReinstallCommitResult, ReinstallCommitService, ReinstallPreviewError, ReinstallPreviewRequest,
+    ReinstallPreviewService, ReinstallTargetCounts, TaskKind, TaskManager, TaskManagerError,
+    TaskProgressEvent, TaskStarted, TaskStatus,
+};
+
+const PLAN_BUILDING_PHASE: &str = "install.reinstall.plan.building";
+const PREFLIGHT_PROCESSING_PHASE: &str = "install.reinstall.preflight.processing";
+const COMMIT_PROCESSING_PHASE: &str = "install.reinstall.commit.processing";
+const ROLLBACK_PROCESSING_PHASE: &str = "install.reinstall.rollback.processing";
+const COMPLETED_PHASE: &str = "install.reinstall.completed";
+const FAILED_PHASE: &str = "install.reinstall.failed";
+const CANCELLED_PHASE: &str = "install.reinstall.cancelled";
+const FAILED_ERROR_PREFIX: &str = "install_reinstall_failed";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartReinstallTaskRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub candidate_revision_id: ModRevisionId,
+    pub layer: FileLayer,
+    pub plan_token: String,
+}
+
+impl StartReinstallTaskRequest {
+    fn preview_request(&self) -> ReinstallPreviewRequest {
+        ReinstallPreviewRequest {
+            game_id: self.game_id.clone(),
+            profile_id: self.profile_id.clone(),
+            mod_id: self.mod_id.clone(),
+            candidate_revision_id: self.candidate_revision_id.clone(),
+            layer: self.layer.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReinstallTaskAuditContext {
+    pub previous_revision_id: Option<ModRevisionId>,
+    pub candidate_revision_id: ModRevisionId,
+    pub counts: ReinstallTargetCounts,
+}
+
+pub trait ReinstallTaskPrepared: Send {
+    fn audit_context(&self) -> ReinstallTaskAuditContext;
+}
+
+impl ReinstallTaskPrepared for PreparedReinstall {
+    fn audit_context(&self) -> ReinstallTaskAuditContext {
+        ReinstallTaskAuditContext {
+            previous_revision_id: Some(self.installed_revision_id.clone()),
+            candidate_revision_id: self.candidate.revision_id.clone(),
+            counts: self.counts,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReinstallTaskPrepareError {
+    Planning(ReinstallTaskAuditContext),
+    Preflight(ReinstallTaskAuditContext),
+}
+
+impl ReinstallTaskPrepareError {
+    fn phase(&self) -> &'static str {
+        match self {
+            Self::Planning(_) => "planning",
+            Self::Preflight(_) => "preflight",
+        }
+    }
+
+    fn into_context(self) -> ReinstallTaskAuditContext {
+        match self {
+            Self::Planning(context) | Self::Preflight(context) => context,
+        }
+    }
+}
+
+pub trait ReinstallTaskExecutor: Send + Sync {
+    type Prepared: ReinstallTaskPrepared;
+
+    fn prepare(
+        &self,
+        request: ReinstallPreviewRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError>;
+
+    fn commit(
+        &self,
+        prepared: Self::Prepared,
+        expected_plan_token: &str,
+    ) -> Result<ReinstallCommitResult, ReinstallCommitError>;
+}
+
+#[derive(Clone)]
+pub struct ReinstallTaskExecutorService {
+    preview: Arc<ReinstallPreviewService>,
+    commit: Arc<ReinstallCommitService>,
+}
+
+impl ReinstallTaskExecutorService {
+    pub fn new(preview: Arc<ReinstallPreviewService>, commit: Arc<ReinstallCommitService>) -> Self {
+        Self { preview, commit }
+    }
+}
+
+impl ReinstallTaskExecutor for ReinstallTaskExecutorService {
+    type Prepared = PreparedReinstall;
+
+    fn prepare(
+        &self,
+        request: ReinstallPreviewRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError> {
+        let fallback = ReinstallTaskAuditContext {
+            previous_revision_id: None,
+            candidate_revision_id: request.candidate_revision_id.clone(),
+            counts: ReinstallTargetCounts::default(),
+        };
+        match self.preview.prepare(request.clone()) {
+            Ok(ReinstallPreparation::Ready(prepared)) => Ok(*prepared),
+            Ok(ReinstallPreparation::Blocked(preview)) => Err(
+                ReinstallTaskPrepareError::Preflight(ReinstallTaskAuditContext {
+                    previous_revision_id: preview
+                        .installed_revision
+                        .map(|revision| revision.revision_id),
+                    candidate_revision_id: preview
+                        .candidate_revision
+                        .map(|revision| revision.revision_id)
+                        .unwrap_or(request.candidate_revision_id),
+                    counts: preview.counts,
+                }),
+            ),
+            Err(ReinstallPreviewError::CatalogUnavailable)
+            | Err(ReinstallPreviewError::CandidatePlanUnavailable) => {
+                Err(ReinstallTaskPrepareError::Planning(fallback))
+            }
+            Err(ReinstallPreviewError::ManifestUnavailable)
+            | Err(ReinstallPreviewError::RecoveryUnavailable) => {
+                Err(ReinstallTaskPrepareError::Preflight(fallback))
+            }
+        }
+    }
+
+    fn commit(
+        &self,
+        prepared: Self::Prepared,
+        expected_plan_token: &str,
+    ) -> Result<ReinstallCommitResult, ReinstallCommitError> {
+        self.commit.commit(prepared, expected_plan_token)
+    }
+}
+
+pub struct ReinstallTaskService {
+    task_manager: Arc<TaskManager>,
+}
+
+impl ReinstallTaskService {
+    pub fn new(task_manager: Arc<TaskManager>) -> Self {
+        Self { task_manager }
+    }
+
+    pub fn start_reinstall_task(
+        &self,
+        _request: StartReinstallTaskRequest,
+    ) -> Result<TaskStarted, TaskManagerError> {
+        let task = self.task_manager.create_task(TaskKind::Install)?;
+        Ok(TaskStarted {
+            task_id: task.task_id,
+            kind: task.kind,
+            status: task.status,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReinstallTaskRunError {
+    pub events: Vec<TaskProgressEvent>,
+}
+
+pub struct ReinstallTaskRunner<E: ReinstallTaskExecutor> {
+    task_manager: Arc<TaskManager>,
+    executor: Arc<E>,
+    audit_log: Arc<dyn AuditLogWriter>,
+    clock: Arc<dyn AppClock>,
+    write_locks: Arc<GameProfileWriteLockRegistry>,
+}
+
+impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
+    pub fn new(
+        task_manager: Arc<TaskManager>,
+        executor: Arc<E>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+    ) -> Self {
+        Self::with_write_locks(
+            task_manager,
+            executor,
+            audit_log,
+            clock,
+            Arc::new(GameProfileWriteLockRegistry::default()),
+        )
+    }
+
+    pub fn with_write_locks(
+        task_manager: Arc<TaskManager>,
+        executor: Arc<E>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+    ) -> Self {
+        Self {
+            task_manager,
+            executor,
+            audit_log,
+            clock,
+            write_locks,
+        }
+    }
+
+    pub fn run_reinstall_task(
+        &self,
+        task_id: &str,
+        request: StartReinstallTaskRequest,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
+        if self.task_manager.start_task(task_id).is_err() {
+            return if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                Ok(vec![cancelled_event(task_id)])
+            } else {
+                Err(ReinstallTaskRunError { events: Vec::new() })
+            };
+        }
+
+        let mut events = vec![running_event(task_id, PLAN_BUILDING_PHASE)];
+        let prepared = match self.executor.prepare(request.preview_request()) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                if self.append_cancelled_if_needed(task_id, &mut events) {
+                    return Ok(events);
+                }
+                let phase = error.phase();
+                let context = error.into_context();
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    context,
+                    events,
+                    phase,
+                    "not_attempted",
+                    false,
+                ));
+            }
+        };
+        let audit_context = prepared.audit_context();
+
+        if self.append_cancelled_if_needed(task_id, &mut events) {
+            return Ok(events);
+        }
+        events.push(running_event(task_id, PREFLIGHT_PROCESSING_PHASE));
+
+        let write_lock = self
+            .write_locks
+            .lock_for(&request.game_id, &request.profile_id);
+        let commit_result = {
+            let _guard = match write_lock.lock() {
+                Ok(guard) => guard,
+                Err(_) => {
+                    return Err(self.fail_with_audit(
+                        task_id,
+                        &request,
+                        audit_context,
+                        events,
+                        "lock",
+                        "not_attempted",
+                        false,
+                    ));
+                }
+            };
+            if self.append_cancelled_if_needed(task_id, &mut events) {
+                return Ok(events);
+            }
+            if self.task_manager.block_task_cancellation(task_id).is_err() {
+                if self.append_cancelled_if_needed(task_id, &mut events) {
+                    return Ok(events);
+                }
+                None
+            } else {
+                events.push(running_event(task_id, COMMIT_PROCESSING_PHASE));
+                Some(self.executor.commit(prepared, &request.plan_token))
+            }
+        };
+
+        let Some(commit_result) = commit_result else {
+            return Err(self.fail_with_audit(
+                task_id,
+                &request,
+                audit_context,
+                events,
+                "lock",
+                "not_attempted",
+                false,
+            ));
+        };
+        if let Err(error) = commit_result {
+            let failure = commit_failure(&error);
+            return Err(self.fail_with_audit(
+                task_id,
+                &request,
+                audit_context,
+                events,
+                failure.phase,
+                failure.rollback_result,
+                failure.emit_rollback,
+            ));
+        }
+
+        match self.task_manager.complete_task(task_id) {
+            Ok(task) => {
+                events.push(TaskProgressEvent::new(
+                    task.task_id,
+                    task.kind,
+                    task.status,
+                    COMPLETED_PHASE,
+                ));
+                self.record_audit(task_id, &request, &audit_context, "success", None, None);
+                Ok(events)
+            }
+            Err(_) => Err(self.fail_with_audit(
+                task_id,
+                &request,
+                audit_context,
+                events,
+                "complete",
+                "not_attempted_post_commit",
+                false,
+            )),
+        }
+    }
+
+    fn append_cancelled_if_needed(
+        &self,
+        task_id: &str,
+        events: &mut Vec<TaskProgressEvent>,
+    ) -> bool {
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            events.push(cancelled_event(task_id));
+            true
+        } else {
+            false
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fail_with_audit(
+        &self,
+        task_id: &str,
+        request: &StartReinstallTaskRequest,
+        context: ReinstallTaskAuditContext,
+        mut events: Vec<TaskProgressEvent>,
+        phase: &str,
+        rollback_result: &str,
+        emit_rollback: bool,
+    ) -> ReinstallTaskRunError {
+        if emit_rollback {
+            events.push(running_event(task_id, ROLLBACK_PROCESSING_PHASE));
+        }
+        let _ = self.task_manager.fail_task(task_id);
+        let error_code = format!("{FAILED_ERROR_PREFIX}:{phase}");
+        events.push(failed_event(task_id, &error_code));
+        self.record_audit(
+            task_id,
+            request,
+            &context,
+            "failure",
+            Some(&error_code),
+            Some(rollback_result),
+        );
+        ReinstallTaskRunError { events }
+    }
+
+    fn record_audit(
+        &self,
+        task_id: &str,
+        request: &StartReinstallTaskRequest,
+        context: &ReinstallTaskAuditContext,
+        result: &str,
+        error_code: Option<&str>,
+        rollback_result: Option<&str>,
+    ) {
+        let mut fields = BTreeMap::new();
+        fields.insert("task_id".to_owned(), task_id.to_owned());
+        fields.insert("game_id".to_owned(), request.game_id.as_str().to_owned());
+        fields.insert(
+            "profile_id".to_owned(),
+            request.profile_id.as_str().to_owned(),
+        );
+        fields.insert("mod_id".to_owned(), request.mod_id.as_str().to_owned());
+        if let Some(previous_revision_id) = &context.previous_revision_id {
+            fields.insert(
+                "previous_revision_id".to_owned(),
+                previous_revision_id.as_str().to_owned(),
+            );
+        }
+        fields.insert(
+            "candidate_revision_id".to_owned(),
+            context.candidate_revision_id.as_str().to_owned(),
+        );
+        fields.insert(
+            "retained_count".to_owned(),
+            context.counts.retained.to_string(),
+        );
+        fields.insert(
+            "replaced_count".to_owned(),
+            context.counts.replaced.to_string(),
+        );
+        fields.insert("added_count".to_owned(), context.counts.added.to_string());
+        fields.insert("stale_count".to_owned(), context.counts.stale.to_string());
+        if let Some(error_code) = error_code {
+            fields.insert("error_code".to_owned(), error_code.to_owned());
+        }
+        if let Some(rollback_result) = rollback_result {
+            fields.insert("rollback_result".to_owned(), rollback_result.to_owned());
+        }
+
+        let _ = self.audit_log.record(AuditLogEvent {
+            timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
+            category: "install".to_owned(),
+            operation: "reinstall_mod".to_owned(),
+            result: result.to_owned(),
+            fields,
+        });
+    }
+}
+
+struct CommitFailure {
+    phase: &'static str,
+    rollback_result: &'static str,
+    emit_rollback: bool,
+}
+
+fn commit_failure(error: &ReinstallCommitError) -> CommitFailure {
+    match error {
+        ReinstallCommitError::PreviewStale => CommitFailure {
+            phase: "preflight",
+            rollback_result: "not_attempted",
+            emit_rollback: false,
+        },
+        ReinstallCommitError::Failed { phase } => CommitFailure {
+            phase: task_phase_for_commit_phase(*phase),
+            rollback_result: if *phase == ReinstallCommitPhase::Rollback {
+                "rollback_failed"
+            } else {
+                "not_attempted"
+            },
+            emit_rollback: *phase == ReinstallCommitPhase::Rollback,
+        },
+        ReinstallCommitError::RolledBack { failed_phase, .. } => CommitFailure {
+            phase: task_phase_for_commit_phase(*failed_phase),
+            rollback_result: "rolled_back",
+            emit_rollback: true,
+        },
+        ReinstallCommitError::RollbackRequired { .. } => CommitFailure {
+            phase: "rollback",
+            rollback_result: "rollback_required",
+            emit_rollback: true,
+        },
+        ReinstallCommitError::RepairRequired { .. } => CommitFailure {
+            phase: "rollback",
+            rollback_result: "repair_required",
+            emit_rollback: true,
+        },
+        ReinstallCommitError::PostCommit | ReinstallCommitError::CleanupPending => CommitFailure {
+            phase: "post_commit",
+            rollback_result: "not_attempted_post_commit",
+            emit_rollback: false,
+        },
+    }
+}
+
+fn task_phase_for_commit_phase(phase: ReinstallCommitPhase) -> &'static str {
+    match phase {
+        ReinstallCommitPhase::Revalidation => "preflight",
+        ReinstallCommitPhase::Snapshot | ReinstallCommitPhase::Recovery => "backup",
+        ReinstallCommitPhase::Mutation => "commit",
+        ReinstallCommitPhase::Manifest => "manifest",
+        ReinstallCommitPhase::Rollback => "rollback",
+        ReinstallCommitPhase::PostCommit | ReinstallCommitPhase::Cleanup => "post_commit",
+    }
+}
+
+fn running_event(task_id: &str, phase: &str) -> TaskProgressEvent {
+    TaskProgressEvent::new(task_id, TaskKind::Install, TaskStatus::Running, phase)
+}
+
+fn failed_event(task_id: &str, error_code: &str) -> TaskProgressEvent {
+    let mut event =
+        TaskProgressEvent::new(task_id, TaskKind::Install, TaskStatus::Failed, FAILED_PHASE);
+    event.error = Some(error_code.to_owned());
+    event
+}
+
+fn cancelled_event(task_id: &str) -> TaskProgressEvent {
+    TaskProgressEvent::new(
+        task_id,
+        TaskKind::Install,
+        TaskStatus::Cancelled,
+        CANCELLED_PHASE,
+    )
+}
+
+#[cfg(test)]
+#[path = "reinstall_task_tests.rs"]
+mod tests;

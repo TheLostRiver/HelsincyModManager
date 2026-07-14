@@ -13,9 +13,25 @@ pub struct InstallManifestQueryRequest {
 pub enum InstallManifestStatus {
     NotInstalled,
     Installed,
+    CommittedCleanupPending,
+    CleanupPending,
     RollbackRequired,
     RepairRequired,
     Unknown,
+}
+
+impl InstallManifestStatus {
+    pub fn from_recovery_status(status: crate::InstallRecoveryStatus) -> Self {
+        match status {
+            crate::InstallRecoveryStatus::NotInstalled => Self::NotInstalled,
+            crate::InstallRecoveryStatus::Completed => Self::Installed,
+            crate::InstallRecoveryStatus::CommittedCleanupPending => Self::CommittedCleanupPending,
+            crate::InstallRecoveryStatus::CleanupPending => Self::CleanupPending,
+            crate::InstallRecoveryStatus::RollbackRequired => Self::RollbackRequired,
+            crate::InstallRecoveryStatus::RepairRequired => Self::RepairRequired,
+            crate::InstallRecoveryStatus::Unknown => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,8 +127,9 @@ fn summary_for_mod(
 mod tests {
     use super::*;
     use hmm_core::{
-        FileLayer, InstallManifest, InstallManifestEntry, InstallManifestStatus as CoreManifestStatus,
-        InstallTargetPath, ModId, PackageFileId, ProfileId,
+        FileLayer, InstallManifest, InstallManifestEntry,
+        InstallManifestStatus as CoreManifestStatus, InstallTargetPath, ModId, PackageFileId,
+        ProfileId,
     };
     use hmm_ports::InstallManifestRepository;
     use std::sync::Arc;
@@ -270,7 +287,10 @@ mod tests {
     #[test]
     fn query_keeps_installed_for_remaining_mods_when_manifest_was_rolled_back() {
         assert_eq!(
-            query_status_for_mod(manifest_with_status(CoreManifestStatus::RolledBack), "mod-a"),
+            query_status_for_mod(
+                manifest_with_status(CoreManifestStatus::RolledBack),
+                "mod-a"
+            ),
             InstallManifestStatus::Installed
         );
     }
@@ -283,6 +303,22 @@ mod tests {
                 "mod-b"
             ),
             InstallManifestStatus::NotInstalled
+        );
+    }
+
+    #[test]
+    fn recovery_pending_states_keep_distinct_app_statuses() {
+        assert_eq!(
+            InstallManifestStatus::from_recovery_status(
+                crate::InstallRecoveryStatus::CommittedCleanupPending
+            ),
+            InstallManifestStatus::CommittedCleanupPending
+        );
+        assert_eq!(
+            InstallManifestStatus::from_recovery_status(
+                crate::InstallRecoveryStatus::CleanupPending
+            ),
+            InstallManifestStatus::CleanupPending
         );
     }
 }

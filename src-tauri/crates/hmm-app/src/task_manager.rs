@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -95,7 +95,9 @@ pub enum TaskManagerError {
 #[derive(Debug, Default)]
 pub struct TaskManager {
     sequence: AtomicU64,
+    lifecycle: Mutex<()>,
     tasks: Mutex<HashMap<String, TaskSnapshot>>,
+    cancellation_barriers: Mutex<HashSet<String>>,
 }
 
 impl TaskManager {
@@ -141,16 +143,55 @@ impl TaskManager {
         )
     }
 
+    pub fn block_task_cancellation(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut cancellation_barriers = self
+            .cancellation_barriers
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let task = tasks
+            .get(task_id)
+            .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
+
+        if task.status != TaskStatus::Running {
+            return Err(TaskManagerError::TaskCannotTransition {
+                task_id: task.task_id.clone(),
+                from: task.status,
+                to: TaskStatus::Running,
+            });
+        }
+
+        cancellation_barriers.insert(task.task_id.clone());
+        Ok(task.clone())
+    }
+
     pub fn cancel_task(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
         let mut tasks = self
             .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let cancellation_barriers = self
+            .cancellation_barriers
             .lock()
             .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
         let task = tasks
             .get_mut(task_id)
             .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
 
-        if !matches!(task.status, TaskStatus::Queued | TaskStatus::Running) {
+        if !matches!(task.status, TaskStatus::Queued | TaskStatus::Running)
+            || cancellation_barriers.contains(task_id)
+        {
             return Err(TaskManagerError::TaskCannotBeCancelled {
                 task_id: task.task_id.clone(),
                 status: task.status,
@@ -168,8 +209,16 @@ impl TaskManager {
         to: TaskStatus,
         allowed_from: &[TaskStatus],
     ) -> Result<TaskSnapshot, TaskManagerError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
         let mut tasks = self
             .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut cancellation_barriers = self
+            .cancellation_barriers
             .lock()
             .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
         let task = tasks
@@ -185,6 +234,9 @@ impl TaskManager {
         }
 
         task.status = to;
+        if matches!(to, TaskStatus::Completed | TaskStatus::Failed) {
+            cancellation_barriers.remove(task_id);
+        }
 
         Ok(task.clone())
     }
@@ -304,6 +356,90 @@ mod tests {
             manager.task_status(&cancelled.task_id),
             Some(TaskStatus::Cancelled)
         );
+    }
+
+    #[test]
+    fn cancellation_barrier_rejects_cancel_and_preserves_terminal_transition() {
+        let manager = TaskManager::new();
+        let completed_task = manager
+            .create_task(TaskKind::Install)
+            .expect("task can be created");
+        manager
+            .start_task(&completed_task.task_id)
+            .expect("task can start");
+        manager
+            .block_task_cancellation(&completed_task.task_id)
+            .expect("running task can enter commit barrier");
+
+        let error = manager
+            .cancel_task(&completed_task.task_id)
+            .expect_err("commit barrier rejects cancellation");
+        assert_eq!(
+            error,
+            TaskManagerError::TaskCannotBeCancelled {
+                task_id: completed_task.task_id.clone(),
+                status: TaskStatus::Running,
+            }
+        );
+        assert_eq!(
+            manager.task_status(&completed_task.task_id),
+            Some(TaskStatus::Running)
+        );
+        assert_eq!(
+            manager
+                .complete_task(&completed_task.task_id)
+                .expect("barrier does not block completion")
+                .status,
+            TaskStatus::Completed
+        );
+
+        let failed_task = manager
+            .create_task(TaskKind::Install)
+            .expect("task can be created");
+        manager
+            .start_task(&failed_task.task_id)
+            .expect("task can start");
+        manager
+            .block_task_cancellation(&failed_task.task_id)
+            .expect("running task can enter commit barrier");
+        assert_eq!(
+            manager
+                .fail_task(&failed_task.task_id)
+                .expect("barrier does not block failure")
+                .status,
+            TaskStatus::Failed
+        );
+    }
+
+    #[test]
+    fn cancellation_barrier_rejects_cancelled_or_non_running_task() {
+        let manager = TaskManager::new();
+        let queued = manager
+            .create_task(TaskKind::Install)
+            .expect("task can be created");
+        assert!(matches!(
+            manager.block_task_cancellation(&queued.task_id),
+            Err(TaskManagerError::TaskCannotTransition {
+                from: TaskStatus::Queued,
+                to: TaskStatus::Running,
+                ..
+            })
+        ));
+
+        let cancelled = manager
+            .create_task(TaskKind::Install)
+            .expect("task can be created");
+        manager
+            .cancel_task(&cancelled.task_id)
+            .expect("queued task can be cancelled");
+        assert!(matches!(
+            manager.block_task_cancellation(&cancelled.task_id),
+            Err(TaskManagerError::TaskCannotTransition {
+                from: TaskStatus::Cancelled,
+                to: TaskStatus::Running,
+                ..
+            })
+        ));
     }
 
     #[test]
