@@ -1,14 +1,15 @@
 use crate::mod_import_diagnostics::{
     preview_image_diagnostics_from_stored, PreviewImageDiagnosticsSummary,
 };
-use hmm_core::{CategoryLabel, PreviewImageRejectionReason};
+use hmm_core::{CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason};
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, CategoryRepository,
     ModImportPackagePrepareRequest,
     ModImportPackagePreparer, ModImportResultRepository, ModMetadataRepository,
     ModPackageMetadataAnalyzer,
     NeverCancelled, PreviewImageProcessingResult, StoredImportPreviewImage,
-    StoredModImportAnalysis, StoredModPackageMetadata, ThumbnailCacheMaintenance,
+    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
+    StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
     ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
@@ -136,6 +137,11 @@ pub struct ModImportTaskRunner {
     app_settings_repository: Option<Arc<dyn AppSettingsRepository>>,
 }
 
+enum ModImportCatalogTarget {
+    NewLogicalMod,
+    ExistingLogicalMod(ModId),
+}
+
 #[derive(Clone)]
 pub struct ThumbnailCacheMaintenanceScheduler {
     runner: Arc<ModImportTaskRunner>,
@@ -195,8 +201,43 @@ impl ModImportTaskRunner {
         task_id: &str,
         archive_path: PathBuf,
     ) -> Result<Vec<crate::TaskProgressEvent>, ModImportTaskRunError> {
+        self.run_prepare_task_for_target(
+            task_id,
+            archive_path,
+            ModImportCatalogTarget::NewLogicalMod,
+        )
+    }
+
+    pub fn run_prepare_revision_task(
+        &self,
+        task_id: &str,
+        archive_path: PathBuf,
+        mod_id: ModId,
+    ) -> Result<Vec<crate::TaskProgressEvent>, ModImportTaskRunError> {
+        self.run_prepare_task_for_target(
+            task_id,
+            archive_path,
+            ModImportCatalogTarget::ExistingLogicalMod(mod_id),
+        )
+    }
+
+    fn run_prepare_task_for_target(
+        &self,
+        task_id: &str,
+        archive_path: PathBuf,
+        target: ModImportCatalogTarget,
+    ) -> Result<Vec<crate::TaskProgressEvent>, ModImportTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(ModImportTaskRunError { events: Vec::new() });
+        }
+
+        if let ModImportCatalogTarget::ExistingLogicalMod(mod_id) = &target {
+            if !matches!(self.result_repository.get_mod(mod_id), Ok(Some(_))) {
+                let _ = self.task_manager.fail_task(task_id);
+                return Err(ModImportTaskRunError {
+                    events: vec![failed_event(task_id)],
+                });
+            }
         }
 
         let request = ModImportPrepareRequest {
@@ -217,11 +258,28 @@ impl ModImportTaskRunner {
                     return Err(ModImportTaskRunError { events: Vec::new() });
                 }
 
-                if self
-                    .result_repository
-                    .save_analysis(&stored_analysis_from_result(&result.analysis))
-                    .is_err()
-                {
+                let mod_id = match &target {
+                    ModImportCatalogTarget::NewLogicalMod => {
+                        ModId::new(&result.analysis.package_id)
+                    }
+                    ModImportCatalogTarget::ExistingLogicalMod(mod_id) => mod_id.clone(),
+                };
+                let revision = stored_revision_from_result(&mod_id, &result.analysis);
+                let save_result = match target {
+                    ModImportCatalogTarget::NewLogicalMod => {
+                        let logical_mod = StoredLogicalMod {
+                            mod_id,
+                            origin_revision_id: revision.revision_id.clone(),
+                            display_revision_id: revision.revision_id.clone(),
+                            origin_provenance: StoredModOriginProvenance::Imported,
+                        };
+                        self.result_repository.save_new_mod(&logical_mod, &revision)
+                    }
+                    ModImportCatalogTarget::ExistingLogicalMod(_) => {
+                        self.result_repository.append_revision(&revision)
+                    }
+                };
+                if save_result.is_err() {
                     let _ = self.task_manager.fail_task(task_id);
                     return Err(ModImportTaskRunError {
                         events: vec![failed_event(task_id)],
@@ -381,14 +439,33 @@ pub struct ModImportPrepareService {
     analysis_service: ModImportAnalysisService,
 }
 
-fn stored_analysis_from_result(result: &ModImportAnalysisResult) -> StoredModImportAnalysis {
+fn stored_analysis_from_result(
+    mod_id: &ModId,
+    result: &ModImportAnalysisResult,
+) -> StoredModImportAnalysis {
     StoredModImportAnalysis {
-        mod_id: result.package_id.clone(),
+        mod_id: mod_id.as_str().to_owned(),
         task_id: result.task_id.clone(),
         package_id: result.package_id.clone(),
         display_name: result.display_name.clone(),
         metadata: stored_metadata_from_package_metadata(&result.metadata),
         preview_image: stored_preview_from_import(&result.preview_image),
+    }
+}
+
+fn stored_revision_from_result(
+    mod_id: &ModId,
+    result: &ModImportAnalysisResult,
+) -> StoredModRevision {
+    let analysis = stored_analysis_from_result(mod_id, result);
+    StoredModRevision {
+        revision_id: ModRevisionId::new(&analysis.package_id),
+        mod_id: mod_id.clone(),
+        import_task_id: analysis.task_id,
+        package_id: analysis.package_id,
+        display_name: analysis.display_name,
+        metadata: analysis.metadata,
+        preview_image: analysis.preview_image,
     }
 }
 
@@ -725,5 +802,7 @@ impl ModImportAnalysisService {
     }
 }
 
+#[cfg(test)]
+mod revision_tests;
 #[cfg(test)]
 mod tests;
