@@ -15,6 +15,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod reinstall;
+mod reinstall_commit;
 mod save_backup;
 mod save_backup_background;
 mod save_backup_background_worker;
@@ -96,6 +97,9 @@ pub use reinstall::{
     ReinstallCandidatePlanRequest, ReinstallCandidatePlanner, ReinstallCandidateSourceReader,
     ReinstallPlanPreview, ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
     ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+};
+pub use reinstall_commit::{
+    ReinstallCommitError, ReinstallCommitPhase, ReinstallCommitResult, ReinstallCommitService,
 };
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
