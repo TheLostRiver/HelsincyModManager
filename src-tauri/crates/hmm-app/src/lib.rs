@@ -78,7 +78,8 @@ pub use mod_import_diagnostics::{
     PreviewImageDiagnosticsSummary, PreviewImageFallbackDiagnostic,
 };
 pub use mod_import_task::{
-    ModImportTaskError, ModImportTaskService, StartImportModTaskRequest, TaskStarted,
+    ModImportTaskError, ModImportTaskService, StartImportModRevisionTaskRequest,
+    StartImportModTaskRequest, TaskStarted,
 };
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
 pub use preview_image::{
