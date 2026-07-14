@@ -8,9 +8,9 @@ use hmm_core::{
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    ModImportResultRepository, ReinstallRecoveryTransactionRepository, StoredImportPreviewImage,
-    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
-    StoredModRevision,
+    ModImportResultRepository, ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
+    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
+    StoredModPackageMetadata, StoredModRevision,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -467,6 +467,15 @@ impl Fixture {
         self.service.preview(request)
     }
 
+    fn prepare(&self, request: ReinstallPreviewRequest) -> PreparedReinstall {
+        match self.service.prepare(request).expect("prepare") {
+            ReinstallPreparation::Ready(prepared) => *prepared,
+            ReinstallPreparation::Blocked(preview) => {
+                panic!("unexpected blocked preview: {preview:?}")
+            }
+        }
+    }
+
     fn assert_zero_mutations(&self) {
         assert_eq!(self.game.write_count(), 0);
         assert_eq!(self.game.remove_count(), 0);
@@ -698,6 +707,7 @@ impl ReinstallCandidatePlanner for FakePlanner {
 struct FakeCandidateSource {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     failures: Mutex<BTreeSet<String>>,
+    reads: Mutex<Vec<String>>,
 }
 
 impl FakeCandidateSource {
@@ -710,6 +720,7 @@ impl FakeCandidateSource {
                     .collect(),
             ),
             failures: Mutex::new(BTreeSet::new()),
+            reads: Mutex::new(Vec::new()),
         }
     }
 
@@ -726,6 +737,10 @@ impl FakeCandidateSource {
             .expect("source failures lock")
             .insert(id.to_owned());
     }
+
+    fn read_count(&self) -> usize {
+        self.reads.lock().expect("source reads lock").len()
+    }
 }
 
 impl ReinstallCandidateSourceReader for FakeCandidateSource {
@@ -734,6 +749,10 @@ impl ReinstallCandidateSourceReader for FakeCandidateSource {
         _candidate: &StoredModRevision,
         package_file_id: &PackageFileId,
     ) -> Result<Vec<u8>> {
+        self.reads
+            .lock()
+            .expect("source reads lock")
+            .push(package_file_id.as_str().to_owned());
         if self
             .failures
             .lock()
@@ -757,6 +776,9 @@ struct FakeGameFiles {
     read_failures: Mutex<BTreeSet<String>>,
     writes: Mutex<usize>,
     removes: Mutex<usize>,
+    mutations: Mutex<Vec<String>>,
+    fail_mutations: Mutex<BTreeMap<usize, bool>>,
+    mutation_attempts: Mutex<usize>,
 }
 
 impl FakeGameFiles {
@@ -797,6 +819,44 @@ impl FakeGameFiles {
     fn remove_count(&self) -> usize {
         *self.removes.lock().expect("removes lock")
     }
+
+    fn bytes(&self, path: &str) -> Option<Vec<u8>> {
+        self.files
+            .lock()
+            .expect("game files lock")
+            .get(path)
+            .cloned()
+    }
+
+    fn mutations(&self) -> Vec<String> {
+        self.mutations.lock().expect("mutations lock").clone()
+    }
+
+    fn fail_mutation(&self, attempt: usize) {
+        self.fail_mutations
+            .lock()
+            .expect("mutation failures lock")
+            .insert(attempt, true);
+    }
+
+    fn fail_mutation_before(&self, attempt: usize) {
+        self.fail_mutations
+            .lock()
+            .expect("mutation failures lock")
+            .insert(attempt, false);
+    }
+
+    fn mutation_failure(&self) -> Option<bool> {
+        let mut attempts = self
+            .mutation_attempts
+            .lock()
+            .expect("mutation attempts lock");
+        *attempts += 1;
+        self.fail_mutations
+            .lock()
+            .expect("mutation failures lock")
+            .remove(&*attempts)
+    }
 }
 
 impl InstallGameFileSystem for FakeGameFiles {
@@ -817,13 +877,43 @@ impl InstallGameFileSystem for FakeGameFiles {
             .cloned())
     }
 
-    fn write_game_file(&self, _target_path: &InstallTargetPath, _bytes: &[u8]) -> Result<()> {
+    fn write_game_file(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> Result<()> {
         *self.writes.lock().expect("writes lock") += 1;
+        let failure = self.mutation_failure();
+        if failure == Some(false) {
+            anyhow::bail!("injected write failure before mutation");
+        }
+        self.files
+            .lock()
+            .expect("game files lock")
+            .insert(target_path.as_str().to_owned(), bytes.to_vec());
+        self.mutations
+            .lock()
+            .expect("mutations lock")
+            .push(format!("write:{}", target_path.as_str()));
+        if failure == Some(true) {
+            anyhow::bail!("injected write failure");
+        }
         Ok(())
     }
 
-    fn remove_game_file(&self, _target_path: &InstallTargetPath) -> Result<()> {
+    fn remove_game_file(&self, target_path: &InstallTargetPath) -> Result<()> {
         *self.removes.lock().expect("removes lock") += 1;
+        let failure = self.mutation_failure();
+        if failure == Some(false) {
+            anyhow::bail!("injected remove failure before mutation");
+        }
+        self.files
+            .lock()
+            .expect("game files lock")
+            .remove(target_path.as_str());
+        self.mutations
+            .lock()
+            .expect("mutations lock")
+            .push(format!("remove:{}", target_path.as_str()));
+        if failure == Some(true) {
+            anyhow::bail!("injected remove failure");
+        }
         Ok(())
     }
 }
@@ -834,6 +924,7 @@ struct FakeBackups {
     read_failures: Mutex<BTreeSet<String>>,
     stores: Mutex<usize>,
     removes: Mutex<usize>,
+    fail_removes: Mutex<bool>,
 }
 
 impl FakeBackups {
@@ -877,6 +968,13 @@ impl FakeBackups {
     fn remove_count(&self) -> usize {
         *self.removes.lock().expect("removes lock")
     }
+
+    fn fail_removes(&self) {
+        *self
+            .fail_removes
+            .lock()
+            .expect("backup remove failure lock") = true;
+    }
 }
 
 impl InstallBackupStore for FakeBackups {
@@ -902,8 +1000,19 @@ impl InstallBackupStore for FakeBackups {
             .cloned())
     }
 
-    fn remove_backup(&self, _backup_ref: &str) -> Result<()> {
+    fn remove_backup(&self, backup_ref: &str) -> Result<()> {
         *self.removes.lock().expect("removes lock") += 1;
+        if *self
+            .fail_removes
+            .lock()
+            .expect("backup remove failure lock")
+        {
+            anyhow::bail!("injected backup cleanup failure");
+        }
+        self.files
+            .lock()
+            .expect("backup files lock")
+            .remove(backup_ref);
         Ok(())
     }
 }
@@ -911,6 +1020,9 @@ impl InstallBackupStore for FakeBackups {
 struct FakeManifests {
     manifest: Mutex<Option<InstallManifest>>,
     saves: Mutex<usize>,
+    loads: Mutex<usize>,
+    fail_saves: Mutex<BTreeMap<usize, bool>>,
+    fail_loads: Mutex<BTreeSet<usize>>,
 }
 
 impl FakeManifests {
@@ -918,6 +1030,9 @@ impl FakeManifests {
         Self {
             manifest: Mutex::new(manifest),
             saves: Mutex::new(0),
+            loads: Mutex::new(0),
+            fail_saves: Mutex::new(BTreeMap::new()),
+            fail_loads: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -938,15 +1053,52 @@ impl FakeManifests {
     fn save_count(&self) -> usize {
         *self.saves.lock().expect("manifest saves lock")
     }
+
+    fn fail_save(&self, call: usize, persist_before_error: bool) {
+        self.fail_saves
+            .lock()
+            .expect("manifest save failures lock")
+            .insert(call, persist_before_error);
+    }
+
+    fn fail_load(&self, call: usize) {
+        self.fail_loads
+            .lock()
+            .expect("manifest load failures lock")
+            .insert(call);
+    }
 }
 
 impl InstallManifestRepository for FakeManifests {
     fn load_manifest(&self, _profile_id: &ProfileId) -> Result<Option<InstallManifest>> {
+        let mut loads = self.loads.lock().expect("manifest loads lock");
+        *loads += 1;
+        if self
+            .fail_loads
+            .lock()
+            .expect("manifest load failures lock")
+            .remove(&*loads)
+        {
+            anyhow::bail!("injected manifest load failure");
+        }
         Ok(self.manifest.lock().expect("manifest lock").clone())
     }
 
-    fn save_manifest(&self, _manifest: &InstallManifest) -> Result<()> {
-        *self.saves.lock().expect("manifest saves lock") += 1;
+    fn save_manifest(&self, manifest: &InstallManifest) -> Result<()> {
+        let mut saves = self.saves.lock().expect("manifest saves lock");
+        *saves += 1;
+        if let Some(persist) = self
+            .fail_saves
+            .lock()
+            .expect("manifest save failures lock")
+            .remove(&*saves)
+        {
+            if persist {
+                *self.manifest.lock().expect("manifest lock") = Some(manifest.clone());
+            }
+            anyhow::bail!("injected manifest save failure");
+        }
+        *self.manifest.lock().expect("manifest lock") = Some(manifest.clone());
         Ok(())
     }
 }
@@ -956,6 +1108,9 @@ struct FakeRecoveryTransactions {
     active: Mutex<bool>,
     saves: Mutex<usize>,
     removes: Mutex<usize>,
+    transaction: Mutex<Option<ReinstallRecoveryTransaction>>,
+    history: Mutex<Vec<ReinstallRecoveryTransaction>>,
+    fail_saves: Mutex<BTreeSet<usize>>,
 }
 
 impl FakeRecoveryTransactions {
@@ -970,6 +1125,21 @@ impl FakeRecoveryTransactions {
     fn remove_count(&self) -> usize {
         *self.removes.lock().expect("recovery removes lock")
     }
+
+    fn history(&self) -> Vec<ReinstallRecoveryTransaction> {
+        self.history.lock().expect("recovery history lock").clone()
+    }
+
+    fn fail_save(&self, call: usize) {
+        self.fail_saves
+            .lock()
+            .expect("recovery save failures lock")
+            .insert(call);
+    }
+
+    fn current(&self) -> Option<ReinstallRecoveryTransaction> {
+        self.transaction.lock().expect("transaction lock").clone()
+    }
 }
 
 impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
@@ -978,6 +1148,9 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
         _profile_id: &ProfileId,
         _mod_id: &ModId,
     ) -> Result<Option<ReinstallRecoveryTransaction>> {
+        if let Some(transaction) = self.transaction.lock().expect("transaction lock").clone() {
+            return Ok(Some(transaction));
+        }
         if *self.active.lock().expect("active lock") {
             return Ok(Some(ReinstallRecoveryTransaction {
                 profile_id: ProfileId::new("default"),
@@ -1001,13 +1174,31 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
         Ok(Vec::new())
     }
 
-    fn save_transaction(&self, _transaction: &ReinstallRecoveryTransaction) -> Result<()> {
-        *self.saves.lock().expect("recovery saves lock") += 1;
+    fn save_transaction(&self, transaction: &ReinstallRecoveryTransaction) -> Result<()> {
+        let mut saves = self.saves.lock().expect("recovery saves lock");
+        *saves += 1;
+        if self
+            .fail_saves
+            .lock()
+            .expect("recovery save failures lock")
+            .remove(&*saves)
+        {
+            anyhow::bail!("injected recovery save failure");
+        }
+        *self.transaction.lock().expect("transaction lock") = Some(transaction.clone());
+        self.history
+            .lock()
+            .expect("recovery history lock")
+            .push(transaction.clone());
         Ok(())
     }
 
     fn remove_transaction(&self, _profile_id: &ProfileId, _mod_id: &ModId) -> Result<()> {
         *self.removes.lock().expect("recovery removes lock") += 1;
+        *self.transaction.lock().expect("transaction lock") = None;
         Ok(())
     }
 }
+
+#[path = "reinstall_commit_tests.rs"]
+mod commit;
