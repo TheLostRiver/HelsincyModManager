@@ -324,6 +324,94 @@ mod fault {
     }
 
     #[test]
+    fn pre_mutation_abort_removes_unowned_snapshots_when_recovery_stays_unavailable() {
+        let fixture = Fixture::ready();
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.recovery.fail_save(1);
+        fixture.recovery.fail_save(2);
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+
+        let error = commit_service(&fixture, snapshots.clone())
+            .commit(prepared, &token)
+            .expect_err("planned and abort saves fail");
+
+        assert_eq!(
+            error,
+            ReinstallCommitError::Failed {
+                phase: ReinstallCommitPhase::Recovery
+            }
+        );
+        assert!(fixture.game.mutations().is_empty());
+        assert_eq!(snapshots.remaining_count(), 0);
+        assert!(fixture.recovery.current().is_none());
+    }
+
+    #[test]
+    fn pre_mutation_abort_resumes_the_durable_planned_transaction() {
+        let fixture = Fixture::ready();
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.recovery.fail_save(2);
+        fixture.recovery.fail_save(3);
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+
+        let error = commit_service(&fixture, snapshots.clone())
+            .commit(prepared, &token)
+            .expect_err("committing and abort saves fail");
+
+        assert_eq!(
+            error,
+            ReinstallCommitError::Failed {
+                phase: ReinstallCommitPhase::Recovery
+            }
+        );
+        assert!(fixture.game.mutations().is_empty());
+        assert_eq!(snapshots.remaining_count(), 0);
+        assert!(fixture.recovery.current().is_none());
+        assert!(fixture.recovery.history().iter().any(|transaction| {
+            transaction.targets.iter().any(|target| {
+                matches!(
+                    target.snapshot,
+                    hmm_core::ReinstallSnapshotState::CleanupPending { .. }
+                )
+            })
+        }));
+    }
+
+    #[test]
+    fn pre_mutation_abort_reloads_an_ambiguously_persisted_transaction() {
+        let fixture = Fixture::ready();
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.recovery.fail_save(1);
+        fixture.recovery.persist_then_fail_save(2);
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+
+        let error = commit_service(&fixture, snapshots.clone())
+            .commit(prepared, &token)
+            .expect_err("abort save persists before returning an error");
+
+        assert_eq!(
+            error,
+            ReinstallCommitError::Failed {
+                phase: ReinstallCommitPhase::Recovery
+            }
+        );
+        assert!(fixture.game.mutations().is_empty());
+        assert_eq!(snapshots.remaining_count(), 0);
+        assert!(fixture.recovery.current().is_none());
+        assert!(fixture.recovery.history().iter().any(|transaction| {
+            transaction.targets.iter().any(|target| {
+                matches!(
+                    target.snapshot,
+                    hmm_core::ReinstallSnapshotState::CleanupPending { .. }
+                )
+            })
+        }));
+    }
+
+    #[test]
     fn pre_mutation_abort_keeps_transaction_until_snapshot_cleanup_finishes() {
         let fixture = Fixture::ready();
         let prepared = fixture.prepare(default_request());
@@ -810,6 +898,63 @@ mod fault {
                     ..
                 } | hmm_core::ReinstallSnapshotState::CleanupPending { .. }
             )));
+    }
+
+    #[test]
+    fn stale_backup_cleanup_retries_after_checkpoint_save_failure() {
+        let fixture = Fixture::ready();
+        fixture.manifests.update_manifest(|manifest| {
+            manifest
+                .entries
+                .iter_mut()
+                .find(|entry| entry.target_path.as_str() == "content/stale.bin")
+                .expect("stale entry")
+                .backup_ref = Some("original-stale".to_owned());
+        });
+        fixture
+            .backups
+            .set_fixture("original-stale", b"baseline-stale");
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.backups.fail_removes();
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+        let service = commit_service(&fixture, snapshots);
+
+        service
+            .commit(prepared, &token)
+            .expect_err("first stale backup cleanup fails");
+        fixture.backups.allow_removes();
+        fixture
+            .recovery
+            .fail_save(fixture.recovery.save_count() + 1);
+        let transaction = fixture
+            .recovery
+            .current()
+            .expect("completed cleanup transaction");
+
+        service
+            .cleanup_committed(&transaction)
+            .expect_err("backup ref checkpoint fails after deletion");
+
+        assert!(!fixture
+            .backups
+            .files
+            .lock()
+            .expect("backup files lock")
+            .contains_key("original-stale"));
+        let durable = fixture
+            .recovery
+            .current()
+            .expect("retryable completed transaction");
+        assert!(durable.targets.iter().any(|target| {
+            target.target_path.as_str() == "content/stale.bin"
+                && target.original_backup_ref.as_deref() == Some("original-stale")
+        }));
+
+        service
+            .cleanup_committed(&durable)
+            .expect("missing backup deletion is idempotent");
+        assert!(fixture.recovery.current().is_none());
     }
 
     #[test]

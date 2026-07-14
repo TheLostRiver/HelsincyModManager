@@ -568,7 +568,25 @@ impl ReinstallCommitService {
     fn abort_before_mutation(&self, transaction: &ReinstallRecoveryTransaction) {
         let mut transaction = transaction.clone();
         if self.recovery.save_transaction(&transaction).is_err() {
-            return;
+            match self
+                .recovery
+                .load_transaction(&transaction.profile_id, &transaction.mod_id)
+            {
+                Ok(Some(durable)) if same_pre_mutation_operation(&durable, &transaction) => {
+                    transaction = durable;
+                }
+                Ok(None) => {
+                    let snapshot_refs = transaction
+                        .targets
+                        .iter()
+                        .filter_map(snapshot_ref)
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>();
+                    self.remove_snapshot_refs(&snapshot_refs);
+                    return;
+                }
+                Ok(Some(_)) | Err(_) => return,
+            }
         }
         let target_paths = transaction
             .targets
@@ -706,6 +724,24 @@ impl ReinstallCommitService {
         }
         Ok(())
     }
+}
+
+fn same_pre_mutation_operation(
+    durable: &ReinstallRecoveryTransaction,
+    attempted: &ReinstallRecoveryTransaction,
+) -> bool {
+    matches!(
+        durable.status,
+        ReinstallRecoveryTransactionStatus::Planned
+            | ReinstallRecoveryTransactionStatus::Committing
+    ) && durable.profile_id == attempted.profile_id
+        && durable.mod_id == attempted.mod_id
+        && durable.old_revision_id == attempted.old_revision_id
+        && durable.candidate_revision_id == attempted.candidate_revision_id
+        && durable.plan_token == attempted.plan_token
+        && durable.plan_hash == attempted.plan_hash
+        && durable.pre_reinstall_manifest == attempted.pre_reinstall_manifest
+        && durable.targets == attempted.targets
 }
 
 fn candidate_file(
