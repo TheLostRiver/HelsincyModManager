@@ -82,15 +82,15 @@ impl ReinstallPlanPreview {
         installed_revision: Option<ModRevisionId>,
         candidate_revision: Option<ModRevisionId>,
         reason: ReinstallBlockingReason,
-    ) -> Self {
-        Self {
+    ) -> ReinstallPreparation {
+        ReinstallPreparation::Blocked(Self {
             status: ReinstallPreviewStatus::Blocked,
             installed_revision: installed_revision.map(revision_summary),
             candidate_revision: candidate_revision.map(revision_summary),
             counts: ReinstallTargetCounts::default(),
             blocking_reasons: vec![ReinstallBlockingReasonSummary { reason, count: 1 }],
             plan_token: None,
-        }
+        })
     }
 }
 
@@ -174,6 +174,14 @@ impl ReinstallPreviewService {
         &self,
         request: ReinstallPreviewRequest,
     ) -> Result<ReinstallPlanPreview, ReinstallPreviewError> {
+        self.prepare(request)
+            .map(ReinstallPreparation::into_preview)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        request: ReinstallPreviewRequest,
+    ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
         let candidate = self
             .catalog
             .get_revision(&request.candidate_revision_id)
@@ -408,7 +416,7 @@ impl ReinstallPreviewService {
             };
 
         let mut counts = ReinstallTargetCounts::default();
-        for classification in classifications {
+        for classification in &classifications {
             match classification.class {
                 ReinstallTargetClass::Retained => counts.retained += 1,
                 ReinstallTargetClass::Replaced => counts.replaced += 1,
@@ -426,23 +434,34 @@ impl ReinstallPreviewService {
             &target_facts,
             &backup_facts,
         );
-        Ok(ReinstallPlanPreview {
-            status: ReinstallPreviewStatus::Ready,
-            installed_revision: Some(revision_summary(installed_revision_id)),
-            candidate_revision: Some(revision_summary(candidate_revision_id)),
+        let targets = build_prepared_targets(
+            &manifest,
+            classifications,
+            source_facts.clone(),
+            target_facts,
+            &backup_facts,
+        );
+        Ok(ReinstallPreparation::Ready(Box::new(PreparedReinstall {
+            request,
+            candidate,
+            installed_revision_id,
+            legacy_provenance,
+            old_manifest: manifest,
+            source_files: source_facts,
+            backup_files: backup_facts,
+            targets,
             counts,
-            blocking_reasons: Vec::new(),
-            plan_token: Some(plan_token),
-        })
+            plan_hash: plan_token.clone(),
+            plan_token,
+        })))
     }
 
     fn preload_candidate(
         &self,
         candidate: &StoredModRevision,
         plan: &InstallPlan,
-    ) -> Result<(Vec<ReinstallTargetState>, Vec<SourceFact>), ReinstallBlockingReason> {
-        let mut grouped =
-            BTreeMap::<InstallTargetPath, Vec<(InstallFileProvider, InstalledFileSummary)>>::new();
+    ) -> Result<(Vec<ReinstallTargetState>, Vec<PreparedSourceFile>), ReinstallBlockingReason> {
+        let mut grouped = BTreeMap::<InstallTargetPath, Vec<PreparedSourceFile>>::new();
         let mut facts = Vec::with_capacity(plan.actions.len());
         for action in &plan.actions {
             let bytes = self
@@ -450,15 +469,16 @@ impl ReinstallPreviewService {
                 .read_candidate_source_file(candidate, &action.provider.package_file_id)
                 .map_err(|_| ReinstallBlockingReason::SourceUnavailable)?;
             let summary = summarize(&bytes);
+            let source = PreparedSourceFile {
+                provider: action.provider.clone(),
+                summary,
+                bytes: Arc::from(bytes),
+            };
             grouped
                 .entry(action.target_path.clone())
                 .or_default()
-                .push((action.provider.clone(), summary.clone()));
-            facts.push(SourceFact {
-                target_path: action.target_path.clone(),
-                provider: action.provider.clone(),
-                summary,
-            });
+                .push(source.clone());
+            facts.push(source);
         }
 
         let states = grouped
@@ -466,16 +486,16 @@ impl ReinstallPreviewService {
             .map(|(target_path, providers)| {
                 let final_file = providers
                     .iter()
-                    .max_by_key(|(provider, _)| provider.layer.priority)
+                    .max_by_key(|source| source.provider.layer.priority)
                     .expect("candidate target group is non-empty")
-                    .1
+                    .summary
                     .clone();
                 ReinstallTargetState::new(
                     target_path,
                     candidate.revision_id.clone(),
                     providers
                         .into_iter()
-                        .map(|(provider, _)| provider)
+                        .map(|source| source.provider)
                         .collect(),
                     final_file,
                 )
@@ -524,7 +544,13 @@ impl ReinstallPreviewService {
             if current != expected {
                 return Err(ReinstallBlockingReason::TargetChanged);
             }
-            target_facts.insert(target_path.clone(), Some(current));
+            target_facts.insert(
+                target_path.clone(),
+                Some(PreparedFile {
+                    bytes: Arc::from(bytes),
+                    summary: current,
+                }),
+            );
 
             let refs = entries
                 .iter()
@@ -561,7 +587,10 @@ impl ReinstallPreviewService {
                 .map_err(|_| ReinstallBlockingReason::TargetReadFailed)?;
             target_facts.insert(
                 candidate.target_path.clone(),
-                bytes.as_deref().map(summarize),
+                bytes.map(|bytes| PreparedFile {
+                    summary: summarize(&bytes),
+                    bytes: Arc::from(bytes),
+                }),
             );
         }
 
@@ -572,7 +601,13 @@ impl ReinstallPreviewService {
                 .read_backup(&backup_ref)
                 .map_err(|_| ReinstallBlockingReason::BackupReadFailed)?
                 .ok_or(ReinstallBlockingReason::BackupMissing)?;
-            backup_facts.insert(backup_ref, summarize(&bytes));
+            backup_facts.insert(
+                backup_ref,
+                PreparedFile {
+                    summary: summarize(&bytes),
+                    bytes: Arc::from(bytes),
+                },
+            );
         }
         Ok((states, target_facts, backup_facts))
     }
@@ -580,22 +615,121 @@ impl ReinstallPreviewService {
 
 type InstalledPreflight = (
     Vec<ReinstallTargetState>,
-    BTreeMap<InstallTargetPath, Option<InstalledFileSummary>>,
-    BTreeMap<String, InstalledFileSummary>,
+    BTreeMap<InstallTargetPath, Option<PreparedFile>>,
+    BTreeMap<String, PreparedFile>,
 );
 
 #[derive(Clone)]
-struct SourceFact {
-    target_path: InstallTargetPath,
-    provider: InstallFileProvider,
-    summary: InstalledFileSummary,
+#[allow(dead_code)] // Consumed by the Task 5 commit engine; external wiring is deferred to Task 6.
+pub(crate) struct PreparedSourceFile {
+    pub(crate) provider: InstallFileProvider,
+    pub(crate) summary: InstalledFileSummary,
+    pub(crate) bytes: Arc<[u8]>,
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct PreparedFile {
+    pub(crate) summary: InstalledFileSummary,
+    pub(crate) bytes: Arc<[u8]>,
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct PreparedReinstallTarget {
+    pub(crate) target_path: InstallTargetPath,
+    pub(crate) class: ReinstallTargetClass,
+    pub(crate) pre_file: Option<PreparedFile>,
+    pub(crate) candidate_files: Vec<PreparedSourceFile>,
+    pub(crate) original_backup_ref: Option<String>,
+    pub(crate) original_backup_file: Option<PreparedFile>,
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct PreparedReinstall {
+    pub(crate) request: ReinstallPreviewRequest,
+    pub(crate) candidate: StoredModRevision,
+    pub(crate) installed_revision_id: ModRevisionId,
+    pub(crate) legacy_provenance: Vec<ModRevisionId>,
+    pub(crate) old_manifest: InstallManifest,
+    pub(crate) source_files: Vec<PreparedSourceFile>,
+    pub(crate) backup_files: BTreeMap<String, PreparedFile>,
+    pub(crate) targets: Vec<PreparedReinstallTarget>,
+    pub(crate) counts: ReinstallTargetCounts,
+    pub(crate) plan_token: String,
+    pub(crate) plan_hash: String,
+}
+
+pub(crate) enum ReinstallPreparation {
+    Ready(Box<PreparedReinstall>),
+    Blocked(ReinstallPlanPreview),
+}
+
+impl ReinstallPreparation {
+    fn into_preview(self) -> ReinstallPlanPreview {
+        match self {
+            Self::Ready(prepared) => ReinstallPlanPreview {
+                status: ReinstallPreviewStatus::Ready,
+                installed_revision: Some(revision_summary(prepared.installed_revision_id)),
+                candidate_revision: Some(revision_summary(prepared.candidate.revision_id)),
+                counts: prepared.counts,
+                blocking_reasons: Vec::new(),
+                plan_token: Some(prepared.plan_token),
+            },
+            Self::Blocked(preview) => preview,
+        }
+    }
+}
+
+fn build_prepared_targets(
+    manifest: &InstallManifest,
+    classifications: Vec<hmm_core::ReinstallTargetClassification>,
+    source_files: Vec<PreparedSourceFile>,
+    mut target_facts: BTreeMap<InstallTargetPath, Option<PreparedFile>>,
+    backup_facts: &BTreeMap<String, PreparedFile>,
+) -> Vec<PreparedReinstallTarget> {
+    let mut sources_by_target = BTreeMap::<InstallTargetPath, Vec<PreparedSourceFile>>::new();
+    for source in source_files {
+        sources_by_target
+            .entry(source.provider.target_path.clone())
+            .or_default()
+            .push(source);
+    }
+
+    let mut targets = classifications
+        .into_iter()
+        .map(|classification| {
+            let original_backup_ref = manifest
+                .entries
+                .iter()
+                .filter(|entry| entry.target_path == classification.target_path)
+                .find_map(|entry| entry.backup_ref.clone());
+            let original_backup_file = original_backup_ref
+                .as_ref()
+                .and_then(|reference| backup_facts.get(reference))
+                .cloned();
+            PreparedReinstallTarget {
+                pre_file: target_facts.remove(&classification.target_path).flatten(),
+                candidate_files: sources_by_target
+                    .remove(&classification.target_path)
+                    .unwrap_or_default(),
+                original_backup_ref,
+                original_backup_file,
+                target_path: classification.target_path,
+                class: classification.class,
+            }
+        })
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| left.target_path.cmp(&right.target_path));
+    targets
 }
 
 fn revision_summary(revision_id: ModRevisionId) -> ReinstallRevisionSummary {
     ReinstallRevisionSummary { revision_id }
 }
 
-fn summarize(bytes: &[u8]) -> InstalledFileSummary {
+pub(crate) fn summarize(bytes: &[u8]) -> InstalledFileSummary {
     InstalledFileSummary {
         size_bytes: bytes.len() as u64,
         sha256: Sha256::digest(bytes)
@@ -610,9 +744,9 @@ fn canonical_plan_token(
     manifest: &InstallManifest,
     installed_revision_id: &ModRevisionId,
     candidate: &StoredModRevision,
-    source_facts: &[SourceFact],
-    target_facts: &BTreeMap<InstallTargetPath, Option<InstalledFileSummary>>,
-    backup_facts: &BTreeMap<String, InstalledFileSummary>,
+    source_facts: &[PreparedSourceFile],
+    target_facts: &BTreeMap<InstallTargetPath, Option<PreparedFile>>,
+    backup_facts: &BTreeMap<String, PreparedFile>,
 ) -> String {
     let mut hasher = Sha256::new();
     hash_field(&mut hasher, "reinstall-preview-v1");
@@ -654,8 +788,9 @@ fn canonical_plan_token(
 
     let mut sources = source_facts.to_vec();
     sources.sort_by(|left, right| {
-        left.target_path
-            .cmp(&right.target_path)
+        left.provider
+            .target_path
+            .cmp(&right.provider.target_path)
             .then_with(|| {
                 left.provider
                     .layer
@@ -670,7 +805,7 @@ fn canonical_plan_token(
     });
     hash_u64(&mut hasher, sources.len() as u64);
     for source in sources {
-        hash_field(&mut hasher, source.target_path.as_str());
+        hash_field(&mut hasher, source.provider.target_path.as_str());
         hash_field(&mut hasher, source.provider.mod_id.as_str());
         hash_field(&mut hasher, source.provider.package_file_id.as_str());
         hash_field(&mut hasher, &source.provider.layer.name);
@@ -681,12 +816,12 @@ fn canonical_plan_token(
     hash_u64(&mut hasher, target_facts.len() as u64);
     for (target, summary) in target_facts {
         hash_field(&mut hasher, target.as_str());
-        hash_optional_summary(&mut hasher, summary.as_ref());
+        hash_optional_summary(&mut hasher, summary.as_ref().map(|file| &file.summary));
     }
     hash_u64(&mut hasher, backup_facts.len() as u64);
     for (backup_ref, summary) in backup_facts {
         hash_field(&mut hasher, backup_ref);
-        hash_summary(&mut hasher, summary);
+        hash_summary(&mut hasher, &summary.summary);
     }
 
     format!("reinstall-preview-v1:{:x}", hasher.finalize())
