@@ -646,8 +646,7 @@ pub(crate) struct PreparedReinstallTarget {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
-pub(crate) struct PreparedReinstall {
+pub struct PreparedReinstall {
     pub(crate) request: ReinstallPreviewRequest,
     pub(crate) candidate: StoredModRevision,
     pub(crate) installed_revision_id: ModRevisionId,

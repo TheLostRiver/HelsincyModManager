@@ -616,42 +616,13 @@ impl ReinstallCommitService {
         &self,
         transaction: &ReinstallRecoveryTransaction,
     ) -> Result<(), ()> {
-        let mut transaction = transaction.clone();
-        let target_paths = transaction
-            .targets
-            .iter()
-            .map(|target| target.target_path.clone())
-            .collect::<Vec<_>>();
-        for target_path in target_paths {
-            self.cleanup_target_snapshot(&mut transaction, &target_path)
-                .map_err(|_| ())?;
-
-            let original_backup_ref = transaction
-                .targets
-                .iter()
-                .find(|target| target.target_path == target_path)
-                .filter(|target| target.class == ReinstallTargetClass::Stale)
-                .and_then(|target| target.original_backup_ref.clone());
-            if let Some(original_backup_ref) = original_backup_ref {
-                self.backups
-                    .remove_backup(&original_backup_ref)
-                    .map_err(|_| ())?;
-                let target_index = transaction
-                    .targets
-                    .iter()
-                    .position(|target| target.target_path == target_path)
-                    .expect("cleanup target remains in transaction");
-                transaction.targets[target_index].original_backup_ref = None;
-                if self.recovery.save_transaction(&transaction).is_err() {
-                    transaction.targets[target_index].original_backup_ref =
-                        Some(original_backup_ref);
-                    return Err(());
-                }
-            }
-        }
-        self.recovery
-            .remove_transaction(&transaction.profile_id, &transaction.mod_id)
-            .map_err(|_| ())
+        cleanup_reinstall_transaction(
+            self.backups.as_ref(),
+            self.recovery.as_ref(),
+            self.snapshots.as_ref(),
+            transaction,
+            true,
+        )
     }
 
     fn cleanup_target_snapshot(
@@ -659,71 +630,132 @@ impl ReinstallCommitService {
         transaction: &mut ReinstallRecoveryTransaction,
         target_path: &InstallTargetPath,
     ) -> Result<(), CleanupProgressError> {
-        let snapshot = transaction
-            .targets
-            .iter()
-            .find(|target| target.target_path == *target_path)
-            .map(|target| target.snapshot.clone())
-            .ok_or(CleanupProgressError::Recovery)?;
-        let (snapshot_ref, purpose) = match snapshot {
-            ReinstallSnapshotState::Stored {
-                snapshot_ref,
-                purpose,
-                cleanup_owner:
-                    cleanup_owner @ (ReinstallSnapshotCleanupOwner::Transaction
-                    | ReinstallSnapshotCleanupOwner::PromoteOnCommit),
-            } => {
-                let target_index = transaction
+        cleanup_reinstall_target_snapshot(
+            self.recovery.as_ref(),
+            self.snapshots.as_ref(),
+            transaction,
+            target_path,
+        )
+    }
+}
+
+pub(crate) fn cleanup_reinstall_transaction(
+    backups: &dyn InstallBackupStore,
+    recovery: &dyn ReinstallRecoveryTransactionRepository,
+    snapshots: &dyn ReinstallSnapshotStore,
+    transaction: &ReinstallRecoveryTransaction,
+    remove_stale_original_backups: bool,
+) -> Result<(), ()> {
+    let mut transaction = transaction.clone();
+    let target_paths = transaction
+        .targets
+        .iter()
+        .map(|target| target.target_path.clone())
+        .collect::<Vec<_>>();
+    for target_path in target_paths {
+        cleanup_reinstall_target_snapshot(recovery, snapshots, &mut transaction, &target_path)
+            .map_err(|_| ())?;
+
+        let original_backup_ref = remove_stale_original_backups
+            .then(|| {
+                transaction
                     .targets
                     .iter()
-                    .position(|target| target.target_path == *target_path)
-                    .expect("cleanup target remains in transaction");
-                transaction.targets[target_index].snapshot =
-                    ReinstallSnapshotState::CleanupPending {
-                        snapshot_ref: snapshot_ref.clone(),
-                        purpose,
-                    };
-                if self.recovery.save_transaction(transaction).is_err() {
-                    transaction.targets[target_index].snapshot = ReinstallSnapshotState::Stored {
-                        snapshot_ref,
-                        purpose,
-                        cleanup_owner,
-                    };
-                    return Err(CleanupProgressError::Recovery);
-                }
-                (snapshot_ref, purpose)
+                    .find(|target| target.target_path == target_path)
+                    .filter(|target| target.class == ReinstallTargetClass::Stale)
+                    .and_then(|target| target.original_backup_ref.clone())
+            })
+            .flatten();
+        if let Some(original_backup_ref) = original_backup_ref {
+            backups
+                .remove_backup(&original_backup_ref)
+                .map_err(|_| ())?;
+            let target_index = transaction
+                .targets
+                .iter()
+                .position(|target| target.target_path == target_path)
+                .expect("cleanup target remains in transaction");
+            transaction.targets[target_index].original_backup_ref = None;
+            if recovery.save_transaction(&transaction).is_err() {
+                transaction.targets[target_index].original_backup_ref = Some(original_backup_ref);
+                return Err(());
             }
-            ReinstallSnapshotState::CleanupPending {
-                snapshot_ref,
-                purpose,
-            } => (snapshot_ref, purpose),
-            ReinstallSnapshotState::NotRequired
-            | ReinstallSnapshotState::PreStateAbsent
-            | ReinstallSnapshotState::Cleaned { .. }
-            | ReinstallSnapshotState::Stored {
-                cleanup_owner: ReinstallSnapshotCleanupOwner::Manifest,
-                ..
-            } => return Ok(()),
-        };
+        }
+    }
+    recovery
+        .remove_transaction(&transaction.profile_id, &transaction.mod_id)
+        .map_err(|_| ())
+}
 
-        self.snapshots
-            .remove_snapshot(&snapshot_ref)
-            .map_err(|_| CleanupProgressError::Resource)?;
-        let target_index = transaction
-            .targets
-            .iter()
-            .position(|target| target.target_path == *target_path)
-            .expect("cleanup target remains in transaction");
-        transaction.targets[target_index].snapshot = ReinstallSnapshotState::Cleaned { purpose };
-        if self.recovery.save_transaction(transaction).is_err() {
+fn cleanup_reinstall_target_snapshot(
+    recovery: &dyn ReinstallRecoveryTransactionRepository,
+    snapshots: &dyn ReinstallSnapshotStore,
+    transaction: &mut ReinstallRecoveryTransaction,
+    target_path: &InstallTargetPath,
+) -> Result<(), CleanupProgressError> {
+    let snapshot = transaction
+        .targets
+        .iter()
+        .find(|target| target.target_path == *target_path)
+        .map(|target| target.snapshot.clone())
+        .ok_or(CleanupProgressError::Recovery)?;
+    let (snapshot_ref, purpose) = match snapshot {
+        ReinstallSnapshotState::Stored {
+            snapshot_ref,
+            purpose,
+            cleanup_owner:
+                cleanup_owner @ (ReinstallSnapshotCleanupOwner::Transaction
+                | ReinstallSnapshotCleanupOwner::PromoteOnCommit),
+        } => {
+            let target_index = transaction
+                .targets
+                .iter()
+                .position(|target| target.target_path == *target_path)
+                .expect("cleanup target remains in transaction");
             transaction.targets[target_index].snapshot = ReinstallSnapshotState::CleanupPending {
-                snapshot_ref,
+                snapshot_ref: snapshot_ref.clone(),
                 purpose,
             };
-            return Err(CleanupProgressError::Recovery);
+            if recovery.save_transaction(transaction).is_err() {
+                transaction.targets[target_index].snapshot = ReinstallSnapshotState::Stored {
+                    snapshot_ref,
+                    purpose,
+                    cleanup_owner,
+                };
+                return Err(CleanupProgressError::Recovery);
+            }
+            (snapshot_ref, purpose)
         }
-        Ok(())
+        ReinstallSnapshotState::CleanupPending {
+            snapshot_ref,
+            purpose,
+        } => (snapshot_ref, purpose),
+        ReinstallSnapshotState::NotRequired
+        | ReinstallSnapshotState::PreStateAbsent
+        | ReinstallSnapshotState::Cleaned { .. }
+        | ReinstallSnapshotState::Stored {
+            cleanup_owner: ReinstallSnapshotCleanupOwner::Manifest,
+            ..
+        } => return Ok(()),
+    };
+
+    snapshots
+        .remove_snapshot(&snapshot_ref)
+        .map_err(|_| CleanupProgressError::Resource)?;
+    let target_index = transaction
+        .targets
+        .iter()
+        .position(|target| target.target_path == *target_path)
+        .expect("cleanup target remains in transaction");
+    transaction.targets[target_index].snapshot = ReinstallSnapshotState::Cleaned { purpose };
+    if recovery.save_transaction(transaction).is_err() {
+        transaction.targets[target_index].snapshot = ReinstallSnapshotState::CleanupPending {
+            snapshot_ref,
+            purpose,
+        };
+        return Err(CleanupProgressError::Recovery);
     }
+    Ok(())
 }
 
 fn same_pre_mutation_operation(
@@ -815,7 +847,7 @@ fn build_candidate_manifest(
     Ok(manifest)
 }
 
-fn promote_manifest_snapshots(transaction: &mut ReinstallRecoveryTransaction) {
+pub(crate) fn promote_manifest_snapshots(transaction: &mut ReinstallRecoveryTransaction) {
     for target in &mut transaction.targets {
         if let ReinstallSnapshotState::Stored { cleanup_owner, .. } = &mut target.snapshot {
             if *cleanup_owner == ReinstallSnapshotCleanupOwner::PromoteOnCommit {

@@ -8,13 +8,15 @@ use crate::dto::{
 };
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
+#[cfg(test)]
+use hmm_app::InstallRecoveryStatus;
 use hmm_app::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, InstallManifestQueryError,
     InstallManifestQueryRequest, InstallManifestStatusSummary, InstallPlanFile,
     InstallPlanningError, InstallRecoveryActionKind, InstallRecoveryActionPreviewError,
     InstallRecoveryActionPreviewRequest, InstallRecoveryScanError, InstallRecoveryScanRequest,
-    InstallRecoveryStatus, InstallRecoverySummary, StartInstallTaskRequest,
-    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
+    InstallRecoverySummary, StartInstallTaskRequest, StartRecoveryActionTaskRequest,
+    StartUninstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{FileLayer, GameId, InstallTargetPathError, ModId, PackageFileId, ProfileId};
 use std::sync::Arc;
@@ -397,15 +399,7 @@ fn recovery_summary_to_manifest_status_summary(
     InstallManifestStatusSummary {
         profile_id: summary.profile_id,
         mod_id: summary.mod_id,
-        status: match summary.status {
-            InstallRecoveryStatus::NotInstalled => hmm_app::InstallManifestStatus::NotInstalled,
-            InstallRecoveryStatus::Completed => hmm_app::InstallManifestStatus::Installed,
-            InstallRecoveryStatus::RollbackRequired => {
-                hmm_app::InstallManifestStatus::RollbackRequired
-            }
-            InstallRecoveryStatus::RepairRequired => hmm_app::InstallManifestStatus::RepairRequired,
-            InstallRecoveryStatus::Unknown => hmm_app::InstallManifestStatus::Unknown,
-        },
+        status: hmm_app::InstallManifestStatus::from_recovery_status(summary.status),
         managed_file_count: summary.managed_file_count,
         backup_count: summary.backup_count,
     }

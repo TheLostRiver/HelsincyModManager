@@ -2,11 +2,15 @@ use super::*;
 use hmm_core::{
     FileLayer, InstallManifest, InstallManifestEntry, InstallManifestStatus, InstallRecoveryRecord,
     InstallRecoveryRecordEntry, InstallRecoveryRecordStatus, InstallTargetPath,
-    InstalledFileSummary, ModId, PackageFileId, ProfileId,
+    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId, ReinstallRecoveryTarget,
+    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
+    ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose, ReinstallSnapshotState,
+    ReinstallTargetClass,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    InstallRecoveryRecordRepository,
+    InstallRecoveryRecordRepository, ReinstallRecoveryTransactionRepository,
+    ReinstallSnapshotStore,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,10 +26,7 @@ struct FakeGameFiles {
 }
 
 impl InstallGameFileSystem for FakeGameFiles {
-    fn read_game_file(
-        &self,
-        target_path: &InstallTargetPath,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
+    fn read_game_file(&self, target_path: &InstallTargetPath) -> anyhow::Result<Option<Vec<u8>>> {
         if self
             .error_targets
             .lock()
@@ -55,11 +56,7 @@ impl InstallGameFileSystem for FakeGameFiles {
         Ok(current)
     }
 
-    fn write_game_file(
-        &self,
-        target_path: &InstallTargetPath,
-        bytes: &[u8],
-    ) -> anyhow::Result<()> {
+    fn write_game_file(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> anyhow::Result<()> {
         self.writes
             .lock()
             .expect("writes lock")
@@ -127,10 +124,7 @@ struct FakeManifests {
 }
 
 impl InstallManifestRepository for FakeManifests {
-    fn load_manifest(
-        &self,
-        _profile_id: &ProfileId,
-    ) -> anyhow::Result<Option<InstallManifest>> {
+    fn load_manifest(&self, _profile_id: &ProfileId) -> anyhow::Result<Option<InstallManifest>> {
         Ok(self.manifest.clone())
     }
 
@@ -175,10 +169,7 @@ impl InstallRecoveryRecordRepository for FakeRecoveryRecords {
             .cloned())
     }
 
-    fn list_records(
-        &self,
-        profile_id: &ProfileId,
-    ) -> anyhow::Result<Vec<InstallRecoveryRecord>> {
+    fn list_records(&self, profile_id: &ProfileId) -> anyhow::Result<Vec<InstallRecoveryRecord>> {
         self.listed_profiles
             .lock()
             .expect("listed profiles lock")
@@ -217,10 +208,567 @@ impl InstallRecoveryRecordRepository for FakeRecoveryRecords {
     }
 }
 
+#[derive(Default)]
+struct FakeReinstallTransactions {
+    transactions: Mutex<BTreeMap<String, ReinstallRecoveryTransaction>>,
+    save_count: Mutex<usize>,
+    remove_count: Mutex<usize>,
+    fail_saves: Mutex<bool>,
+}
+
+impl FakeReinstallTransactions {
+    fn insert(&self, transaction: ReinstallRecoveryTransaction) {
+        self.transactions
+            .lock()
+            .expect("reinstall transactions lock")
+            .insert(
+                record_key(&transaction.profile_id, &transaction.mod_id),
+                transaction,
+            );
+    }
+}
+
+impl ReinstallRecoveryTransactionRepository for FakeReinstallTransactions {
+    fn load_transaction(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> anyhow::Result<Option<ReinstallRecoveryTransaction>> {
+        Ok(self
+            .transactions
+            .lock()
+            .expect("reinstall transactions lock")
+            .get(&record_key(profile_id, mod_id))
+            .cloned())
+    }
+
+    fn list_transactions(
+        &self,
+        profile_id: &ProfileId,
+    ) -> anyhow::Result<Vec<ReinstallRecoveryTransaction>> {
+        Ok(self
+            .transactions
+            .lock()
+            .expect("reinstall transactions lock")
+            .values()
+            .filter(|transaction| transaction.profile_id == *profile_id)
+            .cloned()
+            .collect())
+    }
+
+    fn save_transaction(&self, transaction: &ReinstallRecoveryTransaction) -> anyhow::Result<()> {
+        *self.save_count.lock().expect("save count lock") += 1;
+        if *self.fail_saves.lock().expect("fail saves lock") {
+            anyhow::bail!("simulated reinstall transaction save failure");
+        }
+        self.insert(transaction.clone());
+        Ok(())
+    }
+
+    fn remove_transaction(&self, profile_id: &ProfileId, mod_id: &ModId) -> anyhow::Result<()> {
+        *self.remove_count.lock().expect("remove count lock") += 1;
+        self.transactions
+            .lock()
+            .expect("reinstall transactions lock")
+            .remove(&record_key(profile_id, mod_id));
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct FakeReinstallSnapshots {
+    snapshots: Mutex<BTreeMap<String, Vec<u8>>>,
+    remove_count: Mutex<usize>,
+}
+
+impl ReinstallSnapshotStore for FakeReinstallSnapshots {
+    fn store_snapshot(
+        &self,
+        _target_path: &InstallTargetPath,
+        _bytes: &[u8],
+    ) -> anyhow::Result<String> {
+        panic!("recovery scan must not store reinstall snapshots")
+    }
+
+    fn read_snapshot(&self, snapshot_ref: &str) -> anyhow::Result<Option<Vec<u8>>> {
+        Ok(self
+            .snapshots
+            .lock()
+            .expect("reinstall snapshots lock")
+            .get(snapshot_ref)
+            .cloned())
+    }
+
+    fn remove_snapshot(&self, snapshot_ref: &str) -> anyhow::Result<()> {
+        *self
+            .remove_count
+            .lock()
+            .expect("snapshot remove count lock") += 1;
+        self.snapshots
+            .lock()
+            .expect("reinstall snapshots lock")
+            .remove(snapshot_ref);
+        Ok(())
+    }
+}
+
+#[test]
+fn scan_derives_reinstall_crash_and_cleanup_states_without_writes() {
+    let cases = [
+        (
+            ReinstallRecoveryTransactionStatus::Committing,
+            false,
+            InstallRecoveryStatus::RollbackRequired,
+        ),
+        (
+            ReinstallRecoveryTransactionStatus::Committing,
+            true,
+            InstallRecoveryStatus::CommittedCleanupPending,
+        ),
+        (
+            ReinstallRecoveryTransactionStatus::Completed,
+            true,
+            InstallRecoveryStatus::CleanupPending,
+        ),
+        (
+            ReinstallRecoveryTransactionStatus::RepairRequired,
+            false,
+            InstallRecoveryStatus::RepairRequired,
+        ),
+    ];
+
+    for (transaction_status, candidate_visible, expected) in cases {
+        let (old_manifest, candidate_manifest, mut transaction, target) =
+            reinstall_recovery_fixture();
+        transaction.status = transaction_status;
+        let game_files = Arc::new(FakeGameFiles::default());
+        game_files.files.lock().expect("game files lock").insert(
+            target.as_str().to_owned(),
+            if candidate_visible {
+                b"candidate-v2".to_vec()
+            } else {
+                b"installed-v1".to_vec()
+            },
+        );
+        let backups = Arc::new(FakeBackups::default());
+        let manifests = Arc::new(FakeManifests {
+            manifest: Some(if candidate_visible {
+                candidate_manifest
+            } else {
+                old_manifest
+            }),
+        });
+        let transactions = Arc::new(FakeReinstallTransactions::default());
+        transactions.insert(transaction);
+        let snapshots = Arc::new(FakeReinstallSnapshots::default());
+        snapshots
+            .snapshots
+            .lock()
+            .expect("snapshots lock")
+            .insert("snapshot-v1".to_owned(), b"installed-v1".to_vec());
+        let service = InstallRecoveryScanService::new(game_files, backups, manifests)
+            .with_reinstall_recovery_transactions(transactions.clone(), snapshots.clone());
+
+        let summaries = service
+            .scan(InstallRecoveryScanRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: vec![ModId::new("mod-a")],
+            })
+            .expect("reinstall recovery scan succeeds");
+
+        assert_eq!(summaries[0].status, expected);
+        assert_eq!(*transactions.save_count.lock().expect("save count lock"), 0);
+        assert_eq!(
+            *transactions.remove_count.lock().expect("remove count lock"),
+            0
+        );
+        assert_eq!(
+            *snapshots
+                .remove_count
+                .lock()
+                .expect("snapshot remove count lock"),
+            0
+        );
+    }
+}
+
+#[test]
+fn scan_marks_reinstall_repair_required_when_candidate_target_is_not_proven() {
+    let (_old_manifest, candidate_manifest, mut transaction, target) = reinstall_recovery_fixture();
+    transaction.status = ReinstallRecoveryTransactionStatus::Committing;
+    let game_files = Arc::new(FakeGameFiles::default());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(target.as_str().to_owned(), b"external-change".to_vec());
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    let snapshots = Arc::new(FakeReinstallSnapshots::default());
+    snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .insert("snapshot-v1".to_owned(), b"installed-v1".to_vec());
+    let service = InstallRecoveryScanService::new(
+        game_files,
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeManifests {
+            manifest: Some(candidate_manifest),
+        }),
+    )
+    .with_reinstall_recovery_transactions(transactions, snapshots);
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![ModId::new("mod-a")],
+        })
+        .expect("scan returns fail-closed status");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::RepairRequired);
+}
+
+#[test]
+fn scan_marks_reinstall_repair_required_when_candidate_backup_ownership_differs() {
+    let (_old_manifest, mut candidate_manifest, transaction, target) = reinstall_recovery_fixture();
+    candidate_manifest.entries[0].backup_ref = Some("unexpected-backup".to_owned());
+    let game_files = Arc::new(FakeGameFiles::default());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(target.as_str().to_owned(), b"candidate-v2".to_vec());
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    let snapshots = Arc::new(FakeReinstallSnapshots::default());
+    snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .insert("snapshot-v1".to_owned(), b"installed-v1".to_vec());
+    let service = InstallRecoveryScanService::new(
+        game_files,
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeManifests {
+            manifest: Some(candidate_manifest),
+        }),
+    )
+    .with_reinstall_recovery_transactions(transactions, snapshots);
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![ModId::new("mod-a")],
+        })
+        .expect("scan returns fail-closed status");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::RepairRequired);
+}
+
+#[test]
+fn scan_marks_reinstall_repair_required_when_candidate_manifest_summary_differs() {
+    let (_old_manifest, mut candidate_manifest, transaction, target) = reinstall_recovery_fixture();
+    candidate_manifest.entries[0].installed_file = Some(installed_file_summary(b"wrong-summary"));
+    let game_files = Arc::new(FakeGameFiles::default());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(target.as_str().to_owned(), b"candidate-v2".to_vec());
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    let snapshots = Arc::new(FakeReinstallSnapshots::default());
+    snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .insert("snapshot-v1".to_owned(), b"installed-v1".to_vec());
+    let service = InstallRecoveryScanService::new(
+        game_files,
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeManifests {
+            manifest: Some(candidate_manifest),
+        }),
+    )
+    .with_reinstall_recovery_transactions(transactions, snapshots);
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![ModId::new("mod-a")],
+        })
+        .expect("scan returns fail-closed status");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::RepairRequired);
+}
+
+#[test]
+fn completed_reinstall_stale_target_requires_existing_original_backup_match() {
+    let cases = [
+        (
+            b"original-baseline".as_slice(),
+            InstallRecoveryStatus::CleanupPending,
+        ),
+        (
+            b"external-change".as_slice(),
+            InstallRecoveryStatus::RepairRequired,
+        ),
+    ];
+
+    for (stale_bytes, expected) in cases {
+        let (_old_manifest, candidate_manifest, transaction, candidate_target, stale_target) =
+            reinstall_recovery_with_stale_target();
+        let game_files = Arc::new(FakeGameFiles::default());
+        game_files.files.lock().expect("game files lock").insert(
+            candidate_target.as_str().to_owned(),
+            b"candidate-v2".to_vec(),
+        );
+        game_files
+            .files
+            .lock()
+            .expect("game files lock")
+            .insert(stale_target.as_str().to_owned(), stale_bytes.to_vec());
+        let backups = Arc::new(FakeBackups::default());
+        backups.backups.lock().expect("backups lock").insert(
+            "stale-original-backup".to_owned(),
+            b"original-baseline".to_vec(),
+        );
+        let transactions = Arc::new(FakeReinstallTransactions::default());
+        transactions.insert(transaction);
+        let snapshots = Arc::new(FakeReinstallSnapshots::default());
+        snapshots.snapshots.lock().expect("snapshots lock").extend([
+            ("snapshot-v1".to_owned(), b"installed-v1".to_vec()),
+            (
+                "stale-snapshot-v1".to_owned(),
+                b"stale-installed-v1".to_vec(),
+            ),
+        ]);
+        let service = InstallRecoveryScanService::new(
+            game_files,
+            backups,
+            Arc::new(FakeManifests {
+                manifest: Some(candidate_manifest),
+            }),
+        )
+        .with_reinstall_recovery_transactions(transactions, snapshots);
+
+        let summaries = service
+            .scan(InstallRecoveryScanRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: vec![ModId::new("mod-a")],
+            })
+            .expect("completed reinstall scan succeeds");
+
+        assert_eq!(summaries[0].status, expected);
+    }
+}
+
+#[test]
+fn completed_reinstall_allows_non_destructive_cleanup_after_stale_backup_delete_checkpoint() {
+    let (_old_manifest, candidate_manifest, mut transaction, candidate_target, stale_target) =
+        reinstall_recovery_with_stale_target();
+    let stale = transaction
+        .targets
+        .iter_mut()
+        .find(|target| target.target_path == stale_target)
+        .expect("stale recovery target");
+    stale.snapshot = ReinstallSnapshotState::Cleaned {
+        purpose: ReinstallSnapshotPurpose::TransactionRollback,
+    };
+    transaction
+        .validate()
+        .expect("checkpointed snapshot cleanup remains valid");
+    let game_files = Arc::new(FakeGameFiles::default());
+    game_files.files.lock().expect("game files lock").insert(
+        candidate_target.as_str().to_owned(),
+        b"candidate-v2".to_vec(),
+    );
+    game_files.files.lock().expect("game files lock").insert(
+        stale_target.as_str().to_owned(),
+        b"post-cleanup-user-file".to_vec(),
+    );
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    let snapshots = Arc::new(FakeReinstallSnapshots::default());
+    snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .insert("snapshot-v1".to_owned(), b"installed-v1".to_vec());
+    let service = InstallRecoveryScanService::new(
+        game_files.clone(),
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeManifests {
+            manifest: Some(candidate_manifest),
+        }),
+    )
+    .with_reinstall_recovery_transactions(transactions.clone(), snapshots.clone());
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![ModId::new("mod-a")],
+        })
+        .expect("checkpointed cleanup scan succeeds");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::CleanupPending);
+    assert!(game_files
+        .writes
+        .lock()
+        .expect("game writes lock")
+        .is_empty());
+    assert!(game_files
+        .removals
+        .lock()
+        .expect("game removals lock")
+        .is_empty());
+    assert_eq!(*transactions.save_count.lock().expect("save count lock"), 0);
+    assert_eq!(
+        *snapshots
+            .remove_count
+            .lock()
+            .expect("snapshot remove count lock"),
+        0
+    );
+}
+
+#[test]
+fn scan_all_includes_mod_known_only_by_reinstall_transaction() {
+    let (_old_manifest, _candidate_manifest, mut transaction, _target) =
+        reinstall_recovery_fixture();
+    transaction.status = ReinstallRecoveryTransactionStatus::RepairRequired;
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    let service = InstallRecoveryScanService::new(
+        Arc::new(FakeGameFiles::default()),
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeManifests { manifest: None }),
+    )
+    .with_reinstall_recovery_transactions(
+        transactions,
+        Arc::new(FakeReinstallSnapshots::default()),
+    );
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: Vec::new(),
+        })
+        .expect("scan all includes transaction-only Mod");
+
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].mod_id, ModId::new("mod-a"));
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::RepairRequired);
+}
+
+#[test]
+fn reconcile_committed_reinstall_marks_completed_then_cleans_without_game_mutation() {
+    let (service, game_files, transactions, snapshots) =
+        reinstall_reconciliation_fixture(b"candidate-v2", false);
+
+    let result = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect("candidate-state transaction reconciles");
+
+    assert_eq!(
+        result.action_kind,
+        InstallRecoveryActionKind::ReconcileReinstall
+    );
+    assert_eq!(result.backup_count, 1);
+    assert!(transactions
+        .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+        .expect("transaction load")
+        .is_none());
+    assert_eq!(
+        *snapshots
+            .remove_count
+            .lock()
+            .expect("snapshot remove count lock"),
+        1
+    );
+    assert!(game_files
+        .writes
+        .lock()
+        .expect("game writes lock")
+        .is_empty());
+    assert!(game_files
+        .removals
+        .lock()
+        .expect("game removals lock")
+        .is_empty());
+}
+
+#[test]
+fn reconcile_committed_reinstall_marks_repair_when_candidate_state_is_not_proven() {
+    let (service, _game_files, transactions, snapshots) =
+        reinstall_reconciliation_fixture(b"external-change", false);
+
+    let error = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect_err("unproven candidate state requires repair");
+
+    assert_eq!(error, InstallRecoveryActionError::ReinstallRepairRequired);
+    assert_eq!(
+        transactions
+            .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("transaction load")
+            .expect("repair transaction")
+            .status,
+        ReinstallRecoveryTransactionStatus::RepairRequired
+    );
+    assert_eq!(
+        *snapshots
+            .remove_count
+            .lock()
+            .expect("snapshot remove count lock"),
+        0
+    );
+}
+
+#[test]
+fn reconcile_post_commit_save_failure_keeps_committing_transaction_and_snapshot() {
+    let (service, _game_files, transactions, snapshots) =
+        reinstall_reconciliation_fixture(b"candidate-v2", true);
+
+    let error = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect_err("completed bookkeeping remains retryable");
+
+    assert_eq!(error, InstallRecoveryActionError::ReinstallPostCommitFailed);
+    assert_eq!(
+        transactions
+            .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("transaction load")
+            .expect("committing transaction")
+            .status,
+        ReinstallRecoveryTransactionStatus::Committing
+    );
+    assert_eq!(
+        *snapshots
+            .remove_count
+            .lock()
+            .expect("snapshot remove count lock"),
+        0
+    );
+}
+
 #[test]
 fn scan_marks_rollback_required_from_committing_recovery_record_without_manifest() {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let modded_bytes = b"modded model".to_vec();
     let game_files = Arc::new(FakeGameFiles::default());
     let backups = Arc::new(FakeBackups::default());
@@ -263,8 +811,8 @@ fn scan_marks_rollback_required_from_committing_recovery_record_without_manifest
 
 #[test]
 fn scan_does_not_promote_planned_recovery_record_to_rollback_required() {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let game_files = Arc::new(FakeGameFiles::default());
     let backups = Arc::new(FakeBackups::default());
     let manifests = Arc::new(FakeManifests { manifest: None });
@@ -306,8 +854,8 @@ fn scan_does_not_promote_planned_recovery_record_to_rollback_required() {
 
 #[test]
 fn scan_empty_mod_ids_includes_recovery_record_mods_when_manifest_is_missing() {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let game_files = Arc::new(FakeGameFiles::default());
     let backups = Arc::new(FakeBackups::default());
     let manifests = Arc::new(FakeManifests { manifest: None });
@@ -463,8 +1011,7 @@ fn preview_rollback_action_is_available_when_recovery_record_targets_are_safe() 
             },
         ],
     });
-    let service =
-        InstallRecoveryActionPreviewService::new(game_files, backups, recovery_records);
+    let service = InstallRecoveryActionPreviewService::new(game_files, backups, recovery_records);
 
     let preview = service
         .preview(InstallRecoveryActionPreviewRequest {
@@ -583,8 +1130,7 @@ fn preview_rollback_action_blocks_unsafe_recovery_record_targets() {
             },
         ],
     });
-    let service =
-        InstallRecoveryActionPreviewService::new(game_files, backups, recovery_records);
+    let service = InstallRecoveryActionPreviewService::new(game_files, backups, recovery_records);
 
     let preview = service
         .preview(InstallRecoveryActionPreviewRequest {
@@ -638,8 +1184,7 @@ fn preview_rollback_action_blocks_when_rollback_state_is_missing() {
     let game_files = Arc::new(FakeGameFiles::default());
     let backups = Arc::new(FakeBackups::default());
     let recovery_records = Arc::new(FakeRecoveryRecords::default());
-    let service =
-        InstallRecoveryActionPreviewService::new(game_files, backups, recovery_records);
+    let service = InstallRecoveryActionPreviewService::new(game_files, backups, recovery_records);
 
     let preview = service
         .preview(InstallRecoveryActionPreviewRequest {
@@ -711,11 +1256,8 @@ fn run_rollback_install_action_removes_new_files_restores_backups_and_marks_roll
             },
         ],
     });
-    let service = InstallRecoveryActionService::new(
-        game_files.clone(),
-        backups,
-        recovery_records.clone(),
-    );
+    let service =
+        InstallRecoveryActionService::new(game_files.clone(), backups, recovery_records.clone());
 
     let result = service
         .run(InstallRecoveryActionRequest {
@@ -767,11 +1309,8 @@ fn run_rollback_install_action_revalidates_target_before_writing() {
         Some(summary(&expected_bytes)),
         None,
     ));
-    let service = InstallRecoveryActionService::new(
-        game_files.clone(),
-        backups,
-        recovery_records.clone(),
-    );
+    let service =
+        InstallRecoveryActionService::new(game_files.clone(), backups, recovery_records.clone());
 
     let error = service
         .run(InstallRecoveryActionRequest {
@@ -819,8 +1358,8 @@ fn run_rollback_install_action_revalidates_target_before_writing() {
 
 #[test]
 fn scan_marks_completed_when_target_summary_matches_and_backup_exists() {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let modded_bytes = b"modded model".to_vec();
     let original_bytes = b"original model".to_vec();
     let game_files = Arc::new(FakeGameFiles::default());
@@ -949,8 +1488,8 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
 
 #[test]
 fn scan_marks_unknown_when_target_state_cannot_be_read() {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let modded_bytes = b"modded model".to_vec();
     let game_files = Arc::new(FakeGameFiles::default());
     game_files
@@ -997,8 +1536,8 @@ fn scan_marks_unknown_when_target_state_cannot_be_read() {
 
 #[test]
 fn scan_reports_repair_issue_when_backup_is_missing_without_exposing_backup_ref() {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let modded_bytes = b"modded model".to_vec();
     let game_files = Arc::new(FakeGameFiles::default());
     game_files
@@ -1163,6 +1702,151 @@ fn summary(bytes: &[u8]) -> InstalledFileSummary {
     }
 }
 
+fn reinstall_reconciliation_fixture(
+    current_bytes: &[u8],
+    fail_saves: bool,
+) -> (
+    InstallRecoveryActionService,
+    Arc<FakeGameFiles>,
+    Arc<FakeReinstallTransactions>,
+    Arc<FakeReinstallSnapshots>,
+) {
+    let (_old_manifest, candidate_manifest, transaction, target) = reinstall_recovery_fixture();
+    let game_files = Arc::new(FakeGameFiles::default());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(target.as_str().to_owned(), current_bytes.to_vec());
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    *transactions.fail_saves.lock().expect("fail saves lock") = fail_saves;
+    let snapshots = Arc::new(FakeReinstallSnapshots::default());
+    snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .insert("snapshot-v1".to_owned(), b"installed-v1".to_vec());
+    let service = InstallRecoveryActionService::new_with_manifest(
+        game_files.clone(),
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeRecoveryRecords::default()),
+        Arc::new(FakeManifests {
+            manifest: Some(candidate_manifest),
+        }),
+    )
+    .with_reinstall_reconciliation(transactions.clone(), snapshots.clone());
+
+    (service, game_files, transactions, snapshots)
+}
+
+fn reinstall_recovery_fixture() -> (
+    InstallManifest,
+    InstallManifest,
+    ReinstallRecoveryTransaction,
+    InstallTargetPath,
+) {
+    let profile_id = ProfileId::new("default");
+    let mod_id = ModId::new("mod-a");
+    let old_revision_id = ModRevisionId::new("installed-v1");
+    let candidate_revision_id = ModRevisionId::new("candidate-v2");
+    let target =
+        InstallTargetPath::parse("nativePC/reinstall.bin", ["nativePC"]).expect("reinstall target");
+    let mut old_manifest = InstallManifest::completed(
+        profile_id.clone(),
+        vec![InstallManifestEntry {
+            target_path: target.clone(),
+            mod_id: mod_id.clone(),
+            revision_id: Some(old_revision_id.clone()),
+            package_file_id: PackageFileId::new("old/reinstall.bin"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: Some(installed_file_summary(b"installed-v1")),
+        }],
+    );
+    old_manifest.schema_version = hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+    old_manifest.plan_hash = Some("old-plan-hash".to_owned());
+
+    let mut candidate_manifest = old_manifest.clone();
+    candidate_manifest.entries[0].revision_id = Some(candidate_revision_id.clone());
+    candidate_manifest.entries[0].package_file_id = PackageFileId::new("new/reinstall.bin");
+    candidate_manifest.entries[0].installed_file = Some(installed_file_summary(b"candidate-v2"));
+    candidate_manifest.plan_hash = Some("candidate-plan-hash".to_owned());
+
+    let transaction = ReinstallRecoveryTransaction {
+        profile_id,
+        mod_id,
+        old_revision_id,
+        candidate_revision_id,
+        plan_token: "opaque-plan-token".to_owned(),
+        plan_hash: "candidate-plan-hash".to_owned(),
+        status: ReinstallRecoveryTransactionStatus::Committing,
+        pre_reinstall_manifest: old_manifest.clone(),
+        targets: vec![ReinstallRecoveryTarget {
+            target_path: target.clone(),
+            class: ReinstallTargetClass::Replaced,
+            pre_state: Some(installed_file_summary(b"installed-v1")),
+            candidate_state: Some(installed_file_summary(b"candidate-v2")),
+            snapshot: ReinstallSnapshotState::Stored {
+                snapshot_ref: "snapshot-v1".to_owned(),
+                purpose: ReinstallSnapshotPurpose::TransactionRollback,
+                cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
+            },
+            original_backup_ref: None,
+        }],
+    };
+    transaction.validate().expect("valid reinstall transaction");
+
+    (old_manifest, candidate_manifest, transaction, target)
+}
+
+fn reinstall_recovery_with_stale_target() -> (
+    InstallManifest,
+    InstallManifest,
+    ReinstallRecoveryTransaction,
+    InstallTargetPath,
+    InstallTargetPath,
+) {
+    let (mut old_manifest, candidate_manifest, mut transaction, candidate_target) =
+        reinstall_recovery_fixture();
+    let stale_target = InstallTargetPath::parse("nativePC/stale.bin", ["nativePC"])
+        .expect("stale reinstall target");
+    old_manifest.entries.push(InstallManifestEntry {
+        target_path: stale_target.clone(),
+        mod_id: ModId::new("mod-a"),
+        revision_id: Some(ModRevisionId::new("installed-v1")),
+        package_file_id: PackageFileId::new("old/stale.bin"),
+        layer: FileLayer::new("base", 0),
+        backup_ref: Some("stale-original-backup".to_owned()),
+        installed_file: Some(installed_file_summary(b"stale-installed-v1")),
+    });
+    transaction.status = ReinstallRecoveryTransactionStatus::Completed;
+    transaction.pre_reinstall_manifest = old_manifest.clone();
+    transaction.targets.push(ReinstallRecoveryTarget {
+        target_path: stale_target.clone(),
+        class: ReinstallTargetClass::Stale,
+        pre_state: Some(installed_file_summary(b"stale-installed-v1")),
+        candidate_state: None,
+        snapshot: ReinstallSnapshotState::Stored {
+            snapshot_ref: "stale-snapshot-v1".to_owned(),
+            purpose: ReinstallSnapshotPurpose::TransactionRollback,
+            cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
+        },
+        original_backup_ref: Some("stale-original-backup".to_owned()),
+    });
+    transaction
+        .validate()
+        .expect("valid completed reinstall transaction with stale target");
+
+    (
+        old_manifest,
+        candidate_manifest,
+        transaction,
+        candidate_target,
+        stale_target,
+    )
+}
+
 fn recovery_record(
     status: InstallRecoveryRecordStatus,
     target_path: InstallTargetPath,
@@ -1190,8 +1874,8 @@ fn record_key(profile_id: &ProfileId, mod_id: &ModId) -> String {
 fn scan_status_for_manifest_status(
     manifest_status: InstallManifestStatus,
 ) -> InstallRecoverySummary {
-    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
-        .expect("target path");
+    let target =
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target path");
     let modded_bytes = b"modded model".to_vec();
     let game_files = Arc::new(FakeGameFiles::default());
     game_files

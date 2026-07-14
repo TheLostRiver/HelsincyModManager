@@ -1,15 +1,20 @@
 use hmm_core::{
     InstallManifest, InstallManifestStatus, InstallManifestStatusConsumption,
     InstallRecoveryRecord, InstallRecoveryRecordStatus, InstalledFileSummary, ModId, ProfileId,
+    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
+    ReinstallSnapshotCleanupOwner, ReinstallSnapshotState, ReinstallTargetClass,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    InstallRecoveryRecordRepository,
+    InstallRecoveryRecordRepository, ReinstallRecoveryTransactionRepository,
+    ReinstallSnapshotStore,
 };
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use thiserror::Error;
+
+use crate::reinstall_commit::{cleanup_reinstall_transaction, promote_manifest_snapshots};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallRecoveryScanRequest {
@@ -21,6 +26,8 @@ pub struct InstallRecoveryScanRequest {
 pub enum InstallRecoveryStatus {
     NotInstalled,
     Completed,
+    CommittedCleanupPending,
+    CleanupPending,
     RollbackRequired,
     RepairRequired,
     Unknown,
@@ -56,6 +63,7 @@ pub struct InstallRecoverySummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallRecoveryActionKind {
     RollbackInstall,
+    ReconcileReinstall,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +162,12 @@ pub enum InstallRecoveryActionError {
     RollbackFailed {
         failed_phase: InstallRecoveryActionPhase,
     },
+    #[error("reinstall recovery state requires repair")]
+    ReinstallRepairRequired,
+    #[error("reinstall post-commit bookkeeping failed")]
+    ReinstallPostCommitFailed,
+    #[error("reinstall recovery cleanup remains pending")]
+    ReinstallCleanupFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +185,8 @@ pub struct InstallRecoveryScanService {
     backup_store: Arc<dyn InstallBackupStore>,
     manifest_repository: Arc<dyn InstallManifestRepository>,
     recovery_record_repository: Option<Arc<dyn InstallRecoveryRecordRepository>>,
+    reinstall_recovery_repository: Option<Arc<dyn ReinstallRecoveryTransactionRepository>>,
+    reinstall_snapshot_store: Option<Arc<dyn ReinstallSnapshotStore>>,
 }
 
 impl InstallRecoveryScanService {
@@ -184,6 +200,8 @@ impl InstallRecoveryScanService {
             backup_store,
             manifest_repository,
             recovery_record_repository: None,
+            reinstall_recovery_repository: None,
+            reinstall_snapshot_store: None,
         }
     }
 
@@ -198,7 +216,19 @@ impl InstallRecoveryScanService {
             backup_store,
             manifest_repository,
             recovery_record_repository: Some(recovery_record_repository),
+            reinstall_recovery_repository: None,
+            reinstall_snapshot_store: None,
         }
+    }
+
+    pub fn with_reinstall_recovery_transactions(
+        mut self,
+        recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+        snapshot_store: Arc<dyn ReinstallSnapshotStore>,
+    ) -> Self {
+        self.reinstall_recovery_repository = Some(recovery_repository);
+        self.reinstall_snapshot_store = Some(snapshot_store);
+        self
     }
 
     pub fn scan(
@@ -216,9 +246,18 @@ impl InstallRecoveryScanService {
         } else {
             BTreeMap::new()
         };
+        let reinstall_transactions = if scan_all_mods {
+            self.list_reinstall_transactions(&request.profile_id)?
+        } else {
+            BTreeMap::new()
+        };
 
         let mod_ids = if scan_all_mods {
-            recovery_scan_mod_ids(manifest.as_ref(), &recovery_records)
+            recovery_scan_mod_ids(
+                manifest.as_ref(),
+                &recovery_records,
+                &reinstall_transactions,
+            )
         } else {
             request.mod_ids
         };
@@ -232,11 +271,20 @@ impl InstallRecoveryScanService {
             } else {
                 self.load_recovery_record(&request.profile_id, &mod_id)?
             };
+            let reinstall_transaction =
+                if let Some(transaction) = reinstall_transactions.get(mod_id.as_str()) {
+                    Some(transaction.clone())
+                } else if scan_all_mods {
+                    None
+                } else {
+                    self.load_reinstall_transaction(&request.profile_id, &mod_id)?
+                };
             summaries.push(self.scan_mod(
                 &request.profile_id,
                 &mod_id,
                 manifest.as_ref(),
                 recovery_record.as_ref(),
+                reinstall_transaction.as_ref(),
             ));
         }
 
@@ -249,7 +297,11 @@ impl InstallRecoveryScanService {
         mod_id: &ModId,
         manifest: Option<&InstallManifest>,
         recovery_record: Option<&InstallRecoveryRecord>,
+        reinstall_transaction: Option<&ReinstallRecoveryTransaction>,
     ) -> InstallRecoverySummary {
+        if let Some(transaction) = reinstall_transaction {
+            return self.scan_reinstall_transaction(profile_id, mod_id, manifest, transaction);
+        }
         if let Some(summary) = recovery_record_summary(profile_id, mod_id, recovery_record) {
             return summary;
         }
@@ -369,6 +421,163 @@ impl InstallRecoveryScanService {
         }
     }
 
+    fn scan_reinstall_transaction(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+        manifest: Option<&InstallManifest>,
+        transaction: &ReinstallRecoveryTransaction,
+    ) -> InstallRecoverySummary {
+        let (managed_file_count, backup_count) = reinstall_manifest_counts(
+            manifest.unwrap_or(&transaction.pre_reinstall_manifest),
+            mod_id,
+        );
+        let valid_identity = transaction.profile_id == *profile_id
+            && transaction.mod_id == *mod_id
+            && transaction.validate().is_ok();
+        let status = if valid_identity {
+            self.derive_reinstall_status(manifest, transaction)
+        } else {
+            InstallRecoveryStatus::RepairRequired
+        };
+
+        InstallRecoverySummary {
+            profile_id: profile_id.clone(),
+            mod_id: mod_id.clone(),
+            status,
+            managed_file_count,
+            backup_count,
+            issue_count: 0,
+            issues: Vec::new(),
+        }
+    }
+
+    fn derive_reinstall_status(
+        &self,
+        manifest: Option<&InstallManifest>,
+        transaction: &ReinstallRecoveryTransaction,
+    ) -> InstallRecoveryStatus {
+        use ReinstallRecoveryTransactionStatus::{
+            Committing, Completed, Planned, RepairRequired, RollbackRequired, RolledBack,
+        };
+
+        if transaction.status == RepairRequired || !self.reinstall_snapshots_are_usable(transaction)
+        {
+            return InstallRecoveryStatus::RepairRequired;
+        }
+
+        let manifest_is_pre = manifest == Some(&transaction.pre_reinstall_manifest);
+        let manifest_is_candidate = manifest
+            .is_some_and(|manifest| reinstall_candidate_manifest_matches(manifest, transaction));
+        let targets = self.observe_reinstall_targets(transaction);
+
+        match transaction.status {
+            Planned if manifest_is_pre && targets == ReinstallTargetObservation::AllPre => {
+                InstallRecoveryStatus::CleanupPending
+            }
+            Committing
+                if manifest_is_candidate && targets == ReinstallTargetObservation::AllCandidate =>
+            {
+                InstallRecoveryStatus::CommittedCleanupPending
+            }
+            Committing | RollbackRequired
+                if manifest_is_pre && targets.is_known_rollback_state() =>
+            {
+                InstallRecoveryStatus::RollbackRequired
+            }
+            Completed
+                if manifest_is_candidate && targets == ReinstallTargetObservation::AllCandidate =>
+            {
+                InstallRecoveryStatus::CleanupPending
+            }
+            RolledBack if manifest_is_pre && targets == ReinstallTargetObservation::AllPre => {
+                InstallRecoveryStatus::CleanupPending
+            }
+            Planned | Committing | Completed | RollbackRequired | RolledBack | RepairRequired => {
+                InstallRecoveryStatus::RepairRequired
+            }
+        }
+    }
+
+    fn observe_reinstall_targets(
+        &self,
+        transaction: &ReinstallRecoveryTransaction,
+    ) -> ReinstallTargetObservation {
+        let mut all_pre = true;
+        let mut all_candidate = true;
+        let mut all_known = true;
+
+        for target in &transaction.targets {
+            let current = match self.game_files.read_game_file(&target.target_path) {
+                Ok(bytes) => bytes,
+                Err(_) => return ReinstallTargetObservation::Unknown,
+            };
+            let current_summary = current.as_deref().map(installed_file_summary);
+            let matches_pre = current_summary == target.pre_state;
+            let matches_candidate = match target.class {
+                ReinstallTargetClass::Retained
+                | ReinstallTargetClass::Replaced
+                | ReinstallTargetClass::Added => current_summary == target.candidate_state,
+                ReinstallTargetClass::Stale => match &target.original_backup_ref {
+                    Some(backup_ref) => match self.backup_store.read_backup(backup_ref) {
+                        Ok(Some(bytes)) => current_summary == Some(installed_file_summary(&bytes)),
+                        Ok(None)
+                            if transaction.status
+                                == ReinstallRecoveryTransactionStatus::Completed
+                                && matches!(
+                                    target.snapshot,
+                                    ReinstallSnapshotState::Cleaned { .. }
+                                ) =>
+                        {
+                            true
+                        }
+                        Ok(None) | Err(_) => return ReinstallTargetObservation::Unknown,
+                    },
+                    None if transaction.status == ReinstallRecoveryTransactionStatus::Completed
+                        && matches!(target.snapshot, ReinstallSnapshotState::Cleaned { .. }) =>
+                    {
+                        true
+                    }
+                    None => current.is_none(),
+                },
+            };
+            all_pre &= matches_pre;
+            all_candidate &= matches_candidate;
+            all_known &= matches_pre || matches_candidate;
+        }
+
+        if all_pre {
+            ReinstallTargetObservation::AllPre
+        } else if all_candidate {
+            ReinstallTargetObservation::AllCandidate
+        } else if all_known {
+            ReinstallTargetObservation::MixedKnown
+        } else {
+            ReinstallTargetObservation::Unknown
+        }
+    }
+
+    fn reinstall_snapshots_are_usable(&self, transaction: &ReinstallRecoveryTransaction) -> bool {
+        let Some(snapshot_store) = &self.reinstall_snapshot_store else {
+            return false;
+        };
+
+        transaction
+            .targets
+            .iter()
+            .all(|target| match &target.snapshot {
+                ReinstallSnapshotState::Stored { snapshot_ref, .. } => {
+                    matches!(snapshot_store.read_snapshot(snapshot_ref), Ok(Some(_)))
+                }
+                ReinstallSnapshotState::CleanupPending { snapshot_ref, .. } => {
+                    snapshot_store.read_snapshot(snapshot_ref).is_ok()
+                }
+                ReinstallSnapshotState::NotRequired
+                | ReinstallSnapshotState::PreStateAbsent
+                | ReinstallSnapshotState::Cleaned { .. } => true,
+            })
+    }
+
     fn load_recovery_record(
         &self,
         profile_id: &ProfileId,
@@ -400,6 +609,157 @@ impl InstallRecoveryScanService {
             .map(|record| (record.mod_id.as_str().to_owned(), record))
             .collect())
     }
+
+    fn load_reinstall_transaction(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<Option<ReinstallRecoveryTransaction>, InstallRecoveryScanError> {
+        let Some(repository) = &self.reinstall_recovery_repository else {
+            return Ok(None);
+        };
+        repository
+            .load_transaction(profile_id, mod_id)
+            .map_err(|_| InstallRecoveryScanError::ManifestUnavailable)
+    }
+
+    fn list_reinstall_transactions(
+        &self,
+        profile_id: &ProfileId,
+    ) -> Result<BTreeMap<String, ReinstallRecoveryTransaction>, InstallRecoveryScanError> {
+        let Some(repository) = &self.reinstall_recovery_repository else {
+            return Ok(BTreeMap::new());
+        };
+        Ok(repository
+            .list_transactions(profile_id)
+            .map_err(|_| InstallRecoveryScanError::ManifestUnavailable)?
+            .into_iter()
+            .map(|transaction| (transaction.mod_id.as_str().to_owned(), transaction))
+            .collect())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReinstallTargetObservation {
+    AllPre,
+    AllCandidate,
+    MixedKnown,
+    Unknown,
+}
+
+impl ReinstallTargetObservation {
+    fn is_known_rollback_state(self) -> bool {
+        matches!(self, Self::AllPre | Self::AllCandidate | Self::MixedKnown)
+    }
+}
+
+fn reinstall_manifest_counts(manifest: &InstallManifest, mod_id: &ModId) -> (usize, usize) {
+    manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id == *mod_id)
+        .fold((0, 0), |(managed, backups), entry| {
+            (
+                managed + 1,
+                backups + usize::from(entry.backup_ref.is_some()),
+            )
+        })
+}
+
+fn reinstall_candidate_manifest_matches(
+    manifest: &InstallManifest,
+    transaction: &ReinstallRecoveryTransaction,
+) -> bool {
+    if manifest.validate().is_err()
+        || manifest.profile_id != transaction.profile_id
+        || manifest.status.consumption() != InstallManifestStatusConsumption::TrustEntries
+        || manifest.plan_hash.as_deref() != Some(transaction.plan_hash.as_str())
+    {
+        return false;
+    }
+
+    let candidate_entries = manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id == transaction.mod_id)
+        .collect::<Vec<_>>();
+    if candidate_entries.is_empty()
+        || candidate_entries
+            .iter()
+            .any(|entry| entry.revision_id.as_ref() != Some(&transaction.candidate_revision_id))
+    {
+        return false;
+    }
+    let candidate_targets = candidate_entries
+        .iter()
+        .map(|entry| entry.target_path.clone())
+        .collect::<BTreeSet<_>>();
+    let expected_targets = transaction
+        .targets
+        .iter()
+        .filter(|target| target.candidate_state.is_some())
+        .map(|target| target.target_path.clone())
+        .collect::<BTreeSet<_>>();
+    if candidate_targets != expected_targets {
+        return false;
+    }
+    for target in transaction
+        .targets
+        .iter()
+        .filter(|target| target.candidate_state.is_some())
+    {
+        let target_entries = candidate_entries
+            .iter()
+            .copied()
+            .filter(|entry| entry.target_path == target.target_path)
+            .collect::<Vec<_>>();
+        let mut priorities = BTreeSet::new();
+        if target_entries
+            .iter()
+            .any(|entry| entry.installed_file.is_none() || !priorities.insert(entry.layer.priority))
+        {
+            return false;
+        }
+        let Some(final_entry) = target_entries
+            .iter()
+            .max_by_key(|entry| entry.layer.priority)
+        else {
+            return false;
+        };
+        if final_entry.installed_file.as_ref() != target.candidate_state.as_ref() {
+            return false;
+        }
+
+        let expected_backup_ref = match &target.snapshot {
+            ReinstallSnapshotState::Stored {
+                snapshot_ref,
+                cleanup_owner:
+                    ReinstallSnapshotCleanupOwner::PromoteOnCommit
+                    | ReinstallSnapshotCleanupOwner::Manifest,
+                ..
+            } => Some(snapshot_ref.as_str()),
+            _ => target.original_backup_ref.as_deref(),
+        };
+        if target_entries
+            .iter()
+            .any(|entry| entry.backup_ref.as_deref() != expected_backup_ref)
+        {
+            return false;
+        }
+    }
+
+    let current_other_entries = manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id != transaction.mod_id)
+        .collect::<Vec<_>>();
+    let old_other_entries = transaction
+        .pre_reinstall_manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id != transaction.mod_id)
+        .collect::<Vec<_>>();
+    current_other_entries == old_other_entries
 }
 
 #[derive(Clone)]
@@ -415,6 +775,8 @@ pub struct InstallRecoveryActionService {
     backup_store: Arc<dyn InstallBackupStore>,
     recovery_record_repository: Arc<dyn InstallRecoveryRecordRepository>,
     manifest_repository: Option<Arc<dyn InstallManifestRepository>>,
+    reinstall_recovery_repository: Option<Arc<dyn ReinstallRecoveryTransactionRepository>>,
+    reinstall_snapshot_store: Option<Arc<dyn ReinstallSnapshotStore>>,
 }
 
 struct PreparedRecoveryAction {
@@ -447,6 +809,13 @@ impl InstallRecoveryActionPreviewService {
     ) -> Result<InstallRecoveryActionPreview, InstallRecoveryActionPreviewError> {
         match request.action_kind {
             InstallRecoveryActionKind::RollbackInstall => self.preview_rollback_install(request),
+            InstallRecoveryActionKind::ReconcileReinstall => Ok(blocked_recovery_action_preview(
+                request,
+                0,
+                0,
+                0,
+                [(InstallRecoveryActionBlockReason::RollbackStateMissing, 1)],
+            )),
         }
     }
 
@@ -570,6 +939,8 @@ impl InstallRecoveryActionService {
             backup_store,
             recovery_record_repository,
             manifest_repository: None,
+            reinstall_recovery_repository: None,
+            reinstall_snapshot_store: None,
         }
     }
 
@@ -584,7 +955,19 @@ impl InstallRecoveryActionService {
             backup_store,
             recovery_record_repository,
             manifest_repository: Some(manifest_repository),
+            reinstall_recovery_repository: None,
+            reinstall_snapshot_store: None,
         }
+    }
+
+    pub fn with_reinstall_reconciliation(
+        mut self,
+        recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+        snapshot_store: Arc<dyn ReinstallSnapshotStore>,
+    ) -> Self {
+        self.reinstall_recovery_repository = Some(recovery_repository);
+        self.reinstall_snapshot_store = Some(snapshot_store);
+        self
     }
 
     pub fn run(
@@ -593,7 +976,103 @@ impl InstallRecoveryActionService {
     ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
         match request.action_kind {
             InstallRecoveryActionKind::RollbackInstall => self.rollback_install(request),
+            InstallRecoveryActionKind::ReconcileReinstall => self.reconcile_reinstall(request),
         }
+    }
+
+    fn reconcile_reinstall(
+        &self,
+        request: InstallRecoveryActionRequest,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+        let manifest_repository = self
+            .manifest_repository
+            .as_ref()
+            .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
+        let recovery_repository = self
+            .reinstall_recovery_repository
+            .as_ref()
+            .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
+        let snapshot_store = self
+            .reinstall_snapshot_store
+            .as_ref()
+            .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
+        let mut transaction = recovery_repository
+            .load_transaction(&request.profile_id, &request.mod_id)
+            .map_err(|_| InstallRecoveryActionError::ActionUnavailable)?
+            .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
+        if transaction.profile_id != request.profile_id
+            || transaction.mod_id != request.mod_id
+            || transaction.validate().is_err()
+        {
+            return Err(InstallRecoveryActionError::ReinstallRepairRequired);
+        }
+        let manifest = manifest_repository
+            .load_manifest(&request.profile_id)
+            .map_err(|_| InstallRecoveryActionError::ActionUnavailable)?;
+        let scanner = InstallRecoveryScanService::new(
+            Arc::clone(&self.game_files),
+            Arc::clone(&self.backup_store),
+            Arc::clone(manifest_repository),
+        )
+        .with_reinstall_recovery_transactions(
+            Arc::clone(recovery_repository),
+            Arc::clone(snapshot_store),
+        );
+        let derived = scanner.derive_reinstall_status(manifest.as_ref(), &transaction);
+
+        let remove_stale_original_backups = match derived {
+            InstallRecoveryStatus::CommittedCleanupPending => {
+                promote_manifest_snapshots(&mut transaction);
+                transaction
+                    .transition_to(ReinstallRecoveryTransactionStatus::Completed)
+                    .map_err(|_| InstallRecoveryActionError::ReinstallRepairRequired)?;
+                recovery_repository
+                    .save_transaction(&transaction)
+                    .map_err(|_| InstallRecoveryActionError::ReinstallPostCommitFailed)?;
+                true
+            }
+            InstallRecoveryStatus::CleanupPending => {
+                transaction.status == ReinstallRecoveryTransactionStatus::Completed
+            }
+            InstallRecoveryStatus::RollbackRequired => {
+                return Err(blocked_recovery_action_error([(
+                    InstallRecoveryActionBlockReason::RollbackStateMissing,
+                    1,
+                )]));
+            }
+            InstallRecoveryStatus::RepairRequired
+            | InstallRecoveryStatus::Unknown
+            | InstallRecoveryStatus::Completed
+            | InstallRecoveryStatus::NotInstalled => {
+                if transaction.status == ReinstallRecoveryTransactionStatus::Committing
+                    && transaction
+                        .transition_to(ReinstallRecoveryTransactionStatus::RepairRequired)
+                        .is_ok()
+                {
+                    let _ = recovery_repository.save_transaction(&transaction);
+                }
+                return Err(InstallRecoveryActionError::ReinstallRepairRequired);
+            }
+        };
+        let cleanup_count =
+            reinstall_cleanup_resource_count(&transaction, remove_stale_original_backups);
+        cleanup_reinstall_transaction(
+            self.backup_store.as_ref(),
+            recovery_repository.as_ref(),
+            snapshot_store.as_ref(),
+            &transaction,
+            remove_stale_original_backups,
+        )
+        .map_err(|_| InstallRecoveryActionError::ReinstallCleanupFailed)?;
+
+        Ok(InstallRecoveryActionResult {
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            action_kind: request.action_kind,
+            remove_file_count: 0,
+            restore_file_count: 0,
+            backup_count: cleanup_count,
+        })
     }
 
     fn rollback_install(
@@ -886,6 +1365,35 @@ fn manifest_marked_rolled_back(manifest: &InstallManifest, mod_id: &ModId) -> In
     updated_manifest
 }
 
+fn reinstall_cleanup_resource_count(
+    transaction: &ReinstallRecoveryTransaction,
+    remove_stale_original_backups: bool,
+) -> usize {
+    let snapshot_count = transaction
+        .targets
+        .iter()
+        .filter(|target| {
+            matches!(
+                target.snapshot,
+                ReinstallSnapshotState::Stored { .. }
+                    | ReinstallSnapshotState::CleanupPending { .. }
+            )
+        })
+        .count();
+    let stale_backup_count = if remove_stale_original_backups {
+        transaction
+            .targets
+            .iter()
+            .filter(|target| {
+                target.class == ReinstallTargetClass::Stale && target.original_backup_ref.is_some()
+            })
+            .count()
+    } else {
+        0
+    };
+    snapshot_count + stale_backup_count
+}
+
 fn recovery_record_summary(
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -986,6 +1494,7 @@ fn manifest_mod_ids(manifest: &InstallManifest) -> Vec<ModId> {
 fn recovery_scan_mod_ids(
     manifest: Option<&InstallManifest>,
     recovery_records: &BTreeMap<String, InstallRecoveryRecord>,
+    reinstall_transactions: &BTreeMap<String, ReinstallRecoveryTransaction>,
 ) -> Vec<ModId> {
     let mut mod_ids = BTreeMap::new();
 
@@ -999,6 +1508,12 @@ fn recovery_scan_mod_ids(
         mod_ids
             .entry(record.mod_id.as_str().to_owned())
             .or_insert_with(|| record.mod_id.clone());
+    }
+
+    for transaction in reinstall_transactions.values() {
+        mod_ids
+            .entry(transaction.mod_id.as_str().to_owned())
+            .or_insert_with(|| transaction.mod_id.clone());
     }
 
     mod_ids.into_values().collect()

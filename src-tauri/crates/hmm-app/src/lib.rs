@@ -16,6 +16,7 @@ mod preview_image;
 mod profile;
 mod reinstall;
 mod reinstall_commit;
+mod reinstall_task;
 mod save_backup;
 mod save_backup_background;
 mod save_backup_background_worker;
@@ -56,8 +57,9 @@ pub use install_recovery::{
 pub use install_task::{
     GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, ImportedModInstallPlanner,
     InstallPlanCommitter, InstallRecoveryActionExecutor, InstallTaskRunError, InstallTaskRunner,
-    InstallTaskService, ModUninstaller, RecoveryActionTaskRunError, RecoveryActionTaskRunner,
-    RecoveryActionTaskService, StartInstallTaskRequest, StartRecoveryActionTaskRequest,
+    InstallTaskService, InstallWriteAdmission, InstallWriteAdmissionError, ModUninstaller,
+    RecoveryActionTaskRunError, RecoveryActionTaskRunner, RecoveryActionTaskService,
+    ReinstallRecoveryWriteAdmission, StartInstallTaskRequest, StartRecoveryActionTaskRequest,
     StartUninstallTaskRequest, UninstallTaskRunError, UninstallTaskRunner, UninstallTaskService,
 };
 pub use log_diagnostics::{
@@ -93,13 +95,19 @@ pub use profile::{
     CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
 };
 pub use reinstall::{
-    ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallCandidatePlanError,
-    ReinstallCandidatePlanRequest, ReinstallCandidatePlanner, ReinstallCandidateSourceReader,
-    ReinstallPlanPreview, ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
-    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+    PreparedReinstall, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
+    ReinstallCandidatePlanError, ReinstallCandidatePlanRequest, ReinstallCandidatePlanner,
+    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreviewError,
+    ReinstallPreviewRequest, ReinstallPreviewService, ReinstallPreviewStatus,
+    ReinstallRevisionSummary, ReinstallTargetCounts,
 };
 pub use reinstall_commit::{
     ReinstallCommitError, ReinstallCommitPhase, ReinstallCommitResult, ReinstallCommitService,
+};
+pub use reinstall_task::{
+    ReinstallTaskAuditContext, ReinstallTaskExecutor, ReinstallTaskExecutorService,
+    ReinstallTaskPrepareError, ReinstallTaskPrepared, ReinstallTaskRunError, ReinstallTaskRunner,
+    ReinstallTaskService, StartReinstallTaskRequest,
 };
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
