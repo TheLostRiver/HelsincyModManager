@@ -164,6 +164,26 @@ fn mod_import_catalog_migration_write_failures_leave_original_v1_bytes_intact() 
 }
 
 #[test]
+fn mod_import_catalog_unlock_failure_does_not_override_durable_success() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    let repo = JsonModImportResultRepository::new(path.clone())
+        .with_test_write_failure(ModImportCatalogWriteFailure::Unlock);
+
+    repo.save_new_mod(
+        &logical_mod("mod-a", "revision-a"),
+        &revision("revision-a", "mod-a", "package-a", "task-a"),
+    )
+    .expect("durable mutation stays successful when explicit unlock fails");
+
+    let reloaded = JsonModImportResultRepository::new(path);
+    assert!(reloaded
+        .get_mod(&ModId::new("mod-a"))
+        .expect("reload catalog")
+        .is_some());
+}
+
+#[test]
 fn mod_import_catalog_missing_store_loads_an_empty_library() {
     let temp = tempfile::tempdir().expect("temp dir");
     let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));

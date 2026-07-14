@@ -119,6 +119,37 @@ fn revision_import_rejects_missing_mod_before_preparing_a_sandbox() {
         event_phases(&error.events),
         vec!["mod_import.unpack.failed"]
     );
+    assert_eq!(error.cause(), None);
+}
+
+#[test]
+fn revision_import_preserves_repository_lookup_error_without_preparing_a_sandbox() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create revision import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.fail_get_mod_with("revision catalog unavailable");
+    let prepare_calls = Arc::new(AtomicUsize::new(0));
+    let runner = runner(
+        Arc::clone(&task_manager),
+        Box::new(CountingPreparer {
+            calls: Arc::clone(&prepare_calls),
+        }),
+        Arc::clone(&repository),
+    );
+
+    let error = runner
+        .run_prepare_revision_task(&task.task_id, archive_path(), ModId::new("mod-a"))
+        .expect_err("repository lookup failure is preserved");
+
+    assert_eq!(prepare_calls.load(Ordering::SeqCst), 0);
+    assert!(repository.operations().is_empty());
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(crate::TaskStatus::Failed)
+    );
+    assert_eq!(error.cause(), Some("revision catalog unavailable"));
 }
 
 #[test]
@@ -368,6 +399,7 @@ struct FakeRevisionCatalogRepository {
     mods: Mutex<Vec<StoredLogicalMod>>,
     revisions: Mutex<Vec<StoredModRevision>>,
     operations: Mutex<Vec<&'static str>>,
+    get_mod_error: Mutex<Option<String>>,
 }
 
 impl FakeRevisionCatalogRepository {
@@ -395,6 +427,10 @@ impl FakeRevisionCatalogRepository {
 
     fn operations(&self) -> Vec<&'static str> {
         self.operations.lock().expect("operations lock").clone()
+    }
+
+    fn fail_get_mod_with(&self, message: &str) {
+        *self.get_mod_error.lock().expect("get Mod error lock") = Some(message.to_owned());
     }
 
     fn clear_operations(&self) {
@@ -464,6 +500,14 @@ impl ModImportResultRepository for FakeRevisionCatalogRepository {
     }
 
     fn get_mod(&self, mod_id: &ModId) -> anyhow::Result<Option<StoredLogicalMod>> {
+        if let Some(message) = self
+            .get_mod_error
+            .lock()
+            .expect("get Mod error lock")
+            .clone()
+        {
+            anyhow::bail!(message);
+        }
         Ok(self
             .mods
             .lock()

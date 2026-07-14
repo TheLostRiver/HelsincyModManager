@@ -76,6 +76,13 @@ pub struct ModImportPrepareResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModImportTaskRunError {
     pub events: Vec<crate::TaskProgressEvent>,
+    cause: Option<String>,
+}
+
+impl ModImportTaskRunError {
+    pub fn cause(&self) -> Option<&str> {
+        self.cause.as_deref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -228,15 +235,29 @@ impl ModImportTaskRunner {
         target: ModImportCatalogTarget,
     ) -> Result<Vec<crate::TaskProgressEvent>, ModImportTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
-            return Err(ModImportTaskRunError { events: Vec::new() });
+            return Err(ModImportTaskRunError {
+                events: Vec::new(),
+                cause: None,
+            });
         }
 
         if let ModImportCatalogTarget::ExistingLogicalMod(mod_id) = &target {
-            if !matches!(self.result_repository.get_mod(mod_id), Ok(Some(_))) {
-                let _ = self.task_manager.fail_task(task_id);
-                return Err(ModImportTaskRunError {
-                    events: vec![failed_event(task_id)],
-                });
+            match self.result_repository.get_mod(mod_id) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    let _ = self.task_manager.fail_task(task_id);
+                    return Err(ModImportTaskRunError {
+                        events: vec![failed_event(task_id)],
+                        cause: None,
+                    });
+                }
+                Err(error) => {
+                    let _ = self.task_manager.fail_task(task_id);
+                    return Err(ModImportTaskRunError {
+                        events: vec![failed_event(task_id)],
+                        cause: Some(error.to_string()),
+                    });
+                }
             }
         }
 
@@ -255,7 +276,10 @@ impl ModImportTaskRunner {
             Ok(result) => {
                 if self.is_task_cancelled(task_id) {
                     self.maintain_thumbnail_cache();
-                    return Err(ModImportTaskRunError { events: Vec::new() });
+                    return Err(ModImportTaskRunError {
+                        events: Vec::new(),
+                        cause: None,
+                    });
                 }
 
                 let mod_id = match &target {
@@ -283,6 +307,7 @@ impl ModImportTaskRunner {
                     let _ = self.task_manager.fail_task(task_id);
                     return Err(ModImportTaskRunError {
                         events: vec![failed_event(task_id)],
+                        cause: None,
                     });
                 }
 
@@ -293,12 +318,16 @@ impl ModImportTaskRunner {
             Err(_) => {
                 if self.is_task_cancelled(task_id) {
                     self.maintain_thumbnail_cache();
-                    return Err(ModImportTaskRunError { events: Vec::new() });
+                    return Err(ModImportTaskRunError {
+                        events: Vec::new(),
+                        cause: None,
+                    });
                 }
 
                 let _ = self.task_manager.fail_task(task_id);
                 return Err(ModImportTaskRunError {
                     events: vec![failed_event(task_id)],
+                    cause: None,
                 });
             }
         };
@@ -317,6 +346,7 @@ impl ModImportTaskRunner {
                 let _ = self.task_manager.fail_task(task_id);
                 Err(ModImportTaskRunError {
                     events: vec![failed_event(task_id)],
+                    cause: None,
                 })
             }
         }

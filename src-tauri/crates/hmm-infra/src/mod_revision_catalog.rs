@@ -56,6 +56,7 @@ pub struct JsonModImportResultRepository {
 pub(crate) enum ModImportCatalogWriteFailure {
     TempWrite,
     Rename,
+    Unlock,
 }
 
 impl JsonModImportResultRepository {
@@ -111,13 +112,24 @@ impl JsonModImportResultRepository {
             .context("failed to lock mod revision catalog")?;
 
         let result = operation();
+        #[cfg(test)]
+        let unlock_result = if self.test_write_failure == Some(ModImportCatalogWriteFailure::Unlock)
+        {
+            let _ = FileExt::unlock(&lock_file);
+            Err(anyhow::anyhow!(
+                "injected mod revision catalog unlock failure"
+            ))
+        } else {
+            lock_file
+                .unlock()
+                .context("failed to unlock mod revision catalog")
+        };
+        #[cfg(not(test))]
         let unlock_result = lock_file
             .unlock()
             .context("failed to unlock mod revision catalog");
-        match result {
-            Err(error) => Err(error),
-            Ok(value) => unlock_result.map(|()| value),
-        }
+        let _ = unlock_result;
+        result
     }
 
     fn load_catalog(&self) -> Result<LoadedCatalog> {
