@@ -9,6 +9,9 @@ mod game_running_detector;
 mod install_commit;
 mod mod_import;
 mod mod_import_install_files;
+mod mod_revision_catalog;
+#[cfg(test)]
+mod mod_revision_catalog_tests;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod save_backup;
@@ -38,11 +41,11 @@ pub use install_commit::{
     JsonInstallRecoveryRecordRepository,
 };
 pub use mod_import::{
-    FileSystemDiagnosticPackageExporter, JsonModImportResultRepository,
-    SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
-    ZipModImportPackagePreparer,
+    FileSystemDiagnosticPackageExporter, SandboxModPackageMetadataAnalyzer,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
+pub use mod_revision_catalog::JsonModImportResultRepository;
 pub use prerequisite_rules_repository::JsonGamePrerequisiteRuleRepository;
 pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,

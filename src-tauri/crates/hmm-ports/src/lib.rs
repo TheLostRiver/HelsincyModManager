@@ -52,8 +52,9 @@ pub use mod_import::{
     DiagnosticPackageExporter, ModImportPackagePrepareRequest, ModImportPackagePreparer,
     ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ModPackageMetadata,
-    ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
-    StoredModImportAnalysis, StoredModPackageMetadata,
+    ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision,
 };
 pub use mod_metadata::ModMetadataRepository;
 pub use preview_image::{

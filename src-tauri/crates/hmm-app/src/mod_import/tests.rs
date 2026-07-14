@@ -4,7 +4,7 @@
         PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
         PreviewImageFallbackDiagnostic,
     };
-    use hmm_core::{ModMetadataOverlay, PreviewImageRejectionReason};
+    use hmm_core::{ModId, ModMetadataOverlay, PreviewImageRejectionReason};
     use hmm_ports::{
         AppSettings, AppSettingsRepository, AppSettingsRepositoryResult,
         ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
@@ -74,7 +74,7 @@
 
         assert_eq!(result.display_name, "Better Mod Name");
         assert_eq!(
-            stored_analysis_from_result(&result).display_name,
+            stored_analysis_from_result(&ModId::new("logical-mod"), &result).display_name,
             "Better Mod Name"
         );
     }
@@ -105,10 +105,12 @@
                 sandbox_root: Path::new("sandbox").to_path_buf(),
             })
             .expect("analysis succeeds");
-        let stored = stored_analysis_from_result(&result);
+        let stored = stored_analysis_from_result(&ModId::new("logical-mod"), &result);
         let library_item = library_item_from_stored(stored.clone());
 
         assert_eq!(result.metadata.version.as_deref(), Some("1.2.3"));
+        assert_eq!(stored.mod_id, "logical-mod");
+        assert_eq!(stored.package_id, "pkg-1");
         assert_eq!(stored.metadata.author.as_deref(), Some("A Hunter"));
         assert_eq!(stored.metadata.dependencies, vec!["stracker-loader"]);
         assert_eq!(
