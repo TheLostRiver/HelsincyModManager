@@ -14,6 +14,7 @@ mod mod_import_task;
 mod mod_metadata;
 mod preview_image;
 mod profile;
+mod reinstall;
 mod save_backup;
 mod save_backup_background;
 mod save_backup_background_worker;
@@ -90,6 +91,12 @@ pub use preview_image::{
 pub use profile::{
     CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
 };
+pub use reinstall::{
+    ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallCandidatePlanError,
+    ReinstallCandidatePlanRequest, ReinstallCandidatePlanner, ReinstallCandidateSourceReader,
+    ReinstallPlanPreview, ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+};
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
     SaveBackupWarning,
@@ -139,3 +146,7 @@ mod tests {
         assert_eq!(app_name(), "Helsincy Mod Manager");
     }
 }
+
+#[cfg(test)]
+#[path = "reinstall_tests.rs"]
+mod reinstall_tests;
