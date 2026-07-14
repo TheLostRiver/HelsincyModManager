@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId};
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, ReinstallRecoveryTransactionRepository};
+use thiserror::Error;
 
 use crate::{
     BuildImportedModInstallPlanRequest, CommitInstallPlanRequest, InstallCommitError,
@@ -149,6 +150,62 @@ pub trait InstallRecoveryActionExecutor: Send + Sync {
     ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError>;
 }
 
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InstallWriteAdmissionError {
+    #[error("reinstall recovery state is unavailable")]
+    RecoveryUnavailable,
+    #[error("reinstall recovery is pending")]
+    RecoveryPending,
+}
+
+pub trait InstallWriteAdmission: Send + Sync {
+    fn ensure_write_allowed(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError>;
+}
+
+struct AllowInstallWriteAdmission;
+
+impl InstallWriteAdmission for AllowInstallWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        _game_id: &GameId,
+        _profile_id: &ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        Ok(())
+    }
+}
+
+pub struct ReinstallRecoveryWriteAdmission {
+    repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+}
+
+impl ReinstallRecoveryWriteAdmission {
+    pub fn new(repository: Arc<dyn ReinstallRecoveryTransactionRepository>) -> Self {
+        Self { repository }
+    }
+}
+
+impl InstallWriteAdmission for ReinstallRecoveryWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        _game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        let transactions = self
+            .repository
+            .list_transactions(profile_id)
+            .map_err(|_| InstallWriteAdmissionError::RecoveryUnavailable)?;
+        if transactions.is_empty() {
+            Ok(())
+        } else {
+            Err(InstallWriteAdmissionError::RecoveryPending)
+        }
+    }
+}
+
 impl InstallRecoveryActionExecutor for InstallRecoveryActionService {
     fn run_recovery_action(
         &self,
@@ -169,6 +226,7 @@ pub struct InstallTaskRunner {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
+    write_admission: Arc<dyn InstallWriteAdmission>,
 }
 
 pub struct UninstallTaskRunner {
@@ -177,6 +235,7 @@ pub struct UninstallTaskRunner {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
+    write_admission: Arc<dyn InstallWriteAdmission>,
 }
 
 pub struct RecoveryActionTaskRunner {
@@ -270,6 +329,27 @@ impl InstallTaskRunner {
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
     ) -> Self {
+        Self::with_write_coordination(
+            task_manager,
+            planner,
+            committer,
+            audit_log,
+            clock,
+            write_locks,
+            Arc::new(AllowInstallWriteAdmission),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_write_coordination(
+        task_manager: Arc<TaskManager>,
+        planner: Arc<dyn ImportedModInstallPlanner>,
+        committer: Arc<dyn InstallPlanCommitter>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+        write_admission: Arc<dyn InstallWriteAdmission>,
+    ) -> Self {
         Self {
             task_manager,
             planner,
@@ -277,6 +357,7 @@ impl InstallTaskRunner {
             audit_log,
             clock,
             write_locks,
+            write_admission,
         }
     }
 
@@ -319,14 +400,27 @@ impl InstallTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
-            events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
-            self.committer
-                .commit_install_plan(ImportedModInstallCommitRequest {
-                    game_id: request.game_id.clone(),
-                    mod_id: request.mod_id.clone(),
-                    profile_id: request.profile_id.clone(),
-                    plan,
-                })
+            if self
+                .write_admission
+                .ensure_write_allowed(&request.game_id, &request.profile_id)
+                .is_err()
+            {
+                None
+            } else {
+                events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
+                Some(
+                    self.committer
+                        .commit_install_plan(ImportedModInstallCommitRequest {
+                            game_id: request.game_id.clone(),
+                            mod_id: request.mod_id.clone(),
+                            profile_id: request.profile_id.clone(),
+                            plan,
+                        }),
+                )
+            }
+        };
+        let Some(commit_result) = commit_result else {
+            return Err(self.fail_with_audit(task_id, &request, events, "commit", action_count));
         };
 
         match commit_result {
@@ -424,12 +518,32 @@ impl UninstallTaskRunner {
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
     ) -> Self {
+        Self::with_write_coordination(
+            task_manager,
+            uninstaller,
+            audit_log,
+            clock,
+            write_locks,
+            Arc::new(AllowInstallWriteAdmission),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_write_coordination(
+        task_manager: Arc<TaskManager>,
+        uninstaller: Arc<dyn ModUninstaller>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+        write_admission: Arc<dyn InstallWriteAdmission>,
+    ) -> Self {
         Self {
             task_manager,
             uninstaller,
             audit_log,
             clock,
             write_locks,
+            write_admission,
         }
     }
 
@@ -453,7 +567,24 @@ impl UninstallTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
-            self.uninstaller.uninstall_mod(request.clone())
+            if self
+                .write_admission
+                .ensure_write_allowed(&request.game_id, &request.profile_id)
+                .is_err()
+            {
+                None
+            } else {
+                Some(self.uninstaller.uninstall_mod(request.clone()))
+            }
+        };
+        let Some(uninstall_result) = uninstall_result else {
+            return Err(self.fail_uninstall_with_audit(
+                task_id,
+                &request,
+                events,
+                "uninstall",
+                None,
+            ));
         };
 
         let result = match uninstall_result {
@@ -785,6 +916,7 @@ fn failed_recovery_action_event(task_id: &str, failed_phase: &str) -> TaskProgre
 fn recovery_action_operation(action_kind: InstallRecoveryActionKind) -> &'static str {
     match action_kind {
         InstallRecoveryActionKind::RollbackInstall => "rollback_install",
+        InstallRecoveryActionKind::ReconcileReinstall => "reconcile_reinstall",
     }
 }
 
@@ -796,7 +928,10 @@ fn recovery_action_failed_phase(error: &InstallRecoveryActionError) -> &'static 
         | InstallRecoveryActionError::RestoreFailed
         | InstallRecoveryActionError::ManifestSaveFailed
         | InstallRecoveryActionError::RecoveryRecordSaveFailed
-        | InstallRecoveryActionError::RollbackFailed { .. } => "processing",
+        | InstallRecoveryActionError::RollbackFailed { .. }
+        | InstallRecoveryActionError::ReinstallRepairRequired
+        | InstallRecoveryActionError::ReinstallPostCommitFailed
+        | InstallRecoveryActionError::ReinstallCleanupFailed => "processing",
     }
 }
 
@@ -809,7 +944,8 @@ mod tests {
     };
     use hmm_core::{
         InstallFileProvider, InstallManifest, InstallManifestEntry, InstallPlan, InstallTargetPath,
-        PackageFileId,
+        ModRevisionId, PackageFileId, ReinstallRecoveryTransaction,
+        ReinstallRecoveryTransactionStatus,
     };
     use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
     use std::sync::{mpsc, Arc, Mutex};
@@ -888,6 +1024,33 @@ mod tests {
             task_manager.task_status(&task.task_id),
             Some(crate::TaskStatus::Queued)
         );
+    }
+
+    #[test]
+    fn reinstall_recovery_write_admission_distinguishes_empty_pending_and_unavailable() {
+        let cases = [
+            (AdmissionRepositoryMode::Empty, Ok(())),
+            (
+                AdmissionRepositoryMode::Pending,
+                Err(InstallWriteAdmissionError::RecoveryPending),
+            ),
+            (
+                AdmissionRepositoryMode::Unavailable,
+                Err(InstallWriteAdmissionError::RecoveryUnavailable),
+            ),
+        ];
+
+        for (mode, expected) in cases {
+            let admission =
+                ReinstallRecoveryWriteAdmission::new(Arc::new(AdmissionRecoveryRepository {
+                    mode,
+                }));
+
+            assert_eq!(
+                admission.ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default")),
+                expected
+            );
+        }
     }
 
     #[test]
@@ -1488,6 +1651,65 @@ mod tests {
     fn sample_target() -> InstallTargetPath {
         InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
             .expect("sample target is valid")
+    }
+
+    #[derive(Clone, Copy)]
+    enum AdmissionRepositoryMode {
+        Empty,
+        Pending,
+        Unavailable,
+    }
+
+    struct AdmissionRecoveryRepository {
+        mode: AdmissionRepositoryMode,
+    }
+
+    impl ReinstallRecoveryTransactionRepository for AdmissionRecoveryRepository {
+        fn load_transaction(
+            &self,
+            _profile_id: &ProfileId,
+            _mod_id: &ModId,
+        ) -> anyhow::Result<Option<ReinstallRecoveryTransaction>> {
+            Ok(None)
+        }
+
+        fn list_transactions(
+            &self,
+            profile_id: &ProfileId,
+        ) -> anyhow::Result<Vec<ReinstallRecoveryTransaction>> {
+            match self.mode {
+                AdmissionRepositoryMode::Empty => Ok(Vec::new()),
+                AdmissionRepositoryMode::Pending => Ok(vec![ReinstallRecoveryTransaction {
+                    profile_id: profile_id.clone(),
+                    mod_id: ModId::new("mod-a"),
+                    old_revision_id: ModRevisionId::new("installed-v1"),
+                    candidate_revision_id: ModRevisionId::new("candidate-v2"),
+                    plan_token: "opaque-token".to_owned(),
+                    plan_hash: "opaque-hash".to_owned(),
+                    status: ReinstallRecoveryTransactionStatus::RepairRequired,
+                    pre_reinstall_manifest: sample_manifest(),
+                    targets: Vec::new(),
+                }]),
+                AdmissionRepositoryMode::Unavailable => {
+                    anyhow::bail!("simulated recovery repository failure")
+                }
+            }
+        }
+
+        fn save_transaction(
+            &self,
+            _transaction: &ReinstallRecoveryTransaction,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn remove_transaction(
+            &self,
+            _profile_id: &ProfileId,
+            _mod_id: &ModId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     fn wait_for_status(

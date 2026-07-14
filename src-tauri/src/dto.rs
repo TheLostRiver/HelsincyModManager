@@ -430,6 +430,8 @@ impl From<InstallManifestStatus> for InstallManifestStatusDto {
         match status {
             InstallManifestStatus::NotInstalled => Self::NotInstalled,
             InstallManifestStatus::Installed => Self::Installed,
+            InstallManifestStatus::CommittedCleanupPending
+            | InstallManifestStatus::CleanupPending => Self::RepairRequired,
             InstallManifestStatus::RollbackRequired => Self::RollbackRequired,
             InstallManifestStatus::RepairRequired => Self::RepairRequired,
             InstallManifestStatus::Unknown => Self::Unknown,
@@ -442,6 +444,8 @@ impl From<InstallRecoveryStatus> for InstallRecoveryStatusDto {
         match status {
             InstallRecoveryStatus::NotInstalled => Self::NotInstalled,
             InstallRecoveryStatus::Completed => Self::Completed,
+            InstallRecoveryStatus::CommittedCleanupPending
+            | InstallRecoveryStatus::CleanupPending => Self::RepairRequired,
             InstallRecoveryStatus::RollbackRequired => Self::RollbackRequired,
             InstallRecoveryStatus::RepairRequired => Self::RepairRequired,
             InstallRecoveryStatus::Unknown => Self::Unknown,
@@ -466,6 +470,9 @@ impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
     fn from(action_kind: InstallRecoveryActionKind) -> Self {
         match action_kind {
             InstallRecoveryActionKind::RollbackInstall => Self::RollbackInstall,
+            InstallRecoveryActionKind::ReconcileReinstall => {
+                unreachable!("reinstall reconciliation is not exposed before CL3 Task 7")
+            }
         }
     }
 }
@@ -2123,6 +2130,27 @@ mod install_recovery_dto_tests {
         assert_eq!(value["status"], "rollback_required");
         assert!(value.get("targetPath").is_none());
         assert!(value.get("backupRef").is_none());
+    }
+
+    #[test]
+    fn pending_reinstall_states_fail_closed_in_legacy_dtos() {
+        for status in [
+            hmm_app::InstallRecoveryStatus::CommittedCleanupPending,
+            hmm_app::InstallRecoveryStatus::CleanupPending,
+        ] {
+            let value = serde_json::to_value(InstallRecoveryStatusDto::from(status))
+                .expect("serialize legacy recovery status");
+            assert_eq!(value, "repair_required");
+        }
+
+        for status in [
+            InstallManifestStatus::CommittedCleanupPending,
+            InstallManifestStatus::CleanupPending,
+        ] {
+            let value = serde_json::to_value(InstallManifestStatusDto::from(status))
+                .expect("serialize legacy manifest status");
+            assert_eq!(value, "repair_required");
+        }
     }
 
     #[test]
