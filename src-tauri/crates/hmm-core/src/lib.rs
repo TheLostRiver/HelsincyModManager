@@ -15,10 +15,12 @@ pub use game::{
 };
 pub use install::{
     FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallManifest,
-    InstallManifestEntry, InstallManifestStatus, InstallManifestStatusConsumption, InstallPlan,
-    InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
-    InstallRecoveryRecordTransitionError, InstallTargetPath, InstallTargetPathError,
-    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+    InstallManifestEntry, InstallManifestStatus, InstallManifestStatusConsumption,
+    InstallManifestValidationError, InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry,
+    InstallRecoveryRecordStatus, InstallRecoveryRecordTransitionError, InstallTargetPath,
+    InstallTargetPathError, InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+    INSTALL_MANIFEST_SCHEMA_VERSION, INSTALL_MANIFEST_SCHEMA_VERSION_V1,
+    INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 pub use mod_metadata::ModMetadataOverlay;
 pub use preview_image::{
@@ -31,8 +33,11 @@ pub use profile::{
 };
 pub use reinstall::{
     classify_reinstall_targets, replace_entries_for_mod, resolve_installed_revision,
-    ReinstallClassificationError, ReinstallManifestError, ReinstallTargetClass,
-    ReinstallTargetClassification, ReinstallTargetState,
+    ReinstallClassificationError, ReinstallManifestError, ReinstallRecoveryTarget,
+    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
+    ReinstallRecoveryTransactionTransitionError, ReinstallRecoveryTransactionValidationError,
+    ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose, ReinstallSnapshotState,
+    ReinstallTargetClass, ReinstallTargetClassification, ReinstallTargetState,
 };
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,

@@ -1,7 +1,8 @@
 use crate::{
     InstallFileProvider, InstallManifest, InstallManifestEntry, InstallTargetPath,
-    InstalledFileSummary, ModId, ModRevisionId, PackageFileId,
+    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
@@ -29,12 +30,246 @@ impl ReinstallTargetState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReinstallTargetClass {
     Retained,
     Replaced,
     Added,
     Stale,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReinstallRecoveryTransactionStatus {
+    Planned,
+    Committing,
+    Completed,
+    RollbackRequired,
+    RolledBack,
+    RepairRequired,
+}
+
+impl ReinstallRecoveryTransactionStatus {
+    pub fn can_transition_to(self, next: Self) -> bool {
+        use ReinstallRecoveryTransactionStatus::{
+            Committing, Completed, Planned, RepairRequired, RollbackRequired, RolledBack,
+        };
+
+        self == next
+            || matches!(
+                (self, next),
+                (Planned, Committing)
+                    | (Committing, Completed)
+                    | (Committing, RollbackRequired)
+                    | (Committing, RolledBack)
+                    | (Committing, RepairRequired)
+                    | (RollbackRequired, RolledBack)
+                    | (RollbackRequired, RepairRequired)
+            )
+    }
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum ReinstallRecoveryTransactionTransitionError {
+    #[error("invalid reinstall recovery transaction transition from {from:?} to {to:?}")]
+    InvalidTransition {
+        from: ReinstallRecoveryTransactionStatus,
+        to: ReinstallRecoveryTransactionStatus,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReinstallSnapshotPurpose {
+    TransactionRollback,
+    OriginalBackupCandidate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReinstallSnapshotCleanupOwner {
+    Transaction,
+    PromoteOnCommit,
+    Manifest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state")]
+pub enum ReinstallSnapshotState {
+    NotRequired,
+    PreStateAbsent,
+    Stored {
+        snapshot_ref: String,
+        purpose: ReinstallSnapshotPurpose,
+        cleanup_owner: ReinstallSnapshotCleanupOwner,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReinstallRecoveryTarget {
+    pub target_path: InstallTargetPath,
+    pub class: ReinstallTargetClass,
+    pub pre_state: Option<InstalledFileSummary>,
+    pub candidate_state: Option<InstalledFileSummary>,
+    pub snapshot: ReinstallSnapshotState,
+    pub original_backup_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReinstallRecoveryTransaction {
+    pub profile_id: crate::ProfileId,
+    pub mod_id: ModId,
+    pub old_revision_id: ModRevisionId,
+    pub candidate_revision_id: ModRevisionId,
+    pub plan_token: String,
+    pub plan_hash: String,
+    pub status: ReinstallRecoveryTransactionStatus,
+    pub pre_reinstall_manifest: InstallManifest,
+    pub targets: Vec<ReinstallRecoveryTarget>,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum ReinstallRecoveryTransactionValidationError {
+    #[error("reinstall transaction profile does not match its pre-reinstall manifest")]
+    ProfileMismatch,
+    #[error("reinstall transaction old and candidate revisions must differ")]
+    RevisionUnchanged,
+    #[error("reinstall transaction plan identity cannot be empty")]
+    EmptyPlanIdentity,
+    #[error("reinstall transaction has no pre-reinstall entries for the requested Mod")]
+    OldEntrySetEmpty,
+    #[error("reinstall transaction contains a duplicate target")]
+    DuplicateTarget { target_path: InstallTargetPath },
+    #[error("reinstall transaction target facts do not match target class")]
+    InvalidTargetFacts { target_path: InstallTargetPath },
+    #[error("reinstall transaction snapshot ownership is invalid")]
+    InvalidSnapshotOwnership { target_path: InstallTargetPath },
+    #[error("reinstall transaction snapshot ref cannot be empty")]
+    EmptySnapshotRef { target_path: InstallTargetPath },
+    #[error("pre-reinstall manifest is invalid: {message}")]
+    InvalidPreReinstallManifest { message: String },
+}
+
+impl ReinstallRecoveryTransaction {
+    pub fn validate(&self) -> Result<(), ReinstallRecoveryTransactionValidationError> {
+        if self.profile_id != self.pre_reinstall_manifest.profile_id {
+            return Err(ReinstallRecoveryTransactionValidationError::ProfileMismatch);
+        }
+        if self.old_revision_id == self.candidate_revision_id {
+            return Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged);
+        }
+        if self.plan_token.trim().is_empty() || self.plan_hash.trim().is_empty() {
+            return Err(ReinstallRecoveryTransactionValidationError::EmptyPlanIdentity);
+        }
+        self.pre_reinstall_manifest.validate().map_err(|error| {
+            ReinstallRecoveryTransactionValidationError::InvalidPreReinstallManifest {
+                message: error.to_string(),
+            }
+        })?;
+        if !self
+            .pre_reinstall_manifest
+            .entries
+            .iter()
+            .any(|entry| entry.mod_id == self.mod_id)
+        {
+            return Err(ReinstallRecoveryTransactionValidationError::OldEntrySetEmpty);
+        }
+
+        let mut targets = BTreeSet::new();
+        for target in &self.targets {
+            if !targets.insert(target.target_path.clone()) {
+                return Err(
+                    ReinstallRecoveryTransactionValidationError::DuplicateTarget {
+                        target_path: target.target_path.clone(),
+                    },
+                );
+            }
+
+            let facts_valid = match target.class {
+                ReinstallTargetClass::Retained | ReinstallTargetClass::Replaced => {
+                    target.pre_state.is_some() && target.candidate_state.is_some()
+                }
+                ReinstallTargetClass::Added => target.candidate_state.is_some(),
+                ReinstallTargetClass::Stale => {
+                    target.pre_state.is_some() && target.candidate_state.is_none()
+                }
+            };
+            if !facts_valid {
+                return Err(
+                    ReinstallRecoveryTransactionValidationError::InvalidTargetFacts {
+                        target_path: target.target_path.clone(),
+                    },
+                );
+            }
+
+            let ownership_valid = match (&target.class, &target.snapshot) {
+                (ReinstallTargetClass::Retained, ReinstallSnapshotState::NotRequired) => true,
+                (ReinstallTargetClass::Added, ReinstallSnapshotState::PreStateAbsent)
+                    if target.pre_state.is_none() =>
+                {
+                    true
+                }
+                (
+                    ReinstallTargetClass::Added,
+                    ReinstallSnapshotState::Stored {
+                        purpose: ReinstallSnapshotPurpose::OriginalBackupCandidate,
+                        cleanup_owner:
+                            ReinstallSnapshotCleanupOwner::PromoteOnCommit
+                            | ReinstallSnapshotCleanupOwner::Manifest,
+                        ..
+                    },
+                ) if target.pre_state.is_some() => true,
+                (
+                    ReinstallTargetClass::Replaced | ReinstallTargetClass::Stale,
+                    ReinstallSnapshotState::Stored {
+                        purpose: ReinstallSnapshotPurpose::TransactionRollback,
+                        cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
+                        ..
+                    },
+                ) => true,
+                _ => false,
+            };
+            if !ownership_valid {
+                return Err(
+                    ReinstallRecoveryTransactionValidationError::InvalidSnapshotOwnership {
+                        target_path: target.target_path.clone(),
+                    },
+                );
+            }
+
+            if matches!(
+                &target.snapshot,
+                ReinstallSnapshotState::Stored { snapshot_ref, .. }
+                    if snapshot_ref.trim().is_empty()
+            ) {
+                return Err(
+                    ReinstallRecoveryTransactionValidationError::EmptySnapshotRef {
+                        target_path: target.target_path.clone(),
+                    },
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn transition_to(
+        &mut self,
+        next: ReinstallRecoveryTransactionStatus,
+    ) -> Result<(), ReinstallRecoveryTransactionTransitionError> {
+        if self.status.can_transition_to(next) {
+            self.status = next;
+            Ok(())
+        } else {
+            Err(
+                ReinstallRecoveryTransactionTransitionError::InvalidTransition {
+                    from: self.status,
+                    to: next,
+                },
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,6 +460,7 @@ pub fn replace_entries_for_mod(
     });
 
     let mut updated = manifest.clone();
+    updated.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
     updated
         .entries
         .retain(|entry| entry.mod_id != *requested_mod_id);
@@ -630,7 +866,10 @@ mod tests {
 
         assert_eq!(manifest.entries.len(), 3, "input manifest stays immutable");
         assert_eq!(replaced.manifest_id, manifest.manifest_id);
-        assert_eq!(replaced.schema_version, manifest.schema_version);
+        assert_eq!(
+            replaced.schema_version,
+            crate::INSTALL_MANIFEST_SCHEMA_VERSION_V2
+        );
         assert_eq!(replaced.schema_migration, manifest.schema_migration);
         assert_eq!(replaced.backend, manifest.backend);
         assert_eq!(replaced.status, manifest.status);
@@ -651,6 +890,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             [Some("v2"), Some("v2")]
         );
+
+        let serialized = serde_json::to_string(&replaced).expect("serialize v2 manifest");
+        let reloaded: InstallManifest =
+            serde_json::from_str(&serialized).expect("reload v2 manifest");
+        assert_eq!(reloaded, replaced);
     }
 
     #[test]
@@ -839,6 +1083,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn recovery_transaction_round_trips_all_target_classes_and_snapshot_ownership() {
+        let transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
+
+        let serialized = serde_json::to_string(&transaction).expect("serialize transaction");
+        let reloaded: ReinstallRecoveryTransaction =
+            serde_json::from_str(&serialized).expect("reload transaction");
+
+        assert_eq!(reloaded, transaction);
+        assert!(serialized.contains("\"class\":\"retained\""));
+        assert!(serialized.contains("\"class\":\"replaced\""));
+        assert!(serialized.contains("\"class\":\"added\""));
+        assert!(serialized.contains("\"class\":\"stale\""));
+        assert!(serialized.contains("\"cleanup_owner\":\"promote_on_commit\""));
+        assert_eq!(reloaded.pre_reinstall_manifest.entries.len(), 3);
+    }
+
+    #[test]
+    fn recovery_transaction_rejects_invalid_status_transitions() {
+        let mut transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
+
+        let error = transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::Completed)
+            .expect_err("planned cannot skip committing");
+        assert_eq!(
+            error,
+            ReinstallRecoveryTransactionTransitionError::InvalidTransition {
+                from: ReinstallRecoveryTransactionStatus::Planned,
+                to: ReinstallRecoveryTransactionStatus::Completed,
+            }
+        );
+
+        transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::Committing)
+            .expect("planned can enter committing");
+        transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::RollbackRequired)
+            .expect("committing can require rollback");
+        transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::RolledBack)
+            .expect("rollback can complete");
+        assert!(transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::Committing)
+            .is_err());
+    }
+
     fn state(
         path: &str,
         revision_id: &str,
@@ -909,6 +1199,87 @@ mod tests {
         InstalledFileSummary {
             size_bytes: hash.len() as u64,
             sha256: hash.to_owned(),
+        }
+    }
+
+    fn recovery_transaction(
+        status: ReinstallRecoveryTransactionStatus,
+    ) -> ReinstallRecoveryTransaction {
+        let old_manifest = manifest(vec![
+            entry("retained.bin", "mod-a", "retained-v1", None),
+            entry("replaced.bin", "mod-a", "replaced-v1", None),
+            entry("stale.bin", "mod-a", "stale-v1", None),
+        ]);
+        let target =
+            |path: &str,
+             class: ReinstallTargetClass,
+             pre_state: Option<InstalledFileSummary>,
+             candidate_state: Option<InstalledFileSummary>,
+             snapshot: ReinstallSnapshotState,
+             original_backup_ref: Option<&str>| ReinstallRecoveryTarget {
+                target_path: target(path),
+                class,
+                pre_state,
+                candidate_state,
+                snapshot,
+                original_backup_ref: original_backup_ref.map(str::to_owned),
+            };
+
+        ReinstallRecoveryTransaction {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            old_revision_id: ModRevisionId::new("v1"),
+            candidate_revision_id: ModRevisionId::new("v2"),
+            plan_token: "preview-token".to_owned(),
+            plan_hash: "sha256:plan".to_owned(),
+            status,
+            pre_reinstall_manifest: old_manifest,
+            targets: vec![
+                target(
+                    "retained.bin",
+                    ReinstallTargetClass::Retained,
+                    Some(summary("same")),
+                    Some(summary("same")),
+                    ReinstallSnapshotState::NotRequired,
+                    Some("original-retained"),
+                ),
+                target(
+                    "replaced.bin",
+                    ReinstallTargetClass::Replaced,
+                    Some(summary("old")),
+                    Some(summary("new")),
+                    ReinstallSnapshotState::Stored {
+                        snapshot_ref: "snapshot-replaced".to_owned(),
+                        purpose: ReinstallSnapshotPurpose::TransactionRollback,
+                        cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
+                    },
+                    Some("original-replaced"),
+                ),
+                target(
+                    "added.bin",
+                    ReinstallTargetClass::Added,
+                    Some(summary("unmanaged")),
+                    Some(summary("candidate")),
+                    ReinstallSnapshotState::Stored {
+                        snapshot_ref: "snapshot-added".to_owned(),
+                        purpose: ReinstallSnapshotPurpose::OriginalBackupCandidate,
+                        cleanup_owner: ReinstallSnapshotCleanupOwner::PromoteOnCommit,
+                    },
+                    None,
+                ),
+                target(
+                    "stale.bin",
+                    ReinstallTargetClass::Stale,
+                    Some(summary("stale")),
+                    None,
+                    ReinstallSnapshotState::Stored {
+                        snapshot_ref: "snapshot-stale".to_owned(),
+                        purpose: ReinstallSnapshotPurpose::TransactionRollback,
+                        cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
+                    },
+                    Some("original-stale"),
+                ),
+            ],
         }
     }
 }
