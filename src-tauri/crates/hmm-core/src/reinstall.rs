@@ -104,6 +104,13 @@ pub enum ReinstallSnapshotState {
         purpose: ReinstallSnapshotPurpose,
         cleanup_owner: ReinstallSnapshotCleanupOwner,
     },
+    CleanupPending {
+        snapshot_ref: String,
+        purpose: ReinstallSnapshotPurpose,
+    },
+    Cleaned {
+        purpose: ReinstallSnapshotPurpose,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -221,11 +228,31 @@ impl ReinstallRecoveryTransaction {
                     },
                 ) if target.pre_state.is_some() => true,
                 (
+                    ReinstallTargetClass::Added,
+                    ReinstallSnapshotState::CleanupPending {
+                        purpose: ReinstallSnapshotPurpose::OriginalBackupCandidate,
+                        ..
+                    }
+                    | ReinstallSnapshotState::Cleaned {
+                        purpose: ReinstallSnapshotPurpose::OriginalBackupCandidate,
+                    },
+                ) if target.pre_state.is_some() => true,
+                (
                     ReinstallTargetClass::Replaced | ReinstallTargetClass::Stale,
                     ReinstallSnapshotState::Stored {
                         purpose: ReinstallSnapshotPurpose::TransactionRollback,
                         cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
                         ..
+                    },
+                ) => true,
+                (
+                    ReinstallTargetClass::Replaced | ReinstallTargetClass::Stale,
+                    ReinstallSnapshotState::CleanupPending {
+                        purpose: ReinstallSnapshotPurpose::TransactionRollback,
+                        ..
+                    }
+                    | ReinstallSnapshotState::Cleaned {
+                        purpose: ReinstallSnapshotPurpose::TransactionRollback,
                     },
                 ) => true,
                 _ => false,
@@ -241,6 +268,7 @@ impl ReinstallRecoveryTransaction {
             if matches!(
                 &target.snapshot,
                 ReinstallSnapshotState::Stored { snapshot_ref, .. }
+                    | ReinstallSnapshotState::CleanupPending { snapshot_ref, .. }
                     if snapshot_ref.trim().is_empty()
             ) {
                 return Err(
@@ -1098,6 +1126,27 @@ mod tests {
         assert!(serialized.contains("\"class\":\"stale\""));
         assert!(serialized.contains("\"cleanup_owner\":\"promote_on_commit\""));
         assert_eq!(reloaded.pre_reinstall_manifest.entries.len(), 3);
+    }
+
+    #[test]
+    fn recovery_transaction_round_trips_durable_snapshot_cleanup_progress() {
+        let mut transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
+        transaction.targets[1].snapshot = ReinstallSnapshotState::CleanupPending {
+            snapshot_ref: "snapshot-replaced".to_owned(),
+            purpose: ReinstallSnapshotPurpose::TransactionRollback,
+        };
+        transaction.targets[2].snapshot = ReinstallSnapshotState::Cleaned {
+            purpose: ReinstallSnapshotPurpose::OriginalBackupCandidate,
+        };
+
+        transaction.validate().expect("valid cleanup progress");
+        let serialized = serde_json::to_string(&transaction).expect("serialize transaction");
+        let reloaded: ReinstallRecoveryTransaction =
+            serde_json::from_str(&serialized).expect("reload transaction");
+
+        assert_eq!(reloaded, transaction);
+        assert!(serialized.contains("\"state\":\"cleanup_pending\""));
+        assert!(serialized.contains("\"state\":\"cleaned\""));
     }
 
     #[test]

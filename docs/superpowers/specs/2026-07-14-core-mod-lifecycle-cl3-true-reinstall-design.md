@@ -249,6 +249,9 @@ transaction 至少保存内部事实：
 - 每个 target 的分类、pre-state summary、candidate summary；
 - mutating target 的 transaction snapshot ref 或“pre-state 不存在”；retained 只保存可验证摘要，
   不为无磁盘 mutation 创建多余 snapshot；
+- transaction snapshot 使用 `stored -> cleanup_pending -> cleaned` 记录 durable cleanup progress：
+  `stored` 仍可用于恢复，`cleanup_pending` 表示 target 已恢复或已确认无需恢复、snapshot 只待删除，
+  `cleaned` 表示删除结果已 checkpoint；任一状态转换都先后通过原子 transaction save 固化；
 - original backup ref（若有）及其 promotion/cleanup 语义；
 - 足以判断 target 处于 pre-state、candidate-state 还是 unknown 的摘要。
 
@@ -267,7 +270,8 @@ prepare outside lock
   -> build candidate manifest by replacing only this Mod entry set
   -> atomically save manifest once (commit point)
   -> persist transaction completed (post-commit bookkeeping)
-  -> cleanup non-promoted transaction snapshots and unreferenced stale original backups
+  -> cleanup non-promoted transaction snapshots and unreferenced stale original backups,
+     checkpointing each deleted ref while retaining complete target summaries
   -> remove completed transaction best-effort
   -> complete task
 ```
@@ -277,7 +281,8 @@ replaced/stale，v1 transaction snapshot 永远不能覆盖原有 original backu
 
 cleanup 是 commit 后的非破坏性收敛：失败可以保留受控 orphan backup/完成记录等待后续维护，但不能
 把已经固化的 v2 报成 rollback_required。任何 original backup 只有在 manifest 已不再引用且对应
-target 已成功恢复后才能删除。
+target 已成功恢复后才能删除。transaction 只能在所有 snapshot/backup ref 已清理并 checkpoint 后移除；
+删除或 transaction removal 失败时保留最后一个 durable resume point。
 
 `save_manifest` 成功返回是唯一 commit point。其后的 completed 状态持久化属于 post-commit
 bookkeeping；若该持久化返回错误：
@@ -298,9 +303,12 @@ completed 已持久化后的纯 cleanup failure 可以保留 completed transacti
 若 manifest commit point 之前任一步失败：
 
 1. 按反向顺序用 transaction snapshot 恢复所有可能已 mutation 的 target；pre-state 不存在则删除。
-2. 每个 target 恢复并更新 durable recovery fact 后，才允许删除其 transaction snapshot。
+2. 每个 target 恢复后先将 snapshot 持久化为 `cleanup_pending`，才允许删除；删除后再 checkpoint
+   `cleaned` 或移除已收敛 target fact。cleanup 失败时不得重新把已恢复 target 当作未恢复 target。
 3. 旧 manifest 未被修改，继续作为 v1 权威事实。
 4. rollback 全部成功：task 为 failed，公开结果为 `rolled_back`，删除或收敛 transaction。
+   transaction removal 失败时仍保持 `rolled_back`，但内部 commit result 必须标记 cleanup pending，
+   并保留 durable `rolled_back` transaction 供后续收敛。
 5. rollback 部分失败：只保留未恢复 target facts，状态为 `rollback_required` 或 `repair_required`。
 
 manifest save 返回错误时不能假设 rename 未发生。实现必须重新读取 manifest：
