@@ -284,6 +284,11 @@ cleanup 是 commit 后的非破坏性收敛：失败可以保留受控 orphan ba
 target 已成功恢复后才能删除。transaction 只能在所有 snapshot/backup ref 已清理并 checkpoint 后移除；
 删除或 transaction removal 失败时保留最后一个 durable resume point。
 
+recovery transaction save 返回错误时也必须按 profile/mod read-back 判定 durable ownership：只有确认
+transaction 不存在时，才允许 best-effort 删除尚未归属的 snapshot；读取失败、记录不匹配或落盘结果不明时
+保留 snapshot 并 fail-closed。original backup cleanup 使用 at-least-once 顺序：保留 ref，先执行幂等删除，
+删除成功后再清空 ref 并保存 checkpoint；禁止在删除前清空唯一 durable ref，以免删除失败后形成 orphan。
+
 `save_manifest` 成功返回是唯一 commit point。其后的 completed 状态持久化属于 post-commit
 bookkeeping；若该持久化返回错误：
 
