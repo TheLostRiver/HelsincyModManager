@@ -131,7 +131,7 @@ fn preview_blocks_missing_or_unsafe_manifest_and_unknown_installed_revision() {
         &wrong_profile
             .preview(default_request())
             .expect("blocked preview"),
-        ReinstallBlockingReason::ManifestStateUnsafe,
+        ReinstallBlockingReason::NotInstalled,
     );
 
     let unsupported_schema = Fixture::ready();
@@ -1070,7 +1070,7 @@ impl FakeManifests {
 }
 
 impl InstallManifestRepository for FakeManifests {
-    fn load_manifest(&self, _profile_id: &ProfileId) -> Result<Option<InstallManifest>> {
+    fn load_manifest(&self, profile_id: &ProfileId) -> Result<Option<InstallManifest>> {
         let mut loads = self.loads.lock().expect("manifest loads lock");
         *loads += 1;
         if self
@@ -1081,7 +1081,12 @@ impl InstallManifestRepository for FakeManifests {
         {
             anyhow::bail!("injected manifest load failure");
         }
-        Ok(self.manifest.lock().expect("manifest lock").clone())
+        Ok(self
+            .manifest
+            .lock()
+            .expect("manifest lock")
+            .clone()
+            .filter(|manifest| manifest.profile_id == *profile_id))
     }
 
     fn save_manifest(&self, manifest: &InstallManifest) -> Result<()> {
@@ -1111,6 +1116,7 @@ struct FakeRecoveryTransactions {
     transaction: Mutex<Option<ReinstallRecoveryTransaction>>,
     history: Mutex<Vec<ReinstallRecoveryTransaction>>,
     fail_saves: Mutex<BTreeSet<usize>>,
+    fail_removes: Mutex<BTreeSet<usize>>,
 }
 
 impl FakeRecoveryTransactions {
@@ -1137,6 +1143,13 @@ impl FakeRecoveryTransactions {
             .insert(call);
     }
 
+    fn fail_remove(&self, call: usize) {
+        self.fail_removes
+            .lock()
+            .expect("recovery remove failures lock")
+            .insert(call);
+    }
+
     fn current(&self) -> Option<ReinstallRecoveryTransaction> {
         self.transaction.lock().expect("transaction lock").clone()
     }
@@ -1145,13 +1158,19 @@ impl FakeRecoveryTransactions {
 impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
     fn load_transaction(
         &self,
-        _profile_id: &ProfileId,
-        _mod_id: &ModId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
     ) -> Result<Option<ReinstallRecoveryTransaction>> {
         if let Some(transaction) = self.transaction.lock().expect("transaction lock").clone() {
-            return Ok(Some(transaction));
+            return Ok(
+                (transaction.profile_id == *profile_id && transaction.mod_id == *mod_id)
+                    .then_some(transaction),
+            );
         }
-        if *self.active.lock().expect("active lock") {
+        if *self.active.lock().expect("active lock")
+            && *profile_id == ProfileId::new("default")
+            && *mod_id == ModId::new("mod-a")
+        {
             return Ok(Some(ReinstallRecoveryTransaction {
                 profile_id: ProfileId::new("default"),
                 mod_id: ModId::new("mod-a"),
@@ -1169,9 +1188,16 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
 
     fn list_transactions(
         &self,
-        _profile_id: &ProfileId,
+        profile_id: &ProfileId,
     ) -> Result<Vec<ReinstallRecoveryTransaction>> {
-        Ok(Vec::new())
+        Ok(self
+            .transaction
+            .lock()
+            .expect("transaction lock")
+            .clone()
+            .filter(|transaction| transaction.profile_id == *profile_id)
+            .into_iter()
+            .collect())
     }
 
     fn save_transaction(&self, transaction: &ReinstallRecoveryTransaction) -> Result<()> {
@@ -1193,9 +1219,23 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
         Ok(())
     }
 
-    fn remove_transaction(&self, _profile_id: &ProfileId, _mod_id: &ModId) -> Result<()> {
-        *self.removes.lock().expect("recovery removes lock") += 1;
-        *self.transaction.lock().expect("transaction lock") = None;
+    fn remove_transaction(&self, profile_id: &ProfileId, mod_id: &ModId) -> Result<()> {
+        let mut removes = self.removes.lock().expect("recovery removes lock");
+        *removes += 1;
+        if self
+            .fail_removes
+            .lock()
+            .expect("recovery remove failures lock")
+            .remove(&*removes)
+        {
+            anyhow::bail!("injected recovery remove failure");
+        }
+        let mut transaction = self.transaction.lock().expect("transaction lock");
+        if transaction.as_ref().is_some_and(|transaction| {
+            transaction.profile_id == *profile_id && transaction.mod_id == *mod_id
+        }) {
+            *transaction = None;
+        }
         Ok(())
     }
 }

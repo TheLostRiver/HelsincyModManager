@@ -105,12 +105,13 @@ fn commit_happy_path_preserves_original_backup_and_replaces_only_requested_entry
         .contains_key("original-overwritten"));
     assert_eq!(snapshots.remaining_count(), 0);
     assert_eq!(fixture.recovery.remove_count(), 1);
-    let statuses = fixture
+    let mut statuses = fixture
         .recovery
         .history()
         .into_iter()
         .map(|transaction| transaction.status)
         .collect::<Vec<_>>();
+    statuses.dedup();
     assert_eq!(
         statuses,
         vec![
@@ -123,8 +124,58 @@ fn commit_happy_path_preserves_original_backup_and_replaces_only_requested_entry
 
 #[test]
 fn commit_contract_exposes_stable_phase_codes() {
-    assert_eq!(ReinstallCommitPhase::Revalidation.code(), "revalidation");
-    assert_eq!(ReinstallCommitPhase::PostCommit.code(), "post_commit");
+    for (phase, expected) in [
+        (ReinstallCommitPhase::Revalidation, "revalidation"),
+        (ReinstallCommitPhase::Snapshot, "snapshot"),
+        (ReinstallCommitPhase::Recovery, "recovery"),
+        (ReinstallCommitPhase::Mutation, "mutation"),
+        (ReinstallCommitPhase::Manifest, "manifest"),
+        (ReinstallCommitPhase::Rollback, "rollback"),
+        (ReinstallCommitPhase::PostCommit, "post_commit"),
+        (ReinstallCommitPhase::Cleanup, "cleanup"),
+    ] {
+        assert_eq!(phase.code(), expected);
+    }
+}
+
+#[test]
+fn commit_fakes_preserve_manifest_and_recovery_repository_keys() {
+    let fixture = Fixture::ready();
+    assert!(fixture
+        .manifests
+        .load_manifest(&ProfileId::new("other-profile"))
+        .expect("wrong-profile manifest lookup")
+        .is_none());
+
+    fixture.recovery.set_active(true);
+    assert!(fixture
+        .recovery
+        .load_transaction(&ProfileId::new("other-profile"), &ModId::new("mod-a"))
+        .expect("wrong-profile recovery lookup")
+        .is_none());
+    assert!(fixture
+        .recovery
+        .load_transaction(&ProfileId::new("default"), &ModId::new("mod-b"))
+        .expect("wrong-Mod recovery lookup")
+        .is_none());
+    let transaction = fixture
+        .recovery
+        .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+        .expect("matching recovery lookup")
+        .expect("active recovery transaction");
+    fixture
+        .recovery
+        .save_transaction(&transaction)
+        .expect("store recovery fixture");
+    fixture
+        .recovery
+        .remove_transaction(&ProfileId::new("other-profile"), &ModId::new("mod-a"))
+        .expect("wrong-profile removal is a no-op");
+    fixture
+        .recovery
+        .remove_transaction(&ProfileId::new("default"), &ModId::new("mod-b"))
+        .expect("wrong-Mod removal is a no-op");
+    assert!(fixture.recovery.current().is_some());
 }
 
 #[test]
@@ -273,6 +324,41 @@ mod fault {
     }
 
     #[test]
+    fn pre_mutation_abort_keeps_transaction_until_snapshot_cleanup_finishes() {
+        let fixture = Fixture::ready();
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.recovery.fail_save(2);
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+        snapshots.fail_remove(1);
+
+        let error = commit_service(&fixture, snapshots.clone())
+            .commit(prepared, &token)
+            .expect_err("committing save failure");
+
+        assert_eq!(
+            error,
+            ReinstallCommitError::Failed {
+                phase: ReinstallCommitPhase::Recovery
+            }
+        );
+        assert!(fixture.game.mutations().is_empty());
+        let transaction = fixture
+            .recovery
+            .current()
+            .expect("cleanup-owned transaction");
+        assert_eq!(
+            transaction.status,
+            ReinstallRecoveryTransactionStatus::Committing
+        );
+        assert!(transaction.targets.iter().any(|target| matches!(
+            target.snapshot,
+            hmm_core::ReinstallSnapshotState::CleanupPending { .. }
+        )));
+        assert_eq!(snapshots.remaining_count(), 3);
+    }
+
+    #[test]
     fn every_mutation_failure_rolls_back_to_v1() {
         for failed_mutation in 1..=4 {
             let fixture = Fixture::ready();
@@ -294,7 +380,8 @@ mod fault {
             assert_eq!(
                 error,
                 ReinstallCommitError::RolledBack {
-                    failed_phase: ReinstallCommitPhase::Mutation
+                    failed_phase: ReinstallCommitPhase::Mutation,
+                    cleanup_pending: false,
                 }
             );
             assert_v1_game(&fixture);
@@ -329,7 +416,8 @@ mod fault {
             assert_eq!(
                 error,
                 ReinstallCommitError::RolledBack {
-                    failed_phase: ReinstallCommitPhase::Manifest
+                    failed_phase: ReinstallCommitPhase::Manifest,
+                    cleanup_pending: false,
                 }
             );
             assert_v1_game(&fixture);
@@ -458,6 +546,49 @@ mod fault {
     }
 
     #[test]
+    fn unreadable_or_missing_snapshot_keeps_unrestored_target_and_snapshot_owned() {
+        for missing in [false, true] {
+            let fixture = Fixture::ready();
+            let prepared = fixture.prepare(default_request());
+            let token = prepared.plan_token.clone();
+            fixture.game.fail_mutation(2);
+            let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+            let snapshot_ref = "snapshot:content/overwritten.bin";
+            if missing {
+                snapshots.miss_read(snapshot_ref);
+            } else {
+                snapshots.fail_read(snapshot_ref);
+            }
+
+            let error = commit_service(&fixture, snapshots.clone())
+                .commit(prepared, &token)
+                .expect_err("snapshot read failure");
+
+            assert_eq!(
+                error,
+                ReinstallCommitError::RollbackRequired {
+                    failed_phase: ReinstallCommitPhase::Mutation
+                }
+            );
+            let transaction = fixture.recovery.current().expect("rollback transaction");
+            assert_eq!(transaction.targets.len(), 1);
+            assert_eq!(
+                transaction.targets[0].target_path.as_str(),
+                "content/overwritten.bin"
+            );
+            assert!(matches!(
+                &transaction.targets[0].snapshot,
+                hmm_core::ReinstallSnapshotState::Stored {
+                    snapshot_ref: stored_ref,
+                    cleanup_owner: hmm_core::ReinstallSnapshotCleanupOwner::Transaction,
+                    ..
+                } if stored_ref == snapshot_ref
+            ));
+            assert_eq!(snapshots.remaining_count(), 1);
+        }
+    }
+
+    #[test]
     fn rollback_recovery_update_failure_keeps_snapshots_and_marks_repair() {
         let fixture = Fixture::ready();
         let prepared = fixture.prepare(default_request());
@@ -486,6 +617,36 @@ mod fault {
             ReinstallRecoveryTransactionStatus::RepairRequired
         );
         assert_eq!(snapshots.remaining_count(), 3);
+    }
+
+    #[test]
+    fn rollback_transaction_remove_failure_keeps_durable_rolled_back_record() {
+        let fixture = Fixture::ready();
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.game.fail_mutation(2);
+        fixture.recovery.fail_remove(1);
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+
+        let error = commit_service(&fixture, snapshots.clone())
+            .commit(prepared, &token)
+            .expect_err("mutation failure");
+
+        assert_eq!(
+            error,
+            ReinstallCommitError::RolledBack {
+                failed_phase: ReinstallCommitPhase::Mutation,
+                cleanup_pending: true,
+            }
+        );
+        assert_v1_game(&fixture);
+        let transaction = fixture.recovery.current().expect("rolled back transaction");
+        assert_eq!(
+            transaction.status,
+            ReinstallRecoveryTransactionStatus::RolledBack
+        );
+        assert!(transaction.targets.is_empty());
+        assert_eq!(snapshots.remaining_count(), 0);
     }
 
     #[test]
@@ -524,9 +685,10 @@ mod fault {
         let prepared = fixture.prepare(default_request());
         let token = prepared.plan_token.clone();
         let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
-        snapshots.fail_remove(1);
+        snapshots.fail_remove(2);
+        let service = commit_service(&fixture, snapshots.clone());
 
-        let error = commit_service(&fixture, snapshots.clone())
+        let error = service
             .commit(prepared, &token)
             .expect_err("cleanup failure");
 
@@ -540,7 +702,57 @@ mod fault {
                 .status,
             ReinstallRecoveryTransactionStatus::Completed
         );
-        assert_eq!(snapshots.remaining_count(), 3);
+        let transaction = fixture.recovery.current().expect("completed transaction");
+        assert_eq!(
+            transaction
+                .targets
+                .iter()
+                .filter(|target| matches!(
+                    target.snapshot,
+                    hmm_core::ReinstallSnapshotState::Cleaned { .. }
+                ))
+                .count(),
+            1
+        );
+        assert_eq!(snapshots.remaining_count(), 2);
+
+        service
+            .cleanup_committed(&transaction)
+            .expect("resume cleanup");
+        assert_eq!(snapshots.remove_count(), 4);
+        assert_eq!(snapshots.remaining_count(), 0);
+        assert!(fixture.recovery.current().is_none());
+    }
+
+    #[test]
+    fn completed_transaction_remove_failure_keeps_checkpointed_cleanup_record() {
+        let fixture = Fixture::ready();
+        let prepared = fixture.prepare(default_request());
+        let token = prepared.plan_token.clone();
+        fixture.recovery.fail_remove(1);
+        let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+
+        let error = commit_service(&fixture, snapshots.clone())
+            .commit(prepared, &token)
+            .expect_err("transaction removal failure");
+
+        assert_eq!(error, ReinstallCommitError::CleanupPending);
+        let transaction = fixture
+            .recovery
+            .current()
+            .expect("completed cleanup record");
+        assert_eq!(
+            transaction.status,
+            ReinstallRecoveryTransactionStatus::Completed
+        );
+        assert!(transaction.targets.iter().all(|target| !matches!(
+            target.snapshot,
+            hmm_core::ReinstallSnapshotState::Stored {
+                cleanup_owner: hmm_core::ReinstallSnapshotCleanupOwner::Transaction,
+                ..
+            } | hmm_core::ReinstallSnapshotState::CleanupPending { .. }
+        )));
+        assert_eq!(snapshots.remaining_count(), 0);
     }
 
     #[test]
@@ -585,6 +797,19 @@ mod fault {
             .lock()
             .expect("backup files lock")
             .contains_key("original-stale"));
+        assert!(fixture
+            .recovery
+            .current()
+            .expect("completed transaction")
+            .targets
+            .iter()
+            .all(|target| !matches!(
+                target.snapshot,
+                hmm_core::ReinstallSnapshotState::Stored {
+                    cleanup_owner: hmm_core::ReinstallSnapshotCleanupOwner::Transaction,
+                    ..
+                } | hmm_core::ReinstallSnapshotState::CleanupPending { .. }
+            )));
     }
 
     #[test]
@@ -649,6 +874,8 @@ struct FakeSnapshots {
     remove_attempts: Mutex<usize>,
     fail_stores: Mutex<BTreeSet<usize>>,
     fail_removes: Mutex<BTreeSet<usize>>,
+    fail_reads: Mutex<BTreeSet<String>>,
+    missing_reads: Mutex<BTreeSet<String>>,
 }
 
 impl FakeSnapshots {
@@ -662,6 +889,8 @@ impl FakeSnapshots {
             remove_attempts: Mutex::new(0),
             fail_stores: Mutex::new(BTreeSet::new()),
             fail_removes: Mutex::new(BTreeSet::new()),
+            fail_reads: Mutex::new(BTreeSet::new()),
+            missing_reads: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -683,6 +912,13 @@ impl FakeSnapshots {
         self.files.lock().expect("snapshot files lock").len()
     }
 
+    fn remove_count(&self) -> usize {
+        *self
+            .remove_attempts
+            .lock()
+            .expect("snapshot remove attempts lock")
+    }
+
     fn fail_store(&self, attempt: usize) {
         self.fail_stores
             .lock()
@@ -695,6 +931,20 @@ impl FakeSnapshots {
             .lock()
             .expect("snapshot remove failures lock")
             .insert(attempt);
+    }
+
+    fn fail_read(&self, snapshot_ref: &str) {
+        self.fail_reads
+            .lock()
+            .expect("snapshot read failures lock")
+            .insert(snapshot_ref.to_owned());
+    }
+
+    fn miss_read(&self, snapshot_ref: &str) {
+        self.missing_reads
+            .lock()
+            .expect("snapshot missing reads lock")
+            .insert(snapshot_ref.to_owned());
     }
 }
 
@@ -731,6 +981,22 @@ impl ReinstallSnapshotStore for FakeSnapshots {
     }
 
     fn read_snapshot(&self, snapshot_ref: &str) -> Result<Option<Vec<u8>>> {
+        if self
+            .fail_reads
+            .lock()
+            .expect("snapshot read failures lock")
+            .remove(snapshot_ref)
+        {
+            anyhow::bail!("injected snapshot read failure");
+        }
+        if self
+            .missing_reads
+            .lock()
+            .expect("snapshot missing reads lock")
+            .remove(snapshot_ref)
+        {
+            return Ok(None);
+        }
         Ok(self
             .files
             .lock()
