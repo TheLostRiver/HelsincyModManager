@@ -975,6 +975,13 @@ impl FakeBackups {
             .lock()
             .expect("backup remove failure lock") = true;
     }
+
+    fn allow_removes(&self) {
+        *self
+            .fail_removes
+            .lock()
+            .expect("backup remove failure lock") = false;
+    }
 }
 
 impl InstallBackupStore for FakeBackups {
@@ -1116,6 +1123,7 @@ struct FakeRecoveryTransactions {
     transaction: Mutex<Option<ReinstallRecoveryTransaction>>,
     history: Mutex<Vec<ReinstallRecoveryTransaction>>,
     fail_saves: Mutex<BTreeSet<usize>>,
+    persist_then_fail_saves: Mutex<BTreeSet<usize>>,
     fail_removes: Mutex<BTreeSet<usize>>,
 }
 
@@ -1140,6 +1148,13 @@ impl FakeRecoveryTransactions {
         self.fail_saves
             .lock()
             .expect("recovery save failures lock")
+            .insert(call);
+    }
+
+    fn persist_then_fail_save(&self, call: usize) {
+        self.persist_then_fail_saves
+            .lock()
+            .expect("ambiguous recovery save failures lock")
             .insert(call);
     }
 
@@ -1211,11 +1226,19 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
         {
             anyhow::bail!("injected recovery save failure");
         }
+        let persist_then_fail = self
+            .persist_then_fail_saves
+            .lock()
+            .expect("ambiguous recovery save failures lock")
+            .remove(&*saves);
         *self.transaction.lock().expect("transaction lock") = Some(transaction.clone());
         self.history
             .lock()
             .expect("recovery history lock")
             .push(transaction.clone());
+        if persist_then_fail {
+            anyhow::bail!("injected recovery save failure after persistence");
+        }
         Ok(())
     }
 
