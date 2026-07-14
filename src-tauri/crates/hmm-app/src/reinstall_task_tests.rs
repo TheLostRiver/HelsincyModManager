@@ -1,11 +1,14 @@
 use super::*;
 use crate::{ReinstallCommitError, ReinstallCommitResult, ReinstallTargetCounts};
-use hmm_core::{FileLayer, GameId, InstallManifest, ModId, ModRevisionId, ProfileId};
+use hmm_core::{
+    FileLayer, GameId, InstallManifest, InstallManifestEntry, InstallTargetPath,
+    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 use std::collections::BTreeSet;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 struct FakePrepared {
@@ -224,10 +227,11 @@ fn successful_runner_emits_stable_phases_identity_and_sanitized_audit() {
     let task = task_manager
         .create_task(crate::TaskKind::Install)
         .expect("task can be created");
-    let executor = Arc::new(FakeExecutor::success(
-        Arc::clone(&task_manager),
-        &task.task_id,
-    ));
+    let executor = FakeExecutor::success(Arc::clone(&task_manager), &task.task_id);
+    *executor.commit_result.lock().expect("commit result lock") = Some(Ok(ReinstallCommitResult {
+        manifest: sensitive_manifest(),
+    }));
+    let executor = Arc::new(executor);
     let audit = Arc::new(RecordingAuditLog::default());
     let runner = ReinstallTaskRunner::new(
         Arc::clone(&task_manager),
@@ -278,6 +282,12 @@ fn successful_runner_emits_stable_phases_identity_and_sanitized_audit() {
             "task_id",
         ])
     );
+    assert_eq!(event.fields["retained_count"], "1");
+    assert_eq!(event.fields["replaced_count"], "2");
+    assert_eq!(event.fields["added_count"], "1");
+    assert_eq!(event.fields["stale_count"], "1");
+    assert_eq!(event.fields["previous_revision_id"], "installed-v1");
+    assert_eq!(event.fields["candidate_revision_id"], "candidate-v2");
     assert_sanitized_audit(&event);
 }
 
@@ -324,6 +334,47 @@ fn cancellation_during_prepare_stops_before_commit_without_audit() {
         ]
     );
     assert_eq!(executor.commit_count(), 0);
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(crate::TaskStatus::Cancelled)
+    );
+    assert!(audit.is_empty());
+}
+
+#[test]
+fn atomic_failure_transition_preserves_cancelled_task_without_failure_audit() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("task can be created");
+    task_manager.start_task(&task.task_id).expect("task starts");
+    task_manager
+        .cancel_task(&task.task_id)
+        .expect("cancellation wins before failure finalization");
+    let audit = Arc::new(RecordingAuditLog::default());
+    let runner = ReinstallTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::new(FakeExecutor::success(
+            Arc::clone(&task_manager),
+            &task.task_id,
+        )),
+        audit.clone(),
+        Arc::new(FixedClock),
+    );
+
+    let events = runner
+        .fail_with_audit(
+            &task.task_id,
+            &sample_request(),
+            audit_context(),
+            Vec::new(),
+            "planning",
+            "not_attempted",
+            false,
+        )
+        .expect("cancelled task is not reported as failed");
+
+    assert_eq!(event_phases(&events), vec!["install.reinstall.cancelled"]);
     assert_eq!(
         task_manager.task_status(&task.task_id),
         Some(crate::TaskStatus::Cancelled)
@@ -487,6 +538,15 @@ fn commit_errors_map_to_stable_task_phases_without_messages() {
             ReinstallCommitError::RolledBack {
                 failed_phase: crate::ReinstallCommitPhase::Mutation,
                 cleanup_pending: false,
+            },
+            "commit",
+            "rolled_back",
+            true,
+        ),
+        (
+            ReinstallCommitError::RolledBack {
+                failed_phase: crate::ReinstallCommitPhase::Mutation,
+                cleanup_pending: true,
             },
             "commit",
             "rolled_back",
@@ -772,6 +832,9 @@ fn controlled_reinstall_reconciliation_records_sanitized_audit() {
             "task_id",
         ])
     );
+    assert_eq!(event.fields["remove_file_count"], "2");
+    assert_eq!(event.fields["restore_file_count"], "3");
+    assert_eq!(event.fields["backup_count"], "4");
     assert_sanitized_audit(&event);
 }
 
@@ -840,7 +903,9 @@ struct NotifyingRecoveryExecutor {
     entered: Mutex<Option<mpsc::Sender<()>>>,
 }
 
-struct BlockedWriteAdmission;
+struct BlockedWriteAdmission {
+    error: crate::InstallWriteAdmissionError,
+}
 
 impl crate::InstallWriteAdmission for BlockedWriteAdmission {
     fn ensure_write_allowed(
@@ -848,12 +913,27 @@ impl crate::InstallWriteAdmission for BlockedWriteAdmission {
         _game_id: &GameId,
         _profile_id: &ProfileId,
     ) -> Result<(), crate::InstallWriteAdmissionError> {
-        Err(crate::InstallWriteAdmissionError::RecoveryPending)
+        Err(self.error.clone())
     }
 }
 
 #[test]
 fn unsafe_reinstall_recovery_gate_blocks_install_and_uninstall_before_writes() {
+    for (error, suffix) in [
+        (
+            crate::InstallWriteAdmissionError::RecoveryPending,
+            "recovery_pending",
+        ),
+        (
+            crate::InstallWriteAdmissionError::RecoveryUnavailable,
+            "recovery_unavailable",
+        ),
+    ] {
+        assert_write_admission_failure(error, suffix);
+    }
+}
+
+fn assert_write_admission_failure(error: crate::InstallWriteAdmissionError, suffix: &str) {
     let task_manager = Arc::new(crate::TaskManager::new());
     let install_task = task_manager
         .create_task(crate::TaskKind::Install)
@@ -862,10 +942,11 @@ fn unsafe_reinstall_recovery_gate_blocks_install_and_uninstall_before_writes() {
         .create_task(crate::TaskKind::Install)
         .expect("task can be created");
     let write_locks = Arc::new(crate::GameProfileWriteLockRegistry::default());
-    let gate = Arc::new(BlockedWriteAdmission);
+    let gate = Arc::new(BlockedWriteAdmission { error });
 
     let (install_planned_tx, install_planned_rx) = mpsc::channel();
     let (install_entered_tx, install_entered_rx) = mpsc::channel();
+    let install_audit = Arc::new(RecordingAuditLog::default());
     let install_runner = crate::InstallTaskRunner::with_write_coordination(
         Arc::clone(&task_manager),
         Arc::new(NotifyingInstallPlanner {
@@ -874,7 +955,7 @@ fn unsafe_reinstall_recovery_gate_blocks_install_and_uninstall_before_writes() {
         Arc::new(NotifyingInstallCommitter {
             entered: Mutex::new(Some(install_entered_tx)),
         }),
-        Arc::new(RecordingAuditLog::default()),
+        install_audit.clone(),
         Arc::new(FixedClock),
         Arc::clone(&write_locks),
         gate.clone(),
@@ -883,26 +964,51 @@ fn unsafe_reinstall_recovery_gate_blocks_install_and_uninstall_before_writes() {
     install_planned_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("install planning completes");
-    assert!(install_result.is_err());
+    let install_error = install_result.expect_err("install admission is denied");
+    let install_error_code = format!("install_failed:{suffix}");
+    assert_eq!(
+        install_error
+            .events
+            .last()
+            .and_then(|event| event.error.as_deref()),
+        Some(install_error_code.as_str())
+    );
+    assert_eq!(
+        install_audit.take_one().fields["error_code"],
+        install_error_code
+    );
     assert!(matches!(
         install_entered_rx.try_recv(),
         Err(mpsc::TryRecvError::Empty)
     ));
 
     let (uninstall_entered_tx, uninstall_entered_rx) = mpsc::channel();
+    let uninstall_audit = Arc::new(RecordingAuditLog::default());
     let uninstall_runner = crate::UninstallTaskRunner::with_write_coordination(
         Arc::clone(&task_manager),
         Arc::new(NotifyingUninstaller {
             entered: Mutex::new(Some(uninstall_entered_tx)),
         }),
-        Arc::new(RecordingAuditLog::default()),
+        uninstall_audit.clone(),
         Arc::new(FixedClock),
         write_locks,
         gate,
     );
     let uninstall_result =
         uninstall_runner.run_uninstall_task(&uninstall_task.task_id, uninstall_request());
-    assert!(uninstall_result.is_err());
+    let uninstall_error = uninstall_result.expect_err("uninstall admission is denied");
+    let uninstall_error_code = format!("install_uninstall_failed:{suffix}");
+    assert_eq!(
+        uninstall_error
+            .events
+            .last()
+            .and_then(|event| event.error.as_deref()),
+        Some(uninstall_error_code.as_str())
+    );
+    assert_eq!(
+        uninstall_audit.take_one().fields["error_code"],
+        uninstall_error_code
+    );
     assert!(matches!(
         uninstall_entered_rx.try_recv(),
         Err(mpsc::TryRecvError::Empty)
@@ -921,9 +1027,9 @@ impl crate::InstallRecoveryActionExecutor for NotifyingRecoveryExecutor {
             profile_id: request.profile_id,
             mod_id: request.mod_id,
             action_kind: request.action_kind,
-            remove_file_count: 0,
-            restore_file_count: 0,
-            backup_count: 0,
+            remove_file_count: 2,
+            restore_file_count: 3,
+            backup_count: 4,
         })
     }
 }
@@ -959,7 +1065,8 @@ fn sample_target() -> hmm_core::InstallTargetPath {
 }
 
 fn wait_until_running(task_manager: &crate::TaskManager, task_id: &str) {
-    for _ in 0..100_000 {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
         if task_manager.task_status(task_id) == Some(crate::TaskStatus::Running) {
             return;
         }
@@ -990,6 +1097,25 @@ fn audit_context() -> ReinstallTaskAuditContext {
             stale: 1,
         },
     }
+}
+
+fn sensitive_manifest() -> InstallManifest {
+    InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: InstallTargetPath::parse("nativePC/sensitive.bin", ["nativePC"])
+                .expect("sensitive target"),
+            mod_id: ModId::new("mod-a"),
+            revision_id: None,
+            package_file_id: PackageFileId::new("snapshot-ref/C:/Users/player/source.bin"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: Some("backup-ref".to_owned()),
+            installed_file: Some(InstalledFileSummary {
+                size_bytes: 7,
+                sha256: "sha256-sensitive".to_owned(),
+            }),
+        }],
+    )
 }
 
 fn event_phases(events: &[crate::TaskProgressEvent]) -> Vec<&str> {

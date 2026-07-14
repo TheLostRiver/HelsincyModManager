@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex};
 struct FakeGameFiles {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     error_targets: Mutex<BTreeSet<String>>,
+    fail_next_writes: Mutex<BTreeSet<String>>,
     mutate_after_read: Mutex<BTreeMap<String, Vec<u8>>>,
     writes: Mutex<Vec<String>>,
     removals: Mutex<Vec<String>>,
@@ -57,6 +58,14 @@ impl InstallGameFileSystem for FakeGameFiles {
     }
 
     fn write_game_file(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> anyhow::Result<()> {
+        if self
+            .fail_next_writes
+            .lock()
+            .expect("fail next writes lock")
+            .remove(target_path.as_str())
+        {
+            anyhow::bail!("simulated game write failure");
+        }
         self.writes
             .lock()
             .expect("writes lock")
@@ -660,6 +669,182 @@ fn scan_all_includes_mod_known_only_by_reinstall_transaction() {
     assert_eq!(summaries.len(), 1);
     assert_eq!(summaries[0].mod_id, ModId::new("mod-a"));
     assert_eq!(summaries[0].status, InstallRecoveryStatus::RepairRequired);
+}
+
+#[test]
+fn reconcile_rollback_required_reinstall_restores_pre_state_then_cleans() {
+    let (service, game_files, transactions, snapshots, replaced, added) =
+        reinstall_rollback_fixture(b"installed-v1", false);
+
+    let result = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect("rollback-required transaction converges to v1");
+
+    assert_eq!(result.remove_file_count, 1);
+    assert_eq!(result.restore_file_count, 1);
+    assert_eq!(result.backup_count, 1);
+    let files = game_files.files.lock().expect("game files lock");
+    assert_eq!(
+        files.get(replaced.as_str()),
+        Some(&b"installed-v1".to_vec())
+    );
+    assert!(!files.contains_key(added.as_str()));
+    drop(files);
+    assert!(transactions
+        .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+        .expect("transaction load")
+        .is_none());
+    assert!(snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .is_empty());
+}
+
+#[test]
+fn reconcile_rollback_required_already_pre_state_cleans_without_game_mutation() {
+    let (service, game_files, transactions, _snapshots, replaced, added) =
+        reinstall_rollback_fixture(b"installed-v1", false);
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(replaced.as_str().to_owned(), b"installed-v1".to_vec());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .remove(added.as_str());
+
+    let result = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect("already-restored transaction converges");
+
+    assert_eq!(
+        (result.remove_file_count, result.restore_file_count),
+        (0, 0)
+    );
+    assert!(game_files.writes.lock().expect("writes lock").is_empty());
+    assert!(game_files
+        .removals
+        .lock()
+        .expect("removals lock")
+        .is_empty());
+    assert!(transactions
+        .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+        .expect("transaction load")
+        .is_none());
+}
+
+#[test]
+fn reconcile_rollback_required_rejects_corrupt_snapshot_before_game_mutation() {
+    let (service, game_files, transactions, _snapshots, _replaced, _added) =
+        reinstall_rollback_fixture(b"corrupt-snapshot", false);
+
+    let error = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect_err("corrupt snapshot requires repair");
+
+    assert_eq!(error, InstallRecoveryActionError::ReinstallRepairRequired);
+    assert!(game_files.writes.lock().expect("writes lock").is_empty());
+    assert!(game_files
+        .removals
+        .lock()
+        .expect("removals lock")
+        .is_empty());
+    assert_eq!(
+        transactions
+            .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("transaction load")
+            .expect("repair transaction")
+            .status,
+        ReinstallRecoveryTransactionStatus::RepairRequired
+    );
+}
+
+#[test]
+fn reconcile_rollback_required_persists_intent_before_game_mutation() {
+    let (service, game_files, transactions, _snapshots, _replaced, _added) =
+        reinstall_rollback_fixture(b"installed-v1", true);
+
+    let error = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect_err("durable rollback intent is required before mutation");
+
+    assert_eq!(error, InstallRecoveryActionError::RecoveryRecordSaveFailed);
+    assert!(game_files.writes.lock().expect("writes lock").is_empty());
+    assert!(game_files
+        .removals
+        .lock()
+        .expect("removals lock")
+        .is_empty());
+    assert_eq!(
+        transactions
+            .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("transaction load")
+            .expect("committing transaction")
+            .status,
+        ReinstallRecoveryTransactionStatus::Committing
+    );
+}
+
+#[test]
+fn reconcile_rollback_required_compensates_partial_mutation_failure() {
+    let (service, game_files, transactions, snapshots, replaced, added) =
+        reinstall_rollback_fixture(b"installed-v1", false);
+    game_files
+        .fail_next_writes
+        .lock()
+        .expect("fail next writes lock")
+        .insert(replaced.as_str().to_owned());
+
+    let error = service
+        .run(InstallRecoveryActionRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: InstallRecoveryActionKind::ReconcileReinstall,
+        })
+        .expect_err("failed restore compensates this rollback attempt");
+
+    assert_eq!(error, InstallRecoveryActionError::RestoreFailed);
+    let files = game_files.files.lock().expect("game files lock");
+    assert_eq!(
+        files.get(replaced.as_str()),
+        Some(&b"candidate-v2".to_vec())
+    );
+    assert_eq!(
+        files.get(added.as_str()),
+        Some(&b"candidate-added".to_vec())
+    );
+    drop(files);
+    assert_eq!(
+        transactions
+            .load_transaction(&ProfileId::new("default"), &ModId::new("mod-a"))
+            .expect("transaction load")
+            .expect("retryable rollback transaction")
+            .status,
+        ReinstallRecoveryTransactionStatus::RollbackRequired
+    );
+    assert_eq!(
+        *snapshots.remove_count.lock().expect("remove count lock"),
+        0
+    );
 }
 
 #[test]
@@ -1738,6 +1923,69 @@ fn reinstall_reconciliation_fixture(
     .with_reinstall_reconciliation(transactions.clone(), snapshots.clone());
 
     (service, game_files, transactions, snapshots)
+}
+
+fn reinstall_rollback_fixture(
+    snapshot_bytes: &[u8],
+    fail_saves: bool,
+) -> (
+    InstallRecoveryActionService,
+    Arc<FakeGameFiles>,
+    Arc<FakeReinstallTransactions>,
+    Arc<FakeReinstallSnapshots>,
+    InstallTargetPath,
+    InstallTargetPath,
+) {
+    let (old_manifest, _candidate_manifest, mut transaction, replaced) =
+        reinstall_recovery_fixture();
+    let added = InstallTargetPath::parse("nativePC/added.bin", ["nativePC"]).expect("added target");
+    transaction.targets.push(ReinstallRecoveryTarget {
+        target_path: added.clone(),
+        class: ReinstallTargetClass::Added,
+        pre_state: None,
+        candidate_state: Some(installed_file_summary(b"candidate-added")),
+        snapshot: ReinstallSnapshotState::PreStateAbsent,
+        original_backup_ref: None,
+    });
+    transaction.validate().expect("valid rollback transaction");
+    let game_files = Arc::new(FakeGameFiles::default());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(replaced.as_str().to_owned(), b"candidate-v2".to_vec());
+    game_files
+        .files
+        .lock()
+        .expect("game files lock")
+        .insert(added.as_str().to_owned(), b"candidate-added".to_vec());
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    *transactions.fail_saves.lock().expect("fail saves lock") = fail_saves;
+    let snapshots = Arc::new(FakeReinstallSnapshots::default());
+    snapshots
+        .snapshots
+        .lock()
+        .expect("snapshots lock")
+        .insert("snapshot-v1".to_owned(), snapshot_bytes.to_vec());
+    let service = InstallRecoveryActionService::new_with_manifest(
+        game_files.clone(),
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeRecoveryRecords::default()),
+        Arc::new(FakeManifests {
+            manifest: Some(old_manifest),
+        }),
+    )
+    .with_reinstall_reconciliation(transactions.clone(), snapshots.clone());
+
+    (
+        service,
+        game_files,
+        transactions,
+        snapshots,
+        replaced,
+        added,
+    )
 }
 
 fn reinstall_recovery_fixture() -> (

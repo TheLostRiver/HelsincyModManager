@@ -158,6 +158,15 @@ pub enum InstallWriteAdmissionError {
     RecoveryPending,
 }
 
+impl InstallWriteAdmissionError {
+    fn failure_phase(&self) -> &'static str {
+        match self {
+            Self::RecoveryUnavailable => "recovery_unavailable",
+            Self::RecoveryPending => "recovery_pending",
+        }
+    }
+}
+
 pub trait InstallWriteAdmission: Send + Sync {
     fn ensure_write_allowed(
         &self,
@@ -400,31 +409,39 @@ impl InstallTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
-            if self
+            match self
                 .write_admission
                 .ensure_write_allowed(&request.game_id, &request.profile_id)
-                .is_err()
             {
-                None
-            } else {
-                events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
-                Some(
-                    self.committer
+                Ok(()) => {
+                    events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
+                    Ok(self
+                        .committer
                         .commit_install_plan(ImportedModInstallCommitRequest {
                             game_id: request.game_id.clone(),
                             mod_id: request.mod_id.clone(),
                             profile_id: request.profile_id.clone(),
                             plan,
-                        }),
-                )
+                        }))
+                }
+                Err(error) => Err(error),
             }
         };
-        let Some(commit_result) = commit_result else {
-            return Err(self.fail_with_audit(task_id, &request, events, "commit", action_count));
+        let commit_result = match commit_result {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    error.failure_phase(),
+                    action_count,
+                ))
+            }
         };
 
         match commit_result {
-            Ok(_) => self.record_audit(task_id, &request, "success", action_count),
+            Ok(_) => self.record_audit(task_id, &request, "success", action_count, None),
             Err(_) => {
                 return Err(self.fail_with_audit(task_id, &request, events, "commit", action_count))
             }
@@ -457,13 +474,19 @@ impl InstallTaskRunner {
         phase: &str,
         action_count: usize,
     ) -> InstallTaskRunError {
-        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+        if matches!(
+            self.task_manager.fail_task(task_id),
+            Err(TaskManagerError::TaskCannotTransition {
+                from: TaskStatus::Cancelled,
+                to: TaskStatus::Failed,
+                ..
+            })
+        ) {
             return InstallTaskRunError { events };
         }
-
-        let _ = self.task_manager.fail_task(task_id);
+        let error_code = format!("{INSTALL_FAILED_ERROR}:{phase}");
         events.push(failed_event(task_id, phase));
-        self.record_audit(task_id, request, "failure", action_count);
+        self.record_audit(task_id, request, "failure", action_count, Some(&error_code));
         InstallTaskRunError { events }
     }
 
@@ -473,6 +496,7 @@ impl InstallTaskRunner {
         request: &StartInstallTaskRequest,
         result: &str,
         action_count: usize,
+        error_code: Option<&str>,
     ) {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let mut fields = BTreeMap::new();
@@ -484,6 +508,9 @@ impl InstallTaskRunner {
             request.profile_id.as_str().to_owned(),
         );
         fields.insert("action_count".to_owned(), action_count.to_string());
+        if let Some(error_code) = error_code {
+            fields.insert("error_code".to_owned(), error_code.to_owned());
+        }
 
         let _ = self.audit_log.record(AuditLogEvent {
             timestamp_unix_millis,
@@ -567,24 +594,25 @@ impl UninstallTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
-            if self
+            match self
                 .write_admission
                 .ensure_write_allowed(&request.game_id, &request.profile_id)
-                .is_err()
             {
-                None
-            } else {
-                Some(self.uninstaller.uninstall_mod(request.clone()))
+                Ok(()) => Ok(self.uninstaller.uninstall_mod(request.clone())),
+                Err(error) => Err(error),
             }
         };
-        let Some(uninstall_result) = uninstall_result else {
-            return Err(self.fail_uninstall_with_audit(
-                task_id,
-                &request,
-                events,
-                "uninstall",
-                None,
-            ));
+        let uninstall_result = match uninstall_result {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(self.fail_uninstall_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    error.failure_phase(),
+                    None,
+                ))
+            }
         };
 
         let result = match uninstall_result {
@@ -600,7 +628,7 @@ impl UninstallTaskRunner {
             }
         };
 
-        self.record_uninstall_audit(task_id, &request, "success", Some(&result));
+        self.record_uninstall_audit(task_id, &request, "success", Some(&result), None);
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
                 events.push(TaskProgressEvent::new(
@@ -632,13 +660,19 @@ impl UninstallTaskRunner {
         phase: &str,
         result: Option<&UninstallModResult>,
     ) -> UninstallTaskRunError {
-        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+        if matches!(
+            self.task_manager.fail_task(task_id),
+            Err(TaskManagerError::TaskCannotTransition {
+                from: TaskStatus::Cancelled,
+                to: TaskStatus::Failed,
+                ..
+            })
+        ) {
             return UninstallTaskRunError { events };
         }
-
-        let _ = self.task_manager.fail_task(task_id);
+        let error_code = format!("{INSTALL_UNINSTALL_FAILED_ERROR}:{phase}");
         events.push(failed_uninstall_event(task_id, phase));
-        self.record_uninstall_audit(task_id, request, "failure", result);
+        self.record_uninstall_audit(task_id, request, "failure", result, Some(&error_code));
         UninstallTaskRunError { events }
     }
 
@@ -648,6 +682,7 @@ impl UninstallTaskRunner {
         request: &StartUninstallTaskRequest,
         result: &str,
         uninstall_result: Option<&UninstallModResult>,
+        error_code: Option<&str>,
     ) {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let mut fields = BTreeMap::new();
@@ -672,6 +707,9 @@ impl UninstallTaskRunner {
                 .unwrap_or_default()
                 .to_string(),
         );
+        if let Some(error_code) = error_code {
+            fields.insert("error_code".to_owned(), error_code.to_owned());
+        }
 
         let _ = self.audit_log.record(AuditLogEvent {
             timestamp_unix_millis,
@@ -1051,6 +1089,69 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn cancelled_install_and_uninstall_are_not_finalized_as_failures() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let install_task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("install task can be created");
+        task_manager
+            .start_task(&install_task.task_id)
+            .expect("task starts");
+        task_manager
+            .cancel_task(&install_task.task_id)
+            .expect("cancellation wins");
+        let install_audit = Arc::new(RecordingAuditLogWriter::default());
+        let install_runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            Arc::new(RecordingInstallCommitter::new(sample_manifest())),
+            install_audit.clone(),
+            Arc::new(FixedClock),
+        );
+
+        let install_error = install_runner.fail_with_audit(
+            &install_task.task_id,
+            &sample_request(),
+            Vec::new(),
+            "planning",
+            0,
+        );
+        assert!(install_error.events.is_empty());
+        assert!(install_audit.take_event().is_none());
+
+        let uninstall_task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("uninstall task can be created");
+        task_manager
+            .start_task(&uninstall_task.task_id)
+            .expect("task starts");
+        task_manager
+            .cancel_task(&uninstall_task.task_id)
+            .expect("cancellation wins");
+        let uninstall_audit = Arc::new(RecordingAuditLogWriter::default());
+        let uninstall_runner = UninstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingUninstaller::new(UninstallModResult {
+                manifest: sample_manifest(),
+                removed_file_count: 0,
+                restored_file_count: 0,
+            })),
+            uninstall_audit.clone(),
+            Arc::new(FixedClock),
+        );
+
+        let uninstall_error = uninstall_runner.fail_uninstall_with_audit(
+            &uninstall_task.task_id,
+            &sample_uninstall_request(),
+            Vec::new(),
+            "uninstall",
+            None,
+        );
+        assert!(uninstall_error.events.is_empty());
+        assert!(uninstall_audit.take_event().is_none());
     }
 
     #[test]
@@ -1617,6 +1718,14 @@ mod tests {
             mod_id: ModId::new("mod-a"),
             profile_id: ProfileId::new("default"),
             action_kind: crate::InstallRecoveryActionKind::RollbackInstall,
+        }
+    }
+
+    fn sample_uninstall_request() -> StartUninstallTaskRequest {
+        StartUninstallTaskRequest {
+            game_id: GameId::mhw(),
+            mod_id: ModId::new("mod-a"),
+            profile_id: ProfileId::new("default"),
         }
     }
 
