@@ -331,10 +331,11 @@ cargo clippy -p hmm-app --all-targets -- -D warnings
 | first/middle/last write/remove/restore | rollback 回 v1；old manifest 有效 |
 | manifest save before replace | rollback 回 v1；old manifest 有效 |
 | manifest error but candidate visible | 原子恢复 old manifest snapshot，再 rollback v1；恢复失败进入 repair_required，绝不完成 |
-| rollback one target fails | 只保留未恢复 target 与所需 snapshot，状态 rollback_required |
+| rollback one target fails | 只保留未恢复 target 与所需 snapshot；已恢复 target 的 snapshot 以 cleanup_pending/cleaned checkpoint，状态 rollback_required |
 | recovery update fails during rollback | snapshot 不被提前删除，状态 repair_required |
 | transaction completed save after successful manifest save | v2 manifest 保持权威，不 rollback；transaction/snapshot 保持 committing，task 返回 `install_reinstall_failed:post_commit` 与 committed_cleanup_pending |
-| post-commit cleanup fails | v2 manifest 仍 completed；保留可清理 orphan，不回滚已提交 v2 |
+| post-commit cleanup fails | v2 manifest 仍 completed；逐 snapshot/backup ref checkpoint 已完成进度并保留 transaction resume point，不回滚已提交 v2 |
+| rollback/completed transaction remove fails | 保留 RolledBack/Completed durable transaction；rollback result 显式携带 cleanup pending，且不得丢弃 ownership 或重复恢复已收敛 target |
 
 同时覆盖 lock-time revalidation：preview 后 manifest/source/target/backup/ownership 任一变化，第一次 game
 mutation 前返回 `preview_stale` 或具体 preflight code。
