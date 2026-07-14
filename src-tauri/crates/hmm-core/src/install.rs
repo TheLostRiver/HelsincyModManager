@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
@@ -320,7 +320,21 @@ impl InstallRecoveryRecord {
     }
 }
 
-pub const INSTALL_MANIFEST_SCHEMA_VERSION: u32 = 1;
+pub const INSTALL_MANIFEST_SCHEMA_VERSION_V1: u32 = 1;
+pub const INSTALL_MANIFEST_SCHEMA_VERSION_V2: u32 = 2;
+pub const INSTALL_MANIFEST_SCHEMA_VERSION: u32 = INSTALL_MANIFEST_SCHEMA_VERSION_V1;
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InstallManifestValidationError {
+    #[error("unsupported install manifest schema version: {schema_version}")]
+    UnsupportedSchemaVersion { schema_version: u32 },
+    #[error("schema v1 install manifest cannot contain revisioned entries")]
+    RevisionedEntriesRequireSchemaV2,
+    #[error("install manifest entries for Mod {mod_id} mix legacy and revisioned facts")]
+    MixedRevisionSet { mod_id: String },
+    #[error("install manifest entries for Mod {mod_id} contain multiple revisions")]
+    MultipleRevisionSet { mod_id: String },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallManifest {
@@ -375,7 +389,7 @@ impl<'de> Deserialize<'de> for InstallManifest {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| manifest_id_for_profile(&wire.profile_id));
 
-        Ok(Self {
+        let manifest = Self {
             profile_id: wire.profile_id,
             manifest_id,
             schema_version: wire
@@ -388,11 +402,52 @@ impl<'de> Deserialize<'de> for InstallManifest {
             completed_at: wire.completed_at,
             plan_hash: wire.plan_hash,
             entries: wire.entries,
-        })
+        };
+        manifest.validate().map_err(D::Error::custom)?;
+        Ok(manifest)
     }
 }
 
 impl InstallManifest {
+    pub fn validate(&self) -> Result<(), InstallManifestValidationError> {
+        if !matches!(
+            self.schema_version,
+            INSTALL_MANIFEST_SCHEMA_VERSION_V1 | INSTALL_MANIFEST_SCHEMA_VERSION_V2
+        ) {
+            return Err(InstallManifestValidationError::UnsupportedSchemaVersion {
+                schema_version: self.schema_version,
+            });
+        }
+
+        if self.schema_version == INSTALL_MANIFEST_SCHEMA_VERSION_V1
+            && self.entries.iter().any(|entry| entry.revision_id.is_some())
+        {
+            return Err(InstallManifestValidationError::RevisionedEntriesRequireSchemaV2);
+        }
+
+        let mut revisions_by_mod = BTreeMap::<ModId, Option<ModRevisionId>>::new();
+        for entry in &self.entries {
+            match revisions_by_mod.get(&entry.mod_id) {
+                None => {
+                    revisions_by_mod.insert(entry.mod_id.clone(), entry.revision_id.clone());
+                }
+                Some(current) if current == &entry.revision_id => {}
+                Some(current) if current.is_none() || entry.revision_id.is_none() => {
+                    return Err(InstallManifestValidationError::MixedRevisionSet {
+                        mod_id: entry.mod_id.as_str().to_owned(),
+                    });
+                }
+                Some(_) => {
+                    return Err(InstallManifestValidationError::MultipleRevisionSet {
+                        mod_id: entry.mod_id.as_str().to_owned(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn completed(profile_id: ProfileId, entries: Vec<InstallManifestEntry>) -> Self {
         let manifest_id = manifest_id_for_profile(&profile_id);
         Self {
@@ -628,7 +683,7 @@ mod tests {
 
     #[test]
     fn manifest_entry_revision_round_trips_with_stable_field_name() {
-        let manifest = InstallManifest::completed(
+        let mut manifest = InstallManifest::completed(
             ProfileId::new("default"),
             vec![InstallManifestEntry {
                 target_path: InstallTargetPath::parse(
@@ -644,6 +699,7 @@ mod tests {
                 installed_file: None,
             }],
         );
+        manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
 
         let serialized = serde_json::to_value(&manifest).expect("serialize revisioned manifest");
         let entry = &serialized["entries"][0];
@@ -656,6 +712,29 @@ mod tests {
             round_trip.entries[0].revision_id,
             Some(ModRevisionId::new("revision-v2"))
         );
+    }
+
+    #[test]
+    fn manifest_deserialization_rejects_mixed_or_multiple_revision_sets() {
+        for entries in [
+            serde_json::json!([
+                manifest_entry_json("legacy.bin", None),
+                manifest_entry_json("revisioned.bin", Some("v1")),
+            ]),
+            serde_json::json!([
+                manifest_entry_json("v1.bin", Some("v1")),
+                manifest_entry_json("v2.bin", Some("v2")),
+            ]),
+        ] {
+            let error = serde_json::from_value::<InstallManifest>(serde_json::json!({
+                "profile_id": "default",
+                "schema_version": INSTALL_MANIFEST_SCHEMA_VERSION_V2,
+                "entries": entries,
+            }))
+            .expect_err("ambiguous revision facts must fail closed");
+
+            assert!(error.to_string().contains("revision"));
+        }
     }
 
     #[test]
@@ -719,7 +798,10 @@ mod tests {
         };
 
         assert_eq!(InstallManifestStatus::Completed.consumption(), TrustEntries);
-        assert_eq!(InstallManifestStatus::RolledBack.consumption(), TrustEntries);
+        assert_eq!(
+            InstallManifestStatus::RolledBack.consumption(),
+            TrustEntries
+        );
         assert_eq!(InstallManifestStatus::Planned.consumption(), InFlight);
         assert_eq!(InstallManifestStatus::Committing.consumption(), InFlight);
         assert_eq!(
@@ -793,5 +875,19 @@ mod tests {
                 }),
             }],
         }
+    }
+
+    fn manifest_entry_json(path: &str, revision_id: Option<&str>) -> serde_json::Value {
+        let mut entry = serde_json::json!({
+            "target_path": format!("content/{path}"),
+            "mod_id": "mod-a",
+            "package_file_id": path,
+            "layer": { "name": "base", "priority": 0 },
+            "backup_ref": null,
+        });
+        if let Some(revision_id) = revision_id {
+            entry["revision_id"] = serde_json::json!(revision_id);
+        }
+        entry
     }
 }

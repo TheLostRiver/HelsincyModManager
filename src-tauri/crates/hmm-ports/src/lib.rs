@@ -12,6 +12,7 @@ mod mod_import;
 mod mod_metadata;
 mod preview_image;
 mod profile;
+mod reinstall;
 mod save_backup;
 mod save_directory;
 mod text_log;
@@ -66,6 +67,7 @@ pub use preview_image::{
 pub use profile::{
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
 };
+pub use reinstall::{ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore};
 pub use save_backup::{
     SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
     SaveBackupBackgroundRegistryResult, SaveBackupBackgroundSettingsRepository,

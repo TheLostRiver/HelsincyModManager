@@ -14,6 +14,7 @@ mod mod_revision_catalog;
 mod mod_revision_catalog_tests;
 mod prerequisite_rules_repository;
 mod preview_image;
+mod reinstall;
 mod save_backup;
 mod save_backup_background_registry;
 mod save_directory_pending_store;
@@ -51,6 +52,7 @@ pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
+pub use reinstall::JsonReinstallRecoveryTransactionRepository;
 pub use save_backup::FileSystemSaveBackupWriter;
 pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(windows)]

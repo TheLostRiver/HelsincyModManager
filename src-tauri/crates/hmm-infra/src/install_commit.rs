@@ -4,7 +4,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    InstallRecoveryRecordRepository, InstallSourceFileReader,
+    InstallRecoveryRecordRepository, InstallSourceFileReader, ReinstallSnapshotStore,
 };
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -156,13 +156,44 @@ impl InstallBackupStore for FileSystemInstallBackupStore {
     }
 }
 
+impl ReinstallSnapshotStore for FileSystemInstallBackupStore {
+    fn store_snapshot(&self, target_path: &InstallTargetPath, bytes: &[u8]) -> Result<String> {
+        InstallBackupStore::store_backup(self, target_path, bytes)
+    }
+
+    fn read_snapshot(&self, snapshot_ref: &str) -> Result<Option<Vec<u8>>> {
+        InstallBackupStore::read_backup(self, snapshot_ref)
+    }
+
+    fn remove_snapshot(&self, snapshot_ref: &str) -> Result<()> {
+        InstallBackupStore::remove_backup(self, snapshot_ref)
+    }
+}
+
 pub struct JsonInstallManifestRepository {
     manifest_root: PathBuf,
+    #[cfg(test)]
+    atomic_write_failure: Option<AtomicWriteFailurePoint>,
 }
 
 impl JsonInstallManifestRepository {
     pub fn new(manifest_root: PathBuf) -> Self {
-        Self { manifest_root }
+        Self {
+            manifest_root,
+            #[cfg(test)]
+            atomic_write_failure: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_atomic_write_failure(
+        manifest_root: PathBuf,
+        atomic_write_failure: AtomicWriteFailurePoint,
+    ) -> Self {
+        Self {
+            manifest_root,
+            atomic_write_failure: Some(atomic_write_failure),
+        }
     }
 }
 
@@ -212,6 +243,9 @@ impl InstallManifestRepository for JsonInstallManifestRepository {
     }
 
     fn save_manifest(&self, manifest: &InstallManifest) -> Result<()> {
+        manifest
+            .validate()
+            .context("refusing to save invalid install manifest")?;
         fs::create_dir_all(&self.manifest_root)
             .context("failed to create install manifest root")?;
         ensure_existing_directory(&self.manifest_root, "install manifest root")?;
@@ -221,8 +255,15 @@ impl InstallManifestRepository for JsonInstallManifestRepository {
         ensure_safe_write_target(&self.manifest_root, &manifest_path)?;
         let serialized = serde_json::to_string_pretty(manifest)
             .context("failed to serialize install manifest")?;
-        atomic_write_file(&manifest_path, serialized.as_bytes())
-            .context("failed to write install manifest")?;
+        #[cfg(test)]
+        let write_result = atomic_write_file_with_failure(
+            &manifest_path,
+            serialized.as_bytes(),
+            self.atomic_write_failure,
+        );
+        #[cfg(not(test))]
+        let write_result = atomic_write_file(&manifest_path, serialized.as_bytes());
+        write_result.context("failed to write install manifest")?;
 
         Ok(())
     }
@@ -390,7 +431,7 @@ fn safe_relative_segments(value: &str) -> Result<Vec<String>> {
     Ok(segments)
 }
 
-fn ensure_contained_existing_path(root: &Path, path: &Path) -> Result<()> {
+pub(crate) fn ensure_contained_existing_path(root: &Path, path: &Path) -> Result<()> {
     let canonical_root = root
         .canonicalize()
         .context("failed to resolve install root")?;
@@ -405,7 +446,7 @@ fn ensure_contained_existing_path(root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn ensure_existing_directory(path: &Path, label: &str) -> Result<()> {
+pub(crate) fn ensure_existing_directory(path: &Path, label: &str) -> Result<()> {
     let metadata =
         fs::symlink_metadata(path).with_context(|| format!("failed to inspect {label}"))?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
@@ -429,7 +470,7 @@ fn ensure_nearest_existing_ancestor_contained(root: &Path, path: &Path) -> Resul
     anyhow::bail!("install path has no existing ancestor")
 }
 
-fn ensure_safe_write_target(root: &Path, path: &Path) -> Result<()> {
+pub(crate) fn ensure_safe_write_target(root: &Path, path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
             if !metadata.is_file() || metadata.file_type().is_symlink() {
@@ -448,7 +489,31 @@ fn ensure_safe_write_target(root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn atomic_write_file(path: &Path, bytes: &[u8]) -> Result<()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AtomicWriteFailurePoint {
+    TempWrite,
+    TempSync,
+    Rename,
+}
+
+pub(crate) fn atomic_write_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    atomic_write_file_impl(path, bytes, None)
+}
+
+#[cfg(test)]
+pub(crate) fn atomic_write_file_with_failure(
+    path: &Path,
+    bytes: &[u8],
+    failure: Option<AtomicWriteFailurePoint>,
+) -> Result<()> {
+    atomic_write_file_impl(path, bytes, failure)
+}
+
+fn atomic_write_file_impl(
+    path: &Path,
+    bytes: &[u8],
+    failure: Option<AtomicWriteFailurePoint>,
+) -> Result<()> {
     let parent = path
         .parent()
         .context("install write target has no parent directory")?;
@@ -460,14 +525,23 @@ fn atomic_write_file(path: &Path, bytes: &[u8]) -> Result<()> {
             .create_new(true)
             .open(&temp_path)
             .context("failed to create install temp file")?;
+        if failure == Some(AtomicWriteFailurePoint::TempWrite) {
+            anyhow::bail!("injected install temp write failure");
+        }
         temp_file
             .write_all(bytes)
             .context("failed to write install temp file")?;
+        if failure == Some(AtomicWriteFailurePoint::TempSync) {
+            anyhow::bail!("injected install temp sync failure");
+        }
         temp_file
             .sync_all()
             .context("failed to sync install temp file")?;
         drop(temp_file);
 
+        if failure == Some(AtomicWriteFailurePoint::Rename) {
+            anyhow::bail!("injected install temp rename failure");
+        }
         fs::rename(&temp_path, path).context("failed to rename install temp file")?;
         sync_directory(parent).context("failed to sync install parent directory")?;
 
@@ -585,7 +659,7 @@ fn manifest_file_name(profile_id: &str) -> Result<String> {
     Ok(format!("{profile_id}.json"))
 }
 
-fn recovery_record_file_name(profile_id: &ProfileId, mod_id: &ModId) -> String {
+pub(crate) fn recovery_record_file_name(profile_id: &ProfileId, mod_id: &ModId) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"profile:");
     hasher.update(profile_id.as_str().as_bytes());
@@ -923,6 +997,85 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
             .count();
         assert_eq!(temp_artifacts, 0);
+    }
+
+    #[test]
+    fn manifest_atomic_write_faults_preserve_previous_json_and_remove_temp_files() {
+        for fault in [
+            AtomicWriteFailurePoint::TempWrite,
+            AtomicWriteFailurePoint::TempSync,
+            AtomicWriteFailurePoint::Rename,
+        ] {
+            let temp = tempfile::tempdir().expect("temp dir");
+            let manifest_root = temp.path().join("manifests");
+            let repository = JsonInstallManifestRepository::new(manifest_root.clone());
+            let original = InstallManifest::completed(ProfileId::new("default"), Vec::new());
+            repository.save_manifest(&original).expect("seed manifest");
+
+            let failing = JsonInstallManifestRepository::with_atomic_write_failure(
+                manifest_root.clone(),
+                fault,
+            );
+            let mut updated = original.clone();
+            updated.plan_hash = Some("sha256:updated".to_owned());
+            failing
+                .save_manifest(&updated)
+                .expect_err("injected atomic write failure must propagate");
+
+            assert_eq!(
+                repository
+                    .load_manifest(&ProfileId::new("default"))
+                    .expect("reload original manifest"),
+                Some(original)
+            );
+            assert_eq!(
+                fs::read_dir(&manifest_root)
+                    .expect("read manifest root")
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+                    .count(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn manifest_repository_rejects_mixed_revision_set_before_writing() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let manifest_root = temp.path().join("manifests");
+        let repository = JsonInstallManifestRepository::new(manifest_root.clone());
+        let mut manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![
+                InstallManifestEntry {
+                    target_path: InstallTargetPath::parse("content/legacy.bin", ["content"])
+                        .expect("legacy target"),
+                    mod_id: ModId::new("mod-a"),
+                    revision_id: None,
+                    package_file_id: PackageFileId::new("legacy"),
+                    layer: FileLayer::new("base", 0),
+                    backup_ref: None,
+                    installed_file: None,
+                },
+                InstallManifestEntry {
+                    target_path: InstallTargetPath::parse("content/revisioned.bin", ["content"])
+                        .expect("revisioned target"),
+                    mod_id: ModId::new("mod-a"),
+                    revision_id: Some(hmm_core::ModRevisionId::new("v2")),
+                    package_file_id: PackageFileId::new("revisioned"),
+                    layer: FileLayer::new("base", 0),
+                    backup_ref: None,
+                    installed_file: None,
+                },
+            ],
+        );
+        manifest.schema_version = hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+
+        repository
+            .save_manifest(&manifest)
+            .expect_err("mixed revision set must fail before persistence");
+
+        assert!(!manifest_root.join("default.json").exists());
     }
 
     #[test]
