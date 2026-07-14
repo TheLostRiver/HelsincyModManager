@@ -247,7 +247,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 }
                 let phase = error.phase();
                 let context = error.into_context();
-                return Err(self.fail_with_audit(
+                return self.fail_with_audit(
                     task_id,
                     &request,
                     context,
@@ -255,7 +255,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                     phase,
                     "not_attempted",
                     false,
-                ));
+                );
             }
         };
         let audit_context = prepared.audit_context();
@@ -272,7 +272,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             let _guard = match write_lock.lock() {
                 Ok(guard) => guard,
                 Err(_) => {
-                    return Err(self.fail_with_audit(
+                    return self.fail_with_audit(
                         task_id,
                         &request,
                         audit_context,
@@ -280,7 +280,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                         "lock",
                         "not_attempted",
                         false,
-                    ));
+                    );
                 }
             };
             if self.append_cancelled_if_needed(task_id, &mut events) {
@@ -298,7 +298,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         };
 
         let Some(commit_result) = commit_result else {
-            return Err(self.fail_with_audit(
+            return self.fail_with_audit(
                 task_id,
                 &request,
                 audit_context,
@@ -306,11 +306,11 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 "lock",
                 "not_attempted",
                 false,
-            ));
+            );
         };
         if let Err(error) = commit_result {
             let failure = commit_failure(&error);
-            return Err(self.fail_with_audit(
+            return self.fail_with_audit(
                 task_id,
                 &request,
                 audit_context,
@@ -318,7 +318,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 failure.phase,
                 failure.rollback_result,
                 failure.emit_rollback,
-            ));
+            );
         }
 
         match self.task_manager.complete_task(task_id) {
@@ -332,7 +332,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 self.record_audit(task_id, &request, &audit_context, "success", None, None);
                 Ok(events)
             }
-            Err(_) => Err(self.fail_with_audit(
+            Err(_) => self.fail_with_audit(
                 task_id,
                 &request,
                 audit_context,
@@ -340,7 +340,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 "complete",
                 "not_attempted_post_commit",
                 false,
-            )),
+            ),
         }
     }
 
@@ -367,11 +367,22 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         phase: &str,
         rollback_result: &str,
         emit_rollback: bool,
-    ) -> ReinstallTaskRunError {
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
+        match self.task_manager.fail_task(task_id) {
+            Ok(_) => {}
+            Err(TaskManagerError::TaskCannotTransition {
+                from: TaskStatus::Cancelled,
+                to: TaskStatus::Failed,
+                ..
+            }) => {
+                events.push(cancelled_event(task_id));
+                return Ok(events);
+            }
+            Err(_) => {}
+        }
         if emit_rollback {
             events.push(running_event(task_id, ROLLBACK_PROCESSING_PHASE));
         }
-        let _ = self.task_manager.fail_task(task_id);
         let error_code = format!("{FAILED_ERROR_PREFIX}:{phase}");
         events.push(failed_event(task_id, &error_code));
         self.record_audit(
@@ -382,7 +393,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             Some(&error_code),
             Some(rollback_result),
         );
-        ReinstallTaskRunError { events }
+        Err(ReinstallTaskRunError { events })
     }
 
     fn record_audit(

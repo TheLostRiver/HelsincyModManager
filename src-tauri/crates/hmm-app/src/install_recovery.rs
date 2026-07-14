@@ -790,6 +790,18 @@ struct AppliedRecoveryAction {
     previous_bytes: Vec<u8>,
 }
 
+struct PreparedReinstallRollbackAction {
+    target_path: hmm_core::InstallTargetPath,
+    current_bytes: Option<Vec<u8>>,
+    pre_bytes: Option<Vec<u8>>,
+}
+
+#[derive(Clone)]
+struct AppliedReinstallRollbackAction {
+    target_path: hmm_core::InstallTargetPath,
+    previous_bytes: Option<Vec<u8>>,
+}
+
 impl InstallRecoveryActionPreviewService {
     pub fn new(
         game_files: Arc<dyn InstallGameFileSystem>,
@@ -1035,19 +1047,24 @@ impl InstallRecoveryActionService {
                 transaction.status == ReinstallRecoveryTransactionStatus::Completed
             }
             InstallRecoveryStatus::RollbackRequired => {
-                return Err(blocked_recovery_action_error([(
-                    InstallRecoveryActionBlockReason::RollbackStateMissing,
-                    1,
-                )]));
+                return self.rollback_reinstall(
+                    request,
+                    transaction,
+                    recovery_repository.as_ref(),
+                    snapshot_store.as_ref(),
+                );
             }
             InstallRecoveryStatus::RepairRequired
             | InstallRecoveryStatus::Unknown
             | InstallRecoveryStatus::Completed
             | InstallRecoveryStatus::NotInstalled => {
-                if transaction.status == ReinstallRecoveryTransactionStatus::Committing
-                    && transaction
-                        .transition_to(ReinstallRecoveryTransactionStatus::RepairRequired)
-                        .is_ok()
+                if matches!(
+                    transaction.status,
+                    ReinstallRecoveryTransactionStatus::Committing
+                        | ReinstallRecoveryTransactionStatus::RollbackRequired
+                ) && transaction
+                    .transition_to(ReinstallRecoveryTransactionStatus::RepairRequired)
+                    .is_ok()
                 {
                     let _ = recovery_repository.save_transaction(&transaction);
                 }
@@ -1073,6 +1090,247 @@ impl InstallRecoveryActionService {
             restore_file_count: 0,
             backup_count: cleanup_count,
         })
+    }
+
+    fn rollback_reinstall(
+        &self,
+        request: InstallRecoveryActionRequest,
+        mut transaction: ReinstallRecoveryTransaction,
+        recovery_repository: &dyn ReinstallRecoveryTransactionRepository,
+        snapshot_store: &dyn ReinstallSnapshotStore,
+    ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+        if transaction.status == ReinstallRecoveryTransactionStatus::Committing {
+            if transaction
+                .transition_to(ReinstallRecoveryTransactionStatus::RollbackRequired)
+                .is_err()
+            {
+                self.mark_reinstall_repair_required(recovery_repository, &mut transaction);
+                return Err(InstallRecoveryActionError::ReinstallRepairRequired);
+            }
+            recovery_repository
+                .save_transaction(&transaction)
+                .map_err(|_| InstallRecoveryActionError::RecoveryRecordSaveFailed)?;
+        }
+        if transaction.status != ReinstallRecoveryTransactionStatus::RollbackRequired {
+            self.mark_reinstall_repair_required(recovery_repository, &mut transaction);
+            return Err(InstallRecoveryActionError::ReinstallRepairRequired);
+        }
+
+        let actions = match self.prepare_reinstall_rollback(&transaction, snapshot_store) {
+            Ok(actions) => actions,
+            Err(()) => {
+                self.mark_reinstall_repair_required(recovery_repository, &mut transaction);
+                return Err(InstallRecoveryActionError::ReinstallRepairRequired);
+            }
+        };
+        let remove_file_count = actions
+            .iter()
+            .filter(|action| action.pre_bytes.is_none())
+            .count();
+        let restore_file_count = actions.len() - remove_file_count;
+        let backup_count = reinstall_cleanup_resource_count(&transaction, false);
+        let mut applied = Vec::with_capacity(actions.len());
+
+        for action in actions.iter().rev() {
+            let current = match self.game_files.read_game_file(&action.target_path) {
+                Ok(current) => current,
+                Err(_) => {
+                    return Err(self.reinstall_rollback_failure(
+                        recovery_repository,
+                        &mut transaction,
+                        &applied,
+                        InstallRecoveryActionPhase::Revalidate,
+                        InstallRecoveryActionError::ReinstallRepairRequired,
+                        true,
+                    ));
+                }
+            };
+            if current != action.current_bytes {
+                return Err(self.reinstall_rollback_failure(
+                    recovery_repository,
+                    &mut transaction,
+                    &applied,
+                    InstallRecoveryActionPhase::Revalidate,
+                    InstallRecoveryActionError::ReinstallRepairRequired,
+                    true,
+                ));
+            }
+
+            applied.push(AppliedReinstallRollbackAction {
+                target_path: action.target_path.clone(),
+                previous_bytes: action.current_bytes.clone(),
+            });
+            let (phase, fallback, mutation) = if let Some(pre_bytes) = &action.pre_bytes {
+                (
+                    InstallRecoveryActionPhase::Restore,
+                    InstallRecoveryActionError::RestoreFailed,
+                    self.game_files
+                        .write_game_file(&action.target_path, pre_bytes),
+                )
+            } else {
+                (
+                    InstallRecoveryActionPhase::Remove,
+                    InstallRecoveryActionError::RemoveFailed,
+                    self.game_files.remove_game_file(&action.target_path),
+                )
+            };
+            if mutation.is_err() {
+                return Err(self.reinstall_rollback_failure(
+                    recovery_repository,
+                    &mut transaction,
+                    &applied,
+                    phase,
+                    fallback,
+                    false,
+                ));
+            }
+        }
+
+        if transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::RolledBack)
+            .is_err()
+        {
+            self.mark_reinstall_repair_required(recovery_repository, &mut transaction);
+            return Err(InstallRecoveryActionError::ReinstallRepairRequired);
+        }
+        recovery_repository
+            .save_transaction(&transaction)
+            .map_err(|_| InstallRecoveryActionError::RecoveryRecordSaveFailed)?;
+        cleanup_reinstall_transaction(
+            self.backup_store.as_ref(),
+            recovery_repository,
+            snapshot_store,
+            &transaction,
+            false,
+        )
+        .map_err(|_| InstallRecoveryActionError::ReinstallCleanupFailed)?;
+
+        Ok(InstallRecoveryActionResult {
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            action_kind: request.action_kind,
+            remove_file_count,
+            restore_file_count,
+            backup_count,
+        })
+    }
+
+    fn prepare_reinstall_rollback(
+        &self,
+        transaction: &ReinstallRecoveryTransaction,
+        snapshot_store: &dyn ReinstallSnapshotStore,
+    ) -> Result<Vec<PreparedReinstallRollbackAction>, ()> {
+        let mut actions = Vec::new();
+        for target in &transaction.targets {
+            let current_bytes = self
+                .game_files
+                .read_game_file(&target.target_path)
+                .map_err(|_| ())?;
+            let current_summary = current_bytes.as_deref().map(installed_file_summary);
+            if current_summary == target.pre_state {
+                continue;
+            }
+            if !self.reinstall_candidate_matches(target, current_bytes.as_deref())? {
+                return Err(());
+            }
+            let pre_bytes = match (&target.pre_state, &target.snapshot) {
+                (None, ReinstallSnapshotState::PreStateAbsent) => None,
+                (Some(expected), ReinstallSnapshotState::Stored { snapshot_ref, .. }) => {
+                    let bytes = snapshot_store
+                        .read_snapshot(snapshot_ref)
+                        .map_err(|_| ())?
+                        .ok_or(())?;
+                    if installed_file_summary(&bytes) != *expected {
+                        return Err(());
+                    }
+                    Some(bytes)
+                }
+                _ => return Err(()),
+            };
+            actions.push(PreparedReinstallRollbackAction {
+                target_path: target.target_path.clone(),
+                current_bytes,
+                pre_bytes,
+            });
+        }
+        Ok(actions)
+    }
+
+    fn reinstall_candidate_matches(
+        &self,
+        target: &hmm_core::ReinstallRecoveryTarget,
+        current_bytes: Option<&[u8]>,
+    ) -> Result<bool, ()> {
+        let current_summary = current_bytes.map(installed_file_summary);
+        match target.class {
+            ReinstallTargetClass::Retained
+            | ReinstallTargetClass::Replaced
+            | ReinstallTargetClass::Added => Ok(current_summary == target.candidate_state),
+            ReinstallTargetClass::Stale => match &target.original_backup_ref {
+                Some(backup_ref) => {
+                    let bytes = self
+                        .backup_store
+                        .read_backup(backup_ref)
+                        .map_err(|_| ())?
+                        .ok_or(())?;
+                    Ok(current_summary == Some(installed_file_summary(&bytes)))
+                }
+                None => Ok(current_bytes.is_none()),
+            },
+        }
+    }
+
+    fn reinstall_rollback_failure(
+        &self,
+        recovery_repository: &dyn ReinstallRecoveryTransactionRepository,
+        transaction: &mut ReinstallRecoveryTransaction,
+        applied: &[AppliedReinstallRollbackAction],
+        phase: InstallRecoveryActionPhase,
+        fallback: InstallRecoveryActionError,
+        repair_required: bool,
+    ) -> InstallRecoveryActionError {
+        if self.rollback_reinstall_actions(applied).is_err() {
+            self.mark_reinstall_repair_required(recovery_repository, transaction);
+            return InstallRecoveryActionError::RollbackFailed {
+                failed_phase: phase,
+            };
+        }
+        if repair_required {
+            self.mark_reinstall_repair_required(recovery_repository, transaction);
+        }
+        fallback
+    }
+
+    fn rollback_reinstall_actions(
+        &self,
+        applied: &[AppliedReinstallRollbackAction],
+    ) -> Result<(), ()> {
+        for action in applied.iter().rev() {
+            match &action.previous_bytes {
+                Some(bytes) => self
+                    .game_files
+                    .write_game_file(&action.target_path, bytes)
+                    .map_err(|_| ())?,
+                None => self
+                    .game_files
+                    .remove_game_file(&action.target_path)
+                    .map_err(|_| ())?,
+            }
+        }
+        Ok(())
+    }
+
+    fn mark_reinstall_repair_required(
+        &self,
+        recovery_repository: &dyn ReinstallRecoveryTransactionRepository,
+        transaction: &mut ReinstallRecoveryTransaction,
+    ) {
+        if transaction
+            .transition_to(ReinstallRecoveryTransactionStatus::RepairRequired)
+            .is_ok()
+        {
+            let _ = recovery_repository.save_transaction(transaction);
+        }
     }
 
     fn rollback_install(
