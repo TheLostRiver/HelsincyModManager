@@ -1,8 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FileArchive, LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { startImportModTask } from "./modImportApi";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { startImportModRevisionTask, startImportModTask } from "./modImportApi";
 import {
   TASK_PROGRESS_EVENT_NAME,
   type TaskProgressEventDto,
@@ -16,6 +16,9 @@ import "./ModImportAction.css";
 
 type ModImportActionProps = {
   label: string;
+  mode?: "new" | "revision";
+  modId?: string | null;
+  disabledReason?: string;
   onImported: () => Promise<void> | void;
 };
 
@@ -39,7 +42,7 @@ function isImportTaskTerminal(state: ModImportTaskState) {
   return state.status === "completed" || state.status === "cancelled" || state.status === "failed";
 }
 
-function importActionLabel(label: string, state: ModImportTaskState) {
+function importActionLabel(label: string, state: ModImportTaskState, mode: "new" | "revision") {
   switch (state.status) {
     case "choosing":
       return "选择压缩包...";
@@ -48,16 +51,16 @@ function importActionLabel(label: string, state: ModImportTaskState) {
     case "running":
       return getModImportTaskPhaseLabel(state.phase);
     case "completed":
-      return "继续添加 MOD";
+      return mode === "revision" ? "继续导入新版本" : "继续添加 MOD";
     case "failed":
     case "cancelled":
-      return "重试添加 MOD";
+      return mode === "revision" ? "重试导入新版本" : "重试添加 MOD";
     default:
       return label;
   }
 }
 
-function importStatusText(state: ModImportTaskState) {
+function importStatusText(state: ModImportTaskState, mode: "new" | "revision") {
   switch (state.status) {
     case "choosing":
       return "等待选择 ZIP 压缩包";
@@ -66,7 +69,7 @@ function importStatusText(state: ModImportTaskState) {
     case "running":
       return getModImportTaskPhaseLabel(state.phase);
     case "completed":
-      return "导入完成，Mod 列表将自动刷新";
+      return mode === "revision" ? "新版本导入完成，版本列表已更新" : "导入完成，Mod 列表将自动刷新";
     case "cancelled":
       return "导入已取消";
     case "failed":
@@ -76,7 +79,14 @@ function importStatusText(state: ModImportTaskState) {
   }
 }
 
-export function ModImportAction({ label, onImported }: ModImportActionProps) {
+export function ModImportAction({
+  label,
+  mode = "new",
+  modId,
+  disabledReason,
+  onImported,
+}: ModImportActionProps) {
+  const statusId = useId();
   const [listenerStatus, setListenerStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [listenerAttempt, setListenerAttempt] = useState(0);
   const [taskState, setTaskState] = useState<ModImportTaskState>({ status: "idle" });
@@ -177,7 +187,12 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
   }
 
   async function handleImport() {
-    if (listenerStatus !== "ready" || isImportTaskActive(taskStateRef.current)) {
+    if (
+      listenerStatus !== "ready" ||
+      isImportTaskActive(taskStateRef.current) ||
+      disabledReason ||
+      (mode === "revision" && !modId)
+    ) {
       return;
     }
 
@@ -189,7 +204,7 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
       selected = await open({
         directory: false,
         multiple: false,
-        title: "选择 Mod ZIP 压缩包",
+        title: mode === "revision" ? "选择新版本 ZIP 压缩包" : "选择 Mod ZIP 压缩包",
         filters: [{ name: "ZIP 压缩包", extensions: ["zip"] }],
       });
     } catch {
@@ -212,7 +227,10 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
     setTrackedTaskState({ status: "starting" });
 
     try {
-      const task = await startImportModTask({ archivePath: selected });
+      const task =
+        mode === "revision" && modId
+          ? await startImportModRevisionTask({ archivePath: selected, modId })
+          : await startImportModTask({ archivePath: selected });
       startPendingRef.current = false;
 
       if (task.kind !== "mod_import" || task.status !== "queued") {
@@ -251,8 +269,10 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
   }
 
   const taskActive = isImportTaskActive(taskState);
-  const statusText = importStatusText(taskState);
+  const statusText = importStatusText(taskState, mode) ?? disabledReason;
   const listenerLoading = listenerStatus === "loading";
+  const actionDisabled =
+    listenerLoading || taskActive || Boolean(disabledReason) || (mode === "revision" && !modId);
 
   return (
     <>
@@ -267,8 +287,8 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
           }
           void handleImport();
         }}
-        disabled={listenerLoading || taskActive}
-        aria-describedby={statusText ? "mod-import-status" : undefined}
+        disabled={actionDisabled}
+        aria-describedby={statusText ? statusId : undefined}
       >
         <span className="compact-action__left">
           {taskActive || listenerLoading ? (
@@ -281,14 +301,14 @@ export function ModImportAction({ label, onImported }: ModImportActionProps) {
               ? "准备导入..."
               : listenerStatus === "failed"
                 ? "重试导入连接"
-                : importActionLabel(label, taskState)}
+                : importActionLabel(label, taskState, mode)}
           </span>
         </span>
       </button>
 
       {statusText ? (
         <span
-          id="mod-import-status"
+          id={statusId}
           className={`compact-import-action__status is-${taskState.status}`}
           role={taskState.status === "failed" ? "alert" : "status"}
         >
