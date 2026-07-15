@@ -5,6 +5,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod reinstall;
+mod replacement;
 mod save_backup;
 mod save_directory;
 
@@ -38,6 +39,11 @@ pub use reinstall::{
     ReinstallRecoveryTransactionTransitionError, ReinstallRecoveryTransactionValidationError,
     ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose, ReinstallSnapshotState,
     ReinstallTargetClass, ReinstallTargetClassification, ReinstallTargetState,
+};
+pub use replacement::{
+    LocalizedText, ReplacementBinding, ReplacementBindingId, ReplacementCatalog,
+    ReplacementCatalogVersion, ReplacementError, ReplacementSourceId, ReplacementTarget,
+    ReplacementTargetId, ReplacementTargetKind,
 };
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,

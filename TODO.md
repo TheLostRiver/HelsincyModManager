@@ -388,22 +388,21 @@ JSON 做不好的需求:
 ### T11: ARMOR_RETARGET 全链路
 
 **优先级**: P1，Gate A 通过后立即开始
-**状态**: 已规划，Gate A 前置已满足；下一项 AR1，当前源码尚无 replacement/retarget 实现
+**状态**: AR1 已实现；当前下一项 AR2，Gate B 尚未完成
 **前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
 
 执行顺序（遵循已有实施计划）:
-1. Core replacement 领域模型
-2. Replacement ports
-3. MHW armor catalog + Unicode 归一化
-4. MHW armor path parser
-5. MHW RetargetPlan builder
-6. Application replacement service
-7. Staging materialize
-8. Manifest + InstallPlan 集成
-9. Tauri commands + DTO
-10. 前端 typed API
+- [x] AR1：Core replacement identity / binding / versioned catalog 领域模型
+- [x] AR1：只读 Replacement catalog list/find/search ports
+- [x] AR1：MHW armor catalog + Unicode/search normalization
+- [ ] AR2：MHW armor path parser 与单 source analyzer
+- [ ] AR2：MHW RetargetPlan builder
+- [ ] AR3：Application replacement service 与 staging materialize
+- [ ] AR3：Manifest + InstallPlan + binding snapshot 集成
+- [ ] AR4：Tauri commands / DTO 与前端 typed API / 受控 UI
+- [ ] AR5：真正重装 target switch、卸载与 Gate B 认证
 
 ---
 
@@ -441,8 +440,8 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: T11 ARMOR_RETARGET AR1（领域模型 / binding / 最小 catalog）
-  -> AR2-AR5 最窄纵向闭环
+当前: T11 ARMOR_RETARGET AR2（单 source f_equip parser / analyzer / RetargetPlan）
+  -> AR3-AR5 最窄纵向闭环
   -> Gate B 认证
   -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
 ```
@@ -464,7 +463,7 @@ JSON 做不好的需求:
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | 仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
-| T11 ARMOR_RETARGET | P1 | 已规划，当前下一项为 AR1 | |
+| T11 ARMOR_RETARGET | P1 | AR1 已实现，当前下一项为 AR2 | |
 | T12 Mod 详情完整版 | P3 | 暂停；仅 Gate B 最小 UI 例外 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |

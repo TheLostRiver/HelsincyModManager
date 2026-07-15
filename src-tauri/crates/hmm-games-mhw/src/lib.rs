@@ -9,9 +9,13 @@ use hmm_ports::{
 };
 use std::sync::Arc;
 
+mod armor_retarget;
 mod prerequisites;
 mod save_directory;
 
+pub use armor_retarget::{
+    normalize_armor_display_text, normalize_armor_search_text, MhwArmorCatalog,
+};
 pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";

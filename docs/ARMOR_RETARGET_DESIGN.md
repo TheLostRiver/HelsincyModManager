@@ -1,6 +1,10 @@
 # MHW:I 外观套装重定向设计
 
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
+>
+> 实施状态（2026-07-16）：阶段 1 / AR1 已标记为 `implemented`，已落地稳定 replacement
+> identity/binding、只读 catalog port 与 `mhw-armor-v1` 最小 catalog；当前下一项为阶段 2 / AR2
+> parser、单 source analyzer 与 `RetargetPlan`。阶段 3 及以后仍为 `planned`。
 
 ## 背景
 
@@ -89,9 +93,14 @@ ReplacementBinding
   id
   mod_id
   profile_id
-  source_asset
+  source_id       // 稳定、游戏无关且对 core 不透明；AR2 负责从单 source 分析结果生成
   target_id       // 引用 ReplacementTarget.id（项目主键），不引用 internal_id
-  created_at
+  created_at_unix_millis
+
+ReplacementCatalog
+  version         // catalog 数据版本，不等同于游戏版本或 internal_id
+  game_id
+  targets
 
 RetargetPlan
   binding
@@ -118,26 +127,35 @@ RetargetAction
 
 负责声明应用层依赖的 trait。
 
-建议能力：
+AR1 已落地的只读能力：
 
 ```text
-GameAdapter
-  replacement_catalog(game_id) -> Vec<ReplacementTarget>
+ReplacementCatalogProvider
+  replacement_catalog() -> ReplacementCatalog
+  find_replacement_target(target_id) -> ReplacementTarget
+  search_replacement_targets(query) -> Vec<ReplacementTarget>
+```
+
+AR2/AR3 再分别扩展：
+
+```text
+ReplacementAdapter（AR2）
   analyze_replacement_assets(package) -> ReplacementAnalysis
   build_retarget_plan(request) -> RetargetPlan
 
-StagingFileSystem
+StagingFileSystem（AR3）
   copy_to_staging(source, destination)
   list_staged_files(staging_id)
 ```
 
-具体签名应跟现有 crate 风格保持一致。`GameAdapter` 是否拆分成更小的 `ReplacementAdapter` 可以在实现计划阶段决定。
+只读 catalog port 与目录校验 `GameAdapter` 保持分离，避免迫使不支持 replacement 的 adapter 实现
+空方法。AR2 可在该基础上新增更窄的 analysis/plan port，不把 path 或 filesystem 类型反向塞回 AR1。
 
 ### `hmm-games-mhw`
 
 负责 MHW:I 专属规则：
 
-- armor catalog 数据与加载。
+- `data/mhw-armor-targets.v1.json` armor catalog 数据、schema/catalog version 与加载校验。
 - catalog 加载时的 Unicode 归一化：对 display name 至少做 `NFC` 归一化，并对"看起来都像中点"的码位 `U+2027`（间隔号）/ `U+00B7`（中点）/ `U+30FB`（全角中点）/ `U+FF65`（半角中点）建立显式归一化映射表。归一化规则只存在于 adapter 内，核心层不感知。
 - `pl/f_equip/<slot>` 和 `pl/m_equip/<slot>` 路径族识别（两者为不同 path_family）。
 - `plNNN_VVVV` 编号解析与校验。该格式校验**只在 adapter 内做**，核心层把 `internal_id` 当不透明字符串。
@@ -488,11 +506,11 @@ SQLite 中应持久化玩家状态：
 
 ## 分阶段落地
 
-### 阶段 1：模型与 catalog
+### 阶段 1：模型与 catalog（AR1，已实现）
 
-- 定义 replacement/retarget 领域模型。
-- 为 MHW:I 建立 armor catalog。
-- 提供 catalog 查询和基础校验测试。
+- 已定义 stable replacement target/binding/source/catalog identity；analysis/plan 模型留到 AR2。
+- 已为 MHW:I 建立 `mhw-armor-v1` 最小 catalog seed。
+- 已提供 catalog list/find/search、serde 不变量、schema、Unicode 和精确搜索校验测试。
 
 ### 阶段 2：包分析与路径级 RetargetPlan
 

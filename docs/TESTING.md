@@ -275,7 +275,22 @@ MHW:I、第三方 Mod、Steam userdata、玩家存档或维护者日常 AppData�
 
 CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 2026-07-15 重新执行上述聚焦矩阵、
 全部前端测试、完整 `scripts/verify.ps1` 和 `cargo clippy --workspace --all-targets -- -D warnings`，并完成
-独立安全/边界复审；Gate A 已标记为 `certified`，下一测试主线进入 Gate B / AR1。
+独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model、catalog port
+与 MHW:I 最小 versioned catalog 测试已落地，下一测试主线进入 AR2 parser/analyzer/RetargetPlan。
+
+### ARMOR_RETARGET AR1
+
+AR1 只覆盖纯领域模型、只读 port 与静态 MHW:I catalog，不读取真实 Mod 或游戏目录：
+
+```powershell
+cargo test -p hmm-core --test replacement
+cargo test -p hmm-ports --test replacement_catalog
+cargo test -p hmm-games-mhw --test armor_catalog
+```
+
+这些测试分别锁定 stable target/binding/source/catalog identity 与 serde 不变量、catalog list/find/search
+trait contract、`mhw-armor-v1` seed、MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和
+Fatalis/Alatreon 精确隔离。Path parser、single-source analyzer 与 `RetargetPlan` 从 AR2 开始测试。
 
 ## 存档备份
 
