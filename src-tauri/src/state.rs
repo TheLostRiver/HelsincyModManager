@@ -72,7 +72,7 @@ use hmm_ports::{
 #[cfg(test)]
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
@@ -287,9 +287,7 @@ impl AppState {
         ));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
-        let install_manifest_repository: Arc<dyn InstallManifestRepository> = Arc::new(
-            JsonInstallManifestRepository::new(app_data_dir.join("install").join("manifests")),
-        );
+        let install_manifest_repository = install_manifest_repository_for(&app_data_dir);
         let reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository> =
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
@@ -621,7 +619,34 @@ type StateStartupObserver = Box<dyn Fn(AppStateStartup)>;
 
 #[cfg(test)]
 thread_local! {
+    static INSTALL_MANIFEST_REPOSITORY_OVERRIDE: RefCell<Option<Arc<dyn InstallManifestRepository>>> = const { RefCell::new(None) };
     static STATE_STARTUP_OBSERVER: RefCell<Option<StateStartupObserver>> = const { RefCell::new(None) };
+}
+
+fn install_manifest_repository_for(app_data_dir: &Path) -> Arc<dyn InstallManifestRepository> {
+    #[cfg(test)]
+    if let Some(repository) = INSTALL_MANIFEST_REPOSITORY_OVERRIDE
+        .with(|active_repository| active_repository.borrow().clone())
+    {
+        return repository;
+    }
+
+    Arc::new(JsonInstallManifestRepository::new(
+        app_data_dir.join("install").join("manifests"),
+    ))
+}
+
+#[cfg(test)]
+fn with_install_manifest_repository_override<R>(
+    repository: Arc<dyn InstallManifestRepository>,
+    action: impl FnOnce() -> R,
+) -> R {
+    INSTALL_MANIFEST_REPOSITORY_OVERRIDE.with(|active_repository| {
+        let previous = active_repository.replace(Some(repository));
+        let result = action();
+        active_repository.replace(previous);
+        result
+    })
 }
 
 fn run_state_startup(startup: AppStateStartup, state: &AppState) {
