@@ -3,9 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **当前优先级（2026-07-16）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
-> AR1 已标记为 `implemented`，当前下一项只执行 AR2。执行顺序以
+> AR1/AR2 已标记为 `implemented`，当前下一项只执行 AR3。执行顺序以
 > [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
-> 不得在 AR2 提前实现后续切片，target switch 必须复用 Gate A 的
+> 不得在 AR3 提前实现后续切片，target switch 必须复用 Gate A 的
 > 真正重装 contract。
 
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。
@@ -48,8 +48,8 @@ Lifecycle Gate A 必须达到 `certified`：安装/卸载纵向 acceptance、桌
 ```text
 Gate A certified
   -> AR1 replacement model / ports / 最小 catalog [implemented]
-  -> AR2 单 source f_equip parser / analyzer / RetargetPlan [current]
-  -> AR3 staging materialize / InstallPlan / binding snapshot
+  -> AR2 单 source f_equip parser / analyzer / RetargetPlan [implemented]
+  -> AR3 staging materialize / InstallPlan / binding snapshot [current]
   -> AR4 target selection / preview / install UI
   -> AR5 true reinstall target switch / uninstall / Gate B
 ```
@@ -84,9 +84,29 @@ AR1 实际交付按重排后的窄边界实现，下面旧 Task 1-3 的大段代
   `cargo test -p hmm-games-mhw --test armor_catalog`。
 
 AR1 没有 app/Tauri/frontend wiring，也没有 parser、analyzer、`RetargetPlan`、staging、InstallPlan 或
-binding snapshot persistence。AR2 必须从当前公开类型/port 继续，而不是重新引入旧草图的宽 trait。
+binding snapshot persistence。随后 AR2 从该公开类型/port 继续实现纯分析/计划，没有重新引入旧草图的宽 trait。
 
-## Target File Structure（AR1-AR4 整体目标，非 AR1 已实现清单）
+## AR2 已实施基线（2026-07-16）
+
+AR2 按纯分析/计划边界落地；下面旧 Task 4-5 的代码草图只保留作历史追溯，实际公开 contract 以
+当前源码和本节为准。
+
+已落地：
+
+- `hmm-core::retarget`：opaque `ReplacementSource`、`ReplacementAnalysis`、稳定 warning code、
+  `RetargetAction` 与带 source/action/target/package/最终路径不变量的纯 `RetargetPlan`。
+- `hmm-ports::replacement`：只携带 `PackageFileId` 与相对路径的 `ReplacementAsset`，以及窄
+  analysis/plan request 和 `ReplacementAdapter`；没有 cache/sandbox `PathBuf` 或 staging port。
+- `hmm-games-mhw::armor_retarget`：严格解析 `/`/`\\`，识别并阻断 `m_equip`/混合/多 source，
+  只对结构化 `f_equip` slot 段生成目标相对路径；普通非 Armor 包返回不适用 warning。
+- 聚焦测试入口：`cargo test -p hmm-core --test replacement_analysis`、
+  `cargo test -p hmm-ports --test replacement_adapter`、
+  `cargo test -p hmm-games-mhw --test armor_retarget`。
+
+AR2 没有 app/infra/Tauri/frontend wiring，没有 materialize staging，也没有修改 InstallPlan/manifest。
+AR3 必须消费这些纯 action，并保持原始导入包只读和 staging containment。
+
+## Target File Structure（AR1-AR4 整体目标；已实施情况以上述基线为准）
 
 ```text
 docs/
@@ -97,6 +117,7 @@ docs/
 src-tauri/crates/hmm-core/src/
   game.rs
   replacement.rs
+  retarget.rs
   lib.rs
 
 src-tauri/crates/hmm-ports/src/
@@ -137,9 +158,9 @@ src/features/replacements/
 
 职责边界：
 
-- `hmm-core/src/replacement.rs`：AR1 定义游戏无关 identity、target/binding/catalog；AR2 再添加 analysis/plan。
-- `hmm-ports/src/replacement.rs`：AR1 只声明 replacement catalog 查询；AR2/AR3 再添加 analysis/plan/staging 端口。
-- `hmm-games-mhw/src/armor_retarget/*`：AR1 已实现 catalog/Unicode；AR2 再实现 armor 路径解析和 slot 段替换。
+- `hmm-core/src/replacement.rs` 与 `retarget.rs`：AR1 定义游戏无关 identity/target/binding/catalog；AR2 已添加纯 analysis/plan。
+- `hmm-ports/src/replacement.rs`：AR1 声明 catalog 查询；AR2 已添加纯 analysis/plan adapter；AR3 才添加 staging 端口。
+- `hmm-games-mhw/src/armor_retarget/*`：AR1 已实现 catalog/Unicode；AR2 已实现 armor 路径解析、single-source analysis 和 slot 段替换。
 - `hmm-app/src/replacement.rs`：AR3 再编排 catalog 查询、包分析、plan 生成和 staging materialize。
 - `hmm-infra/src/staging.rs`：AR3 再在应用数据目录或临时目录中复制文件，不触碰游戏目录。
 - `src-tauri/src/replacement_commands.rs`：AR4 再添加 Tauri command 薄边界，只做 DTO 转换和调用应用层服务。
@@ -710,7 +731,7 @@ Expected:
 test result: ok
 ```
 
-## Task 4: MHW Armor Path Parser
+## Task 4: MHW Armor Path Parser（AR2 已实施；下列旧草图仅供追溯）
 
 **Files:**
 
@@ -883,7 +904,7 @@ Expected:
 test result: ok
 ```
 
-## Task 5: MHW Replacement Adapter
+## Task 5: MHW Replacement Adapter（AR2 已实施；下列旧草图仅供追溯）
 
 **Files:**
 

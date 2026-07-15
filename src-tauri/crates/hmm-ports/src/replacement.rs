@@ -1,4 +1,7 @@
-use hmm_core::{GameId, ReplacementCatalog, ReplacementTarget, ReplacementTargetId};
+use hmm_core::{
+    GameId, PackageFileId, ReplacementAnalysis, ReplacementBinding, ReplacementCatalog,
+    ReplacementTarget, ReplacementTargetId, RetargetPlan,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -36,4 +39,78 @@ pub trait ReplacementCatalogProvider: Send + Sync {
         &self,
         query: &str,
     ) -> ReplacementCatalogResult<Vec<ReplacementTarget>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplacementAsset {
+    package_file_id: PackageFileId,
+    relative_path: String,
+}
+
+impl ReplacementAsset {
+    pub fn new(package_file_id: PackageFileId, relative_path: impl Into<String>) -> Self {
+        Self {
+            package_file_id,
+            relative_path: relative_path.into(),
+        }
+    }
+
+    pub fn package_file_id(&self) -> &PackageFileId {
+        &self.package_file_id
+    }
+
+    pub fn relative_path(&self) -> &str {
+        &self.relative_path
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplacementAnalysisRequest {
+    pub game_id: GameId,
+    pub assets: Vec<ReplacementAsset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetargetPlanRequest {
+    pub game_id: GameId,
+    pub binding: ReplacementBinding,
+    pub assets: Vec<ReplacementAsset>,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum ReplacementAdapterError {
+    #[error("replacement adapter does not support the requested game")]
+    UnsupportedGame,
+    #[error("replacement source slot was not recognized")]
+    UnrecognizedSourceSlot,
+    #[error("replacement source is ambiguous or unsupported")]
+    AmbiguousSourceSlot,
+    #[error("retarget path is unsafe")]
+    UnsafeRetargetPath,
+    #[error("replacement binding does not reference the analyzed source")]
+    SourceBindingMismatch,
+    #[error("replacement target is not supported")]
+    UnsupportedReplacementTarget,
+    #[error("replacement target catalog is unavailable")]
+    TargetCatalogUnavailable,
+    #[error("replacement target is missing from the catalog: {target_id}")]
+    TargetCatalogMissing { target_id: ReplacementTargetId },
+    #[error("retarget plan is invalid")]
+    InvalidRetargetPlan,
+}
+
+pub type ReplacementAdapterResult<T> = Result<T, ReplacementAdapterError>;
+
+pub trait ReplacementAdapter: Send + Sync {
+    fn game_id(&self) -> GameId;
+
+    fn analyze_replacement_assets(
+        &self,
+        request: ReplacementAnalysisRequest,
+    ) -> ReplacementAdapterResult<ReplacementAnalysis>;
+
+    fn build_retarget_plan(
+        &self,
+        request: RetargetPlanRequest,
+    ) -> ReplacementAdapterResult<RetargetPlan>;
 }

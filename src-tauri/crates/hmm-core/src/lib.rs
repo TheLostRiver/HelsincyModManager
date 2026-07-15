@@ -6,6 +6,7 @@ mod preview_image;
 mod profile;
 mod reinstall;
 mod replacement;
+mod retarget;
 mod save_backup;
 mod save_directory;
 
@@ -44,6 +45,10 @@ pub use replacement::{
     LocalizedText, ReplacementBinding, ReplacementBindingId, ReplacementCatalog,
     ReplacementCatalogVersion, ReplacementError, ReplacementSourceId, ReplacementTarget,
     ReplacementTargetId, ReplacementTargetKind,
+};
+pub use retarget::{
+    ReplacementAnalysis, ReplacementSource, ReplacementWarning, RetargetAction, RetargetError,
+    RetargetPlan,
 };
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,

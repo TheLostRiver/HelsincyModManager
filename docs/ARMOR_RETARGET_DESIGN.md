@@ -2,9 +2,9 @@
 
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
 >
-> 实施状态（2026-07-16）：阶段 1 / AR1 已标记为 `implemented`，已落地稳定 replacement
-> identity/binding、只读 catalog port 与 `mhw-armor-v1` 最小 catalog；当前下一项为阶段 2 / AR2
-> parser、单 source analyzer 与 `RetargetPlan`。阶段 3 及以后仍为 `planned`。
+> 实施状态（2026-07-16）：阶段 1 / AR1 与阶段 2 / AR2 已标记为 `implemented`。当前已落地稳定
+> replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格 parser、单 source
+> analyzer 与纯 `RetargetPlan`；当前下一项为阶段 3 / AR3，阶段 3 及以后仍为 `planned`。
 
 ## 背景
 
@@ -136,7 +136,7 @@ ReplacementCatalogProvider
   search_replacement_targets(query) -> Vec<ReplacementTarget>
 ```
 
-AR2/AR3 再分别扩展：
+AR2 已扩展纯 analysis/plan port，AR3 再扩展 staging port：
 
 ```text
 ReplacementAdapter（AR2）
@@ -149,7 +149,8 @@ StagingFileSystem（AR3）
 ```
 
 只读 catalog port 与目录校验 `GameAdapter` 保持分离，避免迫使不支持 replacement 的 adapter 实现
-空方法。AR2 可在该基础上新增更窄的 analysis/plan port，不把 path 或 filesystem 类型反向塞回 AR1。
+空方法。AR2 已在该基础上新增更窄的 analysis/plan port，没有把 path 或 filesystem 类型反向塞回
+AR1；AR3 的 staging I/O 继续独立建模。
 
 ### `hmm-games-mhw`
 
@@ -512,14 +513,14 @@ SQLite 中应持久化玩家状态：
 - 已为 MHW:I 建立 `mhw-armor-v1` 最小 catalog seed。
 - 已提供 catalog list/find/search、serde 不变量、schema、Unicode 和精确搜索校验测试。
 
-### 阶段 2：包分析与路径级 RetargetPlan
+### 阶段 2：包分析与路径级 RetargetPlan（AR2，已实现）
 
 - 分析 `nativePC/pl/f_equip/<slot>`（含 `/` 和 `\` 分隔符规范化）。
 - 识别 `m_equip` 并按多源 path_family 阻止自动 retarget。
 - 生成路径级 `RetargetPlan`（结构化分段替换，只改 slot 段）。
 - 对多源 slot、未知 target、危险路径给出明确错误。
 
-### 阶段 3：staging 与 InstallPlan 集成
+### 阶段 3：staging 与 InstallPlan 集成（AR3，当前下一项）
 
 - materialize staging。
 - 让 `InstallPlan` 以 staging 的最终路径为输入。

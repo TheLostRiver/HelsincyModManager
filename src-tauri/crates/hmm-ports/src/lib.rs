@@ -70,7 +70,9 @@ pub use profile::{
 };
 pub use reinstall::{ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore};
 pub use replacement::{
-    ReplacementCatalogError, ReplacementCatalogProvider, ReplacementCatalogResult,
+    ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
+    ReplacementAnalysisRequest, ReplacementAsset, ReplacementCatalogError,
+    ReplacementCatalogProvider, ReplacementCatalogResult, RetargetPlanRequest,
 };
 pub use save_backup::{
     SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
