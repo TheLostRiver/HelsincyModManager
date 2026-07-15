@@ -3,8 +3,8 @@
 本文档记录当前 `InstallPlan` 模块已经落地的能力、尚未落地的边界和后续切片顺序。它用于回答“现在能依赖什么”，长期设计仍参考 [Mod 安装方案规划](mod_installation_strategy.md)，跨前后端通信契约参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
 当前实施顺序由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 覆盖：安装、
-卸载和真正重装现均为 `implemented`，下一项是 CL4 独立复审，使 Core Mod Lifecycle Gate A 达到
-`certified`；通过后立即进入 ARMOR_RETARGET 最窄纵向切片。本文的能力清单仍是实现事实来源，
+卸载和真正重装已通过 CL4 独立复审，Core Mod Lifecycle Gate A 为 `certified`；当前进入
+ARMOR_RETARGET 最窄纵向切片的 AR1。本文的能力清单仍是实现事实来源，
 但旧的后续建议不再优先于该计划。
 
 ## 模块目标
@@ -332,8 +332,6 @@ target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或
 
 以下能力仍不能视为已完成：
 
-- 核心生命周期认证：CL0-CL3 已有独立、可重复的 L1/L2 自动化和 disposable Windows Sandbox L3；
-  安装、卸载与真正重装均为 `implemented`，但 CL4 独立复审和 Gate A `certified` 记录仍未完成。
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
 - 恢复中心写入型工作流：只读 `scan_install_recovery` 摘要已能检测 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，并会补入只有 durable recovery record 的半完成安装；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局告警，独立恢复中心已提供入口、逐 Mod 安全摘要、rich repair summary、完整支持诊断包导出联动和人工处理决策面板。`preview_recovery_action` 已能只读预览 `rollback_install` 是否可执行，`start_recovery_action_task` 已能后端执行受控 `rollback_install`；恢复中心写入型按钮、任务 UI 编排和操作完成后的恢复中心/全局健康刷新均已实现。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
@@ -365,8 +363,8 @@ target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或
 3. **CL2（已完成）：** 已在 disposable Windows Sandbox 执行 Tauri 桌面 smoke 与清理证明。
 4. **CL3（已完成）：** 已落地独立真正重装 use case/task、四类 entry-set replacement、失败恢复和
    L1/L2/L3 验收。
-5. **CL4 / Gate A（下一项）：** 完整验证、安全复审和 `certified` 状态记录。
-6. **ARMOR_RETARGET Gate B：** 按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
+5. **CL4 / Gate A（已完成）：** 完整验证、安全复审和 `certified` 状态记录均已通过。
+6. **ARMOR_RETARGET Gate B（当前）：** 从 AR1 开始，按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
    binding snapshot、选择目标、安装、切换目标和卸载。
 
 Rich manifest、repair 和 preflight 只在解除上述步骤阻断时取最小切片。批量/profile 卸载、完整
