@@ -269,7 +269,8 @@ rollback v1 -> restart。所有 AppData、archive 和 game root 均为 TEMP/arti
 CL3 Task 10 已于 2026-07-15 在 Windows Sandbox 中使用人工 v1/v2 ZIP、唯一 TEMP game root 和
 disposable AppData 实际执行 L3。证据覆盖同一 logical Mod 单卡 revision import、v1 安装与重启、
 1 retained / 2 replaced / 1 added / 1 stale 真正重装、v2 重启、manifest 卸载、逐字节 baseline
-恢复、not-installed 重启、恢复中心零残留、四条目支持诊断白名单与受控 TEMP cleanup。未使用真实
+恢复、not-installed 重启、恢复中心零残留；支持诊断白名单包含四个固定 JSON 条目，且受控 TEMP
+cleanup 已完成。未使用真实
 MHW:I、第三方 Mod、Steam userdata、玩家存档或维护者日常 AppData。
 
 CL3 自动化与桌面证据现已全部通过，状态为 `implemented`；下一步仍只能进入 CL4 独立复审，

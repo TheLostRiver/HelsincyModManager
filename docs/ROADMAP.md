@@ -4,7 +4,7 @@
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 约束：
 
-1. 先完成 Gate A：安装/卸载可重复验收、桌面 smoke 和真正重装。
+1. 先完成 CL4：Gate A 独立复审、完整验证与认证状态记录。
 2. 再完成 Gate B：MHW:I ARMOR_RETARGET 最窄纵向闭环。
 3. Gate B 前暂停自动备份剩余切片、installer cleanup、分页、批量迁移、批量操作、任务队列和
    非必要视觉增强。
