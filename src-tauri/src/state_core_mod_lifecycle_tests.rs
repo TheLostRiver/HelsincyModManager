@@ -73,6 +73,18 @@ fn fixture_contract_covers_reinstall_target_classes() {
 }
 
 #[test]
+fn audit_redaction_detects_windows_path_after_json_encoding() {
+    let forbidden = r"C:\Users\fixture\game";
+    let evidence = serde_json::json!({
+        "events": [{ "safePath": forbidden }],
+    });
+    let serialized = serde_json::to_string(&evidence).expect("serialize audit regression fixture");
+
+    assert!(!serialized.contains(forbidden));
+    assert!(json_value_contains_forbidden(&evidence, forbidden));
+}
+
+#[test]
 fn headless_composition_imports_v1_and_rebuilds_plan_after_restart() {
     let temp = tempfile::tempdir().expect("create lifecycle temp root");
     let app_data_dir = temp.path().join("app-data");
@@ -1055,7 +1067,7 @@ fn assert_audit_evidence_redacted(
     app_data_dir: &Path,
     backup_ref: &str,
 ) {
-    let serialized = serde_json::to_string(events).expect("serialize public audit evidence");
+    let evidence = serde_json::to_value(events).expect("serialize public audit evidence");
     for forbidden in [
         game_root.to_string_lossy().into_owned(),
         app_data_dir.to_string_lossy().into_owned(),
@@ -1065,9 +1077,22 @@ fn assert_audit_evidence_redacted(
         "installedFile".to_owned(),
     ] {
         assert!(
-            !serialized.contains(&forbidden),
+            !json_value_contains_forbidden(&evidence, &forbidden),
             "public lifecycle evidence must not expose {forbidden}"
         );
+    }
+}
+
+fn json_value_contains_forbidden(value: &serde_json::Value, forbidden: &str) -> bool {
+    match value {
+        serde_json::Value::String(text) => text.contains(forbidden),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| json_value_contains_forbidden(value, forbidden)),
+        serde_json::Value::Object(fields) => fields.iter().any(|(key, value)| {
+            key.contains(forbidden) || json_value_contains_forbidden(value, forbidden)
+        }),
+        _ => false,
     }
 }
 
