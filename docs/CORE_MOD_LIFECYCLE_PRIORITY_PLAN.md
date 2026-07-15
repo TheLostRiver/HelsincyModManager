@@ -134,7 +134,7 @@ backup store failure 在任何 target mutation 前停止，并复用既有 write
 [CL3 真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
 Rust/Tauri/frontend/migration、L1/L2 自动化和 disposable Windows Sandbox L3 均已落地并执行；同一
 logical Mod 的 v1 -> v2 真正重装、重启、manifest 卸载、baseline 恢复、诊断脱敏和 cleanup 已有
-证据，当前状态为 `implemented`。Gate A 仍等待 CL4 独立复审，不得据此标记为 `certified`。
+证据，CL3 状态为 `implemented`；后续 CL4 独立复审已完成，Gate A 已标记为 `certified`。
 
 真正重装使用独立 backend use case/task，不再是普通 install 的 UI 别名。其
 事实来源为“旧 manifest + 新 InstallPlan + 当前目标摘要 + backup”，不能根据展示名或当前包
@@ -279,7 +279,7 @@ CL1 的已执行范围和证据见
 [CL0/CL1/CL2/CL3 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装已由 CL3 标记为
 `implemented`，并在 CL4 独立复审后随 Gate A 标记为 `certified`。
 
-CL3 已固定的实施入口见
+CL3 的实施入口见
 [真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
 [真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
 CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；后续从 AR1 开始推进 Gate B。
