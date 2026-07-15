@@ -86,7 +86,7 @@ AR1 实际交付按重排后的窄边界实现，下面旧 Task 1-3 的大段代
 AR1 没有 app/Tauri/frontend wiring，也没有 parser、analyzer、`RetargetPlan`、staging、InstallPlan 或
 binding snapshot persistence。AR2 必须从当前公开类型/port 继续，而不是重新引入旧草图的宽 trait。
 
-## Target File Structure
+## Target File Structure（AR1-AR4 整体目标，非 AR1 已实现清单）
 
 ```text
 docs/
@@ -139,11 +139,11 @@ src/features/replacements/
 
 - `hmm-core/src/replacement.rs`：AR1 定义游戏无关 identity、target/binding/catalog；AR2 再添加 analysis/plan。
 - `hmm-ports/src/replacement.rs`：AR1 只声明 replacement catalog 查询；AR2/AR3 再添加 analysis/plan/staging 端口。
-- `hmm-games-mhw/src/armor_retarget/*`：实现 MHW:I catalog、Unicode 归一化、armor 路径解析和 slot 段替换。
-- `hmm-app/src/replacement.rs`：编排 catalog 查询、包分析、plan 生成、staging materialize。
-- `hmm-infra/src/staging.rs`：在应用数据目录或临时目录中复制文件，不触碰游戏目录。
-- `src-tauri/src/replacement_commands.rs`：Tauri command 薄边界，只做 DTO 转换和调用应用层服务。
-- `src/features/replacements/*`：前端 typed API 和类型，不拼接路径，不改写 slot 字符串。
+- `hmm-games-mhw/src/armor_retarget/*`：AR1 已实现 catalog/Unicode；AR2 再实现 armor 路径解析和 slot 段替换。
+- `hmm-app/src/replacement.rs`：AR3 再编排 catalog 查询、包分析、plan 生成和 staging materialize。
+- `hmm-infra/src/staging.rs`：AR3 再在应用数据目录或临时目录中复制文件，不触碰游戏目录。
+- `src-tauri/src/replacement_commands.rs`：AR4 再添加 Tauri command 薄边界，只做 DTO 转换和调用应用层服务。
+- `src/features/replacements/*`：AR4 再添加前端 typed API 和类型，不拼接路径，不改写 slot 字符串。
 
 ## Task 0: Preflight
 
