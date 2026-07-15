@@ -41,6 +41,8 @@ export type StartRecoveryActionTaskInput = PreviewRecoveryActionInput;
 export type InstallManifestStatus =
   | "not_installed"
   | "installed"
+  | "committed_cleanup_pending"
+  | "cleanup_pending"
   | "rollback_required"
   | "repair_required"
   | "unknown";
@@ -56,6 +58,15 @@ export type InstallManifestStatusSummary = {
 export type InstallRecoveryStatus =
   | "not_installed"
   | "completed"
+  | "committed_cleanup_pending"
+  | "cleanup_pending"
+  | "rollback_required"
+  | "repair_required"
+  | "unknown";
+
+export type UnsafeInstallStatus =
+  | "committed_cleanup_pending"
+  | "cleanup_pending"
   | "rollback_required"
   | "repair_required"
   | "unknown";
@@ -83,7 +94,7 @@ export type InstallRecoverySummary = {
   issues: InstallRecoveryIssueSummary[];
 };
 
-export type InstallRecoveryActionKind = "rollback_install";
+export type InstallRecoveryActionKind = "rollback_install" | "reconcile_reinstall";
 
 export type InstallRecoveryActionAvailability = "available" | "blocked";
 

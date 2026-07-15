@@ -1,4 +1,9 @@
-import type { InstallRecoveryIssue, InstallRecoveryIssueSummary, InstallRecoverySummary } from "../mods/modInstallPlanTypes";
+import type {
+  InstallRecoveryIssue,
+  InstallRecoveryIssueSummary,
+  InstallRecoverySummary,
+  UnsafeInstallStatus,
+} from "../mods/modInstallPlanTypes";
 
 export type InstallRecoveryHealthStatus = "empty" | "healthy" | "attention";
 
@@ -23,6 +28,16 @@ const issueDisplayOrder: InstallRecoveryIssue[] = [
   "missing_installed_file_summary",
 ];
 
+function isUnsafeInstallStatus(status: string): status is UnsafeInstallStatus {
+  return (
+    status === "committed_cleanup_pending" ||
+    status === "cleanup_pending" ||
+    status === "rollback_required" ||
+    status === "repair_required" ||
+    status === "unknown"
+  );
+}
+
 export function deriveInstallRecoveryHealth(summaries: InstallRecoverySummary[]): InstallRecoveryHealth {
   const issueCounts = new Map<InstallRecoveryIssue, number>();
   let completedModCount = 0;
@@ -35,10 +50,10 @@ export function deriveInstallRecoveryHealth(summaries: InstallRecoverySummary[])
   for (const summary of summaries) {
     if (summary.status === "completed") {
       completedModCount += 1;
-    } else if (summary.status === "rollback_required" || summary.status === "repair_required") {
-      attentionModCount += 1;
     } else if (summary.status === "unknown") {
       unknownModCount += 1;
+    } else if (isUnsafeInstallStatus(summary.status)) {
+      attentionModCount += 1;
     }
 
     managedFileCount += summary.managedFileCount;

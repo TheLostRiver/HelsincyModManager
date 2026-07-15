@@ -3,6 +3,7 @@ import type {
   InstallRecoveryIssueSummary,
   InstallRecoveryStatus,
   InstallRecoverySummary,
+  UnsafeInstallStatus,
 } from "../mods/modInstallPlanTypes";
 
 export type RecoveryCenterStatus = "empty" | "healthy" | "attention";
@@ -125,6 +126,8 @@ const issueMetadata: Record<
 const statusLabels: Record<InstallRecoveryStatus, string> = {
   completed: "正常",
   not_installed: "未安装",
+  committed_cleanup_pending: "重装待收尾",
+  cleanup_pending: "恢复待清理",
   rollback_required: "需要回滚",
   repair_required: "需要修复",
   unknown: "状态未知",
@@ -134,9 +137,21 @@ const statusSortRank: Record<InstallRecoveryStatus, number> = {
   rollback_required: 0,
   repair_required: 1,
   unknown: 2,
-  completed: 3,
-  not_installed: 4,
+  committed_cleanup_pending: 3,
+  cleanup_pending: 4,
+  completed: 5,
+  not_installed: 6,
 };
+
+function isUnsafeInstallStatus(status: string): status is UnsafeInstallStatus {
+  return (
+    status === "committed_cleanup_pending" ||
+    status === "cleanup_pending" ||
+    status === "rollback_required" ||
+    status === "repair_required" ||
+    status === "unknown"
+  );
+}
 
 export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[]): RecoveryCenterViewModel {
   const issueCounts = new Map<InstallRecoveryIssue, number>();
@@ -152,13 +167,13 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
     .map((summary): RecoveryCenterModView => {
       if (summary.status === "completed") {
         completedModCount += 1;
-      } else if (summary.status === "rollback_required" || summary.status === "repair_required") {
+      } else if (summary.status === "unknown") {
+        unknownModCount += 1;
+      } else if (isUnsafeInstallStatus(summary.status)) {
         attentionModCount += 1;
         if (summary.status === "rollback_required") {
           rollbackRequiredModCount += 1;
         }
-      } else if (summary.status === "unknown") {
-        unknownModCount += 1;
       }
 
       managedFileCount += summary.managedFileCount;
@@ -290,6 +305,26 @@ function deriveModRepairSummary(summary: InstallRecoverySummary): RecoveryCenter
     };
   }
 
+  if (summary.status === "committed_cleanup_pending") {
+    return {
+      status: "manual_required",
+      title: "重装待收尾",
+      description: "新版本已提交，但完成记录尚未收敛。收尾完成前，新的安装、卸载和重装保持阻断。",
+      actionLabel: "保留现场，重新扫描或导出诊断",
+      blockingReason: "重装提交记录尚未完成收敛",
+    };
+  }
+
+  if (summary.status === "cleanup_pending") {
+    return {
+      status: "manual_required",
+      title: "恢复待清理",
+      description: "重装事务已完成，但恢复快照或事务记录尚未清理。清理完成前，新的安装、卸载和重装保持阻断。",
+      actionLabel: "保留现场，重新扫描或导出诊断",
+      blockingReason: "重装恢复数据尚待清理",
+    };
+  }
+
   if (summary.status === "unknown") {
     return {
       status: "unknown",
@@ -403,12 +438,12 @@ function statusTone(status: InstallRecoveryStatus): RecoveryCenterModView["statu
     return "healthy";
   }
 
-  if (status === "rollback_required" || status === "repair_required") {
-    return "attention";
-  }
-
   if (status === "unknown") {
     return "unknown";
+  }
+
+  if (isUnsafeInstallStatus(status)) {
+    return "attention";
   }
 
   return "empty";
