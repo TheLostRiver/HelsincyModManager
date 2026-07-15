@@ -63,6 +63,8 @@ test("install manifest status API invokes controlled summary command without pat
   assert.match(typesSource, /export type GetInstallManifestStatusInput = \{\s*gameId\?:\s*GameId;/);
   const manifestStatusType = typesSource.match(/export type InstallManifestStatus[\s\S]*?;/);
   assert.ok(manifestStatusType, "expected InstallManifestStatus union");
+  assert.match(manifestStatusType[0], /"committed_cleanup_pending"/);
+  assert.match(manifestStatusType[0], /"cleanup_pending"/);
   assert.match(manifestStatusType[0], /"rollback_required"/);
   assert.doesNotMatch(
     manifestStatusCall[0],
@@ -72,6 +74,7 @@ test("install manifest status API invokes controlled summary command without pat
 
 test("install recovery scan API invokes controlled summary command without paths", () => {
   const source = readSource("src/features/mods/modInstallPlanApi.ts");
+  const typesSource = readSource("src/features/mods/modInstallPlanTypes.ts");
 
   assert.match(source, /export function scanInstallRecovery/);
   const recoveryCall = source.match(/export function scanInstallRecovery[\s\S]*?\n}/);
@@ -81,6 +84,10 @@ test("install recovery scan API invokes controlled summary command without paths
   assert.match(recoveryCall[0], /gameId:\s*input\.gameId/);
   assert.match(recoveryCall[0], /profileId:\s*input\.profileId/);
   assert.match(recoveryCall[0], /modIds:\s*input\.modIds/);
+  const recoveryStatusType = typesSource.match(/export type InstallRecoveryStatus[\s\S]*?;/);
+  assert.ok(recoveryStatusType, "expected InstallRecoveryStatus union");
+  assert.match(recoveryStatusType[0], /"committed_cleanup_pending"/);
+  assert.match(recoveryStatusType[0], /"cleanup_pending"/);
   assert.doesNotMatch(
     recoveryCall[0],
     /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot|backupRef/i,
@@ -105,7 +112,10 @@ test("install recovery action preview API invokes controlled preview command wit
     /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|backupRoot|backupRef|hash/i,
   );
 
-  assert.match(typesSource, /export type InstallRecoveryActionKind\s*=\s*"rollback_install"/);
+  const recoveryActionKind = typesSource.match(/export type InstallRecoveryActionKind[\s\S]*?;/);
+  assert.ok(recoveryActionKind, "expected InstallRecoveryActionKind union");
+  assert.match(recoveryActionKind[0], /"rollback_install"/);
+  assert.match(recoveryActionKind[0], /"reconcile_reinstall"/);
   assert.match(typesSource, /export type InstallRecoveryActionAvailability\s*=\s*"available"\s*\|\s*"blocked"/);
   assert.match(typesSource, /export type PreviewRecoveryActionInput/);
   assert.match(typesSource, /export type InstallRecoveryActionPreview/);
@@ -235,14 +245,18 @@ test("mod library page refreshes install status from manifest summaries", () => 
 test("mod library page blocks install and uninstall actions during unsafe recovery states", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
   const actionPanelSource = readSource("src/features/mods/CompactActionPanel.tsx");
+  const previewPanelSource = readSource("src/features/mods/InstallPlanPreviewPanel.tsx");
 
   assert.match(source, /canInstallSelected/);
-  assert.match(source, /summary\?\.status\s*===\s*"rollback_required"/);
-  assert.match(source, /summary\?\.status\s*===\s*"repair_required"/);
-  assert.match(source, /summary\?\.status\s*===\s*"unknown"/);
+  assert.match(source, /isUnsafeInstallStatus\(summary\?\.status\s*\?\?\s*""\)/);
+  assert.match(source, /!isUnsafeRecoverySummary\(selectedItem\.installSummary\)/);
   assert.match(source, /recoveryPanelStateForItem/);
   assert.match(source, /canInstallSelection=\{canInstallSelected\}/);
   assert.match(actionPanelSource, /canInstallSelection/);
   assert.match(actionPanelSource, /action\.id\s*===\s*"reinstall"\s*&&\s*!canInstallSelection/);
+  assert.match(previewPanelSource, /"committed_cleanup_pending"/);
+  assert.match(previewPanelSource, /"cleanup_pending"/);
+  assert.match(previewPanelSource, /重装待收尾/);
+  assert.match(previewPanelSource, /恢复待清理/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });

@@ -109,6 +109,35 @@ test("install manifest summaries preserve non-manifest mod statuses", () => {
   });
 });
 
+test("install manifest summaries surface cleanup-pending states over display-only statuses", () => {
+  const statuses = ["committed_cleanup_pending", "cleanup_pending"];
+  const result = applyInstallManifestStatusSummaries(
+    statuses.map((status, index) => ({
+      id: `cleanup-mod-${index}`,
+      name: status,
+      status: index === 0 ? "disabled" : "conflict",
+      sizeLabel: "1 KB",
+      categoryLabels: [],
+    })),
+    statuses.map((status, index) => ({
+      profileId: "default",
+      modId: `cleanup-mod-${index}`,
+      status,
+      managedFileCount: 2,
+      backupCount: 1,
+    })),
+  );
+
+  assert.deepEqual(
+    result.map((item) => item.status),
+    statuses,
+  );
+  assert.deepEqual(
+    result.map((item) => item.installSummary?.status),
+    statuses,
+  );
+});
+
 test("install recovery summaries map completed status to installed without paths", () => {
   const result = applyInstallRecoverySummaries(fallbackItems, [
     {
@@ -185,6 +214,37 @@ test("install recovery summaries surface rollback-required state as unsafe witho
   assert.equal("targetPath" in result[0], false);
   assert.equal("backupRef" in result[0], false);
   assert.equal("manifestPath" in result[0], false);
+});
+
+test("install recovery summaries surface cleanup-pending states as unsafe", () => {
+  const statuses = ["committed_cleanup_pending", "cleanup_pending"];
+  const result = applyInstallRecoverySummaries(
+    statuses.map((status, index) => ({
+      id: `cleanup-mod-${index}`,
+      name: status,
+      status: index === 0 ? "disabled" : "conflict",
+      sizeLabel: "1 KB",
+      categoryLabels: [],
+    })),
+    statuses.map((status, index) => ({
+      profileId: "default",
+      modId: `cleanup-mod-${index}`,
+      status,
+      managedFileCount: 2,
+      backupCount: 1,
+      issueCount: 0,
+      issues: [],
+    })),
+  );
+
+  assert.deepEqual(
+    result.map((item) => item.status),
+    statuses,
+  );
+  assert.deepEqual(
+    result.map((item) => item.installSummary?.recoveryStatus),
+    statuses,
+  );
 });
 
 test("unavailable install recovery degrades managed states to unknown without paths", () => {

@@ -104,6 +104,33 @@ test("derives attention state from rollback-required records without issue noise
   assert.equal("backupRef" in summary, false);
 });
 
+test("derives attention state from cleanup-pending records", () => {
+  const summary = deriveInstallRecoveryHealth([
+    {
+      ...baseSummary,
+      modId: "committed-mod",
+      status: "committed_cleanup_pending",
+      managedFileCount: 2,
+      backupCount: 1,
+    },
+    {
+      ...baseSummary,
+      modId: "cleanup-mod",
+      status: "cleanup_pending",
+      managedFileCount: 1,
+    },
+  ]);
+
+  assert.equal(summary.status, "attention");
+  assert.equal(summary.scannedModCount, 2);
+  assert.equal(summary.completedModCount, 0);
+  assert.equal(summary.attentionModCount, 2);
+  assert.equal(summary.unknownModCount, 0);
+  assert.equal(summary.managedFileCount, 3);
+  assert.equal(summary.backupCount, 1);
+  assert.equal(summary.issueCount, 0);
+});
+
 test("derives empty state when profile scan has no managed mods", () => {
   const summary = deriveInstallRecoveryHealth([]);
 

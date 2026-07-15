@@ -48,11 +48,18 @@ test("mod poster card retries when thumbnail url changes", () => {
 
 test("mod poster card prefers unsafe recovery issue count over managed file count", () => {
   const source = readSource("src/features/mods/ModPosterCard.tsx");
+  const css = readSource("src/features/mods/ModPosterCard.css");
 
-  assert.match(source, /\(item\.status === "rollback_required" \|\| item\.status === "repair_required"\) && summary\)/);
+  assert.match(source, /isUnsafeInstallStatus\(item\.status\) && summary/);
+  assert.match(source, /committed_cleanup_pending:\s*"重装待收尾"/);
+  assert.match(source, /cleanup_pending:\s*"恢复待清理"/);
+  assert.match(source, /className="mod-card__status-label"/);
   assert.match(source, /summary\.issueCount && summary\.issueCount > 0/);
   assert.match(source, /summary\.managedFileCount > 0/);
-  assert.doesNotMatch(source, /item\.status === "repair_required" && summary && summary\.managedFileCount > 0/);
+  assert.match(css, /is-committed_cleanup_pending/);
+  assert.match(css, /is-cleanup_pending/);
+  assert.match(css, /\.mod-card__status-pill\s*{[\s\S]*?max-width:\s*calc\(100% - 24px\);/);
+  assert.match(css, /\.mod-card__status-label\s*{[\s\S]*?text-overflow:\s*ellipsis;/);
 });
 
 test("mod poster card renders compact category labels with overflow", () => {

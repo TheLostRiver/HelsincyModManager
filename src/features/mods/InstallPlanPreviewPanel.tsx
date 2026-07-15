@@ -1,5 +1,5 @@
 import { AlertTriangle, FileCheck2, Loader2, X } from "lucide-react";
-import type { InstallPlanPreview, InstallRecoveryIssueSummary } from "./modInstallPlanTypes";
+import type { InstallPlanPreview, InstallRecoveryIssueSummary, UnsafeInstallStatus } from "./modInstallPlanTypes";
 import "./InstallPlanPreviewPanel.css";
 
 export type InstallPlanPreviewPanelState =
@@ -10,7 +10,7 @@ export type InstallPlanPreviewPanelState =
   | {
       status: "recovery-required";
       modName: string;
-      recoveryStatus: "rollback_required" | "repair_required" | "unknown";
+      recoveryStatus: UnsafeInstallStatus;
       managedFileCount: number;
       backupCount: number;
       issueCount: number;
@@ -42,11 +42,7 @@ function panelTitle(state: InstallPlanPreviewPanelState) {
 
   switch (state.status) {
     case "recovery-required":
-      return state.recoveryStatus === "rollback_required"
-        ? "需要回滚"
-        : state.recoveryStatus === "unknown"
-          ? "安装状态未知"
-          : "需要人工处理";
+      return recoveryPanelTitle(state.recoveryStatus);
     case "uninstall-confirming":
       return "确认卸载";
     case "uninstall-completed":
@@ -67,6 +63,21 @@ function panelTitle(state: InstallPlanPreviewPanelState) {
         return "安装任务";
       }
       return "安装计划预览";
+  }
+}
+
+function recoveryPanelTitle(status: UnsafeInstallStatus) {
+  switch (status) {
+    case "rollback_required":
+      return "需要回滚";
+    case "committed_cleanup_pending":
+      return "重装待收尾";
+    case "cleanup_pending":
+      return "恢复待清理";
+    case "unknown":
+      return "安装状态未知";
+    case "repair_required":
+      return "需要人工处理";
   }
 }
 
@@ -207,6 +218,21 @@ const recoveryIssueLabels: Record<InstallRecoveryIssueSummary["issue"], string> 
   backup_read_failed: "备份读取失败",
 };
 
+function recoveryStatusMessage(status: UnsafeInstallStatus) {
+  switch (status) {
+    case "rollback_required":
+      return "恢复记录显示上次写入未确认完成。请保留现场，等待受控回滚流程。";
+    case "committed_cleanup_pending":
+      return "新版本已提交，但完成记录尚未收敛。请先在恢复中心复查；状态收敛前不要安装、卸载或重装。";
+    case "cleanup_pending":
+      return "重装事务已完成，但恢复数据尚待清理。请先在恢复中心复查；清理完成前不要安装、卸载或重装。";
+    case "unknown":
+      return "恢复扫描无法确认当前安装状态。请保留现场并重新扫描，不要继续安装、卸载或重装。";
+    case "repair_required":
+      return "恢复扫描发现当前安装状态不能安全自动处理。请先人工确认后再安装、卸载或重装。";
+  }
+}
+
 function RecoveryRequiredSummary({
   recoveryStatus,
   managedFileCount,
@@ -214,7 +240,7 @@ function RecoveryRequiredSummary({
   issueCount,
   issues,
 }: {
-  recoveryStatus: "rollback_required" | "repair_required" | "unknown";
+  recoveryStatus: UnsafeInstallStatus;
   managedFileCount: number;
   backupCount: number;
   issueCount: number;
@@ -222,11 +248,7 @@ function RecoveryRequiredSummary({
 }) {
   return (
     <div className="install-plan-preview__body">
-      <p className="install-plan-preview__status is-error">
-        {recoveryStatus === "rollback_required"
-          ? "恢复记录显示上次写入未确认完成。请保留现场，等待受控回滚流程。"
-          : "恢复扫描发现当前安装状态不能安全自动处理。请先人工确认后再安装或卸载。"}
-      </p>
+      <p className="install-plan-preview__status is-error">{recoveryStatusMessage(recoveryStatus)}</p>
       <div className="install-plan-preview__metrics" aria-label="恢复扫描摘要">
         <span>
           <strong>{managedFileCount}</strong>

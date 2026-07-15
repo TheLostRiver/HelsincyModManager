@@ -1,8 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Check } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
+import { isUnsafeInstallStatus } from "./modLibraryLoadState";
 import type { ModLibraryItem } from "./modLibraryTypes";
 import { visibleCategoryLabelsForCard } from "./modLibraryFilters";
+import "./ModPosterCard.css";
 
 type ModPosterCardProps = {
   item: ModLibraryItem;
@@ -19,6 +21,8 @@ const statusLabel: Record<ModLibraryItem["status"], string> = {
   installed: "已安装",
   disabled: "已禁用",
   conflict: "存在冲突",
+  committed_cleanup_pending: "重装待收尾",
+  cleanup_pending: "恢复待清理",
   rollback_required: "需要回滚",
   repair_required: "需要修复",
   unknown: "状态未知",
@@ -29,6 +33,8 @@ const techStatusLabel: Record<ModLibraryItem["status"], string> = {
   installed: "ACTIVE",
   disabled: "DISABLED",
   conflict: "CONFLICT",
+  committed_cleanup_pending: "COMMITTED",
+  cleanup_pending: "CLEANUP",
   rollback_required: "ROLLBACK",
   repair_required: "REPAIR",
   unknown: "UNKNOWN",
@@ -39,6 +45,8 @@ const techValidityLabel: Record<ModLibraryItem["status"], string> = {
   installed: "VALID",
   disabled: "STANDBY",
   conflict: "ERROR",
+  committed_cleanup_pending: "PENDING",
+  cleanup_pending: "PENDING",
   rollback_required: "RECOVER",
   repair_required: "CHECK",
   unknown: "UNKNOWN",
@@ -50,7 +58,7 @@ function statusLabelForItem(item: ModLibraryItem) {
     return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
   }
 
-  if ((item.status === "rollback_required" || item.status === "repair_required") && summary) {
+  if (isUnsafeInstallStatus(item.status) && summary) {
     if (summary.issueCount && summary.issueCount > 0) {
       return `${statusLabel[item.status]} · ${summary.issueCount} 项`;
     }
@@ -58,10 +66,6 @@ function statusLabelForItem(item: ModLibraryItem) {
     if (summary.managedFileCount > 0) {
       return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
     }
-  }
-
-  if (item.status === "unknown" && summary?.issueCount && summary.issueCount > 0) {
-    return `${statusLabel[item.status]} · ${summary.issueCount} 项`;
   }
 
   return statusLabel[item.status];
@@ -179,7 +183,7 @@ export function ModPosterCard({
           {/* 状态徽标：Classic, Grid, List 通用 */}
           <span className={`mod-card__status-pill is-${item.status}`}>
             <Check size={15} strokeWidth={2.6} aria-hidden="true" />
-            {statusLabelForItem(item)}
+            <span className="mod-card__status-label">{statusLabelForItem(item)}</span>
           </span>
 
           {/* 经典视图专属的选中边框 */}

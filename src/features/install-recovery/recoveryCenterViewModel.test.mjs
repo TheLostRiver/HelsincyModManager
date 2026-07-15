@@ -241,6 +241,52 @@ test("derives safe manual handling decisions for recovery attention states", () 
   assert.equal("manifestPath" in viewModel.overview.manualDecision.actions[2], false);
 });
 
+test("derives attention labels and safe guidance for cleanup-pending states", () => {
+  const viewModel = deriveRecoveryCenterViewModel([
+    {
+      ...baseSummary,
+      modId: "committed-mod",
+      status: "committed_cleanup_pending",
+      managedFileCount: 3,
+      backupCount: 1,
+    },
+    {
+      ...baseSummary,
+      modId: "cleanup-mod",
+      status: "cleanup_pending",
+      managedFileCount: 2,
+    },
+  ]);
+
+  assert.equal(viewModel.overview.status, "attention");
+  assert.equal(viewModel.overview.attentionModCount, 2);
+  assert.equal(viewModel.overview.unknownModCount, 0);
+  assert.deepEqual(
+    viewModel.mods.map((mod) => [mod.modId, mod.statusLabel, mod.statusTone]),
+    [
+      ["committed-mod", "重装待收尾", "attention"],
+      ["cleanup-mod", "恢复待清理", "attention"],
+    ],
+  );
+  assert.deepEqual(viewModel.mods[0].repairSummary, {
+    status: "manual_required",
+    title: "重装待收尾",
+    description: "新版本已提交，但完成记录尚未收敛。收尾完成前，新的安装、卸载和重装保持阻断。",
+    actionLabel: "保留现场，重新扫描或导出诊断",
+    blockingReason: "重装提交记录尚未完成收敛",
+  });
+  assert.deepEqual(viewModel.mods[1].repairSummary, {
+    status: "manual_required",
+    title: "恢复待清理",
+    description: "重装事务已完成，但恢复快照或事务记录尚未清理。清理完成前，新的安装、卸载和重装保持阻断。",
+    actionLabel: "保留现场，重新扫描或导出诊断",
+    blockingReason: "重装恢复数据尚待清理",
+  });
+  assert.equal(viewModel.overview.manualDecision.status, "blocked");
+  assert.equal("targetPath" in viewModel.mods[0].repairSummary, false);
+  assert.equal("snapshotRef" in viewModel.mods[1].repairSummary, false);
+});
+
 test("derives empty recovery center state for a profile without managed installs", () => {
   const viewModel = deriveRecoveryCenterViewModel([]);
 

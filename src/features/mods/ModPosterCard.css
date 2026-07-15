@@ -1,0 +1,30 @@
+.mod-grid.view-tech .mod-card__tech-status[data-status="committed_cleanup_pending"],
+.mod-grid.view-tech .mod-card__tech-status[data-status="cleanup_pending"] {
+  color: var(--color-warning-text);
+}
+
+.mod-card__status-pill {
+  max-width: calc(100% - 24px);
+}
+
+.mod-card__status-pill svg {
+  flex: 0 0 auto;
+}
+
+.mod-card__status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mod-card__status-pill.is-committed_cleanup_pending,
+.mod-card__status-pill.is-cleanup_pending {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.mod-card__status-pill.is-committed_cleanup_pending svg,
+.mod-card__status-pill.is-cleanup_pending svg {
+  color: var(--color-warning-dot);
+}
