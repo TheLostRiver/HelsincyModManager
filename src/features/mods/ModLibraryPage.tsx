@@ -21,6 +21,7 @@ import {
   startInstallTask,
   startUninstallTask,
 } from "./modInstallPlanApi";
+import type { UnsafeInstallStatus } from "./modInstallPlanTypes";
 import {
   getManagedInstallTaskPhaseLabel,
   getManagedInstallTaskStartingLabel,
@@ -45,6 +46,7 @@ import {
   applyInstallManifestStatusSummaries,
   applyInstallRecoveryUnavailable,
   applyInstallRecoverySummaries,
+  isUnsafeInstallStatus,
 } from "./modLibraryLoadState";
 import {
   createDetailDialogState,
@@ -244,13 +246,11 @@ function installTaskPanelState(
 }
 
 type UnsafeRecoverySummary = ModInstallSummary & {
-  status: "rollback_required" | "repair_required" | "unknown";
+  status: UnsafeInstallStatus;
 };
 
 function isUnsafeRecoverySummary(summary: ModInstallSummary | undefined): summary is UnsafeRecoverySummary {
-  return (
-    summary?.status === "rollback_required" || summary?.status === "repair_required" || summary?.status === "unknown"
-  );
+  return isUnsafeInstallStatus(summary?.status ?? "");
 }
 
 function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanPreviewPanelState | null {
@@ -326,9 +326,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const canInstallSelected =
     selectedItem !== null &&
     activeProfile.status === "ready" &&
-    selectedItem.installSummary?.status !== "rollback_required" &&
-    selectedItem.installSummary?.status !== "repair_required" &&
-    selectedItem.installSummary?.status !== "unknown";
+    !isUnsafeRecoverySummary(selectedItem.installSummary);
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
     setViewMode,

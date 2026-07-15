@@ -1,10 +1,27 @@
-import type { InstallManifestStatusSummary, InstallRecoverySummary } from "./modInstallPlanTypes";
+import type {
+  InstallManifestStatusSummary,
+  InstallRecoverySummary,
+  UnsafeInstallStatus,
+} from "./modInstallPlanTypes";
 import type { ModInstallSummaryStatus, ModLibraryItem } from "./modLibraryTypes";
 
 type ResolveLoadedModLibraryItemsInput = {
   backendItems: ModLibraryItem[] | null;
   fallbackItems: ModLibraryItem[];
 };
+
+export function isUnsafeInstallStatus(status: string): status is UnsafeInstallStatus {
+  switch (status) {
+    case "committed_cleanup_pending":
+    case "cleanup_pending":
+    case "rollback_required":
+    case "repair_required":
+    case "unknown":
+      return true;
+    default:
+      return false;
+  }
+}
 
 export function resolveLoadedModLibraryItems({
   backendItems,
@@ -29,7 +46,11 @@ export function applyInstallManifestStatusSummaries(
       return item;
     }
 
-    const status = item.status === "disabled" || item.status === "conflict" ? item.status : summary.status;
+    const status = isUnsafeInstallStatus(summary.status)
+      ? summary.status
+      : item.status === "disabled" || item.status === "conflict"
+        ? item.status
+        : summary.status;
 
     return {
       ...item,
@@ -64,12 +85,11 @@ export function applyInstallRecoverySummaries(
     }
 
     const installStatus = recoveryStatusToInstallStatus(summary.status);
-    const safetyStatus =
-      installStatus === "rollback_required" || installStatus === "repair_required" || installStatus === "unknown"
-        ? installStatus
-        : item.status === "disabled" || item.status === "conflict"
-          ? item.status
-          : installStatus;
+    const safetyStatus = isUnsafeInstallStatus(installStatus)
+      ? installStatus
+      : item.status === "disabled" || item.status === "conflict"
+        ? item.status
+        : installStatus;
 
     return {
       ...item,
