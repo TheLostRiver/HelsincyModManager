@@ -1,4 +1,15 @@
-import { Ban, BadgeCheck, CheckCheck, ClipboardList, Plus, RefreshCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
+import {
+  Ban,
+  BadgeCheck,
+  CheckCheck,
+  ClipboardList,
+  Download,
+  Plus,
+  RefreshCcw,
+  RotateCw,
+  Shuffle,
+  Trash2,
+} from "lucide-react";
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { ModImportAction } from "./ModImportAction";
@@ -7,8 +18,10 @@ import { compactActions } from "./modsLibraryData";
 type CompactActionPanelProps = {
   selectedCount: number;
   totalCount: number;
+  selectedModId?: string | null;
   installTaskActive?: boolean;
   canInstallSelection?: boolean;
+  canReinstallSelection?: boolean;
   canUninstallSelection?: boolean;
   onImportCompleted: () => Promise<void> | void;
   onAction: (actionId: string) => void;
@@ -22,6 +35,7 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
   "enable-all": BadgeCheck,
   "disable-all": Ban,
   "preview-plan": ClipboardList,
+  install: Download,
   reinstall: RefreshCcw,
   uninstall: Trash2,
 };
@@ -29,13 +43,22 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
 export function CompactActionPanel({
   selectedCount,
   totalCount,
+  selectedModId = null,
   installTaskActive = false,
   canInstallSelection = true,
+  canReinstallSelection = false,
   canUninstallSelection = false,
   onImportCompleted,
   onAction,
 }: CompactActionPanelProps) {
   const addAction = compactActions.find((a) => a.id === "add");
+  const addRevisionAction = compactActions.find((a) => a.id === "add-revision");
+  const revisionImportDisabledReason =
+    selectedCount !== 1 || !selectedModId
+      ? "请先选择一个 MOD"
+      : installTaskActive
+        ? "请等待当前安装任务完成"
+        : undefined;
 
   return (
     <aside className="compact-panel" aria-label="快捷操作">
@@ -46,6 +69,15 @@ export function CompactActionPanel({
 
       <div className="compact-panel__stack">
         {addAction ? <ModImportAction label={addAction.label} onImported={onImportCompleted} /> : null}
+        {addRevisionAction ? (
+          <ModImportAction
+            label={addRevisionAction.label}
+            mode="revision"
+            modId={selectedModId}
+            disabledReason={revisionImportDisabledReason}
+            onImported={onImportCompleted}
+          />
+        ) : null}
 
         <div className="compact-action-group">
           {compactActions
@@ -71,14 +103,16 @@ export function CompactActionPanel({
         </div>
 
         {compactActions
-          .filter((a) => !["select-all", "invert", "refresh", "add"].includes(a.id))
+          .filter((a) => !["select-all", "invert", "refresh", "add", "add-revision"].includes(a.id))
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
-            const needsSingleSelection = ["preview-plan", "reinstall", "uninstall"].includes(action.id);
+            const needsSingleSelection = ["preview-plan", "install", "reinstall", "uninstall"].includes(action.id);
             const isDisabled =
               (needsSingleSelection && selectedCount !== 1) ||
-              (["reinstall", "uninstall"].includes(action.id) && installTaskActive) ||
-              (action.id === "reinstall" && !canInstallSelection) ||
+              (needsSingleSelection && installTaskActive) ||
+              (action.id === "preview-plan" && !canInstallSelection) ||
+              (action.id === "install" && !canInstallSelection) ||
+              (action.id === "reinstall" && !canReinstallSelection) ||
               (action.id === "uninstall" && !canUninstallSelection);
             return (
               <button

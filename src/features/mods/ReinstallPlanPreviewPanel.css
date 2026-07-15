@@ -1,0 +1,352 @@
+.reinstall-dialog__backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 52%);
+  backdrop-filter: blur(5px);
+}
+
+.reinstall-dialog__panel {
+  display: flex;
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+  color: var(--color-text);
+}
+
+.reinstall-dialog__header,
+.reinstall-dialog__footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-color: var(--color-border-muted);
+}
+
+.reinstall-dialog__header {
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.reinstall-dialog__footer {
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.reinstall-dialog__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.reinstall-dialog__heading h2,
+.reinstall-dialog__heading p,
+.reinstall-dialog__candidate h3,
+.reinstall-dialog__candidate p {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.reinstall-dialog__heading h2 {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.reinstall-dialog__heading p,
+.reinstall-dialog__candidate p {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reinstall-dialog__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-accent-weak);
+  color: var(--color-accent);
+}
+
+.reinstall-dialog__close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.reinstall-dialog__close:hover:not(:disabled) {
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.reinstall-dialog__close:disabled,
+.reinstall-dialog__button:disabled,
+.reinstall-dialog__candidate select:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.reinstall-dialog__body {
+  display: flex;
+  min-height: 0;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.reinstall-dialog__candidate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, auto);
+  align-items: end;
+  gap: 16px;
+}
+
+.reinstall-dialog__candidate h3 {
+  font-size: 14px;
+}
+
+.reinstall-dialog__candidate-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reinstall-dialog__candidate select {
+  min-width: 0;
+  height: 36px;
+  flex: 1 1 190px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  padding-inline: 10px;
+}
+
+.reinstall-dialog__button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.reinstall-dialog__button.is-secondary {
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+}
+
+.reinstall-dialog__button.is-secondary:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+}
+
+.reinstall-dialog__button.is-primary {
+  border-color: var(--color-primary-action-border);
+  background: var(--color-primary-action-bg);
+  color: var(--color-primary-action-text);
+}
+
+.reinstall-dialog__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reinstall-dialog__revision-flow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-soft);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.reinstall-dialog__revision-flow span {
+  overflow-wrap: anywhere;
+}
+
+.reinstall-dialog__counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.reinstall-dialog__counts > div {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 6px;
+  background: var(--color-surface-muted);
+}
+
+.reinstall-dialog__counts dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.reinstall-dialog__counts dd {
+  margin: 2px 0 0;
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.reinstall-dialog__counts [data-kind="replaced"] dd,
+.reinstall-dialog__counts [data-kind="added"] dd {
+  color: var(--color-accent);
+}
+
+.reinstall-dialog__counts [data-kind="stale"] dd {
+  color: var(--color-warning-text);
+}
+
+.reinstall-dialog__notice,
+.reinstall-dialog__loading,
+.reinstall-dialog__task,
+.reinstall-dialog__listener-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reinstall-dialog__notice.is-success,
+.reinstall-dialog__task.is-success {
+  border-color: color-mix(in srgb, var(--color-success-dot) 36%, transparent);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.reinstall-dialog__notice.is-warning {
+  border-color: color-mix(in srgb, var(--color-warning-dot) 36%, transparent);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.reinstall-dialog__notice.is-danger,
+.reinstall-dialog__task.is-danger,
+.reinstall-dialog__listener-error {
+  border-color: color-mix(in srgb, var(--color-danger-dot) 36%, transparent);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.reinstall-dialog__loading,
+.reinstall-dialog__task.is-progress,
+.reinstall-dialog__task.is-neutral {
+  background: var(--color-surface-muted);
+  color: var(--color-text-soft);
+}
+
+.reinstall-dialog__loading svg,
+.reinstall-dialog__task.is-progress svg {
+  flex: 0 0 auto;
+  animation: reinstall-dialog-spin 0.9s linear infinite;
+}
+
+.reinstall-dialog__blocked ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reinstall-dialog__blocked li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-muted);
+  color: var(--color-text-soft);
+  font-size: 13px;
+}
+
+.reinstall-dialog__blocked li small {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.reinstall-dialog__listener-error {
+  justify-content: space-between;
+}
+
+.reinstall-dialog__listener-error button {
+  border: 0;
+  background: transparent;
+  color: currentcolor;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+@media (max-width: 680px) {
+  .reinstall-dialog__backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .reinstall-dialog__panel {
+    max-height: calc(100vh - 24px);
+  }
+
+  .reinstall-dialog__candidate {
+    grid-template-columns: 1fr;
+  }
+
+  .reinstall-dialog__candidate-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reinstall-dialog__counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@keyframes reinstall-dialog-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

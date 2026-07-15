@@ -2,6 +2,10 @@ export type StartImportModTaskInput = {
   archivePath: string;
 };
 
+export type StartImportModRevisionTaskInput = StartImportModTaskInput & {
+  modId: string;
+};
+
 export type CancelTaskInput = {
   taskId: string;
 };

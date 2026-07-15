@@ -53,3 +53,18 @@ export type ModDetail = {
 export type GetModDetailInput = {
   modId: string;
 };
+
+export type GetModRevisionsInput = {
+  modId: string;
+};
+
+export type ModRevisionSummary = {
+  revisionId: string;
+};
+
+export type ModRevisionList = {
+  modId: string;
+  originRevisionId: string;
+  displayRevisionId: string;
+  revisions: ModRevisionSummary[];
+};

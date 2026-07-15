@@ -673,13 +673,15 @@ export type CompactAction = {
 
 export const compactActions: CompactAction[] = [
   { id: "add", label: "添加 MOD", variant: "primary" },
+  { id: "add-revision", label: "导入新版本", variant: "info" },
   { id: "select-all", label: "全选", variant: "neutral" },
   { id: "invert", label: "反选", variant: "neutral" },
   { id: "refresh", label: "刷新", variant: "neutral" },
   { id: "enable-all", label: "启用全部 MOD", variant: "success" },
   { id: "disable-all", label: "禁用全部 MOD", variant: "warning" },
   { id: "preview-plan", label: "预览安装计划", variant: "info" },
-  { id: "reinstall", label: "安装 / 重装选中 MOD", variant: "info" },
+  { id: "install", label: "安装选中 MOD", variant: "success" },
+  { id: "reinstall", label: "重装选中 MOD", variant: "info" },
   { id: "uninstall", label: "卸载选中 MOD", variant: "danger" },
 ];
 

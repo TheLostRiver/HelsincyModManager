@@ -28,3 +28,16 @@ test("the existing add action owns import and refreshes the library on completio
   assert.match(panelSource, /<ModImportAction\s+label=\{addAction\.label\}\s+onImported=\{onImportCompleted\}/);
   assert.match(pageSource, /onImportCompleted=\{refreshModLibrary\}/);
 });
+
+test("candidate import reuses the picker task UI with an explicit selected mod owner", () => {
+  const actionSource = readSource("src/features/mods/ModImportAction.tsx");
+  const panelSource = readSource("src/features/mods/CompactActionPanel.tsx");
+
+  assert.match(actionSource, /mode\??:\s*"new"\s*\|\s*"revision"/);
+  assert.match(actionSource, /startImportModRevisionTask\(\{\s*archivePath:\s*selected,\s*modId/);
+  assert.match(actionSource, /useId\(\)/);
+  assert.doesNotMatch(actionSource, /displayName|author|versionLabel[\s\S]*startImportModRevisionTask/);
+  assert.match(panelSource, /mode="revision"/);
+  assert.match(panelSource, /modId=\{selectedModId\}/);
+  assert.match(panelSource, /disabledReason=/);
+});

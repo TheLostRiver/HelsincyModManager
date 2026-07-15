@@ -90,6 +90,15 @@ test("mock generator keeps ids unique", () => {
   assert.equal(new Set(ids).size, 72);
 });
 
+test("mock generator preserves separate import, install and true reinstall actions", () => {
+  const { content } = runGenerator(["--count", "1"]);
+
+  for (const actionId of ["add", "add-revision", "preview-plan", "install", "reinstall", "uninstall"]) {
+    assert.match(content, new RegExp(`id: "${actionId}"`));
+  }
+  assert.doesNotMatch(content, /安装 \/ 重装选中 MOD/);
+});
+
 test("committed modsLibraryData currently contains 72 generated mock items", () => {
   const sourceContent = readFileSync(sourceFilePath, "utf8");
 
