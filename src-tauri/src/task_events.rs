@@ -2,6 +2,7 @@ use crate::dto::{CommandErrorDto, TaskProgressEventDto};
 use tauri::{AppHandle, Emitter};
 
 pub const TASK_PROGRESS_EVENT_NAME: &str = "hmm://task-progress";
+pub const INSTALL_REINSTALL_QUEUED_PHASE: &str = "install.reinstall.queued";
 
 pub fn emit_task_progress(
     app_handle: &AppHandle,

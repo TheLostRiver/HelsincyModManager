@@ -11,27 +11,34 @@ use hmm_app::{
     InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
     ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
     ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
-    ModUninstaller, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
-    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    ModUninstaller, PreparedReinstall, PreviewImageCandidateListService,
+    PreviewImageCandidateSelectionService, PreviewImageDetailService,
+    PreviewImageDiagnosticsExportService, PreviewImageService,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
-    RecoveryActionTaskService, SaveBackupAutoSchedulerService, SaveBackupBackgroundService,
-    SaveBackupBackgroundWorker, SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService,
-    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
-    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
-    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    RecoveryActionTaskService, ReinstallCandidateSourceReader, ReinstallCommitError,
+    ReinstallCommitResult, ReinstallCommitService, ReinstallPlanPreview, ReinstallPreviewError,
+    ReinstallPreviewRequest, ReinstallPreviewService, ReinstallRecoveryWriteAdmission,
+    ReinstallTargetCounts, ReinstallTaskAuditContext, ReinstallTaskExecutor,
+    ReinstallTaskExecutorService, ReinstallTaskPrepareError, ReinstallTaskPrepared,
+    ReinstallTaskRunner, ReinstallTaskService, SaveBackupAutoSchedulerService,
+    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
+    SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
+    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
-use hmm_core::{GameId, PreviewImagePolicy};
+use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy};
 use hmm_games_mhw::{
     MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
-#[cfg(not(target_os = "windows"))]
-use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(target_os = "windows")]
 use hmm_infra::TasklistGameRunningDetector;
+#[cfg(not(target_os = "windows"))]
+use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(target_os = "windows")]
 use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
@@ -40,7 +47,8 @@ use hmm_infra::{
     FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
-    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository, PlatformSteamRootProvider,
+    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository,
+    JsonReinstallRecoveryTransactionRepository, PlatformSteamRootProvider,
     RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
     SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
@@ -53,11 +61,13 @@ use hmm_infra::{
 use hmm_ports::{
     AppClock, AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
-    GamePrerequisiteRuleRepository, GameRunningDetector, ModImportResultRepository,
+    GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
+    InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
     ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository, SaveBackupBackgroundRegistry,
-    SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository, SaveBackupWriter, TextLogReader, ThumbnailCacheMaintenance,
+    ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository,
+    SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TextLogReader,
+    ThumbnailCacheMaintenance,
 };
 #[cfg(test)]
 use std::cell::RefCell;
@@ -87,6 +97,14 @@ pub struct AppState {
     pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub(crate) install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     pub(crate) install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
+    pub(crate) reinstall_executor: Arc<ConfiguredReinstallExecutor>,
+    pub(crate) reinstall_task_runner: Arc<ReinstallTaskRunner<ConfiguredReinstallExecutor>>,
+    pub reinstall_tasks: Arc<ReinstallTaskService>,
+    #[allow(
+        dead_code,
+        reason = "retains the shared recovery repository for composition verification"
+    )]
+    pub(crate) reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
     pub recovery_action_task_runner: Arc<RecoveryActionTaskRunner>,
@@ -269,9 +287,13 @@ impl AppState {
         ));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
-        let install_manifest_repository = Arc::new(JsonInstallManifestRepository::new(
-            app_data_dir.join("install").join("manifests"),
-        ));
+        let install_manifest_repository: Arc<dyn InstallManifestRepository> = Arc::new(
+            JsonInstallManifestRepository::new(app_data_dir.join("install").join("manifests")),
+        );
+        let reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository> =
+            Arc::new(JsonReinstallRecoveryTransactionRepository::new(
+                app_data_dir.join("install").join("reinstall-recovery"),
+            ));
         let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
             &app_settings_repository,
         )));
@@ -423,14 +445,15 @@ impl AppState {
             Arc::new(SandboxModPackageInstallFileScanner),
             clone_game_adapters(&game_adapters),
         ));
-        let install_manifest_query = Arc::new(InstallManifestQueryService::new(
-            install_manifest_repository.clone(),
-        ));
+        let install_manifest_query = Arc::new(InstallManifestQueryService::new(Arc::clone(
+            &install_manifest_repository,
+        )));
         let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
         let install_recovery_scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
             Arc::clone(&install_write_locks),
+            Arc::clone(&reinstall_recovery_repository),
         ));
         let install_recovery_action_previewer =
             Arc::new(ConfiguredInstallRecoveryActionPreviewer::new(
@@ -453,14 +476,19 @@ impl AppState {
             Arc::new(ConfiguredInstallRecoveryActionExecutor::new(
                 Arc::clone(&game_config_repository),
                 app_data_dir.clone(),
+                Arc::clone(&reinstall_recovery_repository),
             ));
-        let install_task_runner = Arc::new(InstallTaskRunner::with_write_locks(
+        let reinstall_write_admission = Arc::new(ReinstallRecoveryWriteAdmission::new(Arc::clone(
+            &reinstall_recovery_repository,
+        )));
+        let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             install_planning.clone(),
             install_committer,
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
+            reinstall_write_admission.clone(),
         ));
         let recovery_action_task_runner = Arc::new(RecoveryActionTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
@@ -469,9 +497,26 @@ impl AppState {
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
         ));
-        let uninstall_task_runner = Arc::new(UninstallTaskRunner::with_write_locks(
+        let uninstall_task_runner = Arc::new(UninstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             mod_uninstaller,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+            Arc::clone(&install_write_locks),
+            reinstall_write_admission,
+        ));
+        let reinstall_executor = Arc::new(ConfiguredReinstallExecutor::new(
+            Arc::clone(&game_config_repository),
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_import_sandbox_locator),
+            install_planning.clone(),
+            Arc::clone(&install_manifest_repository),
+            Arc::clone(&reinstall_recovery_repository),
+            app_data_dir.clone(),
+        ));
+        let reinstall_task_runner = Arc::new(ReinstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::clone(&reinstall_executor),
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             install_write_locks,
@@ -511,6 +556,10 @@ impl AppState {
             install_manifest_query,
             install_recovery_scanner,
             install_recovery_action_previewer,
+            reinstall_executor,
+            reinstall_task_runner,
+            reinstall_tasks: Arc::new(ReinstallTaskService::new(Arc::clone(&task_manager))),
+            reinstall_recovery_repository,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             recovery_action_task_runner,
@@ -605,10 +654,196 @@ fn with_state_startup_observer<R>(
     })
 }
 
+struct ConfiguredReinstallCandidateSourceReader {
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+}
+
+impl ConfiguredReinstallCandidateSourceReader {
+    fn new(sandbox_locator: Arc<dyn ModImportSandboxLocator>) -> Self {
+        Self { sandbox_locator }
+    }
+}
+
+impl ReinstallCandidateSourceReader for ConfiguredReinstallCandidateSourceReader {
+    fn read_candidate_source_file(
+        &self,
+        candidate: &StoredModRevision,
+        package_file_id: &PackageFileId,
+    ) -> anyhow::Result<Vec<u8>> {
+        let source_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(&candidate.package_id)?;
+        FileSystemInstallSourceFileReader::new(source_root).read_source_file(package_file_id)
+    }
+}
+
+struct ConfiguredReinstallServices {
+    game_instance: GameInstance,
+    preview: Arc<ReinstallPreviewService>,
+    executor: ReinstallTaskExecutorService,
+}
+
+pub(crate) struct ConfiguredPreparedReinstall {
+    prepared: PreparedReinstall,
+    game_instance: GameInstance,
+}
+
+impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
+    fn audit_context(&self) -> ReinstallTaskAuditContext {
+        self.prepared.audit_context()
+    }
+}
+
+pub(crate) struct ConfiguredReinstallExecutor {
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    catalog: Arc<dyn ModImportResultRepository>,
+    planner: Arc<InstallPlanningService>,
+    source: Arc<dyn ReinstallCandidateSourceReader>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
+    recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+    app_data_dir: PathBuf,
+}
+
+impl ConfiguredReinstallExecutor {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        game_config_repository: Arc<dyn GameConfigRepository>,
+        catalog: Arc<dyn ModImportResultRepository>,
+        sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        planner: Arc<InstallPlanningService>,
+        manifest_repository: Arc<dyn InstallManifestRepository>,
+        recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+        app_data_dir: PathBuf,
+    ) -> Self {
+        Self {
+            game_config_repository,
+            catalog,
+            planner,
+            source: Arc::new(ConfiguredReinstallCandidateSourceReader::new(
+                sandbox_locator,
+            )),
+            manifest_repository,
+            recovery_repository,
+            app_data_dir,
+        }
+    }
+
+    pub(crate) fn preview(
+        &self,
+        request: ReinstallPreviewRequest,
+    ) -> Result<ReinstallPlanPreview, ReinstallPreviewError> {
+        let services = self.services_for(&request.game_id)?;
+        services.preview.preview(request)
+    }
+
+    fn services_for(
+        &self,
+        game_id: &GameId,
+    ) -> Result<ConfiguredReinstallServices, ReinstallPreviewError> {
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(game_id)
+            .map_err(|_| ReinstallPreviewError::CandidatePlanUnavailable)?
+            .ok_or(ReinstallPreviewError::CandidatePlanUnavailable)?;
+        Ok(self.services_for_game_instance(game_instance))
+    }
+
+    fn services_for_game_instance(
+        &self,
+        game_instance: GameInstance,
+    ) -> ConfiguredReinstallServices {
+        let game_files: Arc<dyn InstallGameFileSystem> = Arc::new(
+            FileSystemInstallGameFileSystem::new(game_instance.root_dir.clone()),
+        );
+        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
+            self.app_data_dir.join("install").join("backups"),
+        ));
+        let preview = Arc::new(ReinstallPreviewService::new(
+            Arc::clone(&self.catalog),
+            self.planner.clone(),
+            Arc::clone(&self.source),
+            Arc::clone(&game_files),
+            backup_store.clone(),
+            Arc::clone(&self.manifest_repository),
+            Arc::clone(&self.recovery_repository),
+        ));
+        let commit = Arc::new(ReinstallCommitService::new(
+            Arc::clone(&self.catalog),
+            Arc::clone(&self.source),
+            game_files,
+            backup_store.clone(),
+            Arc::clone(&self.manifest_repository),
+            Arc::clone(&self.recovery_repository),
+            backup_store,
+        ));
+        let executor = ReinstallTaskExecutorService::new(Arc::clone(&preview), commit);
+
+        ConfiguredReinstallServices {
+            game_instance,
+            preview,
+            executor,
+        }
+    }
+}
+
+fn load_reinstall_game_instance_for_commit(
+    repository: &dyn GameConfigRepository,
+    prepared_instance: &GameInstance,
+) -> Result<GameInstance, ReinstallCommitError> {
+    let current_instance = repository
+        .load_game_instance(&prepared_instance.game_id)
+        .map_err(|_| ReinstallCommitError::Failed {
+            phase: hmm_app::ReinstallCommitPhase::Revalidation,
+        })?
+        .ok_or(ReinstallCommitError::PreviewStale)?;
+    if current_instance != *prepared_instance {
+        return Err(ReinstallCommitError::PreviewStale);
+    }
+    Ok(current_instance)
+}
+
+impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
+    type Prepared = ConfiguredPreparedReinstall;
+
+    fn prepare(
+        &self,
+        request: ReinstallPreviewRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError> {
+        let fallback = ReinstallTaskAuditContext {
+            previous_revision_id: None,
+            candidate_revision_id: request.candidate_revision_id.clone(),
+            counts: ReinstallTargetCounts::default(),
+        };
+        let services = self
+            .services_for(&request.game_id)
+            .map_err(|_| ReinstallTaskPrepareError::Planning(fallback))?;
+        let prepared = services.executor.prepare(request)?;
+        Ok(ConfiguredPreparedReinstall {
+            prepared,
+            game_instance: services.game_instance,
+        })
+    }
+
+    fn commit(
+        &self,
+        prepared: Self::Prepared,
+        expected_plan_token: &str,
+    ) -> Result<ReinstallCommitResult, ReinstallCommitError> {
+        let current_instance = load_reinstall_game_instance_for_commit(
+            self.game_config_repository.as_ref(),
+            &prepared.game_instance,
+        )?;
+        self.services_for_game_instance(current_instance)
+            .executor
+            .commit(prepared.prepared, expected_plan_token)
+    }
+}
+
 pub(crate) struct ConfiguredInstallRecoveryScanner {
     game_config_repository: Arc<dyn GameConfigRepository>,
     app_data_dir: PathBuf,
     write_locks: Arc<GameProfileWriteLockRegistry>,
+    reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
 }
 
 impl ConfiguredInstallRecoveryScanner {
@@ -616,11 +851,13 @@ impl ConfiguredInstallRecoveryScanner {
         game_config_repository: Arc<dyn GameConfigRepository>,
         app_data_dir: PathBuf,
         write_locks: Arc<GameProfileWriteLockRegistry>,
+        reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
     ) -> Self {
         Self {
             game_config_repository,
             app_data_dir,
             write_locks,
+            reinstall_recovery_repository,
         }
     }
 
@@ -638,17 +875,22 @@ impl ConfiguredInstallRecoveryScanner {
             .load_game_instance(&game_id)
             .map_err(|_| InstallRecoveryScanError::GameInstanceUnavailable)?
             .ok_or(InstallRecoveryScanError::GameInstanceUnavailable)?;
+        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
+            self.app_data_dir.join("install").join("backups"),
+        ));
         let service = InstallRecoveryScanService::new_with_recovery_records(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
-            Arc::new(FileSystemInstallBackupStore::new(
-                self.app_data_dir.join("install").join("backups"),
-            )),
+            backup_store.clone(),
             Arc::new(JsonInstallManifestRepository::new(
                 self.app_data_dir.join("install").join("manifests"),
             )),
             Arc::new(JsonInstallRecoveryRecordRepository::new(
                 self.app_data_dir.join("install").join("recovery"),
             )),
+        )
+        .with_reinstall_recovery_transactions(
+            Arc::clone(&self.reinstall_recovery_repository),
+            backup_store,
         );
 
         service.scan(request)
@@ -705,13 +947,19 @@ impl ConfiguredInstallRecoveryActionPreviewer {
 struct ConfiguredInstallRecoveryActionExecutor {
     game_config_repository: Arc<dyn GameConfigRepository>,
     app_data_dir: PathBuf,
+    reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
 }
 
 impl ConfiguredInstallRecoveryActionExecutor {
-    fn new(game_config_repository: Arc<dyn GameConfigRepository>, app_data_dir: PathBuf) -> Self {
+    fn new(
+        game_config_repository: Arc<dyn GameConfigRepository>,
+        app_data_dir: PathBuf,
+        reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+    ) -> Self {
         Self {
             game_config_repository,
             app_data_dir,
+            reinstall_recovery_repository,
         }
     }
 }
@@ -726,17 +974,22 @@ impl InstallRecoveryActionExecutor for ConfiguredInstallRecoveryActionExecutor {
             .load_game_instance(&request.game_id)
             .map_err(|_| InstallRecoveryActionError::ActionUnavailable)?
             .ok_or(InstallRecoveryActionError::ActionUnavailable)?;
+        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
+            self.app_data_dir.join("install").join("backups"),
+        ));
         let service = InstallRecoveryActionService::new_with_manifest(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
-            Arc::new(FileSystemInstallBackupStore::new(
-                self.app_data_dir.join("install").join("backups"),
-            )),
+            backup_store.clone(),
             Arc::new(JsonInstallRecoveryRecordRepository::new(
                 self.app_data_dir.join("install").join("recovery"),
             )),
             Arc::new(JsonInstallManifestRepository::new(
                 self.app_data_dir.join("install").join("manifests"),
             )),
+        )
+        .with_reinstall_reconciliation(
+            Arc::clone(&self.reinstall_recovery_repository),
+            backup_store,
         );
 
         service.run(InstallRecoveryActionRequest {
@@ -910,7 +1163,7 @@ mod core_mod_lifecycle_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hmm_core::{GameId, GameInstance, ModId, ProfileId};
+    use hmm_core::{GameDirectoryStatus, GameId, GameInstance, ModId, ProfileId};
     use hmm_ports::{
         GameConfigRepositoryError, GameConfigRepositoryResult,
         SaveBackupBackgroundSettingsRepository,
@@ -936,6 +1189,34 @@ mod tests {
 
         fn save_game_instance(&self, _instance: &GameInstance) -> GameConfigRepositoryResult<()> {
             panic!("recovery scanner lock test must not save game config")
+        }
+    }
+
+    struct StaticGameConfigRepository {
+        instance: Option<GameInstance>,
+    }
+
+    impl GameConfigRepository for StaticGameConfigRepository {
+        fn load_game_instance(
+            &self,
+            _game_id: &GameId,
+        ) -> GameConfigRepositoryResult<Option<GameInstance>> {
+            Ok(self.instance.clone())
+        }
+
+        fn save_game_instance(&self, _instance: &GameInstance) -> GameConfigRepositoryResult<()> {
+            panic!("reinstall game-instance revalidation test must not save game config")
+        }
+    }
+
+    fn configured_game_instance(root_dir: &str, configured_at_unix_millis: u128) -> GameInstance {
+        GameInstance {
+            id: "mhw-default".to_owned(),
+            game_id: GameId::mhw(),
+            display_name: "Monster Hunter: World - Iceborne".to_owned(),
+            root_dir: PathBuf::from(root_dir),
+            status: GameDirectoryStatus::Configured,
+            configured_at_unix_millis,
         }
     }
 
@@ -1098,6 +1379,56 @@ mod tests {
     }
 
     #[test]
+    fn headless_state_composes_reinstall_tasks_with_shared_task_manager() {
+        let app_data_dir = std::env::temp_dir().join(format!(
+            "hmm-reinstall-state-composition-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let state = AppState::from_app_data_dir(app_data_dir.clone())
+            .expect("headless state composition succeeds");
+        let request = hmm_app::StartReinstallTaskRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            candidate_revision_id: hmm_core::ModRevisionId::new("revision-v2"),
+            layer: hmm_core::FileLayer::new("base", 0),
+            plan_token: "reinstall-preview-v1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned(),
+        };
+
+        let task = state
+            .reinstall_tasks
+            .start_reinstall_task(request)
+            .expect("reinstall task starts");
+
+        assert_eq!(task.kind, hmm_app::TaskKind::Install);
+        assert_eq!(task.status, hmm_app::TaskStatus::Queued);
+        assert_eq!(
+            state.task_manager.task_status(&task.task_id),
+            Some(hmm_app::TaskStatus::Queued)
+        );
+        assert!(Arc::ptr_eq(
+            &state.reinstall_recovery_repository,
+            &state.reinstall_executor.recovery_repository
+        ));
+
+        drop(state);
+        std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
+    }
+
+    #[test]
+    fn reinstall_commit_rejects_game_instance_changed_after_prepare() {
+        let prepared_instance = configured_game_instance("C:/fixture/mhw-v1", 1);
+        let repository = StaticGameConfigRepository {
+            instance: Some(configured_game_instance("C:/fixture/mhw-v2", 2)),
+        };
+
+        let error = load_reinstall_game_instance_for_commit(&repository, &prepared_instance)
+            .expect_err("changed game instance must invalidate prepared reinstall");
+
+        assert_eq!(error, ReinstallCommitError::PreviewStale);
+    }
+
+    #[test]
     fn recovery_scan_waits_for_shared_game_profile_write_lock() {
         let game_id = GameId::mhw();
         let profile_id = ProfileId::new("default");
@@ -1111,6 +1442,12 @@ mod tests {
             }),
             std::env::temp_dir().join("hmm-recovery-lock-test"),
             Arc::clone(&write_locks),
+            Arc::new(JsonReinstallRecoveryTransactionRepository::new(
+                std::env::temp_dir()
+                    .join("hmm-recovery-lock-test")
+                    .join("install")
+                    .join("reinstall-recovery"),
+            )),
         ));
         let barrier = Arc::new(Barrier::new(2));
         let scan_barrier = Arc::clone(&barrier);
@@ -1231,6 +1568,12 @@ mod tests {
                     load_called: Arc::clone(&load_called),
                 }),
                 std::env::temp_dir().join("hmm-recovery-action-task-lock-test"),
+                Arc::new(JsonReinstallRecoveryTransactionRepository::new(
+                    std::env::temp_dir()
+                        .join("hmm-recovery-action-task-lock-test")
+                        .join("install")
+                        .join("reinstall-recovery"),
+                )),
             )),
             Arc::new(FileSystemAuditLogWriter::new(
                 std::env::temp_dir().join("hmm-recovery-action-task-lock-test"),

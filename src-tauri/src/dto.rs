@@ -1,12 +1,13 @@
+#[cfg(test)]
+use hmm_app::InstallManifestStatus;
 use hmm_app::{
     AppSettingsServiceError, CategoryWithCount, GameAutoDetection, GameAutoDetectionOutcome,
     GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
-    InstallManifestStatus, InstallManifestStatusSummary, InstallRecoveryActionAvailability,
+    InstallManifestStatusSummary, InstallRecoveryActionAvailability,
     InstallRecoveryActionBlockReason, InstallRecoveryActionBlockReasonSummary,
-    InstallRecoveryActionKind, InstallRecoveryActionPreview, InstallRecoveryIssue,
-    InstallRecoveryIssueSummary, InstallRecoveryStatus, InstallRecoverySummary, ModDetail,
-    ModImportTaskError, ModLibraryItem, ModLibraryStatus, TaskKind, TaskManagerError,
-    TaskProgressEvent, TaskStarted, TaskStatus,
+    InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
+    InstallRecoverySummary, ModDetail, ModImportTaskError, ModLibraryItem, ModLibraryStatus,
+    TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     BackupCadence, GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
@@ -17,6 +18,10 @@ use hmm_core::{
 };
 use hmm_ports::{AppSettings, GameCandidateSource};
 use serde::{Deserialize, Serialize};
+
+pub use crate::reinstall_dto::{
+    InstallManifestStatusDto, InstallRecoveryActionKindDto, InstallRecoveryStatusDto,
+};
 
 mod game_prerequisites;
 
@@ -252,26 +257,6 @@ pub struct InstallRecoveryActionBlockReasonSummaryDto {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum InstallManifestStatusDto {
-    NotInstalled,
-    Installed,
-    RollbackRequired,
-    RepairRequired,
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InstallRecoveryStatusDto {
-    NotInstalled,
-    Completed,
-    RollbackRequired,
-    RepairRequired,
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub enum InstallRecoveryIssueDto {
     MissingInstalledFileSummary,
     TargetMissing,
@@ -279,12 +264,6 @@ pub enum InstallRecoveryIssueDto {
     TargetReadFailed,
     BackupMissing,
     BackupReadFailed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InstallRecoveryActionKindDto {
-    RollbackInstall,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -425,34 +404,6 @@ impl From<InstallRecoveryActionBlockReasonSummary> for InstallRecoveryActionBloc
     }
 }
 
-impl From<InstallManifestStatus> for InstallManifestStatusDto {
-    fn from(status: InstallManifestStatus) -> Self {
-        match status {
-            InstallManifestStatus::NotInstalled => Self::NotInstalled,
-            InstallManifestStatus::Installed => Self::Installed,
-            InstallManifestStatus::CommittedCleanupPending
-            | InstallManifestStatus::CleanupPending => Self::RepairRequired,
-            InstallManifestStatus::RollbackRequired => Self::RollbackRequired,
-            InstallManifestStatus::RepairRequired => Self::RepairRequired,
-            InstallManifestStatus::Unknown => Self::Unknown,
-        }
-    }
-}
-
-impl From<InstallRecoveryStatus> for InstallRecoveryStatusDto {
-    fn from(status: InstallRecoveryStatus) -> Self {
-        match status {
-            InstallRecoveryStatus::NotInstalled => Self::NotInstalled,
-            InstallRecoveryStatus::Completed => Self::Completed,
-            InstallRecoveryStatus::CommittedCleanupPending
-            | InstallRecoveryStatus::CleanupPending => Self::RepairRequired,
-            InstallRecoveryStatus::RollbackRequired => Self::RollbackRequired,
-            InstallRecoveryStatus::RepairRequired => Self::RepairRequired,
-            InstallRecoveryStatus::Unknown => Self::Unknown,
-        }
-    }
-}
-
 impl From<InstallRecoveryIssue> for InstallRecoveryIssueDto {
     fn from(issue: InstallRecoveryIssue) -> Self {
         match issue {
@@ -462,17 +413,6 @@ impl From<InstallRecoveryIssue> for InstallRecoveryIssueDto {
             InstallRecoveryIssue::TargetReadFailed => Self::TargetReadFailed,
             InstallRecoveryIssue::BackupMissing => Self::BackupMissing,
             InstallRecoveryIssue::BackupReadFailed => Self::BackupReadFailed,
-        }
-    }
-}
-
-impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
-    fn from(action_kind: InstallRecoveryActionKind) -> Self {
-        match action_kind {
-            InstallRecoveryActionKind::RollbackInstall => Self::RollbackInstall,
-            InstallRecoveryActionKind::ReconcileReinstall => {
-                unreachable!("reinstall reconciliation is not exposed before CL3 Task 7")
-            }
         }
     }
 }
@@ -2133,24 +2073,35 @@ mod install_recovery_dto_tests {
     }
 
     #[test]
-    fn pending_reinstall_states_fail_closed_in_legacy_dtos() {
-        for status in [
-            hmm_app::InstallRecoveryStatus::CommittedCleanupPending,
-            hmm_app::InstallRecoveryStatus::CleanupPending,
-        ] {
-            let value = serde_json::to_value(InstallRecoveryStatusDto::from(status))
-                .expect("serialize legacy recovery status");
-            assert_eq!(value, "repair_required");
-        }
-
-        for status in [
-            InstallManifestStatus::CommittedCleanupPending,
-            InstallManifestStatus::CleanupPending,
-        ] {
-            let value = serde_json::to_value(InstallManifestStatusDto::from(status))
-                .expect("serialize legacy manifest status");
-            assert_eq!(value, "repair_required");
-        }
+    fn pending_reinstall_states_keep_distinct_public_codes() {
+        assert_eq!(
+            serde_json::to_value(InstallRecoveryStatusDto::from(
+                hmm_app::InstallRecoveryStatus::CommittedCleanupPending
+            ))
+            .expect("serialize committed cleanup recovery status"),
+            "committed_cleanup_pending"
+        );
+        assert_eq!(
+            serde_json::to_value(InstallRecoveryStatusDto::from(
+                hmm_app::InstallRecoveryStatus::CleanupPending
+            ))
+            .expect("serialize cleanup recovery status"),
+            "cleanup_pending"
+        );
+        assert_eq!(
+            serde_json::to_value(InstallManifestStatusDto::from(
+                InstallManifestStatus::CommittedCleanupPending
+            ))
+            .expect("serialize committed cleanup manifest status"),
+            "committed_cleanup_pending"
+        );
+        assert_eq!(
+            serde_json::to_value(InstallManifestStatusDto::from(
+                InstallManifestStatus::CleanupPending
+            ))
+            .expect("serialize cleanup manifest status"),
+            "cleanup_pending"
+        );
     }
 
     #[test]

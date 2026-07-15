@@ -1028,13 +1028,6 @@ impl InstallPlanningService {
             .imported_mod_sources
             .as_ref()
             .ok_or(InstallPlanningError::ImportedModSourcesUnavailable)?;
-        let adapter = sources
-            .game_adapters
-            .iter()
-            .find(|adapter| adapter.game_id() == request.game_id)
-            .ok_or_else(|| InstallPlanningError::GameAdapterNotFound {
-                game_id: request.game_id.clone(),
-            })?;
         let analysis = sources
             .result_repository
             .get_analysis(request.mod_id.as_str())
@@ -1046,10 +1039,61 @@ impl InstallPlanningService {
             .sandbox_locator
             .sandbox_root_for_package(&analysis.package_id)
             .map_err(|_| InstallPlanningError::ImportedModSandboxUnavailable)?;
+        self.build_plan_from_imported_package(
+            sources,
+            &request.game_id,
+            &request.mod_id,
+            &analysis.package_id,
+            &request.layer,
+            sandbox_root,
+        )
+    }
+
+    pub(crate) fn build_plan_from_imported_revision(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        package_id: &str,
+        layer: &FileLayer,
+    ) -> Result<InstallPlan, InstallPlanningError> {
+        let sources = self
+            .imported_mod_sources
+            .as_ref()
+            .ok_or(InstallPlanningError::ImportedModSourcesUnavailable)?;
+        let sandbox_root = sources
+            .sandbox_locator
+            .sandbox_root_for_package(package_id)
+            .map_err(|_| InstallPlanningError::ImportedModSandboxUnavailable)?;
+        self.build_plan_from_imported_package(
+            sources,
+            game_id,
+            mod_id,
+            package_id,
+            layer,
+            sandbox_root,
+        )
+    }
+
+    fn build_plan_from_imported_package(
+        &self,
+        sources: &ImportedModInstallPlanSources,
+        game_id: &GameId,
+        mod_id: &ModId,
+        package_id: &str,
+        layer: &FileLayer,
+        sandbox_root: std::path::PathBuf,
+    ) -> Result<InstallPlan, InstallPlanningError> {
+        let adapter = sources
+            .game_adapters
+            .iter()
+            .find(|adapter| adapter.game_id() == *game_id)
+            .ok_or_else(|| InstallPlanningError::GameAdapterNotFound {
+                game_id: game_id.clone(),
+            })?;
         let files = sources
             .file_scanner
             .scan_install_files(ModPackageInstallFileScanRequest {
-                package_id: &analysis.package_id,
+                package_id,
                 sandbox_root: &sandbox_root,
             })
             .map_err(|_| InstallPlanningError::ImportedModFileScanUnavailable)?;
@@ -1061,10 +1105,10 @@ impl InstallPlanningService {
                 .into_iter()
                 .filter(|file| is_installable_target_path(&file.target_path, &allowed_target_roots))
                 .map(|file| InstallPlanFile {
-                    mod_id: request.mod_id.clone(),
+                    mod_id: mod_id.clone(),
                     package_file_id: PackageFileId::new(file.package_file_id),
                     target_path: file.target_path,
-                    layer: request.layer.clone(),
+                    layer: layer.clone(),
                 })
                 .collect(),
         })
