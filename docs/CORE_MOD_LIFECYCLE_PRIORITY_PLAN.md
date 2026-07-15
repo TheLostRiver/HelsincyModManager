@@ -57,8 +57,8 @@ CL0 事实基线与可重复验收入口
   -> CL2 桌面应用手动 smoke 与缺口修复
   -> CL3 真正重装 contract 与实现
   -> CL4 Gate A 复审和认证
-  -> AR1 ARMOR 领域模型 / binding / 最小 catalog
-  -> AR2 MHW:I 单源 f_equip 分析与 RetargetPlan
+  -> AR1 ARMOR 领域模型 / binding / 最小 catalog [implemented]
+  -> AR2 MHW:I 单源 f_equip 分析与 RetargetPlan [current]
   -> AR3 staging materialize + InstallPlan + manifest snapshot
   -> AR4 选择目标 / 安装 / 切换目标 / 卸载 UI
   -> AR5 Gate B 复审和认证
