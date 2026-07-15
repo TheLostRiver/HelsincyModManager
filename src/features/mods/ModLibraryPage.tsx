@@ -14,6 +14,7 @@ import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./In
 import { LibraryToolbar } from "./LibraryToolbar";
 import { ModDetailDialog } from "./ModDetailDialog";
 import { ModPosterCard } from "./ModPosterCard";
+import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
 import {
   getInstallManifestStatus,
   previewInstallPlanForImportedMod,
@@ -60,6 +61,7 @@ import { applyModSelection } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -322,11 +324,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const [selectedId] = Array.from(selectedIds);
     return libraryItems.find((item) => item.id === selectedId) ?? null;
   }, [libraryItems, selectedIds]);
-  const canUninstallSelected = selectedItem?.installSummary?.status === "installed";
+  const managedInstallTaskActive = installTaskState.status === "starting" || installTaskState.status === "running";
+  const canUninstallSelected =
+    activeProfile.status === "ready" && selectedItem?.installSummary?.status === "installed";
+  const canReinstallSelected =
+    activeProfile.status === "ready" && selectedItem?.installSummary?.status === "installed";
   const canInstallSelected =
     selectedItem !== null &&
     activeProfile.status === "ready" &&
-    !isUnsafeRecoverySummary(selectedItem.installSummary);
+    selectedItem.installSummary?.status === "not_installed";
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
     setViewMode,
@@ -393,6 +399,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         .catch(() => undefined),
     ]).then(() => undefined);
   }, [loadModLibraryItems]);
+
+  const reinstallWorkflow = useModReinstallWorkflow({
+    gameId: DEFAULT_INSTALL_GAME_ID,
+    profileId: activeProfile.status === "ready" ? activeProfileId : null,
+    selectedItem,
+    writeTaskActive: managedInstallTaskActive,
+    refreshLibrary: refreshModLibrary,
+  });
+  const { openReinstall } = reinstallWorkflow;
 
   useEffect(() => {
     libraryItemsRef.current = libraryItems;
@@ -589,7 +604,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const previewSelectedInstallPlan = () => {
-    if (selectedIds.size !== 1) {
+    if (selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
       return;
     }
 
@@ -599,6 +614,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
     if (recoveryPanelState) {
       setInstallPlanPreviewState(recoveryPanelState);
+      return;
+    }
+    if (!canInstallSelected) {
       return;
     }
 
@@ -622,7 +640,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const startSelectedInstallTask = () => {
-    if (selectedIds.size !== 1) {
+    if (selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
       return;
     }
 
@@ -703,7 +721,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const promptSelectedUninstallTask = () => {
-    if (!selectedItem || selectedItem.installSummary?.status !== "installed") {
+    if (
+      reinstallWorkflow.workflowActive ||
+      !selectedItem ||
+      selectedItem.installSummary?.status !== "installed"
+    ) {
       return;
     }
 
@@ -805,8 +827,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       case "preview-plan":
         previewSelectedInstallPlan();
         break;
-      case "reinstall":
+      case "install":
         startSelectedInstallTask();
+        break;
+      case "reinstall":
+        pendingUninstallRef.current = null;
+        setInstallPlanPreviewState({ status: "idle" });
+        openReinstall();
         break;
       case "uninstall":
         promptSelectedUninstallTask();
@@ -871,7 +898,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     window.addEventListener("pointercancel", stopDragging);
   };
 
-  const installTaskActive = installTaskState.status === "starting" || installTaskState.status === "running";
+  const installTaskActive = managedInstallTaskActive || reinstallWorkflow.workflowActive;
   const activeInstallPanelState = installTaskPanelState(installPlanPreviewState, installTaskState);
   const closeInstallPlanPanel = () => {
     pendingUninstallRef.current = null;
@@ -903,8 +930,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           <CompactActionPanel
             selectedCount={selectedCount}
             totalCount={visibleItems.length}
+            selectedModId={selectedItem?.id ?? null}
             installTaskActive={installTaskActive}
             canInstallSelection={canInstallSelected}
+            canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
             onImportCompleted={refreshModLibrary}
             onAction={handleAction}
@@ -918,6 +947,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         onConfirmUninstall={startSelectedUninstallTask}
         onCancelUninstall={cancelUninstallConfirmation}
         closeDisabled={installTaskActive}
+      />
+
+      <ReinstallPlanPreviewPanel
+        state={reinstallWorkflow.dialogState}
+        taskState={reinstallWorkflow.taskState}
+        listenerStatus={reinstallWorkflow.listenerStatus}
+        canConfirm={reinstallWorkflow.canConfirm}
+        onClose={reinstallWorkflow.closeReinstall}
+        onCandidateChange={reinstallWorkflow.selectCandidateRevision}
+        onPreview={reinstallWorkflow.generatePreview}
+        onConfirm={reinstallWorkflow.confirmReinstall}
+        onRetryListener={reinstallWorkflow.retryTaskProgressListener}
       />
 
       {detailDialogState ? (

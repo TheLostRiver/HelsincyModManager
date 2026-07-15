@@ -14,6 +14,17 @@ test("mod import API invokes the controlled task entry command", () => {
   assert.doesNotMatch(source, /convertFileSrc|asset:|thumbnail:|read_image_path/);
 });
 
+test("mod revision import API attaches a picker archive to an explicit logical mod", () => {
+  const source = readSource("src/features/mods/modImportApi.ts");
+
+  assert.match(source, /invoke<TaskStartedDto>\("start_import_mod_revision_task"/);
+  const call = source.match(/start_import_mod_revision_task[\s\S]*?request:\s*\{([\s\S]*?)\}\s*,?\s*\}\s*\)/);
+  assert.ok(call, "expected revision import to use the request DTO boundary");
+  assert.match(call[1], /archivePath:\s*input\.archivePath/);
+  assert.match(call[1], /modId:\s*input\.modId/);
+  assert.doesNotMatch(call[1], /displayName|author|version|targetPath|sandbox|cache/i);
+});
+
 test("mod import API invokes the controlled cancel task command", () => {
   const source = readSource("src/features/mods/modImportApi.ts");
 
@@ -26,6 +37,8 @@ test("mod import task types expose controlled task identity and archive path", (
   const source = readSource("src/features/mods/modImportTypes.ts");
 
   assert.match(source, /archivePath:\s*string/);
+  assert.match(source, /export type StartImportModRevisionTaskInput/);
+  assert.match(source, /modId:\s*string/);
   assert.match(source, /export type CancelTaskInput/);
   assert.match(source, /taskId:\s*string/);
   assert.match(source, /export type TaskKind\s*=\s*"mod_import"\s*\|\s*"install"/);

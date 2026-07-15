@@ -249,11 +249,13 @@ test("mod library page blocks install and uninstall actions during unsafe recove
 
   assert.match(source, /canInstallSelected/);
   assert.match(source, /isUnsafeInstallStatus\(summary\?\.status\s*\?\?\s*""\)/);
-  assert.match(source, /!isUnsafeRecoverySummary\(selectedItem\.installSummary\)/);
+  assert.match(source, /selectedItem\.installSummary\?\.status\s*===\s*"not_installed"/);
   assert.match(source, /recoveryPanelStateForItem/);
   assert.match(source, /canInstallSelection=\{canInstallSelected\}/);
+  assert.match(source, /canReinstallSelection=\{canReinstallSelected\}/);
   assert.match(actionPanelSource, /canInstallSelection/);
-  assert.match(actionPanelSource, /action\.id\s*===\s*"reinstall"\s*&&\s*!canInstallSelection/);
+  assert.match(actionPanelSource, /action\.id\s*===\s*"install"\s*&&\s*!canInstallSelection/);
+  assert.match(actionPanelSource, /action\.id\s*===\s*"reinstall"\s*&&\s*!canReinstallSelection/);
   assert.match(previewPanelSource, /"committed_cleanup_pending"/);
   assert.match(previewPanelSource, /"cleanup_pending"/);
   assert.match(previewPanelSource, /重装待收尾/);
