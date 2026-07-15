@@ -1,12 +1,12 @@
 # Core Mod Lifecycle CL0 验收基线
 
-- 日期：2026-07-12
-- 状态：CL0、CL1、CL2 已完成；Gate A 尚未认证
+- 日期：2026-07-15
+- 状态：CL0、CL1、CL2 与 CL3 L1/L2 已完成；CL3 L3 和 Gate A 尚未完成
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - CL1 实施记录：[安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
 - CL3 设计：[真正重装 contract/spec](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)
 - CL3 实施入口：[真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)
-- 下一切片：CL3 真正重装 contract 与实现
+- 下一切片：CL3 Task 10 Windows Sandbox L3 与 closeout
 
 ## 1. 目的与边界
 
@@ -37,12 +37,12 @@ CL0 不执行 install/uninstall game writes，不实现 package revision 更新�
 | --- | --- | --- |
 | Headless composition | `AppState::from_app_data_dir(temp)` | 可复用真实 SQLite、JSON repositories、infra adapters 和 task services，且不启动 GUI maintenance thread |
 | 游戏目录配置 | `GameSetupService::save_game_directory` + real probe + MHW adapter | temp game root 只需人工 `MonsterHunterWorld.exe`；允许安装根为 `nativePC` |
-| Mod 导入 | synthetic zip -> real importer -> sandbox -> JSON analysis | 可用；`mod_id == package_id == import task_id` |
+| Mod 导入 | synthetic zip -> real importer -> sandbox -> logical Mod/revision catalog | 首次导入创建稳定 logical Mod；revision import 向同一 `mod_id` 追加候选 revision |
 | 安装计划 | persisted analysis + sandbox scanner + MHW adapter -> `InstallPlan` | 可用；只消费 `nativePC` 下普通相对文件 |
 | 重启事实恢复 | drop/recreate AppState | game config、import library 和 plan 可恢复；TaskManager 状态按设计不持久化 |
-| 安装/卸载服务 | L2 AppState composition 与 L3 disposable desktop smoke 已通过 | CL1/CL2 已完成；Gate A 仍等待 CL3/CL4 |
-| 真正重装 | UI `reinstall` 复用普通 install；manifest merge 保留未触达旧 entry | 未实现，归 CL3 |
-| package revision | 每次 import 生成新 task/package/mod id | 未实现“同一稳定 Mod 身份绑定新 package revision”，归 CL3 |
+| 安装/卸载服务 | L2 AppState composition 与 CL2 disposable desktop smoke 已通过 | CL1/CL2 已完成；Gate A 仍等待 CL3 L3/CL4 |
+| 真正重装 | dedicated preview/task/commit/recovery 链与 L2 AppState composition | retained/replaced/added/stale、entry-set replacement、rollback 与 restart 已有 L1/L2 证据 |
+| package revision | catalog migration + 同一 logical Mod revision import | v1/v2 保持一张 library card；origin/candidate revision 均持久化 |
 | 桌面隔离 | Windows Sandbox + 人工 TEMP game/archive + disposable AppData | CL2 已执行并清理；日常账户/真实游戏仍不在验收范围 |
 
 ## 3. 固定 Fixture Contract
@@ -78,9 +78,9 @@ game-baseline-original\n
 | `nativePC/lifecycle/stale.bin` | 不存在 | `fixture-stale-v1\n` | 不存在 | stale |
 | `nativePC/lifecycle/added-v2.bin` | 不存在 | 不存在 | `fixture-added-v2\n` | added |
 
-Fixture contract label 固定为 `core-lifecycle-fixture`，它不是当前运行时的 `mod_id`。当前 importer
-不能把 v1/v2 映射到同一稳定 `mod_id`；自动化必须捕获真实 import task id。CL3 在实现 package
-revision contract 前，不得用手改 `results.json` 的方式假装真正重装已可用。
+Fixture contract label 固定为 `core-lifecycle-fixture`，它不是当前运行时的 `mod_id`。自动化先捕获
+首次导入创建的真实 logical `mod_id`，再通过 revision import 把 v2 追加到同一身份；测试不得手改
+`results.json`、manifest 或 TaskManager 状态来伪造真正重装事实。
 
 ## 4. 证据层级
 
@@ -112,11 +112,11 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL1-S1 | drift、missing summary、missing backup fail closed | 已有聚焦证据 | CL1 复用并建立证据映射 |
 | CL1-A1 | install/uninstall success Audit Log 与公开证据脱敏 | 通过 | 同一 L2 composition；只含 task/game/mod/profile 与动作/删除/恢复计数 |
 | CL2-D1 | 文件选择器 -> import -> preview -> install -> restart -> uninstall | 通过 | Windows Sandbox 实际 Tauri smoke；4 actions / 0 blocking conflicts / baseline restored |
-| CL3-I1 | schema v1 导入记录迁移为稳定 logical Mod + revision catalog | 阻断 | CL3 Task 2；规划见真正重装 spec/plan |
-| CL3-P1 | 四类 ReinstallPlan、全量 preflight 与零写入阻断 | 阻断 | CL3 Task 1/4；预期 1 retained / 2 replaced / 1 added / 1 stale |
-| CL3-R1 | v1 -> v2 -> restart -> uninstall -> baseline | 阻断 | CL3 Task 5/9；必须保留 original backup 并移除 old/stale entries |
-| CL3-F1 | source/backup/write/delete/manifest/rollback failure 回到 v1 | 阻断 | CL3 Task 3/5；部分恢复只保留未恢复 durable facts |
-| CL3-T1 | shared lock、task phase/cancellation barrier 与 Audit 脱敏 | 阻断 | CL3 Task 6/7；install/uninstall/reinstall/recovery 同锁 |
+| CL3-I1 | schema v1 导入记录迁移为稳定 logical Mod + revision catalog | 通过 | Task 2 catalog migration/revision import tests；Task 9 同一 `mod_id` v1/v2 L2 证据 |
+| CL3-P1 | 四类 ReinstallPlan、全量 preflight 与零写入阻断 | 通过 | Task 1/4 聚焦测试；Task 9 L2 preview 为 1 retained / 2 replaced / 1 added / 1 stale |
+| CL3-R1 | v1 -> v2 -> restart -> uninstall -> baseline | 通过 | `headless_composition_reinstalls_v1_to_v2_and_restores_baseline`；original backup 保留，old/stale entries 消失 |
+| CL3-F1 | source/backup/write/delete/manifest/rollback failure 回到 v1 | 通过 | Task 3/5 fault matrix；Task 9 manifest save failure 自动 rollback v1 并在 restart 后保持 installed v1 |
+| CL3-T1 | shared lock、task phase/cancellation barrier 与 Audit 脱敏 | 通过 | Task 6/7 聚焦测试；Task 9 L2 task/Audit/restart 证据 |
 | CL3-D1 | Windows Sandbox revision import -> reinstall -> restart -> uninstall | 阻断 | CL3 Task 10；只用人工 TEMP fixture 与 disposable AppData |
 
 聚焦执行入口：
@@ -125,7 +125,8 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 cargo test -p hmm-tauri state::core_mod_lifecycle_tests
 ```
 
-CL3 各行仍是预期证据，不是当前已通过测试。正式 contract 与测试/清理矩阵见
+CL3-I1/P1/R1/F1/T1 是已执行的 L1/L2 自动化证据；CL3-D1 仍是 Task 10 的 L3 预期证据。
+正式 contract 与测试/清理矩阵见
 [CL3 真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)，
 逐提交执行顺序见
 [CL3 真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
@@ -145,22 +146,17 @@ CL1 已在 app service recording fakes 中直接注入第二个 source read 与�
 证明完整 source preload 和 backup prepare 成功前不会发生任何 target mutation 或 manifest save；已创建的
 pending backup 和 planned recovery facts 会安全清理。Fault injection 没有进入生产 AppState。
 
-### G3：稳定 Mod 身份与 package revision 未建模
+### G3：稳定 Mod 身份与 package revision（已解决）
 
-当前 import task id 同时充当 package id 与 mod id，v2 import 会成为另一个 Mod。CL3 必须先定义：
+CL3 Task 2 已落地 catalog v1 -> v2 migration、stable logical Mod 与 revision import。Task 9 使用真实
+import task 创建 v1 logical Mod，再把 v2 追加到同一 `mod_id`；library 保持一张卡，catalog 同时保留
+origin v1 和 candidate v2。sandbox/source 生命周期仍由受控 importer 与 catalog 负责。
 
-- 稳定 logical Mod id；
-- 当前/候选 package revision 绑定；
-- 新 revision 的 sandbox/source 生命周期；
-- 成功、失败或取消后 revision 指针如何提交/回滚。
+### G4：真正重装 use case（L1/L2 已解决）
 
-没有该 contract，`start_reinstall_task` 即使存在也无法表达“同一 Mod 从 v1 更新到 v2”。
-
-### G4：真正重装 use case 未实现
-
-当前 UI 的“安装 / 重装”调用普通 `start_install_task`，manifest merge 会保留新 plan 未触达的旧
-entry。retained/replaced/added/stale 分类、preflight、reinstall recovery facts 和 entry-set replacement
-均归 CL3。
+CL3 Task 1-8 已落地独立 preview/task/commit/recovery 与前端工作流；Task 9 L2 证明 1/2/1/1 分类、
+entry-set replacement、original backup 生命周期、manifest failure rollback 和 restart authority。
+剩余缺口只有 Task 10 的 disposable Windows Sandbox L3/diagnostics/cleanup，不得用自动化代替。
 
 ### G5：桌面 AppData 没有测试隔离入口
 
@@ -218,7 +214,7 @@ Compress-Archive -LiteralPath (Join-Path $fixtureRoot "nativePC") -DestinationPa
 7. 再次重启；预期状态为 not installed，恢复扫描无不安全 issue。
 8. 检查 UI/日志证据只包含短 id、phase、计数和稳定错误码，不显示 root、backup ref 或 manifest 正文。
 
-当前“安装 / 重装”按钮不得用于 v1 -> v2 验收；真正重装留给 CL3。
+本节 CL2 smoke 不能作为 v1 -> v2 证据；独立真正重装桌面验收留给 CL3 Task 10 L3。
 
 ### 7.4 清理
 
@@ -247,7 +243,7 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - 主机在安装态和卸载态分别校验人工文件长度/hash；最终 game root 与安装前两文件 baseline 逐字节一致。
 - 支持诊断包只包含四个固定 JSON 条目；App/Task 日志为 0 行，两条 install Audit 仅含短 id 和动作/删除/恢复计数，敏感路径模式命中 0。
 - 应用和 Sandbox 退出后，旧失败现场与新通过现场的唯一 TEMP roots 均在 containment 校验后删除；Sandbox AppData 随 VM 销毁。
-- 本次没有执行真实游戏 smoke，也没有把现有“安装 / 重装”按钮当作 v1 -> v2 证明；真正重装仍归 CL3。
+- 本次没有执行真实游戏 smoke，也没有把 CL2 普通安装流程当作 v1 -> v2 证明；真正重装 L3 仍归 CL3 Task 10。
 
 ## 8. CL0 完成定义
 
@@ -260,6 +256,7 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - [x] CL1 source read / backup store fault tests 通过。
 - [x] CL1 manifest/recovery/Audit Log/task phase 与脱敏证据通过。
 - [x] CL2 桌面 smoke 实际执行。
-- [ ] CL3 真正重装实现并通过。
+- [x] CL3 Task 1-9 L1/L2 真正重装自动化通过。
+- [ ] CL3 Task 10 Windows Sandbox L3、诊断脱敏和 cleanup 通过。
 
-CL2 桌面 smoke 已完成；CL3 真正重装和 CL4 最终复审仍未完成，Gate A 必须保持未认证。
+CL3 L1/L2 已完成；CL3 L3 和 CL4 最终复审仍未完成，Gate A 必须保持未认证。
