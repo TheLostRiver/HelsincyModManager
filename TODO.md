@@ -80,15 +80,15 @@
 
 ### Core Mod Lifecycle Gate A
 
-**状态**: CL0、CL1、CL2 与 CL3 Task 1-9 L1/L2 已完成；下一项 CL3 Task 10 L3，Gate A 尚未认证
+**状态**: CL0、CL1、CL2 与 CL3 已完成；下一项 CL4 独立复审，Gate A 尚未认证
 **独立文档**: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md` + `docs/CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md`
 
 - [x] CL0：固定 `v1/v2` 人工 fixture、test-only AppState import/plan/restart harness、acceptance matrix、桌面 smoke 文档和缺口清单
 - [x] CL1：认证导入记录 -> InstallPlan -> install -> restart -> uninstall -> baseline 自动化闭环
 - [x] CL2：实际 Tauri 桌面 smoke、状态恢复、错误脱敏和清理证明
-- [ ] CL3：独立真正重装 use case，覆盖 retained/replaced/added/stale 与失败恢复
+- [x] CL3：独立真正重装 use case，覆盖 retained/replaced/added/stale 与失败恢复
   - [x] Task 1-9：classifier、revision catalog、manifest/recovery、preview/commit/task/DTO/UI 与 L2 AppState 闭环
-  - [ ] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
+  - [x] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
 - [ ] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
 Gate A 前不得开始 P7.2c、分页、批量迁移、批量操作、任务队列或新的非阻断视觉工作。
@@ -441,8 +441,7 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: CL3 Task 10 Windows Sandbox L3 与 closeout
-  -> CL4 Gate A 认证
+当前: CL4 Gate A 独立复审与认证
   -> T11 ARMOR_RETARGET AR1-AR5 最窄纵向闭环
   -> Gate B 认证
   -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
@@ -461,7 +460,7 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| Core Mod Lifecycle Gate A | P0 | CL3 Task 1-9 L1/L2 已完成，下一项 Task 10 L3；Gate A 未认证 | |
+| Core Mod Lifecycle Gate A | P0 | CL3 已 implemented，下一项 CL4 独立复审；Gate A 未认证 | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | 仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |

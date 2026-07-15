@@ -1,6 +1,6 @@
 # 路线图
 
-## 当前执行焦点（2026-07-13）
+## 当前执行焦点（2026-07-15）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 约束：
 
@@ -46,11 +46,10 @@
 
 InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md)，后续切片见 [InstallPlan MVP 待办](INSTALL_PLAN_MVP_TODO.md)。
 
-本 Phase 的安装/卸载代码、固定人工 fixture 的 temp-root acceptance 和 disposable Windows Sandbox
-桌面 smoke 已完成，但不能据此宣称 Gate A `certified`。当前仍必须补齐：
-
-- 独立真正重装 use case，安全处理 retained/replaced/added/stale entries。
-- Gate A 本地 review 与 `certified` 状态记录。
+本 Phase 的安装/卸载代码、固定人工 fixture 的 temp-root acceptance、真正重装 use case 和
+disposable Windows Sandbox 桌面 smoke 已完成；retained/replaced/added/stale、重启、manifest 卸载、
+baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据。当前仍不能宣称 Gate A `certified`，唯一
+下一项是 CL4 独立本地 review、完整验证与认证状态记录。
 
 ## Phase 3：玩家工作流扩展（Gate B 前暂停）
 
