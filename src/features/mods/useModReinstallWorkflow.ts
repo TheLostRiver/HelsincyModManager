@@ -144,6 +144,11 @@ export function useModReinstallWorkflow({
     },
     [refreshTaskDurableFacts, setTrackedTaskState],
   );
+  const applyProgressStateRef = useRef(applyProgressState);
+
+  useEffect(() => {
+    applyProgressStateRef.current = applyProgressState;
+  }, [applyProgressState]);
 
   useEffect(() => {
     let disposed = false;
@@ -170,7 +175,7 @@ export function useModReinstallWorkflow({
       }
 
       const next = nextReinstallTaskStateFromProgress(taskStateRef.current, event.payload);
-      applyProgressState(next);
+      applyProgressStateRef.current(next);
     })
       .then((unlisten) => {
         if (disposed) {
@@ -190,7 +195,7 @@ export function useModReinstallWorkflow({
       disposed = true;
       unlistenTaskProgress?.();
     };
-  }, [applyProgressState, listenerAttempt]);
+  }, [listenerAttempt]);
 
   const retryTaskProgressListener = useCallback(() => {
     if (listenerStatus !== "failed") {

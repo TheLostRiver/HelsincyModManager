@@ -298,6 +298,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const lastInstallStatusRefreshTaskIdRef = useRef<string | null>(null);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const pendingUninstallRef = useRef<{ modId: string; modName: string } | null>(null);
+  const installPlanPreviewGenerationRef = useRef(0);
 
   const setTrackedInstallTaskState = useCallback((update: ManagedInstallTaskStateUpdate) => {
     const nextState = typeof update === "function" ? update(installTaskStateRef.current) : update;
@@ -608,6 +609,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       return;
     }
 
+    const previewGeneration = ++installPlanPreviewGenerationRef.current;
     const [modId] = Array.from(selectedIds);
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
@@ -628,9 +630,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       layerPriority: 0,
     })
       .then((plan) => {
+        if (installPlanPreviewGenerationRef.current !== previewGeneration) {
+          return;
+        }
         setInstallPlanPreviewState({ status: "ready", modName, plan });
       })
       .catch((error: unknown) => {
+        if (installPlanPreviewGenerationRef.current !== previewGeneration) {
+          return;
+        }
         setInstallPlanPreviewState({
           status: "error",
           modName,
@@ -832,6 +840,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         break;
       case "reinstall":
         pendingUninstallRef.current = null;
+        installPlanPreviewGenerationRef.current += 1;
         setInstallPlanPreviewState({ status: "idle" });
         openReinstall();
         break;
