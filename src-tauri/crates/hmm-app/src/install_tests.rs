@@ -174,6 +174,49 @@ fn build_plan_from_imported_mod_uses_sandbox_files_and_adapter_roots() {
 }
 
 #[test]
+fn build_plan_from_imported_revision_uses_requested_package_not_display_projection() {
+    let repository = Arc::new(FakeModImportResultRepository::new(vec![stored_analysis(
+        "mod-a",
+        "display-package-v2",
+    )]));
+    let scanner = Arc::new(FakeInstallFileScanner {
+        files: vec![ModPackageInstallFile {
+            package_file_id: "nativePC/models/player.mod3".to_owned(),
+            target_path: "nativePC/models/player.mod3".to_owned(),
+        }],
+        seen_requests: Mutex::new(Vec::new()),
+    });
+    let service = InstallPlanningService::with_imported_mod_sources(
+        repository,
+        Arc::new(FakeSandboxLocator {
+            root: PathBuf::from("controlled-sandbox/requested-package-v1"),
+        }),
+        scanner.clone(),
+        vec![Arc::new(FakeGameAdapter {
+            game_id: GameId::mhw(),
+            allowed_roots: vec!["nativePC".to_owned()],
+        })],
+    );
+
+    service
+        .build_plan_from_imported_revision(
+            &GameId::mhw(),
+            &ModId::new("mod-a"),
+            "requested-package-v1",
+            &FileLayer::new("base", 0),
+        )
+        .expect("requested revision should build a plan");
+
+    assert_eq!(
+        scanner.seen_requests.lock().expect("requests").as_slice(),
+        &[(
+            "requested-package-v1".to_owned(),
+            PathBuf::from("controlled-sandbox/requested-package-v1")
+        )]
+    );
+}
+
+#[test]
 fn build_plan_from_imported_mod_ignores_files_outside_adapter_roots() {
     let repository = Arc::new(FakeModImportResultRepository::new(vec![stored_analysis(
         "mod-a",

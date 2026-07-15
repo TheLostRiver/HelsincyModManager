@@ -1117,7 +1117,7 @@ impl InstallManifestRepository for FakeManifests {
 
 #[derive(Default)]
 struct FakeRecoveryTransactions {
-    active: Mutex<bool>,
+    active_mod_id: Mutex<Option<ModId>>,
     saves: Mutex<usize>,
     removes: Mutex<usize>,
     transaction: Mutex<Option<ReinstallRecoveryTransaction>>,
@@ -1129,7 +1129,11 @@ struct FakeRecoveryTransactions {
 
 impl FakeRecoveryTransactions {
     fn set_active(&self, active: bool) {
-        *self.active.lock().expect("active lock") = active;
+        *self.active_mod_id.lock().expect("active Mod lock") = active.then(|| ModId::new("mod-a"));
+    }
+
+    fn set_active_mod(&self, mod_id: &str) {
+        *self.active_mod_id.lock().expect("active Mod lock") = Some(ModId::new(mod_id));
     }
 
     fn save_count(&self) -> usize {
@@ -1182,13 +1186,11 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
                     .then_some(transaction),
             );
         }
-        if *self.active.lock().expect("active lock")
-            && *profile_id == ProfileId::new("default")
-            && *mod_id == ModId::new("mod-a")
-        {
+        let active_mod_id = self.active_mod_id.lock().expect("active Mod lock").clone();
+        if *profile_id == ProfileId::new("default") && active_mod_id.as_ref() == Some(mod_id) {
             return Ok(Some(ReinstallRecoveryTransaction {
                 profile_id: ProfileId::new("default"),
-                mod_id: ModId::new("mod-a"),
+                mod_id: active_mod_id.expect("matched active Mod"),
                 old_revision_id: ModRevisionId::new("v1"),
                 candidate_revision_id: ModRevisionId::new("v2"),
                 plan_token: "active-preview-token".to_owned(),
@@ -1205,14 +1207,29 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
         &self,
         profile_id: &ProfileId,
     ) -> Result<Vec<ReinstallRecoveryTransaction>> {
-        Ok(self
+        let persisted = self
             .transaction
             .lock()
             .expect("transaction lock")
             .clone()
             .filter(|transaction| transaction.profile_id == *profile_id)
             .into_iter()
-            .collect())
+            .collect::<Vec<_>>();
+        let active_mod_id = self.active_mod_id.lock().expect("active Mod lock").clone();
+        if !persisted.is_empty() || active_mod_id.is_none() {
+            return Ok(persisted);
+        }
+        Ok(vec![ReinstallRecoveryTransaction {
+            profile_id: ProfileId::new("default"),
+            mod_id: active_mod_id.expect("active Mod exists"),
+            old_revision_id: ModRevisionId::new("v1"),
+            candidate_revision_id: ModRevisionId::new("v2"),
+            plan_token: "active-preview-token".to_owned(),
+            plan_hash: "active-plan-hash".to_owned(),
+            status: ReinstallRecoveryTransactionStatus::Planned,
+            pre_reinstall_manifest: installed_manifest(),
+            targets: Vec::new(),
+        }])
     }
 
     fn save_transaction(&self, transaction: &ReinstallRecoveryTransaction) -> Result<()> {

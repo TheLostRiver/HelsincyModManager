@@ -486,6 +486,9 @@ fn install_recovery_action_kind_from_dto(
 ) -> InstallRecoveryActionKind {
     match action_kind {
         InstallRecoveryActionKindDto::RollbackInstall => InstallRecoveryActionKind::RollbackInstall,
+        InstallRecoveryActionKindDto::ReconcileReinstall => {
+            InstallRecoveryActionKind::ReconcileReinstall
+        }
     }
 }
 
@@ -814,7 +817,7 @@ mod tests {
             "gameId": "mhw",
             "profileId": "default",
             "modId": "mod-a",
-            "actionKind": "rollback_install"
+            "actionKind": "reconcile_reinstall"
         });
 
         let request: crate::dto::InstallRecoveryActionPreviewRequestDto =
@@ -827,7 +830,7 @@ mod tests {
         assert_eq!(app_request.mod_id.as_str(), "mod-a");
         assert_eq!(
             app_request.action_kind,
-            hmm_app::InstallRecoveryActionKind::RollbackInstall
+            hmm_app::InstallRecoveryActionKind::ReconcileReinstall
         );
     }
 

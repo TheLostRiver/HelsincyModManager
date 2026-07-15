@@ -3,9 +3,13 @@ use crate::dto::{
     ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto, PreviewImageDiagnosticsDto,
     PreviewImageDiagnosticsExportDto, PreviewImageDto, SupportDiagnosticsExportDto, TaskStartedDto,
 };
+use crate::reinstall_dto::StartImportModRevisionTaskRequestDto;
 use crate::state::AppState;
 use crate::task_events::emit_task_progress;
-use hmm_app::{StartImportModTaskRequest, TaskProgressEvent, TaskStarted};
+use hmm_app::{
+    StartImportModRevisionTaskRequest, StartImportModTaskRequest, TaskProgressEvent, TaskStarted,
+};
+use hmm_core::ModId;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -32,6 +36,36 @@ pub fn start_import_mod_task(
         app_handle,
         task.task_id.clone(),
         runner_archive_path,
+    );
+
+    Ok(task.into())
+}
+
+#[tauri::command]
+pub fn start_import_mod_revision_task(
+    request: StartImportModRevisionTaskRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let archive_path = parse_archive_path(request.archive_path)?;
+    let mod_id = ModId::new(parse_mod_id(request.mod_id)?);
+    let runner_archive_path = archive_path.clone();
+    let runner_mod_id = mod_id.clone();
+    let task = state
+        .mod_import_tasks
+        .start_import_mod_revision_task(StartImportModRevisionTaskRequest {
+            archive_path,
+            mod_id,
+        })
+        .map_err(CommandErrorDto::from_mod_import_task_error)?;
+
+    let _ = emit_task_progress(&app_handle, queued_event_for_started_task(&task).into());
+    spawn_prepare_revision_runner(
+        Arc::clone(&state.mod_import_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_archive_path,
+        runner_mod_id,
     );
 
     Ok(task.into())
@@ -207,6 +241,25 @@ fn spawn_prepare_runner(
 ) {
     std::thread::spawn(move || {
         let events = match runner.run_prepare_task(&task_id, archive_path) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
+}
+
+fn spawn_prepare_revision_runner(
+    runner: Arc<hmm_app::ModImportTaskRunner>,
+    app_handle: AppHandle,
+    task_id: String,
+    archive_path: PathBuf,
+    mod_id: ModId,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_prepare_revision_task(&task_id, archive_path, mod_id) {
             Ok(events) => events,
             Err(error) => error.events,
         };

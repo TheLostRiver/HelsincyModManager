@@ -12,6 +12,7 @@ use hmm_ports::{
     StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
     ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -106,6 +107,14 @@ pub struct ModDetail {
     pub description: Option<String>,
     pub nexus_mod_id: Option<u64>,
     pub preview_image: ImportPreviewImage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModRevisionList {
+    pub mod_id: ModId,
+    pub origin_revision_id: ModRevisionId,
+    pub display_revision_id: ModRevisionId,
+    pub revision_ids: Vec<ModRevisionId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -456,6 +465,39 @@ impl ModLibraryService {
             }
             None => Ok(None),
         }
+    }
+
+    pub fn get_mod_revisions(&self, mod_id: &ModId) -> anyhow::Result<Option<ModRevisionList>> {
+        let Some(logical_mod) = self.result_repository.get_mod(mod_id)? else {
+            return Ok(None);
+        };
+        anyhow::ensure!(
+            logical_mod.mod_id == *mod_id,
+            "logical Mod id does not match query"
+        );
+        let revisions = self.result_repository.list_revisions(mod_id)?;
+        anyhow::ensure!(
+            revisions.iter().all(|revision| revision.mod_id == *mod_id),
+            "revision owner does not match logical Mod"
+        );
+        let revision_ids = revisions
+            .into_iter()
+            .map(|revision| revision.revision_id)
+            .collect::<Vec<_>>();
+        let unique_revision_ids = revision_ids.iter().collect::<BTreeSet<_>>();
+        anyhow::ensure!(
+            unique_revision_ids.len() == revision_ids.len()
+                && unique_revision_ids.contains(&logical_mod.origin_revision_id)
+                && unique_revision_ids.contains(&logical_mod.display_revision_id),
+            "logical Mod revision catalog is inconsistent"
+        );
+
+        Ok(Some(ModRevisionList {
+            mod_id: logical_mod.mod_id,
+            origin_revision_id: logical_mod.origin_revision_id,
+            display_revision_id: logical_mod.display_revision_id,
+            revision_ids,
+        }))
     }
 
     pub fn get_preview_image_diagnostics(&self) -> anyhow::Result<PreviewImageDiagnosticsSummary> {

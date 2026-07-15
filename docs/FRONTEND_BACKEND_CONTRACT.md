@@ -223,6 +223,14 @@ TaskProgressEventDto
 | `install` | `install.uninstall.processing` | 后端正在执行受写锁保护的 manifest 驱动卸载 |
 | `install` | `install.uninstall.completed` | 卸载完成，manifest 已移除对应 Mod 的托管条目 |
 | `install` | `install.uninstall.failed` | 卸载失败；后端会 best-effort 回滚已应用的删除或恢复 |
+| `install` | `install.reinstall.queued` | 真正重装任务已登记，等待后续执行 |
+| `install` | `install.reinstall.plan.building` | 后端正在写锁外重建 candidate revision 的 plan/source facts |
+| `install` | `install.reinstall.preflight.processing` | 后端正在完成四类 target 聚合与进入 commit 前的预检 |
+| `install` | `install.reinstall.commit.processing` | 后端正在写锁内执行 snapshot / mutation / manifest entry-set replacement |
+| `install` | `install.reinstall.rollback.processing` | 同步失败后正在恢复 pre-reinstall revision |
+| `install` | `install.reinstall.completed` | candidate manifest entry set 已固化并完成受控收尾 |
+| `install` | `install.reinstall.failed` | 重装失败，或已越过 commit point 但仍需受控 reconciliation |
+| `install` | `install.reinstall.cancelled` | 任务在 queued/prepare 安全点取消；commit 开始后不抢占式中断 |
 | `install` | `install.recovery.queued` | 恢复动作任务已登记，等待后续执行 |
 | `install` | `install.recovery.planning` | 后端正在等待写锁并准备受控恢复动作 |
 | `install` | `install.recovery.processing` | 后端正在执行受写锁保护的恢复动作 |
@@ -669,6 +677,10 @@ get_install_manifest_status(input)
 scan_install_recovery(input)
 preview_recovery_action(input)
 start_recovery_action_task(input)
+start_import_mod_revision_task(input)
+get_mod_revisions(modId)
+preview_reinstall_plan(input)
+start_reinstall_task(input)
 cancel_task(taskId)
 ```
 
@@ -678,6 +690,8 @@ cancel_task(taskId)
 - `start_install_task` 必须基于已经生成或可重建的 plan。
 - `start_uninstall_task` 必须基于已有 manifest、`installed_file` 摘要和 backup 记录，不根据当前 Mod 包内容猜测。
 - `start_recovery_action_task` 必须基于 durable recovery record、`installed_file` 摘要和 backup 记录，不根据当前 Mod 包内容猜测。
+- `start_import_mod_revision_task` 只把 picker 提供的 archive 附加到显式指定的既有 logical Mod，不按名称、作者、版本或文件名自动合并。
+- `preview_reinstall_plan` 只读构建 candidate plan 和四类 target 聚合；`start_reinstall_task` 只接收受控 id、layer 和 opaque preview token。
 - 真实 commit 过程必须写 manifest，并能回滚或恢复。
 - 当前 `preview_install_plan` 只暴露只读计划预览壳，用于验证 Tauri DTO 与 `hmm-app` 计划服务边界；它返回相对目标路径摘要、来源 id、层级信息和阻断冲突，不创建目录、不复制文件、不删除文件、不写 manifest。
 - `preview_install_plan` 的 `allowedTargetRoots` 和 `files[].targetPath` 必须来自后端分析/adapter 结果或测试夹具；正式前端 UI 不得根据游戏名、Mod 内容或用户输入自行拼接最终安装路径。后续 package analyzer / game adapter 接入后，应优先让前端只提交后端生成的 `modId`、`packageId`、`profileId` 或 `targetId`。
@@ -689,21 +703,29 @@ cancel_task(taskId)
 - `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的本工具新增文件会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
 - `start_uninstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.uninstall.queued` 事件；后台 runner 会发送 `install.uninstall.processing`、`install.uninstall.completed` 或 `install.uninstall.failed`。失败事件的 `error` 使用稳定前缀 `install_uninstall_failed:<phase>`，当前 phase 可为 `lock`、`uninstall`、`complete`、`recovery_pending` 或 `recovery_unavailable`；后两者表示在卸载前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed。事件 payload 不承载目标路径、完整本地路径、manifest 内容、backup ref 或第三方 Mod 内容。
-- 正式前端卸载 UI 只能在 `get_install_manifest_status` 摘要显示 `installed` 时提供单选卸载入口；typed API 只能调用 `start_uninstall_task` 并传入 `gameId`、`modId`、`profileId`。若摘要返回 `rollback_required`、`repair_required` 或 `unknown`，必须阻断安装/重装和自动卸载入口。前端按 `taskId` 和 `install.uninstall.*` phase 展示任务状态，完成后重新查询 manifest 摘要；失败时不根据 Mod 包内容、展示标签或页面内存态推断修复动作。
+- 正式前端卸载 UI 只能在 `get_install_manifest_status` 摘要显示 `installed` 时提供单选卸载入口；typed API 只能调用 `start_uninstall_task` 并传入 `gameId`、`modId`、`profileId`。若摘要返回 `committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required` 或 `unknown`，必须阻断安装/重装和自动卸载入口。前端按 `taskId` 和 `install.uninstall.*` phase 展示任务状态，完成后重新查询 manifest 摘要；失败时不根据 Mod 包内容、展示标签或页面内存态推断修复动作。
 - 若前端额外调用 `scan_install_recovery` 摘要，只能用于展示 issue code、计数和恢复中心所需的聚合详情；不能用它推断未文档化修复动作，也不能根据 Mod 包内容、展示标签或页面内存态推断修复动作。
 - `start_uninstall_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`removed_file_count` 和 `restored_file_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径、backup 路径、manifest 正文或第三方 Mod 内容。
+- `start_import_mod_revision_task` 接收 `archivePath` 和既有 `modId`，复用普通导入的安全解压、取消和持久化链路，并返回 `TaskStartedDto { taskId, kind: "mod_import", status: "queued" }`。archive path 只允许出现在这个 picker 驱动的导入入口；`get_mod_revisions`、`preview_reinstall_plan` 和 `start_reinstall_task` 均不接受 archive/source/sandbox/game-root/target/backup/manifest path。
+- `get_mod_revisions` 返回一张 logical Mod 的 `originRevisionId`、`displayRevisionId` 和全部受其所有的 revision ids。origin/display revision 的权威来源是 revision catalog；installed revision 的权威来源始终是当前 profile 的 completed manifest entry set，不能从 display revision、导入顺序、任务内存或“最新版本”推断。
+- `preview_reinstall_plan` 是只读入口。后端按请求的 `candidateRevisionId` 校验 owner/readiness，并使用该 revision 自己的 `packageId` 定位受控 sandbox，而不是使用当前 display revision projection；随后从 manifest、当前 target 摘要、original backup 和 durable reinstall transaction 构建 strict preview union。该命令不写 game/manifest/recovery，不返回 path、backup/snapshot ref、hash、manifest/source content 或第三方 Mod 内容。
+- `ReinstallPlanPreviewDto.status` 是判别字段：`ready` 必须同时返回非空 installed/candidate revision、非空 `planToken`、四类计数和空 reasons；`blocked` 必须返回 `planToken: null`，revision 可以为 null。`candidate_not_found` 必须返回 `candidateRevision: null`，前端不得伪造 summary 或提交 token。
+- `start_reinstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，先发送 `install.reinstall.queued`，后台 runner 再以同一 taskId 发送 `install.reinstall.*`。prepare/source/plan 在 write lock 外执行；commit 与 install/uninstall/controlled recovery 共享同一 `gameId/profileId` 写锁、reinstall recovery admission 和 Audit writer。
+- `start_reinstall_task` 的 token 对前端是不透明值。后端在写锁内重新校验 game instance 未在 prepare 后改变、token、candidate ownership/source、旧 manifest、target/backup facts，并确认该 profile 没有任一 active reinstall transaction；不匹配时 fail closed。失败 event 使用 `install_reinstall_failed:<phase>`，phase 为 `planning`、`preflight`、`lock`、`backup`、`commit`、`manifest`、`post_commit`、`rollback` 或 `complete`。`post_commit` 表示 candidate manifest 已越过 commit point，不能伪装为 rolled back；后续由受控 reconciliation 收敛。
+- 重装 preview blocking reason 的稳定值为 `not_installed`、`candidate_not_found`、`candidate_not_ready`、`candidate_owner_mismatch`、`candidate_already_installed`、`manifest_state_unsafe`、`installed_revision_unknown`、`source_unavailable`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing`、`backup_read_failed`、`plan_conflict`、`cross_mod_target_conflict` 和预留的 `preview_stale`。command error 负责输入/用例不可用，reason 只负责可展示预检结论。
+- Task 7 只落地上述 Rust/Tauri contract 与 AppState composition；feature-local TypeScript wrapper、revision 选择和重装 UI 属于后续 Task 8，当前文档不表示前端已接入。
 - 安装提交写入 manifest entry 时会记录后端内部使用的 `installed_file` 摘要（写入内容 size + SHA-256）。该摘要不进入当前前端 DTO，不暴露目标路径、backup ref、manifest path、sandbox/cache path 或文件内容；后续卸载/恢复扫描可用它判断目标文件是否仍与受控安装事实一致。
 - `get_install_manifest_status` 是只读安装状态摘要入口。前端提交 `profileId`、`modIds`，并可以提交 `gameId`。传入 `gameId` 时，后端复用只读 recovery scan，在同一 `gameId/profileId` 写锁下读取受控 manifest、目标文件摘要和 backup 是否存在，并按 `modId` 返回 `status`、`managedFileCount` 和 `backupCount`；未传 `gameId` 时，后端保留旧的 manifest-only 查询，只从受控 manifest 仓储读取对应 profile 的 manifest。该 command 不接受 `targetPath`、manifest root/path、backup root/ref、sandbox/cache 路径、导入包路径或游戏目录路径。
-- `get_install_manifest_status` 的返回状态为 `not_installed`、`installed`、`rollback_required`、`repair_required` 或 `unknown`。传入 `gameId` 时，后端把 recovery scan 的 `completed` 映射为 `installed`，把 `rollback_required`、`repair_required`、`unknown` 和 `not_installed` 按对应安装摘要状态返回；未传 `gameId` 时，旧 manifest-only 路径仍只根据匹配到的 manifest entries 派生 `installed`，缺失 manifest 或无匹配 entry 返回 `not_installed`。
+- `get_install_manifest_status` 的返回状态为 `not_installed`、`installed`、`committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required` 或 `unknown`。传入 `gameId` 时，后端把 recovery scan 的 `completed` 映射为 `installed`，并保留两个重装 cleanup-pending 状态及其他不安全状态；未传 `gameId` 时，旧 manifest-only 路径仍只根据匹配到的 manifest entries 派生 `installed`，缺失 manifest 或无匹配 entry 返回 `not_installed`。
 - `get_install_manifest_status` 不返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文、目标文件 hash 或第三方 Mod 内容。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。manifest-only 路径读取失败使用稳定错误码 `install_manifest_unavailable`；传入 `gameId` 后读取游戏配置或恢复扫描失败时沿用 `scan_install_recovery` 的稳定错误码 `game_instance_unavailable` / `install_recovery_unavailable`。
 - `scan_install_recovery` 是只读恢复扫描摘要入口。前端只提交 `gameId`、`profileId` 和 `modIds`；`modIds` 可为空，表示扫描该 profile manifest 内全部已知托管 Mod，便于启动级恢复检查或独立恢复中心先获得全局健康摘要。后端通过受控游戏配置解析 game root，并复用同一 `gameId/profileId` 的安装/卸载写锁后读取受控 manifest、目标文件摘要和 backup 是否存在。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径、游戏目录路径或 manifest 正文。
-- `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`rollback_required` 只来自 durable recovery record 中的 `committing` 或 `rollback_required` 受控状态，表示上次写入窗口未确认完成并需要后续受控回滚流程；`repair_required` 表示目标缺失、目标摘要不匹配、缺少 `installed_file` 摘要或 backup 缺失等可判断的不一致；`unknown` 表示目标或 backup 读取失败等无法安全判断状态；缺失 manifest、无匹配 entry 且没有需要处理的 recovery record 时返回 `not_installed`。当前命令只做只读检测，不自动删除、恢复、回滚或写 manifest。
-- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；当前唯一 action kind 为 `rollback_install`。后端在同一 `gameId/profileId` 写锁下读取 durable recovery record、当前目标摘要和 backup 可读性，返回 `available` 或 `blocked`、将删除的新文件数、将恢复的覆盖文件数、需要 backup 的文件数、阻断 issue 总数和稳定阻断 reason code。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容；也不执行删除、恢复、回滚、写 backup、写 manifest、写 recovery record、发送任务事件或写 Audit Log。
+- `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`committed_cleanup_pending` 表示 candidate manifest/targets 已证明，但 completed bookkeeping 尚待受控收敛；`cleanup_pending` 表示 transaction 已 completed 但 snapshot/record cleanup 尚未结束；`rollback_required` 表示重装前/普通安装写入窗口未确认完成；`repair_required` 表示无法安全自动收敛的一致性问题；`unknown` 表示读取失败等无法判断状态。缺失 manifest、无匹配 entry 且没有 recovery record 时返回 `not_installed`。当前命令只读，不自动删除、恢复、回滚或写 manifest。
+- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；action kind contract 为 `rollback_install` 或 `reconcile_reinstall`。现有详细 availability/count preview 针对 `rollback_install`；`reconcile_reinstall` 在没有专用 preview 证明时返回 blocked，不能据此绕过后端 task revalidation。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容，也不执行写入或写 Audit Log。
 - `preview_recovery_action` 只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
-- `start_recovery_action_task` 是后端驱动的受控恢复动作任务入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；当前唯一 action kind 为 `rollback_install`。后端在同一 `gameId/profileId` 写锁下重新读取 durable recovery record、当前目标摘要和 backup 可读性，然后删除本工具新增文件或从受控 backup 恢复覆盖文件，并将 durable recovery record 标记为 `rolled_back`。该 command 不接受 `targetPath`、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
+- `start_recovery_action_task` 是后端驱动的受控恢复动作任务入口。`rollback_install` 根据普通 install recovery record 回到安装前状态；`reconcile_reinstall` 根据 durable reinstall transaction 重新验证 candidate/pre-reinstall manifest 与 target/snapshot facts，再完成 post-commit cleanup 或受控回到 pre-reinstall。无法证明时进入 `repair_required` 并 fail closed。该 command 不接受 `targetPath`、game root、backup/snapshot ref/root、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `start_recovery_action_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.recovery.queued` 事件；后台 runner 会发送 `install.recovery.planning`、`install.recovery.processing`、`install.recovery.completed` 或 `install.recovery.failed`。失败事件的 `error` 使用稳定前缀 `install_recovery_failed:<phase>`，当前 phase 可为 `lock`、`planning`、`processing` 或 `complete`。事件 payload 不承载目标路径、完整本地路径、backup ref、manifest 内容、目标 hash、sandbox/cache 路径或第三方 Mod 内容。
-- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、backup ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
-- Mod 库前端应在 `get_install_manifest_status` 中传入 `gameId`，让状态摘要直接反映只读 recovery scan 的不安全状态；随后仍可以调用 `scan_install_recovery` 获取 issue code、计数和恢复中心所需聚合详情。前端应把 `rollback_required` / `repair_required` / `unknown` 作为不安全状态展示并阻断安装/卸载；扫描失败时应把已有非 `not_installed` manifest 摘要降级为不安全 `unknown`，不应回退为 mock 安装事实或从任务内存态推断已安装。
+- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install` 或 `reconcile_reinstall`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、backup/snapshot ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
+- Mod 库前端应在 `get_install_manifest_status` 中传入 `gameId`，让状态摘要直接反映只读 recovery scan。前端应把 `committed_cleanup_pending` / `cleanup_pending` / `rollback_required` / `repair_required` / `unknown` 都作为不安全状态展示并阻断新的安装、卸载或重装；扫描失败时应降级为 `unknown`，不回退为 mock 安装事实或任务内存态。
 - Dashboard / App Frame / 独立恢复中心可以在游戏目录配置完成后调用 `scan_install_recovery`，传入空 `modIds` 获取当前 profile 的全量托管安装健康摘要。Dashboard 等入口级摘要只能展示扫描 Mod 数、需处理数、未知数、托管文件数、backup 计数、issue 总数和 `issues[].issue/count` 等聚合信息；App Frame 全局告警只能在需要处理、状态未知或扫描不可用时展示轻量摘要和恢复中心导航；独立恢复中心可以额外展示每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类，以及由前端 view model 基于稳定 issue code 派生的 rich repair summary、风险等级、阻断原因和人工处理建议。扫描失败必须展示状态未知，不能解释为健康或自动触发恢复。
 - 独立恢复中心可以提供用户主动触发的 `export_support_diagnostics` 入口。该入口必须通过 feature-local typed API 调用无参数 command；前端导出前先展示将包含的已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不能传入或展示输出路径、日志路径、诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。诊断导出成功不改变安装、卸载、恢复扫描或 manifest 状态。
 - 独立恢复中心的人工处理决策面板只能把 `retry_scan` 映射为重新触发只读 `scan_install_recovery`，把 `export_diagnostics` 映射为上述诊断导出确认流程，把 `controlled_recovery` 映射为滚动到逐 Mod 状态列表；真正的写入型按钮只在单个 `rollback_required` Mod 行上出现。用户点击逐 Mod 回滚按钮时，前端必须先调用 `preview_recovery_action`；只有后端返回 `available` 才展示确认动作，确认后才调用 `start_recovery_action_task`。前端必须按返回的 `taskId` 匹配 `install.recovery.*` 事件，完成后重新触发 `scan_install_recovery` 刷新恢复中心、Dashboard 摘要和 App Frame 全局告警；不得根据 Mod 包内容、展示标签或页面内存态推断修复动作，也不得调用 `start_install_task`、`start_uninstall_task` 或任何未文档化的恢复、删除、回滚、manifest 写入 command。
@@ -712,6 +734,7 @@ cancel_task(taskId)
 - `preview_recovery_action` 读取失败使用稳定错误码：未配置或无法读取 game instance 返回 `game_instance_unavailable`；动作预览不可用返回 `install_recovery_action_preview_unavailable`。错误 message 不应包含完整本地路径、backup ref、manifest 路径、sandbox/cache 路径或第三方 Mod 内容。
 - `preview_install_plan` 的错误使用稳定 code，例如 `install_target_path_empty`、`install_target_path_absolute`、`install_target_path_parent_traversal`、`install_target_path_windows_drive_prefix`、`install_target_path_invalid_segment` 和 `install_target_root_not_allowed`；错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_imported_mod_install_plan` 的错误使用稳定 code，例如 `game_id_invalid`、`install_planning_sources_unavailable`、`install_planning_game_adapter_not_found`、`install_planning_imported_mod_not_found`、`install_planning_imported_mod_analysis_unavailable`、`install_planning_imported_mod_sandbox_unavailable`、`install_planning_imported_mod_file_scan_unavailable`，以及复用的 `install_target_*` / `install_target_root_not_allowed` 路径校验错误；错误 message 不应包含完整本地路径、sandbox/cache 路径或第三方 Mod 内容。
+- revision/reinstall commands 的输入错误使用 `mod_id_empty`、`profile_id_empty`、`candidate_revision_id_empty`、`layer_name_empty`、`game_id_invalid` 或 `plan_token_invalid`；query/用例不可用使用 `mod_revisions_not_found`、`mod_revisions_unavailable`、`reinstall_catalog_unavailable`、`reinstall_manifest_unavailable`、`reinstall_recovery_unavailable`、`reinstall_candidate_plan_unavailable`、`reinstall_preview_unavailable` 或 `reinstall_start_unavailable`。这些错误的 message 不能包含 archive/source/sandbox/game-root/target/backup/manifest path、ref、hash 或第三方 Mod 内容。
 
 当前安装与恢复 DTO 形状：
 
@@ -748,6 +771,85 @@ type StartUninstallTaskRequestDto = {
   profileId: string;
 };
 
+type StartImportModRevisionTaskRequestDto = {
+  archivePath: string;
+  modId: string;
+};
+
+type ReinstallFileLayerDto = {
+  name: string;
+  priority: number;
+};
+
+type PreviewReinstallPlanRequestDto = {
+  gameId: string;
+  profileId: string;
+  modId: string;
+  candidateRevisionId: string;
+  layer: ReinstallFileLayerDto;
+};
+
+type StartReinstallTaskRequestDto = PreviewReinstallPlanRequestDto & {
+  planToken: string;
+};
+
+type ModRevisionSummaryDto = {
+  revisionId: string;
+};
+
+type ModRevisionListDto = {
+  modId: string;
+  originRevisionId: string;
+  displayRevisionId: string;
+  revisions: ModRevisionSummaryDto[];
+};
+
+type ReinstallTargetCountsDto = {
+  retained: number;
+  replaced: number;
+  added: number;
+  stale: number;
+};
+
+type ReinstallBlockingReasonDto =
+  | "not_installed"
+  | "candidate_not_found"
+  | "candidate_not_ready"
+  | "candidate_owner_mismatch"
+  | "candidate_already_installed"
+  | "manifest_state_unsafe"
+  | "installed_revision_unknown"
+  | "source_unavailable"
+  | "target_missing"
+  | "target_changed"
+  | "target_read_failed"
+  | "backup_missing"
+  | "backup_read_failed"
+  | "plan_conflict"
+  | "cross_mod_target_conflict"
+  | "preview_stale";
+
+type ReinstallPlanPreviewDto =
+  | {
+      status: "ready";
+      planToken: string;
+      installedRevision: ModRevisionSummaryDto;
+      candidateRevision: ModRevisionSummaryDto;
+      counts: ReinstallTargetCountsDto;
+      blockingReasons: [];
+    }
+  | {
+      status: "blocked";
+      planToken: null;
+      installedRevision: ModRevisionSummaryDto | null;
+      candidateRevision: ModRevisionSummaryDto | null;
+      counts: ReinstallTargetCountsDto;
+      blockingReasons: Array<{
+        code: ReinstallBlockingReasonDto;
+        count: number;
+      }>;
+    };
+
 type InstallManifestStatusRequestDto = {
   gameId?: string;
   profileId: string;
@@ -760,7 +862,7 @@ type InstallRecoveryScanRequestDto = {
   modIds: string[];
 };
 
-type InstallRecoveryActionKindDto = "rollback_install";
+type InstallRecoveryActionKindDto = "rollback_install" | "reconcile_reinstall";
 
 type InstallRecoveryActionPreviewRequestDto = {
   gameId: string;
@@ -779,6 +881,8 @@ type StartRecoveryActionTaskRequestDto = {
 type InstallManifestStatusDto =
   | "not_installed"
   | "installed"
+  | "committed_cleanup_pending"
+  | "cleanup_pending"
   | "rollback_required"
   | "repair_required"
   | "unknown";
@@ -794,6 +898,8 @@ type InstallManifestStatusSummaryDto = {
 type InstallRecoveryStatusDto =
   | "not_installed"
   | "completed"
+  | "committed_cleanup_pending"
+  | "cleanup_pending"
   | "rollback_required"
   | "repair_required"
   | "unknown";

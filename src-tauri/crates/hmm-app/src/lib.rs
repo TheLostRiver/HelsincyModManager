@@ -73,7 +73,8 @@ pub use mod_import::{
     ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
     ModImportPrepareResult, ModImportPrepareService, ModImportTaskRunError, ModImportTaskRunner,
     ModLibraryItem, ModLibraryService, ModLibraryStatus, ModPackageMetadataSummary,
-    ThumbnailCacheMaintenanceScheduler, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    ModRevisionList, ThumbnailCacheMaintenanceScheduler,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 pub use mod_import_diagnostics::{
     PreviewImageDiagnosticExportCategory, PreviewImageDiagnosticExportCategoryId,

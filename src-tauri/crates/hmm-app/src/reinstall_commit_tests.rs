@@ -982,6 +982,7 @@ mod fault {
                     .set_revision(candidate_revision("v2", "mod-b"))
             }),
             Box::new(|fixture| fixture.recovery.set_active(true)),
+            Box::new(|fixture| fixture.recovery.set_active_mod("mod-b")),
         ];
         for mutate in cases {
             let fixture = Fixture::ready();

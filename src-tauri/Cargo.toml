@@ -15,6 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 hmm-app = { path = "crates/hmm-app" }
 hmm-core = { path = "crates/hmm-core" }
 hmm-games-mhw = { path = "crates/hmm-games-mhw" }
@@ -30,6 +31,5 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-anyhow.workspace = true
 tempfile = "3.27.0"
 zip.workspace = true
