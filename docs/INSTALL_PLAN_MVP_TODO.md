@@ -5,7 +5,7 @@
 当前实现事实以 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md) 为准；长期方案和可选后端设计参考 [Mod 安装方案规划](mod_installation_strategy.md)；前后端通信形状参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
 当前执行优先级以 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准。
-Gate A 前只推进 CL4 生命周期独立复审和阻断缺陷；Gate A 后立即推进 ARMOR_RETARGET Gate B。
+Gate A 已完成独立复审并标记为 `certified`；当前只推进 ARMOR_RETARGET Gate B，从 AR1 开始。
 本文其余历史切片继续保留作事实记录，但不构成并行开工授权。
 
 ## 目标
@@ -60,9 +60,6 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍未完成：
 
-- 核心生命周期认证：CL0-CL3 的 fixture/harness、install/uninstall/reinstall L1/L2 自动化、
-  disposable Windows Sandbox L3、诊断脱敏和 cleanup 已完成；CL4 独立复审与 Gate A `certified`
-  记录仍未完成。
 - 卸载专用 rich repair summary、批量/profile 工作流和通用 repair 自动化。
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
@@ -78,8 +75,8 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - L1 fault/serialization/concurrency/privacy、L2 `v1 -> v2 -> restart -> uninstall -> baseline` 与
   Windows Sandbox L3 均已执行；L3 证明同卡 revision import、1/2/1/1、重启 installed v2、manifest
   卸载、逐字节 baseline 恢复、诊断字段白名单和 containment cleanup。
-- CL3 状态为 `implemented`；CL4 / Gate A 仍未认证，ARMOR_RETARGET、分页、批量迁移和 revision GC
-  未提前实施。
+- CL3 状态为 `implemented`；CL4 独立复审后 Gate A 已标记为 `certified`。ARMOR_RETARGET 尚未实现，
+  分页、批量迁移和 revision GC 未提前实施。
 
 以下切片已经完成，后续工作不应重复开同类 PR，除非是在修 bug 或补边界：
 
@@ -778,9 +775,9 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ## 后续切片优先级
 
-### P0：核心生命周期认证（当前）
+### P0：核心生命周期认证（已完成）
 
-**状态：** CL0、CL1、CL2 与 CL3 已完成，下一项 CL4 独立复审；详见
+**状态：** CL0-CL4 已完成，Gate A 为 `certified`；详见
 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 与
 [CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。
 
@@ -791,7 +788,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 2. CL1 已认证 install/restart/uninstall/baseline、准备阶段 fault ordering 与审计脱敏自动化闭环。
 3. CL2 已在 disposable Windows Sandbox 认证 Tauri 桌面工作流。
 4. CL3 已落地独立 reinstall use case/task，并按最终 target 分类 retained/replaced/added/stale。
-5. CL4 完整验证与 Gate A `certified` 记录（下一项）。
+5. CL4 完整验证与 Gate A `certified` 记录已完成。
 
 真正重装必须：
 
@@ -920,6 +917,8 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 不输出本地真实路径。
 
 ### P1：ARMOR_RETARGET staging 接入
+
+**状态：** 当前从 AR1 开始推进 Gate B；本节 staging 接入属于后续 AR3，不得在 AR1 提前实现。
 
 **优先级覆盖：** Gate A certified 后立即进入 Gate B；不再等待分页、批量迁移、备份中心或任务
 队列。切换 replacement target 必须复用 CL3 的真正重装，不能在游戏目录原地改名。

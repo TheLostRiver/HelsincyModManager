@@ -1,6 +1,6 @@
 # Core Mod Lifecycle CL3 真正重装实施计划
 
-- 状态：Task 0-10 已完成，CL3 于 2026-07-15 标记为 `implemented`；CL4 / Gate A 尚未认证
+- 状态：Task 0-10 已完成，CL3 于 2026-07-15 标记为 `implemented`；后续 CL4 复审已将 Gate A 标记为 `certified`
 
 > **执行说明：** 本计划消费
 > [CL3 真正重装设计](../specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
