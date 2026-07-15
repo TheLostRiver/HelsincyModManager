@@ -74,6 +74,12 @@ test("mod library routes install and true reinstall through separate commands", 
   assert.match(page, /case\s+"install":[\s\S]*?startSelectedInstallTask\(\)/);
   assert.match(page, /case\s+"reinstall":[\s\S]*?openReinstall/);
   assert.doesNotMatch(page, /case\s+"reinstall":\s*startSelectedInstallTask\(\)/);
+  assert.match(page, /const previewGeneration = \+\+installPlanPreviewGenerationRef\.current/);
+  assert.match(
+    page,
+    /case\s+"reinstall":[\s\S]*?installPlanPreviewGenerationRef\.current \+= 1;[\s\S]*?openReinstall/,
+  );
+  assert.match(page, /installPlanPreviewGenerationRef\.current !== previewGeneration/);
   assert.match(data, /id:\s*"install"/);
   assert.match(data, /id:\s*"reinstall"/);
   assert.match(panel, /canReinstallSelection/);
@@ -86,6 +92,8 @@ test("reinstall workflow matches task id and phase then refetches durable facts 
   assert.match(source, /event\.payload\.taskId\s*!==/);
   assert.match(source, /isReinstallTaskPhase\(event\.payload\.phase\)/);
   assert.match(source, /pendingProgressEventsRef/);
+  assert.match(source, /applyProgressStateRef\.current\(next\)/);
+  assert.match(source, /}, \[listenerAttempt\]\);/);
   assert.match(source, /isReinstallTaskTerminal/);
   assert.match(source, /refreshReinstallDurableFacts/);
   assert.match(source, /getModRevisions/);

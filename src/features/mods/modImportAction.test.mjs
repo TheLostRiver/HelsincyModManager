@@ -36,7 +36,7 @@ test("candidate import reuses the picker task UI with an explicit selected mod o
   assert.match(actionSource, /mode\??:\s*"new"\s*\|\s*"revision"/);
   assert.match(actionSource, /startImportModRevisionTask\(\{\s*archivePath:\s*selected,\s*modId/);
   assert.match(actionSource, /useId\(\)/);
-  assert.doesNotMatch(actionSource, /displayName|author|versionLabel[\s\S]*startImportModRevisionTask/);
+  assert.doesNotMatch(actionSource, /(?:displayName|author|versionLabel)[\s\S]*startImportModRevisionTask/);
   assert.match(panelSource, /mode="revision"/);
   assert.match(panelSource, /modId=\{selectedModId\}/);
   assert.match(panelSource, /disabledReason=/);
