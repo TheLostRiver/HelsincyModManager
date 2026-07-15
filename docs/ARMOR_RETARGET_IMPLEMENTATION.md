@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **当前优先级（2026-07-15）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
-> 状态仍为 `planned`，源码尚未落地 replacement/retarget 能力，下一项只执行 AR1。执行顺序以
+> **当前优先级（2026-07-16）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
+> AR1 已标记为 `implemented`，当前下一项只执行 AR2。执行顺序以
 > [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
-> 不得在 AR1 提前实现后续切片，target switch 必须复用 Gate A 的
+> 不得在 AR2 提前实现后续切片，target switch 必须复用 Gate A 的
 > 真正重装 contract。
 
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。
@@ -47,8 +47,8 @@ Lifecycle Gate A 必须达到 `certified`：安装/卸载纵向 acceptance、桌
 
 ```text
 Gate A certified
-  -> AR1 replacement model / ports / 最小 catalog
-  -> AR2 单 source f_equip parser / analyzer / RetargetPlan
+  -> AR1 replacement model / ports / 最小 catalog [implemented]
+  -> AR2 单 source f_equip parser / analyzer / RetargetPlan [current]
   -> AR3 staging materialize / InstallPlan / binding snapshot
   -> AR4 target selection / preview / install UI
   -> AR5 true reinstall target switch / uninstall / Gate B
@@ -62,6 +62,29 @@ Gate A certified
 - T9 只补 replacement binding snapshot；T10 只补 source/target/path-family 必要 preflight。
 - 完整 catalog、本地化筛选、多 source、`m_equip`、武器/语音和高级 transformer 延后。
 - target switch 不实现独立删除/复制旁路，必须生成新 plan 并调用真正重装链路。
+
+## AR1 已实施基线（2026-07-16）
+
+AR1 实际交付按重排后的窄边界实现，下面旧 Task 1-3 的大段代码草图只保留作历史追溯，不能再
+逐字执行：旧草图中的 `ReplacementAnalysis` / `RetargetPlan` 属于 AR2，`PackageFileEntry` /
+`StagingFileSystem` 属于 AR2/AR3，均未在 AR1 提前创建。
+
+已落地：
+
+- `hmm-core::replacement`：validated target/binding/source/kind/catalog-version identity、localized
+  display map、opaque structured metadata、`ReplacementTarget`、`ReplacementBinding` 和
+  `ReplacementCatalog` serde/invariant contract。
+- `hmm-ports::replacement`：独立只读 `ReplacementCatalogProvider`，提供 catalog、stable-id find 与
+  game-owned search；未修改目录 `GameAdapter`。
+- `hmm-games-mhw::armor_retarget::catalog`：读取 `data/mhw-armor-targets.v1.json`，校验 schema、
+  duplicate scoped internal id、`plNNN_VVVV` 与 metadata shape，执行 NFC/中点/NFKC 搜索规范化，
+  并用精确 normalized terms 区分 Fatalis / Alatreon。
+- 聚焦测试入口：`cargo test -p hmm-core --test replacement`、
+  `cargo test -p hmm-ports --test replacement_catalog`、
+  `cargo test -p hmm-games-mhw --test armor_catalog`。
+
+AR1 没有 app/Tauri/frontend wiring，也没有 parser、analyzer、`RetargetPlan`、staging、InstallPlan 或
+binding snapshot persistence。AR2 必须从当前公开类型/port 继续，而不是重新引入旧草图的宽 trait。
 
 ## Target File Structure
 
@@ -89,11 +112,13 @@ src-tauri/crates/hmm-app/src/
 src-tauri/crates/hmm-games-mhw/src/
   armor_retarget/
     catalog.rs
-    catalog_data.rs
     path.rs
     retarget.rs
     mod.rs
   lib.rs
+
+src-tauri/crates/hmm-games-mhw/data/
+  mhw-armor-targets.v1.json
 
 src-tauri/crates/hmm-infra/src/
   staging.rs
@@ -112,8 +137,8 @@ src/features/replacements/
 
 职责边界：
 
-- `hmm-core/src/replacement.rs`：只定义游戏无关模型、错误枚举和不可变计划结构。
-- `hmm-ports/src/replacement.rs`：声明 replacement catalog、包分析、retarget 计划、staging 文件系统端口。
+- `hmm-core/src/replacement.rs`：AR1 定义游戏无关 identity、target/binding/catalog；AR2 再添加 analysis/plan。
+- `hmm-ports/src/replacement.rs`：AR1 只声明 replacement catalog 查询；AR2/AR3 再添加 analysis/plan/staging 端口。
 - `hmm-games-mhw/src/armor_retarget/*`：实现 MHW:I catalog、Unicode 归一化、armor 路径解析和 slot 段替换。
 - `hmm-app/src/replacement.rs`：编排 catalog 查询、包分析、plan 生成、staging materialize。
 - `hmm-infra/src/staging.rs`：在应用数据目录或临时目录中复制文件，不触碰游戏目录。
@@ -165,7 +190,7 @@ Expected:
 Verification passed.
 ```
 
-## Task 1: Core Replacement Domain Model
+## Task 1: Core Replacement Domain Model（AR1 已实施；下列旧草图仅供追溯）
 
 **Files:**
 
@@ -354,7 +379,7 @@ Expected:
 test result: ok
 ```
 
-## Task 2: Replacement Ports
+## Task 2: Replacement Ports（AR1 已实施；下列宽 trait 草图已由窄 port 取代）
 
 **Files:**
 
@@ -473,7 +498,7 @@ Expected:
 test result: ok
 ```
 
-## Task 3: MHW Armor Catalog
+## Task 3: MHW Armor Catalog（AR1 已实施；实际数据改用 versioned JSON envelope）
 
 **Files:**
 

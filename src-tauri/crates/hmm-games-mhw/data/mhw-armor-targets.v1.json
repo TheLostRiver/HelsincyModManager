@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-armor-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "id": "mhw:armor:guardian-alpha",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【守护者α】服装",
+        "en": "Guardian Alpha"
+      },
+      "aliases": ["守护者", "守护者α", "Guardian", "Guardian Alpha"],
+      "internal_id": "pl121_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "monster": "guardian",
+        "rank": "high",
+        "variant": "alpha",
+        "is_full_body": false,
+        "parts": ["head", "body", "arms", "waist", "legs"]
+      }
+    },
+    {
+      "id": "mhw:armor:fatalis-alpha",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英‧龙α】服装",
+        "en": "Fatalis Alpha +"
+      },
+      "aliases": ["黑龙", "黑龙α", "Fatalis", "Fatalis Alpha", "Fatalis α"],
+      "internal_id": "pl129_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "monster": "fatalis",
+        "rank": "master",
+        "variant": "alpha",
+        "is_full_body": false,
+        "parts": ["head", "body", "arms", "waist", "legs"]
+      }
+    },
+    {
+      "id": "mhw:armor:fatalis-beta",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英‧龙β】服装",
+        "en": "Fatalis Beta +"
+      },
+      "aliases": ["黑龙", "黑龙β", "Fatalis", "Fatalis Beta", "Fatalis β"],
+      "internal_id": "pl129_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "monster": "fatalis",
+        "rank": "master",
+        "variant": "beta",
+        "is_full_body": false,
+        "parts": ["head", "body", "arms", "waist", "legs"]
+      }
+    },
+    {
+      "id": "mhw:armor:alatreon-alpha",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·煌黑龙α】服装",
+        "en": "Alatreon Alpha +"
+      },
+      "aliases": ["煌黑龙", "煌黑龙α", "Alatreon", "Alatreon Alpha", "Alatreon α"],
+      "internal_id": "pl052_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "monster": "alatreon",
+        "rank": "master",
+        "variant": "alpha",
+        "is_full_body": false,
+        "parts": ["head", "body", "arms", "waist", "legs"]
+      }
+    }
+  ]
+}

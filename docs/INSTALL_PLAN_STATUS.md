@@ -3,8 +3,8 @@
 本文档记录当前 `InstallPlan` 模块已经落地的能力、尚未落地的边界和后续切片顺序。它用于回答“现在能依赖什么”，长期设计仍参考 [Mod 安装方案规划](mod_installation_strategy.md)，跨前后端通信契约参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
 当前实施顺序由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 覆盖：安装、
-卸载和真正重装已通过 CL4 独立复审，Core Mod Lifecycle Gate A 为 `certified`；当前进入
-ARMOR_RETARGET 最窄纵向切片的 AR1。本文的能力清单仍是实现事实来源，
+卸载和真正重装已通过 CL4 独立复审，Core Mod Lifecycle Gate A 为 `certified`；ARMOR_RETARGET
+AR1 模型/port/最小 catalog 已实现，当前进入 AR2 parser/analyzer/RetargetPlan。本文的能力清单仍是实现事实来源，
 但旧的后续建议不再优先于该计划。
 
 ## 模块目标
@@ -364,8 +364,8 @@ target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或
 4. **CL3（已完成）：** 已落地独立真正重装 use case/task、四类 entry-set replacement、失败恢复和
    L1/L2/L3 验收。
 5. **CL4 / Gate A（已完成）：** 完整验证、安全复审和 `certified` 状态记录均已通过。
-6. **ARMOR_RETARGET Gate B（当前从 AR1 开始）：** AR1 只落地领域模型、replacement binding 和
-   最小 versioned catalog；AR3 才接入 staging、InstallPlan 与 binding snapshot，后续切片再完成
+6. **ARMOR_RETARGET Gate B（AR1 已实现，当前 AR2）：** AR1 已落地领域模型、replacement binding、
+   只读 catalog port 和最小 versioned catalog；AR3 才接入 staging、InstallPlan 与 binding snapshot，后续切片再完成
    目标选择、安装、切换目标和卸载。
 
 Rich manifest、repair 和 preflight 只在解除上述步骤阻断时取最小切片。批量/profile 卸载、完整
