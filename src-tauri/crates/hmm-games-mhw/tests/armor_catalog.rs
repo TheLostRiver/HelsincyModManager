@@ -1,5 +1,6 @@
 use hmm_games_mhw::{normalize_armor_display_text, normalize_armor_search_text, MhwArmorCatalog};
 use hmm_ports::ReplacementCatalogProvider;
+use std::collections::BTreeSet;
 
 #[test]
 fn armor_catalog_is_versioned_and_contains_stable_seed_targets() {
@@ -8,11 +9,20 @@ fn armor_catalog_is_versioned_and_contains_stable_seed_targets() {
 
     assert_eq!(catalog.version().as_str(), "mhw-armor-v1");
     assert_eq!(catalog.game_id().as_str(), "mhw");
-    assert!(catalog.targets().len() >= 4);
-    assert!(catalog
-        .targets()
-        .iter()
-        .any(|target| target.id().as_str() == "mhw:armor:fatalis-alpha"));
+    assert_eq!(catalog.targets().len(), 4);
+    assert_eq!(
+        catalog
+            .targets()
+            .iter()
+            .map(|target| target.id().as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "mhw:armor:alatreon-alpha",
+            "mhw:armor:fatalis-alpha",
+            "mhw:armor:fatalis-beta",
+            "mhw:armor:guardian-alpha",
+        ])
+    );
 }
 
 #[test]

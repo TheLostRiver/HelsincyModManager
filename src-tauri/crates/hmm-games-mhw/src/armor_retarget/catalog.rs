@@ -15,8 +15,12 @@ const BUNDLED_ARMOR_CATALOG: &str = include_str!("../../data/mhw-armor-targets.v
 pub struct MhwArmorCatalog;
 
 #[derive(Debug, Deserialize)]
-struct RawArmorCatalog {
+struct RawArmorCatalogEnvelope {
     schema_version: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawArmorCatalog {
     catalog_version: String,
     game_id: String,
     targets: Vec<RawArmorTarget>,
@@ -82,14 +86,17 @@ fn normalize_middle_dot(value: char) -> char {
 }
 
 fn parse_armor_catalog(source: &str) -> ReplacementCatalogResult<ReplacementCatalog> {
-    let raw: RawArmorCatalog =
+    let envelope: RawArmorCatalogEnvelope =
         serde_json::from_str(source).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
 
-    if raw.schema_version != MHW_ARMOR_CATALOG_SCHEMA_VERSION {
+    if envelope.schema_version != MHW_ARMOR_CATALOG_SCHEMA_VERSION {
         return Err(ReplacementCatalogError::UnsupportedSchemaVersion {
-            schema_version: raw.schema_version,
+            schema_version: envelope.schema_version,
         });
     }
+
+    let raw: RawArmorCatalog =
+        serde_json::from_str(source).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
 
     let game_id =
         GameId::parse(raw.game_id).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
@@ -239,15 +246,8 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_catalog_schema_version() {
-        let error = parse_armor_catalog(
-            r#"{
-                "schema_version": 99,
-                "catalog_version": "test-v1",
-                "game_id": "mhw",
-                "targets": []
-            }"#,
-        )
-        .expect_err("unsupported schema");
+        let error = parse_armor_catalog(r#"{"schema_version":99}"#)
+            .expect_err("unsupported schema should not require v1 fields");
 
         assert_eq!(
             error,
