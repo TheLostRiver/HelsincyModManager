@@ -1,3 +1,4 @@
+use crate::{InstallPlanningError, InstallPlanningService};
 use hmm_core::{
     classify_reinstall_targets, resolve_installed_revision, FileLayer, GameId, InstallFileProvider,
     InstallManifest, InstallManifestEntry, InstallManifestStatusConsumption,
@@ -115,6 +116,33 @@ pub trait ReinstallCandidatePlanner: Send + Sync {
         &self,
         request: ReinstallCandidatePlanRequest<'_>,
     ) -> Result<InstallPlan, ReinstallCandidatePlanError>;
+}
+
+impl ReinstallCandidatePlanner for InstallPlanningService {
+    fn build_candidate_plan(
+        &self,
+        request: ReinstallCandidatePlanRequest<'_>,
+    ) -> Result<InstallPlan, ReinstallCandidatePlanError> {
+        self.build_plan_from_imported_revision(
+            request.game_id,
+            request.mod_id,
+            &request.candidate.package_id,
+            request.layer,
+        )
+        .map_err(|error| match error {
+            InstallPlanningError::ImportedModSourcesUnavailable
+            | InstallPlanningError::GameAdapterNotFound { .. } => {
+                ReinstallCandidatePlanError::Unavailable
+            }
+            InstallPlanningError::InvalidTargetPath { .. }
+            | InstallPlanningError::ImportedModNotFound { .. }
+            | InstallPlanningError::ImportedModAnalysisUnavailable
+            | InstallPlanningError::ImportedModSandboxUnavailable
+            | InstallPlanningError::ImportedModFileScanUnavailable => {
+                ReinstallCandidatePlanError::NotReady
+            }
+        })
+    }
 }
 
 pub trait ReinstallCandidateSourceReader: Send + Sync {
@@ -248,9 +276,9 @@ impl ReinstallPreviewService {
 
         let active_recovery = self
             .recovery
-            .load_transaction(&request.profile_id, &request.mod_id)
+            .list_transactions(&request.profile_id)
             .map_err(|_| ReinstallPreviewError::RecoveryUnavailable)?;
-        if active_recovery.is_some()
+        if !active_recovery.is_empty()
             || manifest.status.consumption() != InstallManifestStatusConsumption::TrustEntries
         {
             return Ok(ReinstallPlanPreview::blocked(

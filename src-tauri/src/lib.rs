@@ -8,6 +8,8 @@ mod install_commands;
 mod mod_import_commands;
 mod mod_metadata_commands;
 mod profile_commands;
+mod reinstall_commands;
+mod reinstall_dto;
 mod save_backup_commands;
 mod save_backup_dto;
 mod save_directory_discovery_commands;
@@ -37,7 +39,7 @@ use mod_import_commands::{
     get_mod_dependency_graph, get_mod_detail, get_mod_detail_preview_image, get_mod_library,
     get_preview_image_candidates, get_preview_image_diagnostics, get_thumbnail_cache_settings,
     maintain_thumbnail_cache, select_preview_image_candidate, set_thumbnail_cache_settings,
-    start_import_mod_task,
+    start_import_mod_revision_task, start_import_mod_task,
 };
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use profile_commands::{
@@ -45,6 +47,7 @@ use profile_commands::{
     set_active_profile, set_profile_save_settings, update_profile,
     validate_profile_backup_directory, validate_profile_save_directory,
 };
+use reinstall_commands::{get_mod_revisions, preview_reinstall_plan, start_reinstall_task};
 use save_backup_commands::{
     check_auto_save_backup, disable_save_backup_background_protection,
     enable_save_backup_background_protection, get_save_backup_background_control_status,
@@ -100,6 +103,10 @@ pub fn run() {
             preview_recovery_action,
             start_recovery_action_task,
             start_import_mod_task,
+            start_import_mod_revision_task,
+            get_mod_revisions,
+            preview_reinstall_plan,
+            start_reinstall_task,
             get_mod_library,
             get_mod_detail,
             get_mod_dependency_graph,

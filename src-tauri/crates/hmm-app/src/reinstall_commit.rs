@@ -231,11 +231,11 @@ impl ReinstallCommitService {
         }
         let active = self
             .recovery
-            .load_transaction(&prepared.request.profile_id, &prepared.request.mod_id)
+            .list_transactions(&prepared.request.profile_id)
             .map_err(|_| ReinstallCommitError::Failed {
                 phase: ReinstallCommitPhase::Revalidation,
             })?;
-        if active.is_some() {
+        if !active.is_empty() {
             return Err(ReinstallCommitError::PreviewStale);
         }
         let candidate = self

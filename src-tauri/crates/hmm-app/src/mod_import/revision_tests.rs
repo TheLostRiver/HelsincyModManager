@@ -90,6 +90,42 @@ fn revision_import_appends_to_explicit_existing_logical_mod() {
 }
 
 #[test]
+fn revision_query_returns_explicit_origin_display_and_owned_revision_ids() {
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed("mod-a", "revision-v1", "package-v1");
+    repository
+        .append_revision(&candidate_revision("revision-v2", "mod-a", "task-v2"))
+        .expect("append candidate revision");
+    let service = ModLibraryService::new(
+        repository,
+        Arc::new(SingleMetadataRepository),
+        Arc::new(SingleCategoryRepository),
+    );
+
+    let revisions = service
+        .get_mod_revisions(&ModId::new("mod-a"))
+        .expect("query revisions")
+        .expect("logical Mod exists");
+
+    assert_eq!(revisions.mod_id, ModId::new("mod-a"));
+    assert_eq!(
+        revisions.origin_revision_id,
+        ModRevisionId::new("revision-v1")
+    );
+    assert_eq!(
+        revisions.display_revision_id,
+        ModRevisionId::new("revision-v2")
+    );
+    assert_eq!(
+        revisions.revision_ids,
+        vec![
+            ModRevisionId::new("revision-v1"),
+            ModRevisionId::new("revision-v2")
+        ]
+    );
+}
+
+#[test]
 fn revision_import_rejects_missing_mod_before_preparing_a_sandbox() {
     let task_manager = Arc::new(crate::TaskManager::new());
     let task = task_manager
