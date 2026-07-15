@@ -244,8 +244,14 @@ ReplacementBinding
 ReplacementCatalog
   带稳定版本的游戏目标集合；查询和搜索规则由游戏 adapter 提供
 
+ReplacementAnalysis
+  从包内相对路径得到的 source 集合、命中计数和稳定 warning；不访问真实文件系统
+
 RetargetPlan
-  为了把 Mod 重定向到目标槽位，需要在 staging 目录执行的改写计划
+  为了把 Mod 重定向到目标槽位，需要在 staging 目录执行的纯相对路径改写计划
+
+RetargetAction
+  关联 package file identity、source/final relative path 与不透明 source/target facts
 ```
 
 外观替换需要支持：
@@ -257,6 +263,7 @@ RetargetPlan
 重要规则：
 
 - 原始导入的 Mod 包永远只读。
+- 包分析和 `RetargetPlan` 生成是纯操作，不携带 cache/sandbox 绝对路径。
 - 重定向只发生在 staging 目录。
 - 安装清单记录玩家选择的替换绑定。
 - 冲突检测基于最终目标路径，而不是原始压缩包路径。
@@ -512,10 +519,11 @@ pub trait ModRepository {
 - `GameConfigRepository`：保存和读取已配置的游戏实例；实现层负责 JSON schema、原子写入和存储错误映射。
 - `GameDiscoveryService`：承载 Steam library / 运行进程扫描等发现能力；MVP 阶段允许返回明确的未实现错误。
 
-ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `ReplacementCatalogProvider`，没有
-扩张目录 `GameAdapter`。MHW:I 实现返回 versioned catalog，并在 adapter 内完成 Unicode/search
-normalization 与 `plNNN_VVVV`/metadata schema 校验。Package analysis、`RetargetPlan` 与 staging port
-分别从 AR2/AR3 开始，不属于当前已落地 trait。
+ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `ReplacementCatalogProvider`；AR2 在
+同一模块增加只携带 package file identity/相对路径的窄 `ReplacementAdapter`，没有扩张目录
+`GameAdapter`。MHW:I adapter 负责 versioned catalog、Unicode/search normalization、严格
+`plNNN_VVVV`/`f_equip` 路径分析和结构化 slot 替换；通用 core 只保存不透明 source/target facts 与
+纯 `RetargetPlan`。staging port、真实复制和 InstallPlan/manifest 集成从 AR3 开始，尚未落地。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 

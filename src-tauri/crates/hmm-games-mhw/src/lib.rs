@@ -14,7 +14,8 @@ mod prerequisites;
 mod save_directory;
 
 pub use armor_retarget::{
-    normalize_armor_display_text, normalize_armor_search_text, MhwArmorCatalog,
+    normalize_armor_display_text, normalize_armor_search_text, ArmorPathError, ArmorResourcePath,
+    MhwArmorCatalog, MhwArmorReplacementAdapter,
 };
 pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
 

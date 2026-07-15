@@ -275,8 +275,8 @@ MHW:I、第三方 Mod、Steam userdata、玩家存档或维护者日常 AppData�
 
 CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 2026-07-15 重新执行上述聚焦矩阵、
 全部前端测试、完整 `scripts/verify.ps1` 和 `cargo clippy --workspace --all-targets -- -D warnings`，并完成
-独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model、catalog port
-与 MHW:I 最小 versioned catalog 测试已落地，下一测试主线进入 AR2 parser/analyzer/RetargetPlan。
+独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model/catalog 与 AR2
+parser/analyzer/纯 `RetargetPlan` 测试已落地，下一测试主线进入 AR3 staging/InstallPlan/binding snapshot。
 
 ### ARMOR_RETARGET AR1
 
@@ -290,7 +290,23 @@ cargo test -p hmm-games-mhw --test armor_catalog
 
 这些测试分别锁定 stable target/binding/source/catalog identity 与 serde 不变量、catalog list/find/search
 trait contract、`mhw-armor-v1` seed、MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和
-Fatalis/Alatreon 精确隔离。Path parser、single-source analyzer 与 `RetargetPlan` 从 AR2 开始测试。
+Fatalis/Alatreon 精确隔离。
+
+### ARMOR_RETARGET AR2
+
+AR2 只使用人工 package file identity 和相对路径字符串，不读取真实 Mod、游戏目录或玩家数据：
+
+```powershell
+cargo test -p hmm-core --test replacement_analysis
+cargo test -p hmm-ports --test replacement_adapter
+cargo test -p hmm-games-mhw --test armor_retarget
+cargo clippy -p hmm-core -p hmm-ports -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+这些测试锁定 `/`/`\\` 规范化、严格 `f_equip` 模板、危险/畸形路径拒绝、`m_equip`/混合/多 source
+阻断、普通非 Armor 包的不适用 warning、unknown target/binding mismatch、package identity 保留、
+只替换 slot 段，以及 action/source/target/重复最终路径不变量。AR2 不测试 staging 或真实复制；这些
+从 AR3 开始使用 temp directory fixture 覆盖。
 
 ## 存档备份
 
