@@ -115,7 +115,7 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL3-I1 | schema v1 导入记录迁移为稳定 logical Mod + revision catalog | 通过 | Task 2 catalog migration/revision import tests；Task 9 同一 `mod_id` v1/v2 L2 证据 |
 | CL3-P1 | 四类 ReinstallPlan、全量 preflight 与零写入阻断 | 通过 | Task 1/4 聚焦测试；Task 9 L2 preview 为 1 retained / 2 replaced / 1 added / 1 stale |
 | CL3-R1 | v1 -> v2 -> restart -> uninstall -> baseline | 通过 | `headless_composition_reinstalls_v1_to_v2_and_restores_baseline`；original backup 保留，old/stale entries 消失 |
-| CL3-F1 | source/backup/write/delete/manifest/rollback failure 回到 v1 | 通过 | Task 3/5 fault matrix；Task 9 manifest save failure 自动 rollback v1 并在 restart 后保持 installed v1 |
+| CL3-F1 | source/backup/write/delete/manifest failure 可回滚到 v1；rollback failure 保留 `rollback_required` / `repair_required` 事实 | 通过 | Task 3/5 fault matrix；Task 9 manifest save failure 自动 rollback v1 并在 restart 后保持 installed v1 |
 | CL3-T1 | shared lock、task phase/cancellation barrier 与 Audit 脱敏 | 通过 | Task 6/7 聚焦测试；Task 9 L2 task/Audit/restart 证据 |
 | CL3-D1 | Windows Sandbox revision import -> reinstall -> restart -> uninstall | 阻断 | CL3 Task 10；只用人工 TEMP fixture 与 disposable AppData |
 
