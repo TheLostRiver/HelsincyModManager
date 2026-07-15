@@ -1,8 +1,10 @@
 # Core Mod Lifecycle CL3 真正重装实施计划
 
+- 状态：Task 0-10 已完成，CL3 于 2026-07-15 标记为 `implemented`；CL4 / Gate A 尚未认证
+
 > **执行说明：** 本计划消费
 > [CL3 真正重装设计](../specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
-> [CL0/CL1/CL2 验收基线](../../CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。每个 Task 先写失败测试、
+> [CL0/CL1/CL2/CL3 验收基线](../../CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。每个 Task 先写失败测试、
 > 再做最小实现并独立提交。不得把多个 Task 合并成一个大型实现 PR。
 
 **Goal:** 使用稳定 logical Mod id、不可变 package revision、四类 ReinstallPlan、preflight、独立
@@ -601,7 +603,8 @@ cargo test -p hmm-infra reinstall
 cargo check --workspace
 ```
 
-只有自动化真实通过后，才能把对应 CL3 L1/L2 matrix 行改为“通过”；L3 和 Gate A 仍未完成。
+Task 9 收尾时，只有自动化真实通过后，才能把对应 CL3 L1/L2 matrix 行改为“通过”；L3 尚待
+Task 10，Gate A 尚待 CL4。
 
 **Commit:** `test(lifecycle): 验收 v1 到 v2 真正重装闭环`
 
@@ -662,16 +665,16 @@ fixture containment、artifact hygiene 和文档状态。
 
 ## 完成定义
 
-- [ ] Task 0 基线清洁，contract 无歧义。
-- [ ] Task 1 pure classifier/entry-set replacement 通过。
-- [ ] Task 2 catalog v2 migration 与 revision import 通过。
-- [ ] Task 3 manifest revision/recovery transaction repository 通过。
-- [ ] Task 4 preview/preflight/token 零写入测试通过。
-- [ ] Task 5 happy path、failure matrix、rollback/cleanup 测试通过。
-- [ ] Task 6 task/shared lock/cancellation/recovery/Audit 测试通过。
-- [ ] Task 7 Tauri DTO/commands/AppState/contract 通过。
-- [ ] Task 8 frontend revision/reinstall workflow 与视觉状态通过。
-- [ ] Task 9 L2 `v1 -> v2 -> restart -> uninstall -> baseline` 通过。
-- [ ] Task 10 L3 Windows Sandbox、diagnostics、cleanup 与完整 verify 通过。
-- [ ] CL3 标记 implemented，CL4/Gate A 仍未提前认证。
-- [ ] 没有进入 ARMOR_RETARGET、P7.2c、分页、批量迁移或 revision GC。
+- [x] Task 0 基线清洁，contract 无歧义。
+- [x] Task 1 pure classifier/entry-set replacement 通过。
+- [x] Task 2 catalog v2 migration 与 revision import 通过。
+- [x] Task 3 manifest revision/recovery transaction repository 通过。
+- [x] Task 4 preview/preflight/token 零写入测试通过。
+- [x] Task 5 happy path、failure matrix、rollback/cleanup 测试通过。
+- [x] Task 6 task/shared lock/cancellation/recovery/Audit 测试通过。
+- [x] Task 7 Tauri DTO/commands/AppState/contract 通过。
+- [x] Task 8 frontend revision/reinstall workflow 与视觉状态通过。
+- [x] Task 9 L2 `v1 -> v2 -> restart -> uninstall -> baseline` 通过。
+- [x] Task 10 L3 Windows Sandbox、diagnostics、cleanup 与完整 verify 通过。
+- [x] CL3 标记 implemented，CL4/Gate A 仍未提前认证。
+- [x] 没有进入 ARMOR_RETARGET、P7.2c、分页、批量迁移或 revision GC。

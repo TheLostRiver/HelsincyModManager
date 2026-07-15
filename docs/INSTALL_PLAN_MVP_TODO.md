@@ -5,7 +5,7 @@
 当前实现事实以 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md) 为准；长期方案和可选后端设计参考 [Mod 安装方案规划](mod_installation_strategy.md)；前后端通信形状参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
 当前执行优先级以 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准。
-Gate A 前只推进生命周期验收、阻断缺陷和真正重装；Gate A 后立即推进 ARMOR_RETARGET Gate B。
+Gate A 前只推进 CL4 生命周期独立复审和阻断缺陷；Gate A 后立即推进 ARMOR_RETARGET Gate B。
 本文其余历史切片继续保留作事实记录，但不构成并行开工授权。
 
 ## 目标
@@ -60,18 +60,26 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 
 仍未完成：
 
-- 核心生命周期认证：CL0 fixture/harness 与 CL1 install -> restart -> uninstall -> baseline、
-  source/backup fault ordering、manifest/recovery/Audit Log 脱敏证据已完成；CL2 实际 Tauri 桌面
-  smoke、CL3 真正重装和 Gate A 认证记录仍未完成。
-- 独立真正重装：当前 UI 仍把普通 `start_install_task` 作为 reinstall；尚未分类
-  retained/replaced/added/stale entries，也没有恢复到重装前版本的独立 task/recovery contract。
-- 卸载 rich repair summary、批量/profile 工作流和真正的受控修复入口。
+- 核心生命周期认证：CL0-CL3 的 fixture/harness、install/uninstall/reinstall L1/L2 自动化、
+  disposable Windows Sandbox L3、诊断脱敏和 cleanup 已完成；CL4 独立复审与 Gate A `certified`
+  记录仍未完成。
+- 卸载专用 rich repair summary、批量/profile 工作流和通用 repair 自动化。
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 的 replacement binding snapshot、`game_id` / `game_instance_id` / 顶层 `mod_id` 语义、写侧状态机门禁和真实修复检测。
 - dependency/preflight 阻断。
 
 ## 已完成切片记录
+
+### 2026-07-15 进度详情：CL3 真正重装
+
+- 稳定 logical Mod + immutable revision catalog、manifest installed revision、四类 ReinstallPlan、
+  durable reinstall transaction、独立 preview/commit/task/Tauri/frontend workflow 已落地。
+- L1 fault/serialization/concurrency/privacy、L2 `v1 -> v2 -> restart -> uninstall -> baseline` 与
+  Windows Sandbox L3 均已执行；L3 证明同卡 revision import、1/2/1/1、重启 installed v2、manifest
+  卸载、逐字节 baseline 恢复、诊断字段白名单和 containment cleanup。
+- CL3 状态为 `implemented`；CL4 / Gate A 仍未认证，ARMOR_RETARGET、分页、批量迁移和 revision GC
+  未提前实施。
 
 以下切片已经完成，后续工作不应重复开同类 PR，除非是在修 bug 或补边界：
 
@@ -770,9 +778,9 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ## 后续切片优先级
 
-### P0：核心生命周期认证与真正重装（当前）
+### P0：核心生命周期认证（当前）
 
-**状态：** CL0、CL1 已完成，下一项 CL2；详见
+**状态：** CL0、CL1、CL2 与 CL3 已完成，下一项 CL4 独立复审；详见
 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 与
 [CL0 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。
 
@@ -781,9 +789,9 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 1. CL0 已固定人工 `v1/v2` fixture、test-only AppState import/plan/restart harness、acceptance
    matrix、桌面 smoke 文档和缺口清单。
 2. CL1 已认证 install/restart/uninstall/baseline、准备阶段 fault ordering 与审计脱敏自动化闭环。
-3. CL2 在 disposable account/VM 认证 Tauri 桌面工作流。
-4. CL3 新增独立 reinstall use case/task，按最终 target 分类 retained/replaced/added/stale。
-5. CL4 完整验证与 Gate A `certified` 记录。
+3. CL2 已在 disposable Windows Sandbox 认证 Tauri 桌面工作流。
+4. CL3 已落地独立 reinstall use case/task，并按最终 target 分类 retained/replaced/added/stale。
+5. CL4 完整验证与 Gate A `certified` 记录（下一项）。
 
 真正重装必须：
 
@@ -793,7 +801,7 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 - 成功后替换该 Mod 的 manifest entry set，移除 stale entries，同时保留未来完整卸载所需的
   长期 backup 语义。
 - 对 target 漂移、backup 缺失、旧摘要缺失或不安全 manifest 状态零写入阻断。
-- 在真正 contract 完成前，不把普通覆盖安装宣称为完整重装。
+- 普通覆盖安装仍不得冒充真正重装；版本替换必须使用已落地的独立 reinstall contract。
 
 验收矩阵至少覆盖新增文件、覆盖文件、内容变化、新增 target、stale target、重启恢复、卸载回
 基线，以及 source/backup/write/manifest failure rollback。
