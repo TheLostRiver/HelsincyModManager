@@ -1,16 +1,19 @@
 # Core Mod Lifecycle CL3 真正重装设计
 
 - 日期：2026-07-14
-- 状态：`planned`；本文只固定未来实现契约，不表示 command、migration 或 UI 已落地
+- 状态：`implemented`（2026-07-15）；CL4 / Gate A 仍未认证
 - 上游：[核心 Mod 生命周期优先级计划](../../CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
-- 验收基线：[Core Mod Lifecycle CL0/CL1/CL2 验收基线](../../CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)
+- 验收基线：[Core Mod Lifecycle CL0/CL1/CL2/CL3 验收基线](../../CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)
 - 实施计划：[CL3 真正重装实施计划](../plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)
 
 ## 1. 背景
 
-当前安装、卸载、backup、manifest、rollback/recovery、共享写锁和任务事件已经存在，但 UI 的
-“重装”仍直接调用普通 `start_install_task`。当前 importer 还把 import task id 同时用作 package id
+设计启动时，安装、卸载、backup、manifest、rollback/recovery、共享写锁和任务事件已经存在，但 UI 的
+“重装”仍直接调用普通 `start_install_task`。当时 importer 还把 import task id 同时用作 package id
 和 mod id；第二次导入会生成另一张 Mod 卡，无法表达“同一个 Mod 的新 package revision”。
+
+上述缺口现已由 CL3 Task 1-10 按本文契约实现并通过 L1/L2/L3 验收；本节保留为设计背景，不表示
+当前产品仍使用旧的普通安装别名。
 
 普通 install 的 manifest merge 按本次写入 target 替换条目，不会删除新计划中消失的旧 target，
 也没有保存“重装前版本”的 transaction recovery facts。因此它不能安全完成 `v1 -> v2`：

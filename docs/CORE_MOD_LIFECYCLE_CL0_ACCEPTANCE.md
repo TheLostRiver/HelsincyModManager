@@ -1,12 +1,12 @@
 # Core Mod Lifecycle CL0 验收基线
 
 - 日期：2026-07-15
-- 状态：CL0、CL1、CL2 与 CL3 L1/L2 已完成；CL3 L3 和 Gate A 尚未完成
+- 状态：CL0、CL1、CL2 与 CL3 已完成；CL4 / Gate A 尚未完成
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - CL1 实施记录：[安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
 - CL3 设计：[真正重装 contract/spec](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)
 - CL3 实施入口：[真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)
-- 下一切片：CL3 Task 10 Windows Sandbox L3 与 closeout
+- 下一切片：CL4 Gate A 独立复审与认证
 
 ## 1. 目的与边界
 
@@ -40,10 +40,10 @@ CL0 不执行 install/uninstall game writes，不实现 package revision 更新�
 | Mod 导入 | synthetic zip -> real importer -> sandbox -> logical Mod/revision catalog | 首次导入创建稳定 logical Mod；revision import 向同一 `mod_id` 追加候选 revision |
 | 安装计划 | persisted analysis + sandbox scanner + MHW adapter -> `InstallPlan` | 可用；只消费 `nativePC` 下普通相对文件 |
 | 重启事实恢复 | drop/recreate AppState | game config、import library 和 plan 可恢复；TaskManager 状态按设计不持久化 |
-| 安装/卸载服务 | L2 AppState composition 与 CL2 disposable desktop smoke 已通过 | CL1/CL2 已完成；Gate A 仍等待 CL3 L3/CL4 |
-| 真正重装 | dedicated preview/task/commit/recovery 链与 L2 AppState composition | retained/replaced/added/stale、entry-set replacement、rollback 与 restart 已有 L1/L2 证据 |
+| 安装/卸载服务 | L2 AppState composition 与 CL2 disposable desktop smoke 已通过 | CL1/CL2 已完成；Gate A 仍等待 CL4 独立复审 |
+| 真正重装 | dedicated preview/task/commit/recovery 链、L2 AppState composition 与 CL3 disposable desktop smoke | retained/replaced/added/stale、entry-set replacement、rollback、restart 与 manifest 卸载已有 L1/L2/L3 证据 |
 | package revision | catalog migration + 同一 logical Mod revision import | v1/v2 保持一张 library card；origin/candidate revision 均持久化 |
-| 桌面隔离 | Windows Sandbox + 人工 TEMP game/archive + disposable AppData | CL2 已执行并清理；日常账户/真实游戏仍不在验收范围 |
+| 桌面隔离 | Windows Sandbox + 人工 TEMP game/archive + disposable AppData | CL2/CL3 已执行；人工 TEMP root 已受控清理，日常账户/真实游戏仍不在验收范围 |
 
 ## 3. 固定 Fixture Contract
 
@@ -117,7 +117,7 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 | CL3-R1 | v1 -> v2 -> restart -> uninstall -> baseline | 通过 | `headless_composition_reinstalls_v1_to_v2_and_restores_baseline`；original backup 保留，old/stale entries 消失 |
 | CL3-F1 | source/backup/write/delete/manifest failure 可回滚到 v1；rollback failure 保留 `rollback_required` / `repair_required` 事实 | 通过 | Task 3/5 fault matrix；Task 9 manifest save failure 自动 rollback v1 并在 restart 后保持 installed v1 |
 | CL3-T1 | shared lock、task phase/cancellation barrier 与 Audit 脱敏 | 通过 | Task 6/7 聚焦测试；Task 9 L2 task/Audit/restart 证据 |
-| CL3-D1 | Windows Sandbox revision import -> reinstall -> restart -> uninstall | 阻断 | CL3 Task 10；只用人工 TEMP fixture 与 disposable AppData |
+| CL3-D1 | Windows Sandbox revision import -> reinstall -> restart -> uninstall | 通过 | Task 10 实际 Tauri smoke；同一 logical Mod、1/2/1/1、restart installed v2、baseline restored、诊断与 cleanup 通过 |
 
 聚焦执行入口：
 
@@ -125,7 +125,7 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 cargo test -p hmm-tauri state::core_mod_lifecycle_tests
 ```
 
-CL3-I1/P1/R1/F1/T1 是已执行的 L1/L2 自动化证据；CL3-D1 仍是 Task 10 的 L3 预期证据。
+CL3-I1/P1/R1/F1/T1 是已执行的 L1/L2 自动化证据；CL3-D1 是 Task 10 已实际执行的 L3 桌面证据。
 正式 contract 与测试/清理矩阵见
 [CL3 真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)，
 逐提交执行顺序见
@@ -152,11 +152,13 @@ CL3 Task 2 已落地 catalog v1 -> v2 migration、stable logical Mod 与 revisio
 import task 创建 v1 logical Mod，再把 v2 追加到同一 `mod_id`；library 保持一张卡，catalog 同时保留
 origin v1 和 candidate v2。sandbox/source 生命周期仍由受控 importer 与 catalog 负责。
 
-### G4：真正重装 use case（L1/L2 已解决）
+### G4：真正重装 use case（已解决）
 
 CL3 Task 1-8 已落地独立 preview/task/commit/recovery 与前端工作流；Task 9 L2 证明 1/2/1/1 分类、
-entry-set replacement、original backup 生命周期、manifest failure rollback 和 restart authority。
-剩余缺口只有 Task 10 的 disposable Windows Sandbox L3/diagnostics/cleanup，不得用自动化代替。
+entry-set replacement、original backup 生命周期、manifest failure rollback 和 restart authority。Task 10
+在 disposable Windows Sandbox 中完成同一 logical Mod 的 v1 -> v2 真正重装、两次 restart、manifest
+卸载、逐字节 baseline 恢复、诊断脱敏和 containment cleanup。CL3 已有 L1/L2/L3 完整证据；下一项仅为
+CL4 独立复审与 Gate A 认证。
 
 ### G5：桌面 AppData 没有测试隔离入口
 
@@ -214,7 +216,7 @@ Compress-Archive -LiteralPath (Join-Path $fixtureRoot "nativePC") -DestinationPa
 7. 再次重启；预期状态为 not installed，恢复扫描无不安全 issue。
 8. 检查 UI/日志证据只包含短 id、phase、计数和稳定错误码，不显示 root、backup ref 或 manifest 正文。
 
-本节 CL2 smoke 不能作为 v1 -> v2 证据；独立真正重装桌面验收留给 CL3 Task 10 L3。
+本节 CL2 smoke 不能作为 v1 -> v2 证据；独立真正重装桌面验收已由 CL3 Task 10 L3 执行，见第 8 节。
 
 ### 7.4 清理
 
@@ -243,9 +245,26 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - 主机在安装态和卸载态分别校验人工文件长度/hash；最终 game root 与安装前两文件 baseline 逐字节一致。
 - 支持诊断包只包含四个固定 JSON 条目；App/Task 日志为 0 行，两条 install Audit 仅含短 id 和动作/删除/恢复计数，敏感路径模式命中 0。
 - 应用和 Sandbox 退出后，旧失败现场与新通过现场的唯一 TEMP roots 均在 containment 校验后删除；Sandbox AppData 随 VM 销毁。
-- 本次没有执行真实游戏 smoke，也没有把 CL2 普通安装流程当作 v1 -> v2 证明；真正重装 L3 仍归 CL3 Task 10。
+- 本次没有执行真实游戏 smoke，也没有把 CL2 普通安装流程当作 v1 -> v2 证明；真正重装由下一节的 CL3 L3 独立验收。
 
-## 8. CL0 完成定义
+## 8. 真正重装桌面 Smoke（CL3 L3 执行）
+
+### 8.1 环境与边界
+
+- 2026-07-15 在 Windows Sandbox 中运行实际 Tauri 应用，只使用人工 v1/v2 ZIP、唯一 TEMP game root 和 disposable AppData；未接触真实 MHW:I、真实 Mod、Steam userdata 或玩家存档。
+- 裸应用因 Sandbox 缺少兼容 WebView2 Runtime 而黑屏；使用临时 `FixedRuntime` 测试包后正常显示。该现象属于 disposable 测试环境前置，不需要产品代码修复，所有临时 runtime/build 包均留在 ignored 范围并在取证后清理。
+- 安装前 game root 只有人工 `MonsterHunterWorld.exe` 和一份 baseline `overwritten.bin`；全过程未手改 catalog、manifest、backup 或游戏目录来伪造状态。
+
+### 8.2 执行结果
+
+- v1 普通导入后 library 只有一张卡；安装预览为 4 个可执行动作、0 个阻断冲突。提交后四个受管文件的长度/hash 与固定 fixture 一致，关闭并重开后动作状态从持久化 manifest/recovery 恢复为 installed v1。
+- 对同一 logical Mod 导入 v2 revision 后仍只有一张卡。真正重装预览显示 retained 1、replaced 2、added 1、stale 1；提交后 v2 四文件长度/hash 与 fixture 一致，stale 已移除、added-v2 已创建，重启后当前 installed revision 为 v2。
+- manifest 驱动卸载后 game root 精确恢复为安装前两个文件及其原始长度/hash；再次重启为 not installed，预览/安装可用，重装/卸载不可用。恢复中心扫描为 0 个托管 Mod、0 个问题且无需处理，符合 manifest 已删除后的终态。
+- 支持诊断 ZIP 只包含四个固定 JSON 条目；App/Task 日志为 0 行，Audit 只有 `commit_imported_mod`、`reinstall_mod`、`uninstall_mod` 三条 success，重装计数为 1/2/1/1。字段集合与白名单一致，绝对路径、用户名、path 字段、backup/snapshot ref、manifest/source/hash 正文和 fixture 内容模式命中均为 0。
+- 退出应用后执行带 resolved TEMP root、`hmm-core-lifecycle-smoke-*` 前缀和精确 `game` 子目录校验的清理；结果为 `SmokeRootExists = False`、`GameRootExists = False`。Sandbox AppData 由 disposable 环境关闭销毁。
+- 本次仍不是维护者日常账户或真实游戏目录 smoke；CL3 因 L1/L2/L3 证据齐备标记为 `implemented`，不等于 Gate A `certified`。
+
+## 9. CL0 完成定义
 
 - [x] v1/v2 fixture contract 固定并由 test 锁定分类。
 - [x] test-only AppState import/plan/restart harness 通过。
@@ -257,6 +276,6 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - [x] CL1 manifest/recovery/Audit Log/task phase 与脱敏证据通过。
 - [x] CL2 桌面 smoke 实际执行。
 - [x] CL3 Task 1-9 L1/L2 真正重装自动化通过。
-- [ ] CL3 Task 10 Windows Sandbox L3、诊断脱敏和 cleanup 通过。
+- [x] CL3 Task 10 Windows Sandbox L3、诊断脱敏和 cleanup 通过。
 
-CL3 L1/L2 已完成；CL3 L3 和 CL4 最终复审仍未完成，Gate A 必须保持未认证。
+CL3 L1/L2/L3 已完成并标记为 `implemented`；CL4 最终复审仍未完成，Gate A 必须保持未认证。

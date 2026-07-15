@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期优先级计划
 
 - 日期：2026-07-12
-- 状态：生效；CL0、CL1、CL2 已完成，下一项 CL3；Gate A 尚未认证
+- 状态：生效；CL0、CL1、CL2 与 CL3 已完成，下一项 CL4；Gate A 尚未认证
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -45,7 +45,7 @@
 | `paused` | 资产保留，当前不得主动实施；满足恢复门禁后再继续 |
 | `blocked` | 已开始核心切片，但被明确技术/环境前置阻断 |
 
-当前基线：安装和卸载为 `implemented`，真正重装为 `planned`，ARMOR_RETARGET 为
+当前基线：安装、卸载和真正重装为 `implemented`，ARMOR_RETARGET 为
 `planned`，P7.2c 为 `planned + paused`。
 
 ## 4. 立即执行顺序
@@ -129,12 +129,14 @@ backup store failure 在任何 target mutation 前停止，并复用既有 write
 
 ### CL3：真正重装
 
-**规划状态（2026-07-14）：** 正式 contract/spec 与逐任务实施计划已固定，见
+**实施状态（2026-07-15）：** CL3 Task 1-10 已完成，正式 contract/spec 与逐任务实施记录见
 [CL3 真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 和
 [CL3 真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
-当前仍是 `planned`：尚未落地 Rust/Tauri/frontend/migration，也未执行 v1 -> v2 验收。
+Rust/Tauri/frontend/migration、L1/L2 自动化和 disposable Windows Sandbox L3 均已落地并执行；同一
+logical Mod 的 v1 -> v2 真正重装、重启、manifest 卸载、baseline 恢复、诊断脱敏和 cleanup 已有
+证据，当前状态为 `implemented`。Gate A 仍等待 CL4 独立复审，不得据此标记为 `certified`。
 
-当前 `reinstall` 只是普通 install 的 UI 别名，必须新增独立 backend use case/task。真正重装的
+真正重装使用独立 backend use case/task，不再是普通 install 的 UI 别名。其
 事实来源为“旧 manifest + 新 InstallPlan + 当前目标摘要 + backup”，不能根据展示名或当前包
 内容直接覆盖。
 
@@ -259,21 +261,23 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 10. 当前下一项任务
 
-CL0、CL1、CL2 已完成。下一项工作固定为 **CL3：真正重装 contract 与实现**，不是 P7.2c、
-ARMOR_RETARGET，也不提前执行 CL4 认证。
+CL0、CL1、CL2 与 CL3 已完成。下一项工作固定为 **CL4：Gate A 独立复审和认证**，不是 P7.2c，
+也不得在 Gate A 认证前开始 ARMOR_RETARGET。
 
-CL3 必须建立稳定 Mod/package revision、独立 reinstall use case 和 retained/replaced/added/stale
-计划语义；不得把现有普通 install 入口或第二个新 mod id 误报为真正重装。
+CL4 必须重新核对已落地的稳定 Mod/package revision、独立 reinstall use case、四类计划语义、
+失败恢复、共享写锁、公开 DTO/Audit 脱敏、L1/L2/L3 证据与仓库卫生；只有独立复审通过后才能把
+Gate A 标为 `certified`。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
-[CL0/CL1/CL2 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装仍归 CL3；Gate A 只有
-CL3 和 CL4 继续完成后才能标记 `certified`。
+[CL0/CL1/CL2/CL3 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装已由 CL3 标记为
+`implemented`；Gate A 只有 CL4 继续完成后才能标记 `certified`。
 
 CL3 已固定的实施入口见
 [真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
 [真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
-规划文档完成不改变 `planned` 状态；下一次实现必须从计划 Task 0/Task 1 开始，不得提前进入 CL4。
+CL3 已执行证据改变其状态为 `implemented`；下一项必须从 CL4 独立 review/certification 开始，
+不得跳过 Gate A 进入后续产品切片。
 
 ## 11. 优先级重排提交边界（历史）
 

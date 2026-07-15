@@ -2,9 +2,9 @@
 
 本文档记录当前 `InstallPlan` 模块已经落地的能力、尚未落地的边界和后续切片顺序。它用于回答“现在能依赖什么”，长期设计仍参考 [Mod 安装方案规划](mod_installation_strategy.md)，跨前后端通信契约参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
-当前实施顺序由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 覆盖：先把
-安装/卸载闭环补齐并实现真正重装，使 Core Mod Lifecycle Gate A 从 `implemented/planned` 达到
-`certified`，随后立即进入 ARMOR_RETARGET 最窄纵向切片。本文的能力清单仍是实现事实来源，
+当前实施顺序由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 覆盖：安装、
+卸载和真正重装现均为 `implemented`，下一项是 CL4 独立复审，使 Core Mod Lifecycle Gate A 达到
+`certified`；通过后立即进入 ARMOR_RETARGET 最窄纵向切片。本文的能力清单仍是实现事实来源，
 但旧的后续建议不再优先于该计划。
 
 ## 模块目标
@@ -61,6 +61,7 @@
 位置：
 
 - `src-tauri/crates/hmm-app/src/install.rs`
+- `src-tauri/crates/hmm-app/src/reinstall.rs`
 
 已包含：
 
@@ -80,6 +81,7 @@
 位置：
 
 - `src-tauri/crates/hmm-app/src/install.rs`
+- `src-tauri/crates/hmm-app/src/reinstall_commit.rs`
 
 已包含：
 
@@ -102,7 +104,13 @@
 失败时 best-effort rollback
 ```
 
-manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。替换已有托管目标时，新的 manifest entry 会继承旧条目的长期 `backup_ref` 语义；本次提交为中间状态创建的 pending backup 只用于失败回滚，提交成功后会 best-effort 清理。它不会因为 `modId` 相同就删除旧条目，避免在重装包内容变少时让 manifest 忘掉仍留在游戏目录里的托管文件。卸载和修复扫描仍需后续切片继续补齐。
+普通 install 的 manifest 合并规则仍保持 MVP 范围：提交服务只按本次实际写入的目标路径替换旧条目，并保留未触达的旧条目。替换已有托管目标时，新的 manifest entry 会继承旧条目的长期 `backup_ref` 语义；本次提交为中间状态创建的 pending backup 只用于失败回滚，提交成功后会 best-effort 清理。它不会因为 `modId` 相同就删除旧条目；版本删减由独立真正重装的 entry-set replacement 处理，卸载和恢复扫描则继续以 manifest/recovery 为事实来源。
+
+真正重装不复用上述普通 install merge。独立 `ReinstallPreviewService` / `ReinstallCommitService` 从
+installed manifest、candidate revision plan、当前目标摘要和 original backup 构建 retained/replaced/
+added/stale 四类计划，并在共享写锁内原子替换指定 Mod 的 entry set。提交前完整预读 source 与
+snapshot，失败时恢复 pre-reinstall revision；跨进程未收敛状态由 durable reinstall transaction 驱动
+reconciliation，不能由当前 package 或 task 内存猜测。
 
 新写入的 manifest entry 会记录 `installed_file` 摘要：写入内容的字节数和 SHA-256。该字段只描述本工具本次写入到目标路径的内容，不记录完整本地路径、sandbox/cache 路径或文件内容。旧 manifest 缺少该字段时仍可兼容读取，但后续自动卸载或修复检测不能把缺少摘要的旧 entry 当作可安全删除/恢复的充分事实。
 
@@ -120,6 +128,7 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 接口位置：
 
 - `src-tauri/crates/hmm-ports/src/install.rs`
+- `src-tauri/crates/hmm-ports/src/reinstall.rs`
 
 已包含：
 
@@ -131,6 +140,7 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 文件系统实现位置：
 
 - `src-tauri/crates/hmm-infra/src/install_commit.rs`
+- `src-tauri/crates/hmm-infra/src/reinstall.rs`
 
 已包含：
 
@@ -149,8 +159,9 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - 安装 commit 编排已接入该 repository：manifest 读取成功后写入 `planned`，进入真实写入窗口前写入 `committing`；manifest 保存成功后先 best-effort 写入 `completed` 关闭崩溃窗口，再 best-effort 清理本次 active recovery record。若写入窗口后失败且 best-effort rollback 失败，才留下 `rollback_required`；rollback 成功的失败路径也会 best-effort 清理，避免制造假的待恢复状态。
 - 替换已有托管目标时，manifest entry 仍继承旧条目的长期 `backup_ref` 语义；但如果写入窗口后失败且 rollback 失败，留下的 `rollback_required` recovery record 会保留本次提交前创建的 pending backup ref，用于后续受控回滚恢复到“安装前一刻”的文件状态。若 `committing` 已保存后才更新某个 entry 的 pending backup，active recovery record 会立即重新持久化，避免崩溃恢复读取到旧 backup 语义。manifest 保存成功后，record 会先以 manifest entry 的长期 `backup_ref` 和 `installed_file` 摘要写入 `completed`，再 best-effort 删除；若删除失败，残留 `completed` 仍按兼容无害状态消费。
 - `scan_install_recovery` 已只读消费 durable recovery record：`committing` 或 `rollback_required` record 会对外返回 `rollback_required`，`planned`、`completed` 和 `rolled_back` 不会被提升为待回滚状态；空 `modIds` 全量扫描也会包含只有 recovery record、尚无 manifest 的半完成安装。
-- `preview_recovery_action` 已提供只读恢复动作预览：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，复用同一 `gameId/profileId` 写锁读取 durable recovery record、当前目标摘要和 backup 可读性，并只返回 `available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code。该能力不执行删除、恢复、回滚、写 manifest、写 recovery record、发送 task phase 或写 Audit Log。
-- `start_recovery_action_task` 已提供后端受控回滚任务入口：当前支持 `rollback_install`，只接收 `gameId`、`profileId`、`modId` 和 `actionKind`，后台 runner 复用同一 `gameId/profileId` 写锁重新验证 durable recovery record、目标摘要和 backup 可读性，随后删除新增文件或从 backup 恢复覆盖文件，将 recovery record 标记为 `rolled_back`，并在已有 rich manifest 时移除该 Mod 的 stale entries、把 manifest status 持久化为 `rolled_back`。该能力已写最小 Audit Log；恢复中心已提供逐 Mod 写入型按钮，前端先调用 `preview_recovery_action`，后端返回 `available` 后才允许确认并启动任务。
+- `preview_recovery_action` 已提供只读恢复动作预览：`rollback_install` 会读取 durable recovery record、当前目标摘要和 backup 可读性并返回 `available` / `blocked`、聚合计数和稳定 reason；`reconcile_reinstall` 在没有专用 preview 证明时保持 blocked。该能力不执行删除、恢复、回滚、写 manifest、写 recovery record、发送 task phase 或写 Audit Log。
+- `start_recovery_action_task` 已提供后端受控恢复任务入口：`rollback_install` 重新验证普通安装 recovery/target/backup 后删除新增文件或恢复覆盖文件；`reconcile_reinstall` 消费 durable reinstall transaction，受控收敛 post-commit cleanup 或恢复 pre-reinstall revision，无法证明时进入 `repair_required`。两类动作复用同一 `gameId/profileId` 写锁并写最小 Audit Log。
+- revision catalog 已保存稳定 logical Mod、不可变 package revisions 与 origin/display revision；installed revision 仍由 completed manifest entry set 决定。独立 `ReinstallRecoveryTransactionRepository` 保存 pre-reinstall entry set、四类目标事实、snapshot ownership 和受控状态，JSON/FS adapter 继续使用受控 root、原子保存和 containment 校验。
 
 ### Tauri command 与任务入口
 
@@ -158,9 +169,12 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 
 - `src-tauri/src/install_commands.rs`
 - `src-tauri/src/dto.rs`
+- `src-tauri/src/reinstall_commands.rs`
+- `src-tauri/src/reinstall_dto.rs`
 - `src-tauri/src/state.rs`
 - `src-tauri/crates/hmm-app/src/install_recovery.rs`
 - `src-tauri/crates/hmm-app/src/install_task.rs`
+- `src-tauri/crates/hmm-app/src/reinstall_task.rs`
 
 已包含 command：
 
@@ -172,6 +186,10 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - `scan_install_recovery`
 - `preview_recovery_action`
 - `start_recovery_action_task`
+- `start_import_mod_revision_task`
+- `get_mod_revisions`
+- `preview_reinstall_plan`
+- `start_reinstall_task`
 
 `start_install_task` 只接收：
 
@@ -207,7 +225,9 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - `modId`
 - `actionKind`
 
-安装、卸载和恢复动作任务已接入 `TaskKind::Install`。安装 commit 阶段、卸载删除/恢复阶段、受控回滚执行阶段均按 `gameId/profileId` 写锁串行。plan build、sandbox 文件扫描和只读分析不持有写锁。
+安装、卸载、真正重装和恢复动作任务已接入 `TaskKind::Install`。安装 commit 阶段、卸载删除/恢复
+阶段、真正重装 commit/rollback 阶段和受控恢复执行阶段均按 `gameId/profileId` 写锁串行。plan build、
+sandbox 文件扫描和只读分析不持有写锁。
 
 当前安装任务阶段：
 
@@ -221,6 +241,14 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - `install.uninstall.processing`
 - `install.uninstall.completed`
 - `install.uninstall.failed`
+- `install.reinstall.queued`
+- `install.reinstall.plan.building`
+- `install.reinstall.preflight.processing`
+- `install.reinstall.commit.processing`
+- `install.reinstall.rollback.processing`
+- `install.reinstall.completed`
+- `install.reinstall.failed`
+- `install.reinstall.cancelled`
 - `install.recovery.queued`
 - `install.recovery.planning`
 - `install.recovery.processing`
@@ -231,7 +259,11 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 
 当前只读恢复扫描能力基于 durable recovery record、manifest entries、`installed_file` 摘要、当前目标文件摘要和 backup 是否存在。`scan_install_recovery` 会按 `modId` 返回 `completed`、`rollback_required`、`repair_required`、`unknown` 或 `not_installed` 摘要，以及不含路径或 backup ref 的聚合 issue code；`rollback_required` 只能来自 durable recovery record 的 `committing` / `rollback_required` 受控状态，不能由目录内容猜测。当 `modIds` 为空时，后端会扫描该 profile manifest 内全部已知托管 Mod，并补入只有 recovery record、尚无 manifest 的半完成安装，作为 Dashboard 入口级恢复健康摘要、App Frame 全局告警和独立恢复中心入口的基础。扫描会复用安装/卸载同一份 `gameId/profileId` 写锁，避免在 commit / uninstall 写入窗口内读取半完成状态。它只做检测，不自动删除、恢复、回滚或写 manifest。
 
-当前恢复动作预览与执行能力基于 durable recovery record、当前目标文件摘要和 backup 可读性。`preview_recovery_action` 当前仅支持只读预览 `rollback_install`，会在同一 `gameId/profileId` 写锁下重新验证候选 entry；无 recovery record、状态不在 `committing` / `rollback_required`、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并仅暴露稳定 reason code 与聚合计数。`start_recovery_action_task` 当前仅支持执行 `rollback_install`，会在持锁区重新验证上述条件后删除新增文件或从 backup 恢复覆盖文件，将 durable recovery record 标记为 `rolled_back`，并在已有 rich manifest 时移除该 Mod 的 stale entries、把 manifest status 持久化为 `rolled_back`。manifest 保存失败或后续 recovery record 保存失败时会 best-effort 回滚已执行文件动作；若 manifest 已被写入而 recovery record 保存失败，还会 best-effort 写回原 manifest，避免文件、manifest 与 recovery record 状态互相矛盾。该能力不暴露 target path、backup ref/root、manifest root/path、sandbox/cache 路径或第三方 Mod 内容；恢复中心已提供逐 Mod 写入型按钮，前端必须先预览、再确认、再按 `taskId` 跟踪任务并在完成后重新扫描。
+当前恢复动作预览与执行能力基于 durable recovery record / reinstall transaction、当前目标摘要和
+backup/snapshot 可读性。`rollback_install` 仍要求预览 available 后才允许执行；`reconcile_reinstall`
+没有专用 preview 时保持 blocked，但后端任务可在重装恢复状态驱动下收敛 completed cleanup 或
+pre-reinstall rollback，无法证明时进入 `repair_required`。两类动作都在持锁区重新验证，不暴露
+target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或第三方 Mod 内容。
 
 任务事件和 Audit Log 不应携带完整本地路径、用户名、Steam ID、sandbox/cache 路径、真实 Mod 包内容或 manifest 正文。
 
@@ -241,9 +273,15 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 
 - `src/features/mods/modInstallPlanApi.ts`
 - `src/features/mods/modInstallPlanTypes.ts`
+- `src/features/mods/modImportApi.ts`
+- `src/features/mods/modLibraryApi.ts`
+- `src/features/mods/modReinstallApi.ts`
+- `src/features/mods/modReinstallTypes.ts`
+- `src/features/mods/useModReinstallWorkflow.ts`
 - `src/features/mods/modLibraryLoadState.ts`
 - `src/features/mods/modLibraryTypes.ts`
 - `src/features/mods/InstallPlanPreviewPanel.tsx`
+- `src/features/mods/ReinstallPlanPreviewPanel.tsx`
 - `src/features/mods/ModLibraryPage.tsx`
 - `src/features/mods/CompactActionPanel.tsx`
 - `src/features/mods/ModPosterCard.tsx`
@@ -257,6 +295,10 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - `startUninstallTask`
 - `previewRecoveryAction`
 - `startRecoveryActionTask`
+- `startImportModRevisionTask`
+- `getModRevisions`
+- `previewReinstallPlan`
+- `startReinstallTask`
 - 最小安装计划预览面板。
 - 从 Mod 库触发最小安装任务。
 - 按 `taskId` 订阅 `hmm://task-progress` 安装事件。
@@ -277,18 +319,21 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
 - 卸载完成后复用 manifest 状态摘要查询刷新安装事实。
 - `previewRecoveryAction` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并只接收 action kind、`available` / `blocked`、删除/恢复/backup 聚合计数和稳定阻断 reason code。
 - `startRecoveryActionTask` feature-local typed API 已接入，只提交 `gameId`、`profileId`、`modId` 和 `actionKind`，并返回标准 `TaskStartedDto`；恢复中心逐 Mod 按钮和任务 UI 编排已接入。
+- Mod 库支持在一张 logical Mod 卡上导入和选择 candidate revision，真正重装使用独立 strict preview/confirm 状态，展示 retained/replaced/added/stale 聚合并按 `taskId` 跟踪 `install.reinstall.*`；installed revision 和动作可用性来自 manifest/recovery 查询，而不是 display revision 或页面 task 内存。
 
-前端只能展示后端返回的计划摘要、冲突摘要、任务事件状态、manifest 查询摘要、只读恢复扫描摘要和只读恢复动作预览摘要，不应推断 MHW 路径规则或自行拼接安装/卸载/恢复路径。安装/卸载/恢复扫描/动作预览/恢复动作任务 UI 只提交 `gameId`、`modId`、`profileId`、`modIds` 和 `actionKind` 等短 id，不提交 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径或 Mod 包路径。任务状态仍是页面内存态；页面刷新、重新进入后的安装事实应通过 manifest 查询和只读 recovery scan 恢复，而不是依赖内存任务状态或 mock 数据。
+前端只能展示后端返回的计划/冲突/revision 聚合、任务状态、manifest/recovery 摘要和恢复动作预览，
+不应推断 MHW 路径规则或自行拼接安装/卸载/重装/恢复路径。相关 UI 只提交 `gameId`、`modId`、
+`profileId`、`modIds`、`candidateRevisionId`、opaque `planToken`、layer 和 `actionKind` 等受控字段；
+只有系统 picker 驱动的 revision import command 可提交 `archivePath`，其他重装/安装/卸载/恢复入口
+均不提交 target path、game root、backup/snapshot ref、manifest root/path、sandbox/cache 或 Mod 包路径。
+任务状态仍是页面内存态；重启后的安装事实必须通过 manifest/recovery 查询恢复。
 
 ## 尚未落地能力
 
 以下能力仍不能视为已完成：
 
-- 核心生命周期认证：CL1 已有独立、可重复的 temp-root install -> restart -> uninstall -> baseline
-  acceptance、source/backup fault tests 与审计脱敏证据；实际 Tauri 桌面 smoke、真正重装和 Gate A
-  认证记录仍未完成，自动化不能替代这些产品 gate。
-- 真正重装：前端 `reinstall` 当前复用 `start_install_task`；manifest merge 会保留新计划未触达的
-  旧条目，尚无 retained/replaced/added/stale 分类、独立重装 task 或恢复到重装前版本的失败链路。
+- 核心生命周期认证：CL0-CL3 已有独立、可重复的 L1/L2 自动化和 disposable Windows Sandbox L3；
+  安装、卸载与真正重装均为 `implemented`，但 CL4 独立复审和 Gate A `certified` 记录仍未完成。
 - 卸载后续工作流：后端最小 manifest 驱动卸载任务入口、前端最小单选卸载 UI 和不安全恢复状态阻断已落地，但尚未实现批量/profile 切换或卸载专用 rich repair summary。
 - 恢复中心写入型工作流：只读 `scan_install_recovery` 摘要已能检测 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，并会补入只有 durable recovery record 的半完成安装；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局告警，独立恢复中心已提供入口、逐 Mod 安全摘要、rich repair summary、完整支持诊断包导出联动和人工处理决策面板。`preview_recovery_action` 已能只读预览 `rollback_install` 是否可执行，`start_recovery_action_task` 已能后端执行受控 `rollback_install`；恢复中心写入型按钮、任务 UI 编排和操作完成后的恢复中心/全局健康刷新均已实现。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
@@ -317,10 +362,10 @@ manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_ve
    harness、acceptance matrix、桌面 smoke 文档和 composition 缺口清单。
 2. **CL1（已完成）：** 已认证 import record -> InstallPlan -> install -> restart -> uninstall ->
    baseline 自动化闭环、准备阶段 fault ordering 与审计脱敏证据。
-3. **CL2（下一项）：** 在 disposable account/VM 实际执行 Tauri 桌面 smoke 与清理证明。
-4. **CL3：** 新增独立真正重装 use case/task，处理 retained/replaced/added/stale entries，并使
-   失败恢复到重装前版本。
-5. **CL4 / Gate A：** 完整验证、安全复审和 `certified` 状态记录。
+3. **CL2（已完成）：** 已在 disposable Windows Sandbox 执行 Tauri 桌面 smoke 与清理证明。
+4. **CL3（已完成）：** 已落地独立真正重装 use case/task、四类 entry-set replacement、失败恢复和
+   L1/L2/L3 验收。
+5. **CL4 / Gate A（下一项）：** 完整验证、安全复审和 `certified` 状态记录。
 6. **ARMOR_RETARGET Gate B：** 按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
    binding snapshot、选择目标、安装、切换目标和卸载。
 
