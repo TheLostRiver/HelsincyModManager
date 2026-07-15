@@ -364,8 +364,9 @@ target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或
 4. **CL3（已完成）：** 已落地独立真正重装 use case/task、四类 entry-set replacement、失败恢复和
    L1/L2/L3 验收。
 5. **CL4 / Gate A（已完成）：** 完整验证、安全复审和 `certified` 状态记录均已通过。
-6. **ARMOR_RETARGET Gate B（当前）：** 从 AR1 开始，按最窄 `f_equip` 单 source 纵向切片接入 staging、InstallPlan、
-   binding snapshot、选择目标、安装、切换目标和卸载。
+6. **ARMOR_RETARGET Gate B（当前从 AR1 开始）：** AR1 只落地领域模型、replacement binding 和
+   最小 versioned catalog；AR3 才接入 staging、InstallPlan 与 binding snapshot，后续切片再完成
+   目标选择、安装、切换目标和卸载。
 
 Rich manifest、repair 和 preflight 只在解除上述步骤阻断时取最小切片。批量/profile 卸载、完整
 repair 中心和通用依赖 catalog 延后；恢复中心写入型 UI 已落地，不再作为下一项工作重复实施。
