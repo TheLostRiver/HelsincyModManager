@@ -1,7 +1,7 @@
 # Core Mod Lifecycle CL3 真正重装设计
 
 - 日期：2026-07-14
-- 状态：`implemented`（2026-07-15）；CL4 / Gate A 仍未认证
+- 状态：`implemented`（2026-07-15）；后续 CL4 复审已将 Gate A 标记为 `certified`
 - 上游：[核心 Mod 生命周期优先级计划](../../CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - 验收基线：[Core Mod Lifecycle CL0/CL1/CL2/CL3 验收基线](../../CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)
 - 实施计划：[CL3 真正重装实施计划](../plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)

@@ -273,8 +273,9 @@ disposable AppData 实际执行 L3。证据覆盖同一 logical Mod 单卡 revis
 cleanup 已完成。未使用真实
 MHW:I、第三方 Mod、Steam userdata、玩家存档或维护者日常 AppData。
 
-CL3 自动化与桌面证据现已全部通过，状态为 `implemented`；下一步仍只能进入 CL4 独立复审，
-不得在 CL3 closeout PR 中提前把 Gate A 标为 `certified`。
+CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 2026-07-15 重新执行上述聚焦矩阵、
+全部前端测试、完整 `scripts/verify.ps1` 和 `cargo clippy --workspace --all-targets -- -D warnings`，并完成
+独立安全/边界复审；Gate A 已标记为 `certified`，下一测试主线进入 Gate B / AR1。
 
 ## 存档备份
 

@@ -80,7 +80,7 @@
 
 ### Core Mod Lifecycle Gate A
 
-**状态**: CL0、CL1、CL2 与 CL3 已完成；下一项 CL4 独立复审，Gate A 尚未认证
+**状态**: CL0-CL4 已完成；Gate A 已于 2026-07-15 标记为 `certified`
 **独立文档**: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md` + `docs/CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md`
 
 - [x] CL0：固定 `v1/v2` 人工 fixture、test-only AppState import/plan/restart harness、acceptance matrix、桌面 smoke 文档和缺口清单
@@ -89,9 +89,9 @@
 - [x] CL3：独立真正重装 use case，覆盖 retained/replaced/added/stale 与失败恢复
   - [x] Task 1-9：classifier、revision catalog、manifest/recovery、preview/commit/task/DTO/UI 与 L2 AppState 闭环
   - [x] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
-- [ ] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
+- [x] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
-Gate A 前不得开始 P7.2c、分页、批量迁移、批量操作、任务队列或新的非阻断视觉工作。
+Gate A 已通过；Gate B 完成前仍暂停 P7.2c、分页、批量迁移、批量操作、任务队列和新的非阻断视觉工作。
 
 ---
 
@@ -388,7 +388,7 @@ JSON 做不好的需求:
 ### T11: ARMOR_RETARGET 全链路
 
 **优先级**: P1，Gate A 通过后立即开始
-**状态**: 已规划，待 Gate A；当前源码尚无 replacement/retarget 实现
+**状态**: 已规划，Gate A 前置已满足；下一项 AR1，当前源码尚无 replacement/retarget 实现
 **前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
@@ -441,8 +441,8 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: CL4 Gate A 独立复审与认证
-  -> T11 ARMOR_RETARGET AR1-AR5 最窄纵向闭环
+当前: T11 ARMOR_RETARGET AR1（领域模型 / binding / 最小 catalog）
+  -> AR2-AR5 最窄纵向闭环
   -> Gate B 认证
   -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
 ```
@@ -460,11 +460,11 @@ JSON 做不好的需求:
 | T5 Mod 信息面板 | P1 | 已完成 | #116 / `649a6cb` / `7ac8fb6` |
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
-| Core Mod Lifecycle Gate A | P0 | CL3 已 implemented，下一项 CL4 独立复审；Gate A 未认证 | |
+| Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | 仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
-| T11 ARMOR_RETARGET | P1 | 已规划，待 Gate A 后立即开始 | |
+| T11 ARMOR_RETARGET | P1 | 已规划，当前下一项为 AR1 | |
 | T12 Mod 详情完整版 | P3 | 暂停；仅 Gate B 最小 UI 例外 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |

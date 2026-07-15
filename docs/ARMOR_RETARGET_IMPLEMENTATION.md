@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **当前优先级（2026-07-12）：** 本计划为 Gate A 后立即执行的 P1 / Gate B 主线，当前状态为
-> `planned`，源码尚未落地 replacement/retarget 能力。执行顺序以
-> [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；Gate A 前不得提前并行
-> 实现本计划任一运行时 Task；Gate A 后按 AR1-AR5 重组执行，target switch 必须复用 Gate A 的
+> **当前优先级（2026-07-15）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
+> 状态仍为 `planned`，源码尚未落地 replacement/retarget 能力，下一项只执行 AR1。执行顺序以
+> [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
+> 不得在 AR1 提前实现后续切片，target switch 必须复用 Gate A 的
 > 真正重装 contract。
 
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。

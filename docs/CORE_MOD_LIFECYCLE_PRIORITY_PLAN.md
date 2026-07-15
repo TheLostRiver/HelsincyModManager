@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期优先级计划
 
 - 日期：2026-07-12
-- 状态：生效；CL0、CL1、CL2 与 CL3 已完成，下一项 CL4；Gate A 尚未认证
+- 状态：生效；CL0-CL4 已完成，Gate A 已于 2026-07-15 标记为 `certified`；下一项 AR1
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -45,8 +45,8 @@
 | `paused` | 资产保留，当前不得主动实施；满足恢复门禁后再继续 |
 | `blocked` | 已开始核心切片，但被明确技术/环境前置阻断 |
 
-当前基线：安装、卸载和真正重装为 `implemented`，ARMOR_RETARGET 为
-`planned`，P7.2c 为 `planned + paused`。
+当前基线：安装、卸载和真正重装均为 `implemented`，Core Mod Lifecycle Gate A 为
+`certified`；ARMOR_RETARGET 为 `planned`，P7.2c 为 `planned + paused`。
 
 ## 4. 立即执行顺序
 
@@ -182,6 +182,12 @@ Gate A 只有同时满足以下条件才可标记 `certified`：
 - Audit Log/Task Log 只包含稳定 id、计数、phase/result/error code，不泄露敏感路径或内容。
 - 完整 `verify.ps1`、边界聚焦测试和本地 review gate 通过。
 
+2026-07-15 CL4 独立复审结论：以上条件全部满足，Gate A 标记为 `certified`。本轮从
+`origin/main@0b1119f` 建立隔离 worktree，重新审计 core/app/ports/infra/Tauri/frontend、共享写锁、
+manifest/backup/rollback/recovery、Task/Audit/diagnostics 和 L1/L2/L3 证据；未发现需要修改生产代码的
+Gate A 阻断。生命周期聚焦矩阵、全部前端测试、完整 `scripts/verify.ps1` 和
+`cargo clippy --workspace --all-targets -- -D warnings` 均通过。
+
 ## 6. Gate B：ARMOR_RETARGET 最窄纵向闭环
 
 Gate A 完成后，ARMOR_RETARGET 立即成为唯一 P1 主线。第一版只证明一个真实产品工作流，不追求
@@ -261,23 +267,22 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 10. 当前下一项任务
 
-CL0、CL1、CL2 与 CL3 已完成。下一项工作固定为 **CL4：Gate A 独立复审和认证**，不是 P7.2c，
-也不得在 Gate A 认证前开始 ARMOR_RETARGET。
+CL0-CL4 已完成，Gate A 已标记为 `certified`。下一项工作固定为
+**AR1：ARMOR 领域模型 / binding / 最小 catalog**，不是 P7.2c、分页、批量迁移或其他暂停项。
 
-CL4 必须重新核对已落地的稳定 Mod/package revision、独立 reinstall use case、四类计划语义、
-失败恢复、共享写锁、公开 DTO/Audit 脱敏、L1/L2/L3 证据与仓库卫生；只有独立复审通过后才能把
-Gate A 标为 `certified`。
+AR1 必须先按 Gate B 固定范围复核现有设计与实施计划，只建立最小 `f_equip` 单 source 所需的稳定
+领域身份、replacement binding 和 versioned target catalog；不得提前实现 AR2-AR5，也不得绕过
+Gate A 已认证的 InstallPlan/manifest/backup/rollback/recovery 链路。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
 [CL0/CL1/CL2/CL3 验收基线](CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)。真正重装已由 CL3 标记为
-`implemented`；Gate A 只有 CL4 继续完成后才能标记 `certified`。
+`implemented`，并在 CL4 独立复审后随 Gate A 标记为 `certified`。
 
 CL3 已固定的实施入口见
 [真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
 [真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
-CL3 已执行证据改变其状态为 `implemented`；下一项必须从 CL4 独立 review/certification 开始，
-不得跳过 Gate A 进入后续产品切片。
+CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；后续从 AR1 开始推进 Gate B。
 
 ## 11. 优先级重排提交边界（历史）
 

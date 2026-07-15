@@ -1,12 +1,12 @@
 # Core Mod Lifecycle CL0 验收基线
 
 - 日期：2026-07-15
-- 状态：CL0、CL1、CL2 与 CL3 已完成；CL4 / Gate A 尚未完成
+- 状态：CL0-CL4 已完成；Gate A 已于 2026-07-15 标记为 `certified`
 - 上游决策：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
 - CL1 实施记录：[安装/卸载纵向闭环实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
 - CL3 设计：[真正重装 contract/spec](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)
 - CL3 实施入口：[真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)
-- 下一切片：CL4 Gate A 独立复审与认证
+- 下一切片：Gate B / AR1 ARMOR 领域模型、binding 与最小 catalog
 
 ## 1. 目的与边界
 
@@ -40,7 +40,7 @@ CL0 不执行 install/uninstall game writes，不实现 package revision 更新�
 | Mod 导入 | synthetic zip -> real importer -> sandbox -> logical Mod/revision catalog | 首次导入创建稳定 logical Mod；revision import 向同一 `mod_id` 追加候选 revision |
 | 安装计划 | persisted analysis + sandbox scanner + MHW adapter -> `InstallPlan` | 可用；只消费 `nativePC` 下普通相对文件 |
 | 重启事实恢复 | drop/recreate AppState | game config、import library 和 plan 可恢复；TaskManager 状态按设计不持久化 |
-| 安装/卸载服务 | L2 AppState composition 与 CL2 disposable desktop smoke 已通过 | CL1/CL2 已完成；Gate A 仍等待 CL4 独立复审 |
+| 安装/卸载服务 | L2 AppState composition 与 CL2 disposable desktop smoke 已通过 | CL1/CL2 与 CL4 独立复审均通过；Gate A 已认证 |
 | 真正重装 | dedicated preview/task/commit/recovery 链、L2 AppState composition 与 CL3 disposable desktop smoke | retained/replaced/added/stale、entry-set replacement、rollback、restart 与 manifest 卸载已有 L1/L2/L3 证据 |
 | package revision | catalog migration + 同一 logical Mod revision import | v1/v2 保持一张 library card；origin/candidate revision 均持久化 |
 | 桌面隔离 | Windows Sandbox + 人工 TEMP game/archive + disposable AppData | CL2/CL3 已执行；人工 TEMP root 已受控清理，日常账户/真实游戏仍不在验收范围 |
@@ -277,5 +277,10 @@ AppData 清理由 disposable account/VM 销毁完成；不要为了 smoke 手工
 - [x] CL2 桌面 smoke 实际执行。
 - [x] CL3 Task 1-9 L1/L2 真正重装自动化通过。
 - [x] CL3 Task 10 Windows Sandbox L3、诊断脱敏和 cleanup 通过。
+- [x] CL4 独立复审、生命周期聚焦矩阵、完整验证、clippy 与仓库卫生检查通过。
 
-CL3 L1/L2/L3 已完成并标记为 `implemented`；CL4 最终复审仍未完成，Gate A 必须保持未认证。
+CL4 于 2026-07-15 从 `origin/main@0b1119f` 的隔离 worktree 独立执行。复审重新核对四类计划、
+entry-set replacement、失败恢复、重启事实、共享写锁/cancellation barrier、Tauri DTO、前端动作门禁、
+Audit/diagnostics 脱敏及 L3 清理边界，未发现 Gate A 阻断。聚焦 Rust/前端测试、完整
+`scripts/verify.ps1` 与 `cargo clippy --workspace --all-targets -- -D warnings` 均通过；Gate A 据此标记为
+`certified`。真实玩家日常目录和真实游戏 smoke 仍不在本次认证范围内。

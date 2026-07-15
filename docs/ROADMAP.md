@@ -4,8 +4,8 @@
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 约束：
 
-1. 先完成 CL4：Gate A 独立复审、完整验证与认证状态记录。
-2. 再完成 Gate B：MHW:I ARMOR_RETARGET 最窄纵向闭环。
+1. Gate A 已完成独立复审、完整验证并标记为 `certified`。
+2. 当前进入 Gate B：先执行 AR1 ARMOR 领域模型、binding 与最小 catalog，再推进最窄纵向闭环。
 3. Gate B 前暂停自动备份剩余切片、installer cleanup、分页、批量迁移、批量操作、任务队列和
    非必要视觉增强。
 
@@ -48,8 +48,8 @@ InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS
 
 本 Phase 的安装/卸载代码、固定人工 fixture 的 temp-root acceptance、真正重装 use case 和
 disposable Windows Sandbox 桌面 smoke 已完成；retained/replaced/added/stale、重启、manifest 卸载、
-baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据。当前仍不能宣称 Gate A `certified`，唯一
-下一项是 CL4 独立本地 review、完整验证与认证状态记录。
+baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本地 review、完整验证与 clippy
+也已通过，Gate A 已标记为 `certified`。当前唯一下一项是 Gate B 的 AR1。
 
 ## Phase 3：玩家工作流扩展（Gate B 前暂停）
 
