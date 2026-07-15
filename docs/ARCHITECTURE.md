@@ -241,6 +241,9 @@ ReplacementTarget
 ReplacementBinding
   玩家选择的“Mod 资源 -> 官方目标”的绑定关系
 
+ReplacementCatalog
+  带稳定版本的游戏目标集合；查询和搜索规则由游戏 adapter 提供
+
 RetargetPlan
   为了把 Mod 重定向到目标槽位，需要在 staging 目录执行的改写计划
 ```
@@ -431,17 +434,23 @@ ReplacementTarget
   id
   game_id
   target_type
-  internal_id
   display_name
-  part
-  is_full_body
+  aliases
+  internal_id
+  metadata              # 游戏专属结构化值，core 只透传
 
 ReplacementBinding
   id
   mod_id
   profile_id
-  source_asset
+  source_id             # 游戏无关、稳定且对 core 不透明
   target_id
+  created_at_unix_millis
+
+ReplacementCatalog
+  version
+  game_id
+  targets
 
 InstallPlan
   id
@@ -469,7 +478,13 @@ pub trait GameAdapter {
     fn analyze_package(&self, package: &ModPackage) -> Result<GamePackageInfo>;
     fn build_install_plan(&self, request: InstallRequest) -> Result<InstallPlan>;
     fn dependency_rules(&self) -> Result<Vec<DependencyRule>>;
-    fn replacement_catalog(&self) -> Result<Vec<ReplacementTarget>>;
+}
+
+pub trait ReplacementCatalogProvider {
+    fn game_id(&self) -> GameId;
+    fn replacement_catalog(&self) -> Result<ReplacementCatalog>;
+    fn find_replacement_target(&self, target_id: &ReplacementTargetId) -> Result<ReplacementTarget>;
+    fn search_replacement_targets(&self, query: &str) -> Result<Vec<ReplacementTarget>>;
 }
 
 pub trait FileSystem {
@@ -496,6 +511,11 @@ pub trait ModRepository {
 - `GameDirectoryProbe` / `GameDirectoryProbeFactory`：隔离真实文件系统读取，让应用层只消费探测接口，测试可使用 fake probe。
 - `GameConfigRepository`：保存和读取已配置的游戏实例；实现层负责 JSON schema、原子写入和存储错误映射。
 - `GameDiscoveryService`：承载 Steam library / 运行进程扫描等发现能力；MVP 阶段允许返回明确的未实现错误。
+
+ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `ReplacementCatalogProvider`，没有
+扩张目录 `GameAdapter`。MHW:I 实现返回 versioned catalog，并在 adapter 内完成 Unicode/search
+normalization 与 `plNNN_VVVV`/metadata schema 校验。Package analysis、`RetargetPlan` 与 staging port
+分别从 AR2/AR3 开始，不属于当前已落地 trait。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 
