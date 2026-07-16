@@ -159,6 +159,8 @@ AR4 按 Tauri thin shell、app workflow 与 feature-local frontend 边界落地�
 - 聚焦验证入口：`cargo test -p hmm-tauri replacement_dto_tests`、
   `cargo test -p hmm-tauri replacement_commands`、`cargo test -p hmm-app --test replacement_service`、
   `node --test src/features/replacements/*.test.mjs` 和完整 frontend test/typecheck/lint/build。
+- 2026-07-16 disposable Windows Sandbox 人工纵向验收已通过：单 source 分析、跨槽位 target 选择、
+  1 动作/0 阻断冲突预览、首次 retarget 安装、精确 target 字节与重启后 installed fail-closed 均符合预期。
 
 AR4 没有实现已安装 Mod target switch、retarget-aware 卸载扩展或 Gate B 认证；这些仍属于 AR5。
 

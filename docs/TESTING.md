@@ -346,8 +346,13 @@ cmd /c corepack pnpm run test
 这些测试锁定四个窄 command 的 camelCase DTO、未知字段拒绝、后端 display revision/source 解析、
 profile 全量 recovery admission、锁外分析/staging、锁内 `not_installed` 二次校验、失败/取消清理、
 task id/phase 匹配，以及前端 loading/error/empty/warning/conflict/installed fail-closed 状态。浏览器 smoke
-覆盖详情 Tab、右键直达、modal 层级和 `1440x900`/`480x800` 响应式；真正 Tauri 成功态和真实桌面
-source -> target -> preview -> install 仍必须在 Windows Sandbox 使用人工 fixture 验收。
+覆盖详情 Tab、右键直达、modal 层级和 `1440x900`/`480x800` 响应式。
+
+2026-07-16 已在 disposable Windows Sandbox 使用人工 game root 和单文件 armor ZIP 完成 AR4 真正
+Tauri 成功态验收：`pl121_0000` source 被识别为单一 `pl/f_equip` 资源，选择 `pl129_0000` 后预览为
+1 个动作、0 个阻断冲突；首次安装只生成 target 槽位文件，source 槽位保持不存在，target 长度/hash
+与原人工字节一致。完全关闭并重开应用后仍恢复为已安装，普通安装入口和 AR4 首次 retarget 安装入口
+均 fail closed，真正 target switch 明确留给 AR5。该结果只验收 AR4 切片，不代表 Gate B certified。
 
 ## 存档备份
 

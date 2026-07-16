@@ -7,7 +7,8 @@
 1. Gate A 已完成独立复审、完整验证并标记为 `certified`。
 2. Gate B 的 AR1 领域模型/catalog、AR2 单 source `f_equip` parser/analyzer/`RetargetPlan`、AR3
    staging materialize/InstallPlan/binding snapshot 与 AR4 Tauri typed contract/最小受控 UI 已实现；
-   当前下一项是 AR5 真正重装 target switch、卸载闭环与 Gate B 认证。
+   AR4 首次 retarget 安装已通过 disposable Windows Sandbox 人工纵向验收；当前下一项是 AR5
+   真正重装 target switch、卸载闭环与 Gate B 认证。
 3. Gate B 前暂停自动备份剩余切片、installer cleanup、分页、批量迁移、批量操作、任务队列和
    非必要视觉增强。
 
