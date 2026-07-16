@@ -5,19 +5,26 @@ import {
   Eye,
   LoaderCircle,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   Target,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
+import { getReinstallBlockingReasonLabel } from "../mods/modReinstallTaskState";
+import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import {
   analyzeImportedModReplacement,
+  cancelRetargetInstallTask,
   listReplacementTargets,
   previewInitialRetargetInstall,
+  previewRetargetReinstall,
   startRetargetInstallTask,
+  startRetargetReinstallTask,
 } from "./replacementApi";
 import type {
   InitialRetargetInstallPreview,
@@ -26,7 +33,9 @@ import type {
   ReplacementWarning,
 } from "./replacementTypes";
 import {
+  canCancelRetargetInstallTaskPhase,
   canStartInitialRetargetInstall,
+  canStartRetargetReinstall,
   isRetargetInstallTaskPhase,
   nextRetargetInstallTaskState,
   refreshRetargetInstallState,
@@ -54,12 +63,18 @@ type LoadState =
 type PreviewState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; preview: InitialRetargetInstallPreview }
+  | { status: "ready"; mode: "initial"; preview: InitialRetargetInstallPreview }
+  | { status: "ready"; mode: "switch"; preview: ReinstallPlanPreview }
   | { status: "error"; message: string };
 
 type TaskStateUpdate =
   | RetargetInstallTaskState
   | ((current: RetargetInstallTaskState) => RetargetInstallTaskState);
+
+type CancellationState =
+  | { status: "idle" }
+  | { status: "requesting"; taskId: string }
+  | { status: "error"; taskId: string; message: string };
 
 const warningLabels: Record<ReplacementWarning, string> = {
   no_supported_assets: "未检测到受支持的外观资源",
@@ -88,6 +103,21 @@ function replacementErrorMessage(error: unknown, fallback: string) {
       return "无法确认当前安装状态";
     case "replacement_initial_install_blocked":
       return "当前安装或恢复状态不允许首次替换安装";
+    case "replacement_installed_binding_unavailable":
+      return "无法确认当前已安装的替换目标";
+    case "replacement_target_already_selected":
+      return "当前目标已安装";
+    case "plan_token_invalid":
+      return "目标切换预览已失效，请重新生成";
+    case "task_cannot_be_cancelled":
+      return "任务已进入提交阶段，请等待执行结果";
+    case "task_not_found":
+      return "无法确认当前任务，请刷新状态";
+    case "reinstall_catalog_unavailable":
+    case "reinstall_manifest_unavailable":
+    case "reinstall_recovery_unavailable":
+    case "reinstall_candidate_plan_unavailable":
+      return "目标切换预览暂不可用";
     case "replacement_unsupported_game":
       return "当前游戏不支持替换目标";
     default:
@@ -100,14 +130,15 @@ function installBlockMessage(
   installStatus: InstallManifestStatus | undefined,
   completedLocally: boolean,
 ) {
-  if (completedLocally || installStatus === "installed") {
-    return "该 Mod 已安装。切换目标将在下一阶段通过真正重装完成。";
-  }
   if (profileId === null) {
     return "当前 Profile 不可用。";
   }
+  if (completedLocally) {
+    return "写入已完成，正在刷新安装状态。";
+  }
   switch (installStatus) {
     case "not_installed":
+    case "installed":
       return null;
     case "committed_cleanup_pending":
     case "cleanup_pending":
@@ -118,8 +149,14 @@ function installBlockMessage(
       return "当前 Profile 需要先完成人工修复。";
     case "unknown":
     case undefined:
-      return "安装状态未知，首次替换安装已阻止。";
+      return "安装状态未知，替换目标写入已阻止。";
   }
+}
+
+function targetSwitchBlockingLabel(code: ReinstallPlanPreview["blockingReasons"][number]["code"]) {
+  return code === "candidate_already_installed"
+    ? "当前目标已安装"
+    : getReinstallBlockingReasonLabel(code);
 }
 
 export function ReplacementTargetPanel({
@@ -147,6 +184,7 @@ export function ReplacementTargetPanel({
   const [listenerStatus, setListenerStatus] = useState<"connecting" | "ready" | "failed">(
     "connecting",
   );
+  const [cancellationState, setCancellationState] = useState<CancellationState>({ status: "idle" });
 
   const setTrackedTaskState = useCallback((update: TaskStateUpdate) => {
     const next = typeof update === "function" ? update(taskStateRef.current) : update;
@@ -256,6 +294,12 @@ export function ReplacementTargetPanel({
     refreshCompletedInstall();
   }, [refreshCompletedInstall, taskState]);
 
+  useEffect(() => {
+    if (taskState.status !== "running") {
+      setCancellationState({ status: "idle" });
+    }
+  }, [taskState.status]);
+
   const targets = useMemo(
     () => (loadState.status === "ready" ? loadState.targets : []),
     [loadState],
@@ -275,6 +319,7 @@ export function ReplacementTargetPanel({
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
   const installCompletedLocally = completedLocally || taskState.status === "completed";
   const blockMessage = installBlockMessage(profileId, installStatus, installCompletedLocally);
+  const targetSwitch = installStatus === "installed";
 
   const selectTarget = (targetId: string) => {
     if (taskActive || installCompletedLocally) {
@@ -292,63 +337,98 @@ export function ReplacementTargetPanel({
     }
     const requestGeneration = ++previewRequestGenerationRef.current;
     setPreviewState({ status: "loading" });
-    void previewInitialRetargetInstall({
+    const request = {
       gameId,
       profileId,
       modId,
       targetId: selectedTarget.id,
       layerName: "base",
       layerPriority: 0,
-    })
-      .then((preview) => {
+    };
+    const preview = targetSwitch
+      ? previewRetargetReinstall(request).then(
+          (result) => ({ mode: "switch", preview: result }) as const,
+        )
+      : previewInitialRetargetInstall(request).then(
+          (result) => ({ mode: "initial", preview: result }) as const,
+        );
+    void preview
+      .then((result) => {
         if (previewRequestGenerationRef.current === requestGeneration) {
-          setPreviewState({ status: "ready", preview });
+          setPreviewState({ status: "ready", ...result });
         }
       })
       .catch((error: unknown) => {
         if (previewRequestGenerationRef.current === requestGeneration) {
           setPreviewState({
             status: "error",
-            message: replacementErrorMessage(error, "替换安装预览失败"),
+            message: replacementErrorMessage(error, "替换目标预览失败"),
           });
         }
       });
   };
 
   const startInstall = () => {
+    const switchPreviewStatus =
+      previewState.status === "ready" && previewState.mode === "switch"
+        ? previewState.preview.status
+        : undefined;
+    const canStart =
+      previewState.status === "ready" && previewState.mode === "switch"
+        ? canStartRetargetReinstall({
+            installStatus,
+            previewStatus: switchPreviewStatus,
+            taskActive,
+            listenerReady: listenerStatus === "ready",
+          })
+        : previewState.status === "ready" && previewState.mode === "initial"
+          ? canStartInitialRetargetInstall({
+              installStatus,
+              completedLocally: installCompletedLocally,
+              hasPreview: true,
+              hasBlockingConflicts: previewState.preview.installPlan.hasBlockingConflicts,
+              taskActive,
+              listenerReady: listenerStatus === "ready",
+            })
+          : false;
     if (
       profileId === null ||
       selectedTarget === null ||
       previewState.status !== "ready" ||
       blockMessage !== null ||
-      !canStartInitialRetargetInstall({
-        installStatus,
-        completedLocally: installCompletedLocally,
-        hasPreview: true,
-        hasBlockingConflicts: previewState.preview.installPlan.hasBlockingConflicts,
-        taskActive,
-        listenerReady: listenerStatus === "ready",
-      })
+      !canStart
     ) {
       return;
     }
 
     pendingEventsRef.current.clear();
     setTrackedTaskState({ status: "starting" });
-    void startRetargetInstallTask({
+    const request = {
       gameId,
       profileId,
       modId,
       targetId: selectedTarget.id,
       layerName: "base",
       layerPriority: 0,
-    })
+    };
+    const start =
+      previewState.mode === "switch" && previewState.preview.status === "ready"
+        ? startRetargetReinstallTask({
+            ...request,
+            planToken: previewState.preview.planToken,
+          })
+        : startRetargetInstallTask(request);
+    const queuedPhase =
+      previewState.mode === "switch" ? "install.reinstall.queued" : "install.retarget.queued";
+    const failedPhase =
+      previewState.mode === "switch" ? "install.reinstall.failed" : "install.retarget.failed";
+    void start
       .then((task) => {
-        if (task.kind !== "install") {
+        if (task.kind !== "install" || task.status !== "queued") {
           setTrackedTaskState({
             status: "failed",
             taskId: null,
-            phase: "install.retarget.failed",
+            phase: failedPhase,
             message: "后端返回了无效任务类型",
           });
           return;
@@ -356,7 +436,7 @@ export function ReplacementTargetPanel({
         const running: RetargetInstallTaskState = {
           status: "running",
           taskId: task.taskId,
-          phase: "install.retarget.queued",
+          phase: queuedPhase,
         };
         const pending = pendingEventsRef.current.get(task.taskId);
         pendingEventsRef.current.clear();
@@ -367,9 +447,48 @@ export function ReplacementTargetPanel({
         setTrackedTaskState({
           status: "failed",
           taskId: null,
-          phase: "install.retarget.failed",
-          message: replacementErrorMessage(error, "替换目标安装任务启动失败"),
+          phase: failedPhase,
+          message: replacementErrorMessage(error, "替换目标写入任务启动失败"),
         });
+      });
+  };
+
+  const cancelCurrentTask = () => {
+    const current = taskStateRef.current;
+    if (current.status !== "running" || cancellationState.status === "requesting") {
+      return;
+    }
+
+    const taskId = current.taskId;
+    const cancelledPhase = current.phase.startsWith("install.reinstall.")
+      ? "install.reinstall.cancelled"
+      : "install.cancelled";
+    setCancellationState({ status: "requesting", taskId });
+    void cancelRetargetInstallTask({ taskId })
+      .then((task) => {
+        if (task.taskId !== taskId || task.kind !== "install" || task.status !== "cancelled") {
+          setCancellationState({
+            status: "error",
+            taskId,
+            message: "后端返回了无效取消结果，请等待任务状态更新",
+          });
+          return;
+        }
+        setTrackedTaskState((state) =>
+          state.status === "running" && state.taskId === taskId
+            ? { status: "cancelled", taskId, phase: cancelledPhase }
+            : state,
+        );
+        setCancellationState({ status: "idle" });
+      })
+      .catch((error: unknown) => {
+        if (taskStateRef.current.status === "running" && taskStateRef.current.taskId === taskId) {
+          setCancellationState({
+            status: "error",
+            taskId,
+            message: replacementErrorMessage(error, "无法取消任务，请等待执行结果"),
+          });
+        }
       });
   };
 
@@ -503,26 +622,69 @@ export function ReplacementTargetPanel({
             <>
               <div className="replacement-panel__section-heading">
                 <Eye size={17} aria-hidden="true" />
-                <h3>写入预览</h3>
-                <span>{previewState.preview.actions.length} 个动作</span>
+                <h3>{previewState.mode === "switch" ? "目标切换预览" : "写入预览"}</h3>
+                {previewState.mode === "initial" ? (
+                  <span>{previewState.preview.actions.length} 个动作</span>
+                ) : null}
               </div>
-              <ul className="replacement-panel__action-list">
-                {previewState.preview.actions.map((action) => (
-                  <li key={`${action.sourceRelativePath}:${action.targetRelativePath}`}>
-                    <code>{action.targetRelativePath}</code>
-                  </li>
-                ))}
-              </ul>
-              {previewState.preview.installPlan.hasBlockingConflicts ? (
-                <div className="replacement-panel__inline-state is-error">
-                  <ShieldAlert size={17} aria-hidden="true" />
-                  检测到 {previewState.preview.installPlan.conflicts.length} 个阻断冲突
-                </div>
+              {previewState.mode === "initial" ? (
+                <>
+                  <ul className="replacement-panel__action-list">
+                    {previewState.preview.actions.map((action) => (
+                      <li key={`${action.sourceRelativePath}:${action.targetRelativePath}`}>
+                        <code>{action.targetRelativePath}</code>
+                      </li>
+                    ))}
+                  </ul>
+                  {previewState.preview.installPlan.hasBlockingConflicts ? (
+                    <div className="replacement-panel__inline-state is-error">
+                      <ShieldAlert size={17} aria-hidden="true" />
+                      检测到 {previewState.preview.installPlan.conflicts.length} 个阻断冲突
+                    </div>
+                  ) : (
+                    <div className="replacement-panel__inline-state is-success">
+                      <CheckCircle2 size={17} aria-hidden="true" />
+                      未检测到阻断冲突
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="replacement-panel__inline-state is-success">
-                  <CheckCircle2 size={17} aria-hidden="true" />
-                  未检测到阻断冲突
-                </div>
+                <>
+                  <dl className="replacement-panel__counts">
+                    <div data-kind="retained">
+                      <dt>保留</dt>
+                      <dd>{previewState.preview.counts.retained}</dd>
+                    </div>
+                    <div data-kind="replaced">
+                      <dt>替换</dt>
+                      <dd>{previewState.preview.counts.replaced}</dd>
+                    </div>
+                    <div data-kind="added">
+                      <dt>新增</dt>
+                      <dd>{previewState.preview.counts.added}</dd>
+                    </div>
+                    <div data-kind="stale">
+                      <dt>移除旧项</dt>
+                      <dd>{previewState.preview.counts.stale}</dd>
+                    </div>
+                  </dl>
+                  {previewState.preview.status === "ready" ? (
+                    <div className="replacement-panel__inline-state is-success">
+                      <CheckCircle2 size={17} aria-hidden="true" />
+                      安全预检通过
+                    </div>
+                  ) : (
+                    <ul className="replacement-panel__blocking-list" aria-label="目标切换阻断项">
+                      {previewState.preview.blockingReasons.map((reason) => (
+                        <li key={reason.code}>
+                          <ShieldAlert size={15} aria-hidden="true" />
+                          <span>{targetSwitchBlockingLabel(reason.code)}</span>
+                          <strong>{reason.count}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </>
           ) : null}
@@ -553,7 +715,25 @@ export function ReplacementTargetPanel({
           {taskState.status === "running" ? (
             <>
               <LoaderCircle className="replacement-panel__spinner" size={17} aria-hidden="true" />
-              {retargetInstallTaskPhaseLabel(taskState.phase)}
+              <span>{retargetInstallTaskPhaseLabel(taskState.phase)}</span>
+              {canCancelRetargetInstallTaskPhase(taskState.phase) ? (
+                <button
+                  type="button"
+                  onClick={cancelCurrentTask}
+                  disabled={cancellationState.status === "requesting"}
+                >
+                  {cancellationState.status === "requesting" ? (
+                    <LoaderCircle
+                      className="replacement-panel__spinner"
+                      size={15}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <XCircle size={15} aria-hidden="true" />
+                  )}
+                  {cancellationState.status === "requesting" ? "正在取消" : "取消任务"}
+                </button>
+              ) : null}
             </>
           ) : null}
           {taskState.status === "completed" ? (
@@ -574,6 +754,13 @@ export function ReplacementTargetPanel({
               {retargetInstallTaskPhaseLabel(taskState.phase)}
             </>
           ) : null}
+        </div>
+      ) : null}
+
+      {cancellationState.status === "error" ? (
+        <div className="replacement-panel__notice is-blocked" role="alert">
+          <AlertTriangle size={17} aria-hidden="true" />
+          <span>{cancellationState.message}</span>
         </div>
       ) : null}
 
@@ -609,7 +796,7 @@ export function ReplacementTargetPanel({
           }
         >
           <Eye size={16} aria-hidden="true" />
-          生成预览
+          {targetSwitch ? "预览目标切换" : "生成预览"}
         </button>
         <button
           type="button"
@@ -618,19 +805,29 @@ export function ReplacementTargetPanel({
           disabled={
             previewState.status !== "ready" ||
             blockMessage !== null ||
-            !canStartInitialRetargetInstall({
-              installStatus,
-              completedLocally: installCompletedLocally,
-              hasPreview: previewState.status === "ready",
-              hasBlockingConflicts:
-                previewState.status === "ready" && previewState.preview.installPlan.hasBlockingConflicts,
-              taskActive,
-              listenerReady: listenerStatus === "ready",
-            })
+            (previewState.mode === "switch"
+              ? !canStartRetargetReinstall({
+                  installStatus,
+                  previewStatus: previewState.preview.status,
+                  taskActive,
+                  listenerReady: listenerStatus === "ready",
+                })
+              : !canStartInitialRetargetInstall({
+                  installStatus,
+                  completedLocally: installCompletedLocally,
+                  hasPreview: true,
+                  hasBlockingConflicts: previewState.preview.installPlan.hasBlockingConflicts,
+                  taskActive,
+                  listenerReady: listenerStatus === "ready",
+                }))
           }
         >
-          <Target size={16} aria-hidden="true" />
-          安装到此目标
+          {targetSwitch ? (
+            <RotateCcw size={16} aria-hidden="true" />
+          ) : (
+            <Target size={16} aria-hidden="true" />
+          )}
+          {targetSwitch ? "确认重装并切换" : "安装到此目标"}
         </button>
       </div>
     </div>

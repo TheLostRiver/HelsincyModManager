@@ -7,18 +7,34 @@ export type RetargetInstallTaskPhase =
   | "install.retarget.commit.processing"
   | "install.retarget.completed"
   | "install.retarget.failed"
-  | "install.cancelled";
+  | "install.cancelled"
+  | "install.reinstall.queued"
+  | "install.reinstall.plan.building"
+  | "install.reinstall.preflight.processing"
+  | "install.reinstall.commit.processing"
+  | "install.reinstall.rollback.processing"
+  | "install.reinstall.completed"
+  | "install.reinstall.failed"
+  | "install.reinstall.cancelled";
 
 export type RetargetInstallTaskState =
   | { status: "idle" }
   | { status: "starting" }
   | { status: "running"; taskId: string; phase: RetargetInstallTaskPhase }
-  | { status: "completed"; taskId: string; phase: "install.retarget.completed" }
-  | { status: "cancelled"; taskId: string; phase: "install.cancelled" }
+  | {
+      status: "completed";
+      taskId: string;
+      phase: "install.retarget.completed" | "install.reinstall.completed";
+    }
+  | {
+      status: "cancelled";
+      taskId: string;
+      phase: "install.cancelled" | "install.reinstall.cancelled";
+    }
   | {
       status: "failed";
       taskId: string | null;
-      phase: "install.retarget.failed";
+      phase: "install.retarget.failed" | "install.reinstall.failed";
       message: string;
     };
 
@@ -29,6 +45,14 @@ const phaseLabels: Record<RetargetInstallTaskPhase, string> = {
   "install.retarget.completed": "替换目标安装完成",
   "install.retarget.failed": "替换目标安装失败",
   "install.cancelled": "替换目标安装已取消",
+  "install.reinstall.queued": "等待目标切换",
+  "install.reinstall.plan.building": "生成目标切换计划",
+  "install.reinstall.preflight.processing": "执行提交前检查",
+  "install.reinstall.commit.processing": "提交目标切换",
+  "install.reinstall.rollback.processing": "恢复原目标",
+  "install.reinstall.completed": "替换目标切换完成",
+  "install.reinstall.failed": "替换目标切换失败",
+  "install.reinstall.cancelled": "替换目标切换已取消",
 };
 
 export function isRetargetInstallTaskPhase(phase: string): phase is RetargetInstallTaskPhase {
@@ -37,6 +61,16 @@ export function isRetargetInstallTaskPhase(phase: string): phase is RetargetInst
 
 export function retargetInstallTaskPhaseLabel(phase: RetargetInstallTaskPhase) {
   return phaseLabels[phase];
+}
+
+export function canCancelRetargetInstallTaskPhase(phase: RetargetInstallTaskPhase) {
+  return (
+    phase === "install.retarget.queued" ||
+    phase === "install.retarget.plan.building" ||
+    phase === "install.reinstall.queued" ||
+    phase === "install.reinstall.plan.building" ||
+    phase === "install.reinstall.preflight.processing"
+  );
 }
 
 export function nextRetargetInstallTaskState(
@@ -61,22 +95,34 @@ export function nextRetargetInstallTaskState(
     return current;
   }
 
-  if (event.phase === "install.retarget.completed") {
+  if (
+    event.status === "completed" &&
+    (event.phase === "install.retarget.completed" || event.phase === "install.reinstall.completed")
+  ) {
     return {
       status: "completed",
       taskId: event.taskId,
       phase: event.phase,
     };
   }
-  if (event.phase === "install.retarget.failed") {
+  if (
+    event.status === "failed" &&
+    (event.phase === "install.retarget.failed" || event.phase === "install.reinstall.failed")
+  ) {
     return {
       status: "failed",
       taskId: event.taskId,
       phase: event.phase,
-      message: event.error ?? event.message ?? "替换目标安装失败",
+      message:
+        event.phase === "install.reinstall.failed"
+          ? "目标切换失败，请刷新状态并重新生成预览"
+          : "替换目标安装失败，请刷新状态后重试",
     };
   }
-  if (event.phase === "install.cancelled") {
+  if (
+    event.status === "cancelled" &&
+    (event.phase === "install.cancelled" || event.phase === "install.reinstall.cancelled")
+  ) {
     return {
       status: "cancelled",
       taskId: event.taskId,
@@ -125,6 +171,22 @@ export function canStartInitialRetargetInstall(input: InitialRetargetInstallAvai
     !input.completedLocally &&
     input.hasPreview &&
     !input.hasBlockingConflicts &&
+    !input.taskActive &&
+    input.listenerReady
+  );
+}
+
+type RetargetReinstallAvailability = {
+  installStatus: InstallManifestStatus | undefined;
+  previewStatus: "ready" | "blocked" | undefined;
+  taskActive: boolean;
+  listenerReady: boolean;
+};
+
+export function canStartRetargetReinstall(input: RetargetReinstallAvailability) {
+  return (
+    input.installStatus === "installed" &&
+    input.previewStatus === "ready" &&
     !input.taskActive &&
     input.listenerReady
   );
