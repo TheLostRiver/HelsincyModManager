@@ -225,6 +225,28 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ### Core Mod Lifecycle Gate A
 
+核心 Mod 生命周期的正式自动验收入口为：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-core-mod-lifecycle.ps1
+```
+
+PowerShell 7 或非 Windows 环境使用同一脚本：
+
+```powershell
+pwsh -NoProfile -File ./scripts/verify-core-mod-lifecycle.ps1
+```
+
+脚本先从 `hmm-tauri` 测试列表发现 `headless_composition_*` 场景，要求发现数不少于固定基线 6，
+并逐项确认 T19 计划记录的 6 个固定场景仍然存在；发现数为 0、少于基线、缺少固定场景或场景被
+标记为 ignored 时均失败。发现成功后，脚本通过同一个公共前缀一次执行全部场景，并保留 cargo 的
+非零退出码。Windows 新 worktree 会在发现测试前通过仓库既有 helper 准备 debug sidecar；生成的
+`target/`、`node_modules/` 和 `src-tauri/binaries/` 内容仍为 ignored 运行时产物，不得提交。
+
+GitHub `Verify` workflow 调用同一脚本，不在 YAML 中复制测试清单。场景继续只使用人工 zip、temp
+AppData、temp MHW:I-like game root、fake port 和受控 staging/backup/manifest roots；该入口不得读取
+真实 MHW:I、Steam userdata、玩家存档或第三方 Mod 包。
+
 CL0/CL1 test-only composition harness 使用人工 zip、temp AppData 与 temp MHW:I-like game root。
 CL0 覆盖 fixture 分类、真实 importer、持久化 import/game config、MHW adapter InstallPlan 和
 AppState restart；CL1 在同一 harness 上覆盖 install -> restart -> uninstall -> baseline、manifest/
