@@ -1,15 +1,17 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use hmm_core::{FileLayer, GameId, ModId, ModRevisionId, ProfileId};
+use hmm_core::{
+    FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReplacementTargetId,
+};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 
 use crate::reinstall::{PreparedReinstall, ReinstallPreparation};
 use crate::{
     GameProfileWriteLockRegistry, ReinstallCommitError, ReinstallCommitPhase,
     ReinstallCommitResult, ReinstallCommitService, ReinstallPreviewError, ReinstallPreviewRequest,
-    ReinstallPreviewService, ReinstallTargetCounts, TaskKind, TaskManager, TaskManagerError,
-    TaskProgressEvent, TaskStarted, TaskStatus,
+    ReinstallPreviewService, ReinstallTargetCounts, RetargetReinstallRequest, TaskKind,
+    TaskManager, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 
 const PLAN_BUILDING_PHASE: &str = "install.reinstall.plan.building";
@@ -40,6 +42,80 @@ impl StartReinstallTaskRequest {
             candidate_revision_id: self.candidate_revision_id.clone(),
             layer: self.layer.clone(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartRetargetReinstallTaskRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub target_id: ReplacementTargetId,
+    pub layer: FileLayer,
+    pub plan_token: String,
+}
+
+impl StartRetargetReinstallTaskRequest {
+    fn preview_request(&self) -> RetargetReinstallRequest {
+        RetargetReinstallRequest {
+            game_id: self.game_id.clone(),
+            profile_id: self.profile_id.clone(),
+            mod_id: self.mod_id.clone(),
+            target_id: self.target_id.clone(),
+            layer: self.layer.clone(),
+        }
+    }
+}
+
+trait ReinstallTaskRequestContext {
+    fn game_id(&self) -> &GameId;
+    fn profile_id(&self) -> &ProfileId;
+    fn mod_id(&self) -> &ModId;
+    fn target_id(&self) -> Option<&ReplacementTargetId>;
+    fn plan_token(&self) -> &str;
+}
+
+impl ReinstallTaskRequestContext for StartReinstallTaskRequest {
+    fn game_id(&self) -> &GameId {
+        &self.game_id
+    }
+
+    fn profile_id(&self) -> &ProfileId {
+        &self.profile_id
+    }
+
+    fn mod_id(&self) -> &ModId {
+        &self.mod_id
+    }
+
+    fn target_id(&self) -> Option<&ReplacementTargetId> {
+        None
+    }
+
+    fn plan_token(&self) -> &str {
+        &self.plan_token
+    }
+}
+
+impl ReinstallTaskRequestContext for StartRetargetReinstallTaskRequest {
+    fn game_id(&self) -> &GameId {
+        &self.game_id
+    }
+
+    fn profile_id(&self) -> &ProfileId {
+        &self.profile_id
+    }
+
+    fn mod_id(&self) -> &ModId {
+        &self.mod_id
+    }
+
+    fn target_id(&self) -> Option<&ReplacementTargetId> {
+        Some(&self.target_id)
+    }
+
+    fn plan_token(&self) -> &str {
+        &self.plan_token
     }
 }
 
@@ -98,6 +174,13 @@ pub trait ReinstallTaskExecutor: Send + Sync {
         prepared: Self::Prepared,
         expected_plan_token: &str,
     ) -> Result<ReinstallCommitResult, ReinstallCommitError>;
+}
+
+pub trait RetargetReinstallTaskExecutor: ReinstallTaskExecutor {
+    fn prepare_retarget_reinstall(
+        &self,
+        request: RetargetReinstallRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError>;
 }
 
 #[derive(Clone)]
@@ -178,6 +261,18 @@ impl ReinstallTaskService {
             status: task.status,
         })
     }
+
+    pub fn start_retarget_reinstall_task(
+        &self,
+        _request: StartRetargetReinstallTaskRequest,
+    ) -> Result<TaskStarted, TaskManagerError> {
+        let task = self.task_manager.create_task(TaskKind::Install)?;
+        Ok(TaskStarted {
+            task_id: task.task_id,
+            kind: task.kind,
+            status: task.status,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +325,22 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         task_id: &str,
         request: StartReinstallTaskRequest,
     ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
+        let preview_request = request.preview_request();
+        self.run_task(task_id, &request, || {
+            self.executor.prepare(preview_request)
+        })
+    }
+
+    fn run_task<R, F>(
+        &self,
+        task_id: &str,
+        request: &R,
+        prepare: F,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError>
+    where
+        R: ReinstallTaskRequestContext,
+        F: FnOnce() -> Result<E::Prepared, ReinstallTaskPrepareError>,
+    {
         if self.task_manager.start_task(task_id).is_err() {
             return if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 Ok(vec![cancelled_event(task_id)])
@@ -239,7 +350,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         }
 
         let mut events = vec![running_event(task_id, PLAN_BUILDING_PHASE)];
-        let prepared = match self.executor.prepare(request.preview_request()) {
+        let prepared = match prepare() {
             Ok(prepared) => prepared,
             Err(error) => {
                 if self.append_cancelled_if_needed(task_id, &mut events) {
@@ -249,7 +360,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 let context = error.into_context();
                 return self.fail_with_audit(
                     task_id,
-                    &request,
+                    request,
                     context,
                     events,
                     phase,
@@ -267,14 +378,14 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
 
         let write_lock = self
             .write_locks
-            .lock_for(&request.game_id, &request.profile_id);
+            .lock_for(request.game_id(), request.profile_id());
         let commit_result = {
             let _guard = match write_lock.lock() {
                 Ok(guard) => guard,
                 Err(_) => {
                     return self.fail_with_audit(
                         task_id,
-                        &request,
+                        request,
                         audit_context,
                         events,
                         "lock",
@@ -293,14 +404,14 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 None
             } else {
                 events.push(running_event(task_id, COMMIT_PROCESSING_PHASE));
-                Some(self.executor.commit(prepared, &request.plan_token))
+                Some(self.executor.commit(prepared, request.plan_token()))
             }
         };
 
         let Some(commit_result) = commit_result else {
             return self.fail_with_audit(
                 task_id,
-                &request,
+                request,
                 audit_context,
                 events,
                 "lock",
@@ -312,7 +423,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             let failure = commit_failure(&error);
             return self.fail_with_audit(
                 task_id,
-                &request,
+                request,
                 audit_context,
                 events,
                 failure.phase,
@@ -329,12 +440,12 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                     task.status,
                     COMPLETED_PHASE,
                 ));
-                self.record_audit(task_id, &request, &audit_context, "success", None, None);
+                self.record_audit(task_id, request, &audit_context, "success", None, None);
                 Ok(events)
             }
             Err(_) => self.fail_with_audit(
                 task_id,
-                &request,
+                request,
                 audit_context,
                 events,
                 "complete",
@@ -358,10 +469,10 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn fail_with_audit(
+    fn fail_with_audit<R: ReinstallTaskRequestContext>(
         &self,
         task_id: &str,
-        request: &StartReinstallTaskRequest,
+        request: &R,
         context: ReinstallTaskAuditContext,
         mut events: Vec<TaskProgressEvent>,
         phase: &str,
@@ -396,10 +507,10 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         Err(ReinstallTaskRunError { events })
     }
 
-    fn record_audit(
+    fn record_audit<R: ReinstallTaskRequestContext>(
         &self,
         task_id: &str,
-        request: &StartReinstallTaskRequest,
+        request: &R,
         context: &ReinstallTaskAuditContext,
         result: &str,
         error_code: Option<&str>,
@@ -407,12 +518,18 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
     ) {
         let mut fields = BTreeMap::new();
         fields.insert("task_id".to_owned(), task_id.to_owned());
-        fields.insert("game_id".to_owned(), request.game_id.as_str().to_owned());
+        fields.insert(
+            "game_id".to_owned(),
+            request.game_id().as_str().to_owned(),
+        );
         fields.insert(
             "profile_id".to_owned(),
-            request.profile_id.as_str().to_owned(),
+            request.profile_id().as_str().to_owned(),
         );
-        fields.insert("mod_id".to_owned(), request.mod_id.as_str().to_owned());
+        fields.insert("mod_id".to_owned(), request.mod_id().as_str().to_owned());
+        if let Some(target_id) = request.target_id() {
+            fields.insert("target_id".to_owned(), target_id.as_str().to_owned());
+        }
         if let Some(previous_revision_id) = &context.previous_revision_id {
             fields.insert(
                 "previous_revision_id".to_owned(),
@@ -447,6 +564,19 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             result: result.to_owned(),
             fields,
         });
+    }
+}
+
+impl<E: RetargetReinstallTaskExecutor> ReinstallTaskRunner<E> {
+    pub fn run_retarget_reinstall_task(
+        &self,
+        task_id: &str,
+        request: StartRetargetReinstallTaskRequest,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
+        let preview_request = request.preview_request();
+        self.run_task(task_id, &request, || {
+            self.executor.prepare_retarget_reinstall(preview_request)
+        })
     }
 }
 

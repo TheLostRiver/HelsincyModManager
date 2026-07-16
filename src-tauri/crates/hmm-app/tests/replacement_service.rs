@@ -1,13 +1,15 @@
 use hmm_app::{
     InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    MaterializeRetargetRequest, PreviewInitialRetargetInstallRequest, ReplacementService,
-    ReplacementServiceError, ReplacementWorkflowError, ReplacementWorkflowService,
+    MaterializeRetargetRequest, PreviewInitialRetargetInstallRequest,
+    PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
+    ReplacementWorkflowError, ReplacementWorkflowService,
 };
 use hmm_core::{
-    FileLayer, GameId, InstallPlan, InstallTargetPath, LocalizedText, ModId, PackageFileId,
-    ProfileId, ReplacementAnalysis, ReplacementBinding, ReplacementBindingId, ReplacementCatalog,
-    ReplacementCatalogVersion, ReplacementSource, ReplacementSourceId, ReplacementTarget,
-    ReplacementTargetId, ReplacementTargetKind, RetargetAction, RetargetPlan,
+    FileLayer, GameId, InstallPlan, InstallTargetPath, LocalizedText, ModId, ModRevisionId,
+    PackageFileId, ProfileId, ReplacementAnalysis, ReplacementBinding, ReplacementBindingId,
+    ReplacementBindingSnapshot, ReplacementCatalog, ReplacementCatalogVersion, ReplacementSource,
+    ReplacementSourceId, ReplacementTarget, ReplacementTargetId, ReplacementTargetKind,
+    RetargetAction, RetargetPlan,
 };
 use hmm_ports::{
     AppClock, ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
@@ -403,6 +405,84 @@ fn workflow_resolves_display_revision_and_previews_revision_owned_retarget_plan(
         None,
         "initial install entries are not revision-owned; AR5 true reinstall adds revision facts"
     );
+}
+
+#[test]
+fn workflow_rebuilds_the_installed_revision_with_stable_binding_lineage_for_target_switch() {
+    let service = workflow(hmm_app::InstallRecoveryStatus::Completed);
+    let planned = service
+        .preview_reinstall_target(PreviewRetargetReinstallRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("profile-a"),
+            mod_id: ModId::new("mod-a"),
+            installed_revision_id: ModRevisionId::new("revision-v1"),
+            installed_binding: installed_binding(
+                "mhw:armor:guardian-alpha",
+                "pl121_0000",
+            ),
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+                .expect("target id"),
+            layer: FileLayer::new("base", 0),
+        })
+        .expect("target-switch candidate");
+
+    assert_eq!(planned.package_id(), "revision-v1");
+    assert_eq!(planned.revision_id().as_str(), "revision-v1");
+    assert_eq!(planned.binding_id().as_str(), "binding-installed");
+    let candidate = planned.install_plan().replacement_bindings[0].clone();
+    assert_eq!(candidate.binding().created_at_unix_millis(), 42);
+    assert_eq!(
+        candidate.revision_id(),
+        Some(&ModRevisionId::new("revision-v1"))
+    );
+    assert_eq!(
+        candidate.binding().target_id().as_str(),
+        "mhw:armor:fatalis-alpha"
+    );
+
+    let staging = RecordingStaging::default();
+    let materialized = service
+        .materialize_reinstall_target(&staging, planned)
+        .expect("materialize target-switch candidate");
+    assert_eq!(materialized.replacement_bindings, vec![candidate]);
+
+    let unchanged = service
+        .preview_reinstall_target(PreviewRetargetReinstallRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("profile-a"),
+            mod_id: ModId::new("mod-a"),
+            installed_revision_id: ModRevisionId::new("revision-v1"),
+            installed_binding: installed_binding(
+                "mhw:armor:fatalis-alpha",
+                "pl129_0000",
+            ),
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+                .expect("target id"),
+            layer: FileLayer::new("base", 0),
+        })
+        .expect_err("current target must not produce a reinstall candidate");
+    assert_eq!(unchanged, ReplacementWorkflowError::TargetAlreadySelected);
+}
+
+fn installed_binding(target_id: &str, target_internal_id: &str) -> ReplacementBindingSnapshot {
+    ReplacementBindingSnapshot::new(
+        ReplacementBinding::new(
+            ReplacementBindingId::parse("binding-installed").expect("binding id"),
+            ModId::new("mod-a"),
+            ProfileId::new("profile-a"),
+            source().id().clone(),
+            ReplacementTargetId::parse(target_id).expect("target id"),
+            42,
+        )
+        .expect("binding"),
+        None,
+        "pl121_0000",
+        target_internal_id,
+        "pl/f_equip",
+        "pl/f_equip",
+        ReplacementTargetKind::parse("armor").expect("target kind"),
+    )
+    .expect("installed binding")
 }
 
 #[test]

@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use hmm_app::{
     AnalyzeImportedReplacementRequest, PlannedInitialRetargetInstall,
-    PreviewInitialRetargetInstallRequest, ReplacementServiceError, ReplacementWorkflowError,
-    RetargetInstallTaskService, StartRetargetInstallTaskRequest, TaskProgressEvent, TaskStarted,
+    PreviewInitialRetargetInstallRequest, ReinstallTaskService, ReplacementServiceError,
+    ReplacementWorkflowError, RetargetInstallTaskService, RetargetReinstallRequest,
+    StartRetargetInstallTaskRequest, StartRetargetReinstallTaskRequest, TaskProgressEvent,
+    TaskStarted,
 };
 use hmm_core::{
     FileLayer, GameId, ModId, ProfileId, ReplacementAnalysis, ReplacementTarget,
@@ -14,11 +16,14 @@ use tauri::{AppHandle, State};
 use crate::dto::{
     AnalyzeImportedModReplacementRequestDto, CommandErrorDto, InitialRetargetInstallPreviewDto,
     ListReplacementTargetsRequestDto, PreviewInitialRetargetInstallRequestDto,
-    ReplacementAnalysisDto, ReplacementSourceDto, ReplacementTargetDto, ReplacementWarningDto,
-    RetargetActionPreviewDto, StartRetargetInstallTaskRequestDto, TaskStartedDto,
+    PreviewRetargetReinstallRequestDto, ReplacementAnalysisDto, ReplacementSourceDto,
+    ReplacementTargetDto, ReplacementWarningDto, RetargetActionPreviewDto,
+    StartRetargetInstallTaskRequestDto, StartRetargetReinstallTaskRequestDto, TaskStartedDto,
 };
-use crate::state::AppState;
-use crate::task_events::emit_task_progress;
+use crate::reinstall_commands::{parse_plan_token, preview_error_to_command_error};
+use crate::reinstall_dto::ReinstallPlanPreviewDto;
+use crate::state::{AppState, ConfiguredRetargetReinstallError};
+use crate::task_events::{emit_task_progress, INSTALL_REINSTALL_QUEUED_PHASE};
 
 const RETARGET_QUEUED_PHASE: &str = "install.retarget.queued";
 
@@ -62,6 +67,21 @@ pub fn preview_initial_retarget_install(
 }
 
 #[tauri::command]
+pub fn preview_retarget_reinstall(
+    request: PreviewRetargetReinstallRequestDto,
+    state: State<'_, AppState>,
+) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
+    let preview = state
+        .reinstall_executor
+        .preview_retarget_reinstall(retarget_reinstall_request_from_dto(request)?)
+        .map_err(retarget_reinstall_error_to_command_error)?;
+    ReinstallPlanPreviewDto::try_from(preview).map_err(|_| CommandErrorDto {
+        code: "replacement_reinstall_preview_unavailable".to_owned(),
+        message: "replacement reinstall preview is unavailable".to_owned(),
+    })
+}
+
+#[tauri::command]
 pub fn start_retarget_install_task(
     request: StartRetargetInstallTaskRequestDto,
     state: State<'_, AppState>,
@@ -78,6 +98,60 @@ pub fn start_retarget_install_task(
         runner_request,
     );
     Ok(task.into())
+}
+
+#[tauri::command]
+pub fn start_retarget_reinstall_task(
+    request: StartRetargetReinstallTaskRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let request = start_retarget_reinstall_request_from_dto(request)?;
+    let runner_request = request.clone();
+    let task = queue_retarget_reinstall_task(&state.reinstall_tasks, request)?;
+    let _ = emit_task_progress(
+        &app_handle,
+        TaskProgressEvent::new(
+            task.task_id.clone(),
+            task.kind,
+            task.status,
+            INSTALL_REINSTALL_QUEUED_PHASE,
+        )
+        .into(),
+    );
+    spawn_retarget_reinstall_runner(
+        Arc::clone(&state.reinstall_task_runner),
+        app_handle,
+        task.task_id.clone(),
+        runner_request,
+    );
+    Ok(task.into())
+}
+
+fn queue_retarget_reinstall_task(
+    task_service: &ReinstallTaskService,
+    request: StartRetargetReinstallTaskRequest,
+) -> Result<TaskStarted, CommandErrorDto> {
+    task_service
+        .start_retarget_reinstall_task(request)
+        .map_err(CommandErrorDto::from_task_manager_error)
+}
+
+fn spawn_retarget_reinstall_runner(
+    runner: Arc<hmm_app::ReinstallTaskRunner<crate::state::ConfiguredReinstallExecutor>>,
+    app_handle: AppHandle,
+    task_id: String,
+    request: StartRetargetReinstallTaskRequest,
+) {
+    std::thread::spawn(move || {
+        let events = match runner.run_retarget_reinstall_task(&task_id, request) {
+            Ok(events) => events,
+            Err(error) => error.events,
+        };
+        for event in events {
+            let _ = emit_task_progress(&app_handle, event.into());
+        }
+    });
 }
 
 fn queue_retarget_install_task(
@@ -175,6 +249,55 @@ fn start_request_from_dto(
     })
 }
 
+fn retarget_reinstall_request_from_dto(
+    request: PreviewRetargetReinstallRequestDto,
+) -> Result<RetargetReinstallRequest, CommandErrorDto> {
+    Ok(RetargetReinstallRequest {
+        game_id: parse_game_id(request.game_id)?,
+        profile_id: ProfileId::new(required_id(
+            request.profile_id,
+            "replacement_profile_id_invalid",
+            "profile id is required",
+        )?),
+        mod_id: ModId::new(required_id(
+            request.mod_id,
+            "replacement_mod_id_invalid",
+            "Mod id is required",
+        )?),
+        target_id: parse_target_id(request.target_id)?,
+        layer: FileLayer::new(
+            required_id(
+                request.layer_name,
+                "replacement_layer_invalid",
+                "layer name is required",
+            )?,
+            request.layer_priority,
+        ),
+    })
+}
+
+fn start_retarget_reinstall_request_from_dto(
+    request: StartRetargetReinstallTaskRequestDto,
+) -> Result<StartRetargetReinstallTaskRequest, CommandErrorDto> {
+    let plan_token = parse_plan_token(request.plan_token)?;
+    let preview = retarget_reinstall_request_from_dto(PreviewRetargetReinstallRequestDto {
+        game_id: request.game_id,
+        profile_id: request.profile_id,
+        mod_id: request.mod_id,
+        target_id: request.target_id,
+        layer_name: request.layer_name,
+        layer_priority: request.layer_priority,
+    })?;
+    Ok(StartRetargetReinstallTaskRequest {
+        game_id: preview.game_id,
+        profile_id: preview.profile_id,
+        mod_id: preview.mod_id,
+        target_id: preview.target_id,
+        layer: preview.layer,
+        plan_token,
+    })
+}
+
 fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
     GameId::parse(value).map_err(|_| CommandErrorDto {
         code: "replacement_unsupported_game".to_owned(),
@@ -249,11 +372,30 @@ fn replacement_workflow_error_to_command_error(error: ReplacementWorkflowError) 
             "replacement_preview_unavailable",
             "replacement preview is unavailable",
         ),
+        ReplacementWorkflowError::InstalledBindingUnavailable => (
+            "replacement_installed_binding_unavailable",
+            "installed replacement binding is unavailable",
+        ),
+        ReplacementWorkflowError::TargetAlreadySelected => (
+            "replacement_target_already_selected",
+            "replacement target is already selected",
+        ),
         ReplacementWorkflowError::Analysis(error) => return analysis_error_to_command_error(error),
     };
     CommandErrorDto {
         code: code.to_owned(),
         message: message.to_owned(),
+    }
+}
+
+fn retarget_reinstall_error_to_command_error(
+    error: ConfiguredRetargetReinstallError,
+) -> CommandErrorDto {
+    match error {
+        ConfiguredRetargetReinstallError::Reinstall(error) => preview_error_to_command_error(error),
+        ConfiguredRetargetReinstallError::Replacement(error) => {
+            replacement_workflow_error_to_command_error(error)
+        }
     }
 }
 
@@ -413,6 +555,12 @@ mod tests {
         );
         assert_eq!(blocked.code, "replacement_initial_install_blocked");
         assert!(!blocked.message.contains("RollbackRequired"));
+
+        let unchanged = replacement_workflow_error_to_command_error(
+            ReplacementWorkflowError::TargetAlreadySelected,
+        );
+        assert_eq!(unchanged.code, "replacement_target_already_selected");
+        assert!(!unchanged.message.contains("mhw:armor"));
     }
 
     #[test]
@@ -430,6 +578,70 @@ mod tests {
         .expect("valid controlled request");
 
         let task = queue_retarget_install_task(&task_service, request).expect("queue task");
+
+        assert_eq!(task.kind, hmm_app::TaskKind::Install);
+        assert_eq!(task.status, hmm_app::TaskStatus::Queued);
+    }
+
+    #[test]
+    fn retarget_reinstall_mapping_keeps_revision_and_paths_backend_owned() {
+        let preview = retarget_reinstall_request_from_dto(PreviewRetargetReinstallRequestDto {
+            game_id: "mhw".to_owned(),
+            profile_id: "profile-a".to_owned(),
+            mod_id: "mod-a".to_owned(),
+            target_id: "mhw:armor:fatalis-beta".to_owned(),
+            layer_name: "base".to_owned(),
+            layer_priority: 0,
+        })
+        .expect("map controlled target-switch preview");
+        assert_eq!(preview.mod_id.as_str(), "mod-a");
+        assert_eq!(preview.target_id.as_str(), "mhw:armor:fatalis-beta");
+
+        let start =
+            start_retarget_reinstall_request_from_dto(StartRetargetReinstallTaskRequestDto {
+                game_id: "mhw".to_owned(),
+                profile_id: "profile-a".to_owned(),
+                mod_id: "mod-a".to_owned(),
+                target_id: "mhw:armor:fatalis-beta".to_owned(),
+                layer_name: "base".to_owned(),
+                layer_priority: 0,
+                plan_token: format!("reinstall-preview-v1:{}", "a".repeat(64)),
+            })
+            .expect("map controlled target-switch start");
+        assert_eq!(start.target_id.as_str(), "mhw:armor:fatalis-beta");
+        assert!(start.plan_token.starts_with("reinstall-preview-v1:"));
+
+        let invalid =
+            start_retarget_reinstall_request_from_dto(StartRetargetReinstallTaskRequestDto {
+                game_id: "mhw".to_owned(),
+                profile_id: "profile-a".to_owned(),
+                mod_id: "mod-a".to_owned(),
+                target_id: "mhw:armor:fatalis-beta".to_owned(),
+                layer_name: "base".to_owned(),
+                layer_priority: 0,
+                plan_token: "not-a-plan-token".to_owned(),
+            })
+            .expect_err("target switch must consume a validated preview token");
+        assert_eq!(invalid.code, "plan_token_invalid");
+    }
+
+    #[test]
+    fn retarget_reinstall_queueing_uses_the_existing_install_task_shape() {
+        let task_manager = Arc::new(hmm_app::TaskManager::new());
+        let task_service = hmm_app::ReinstallTaskService::new(task_manager);
+        let request =
+            start_retarget_reinstall_request_from_dto(StartRetargetReinstallTaskRequestDto {
+                game_id: "mhw".to_owned(),
+                profile_id: "profile-a".to_owned(),
+                mod_id: "mod-a".to_owned(),
+                target_id: "mhw:armor:fatalis-beta".to_owned(),
+                layer_name: "base".to_owned(),
+                layer_priority: 0,
+                plan_token: format!("reinstall-preview-v1:{}", "b".repeat(64)),
+            })
+            .expect("valid controlled target-switch request");
+
+        let task = queue_retarget_reinstall_task(&task_service, request).expect("queue task");
 
         assert_eq!(task.kind, hmm_app::TaskKind::Install);
         assert_eq!(task.status, hmm_app::TaskStatus::Queued);

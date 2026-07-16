@@ -35,8 +35,8 @@ pub use profile::{
     ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
 };
 pub use reinstall::{
-    classify_reinstall_targets, replace_entries_and_bindings_for_mod, replace_entries_for_mod,
-    resolve_installed_revision,
+    classify_reinstall_targets, is_same_revision_replacement_target_switch,
+    replace_entries_and_bindings_for_mod, replace_entries_for_mod, resolve_installed_revision,
     ReinstallClassificationError, ReinstallManifestError, ReinstallRecoveryTarget,
     ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
     ReinstallRecoveryTransactionTransitionError, ReinstallRecoveryTransactionValidationError,

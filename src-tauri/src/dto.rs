@@ -25,8 +25,9 @@ pub use crate::reinstall_dto::{
 pub use crate::replacement_dto::{
     AnalyzeImportedModReplacementRequestDto, InitialRetargetInstallPreviewDto,
     ListReplacementTargetsRequestDto, PreviewInitialRetargetInstallRequestDto,
-    ReplacementAnalysisDto, ReplacementSourceDto, ReplacementTargetDto, ReplacementWarningDto,
-    RetargetActionPreviewDto, StartRetargetInstallTaskRequestDto,
+    PreviewRetargetReinstallRequestDto, ReplacementAnalysisDto, ReplacementSourceDto,
+    ReplacementTargetDto, ReplacementWarningDto, RetargetActionPreviewDto,
+    StartRetargetInstallTaskRequestDto, StartRetargetReinstallTaskRequestDto,
 };
 
 mod game_prerequisites;
