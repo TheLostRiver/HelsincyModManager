@@ -94,6 +94,8 @@ export function ModDetailDialog({
   const [activeTab, setActiveTab] = useState<ModDetailDialogTab>(initialTab);
   const [replacementBusy, setReplacementBusy] = useState(false);
   const [replacementCompletedLocally, setReplacementCompletedLocally] = useState(false);
+  const [replacementInstallStatus, setReplacementInstallStatus] =
+    useState<InstallManifestStatus | undefined>(installStatus);
   const dialogBusy = saving || replacementBusy;
 
   useEffect(() => {
@@ -102,9 +104,15 @@ export function ModDetailDialog({
     setReplacementCompletedLocally(false);
   }, [initialTab, modId]);
 
-  const handleReplacementInstallCompleted = useCallback(() => {
+  useEffect(() => {
+    setReplacementInstallStatus(installStatus);
+  }, [installStatus, modId]);
+
+  const handleReplacementInstallCompleted = useCallback(async () => {
     setReplacementCompletedLocally(true);
-    return onSaved();
+    await onSaved();
+    setReplacementInstallStatus("installed");
+    setReplacementCompletedLocally(false);
   }, [onSaved]);
 
   useEffect(() => {
@@ -453,7 +461,7 @@ export function ModDetailDialog({
                   gameId={gameId}
                   modId={modId}
                   profileId={profileId}
-                  installStatus={installStatus}
+                  installStatus={replacementInstallStatus}
                   completedLocally={replacementCompletedLocally}
                   onBusyChange={setReplacementBusy}
                   onInstallCompleted={handleReplacementInstallCompleted}

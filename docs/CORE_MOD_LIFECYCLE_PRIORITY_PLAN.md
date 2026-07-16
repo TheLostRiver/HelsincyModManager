@@ -22,14 +22,14 @@
 
 ## 2. 为什么现在重排
 
-项目已经积累了足够的安全基础，但“底层能力存在”与“玩家核心价值完成”被混在了一起：
+以下是 2026-07-12 决定重排优先级时的历史基线；当前完成状态以本文开头和第 3 节为准：
 
-- 安装提交、manifest、backup、rollback、恢复记录、任务事件和前端入口已经存在。
-- manifest 驱动的最小安全卸载与前端单选卸载已经存在。
-- 自动化主要证明 temp/fake 环境中的安全规则，没有独立的 Mod 生命周期端到端验收记录。
-- UI 的“安装 / 重装”当前复用普通安装入口，没有独立重装 use case。
-- 当前 manifest merge 会保留新计划未触达的旧条目，不能处理新版本删减文件的真正重装。
-- ARMOR_RETARGET 已有完整设计；replacement/binding/catalog、纯分析/计划、受控 staging 与
+- 当时安装提交、manifest、backup、rollback、恢复记录、任务事件和前端入口已经存在。
+- 当时 manifest 驱动的最小安全卸载与前端单选卸载已经存在。
+- 当时自动化主要证明 temp/fake 环境中的安全规则，还没有独立的 Mod 生命周期端到端验收记录。
+- 当时 UI 的“安装 / 重装”复用普通安装入口，还没有独立重装 use case。
+- 当时 manifest merge 会保留新计划未触达的旧条目，不能处理新版本删减文件的真正重装。
+- 当时 ARMOR_RETARGET 已有完整设计；replacement/binding/catalog、纯分析/计划、受控 staging 与
   InstallPlan/manifest binding snapshot 已进入源码，Tauri/前端与 target switch 尚未落地。
 
 因此，接下来继续扩大备份后台、安装器 cleanup、分页、批量迁移或 UI 完整度，不能像核心闭环

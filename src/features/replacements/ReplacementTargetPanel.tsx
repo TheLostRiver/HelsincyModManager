@@ -181,6 +181,7 @@ export function ReplacementTargetPanel({
   const pendingEventsRef = useRef(new Map<string, TaskProgressEventDto>());
   const completedTaskRef = useRef<string | null>(null);
   const refreshGenerationRef = useRef(0);
+  const completionReloadPendingRef = useRef(false);
   const [refreshState, setRefreshState] = useState<RetargetInstallRefreshState>({ status: "idle" });
   const [listenerAttempt, setListenerAttempt] = useState(0);
   const [listenerStatus, setListenerStatus] = useState<"connecting" | "ready" | "failed">(
@@ -199,7 +200,12 @@ export function ReplacementTargetPanel({
     setRefreshState({ status: "refreshing" });
     void refreshRetargetInstallState(onInstallCompleted).then((next) => {
       if (refreshGenerationRef.current === generation) {
-        setRefreshState(next);
+        if (next.status === "ready") {
+          completionReloadPendingRef.current = true;
+          setRetryToken((value) => value + 1);
+        } else {
+          setRefreshState(next);
+        }
       }
     });
   }, [onInstallCompleted]);
@@ -207,8 +213,9 @@ export function ReplacementTargetPanel({
   useEffect(() => {
     refreshGenerationRef.current += 1;
     completedTaskRef.current = null;
+    completionReloadPendingRef.current = false;
     setRefreshState({ status: "idle" });
-  }, [gameId, modId]);
+  }, [gameId, modId, profileId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,6 +234,11 @@ export function ReplacementTargetPanel({
             resolveInstalledReplacementTargetSelection(targets, analysis.installedTargetId),
           );
           setLoadState({ status: "ready", analysis, targets });
+          if (completionReloadPendingRef.current) {
+            completionReloadPendingRef.current = false;
+            setRefreshState({ status: "ready" });
+            setTrackedTaskState({ status: "idle" });
+          }
         }
       })
       .catch((error: unknown) => {
@@ -241,7 +253,7 @@ export function ReplacementTargetPanel({
     return () => {
       cancelled = true;
     };
-  }, [gameId, modId, profileId, retryToken]);
+  }, [gameId, modId, profileId, retryToken, setTrackedTaskState]);
 
   useEffect(() => {
     let disposed = false;

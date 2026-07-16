@@ -94,6 +94,9 @@ impl InstallManifestQueryService {
         if manifest.profile_id != *profile_id {
             return Err(InstallManifestQueryError::ManifestUnavailable);
         }
+        manifest
+            .validate()
+            .map_err(|_| InstallManifestQueryError::ManifestUnavailable)?;
         if summary_for_mod(profile_id, mod_id, Some(&manifest)).status
             != InstallManifestStatus::Installed
         {
@@ -165,9 +168,10 @@ mod tests {
     use super::*;
     use hmm_core::{
         FileLayer, InstallManifest, InstallManifestEntry,
-        InstallManifestStatus as CoreManifestStatus, InstallTargetPath, ModId, PackageFileId,
-        ProfileId, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-        ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
+        InstallManifestStatus as CoreManifestStatus, InstallTargetPath, ModId, ModRevisionId,
+        PackageFileId, ProfileId, ReplacementBinding, ReplacementBindingId,
+        ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId,
+        ReplacementTargetKind,
     };
     use hmm_ports::InstallManifestRepository;
     use std::sync::Arc;
@@ -282,6 +286,30 @@ mod tests {
             replacement_snapshot("mod-a", "default", "mhw:armor:fatalis-alpha"),
             replacement_snapshot("mod-a", "default", "mhw:armor:fatalis-beta"),
         ];
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        assert_eq!(
+            service.query_installed_replacement_target(&profile_id, &mod_id),
+            Err(InstallManifestQueryError::ManifestUnavailable)
+        );
+    }
+
+    #[test]
+    fn query_fails_closed_for_invalid_completed_manifest() {
+        let profile_id = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        let mut manifest = InstallManifest::completed(
+            profile_id.clone(),
+            vec![manifest_entry("mod-a", "nativePC/a.mod3", None)],
+        );
+        manifest.entries[0].revision_id = Some(ModRevisionId::new("revision-a"));
+        manifest.replacement_bindings = vec![replacement_snapshot(
+            "mod-a",
+            "default",
+            "mhw:armor:fatalis-beta",
+        )];
         let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
             manifest: Some(manifest),
         }));
