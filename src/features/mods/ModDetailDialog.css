@@ -11,7 +11,7 @@
 
 .mod-detail-dialog__panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   width: min(980px, 100%);
   max-height: min(820px, calc(100vh - 48px));
   overflow: hidden;
@@ -34,6 +34,49 @@
   gap: 16px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--color-border-muted);
+}
+
+.mod-detail-dialog__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 20px 0;
+  background: var(--color-surface-subtle);
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.mod-detail-dialog__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mod-detail-dialog__tabs button:hover:not(:disabled),
+.mod-detail-dialog__tabs button.is-active {
+  color: var(--color-text);
+}
+
+.mod-detail-dialog__tabs button.is-active {
+  border-bottom-color: var(--color-accent);
+}
+
+.mod-detail-dialog__tabs button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.mod-detail-dialog__tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .mod-detail-dialog__footer {
@@ -182,6 +225,10 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
   border-radius: 14px;
+}
+
+.mod-detail-dialog__section.is-replacement {
+  padding: 16px 18px;
 }
 
 .mod-detail-dialog__section-title {
@@ -367,6 +414,10 @@
 
   .mod-detail-dialog__body {
     grid-template-columns: 1fr;
+  }
+
+  .mod-detail-dialog__body.is-replacement .mod-detail-dialog__content {
+    order: -1;
   }
 
   .mod-detail-dialog__preview {

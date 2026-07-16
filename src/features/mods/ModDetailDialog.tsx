@@ -1,7 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { FilePenLine, ImageIcon, Info, Save, Tag, X } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
+import { FilePenLine, ImageIcon, Info, Save, Tag, Target, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import type { GameId } from "../game-setup/gameSetupTypes";
+import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
 import { getModDetail } from "./modLibraryApi";
 import type { ModDetail, ModLibraryItem } from "./modLibraryTypes";
+import type { InstallManifestStatus } from "./modInstallPlanTypes";
 import { getTrappedFocusIndex } from "./modalFocusTrap";
 import {
   getModCategories,
@@ -20,9 +32,15 @@ import {
 } from "./modDetailDialogWorkflow";
 import "./ModDetailDialog.css";
 
+export type ModDetailDialogTab = "details" | "replacement";
+
 type ModDetailDialogProps = {
   modId: string;
   fallbackItem?: ModLibraryItem | null;
+  initialTab: ModDetailDialogTab;
+  gameId: GameId;
+  profileId: string | null;
+  installStatus: InstallManifestStatus | undefined;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 };
@@ -44,7 +62,16 @@ function getFocusableElements(container: HTMLElement) {
   );
 }
 
-export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDetailDialogProps) {
+export function ModDetailDialog({
+  modId,
+  fallbackItem,
+  initialTab,
+  gameId,
+  profileId,
+  installStatus,
+  onClose,
+  onSaved,
+}: ModDetailDialogProps) {
   const fallbackSnapshotRef = useRef<{ modId: string; item: ModLibraryItem | null | undefined }>({
     modId,
     item: fallbackItem,
@@ -64,6 +91,21 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
   const [saving, setSaving] = useState(false);
   const [categoryLoadState, setCategoryLoadState] = useState<CategoryLoadState>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ModDetailDialogTab>(initialTab);
+  const [replacementBusy, setReplacementBusy] = useState(false);
+  const [replacementCompletedLocally, setReplacementCompletedLocally] = useState(false);
+  const dialogBusy = saving || replacementBusy;
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+    setReplacementBusy(false);
+    setReplacementCompletedLocally(false);
+  }, [initialTab, modId]);
+
+  const handleReplacementInstallCompleted = useCallback(() => {
+    setReplacementCompletedLocally(true);
+    return onSaved();
+  }, [onSaved]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,7 +156,7 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) {
+      if (event.key === "Escape" && !dialogBusy) {
         onClose();
         return;
       }
@@ -146,7 +188,7 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, saving]);
+  }, [dialogBusy, onClose]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -198,6 +240,10 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (activeTab !== "details") {
+      return;
+    }
+
     const nexusModId = parseNexusModId(form.nexusModId);
     if (nexusModId === null) {
       setMessage("NexusMods ID 只能填写正整数。");
@@ -243,12 +289,12 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="mod-detail-dialog__backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !saving) {
+        if (event.target === event.currentTarget && !dialogBusy) {
           onClose();
         }
       }}
@@ -264,19 +310,45 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
         <header className="mod-detail-dialog__header">
           <div className="mod-detail-dialog__title-block">
             <span className="mod-detail-dialog__icon" aria-hidden="true">
-              <Info size={18} />
+              {activeTab === "replacement" ? <Target size={18} /> : <Info size={18} />}
             </span>
             <div>
-              <h2>MOD 信息设置</h2>
+              <h2>Mod 详情</h2>
               <p>{fallbackSnapshotItem?.name ?? modId}</p>
             </div>
           </div>
-          <button className="mod-detail-dialog__close" type="button" onClick={onClose} disabled={saving} aria-label="关闭">
+          <button className="mod-detail-dialog__close" type="button" onClick={onClose} disabled={dialogBusy} aria-label="关闭">
             <X size={18} />
           </button>
         </header>
 
-        <div className="mod-detail-dialog__body">
+        <div className="mod-detail-dialog__tabs" role="tablist" aria-label="Mod 详情视图">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "details"}
+            className={activeTab === "details" ? "is-active" : undefined}
+            onClick={() => setActiveTab("details")}
+            disabled={replacementBusy}
+          >
+            <Info size={15} aria-hidden="true" />
+            基本信息
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "replacement"}
+            className={activeTab === "replacement" ? "is-active" : undefined}
+            onClick={() => setActiveTab("replacement")}
+          >
+            <Target size={15} aria-hidden="true" />
+            替换目标
+          </button>
+        </div>
+
+        <div
+          className={`mod-detail-dialog__body${activeTab === "replacement" ? " is-replacement" : ""}`}
+        >
           <aside className="mod-detail-dialog__preview" aria-label="Mod 预览图">
             {previewThumbnail ? (
               <img src={previewThumbnail.thumbnailUrl} alt="" />
@@ -299,6 +371,8 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
           </aside>
 
           <main className="mod-detail-dialog__content">
+            {activeTab === "details" ? (
+              <>
             <section className="mod-detail-dialog__section">
               <div className="mod-detail-dialog__section-title">
                 <FilePenLine size={16} aria-hidden="true" />
@@ -371,21 +445,44 @@ export function ModDetailDialog({ modId, fallbackItem, onClose, onSaved }: ModDe
                 <p className="mod-detail-dialog__empty">还没有可关联的分类。</p>
               )}
             </section>
+              </>
+            ) : (
+              <section className="mod-detail-dialog__section is-replacement">
+                <ReplacementTargetPanel
+                  gameId={gameId}
+                  modId={modId}
+                  profileId={profileId}
+                  installStatus={installStatus}
+                  completedLocally={replacementCompletedLocally}
+                  onBusyChange={setReplacementBusy}
+                  onInstallCompleted={handleReplacementInstallCompleted}
+                />
+              </section>
+            )}
           </main>
         </div>
 
-        {message ? <div className="mod-detail-dialog__message" role="status">{message}</div> : null}
+        {activeTab === "details" && message ? <div className="mod-detail-dialog__message" role="status">{message}</div> : null}
 
         <footer className="mod-detail-dialog__footer">
-          <button className="mod-detail-dialog__button is-secondary" type="button" onClick={onClose} disabled={saving}>
-            取消
-          </button>
-          <button className="mod-detail-dialog__button is-primary" type="submit" disabled={loading || saving}>
-            <Save size={16} aria-hidden="true" />
-            {saving ? "保存中" : "保存"}
-          </button>
+          {activeTab === "details" ? (
+            <>
+              <button className="mod-detail-dialog__button is-secondary" type="button" onClick={onClose} disabled={dialogBusy}>
+                取消
+              </button>
+              <button className="mod-detail-dialog__button is-primary" type="submit" disabled={loading || dialogBusy}>
+                <Save size={16} aria-hidden="true" />
+                {saving ? "保存中" : "保存"}
+              </button>
+            </>
+          ) : (
+            <button className="mod-detail-dialog__button is-secondary" type="button" onClick={onClose} disabled={dialogBusy}>
+              关闭
+            </button>
+          )}
         </footer>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
