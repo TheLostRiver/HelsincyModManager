@@ -28,6 +28,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [InstallPlan 模块现状](docs/INSTALL_PLAN_STATUS.md)
 - [InstallPlan MVP 待办](docs/INSTALL_PLAN_MVP_TODO.md)
 - [核心 Mod 生命周期优先级计划](docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)
+- [核心 Mod 生命周期产品化加固实施计划](docs/CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md)
 - [Core Mod Lifecycle CL0 验收基线](docs/CORE_MOD_LIFECYCLE_CL0_ACCEPTANCE.md)
 - [Core Mod Lifecycle CL1 实施计划](docs/superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md)
 - [Core Mod Lifecycle CL3 真正重装设计](docs/superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md)
