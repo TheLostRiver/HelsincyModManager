@@ -1,4 +1,5 @@
 import type { ModLibraryItem } from "./modLibraryTypes";
+import type { ModDetailDialogTab } from "./ModDetailDialog";
 
 export type ModLibraryLoadMode = "initial" | "refresh";
 
@@ -21,10 +22,15 @@ export function snapshotModLibraryItem(item: ModLibraryItem): ModLibraryItem {
   };
 }
 
-export function createDetailDialogState(modId: string, libraryItems: ModLibraryItem[]) {
+export function createDetailDialogState(
+  modId: string,
+  libraryItems: ModLibraryItem[],
+  initialTab: ModDetailDialogTab = "details",
+) {
   const fallbackItem = libraryItems.find((item) => item.id === modId) ?? null;
   return {
     modId,
+    initialTab,
     fallbackItem: fallbackItem ? snapshotModLibraryItem(fallbackItem) : null,
   };
 }

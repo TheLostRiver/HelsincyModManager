@@ -109,8 +109,12 @@ test("createDetailDialogState snapshots the opened item instead of tracking live
   const refreshedItems = [{ ...fallbackItems[0], name: "Refreshed Alpha" }];
 
   assert.equal(state?.modId, "mod-a");
+  assert.equal(state?.initialTab, "details");
   assert.equal(state?.fallbackItem?.name, "Alpha");
   assert.notEqual(state?.fallbackItem, refreshedItems[0]);
+
+  const replacementState = createDetailDialogState("mod-a", fallbackItems, "replacement");
+  assert.equal(replacementState.initialTab, "replacement");
 });
 
 test("preserveItemsOnRefreshFailure keeps current UI when refresh returns no real items", () => {

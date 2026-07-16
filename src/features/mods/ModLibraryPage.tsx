@@ -12,7 +12,7 @@ import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./InstallPlanPreviewPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
-import { ModDetailDialog } from "./ModDetailDialog";
+import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { ModPosterCard } from "./ModPosterCard";
 import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
 import {
@@ -287,6 +287,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
   const [detailDialogState, setDetailDialogState] = useState<{
     modId: string;
+    initialTab: ModDetailDialogTab;
     fallbackItem: ModLibraryItem | null;
   } | null>(null);
   const [contextNotice, setContextNotice] = useState<string | null>(null);
@@ -856,10 +857,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const handleContextMenuAction = (actionId: string, modId: string) => {
     switch (actionId) {
       case "info-settings":
-        setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current));
+        setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "details"));
         break;
       case "edit-files":
-        setContextNotice("MOD 文件修改功能开发中");
+        setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "replacement"));
         break;
       default:
         onAction?.(actionId);
@@ -974,6 +975,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         <ModDetailDialog
           modId={detailDialogState.modId}
           fallbackItem={detailDialogState.fallbackItem}
+          initialTab={detailDialogState.initialTab}
+          gameId={DEFAULT_INSTALL_GAME_ID}
+          profileId={activeProfile.status === "ready" ? activeProfileId : null}
+          installStatus={detailDialogState.fallbackItem?.installSummary?.status}
           onClose={() => setDetailDialogState(null)}
           onSaved={refreshModLibrary}
         />
