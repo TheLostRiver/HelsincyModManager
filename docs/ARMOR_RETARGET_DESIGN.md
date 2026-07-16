@@ -2,13 +2,13 @@
 
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
 >
-> 实施状态（2026-07-16）：阶段 1-5 / AR1-AR5 的代码、自动化与受控 UI 已标记为 `implemented`。
+> 实施状态（2026-07-16）：阶段 1-5 / AR1-AR5 的代码、自动化与受控 UI 已完成，Gate B 已标记为
+> `certified`。
 > 当前已落地稳定 replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格
 > parser、单 source analyzer、纯 `RetargetPlan`、受控 staging materialize、InstallPlan 与 binding
-> snapshot 集成、六个窄 Tauri command、真正重装 target switch 和 Mod 详情受控 UI；当前只等待
-> 首个 disposable Windows Sandbox artifact 已完成 target switch、重启、卸载和逐字节 baseline 文件
-> 闭环，并暴露出重启后 UI 未标记当前 target 的缺陷。该缺陷已按窄 manifest 查询/DTO/UI 契约修复；
-> 最终 artifact 仍需在全新 Sandbox 重验，Gate B 尚未 `certified`。
+> snapshot 集成、六个窄 Tauri command、真正重装 target switch 和 Mod 详情受控 UI。首个 Sandbox
+> artifact 暴露的重启后当前 target 呈现缺陷已按窄 manifest 查询/DTO/UI 契约修复；最终 artifact 已在
+> 全新 Sandbox 重验首次安装、target switch、两次重启恢复、卸载和逐字节 baseline 文件闭环。
 
 ## 背景
 
@@ -548,15 +548,16 @@ SQLite 中应持久化玩家状态：
 - 展示源槽位、target catalog、冲突预览和 warning。
 - 首次安装只提交后端定义的 target/binding 选择，不让前端拼接路径。
 
-### 阶段 5：切换目标、卸载与 Gate B（AR5 已实现；Gate B 验收待完成）
+### 阶段 5：切换目标、卸载与 Gate B（AR5 已实现；Gate B 已认证）
 
 - 已安装 Mod 切换 target 已复用 Gate A 真正重装，原子替换旧 entry/binding facts。
 - 自动化已证明同 revision 目标切换、重启恢复、最终 manifest 卸载和 ARMOR 安装前 baseline 恢复。
 - UI 已提供 installed-state preview/confirm、严格 taskId 事件匹配与安全阶段取消入口。
 - 重启后的分析响应只附带可选稳定 `installedTargetId`；UI 明确标记“当前已安装”，并禁止把该 target
   当成切换候选，不暴露 binding、revision、路径或 manifest 内容。
-- 首个 disposable Windows Sandbox artifact 已完成文件安全闭环，但该轮发现并修复了当前 target
-  呈现缺陷；最终 artifact 的全新 Sandbox 复验完成并复核前，Gate B 不得标记 `certified`。
+- 修复当前 target 呈现缺陷后的最终 artifact 已在全新 disposable Windows Sandbox 完成首次安装、
+  真正重装 target switch、两次重启恢复、manifest 卸载与 exact pre-Armor baseline 复验；source、旧
+  target、staging 和 recovery 无残留，Gate B 已标记为 `certified`。
 
 ### Gate B 后高级能力（planned + paused）
 

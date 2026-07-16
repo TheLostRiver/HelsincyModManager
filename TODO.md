@@ -46,15 +46,16 @@
 | **P2** | 重要增强 — 提升完整度和用户体验 | P1 基本就绪后推进 |
 | **P3** | 长线 feature — Phase 4+ 的大型功能 | 按 Roadmap 节奏 |
 
-### 当前执行覆盖规则（2026-07-12）
+### 当前执行覆盖规则（2026-07-16）
 
-[核心 Mod 生命周期优先级计划](docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 在 Gate B 完成前覆盖本文件
-旧的推荐执行顺序，但不覆盖架构和玩家数据安全规则：
+[核心 Mod 生命周期优先级计划](docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 已完成 Gate A/B 优先级覆盖
+目标，但不覆盖架构和玩家数据安全规则：
 
-1. P0：认证安装/卸载闭环并实现真正重装（Gate A）。
-2. P1：完成 ARMOR_RETARGET 最窄纵向切片（Gate B）。
-3. T9/T10 只做解除 Gate A/Gate B 阻断的最小 manifest/preflight 子集。
-4. 其他未完成 feature 暂停实施；已完成能力和既有设计继续保留。
+1. P0：安装/卸载/真正重装闭环已通过 Gate A `certified`。
+2. P1：ARMOR_RETARGET 最窄纵向闭环已通过 Gate B `certified`。
+3. T9/T10 的 Gate A/B 最小 manifest/preflight 子集已经落地，不在本次认证后自动扩张。
+4. 下一项工作先重新评审 P7.2c、T8、T12、T13、T14、T17、T18 的发布风险和玩家价值；明确选择
+   前继续保持暂停。
 
 ---
 
@@ -91,7 +92,8 @@
   - [x] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
 - [x] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
-Gate A 已通过；Gate B 完成前仍暂停 P7.2c、分页、批量迁移、批量操作、任务队列和新的非阻断视觉工作。
+Gate A 与 Gate B 均已通过；P7.2c、分页、批量迁移、批量操作、任务队列和新的非阻断视觉工作仍待
+Gate B 后优先级复审，不因门禁解除自动开工。
 
 ---
 
@@ -388,7 +390,7 @@ JSON 做不好的需求:
 ### T11: ARMOR_RETARGET 全链路
 
 **优先级**: P1，Gate A 通过后立即开始
-**状态**: AR1-AR5 代码、自动化与受控 UI 已实现；首个 Sandbox 文件闭环通过并已修复当前 target 呈现缺陷，Gate B 等待最终 artifact 全新 Sandbox 复验
+**状态**: AR1-AR5 已完成；修复当前 target 呈现缺陷后的最终 artifact 已通过全新 Sandbox 纵向复验，Gate B 已 `certified`
 **前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
@@ -407,7 +409,7 @@ JSON 做不好的需求:
 - [x] AR5：已安装状态的 target switch preview/confirm/taskId/cancel 受控 UI
 - [x] AR5：首个 Sandbox artifact 完成首次 retarget -> switch target -> restart -> uninstall -> 精确 baseline 文件闭环
 - [x] AR5：修复重启后当前 installed target 的窄 DTO/UI 呈现与同目标切换阻断
-- [ ] Gate B：最终 artifact 在全新 disposable Windows Sandbox 重验完整闭环，再标记 `certified`
+- [x] Gate B：最终 artifact 在全新 disposable Windows Sandbox 重验完整闭环并标记 `certified`
 
 ---
 
@@ -445,10 +447,9 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: T11 ARMOR_RETARGET Gate B（首个 Sandbox 文件闭环已通过，当前 target 呈现缺陷已修复）
-  -> 最终 artifact 全新 disposable Windows Sandbox 纵向复验
-  -> Gate B 认证
-  -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
+已完成: T11 ARMOR_RETARGET Gate B certified
+  -> 当前: 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
+  -> 另立任务选择下一条主线，不在 Gate B 认证提交中提前实现
 ```
 
 ---
@@ -466,9 +467,9 @@ JSON 做不好的需求:
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
-| T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余仅允许 Gate A/B 最小阻断子集 | |
-| T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
-| T11 ARMOR_RETARGET | P1 | AR1-AR5 自动化/UI 已实现；Gate B 等待最终 artifact 全新 Sandbox 复验 | |
+| T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围待 Gate B 后优先级复审 | |
+| T10 依赖检查 | P0/P1 支撑 | Gate A/B 最小 preflight 已完成；其余范围待优先级复审 | |
+| T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |

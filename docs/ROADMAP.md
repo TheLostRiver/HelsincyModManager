@@ -5,12 +5,12 @@
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 约束：
 
 1. Gate A 已完成独立复审、完整验证并标记为 `certified`。
-2. Gate B 的 AR1-AR4 与 AR5 真正重装 target switch、同 revision binding/entry 原子替换、重启恢复、
-   manifest 卸载自动化和受控 UI 已实现；首个 AR5 Sandbox artifact 已完成 switch target -> restart ->
-   uninstall -> exact baseline 文件闭环，并暴露/修复了重启后未标记当前 target 的 UI 契约缺陷。当前只
-   等待最终 artifact 的全新 Sandbox 纵向复验；证据完成前 Gate B 仍不得标记为 `certified`。
-3. Gate B 前暂停自动备份剩余切片、installer cleanup、分页、批量迁移、批量操作、任务队列和
-   非必要视觉增强。
+2. Gate B 的 AR1-AR5、真正重装 target switch、同 revision binding/entry 原子替换、重启恢复、
+   manifest 卸载和受控 UI 已完成；修复当前 target 呈现缺陷后的最终 artifact 已在全新 disposable
+   Windows Sandbox 通过首次 Alpha retarget 安装 -> Beta target switch -> 两次重启状态恢复 ->
+   manifest 卸载 -> exact baseline 纵向复验，Gate B 已标记为 `certified`。
+3. Gate A/B 优先级覆盖目标均已完成。自动备份剩余切片、installer cleanup、分页、批量迁移、批量
+   操作、任务队列和非必要视觉增强不会自动恢复；下一步先按发布风险与玩家阻塞程度重新排序。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -53,10 +53,10 @@ InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS
 disposable Windows Sandbox 桌面 smoke 已完成；retained/replaced/added/stale、重启、manifest 卸载、
 baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本地 review、完整验证与 clippy
 也已通过，Gate A 已标记为 `certified`。AR1-AR5 的代码、自动化与受控 UI 已于 2026-07-16 标记为
-`implemented`；首个 Sandbox 文件闭环已通过，当前唯一下一项是修复后最终 artifact 的全新 Sandbox
-Gate B 纵向复验，尚未 `certified`。
+`implemented`；修复后最终 artifact 的全新 Sandbox 纵向复验已完成，Gate B 同日标记为
+`certified`。
 
-## Phase 3：玩家工作流扩展（Gate B 前暂停）
+## Phase 3：玩家工作流扩展（Gate B 后待重新排序）
 
 - 添加 Profile 支持。
 - 添加前置依赖规则 catalog。
@@ -67,8 +67,8 @@ Gate B 纵向复验，尚未 `certified`。
 - 添加第三方 Mod 管理器批量迁移，首个兼容来源为狩技盒子目录，默认只导入而不安装或启用。详见 [第三方 Mod 管理器批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)。
 - 添加任务进度和取消 UI。
 
-已完成能力继续保留。未完成扩展不在当前实施队列中；只有 Gate A/B 直接需要的最小
-manifest/preflight/UI 子集可以提前。
+已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集已经完成；其他未完成扩展
+在 Gate B 后优先级复审选中前仍不进入实施队列。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 
@@ -79,9 +79,9 @@ manifest/preflight/UI 子集可以提前。
 - 已完成六个窄 Tauri command、feature-local typed API，以及 `Mod 详情 -> 替换目标` Tab/右键直达；
   首次安装只接受稳定 identity，已安装 target switch 只走 Gate A 真正重装，两者均对不安全状态
   fail closed。
-- 已完成 AR5 同 revision target switch、重启恢复、manifest 卸载与当前 installed target 呈现；
-  下一步只执行最终 artifact 的全新 disposable Windows Sandbox Gate B 复验。
-- 通过 Gate B 后再扩展完整 catalog、本地化筛选和其他资源类型。
+- 已完成 AR5 同 revision target switch、重启恢复、manifest 卸载与当前 installed target 呈现；最终
+  artifact 已通过全新 disposable Windows Sandbox Gate B 复验并标记为 `certified`。
+- 完整 catalog、本地化筛选和其他资源类型已满足 Gate B 时间门禁，但仍需经过后续优先级复审。
 
 Gate B 后续范围：
 
