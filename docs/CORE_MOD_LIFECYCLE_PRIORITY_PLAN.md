@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期优先级计划
 
 - 日期：2026-07-12
-- 状态：生效；CL0-CL4 已完成，Gate A 已于 2026-07-15 标记为 `certified`；AR1/AR2 已于 2026-07-16 标记为 `implemented`，下一项 AR3
+- 状态：生效；CL0-CL4 已完成，Gate A 已于 2026-07-15 标记为 `certified`；AR1/AR2/AR3 已于 2026-07-16 标记为 `implemented`，下一项 AR4
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -27,7 +27,8 @@
 - 自动化主要证明 temp/fake 环境中的安全规则，没有独立的 Mod 生命周期端到端验收记录。
 - UI 的“安装 / 重装”当前复用普通安装入口，没有独立重装 use case。
 - 当前 manifest merge 会保留新计划未触达的旧条目，不能处理新版本删减文件的真正重装。
-- ARMOR_RETARGET 已有完整设计；replacement/binding/catalog 与纯分析/计划已进入源码，staging 和安装集成尚未落地。
+- ARMOR_RETARGET 已有完整设计；replacement/binding/catalog、纯分析/计划、受控 staging 与
+  InstallPlan/manifest binding snapshot 已进入源码，Tauri/前端与 target switch 尚未落地。
 
 因此，接下来继续扩大备份后台、安装器 cleanup、分页、批量迁移或 UI 完整度，不能像核心闭环
 那样直接证明产品价值。当前最重要的成果不是新增模块数量，而是让一条玩家工作流可安装、可
@@ -46,7 +47,7 @@
 | `blocked` | 已开始核心切片，但被明确技术/环境前置阻断 |
 
 当前基线：安装、卸载和真正重装均为 `implemented`，Core Mod Lifecycle Gate A 为
-`certified`；ARMOR_RETARGET 的 AR1/AR2 为 `implemented`、AR3-AR5 为 `planned`，P7.2c 为
+`certified`；ARMOR_RETARGET 的 AR1/AR2/AR3 为 `implemented`、AR4/AR5 为 `planned`，P7.2c 为
 `planned + paused`。
 
 ## 4. 立即执行顺序
@@ -59,9 +60,9 @@ CL0 事实基线与可重复验收入口
   -> CL4 Gate A 复审和认证
   -> AR1 ARMOR 领域模型 / binding / 最小 catalog [implemented]
   -> AR2 MHW:I 单源 f_equip 分析与 RetargetPlan [implemented]
-  -> AR3 staging materialize + InstallPlan + manifest snapshot [current]
-  -> AR4 选择目标 / 安装 / 切换目标 / 卸载 UI
-  -> AR5 Gate B 复审和认证
+  -> AR3 staging materialize + InstallPlan + manifest snapshot [implemented]
+  -> AR4 Tauri typed contract + 选择目标 / 预览 / 安装 UI [current]
+  -> AR5 真正重装 target switch / 卸载 + Gate B 复审和认证
   -> 恢复被暂停任务的重新排序
 ```
 
@@ -208,9 +209,9 @@ Gate A 完成后，ARMOR_RETARGET 立即成为唯一 P1 主线。第一版只证
 1. **AR1（已完成）：** 稳定 `ReplacementTarget` / `ReplacementBinding` / catalog 领域模型、只读
    catalog ports，以及 MHW:I 最小 versioned catalog 与 Unicode/search normalization。
 2. **AR2（已完成）：** 严格 armor path parser、单 source `f_equip` analyzer 与纯 `RetargetPlan`。
-3. **AR3（当前下一项）：** staging materialize、containment、final target conflict、binding persistence 和 manifest
-   snapshot；仅补这条链路必需的 rich manifest 字段。
-4. **AR4：** Tauri typed contract 与最小 UI：分析 source、选择 target、预览、安装。
+3. **AR3（已完成）：** staging materialize、containment、final target conflict、binding persistence 和
+   manifest snapshot；只补这条链路必需的 rich manifest 字段。
+4. **AR4（当前下一项）：** Tauri typed contract 与最小 UI：分析 source、选择 target、预览、安装。
 5. **AR5：** 切换 target 必须调用 Gate A 的真正重装；卸载后恢复游戏基线。
 
 ### 6.3 Gate B 完成定义
@@ -271,12 +272,13 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 CL0-CL4 已完成，Gate A 已标记为 `certified`。AR1 已实现稳定 replacement identity/binding、只读
 catalog port 与 MHW:I versioned catalog；AR2 已实现严格 parser、单 source analyzer 和只改 slot 段的
-纯 `RetargetPlan`，同时保持 core 不解析 `plNNN_VVVV` / `f_equip`。当前下一项固定为 **AR3：受控
-staging materialize、final target 到 InstallPlan 的集成与 binding snapshot**，不是 P7.2c、分页、批量
-迁移或其他暂停项。
+纯 `RetargetPlan`，同时保持 core 不解析 `plNNN_VVVV` / `f_equip`；AR3 已实现受控 staging
+materialize、final target 到 InstallPlan 的集成与 binding snapshot。当前下一项固定为 **AR4：Tauri
+typed contract 与最小受控 UI**，不是 P7.2c、分页、批量迁移或其他暂停项。
 
-AR3 不得提前添加 Tauri DTO 或前端流程，也不得绕过既有 InstallPlan/manifest/backup/rollback/recovery
-链路直接写游戏目录；这些运行时 UI 边界仍属于 AR4。
+AR4 不得提前开放真正重装 target switch 或宣称 Gate B 完成，也不得让 Tauri/前端绕过既有
+InstallPlan/manifest/backup/rollback/recovery 链路或自行计算游戏路径；target switch、卸载闭环和
+Gate B 验收仍属于 AR5。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
@@ -286,8 +288,8 @@ CL1 的已执行范围和证据见
 CL3 的实施入口见
 [真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
 [真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
-CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；AR1/AR2 已建立 Gate B 的
-模型、catalog、分析和纯计划基线，后续从 AR3 继续推进。
+CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；AR1/AR2/AR3 已建立 Gate B 的
+模型、catalog、分析、纯计划、staging 与 manifest binding 基线，后续从 AR4 继续推进。
 
 ## 11. 优先级重排提交边界（历史）
 

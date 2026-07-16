@@ -294,13 +294,13 @@ JSON 做不好的需求:
 ### T9: Rich Manifest 与状态机
 
 **前置**: T1
-**状态**: 已有基础保留；仅允许 Gate A 重装/写侧状态门禁和 Gate B binding snapshot 的最小阻断子集
+**状态**: 已有基础保留；Gate B binding snapshot 已落地，其他仅允许 Gate A/B 直接阻断的最小子集
 **预估**: 中
 **独立文档**: 不需要（`docs/INSTALL_PLAN_MVP_TODO.md` 已有设计）
 
 概要:
 - [x] 已落地：`manifest_id`、`schema_version` / `schema_migration`、`backend`、`status`、`created_at`、`completed_at`、`plan_hash` JSON 兼容层；安装提交成功会写入 schema metadata、`backend`、完成时间和真实 `plan_hash`
-- [ ] Gate B 必需：replacement binding snapshot
+- [x] Gate B 必需：replacement binding snapshot
 - [ ] 延后：与 Gate A/Gate B 无关的 `game_id` / `game_instance_id` / 顶层 `mod_id` 泛化
 - [x] `get_install_manifest_status` 消费 recovery scan
 - [x] rich manifest 读侧状态机消费规则：`InstallManifestStatus::consumption()` 分类（completed/rolled_back→信任 entries，planned/committing→unknown，rollback_required/repair_required→对应失败态），manifest 状态摘要查询 fallback 与恢复扫描均已消费；写侧门禁另行切片
@@ -388,7 +388,7 @@ JSON 做不好的需求:
 ### T11: ARMOR_RETARGET 全链路
 
 **优先级**: P1，Gate A 通过后立即开始
-**状态**: AR1/AR2 已实现；当前下一项 AR3，Gate B 尚未完成
+**状态**: AR1/AR2/AR3 已实现；当前下一项 AR4，Gate B 尚未完成
 **前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
@@ -399,8 +399,8 @@ JSON 做不好的需求:
 - [x] AR1：MHW armor catalog + Unicode/search normalization
 - [x] AR2：MHW armor path parser 与单 source analyzer
 - [x] AR2：MHW RetargetPlan builder
-- [ ] AR3：Application replacement service 与 staging materialize
-- [ ] AR3：Manifest + InstallPlan + binding snapshot 集成
+- [x] AR3：Application replacement service 与 staging materialize
+- [x] AR3：Manifest + InstallPlan + binding snapshot 集成
 - [ ] AR4：Tauri commands / DTO 与前端 typed API / 受控 UI
 - [ ] AR5：真正重装 target switch、卸载与 Gate B 认证
 
@@ -440,8 +440,8 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: T11 ARMOR_RETARGET AR3（staging / InstallPlan / binding snapshot）
-  -> AR4-AR5 最窄纵向闭环
+当前: T11 ARMOR_RETARGET AR4（Tauri typed contract / 最小受控 UI）
+  -> AR5 真正重装 target switch / 卸载 / Gate B 验收
   -> Gate B 认证
   -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
 ```
@@ -461,9 +461,9 @@ JSON 做不好的需求:
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
-| T9 Rich Manifest | P0/P1 支撑 | 仅允许 Gate A/B 最小阻断子集 | |
+| T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
-| T11 ARMOR_RETARGET | P1 | AR1/AR2 已实现，当前下一项为 AR3 | |
+| T11 ARMOR_RETARGET | P1 | AR1/AR2/AR3 已实现，当前下一项为 AR4 | |
 | T12 Mod 详情完整版 | P3 | 暂停；仅 Gate B 最小 UI 例外 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |

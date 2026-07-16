@@ -241,6 +241,10 @@ ReplacementTarget
 ReplacementBinding
   玩家选择的“Mod 资源 -> 官方目标”的绑定关系
 
+ReplacementBindingSnapshot
+  安装计划与 manifest 持久化的稳定绑定事实；包含 Mod/profile/revision 归属和 source/target
+  identity/path-family，不包含 staging/cache/sandbox 路径
+
 ReplacementCatalog
   带稳定版本的游戏目标集合；查询和搜索规则由游戏 adapter 提供
 
@@ -265,7 +269,7 @@ RetargetAction
 - 原始导入的 Mod 包永远只读。
 - 包分析和 `RetargetPlan` 生成是纯操作，不携带 cache/sandbox 绝对路径。
 - 重定向只发生在 staging 目录。
-- 安装清单记录玩家选择的替换绑定。
+- `InstallPlan` 与安装清单记录玩家选择的替换绑定快照，并把快照事实纳入计划身份。
 - 冲突检测基于最终目标路径，而不是原始压缩包路径。
 - 玩家切换目标时，本质上是卸载旧绑定，再安装新绑定。
 
@@ -523,7 +527,10 @@ ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `Replaceme
 同一模块增加只携带 package file identity/相对路径的窄 `ReplacementAdapter`，没有扩张目录
 `GameAdapter`。MHW:I adapter 负责 versioned catalog、Unicode/search normalization、严格
 `plNNN_VVVV`/`f_equip` 路径分析和结构化 slot 替换；通用 core 只保存不透明 source/target facts 与
-纯 `RetargetPlan`。staging port、真实复制和 InstallPlan/manifest 集成从 AR3 开始，尚未落地。
+纯 `RetargetPlan`。AR3 已在独立 staging port/infra adapter 中实现受控 batch materialize：先写 sibling
+`.partial`，完整成功后原子发布，失败清理；最终 target 进入 `InstallPlan`，原 `PackageFileId`
+provenance 保留，binding snapshot 随 plan/manifest/reinstall recovery 原子保存。Tauri/frontend wiring
+仍留给 AR4。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 

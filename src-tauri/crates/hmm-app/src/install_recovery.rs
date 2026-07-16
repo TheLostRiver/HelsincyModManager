@@ -690,6 +690,18 @@ fn reinstall_candidate_manifest_matches(
     {
         return false;
     }
+    let mut candidate_bindings = manifest
+        .replacement_bindings
+        .iter()
+        .filter(|snapshot| snapshot.mod_id() == &transaction.mod_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut expected_bindings = transaction.candidate_replacement_bindings.clone();
+    candidate_bindings.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
+    expected_bindings.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
+    if candidate_bindings != expected_bindings {
+        return false;
+    }
     let candidate_targets = candidate_entries
         .iter()
         .map(|entry| entry.target_path.clone())
@@ -759,7 +771,23 @@ fn reinstall_candidate_manifest_matches(
         .iter()
         .filter(|entry| entry.mod_id != transaction.mod_id)
         .collect::<Vec<_>>();
-    current_other_entries == old_other_entries
+    let entries_match = current_other_entries == old_other_entries;
+    let mut current_other_bindings = manifest
+        .replacement_bindings
+        .iter()
+        .filter(|snapshot| snapshot.mod_id() != &transaction.mod_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut old_other_bindings = transaction
+        .pre_reinstall_manifest
+        .replacement_bindings
+        .iter()
+        .filter(|snapshot| snapshot.mod_id() != &transaction.mod_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    current_other_bindings.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
+    old_other_bindings.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
+    entries_match && current_other_bindings == old_other_bindings
 }
 
 #[derive(Clone)]
@@ -1620,6 +1648,9 @@ fn manifest_marked_rolled_back(manifest: &InstallManifest, mod_id: &ModId) -> In
     updated_manifest
         .entries
         .retain(|entry| entry.mod_id != *mod_id);
+    updated_manifest
+        .replacement_bindings
+        .retain(|snapshot| snapshot.mod_id() != mod_id);
     updated_manifest
 }
 

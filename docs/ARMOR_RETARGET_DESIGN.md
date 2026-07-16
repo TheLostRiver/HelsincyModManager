@@ -2,9 +2,10 @@
 
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
 >
-> 实施状态（2026-07-16）：阶段 1 / AR1 与阶段 2 / AR2 已标记为 `implemented`。当前已落地稳定
-> replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格 parser、单 source
-> analyzer 与纯 `RetargetPlan`；当前下一项为阶段 3 / AR3，阶段 3 及以后仍为 `planned`。
+> 实施状态（2026-07-16）：阶段 1 / AR1、阶段 2 / AR2 与阶段 3 / AR3 已标记为 `implemented`。
+> 当前已落地稳定 replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格
+> parser、单 source analyzer、纯 `RetargetPlan`、受控 staging materialize、InstallPlan 与 binding
+> snapshot 集成；当前下一项为阶段 4 / AR4。AR5 与 Gate B 验收尚未完成。
 
 ## 背景
 
@@ -136,21 +137,23 @@ ReplacementCatalogProvider
   search_replacement_targets(query) -> Vec<ReplacementTarget>
 ```
 
-AR2 已扩展纯 analysis/plan port，AR3 再扩展 staging port：
+AR2 已扩展纯 analysis/plan port；AR3 已增加独立的 batch staging port：
 
 ```text
 ReplacementAdapter（AR2）
   analyze_replacement_assets(package) -> ReplacementAnalysis
   build_retarget_plan(request) -> RetargetPlan
 
-StagingFileSystem（AR3）
-  copy_to_staging(source, destination)
-  list_staged_files(staging_id)
+RetargetStagingMaterializer（AR3）
+  materialize(files: RetargetStagingFile[])
+
+RetargetStagingFile（AR3）
+  package_file_id + final InstallTargetPath
 ```
 
 只读 catalog port 与目录校验 `GameAdapter` 保持分离，避免迫使不支持 replacement 的 adapter 实现
 空方法。AR2 已在该基础上新增更窄的 analysis/plan port，没有把 path 或 filesystem 类型反向塞回
-AR1；AR3 的 staging I/O 继续独立建模。
+AR1；AR3 的 staging I/O 继续独立建模，core/app 不携带 staging root 或 `PathBuf`。
 
 ### `hmm-games-mhw`
 
@@ -452,6 +455,10 @@ StagingMaterializeFailed
 
 ## UI 工作流
 
+首版主要入口固定为 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`；现有右键“MOD 文件修改”动作
+直接打开该 Tab。该入口承载具体 Mod 的 source、target 选择和预览；未来 `/replacements` 页面只做
+全局 binding、占用与冲突总览，不作为 Gate B 首个操作入口。
+
 建议流程：
 
 1. 玩家导入外观 Mod。
@@ -520,20 +527,26 @@ SQLite 中应持久化玩家状态：
 - 生成路径级 `RetargetPlan`（结构化分段替换，只改 slot 段）。
 - 对多源 slot、未知 target、危险路径给出明确错误。
 
-### 阶段 3：staging 与 InstallPlan 集成（AR3，当前下一项）
+### 阶段 3：staging 与 InstallPlan 集成（AR3，已实现）
 
-- materialize staging。
-- 让 `InstallPlan` 以 staging 的最终路径为输入。
-- manifest 记录 replacement binding。
-- 冲突检测基于最终路径。
+- 已通过 batch materializer 在 sibling `.partial` 中生成 staging，完整成功后原子发布，失败清理。
+- `InstallPlan` 以 staging 的最终 target 为冲突键，同时保留原 `PackageFileId` provenance。
+- manifest 记录 Mod/profile/revision-owned replacement binding snapshot；旧 JSON 缺字段时默认空。
+- plan/token hash、manifest merge/uninstall/rollback 与真正重装 recovery 都消费同一 snapshot 事实。
 
-### 阶段 4：前端工作流
+### 阶段 4：Tauri contract 与前端工作流（AR4，当前下一项）
 
-- 启用 `替换目标` 页面或在 Mod 安装流程中加入目标选择。
+- 在 Mod 详情统一面板启用“替换目标”Tab，并由右键“MOD 文件修改”直达。
 - 展示源槽位、target catalog、冲突预览和 warning。
-- 提供切换目标的卸载重装流程入口。
+- 首次安装只提交后端定义的 target/binding 选择，不让前端拼接路径。
 
-### 阶段 5：高级能力
+### 阶段 5：切换目标、卸载与 Gate B（AR5，planned）
+
+- 已安装 Mod 切换 target 必须复用 Gate A 真正重装，原子替换旧 entry/binding facts。
+- 重启后恢复 target/安装事实，最终卸载恢复 ARMOR 安装前基线。
+- 完成自动化、安全复审与 disposable Windows Sandbox 人工验收后再标记 Gate B `certified`。
+
+### Gate B 后高级能力（planned + paused）
 
 - 支持多源 slot 拆分。
 - 支持整套/单部位策略。

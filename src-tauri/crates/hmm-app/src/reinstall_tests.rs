@@ -4,7 +4,8 @@ use hmm_core::{
     FileLayer, InstallConflict, InstallFileProvider, InstallManifest, InstallManifestEntry,
     InstallManifestStatus, InstallPlan, InstallTargetPath, InstalledFileSummary, ModId,
     ModRevisionId, PackageFileId, ProfileId, ReinstallRecoveryTransaction,
-    ReinstallRecoveryTransactionStatus,
+    ReinstallRecoveryTransactionStatus, ReplacementBinding, ReplacementBindingId,
+    ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -75,6 +76,16 @@ fn preview_blocks_candidate_missing_owner_mismatch_unready_and_already_installed
     let preview = unready.preview(default_request()).expect("blocked preview");
     assert_blocked(&preview, ReinstallBlockingReason::CandidateNotReady);
     unready.assert_zero_mutations();
+
+    let binding_revision_mismatch = Fixture::ready();
+    binding_revision_mismatch
+        .planner
+        .set_plan(candidate_plan("v3"));
+    let preview = binding_revision_mismatch
+        .preview(default_request())
+        .expect("blocked preview");
+    assert_blocked(&preview, ReinstallBlockingReason::CandidateNotReady);
+    binding_revision_mismatch.assert_zero_mutations();
 
     let installed = Fixture::ready();
     let mut request = default_request();
@@ -282,6 +293,7 @@ fn preview_blocks_plan_conflict_and_cross_mod_ownership() {
                 provider(&target, "mod-a", "b", 0),
             ],
         }],
+        replacement_bindings: Vec::new(),
     });
     assert_blocked(
         &plan_conflict
@@ -291,7 +303,7 @@ fn preview_blocks_plan_conflict_and_cross_mod_ownership() {
     );
 
     let provider_owner = Fixture::ready();
-    let mut plan = candidate_plan();
+    let mut plan = candidate_plan("v2");
     plan.actions[0].provider.mod_id = ModId::new("mod-b");
     provider_owner.planner.set_plan(plan);
     assert_blocked(
@@ -341,6 +353,9 @@ fn plan_token_changes_with_manifest_candidate_source_layer_target_and_backup_fac
     candidate_changed
         .catalog
         .set_revision(candidate_revision("v3", "mod-a"));
+    candidate_changed
+        .planner
+        .set_plan(candidate_plan("v3"));
     let mut candidate_request = default_request();
     candidate_request.candidate_revision_id = ModRevisionId::new("v3");
     assert_ne!(
@@ -370,6 +385,35 @@ fn plan_token_changes_with_manifest_candidate_source_layer_target_and_backup_fac
         .backups
         .set_fixture("original-overwritten", b"different-original-backup");
     assert_ne!(base_token, ready_token(&backup_changed, default_request()));
+
+    let manifest_binding_changed = Fixture::ready();
+    manifest_binding_changed.manifests.update_manifest(|manifest| {
+        manifest.replacement_bindings = vec![replacement_snapshot(
+            "binding-v1-changed",
+            "mhw:armor:guardian-alpha",
+            "pl121_0000",
+            None,
+        )];
+    });
+    assert_ne!(
+        base_token,
+        ready_token(&manifest_binding_changed, default_request())
+    );
+
+    let candidate_binding_changed = Fixture::ready();
+    let changed_plan = candidate_plan("v2")
+        .with_replacement_bindings(vec![replacement_snapshot(
+            "binding-v2-changed",
+            "mhw:armor:alatreon-alpha",
+            "pl127_0000",
+            Some("v2"),
+        )])
+        .expect("changed candidate binding");
+    candidate_binding_changed.planner.set_plan(changed_plan);
+    assert_ne!(
+        base_token,
+        ready_token(&candidate_binding_changed, default_request())
+    );
 }
 
 fn assert_blocked(preview: &ReinstallPlanPreview, reason: ReinstallBlockingReason) {
@@ -417,7 +461,7 @@ struct Fixture {
 impl Fixture {
     fn ready() -> Self {
         let catalog = Arc::new(FakeCatalog::ready());
-        let planner = Arc::new(FakePlanner::new(candidate_plan()));
+        let planner = Arc::new(FakePlanner::new(candidate_plan("v2")));
         let source = Arc::new(FakeCandidateSource::new([
             ("retained", b"same".as_slice()),
             ("replaced", b"candidate-replaced".as_slice()),
@@ -488,7 +532,7 @@ impl Fixture {
 }
 
 fn installed_manifest() -> InstallManifest {
-    InstallManifest::completed(
+    let mut manifest = InstallManifest::completed(
         ProfileId::new("default"),
         vec![
             manifest_entry("content/retained.bin", "mod-a", "retained", None, b"same"),
@@ -514,16 +558,57 @@ fn installed_manifest() -> InstallManifest {
                 b"installed-stale",
             ),
         ],
-    )
+    );
+    manifest.replacement_bindings = vec![replacement_snapshot(
+        "binding-v1",
+        "mhw:armor:guardian-alpha",
+        "pl121_0000",
+        None,
+    )];
+    manifest
 }
 
-fn candidate_plan() -> InstallPlan {
+fn candidate_plan(revision_id: &str) -> InstallPlan {
     InstallPlan::from_providers([
         candidate_provider("content/retained.bin", "retained"),
         candidate_provider("content/replaced.bin", "replaced"),
         candidate_provider("content/overwritten.bin", "overwritten"),
         candidate_provider("content/added-v2.bin", "added-v2"),
     ])
+    .with_replacement_bindings(vec![replacement_snapshot(
+        "binding-v2",
+        "mhw:armor:fatalis-alpha",
+        "pl129_0000",
+        Some(revision_id),
+    )])
+    .expect("candidate replacement binding")
+}
+
+fn replacement_snapshot(
+    binding_id: &str,
+    target_id: &str,
+    target_internal_id: &str,
+    revision_id: Option<&str>,
+) -> ReplacementBindingSnapshot {
+    ReplacementBindingSnapshot::new(
+        ReplacementBinding::new(
+            ReplacementBindingId::parse(binding_id).expect("binding id"),
+            ModId::new("mod-a"),
+            ProfileId::new("default"),
+            ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
+                .expect("source id"),
+            ReplacementTargetId::parse(target_id).expect("target id"),
+            42,
+        )
+        .expect("binding"),
+        revision_id.map(ModRevisionId::new),
+        "pl121_0000",
+        target_internal_id,
+        "pl/f_equip",
+        "pl/f_equip",
+        ReplacementTargetKind::parse("armor").expect("replacement kind"),
+    )
+    .expect("replacement snapshot")
 }
 
 fn candidate_provider(path: &str, package_file_id: &str) -> InstallFileProvider {
@@ -1197,6 +1282,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
                 plan_hash: "active-plan-hash".to_owned(),
                 status: ReinstallRecoveryTransactionStatus::Planned,
                 pre_reinstall_manifest: installed_manifest(),
+                candidate_replacement_bindings: Vec::new(),
                 targets: Vec::new(),
             }));
         }
@@ -1228,6 +1314,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
             plan_hash: "active-plan-hash".to_owned(),
             status: ReinstallRecoveryTransactionStatus::Planned,
             pre_reinstall_manifest: installed_manifest(),
+            candidate_replacement_bindings: Vec::new(),
             targets: Vec::new(),
         }])
     }

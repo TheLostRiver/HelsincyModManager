@@ -1,4 +1,4 @@
-use crate::{GameId, ModId, ProfileId};
+use crate::{GameId, ModId, ModRevisionId, ProfileId, RetargetPlan};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,6 +32,14 @@ pub enum ReplacementError {
     EmptyModId,
     #[error("replacement binding profile id cannot be empty")]
     EmptyProfileId,
+    #[error("replacement snapshot source internal id cannot be empty")]
+    EmptySnapshotSourceInternalId,
+    #[error("replacement snapshot target internal id cannot be empty")]
+    EmptySnapshotTargetInternalId,
+    #[error("replacement snapshot source path family cannot be empty")]
+    EmptySnapshotSourcePathFamily,
+    #[error("replacement snapshot target path family cannot be empty")]
+    EmptySnapshotTargetPathFamily,
     #[error("replacement catalog cannot be empty")]
     EmptyCatalog,
     #[error("replacement catalog contains a duplicate target id: {target_id}")]
@@ -349,6 +357,147 @@ impl TryFrom<ReplacementBindingWire> for ReplacementBinding {
             wire.created_at_unix_millis,
         )
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ReplacementBindingSnapshotWire")]
+pub struct ReplacementBindingSnapshot {
+    binding: ReplacementBinding,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    revision_id: Option<ModRevisionId>,
+    source_internal_id: String,
+    target_internal_id: String,
+    source_path_family: String,
+    target_path_family: String,
+    retarget_kind: ReplacementTargetKind,
+}
+
+#[derive(Deserialize)]
+struct ReplacementBindingSnapshotWire {
+    binding: ReplacementBinding,
+    #[serde(default)]
+    revision_id: Option<ModRevisionId>,
+    source_internal_id: String,
+    target_internal_id: String,
+    source_path_family: String,
+    target_path_family: String,
+    retarget_kind: ReplacementTargetKind,
+}
+
+impl ReplacementBindingSnapshot {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        binding: ReplacementBinding,
+        revision_id: Option<ModRevisionId>,
+        source_internal_id: impl Into<String>,
+        target_internal_id: impl Into<String>,
+        source_path_family: impl Into<String>,
+        target_path_family: impl Into<String>,
+        retarget_kind: ReplacementTargetKind,
+    ) -> Result<Self, ReplacementError> {
+        Ok(Self {
+            binding,
+            revision_id,
+            source_internal_id: required_snapshot_field(
+                source_internal_id.into(),
+                ReplacementError::EmptySnapshotSourceInternalId,
+            )?,
+            target_internal_id: required_snapshot_field(
+                target_internal_id.into(),
+                ReplacementError::EmptySnapshotTargetInternalId,
+            )?,
+            source_path_family: required_snapshot_field(
+                source_path_family.into(),
+                ReplacementError::EmptySnapshotSourcePathFamily,
+            )?,
+            target_path_family: required_snapshot_field(
+                target_path_family.into(),
+                ReplacementError::EmptySnapshotTargetPathFamily,
+            )?,
+            retarget_kind,
+        })
+    }
+
+    pub fn from_retarget_plan(plan: &RetargetPlan, revision_id: Option<ModRevisionId>) -> Self {
+        let action = &plan.actions()[0];
+        Self::new(
+            plan.binding().clone(),
+            revision_id,
+            plan.source().internal_id(),
+            action.target_internal_id(),
+            plan.source().path_family(),
+            action.target_path_family(),
+            plan.source().source_type().clone(),
+        )
+        .expect("validated RetargetPlan facts produce a valid replacement snapshot")
+    }
+
+    pub fn binding(&self) -> &ReplacementBinding {
+        &self.binding
+    }
+
+    pub fn binding_id(&self) -> &ReplacementBindingId {
+        self.binding.id()
+    }
+
+    pub fn mod_id(&self) -> &ModId {
+        self.binding.mod_id()
+    }
+
+    pub fn profile_id(&self) -> &ProfileId {
+        self.binding.profile_id()
+    }
+
+    pub fn revision_id(&self) -> Option<&ModRevisionId> {
+        self.revision_id.as_ref()
+    }
+
+    pub fn source_internal_id(&self) -> &str {
+        &self.source_internal_id
+    }
+
+    pub fn target_internal_id(&self) -> &str {
+        &self.target_internal_id
+    }
+
+    pub fn source_path_family(&self) -> &str {
+        &self.source_path_family
+    }
+
+    pub fn target_path_family(&self) -> &str {
+        &self.target_path_family
+    }
+
+    pub fn retarget_kind(&self) -> &ReplacementTargetKind {
+        &self.retarget_kind
+    }
+}
+
+impl TryFrom<ReplacementBindingSnapshotWire> for ReplacementBindingSnapshot {
+    type Error = ReplacementError;
+
+    fn try_from(wire: ReplacementBindingSnapshotWire) -> Result<Self, Self::Error> {
+        Self::new(
+            wire.binding,
+            wire.revision_id,
+            wire.source_internal_id,
+            wire.target_internal_id,
+            wire.source_path_family,
+            wire.target_path_family,
+            wire.retarget_kind,
+        )
+    }
+}
+
+fn required_snapshot_field(
+    value: String,
+    error: ReplacementError,
+) -> Result<String, ReplacementError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(error);
+    }
+    Ok(value.to_owned())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
