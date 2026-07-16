@@ -533,7 +533,10 @@ provenance 保留，binding snapshot 随 plan/manifest/reinstall recovery 原子
 已由 AR4 通过四个窄 command 和 feature-local typed API 接入；入口位于 Mod 管理的 Mod 详情
 “替换目标”Tab，右键“MOD 文件修改”直达。前端只提交 game/Mod/profile/target/layer identity，首次
 retarget install 继续走 task id、game/profile 写锁、Audit Log、backup、manifest 和 rollback/recovery
-链路，并对 installed/unsafe/unknown 状态 fail closed。已安装 Mod 的 target switch 与卸载闭环留给 AR5。
+链路，并对 installed/unsafe/unknown 状态 fail closed。AR5 在同一入口增加两个窄 command：后端从
+manifest 解析 installed revision，同 revision 且 target 确实变化时复用真正重装事务原子替换旧
+entry/binding，重启后恢复新 target，最终卸载仍由 manifest 驱动恢复首次 Armor 安装前 baseline。
+该链路的自动化与受控 UI 已实现，Gate B 仍等待 disposable Windows Sandbox 纵向验收。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 
