@@ -388,7 +388,7 @@ JSON 做不好的需求:
 ### T11: ARMOR_RETARGET 全链路
 
 **优先级**: P1，Gate A 通过后立即开始
-**状态**: AR1-AR5 代码、自动化与受控 UI 已实现；Gate B 等待 disposable Windows Sandbox 纵向验收
+**状态**: AR1-AR5 代码、自动化与受控 UI 已实现；首个 Sandbox 文件闭环通过并已修复当前 target 呈现缺陷，Gate B 等待最终 artifact 全新 Sandbox 复验
 **前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
@@ -405,7 +405,9 @@ JSON 做不好的需求:
 - [x] AR4：Windows Sandbox 首次 retarget 安装纵向验收（source analyze -> target select -> preview -> install -> restart recovery）
 - [x] AR5：真正重装 target switch、同 revision binding/entry 原子替换、重启恢复与 manifest 卸载自动化
 - [x] AR5：已安装状态的 target switch preview/confirm/taskId/cancel 受控 UI
-- [ ] Gate B：disposable Windows Sandbox 完成首次 retarget -> switch target -> restart -> uninstall -> 精确 baseline，再标记 `certified`
+- [x] AR5：首个 Sandbox artifact 完成首次 retarget -> switch target -> restart -> uninstall -> 精确 baseline 文件闭环
+- [x] AR5：修复重启后当前 installed target 的窄 DTO/UI 呈现与同目标切换阻断
+- [ ] Gate B：最终 artifact 在全新 disposable Windows Sandbox 重验完整闭环，再标记 `certified`
 
 ---
 
@@ -443,8 +445,8 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: T11 ARMOR_RETARGET Gate B（AR5 自动化/UI 已实现）
-  -> disposable Windows Sandbox 纵向验收
+当前: T11 ARMOR_RETARGET Gate B（首个 Sandbox 文件闭环已通过，当前 target 呈现缺陷已修复）
+  -> 最终 artifact 全新 disposable Windows Sandbox 纵向复验
   -> Gate B 认证
   -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
 ```
@@ -466,7 +468,7 @@ JSON 做不好的需求:
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
-| T11 ARMOR_RETARGET | P1 | AR1-AR5 自动化/UI 已实现；Gate B 等待 Sandbox 验收 | |
+| T11 ARMOR_RETARGET | P1 | AR1-AR5 自动化/UI 已实现；Gate B 等待最终 artifact 全新 Sandbox 复验 | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |

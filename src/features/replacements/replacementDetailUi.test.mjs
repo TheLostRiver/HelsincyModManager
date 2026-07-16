@@ -38,6 +38,8 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(panel, /task_cannot_be_cancelled/);
   assert.match(panel, /install\.reinstall/);
   assert.match(panel, /当前目标已安装/);
+  assert.match(panel, /data-installed=\{currentInstalled\}/);
+  assert.match(panel, /analysis\.installedTargetId/);
   assert.match(panel, /保留/);
   assert.match(panel, /替换/);
   assert.match(panel, /新增/);

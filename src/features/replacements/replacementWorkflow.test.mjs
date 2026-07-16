@@ -6,9 +6,42 @@ import {
   canStartRetargetReinstall,
   canStartInitialRetargetInstall,
   isRetargetInstallTaskPhase,
+  isCurrentInstalledReplacementTarget,
   nextRetargetInstallTaskState,
   refreshRetargetInstallState,
+  resolveInstalledReplacementTargetSelection,
 } from "./replacementWorkflow.ts";
+
+test("installed replacement target is restored as context, not an executable switch candidate", () => {
+  const targets = [
+    { id: "mhw:armor:fatalis-alpha" },
+    { id: "mhw:armor:fatalis-beta" },
+  ];
+
+  assert.equal(
+    resolveInstalledReplacementTargetSelection(targets, "mhw:armor:fatalis-beta"),
+    "mhw:armor:fatalis-beta",
+  );
+  assert.equal(
+    resolveInstalledReplacementTargetSelection(targets, "mhw:armor:missing"),
+    null,
+  );
+  assert.equal(resolveInstalledReplacementTargetSelection(targets, undefined), null);
+  assert.equal(
+    isCurrentInstalledReplacementTarget(
+      "mhw:armor:fatalis-beta",
+      "mhw:armor:fatalis-beta",
+    ),
+    true,
+  );
+  assert.equal(
+    isCurrentInstalledReplacementTarget(
+      "mhw:armor:fatalis-alpha",
+      "mhw:armor:fatalis-beta",
+    ),
+    false,
+  );
+});
 
 test("retarget cancellation is offered only before the commit barrier", () => {
   for (const phase of [

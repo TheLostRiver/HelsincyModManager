@@ -536,7 +536,10 @@ retarget install 继续走 task id、game/profile 写锁、Audit Log、backup、
 链路，并对 installed/unsafe/unknown 状态 fail closed。AR5 在同一入口增加两个窄 command：后端从
 manifest 解析 installed revision，同 revision 且 target 确实变化时复用真正重装事务原子替换旧
 entry/binding，重启后恢复新 target，最终卸载仍由 manifest 驱动恢复首次 Armor 安装前 baseline。
-该链路的自动化与受控 UI 已实现，Gate B 仍等待 disposable Windows Sandbox 纵向验收。
+分析响应可按 profile 从可信 manifest 附带唯一稳定 `installedTargetId`，供前端标记当前 target 并禁用
+同目标切换；不暴露 binding、revision、路径或 manifest 内容。该链路的自动化与受控 UI 已实现；
+首个 Sandbox artifact 已完成文件闭环并暴露/修复当前 target 呈现缺陷，Gate B 仍等待最终 artifact
+在全新 disposable Windows Sandbox 的纵向复验。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 

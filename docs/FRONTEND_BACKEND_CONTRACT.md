@@ -70,7 +70,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 手动后端维护：`maintain_thumbnail_cache`
 - 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`
 - 取消长任务：`cancel_task`
-- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`
+- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
 
@@ -179,7 +179,7 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | command | 请求 | 返回 |
 | --- | --- | --- |
 | `list_replacement_targets` | `gameId`、可选 `query` | catalog target 列表 |
-| `analyze_imported_mod_replacement` | `gameId`、`modId` | source、匹配文件数、warning 与 `retargetable` |
+| `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
 | `preview_retarget_reinstall` | `gameId`、`profileId`、`modId`、`targetId`、layer | `ReinstallPlanPreviewDto` 与 plan token |
@@ -201,6 +201,11 @@ target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 package/source/candidate binding/staging/InstallPlan；它不读取当前 display revision 来决定 candidate，
 因此导入新 revision 后切换 target 也不会隐式升级 Mod。前端不得提交 revision、package、source、
 binding、staging、game root 或最终路径。
+
+当 `analyze_imported_mod_replacement` 携带 `profileId` 时，后端可从可信 manifest 返回唯一、稳定的
+`installedTargetId`，仅用于重启后标记“当前已安装”和阻止把当前 target 当成切换候选。manifest 缺失、
+Mod 未安装或状态不可信时省略该字段；binding 歧义时返回稳定的安装状态不可用错误。该字段不包含
+binding identity、revision、internal id、相对/绝对路径、staging 或 manifest 内容。
 
 同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，且新
 `targetId` 与已安装 target 不同时才允许进入真正重装。当前 target、缺失 binding、不安全 recovery
@@ -412,7 +417,7 @@ type GamePrerequisiteReportDto = {
 
 ```text
 list_replacement_targets({ gameId, query? })
-analyze_imported_mod_replacement({ gameId, modId })
+analyze_imported_mod_replacement({ gameId, profileId?, modId })
 preview_initial_retarget_install({ gameId, profileId, modId, targetId, layerName, layerPriority })
 start_retarget_install_task({ gameId, profileId, modId, targetId, layerName, layerPriority })
 preview_retarget_reinstall({ gameId, profileId, modId, targetId, layerName, layerPriority })
@@ -422,6 +427,7 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
 边界：
 
 - 前端只提交稳定的 game/Mod/profile/target/layer identity，不提交 package/revision/source/binding/path。
+- 分析响应只可附带可选稳定 `installedTargetId`；它是展示和同目标阻断事实，不是路径或 binding DTO。
 - 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
   不接受 cache、sandbox 或 staging path，也不隐式升级。
 - MHW adapter 负责 slot 解析、catalog 归一化和路径级 plan。

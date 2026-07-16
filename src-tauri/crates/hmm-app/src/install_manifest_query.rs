@@ -1,4 +1,6 @@
-use hmm_core::{InstallManifest, InstallManifestStatusConsumption, ModId, ProfileId};
+use hmm_core::{
+    InstallManifest, InstallManifestStatusConsumption, ModId, ProfileId, ReplacementTargetId,
+};
 use hmm_ports::InstallManifestRepository;
 use std::sync::Arc;
 use thiserror::Error;
@@ -76,6 +78,41 @@ impl InstallManifestQueryService {
             .map(|mod_id| summary_for_mod(&request.profile_id, &mod_id, manifest.as_ref()))
             .collect())
     }
+
+    pub fn query_installed_replacement_target(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<Option<ReplacementTargetId>, InstallManifestQueryError> {
+        let manifest = self
+            .manifest_repository
+            .load_manifest(profile_id)
+            .map_err(|_| InstallManifestQueryError::ManifestUnavailable)?;
+        let Some(manifest) = manifest else {
+            return Ok(None);
+        };
+        if manifest.profile_id != *profile_id {
+            return Err(InstallManifestQueryError::ManifestUnavailable);
+        }
+        if summary_for_mod(profile_id, mod_id, Some(&manifest)).status
+            != InstallManifestStatus::Installed
+        {
+            return Ok(None);
+        }
+
+        let mut bindings = manifest
+            .replacement_bindings
+            .iter()
+            .filter(|snapshot| snapshot.mod_id() == mod_id);
+        let Some(binding) = bindings.next() else {
+            return Ok(None);
+        };
+        if binding.profile_id() != profile_id || bindings.next().is_some() {
+            return Err(InstallManifestQueryError::ManifestUnavailable);
+        }
+
+        Ok(Some(binding.binding().target_id().clone()))
+    }
 }
 
 fn summary_for_mod(
@@ -129,7 +166,8 @@ mod tests {
     use hmm_core::{
         FileLayer, InstallManifest, InstallManifestEntry,
         InstallManifestStatus as CoreManifestStatus, InstallTargetPath, ModId, PackageFileId,
-        ProfileId,
+        ProfileId, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
+        ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
     };
     use hmm_ports::InstallManifestRepository;
     use std::sync::Arc;
@@ -207,6 +245,102 @@ mod tests {
         );
     }
 
+    #[test]
+    fn query_returns_only_the_installed_replacement_target_id() {
+        let profile_id = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        let mut manifest = InstallManifest::completed(
+            profile_id.clone(),
+            vec![manifest_entry("mod-a", "nativePC/a.mod3", None)],
+        );
+        manifest.replacement_bindings = vec![replacement_snapshot(
+            "mod-a",
+            "default",
+            "mhw:armor:fatalis-beta",
+        )];
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        let target_id = service
+            .query_installed_replacement_target(&profile_id, &mod_id)
+            .expect("installed replacement target query should succeed")
+            .expect("installed replacement target");
+
+        assert_eq!(target_id.as_str(), "mhw:armor:fatalis-beta");
+    }
+
+    #[test]
+    fn query_fails_closed_for_ambiguous_installed_replacement_targets() {
+        let profile_id = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        let mut manifest = InstallManifest::completed(
+            profile_id.clone(),
+            vec![manifest_entry("mod-a", "nativePC/a.mod3", None)],
+        );
+        manifest.replacement_bindings = vec![
+            replacement_snapshot("mod-a", "default", "mhw:armor:fatalis-alpha"),
+            replacement_snapshot("mod-a", "default", "mhw:armor:fatalis-beta"),
+        ];
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        assert_eq!(
+            service.query_installed_replacement_target(&profile_id, &mod_id),
+            Err(InstallManifestQueryError::ManifestUnavailable)
+        );
+    }
+
+    #[test]
+    fn query_hides_replacement_target_while_manifest_state_is_unsafe() {
+        let profile_id = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        let mut manifest = InstallManifest::completed(
+            profile_id.clone(),
+            vec![manifest_entry("mod-a", "nativePC/a.mod3", None)],
+        );
+        manifest.status = CoreManifestStatus::Committing;
+        manifest.replacement_bindings = vec![replacement_snapshot(
+            "mod-a",
+            "default",
+            "mhw:armor:fatalis-beta",
+        )];
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        assert_eq!(
+            service
+                .query_installed_replacement_target(&profile_id, &mod_id)
+                .expect("unsafe status is represented without leaking a target"),
+            None
+        );
+    }
+
+    #[test]
+    fn query_fails_closed_when_repository_returns_another_profiles_manifest() {
+        let profile_id = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        let mut manifest = InstallManifest::completed(
+            ProfileId::new("other-profile"),
+            vec![manifest_entry("mod-a", "nativePC/a.mod3", None)],
+        );
+        manifest.replacement_bindings = vec![replacement_snapshot(
+            "mod-a",
+            "default",
+            "mhw:armor:fatalis-beta",
+        )];
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        assert_eq!(
+            service.query_installed_replacement_target(&profile_id, &mod_id),
+            Err(InstallManifestQueryError::ManifestUnavailable)
+        );
+    }
+
     fn manifest_entry(
         mod_id: &str,
         target_path: &str,
@@ -221,6 +355,31 @@ mod tests {
             backup_ref: backup_ref.map(str::to_owned),
             installed_file: None,
         }
+    }
+
+    fn replacement_snapshot(
+        mod_id: &str,
+        profile_id: &str,
+        target_id: &str,
+    ) -> ReplacementBindingSnapshot {
+        ReplacementBindingSnapshot::new(
+            ReplacementBinding::new(
+                ReplacementBindingId::parse(format!("binding-{target_id}")).expect("binding id"),
+                ModId::new(mod_id),
+                ProfileId::new(profile_id),
+                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
+                ReplacementTargetId::parse(target_id).expect("target id"),
+                1,
+            )
+            .expect("binding"),
+            None,
+            "pl121_0000",
+            target_id,
+            "pl/f_equip",
+            "pl/f_equip",
+            ReplacementTargetKind::parse("armor").expect("replacement kind"),
+        )
+        .expect("replacement snapshot")
     }
 
     fn manifest_with_status(status: CoreManifestStatus) -> InstallManifest {

@@ -10,6 +10,7 @@ export type ListReplacementTargetsInput = {
 
 export type AnalyzeImportedModReplacementInput = {
   gameId: GameId;
+  profileId: string | null;
   modId: string;
 };
 
@@ -61,6 +62,7 @@ export type ReplacementWarning =
 
 export type ReplacementAnalysis = {
   gameId: string;
+  installedTargetId?: string;
   retargetable: boolean;
   matchedAssetCount: number;
   sources: ReplacementSource[];

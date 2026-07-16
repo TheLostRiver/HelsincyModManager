@@ -14,6 +14,8 @@ pub struct ListReplacementTargetsRequestDto {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnalyzeImportedModReplacementRequestDto {
     pub game_id: String,
+    #[serde(default)]
+    pub profile_id: Option<String>,
     pub mod_id: String,
 }
 
@@ -99,6 +101,8 @@ pub enum ReplacementWarningDto {
 #[serde(rename_all = "camelCase")]
 pub struct ReplacementAnalysisDto {
     pub game_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_target_id: Option<String>,
     pub retargetable: bool,
     pub matched_asset_count: usize,
     pub sources: Vec<ReplacementSourceDto>,
@@ -229,6 +233,7 @@ mod replacement_dto_tests {
         };
         let analysis = ReplacementAnalysisDto {
             game_id: "mhw".to_owned(),
+            installed_target_id: Some("mhw:armor:fatalis-beta".to_owned()),
             retargetable: true,
             matched_asset_count: 1,
             sources: vec![ReplacementSourceDto {
@@ -246,7 +251,46 @@ mod replacement_dto_tests {
         assert_eq!(target_value["gameId"], "mhw");
         assert_eq!(target_value["secondaryName"], "Fatalis Alpha +");
         assert_eq!(analysis_value["matchedAssetCount"], 1);
+        assert_eq!(
+            analysis_value["installedTargetId"],
+            "mhw:armor:fatalis-beta"
+        );
         assert_eq!(analysis_value["warnings"][0], "source_matches_target");
         assert!(!target_value.to_string().contains("nativePC"));
+    }
+
+    #[test]
+    fn replacement_analysis_request_accepts_only_stable_profile_and_mod_identity() {
+        let request: AnalyzeImportedModReplacementRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "profileId": "profile-a",
+            "modId": "mod-a"
+        }))
+        .expect("deserialize replacement analysis request");
+
+        assert_eq!(request.profile_id.as_deref(), Some("profile-a"));
+        let serialized = serde_json::to_value(request).expect("serialize request shape");
+        for forbidden in [
+            "packageId",
+            "revisionId",
+            "sourceId",
+            "bindingId",
+            "sandboxPath",
+            "stagingPath",
+            "targetPath",
+        ] {
+            assert!(
+                serialized.get(forbidden).is_none(),
+                "forbidden field: {forbidden}"
+            );
+        }
+
+        let without_profile: AnalyzeImportedModReplacementRequestDto =
+            serde_json::from_value(json!({
+                "gameId": "mhw",
+                "modId": "mod-a"
+            }))
+            .expect("profile is optional while setup is unavailable");
+        assert_eq!(without_profile.profile_id, None);
     }
 }

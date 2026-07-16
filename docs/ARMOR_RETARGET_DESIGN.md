@@ -6,7 +6,9 @@
 > 当前已落地稳定 replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格
 > parser、单 source analyzer、纯 `RetargetPlan`、受控 staging materialize、InstallPlan 与 binding
 > snapshot 集成、六个窄 Tauri command、真正重装 target switch 和 Mod 详情受控 UI；当前只等待
-> disposable Windows Sandbox 完成 target switch、重启与卸载纵向验收，Gate B 尚未 `certified`。
+> 首个 disposable Windows Sandbox artifact 已完成 target switch、重启、卸载和逐字节 baseline 文件
+> 闭环，并暴露出重启后 UI 未标记当前 target 的缺陷。该缺陷已按窄 manifest 查询/DTO/UI 契约修复；
+> 最终 artifact 仍需在全新 Sandbox 重验，Gate B 尚未 `certified`。
 
 ## 背景
 
@@ -551,7 +553,10 @@ SQLite 中应持久化玩家状态：
 - 已安装 Mod 切换 target 已复用 Gate A 真正重装，原子替换旧 entry/binding facts。
 - 自动化已证明同 revision 目标切换、重启恢复、最终 manifest 卸载和 ARMOR 安装前 baseline 恢复。
 - UI 已提供 installed-state preview/confirm、严格 taskId 事件匹配与安全阶段取消入口。
-- disposable Windows Sandbox 人工验收仍待完成；完成并复核证据后才能标记 Gate B `certified`。
+- 重启后的分析响应只附带可选稳定 `installedTargetId`；UI 明确标记“当前已安装”，并禁止把该 target
+  当成切换候选，不暴露 binding、revision、路径或 manifest 内容。
+- 首个 disposable Windows Sandbox artifact 已完成文件安全闭环，但该轮发现并修复了当前 target
+  呈现缺陷；最终 artifact 的全新 Sandbox 复验完成并复核前，Gate B 不得标记 `certified`。
 
 ### Gate B 后高级能力（planned + paused）
 

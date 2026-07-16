@@ -47,8 +47,8 @@
 | `blocked` | 已开始核心切片，但被明确技术/环境前置阻断 |
 
 当前基线：安装、卸载和真正重装均为 `implemented`，Core Mod Lifecycle Gate A 为
-`certified`；ARMOR_RETARGET 的 AR1/AR2/AR3 为 `implemented`、AR4/AR5 为 `planned`，P7.2c 为
-`planned + paused`。
+`certified`；ARMOR_RETARGET AR1-AR5 为 `implemented`，首个 Sandbox artifact 已完成文件闭环并已修复
+当前 target 呈现缺陷，Gate B 等待最终 artifact 全新 Sandbox 复验；P7.2c 为 `planned + paused`。
 
 ## 4. 立即执行顺序
 
@@ -61,8 +61,9 @@ CL0 事实基线与可重复验收入口
   -> AR1 ARMOR 领域模型 / binding / 最小 catalog [implemented]
   -> AR2 MHW:I 单源 f_equip 分析与 RetargetPlan [implemented]
   -> AR3 staging materialize + InstallPlan + manifest snapshot [implemented]
-  -> AR4 Tauri typed contract + 选择目标 / 预览 / 安装 UI [current]
-  -> AR5 真正重装 target switch / 卸载 + Gate B 复审和认证
+  -> AR4 Tauri typed contract + 选择目标 / 预览 / 安装 UI [implemented]
+  -> AR5 真正重装 target switch / 卸载 / 当前 target 重启呈现 [implemented]
+  -> Gate B 最终 artifact 全新 Sandbox 复验 [current]
   -> 恢复被暂停任务的重新排序
 ```
 
@@ -211,8 +212,8 @@ Gate A 完成后，ARMOR_RETARGET 立即成为唯一 P1 主线。第一版只证
 2. **AR2（已完成）：** 严格 armor path parser、单 source `f_equip` analyzer 与纯 `RetargetPlan`。
 3. **AR3（已完成）：** staging materialize、containment、final target conflict、binding persistence 和
    manifest snapshot；只补这条链路必需的 rich manifest 字段。
-4. **AR4（当前下一项）：** Tauri typed contract 与最小 UI：分析 source、选择 target、预览、安装。
-5. **AR5：** 切换 target 必须调用 Gate A 的真正重装；卸载后恢复游戏基线。
+4. **AR4（已完成）：** Tauri typed contract 与最小 UI：分析 source、选择 target、预览、安装。
+5. **AR5（已完成）：** 切换 target 调用 Gate A 的真正重装；重启呈现当前 target；卸载后恢复游戏基线。
 
 ### 6.3 Gate B 完成定义
 
@@ -270,15 +271,13 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 10. 当前下一项任务
 
-CL0-CL4 已完成，Gate A 已标记为 `certified`。AR1 已实现稳定 replacement identity/binding、只读
-catalog port 与 MHW:I versioned catalog；AR2 已实现严格 parser、单 source analyzer 和只改 slot 段的
-纯 `RetargetPlan`，同时保持 core 不解析 `plNNN_VVVV` / `f_equip`；AR3 已实现受控 staging
-materialize、final target 到 InstallPlan 的集成与 binding snapshot。当前下一项固定为 **AR4：Tauri
-typed contract 与最小受控 UI**，不是 P7.2c、分页、批量迁移或其他暂停项。
+CL0-CL4 已完成，Gate A 已标记为 `certified`。AR1-AR5 已完成 replacement identity/catalog、严格
+parser/分析、staging/InstallPlan/manifest binding、Tauri 受控 UI、真正重装 target switch、重启当前
+target 呈现和 manifest 卸载闭环。首个 Sandbox artifact 已完成逐字节 baseline 文件验收；当前下一项
+固定为 **Gate B 最终 artifact 全新 Sandbox 复验**，不是 P7.2c、分页、批量迁移或其他暂停项。
 
-AR4 不得提前开放真正重装 target switch 或宣称 Gate B 完成，也不得让 Tauri/前端绕过既有
-InstallPlan/manifest/backup/rollback/recovery 链路或自行计算游戏路径；target switch、卸载闭环和
-Gate B 验收仍属于 AR5。
+Gate B 复验不得让 Tauri/前端绕过既有 InstallPlan/manifest/backup/rollback/recovery 链路或自行计算
+游戏路径；只有最终 artifact 的完整证据成立后才能标记 `certified`。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
@@ -288,8 +287,9 @@ CL1 的已执行范围和证据见
 CL3 的实施入口见
 [真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
 [真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
-CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；AR1/AR2/AR3 已建立 Gate B 的
-模型、catalog、分析、纯计划、staging 与 manifest binding 基线，后续从 AR4 继续推进。
+CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；AR1-AR5 已建立 Gate B 的模型、
+catalog、分析、纯计划、staging、manifest binding、受控 UI 与真正重装/卸载闭环，当前只剩最终
+artifact 的全新 Sandbox 复验。
 
 ## 11. 优先级重排提交边界（历史）
 
