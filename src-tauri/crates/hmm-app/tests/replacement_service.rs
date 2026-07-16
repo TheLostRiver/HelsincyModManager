@@ -46,8 +46,19 @@ impl ReplacementAdapter for FakeAdapter {
         &self,
         request: RetargetPlanRequest,
     ) -> Result<RetargetPlan, ReplacementAdapterError> {
-        build_plan_for_binding(request.binding)
-            .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)
+        let mut assets = request.assets.into_iter();
+        let asset = assets
+            .next()
+            .ok_or(ReplacementAdapterError::InvalidRetargetPlan)?;
+        if assets.next().is_some() {
+            return Err(ReplacementAdapterError::InvalidRetargetPlan);
+        }
+        build_plan_for_binding_and_asset(
+            request.binding,
+            asset.package_file_id().clone(),
+            asset.relative_path(),
+        )
+        .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)
     }
 }
 
@@ -182,14 +193,23 @@ fn build_plan(mod_id: &str, profile_id: &str) -> Result<RetargetPlan, hmm_core::
 fn build_plan_for_binding(
     binding: ReplacementBinding,
 ) -> Result<RetargetPlan, hmm_core::RetargetError> {
+    let package_file_id = PackageFileId::new(format!("package-{}-body", binding.mod_id().as_str()));
+    build_plan_for_binding_and_asset(
+        binding,
+        package_file_id,
+        "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3",
+    )
+}
+
+fn build_plan_for_binding_and_asset(
+    binding: ReplacementBinding,
+    package_file_id: PackageFileId,
+    source_relative_path: &str,
+) -> Result<RetargetPlan, hmm_core::RetargetError> {
     let source = source();
     let action = RetargetAction::new(
-        PackageFileId::new(format!("package-{}-body", binding.mod_id().as_str())),
-        InstallTargetPath::parse(
-            "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3",
-            ["nativePC"],
-        )
-        .expect("source path"),
+        package_file_id,
+        InstallTargetPath::parse(source_relative_path, ["nativePC"]).expect("source path"),
         InstallTargetPath::parse(
             "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3",
             ["nativePC"],
@@ -367,6 +387,13 @@ fn workflow_resolves_display_revision_and_previews_revision_owned_retarget_plan(
     assert_eq!(preview.revision_id().as_str(), "revision-v1");
     assert!(preview.analysis().is_retargetable());
     assert_eq!(preview.target().internal_id(), "pl129_0000");
+    assert_eq!(
+        preview.install_plan().actions[0]
+            .provider
+            .package_file_id
+            .as_str(),
+        "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3"
+    );
     assert_eq!(
         preview.install_plan().actions[0].target_path.as_str(),
         "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3"
