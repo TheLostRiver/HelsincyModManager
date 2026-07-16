@@ -6,9 +6,9 @@
 
 1. Gate A 已完成独立复审、完整验证并标记为 `certified`。
 2. Gate B 的 AR1-AR4 与 AR5 真正重装 target switch、同 revision binding/entry 原子替换、重启恢复、
-   manifest 卸载自动化和受控 UI 已实现；AR4 首次 retarget 安装已通过 disposable Windows Sandbox，
-   当前只等待 AR5 的 switch target -> restart -> uninstall -> exact baseline 人工验收。证据完成前 Gate B
-   仍不得标记为 `certified`。
+   manifest 卸载自动化和受控 UI 已实现；首个 AR5 Sandbox artifact 已完成 switch target -> restart ->
+   uninstall -> exact baseline 文件闭环，并暴露/修复了重启后未标记当前 target 的 UI 契约缺陷。当前只
+   等待最终 artifact 的全新 Sandbox 纵向复验；证据完成前 Gate B 仍不得标记为 `certified`。
 3. Gate B 前暂停自动备份剩余切片、installer cleanup、分页、批量迁移、批量操作、任务队列和
    非必要视觉增强。
 
@@ -53,7 +53,8 @@ InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS
 disposable Windows Sandbox 桌面 smoke 已完成；retained/replaced/added/stale、重启、manifest 卸载、
 baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本地 review、完整验证与 clippy
 也已通过，Gate A 已标记为 `certified`。AR1-AR5 的代码、自动化与受控 UI 已于 2026-07-16 标记为
-`implemented`；当前唯一下一项是 disposable Windows Sandbox 的 Gate B 纵向验收，尚未 `certified`。
+`implemented`；首个 Sandbox 文件闭环已通过，当前唯一下一项是修复后最终 artifact 的全新 Sandbox
+Gate B 纵向复验，尚未 `certified`。
 
 ## Phase 3：玩家工作流扩展（Gate B 前暂停）
 
@@ -78,8 +79,8 @@ manifest/preflight/UI 子集可以提前。
 - 已完成六个窄 Tauri command、feature-local typed API，以及 `Mod 详情 -> 替换目标` Tab/右键直达；
   首次安装只接受稳定 identity，已安装 target switch 只走 Gate A 真正重装，两者均对不安全状态
   fail closed。
-- 已完成 AR5 同 revision target switch、重启恢复和 manifest 卸载自动化；下一步只执行 disposable
-  Windows Sandbox Gate B 验收。
+- 已完成 AR5 同 revision target switch、重启恢复、manifest 卸载与当前 installed target 呈现；
+  下一步只执行最终 artifact 的全新 disposable Windows Sandbox Gate B 复验。
 - 通过 Gate B 后再扩展完整 catalog、本地化筛选和其他资源类型。
 
 Gate B 后续范围：

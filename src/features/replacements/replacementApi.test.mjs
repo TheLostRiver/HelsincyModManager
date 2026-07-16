@@ -34,6 +34,7 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
   assert.match(analyze, /invoke<ReplacementAnalysis>\("analyze_imported_mod_replacement"/);
   assert.deepEqual(inlineRequestEntries(analyze), [
     "gameId: input.gameId",
+    "profileId: input.profileId",
     "modId: input.modId",
   ]);
 
@@ -97,6 +98,7 @@ test("replacement request types expose stable ids but no filesystem or package f
   for (const field of ["gameId", "modId", "profileId", "targetId", "layerName", "layerPriority"]) {
     assert.match(requestTypes[0], new RegExp(`${field}`));
   }
+  assert.match(source, /installedTargetId\?:\s*string/);
   assert.doesNotMatch(
     requestTypes[0],
     /packageId|revisionId|sourceId|bindingId|sandbox|staging|targetPath|archivePath|rawPath/i,

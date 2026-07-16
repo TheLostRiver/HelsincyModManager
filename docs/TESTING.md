@@ -374,10 +374,15 @@ cmd /c corepack pnpm run test
 installed revision 从 manifest 解析且不隐式升级、operation-scoped staging/RAII cleanup、写锁内 token
 revalidation、四类 target 计数、失败 rollback/recovery，以及 `v1 target -> v2 target -> restart -> uninstall
 -> exact pre-Armor baseline`。Tauri/前端测试同时锁定窄 DTO、稳定错误、严格 taskId、确认对话框、
-取消安全阶段和 blocked/current-target/stale-token fail closed。
+取消安全阶段和 blocked/current-target/stale-token fail closed。manifest 查询测试还必须锁定：仅可信
+installed 状态返回唯一 `installedTargetId`，歧义或不安全状态不产生可执行 target；前端重启加载后
+标记“当前已安装”，当前 target 不得作为切换候选。
 
-Gate B 还必须在 disposable Windows Sandbox 使用人工 fixture 验收：首次 retarget 安装 -> 选择不同
-target 真正重装 -> 完全重启应用并恢复新 target -> manifest 卸载 -> 校验逐字节 pre-Armor baseline。
+首个 AR5 artifact 已在 disposable Windows Sandbox 完成首次 retarget 安装 -> 选择不同 target 真正重装
+-> 完全重启 -> manifest 卸载 -> exact baseline，并确认 source/旧 target 不残留、staging/recovery 为零。
+该轮同时发现重启后 replacement Tab 未标记当前 target；修复后的最终 artifact 仍必须在全新 Sandbox
+重新验收：首次 retarget 安装 -> 选择不同 target 真正重装 -> 完全重启应用并恢复新 target -> manifest
+卸载 -> 校验逐字节 pre-Armor baseline。
 必须同时确认原 source/旧 target 不残留、AppData/staging/recovery 无非预期残留，且不使用真实 MHW:I、
 第三方 Mod、Steam userdata 或玩家存档。该人工证据完成并复核前，AR5 可标记 `implemented`，Gate B
 不得标记 `certified`。

@@ -31,6 +31,7 @@ export function analyzeImportedModReplacement(
   return invoke<ReplacementAnalysis>("analyze_imported_mod_replacement", {
     request: {
       gameId: input.gameId,
+      profileId: input.profileId,
       modId: input.modId,
     },
   });

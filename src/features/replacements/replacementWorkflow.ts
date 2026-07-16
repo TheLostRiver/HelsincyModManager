@@ -191,3 +191,19 @@ export function canStartRetargetReinstall(input: RetargetReinstallAvailability) 
     input.listenerReady
   );
 }
+
+export function resolveInstalledReplacementTargetSelection(
+  targets: readonly { id: string }[],
+  installedTargetId: string | undefined,
+) {
+  return installedTargetId !== undefined && targets.some((target) => target.id === installedTargetId)
+    ? installedTargetId
+    : null;
+}
+
+export function isCurrentInstalledReplacementTarget(
+  targetId: string,
+  installedTargetId: string | undefined,
+) {
+  return installedTargetId !== undefined && targetId === installedTargetId;
+}

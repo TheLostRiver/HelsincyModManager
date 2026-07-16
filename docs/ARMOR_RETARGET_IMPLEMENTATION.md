@@ -185,9 +185,16 @@ AR5 只扩展已安装 Mod 的同 revision target switch，并继续复用 Gate 
   Armor 安装前逐字节 baseline。
 - `src/features/replacements/` 已在 installed 状态开放 target-switch preview/confirm，展示四类 target 计数，
   严格按 taskId 消费事件；只在 queued/plan/preflight 安全阶段显示取消入口，commit/rollback 后隐藏。
+- `analyze_imported_mod_replacement` 可接收可选 `profileId`，并从可信 manifest 只返回可选稳定
+  `installedTargetId`；binding 歧义或读取失败时 fail closed，不返回 revision、binding、路径、staging
+  或 manifest 内容。
+- replacement Tab 在重启后选中并标记“当前已安装” target，同时禁用该 radio 和预览入口；选择其他
+  target 后才进入真正重装切换预览。
 
-Gate B 仍等待 disposable Windows Sandbox 完成首次 retarget -> switch target -> restart -> uninstall ->
-exact pre-Armor baseline。人工证据完成前不得标记 `certified`。
+首个 AR5 Sandbox artifact 已完成首次 retarget -> switch target -> restart -> uninstall -> exact
+pre-Armor baseline 文件闭环，但第二次重启暴露出当前 target 未呈现缺陷。上述窄契约/UI 修复完成后，
+必须重新构建最终 artifact 并在全新 disposable Windows Sandbox 重验；该证据成立前 Gate B 仍未
+`certified`。
 
 ## Target File Structure（AR1-AR5 整体目标；已实施情况以上述基线为准）
 
