@@ -2,7 +2,7 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e1d4e868` (main)
-最近同步：2026-07-12，基于 `9618cfc`（P7.2c docs-only 规划基线）
+最近同步：2026-07-17，基于 `d3579a7`（Gate B closeout 与 T19 规划基线）
 
 ---
 
@@ -24,6 +24,7 @@
 - ARMOR_RETARGET: `docs/ARMOR_RETARGET_DESIGN.md` + `docs/ARMOR_RETARGET_IMPLEMENTATION.md` + `docs/ARMOR_RETARGET_REVIEW.md`
 - InstallPlan MVP: `docs/INSTALL_PLAN_STATUS.md` + `docs/INSTALL_PLAN_MVP_TODO.md`
 - 核心 Mod 生命周期优先级: `docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md`
+- 核心 Mod 生命周期产品化加固: `docs/CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md`
 - 恢复受控动作: `docs/INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md`
 - Mod 预览图: `docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md` + `docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md`
 - 第三方 Mod 管理器批量迁移: `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
@@ -54,8 +55,8 @@
 1. P0：安装/卸载/真正重装闭环已通过 Gate A `certified`。
 2. P1：ARMOR_RETARGET 最窄纵向闭环已通过 Gate B `certified`。
 3. T9/T10 的 Gate A/B 最小 manifest/preflight 子集已经落地，不在本次认证后自动扩张。
-4. 下一项工作先重新评审 P7.2c、T8、T12、T13、T14、T17、T18 的发布风险和玩家价值；明确选择
-   前继续保持暂停。
+4. Gate B 后优先级复审已选择 T19“核心 Mod 生命周期产品化加固”为当前主线；T19 完成后按
+   T18 -> T17 -> T13 恢复分页、批量迁移和批量安装/卸载，其余候选继续按发布门禁评审。
 
 ---
 
@@ -93,7 +94,34 @@
 - [x] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
 Gate A 与 Gate B 均已通过；P7.2c、分页、批量迁移、批量操作、任务队列和新的非阻断视觉工作仍待
-Gate B 后优先级复审，不因门禁解除自动开工。
+T19 对应切片或后续恢复顺序选中，不因门禁解除自动开工。
+
+---
+
+### T19: 核心 Mod 生命周期产品化加固
+
+**优先级**: P0 发布加固，当前主线
+**前置**: Gate A/B certified
+**状态**: 已规划，尚未开始产品代码
+**预估**: 大，固定拆为 7 个独立 review 切片
+**独立文档**: **已创建** -> `docs/CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md`
+
+范围:
+- [x] 规划 Acceptance、Logging/Diagnostics、Feedback UI 三条轨道及共享安全边界
+- [ ] A1：固化不少于 6 个 `headless_composition_*` 场景的正式验收脚本、非零断言和 CI 入口
+- [ ] L1：安全结构化事件、脱敏、App Log 文件 writer、轮转和保留
+- [ ] U1：共享 Dialog/Detail Sheet/Task Notice/Toast 基元，首个迁移游戏目录 Dialog
+- [ ] U2：安装计划 Sheet、卸载 Modal、按 `taskId` 的 Task Notice、完成/普通失败 Toast
+- [ ] L2：Task Log、Audit 写入失败显式策略和诊断健康摘要
+- [ ] U3：导入、游戏发现、Profile、备份、诊断导出等跨 feature 短时通知迁移
+- [ ] L3：只读日志/诊断页面和受控导出入口
+
+硬边界:
+- 不重新打开 Gate A/B，不重写 InstallPlan/manifest/backup/rollback/recovery/retarget
+- 破坏性动作和最终安装事实仍由后端及 manifest/recovery 驱动；前端只消费稳定 DTO/phase/code
+- 日志/诊断默认脱敏，不记录完整路径、用户名、Steam ID、token、存档或第三方 Mod 内容
+- 安全风险和恢复阻断保持持久告警，不降级为自动消失 Toast
+- 每个切片独立 PR；本规划提交不提前实现 A1/L1/U1
 
 ---
 
@@ -448,8 +476,9 @@ JSON 做不好的需求:
 
 ```text
 已完成: T11 ARMOR_RETARGET Gate B certified
-  -> 当前: 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
-  -> 另立任务选择下一条主线，不在 Gate B 认证提交中提前实现
+  -> 当前: T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3 -> L3
+  -> 后续: T18 Mod 库分页 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
+  -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
 
 ---
@@ -475,3 +504,4 @@ JSON 做不好的需求:
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
 | T18 Mod 库分页 | P2 | 已规划、暂停 | |
+| T19 核心生命周期产品化加固 | P0 发布加固 | 已规划，当前主线 | |
