@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { test } from "node:test";
+
+function readSource(path) {
+  return readFileSync(path, "utf8");
+}
+
+test("Mod detail unified panel owns the replacement target tab", () => {
+  assert.equal(existsSync("src/features/replacements/ReplacementTargetPanel.tsx"), true);
+  const dialog = readSource("src/features/mods/ModDetailDialog.tsx");
+  const dialogCss = readSource("src/features/mods/ModDetailDialog.css");
+  const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
+
+  assert.match(dialog, /type ModDetailDialogTab = "details" \| "replacement"/);
+  assert.match(dialog, /role="tablist"/);
+  assert.match(dialog, /createPortal\([\s\S]*document\.body/);
+  assert.match(dialog, /mod-detail-dialog__body[^\n]*is-replacement/);
+  assert.match(
+    dialogCss,
+    /@media \(max-width: 760px\)[\s\S]*\.mod-detail-dialog__body\.is-replacement[\s\S]*order:\s*-1/,
+  );
+  assert.match(dialog, /替换目标/);
+  assert.match(dialog, /<ReplacementTargetPanel/);
+  assert.match(dialog, /replacementCompletedLocally/);
+  assert.match(dialog, /completedLocally=\{replacementCompletedLocally\}/);
+  assert.match(panel, /listReplacementTargets/);
+  assert.match(panel, /analyzeImportedModReplacement/);
+  assert.match(panel, /previewInitialRetargetInstall/);
+  assert.match(panel, /startRetargetInstallTask/);
+  assert.match(panel, /TASK_PROGRESS_EVENT_NAME/);
+  assert.match(panel, /event\.payload\.taskId/);
+  assert.doesNotMatch(panel, /packageId:|sourceId:|bindingId:|sandbox|staging|gameRoot|archivePath/i);
+});
+
+test("MOD file edit context action opens the existing detail panel on replacement tab", () => {
+  const page = readSource("src/features/mods/ModLibraryPage.tsx");
+  const refresh = readSource("src/features/mods/modLibraryRefresh.ts");
+
+  assert.match(page, /case "edit-files"[\s\S]*createDetailDialogState\([^)]*"replacement"/);
+  assert.match(page, /initialTab=\{detailDialogState\.initialTab\}/);
+  assert.match(refresh, /initialTab:\s*ModDetailDialogTab/);
+  assert.doesNotMatch(page, /MOD 文件修改功能开发中/);
+});
