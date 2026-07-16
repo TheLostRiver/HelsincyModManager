@@ -402,6 +402,7 @@ JSON 做不好的需求:
 - [x] AR3：Application replacement service 与 staging materialize
 - [x] AR3：Manifest + InstallPlan + binding snapshot 集成
 - [x] AR4：Tauri commands / DTO 与前端 typed API / 受控 UI
+- [x] AR4：Windows Sandbox 首次 retarget 安装纵向验收（source analyze -> target select -> preview -> install -> restart recovery）
 - [ ] AR5：真正重装 target switch、卸载与 Gate B 认证
 
 ---
