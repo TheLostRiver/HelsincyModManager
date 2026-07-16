@@ -36,9 +36,11 @@ import {
   canCancelRetargetInstallTaskPhase,
   canStartInitialRetargetInstall,
   canStartRetargetReinstall,
+  isCurrentInstalledReplacementTarget,
   isRetargetInstallTaskPhase,
   nextRetargetInstallTaskState,
   refreshRetargetInstallState,
+  resolveInstalledReplacementTargetSelection,
   retargetInstallTaskPhaseLabel,
   type RetargetInstallRefreshState,
   type RetargetInstallTaskState,
@@ -216,11 +218,14 @@ export function ReplacementTargetPanel({
     setPreviewState({ status: "idle" });
 
     void Promise.all([
-      analyzeImportedModReplacement({ gameId, modId }),
+      analyzeImportedModReplacement({ gameId, profileId, modId }),
       listReplacementTargets({ gameId }),
     ])
       .then(([analysis, targets]) => {
         if (!cancelled) {
+          setSelectedTargetId(
+            resolveInstalledReplacementTargetSelection(targets, analysis.installedTargetId),
+          );
           setLoadState({ status: "ready", analysis, targets });
         }
       })
@@ -236,7 +241,7 @@ export function ReplacementTargetPanel({
     return () => {
       cancelled = true;
     };
-  }, [gameId, modId, retryToken]);
+  }, [gameId, modId, profileId, retryToken]);
 
   useEffect(() => {
     let disposed = false;
@@ -305,6 +310,7 @@ export function ReplacementTargetPanel({
     [loadState],
   );
   const analysis = loadState.status === "ready" ? loadState.analysis : null;
+  const installedTargetId = analysis?.installedTargetId;
   const filteredTargets = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase();
     if (!keyword) {
@@ -322,7 +328,11 @@ export function ReplacementTargetPanel({
   const targetSwitch = installStatus === "installed";
 
   const selectTarget = (targetId: string) => {
-    if (taskActive || installCompletedLocally) {
+    if (
+      taskActive ||
+      installCompletedLocally ||
+      isCurrentInstalledReplacementTarget(targetId, installedTargetId)
+    ) {
       return;
     }
     previewRequestGenerationRef.current += 1;
@@ -332,7 +342,12 @@ export function ReplacementTargetPanel({
   };
 
   const createPreview = () => {
-    if (!selectedTarget || profileId === null || blockMessage !== null) {
+    if (
+      !selectedTarget ||
+      profileId === null ||
+      blockMessage !== null ||
+      isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId)
+    ) {
       return;
     }
     const requestGeneration = ++previewRequestGenerationRef.current;
@@ -572,32 +587,46 @@ export function ReplacementTargetPanel({
         </label>
         {filteredTargets.length ? (
           <div className="replacement-panel__target-list" role="radiogroup" aria-label="替换目标">
-            {filteredTargets.map((target) => (
-              <label
-                className="replacement-panel__target-row"
-                data-selected={target.id === selectedTargetId}
-                key={target.id}
-              >
-                <input
-                  type="radio"
-                  name="replacement-target"
-                  value={target.id}
-                  checked={target.id === selectedTargetId}
-                  onChange={() => selectTarget(target.id)}
-                  disabled={
-                    !analysis?.retargetable ||
-                    previewState.status === "loading" ||
-                    taskActive ||
-                    installCompletedLocally
-                  }
-                />
-                <span className="replacement-panel__target-name">
-                  <strong>{target.displayName}</strong>
-                  {target.secondaryName ? <small>{target.secondaryName}</small> : null}
-                </span>
-                <code>{target.internalId}</code>
-              </label>
-            ))}
+            {filteredTargets.map((target) => {
+              const currentInstalled = isCurrentInstalledReplacementTarget(
+                target.id,
+                installedTargetId,
+              );
+              return (
+                <label
+                  className="replacement-panel__target-row"
+                  data-installed={currentInstalled}
+                  data-selected={target.id === selectedTargetId}
+                  key={target.id}
+                >
+                  <input
+                    type="radio"
+                    name="replacement-target"
+                    value={target.id}
+                    checked={target.id === selectedTargetId}
+                    onChange={() => selectTarget(target.id)}
+                    disabled={
+                      !analysis?.retargetable ||
+                      previewState.status === "loading" ||
+                      taskActive ||
+                      installCompletedLocally ||
+                      currentInstalled
+                    }
+                  />
+                  <span className="replacement-panel__target-name">
+                    <strong>{target.displayName}</strong>
+                    {target.secondaryName ? <small>{target.secondaryName}</small> : null}
+                    {currentInstalled ? (
+                      <span className="replacement-panel__target-status">
+                        <CheckCircle2 size={13} aria-hidden="true" />
+                        当前已安装
+                      </span>
+                    ) : null}
+                  </span>
+                  <code>{target.internalId}</code>
+                </label>
+              );
+            })}
           </div>
         ) : (
           <p className="replacement-panel__empty">没有匹配的替换目标。</p>
@@ -789,6 +818,7 @@ export function ReplacementTargetPanel({
           onClick={createPreview}
           disabled={
             selectedTarget === null ||
+            isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId) ||
             !analysis?.retargetable ||
             blockMessage !== null ||
             previewState.status === "loading" ||

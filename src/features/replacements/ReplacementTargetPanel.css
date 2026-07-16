@@ -213,6 +213,10 @@
   background: var(--color-accent-weak);
 }
 
+.replacement-panel__target-row[data-installed="true"] {
+  box-shadow: inset 3px 0 0 var(--color-success-dot);
+}
+
 .replacement-panel__target-row input {
   width: 16px;
   height: 16px;
@@ -240,6 +244,15 @@
 .replacement-panel__target-name small {
   color: var(--color-text-muted);
   font-size: 11px;
+}
+
+.replacement-panel__target-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-success-text);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .replacement-panel__target-row code,

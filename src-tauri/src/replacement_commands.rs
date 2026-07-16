@@ -45,12 +45,25 @@ pub fn analyze_imported_mod_replacement(
     request: AnalyzeImportedModReplacementRequestDto,
     state: State<'_, AppState>,
 ) -> Result<ReplacementAnalysisDto, CommandErrorDto> {
-    let request = analyze_request_from_dto(request)?;
-    state
+    let (request, profile_id) = analyze_request_from_dto(request)?;
+    let mod_id = request.mod_id.clone();
+    let analysis = state
         .replacement_workflow
         .analyze_imported_mod(request)
-        .map(Into::into)
-        .map_err(replacement_workflow_error_to_command_error)
+        .map_err(replacement_workflow_error_to_command_error)?;
+    let installed_target_id = profile_id
+        .map(|profile_id| {
+            state
+                .install_manifest_query
+                .query_installed_replacement_target(&profile_id, &mod_id)
+        })
+        .transpose()
+        .map_err(|_| CommandErrorDto {
+            code: "replacement_install_state_unavailable".to_owned(),
+            message: "replacement install state is unavailable".to_owned(),
+        })?
+        .flatten();
+    Ok(replacement_analysis_to_dto(analysis, installed_target_id))
 }
 
 #[tauri::command]
@@ -191,15 +204,29 @@ fn queued_event(task: &TaskStarted) -> TaskProgressEvent {
 
 fn analyze_request_from_dto(
     request: AnalyzeImportedModReplacementRequestDto,
-) -> Result<AnalyzeImportedReplacementRequest, CommandErrorDto> {
-    Ok(AnalyzeImportedReplacementRequest {
-        game_id: parse_game_id(request.game_id)?,
-        mod_id: ModId::new(required_id(
-            request.mod_id,
-            "replacement_mod_id_invalid",
-            "Mod id is required",
-        )?),
-    })
+) -> Result<(AnalyzeImportedReplacementRequest, Option<ProfileId>), CommandErrorDto> {
+    let profile_id = request
+        .profile_id
+        .map(|profile_id| {
+            required_id(
+                profile_id,
+                "replacement_profile_id_invalid",
+                "profile id is required",
+            )
+            .map(ProfileId::new)
+        })
+        .transpose()?;
+    Ok((
+        AnalyzeImportedReplacementRequest {
+            game_id: parse_game_id(request.game_id)?,
+            mod_id: ModId::new(required_id(
+                request.mod_id,
+                "replacement_mod_id_invalid",
+                "Mod id is required",
+            )?),
+        },
+        profile_id,
+    ))
 }
 
 fn preview_request_from_dto(
@@ -328,6 +355,16 @@ fn required_id(
     }
 }
 
+fn replacement_analysis_to_dto(
+    analysis: ReplacementAnalysis,
+    installed_target_id: Option<ReplacementTargetId>,
+) -> ReplacementAnalysisDto {
+    let mut response: ReplacementAnalysisDto = analysis.into();
+    response.installed_target_id =
+        installed_target_id.map(|target_id| target_id.as_str().to_owned());
+    response
+}
+
 fn replacement_workflow_error_to_command_error(error: ReplacementWorkflowError) -> CommandErrorDto {
     let (code, message) = match error {
         ReplacementWorkflowError::UnsupportedGame => (
@@ -450,6 +487,7 @@ impl From<ReplacementAnalysis> for ReplacementAnalysisDto {
     fn from(analysis: ReplacementAnalysis) -> Self {
         Self {
             game_id: analysis.game_id().as_str().to_owned(),
+            installed_target_id: None,
             retargetable: analysis.is_retargetable(),
             matched_asset_count: analysis.matched_asset_count(),
             sources: analysis
@@ -544,6 +582,38 @@ mod tests {
             "sandboxPath": "C:/forbidden"
         }));
         assert!(forbidden.is_err());
+    }
+
+    #[test]
+    fn analysis_request_mapping_keeps_profile_identity_optional_and_backend_owned() {
+        let (request, profile_id) =
+            analyze_request_from_dto(AnalyzeImportedModReplacementRequestDto {
+                game_id: "mhw".to_owned(),
+                profile_id: Some("profile-a".to_owned()),
+                mod_id: "mod-a".to_owned(),
+            })
+            .expect("map analysis request");
+
+        assert_eq!(request.mod_id.as_str(), "mod-a");
+        assert_eq!(profile_id.expect("profile id").as_str(), "profile-a");
+    }
+
+    #[test]
+    fn analysis_response_maps_only_the_stable_installed_target_id() {
+        let analysis = ReplacementAnalysis::new(GameId::mhw(), Vec::new(), 0, Vec::new())
+            .expect("replacement analysis");
+        let response = replacement_analysis_to_dto(
+            analysis,
+            Some(
+                ReplacementTargetId::parse("mhw:armor:fatalis-beta")
+                    .expect("replacement target id"),
+            ),
+        );
+
+        assert_eq!(
+            response.installed_target_id.as_deref(),
+            Some("mhw:armor:fatalis-beta")
+        );
     }
 
     #[test]
