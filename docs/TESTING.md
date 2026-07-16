@@ -277,7 +277,8 @@ CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 202
 全部前端测试、完整 `scripts/verify.ps1` 和 `cargo clippy --workspace --all-targets -- -D warnings`，并完成
 独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model/catalog、AR2
 parser/analyzer/纯 `RetargetPlan`、AR3 staging/InstallPlan/binding snapshot 与 AR4 Tauri typed
-contract/最小受控 UI 测试已落地；下一测试主线进入 AR5 真正重装 target switch、卸载与 Gate B 验收。
+contract/最小受控 UI 测试已落地。AR5 同 revision 真正重装 target switch、重启恢复、manifest 卸载
+baseline 与受控 UI 自动化也已落地；下一测试主线只剩 disposable Windows Sandbox Gate B 验收。
 
 ### ARMOR_RETARGET AR1
 
@@ -353,6 +354,33 @@ Tauri 成功态验收：`pl121_0000` source 被识别为单一 `pl/f_equip` 资�
 1 个动作、0 个阻断冲突；首次安装只生成 target 槽位文件，source 槽位保持不存在，target 长度/hash
 与原人工字节一致。完全关闭并重开应用后仍恢复为已安装，普通安装入口和 AR4 首次 retarget 安装入口
 均 fail closed，真正 target switch 明确留给 AR5。该结果只验收 AR4 切片，不代表 Gate B certified。
+
+### ARMOR_RETARGET AR5
+
+AR5 自动化继续只使用人工 package bytes、temp game/staging/manifest/backup roots 与 fake ports：
+
+```powershell
+cargo test -p hmm-core recovery_transaction_allows_only_a_proven_same_revision_replacement_target_switch
+cargo test -p hmm-app replacement_target_switch
+cargo test -p hmm-app retarget_reinstall
+cargo test -p hmm-app --test replacement_service workflow_rebuilds_the_installed_revision_with_stable_binding_lineage_for_target_switch
+cargo test -p hmm-tauri headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_baseline
+cargo test -p hmm-tauri retarget_reinstall
+node --test src/features/replacements/replacementApi.test.mjs src/features/replacements/replacementWorkflow.test.mjs src/features/replacements/replacementDetailUi.test.mjs
+cmd /c corepack pnpm run test
+```
+
+这些测试锁定普通同 revision 重装继续阻断、只有同 lineage 且 target 变化的 binding 才可切换、
+installed revision 从 manifest 解析且不隐式升级、operation-scoped staging/RAII cleanup、写锁内 token
+revalidation、四类 target 计数、失败 rollback/recovery，以及 `v1 target -> v2 target -> restart -> uninstall
+-> exact pre-Armor baseline`。Tauri/前端测试同时锁定窄 DTO、稳定错误、严格 taskId、确认对话框、
+取消安全阶段和 blocked/current-target/stale-token fail closed。
+
+Gate B 还必须在 disposable Windows Sandbox 使用人工 fixture 验收：首次 retarget 安装 -> 选择不同
+target 真正重装 -> 完全重启应用并恢复新 target -> manifest 卸载 -> 校验逐字节 pre-Armor baseline。
+必须同时确认原 source/旧 target 不残留、AppData/staging/recovery 无非预期残留，且不使用真实 MHW:I、
+第三方 Mod、Steam userdata 或玩家存档。该人工证据完成并复核前，AR5 可标记 `implemented`，Gate B
+不得标记 `certified`。
 
 ## 存档备份
 

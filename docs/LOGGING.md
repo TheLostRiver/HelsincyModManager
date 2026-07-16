@@ -231,7 +231,7 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 当前已落地的最小 Audit Log 能力：
 - 安装、卸载和后端受控回滚/重装收敛任务会写入最小安装审计事件。普通安装和卸载失败事件在既有短 id/计数字段外只增加与 task event 一致的稳定 `error_code`，不会记录原始 repository 或文件系统错误。
 - `rollback_install` 与 `reconcile_reinstall` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数；`reconcile_reinstall` 的计数既可表示 post-commit cleanup，也可表示受控恢复到 pre-reinstall 状态的 remove/restore/snapshot cleanup 数量。事件不记录完整本地路径、backup/snapshot ref 或 root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
-- `reinstall_mod` 事件只允许 `task_id`、`game_id`、`profile_id`、`mod_id`、`previous_revision_id`、`candidate_revision_id`、四类 target 聚合计数，以及失败时的稳定 `error_code` / `rollback_result`；不记录 target 列表、完整路径、backup/snapshot ref、manifest/source 正文、hash 列表或第三方 Mod 内容。
+- `reinstall_mod` 事件只允许 `task_id`、`game_id`、`profile_id`、`mod_id`、`previous_revision_id`、`candidate_revision_id`、四类 target 聚合计数，以及失败时的稳定 `error_code` / `rollback_result`。ARMOR 同 revision target switch 在这份既有白名单上唯一新增可选 `target_id`；不记录 target 列表、binding、staging、plan token、完整路径、backup/snapshot ref、manifest/source 正文、hash 列表或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
 - P7.2a 后台平台注册生命周期会写入 category `save_backup`、operation `background_registration` 的最小审计事件。除顶层 result 外，fields 只允许 `registration_status`、`task_schema_version` 和稳定 `error_code`；不得记录 task name、SID、worker path、PowerShell executable/script、task XML、原始 stdout/stderr、CIM exception、Profile/save/backup 路径或用户名。
 - 后台状态查询本身只读且不写重复审计；register/update/unregister 只有在受控 app use case 中才记录结果。ownership conflict、permission、invalid output 和 timeout 只映射稳定 code，不持久化原始平台错误。

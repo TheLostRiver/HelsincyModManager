@@ -168,13 +168,13 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 
 如果服务需要内部可变状态，优先让服务内部用清晰的锁或队列表达，而不是在 command 中临时拼装全局状态。
 
-## ARMOR_RETARGET AR4 契约
+## ARMOR_RETARGET AR4/AR5 契约
 
 AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件修改”只负责用
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
 占用和冲突总览。
 
-四个 command 的请求只使用稳定身份：
+六个 command 的请求只使用稳定身份：
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
@@ -182,6 +182,8 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | `analyze_imported_mod_replacement` | `gameId`、`modId` | source、匹配文件数、warning 与 `retargetable` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
+| `preview_retarget_reinstall` | `gameId`、`profileId`、`modId`、`targetId`、layer | `ReinstallPlanPreviewDto` 与 plan token |
+| `start_retarget_reinstall_task` | 与 preview 相同，另加 `planToken` | `TaskStartedDto` |
 
 前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
 `sourceId`、`bindingId`、`internalId` 或最终 target path。后端从当前 display revision 重建包事实，
@@ -192,6 +194,18 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 状态严格为 `not_installed`。`installed`、`committed_cleanup_pending`、`cleanup_pending`、
 `rollback_required`、`repair_required`、`unknown` 以及状态查询失败全部 fail closed。已安装 Mod 的
 target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
+
+`preview_retarget_reinstall` 与 `start_retarget_reinstall_task` 只用于 recovery status 严格为 `installed`
+的同 revision target switch。后端从 manifest 解析 installed revision，再由 repository 和 adapter 重建
+package/source/candidate binding/staging/InstallPlan；它不读取当前 display revision 来决定 candidate，
+因此导入新 revision 后切换 target 也不会隐式升级 Mod。前端不得提交 revision、package、source、
+binding、staging、game root 或最终路径。
+
+同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，且新
+`targetId` 与已安装 target 不同时才允许进入真正重装。当前 target、缺失 binding、不安全 recovery
+状态、blocking conflict 或 preview token 过期均 fail closed。start 继续使用既有
+`install.reinstall.*` phase、game/profile 写锁和 cancellation barrier；前端严格按 `taskId` 匹配事件，
+取消入口只在 queued/plan/preflight 安全阶段可见。
 
 稳定错误码至少包括：
 
@@ -400,15 +414,19 @@ list_replacement_targets({ gameId, query? })
 analyze_imported_mod_replacement({ gameId, modId })
 preview_initial_retarget_install({ gameId, profileId, modId, targetId, layerName, layerPriority })
 start_retarget_install_task({ gameId, profileId, modId, targetId, layerName, layerPriority })
+preview_retarget_reinstall({ gameId, profileId, modId, targetId, layerName, layerPriority })
+start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, layerPriority, planToken })
 ```
 
 边界：
 
 - 前端只提交稳定的 game/Mod/profile/target/layer identity，不提交 package/revision/source/binding/path。
-- 后端通过 repository 解析当前 display revision 和 package，不接受 cache、sandbox 或 staging path。
+- 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
+  不接受 cache、sandbox 或 staging path，也不隐式升级。
 - MHW adapter 负责 slot 解析、catalog 归一化和路径级 plan。
 - 返回 preview 时可展示最终相对路径摘要，但前端不能自行生成路径。
-- preview/start 只允许 recovery status 严格为 `not_installed`；已安装 target switch 留给 AR5 真正重装。
+- initial preview/start 只允许 recovery status 严格为 `not_installed`；retarget reinstall preview/start 只允许
+  `installed`，并复用真正重装的 plan token、锁、backup、manifest、rollback/recovery 与 task phases。
 
 ### 3. Profile 管理
 

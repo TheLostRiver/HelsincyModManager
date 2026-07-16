@@ -2,11 +2,11 @@
 
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
 >
-> 实施状态（2026-07-16）：阶段 1 / AR1、阶段 2 / AR2、阶段 3 / AR3 与阶段 4 / AR4 已标记为 `implemented`。
+> 实施状态（2026-07-16）：阶段 1-5 / AR1-AR5 的代码、自动化与受控 UI 已标记为 `implemented`。
 > 当前已落地稳定 replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格
 > parser、单 source analyzer、纯 `RetargetPlan`、受控 staging materialize、InstallPlan 与 binding
-> snapshot 集成、四个窄 Tauri command 和 Mod 详情受控 UI；当前下一项为阶段 5 / AR5。真正重装
-> target switch、卸载闭环与 Gate B 验收尚未完成。
+> snapshot 集成、六个窄 Tauri command、真正重装 target switch 和 Mod 详情受控 UI；当前只等待
+> disposable Windows Sandbox 完成 target switch、重启与卸载纵向验收，Gate B 尚未 `certified`。
 
 ## 背景
 
@@ -364,12 +364,15 @@ ManifestWrite
 如果玩家切换目标：
 
 ```text
-卸载旧 binding 的 manifest
-重新生成新 binding 的 staging
-安装新 InstallPlan
+从 manifest 解析已安装 revision 与旧 binding
+在写锁外为新 target 重建独立 staging 与 candidate InstallPlan
+在写锁内复用真正重装事务，原子替换旧 entry/binding facts
+失败时 rollback/recover；成功后由 manifest 驱动后续卸载
 ```
 
-不要在游戏目录中尝试“原地改名”。
+不要先独立卸载再安装，也不要在游戏目录中尝试“原地改名”。同 revision 只有旧、新 binding
+证明 source/profile/path-family lineage 一致且 target 确实变化时才允许真正重装；普通未变化重装继续
+fail closed。
 
 staging 目录的生命周期：它是**临时生成物**，可丢弃、可重建。切换目标或回滚后，旧 staging 可以安全清理。安装事实的唯一来源是三者：**原始导入包（只读）+ `ReplacementBinding` + `InstallManifest`**。任何时刻只要这三者在，就能重新 materialize 出 staging。这与 `ARCHITECTURE.md` “原始导入包永远只读”一致。staging 本身不作为事实来源持久化。
 
@@ -407,6 +410,8 @@ Audit Log 应记录：
 - materialize staging。
 - commit 安装。
 - 覆盖、备份、删除、rollback。
+- target switch 复用 `reinstall_mod`，只额外记录稳定 `target_id`；不记录 binding、staging、plan token
+  或完整路径。
 
 日志只记录脱敏路径、内部 ID、hash、大小和错误分类，不记录完整本地路径或第三方 Mod 内容。
 
@@ -541,11 +546,12 @@ SQLite 中应持久化玩家状态：
 - 展示源槽位、target catalog、冲突预览和 warning。
 - 首次安装只提交后端定义的 target/binding 选择，不让前端拼接路径。
 
-### 阶段 5：切换目标、卸载与 Gate B（AR5，planned）
+### 阶段 5：切换目标、卸载与 Gate B（AR5 已实现；Gate B 验收待完成）
 
-- 已安装 Mod 切换 target 必须复用 Gate A 真正重装，原子替换旧 entry/binding facts。
-- 重启后恢复 target/安装事实，最终卸载恢复 ARMOR 安装前基线。
-- 完成自动化、安全复审与 disposable Windows Sandbox 人工验收后再标记 Gate B `certified`。
+- 已安装 Mod 切换 target 已复用 Gate A 真正重装，原子替换旧 entry/binding facts。
+- 自动化已证明同 revision 目标切换、重启恢复、最终 manifest 卸载和 ARMOR 安装前 baseline 恢复。
+- UI 已提供 installed-state preview/confirm、严格 taskId 事件匹配与安全阶段取消入口。
+- disposable Windows Sandbox 人工验收仍待完成；完成并复核证据后才能标记 Gate B `certified`。
 
 ### Gate B 后高级能力（planned + paused）
 
