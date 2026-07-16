@@ -1,6 +1,7 @@
 import type { GameId } from "../game-setup/gameSetupTypes";
 import type { TaskStartedDto } from "../mods/modImportTypes";
 import type { InstallPlanPreview } from "../mods/modInstallPlanTypes";
+import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 
 export type ListReplacementTargetsInput = {
   gameId: GameId;
@@ -22,6 +23,16 @@ export type PreviewInitialRetargetInstallInput = {
 };
 
 export type StartRetargetInstallTaskInput = PreviewInitialRetargetInstallInput;
+
+export type PreviewRetargetReinstallInput = PreviewInitialRetargetInstallInput;
+
+export type StartRetargetReinstallTaskInput = PreviewRetargetReinstallInput & {
+  planToken: string;
+};
+
+export type CancelRetargetInstallTaskInput = {
+  taskId: string;
+};
 
 export type ReplacementTarget = {
   id: string;
@@ -74,3 +85,5 @@ export type InitialRetargetInstallPreview = {
 };
 
 export type RetargetInstallTaskStarted = TaskStartedDto;
+
+export type RetargetReinstallPreview = ReinstallPlanPreview;
