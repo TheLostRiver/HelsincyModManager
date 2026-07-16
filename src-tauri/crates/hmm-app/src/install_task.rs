@@ -1797,6 +1797,7 @@ mod tests {
                     plan_hash: "opaque-hash".to_owned(),
                     status: ReinstallRecoveryTransactionStatus::RepairRequired,
                     pre_reinstall_manifest: sample_manifest(),
+                    candidate_replacement_bindings: Vec::new(),
                     targets: Vec::new(),
                 }]),
                 AdmissionRepositoryMode::Unavailable => {

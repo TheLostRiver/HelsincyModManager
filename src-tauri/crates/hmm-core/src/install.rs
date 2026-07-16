@@ -1,3 +1,4 @@
+use crate::{ReplacementBindingId, ReplacementBindingSnapshot};
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -136,6 +137,22 @@ pub struct InstallConflict {
 pub struct InstallPlan {
     pub actions: Vec<InstallAction>,
     pub conflicts: Vec<InstallConflict>,
+    #[serde(default)]
+    pub replacement_bindings: Vec<ReplacementBindingSnapshot>,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InstallPlanValidationError {
+    #[error("install plan contains a duplicate replacement binding id")]
+    DuplicateReplacementBindingId,
+    #[error("install plan contains multiple replacement bindings for one Mod")]
+    DuplicateReplacementBindingMod,
+    #[error("install plan replacement binding has no provider for its Mod")]
+    ReplacementBindingOwnerMissing,
+    #[error("install plan replacement binding profile does not match commit profile")]
+    ReplacementBindingProfileMismatch,
+    #[error("install plan replacement binding revision does not match the requested revision")]
+    ReplacementBindingRevisionMismatch,
 }
 
 impl InstallPlan {
@@ -176,11 +193,77 @@ impl InstallPlan {
             }));
         }
 
-        Self { actions, conflicts }
+        Self {
+            actions,
+            conflicts,
+            replacement_bindings: Vec::new(),
+        }
     }
 
     pub fn has_blocking_conflicts(&self) -> bool {
         !self.conflicts.is_empty()
+    }
+
+    pub fn with_replacement_bindings(
+        mut self,
+        replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    ) -> Result<Self, InstallPlanValidationError> {
+        self.replacement_bindings = replacement_bindings;
+        self.validate_replacement_bindings()?;
+        Ok(self)
+    }
+
+    pub fn validate_replacement_bindings(&self) -> Result<(), InstallPlanValidationError> {
+        let provider_mods = self
+            .actions
+            .iter()
+            .map(|action| action.provider.mod_id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut binding_ids = BTreeSet::<ReplacementBindingId>::new();
+        let mut binding_mods = BTreeSet::<ModId>::new();
+        for snapshot in &self.replacement_bindings {
+            if !binding_ids.insert(snapshot.binding_id().clone()) {
+                return Err(InstallPlanValidationError::DuplicateReplacementBindingId);
+            }
+            if !binding_mods.insert(snapshot.mod_id().clone()) {
+                return Err(InstallPlanValidationError::DuplicateReplacementBindingMod);
+            }
+            if !provider_mods.contains(snapshot.mod_id()) {
+                return Err(InstallPlanValidationError::ReplacementBindingOwnerMissing);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_replacement_bindings_for_profile(
+        &self,
+        profile_id: &ProfileId,
+    ) -> Result<(), InstallPlanValidationError> {
+        self.validate_replacement_bindings()?;
+        if self
+            .replacement_bindings
+            .iter()
+            .any(|snapshot| snapshot.profile_id() != profile_id)
+        {
+            return Err(InstallPlanValidationError::ReplacementBindingProfileMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn validate_replacement_bindings_for_profile_and_revision(
+        &self,
+        profile_id: &ProfileId,
+        revision_id: Option<&ModRevisionId>,
+    ) -> Result<(), InstallPlanValidationError> {
+        self.validate_replacement_bindings_for_profile(profile_id)?;
+        if self
+            .replacement_bindings
+            .iter()
+            .any(|snapshot| snapshot.revision_id() != revision_id)
+        {
+            return Err(InstallPlanValidationError::ReplacementBindingRevisionMismatch);
+        }
+        Ok(())
     }
 }
 
@@ -334,6 +417,16 @@ pub enum InstallManifestValidationError {
     MixedRevisionSet { mod_id: String },
     #[error("install manifest entries for Mod {mod_id} contain multiple revisions")]
     MultipleRevisionSet { mod_id: String },
+    #[error("install manifest contains a duplicate replacement binding id")]
+    DuplicateReplacementBindingId,
+    #[error("install manifest contains multiple replacement bindings for one Mod")]
+    DuplicateReplacementBindingMod,
+    #[error("install manifest replacement binding profile does not match the manifest profile")]
+    ReplacementBindingProfileMismatch,
+    #[error("install manifest replacement binding has no entry set for its Mod")]
+    ReplacementBindingOwnerMissing,
+    #[error("install manifest replacement binding revision does not match its Mod entry set")]
+    ReplacementBindingRevisionMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -354,6 +447,8 @@ pub struct InstallManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_hash: Option<String>,
     pub entries: Vec<InstallManifestEntry>,
+    #[serde(default)]
+    pub replacement_bindings: Vec<ReplacementBindingSnapshot>,
 }
 
 #[derive(Deserialize)]
@@ -376,6 +471,8 @@ struct InstallManifestWire {
     #[serde(default)]
     plan_hash: Option<String>,
     entries: Vec<InstallManifestEntry>,
+    #[serde(default)]
+    replacement_bindings: Vec<ReplacementBindingSnapshot>,
 }
 
 impl<'de> Deserialize<'de> for InstallManifest {
@@ -402,6 +499,7 @@ impl<'de> Deserialize<'de> for InstallManifest {
             completed_at: wire.completed_at,
             plan_hash: wire.plan_hash,
             entries: wire.entries,
+            replacement_bindings: wire.replacement_bindings,
         };
         manifest.validate().map_err(D::Error::custom)?;
         Ok(manifest)
@@ -445,6 +543,26 @@ impl InstallManifest {
             }
         }
 
+        let mut binding_ids = BTreeSet::<ReplacementBindingId>::new();
+        let mut binding_mods = BTreeSet::<ModId>::new();
+        for snapshot in &self.replacement_bindings {
+            if !binding_ids.insert(snapshot.binding_id().clone()) {
+                return Err(InstallManifestValidationError::DuplicateReplacementBindingId);
+            }
+            if !binding_mods.insert(snapshot.mod_id().clone()) {
+                return Err(InstallManifestValidationError::DuplicateReplacementBindingMod);
+            }
+            if snapshot.profile_id() != &self.profile_id {
+                return Err(InstallManifestValidationError::ReplacementBindingProfileMismatch);
+            }
+            let Some(entry_revision) = revisions_by_mod.get(snapshot.mod_id()) else {
+                return Err(InstallManifestValidationError::ReplacementBindingOwnerMissing);
+            };
+            if entry_revision.as_ref() != snapshot.revision_id() {
+                return Err(InstallManifestValidationError::ReplacementBindingRevisionMismatch);
+            }
+        }
+
         Ok(())
     }
 
@@ -461,6 +579,7 @@ impl InstallManifest {
             completed_at: None,
             plan_hash: None,
             entries,
+            replacement_bindings: Vec::new(),
         }
     }
 
@@ -484,6 +603,7 @@ impl InstallManifest {
             completed_at,
             plan_hash,
             entries,
+            replacement_bindings: Vec::new(),
         }
     }
 }
@@ -770,6 +890,7 @@ mod tests {
             completed_at: Some("2026-06-29T00:00:01Z".to_owned()),
             plan_hash: Some("sha256:test-plan".to_owned()),
             entries: Vec::new(),
+            replacement_bindings: Vec::new(),
         };
 
         let serialized = serde_json::to_string(&manifest).expect("serialize manifest");

@@ -4,7 +4,8 @@
 
 当前实施顺序由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 覆盖：安装、
 卸载和真正重装已通过 CL4 独立复审，Core Mod Lifecycle Gate A 为 `certified`；ARMOR_RETARGET
-AR1 模型/port/最小 catalog 已实现，当前进入 AR2 parser/analyzer/RetargetPlan。本文的能力清单仍是实现事实来源，
+AR1 模型/port/最小 catalog、AR2 parser/analyzer/RetargetPlan 与 AR3 staging/InstallPlan/binding
+snapshot 已实现，当前进入 AR4 Tauri typed contract 与最小受控 UI。本文的能力清单仍是实现事实来源，
 但旧的后续建议不再优先于该计划。
 
 ## 模块目标
@@ -114,7 +115,12 @@ reconciliation，不能由当前 package 或 task 内存猜测。
 
 新写入的 manifest entry 会记录 `installed_file` 摘要：写入内容的字节数和 SHA-256。该字段只描述本工具本次写入到目标路径的内容，不记录完整本地路径、sandbox/cache 路径或文件内容。旧 manifest 缺少该字段时仍可兼容读取，但后续自动卸载或修复检测不能把缺少摘要的旧 entry 当作可安全删除/恢复的充分事实。
 
-manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_version`、`schema_migration`、`backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段可被 JSON 读写；旧 manifest 缺少这些字段时会兼容读取，并把 `manifest_id` 默认为 `profile:<profile_id>`、`schema_version` 默认为 `1`、`status` 默认为 `completed`。profile 级 `status` 已有统一读侧消费规则（`InstallManifestStatus::consumption()`）：manifest 状态摘要查询 fallback 和只读恢复扫描先消费 manifest status，`rollback_required` / `repair_required` 映射为对应失败摘要、`planned` / `committing` 映射为 `unknown`，`completed` / `rolled_back` 才继续按 entries / 文件校验消费，保证失败状态不会被误报为已完成。当前安装提交成功会写入稳定 profile-scoped `manifest_id`、`schema_version = 1`、`backend = "install_plan"`、`status = completed`、`completed_at` 和真实 `plan_hash`；commit merge / uninstall 会保留已有 schema metadata。`plan_hash` 使用稳定 `sha256:` 摘要绑定本次 commit 消费的计划事实，只包含相对 target、mod id、package file id 和 layer 信息，不包含完整本地路径、backup root/ref、manifest path、sandbox/cache path 或第三方 Mod 内容。
+manifest 已具备最小 rich metadata 兼容基础：`manifest_id`、`schema_version`、`schema_migration`、`backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段可被 JSON 读写；旧 manifest 缺少这些字段时会兼容读取，并把 `manifest_id` 默认为 `profile:<profile_id>`、`schema_version` 默认为 `1`、`status` 默认为 `completed`。profile 级 `status` 已有统一读侧消费规则（`InstallManifestStatus::consumption()`）：manifest 状态摘要查询 fallback 和只读恢复扫描先消费 manifest status，`rollback_required` / `repair_required` 映射为对应失败摘要、`planned` / `committing` 映射为 `unknown`，`completed` / `rolled_back` 才继续按 entries / 文件校验消费，保证失败状态不会被误报为已完成。当前安装提交成功会写入稳定 profile-scoped `manifest_id`、`schema_version = 1`、`backend = "install_plan"`、`status = completed`、`completed_at` 和真实 `plan_hash`；commit merge / uninstall 会保留已有 schema metadata。`plan_hash` 使用稳定 `sha256:` 摘要绑定本次 commit 消费的计划事实，包含相对 target、mod id、package file id、layer 和 replacement binding snapshot 的稳定 identity/归属/path-family/kind 信息，不包含完整本地路径、backup root/ref、manifest path、sandbox/cache path 或第三方 Mod 内容。
+
+ARMOR_RETARGET AR3 已把最终 retarget target 接入现有 `InstallPlan`：batch materializer 只写受控 staging，
+映射 source reader 继续以原 `PackageFileId` 读取派生文件；manifest 顶层 `replacement_bindings` 默认空以
+兼容旧 JSON，并校验 Mod/profile/revision 归属。commit merge、manifest-driven uninstall、rollback、
+真正重装 candidate replacement 与 durable recovery recognition 原子维护同一 snapshot 集合。
 
 当前回滚能力：
 
@@ -336,9 +342,8 @@ target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或
 - 恢复中心写入型工作流：只读 `scan_install_recovery` 摘要已能检测 `completed`、`rollback_required`、`repair_required`、`unknown` 和 `not_installed`，也支持空 `modIds` 扫描当前 profile manifest 内全部已知托管 Mod，并会补入只有 durable recovery record 的半完成安装；Mod 库加载后已会消费该摘要并展示人工处理提示，Dashboard 入口已展示 profile 级健康摘要，App Frame 已提供全局告警，独立恢复中心已提供入口、逐 Mod 安全摘要、rich repair summary、完整支持诊断包导出联动和人工处理决策面板。`preview_recovery_action` 已能只读预览 `rollback_install` 是否可执行，`start_recovery_action_task` 已能后端执行受控 `rollback_install`；恢复中心写入型按钮、任务 UI 编排和操作完成后的恢复中心/全局健康刷新均已实现。
 - Profile 工作流：`profileId` 已进入链路，但 profile 启用/禁用、批量切换、优先级管理仍未完成。
 - 依赖和前置检查：尚未在安装提交前接入完整 dependency/preflight 阻断。
-- ARMOR_RETARGET staging：设计上依赖 InstallPlan，但当前尚未把 retarget materialize 产物接入 InstallPlan 输入。
 - Manifest rich 状态检测：当前已提供只读 manifest 状态摘要 command、只读 recovery scan command 和前端 manifest 摘要展示，新 manifest entry 已记录写入内容的 size/SHA-256；manifest JSON 已兼容 `manifest_id`、`schema_version`、`schema_migration`、`backend`、`status`、`created_at`、`completed_at` 和 `plan_hash` 字段，旧 manifest 缺少 rich 字段时默认读取为 profile-scoped manifest id、schema v1 和 `completed`。`scan_install_recovery` 已能读取 durable recovery record、真实目标文件和 backup 做只读一致性检测，并可返回由受控记录驱动的 `rollback_required`；`get_install_manifest_status` 在传入 `gameId` 时已消费同一只读恢复扫描结果并映射为安装摘要状态，未传 `gameId` 时保留 manifest-only fallback。两条路径都先消费 profile 级 rich manifest `status`（读侧状态机消费规则），manifest 失败/进行中状态优先于逐 entry 事实检查。旧 manifest 可能缺少 `installed_file` 摘要，后续破坏性操作必须阻断或进入修复流程。
-- Rich manifest：当前已落地 domain 字段、JSON 兼容基础、`manifest_id` / schema metadata、真实 `plan_hash` 计算、受控回滚成功后的 `rolled_back` status 持久化，以及读侧状态机消费规则；replacement binding snapshot、写侧状态机门禁以及更完整的 `repair_required` 检测仍待后续切片。
+- Rich manifest：当前已落地 domain 字段、JSON 兼容基础、`manifest_id` / schema metadata、真实 `plan_hash` 计算、replacement binding snapshot、受控回滚成功后的 `rolled_back` status 持久化，以及读侧状态机消费规则；写侧状态机门禁以及更完整的 `repair_required` 检测仍待后续切片。
 - Crash recovery：当前提交失败会 best-effort rollback，但不等同于跨进程崩溃恢复能力。
 
 ## 文档现状与分工
@@ -364,9 +369,9 @@ target path、backup/snapshot ref、manifest root/path、sandbox/cache 路径或
 4. **CL3（已完成）：** 已落地独立真正重装 use case/task、四类 entry-set replacement、失败恢复和
    L1/L2/L3 验收。
 5. **CL4 / Gate A（已完成）：** 完整验证、安全复审和 `certified` 状态记录均已通过。
-6. **ARMOR_RETARGET Gate B（AR1 已实现，当前 AR2）：** AR1 已落地领域模型、replacement binding、
-   只读 catalog port 和最小 versioned catalog；AR3 才接入 staging、InstallPlan 与 binding snapshot，后续切片再完成
-   目标选择、安装、切换目标和卸载。
+6. **ARMOR_RETARGET Gate B（AR1/AR2/AR3 已实现，当前 AR4）：** 已落地领域模型、replacement
+   binding、只读 catalog port、最小 versioned catalog、纯分析/计划、受控 staging、InstallPlan 与
+   binding snapshot；AR4/AR5 再完成目标选择、安装、切换目标、卸载和 Gate B 验收。
 
 Rich manifest、repair 和 preflight 只在解除上述步骤阻断时取最小切片。批量/profile 卸载、完整
 repair 中心和通用依赖 catalog 延后；恢复中心写入型 UI 已落地，不再作为下一项工作重复实施。

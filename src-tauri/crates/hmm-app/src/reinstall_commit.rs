@@ -4,8 +4,8 @@ use crate::reinstall::{
     summarize, PreparedReinstall, PreparedReinstallTarget, ReinstallCandidateSourceReader,
 };
 use hmm_core::{
-    replace_entries_for_mod, InstallManifest, InstallManifestEntry, InstallManifestStatus,
-    InstallTargetPath, ReinstallRecoveryTarget, ReinstallRecoveryTransaction,
+    replace_entries_and_bindings_for_mod, InstallManifest, InstallManifestEntry,
+    InstallManifestStatus, InstallTargetPath, ReinstallRecoveryTarget, ReinstallRecoveryTransaction,
     ReinstallRecoveryTransactionStatus, ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose,
     ReinstallSnapshotState, ReinstallTargetClass,
 };
@@ -362,6 +362,7 @@ impl ReinstallCommitService {
             plan_hash: prepared.plan_hash.clone(),
             status: ReinstallRecoveryTransactionStatus::Planned,
             pre_reinstall_manifest: prepared.old_manifest.clone(),
+            candidate_replacement_bindings: prepared.candidate_replacement_bindings.clone(),
             targets: recovery_targets,
         };
         if transaction.validate().is_err() {
@@ -773,6 +774,7 @@ fn same_pre_mutation_operation(
         && durable.plan_token == attempted.plan_token
         && durable.plan_hash == attempted.plan_hash
         && durable.pre_reinstall_manifest == attempted.pre_reinstall_manifest
+        && durable.candidate_replacement_bindings == attempted.candidate_replacement_bindings
         && durable.targets == attempted.targets
 }
 
@@ -833,12 +835,13 @@ fn build_candidate_manifest(
             installed_file: Some(source.summary.clone()),
         })
         .collect();
-    let mut manifest = replace_entries_for_mod(
+    let mut manifest = replace_entries_and_bindings_for_mod(
         &prepared.old_manifest,
         &prepared.request.mod_id,
         &prepared.legacy_provenance,
         &prepared.candidate.revision_id,
         entries,
+        prepared.candidate_replacement_bindings.clone(),
     )
     .map_err(|_| ())?;
     manifest.status = InstallManifestStatus::Completed;

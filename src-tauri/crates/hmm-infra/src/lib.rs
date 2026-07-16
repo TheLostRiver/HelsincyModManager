@@ -19,6 +19,7 @@ mod save_backup;
 mod save_backup_background_registry;
 mod save_directory_pending_store;
 mod save_directory_scanner;
+mod staging;
 pub mod sqlite;
 pub mod steam_discovery;
 mod steam_profile;
@@ -59,6 +60,9 @@ pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry
 pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
+pub use staging::{
+    FileSystemRetargetStagingMaterializer, RetargetStagingInstallSourceFileReader,
+};
 pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteModMetadataRepository;

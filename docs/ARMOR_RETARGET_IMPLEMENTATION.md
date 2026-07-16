@@ -3,9 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **当前优先级（2026-07-16）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
-> AR1/AR2 已标记为 `implemented`，当前下一项只执行 AR3。执行顺序以
+> AR1/AR2/AR3 已标记为 `implemented`，当前下一项只执行 AR4。执行顺序以
 > [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
-> 不得在 AR3 提前实现后续切片，target switch 必须复用 Gate A 的
+> 不得在 AR4 提前实现 AR5，target switch 必须复用 Gate A 的
 > 真正重装 contract。
 
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。
@@ -49,8 +49,8 @@ Lifecycle Gate A 必须达到 `certified`：安装/卸载纵向 acceptance、桌
 Gate A certified
   -> AR1 replacement model / ports / 最小 catalog [implemented]
   -> AR2 单 source f_equip parser / analyzer / RetargetPlan [implemented]
-  -> AR3 staging materialize / InstallPlan / binding snapshot [current]
-  -> AR4 target selection / preview / install UI
+  -> AR3 staging materialize / InstallPlan / binding snapshot [implemented]
+  -> AR4 target selection / preview / install UI [current]
   -> AR5 true reinstall target switch / uninstall / Gate B
 ```
 
@@ -106,6 +106,32 @@ AR2 按纯分析/计划边界落地；下面旧 Task 4-5 的代码草图只保�
 AR2 没有 app/infra/Tauri/frontend wiring，没有 materialize staging，也没有修改 InstallPlan/manifest。
 AR3 必须消费这些纯 action，并保持原始导入包只读和 staging containment。
 
+## AR3 已实施基线（2026-07-16）
+
+AR3 按 app/ports/infra/core 的窄边界落地；下面旧 Task 6-9 的 `PathBuf`、单文件
+`StagingFileSystem` 和展示型 snapshot 草图只保留作历史追溯，实际公开 contract 以当前源码和本节
+为准。
+
+已落地：
+
+- `hmm-core`：validated `ReplacementBindingSnapshot`，带 Mod/profile/optional revision 归属、稳定
+  source/target identity、path-family 与 retarget kind；`InstallPlan`、`InstallManifest` 和真正重装
+  recovery transaction 默认兼容旧 JSON，并原子维护 snapshot 集合。
+- `hmm-ports::staging`：batch `RetargetStagingMaterializer` 与只含原 `PackageFileId`、最终
+  `InstallTargetPath` 的 `RetargetStagingFile`；错误使用稳定分类，不暴露 filesystem root。
+- `hmm-app::replacement`：编排 adapter、snapshot、final-target InstallPlan 与 materialize；首次安装和
+  真正重装在 source read、game write 和 manifest save 前校验 profile/revision ownership，plan/token
+  hash 纳入 snapshot facts。
+- `hmm-infra::staging`：在 sibling `.partial` 中完成受控 batch 写入，校验 containment、链接逃逸和
+  大小写不敏感碰撞，完整成功后 rename 发布，失败清理；映射 source reader 保留原
+  `PackageFileId` provenance。
+- 聚焦测试入口：`cargo test -p hmm-core --test replacement_install`、
+  `cargo test -p hmm-app --test replacement_service`、
+  `cargo test -p hmm-infra --test retarget_staging`，以及完整 `hmm-app` / `hmm-infra` 回归。
+
+AR3 没有 Tauri/AppState/frontend wiring，也没有开放已安装 Mod 的 target switch。AR4 只补 typed
+contract 与最小受控 UI；真正重装 target switch、卸载闭环和 Gate B 验收仍属于 AR5。
+
 ## Target File Structure（AR1-AR4 整体目标；已实施情况以上述基线为准）
 
 ```text
@@ -159,10 +185,10 @@ src/features/replacements/
 职责边界：
 
 - `hmm-core/src/replacement.rs` 与 `retarget.rs`：AR1 定义游戏无关 identity/target/binding/catalog；AR2 已添加纯 analysis/plan。
-- `hmm-ports/src/replacement.rs`：AR1 声明 catalog 查询；AR2 已添加纯 analysis/plan adapter；AR3 才添加 staging 端口。
+- `hmm-ports/src/replacement.rs`：AR1 声明 catalog 查询；AR2 已添加纯 analysis/plan adapter；AR3 已在独立 `staging` 模块添加 batch materialize 端口。
 - `hmm-games-mhw/src/armor_retarget/*`：AR1 已实现 catalog/Unicode；AR2 已实现 armor 路径解析、single-source analysis 和 slot 段替换。
-- `hmm-app/src/replacement.rs`：AR3 再编排 catalog 查询、包分析、plan 生成和 staging materialize。
-- `hmm-infra/src/staging.rs`：AR3 再在应用数据目录或临时目录中复制文件，不触碰游戏目录。
+- `hmm-app/src/replacement.rs`：AR3 已编排 catalog 查询、包分析、plan 生成、snapshot、InstallPlan 和 staging materialize。
+- `hmm-infra/src/staging.rs`：AR3 已在受控 root 中 batch materialize 并原子发布，不触碰游戏目录。
 - `src-tauri/src/replacement_commands.rs`：AR4 再添加 Tauri command 薄边界，只做 DTO 转换和调用应用层服务。
 - `src/features/replacements/*`：AR4 再添加前端 typed API 和类型，不拼接路径，不改写 slot 字符串。
 
@@ -1184,7 +1210,7 @@ Expected:
 test result: ok
 ```
 
-## Task 6: Application Replacement Service
+## Task 6: Application Replacement Service（AR3 已实施；下列旧草图仅供追溯）
 
 **Files:**
 
@@ -1372,7 +1398,7 @@ Expected:
 test result: ok
 ```
 
-## Task 7: Staging Materialize
+## Task 7: Staging Materialize（AR3 已实施；下列单文件草图已由 batch port 取代）
 
 **Files:**
 
@@ -1506,7 +1532,7 @@ Expected:
 test result: ok
 ```
 
-## Task 8: Retarget Materialize Use Case
+## Task 8: Retarget Materialize Use Case（AR3 已实施；实际 contract 见 AR3 基线）
 
 **Files:**
 
@@ -1664,7 +1690,7 @@ Expected:
 test result: ok
 ```
 
-## Task 9: Manifest and InstallPlan Integration
+## Task 9: Manifest and InstallPlan Integration（AR3 已实施；实际 snapshot contract 见 AR3 基线）
 
 **Files:**
 

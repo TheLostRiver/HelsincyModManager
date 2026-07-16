@@ -16,6 +16,10 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
+#[path = "install_recovery_replacement_tests.rs"]
+mod install_recovery_replacement_tests;
+use install_recovery_replacement_tests::reinstall_recovery_fixture;
+
 #[derive(Default)]
 struct FakeGameFiles {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
@@ -1986,66 +1990,6 @@ fn reinstall_rollback_fixture(
         replaced,
         added,
     )
-}
-
-fn reinstall_recovery_fixture() -> (
-    InstallManifest,
-    InstallManifest,
-    ReinstallRecoveryTransaction,
-    InstallTargetPath,
-) {
-    let profile_id = ProfileId::new("default");
-    let mod_id = ModId::new("mod-a");
-    let old_revision_id = ModRevisionId::new("installed-v1");
-    let candidate_revision_id = ModRevisionId::new("candidate-v2");
-    let target =
-        InstallTargetPath::parse("nativePC/reinstall.bin", ["nativePC"]).expect("reinstall target");
-    let mut old_manifest = InstallManifest::completed(
-        profile_id.clone(),
-        vec![InstallManifestEntry {
-            target_path: target.clone(),
-            mod_id: mod_id.clone(),
-            revision_id: Some(old_revision_id.clone()),
-            package_file_id: PackageFileId::new("old/reinstall.bin"),
-            layer: FileLayer::new("base", 0),
-            backup_ref: None,
-            installed_file: Some(installed_file_summary(b"installed-v1")),
-        }],
-    );
-    old_manifest.schema_version = hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
-    old_manifest.plan_hash = Some("old-plan-hash".to_owned());
-
-    let mut candidate_manifest = old_manifest.clone();
-    candidate_manifest.entries[0].revision_id = Some(candidate_revision_id.clone());
-    candidate_manifest.entries[0].package_file_id = PackageFileId::new("new/reinstall.bin");
-    candidate_manifest.entries[0].installed_file = Some(installed_file_summary(b"candidate-v2"));
-    candidate_manifest.plan_hash = Some("candidate-plan-hash".to_owned());
-
-    let transaction = ReinstallRecoveryTransaction {
-        profile_id,
-        mod_id,
-        old_revision_id,
-        candidate_revision_id,
-        plan_token: "opaque-plan-token".to_owned(),
-        plan_hash: "candidate-plan-hash".to_owned(),
-        status: ReinstallRecoveryTransactionStatus::Committing,
-        pre_reinstall_manifest: old_manifest.clone(),
-        targets: vec![ReinstallRecoveryTarget {
-            target_path: target.clone(),
-            class: ReinstallTargetClass::Replaced,
-            pre_state: Some(installed_file_summary(b"installed-v1")),
-            candidate_state: Some(installed_file_summary(b"candidate-v2")),
-            snapshot: ReinstallSnapshotState::Stored {
-                snapshot_ref: "snapshot-v1".to_owned(),
-                purpose: ReinstallSnapshotPurpose::TransactionRollback,
-                cleanup_owner: ReinstallSnapshotCleanupOwner::Transaction,
-            },
-            original_backup_ref: None,
-        }],
-    };
-    transaction.validate().expect("valid reinstall transaction");
-
-    (old_manifest, candidate_manifest, transaction, target)
 }
 
 fn reinstall_recovery_with_stale_target() -> (

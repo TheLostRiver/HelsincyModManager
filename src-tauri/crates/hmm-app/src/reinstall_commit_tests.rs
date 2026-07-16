@@ -72,6 +72,15 @@ fn commit_happy_path_preserves_original_backup_and_replaces_only_requested_entry
         hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2
     );
     assert_eq!(result.manifest.status, InstallManifestStatus::Completed);
+    assert_eq!(result.manifest.replacement_bindings.len(), 1);
+    assert_eq!(
+        result.manifest.replacement_bindings[0].binding_id().as_str(),
+        "binding-v2"
+    );
+    assert_eq!(
+        result.manifest.replacement_bindings[0].revision_id(),
+        Some(&ModRevisionId::new("v2"))
+    );
     assert!(result
         .manifest
         .entries
@@ -105,6 +114,15 @@ fn commit_happy_path_preserves_original_backup_and_replaces_only_requested_entry
         .contains_key("original-overwritten"));
     assert_eq!(snapshots.remaining_count(), 0);
     assert_eq!(fixture.recovery.remove_count(), 1);
+    assert!(fixture.recovery.history().iter().all(|transaction| {
+        transaction.candidate_replacement_bindings
+            == vec![replacement_snapshot(
+                "binding-v2",
+                "mhw:armor:fatalis-alpha",
+                "pl129_0000",
+                Some("v2"),
+            )]
+    }));
     let mut statuses = fixture
         .recovery
         .history()
@@ -476,6 +494,19 @@ mod fault {
             assert_eq!(
                 *fixture.manifests.manifest.lock().expect("manifest lock"),
                 old_manifest
+            );
+            assert_eq!(
+                fixture
+                    .manifests
+                    .manifest
+                    .lock()
+                    .expect("manifest lock")
+                    .as_ref()
+                    .expect("restored manifest")
+                    .replacement_bindings[0]
+                    .binding_id()
+                    .as_str(),
+                "binding-v1"
             );
             assert_eq!(fixture.manifests.save_count(), 0);
             assert_eq!(snapshots.remaining_count(), 0);
