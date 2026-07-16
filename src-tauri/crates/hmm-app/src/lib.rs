@@ -18,6 +18,7 @@ mod reinstall;
 mod reinstall_commit;
 mod reinstall_task;
 mod replacement;
+mod replacement_task;
 mod save_backup;
 mod save_backup_background;
 mod save_backup_background_worker;
@@ -112,8 +113,15 @@ pub use reinstall_task::{
     ReinstallTaskService, StartReinstallTaskRequest,
 };
 pub use replacement::{
-    MaterializeRetargetRequest, MaterializedRetarget, ReplacementService,
-    ReplacementServiceError, RetargetMaterializeError,
+    AnalyzeImportedReplacementRequest, InitialRetargetInstallStatusError,
+    InitialRetargetInstallStatusReader, MaterializeRetargetRequest, MaterializedRetarget,
+    PlannedInitialRetargetInstall, PreviewInitialRetargetInstallRequest, ReplacementService,
+    ReplacementServiceError, ReplacementWorkflowError, ReplacementWorkflowService,
+    RetargetMaterializeError,
+};
+pub use replacement_task::{
+    InitialRetargetInstallPlanner, RetargetInstallTaskRunError, RetargetInstallTaskRunner,
+    RetargetInstallTaskService, StartRetargetInstallTaskRequest,
 };
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,

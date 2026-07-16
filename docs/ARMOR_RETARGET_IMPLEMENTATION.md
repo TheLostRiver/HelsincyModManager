@@ -132,6 +132,11 @@ AR3 按 app/ports/infra/core 的窄边界落地；下面旧 Task 6-9 的 `PathBu
 AR3 没有 Tauri/AppState/frontend wiring，也没有开放已安装 Mod 的 target switch。AR4 只补 typed
 contract 与最小受控 UI；真正重装 target switch、卸载闭环和 Gate B 验收仍属于 AR5。
 
+AR4 正式 contract 以 `docs/FRONTEND_BACKEND_CONTRACT.md` 的“ARMOR_RETARGET AR4 契约”为准。
+下方 Task 10/11 是 AR3 前历史草图，其中前端提交 `packageId`、`sourceAsset` 或完整 binding 的形状
+已经废弃，不得照抄。正式实现从 `modId` 解析当前 display revision，由后端重建 source/binding；
+并包含 `start_retarget_install_task` 的首次安装闭环与 installed-state fail-closed 门禁。
+
 ## Target File Structure（AR1-AR4 整体目标；已实施情况以上述基线为准）
 
 ```text

@@ -10,6 +10,7 @@ mod mod_metadata_commands;
 mod profile_commands;
 mod reinstall_commands;
 mod reinstall_dto;
+mod replacement_commands;
 mod save_backup_commands;
 mod save_backup_dto;
 mod save_directory_discovery_commands;
@@ -48,6 +49,10 @@ use profile_commands::{
     validate_profile_backup_directory, validate_profile_save_directory,
 };
 use reinstall_commands::{get_mod_revisions, preview_reinstall_plan, start_reinstall_task};
+use replacement_commands::{
+    analyze_imported_mod_replacement, list_replacement_targets, preview_initial_retarget_install,
+    start_retarget_install_task,
+};
 use save_backup_commands::{
     check_auto_save_backup, disable_save_backup_background_protection,
     enable_save_backup_background_protection, get_save_backup_background_control_status,
@@ -107,6 +112,10 @@ pub fn run() {
             get_mod_revisions,
             preview_reinstall_plan,
             start_reinstall_task,
+            list_replacement_targets,
+            analyze_imported_mod_replacement,
+            preview_initial_retarget_install,
+            start_retarget_install_task,
             get_mod_library,
             get_mod_detail,
             get_mod_dependency_graph,
