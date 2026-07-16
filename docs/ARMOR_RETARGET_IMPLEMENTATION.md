@@ -3,10 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **当前优先级（2026-07-16）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
-> AR1/AR2/AR3 已标记为 `implemented`，当前下一项只执行 AR4。执行顺序以
+> AR1/AR2/AR3/AR4 已标记为 `implemented`，当前下一项只执行 AR5。执行顺序以
 > [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
-> 不得在 AR4 提前实现 AR5，target switch 必须复用 Gate A 的
-> 真正重装 contract。
+> AR5 的 target switch 必须复用 Gate A 的真正重装 contract，不得引入独立删除/复制旁路。
 
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。
 
@@ -28,7 +27,8 @@
 - catalog 加载时的 Unicode 归一化和搜索键规范化。
 - staging materialize：从只读导入缓存复制到 staging 目标相对路径。
 - manifest / audit 所需的 replacement binding 快照字段。
-- 后端 DTO 与前端 typed API，用于 catalog 查询、包分析预览、retarget 计划预览。
+- 四个窄 Tauri command、前端 typed API 与 Mod 详情受控 UI，用于 catalog 查询、导入 Mod 分析、
+  首次 retarget 安装预览和任务启动。
 
 本计划不实现：
 
@@ -50,8 +50,8 @@ Gate A certified
   -> AR1 replacement model / ports / 最小 catalog [implemented]
   -> AR2 单 source f_equip parser / analyzer / RetargetPlan [implemented]
   -> AR3 staging materialize / InstallPlan / binding snapshot [implemented]
-  -> AR4 target selection / preview / install UI [current]
-  -> AR5 true reinstall target switch / uninstall / Gate B
+  -> AR4 target selection / preview / install UI [implemented]
+  -> AR5 true reinstall target switch / uninstall / Gate B [current]
 ```
 
 旧计划中“Task 1-5 可在安装 MVP 前独立先做”的并行策略失效。这样做会再次扩大未被玩家闭环消费
@@ -137,6 +137,31 @@ AR4 正式 contract 以 `docs/FRONTEND_BACKEND_CONTRACT.md` 的“ARMOR_RETARGET
 已经废弃，不得照抄。正式实现从 `modId` 解析当前 display revision，由后端重建 source/binding；
 并包含 `start_retarget_install_task` 的首次安装闭环与 installed-state fail-closed 门禁。
 
+## AR4 已实施基线（2026-07-16）
+
+AR4 按 Tauri thin shell、app workflow 与 feature-local frontend 边界落地；下方 Task 10/11 的旧
+`packageId`/完整 binding 草图只保留作历史追溯，实际公开 contract 以当前源码和
+`docs/FRONTEND_BACKEND_CONTRACT.md` 为准。
+
+已落地：
+
+- `list_replacement_targets`、`analyze_imported_mod_replacement`、
+  `preview_initial_retarget_install`、`start_retarget_install_task` 四个 command；请求只接受
+  game/Mod/profile/target/layer identity，拒绝未知字段，不接受 package/revision/source/path。
+- 后端从当前 display revision 重建 package/source/binding/RetargetPlan/staging/InstallPlan；分析和
+  materialize 在写锁外，runner 在锁内重新执行 profile recovery admission 与 `not_installed` 校验。
+- 首次安装复用既有 install task、game/profile 写锁、Audit Log、backup、manifest、rollback/recovery；
+  成功和失败/取消路径都会清理受控 staging。
+- `src/features/replacements/` 提供 typed API、taskId/phase 状态机和目标面板；主入口位于
+  `Mod 管理 -> Mod 详情 -> 替换目标` Tab，右键“MOD 文件修改”直达同一面板。
+- UI 对 missing profile、installed、cleanup/rollback/repair/unknown、listener failure 和 blocking
+  conflicts fail closed；完成闩锁跨 Tab 保持，旧 preview promise 不能覆盖新 target。
+- 聚焦验证入口：`cargo test -p hmm-tauri replacement_dto_tests`、
+  `cargo test -p hmm-tauri replacement_commands`、`cargo test -p hmm-app --test replacement_service`、
+  `node --test src/features/replacements/*.test.mjs` 和完整 frontend test/typecheck/lint/build。
+
+AR4 没有实现已安装 Mod target switch、retarget-aware 卸载扩展或 Gate B 认证；这些仍属于 AR5。
+
 ## Target File Structure（AR1-AR4 整体目标；已实施情况以上述基线为准）
 
 ```text
@@ -185,6 +210,8 @@ src-tauri/src/
 src/features/replacements/
   replacementApi.ts
   replacementTypes.ts
+  replacementWorkflow.ts
+  ReplacementTargetPanel.tsx
 ```
 
 职责边界：
@@ -194,8 +221,8 @@ src/features/replacements/
 - `hmm-games-mhw/src/armor_retarget/*`：AR1 已实现 catalog/Unicode；AR2 已实现 armor 路径解析、single-source analysis 和 slot 段替换。
 - `hmm-app/src/replacement.rs`：AR3 已编排 catalog 查询、包分析、plan 生成、snapshot、InstallPlan 和 staging materialize。
 - `hmm-infra/src/staging.rs`：AR3 已在受控 root 中 batch materialize 并原子发布，不触碰游戏目录。
-- `src-tauri/src/replacement_commands.rs`：AR4 再添加 Tauri command 薄边界，只做 DTO 转换和调用应用层服务。
-- `src/features/replacements/*`：AR4 再添加前端 typed API 和类型，不拼接路径，不改写 slot 字符串。
+- `src-tauri/src/replacement_commands.rs`：AR4 已添加 Tauri command 薄边界，只做 DTO 转换和调用应用层服务。
+- `src/features/replacements/*`：AR4 已添加前端 typed API、task 状态机和受控目标面板，不拼接路径，不改写 slot 字符串。
 
 ## Task 0: Preflight
 
