@@ -5,8 +5,8 @@
 当前实现事实以 [InstallPlan 模块现状](INSTALL_PLAN_STATUS.md) 为准；长期方案和可选后端设计参考 [Mod 安装方案规划](mod_installation_strategy.md)；前后端通信形状参考 [前后端通信契约](FRONTEND_BACKEND_CONTRACT.md)。
 
 当前执行优先级以 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准。
-Gate A 已完成独立复审并标记为 `certified`；当前只推进 ARMOR_RETARGET Gate B，从 AR1 开始。
-本文其余历史切片继续保留作事实记录，但不构成并行开工授权。
+Gate A/B 均已完成独立复审、完整验证和纵向验收并标记为 `certified`；当前先执行 Gate B 后优先级
+复审。本文其余历史切片继续保留作事实记录，但不构成并行开工授权。
 
 ## 目标
 
@@ -918,10 +918,11 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 
 ### P1：ARMOR_RETARGET staging 接入
 
-**状态：** 当前从 AR1 开始推进 Gate B；本节 staging 接入属于后续 AR3，不得在 AR1 提前实现。
+**状态：** AR3 staging 接入、AR5 真正重装 target switch 与最终 Sandbox 验收均已完成；Gate B 已
+标记为 `certified`。
 
-**优先级覆盖：** Gate A certified 后立即进入 Gate B；不再等待分页、批量迁移、备份中心或任务
-队列。切换 replacement target 必须复用 CL3 的真正重装，不能在游戏目录原地改名。
+**优先级覆盖：** Gate A certified 后立即进入 Gate B 的历史执行顺序已完成；Gate B 后任务仍需单独
+重排。切换 replacement target 必须继续复用 CL3 的真正重装，不能在游戏目录原地改名。
 
 目标：让 retarget materialize 产物作为受控 provider 输入 `InstallPlan`，而不是绕过安装链路。
 

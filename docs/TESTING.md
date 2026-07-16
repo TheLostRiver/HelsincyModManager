@@ -278,7 +278,8 @@ CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 202
 独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model/catalog、AR2
 parser/analyzer/纯 `RetargetPlan`、AR3 staging/InstallPlan/binding snapshot 与 AR4 Tauri typed
 contract/最小受控 UI 测试已落地。AR5 同 revision 真正重装 target switch、重启恢复、manifest 卸载
-baseline 与受控 UI 自动化也已落地；下一测试主线只剩 disposable Windows Sandbox Gate B 验收。
+baseline 与受控 UI 自动化也已落地；最终 artifact 的 disposable Windows Sandbox 纵向复验通过后，
+Gate B 已标记为 `certified`。
 
 ### ARMOR_RETARGET AR1
 
@@ -379,13 +380,22 @@ installed 状态返回唯一 `installedTargetId`，歧义或不安全状态不�
 标记“当前已安装”，当前 target 不得作为切换候选。
 
 首个 AR5 artifact 已在 disposable Windows Sandbox 完成首次 retarget 安装 -> 选择不同 target 真正重装
--> 完全重启 -> manifest 卸载 -> exact baseline，并确认 source/旧 target 不残留、staging/recovery 为零。
-该轮同时发现重启后 replacement Tab 未标记当前 target；修复后的最终 artifact 仍必须在全新 Sandbox
-重新验收：首次 retarget 安装 -> 选择不同 target 真正重装 -> 完全重启应用并恢复新 target -> manifest
-卸载 -> 校验逐字节 pre-Armor baseline。
-必须同时确认原 source/旧 target 不残留、AppData/staging/recovery 无非预期残留，且不使用真实 MHW:I、
-第三方 Mod、Steam userdata 或玩家存档。该人工证据完成并复核前，AR5 可标记 `implemented`，Gate B
-不得标记 `certified`。
+-> 完全重启 -> manifest 卸载 -> exact baseline，并确认 source/旧 target 不残留、staging/recovery 为零；
+该轮发现并修复了重启后 replacement Tab 未标记当前 target 的缺陷。
+
+2026-07-16，修复后的最终 artifact（commit `48f913f`；验收 ZIP SHA-256
+`C28AA2656888E4E624525DDE0C62A720004DBE20683851E1B50E5AB2FFDDA156`；主程序 SHA-256
+`91006F26BFA1CE629569E64D264495A235456D6B0782AD1D7A000715B48D65F1`）已在全新 disposable
+Windows Sandbox 完成第二轮完整验收：`Before` 为全新 AppData 和唯一 23-byte baseline exe，SHA-256
+为 `00A9E27855EDC182AD0EB4C16C71C845D6AA096023AAEE2705F526799A959606`。Fatalis Alpha + 首次安装后
+只有 `pl129_0000` target，payload 为 28 bytes，SHA-256 为
+`62A74A0A3A1C24EEC25E29A1C9FE38771F0B9A58914603B5A8D9CD1C182B740E`；完全重启后自动恢复并标记
+Alpha 当前目标。切换到 Fatalis Beta + 的预览为 retained/replaced/added/stale `0/0/1/1` 且安全预检
+通过；真正重装后只有 `pl129_0010` target，payload 长度/hash 不变，再次完全重启后自动恢复并标记
+Beta 当前目标。最终 manifest 卸载恢复为与 `Before` 长度和 SHA-256 完全一致的一文件 baseline；所有
+关键阶段 staging/recovery entry 均为 0，source 和旧 target 均不残留。
+全程只使用人工 fixture，未使用真实 MHW:I、第三方 Mod、Steam userdata 或玩家存档。结合本节自动化、
+完整 `scripts/verify.ps1`、clippy 与 findings-first 安全复审，Gate B 已标记为 `certified`。
 
 ## 存档备份
 

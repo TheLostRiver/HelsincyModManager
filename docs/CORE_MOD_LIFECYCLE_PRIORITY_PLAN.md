@@ -1,7 +1,8 @@
 # 核心 Mod 生命周期优先级计划
 
 - 日期：2026-07-12
-- 状态：生效；CL0-CL4 已完成，Gate A 已于 2026-07-15 标记为 `certified`；AR1/AR2/AR3 已于 2026-07-16 标记为 `implemented`，下一项 AR4
+- 状态：Gate A 已于 2026-07-15 标记为 `certified`；AR1-AR5 与最终 Sandbox 纵向复验已于
+  2026-07-16 完成，Gate B 已标记为 `certified`；当前进入 Gate B 后优先级复审
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -12,7 +13,8 @@
 1. **P0 / Gate A：** 认证安装与卸载闭环，并实现真正重装。
 2. **P1 / Gate B：** 完成第一条 MHW:I ARMOR_RETARGET 纵向闭环。
 3. 只允许为 Gate A/Gate B 补充必要的 manifest、repair、preflight、staging 和测试能力。
-4. P7.2c、备份中心、分页、批量迁移、批量操作、任务队列和非必要视觉增强暂停实施。
+4. Gate A/B 执行期间暂停 P7.2c、备份中心、分页、批量迁移、批量操作、任务队列和非必要视觉增强；
+   Gate B 通过后先重新排序，不自动恢复实施。
 
 暂停不是取消。已完成代码、设计和测试继续保留；满足本文恢复门禁后，再按产品发布需要恢复。
 本文只覆盖执行顺序，不降低 `InstallPlan -> backup -> commit -> manifest -> rollback/recover`
@@ -47,8 +49,8 @@
 | `blocked` | 已开始核心切片，但被明确技术/环境前置阻断 |
 
 当前基线：安装、卸载和真正重装均为 `implemented`，Core Mod Lifecycle Gate A 为
-`certified`；ARMOR_RETARGET AR1-AR5 为 `implemented`，首个 Sandbox artifact 已完成文件闭环并已修复
-当前 target 呈现缺陷，Gate B 等待最终 artifact 全新 Sandbox 复验；P7.2c 为 `planned + paused`。
+`certified`；ARMOR_RETARGET AR1-AR5 为 `implemented`，修复当前 target 呈现缺陷后的最终 artifact
+已通过全新 Sandbox 纵向复验，Gate B 为 `certified`；P7.2c 等候选项在优先级复审前保持原暂停状态。
 
 ## 4. 立即执行顺序
 
@@ -63,8 +65,8 @@ CL0 事实基线与可重复验收入口
   -> AR3 staging materialize + InstallPlan + manifest snapshot [implemented]
   -> AR4 Tauri typed contract + 选择目标 / 预览 / 安装 UI [implemented]
   -> AR5 真正重装 target switch / 卸载 / 当前 target 重启呈现 [implemented]
-  -> Gate B 最终 artifact 全新 Sandbox 复验 [current]
-  -> 恢复被暂停任务的重新排序
+  -> Gate B 最终 artifact 全新 Sandbox 复验 [certified]
+  -> 恢复被暂停任务的重新排序 [current]
 ```
 
 任一时刻只推进一条主切片。安全缺陷、构建阻断和当前切片必需的小修可以插入；其他“顺手”
@@ -193,6 +195,10 @@ Gate A 阻断。生命周期聚焦矩阵、全部前端测试、完整 `scripts/
 
 ## 6. Gate B：ARMOR_RETARGET 最窄纵向闭环
 
+**状态（2026-07-16）：** 已完成并标记为 `certified`。最终 artifact 在全新 disposable Windows
+Sandbox 中满足第 6.3 节全部完成定义；只使用人工 fixture，未操作真实 MHW:I、第三方 Mod、Steam
+userdata 或玩家存档。
+
 Gate A 完成后，ARMOR_RETARGET 立即成为唯一 P1 主线。第一版只证明一个真实产品工作流，不追求
 完整 transformer 平台。
 
@@ -241,6 +247,9 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 8. 暂停清单与恢复门禁
 
+Gate B 已通过，因此表中的 Gate B 时间门禁已经满足；这只允许进入重新评审，不代表任务自动恢复。
+在维护者明确选定下一条主线前，当前状态继续保持暂停。
+
 | 工作 | 当前状态 | 最早恢复条件 |
 | --- | --- | --- |
 | P7.2c installer cleanup | 设计/计划保留，实施暂停 | Gate B 后、Windows beta packaging 前重新评审 |
@@ -271,13 +280,13 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 10. 当前下一项任务
 
-CL0-CL4 已完成，Gate A 已标记为 `certified`。AR1-AR5 已完成 replacement identity/catalog、严格
-parser/分析、staging/InstallPlan/manifest binding、Tauri 受控 UI、真正重装 target switch、重启当前
-target 呈现和 manifest 卸载闭环。首个 Sandbox artifact 已完成逐字节 baseline 文件验收；当前下一项
-固定为 **Gate B 最终 artifact 全新 Sandbox 复验**，不是 P7.2c、分页、批量迁移或其他暂停项。
+CL0-CL4 与 AR1-AR5 已完成，Gate A/B 均标记为 `certified`。最终 artifact 的全新 Sandbox 证据已
+覆盖首次 retarget 安装、Alpha -> Beta 真正重装 target switch、两次重启状态恢复、manifest 卸载和
+逐字节 baseline 恢复，并确认 source/旧 target/staging/recovery 无残留。
 
-Gate B 复验不得让 Tauri/前端绕过既有 InstallPlan/manifest/backup/rollback/recovery 链路或自行计算
-游戏路径；只有最终 artifact 的完整证据成立后才能标记 `certified`。
+当前下一项固定为 **Gate B 后优先级复审**：按 Windows beta 发布风险、玩家数据安全和实际使用阻塞
+重新排序 P7.2c、P7.2a/T8、T12、T13、T14、T17、T18。该复审只选择下一条主线；本认证切片不提前
+实现任何候选功能。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
@@ -288,8 +297,8 @@ CL3 的实施入口见
 [真正重装设计](superpowers/specs/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-design.md) 与
 [真正重装实施计划](superpowers/plans/2026-07-14-core-mod-lifecycle-cl3-true-reinstall-implementation.md)。
 CL3 已执行证据与 CL4 独立 review/certification 共同完成 Gate A；AR1-AR5 已建立 Gate B 的模型、
-catalog、分析、纯计划、staging、manifest binding、受控 UI 与真正重装/卸载闭环，当前只剩最终
-artifact 的全新 Sandbox 复验。
+catalog、分析、纯计划、staging、manifest binding、受控 UI 与真正重装/卸载闭环；最终 artifact 的
+全新 Sandbox 复验与完整验证共同完成 Gate B certification。
 
 ## 11. 优先级重排提交边界（历史）
 

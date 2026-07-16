@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **当前优先级（2026-07-16）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
-> AR1-AR5 的代码、自动化与受控 UI 已标记为 `implemented`，当前只执行 Gate B Sandbox 验收。执行顺序以
-> [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
-> AR5 的 target switch 必须复用 Gate A 的真正重装 contract，不得引入独立删除/复制旁路。
+> **完成状态（2026-07-16）：** Gate A 与 Gate B 均已标记为 `certified`；AR1-AR5 的代码、自动化、
+> 受控 UI 和最终 Sandbox 纵向验收全部完成。后续工作按
+> [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 重新排序；AR5 的 target switch
+> 继续必须复用 Gate A 的真正重装 contract，不得引入独立删除/复制旁路。
 
 **Goal:** 在 Helsincy Mod Manager 中实现第一版 MHW:I armor-retarget：玩家为外观 Mod 选择官方套装目标后，系统在 staging 中生成路径级重定向产物，并把结果交给 `InstallPlan` / manifest / backup / rollback 链路安装。
 
@@ -52,7 +52,7 @@ Gate A certified
   -> AR3 staging materialize / InstallPlan / binding snapshot [implemented]
   -> AR4 target selection / preview / install UI [implemented]
   -> AR5 true reinstall target switch / uninstall [implemented]
-  -> Gate B disposable Windows Sandbox acceptance [current]
+  -> Gate B disposable Windows Sandbox acceptance [certified]
 ```
 
 旧计划中“Task 1-5 可在安装 MVP 前独立先做”的并行策略失效。这样做会再次扩大未被玩家闭环消费
@@ -192,9 +192,10 @@ AR5 只扩展已安装 Mod 的同 revision target switch，并继续复用 Gate 
   target 后才进入真正重装切换预览。
 
 首个 AR5 Sandbox artifact 已完成首次 retarget -> switch target -> restart -> uninstall -> exact
-pre-Armor baseline 文件闭环，但第二次重启暴露出当前 target 未呈现缺陷。上述窄契约/UI 修复完成后，
-必须重新构建最终 artifact 并在全新 disposable Windows Sandbox 重验；该证据成立前 Gate B 仍未
-`certified`。
+pre-Armor baseline 文件闭环，并暴露出第二次重启后当前 target 未呈现缺陷。上述窄契约/UI 修复后，
+最终 artifact 已在全新 disposable Windows Sandbox 重新完成首次安装、Alpha -> Beta 真正重装切换、
+两次重启恢复、manifest 卸载和 exact baseline 复验；source/旧 target/staging/recovery 均无残留，
+Gate B 已标记为 `certified`。
 
 ## Target File Structure（AR1-AR5 整体目标；已实施情况以上述基线为准）
 
