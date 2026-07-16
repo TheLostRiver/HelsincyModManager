@@ -45,6 +45,10 @@ jobs:
             libxdo-dev \
             patchelf
 
+      - name: Verify core Mod lifecycle acceptance
+        shell: pwsh
+        run: ./scripts/verify-core-mod-lifecycle.ps1
+
       - name: Run verification
         shell: bash
         run: bash scripts/verify.sh
