@@ -535,7 +535,7 @@ SQLite 中应持久化玩家状态：
 - manifest 记录 Mod/profile/revision-owned replacement binding snapshot；旧 JSON 缺字段时默认空。
 - plan/token hash、manifest merge/uninstall/rollback 与真正重装 recovery 都消费同一 snapshot 事实。
 
-### 阶段 4：Tauri contract 与前端工作流（AR4，当前下一项）
+### 阶段 4：Tauri contract 与前端工作流（AR4，已实现）
 
 - 在 Mod 详情统一面板启用“替换目标”Tab，并由右键“MOD 文件修改”直达。
 - 展示源槽位、target catalog、冲突预览和 warning。
