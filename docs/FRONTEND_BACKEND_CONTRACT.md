@@ -186,9 +186,10 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | `start_retarget_reinstall_task` | 与 preview 相同，另加 `planToken` | `TaskStartedDto` |
 
 前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
-`sourceId`、`bindingId`、`internalId` 或最终 target path。后端从当前 display revision 重建包事实，
-重新扫描并分析唯一受支持 source，按 `targetId` 查询 catalog，生成 binding、`RetargetPlan`、staging
-和 `InstallPlan`。`internalId` 与最终相对路径只能作为后端返回的只读预览信息。
+`sourceId`、`bindingId`、`internalId` 或最终 target path。前四个 AR4 command 从当前 display revision
+重建包事实，重新扫描并分析唯一受支持 source，按 `targetId` 查询 catalog，生成 binding、
+`RetargetPlan`、staging 和 `InstallPlan`。两个 AR5 target-switch command 的 revision 来源见下文，
+不得复用 display revision。`internalId` 与最终相对路径只能作为后端返回的只读预览信息。
 
 `preview_initial_retarget_install` 与 `start_retarget_install_task` 只允许目标 Mod 在当前 profile 的恢复
 状态严格为 `not_installed`。`installed`、`committed_cleanup_pending`、`cleanup_pending`、
