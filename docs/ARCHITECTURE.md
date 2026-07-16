@@ -530,7 +530,10 @@ ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `Replaceme
 纯 `RetargetPlan`。AR3 已在独立 staging port/infra adapter 中实现受控 batch materialize：先写 sibling
 `.partial`，完整成功后原子发布，失败清理；最终 target 进入 `InstallPlan`，原 `PackageFileId`
 provenance 保留，binding snapshot 随 plan/manifest/reinstall recovery 原子保存。Tauri/frontend wiring
-仍留给 AR4。
+已由 AR4 通过四个窄 command 和 feature-local typed API 接入；入口位于 Mod 管理的 Mod 详情
+“替换目标”Tab，右键“MOD 文件修改”直达。前端只提交 game/Mod/profile/target/layer identity，首次
+retarget install 继续走 task id、game/profile 写锁、Audit Log、backup、manifest 和 rollback/recovery
+链路，并对 installed/unsafe/unknown 状态 fail closed。已安装 Mod 的 target switch 与卸载闭环留给 AR5。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 

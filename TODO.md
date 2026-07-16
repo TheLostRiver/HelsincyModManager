@@ -388,7 +388,7 @@ JSON 做不好的需求:
 ### T11: ARMOR_RETARGET 全链路
 
 **优先级**: P1，Gate A 通过后立即开始
-**状态**: AR1/AR2/AR3 已实现；当前下一项 AR4，Gate B 尚未完成
+**状态**: AR1/AR2/AR3/AR4 已实现；当前下一项 AR5，Gate B 尚未完成
 **前置**: Gate A certified + T9/T10 最小直接前置 + InstallPlan staging
 **预估**: 大（12 Task，3-5 个 PR）
 **独立文档**: **已有** → `docs/ARMOR_RETARGET_IMPLEMENTATION.md`
@@ -401,7 +401,7 @@ JSON 做不好的需求:
 - [x] AR2：MHW RetargetPlan builder
 - [x] AR3：Application replacement service 与 staging materialize
 - [x] AR3：Manifest + InstallPlan + binding snapshot 集成
-- [ ] AR4：Tauri commands / DTO 与前端 typed API / 受控 UI
+- [x] AR4：Tauri commands / DTO 与前端 typed API / 受控 UI
 - [ ] AR5：真正重装 target switch、卸载与 Gate B 认证
 
 ---
@@ -409,15 +409,15 @@ JSON 做不好的需求:
 ### T12: Mod 详情统一面板 (完整版)
 
 **前置**: T5 + T11 部分就绪
-**状态**: 暂停；Gate B 内只实现 ARMOR 最小 target 选择 UI
+**状态**: 完整版暂停；Gate B 所需 ARMOR 最小 target 选择 UI 已由 AR4 实现
 **预估**: 中
 **独立文档**: 不需要
 
 概要:
-- [ ] 在 T5 基础上追加"替换目标"tab
-- [ ] 展示源槽位 + armor catalog + 搜索筛选
-- [ ] 选择目标后预览 retarget plan
-- [ ] 右键 `edit-files` 打开此 tab
+- [x] 在 T5 基础上追加"替换目标"tab
+- [x] 展示源槽位 + armor catalog + 搜索筛选
+- [x] 选择目标后预览 retarget plan
+- [x] 右键 `edit-files` 打开此 tab
 
 ---
 
@@ -440,8 +440,8 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-当前: T11 ARMOR_RETARGET AR4（Tauri typed contract / 最小受控 UI）
-  -> AR5 真正重装 target switch / 卸载 / Gate B 验收
+当前: T11 ARMOR_RETARGET AR5（真正重装 target switch / 卸载闭环）
+  -> Windows Sandbox 纵向验收
   -> Gate B 认证
   -> 重新评审并排序 P7.2c、T8、T12、T13、T14、T17、T18
 ```
@@ -463,8 +463,8 @@ JSON 做不好的需求:
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余仅允许 Gate A/B 最小阻断子集 | |
 | T10 依赖检查 | P0/P1 支撑 | 仅允许 Gate A/B 最小 preflight | |
-| T11 ARMOR_RETARGET | P1 | AR1/AR2/AR3 已实现，当前下一项为 AR4 | |
-| T12 Mod 详情完整版 | P3 | 暂停；仅 Gate B 最小 UI 例外 | |
+| T11 ARMOR_RETARGET | P1 | AR1/AR2/AR3/AR4 已实现，当前下一项为 AR5 | |
+| T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |

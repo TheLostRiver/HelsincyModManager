@@ -2,10 +2,11 @@
 
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
 >
-> 实施状态（2026-07-16）：阶段 1 / AR1、阶段 2 / AR2 与阶段 3 / AR3 已标记为 `implemented`。
+> 实施状态（2026-07-16）：阶段 1 / AR1、阶段 2 / AR2、阶段 3 / AR3 与阶段 4 / AR4 已标记为 `implemented`。
 > 当前已落地稳定 replacement identity/binding、只读 catalog port、`mhw-armor-v1` catalog、严格
 > parser、单 source analyzer、纯 `RetargetPlan`、受控 staging materialize、InstallPlan 与 binding
-> snapshot 集成；当前下一项为阶段 4 / AR4。AR5 与 Gate B 验收尚未完成。
+> snapshot 集成、四个窄 Tauri command 和 Mod 详情受控 UI；当前下一项为阶段 5 / AR5。真正重装
+> target switch、卸载闭环与 Gate B 验收尚未完成。
 
 ## 背景
 
