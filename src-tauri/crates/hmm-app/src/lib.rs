@@ -98,11 +98,12 @@ pub use profile::{
     CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
 };
 pub use reinstall::{
+    InstalledReplacementReinstallContext, InstalledReplacementReinstallResolution,
     PreparedReinstall, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
     ReinstallCandidatePlanError, ReinstallCandidatePlanRequest, ReinstallCandidatePlanner,
-    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreviewError,
-    ReinstallPreviewRequest, ReinstallPreviewService, ReinstallPreviewStatus,
-    ReinstallRevisionSummary, ReinstallTargetCounts,
+    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreparation,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
 };
 pub use reinstall_commit::{
     ReinstallCommitError, ReinstallCommitPhase, ReinstallCommitResult, ReinstallCommitService,
@@ -110,14 +111,16 @@ pub use reinstall_commit::{
 pub use reinstall_task::{
     ReinstallTaskAuditContext, ReinstallTaskExecutor, ReinstallTaskExecutorService,
     ReinstallTaskPrepareError, ReinstallTaskPrepared, ReinstallTaskRunError, ReinstallTaskRunner,
-    ReinstallTaskService, StartReinstallTaskRequest,
+    ReinstallTaskService, RetargetReinstallTaskExecutor, StartReinstallTaskRequest,
+    StartRetargetReinstallTaskRequest,
 };
 pub use replacement::{
     AnalyzeImportedReplacementRequest, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, MaterializeRetargetRequest, MaterializedRetarget,
-    PlannedInitialRetargetInstall, PreviewInitialRetargetInstallRequest, ReplacementService,
-    ReplacementServiceError, ReplacementWorkflowError, ReplacementWorkflowService,
-    RetargetMaterializeError,
+    PlannedInitialRetargetInstall, PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
+    PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
+    ReplacementWorkflowError, ReplacementWorkflowService, RetargetMaterializeError,
+    RetargetReinstallRequest,
 };
 pub use replacement_task::{
     InitialRetargetInstallPlanner, RetargetInstallTaskRunError, RetargetInstallTaskRunner,

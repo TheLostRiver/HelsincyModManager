@@ -98,6 +98,19 @@ impl ReinstallTaskExecutor for FakeExecutor {
     }
 }
 
+impl RetargetReinstallTaskExecutor for FakeExecutor {
+    fn prepare_retarget_reinstall(
+        &self,
+        _request: crate::RetargetReinstallRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError> {
+        self.prepare_result
+            .lock()
+            .expect("prepare result lock")
+            .take()
+            .expect("prepare called once")
+    }
+}
+
 struct BlockingExecutor {
     prepare_started: Mutex<Option<mpsc::Sender<()>>>,
     commit_started: Mutex<Option<mpsc::Sender<()>>>,
@@ -288,6 +301,55 @@ fn successful_runner_emits_stable_phases_identity_and_sanitized_audit() {
     assert_eq!(event.fields["stale_count"], "1");
     assert_eq!(event.fields["previous_revision_id"], "installed-v1");
     assert_eq!(event.fields["candidate_revision_id"], "candidate-v2");
+    assert_sanitized_audit(&event);
+}
+
+#[test]
+fn retarget_reinstall_uses_the_shared_runner_and_records_only_stable_target_identity() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("task can be created");
+    let executor = FakeExecutor::success(Arc::clone(&task_manager), &task.task_id);
+    *executor.prepare_result.lock().expect("prepare result lock") =
+        Some(Ok(FakePrepared {
+            audit: ReinstallTaskAuditContext {
+                previous_revision_id: Some(ModRevisionId::new("installed-v1")),
+                candidate_revision_id: ModRevisionId::new("installed-v1"),
+                counts: ReinstallTargetCounts {
+                    retained: 0,
+                    replaced: 0,
+                    added: 1,
+                    stale: 1,
+                },
+            },
+        }));
+    let audit = Arc::new(RecordingAuditLog::default());
+    let runner = ReinstallTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::new(executor),
+        audit.clone(),
+        Arc::new(FixedClock),
+    );
+
+    let events = runner
+        .run_retarget_reinstall_task(&task.task_id, sample_retarget_request())
+        .expect("retarget reinstall succeeds");
+
+    assert_eq!(
+        event_phases(&events),
+        vec![
+            "install.reinstall.plan.building",
+            "install.reinstall.preflight.processing",
+            "install.reinstall.commit.processing",
+            "install.reinstall.completed",
+        ]
+    );
+    let event = audit.take_one();
+    assert_eq!(event.operation, "reinstall_mod");
+    assert_eq!(event.fields["previous_revision_id"], "installed-v1");
+    assert_eq!(event.fields["candidate_revision_id"], "installed-v1");
+    assert_eq!(event.fields["target_id"], "mhw:armor:fatalis-alpha");
     assert_sanitized_audit(&event);
 }
 
@@ -1086,6 +1148,18 @@ fn sample_request() -> StartReinstallTaskRequest {
     }
 }
 
+fn sample_retarget_request() -> StartRetargetReinstallTaskRequest {
+    StartRetargetReinstallTaskRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("default"),
+        mod_id: ModId::new("mod-a"),
+        target_id: hmm_core::ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+            .expect("target id"),
+        layer: FileLayer::new("base", 0),
+        plan_token: "opaque-plan-token".to_owned(),
+    }
+}
+
 fn audit_context() -> ReinstallTaskAuditContext {
     ReinstallTaskAuditContext {
         previous_revision_id: Some(ModRevisionId::new("installed-v1")),
@@ -1126,6 +1200,9 @@ fn assert_sanitized_audit(event: &AuditLogEvent) {
     let payload = serde_json::to_string(event).expect("serialize audit event");
     for forbidden in [
         "opaque-plan-token",
+        "reinstall-preview-v1:",
+        "binding-",
+        "retarget-staging",
         "nativePC/",
         "backup-ref",
         "snapshot-ref",

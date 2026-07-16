@@ -77,6 +77,10 @@ pub enum ReplacementWorkflowError {
     InitialInstallBlocked { status: InstallRecoveryStatus },
     #[error("replacement binding could not be created")]
     BindingUnavailable,
+    #[error("installed replacement binding is unavailable")]
+    InstalledBindingUnavailable,
+    #[error("replacement target is already selected")]
+    TargetAlreadySelected,
     #[error("retarget install plan is unavailable")]
     PlanUnavailable,
 }
@@ -97,6 +101,26 @@ pub struct PreviewInitialRetargetInstallRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewRetargetReinstallRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub installed_revision_id: ModRevisionId,
+    pub installed_binding: ReplacementBindingSnapshot,
+    pub target_id: ReplacementTargetId,
+    pub layer: FileLayer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetargetReinstallRequest {
+    pub game_id: GameId,
+    pub profile_id: ProfileId,
+    pub mod_id: ModId,
+    pub target_id: ReplacementTargetId,
+    pub layer: FileLayer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedInitialRetargetInstall {
     package_id: String,
     revision_id: ModRevisionId,
@@ -105,6 +129,35 @@ pub struct PlannedInitialRetargetInstall {
     target: ReplacementTarget,
     retarget_plan: RetargetPlan,
     install_plan: InstallPlan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedRetargetReinstall {
+    package_id: String,
+    revision_id: ModRevisionId,
+    layer: FileLayer,
+    analysis: ReplacementAnalysis,
+    target: ReplacementTarget,
+    retarget_plan: RetargetPlan,
+    install_plan: InstallPlan,
+}
+
+impl PlannedRetargetReinstall {
+    pub fn package_id(&self) -> &str {
+        &self.package_id
+    }
+
+    pub fn revision_id(&self) -> &ModRevisionId {
+        &self.revision_id
+    }
+
+    pub fn install_plan(&self) -> &InstallPlan {
+        &self.install_plan
+    }
+
+    pub fn binding_id(&self) -> &ReplacementBindingId {
+        self.retarget_plan.binding().id()
+    }
 }
 
 impl PlannedInitialRetargetInstall {
@@ -387,6 +440,98 @@ impl ReplacementWorkflowService {
         Ok(materialized.into_parts().1)
     }
 
+    pub fn preview_reinstall_target(
+        &self,
+        request: PreviewRetargetReinstallRequest,
+    ) -> Result<PlannedRetargetReinstall, ReplacementWorkflowError> {
+        let resolved = self.resolve_imported_revision(
+            &request.game_id,
+            &request.mod_id,
+            &request.installed_revision_id,
+        )?;
+        let source = resolved
+            .analysis
+            .single_source()
+            .cloned()
+            .ok_or(ReplacementWorkflowError::SourceNotRetargetable)?;
+        let installed = &request.installed_binding;
+        if installed.mod_id() != &request.mod_id
+            || installed.profile_id() != &request.profile_id
+            || installed
+                .revision_id()
+                .is_some_and(|revision| revision != &request.installed_revision_id)
+            || installed.binding().source_id() != source.id()
+            || installed.source_internal_id() != source.internal_id()
+            || installed.source_path_family() != source.path_family()
+            || installed.retarget_kind() != source.source_type()
+        {
+            return Err(ReplacementWorkflowError::InstalledBindingUnavailable);
+        }
+        let target = self
+            .catalog_for(&request.game_id)?
+            .find_replacement_target(&request.target_id)
+            .map_err(map_catalog_error)?;
+        if installed.binding().target_id() == target.id()
+            || installed.target_internal_id() == target.internal_id()
+        {
+            return Err(ReplacementWorkflowError::TargetAlreadySelected);
+        }
+        let binding = ReplacementBinding::new(
+            installed.binding_id().clone(),
+            request.mod_id,
+            request.profile_id,
+            source.id().clone(),
+            target.id().clone(),
+            installed.binding().created_at_unix_millis(),
+        )
+        .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+        let retarget_plan = self
+            .replacement
+            .build_retarget_plan(RetargetPlanRequest {
+                game_id: request.game_id,
+                binding,
+                assets: resolved.assets,
+            })
+            .map_err(ReplacementWorkflowError::Analysis)?;
+        let install_plan = self
+            .replacement
+            .build_retarget_install_plan(
+                &retarget_plan,
+                request.layer.clone(),
+                Some(request.installed_revision_id.clone()),
+            )
+            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+
+        Ok(PlannedRetargetReinstall {
+            package_id: resolved.package_id,
+            revision_id: request.installed_revision_id,
+            layer: request.layer,
+            analysis: resolved.analysis,
+            target,
+            retarget_plan,
+            install_plan,
+        })
+    }
+
+    pub fn materialize_reinstall_target(
+        &self,
+        staging: &dyn RetargetStagingMaterializer,
+        planned: PlannedRetargetReinstall,
+    ) -> Result<InstallPlan, ReplacementWorkflowError> {
+        let materialized = self
+            .replacement
+            .materialize_retarget(
+                staging,
+                MaterializeRetargetRequest {
+                    plan: planned.retarget_plan,
+                    layer: planned.layer,
+                    revision_id: Some(planned.revision_id),
+                },
+            )
+            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        Ok(materialized.into_parts().1)
+    }
+
     fn resolve_imported_replacement(
         &self,
         game_id: &GameId,
@@ -397,9 +542,18 @@ impl ReplacementWorkflowService {
             .get_mod(mod_id)
             .map_err(|_| ReplacementWorkflowError::ModRepositoryUnavailable)?
             .ok_or(ReplacementWorkflowError::ModNotFound)?;
+        self.resolve_imported_revision(game_id, mod_id, &logical_mod.display_revision_id)
+    }
+
+    fn resolve_imported_revision(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        revision_id: &ModRevisionId,
+    ) -> Result<ResolvedImportedReplacement, ReplacementWorkflowError> {
         let revision = self
             .result_repository
-            .get_revision(&logical_mod.display_revision_id)
+            .get_revision(revision_id)
             .map_err(|_| ReplacementWorkflowError::ModRepositoryUnavailable)?
             .filter(|revision| revision.mod_id == *mod_id)
             .ok_or(ReplacementWorkflowError::RevisionNotFound)?;

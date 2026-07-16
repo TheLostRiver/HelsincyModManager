@@ -12,17 +12,21 @@ use hmm_app::{
     InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
     ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
     ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
-    ModUninstaller, PlannedInitialRetargetInstall, PreparedReinstall,
+    InstalledReplacementReinstallResolution, ModUninstaller, PlannedInitialRetargetInstall,
+    PreparedReinstall,
     PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
-    PreviewInitialRetargetInstallRequest, ProfileSaveDirectoryDiscoveryService, ProfileService,
+    PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
+    ProfileSaveDirectoryDiscoveryService, ProfileService,
     RecoveryActionTaskRunner, RecoveryActionTaskService, ReinstallCandidateSourceReader,
     ReinstallCommitError, ReinstallCommitResult, ReinstallCommitService, ReinstallPlanPreview,
-    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreparation, ReinstallPreviewError, ReinstallPreviewRequest,
+    ReinstallPreviewService,
     ReinstallRecoveryWriteAdmission, ReinstallTargetCounts, ReinstallTaskAuditContext,
     ReinstallTaskExecutor, ReinstallTaskExecutorService, ReinstallTaskPrepareError,
     ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementWorkflowError,
     ReplacementWorkflowService, RetargetInstallTaskRunner, RetargetInstallTaskService,
+    RetargetReinstallRequest, RetargetReinstallTaskExecutor,
     SaveBackupAutoSchedulerService, SaveBackupBackgroundService, SaveBackupBackgroundWorker,
     SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
     SaveBackupTaskScopeRegistry, SaveBackupTaskService, StartRecoveryActionTaskRequest,
@@ -553,6 +557,7 @@ impl AppState {
             install_planning.clone(),
             Arc::clone(&install_manifest_repository),
             Arc::clone(&reinstall_recovery_repository),
+            Arc::clone(&replacement_workflow),
             app_data_dir.clone(),
         ));
         let reinstall_task_runner = Arc::new(ReinstallTaskRunner::with_write_locks(
@@ -731,6 +736,20 @@ struct ConfiguredReinstallCandidateSourceReader {
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
 }
 
+struct RetargetStagingReinstallCandidateSourceReader {
+    reader: RetargetStagingInstallSourceFileReader,
+}
+
+impl ReinstallCandidateSourceReader for RetargetStagingReinstallCandidateSourceReader {
+    fn read_candidate_source_file(
+        &self,
+        _candidate: &StoredModRevision,
+        package_file_id: &PackageFileId,
+    ) -> anyhow::Result<Vec<u8>> {
+        self.reader.read_source_file(package_file_id)
+    }
+}
+
 impl ConfiguredReinstallCandidateSourceReader {
     fn new(sandbox_locator: Arc<dyn ModImportSandboxLocator>) -> Self {
         Self { sandbox_locator }
@@ -759,6 +778,8 @@ struct ConfiguredReinstallServices {
 pub(crate) struct ConfiguredPreparedReinstall {
     prepared: PreparedReinstall,
     game_instance: GameInstance,
+    source: Arc<dyn ReinstallCandidateSourceReader>,
+    staging_cleanup: RetargetStagingCleanup,
 }
 
 impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
@@ -772,9 +793,45 @@ pub(crate) struct ConfiguredReinstallExecutor {
     catalog: Arc<dyn ModImportResultRepository>,
     planner: Arc<InstallPlanningService>,
     source: Arc<dyn ReinstallCandidateSourceReader>,
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     manifest_repository: Arc<dyn InstallManifestRepository>,
     recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+    replacement_workflow: Arc<ReplacementWorkflowService>,
     app_data_dir: PathBuf,
+}
+
+#[derive(Debug)]
+pub(crate) enum ConfiguredRetargetReinstallError {
+    Reinstall(ReinstallPreviewError),
+    Replacement(ReplacementWorkflowError),
+}
+
+struct ConfiguredRetargetReinstallPreparation {
+    preparation: ReinstallPreparation,
+    game_instance: GameInstance,
+    source: Arc<dyn ReinstallCandidateSourceReader>,
+    staging_cleanup: RetargetStagingCleanup,
+}
+
+#[derive(Default)]
+struct RetargetStagingCleanup {
+    staging_root: Option<PathBuf>,
+}
+
+impl RetargetStagingCleanup {
+    fn armed(staging_root: PathBuf) -> Self {
+        Self {
+            staging_root: Some(staging_root),
+        }
+    }
+}
+
+impl Drop for RetargetStagingCleanup {
+    fn drop(&mut self) {
+        if let Some(staging_root) = self.staging_root.take() {
+            discard_retarget_staging(&staging_root);
+        }
+    }
 }
 
 impl ConfiguredReinstallExecutor {
@@ -786,17 +843,21 @@ impl ConfiguredReinstallExecutor {
         planner: Arc<InstallPlanningService>,
         manifest_repository: Arc<dyn InstallManifestRepository>,
         recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+        replacement_workflow: Arc<ReplacementWorkflowService>,
         app_data_dir: PathBuf,
     ) -> Self {
+        let source = Arc::new(ConfiguredReinstallCandidateSourceReader::new(Arc::clone(
+            &sandbox_locator,
+        )));
         Self {
             game_config_repository,
             catalog,
             planner,
-            source: Arc::new(ConfiguredReinstallCandidateSourceReader::new(
-                sandbox_locator,
-            )),
+            source,
+            sandbox_locator,
             manifest_repository,
             recovery_repository,
+            replacement_workflow,
             app_data_dir,
         }
     }
@@ -807,6 +868,106 @@ impl ConfiguredReinstallExecutor {
     ) -> Result<ReinstallPlanPreview, ReinstallPreviewError> {
         let services = self.services_for(&request.game_id)?;
         services.preview.preview(request)
+    }
+
+    pub(crate) fn preview_retarget_reinstall(
+        &self,
+        request: RetargetReinstallRequest,
+    ) -> Result<ReinstallPlanPreview, ConfiguredRetargetReinstallError> {
+        let prepared = self.prepare_retarget_reinstall(request)?;
+        Ok(prepared.preparation.into_preview())
+    }
+
+    fn prepare_retarget_reinstall(
+        &self,
+        request: RetargetReinstallRequest,
+    ) -> Result<ConfiguredRetargetReinstallPreparation, ConfiguredRetargetReinstallError> {
+        let services = self
+            .services_for(&request.game_id)
+            .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
+        let context = services
+            .preview
+            .resolve_installed_replacement_context(&request.profile_id, &request.mod_id)
+            .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
+        let context = match context {
+            InstalledReplacementReinstallResolution::Ready(context) => context,
+            InstalledReplacementReinstallResolution::Blocked(preview) => {
+                return Ok(ConfiguredRetargetReinstallPreparation {
+                    preparation: ReinstallPreparation::Blocked(preview),
+                    game_instance: services.game_instance,
+                    source: Arc::clone(&self.source),
+                    staging_cleanup: RetargetStagingCleanup::default(),
+                });
+            }
+        };
+        let planned = self
+            .replacement_workflow
+            .preview_reinstall_target(PreviewRetargetReinstallRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                mod_id: request.mod_id.clone(),
+                installed_revision_id: context.installed_revision_id.clone(),
+                installed_binding: context.installed_binding,
+                target_id: request.target_id,
+                layer: request.layer.clone(),
+            })
+            .map_err(ConfiguredRetargetReinstallError::Replacement)?;
+        let source_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(planned.package_id())
+            .map_err(|_| {
+                ConfiguredRetargetReinstallError::Replacement(
+                    ReplacementWorkflowError::SandboxUnavailable,
+                )
+            })?;
+        let staging_root = retarget_reinstall_staging_root(&self.app_data_dir);
+        let materializer = FileSystemRetargetStagingMaterializer::new(
+            staging_root.clone(),
+            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+        );
+        let plan = self
+            .replacement_workflow
+            .materialize_reinstall_target(&materializer, planned)
+            .map_err(ConfiguredRetargetReinstallError::Replacement)?;
+        let staging_cleanup = RetargetStagingCleanup::armed(staging_root.clone());
+        let source: Arc<dyn ReinstallCandidateSourceReader> =
+            match RetargetStagingInstallSourceFileReader::from_install_plan(
+                staging_root.clone(),
+                &plan,
+            ) {
+                Ok(reader) => Arc::new(RetargetStagingReinstallCandidateSourceReader { reader }),
+                Err(_) => {
+                    return Err(ConfiguredRetargetReinstallError::Replacement(
+                        ReplacementWorkflowError::PlanUnavailable,
+                    ));
+                }
+            };
+        let candidate_request = ReinstallPreviewRequest {
+            game_id: request.game_id,
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            candidate_revision_id: context.installed_revision_id,
+            layer: request.layer,
+        };
+        let candidate_services = self.services_for_game_instance_with_source(
+            services.game_instance.clone(),
+            Arc::clone(&source),
+        );
+        let preparation = match candidate_services
+            .preview
+            .prepare_replacement_target_switch(candidate_request, plan)
+        {
+            Ok(preparation) => preparation,
+            Err(error) => {
+                return Err(ConfiguredRetargetReinstallError::Reinstall(error));
+            }
+        };
+        Ok(ConfiguredRetargetReinstallPreparation {
+            preparation,
+            game_instance: services.game_instance,
+            source,
+            staging_cleanup,
+        })
     }
 
     fn services_for(
@@ -825,6 +986,14 @@ impl ConfiguredReinstallExecutor {
         &self,
         game_instance: GameInstance,
     ) -> ConfiguredReinstallServices {
+        self.services_for_game_instance_with_source(game_instance, Arc::clone(&self.source))
+    }
+
+    fn services_for_game_instance_with_source(
+        &self,
+        game_instance: GameInstance,
+        source: Arc<dyn ReinstallCandidateSourceReader>,
+    ) -> ConfiguredReinstallServices {
         let game_files: Arc<dyn InstallGameFileSystem> = Arc::new(
             FileSystemInstallGameFileSystem::new(game_instance.root_dir.clone()),
         );
@@ -834,7 +1003,7 @@ impl ConfiguredReinstallExecutor {
         let preview = Arc::new(ReinstallPreviewService::new(
             Arc::clone(&self.catalog),
             self.planner.clone(),
-            Arc::clone(&self.source),
+            Arc::clone(&source),
             Arc::clone(&game_files),
             backup_store.clone(),
             Arc::clone(&self.manifest_repository),
@@ -842,7 +1011,7 @@ impl ConfiguredReinstallExecutor {
         ));
         let commit = Arc::new(ReinstallCommitService::new(
             Arc::clone(&self.catalog),
-            Arc::clone(&self.source),
+            source,
             game_files,
             backup_store.clone(),
             Arc::clone(&self.manifest_repository),
@@ -894,6 +1063,8 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
         Ok(ConfiguredPreparedReinstall {
             prepared,
             game_instance: services.game_instance,
+            source: Arc::clone(&self.source),
+            staging_cleanup: RetargetStagingCleanup::default(),
         })
     }
 
@@ -902,13 +1073,83 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
         prepared: Self::Prepared,
         expected_plan_token: &str,
     ) -> Result<ReinstallCommitResult, ReinstallCommitError> {
-        let current_instance = load_reinstall_game_instance_for_commit(
+        let ConfiguredPreparedReinstall {
+            prepared,
+            game_instance,
+            source,
+            staging_cleanup,
+        } = prepared;
+        let result = load_reinstall_game_instance_for_commit(
             self.game_config_repository.as_ref(),
-            &prepared.game_instance,
-        )?;
-        self.services_for_game_instance(current_instance)
-            .executor
-            .commit(prepared.prepared, expected_plan_token)
+            &game_instance,
+        )
+        .and_then(|current_instance| {
+            self.services_for_game_instance_with_source(current_instance, source)
+                .executor
+                .commit(prepared, expected_plan_token)
+        });
+        drop(staging_cleanup);
+        result
+    }
+}
+
+impl RetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
+    fn prepare_retarget_reinstall(
+        &self,
+        request: RetargetReinstallRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError> {
+        let fallback = ReinstallTaskAuditContext {
+            previous_revision_id: None,
+            candidate_revision_id: hmm_core::ModRevisionId::new("unresolved"),
+            counts: ReinstallTargetCounts::default(),
+        };
+        let prepared = match ConfiguredReinstallExecutor::prepare_retarget_reinstall(self, request)
+        {
+            Ok(prepared) => prepared,
+            Err(ConfiguredRetargetReinstallError::Replacement(_)) => {
+                return Err(ReinstallTaskPrepareError::Planning(fallback));
+            }
+            Err(ConfiguredRetargetReinstallError::Reinstall(
+                ReinstallPreviewError::CatalogUnavailable
+                | ReinstallPreviewError::CandidatePlanUnavailable,
+            )) => return Err(ReinstallTaskPrepareError::Planning(fallback)),
+            Err(ConfiguredRetargetReinstallError::Reinstall(
+                ReinstallPreviewError::ManifestUnavailable
+                | ReinstallPreviewError::RecoveryUnavailable,
+            )) => return Err(ReinstallTaskPrepareError::Preflight(fallback)),
+        };
+        let ConfiguredRetargetReinstallPreparation {
+            preparation,
+            game_instance,
+            source,
+            staging_cleanup,
+        } = prepared;
+        match preparation {
+            ReinstallPreparation::Ready(reinstall) => Ok(ConfiguredPreparedReinstall {
+                prepared: *reinstall,
+                game_instance,
+                source,
+                staging_cleanup,
+            }),
+            ReinstallPreparation::Blocked(preview) => Err(ReinstallTaskPrepareError::Preflight(
+                ReinstallTaskAuditContext {
+                    previous_revision_id: preview
+                        .installed_revision
+                        .as_ref()
+                        .map(|revision| revision.revision_id.clone()),
+                    candidate_revision_id: preview
+                        .candidate_revision
+                        .map(|revision| revision.revision_id)
+                        .or_else(|| {
+                            preview
+                                .installed_revision
+                                .map(|revision| revision.revision_id)
+                        })
+                        .unwrap_or(fallback.candidate_revision_id),
+                    counts: preview.counts,
+                },
+            )),
+        }
     }
 }
 
@@ -1260,12 +1501,7 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
         else {
             return;
         };
-        if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
-            tracing::warn!(
-                error_code = "retarget_staging_cleanup_failed",
-                "failed to discard prepared retarget staging"
-            );
-        }
+        discard_retarget_staging(&staging_root);
     }
 }
 
@@ -1281,6 +1517,22 @@ fn retarget_staging_root(
             .join("retarget-staging")
             .join(id.to_string()),
     )
+}
+
+fn retarget_reinstall_staging_root(app_data_dir: &Path) -> PathBuf {
+    app_data_dir
+        .join("install")
+        .join("retarget-staging")
+        .join(uuid::Uuid::new_v4().to_string())
+}
+
+fn discard_retarget_staging(staging_root: &Path) {
+    if std::fs::remove_dir_all(staging_root).is_err() && staging_root.exists() {
+        tracing::warn!(
+            error_code = "retarget_staging_cleanup_failed",
+            "failed to discard prepared retarget staging"
+        );
+    }
 }
 
 impl ConfiguredInstallCommitter {

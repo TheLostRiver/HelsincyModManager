@@ -168,7 +168,14 @@ impl ReinstallRecoveryTransaction {
         if self.profile_id != self.pre_reinstall_manifest.profile_id {
             return Err(ReinstallRecoveryTransactionValidationError::ProfileMismatch);
         }
-        if self.old_revision_id == self.candidate_revision_id {
+        if self.old_revision_id == self.candidate_revision_id
+            && !is_same_revision_replacement_target_switch(
+                &self.pre_reinstall_manifest,
+                &self.mod_id,
+                &self.candidate_revision_id,
+                &self.candidate_replacement_bindings,
+            )
+        {
             return Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged);
         }
         if self.plan_token.trim().is_empty() || self.plan_hash.trim().is_empty() {
@@ -317,6 +324,39 @@ impl ReinstallRecoveryTransaction {
             )
         }
     }
+}
+
+pub fn is_same_revision_replacement_target_switch(
+    manifest: &InstallManifest,
+    mod_id: &ModId,
+    revision_id: &ModRevisionId,
+    candidate_bindings: &[ReplacementBindingSnapshot],
+) -> bool {
+    let mut installed = manifest
+        .replacement_bindings
+        .iter()
+        .filter(|snapshot| snapshot.mod_id() == mod_id);
+    let (Some(installed), None) = (installed.next(), installed.next()) else {
+        return false;
+    };
+    let [candidate] = candidate_bindings else {
+        return false;
+    };
+
+    candidate.mod_id() == mod_id
+        && candidate.profile_id() == &manifest.profile_id
+        && candidate.revision_id() == Some(revision_id)
+        && installed.revision_id().is_none_or(|installed| installed == revision_id)
+        && candidate.binding_id() == installed.binding_id()
+        && candidate.binding().created_at_unix_millis()
+            == installed.binding().created_at_unix_millis()
+        && candidate.binding().source_id() == installed.binding().source_id()
+        && candidate.source_internal_id() == installed.source_internal_id()
+        && candidate.source_path_family() == installed.source_path_family()
+        && candidate.target_path_family() == installed.target_path_family()
+        && candidate.retarget_kind() == installed.retarget_kind()
+        && candidate.binding().target_id() != installed.binding().target_id()
+        && candidate.target_internal_id() != installed.target_internal_id()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1218,6 +1258,107 @@ mod tests {
     }
 
     #[test]
+    fn recovery_transaction_allows_only_a_proven_same_revision_replacement_target_switch() {
+        let mut transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
+        transaction.old_revision_id = ModRevisionId::new("v1");
+        transaction.candidate_revision_id = ModRevisionId::new("v1");
+        transaction.pre_reinstall_manifest.schema_version =
+            crate::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+        transaction.pre_reinstall_manifest.replacement_bindings = vec![
+            replacement_snapshot_for_target(
+                "binding-v2",
+                "mod-a",
+                "default",
+                None,
+                "mhw:armor:guardian-alpha",
+                "pl121_0000",
+            ),
+        ];
+        transaction.candidate_replacement_bindings = vec![replacement_snapshot_for_target(
+            "binding-v2",
+            "mod-a",
+            "default",
+            Some("v1"),
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+        )];
+
+        transaction
+            .validate()
+            .expect("same revision is valid when the persisted binding switches target");
+
+        let mut unchanged = transaction.clone();
+        unchanged.candidate_replacement_bindings = vec![replacement_snapshot_for_target(
+            "binding-v2",
+            "mod-a",
+            "default",
+            Some("v1"),
+            "mhw:armor:guardian-alpha",
+            "pl121_0000",
+        )];
+        assert_eq!(
+            unchanged.validate(),
+            Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged)
+        );
+
+        let mut unrelated_binding = transaction;
+        let candidate = replacement_snapshot_for_target(
+            "binding-other",
+            "mod-a",
+            "default",
+            Some("v1"),
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+        );
+        unrelated_binding.candidate_replacement_bindings = vec![candidate];
+        assert_eq!(
+            unrelated_binding.validate(),
+            Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged)
+        );
+
+        let mut changed_target_family = recovery_transaction(
+            ReinstallRecoveryTransactionStatus::Planned,
+        );
+        changed_target_family.old_revision_id = ModRevisionId::new("v1");
+        changed_target_family.candidate_revision_id = ModRevisionId::new("v1");
+        changed_target_family.pre_reinstall_manifest.schema_version =
+            crate::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+        changed_target_family.pre_reinstall_manifest.replacement_bindings = vec![
+            replacement_snapshot_for_target(
+                "binding-v2",
+                "mod-a",
+                "default",
+                None,
+                "mhw:armor:guardian-alpha",
+                "pl121_0000",
+            ),
+        ];
+        let mut candidate = replacement_snapshot_for_target(
+            "binding-v2",
+            "mod-a",
+            "default",
+            Some("v1"),
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+        );
+        candidate = ReplacementBindingSnapshot::new(
+            candidate.binding().clone(),
+            candidate.revision_id().cloned(),
+            candidate.source_internal_id(),
+            candidate.target_internal_id(),
+            candidate.source_path_family(),
+            "pl/m_equip",
+            candidate.retarget_kind().clone(),
+        )
+        .expect("changed target family snapshot");
+        changed_target_family.candidate_replacement_bindings = vec![candidate];
+        assert_eq!(
+            changed_target_family.validate(),
+            Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged)
+        );
+    }
+
+    #[test]
     fn recovery_transaction_round_trips_durable_snapshot_cleanup_progress() {
         let mut transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
         transaction.targets[1].snapshot = ReinstallSnapshotState::CleanupPending {
@@ -1428,20 +1569,38 @@ mod tests {
         profile_id: &str,
         revision_id: &str,
     ) -> ReplacementBindingSnapshot {
+        replacement_snapshot_for_target(
+            "binding-v2",
+            mod_id,
+            profile_id,
+            Some(revision_id),
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+        )
+    }
+
+    fn replacement_snapshot_for_target(
+        binding_id: &str,
+        mod_id: &str,
+        profile_id: &str,
+        revision_id: Option<&str>,
+        target_id: &str,
+        target_internal_id: &str,
+    ) -> ReplacementBindingSnapshot {
         ReplacementBindingSnapshot::new(
             ReplacementBinding::new(
-                ReplacementBindingId::parse("binding-v2").expect("binding id"),
+                ReplacementBindingId::parse(binding_id).expect("binding id"),
                 ModId::new(mod_id),
                 ProfileId::new(profile_id),
                 ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
                     .expect("source id"),
-                ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+                ReplacementTargetId::parse(target_id).expect("target id"),
                 42,
             )
             .expect("binding"),
-            Some(ModRevisionId::new(revision_id)),
+            revision_id.map(ModRevisionId::new),
             "pl121_0000",
-            "pl129_0000",
+            target_internal_id,
             "pl/f_equip",
             "pl/f_equip",
             ReplacementTargetKind::parse("armor").expect("replacement kind"),

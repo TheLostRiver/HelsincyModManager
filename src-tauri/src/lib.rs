@@ -52,7 +52,7 @@ use profile_commands::{
 use reinstall_commands::{get_mod_revisions, preview_reinstall_plan, start_reinstall_task};
 use replacement_commands::{
     analyze_imported_mod_replacement, list_replacement_targets, preview_initial_retarget_install,
-    start_retarget_install_task,
+    preview_retarget_reinstall, start_retarget_install_task, start_retarget_reinstall_task,
 };
 use save_backup_commands::{
     check_auto_save_backup, disable_save_backup_background_protection,
@@ -117,6 +117,8 @@ pub fn run() {
             analyze_imported_mod_replacement,
             preview_initial_retarget_install,
             start_retarget_install_task,
+            preview_retarget_reinstall,
+            start_retarget_reinstall_task,
             get_mod_library,
             get_mod_detail,
             get_mod_dependency_graph,
