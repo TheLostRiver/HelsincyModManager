@@ -70,6 +70,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 手动后端维护：`maintain_thumbnail_cache`
 - 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`
 - 取消长任务：`cancel_task`
+- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
 
@@ -166,6 +167,50 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 4. 在 command 中通过 `State<'_, AppState>` 调用服务。
 
 如果服务需要内部可变状态，优先让服务内部用清晰的锁或队列表达，而不是在 command 中临时拼装全局状态。
+
+## ARMOR_RETARGET AR4 契约
+
+AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件修改”只负责用
+replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
+占用和冲突总览。
+
+四个 command 的请求只使用稳定身份：
+
+| command | 请求 | 返回 |
+| --- | --- | --- |
+| `list_replacement_targets` | `gameId`、可选 `query` | catalog target 列表 |
+| `analyze_imported_mod_replacement` | `gameId`、`modId` | source、匹配文件数、warning 与 `retargetable` |
+| `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
+| `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
+
+前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
+`sourceId`、`bindingId`、`internalId` 或最终 target path。后端从当前 display revision 重建包事实，
+重新扫描并分析唯一受支持 source，按 `targetId` 查询 catalog，生成 binding、`RetargetPlan`、staging
+和 `InstallPlan`。`internalId` 与最终相对路径只能作为后端返回的只读预览信息。
+
+`preview_initial_retarget_install` 与 `start_retarget_install_task` 只允许目标 Mod 在当前 profile 的恢复
+状态严格为 `not_installed`。`installed`、`committed_cleanup_pending`、`cleanup_pending`、
+`rollback_required`、`repair_required`、`unknown` 以及状态查询失败全部 fail closed。已安装 Mod 的
+target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
+
+稳定错误码至少包括：
+
+- `replacement_unsupported_game`
+- `replacement_mod_not_found`
+- `replacement_package_unavailable`
+- `replacement_analysis_unavailable`
+- `replacement_source_not_retargetable`
+- `replacement_target_catalog_unavailable`
+- `replacement_target_not_found`
+- `replacement_install_state_unavailable`
+- `replacement_initial_install_blocked`
+- `replacement_preview_unavailable`
+
+`start_retarget_install_task` 继续使用 `TaskKind::Install`、`hmm://task-progress` 和既有
+game/profile 写锁。新增 phase 为 `install.retarget.queued`、`install.retarget.plan.building`、
+`install.retarget.commit.processing`、`install.retarget.completed`、`install.retarget.failed`；失败事件的
+`error` 使用 `install_retarget_failed:<phase>`。commit 必须继续经过 Audit Log、backup、manifest、
+rollback/recovery 链路。原始导入包只读，retarget staging 是可清理、可重建的临时输入，不是事实来源。
 
 ## 长任务契约
 
@@ -351,17 +396,19 @@ type GamePrerequisiteReportDto = {
 首批 command：
 
 ```text
-list_replacement_targets(gameId)
-analyze_replacement_assets({ gameId, packageId })
-preview_retarget_plan({ gameId, packageId, binding })
+list_replacement_targets({ gameId, query? })
+analyze_imported_mod_replacement({ gameId, modId })
+preview_initial_retarget_install({ gameId, profileId, modId, targetId, layerName, layerPriority })
+start_retarget_install_task({ gameId, profileId, modId, targetId, layerName, layerPriority })
 ```
 
 边界：
 
-- 前端只提交 `packageId` 和 `targetId`。
-- 后端通过 repository 解析 package，不接受 cache path。
+- 前端只提交稳定的 game/Mod/profile/target/layer identity，不提交 package/revision/source/binding/path。
+- 后端通过 repository 解析当前 display revision 和 package，不接受 cache、sandbox 或 staging path。
 - MHW adapter 负责 slot 解析、catalog 归一化和路径级 plan。
 - 返回 preview 时可展示最终相对路径摘要，但前端不能自行生成路径。
+- preview/start 只允许 recovery status 严格为 `not_installed`；已安装 target switch 留给 AR5 真正重装。
 
 ### 3. Profile 管理
 
