@@ -564,6 +564,13 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::CandidateNotReady,
             ));
         }
+        if allow_same_revision_target_switch && installed_revision_id != candidate_revision_id {
+            return Ok(ReinstallPlanPreview::blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::CandidateNotReady,
+            ));
+        }
         if installed_revision_id == candidate_revision_id
             && !is_same_revision_replacement_target_switch(
                 &manifest,
