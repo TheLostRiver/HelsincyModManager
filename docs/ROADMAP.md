@@ -5,9 +5,9 @@
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 约束：
 
 1. Gate A 已完成独立复审、完整验证并标记为 `certified`。
-2. Gate B 的 AR1 领域模型/catalog、AR2 单 source `f_equip` parser/analyzer/`RetargetPlan` 与 AR3
-   staging materialize、InstallPlan/binding snapshot 集成已实现；当前下一项是 AR4 Tauri typed
-   contract 与最小受控 UI。
+2. Gate B 的 AR1 领域模型/catalog、AR2 单 source `f_equip` parser/analyzer/`RetargetPlan`、AR3
+   staging materialize/InstallPlan/binding snapshot 与 AR4 Tauri typed contract/最小受控 UI 已实现；
+   当前下一项是 AR5 真正重装 target switch、卸载闭环与 Gate B 认证。
 3. Gate B 前暂停自动备份剩余切片、installer cleanup、分页、批量迁移、批量操作、任务队列和
    非必要视觉增强。
 
@@ -51,8 +51,8 @@ InstallPlan 当前落地状态见 [InstallPlan 模块现状](INSTALL_PLAN_STATUS
 本 Phase 的安装/卸载代码、固定人工 fixture 的 temp-root acceptance、真正重装 use case 和
 disposable Windows Sandbox 桌面 smoke 已完成；retained/replaced/added/stale、重启、manifest 卸载、
 baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本地 review、完整验证与 clippy
-也已通过，Gate A 已标记为 `certified`。AR1/AR2/AR3 已于 2026-07-16 标记为 `implemented`，当前
-唯一下一项是 Gate B 的 AR4；AR5 与 Gate B 验收尚未完成。
+也已通过，Gate A 已标记为 `certified`。AR1/AR2/AR3/AR4 已于 2026-07-16 标记为 `implemented`，
+当前唯一下一项是 Gate B 的 AR5；真正重装 target switch、卸载扩展与 Gate B 验收尚未完成。
 
 ## Phase 3：玩家工作流扩展（Gate B 前暂停）
 
@@ -74,7 +74,9 @@ manifest/preflight/UI 子集可以提前。
 - 已完成单 source `f_equip` 严格路径分析和纯 `RetargetPlan` 外观替换映射。
 - 已完成受控 batch staging materialize、containment 与失败清理。
 - 已把 retarget final targets 交给 InstallPlan，并持久化 Mod/profile/revision-owned binding snapshot。
-- 完成选择目标、安装、切换目标和卸载的纵向 UI；切换目标复用 Gate A 的真正重装。
+- 已完成四个窄 Tauri command、feature-local typed API，以及 `Mod 详情 -> 替换目标` Tab/右键直达；
+  首次安装只接受稳定 identity，并对 installed/unsafe/unknown 状态 fail closed。
+- 下一步完成真正重装 target switch 和卸载闭环；切换目标必须复用 Gate A 的真正重装。
 - 通过 Gate B 后再扩展完整 catalog、本地化筛选和其他资源类型。
 
 Gate B 后续范围：

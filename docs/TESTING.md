@@ -276,8 +276,8 @@ MHW:I、第三方 Mod、Steam userdata、玩家存档或维护者日常 AppData�
 CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 2026-07-15 重新执行上述聚焦矩阵、
 全部前端测试、完整 `scripts/verify.ps1` 和 `cargo clippy --workspace --all-targets -- -D warnings`，并完成
 独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model/catalog、AR2
-parser/analyzer/纯 `RetargetPlan` 与 AR3 staging/InstallPlan/binding snapshot 测试已落地；下一测试
-主线进入 AR4 Tauri typed contract 与最小受控 UI。
+parser/analyzer/纯 `RetargetPlan`、AR3 staging/InstallPlan/binding snapshot 与 AR4 Tauri typed
+contract/最小受控 UI 测试已落地；下一测试主线进入 AR5 真正重装 target switch、卸载与 Gate B 验收。
 
 ### ARMOR_RETARGET AR1
 
@@ -328,6 +328,26 @@ serde/legacy default、Mod/profile/revision 归属、plan/token hash、manifest 
 真正重装 candidate replacement 与跨重启 recovery recognition。普通 install 的 revision mismatch 和
 真正重装的 candidate revision mismatch 都必须在 source read、game write 和 manifest save 前零 I/O
 阻断。
+
+### ARMOR_RETARGET AR4
+
+AR4 的 Tauri/app 测试继续使用 fake ports、人工 package bytes 与 temp game/staging/manifest roots；
+前端测试只消费稳定 DTO 和人工 Mod 数据，不读取真实游戏目录或第三方 Mod：
+
+```powershell
+cargo test -p hmm-tauri replacement_dto_tests
+cargo test -p hmm-tauri replacement_commands
+cargo test -p hmm-app --test replacement_service
+cargo test -p hmm-app replacement_task::tests
+node --test src/features/replacements/*.test.mjs
+cmd /c corepack pnpm run test
+```
+
+这些测试锁定四个窄 command 的 camelCase DTO、未知字段拒绝、后端 display revision/source 解析、
+profile 全量 recovery admission、锁外分析/staging、锁内 `not_installed` 二次校验、失败/取消清理、
+task id/phase 匹配，以及前端 loading/error/empty/warning/conflict/installed fail-closed 状态。浏览器 smoke
+覆盖详情 Tab、右键直达、modal 层级和 `1440x900`/`480x800` 响应式；真正 Tauri 成功态和真实桌面
+source -> target -> preview -> install 仍必须在 Windows Sandbox 使用人工 fixture 验收。
 
 ## 存档备份
 
