@@ -149,6 +149,20 @@ fn replacement_target_switch_preparation_allows_same_revision_only_for_changed_b
 }
 
 #[test]
+fn replacement_target_switch_preparation_rejects_a_different_revision() {
+    let fixture = Fixture::ready();
+
+    let preview = fixture
+        .service
+        .prepare_replacement_target_switch(default_request(), target_switch_plan("v2"))
+        .expect("different-revision target switch preview")
+        .into_preview();
+
+    assert_blocked(&preview, ReinstallBlockingReason::CandidateNotReady);
+    fixture.assert_zero_mutations();
+}
+
+#[test]
 fn preview_blocks_missing_or_unsafe_manifest_and_unknown_installed_revision() {
     let missing = Fixture::ready();
     missing.manifests.set_manifest(None);

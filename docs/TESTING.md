@@ -373,7 +373,8 @@ cmd /c corepack pnpm run test
 
 这些测试锁定普通同 revision 重装继续阻断、只有同 lineage 且 target 变化的 binding 才可切换、
 installed revision 从 manifest 解析且不隐式升级、operation-scoped staging/RAII cleanup、写锁内 token
-revalidation、四类 target 计数、失败 rollback/recovery，以及 `v1 target -> v2 target -> restart -> uninstall
+revalidation、四类 target 计数、失败 rollback/recovery，以及同 revision 内的
+`Fatalis Alpha + target -> Fatalis Beta + target -> restart -> uninstall
 -> exact pre-Armor baseline`。Tauri/前端测试同时锁定窄 DTO、稳定错误、严格 taskId、确认对话框、
 取消安全阶段和 blocked/current-target/stale-token fail closed。manifest 查询测试还必须锁定：仅可信
 installed 状态返回唯一 `installedTargetId`，歧义或不安全状态不产生可执行 target；前端重启加载后
