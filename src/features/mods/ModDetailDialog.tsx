@@ -329,7 +329,7 @@ export function ModDetailDialog({
             aria-selected={activeTab === "details"}
             className={activeTab === "details" ? "is-active" : undefined}
             onClick={() => setActiveTab("details")}
-            disabled={replacementBusy}
+            disabled={dialogBusy}
           >
             <Info size={15} aria-hidden="true" />
             基本信息
@@ -340,6 +340,7 @@ export function ModDetailDialog({
             aria-selected={activeTab === "replacement"}
             className={activeTab === "replacement" ? "is-active" : undefined}
             onClick={() => setActiveTab("replacement")}
+            disabled={dialogBusy}
           >
             <Target size={15} aria-hidden="true" />
             替换目标

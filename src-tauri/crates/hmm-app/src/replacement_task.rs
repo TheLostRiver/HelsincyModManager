@@ -153,6 +153,13 @@ impl RetargetInstallTaskRunner {
                     self.planner.discard_initial_retarget_install(&plan);
                     self.fail(task_id, &request, events.clone(), "state", action_count)
                 })?;
+            if self.task_manager.block_task_cancellation(task_id).is_err() {
+                self.planner.discard_initial_retarget_install(&plan);
+                if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                    return Ok(events);
+                }
+                return Err(self.fail(task_id, &request, events, "lock", action_count));
+            }
 
             events.push(running_event(task_id, COMMIT_PROCESSING_PHASE));
             self.committer
@@ -328,6 +335,28 @@ mod tests {
         }
     }
 
+    struct CancellingCommitter {
+        task_manager: Arc<TaskManager>,
+        task_id: String,
+        cancel_result: Mutex<Option<Result<TaskStatus, TaskManagerError>>>,
+    }
+
+    impl InstallPlanCommitter for CancellingCommitter {
+        fn commit_install_plan(
+            &self,
+            request: ImportedModInstallCommitRequest,
+        ) -> Result<InstallCommitResult, InstallCommitError> {
+            let result = self
+                .task_manager
+                .cancel_task(&self.task_id)
+                .map(|task| task.status);
+            *self.cancel_result.lock().expect("cancel result") = Some(result);
+            Ok(InstallCommitResult {
+                manifest: InstallManifest::completed(request.profile_id, Vec::new()),
+            })
+        }
+    }
+
     #[derive(Default)]
     struct RecordingAudit {
         events: Mutex<Vec<AuditLogEvent>>,
@@ -454,6 +483,57 @@ mod tests {
         assert_eq!(
             error.events.last().expect("failed event").error.as_deref(),
             Some("install_retarget_failed:state")
+        );
+    }
+
+    #[test]
+    fn runner_blocks_cancellation_before_commit_and_completes_consistently() {
+        let task_manager = Arc::new(TaskManager::new());
+        let planner = Arc::new(RecordingPlanner {
+            revalidate_result: Ok(()),
+            revalidated: Mutex::new(false),
+            discard_count: Mutex::new(0),
+        });
+        let audit = Arc::new(RecordingAudit::default());
+        let task = RetargetInstallTaskService::new(Arc::clone(&task_manager))
+            .start_retarget_install_task(request())
+            .expect("start task");
+        let committer = Arc::new(CancellingCommitter {
+            task_manager: Arc::clone(&task_manager),
+            task_id: task.task_id.clone(),
+            cancel_result: Mutex::new(None),
+        });
+        let runner = RetargetInstallTaskRunner::with_write_coordination(
+            Arc::clone(&task_manager),
+            planner,
+            committer.clone(),
+            audit,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            Arc::new(AllowWrites),
+        );
+
+        let events = runner
+            .run_retarget_install_task(&task.task_id, request())
+            .expect("committed task completes");
+
+        let cancel_result = committer.cancel_result.lock().expect("cancel result");
+        assert!(matches!(
+            cancel_result
+                .as_ref()
+                .expect("commit attempted cancellation"),
+            Err(TaskManagerError::TaskCannotBeCancelled {
+                status: TaskStatus::Running,
+                ..
+            })
+        ));
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(TaskStatus::Completed)
+        );
+        assert_eq!(
+            events.last().expect("completed event").phase,
+            COMPLETED_PHASE
         );
     }
 }
