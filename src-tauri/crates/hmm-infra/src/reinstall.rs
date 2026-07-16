@@ -328,6 +328,7 @@ mod tests {
                     installed_file: Some(summary("same")),
                 }],
             ),
+            candidate_replacement_bindings: Vec::new(),
             targets: vec![
                 ReinstallRecoveryTarget {
                     target_path: retained,

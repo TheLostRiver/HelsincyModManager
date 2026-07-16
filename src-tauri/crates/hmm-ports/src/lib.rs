@@ -16,6 +16,7 @@ mod reinstall;
 mod replacement;
 mod save_backup;
 mod save_directory;
+mod staging;
 mod text_log;
 
 use anyhow::Result;
@@ -84,6 +85,9 @@ pub use save_directory::{
     GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,
     PendingSaveDirectoryDiscovery, ScannedSaveDirectoryCandidate, SteamAccountProfileClient,
     SteamUserdataScanRequest, SteamUserdataScanner,
+};
+pub use staging::{
+    RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
 };
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
 

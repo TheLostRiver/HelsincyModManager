@@ -2,7 +2,7 @@ use hmm_core::{
     FileLayer, GameId, InstallAction, InstallFileProvider, InstallManifest, InstallManifestEntry,
     InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
     InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, PackageFileId,
-    ProfileId,
+    ProfileId, ReplacementBindingSnapshot,
 };
 use hmm_ports::{
     GameAdapter, InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -76,6 +76,8 @@ pub enum InstallCommitPhase {
 pub enum InstallCommitError {
     #[error("install plan has blocking conflicts")]
     PlanHasBlockingConflicts,
+    #[error("install plan replacement bindings are invalid")]
+    PlanHasInvalidReplacementBindings,
     #[error("install commit failed during {phase:?}")]
     Failed { phase: InstallCommitPhase },
     #[error("install commit failed during {failed_phase:?}; rollback succeeded")]
@@ -233,8 +235,15 @@ impl InstallCommitService {
         if plan.has_blocking_conflicts() {
             return Err(InstallCommitError::PlanHasBlockingConflicts);
         }
+        if plan
+            .validate_replacement_bindings_for_profile_and_revision(&profile_id, None)
+            .is_err()
+        {
+            return Err(InstallCommitError::PlanHasInvalidReplacementBindings);
+        }
 
         let plan_hash = install_plan_hash(&plan);
+        let replacement_bindings = plan.replacement_bindings.clone();
         let existing_manifest = self
             .manifest_repository
             .load_manifest(&profile_id)
@@ -369,6 +378,7 @@ impl InstallCommitService {
                 .iter()
                 .map(|change| change.entry.clone())
                 .collect(),
+            replacement_bindings,
             plan_hash,
         );
 
@@ -691,12 +701,17 @@ impl UninstallModService {
             created_at,
             status,
             entries,
+            replacement_bindings,
             ..
         } = manifest;
 
         let (uninstall_entries, kept_entries): (Vec<_>, Vec<_>) = entries
             .into_iter()
             .partition(|entry| entry.mod_id == request.mod_id);
+        let kept_replacement_bindings = replacement_bindings
+            .into_iter()
+            .filter(|snapshot| snapshot.mod_id() != &request.mod_id)
+            .collect();
 
         if uninstall_entries.is_empty() {
             return Err(UninstallModError::ModNotInstalled);
@@ -793,6 +808,7 @@ impl UninstallModService {
         updated_manifest.schema_version = schema_version;
         updated_manifest.schema_migration = schema_migration;
         updated_manifest.status = status;
+        updated_manifest.replacement_bindings = kept_replacement_bindings;
         if self
             .manifest_repository
             .save_manifest(&updated_manifest)
@@ -868,28 +884,43 @@ fn merge_install_manifest(
     profile_id: ProfileId,
     existing_manifest: Option<InstallManifest>,
     applied_entries: Vec<InstallManifestEntry>,
+    applied_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     plan_hash: String,
 ) -> InstallManifest {
-    let (mut entries, created_at, status, manifest_id, schema_version, schema_migration) =
-        existing_manifest
-            .map(|manifest| {
-                (
-                    manifest.entries,
-                    manifest.created_at,
-                    manifest.status,
-                    Some(manifest.manifest_id),
-                    Some(manifest.schema_version),
-                    manifest.schema_migration,
-                )
-            })
-            .unwrap_or_default();
+    let (
+        mut entries,
+        mut replacement_bindings,
+        created_at,
+        status,
+        manifest_id,
+        schema_version,
+        schema_migration,
+    ) = existing_manifest
+        .map(|manifest| {
+            (
+                manifest.entries,
+                manifest.replacement_bindings,
+                manifest.created_at,
+                manifest.status,
+                Some(manifest.manifest_id),
+                Some(manifest.schema_version),
+                manifest.schema_migration,
+            )
+        })
+        .unwrap_or_default();
 
+    let touched_mods = applied_entries
+        .iter()
+        .map(|entry| entry.mod_id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
     entries.retain(|entry| {
         !applied_entries
             .iter()
             .any(|applied_entry| applied_entry.target_path == entry.target_path)
     });
     entries.extend(applied_entries);
+    replacement_bindings.retain(|snapshot| !touched_mods.contains(snapshot.mod_id()));
+    replacement_bindings.extend(applied_replacement_bindings);
 
     let completed_at = current_manifest_timestamp();
     let mut manifest = InstallManifest::completed_with_metadata(
@@ -908,6 +939,7 @@ fn merge_install_manifest(
     }
     manifest.schema_migration = schema_migration;
     manifest.status = status;
+    manifest.replacement_bindings = replacement_bindings;
     manifest
 }
 
@@ -941,9 +973,44 @@ fn install_plan_hash(plan: &InstallPlan) -> String {
         update_hash_str(&mut hasher, &action.provider.layer.name);
         hasher.update(action.provider.layer.priority.to_be_bytes());
     }
+    hash_replacement_snapshots(&mut hasher, &plan.replacement_bindings);
 
     let digest = hasher.finalize();
     format!("sha256:{}", digest_to_hex(&digest))
+}
+
+fn hash_replacement_snapshots(
+    hasher: &mut Sha256,
+    snapshots: &[ReplacementBindingSnapshot],
+) {
+    let mut snapshots = snapshots.iter().collect::<Vec<_>>();
+    snapshots.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
+    hasher.update((snapshots.len() as u64).to_be_bytes());
+    for snapshot in snapshots {
+        update_hash_str(hasher, snapshot.binding_id().as_str());
+        update_hash_str(hasher, snapshot.mod_id().as_str());
+        update_hash_str(hasher, snapshot.profile_id().as_str());
+        match snapshot.revision_id() {
+            Some(revision_id) => {
+                hasher.update([1]);
+                update_hash_str(hasher, revision_id.as_str());
+            }
+            None => hasher.update([0]),
+        }
+        update_hash_str(hasher, snapshot.binding().source_id().as_str());
+        update_hash_str(hasher, snapshot.binding().target_id().as_str());
+        hasher.update(
+            snapshot
+                .binding()
+                .created_at_unix_millis()
+                .to_be_bytes(),
+        );
+        update_hash_str(hasher, snapshot.source_internal_id());
+        update_hash_str(hasher, snapshot.target_internal_id());
+        update_hash_str(hasher, snapshot.source_path_family());
+        update_hash_str(hasher, snapshot.target_path_family());
+        update_hash_str(hasher, snapshot.retarget_kind().as_str());
+    }
 }
 
 fn update_hash_str(hasher: &mut Sha256, value: &str) {

@@ -16,6 +16,9 @@ use std::sync::{Arc, Mutex};
 
 #[path = "install_rollback_tests.rs"]
 mod install_rollback_tests;
+#[path = "install_replacement_tests.rs"]
+mod install_replacement_tests;
+use install_replacement_tests::replacement_snapshot;
 #[path = "install_uninstall_tests.rs"]
 mod install_uninstall_tests;
 

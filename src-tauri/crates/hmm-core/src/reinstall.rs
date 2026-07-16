@@ -1,6 +1,7 @@
 use crate::{
     InstallFileProvider, InstallManifest, InstallManifestEntry, InstallTargetPath,
-    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
+    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ReplacementBindingSnapshot,
+    INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -133,6 +134,8 @@ pub struct ReinstallRecoveryTransaction {
     pub plan_hash: String,
     pub status: ReinstallRecoveryTransactionStatus,
     pub pre_reinstall_manifest: InstallManifest,
+    #[serde(default)]
+    pub candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     pub targets: Vec<ReinstallRecoveryTarget>,
 }
 
@@ -156,6 +159,8 @@ pub enum ReinstallRecoveryTransactionValidationError {
     EmptySnapshotRef { target_path: InstallTargetPath },
     #[error("pre-reinstall manifest is invalid: {message}")]
     InvalidPreReinstallManifest { message: String },
+    #[error("reinstall transaction candidate replacement binding is invalid")]
+    InvalidCandidateReplacementBinding,
 }
 
 impl ReinstallRecoveryTransaction {
@@ -181,6 +186,20 @@ impl ReinstallRecoveryTransaction {
             .any(|entry| entry.mod_id == self.mod_id)
         {
             return Err(ReinstallRecoveryTransactionValidationError::OldEntrySetEmpty);
+        }
+        let mut candidate_binding_ids = BTreeSet::new();
+        let mut candidate_binding_mods = BTreeSet::new();
+        for snapshot in &self.candidate_replacement_bindings {
+            if snapshot.mod_id() != &self.mod_id
+                || snapshot.profile_id() != &self.profile_id
+                || snapshot.revision_id() != Some(&self.candidate_revision_id)
+                || !candidate_binding_ids.insert(snapshot.binding_id().clone())
+                || !candidate_binding_mods.insert(snapshot.mod_id().clone())
+            {
+                return Err(
+                    ReinstallRecoveryTransactionValidationError::InvalidCandidateReplacementBinding,
+                );
+            }
         }
 
         let mut targets = BTreeSet::new();
@@ -346,6 +365,8 @@ pub enum ReinstallManifestError {
     CandidateRevisionMissing,
     #[error("candidate manifest entry revision does not match the requested candidate")]
     CandidateRevisionMismatch,
+    #[error("candidate replacement binding does not match the requested Mod, profile, or revision")]
+    CandidateReplacementBindingMismatch,
     #[error("reinstall target is also owned by another Mod")]
     CrossModTargetOwnership {
         target_path: InstallTargetPath,
@@ -434,7 +455,25 @@ pub fn replace_entries_for_mod(
     requested_mod_id: &ModId,
     legacy_provenance: &[ModRevisionId],
     candidate_revision_id: &ModRevisionId,
+    candidate_entries: Vec<InstallManifestEntry>,
+) -> Result<InstallManifest, ReinstallManifestError> {
+    replace_entries_and_bindings_for_mod(
+        manifest,
+        requested_mod_id,
+        legacy_provenance,
+        candidate_revision_id,
+        candidate_entries,
+        Vec::new(),
+    )
+}
+
+pub fn replace_entries_and_bindings_for_mod(
+    manifest: &InstallManifest,
+    requested_mod_id: &ModId,
+    legacy_provenance: &[ModRevisionId],
+    candidate_revision_id: &ModRevisionId,
     mut candidate_entries: Vec<InstallManifestEntry>,
+    candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
 ) -> Result<InstallManifest, ReinstallManifestError> {
     let installed_entries = entries_for_mod(manifest, requested_mod_id)?;
     resolve_installed_revision(manifest, requested_mod_id, legacy_provenance)?;
@@ -456,6 +495,13 @@ pub fn replace_entries_for_mod(
             }
             Some(_) => {}
         }
+    }
+    if candidate_replacement_bindings.iter().any(|snapshot| {
+        snapshot.mod_id() != requested_mod_id
+            || snapshot.profile_id() != &manifest.profile_id
+            || snapshot.revision_id() != Some(candidate_revision_id)
+    }) {
+        return Err(ReinstallManifestError::CandidateReplacementBindingMismatch);
     }
 
     validate_entry_layer_priorities(installed_entries.iter().copied())?;
@@ -493,6 +539,15 @@ pub fn replace_entries_for_mod(
         .entries
         .retain(|entry| entry.mod_id != *requested_mod_id);
     updated.entries.extend(candidate_entries);
+    updated
+        .replacement_bindings
+        .retain(|snapshot| snapshot.mod_id() != requested_mod_id);
+    updated
+        .replacement_bindings
+        .extend(candidate_replacement_bindings);
+    updated
+        .validate()
+        .map_err(|_| ReinstallManifestError::CandidateReplacementBindingMismatch)?;
     Ok(updated)
 }
 
@@ -622,7 +677,9 @@ mod tests {
     use crate::{
         FileLayer, InstallFileProvider, InstallManifest, InstallManifestEntry,
         InstallManifestStatus, InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId,
-        PackageFileId, ProfileId,
+        PackageFileId, ProfileId, ReplacementBinding, ReplacementBindingId,
+        ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId,
+        ReplacementTargetKind,
     };
     use std::collections::BTreeMap;
 
@@ -1129,6 +1186,38 @@ mod tests {
     }
 
     #[test]
+    fn recovery_transaction_defaults_legacy_bindings_and_rejects_wrong_candidate_ownership() {
+        let transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
+        let mut legacy = serde_json::to_value(&transaction).expect("serialize transaction");
+        legacy
+            .as_object_mut()
+            .expect("transaction object")
+            .remove("candidate_replacement_bindings");
+        let legacy: ReinstallRecoveryTransaction =
+            serde_json::from_value(legacy).expect("legacy transaction");
+        assert!(legacy.candidate_replacement_bindings.is_empty());
+
+        for (mod_id, profile_id, revision_id) in [
+            ("mod-b", "default", "v2"),
+            ("mod-a", "other-profile", "v2"),
+            ("mod-a", "default", "v3"),
+        ] {
+            let mut invalid = transaction.clone();
+            invalid.candidate_replacement_bindings = vec![replacement_snapshot(
+                mod_id,
+                profile_id,
+                revision_id,
+            )];
+            assert_eq!(
+                invalid.validate(),
+                Err(
+                    ReinstallRecoveryTransactionValidationError::InvalidCandidateReplacementBinding
+                )
+            );
+        }
+    }
+
+    #[test]
     fn recovery_transaction_round_trips_durable_snapshot_cleanup_progress() {
         let mut transaction = recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
         transaction.targets[1].snapshot = ReinstallSnapshotState::CleanupPending {
@@ -1236,6 +1325,7 @@ mod tests {
             completed_at: Some("2026-07-14T00:00:01Z".to_owned()),
             plan_hash: Some("plan-v1".to_owned()),
             entries,
+            replacement_bindings: Vec::new(),
         }
     }
 
@@ -1283,6 +1373,7 @@ mod tests {
             plan_hash: "sha256:plan".to_owned(),
             status,
             pre_reinstall_manifest: old_manifest,
+            candidate_replacement_bindings: Vec::new(),
             targets: vec![
                 target(
                     "retained.bin",
@@ -1330,5 +1421,31 @@ mod tests {
                 ),
             ],
         }
+    }
+
+    fn replacement_snapshot(
+        mod_id: &str,
+        profile_id: &str,
+        revision_id: &str,
+    ) -> ReplacementBindingSnapshot {
+        ReplacementBindingSnapshot::new(
+            ReplacementBinding::new(
+                ReplacementBindingId::parse("binding-v2").expect("binding id"),
+                ModId::new(mod_id),
+                ProfileId::new(profile_id),
+                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
+                    .expect("source id"),
+                ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+                42,
+            )
+            .expect("binding"),
+            Some(ModRevisionId::new(revision_id)),
+            "pl121_0000",
+            "pl129_0000",
+            "pl/f_equip",
+            "pl/f_equip",
+            ReplacementTargetKind::parse("armor").expect("replacement kind"),
+        )
+        .expect("replacement snapshot")
     }
 }

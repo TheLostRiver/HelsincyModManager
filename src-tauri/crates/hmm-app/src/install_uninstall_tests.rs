@@ -480,3 +480,75 @@ fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
     );
     assert!(manifests.take_manifest().is_none());
 }
+
+#[test]
+fn uninstall_mod_removes_only_the_requested_mod_replacement_snapshot() {
+    let mut existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![
+            InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/mod-a.bin", ["nativePC"])
+                    .expect("Mod A target"),
+                mod_id: ModId::new("mod-a"),
+                revision_id: None,
+                package_file_id: PackageFileId::new("mod-a.bin"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"mod-a")),
+            },
+            InstallManifestEntry {
+                target_path: InstallTargetPath::parse("nativePC/mod-b.bin", ["nativePC"])
+                    .expect("Mod B target"),
+                mod_id: ModId::new("mod-b"),
+                revision_id: None,
+                package_file_id: PackageFileId::new("mod-b.bin"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: Some(installed_file_summary(b"mod-b")),
+            },
+        ],
+    );
+    let mod_b_snapshot = replacement_snapshot(
+        "mod-b",
+        "default",
+        "binding-b",
+        "mhw:armor:alatreon-alpha",
+        None,
+    );
+    existing_manifest.replacement_bindings = vec![
+        replacement_snapshot(
+            "mod-a",
+            "default",
+            "binding-a",
+            "mhw:armor:fatalis-alpha",
+            None,
+        ),
+        mod_b_snapshot.clone(),
+    ];
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([
+        ("nativePC/mod-a.bin", b"mod-a".as_slice()),
+        ("nativePC/mod-b.bin", b"mod-b".as_slice()),
+    ]));
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = UninstallModService::new(
+        game_files,
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+    );
+
+    service
+        .uninstall_mod(UninstallModRequest {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+        })
+        .expect("uninstall Mod A");
+
+    let saved = manifests.take_manifest().expect("saved manifest");
+    assert_eq!(saved.replacement_bindings, vec![mod_b_snapshot]);
+    assert!(saved
+        .entries
+        .iter()
+        .all(|entry| entry.mod_id == ModId::new("mod-b")));
+}

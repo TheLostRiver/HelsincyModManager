@@ -275,8 +275,9 @@ MHW:I、第三方 Mod、Steam userdata、玩家存档或维护者日常 AppData�
 
 CL3 自动化与桌面证据全部通过并标记为 `implemented`。CL4 于 2026-07-15 重新执行上述聚焦矩阵、
 全部前端测试、完整 `scripts/verify.ps1` 和 `cargo clippy --workspace --all-targets -- -D warnings`，并完成
-独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model/catalog 与 AR2
-parser/analyzer/纯 `RetargetPlan` 测试已落地，下一测试主线进入 AR3 staging/InstallPlan/binding snapshot。
+独立安全/边界复审；Gate A 已标记为 `certified`。Gate B / AR1 的 replacement model/catalog、AR2
+parser/analyzer/纯 `RetargetPlan` 与 AR3 staging/InstallPlan/binding snapshot 测试已落地；下一测试
+主线进入 AR4 Tauri typed contract 与最小受控 UI。
 
 ### ARMOR_RETARGET AR1
 
@@ -307,6 +308,26 @@ cargo clippy -p hmm-core -p hmm-ports -p hmm-games-mhw --all-targets -- -D warni
 阻断、普通非 Armor 包的不适用 warning、unknown target/binding mismatch、package identity 保留、
 只替换 slot 段，以及 action/source/target/重复最终路径不变量。AR2 不测试 staging 或真实复制；这些
 从 AR3 开始使用 temp directory fixture 覆盖。
+
+### ARMOR_RETARGET AR3
+
+AR3 使用 fake ports、人工 package bytes 与 temp staging/game/manifest roots，不读取真实 Mod、游戏目录
+或玩家数据：
+
+```powershell
+cargo test -p hmm-core --test replacement_install
+cargo test -p hmm-app --test replacement_service
+cargo test -p hmm-infra --test retarget_staging
+cargo test -p hmm-app
+cargo test -p hmm-infra
+```
+
+这些测试锁定原 `PackageFileId` provenance、最终 target conflict key、batch staging containment、
+大小写不敏感碰撞、symlink/junction escape、sibling `.partial` 发布和失败清理；同时覆盖 snapshot
+serde/legacy default、Mod/profile/revision 归属、plan/token hash、manifest merge/uninstall/rollback、
+真正重装 candidate replacement 与跨重启 recovery recognition。普通 install 的 revision mismatch 和
+真正重装的 candidate revision mismatch 都必须在 source read、game write 和 manifest save 前零 I/O
+阻断。
 
 ## 存档备份
 

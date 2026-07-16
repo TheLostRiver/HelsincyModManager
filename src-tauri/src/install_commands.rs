@@ -941,6 +941,7 @@ mod tests {
                 target_path: conflict_target,
                 providers: vec![provider_b, provider_c],
             }],
+            replacement_bindings: Vec::new(),
         };
 
         let dto: InstallPlanPreviewDto = plan.into();

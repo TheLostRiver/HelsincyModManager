@@ -393,7 +393,7 @@ impl InstallRecoveryRecordRepository for JsonInstallRecoveryRecordRepository {
     }
 }
 
-fn contained_path(root: &Path, logical_path: &str) -> Result<PathBuf> {
+pub(crate) fn contained_path(root: &Path, logical_path: &str) -> Result<PathBuf> {
     let segments = safe_relative_segments(logical_path)?;
     let mut path = root.to_path_buf();
     for segment in segments {
@@ -456,7 +456,7 @@ pub(crate) fn ensure_existing_directory(path: &Path, label: &str) -> Result<()> 
     Ok(())
 }
 
-fn ensure_nearest_existing_ancestor_contained(root: &Path, path: &Path) -> Result<()> {
+pub(crate) fn ensure_nearest_existing_ancestor_contained(root: &Path, path: &Path) -> Result<()> {
     let mut current = Some(path);
 
     while let Some(candidate) = current {
@@ -1114,6 +1114,7 @@ mod tests {
                 backup_ref: Some("backup-player".to_owned()),
                 installed_file: None,
             }],
+            replacement_bindings: Vec::new(),
         };
 
         repository.save_manifest(&manifest).expect("save manifest");

@@ -4,7 +4,7 @@ use hmm_core::{
     InstallManifest, InstallManifestEntry, InstallManifestStatusConsumption,
     InstallManifestValidationError, InstallPlan, InstallTargetPath, InstalledFileSummary, ModId,
     ModRevisionId, PackageFileId, ProfileId, ReinstallClassificationError, ReinstallManifestError,
-    ReinstallTargetClass, ReinstallTargetState,
+    ReinstallTargetClass, ReinstallTargetState, ReplacementBindingSnapshot,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -266,6 +266,13 @@ impl ReinstallPreviewService {
                 | InstallManifestValidationError::MultipleRevisionSet { .. } => {
                     ReinstallBlockingReason::InstalledRevisionUnknown
                 }
+                InstallManifestValidationError::DuplicateReplacementBindingId
+                | InstallManifestValidationError::DuplicateReplacementBindingMod
+                | InstallManifestValidationError::ReplacementBindingProfileMismatch
+                | InstallManifestValidationError::ReplacementBindingOwnerMissing
+                | InstallManifestValidationError::ReplacementBindingRevisionMismatch => {
+                    ReinstallBlockingReason::ManifestStateUnsafe
+                }
             };
             return Ok(ReinstallPlanPreview::blocked(
                 None,
@@ -371,6 +378,22 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::CandidateNotReady,
             ));
         }
+        if plan
+            .validate_replacement_bindings_for_profile_and_revision(
+                &request.profile_id,
+                Some(&candidate_revision_id),
+            )
+            .is_err()
+            || plan.replacement_bindings.iter().any(|snapshot| {
+                snapshot.mod_id() != &request.mod_id
+            })
+        {
+            return Ok(ReinstallPlanPreview::blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::CandidateNotReady,
+            ));
+        }
         if plan.actions.iter().any(|action| {
             action.provider.mod_id != request.mod_id
                 || action.provider.target_path != action.target_path
@@ -457,10 +480,13 @@ impl ReinstallPreviewService {
             &request,
             &manifest,
             &installed_revision_id,
-            &candidate,
-            &source_facts,
-            &target_facts,
-            &backup_facts,
+            CandidatePlanTokenFacts {
+                revision: &candidate,
+                source_files: &source_facts,
+                target_files: &target_facts,
+                backup_files: &backup_facts,
+                replacement_bindings: &plan.replacement_bindings,
+            },
         );
         let targets = build_prepared_targets(
             &manifest,
@@ -475,6 +501,7 @@ impl ReinstallPreviewService {
             installed_revision_id,
             legacy_provenance,
             old_manifest: manifest,
+            candidate_replacement_bindings: plan.replacement_bindings,
             source_files: source_facts,
             backup_files: backup_facts,
             targets,
@@ -680,6 +707,7 @@ pub struct PreparedReinstall {
     pub(crate) installed_revision_id: ModRevisionId,
     pub(crate) legacy_provenance: Vec<ModRevisionId>,
     pub(crate) old_manifest: InstallManifest,
+    pub(crate) candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     pub(crate) source_files: Vec<PreparedSourceFile>,
     pub(crate) backup_files: BTreeMap<String, PreparedFile>,
     pub(crate) targets: Vec<PreparedReinstallTarget>,
@@ -766,14 +794,19 @@ pub(crate) fn summarize(bytes: &[u8]) -> InstalledFileSummary {
     }
 }
 
+struct CandidatePlanTokenFacts<'a> {
+    revision: &'a StoredModRevision,
+    source_files: &'a [PreparedSourceFile],
+    target_files: &'a BTreeMap<InstallTargetPath, Option<PreparedFile>>,
+    backup_files: &'a BTreeMap<String, PreparedFile>,
+    replacement_bindings: &'a [ReplacementBindingSnapshot],
+}
+
 fn canonical_plan_token(
     request: &ReinstallPreviewRequest,
     manifest: &InstallManifest,
     installed_revision_id: &ModRevisionId,
-    candidate: &StoredModRevision,
-    source_facts: &[PreparedSourceFile],
-    target_facts: &BTreeMap<InstallTargetPath, Option<PreparedFile>>,
-    backup_facts: &BTreeMap<String, PreparedFile>,
+    candidate: CandidatePlanTokenFacts<'_>,
 ) -> String {
     let mut hasher = Sha256::new();
     hash_field(&mut hasher, "reinstall-preview-v1");
@@ -781,9 +814,9 @@ fn canonical_plan_token(
     hash_field(&mut hasher, request.profile_id.as_str());
     hash_field(&mut hasher, request.mod_id.as_str());
     hash_field(&mut hasher, installed_revision_id.as_str());
-    hash_field(&mut hasher, candidate.revision_id.as_str());
-    hash_field(&mut hasher, candidate.mod_id.as_str());
-    hash_field(&mut hasher, &candidate.package_id);
+    hash_field(&mut hasher, candidate.revision.revision_id.as_str());
+    hash_field(&mut hasher, candidate.revision.mod_id.as_str());
+    hash_field(&mut hasher, &candidate.revision.package_id);
     hash_field(&mut hasher, &request.layer.name);
     hash_i32(&mut hasher, request.layer.priority);
     hash_u64(&mut hasher, manifest.schema_version.into());
@@ -812,8 +845,9 @@ fn canonical_plan_token(
         hash_optional(&mut hasher, entry.backup_ref.as_deref());
         hash_optional_summary(&mut hasher, entry.installed_file.as_ref());
     }
+    hash_replacement_snapshots(&mut hasher, &manifest.replacement_bindings);
 
-    let mut sources = source_facts.to_vec();
+    let mut sources = candidate.source_files.to_vec();
     sources.sort_by(|left, right| {
         left.provider
             .target_path
@@ -840,18 +874,45 @@ fn canonical_plan_token(
         hash_summary(&mut hasher, &source.summary);
     }
 
-    hash_u64(&mut hasher, target_facts.len() as u64);
-    for (target, summary) in target_facts {
+    hash_u64(&mut hasher, candidate.target_files.len() as u64);
+    for (target, summary) in candidate.target_files {
         hash_field(&mut hasher, target.as_str());
         hash_optional_summary(&mut hasher, summary.as_ref().map(|file| &file.summary));
     }
-    hash_u64(&mut hasher, backup_facts.len() as u64);
-    for (backup_ref, summary) in backup_facts {
+    hash_u64(&mut hasher, candidate.backup_files.len() as u64);
+    for (backup_ref, summary) in candidate.backup_files {
         hash_field(&mut hasher, backup_ref);
         hash_summary(&mut hasher, &summary.summary);
     }
+    hash_replacement_snapshots(&mut hasher, candidate.replacement_bindings);
 
     format!("reinstall-preview-v1:{:x}", hasher.finalize())
+}
+
+fn hash_replacement_snapshots(
+    hasher: &mut Sha256,
+    snapshots: &[ReplacementBindingSnapshot],
+) {
+    let mut snapshots = snapshots.iter().collect::<Vec<_>>();
+    snapshots.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
+    hash_u64(hasher, snapshots.len() as u64);
+    for snapshot in snapshots {
+        hash_field(hasher, snapshot.binding_id().as_str());
+        hash_field(hasher, snapshot.mod_id().as_str());
+        hash_field(hasher, snapshot.profile_id().as_str());
+        hash_optional(
+            hasher,
+            snapshot.revision_id().map(ModRevisionId::as_str),
+        );
+        hash_field(hasher, snapshot.binding().source_id().as_str());
+        hash_field(hasher, snapshot.binding().target_id().as_str());
+        hash_u128(hasher, snapshot.binding().created_at_unix_millis());
+        hash_field(hasher, snapshot.source_internal_id());
+        hash_field(hasher, snapshot.target_internal_id());
+        hash_field(hasher, snapshot.source_path_family());
+        hash_field(hasher, snapshot.target_path_family());
+        hash_field(hasher, snapshot.retarget_kind().as_str());
+    }
 }
 
 fn manifest_status_code(manifest: &InstallManifest) -> &'static str {
@@ -903,5 +964,9 @@ fn hash_i32(hasher: &mut Sha256, value: i32) {
 }
 
 fn hash_u64(hasher: &mut Sha256, value: u64) {
+    hasher.update(value.to_be_bytes());
+}
+
+fn hash_u128(hasher: &mut Sha256, value: u128) {
     hasher.update(value.to_be_bytes());
 }
