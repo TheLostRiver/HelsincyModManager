@@ -2,11 +2,46 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  canCancelRetargetInstallTaskPhase,
+  canStartRetargetReinstall,
   canStartInitialRetargetInstall,
   isRetargetInstallTaskPhase,
   nextRetargetInstallTaskState,
   refreshRetargetInstallState,
 } from "./replacementWorkflow.ts";
+
+test("retarget cancellation is offered only before the commit barrier", () => {
+  for (const phase of [
+    "install.retarget.queued",
+    "install.retarget.plan.building",
+    "install.reinstall.queued",
+    "install.reinstall.plan.building",
+    "install.reinstall.preflight.processing",
+  ]) {
+    assert.equal(canCancelRetargetInstallTaskPhase(phase), true);
+  }
+  for (const phase of [
+    "install.retarget.commit.processing",
+    "install.reinstall.commit.processing",
+    "install.reinstall.rollback.processing",
+  ]) {
+    assert.equal(canCancelRetargetInstallTaskPhase(phase), false);
+  }
+});
+
+test("installed retarget switch requires a ready preview, idle task, and listener", () => {
+  const ready = {
+    installStatus: "installed",
+    previewStatus: "ready",
+    taskActive: false,
+    listenerReady: true,
+  };
+  assert.equal(canStartRetargetReinstall(ready), true);
+  assert.equal(canStartRetargetReinstall({ ...ready, installStatus: "not_installed" }), false);
+  assert.equal(canStartRetargetReinstall({ ...ready, previewStatus: "blocked" }), false);
+  assert.equal(canStartRetargetReinstall({ ...ready, taskActive: true }), false);
+  assert.equal(canStartRetargetReinstall({ ...ready, listenerReady: false }), false);
+});
 
 test("initial retarget install is enabled only for a safe preview and not-installed state", () => {
   const safe = {
@@ -47,6 +82,18 @@ test("retarget task state consumes only matching install retarget phases", () =>
     assert.equal(isRetargetInstallTaskPhase(phase), true);
   }
   assert.equal(isRetargetInstallTaskPhase("install.completed"), false);
+  for (const phase of [
+    "install.reinstall.queued",
+    "install.reinstall.plan.building",
+    "install.reinstall.preflight.processing",
+    "install.reinstall.commit.processing",
+    "install.reinstall.rollback.processing",
+    "install.reinstall.completed",
+    "install.reinstall.failed",
+    "install.reinstall.cancelled",
+  ]) {
+    assert.equal(isRetargetInstallTaskPhase(phase), true);
+  }
 
   const current = {
     status: "running",
@@ -99,6 +146,48 @@ test("retarget task state consumes only matching install retarget phases", () =>
       phase: "install.cancelled",
     }),
     current,
+  );
+});
+
+test("retarget switch reducer ignores other task ids and accepts terminal reinstall phases", () => {
+  const current = {
+    status: "running",
+    taskId: "switch-a",
+    phase: "install.reinstall.commit.processing",
+  };
+  const otherTask = nextRetargetInstallTaskState(current, {
+    taskId: "switch-b",
+    kind: "install",
+    status: "completed",
+    phase: "install.reinstall.completed",
+  });
+  assert.equal(otherTask, current);
+
+  assert.deepEqual(
+    nextRetargetInstallTaskState(current, {
+      taskId: "switch-a",
+      kind: "install",
+      status: "completed",
+      phase: "install.reinstall.completed",
+    }),
+    { status: "completed", taskId: "switch-a", phase: "install.reinstall.completed" },
+  );
+
+  assert.deepEqual(
+    nextRetargetInstallTaskState(current, {
+      taskId: "switch-a",
+      kind: "install",
+      status: "failed",
+      phase: "install.reinstall.failed",
+      error: "install_reinstall_failed:manifest",
+      message: "C:/Users/private/game/nativePC/file",
+    }),
+    {
+      status: "failed",
+      taskId: "switch-a",
+      phase: "install.reinstall.failed",
+      message: "目标切换失败，请刷新状态并重新生成预览",
+    },
   );
 });
 

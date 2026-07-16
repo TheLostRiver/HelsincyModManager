@@ -31,6 +31,17 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(panel, /analyzeImportedModReplacement/);
   assert.match(panel, /previewInitialRetargetInstall/);
   assert.match(panel, /startRetargetInstallTask/);
+  assert.match(panel, /previewRetargetReinstall/);
+  assert.match(panel, /startRetargetReinstallTask/);
+  assert.match(panel, /cancelRetargetInstallTask/);
+  assert.match(panel, /取消任务/);
+  assert.match(panel, /task_cannot_be_cancelled/);
+  assert.match(panel, /install\.reinstall/);
+  assert.match(panel, /当前目标已安装/);
+  assert.match(panel, /保留/);
+  assert.match(panel, /替换/);
+  assert.match(panel, /新增/);
+  assert.match(panel, /移除旧项/);
   assert.match(panel, /TASK_PROGRESS_EVENT_NAME/);
   assert.match(panel, /event\.payload\.taskId/);
   assert.match(panel, /refreshRetargetInstallState/);

@@ -1,13 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import type {
   AnalyzeImportedModReplacementInput,
+  CancelRetargetInstallTaskInput,
   InitialRetargetInstallPreview,
   ListReplacementTargetsInput,
   PreviewInitialRetargetInstallInput,
+  PreviewRetargetReinstallInput,
   ReplacementAnalysis,
   ReplacementTarget,
   RetargetInstallTaskStarted,
   StartRetargetInstallTaskInput,
+  StartRetargetReinstallTaskInput,
 } from "./replacementTypes";
 
 export function listReplacementTargets(
@@ -48,6 +52,33 @@ export function startRetargetInstallTask(
   });
 }
 
+export function previewRetargetReinstall(
+  input: PreviewRetargetReinstallInput,
+): Promise<ReinstallPlanPreview> {
+  return invoke<ReinstallPlanPreview>("preview_retarget_reinstall", {
+    request: retargetReinstallRequest(input),
+  });
+}
+
+export function startRetargetReinstallTask(
+  input: StartRetargetReinstallTaskInput,
+): Promise<RetargetInstallTaskStarted> {
+  return invoke<RetargetInstallTaskStarted>("start_retarget_reinstall_task", {
+    request: {
+      ...retargetReinstallRequest(input),
+      planToken: input.planToken,
+    },
+  });
+}
+
+export function cancelRetargetInstallTask(
+  input: CancelRetargetInstallTaskInput,
+): Promise<RetargetInstallTaskStarted> {
+  return invoke<RetargetInstallTaskStarted>("cancel_task", {
+    taskId: input.taskId,
+  });
+}
+
 function initialRetargetRequest(input: PreviewInitialRetargetInstallInput) {
   return {
     gameId: input.gameId,
@@ -57,4 +88,8 @@ function initialRetargetRequest(input: PreviewInitialRetargetInstallInput) {
     layerName: input.layerName,
     layerPriority: input.layerPriority,
   };
+}
+
+function retargetReinstallRequest(input: PreviewRetargetReinstallInput) {
+  return initialRetargetRequest(input);
 }

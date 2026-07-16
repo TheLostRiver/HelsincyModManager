@@ -45,6 +45,24 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
   assert.match(start, /invoke<RetargetInstallTaskStarted>\("start_retarget_install_task"/);
   assert.match(start, /\{\s*request:\s*initialRetargetRequest\(input\),?\s*\}/);
 
+  const switchPreview = exportedFunction(api, "previewRetargetReinstall");
+  assert.match(
+    switchPreview,
+    /invoke<ReinstallPlanPreview>\("preview_retarget_reinstall"/,
+  );
+  assert.match(switchPreview, /\{\s*request:\s*retargetReinstallRequest\(input\),?\s*\}/);
+
+  const switchStart = exportedFunction(api, "startRetargetReinstallTask");
+  assert.match(
+    switchStart,
+    /invoke<RetargetInstallTaskStarted>\("start_retarget_reinstall_task"/,
+  );
+  assert.match(switchStart, /planToken:\s*input\.planToken/);
+
+  const cancel = exportedFunction(api, "cancelRetargetInstallTask");
+  assert.match(cancel, /invoke<RetargetInstallTaskStarted>\("cancel_task"/);
+  assert.match(cancel, /taskId:\s*input\.taskId/);
+
   const sharedRequest = api.match(/function initialRetargetRequest\b[\s\S]*?return\s*\{([\s\S]*?)\};\s*\n}/);
   assert.ok(sharedRequest, "expected shared initial retarget request mapper");
   assert.deepEqual(
@@ -63,6 +81,9 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
   assert.match(types, /export type ReplacementTarget/);
   assert.match(types, /export type ReplacementAnalysis/);
   assert.match(types, /export type InitialRetargetInstallPreview/);
+  assert.match(types, /export type PreviewRetargetReinstallInput/);
+  assert.match(types, /export type StartRetargetReinstallTaskInput/);
+  assert.match(types, /export type CancelRetargetInstallTaskInput/);
   assert.doesNotMatch(
     api,
     /packageId|revisionId|sourceId|bindingId|sandbox|staging|gameRoot|archivePath|rawPath/i,
@@ -71,9 +92,7 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
 
 test("replacement request types expose stable ids but no filesystem or package facts", () => {
   const source = readSource("src/features/replacements/replacementTypes.ts");
-  const requestTypes = source.match(
-    /export type ListReplacementTargetsInput[\s\S]*?export type ReplacementTarget/,
-  );
+  const requestTypes = source.match(/export type ListReplacementTargetsInput[\s\S]*?export type ReplacementTarget/);
   assert.ok(requestTypes, "expected request type block");
   for (const field of ["gameId", "modId", "profileId", "targetId", "layerName", "layerPriority"]) {
     assert.match(requestTypes[0], new RegExp(`${field}`));
@@ -82,4 +101,6 @@ test("replacement request types expose stable ids but no filesystem or package f
     requestTypes[0],
     /packageId|revisionId|sourceId|bindingId|sandbox|staging|targetPath|archivePath|rawPath/i,
   );
+  assert.match(requestTypes[0], /planToken:\s*string/);
+  assert.match(requestTypes[0], /taskId:\s*string/);
 });
