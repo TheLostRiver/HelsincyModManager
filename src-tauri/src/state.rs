@@ -1,37 +1,40 @@
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
     CommitInstallPlanRequest, GameLaunchService, GameProfileWriteLockRegistry, GameSetupService,
-    ImportedModInstallCommitRequest, InstallCommitError, InstallCommitPhase, InstallCommitResult,
-    InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
-    InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
-    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    ImportedModInstallCommitRequest, InitialRetargetInstallPlanner,
+    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader, InstallCommitError,
+    InstallCommitPhase, InstallCommitResult, InstallCommitService, InstallManifestQueryService,
+    InstallPlanCommitter, InstallPlanningService, InstallRecoveryActionError,
+    InstallRecoveryActionExecutor, InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
     InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
     ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
     ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
-    ModUninstaller, PreparedReinstall, PreviewImageCandidateListService,
-    PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService,
-    ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
-    RecoveryActionTaskService, ReinstallCandidateSourceReader, ReinstallCommitError,
-    ReinstallCommitResult, ReinstallCommitService, ReinstallPlanPreview, ReinstallPreviewError,
-    ReinstallPreviewRequest, ReinstallPreviewService, ReinstallRecoveryWriteAdmission,
-    ReinstallTargetCounts, ReinstallTaskAuditContext, ReinstallTaskExecutor,
-    ReinstallTaskExecutorService, ReinstallTaskPrepareError, ReinstallTaskPrepared,
-    ReinstallTaskRunner, ReinstallTaskService, SaveBackupAutoSchedulerService,
-    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
-    SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
-    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartUninstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    ModUninstaller, PlannedInitialRetargetInstall, PreparedReinstall,
+    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    PreviewInitialRetargetInstallRequest, ProfileSaveDirectoryDiscoveryService, ProfileService,
+    RecoveryActionTaskRunner, RecoveryActionTaskService, ReinstallCandidateSourceReader,
+    ReinstallCommitError, ReinstallCommitResult, ReinstallCommitService, ReinstallPlanPreview,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallRecoveryWriteAdmission, ReinstallTargetCounts, ReinstallTaskAuditContext,
+    ReinstallTaskExecutor, ReinstallTaskExecutorService, ReinstallTaskPrepareError,
+    ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementWorkflowError,
+    ReplacementWorkflowService, RetargetInstallTaskRunner, RetargetInstallTaskService,
+    SaveBackupAutoSchedulerService, SaveBackupBackgroundService, SaveBackupBackgroundWorker,
+    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, StartRecoveryActionTaskRequest,
+    StartRetargetInstallTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
+    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
+    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
-use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy};
+use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
-    MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
+    MhwArmorCatalog, MhwArmorReplacementAdapter, MonsterHunterWorldAdapter,
+    MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
@@ -43,19 +46,21 @@ use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
     FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
-    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader, FileSystemSaveBackupWriter,
-    FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
+    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader,
+    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter, FileSystemTextLogReader,
+    FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonModImportResultRepository,
     JsonReinstallRecoveryTransactionRepository, PlatformSteamRootProvider,
     RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
-    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SqliteCategoryRepository, SqliteModMetadataRepository,
-    SqliteProfileRepository, SqliteSaveBackupBackgroundSettingsRepository,
-    SqliteSaveBackupRepository, SqliteSaveBackupSchedulerStateRepository,
-    SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
-    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteCategoryRepository,
+    SqliteModMetadataRepository, SqliteProfileRepository,
+    SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
+    SqliteSaveBackupSchedulerStateRepository, SteamCommunityProfileClient,
+    SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
+    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
     TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
 };
 use hmm_ports::{
@@ -63,8 +68,9 @@ use hmm_ports::{
     DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
     GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
-    ModImportSandboxLocator, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository,
+    ModImportSandboxLocator, ModPackageInstallFileScanner, ProfileRepository,
+    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
     SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TextLogReader,
     ThumbnailCacheMaintenance,
@@ -107,6 +113,9 @@ pub struct AppState {
     pub(crate) reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
+    pub replacement_workflow: Arc<ReplacementWorkflowService>,
+    pub retarget_install_task_runner: Arc<RetargetInstallTaskRunner>,
+    pub retarget_install_tasks: Arc<RetargetInstallTaskService>,
     pub recovery_action_task_runner: Arc<RecoveryActionTaskRunner>,
     pub recovery_action_tasks: Arc<RecoveryActionTaskService>,
     pub uninstall_task_runner: Arc<UninstallTaskRunner>,
@@ -437,10 +446,12 @@ impl AppState {
                 Arc::clone(&audit_log_writer),
                 save_backup_background_clock,
             ));
+        let install_file_scanner: Arc<dyn ModPackageInstallFileScanner> =
+            Arc::new(SandboxModPackageInstallFileScanner);
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
-            Arc::new(SandboxModPackageInstallFileScanner),
+            Arc::clone(&install_file_scanner),
             clone_game_adapters(&game_adapters),
         ));
         let install_manifest_query = Arc::new(InstallManifestQueryService::new(Arc::clone(
@@ -452,6 +463,21 @@ impl AppState {
             app_data_dir.clone(),
             Arc::clone(&install_write_locks),
             Arc::clone(&reinstall_recovery_repository),
+        ));
+        let initial_retarget_install_status: Arc<dyn InitialRetargetInstallStatusReader> =
+            install_recovery_scanner.clone();
+        let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
+            vec![Arc::new(MhwArmorReplacementAdapter)];
+        let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
+            vec![Arc::new(MhwArmorCatalog)];
+        let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
+            replacement_adapters,
+            replacement_catalogs,
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_import_sandbox_locator),
+            install_file_scanner,
+            initial_retarget_install_status,
+            Arc::new(SystemClock),
         ));
         let install_recovery_action_previewer =
             Arc::new(ConfiguredInstallRecoveryActionPreviewer::new(
@@ -482,12 +508,29 @@ impl AppState {
         let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             install_planning.clone(),
-            install_committer,
+            Arc::clone(&install_committer),
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
             reinstall_write_admission.clone(),
         ));
+        let retarget_install_planner: Arc<dyn InitialRetargetInstallPlanner> =
+            Arc::new(ConfiguredInitialRetargetInstallPlanner::new(
+                Arc::clone(&replacement_workflow),
+                Arc::clone(&mod_import_sandbox_locator),
+                Arc::clone(&install_recovery_scanner),
+                app_data_dir.clone(),
+            ));
+        let retarget_install_task_runner =
+            Arc::new(RetargetInstallTaskRunner::with_write_coordination(
+                Arc::clone(&task_manager),
+                retarget_install_planner,
+                install_committer,
+                Arc::clone(&audit_log_writer),
+                Arc::new(SystemClock),
+                Arc::clone(&install_write_locks),
+                reinstall_write_admission.clone(),
+            ));
         let recovery_action_task_runner = Arc::new(RecoveryActionTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             recovery_action_executor,
@@ -560,6 +603,11 @@ impl AppState {
             reinstall_recovery_repository,
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
+            replacement_workflow,
+            retarget_install_task_runner,
+            retarget_install_tasks: Arc::new(RetargetInstallTaskService::new(Arc::clone(
+                &task_manager,
+            ))),
             recovery_action_task_runner,
             recovery_action_tasks: Arc::new(RecoveryActionTaskService::new(Arc::clone(
                 &task_manager,
@@ -895,6 +943,14 @@ impl ConfiguredInstallRecoveryScanner {
         let _guard = write_lock
             .lock()
             .map_err(|_| InstallRecoveryScanError::ManifestUnavailable)?;
+        self.scan_without_lock(game_id, request)
+    }
+
+    fn scan_without_lock(
+        &self,
+        game_id: GameId,
+        request: InstallRecoveryScanRequest,
+    ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
         let game_instance = self
             .game_config_repository
             .load_game_instance(&game_id)
@@ -920,6 +976,49 @@ impl ConfiguredInstallRecoveryScanner {
 
         service.scan(request)
     }
+}
+
+impl InitialRetargetInstallStatusReader for ConfiguredInstallRecoveryScanner {
+    fn recovery_status(
+        &self,
+        game_id: &GameId,
+        profile_id: &hmm_core::ProfileId,
+        mod_id: &hmm_core::ModId,
+    ) -> Result<hmm_app::InstallRecoveryStatus, InitialRetargetInstallStatusError> {
+        let summaries = self
+            .scan(
+                game_id.clone(),
+                InstallRecoveryScanRequest {
+                    profile_id: profile_id.clone(),
+                    mod_ids: Vec::new(),
+                },
+            )
+            .map_err(|_| InitialRetargetInstallStatusError::Unavailable)?;
+        Ok(initial_retarget_status(mod_id, &summaries))
+    }
+}
+
+fn initial_retarget_status(
+    mod_id: &hmm_core::ModId,
+    summaries: &[InstallRecoverySummary],
+) -> hmm_app::InstallRecoveryStatus {
+    summaries
+        .iter()
+        .find(|summary| {
+            !matches!(
+                summary.status,
+                hmm_app::InstallRecoveryStatus::NotInstalled
+                    | hmm_app::InstallRecoveryStatus::Completed
+            )
+        })
+        .map(|summary| summary.status)
+        .or_else(|| {
+            summaries
+                .iter()
+                .find(|summary| summary.mod_id == *mod_id)
+                .map(|summary| summary.status)
+        })
+        .unwrap_or(hmm_app::InstallRecoveryStatus::NotInstalled)
 }
 
 pub(crate) struct ConfiguredInstallRecoveryActionPreviewer {
@@ -1073,6 +1172,117 @@ struct ConfiguredInstallCommitter {
     app_data_dir: PathBuf,
 }
 
+struct ConfiguredInitialRetargetInstallPlanner {
+    workflow: Arc<ReplacementWorkflowService>,
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+    app_data_dir: PathBuf,
+}
+
+impl ConfiguredInitialRetargetInstallPlanner {
+    fn new(
+        workflow: Arc<ReplacementWorkflowService>,
+        sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+        app_data_dir: PathBuf,
+    ) -> Self {
+        Self {
+            workflow,
+            sandbox_locator,
+            install_recovery_scanner,
+            app_data_dir,
+        }
+    }
+
+    fn materializer_for(
+        &self,
+        planned: &PlannedInitialRetargetInstall,
+    ) -> Result<FileSystemRetargetStagingMaterializer, ReplacementWorkflowError> {
+        let source_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(planned.package_id())
+            .map_err(|_| ReplacementWorkflowError::SandboxUnavailable)?;
+        let staging_root = retarget_staging_root(&self.app_data_dir, planned.binding_id())
+            .ok_or(ReplacementWorkflowError::PlanUnavailable)?;
+        Ok(FileSystemRetargetStagingMaterializer::new(
+            staging_root,
+            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+        ))
+    }
+}
+
+impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
+    fn build_initial_retarget_install_plan(
+        &self,
+        request: StartRetargetInstallTaskRequest,
+    ) -> Result<hmm_core::InstallPlan, ReplacementWorkflowError> {
+        let planned =
+            self.workflow
+                .preview_initial_install(PreviewInitialRetargetInstallRequest {
+                    game_id: request.game_id,
+                    profile_id: request.profile_id,
+                    mod_id: request.mod_id,
+                    target_id: request.target_id,
+                    layer: request.layer,
+                })?;
+        let materializer = self.materializer_for(&planned)?;
+        self.workflow
+            .materialize_initial_install(&materializer, planned)
+    }
+
+    fn revalidate_initial_install(
+        &self,
+        request: &StartRetargetInstallTaskRequest,
+    ) -> Result<(), ReplacementWorkflowError> {
+        let summaries = self
+            .install_recovery_scanner
+            .scan_without_lock(
+                request.game_id.clone(),
+                InstallRecoveryScanRequest {
+                    profile_id: request.profile_id.clone(),
+                    mod_ids: Vec::new(),
+                },
+            )
+            .map_err(|_| ReplacementWorkflowError::InstallStatusUnavailable)?;
+        let status = initial_retarget_status(&request.mod_id, &summaries);
+        if status == hmm_app::InstallRecoveryStatus::NotInstalled {
+            Ok(())
+        } else {
+            Err(ReplacementWorkflowError::InitialInstallBlocked { status })
+        }
+    }
+
+    fn discard_initial_retarget_install(&self, plan: &hmm_core::InstallPlan) {
+        let [snapshot] = plan.replacement_bindings.as_slice() else {
+            return;
+        };
+        let Some(staging_root) = retarget_staging_root(&self.app_data_dir, snapshot.binding_id())
+        else {
+            return;
+        };
+        if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
+            tracing::warn!(
+                error_code = "retarget_staging_cleanup_failed",
+                "failed to discard prepared retarget staging"
+            );
+        }
+    }
+}
+
+fn retarget_staging_root(
+    app_data_dir: &Path,
+    binding_id: &ReplacementBindingId,
+) -> Option<PathBuf> {
+    let id = binding_id.as_str().strip_prefix("binding-")?;
+    let id = uuid::Uuid::parse_str(id).ok()?;
+    Some(
+        app_data_dir
+            .join("install")
+            .join("retarget-staging")
+            .join(id.to_string()),
+    )
+}
+
 impl ConfiguredInstallCommitter {
     fn new(
         game_config_repository: Arc<dyn GameConfigRepository>,
@@ -1103,23 +1313,41 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             .ok_or(InstallCommitError::Failed {
                 phase: InstallCommitPhase::TargetRead,
             })?;
-        let analysis = self
-            .mod_import_result_repository
-            .get_analysis(request.mod_id.as_str())
-            .map_err(|_| InstallCommitError::Failed {
-                phase: InstallCommitPhase::SourceRead,
-            })?
-            .ok_or(InstallCommitError::Failed {
-                phase: InstallCommitPhase::SourceRead,
-            })?;
-        let source_root = self
-            .mod_import_sandbox_locator
-            .sandbox_root_for_package(&analysis.package_id)
-            .map_err(|_| InstallCommitError::Failed {
-                phase: InstallCommitPhase::SourceRead,
-            })?;
+        let source_error = || InstallCommitError::Failed {
+            phase: InstallCommitPhase::SourceRead,
+        };
+        let (source_files, staging_root): (Arc<dyn InstallSourceFileReader>, Option<PathBuf>) =
+            match request.plan.replacement_bindings.as_slice() {
+                [] => {
+                    let analysis = self
+                        .mod_import_result_repository
+                        .get_analysis(request.mod_id.as_str())
+                        .map_err(|_| source_error())?
+                        .ok_or_else(source_error)?;
+                    let source_root = self
+                        .mod_import_sandbox_locator
+                        .sandbox_root_for_package(&analysis.package_id)
+                        .map_err(|_| source_error())?;
+                    (
+                        Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+                        None,
+                    )
+                }
+                [snapshot] => {
+                    let staging_root =
+                        retarget_staging_root(&self.app_data_dir, snapshot.binding_id())
+                            .ok_or_else(source_error)?;
+                    let reader = RetargetStagingInstallSourceFileReader::from_install_plan(
+                        staging_root.clone(),
+                        &request.plan,
+                    )
+                    .map_err(|_| source_error())?;
+                    (Arc::new(reader), Some(staging_root))
+                }
+                _ => return Err(source_error()),
+            };
         let service = InstallCommitService::new_with_recovery_records(
-            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            source_files,
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
                 self.app_data_dir.join("install").join("backups"),
@@ -1132,10 +1360,19 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             )),
         );
 
-        service.commit_plan(CommitInstallPlanRequest {
+        let result = service.commit_plan(CommitInstallPlanRequest {
             profile_id: request.profile_id,
             plan: request.plan,
-        })
+        });
+        if let Some(staging_root) = staging_root {
+            if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
+                tracing::warn!(
+                    error_code = "retarget_staging_cleanup_failed",
+                    "failed to clean retarget staging after install commit"
+                );
+            }
+        }
+        result
     }
 }
 
@@ -1196,6 +1433,54 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Barrier};
     use std::time::{Duration, Instant};
+
+    fn recovery_summary(
+        mod_id: &str,
+        status: hmm_app::InstallRecoveryStatus,
+    ) -> InstallRecoverySummary {
+        InstallRecoverySummary {
+            profile_id: ProfileId::new("profile-a"),
+            mod_id: ModId::new(mod_id),
+            status,
+            managed_file_count: usize::from(status == hmm_app::InstallRecoveryStatus::Completed),
+            backup_count: 0,
+            issue_count: 0,
+            issues: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn initial_retarget_status_blocks_on_another_mods_unsafe_profile_state() {
+        let summaries = vec![
+            recovery_summary("mod-a", hmm_app::InstallRecoveryStatus::Completed),
+            recovery_summary(
+                "mod-b",
+                hmm_app::InstallRecoveryStatus::CommittedCleanupPending,
+            ),
+        ];
+
+        assert_eq!(
+            initial_retarget_status(&ModId::new("new-mod"), &summaries),
+            hmm_app::InstallRecoveryStatus::CommittedCleanupPending
+        );
+    }
+
+    #[test]
+    fn initial_retarget_status_distinguishes_installed_and_absent_mods_in_safe_profile() {
+        let summaries = vec![recovery_summary(
+            "mod-a",
+            hmm_app::InstallRecoveryStatus::Completed,
+        )];
+
+        assert_eq!(
+            initial_retarget_status(&ModId::new("mod-a"), &summaries),
+            hmm_app::InstallRecoveryStatus::Completed
+        );
+        assert_eq!(
+            initial_retarget_status(&ModId::new("mod-b"), &summaries),
+            hmm_app::InstallRecoveryStatus::NotInstalled
+        );
+    }
 
     struct NotifyingGameConfigRepository {
         load_called: Arc<AtomicBool>,

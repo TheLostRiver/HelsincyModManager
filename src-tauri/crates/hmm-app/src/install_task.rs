@@ -159,7 +159,7 @@ pub enum InstallWriteAdmissionError {
 }
 
 impl InstallWriteAdmissionError {
-    fn failure_phase(&self) -> &'static str {
+    pub(crate) fn failure_phase(&self) -> &'static str {
         match self {
             Self::RecoveryUnavailable => "recovery_unavailable",
             Self::RecoveryPending => "recovery_pending",

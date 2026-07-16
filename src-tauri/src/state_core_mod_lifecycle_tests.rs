@@ -4,10 +4,12 @@ use hmm_app::{
     InstallRecoveryScanRequest, InstallRecoveryStatus, ReinstallPlanPreview,
     ReinstallPreviewRequest, ReinstallPreviewStatus, ReinstallTargetCounts,
     StartImportModRevisionTaskRequest, StartImportModTaskRequest, StartInstallTaskRequest,
-    StartReinstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
+    StartReinstallTaskRequest, StartRetargetInstallTaskRequest, StartUninstallTaskRequest,
+    TaskKind, TaskStatus,
 };
 use hmm_core::{
     FileLayer, GameDirectoryStatus, GameId, InstallManifest, ModId, ModRevisionId, ProfileId,
+    ReplacementTargetId,
 };
 use hmm_infra::{FileSystemAuditLogWriter, JsonInstallManifestRepository};
 use hmm_ports::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, InstallManifestRepository};
@@ -23,6 +25,9 @@ use zip::write::SimpleFileOptions;
 
 const OVERWRITTEN_TARGET: &str = "nativePC/lifecycle/overwritten.bin";
 const BASELINE_BYTES: &[u8] = b"game-baseline-original\n";
+const ARMOR_SOURCE_TARGET: &str = "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3";
+const ARMOR_RETARGETED_TARGET: &str = "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3";
+const ARMOR_FIXTURE_BYTES: &[u8] = b"synthetic armor fixture\n";
 
 const V1_FILES: &[(&str, &[u8])] = &[
     (OVERWRITTEN_TARGET, b"fixture-overwrite-v1\n"),
@@ -159,6 +164,99 @@ fn headless_composition_imports_v1_and_rebuilds_plan_after_restart() {
         "task state is transient; restart facts must come from repositories"
     );
     assert_game_root_unchanged(&game_root);
+}
+
+#[test]
+fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot() {
+    let temp = tempfile::tempdir().expect("create retarget lifecycle temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let game_root = temp.path().join("game");
+    let archive_path = temp.path().join("armor-v1.zip");
+    prepare_game_root(&game_root);
+    create_fixture_zip(&archive_path, &[(ARMOR_SOURCE_TARGET, ARMOR_FIXTURE_BYTES)]);
+
+    let state = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("compose headless state from temp AppData");
+    state
+        .game_setup
+        .save_game_directory(GameId::mhw(), game_root.clone())
+        .expect("save validated temp game directory");
+    let import_task = state
+        .mod_import_tasks
+        .start_import_mod_task(StartImportModTaskRequest {
+            archive_path: archive_path.clone(),
+        })
+        .expect("register armor fixture import");
+    state
+        .mod_import_task_runner
+        .run_prepare_task(&import_task.task_id, archive_path)
+        .expect("prepare armor fixture import");
+
+    let profile_id = ProfileId::new("default");
+    let mod_id = ModId::new(import_task.task_id);
+    let request = StartRetargetInstallTaskRequest {
+        game_id: GameId::mhw(),
+        profile_id: profile_id.clone(),
+        mod_id: mod_id.clone(),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        layer: FileLayer::new("base", 0),
+    };
+    let task = state
+        .retarget_install_tasks
+        .start_retarget_install_task(request.clone())
+        .expect("register retarget install task");
+    let events = state
+        .retarget_install_task_runner
+        .run_retarget_install_task(&task.task_id, request)
+        .expect("run retarget install task");
+
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.phase.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "install.retarget.plan.building",
+            "install.retarget.commit.processing",
+            "install.retarget.completed",
+        ]
+    );
+    assert_eq!(
+        fs::read(game_root.join(ARMOR_RETARGETED_TARGET)).expect("read retargeted armor file"),
+        ARMOR_FIXTURE_BYTES
+    );
+    assert!(!game_root.join(ARMOR_SOURCE_TARGET).exists());
+
+    let manifest =
+        JsonInstallManifestRepository::new(app_data_dir.join("install").join("manifests"))
+            .load_manifest(&profile_id)
+            .expect("load retarget manifest")
+            .expect("retarget manifest exists");
+    assert_eq!(manifest.entries.len(), 1);
+    assert_eq!(
+        manifest.entries[0].target_path.as_str(),
+        ARMOR_RETARGETED_TARGET
+    );
+    assert_eq!(manifest.replacement_bindings.len(), 1);
+    let snapshot = &manifest.replacement_bindings[0];
+    assert_eq!(snapshot.mod_id(), &mod_id);
+    assert_eq!(
+        snapshot.binding().target_id().as_str(),
+        "mhw:armor:fatalis-alpha"
+    );
+    assert_eq!(snapshot.source_internal_id(), "pl121_0000");
+    assert_eq!(snapshot.target_internal_id(), "pl129_0000");
+    assert_eq!(snapshot.revision_id(), None);
+
+    let staging_parent = app_data_dir.join("install").join("retarget-staging");
+    assert!(
+        !staging_parent.exists()
+            || fs::read_dir(staging_parent)
+                .expect("read retarget staging parent")
+                .next()
+                .is_none(),
+        "successful commit must clean its temporary retarget staging"
+    );
 }
 
 #[test]
