@@ -5,6 +5,7 @@ import {
   canStartInitialRetargetInstall,
   isRetargetInstallTaskPhase,
   nextRetargetInstallTaskState,
+  refreshRetargetInstallState,
 } from "./replacementWorkflow.ts";
 
 test("initial retarget install is enabled only for a safe preview and not-installed state", () => {
@@ -41,6 +42,7 @@ test("retarget task state consumes only matching install retarget phases", () =>
     "install.retarget.commit.processing",
     "install.retarget.completed",
     "install.retarget.failed",
+    "install.cancelled",
   ]) {
     assert.equal(isRetargetInstallTaskPhase(phase), true);
   }
@@ -68,4 +70,52 @@ test("retarget task state consumes only matching install retarget phases", () =>
     }),
     { status: "completed", taskId: "task-a", phase: "install.retarget.completed" },
   );
+
+  const cancelled = nextRetargetInstallTaskState(current, {
+    taskId: "task-a",
+    kind: "install",
+    status: "cancelled",
+    phase: "install.cancelled",
+  });
+  assert.deepEqual(
+    cancelled,
+    { status: "cancelled", taskId: "task-a", phase: "install.cancelled" },
+  );
+  assert.equal(
+    nextRetargetInstallTaskState(cancelled, {
+      taskId: "task-a",
+      kind: "install",
+      status: "running",
+      phase: "install.retarget.commit.processing",
+    }),
+    cancelled,
+  );
+
+  assert.deepEqual(
+    nextRetargetInstallTaskState(current, {
+      taskId: "task-b",
+      kind: "install",
+      status: "cancelled",
+      phase: "install.cancelled",
+    }),
+    current,
+  );
+});
+
+test("completed retarget install keeps success while durable refresh can be retried", async () => {
+  let attempts = 0;
+  const failed = await refreshRetargetInstallState(async () => {
+    attempts += 1;
+    throw new Error("refresh unavailable");
+  });
+  assert.deepEqual(failed, {
+    status: "failed",
+    message: "安装已完成，但状态刷新失败，请重试。",
+  });
+
+  const ready = await refreshRetargetInstallState(async () => {
+    attempts += 1;
+  });
+  assert.deepEqual(ready, { status: "ready" });
+  assert.equal(attempts, 2);
 });

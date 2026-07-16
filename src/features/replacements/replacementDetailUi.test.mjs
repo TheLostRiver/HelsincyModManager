@@ -24,12 +24,17 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(dialog, /<ReplacementTargetPanel/);
   assert.match(dialog, /replacementCompletedLocally/);
   assert.match(dialog, /completedLocally=\{replacementCompletedLocally\}/);
+  const tabs = dialog.match(/<div className="mod-detail-dialog__tabs"[\s\S]*?<\/div>/);
+  assert.ok(tabs, "expected details and replacement tabs");
+  assert.equal(tabs[0].match(/disabled=\{dialogBusy\}/g)?.length, 2);
   assert.match(panel, /listReplacementTargets/);
   assert.match(panel, /analyzeImportedModReplacement/);
   assert.match(panel, /previewInitialRetargetInstall/);
   assert.match(panel, /startRetargetInstallTask/);
   assert.match(panel, /TASK_PROGRESS_EVENT_NAME/);
   assert.match(panel, /event\.payload\.taskId/);
+  assert.match(panel, /refreshRetargetInstallState/);
+  assert.match(panel, /重试刷新/);
   assert.doesNotMatch(panel, /packageId:|sourceId:|bindingId:|sandbox|staging|gameRoot|archivePath/i);
 });
 

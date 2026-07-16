@@ -3,7 +3,7 @@ use std::sync::Arc;
 use hmm_app::{
     AnalyzeImportedReplacementRequest, PlannedInitialRetargetInstall,
     PreviewInitialRetargetInstallRequest, ReplacementServiceError, ReplacementWorkflowError,
-    StartRetargetInstallTaskRequest, TaskProgressEvent, TaskStarted,
+    RetargetInstallTaskService, StartRetargetInstallTaskRequest, TaskProgressEvent, TaskStarted,
 };
 use hmm_core::{
     FileLayer, GameId, ModId, ProfileId, ReplacementAnalysis, ReplacementTarget,
@@ -68,16 +68,8 @@ pub fn start_retarget_install_task(
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let request = start_request_from_dto(request)?;
-    state
-        .replacement_workflow
-        .preview_initial_install(preview_request_from_start(&request))
-        .map_err(replacement_workflow_error_to_command_error)?;
-
     let runner_request = request.clone();
-    let task = state
-        .retarget_install_tasks
-        .start_retarget_install_task(request)
-        .map_err(CommandErrorDto::from_task_manager_error)?;
+    let task = queue_retarget_install_task(&state.retarget_install_tasks, request)?;
     let _ = emit_task_progress(&app_handle, queued_event(&task).into());
     spawn_runner(
         Arc::clone(&state.retarget_install_task_runner),
@@ -86,6 +78,15 @@ pub fn start_retarget_install_task(
         runner_request,
     );
     Ok(task.into())
+}
+
+fn queue_retarget_install_task(
+    task_service: &RetargetInstallTaskService,
+    request: StartRetargetInstallTaskRequest,
+) -> Result<TaskStarted, CommandErrorDto> {
+    task_service
+        .start_retarget_install_task(request)
+        .map_err(CommandErrorDto::from_task_manager_error)
 }
 
 fn spawn_runner(
@@ -172,18 +173,6 @@ fn start_request_from_dto(
         target_id: preview.target_id,
         layer: preview.layer,
     })
-}
-
-fn preview_request_from_start(
-    request: &StartRetargetInstallTaskRequest,
-) -> PreviewInitialRetargetInstallRequest {
-    PreviewInitialRetargetInstallRequest {
-        game_id: request.game_id.clone(),
-        profile_id: request.profile_id.clone(),
-        mod_id: request.mod_id.clone(),
-        target_id: request.target_id.clone(),
-        layer: request.layer.clone(),
-    }
 }
 
 fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
@@ -424,5 +413,25 @@ mod tests {
         );
         assert_eq!(blocked.code, "replacement_initial_install_blocked");
         assert!(!blocked.message.contains("RollbackRequired"));
+    }
+
+    #[test]
+    fn start_task_queueing_does_not_require_a_workflow_preview() {
+        let task_manager = Arc::new(hmm_app::TaskManager::new());
+        let task_service = hmm_app::RetargetInstallTaskService::new(task_manager);
+        let request = start_request_from_dto(StartRetargetInstallTaskRequestDto {
+            game_id: "mhw".to_owned(),
+            profile_id: "profile-a".to_owned(),
+            mod_id: "mod-a".to_owned(),
+            target_id: "mhw:armor:fatalis-alpha".to_owned(),
+            layer_name: "base".to_owned(),
+            layer_priority: 0,
+        })
+        .expect("valid controlled request");
+
+        let task = queue_retarget_install_task(&task_service, request).expect("queue task");
+
+        assert_eq!(task.kind, hmm_app::TaskKind::Install);
+        assert_eq!(task.status, hmm_app::TaskStatus::Queued);
     }
 }

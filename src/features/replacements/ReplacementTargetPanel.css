@@ -30,7 +30,7 @@
   padding: 0 10px;
   color: inherit;
   background: var(--color-surface);
-  border: 1px solid currentColor;
+  border: 1px solid currentcolor;
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
@@ -264,6 +264,11 @@
 .replacement-panel__task-state.is-failed {
   color: var(--color-danger-text);
   background: var(--color-danger-bg);
+}
+
+.replacement-panel__task-state.is-cancelled {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
 }
 
 .replacement-panel__inline-state.is-success,

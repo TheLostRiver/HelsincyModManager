@@ -29,7 +29,9 @@ import {
   canStartInitialRetargetInstall,
   isRetargetInstallTaskPhase,
   nextRetargetInstallTaskState,
+  refreshRetargetInstallState,
   retargetInstallTaskPhaseLabel,
+  type RetargetInstallRefreshState,
   type RetargetInstallTaskState,
 } from "./replacementWorkflow";
 import "./ReplacementTargetPanel.css";
@@ -139,6 +141,8 @@ export function ReplacementTargetPanel({
   const previewRequestGenerationRef = useRef(0);
   const pendingEventsRef = useRef(new Map<string, TaskProgressEventDto>());
   const completedTaskRef = useRef<string | null>(null);
+  const refreshGenerationRef = useRef(0);
+  const [refreshState, setRefreshState] = useState<RetargetInstallRefreshState>({ status: "idle" });
   const [listenerAttempt, setListenerAttempt] = useState(0);
   const [listenerStatus, setListenerStatus] = useState<"connecting" | "ready" | "failed">(
     "connecting",
@@ -149,6 +153,22 @@ export function ReplacementTargetPanel({
     taskStateRef.current = next;
     setTaskState(next);
   }, []);
+
+  const refreshCompletedInstall = useCallback(() => {
+    const generation = ++refreshGenerationRef.current;
+    setRefreshState({ status: "refreshing" });
+    void refreshRetargetInstallState(onInstallCompleted).then((next) => {
+      if (refreshGenerationRef.current === generation) {
+        setRefreshState(next);
+      }
+    });
+  }, [onInstallCompleted]);
+
+  useEffect(() => {
+    refreshGenerationRef.current += 1;
+    completedTaskRef.current = null;
+    setRefreshState({ status: "idle" });
+  }, [gameId, modId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,7 +242,10 @@ export function ReplacementTargetPanel({
   }, [listenerAttempt, setTrackedTaskState]);
 
   const taskActive = taskState.status === "starting" || taskState.status === "running";
-  useEffect(() => onBusyChange(taskActive), [onBusyChange, taskActive]);
+  const refreshPending =
+    taskState.status === "completed" && completedTaskRef.current !== taskState.taskId;
+  const panelBusy = taskActive || refreshPending || refreshState.status === "refreshing";
+  useEffect(() => onBusyChange(panelBusy), [onBusyChange, panelBusy]);
   useEffect(() => () => onBusyChange(false), [onBusyChange]);
 
   useEffect(() => {
@@ -230,8 +253,8 @@ export function ReplacementTargetPanel({
       return;
     }
     completedTaskRef.current = taskState.taskId;
-    void onInstallCompleted();
-  }, [onInstallCompleted, taskState]);
+    refreshCompletedInstall();
+  }, [refreshCompletedInstall, taskState]);
 
   const targets = useMemo(
     () => (loadState.status === "ready" ? loadState.targets : []),
@@ -545,6 +568,30 @@ export function ReplacementTargetPanel({
               {taskState.message}
             </>
           ) : null}
+          {taskState.status === "cancelled" ? (
+            <>
+              <AlertTriangle size={17} aria-hidden="true" />
+              {retargetInstallTaskPhaseLabel(taskState.phase)}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {refreshState.status === "refreshing" ? (
+        <div className="replacement-panel__notice" role="status">
+          <LoaderCircle className="replacement-panel__spinner" size={17} aria-hidden="true" />
+          <span>正在刷新安装状态</span>
+        </div>
+      ) : null}
+
+      {refreshState.status === "failed" ? (
+        <div className="replacement-panel__notice is-blocked" role="alert">
+          <AlertTriangle size={17} aria-hidden="true" />
+          <span>{refreshState.message}</span>
+          <button type="button" onClick={refreshCompletedInstall}>
+            <RefreshCw size={15} aria-hidden="true" />
+            重试刷新
+          </button>
         </div>
       ) : null}
 
