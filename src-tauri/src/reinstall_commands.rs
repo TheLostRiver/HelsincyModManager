@@ -169,7 +169,7 @@ fn parse_non_empty_id(
     Ok(trimmed.to_owned())
 }
 
-fn parse_plan_token(value: String) -> Result<String, CommandErrorDto> {
+pub(crate) fn parse_plan_token(value: String) -> Result<String, CommandErrorDto> {
     let value = value.trim();
     let digest = value.strip_prefix(PLAN_TOKEN_PREFIX);
     if digest.is_none_or(|digest| {
@@ -184,7 +184,7 @@ fn parse_plan_token(value: String) -> Result<String, CommandErrorDto> {
     Ok(value.to_owned())
 }
 
-fn preview_error_to_command_error(error: ReinstallPreviewError) -> CommandErrorDto {
+pub(crate) fn preview_error_to_command_error(error: ReinstallPreviewError) -> CommandErrorDto {
     let (code, message) = match error {
         ReinstallPreviewError::CatalogUnavailable => (
             "reinstall_catalog_unavailable",

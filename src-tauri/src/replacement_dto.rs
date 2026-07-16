@@ -39,6 +39,29 @@ pub struct StartRetargetInstallTaskRequestDto {
     pub layer_priority: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreviewRetargetReinstallRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+    pub target_id: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartRetargetReinstallTaskRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+    pub target_id: String,
+    pub layer_name: String,
+    pub layer_priority: i32,
+    pub plan_token: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplacementTargetDto {
@@ -146,6 +169,50 @@ mod replacement_dto_tests {
                 "forbidden field: {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn retarget_reinstall_requests_keep_revision_and_paths_backend_owned() {
+        let preview: PreviewRetargetReinstallRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "profileId": "profile-a",
+            "modId": "mod-a",
+            "targetId": "mhw:armor:fatalis-alpha",
+            "layerName": "base",
+            "layerPriority": 0
+        }))
+        .expect("deserialize preview request");
+        let start: StartRetargetReinstallTaskRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "profileId": "profile-a",
+            "modId": "mod-a",
+            "targetId": "mhw:armor:fatalis-alpha",
+            "layerName": "base",
+            "layerPriority": 0,
+            "planToken": "reinstall-preview-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }))
+        .expect("deserialize start request");
+
+        assert_eq!(preview.target_id, "mhw:armor:fatalis-alpha");
+        let serialized = serde_json::to_value(start).expect("serialize request shape");
+        for forbidden in [
+            "packageId",
+            "revisionId",
+            "sourceId",
+            "bindingId",
+            "sandboxPath",
+            "stagingPath",
+            "targetPath",
+        ] {
+            assert!(
+                serialized.get(forbidden).is_none(),
+                "forbidden field: {forbidden}"
+            );
+        }
+        assert!(serialized["planToken"]
+            .as_str()
+            .expect("plan token")
+            .starts_with("reinstall-preview-v1:"));
     }
 
     #[test]

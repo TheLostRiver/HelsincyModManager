@@ -1,11 +1,15 @@
-use super::{with_install_manifest_repository_override, AppState};
+use super::{
+    retarget_reinstall_staging_root, with_install_manifest_repository_override, AppState,
+    RetargetStagingCleanup,
+};
 use hmm_app::{
     BuildImportedModInstallPlanRequest, InstallManifestQueryRequest, InstallManifestStatus,
     InstallRecoveryScanRequest, InstallRecoveryStatus, ReinstallPlanPreview,
     ReinstallPreviewRequest, ReinstallPreviewStatus, ReinstallTargetCounts,
+    RetargetReinstallRequest,
     StartImportModRevisionTaskRequest, StartImportModTaskRequest, StartInstallTaskRequest,
-    StartReinstallTaskRequest, StartRetargetInstallTaskRequest, StartUninstallTaskRequest,
-    TaskKind, TaskStatus,
+    StartReinstallTaskRequest, StartRetargetInstallTaskRequest,
+    StartRetargetReinstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
 };
 use hmm_core::{
     FileLayer, GameDirectoryStatus, GameId, InstallManifest, ModId, ModRevisionId, ProfileId,
@@ -27,7 +31,9 @@ const OVERWRITTEN_TARGET: &str = "nativePC/lifecycle/overwritten.bin";
 const BASELINE_BYTES: &[u8] = b"game-baseline-original\n";
 const ARMOR_SOURCE_TARGET: &str = "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3";
 const ARMOR_RETARGETED_TARGET: &str = "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3";
+const ARMOR_SWITCH_TARGET: &str = "nativePC/pl/f_equip/pl129_0010/arm/mod/f_body.mod3";
 const ARMOR_FIXTURE_BYTES: &[u8] = b"synthetic armor fixture\n";
+const ARMOR_SWITCH_BASELINE_BYTES: &[u8] = b"pre-existing beta armor baseline\n";
 
 const V1_FILES: &[(&str, &[u8])] = &[
     (OVERWRITTEN_TARGET, b"fixture-overwrite-v1\n"),
@@ -35,6 +41,27 @@ const V1_FILES: &[(&str, &[u8])] = &[
     ("nativePC/lifecycle/retained.bin", b"fixture-retained\n"),
     ("nativePC/lifecycle/stale.bin", b"fixture-stale-v1\n"),
 ];
+
+#[test]
+fn retarget_reinstall_staging_is_operation_scoped_and_cleanup_is_drop_safe() {
+    let temp = tempfile::tempdir().expect("create staging cleanup temp root");
+    let first = retarget_reinstall_staging_root(temp.path());
+    let second = retarget_reinstall_staging_root(temp.path());
+    assert_ne!(
+        first, second,
+        "each preview/start needs an isolated staging root"
+    );
+
+    fs::create_dir_all(&first).expect("create synthetic prepared staging");
+    fs::write(first.join("prepared.bin"), b"prepared").expect("write synthetic staging file");
+    let cleanup = RetargetStagingCleanup::armed(first.clone());
+    drop(cleanup);
+
+    assert!(
+        !first.exists(),
+        "dropping prepared state must discard staging"
+    );
+}
 
 const V2_FILES: &[(&str, &[u8])] = &[
     ("nativePC/lifecycle/added-v2.bin", b"fixture-added-v2\n"),
@@ -257,6 +284,189 @@ fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot(
                 .is_none(),
         "successful commit must clean its temporary retarget staging"
     );
+}
+
+#[test]
+fn headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_baseline() {
+    let temp = tempfile::tempdir().expect("create retarget reinstall temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let game_root = temp.path().join("game");
+    let archive_path = temp.path().join("armor-v1.zip");
+    prepare_game_root(&game_root);
+    let switch_target = game_root.join(ARMOR_SWITCH_TARGET);
+    fs::create_dir_all(switch_target.parent().expect("switch target parent"))
+        .expect("create switch target parent");
+    fs::write(&switch_target, ARMOR_SWITCH_BASELINE_BYTES)
+        .expect("write pre-existing switch target baseline");
+    let baseline = snapshot_file_tree(&game_root);
+    create_fixture_zip(&archive_path, &[(ARMOR_SOURCE_TARGET, ARMOR_FIXTURE_BYTES)]);
+
+    let state = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("compose headless state from temp AppData");
+    state
+        .game_setup
+        .save_game_directory(GameId::mhw(), game_root.clone())
+        .expect("save validated temp game directory");
+    let import_task = state
+        .mod_import_tasks
+        .start_import_mod_task(StartImportModTaskRequest {
+            archive_path: archive_path.clone(),
+        })
+        .expect("register armor fixture import");
+    state
+        .mod_import_task_runner
+        .run_prepare_task(&import_task.task_id, archive_path)
+        .expect("prepare armor fixture import");
+
+    let profile_id = ProfileId::new("default");
+    let mod_id = ModId::new(import_task.task_id);
+    let initial = StartRetargetInstallTaskRequest {
+        game_id: GameId::mhw(),
+        profile_id: profile_id.clone(),
+        mod_id: mod_id.clone(),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+            .expect("initial target id"),
+        layer: FileLayer::new("base", 0),
+    };
+    let initial_task = state
+        .retarget_install_tasks
+        .start_retarget_install_task(initial.clone())
+        .expect("register initial retarget task");
+    state
+        .retarget_install_task_runner
+        .run_retarget_install_task(&initial_task.task_id, initial)
+        .expect("run initial retarget install");
+
+    let switch = RetargetReinstallRequest {
+        game_id: GameId::mhw(),
+        profile_id: profile_id.clone(),
+        mod_id: mod_id.clone(),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-beta").expect("switch target id"),
+        layer: FileLayer::new("base", 0),
+    };
+    let preview = state
+        .reinstall_executor
+        .preview_retarget_reinstall(switch.clone())
+        .expect("preview retarget reinstall");
+    assert_eq!(preview.status, ReinstallPreviewStatus::Ready);
+    assert_eq!(
+        preview.counts,
+        ReinstallTargetCounts {
+            retained: 0,
+            replaced: 0,
+            added: 1,
+            stale: 1,
+        }
+    );
+    assert_no_retarget_staging(&app_data_dir);
+    let plan_token = preview.plan_token.expect("ready retarget reinstall token");
+    let request = StartRetargetReinstallTaskRequest {
+        game_id: switch.game_id,
+        profile_id: switch.profile_id,
+        mod_id: switch.mod_id,
+        target_id: switch.target_id,
+        layer: switch.layer,
+        plan_token,
+    };
+    let reinstall_task = state
+        .reinstall_tasks
+        .start_retarget_reinstall_task(request.clone())
+        .expect("register retarget reinstall task");
+    let events = state
+        .reinstall_task_runner
+        .run_retarget_reinstall_task(&reinstall_task.task_id, request)
+        .expect("run retarget reinstall task");
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.phase.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "install.reinstall.plan.building",
+            "install.reinstall.preflight.processing",
+            "install.reinstall.commit.processing",
+            "install.reinstall.completed",
+        ]
+    );
+    assert!(!game_root.join(ARMOR_RETARGETED_TARGET).exists());
+    assert_eq!(
+        fs::read(game_root.join(ARMOR_SWITCH_TARGET)).expect("read switched armor target"),
+        ARMOR_FIXTURE_BYTES
+    );
+    assert!(!game_root.join(ARMOR_SOURCE_TARGET).exists());
+    assert_no_recovery_records(&app_data_dir);
+    assert_no_reinstall_recovery_transactions(&app_data_dir);
+    assert_no_retarget_staging(&app_data_dir);
+
+    let switched_manifest = read_fixture_manifest(&app_data_dir);
+    assert_eq!(switched_manifest.entries.len(), 1);
+    assert_eq!(
+        switched_manifest.entries[0].target_path.as_str(),
+        ARMOR_SWITCH_TARGET
+    );
+    assert!(switched_manifest.entries[0].revision_id.is_some());
+    assert_eq!(switched_manifest.replacement_bindings.len(), 1);
+    let switched_binding = &switched_manifest.replacement_bindings[0];
+    assert_eq!(
+        switched_binding.binding().target_id().as_str(),
+        "mhw:armor:fatalis-beta"
+    );
+    assert_eq!(switched_binding.target_internal_id(), "pl129_0010");
+    assert_eq!(
+        switched_binding.revision_id(),
+        switched_manifest.entries[0].revision_id.as_ref()
+    );
+
+    drop(state);
+    let restarted = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("restart from switched retarget manifest");
+    assert_eq!(read_fixture_manifest(&app_data_dir), switched_manifest);
+    let uninstall = StartUninstallTaskRequest {
+        game_id: GameId::mhw(),
+        mod_id: mod_id.clone(),
+        profile_id: profile_id.clone(),
+    };
+    let uninstall_task = restarted
+        .uninstall_tasks
+        .start_uninstall_task(uninstall.clone())
+        .expect("register retarget uninstall task");
+    restarted
+        .uninstall_task_runner
+        .run_uninstall_task(&uninstall_task.task_id, uninstall)
+        .expect("uninstall switched retarget");
+    assert_eq!(snapshot_file_tree(&game_root), baseline);
+    assert!(!game_root.join(ARMOR_RETARGETED_TARGET).exists());
+    assert!(!game_root.join(ARMOR_SOURCE_TARGET).exists());
+    assert_no_recovery_records(&app_data_dir);
+    assert_no_reinstall_recovery_transactions(&app_data_dir);
+
+    drop(restarted);
+    let restarted_uninstalled = AppState::from_app_data_dir(app_data_dir.clone())
+        .expect("restart after retarget uninstall");
+    let summaries = restarted_uninstalled
+        .install_recovery_scanner
+        .scan(
+            GameId::mhw(),
+            InstallRecoveryScanRequest {
+                profile_id,
+                mod_ids: vec![mod_id],
+            },
+        )
+        .expect("scan final retarget uninstall status");
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::NotInstalled);
+
+    let audit_events = read_install_audit_events(&app_data_dir);
+    let switch_audit = audit_events
+        .iter()
+        .find(|event| {
+            event.operation == "reinstall_mod"
+                && event.fields.get("target_id").map(String::as_str)
+                    == Some("mhw:armor:fatalis-beta")
+        })
+        .expect("retarget reinstall audit event");
+    assert_eq!(switch_audit.result, "success");
+    assert_eq!(switch_audit.fields["added_count"], "1");
+    assert_eq!(switch_audit.fields["stale_count"], "1");
 }
 
 #[test]
@@ -1345,6 +1555,32 @@ fn assert_no_recovery_records(app_data_dir: &Path) {
                 .count(),
             0,
             "fixture recovery records must be cleared"
+        );
+    }
+}
+
+fn assert_no_reinstall_recovery_transactions(app_data_dir: &Path) {
+    let recovery_root = app_data_dir.join("install").join("reinstall-recovery");
+    if recovery_root.exists() {
+        assert_eq!(
+            fs::read_dir(recovery_root)
+                .expect("read reinstall recovery directory")
+                .count(),
+            0,
+            "reinstall recovery transactions must be cleared"
+        );
+    }
+}
+
+fn assert_no_retarget_staging(app_data_dir: &Path) {
+    let staging_root = app_data_dir.join("install").join("retarget-staging");
+    if staging_root.exists() {
+        assert_eq!(
+            fs::read_dir(staging_root)
+                .expect("read retarget staging directory")
+                .count(),
+            0,
+            "retarget reinstall staging must be discarded"
         );
     }
 }

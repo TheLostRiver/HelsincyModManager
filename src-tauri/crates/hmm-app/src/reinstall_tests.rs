@@ -106,6 +106,49 @@ fn preview_blocks_candidate_missing_owner_mismatch_unready_and_already_installed
 }
 
 #[test]
+fn replacement_target_switch_preparation_allows_same_revision_only_for_changed_binding() {
+    let fixture = Fixture::ready();
+    let mut request = default_request();
+    request.candidate_revision_id = ModRevisionId::new("v1");
+
+    let prepared = fixture
+        .service
+        .prepare_replacement_target_switch(request.clone(), target_switch_plan("v1"))
+        .expect("target switch preview");
+    let preview = prepared.into_preview();
+    assert_eq!(preview.status, ReinstallPreviewStatus::Ready);
+    assert_eq!(preview.installed_revision, Some(revision_summary("v1")));
+    assert_eq!(preview.candidate_revision, Some(revision_summary("v1")));
+    assert_eq!(
+        preview.counts,
+        ReinstallTargetCounts {
+            retained: 1,
+            replaced: 2,
+            added: 1,
+            stale: 1,
+        }
+    );
+    assert!(preview.plan_token.is_some());
+
+    let unchanged = candidate_plan_with_binding(
+        "v1",
+        replacement_snapshot(
+            "binding-v1",
+            "mhw:armor:guardian-alpha",
+            "pl121_0000",
+            Some("v1"),
+        ),
+    );
+    let preview = fixture
+        .service
+        .prepare_replacement_target_switch(request, unchanged)
+        .expect("unchanged target preview")
+        .into_preview();
+    assert_blocked(&preview, ReinstallBlockingReason::CandidateAlreadyInstalled);
+    fixture.assert_zero_mutations();
+}
+
+#[test]
 fn preview_blocks_missing_or_unsafe_manifest_and_unknown_installed_revision() {
     let missing = Fixture::ready();
     missing.manifests.set_manifest(None);
@@ -569,18 +612,40 @@ fn installed_manifest() -> InstallManifest {
 }
 
 fn candidate_plan(revision_id: &str) -> InstallPlan {
+    candidate_plan_with_binding(
+        revision_id,
+        replacement_snapshot(
+            "binding-v2",
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+            Some(revision_id),
+        ),
+    )
+}
+
+fn target_switch_plan(revision_id: &str) -> InstallPlan {
+    candidate_plan_with_binding(
+        revision_id,
+        replacement_snapshot(
+            "binding-v1",
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+            Some(revision_id),
+        ),
+    )
+}
+
+fn candidate_plan_with_binding(
+    _revision_id: &str,
+    replacement_binding: ReplacementBindingSnapshot,
+) -> InstallPlan {
     InstallPlan::from_providers([
         candidate_provider("content/retained.bin", "retained"),
         candidate_provider("content/replaced.bin", "replaced"),
         candidate_provider("content/overwritten.bin", "overwritten"),
         candidate_provider("content/added-v2.bin", "added-v2"),
     ])
-    .with_replacement_bindings(vec![replacement_snapshot(
-        "binding-v2",
-        "mhw:armor:fatalis-alpha",
-        "pl129_0000",
-        Some(revision_id),
-    )])
+    .with_replacement_bindings(vec![replacement_binding])
     .expect("candidate replacement binding")
 }
 
