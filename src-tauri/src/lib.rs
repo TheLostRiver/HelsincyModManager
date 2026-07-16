@@ -11,6 +11,7 @@ mod profile_commands;
 mod reinstall_commands;
 mod reinstall_dto;
 mod replacement_commands;
+mod replacement_dto;
 mod save_backup_commands;
 mod save_backup_dto;
 mod save_directory_discovery_commands;
