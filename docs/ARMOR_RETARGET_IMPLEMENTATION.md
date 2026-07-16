@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **当前优先级（2026-07-16）：** Gate A 已标记为 `certified`，本计划现为唯一 P1 / Gate B 主线；
-> AR1/AR2/AR3/AR4 已标记为 `implemented`，当前下一项只执行 AR5。执行顺序以
+> AR1-AR5 的代码、自动化与受控 UI 已标记为 `implemented`，当前只执行 Gate B Sandbox 验收。执行顺序以
 > [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 为准；按 AR1-AR5 重组执行，
 > AR5 的 target switch 必须复用 Gate A 的真正重装 contract，不得引入独立删除/复制旁路。
 
@@ -27,8 +27,8 @@
 - catalog 加载时的 Unicode 归一化和搜索键规范化。
 - staging materialize：从只读导入缓存复制到 staging 目标相对路径。
 - manifest / audit 所需的 replacement binding 快照字段。
-- 四个窄 Tauri command、前端 typed API 与 Mod 详情受控 UI，用于 catalog 查询、导入 Mod 分析、
-  首次 retarget 安装预览和任务启动。
+- 六个窄 Tauri command、前端 typed API 与 Mod 详情受控 UI，用于 catalog 查询、导入 Mod 分析、
+  首次 retarget 安装，以及已安装 Mod 的真正重装 target switch 预览和任务启动。
 
 本计划不实现：
 
@@ -51,7 +51,8 @@ Gate A certified
   -> AR2 单 source f_equip parser / analyzer / RetargetPlan [implemented]
   -> AR3 staging materialize / InstallPlan / binding snapshot [implemented]
   -> AR4 target selection / preview / install UI [implemented]
-  -> AR5 true reinstall target switch / uninstall / Gate B [current]
+  -> AR5 true reinstall target switch / uninstall [implemented]
+  -> Gate B disposable Windows Sandbox acceptance [current]
 ```
 
 旧计划中“Task 1-5 可在安装 MVP 前独立先做”的并行策略失效。这样做会再次扩大未被玩家闭环消费
@@ -164,7 +165,31 @@ AR4 按 Tauri thin shell、app workflow 与 feature-local frontend 边界落地�
 
 AR4 没有实现已安装 Mod target switch、retarget-aware 卸载扩展或 Gate B 认证；这些仍属于 AR5。
 
-## Target File Structure（AR1-AR4 整体目标；已实施情况以上述基线为准）
+## AR5 已实施基线（2026-07-16）
+
+AR5 只扩展已安装 Mod 的同 revision target switch，并继续复用 Gate A 的真正重装事务；没有新增独立
+删除、复制或原地改名路径。
+
+已落地：
+
+- `preview_retarget_reinstall` 与 `start_retarget_reinstall_task` 两个窄 command；请求只包含
+  game/profile/Mod/target/layer identity，start 额外携带 preview `planToken`。installed revision 从
+  manifest 解析，不接受前端 revision/package/source/binding/staging/path，也不会隐式升级版本。
+- 同 revision 只在 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage 且 target
+  确实变化时授权；普通相同 revision 重装和当前 target 重选继续 fail closed。
+- 每次 target-switch materialize 使用独立 operation UUID 和 RAII cleanup；preview、取消、锁失败、
+  commit 成功或失败均不把 staging 当作事实来源。
+- commit 复用真正重装的 game/profile 写锁、plan token revalidation、backup、manifest entry-set replacement、
+  rollback/recovery 与 `reinstall_mod` Audit Log；target switch 只新增稳定 `target_id` 审计字段。
+- temp fixture 已证明旧 target 移除、新 target 安装、重启后 binding 恢复、最终 manifest 卸载恢复首次
+  Armor 安装前逐字节 baseline。
+- `src/features/replacements/` 已在 installed 状态开放 target-switch preview/confirm，展示四类 target 计数，
+  严格按 taskId 消费事件；只在 queued/plan/preflight 安全阶段显示取消入口，commit/rollback 后隐藏。
+
+Gate B 仍等待 disposable Windows Sandbox 完成首次 retarget -> switch target -> restart -> uninstall ->
+exact pre-Armor baseline。人工证据完成前不得标记 `certified`。
+
+## Target File Structure（AR1-AR5 整体目标；已实施情况以上述基线为准）
 
 ```text
 docs/
