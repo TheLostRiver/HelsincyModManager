@@ -953,15 +953,10 @@ impl ConfiguredReinstallExecutor {
             services.game_instance.clone(),
             Arc::clone(&source),
         );
-        let preparation = match candidate_services
+        let preparation = candidate_services
             .preview
             .prepare_replacement_target_switch(candidate_request, plan)
-        {
-            Ok(preparation) => preparation,
-            Err(error) => {
-                return Err(ConfiguredRetargetReinstallError::Reinstall(error));
-            }
-        };
+            .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {
             preparation,
             game_instance: services.game_instance,
@@ -1077,7 +1072,7 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
             prepared,
             game_instance,
             source,
-            staging_cleanup,
+            staging_cleanup: _cleanup_guard,
         } = prepared;
         let result = load_reinstall_game_instance_for_commit(
             self.game_config_repository.as_ref(),
@@ -1088,7 +1083,6 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
                 .executor
                 .commit(prepared, expected_plan_token)
         });
-        drop(staging_cleanup);
         result
     }
 }
