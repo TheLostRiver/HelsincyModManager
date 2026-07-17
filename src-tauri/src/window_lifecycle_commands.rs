@@ -99,14 +99,22 @@ fn window_lifecycle_error(code: &'static str, message: impl Into<String>) -> Com
 
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        if let Err(error) = window.show() {
-            tracing::warn!(error = %error, "failed to show main window from tray");
+        if window.show().is_err() {
+            crate::app_log::record_warning("window.operation_failed", "show", "window_show_failed");
         }
-        if let Err(error) = window.unminimize() {
-            tracing::warn!(error = %error, "failed to unminimize main window from tray");
+        if window.unminimize().is_err() {
+            crate::app_log::record_warning(
+                "window.operation_failed",
+                "unminimize",
+                "window_unminimize_failed",
+            );
         }
-        if let Err(error) = window.set_focus() {
-            tracing::warn!(error = %error, "failed to focus main window from tray");
+        if window.set_focus().is_err() {
+            crate::app_log::record_warning(
+                "window.operation_failed",
+                "focus",
+                "window_focus_failed",
+            );
         }
     }
 }
@@ -166,9 +174,10 @@ pub fn register_window_lifecycle(app: &mut App) -> tauri::Result<()> {
 
 #[tauri::command]
 pub fn hide_main_window_to_tray(window: Window) -> Result<(), CommandErrorDto> {
-    window
-        .hide()
-        .map_err(|error| window_lifecycle_error("window_hide_failed", error.to_string()))
+    window.hide().map_err(|_| {
+        crate::app_log::record_warning("window.operation_failed", "hide", "window_hide_failed");
+        window_lifecycle_error("window_hide_failed", "failed to hide main window")
+    })
 }
 
 #[tauri::command]
@@ -200,7 +209,11 @@ pub async fn exit_app(
             let audit_result =
                 tauri::async_runtime::spawn_blocking(move || guard.record_override(reason)).await;
             if !matches!(audit_result, Ok(Ok(()))) {
-                tracing::warn!("background exit override audit unavailable");
+                crate::app_log::record_warning(
+                    "audit.write_failed",
+                    "exit_override",
+                    "exit_override_audit_unavailable",
+                );
             }
         }
         ExitAppAction::Exit => {}

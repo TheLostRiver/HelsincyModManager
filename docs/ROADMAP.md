@@ -10,8 +10,8 @@
    manifest 卸载和受控 UI 已完成；修复当前 target 呈现缺陷后的最终 artifact 已在全新 disposable
    Windows Sandbox 通过首次 Alpha retarget 安装 -> Beta target switch -> 两次重启状态恢复 ->
    manifest 卸载 -> exact baseline 纵向复验，Gate B 已标记为 `certified`。
-3. Gate B 后优先级复审已选择 T19“核心 Mod 生命周期产品化加固”为当前主线；本轮只完成规划，
-   产品代码按 A1 -> L1 -> U1 -> U2 -> L2 -> U3 -> L3 的独立 review 切片推进。
+3. Gate B 后优先级复审已选择 T19“核心 Mod 生命周期产品化加固”为当前主线；A1 生命周期验收入口和
+   L1 安全 App Log 已完成，下一切片为 U1；其余仍按 U1 -> U2 -> L2 -> U3 -> L3 独立 review 推进。
 4. T19 完成后依次恢复 T18 分页、T17 批量迁移和 T13 批量安装/卸载。自动备份剩余切片、installer
    cleanup、T12/T14 和其他扩展继续按各自发布门禁评审，不自动开工。
 
