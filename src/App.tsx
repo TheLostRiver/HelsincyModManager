@@ -5,21 +5,24 @@ import { RouterOutlet } from "./app/routing/RouterOutlet";
 import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
+import { FeedbackProvider } from "./shared/feedback";
 
 export function App() {
   return (
-    <ColorSchemeProvider>
-      <SidebarModeProvider>
-        <AppRouteProvider>
-          <ActiveProfileProvider>
-            <ProfileSaveDirectoryDiscoveryProvider>
-              <AppShell>
-                <RouterOutlet />
-              </AppShell>
-            </ProfileSaveDirectoryDiscoveryProvider>
-          </ActiveProfileProvider>
-        </AppRouteProvider>
-      </SidebarModeProvider>
-    </ColorSchemeProvider>
+    <FeedbackProvider>
+      <ColorSchemeProvider>
+        <SidebarModeProvider>
+          <AppRouteProvider>
+            <ActiveProfileProvider>
+              <ProfileSaveDirectoryDiscoveryProvider>
+                <AppShell>
+                  <RouterOutlet />
+                </AppShell>
+              </ProfileSaveDirectoryDiscoveryProvider>
+            </ActiveProfileProvider>
+          </AppRouteProvider>
+        </SidebarModeProvider>
+      </ColorSchemeProvider>
+    </FeedbackProvider>
   );
 }

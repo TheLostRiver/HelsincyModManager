@@ -1,6 +1,6 @@
 import { useGameSetup } from "../game-setup/useGameSetup";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
-import { GameSetupFloatingNotice } from "../game-setup/GameSetupFloatingNotice";
+import { GameSetupDialog } from "../game-setup/GameSetupDialog";
 import { useGameLaunch } from "../game-launch/useGameLaunch";
 import { useInstallRecoveryHealth } from "../install-recovery/useInstallRecoveryHealth";
 import { DashboardHeroCard } from "./DashboardHeroCard";
@@ -18,7 +18,7 @@ export function DashboardPage() {
 
   return (
     <>
-      <GameSetupFloatingNotice
+      <GameSetupDialog
         notice={gameSetup.startupNotice}
         isBusy={gameSetup.isBusy}
         onRetry={gameSetup.retryStartupDetection}
