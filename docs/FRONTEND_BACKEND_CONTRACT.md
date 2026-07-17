@@ -81,6 +81,11 @@ L3 新增无参数 `get_diagnostics_page_snapshot`。后端固定每类最多返
 App/Task 安全日志行、已校验 Audit 事件及稳定健康状态。契约不接受或返回日志路径、任意文件名、原始错误；
 单类读取失败只以稳定 `*_read_failed` 状态降级。前端只允许复制事件中已校验的 `error_code` / `task_id`。
 
+`evidenceHealth` 是写入链路的聚合健康对象：`taskLogStatus` / `auditLogStatus` 是稳定状态码；
+`taskLogWriteFailureCount` / `auditWriteFailureCount` 分别累计 Task/Audit 写入失败；
+`auditWriteFailureAfterCommitCount` 累计玩家文件与 manifest 已提交后发生的审计写入失败。此时
+`auditLogStatus` 为 `audit_write_failed_after_commit`，页面必须显示诊断退化，但不得为补写审计再次改动玩家文件。
+
 `app_health()` 不接收参数，只返回下面的稳定字符串之一：
 
 | 值 | 含义 |
