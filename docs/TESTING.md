@@ -134,6 +134,31 @@ body-level feedback host，游戏目录决策以 `aria-modal` Dialog 呈现，�
 空闲态 Escape/背景点击可关闭，busy 态关闭入口全部阻断，关闭后焦点返回，长文本和按钮不溢出。
 同时确认 z-index 200 的窗口关闭保护高于共享 Dialog 180，只有视觉最顶层模态处理 Tab/Escape。
 
+### T19 Feedback UI U2
+
+核心 Mod 生命周期反馈迁移至少运行：
+
+```powershell
+node --test src/features/mods/modInstallTaskState.test.mjs src/features/mods/modLifecycleFeedbackState.test.mjs src/features/mods/modLifecycleFeedbackUi.test.mjs src/features/mods/modInstallPlanApi.test.mjs src/features/mods/modReinstallTaskState.test.mjs
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-file-size.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-core-mod-lifecycle.ps1
+```
+
+状态测试必须覆盖 ready、blocking conflict、running、completed、ordinary failed、cancelled 和
+recovery-required。Task Notice 只允许消费匹配 `taskId` 的 install/uninstall phase；terminal Toast 必须在
+manifest/recovery 刷新 verified 后生成，`committed_cleanup_pending`、`cleanup_pending`、
+`rollback_required`、`repair_required`、`unknown` 以及刷新不可用都保留持久阻断并抑制普通 Toast。
+
+浏览器 smoke 覆盖 `1440x900`、`1366x768`、`960x640` 和 `390x844`：安装计划/冲突以可滚动
+Detail Sheet 呈现且关闭不改变任务；卸载以 `alertdialog` 呈现，背景点击不关闭，初始焦点为取消，
+Escape 只取消；运行态 Task Notice 和 terminal Toast 不挤压 Mod 列表、长 Mod 名不溢出。重装与 retarget
+仍使用既有 DTO、phase、preview token 和 durable refresh，不因 U2 改变工作流。
+
 ## Tauri / Rust 桥接改动
 
 适用范围：
