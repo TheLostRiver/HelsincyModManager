@@ -49,9 +49,10 @@ use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(target_os = "windows")]
 use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
-    FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
-    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader,
-    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter, FileSystemTextLogReader,
+    DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
+    FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
+    FileSystemInstallSourceFileReader, FileSystemRetargetStagingMaterializer,
+    FileSystemSaveBackupWriter, FileSystemTaskLogWriter, FileSystemTextLogReader,
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
@@ -69,15 +70,15 @@ use hmm_infra::{
 };
 use hmm_ports::{
     AppClock, AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, GameAdapter, GameConfigRepository, GameLauncher,
-    GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
+    DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
+    GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageInstallFileScanner, ProfileRepository,
     ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
     SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TextLogReader,
-    ThumbnailCacheMaintenance,
+    SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TaskLogWriter,
+    TextLogReader, ThumbnailCacheMaintenance,
 };
 #[cfg(test)]
 use std::cell::RefCell;
@@ -103,6 +104,7 @@ pub struct AppState {
     pub preview_image_diagnostics_export: Arc<PreviewImageDiagnosticsExportService>,
     pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
+    pub task_log_writer: Arc<dyn TaskLogWriter>,
     pub install_planning: Arc<InstallPlanningService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub(crate) install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
@@ -269,7 +271,9 @@ impl AppState {
                     .map(|game_id| game_id.as_str().to_owned())
                     .collect(),
             ));
-        let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::new(app_data_dir.clone()));
+        let evidence_health: Arc<dyn DiagnosticsEvidenceHealth> = Arc::new(DiagnosticsEvidenceHealthState::default());
+        let task_log_writer: Arc<dyn TaskLogWriter> = Arc::new(FileSystemTaskLogWriter::new(app_data_dir.clone(), Arc::clone(&evidence_health)));
+        let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::with_health(app_data_dir.clone(), Arc::clone(&evidence_health)));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
         let save_backup_background_clock: Arc<dyn AppClock> = Arc::new(SystemClock);
@@ -381,14 +385,13 @@ impl AppState {
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
         ));
-        let support_diagnostics_export = Arc::new(SupportDiagnosticsExportService::new(
-            text_log_reader,
-            audit_log_reader,
-            diagnostics_environment_provider,
-            diagnostic_package_exporter,
-            Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
-        ));
+        let support_diagnostics_export = Arc::new(SupportDiagnosticsExportService::new_with_health(
+                text_log_reader,
+                audit_log_reader,
+                diagnostics_environment_provider,
+                diagnostic_package_exporter,
+                Arc::clone(&audit_log_writer), Arc::new(SystemClock),
+                evidence_health));
         let save_backups = Arc::new(SaveBackupService::new(
             profile_repository_for_save_backups,
             profile_save_settings_repository_for_save_backups,
@@ -598,6 +601,7 @@ impl AppState {
             preview_image_diagnostics_export,
             audit_log_diagnostics_export,
             support_diagnostics_export,
+            task_log_writer,
             install_planning,
             install_manifest_query,
             install_recovery_scanner,

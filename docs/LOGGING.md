@@ -264,6 +264,9 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - `hmm-ports` 已提供最小 `AuditLogReader` port，`hmm-infra` 可从 app data 下的审计 JSONL 中读取最近 N 条已校验事件，作为后续完整日志/审计诊断包的基础；读取时会跳过损坏 JSONL 行或未通过脱敏校验的事件，只返回已校验事件。该读取能力已通过 `export_audit_log_diagnostics` 的 app service/command 链路受控使用，但仍未纳入当前预览图诊断 zip。
 - `export_audit_log_diagnostics` 已提供最小后端命令：通过 `AuditLogReader` 读取最近 N 条已校验审计事件并写入受控 `audit-log-diagnostics.json` 诊断包，同时为该导出动作写入最小 Audit Log 事件；单次导出最多包含 200 条审计事件，避免诊断包无界膨胀；命令 DTO 只返回文件名、大小和事件计数，不返回审计事件正文或路径。
 - `export_support_diagnostics` 已提供最小后端命令：通过 `SupportDiagnosticsExportService` 把平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和已校验 Audit Log 事件组合写入受控 `support-diagnostics.json`、`app-log-diagnostics.json`、`task-log-diagnostics.json` 和 `audit-log-diagnostics.json` 诊断 zip，并为该导出动作写入最小 Audit Log 事件；若平台摘要、App Log、Task Log、Audit Log 读取或诊断 zip 写入失败，也会先写入只含稳定 `error_code` 和聚合计数的失败 Audit Log 事件，不记录原始错误文本或路径；命令不接受输出路径、日志路径、类别选择、行数或事件数量参数，DTO 只返回文件名、大小和聚合计数，不返回日志正文、审计事件正文或路径。
+- L2 已新增 per-task Task Log writer：统一消费与 `hmm://task-progress` 相同的 `taskId/kind/status/phase/current/total`，按 `logs/tasks/task-<task_id>.log` 隔离写入 JSONL，并由同一 task 的首个事件计算 `durationMs`。writer 不记录自由文本 `message`、原始 `error`、`resultRef`、本地路径或第三方 Mod 内容；只有通过稳定 code 校验的错误码可以进入 Task Log。
+- L2 为 Audit 写入增加 `best_effort` 与 `report_after_commit` 显式策略。安装、卸载、重装、retarget、recovery 和存档备份的成功事实在玩家文件或 manifest 已提交后若写 Audit 失败，只更新证据健康为 `audit_write_failed_after_commit`，不得再次修改玩家文件或伪造业务回滚；调度 deferred、后台 worker 错误等非提交事实使用 best-effort，但失败仍累计为 `audit_write_failed`，不再静默消失。
+- Task/Audit writer 共享只增不减的进程内证据健康快照。`export_support_diagnostics` 返回并在 `support-diagnostics.json` 中写入稳定状态与聚合计数：`taskLogStatus`、`auditLogStatus`、`taskLogWriteFailureCount`、`auditWriteFailureCount`、`auditWriteFailureAfterCommitCount`。该摘要不包含路径、正文或原始平台错误；`app_health` 仍只表示 App Log 健康，不混入 Task/Audit 语义。
 - 若审计写入失败，命令不报告导出成功；当前预览图 zip 仍只包含脱敏聚合摘要，不等同于完整日志/审计诊断包导出。
 
 ## MVP 落地要求
