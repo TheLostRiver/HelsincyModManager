@@ -1,3 +1,4 @@
+mod app_log;
 mod app_settings_repository;
 mod audit_log;
 mod diagnostics_environment;
@@ -29,6 +30,10 @@ use anyhow::Result;
 use hmm_ports::AppClock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub use app_log::{
+    emit_safe_app_log, initialize_app_logging, redact_sensitive_text, AppLogEvent, AppLogHealth,
+    AppLogLevel,
+};
 pub use app_settings_repository::JsonAppSettingsRepository;
 pub use audit_log::FileSystemAuditLogWriter;
 pub use diagnostics_environment::SystemDiagnosticsEnvironmentProvider;

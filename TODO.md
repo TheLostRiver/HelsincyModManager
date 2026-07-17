@@ -102,14 +102,14 @@ T19 对应切片或后续恢复顺序选中，不因门禁解除自动开工。
 
 **优先级**: P0 发布加固，当前主线
 **前置**: Gate A/B certified
-**状态**: 已规划，尚未开始产品代码
+**状态**: 进行中（A1、L1 已完成，下一切片为 U1）
 **预估**: 大，固定拆为 7 个独立 review 切片
 **独立文档**: **已创建** -> `docs/CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md`
 
 范围:
 - [x] 规划 Acceptance、Logging/Diagnostics、Feedback UI 三条轨道及共享安全边界
-- [ ] A1：固化不少于 6 个 `headless_composition_*` 场景的正式验收脚本、非零断言和 CI 入口
-- [ ] L1：安全结构化事件、脱敏、App Log 文件 writer、轮转和保留
+- [x] A1：固化不少于 6 个 `headless_composition_*` 场景的正式验收脚本、非零断言和 CI 入口
+- [x] L1：安全结构化事件、脱敏、App Log JSONL writer、UTC 日轮转、14 天保留和稳定健康退化码
 - [ ] U1：共享 Dialog/Detail Sheet/Task Notice/Toast 基元，首个迁移游戏目录 Dialog
 - [ ] U2：安装计划 Sheet、卸载 Modal、按 `taskId` 的 Task Notice、完成/普通失败 Toast
 - [ ] L2：Task Log、Audit 写入失败显式策略和诊断健康摘要
@@ -121,7 +121,7 @@ T19 对应切片或后续恢复顺序选中，不因门禁解除自动开工。
 - 破坏性动作和最终安装事实仍由后端及 manifest/recovery 驱动；前端只消费稳定 DTO/phase/code
 - 日志/诊断默认脱敏，不记录完整路径、用户名、Steam ID、token、存档或第三方 Mod 内容
 - 安全风险和恢复阻断保持持久告警，不降级为自动消失 Toast
-- 每个切片独立 PR；本规划提交不提前实现 A1/L1/U1
+- 每个切片独立 PR；L1 不提前实现 U1、L2 或其他后续切片
 
 ---
 
@@ -475,8 +475,8 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-已完成: T11 ARMOR_RETARGET Gate B certified
-  -> 当前: T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3 -> L3
+已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1
+  -> 当前: T19 U1 -> U2 -> L2 -> U3 -> L3
   -> 后续: T18 Mod 库分页 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
@@ -504,4 +504,4 @@ JSON 做不好的需求:
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
 | T18 Mod 库分页 | P2 | 已规划、暂停 | |
-| T19 核心生命周期产品化加固 | P0 发布加固 | 已规划，当前主线 | |
+| T19 核心生命周期产品化加固 | P0 发布加固 | 进行中（A1/L1 已完成，下一项 U1） | |

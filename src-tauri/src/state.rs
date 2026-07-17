@@ -1522,9 +1522,8 @@ fn retarget_reinstall_staging_root(app_data_dir: &Path) -> PathBuf {
 
 fn discard_retarget_staging(staging_root: &Path) {
     if std::fs::remove_dir_all(staging_root).is_err() && staging_root.exists() {
-        tracing::warn!(
-            error_code = "retarget_staging_cleanup_failed",
-            "failed to discard prepared retarget staging"
+        crate::app_log::record_warning(
+            "retarget.staging_cleanup_failed", "discard", "retarget_staging_cleanup_failed",
         );
     }
 }
@@ -1612,9 +1611,10 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
         });
         if let Some(staging_root) = staging_root {
             if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
-                tracing::warn!(
-                    error_code = "retarget_staging_cleanup_failed",
-                    "failed to clean retarget staging after install commit"
+                crate::app_log::record_warning(
+                    "retarget.staging_cleanup_failed",
+                    "post_commit",
+                    "retarget_staging_cleanup_failed",
                 );
             }
         }
@@ -1656,10 +1656,8 @@ fn start_best_effort_background_task<E>(
     spawn: impl FnOnce() -> Result<(), E>,
 ) {
     if spawn().is_err() {
-        tracing::warn!(
-            task = task_name,
-            error_code = "background_task_spawn_failed",
-            "failed to start best-effort background task"
+        crate::app_log::record_warning(
+            "background_task.spawn_failed", task_name, "background_task_spawn_failed",
         );
     }
 }
