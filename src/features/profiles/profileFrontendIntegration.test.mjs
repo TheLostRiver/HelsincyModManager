@@ -217,6 +217,10 @@ test("profile page wires manual save backup execution, progress, and history ref
   assert.match(pageSource, /shouldRefreshProfileSaveBackupHistory/);
   assert.match(pageSource, /setBackupHistoryRefreshToken\(\(current\) => current \+ 1\)/);
   assert.match(pageSource, /pendingBackupCompletionToastRef/);
+  assert.match(pageSource, /saveBackupTaskProfileIdsRef/);
+  assert.match(pageSource, /attachStartedSaveBackupTask\(task, selectedProfileId\)/);
+  assert.match(pageSource, /taskProfileId = saveBackupTaskProfileIdsRef\.current\.get\(saveBackupTaskState\.taskId\)/);
+  assert.match(pageSource, /profileId:\s*taskProfileId/);
   assert.match(pageSource, /publishPendingBackupCompletionToast/);
   assert.match(pageSource, /eventKey:\s*`profile\.save-backup\.completed\.\$\{pending\.taskId\}`/);
   assert.match(pageSource, /taskId:\s*pending\.taskId/);
