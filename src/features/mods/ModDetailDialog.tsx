@@ -9,12 +9,12 @@ import {
 } from "react";
 import { FilePenLine, ImageIcon, Info, Save, Tag, Target, X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
 import { getModDetail } from "./modLibraryApi";
 import type { ModDetail, ModLibraryItem } from "./modLibraryTypes";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
-import { getTrappedFocusIndex } from "./modalFocusTrap";
 import {
   getModCategories,
   listCategories,
@@ -47,21 +47,6 @@ type ModDetailDialogProps = {
 
 type CategoryLoadState = "idle" | "ready" | "unavailable";
 
-const focusableSelector = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "textarea:not([disabled])",
-  "select:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-function getFocusableElements(container: HTMLElement) {
-  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-    (element) => element.tabIndex >= 0 && !element.hasAttribute("aria-hidden"),
-  );
-}
-
 export function ModDetailDialog({
   modId,
   fallbackItem,
@@ -82,7 +67,6 @@ export function ModDetailDialog({
 
   const fallbackSnapshotItem = fallbackSnapshotRef.current.item;
   const panelRef = useRef<HTMLFormElement | null>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [detail, setDetail] = useState<ModDetail | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -97,6 +81,14 @@ export function ModDetailDialog({
   const [replacementInstallStatus, setReplacementInstallStatus] =
     useState<InstallManifestStatus | undefined>(installStatus);
   const dialogBusy = saving || replacementBusy;
+
+  useModalFocusTrap({
+    active: true,
+    containerRef: panelRef,
+    closeOnEscape: !dialogBusy,
+    onRequestClose: onClose,
+    focusKey: modId,
+  });
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -161,65 +153,6 @@ export function ModDetailDialog({
       cancelled = true;
     };
   }, [fallbackSnapshotItem, modId]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !dialogBusy) {
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const panel = panelRef.current;
-      if (!panel) {
-        return;
-      }
-
-      const focusableElements = getFocusableElements(panel);
-      const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const currentIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
-      const nextIndex = getTrappedFocusIndex({
-        currentIndex,
-        focusableCount: focusableElements.length,
-        backwards: event.shiftKey,
-      });
-
-      if (nextIndex !== null) {
-        event.preventDefault();
-        const focusTarget = nextIndex === -1 ? panel : focusableElements[nextIndex];
-        focusTarget.focus();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dialogBusy, onClose]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return undefined;
-    }
-
-    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frameId = window.requestAnimationFrame(() => {
-      const panel = panelRef.current;
-      if (!panel) {
-        return;
-      }
-
-      const firstFocusable = getFocusableElements(panel)[0] ?? panel;
-      firstFocusable.focus();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      restoreFocusRef.current?.focus();
-      restoreFocusRef.current = null;
-    };
-  }, [modId]);
 
   const previewImage = detail?.previewImage ?? fallbackSnapshotItem?.previewImage ?? null;
   const previewThumbnail = previewImage?.kind === "thumbnail" ? previewImage : null;
