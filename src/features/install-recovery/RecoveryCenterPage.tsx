@@ -315,58 +315,7 @@ function DiagnosticExportPanel({
     );
   }
 
-  if (state.status === "failed") {
-    return (
-      <section className="recovery-center__panel is-unknown" aria-labelledby="diagnostic-export-failed-title">
-        <div className="recovery-center__state-icon" aria-hidden="true">
-          <CircleHelp size={18} />
-        </div>
-        <div>
-          <h3 id="diagnostic-export-failed-title">诊断导出失败</h3>
-          <p>诊断包暂时不可用。请稍后重试，并保留当前恢复中心状态。</p>
-        </div>
-      </section>
-    );
-  }
-
-  const { result } = state;
-
-  return (
-    <section className="recovery-center__diagnostic-export" aria-labelledby="diagnostic-export-title">
-      <div>
-        <h3 id="diagnostic-export-title">诊断包已导出</h3>
-        <p>{result.fileName}</p>
-      </div>
-      <dl>
-        <MetricTerm label="导出 ID" value={result.exportId} />
-        <MetricTerm label="大小" value={formatBytes(result.sizeBytes)} />
-        <MetricTerm label="App 日志" value={`${result.appLogLineCount} 行`} />
-        <MetricTerm label="任务日志" value={`${result.taskLogLineCount} 行`} />
-        <MetricTerm label="审计事件" value={`${result.auditEventCount} 条`} />
-      </dl>
-    </section>
-  );
-}
-
-function MetricTerm({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-function formatBytes(sizeBytes: number) {
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`;
-  }
-
-  if (sizeBytes < 1024 * 1024) {
-    return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  return null;
 }
 
 function NotConfiguredPanel() {
