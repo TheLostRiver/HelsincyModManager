@@ -8,11 +8,13 @@ test("diagnostics route is enabled and uses a feature-local narrow API", () => {
   const routes = read("src/app/routing/routeRegistry.tsx");
   const nav = read("src/app/shell/navigation/navItems.ts");
   const api = read("src/features/diagnostics/diagnosticsApi.ts");
+  const types = read("src/features/diagnostics/diagnosticsTypes.ts");
   assert.match(routes, /id:\s*"diagnostics"/);
   assert.match(routes, /path:\s*"\/diagnostics"/);
   assert.equal(nav.split("\n").find((line) => line.includes('id: "diagnostics"'))?.includes("disabledReason"), false);
   assert.match(api, /invoke<DiagnosticsPageSnapshot>\("get_diagnostics_page_snapshot"\)/);
   for (const forbidden of ["readTextFile", "readFile", "convertFileSrc", "diagnosticsPath", "logPath"]) assert.equal(api.includes(forbidden), false);
+  for (const field of ["taskLogStatus", "auditLogStatus", "taskLogWriteFailureCount", "auditWriteFailureCount", "auditWriteFailureAfterCommitCount"]) assert.match(types, new RegExp(`${field}:`));
 });
 
 test("diagnostics page exposes stable states, controlled export confirmation and safe copying", () => {
