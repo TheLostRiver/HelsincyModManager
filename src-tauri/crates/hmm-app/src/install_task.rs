@@ -512,7 +512,7 @@ impl InstallTaskRunner {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
 
-        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let policy = AuditWriteFailurePolicy::for_commit_result(result);
         let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "install".to_owned(),
@@ -712,7 +712,7 @@ impl UninstallTaskRunner {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
 
-        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let policy = AuditWriteFailurePolicy::for_commit_result(result);
         let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "install".to_owned(),
@@ -883,7 +883,7 @@ impl RecoveryActionTaskRunner {
                 .to_string(),
         );
 
-        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let policy = AuditWriteFailurePolicy::for_commit_result(result);
         let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "install".to_owned(),
