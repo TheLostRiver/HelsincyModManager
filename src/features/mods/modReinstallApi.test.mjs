@@ -63,7 +63,8 @@ test("reinstall preview panel narrows ready state before confirming and renders 
   assert.doesNotMatch(source, /candidateRevision!|installedRevision!|planToken!/);
   assert.match(source, /role="dialog"/);
   assert.match(source, /aria-modal="true"/);
-  assert.match(source, /getTrappedFocusIndex/);
+  assert.match(source, /useModalFocusTrap/);
+  assert.match(source, /closeOnEscape:\s*!taskActive/);
 });
 
 test("mod library routes install and true reinstall through separate commands", () => {

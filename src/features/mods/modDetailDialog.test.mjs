@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { getTrappedFocusIndex } from "./modalFocusTrap.ts";
+import { getTrappedFocusIndex } from "../../shared/feedback/focusTrap.ts";
 import {
   createDetailDialogState,
   loadModLibraryItemsForMode,

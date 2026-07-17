@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, RefreshCw, RotateCcw, X } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
-import { getTrappedFocusIndex } from "./modalFocusTrap";
+import { useId, useRef } from "react";
+import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
 import {
   canPreviewReinstall,
@@ -23,18 +23,6 @@ type ReinstallPlanPreviewPanelProps = {
   onConfirm: () => void;
   onRetryListener: () => void;
 };
-
-const focusableSelector = [
-  "button:not([disabled])",
-  "select:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-function getFocusableElements(container: HTMLElement) {
-  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-    (element) => element.tabIndex >= 0 && !element.hasAttribute("aria-hidden"),
-  );
-}
 
 function cleanupPendingMessage(status: InstallManifestStatus) {
   if (status === "committed_cleanup_pending" || status === "cleanup_pending") {
@@ -153,67 +141,18 @@ export function ReinstallPlanPreviewPanel({
   onRetryListener,
 }: ReinstallPlanPreviewPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const taskActive = taskState.status === "starting" || taskState.status === "running";
   const currentTaskStatus = taskStatus(taskState);
   const openModId = state.status === "open" ? state.modId : null;
 
-  useEffect(() => {
-    if (state.status !== "open") {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !taskActive) {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const panel = panelRef.current;
-      if (!panel) {
-        return;
-      }
-      const focusableElements = getFocusableElements(panel);
-      const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const currentIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
-      const nextIndex = getTrappedFocusIndex({
-        currentIndex,
-        focusableCount: focusableElements.length,
-        backwards: event.shiftKey,
-      });
-      if (nextIndex !== null) {
-        event.preventDefault();
-        const target = nextIndex === -1 ? panel : focusableElements[nextIndex];
-        target.focus();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, state.status, taskActive]);
-
-  useEffect(() => {
-    if (openModId === null || typeof document === "undefined") {
-      return undefined;
-    }
-
-    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frameId = window.requestAnimationFrame(() => {
-      const panel = panelRef.current;
-      const firstFocusable = panel ? getFocusableElements(panel)[0] ?? panel : null;
-      firstFocusable?.focus();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      restoreFocusRef.current?.focus();
-      restoreFocusRef.current = null;
-    };
-  }, [openModId]);
+  useModalFocusTrap({
+    active: state.status === "open",
+    containerRef: panelRef,
+    closeOnEscape: !taskActive,
+    onRequestClose: onClose,
+    focusKey: openModId,
+  });
 
   if (state.status === "closed") {
     return null;
