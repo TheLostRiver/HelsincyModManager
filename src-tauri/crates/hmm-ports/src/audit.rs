@@ -23,6 +23,16 @@ pub enum AuditWriteFailurePolicy {
     ReportAfterCommit,
 }
 
+impl AuditWriteFailurePolicy {
+    pub fn for_commit_result(result: &str) -> Self {
+        if result == "success" {
+            Self::ReportAfterCommit
+        } else {
+            Self::BestEffort
+        }
+    }
+}
+
 pub trait AuditLogWriter: Send + Sync {
     fn record(&self, event: AuditLogEvent) -> Result<()>;
 
@@ -37,4 +47,23 @@ pub trait AuditLogWriter: Send + Sync {
 
 pub trait AuditLogReader: Send + Sync {
     fn read_recent_sanitized(&self, request: AuditLogReadRequest) -> Result<Vec<AuditLogEvent>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commit_result_policy_only_treats_exact_success_as_post_commit() {
+        assert_eq!(
+            AuditWriteFailurePolicy::for_commit_result("success"),
+            AuditWriteFailurePolicy::ReportAfterCommit
+        );
+        for result in ["failure", "warning", "deferred", "Success", ""] {
+            assert_eq!(
+                AuditWriteFailurePolicy::for_commit_result(result),
+                AuditWriteFailurePolicy::BestEffort
+            );
+        }
+    }
 }

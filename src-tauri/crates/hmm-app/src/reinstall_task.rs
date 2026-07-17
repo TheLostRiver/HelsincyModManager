@@ -557,7 +557,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             fields.insert("rollback_result".to_owned(), rollback_result.to_owned());
         }
 
-        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let policy = AuditWriteFailurePolicy::for_commit_result(result);
         let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
             category: "install".to_owned(),
