@@ -234,6 +234,10 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
   `message`、未知/重复字段、`Debug` 和不合规值不会写入 App Log。
 - 受控事件以单行 JSONL 写入 app data/state 下的 `logs/app/app-YYYY-MM-DD.log`，按 UTC 日期轮转，
   默认保留含当天在内的最近 14 天；不写入游戏、Mod、存档、仓库或无命名空间临时目录。
+- writer 从已验证的 app-data 目录句柄逐级打开 `logs/app`，后续创建、打开、枚举和保留删除都相对该
+  capability handle 执行；祖先 symlink/junction/reparse point 不能把操作重定向到 app-data 根外。
+  Unix 上 `logs`/`logs/app` 收紧为 `0700`、日文件收紧为 `0600`；Windows 依赖 handle/reparse
+  containment，不把 POSIX mode 声称为 Windows ACL。
 - 写入前统一校验稳定 event/code、短 ID、聚合计数和逻辑相对 `safe_path`。完整 home/game/save 路径、
   Windows/Linux 用户名、Steam ID、token/cookie/API key、控制字符和第三方内容被拒绝或脱敏。
 - 最小事件覆盖应用启动、configuration/database state 初始化、游戏发现聚合结果、queued task 注册、

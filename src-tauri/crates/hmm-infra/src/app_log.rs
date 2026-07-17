@@ -1,11 +1,13 @@
 use anyhow::{Context, Result};
-use serde::Serialize;
-use std::fs::{self, File, Metadata, OpenOptions};
-use std::io::{ErrorKind, Write};
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt as _;
+use cap_fs_ext::{DirExt as _, FollowSymlinks, OpenOptionsFollowExt as _};
+use cap_std::ambient_authority;
 #[cfg(windows)]
-use std::os::windows::fs::{MetadataExt as _, OpenOptionsExt as _};
+use cap_std::fs::MetadataExt as _;
+use cap_std::fs::{Dir, DirBuilder, File, Metadata, OpenOptions};
+#[cfg(unix)]
+use cap_std::fs::{DirBuilderExt as _, OpenOptionsExt as _, Permissions, PermissionsExt as _};
+use serde::Serialize;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
@@ -22,6 +24,10 @@ const MILLIS_PER_DAY: u128 = 86_400_000;
 const MAX_CODE_LENGTH: usize = 96;
 const MAX_ID_LENGTH: usize = 160;
 const MAX_SAFE_PATH_LENGTH: usize = 512;
+#[cfg(unix)]
+const APP_LOG_DIRECTORY_MODE: u32 = 0o700;
+#[cfg(unix)]
+const APP_LOG_FILE_MODE: u32 = 0o600;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppLogLevel {
@@ -493,9 +499,7 @@ struct AppLogRecord {
 struct ValidatedAppLogRecord(AppLogRecord);
 
 struct FileSystemAppLogWriter {
-    app_data_root: PathBuf,
-    logs_dir: PathBuf,
-    log_dir: PathBuf,
+    log_dir: Dir,
     retention_days: i64,
     state: Mutex<AppLogWriterState>,
 }
@@ -533,11 +537,10 @@ impl FileSystemAppLogWriter {
         if retention_days <= 0 {
             anyhow::bail!("app log retention must be positive");
         }
-        let logs_dir = app_data_root.join("logs");
-        let log_dir = logs_dir.join("app");
+        let app_data_dir = open_app_data_directory(&app_data_root)?;
+        let logs_dir = open_managed_directory(&app_data_dir, "logs", "logs directory")?;
+        let log_dir = open_managed_directory(&logs_dir, "app", "app log directory")?;
         Ok(Self {
-            app_data_root,
-            logs_dir,
             log_dir,
             retention_days,
             state: Mutex::new(AppLogWriterState::default()),
@@ -545,7 +548,6 @@ impl FileSystemAppLogWriter {
     }
 
     fn prepare(&self, timestamp_unix_millis: u128) -> Result<()> {
-        self.ensure_log_directory()?;
         let current_day = days_since_epoch(timestamp_unix_millis)?;
         self.prune_before(current_day)?;
         self.state
@@ -559,14 +561,12 @@ impl FileSystemAppLogWriter {
         let mut state = self.state.lock().map_err(|_| {
             AppLogSinkError::Write(anyhow::anyhow!("app log writer state is unavailable"))
         })?;
-        self.ensure_log_directory()
-            .map_err(AppLogSinkError::Write)?;
         let current_day =
             days_since_epoch(record.0.timestamp_unix_millis).map_err(AppLogSinkError::Write)?;
-        let path = self
-            .log_dir
-            .join(app_log_file_name(current_day).map_err(AppLogSinkError::Write)?);
-        let mut file = self.open_log_file(&path).map_err(AppLogSinkError::Write)?;
+        let file_name = app_log_file_name(current_day).map_err(AppLogSinkError::Write)?;
+        let mut file = self
+            .open_log_file(&file_name)
+            .map_err(AppLogSinkError::Write)?;
         let serialized = serde_json::to_vec(&record.0)
             .context("failed to serialize app log event")
             .map_err(AppLogSinkError::Write)?;
@@ -585,78 +585,113 @@ impl FileSystemAppLogWriter {
     }
 
     fn prune_before(&self, current_day: i64) -> Result<()> {
-        self.ensure_log_directory()?;
         let cutoff_day = current_day
             .checked_sub(self.retention_days - 1)
             .context("app log retention cutoff is out of range")?;
         let cutoff_name = app_log_file_name(cutoff_day)?;
-        for entry in fs::read_dir(&self.log_dir).context("failed to read app log directory")? {
+        for entry in self
+            .log_dir
+            .entries()
+            .context("failed to read app log directory")?
+        {
             let entry = entry.context("failed to read app log directory entry")?;
-            let metadata =
-                fs::symlink_metadata(entry.path()).context("failed to inspect app log entry")?;
-            if !is_regular_file(&metadata) {
+            if !entry
+                .file_type()
+                .context("failed to inspect app log entry type")?
+                .is_file()
+            {
                 continue;
             }
             let file_name = entry.file_name();
             let Some(file_name) = file_name.to_str() else {
                 continue;
             };
-            if is_app_log_file_name(file_name) && file_name < cutoff_name.as_str() {
-                fs::remove_file(entry.path()).context("failed to prune expired app log")?;
+            if !is_app_log_file_name(file_name) {
+                continue;
+            }
+            if file_name < cutoff_name.as_str() {
+                entry
+                    .remove_file()
+                    .context("failed to prune expired app log")?;
+            } else {
+                tighten_retained_file_permissions(&entry)?;
             }
         }
         Ok(())
     }
 
-    fn ensure_log_directory(&self) -> Result<()> {
-        fs::create_dir_all(&self.app_data_root)
-            .context("failed to create app data directory for app log")?;
-        ensure_real_directory(&self.app_data_root, "app data directory")?;
-        ensure_child_directory(&self.logs_dir, "logs directory")?;
-        ensure_child_directory(&self.log_dir, "app log directory")?;
-        Ok(())
-    }
-
-    fn open_log_file(&self, path: &Path) -> Result<File> {
-        ensure_regular_file_or_missing(path)?;
+    fn open_log_file(&self, file_name: &str) -> Result<File> {
+        ensure_regular_file_or_missing(&self.log_dir, file_name)?;
 
         let mut options = OpenOptions::new();
         options.append(true).create(true);
-        configure_no_follow(&mut options);
-        let file = options.open(path).context("failed to open app log")?;
+        options.follow(FollowSymlinks::No);
+        configure_secure_file_mode(&mut options);
+        let file = self
+            .log_dir
+            .open_with(file_name, &options)
+            .context("failed to open app log")?;
         let metadata = file
             .metadata()
             .context("failed to inspect opened app log")?;
         if !is_regular_file(&metadata) {
             anyhow::bail!("app log target is not a regular file");
         }
-
-        self.ensure_log_directory()?;
-        ensure_regular_file_or_missing(path)?;
+        tighten_file_permissions(&file)?;
         Ok(file)
     }
 }
 
-fn ensure_child_directory(path: &Path, label: &str) -> Result<()> {
-    match fs::create_dir(path) {
+fn open_app_data_directory(app_data_root: &Path) -> Result<Dir> {
+    let parent = app_data_root
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .context("app data directory must have a parent")?;
+    let name = app_data_root
+        .file_name()
+        .context("app data directory must have a final component")?;
+    let parent = Dir::open_ambient_dir(parent, ambient_authority())
+        .context("failed to open app data parent directory")?;
+    match parent.create_dir(name) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error).context("failed to create app data directory for app log"),
+    }
+    let directory = parent
+        .open_dir_nofollow(name)
+        .context("failed to open app data directory")?;
+    ensure_real_directory(&directory, "app data directory")?;
+    Ok(directory)
+}
+
+fn open_managed_directory(parent: &Dir, name: &str, label: &str) -> Result<Dir> {
+    let mut builder = DirBuilder::new();
+    configure_secure_directory_mode(&mut builder);
+    match parent.create_dir_with(name, &builder) {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error).with_context(|| format!("failed to create {label}")),
     }
-    ensure_real_directory(path, label)
+    let directory = parent
+        .open_dir_nofollow(name)
+        .with_context(|| format!("failed to open {label}"))?;
+    ensure_real_directory(&directory, label)?;
+    tighten_directory_permissions(&directory, label)?;
+    Ok(directory)
 }
 
-fn ensure_real_directory(path: &Path, label: &str) -> Result<()> {
-    let metadata =
-        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {label}"))?;
+fn ensure_real_directory(directory: &Dir, label: &str) -> Result<()> {
+    let metadata = directory
+        .dir_metadata()
+        .with_context(|| format!("failed to inspect {label}"))?;
     if !metadata.is_dir() || is_link_or_reparse(&metadata) {
         anyhow::bail!("{label} is not a real directory");
     }
     Ok(())
 }
 
-fn ensure_regular_file_or_missing(path: &Path) -> Result<()> {
-    match fs::symlink_metadata(path) {
+fn ensure_regular_file_or_missing(directory: &Dir, file_name: &str) -> Result<()> {
+    match directory.symlink_metadata(file_name) {
         Ok(metadata) if is_regular_file(&metadata) => Ok(()),
         Ok(_) => anyhow::bail!("app log target is not a regular file"),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -683,18 +718,65 @@ fn is_link_or_reparse(metadata: &Metadata) -> bool {
 }
 
 #[cfg(unix)]
-fn configure_no_follow(options: &mut OpenOptions) {
-    options.custom_flags(libc::O_NOFOLLOW);
+fn configure_secure_directory_mode(builder: &mut DirBuilder) {
+    builder.mode(APP_LOG_DIRECTORY_MODE);
 }
 
-#[cfg(windows)]
-fn configure_no_follow(options: &mut OpenOptions) {
-    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+#[cfg(not(unix))]
+fn configure_secure_directory_mode(_builder: &mut DirBuilder) {}
+
+#[cfg(unix)]
+fn tighten_directory_permissions(directory: &Dir, label: &str) -> Result<()> {
+    directory
+        .set_permissions(".", Permissions::from_mode(APP_LOG_DIRECTORY_MODE))
+        .with_context(|| format!("failed to secure {label}"))
 }
 
-#[cfg(not(any(unix, windows)))]
-fn configure_no_follow(_options: &mut OpenOptions) {}
+#[cfg(not(unix))]
+fn tighten_directory_permissions(_directory: &Dir, _label: &str) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn configure_secure_file_mode(options: &mut OpenOptions) {
+    options.mode(APP_LOG_FILE_MODE);
+}
+
+#[cfg(not(unix))]
+fn configure_secure_file_mode(_options: &mut OpenOptions) {}
+
+#[cfg(unix)]
+fn tighten_file_permissions(file: &File) -> Result<()> {
+    file.set_permissions(Permissions::from_mode(APP_LOG_FILE_MODE))
+        .context("failed to secure app log file")
+}
+
+#[cfg(not(unix))]
+fn tighten_file_permissions(_file: &File) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn tighten_retained_file_permissions(entry: &cap_std::fs::DirEntry) -> Result<()> {
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    let file = entry
+        .open_with(&options)
+        .context("failed to open retained app log")?;
+    if !is_regular_file(
+        &file
+            .metadata()
+            .context("failed to inspect retained app log")?,
+    ) {
+        anyhow::bail!("retained app log target is not a regular file");
+    }
+    tighten_file_permissions(&file)
+}
+
+#[cfg(not(unix))]
+fn tighten_retained_file_permissions(_entry: &cap_std::fs::DirEntry) -> Result<()> {
+    Ok(())
+}
 
 fn validate_optional_id(label: &str, value: Option<&str>) -> Result<()> {
     if let Some(value) = value {
@@ -800,6 +882,10 @@ fn contains_sensitive_text(value: &str) -> bool {
 fn looks_like_path_text(value: &str) -> bool {
     value.contains('\\')
         || value.starts_with('/')
+        || value
+            .as_bytes()
+            .windows(3)
+            .any(|window| window[0].is_ascii_alphabetic() && window[1] == b':' && window[2] == b'/')
         || value
             .split_ascii_whitespace()
             .any(|part| part.starts_with('/'))
@@ -919,6 +1005,7 @@ mod tests {
         for sensitive in [
             r"C:\Users\Player\AppData\Roaming\HMM\logs",
             r"D:\Games\MonsterHunterWorld\nativePC",
+            "D:/Games/MonsterHunterWorld/nativePC",
             "/home/player/.local/state/hmm",
             "/games/MonsterHunterWorld/nativePC",
             "username=Player",
@@ -1079,6 +1166,124 @@ mod tests {
     }
 
     #[test]
+    fn retention_does_not_delete_an_outside_sentinel_through_a_link() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, "outside\n").expect("write outside sentinel");
+        let writer =
+            FileSystemAppLogWriter::new(temp.path().to_path_buf(), 14).expect("create writer");
+        let linked_old_log = temp
+            .path()
+            .join("logs")
+            .join("app")
+            .join(app_log_file_name(6).unwrap());
+        create_directory_link(&linked_old_log, outside.path());
+
+        writer
+            .prepare(20 * MILLIS_PER_DAY)
+            .expect("prune through directory handle");
+
+        assert_eq!(fs::read_to_string(&sentinel).unwrap(), "outside\n");
+        assert!(linked_old_log.exists());
+        remove_directory_link(&linked_old_log);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_ancestor_replacement_cannot_redirect_writes() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let timestamp = 1_704_067_200_000;
+        let health = AppLogHealth::ready();
+        let layer = scoped_layer(temp.path(), timestamp, health.clone());
+        let moved_logs = temp.path().join("logs-before-replacement");
+        fs::rename(temp.path().join("logs"), &moved_logs).expect("rename managed logs dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, "outside\n").expect("write outside sentinel");
+        create_directory_link(&temp.path().join("logs"), outside.path());
+        let subscriber = tracing_subscriber::registry().with(layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            emit_safe_app_log(AppLogEvent::info("application.started"));
+        });
+
+        assert_eq!(health.status_code(), "ok");
+        assert_eq!(fs::read_to_string(&sentinel).unwrap(), "outside\n");
+        assert!(!outside.path().join("app").exists());
+        assert!(moved_logs.join("app").join("app-2024-01-01.log").is_file());
+        remove_directory_link(&temp.path().join("logs"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writer_tightens_managed_directory_and_file_permissions() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let log_dir = temp.path().join("logs").join("app");
+        fs::create_dir_all(&log_dir).expect("create permissive log dirs");
+        fs::set_permissions(temp.path().join("logs"), fs::Permissions::from_mode(0o777))
+            .expect("set permissive logs mode");
+        fs::set_permissions(&log_dir, fs::Permissions::from_mode(0o777))
+            .expect("set permissive app mode");
+        let log_path = log_dir.join(app_log_file_name(20).unwrap());
+        fs::write(&log_path, "existing\n").expect("write existing log");
+        fs::set_permissions(&log_path, fs::Permissions::from_mode(0o666))
+            .expect("set permissive log mode");
+        let retained_path = log_dir.join(app_log_file_name(7).unwrap());
+        fs::write(&retained_path, "retained\n").expect("write retained log");
+        fs::set_permissions(&retained_path, fs::Permissions::from_mode(0o666))
+            .expect("set permissive retained log mode");
+        let writer =
+            FileSystemAppLogWriter::new(temp.path().to_path_buf(), 14).expect("create writer");
+        writer
+            .prepare(20 * MILLIS_PER_DAY)
+            .expect("prepare app log retention");
+        let record = ValidatedAppLogRecord(AppLogRecord {
+            schema_version: 1,
+            timestamp_unix_millis: 20 * MILLIS_PER_DAY,
+            level: "info",
+            event: "application.started".to_owned(),
+            task_id: None,
+            game_id: None,
+            profile_id: None,
+            mod_id: None,
+            task_kind: None,
+            task_status: None,
+            phase: None,
+            operation: None,
+            result: None,
+            error_code: None,
+            safe_path: None,
+            item_count: None,
+            duration_ms: None,
+        });
+        writer.write(&record).expect("write app log");
+
+        assert_eq!(
+            fs::metadata(temp.path().join("logs"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            APP_LOG_DIRECTORY_MODE
+        );
+        assert_eq!(
+            fs::metadata(&log_dir).unwrap().permissions().mode() & 0o777,
+            APP_LOG_DIRECTORY_MODE
+        );
+        assert_eq!(
+            fs::metadata(&log_path).unwrap().permissions().mode() & 0o777,
+            APP_LOG_FILE_MODE
+        );
+        assert_eq!(
+            fs::metadata(&retained_path).unwrap().permissions().mode() & 0o777,
+            APP_LOG_FILE_MODE
+        );
+    }
+
+    #[test]
     fn initialization_rejects_links_in_managed_log_directories() {
         for relative_link in [PathBuf::from("logs"), PathBuf::from("logs").join("app")] {
             let temp = tempfile::tempdir().expect("temp dir");
@@ -1102,6 +1307,29 @@ mod tests {
                 .is_none());
             remove_directory_link(&link);
         }
+    }
+
+    #[test]
+    fn initialization_rejects_a_linked_app_data_root() {
+        let parent = tempfile::tempdir().expect("app data parent temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let app_data_root = parent.path().join("linked-app-data");
+        create_directory_link(&app_data_root, outside.path());
+
+        let health = AppLogHealth::ready();
+        let layer = prepare_app_log_layer(
+            &app_data_root,
+            Arc::new(FixedClock(1_704_067_200_000)),
+            health.clone(),
+        );
+
+        assert!(layer.is_none());
+        assert_eq!(health.status_code(), "app_log_initialization_failed");
+        assert!(fs::read_dir(outside.path())
+            .expect("read outside dir")
+            .next()
+            .is_none());
+        remove_directory_link(&app_data_root);
     }
 
     #[cfg(unix)]
@@ -1185,8 +1413,10 @@ mod tests {
         let health = AppLogHealth::ready();
         let layer = scoped_layer(temp.path(), timestamp, health.clone());
         let app_log_dir = temp.path().join("logs").join("app");
-        fs::remove_dir_all(&app_log_dir).expect("remove app log dir");
-        fs::write(&app_log_dir, "path conflict").expect("replace app log dir with file");
+        let log_path = app_log_dir.join("app-2024-01-01.log");
+        fs::create_dir(&log_path).expect("create daily log path conflict");
+        let sentinel = temp.path().join("sentinel.txt");
+        fs::write(&sentinel, "unchanged\n").expect("write sentinel");
         let subscriber = tracing_subscriber::registry().with(layer);
 
         tracing::subscriber::with_default(subscriber, || {
@@ -1194,6 +1424,7 @@ mod tests {
         });
 
         assert_eq!(health.status_code(), "app_log_write_failed");
-        assert_eq!(fs::read_to_string(app_log_dir).unwrap(), "path conflict");
+        assert!(log_path.is_dir());
+        assert_eq!(fs::read_to_string(sentinel).unwrap(), "unchanged\n");
     }
 }
