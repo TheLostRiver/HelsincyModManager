@@ -30,6 +30,7 @@ test("feedback provider owns one body-level portal host", () => {
 test("modal surface exposes dialog semantics, close policy, and shared focus behavior", () => {
   const modal = readSource("src/shared/feedback/ModalSurface.tsx");
   const focus = readSource("src/shared/feedback/useModalFocusTrap.ts");
+  const focusTrap = readSource("src/shared/feedback/focusTrap.ts");
 
   assert.match(modal, /role=\{role\}/);
   assert.match(modal, /aria-modal="true"/);
@@ -47,6 +48,14 @@ test("modal surface exposes dialog semantics, close policy, and shared focus beh
   );
   assert.match(focus, /restoreFocusRef\.current\?\.isConnected/);
   assert.match(focus, /restoreFocusRef\.current\.focus\(\)/);
+  assert.match(focus, /activeModal\s*&&\s*activeModal\s*!==\s*containerAtActivation/);
+
+  assert.match(focusTrap, /getClientRects\(\)\.length\s*===\s*0/);
+  assert.match(focusTrap, /hasAttribute\("hidden"\)/);
+  assert.match(focusTrap, /hasAttribute\("inert"\)/);
+  assert.match(focusTrap, /getAttribute\("aria-hidden"\)\s*===\s*"true"/);
+  assert.match(focusTrap, /style\.display\s*===\s*"none"/);
+  assert.match(focusTrap, /style\.visibility\s*===\s*"hidden"/);
 
   const focusFrameStart = focus.indexOf("const frameId");
   const focusFrameEnd = focus.indexOf("return () =>", focusFrameStart);
@@ -56,12 +65,18 @@ test("modal surface exposes dialog semantics, close policy, and shared focus beh
 
 test("task and toast primitives expose stable live-region containers without business logic", () => {
   const taskNotice = readSource("src/shared/feedback/TaskNotice.tsx");
+  const taskViewport = readSource("src/shared/feedback/TaskNoticeViewport.tsx");
   const toastViewport = readSource("src/shared/feedback/ToastViewport.tsx");
 
   assert.match(taskNotice, /data-task-id=\{taskId\}/);
   assert.match(taskNotice, /role=\{role\}/);
   assert.match(taskNotice, /aria-live=\{tone\s*===\s*"danger"\s*\?\s*"assertive"\s*:\s*"polite"\}/);
-  assert.doesNotMatch(taskNotice, /setTimeout|invoke\(|listen\(/);
+  assert.doesNotMatch(taskNotice, /FeedbackPortal|setTimeout|queue|invoke\(|listen\(/);
+
+  assert.match(taskViewport, /FeedbackPortal/);
+  assert.match(taskViewport, /className="feedback-task-notice-viewport"/);
+  assert.match(taskViewport, /role="region"/);
+  assert.doesNotMatch(taskViewport, /setTimeout|queue|invoke\(|listen\(/);
 
   assert.match(toastViewport, /role="region"/);
   assert.match(toastViewport, /aria-live="polite"/);
@@ -73,13 +88,21 @@ test("feedback styles keep stable layers and reduced-motion behavior", () => {
   const css = readSource("src/shared/feedback/feedback.css");
   const tokens = readSource("src/shared/styles/tokens.css");
   const hostRule = css.match(/\.feedback-host\s*\{([\s\S]*?)\}/)?.[1];
+  const taskViewportRule = css.match(/\.feedback-task-notice-viewport\s*\{([\s\S]*?)\}/)?.[1];
+  const taskNoticeRule = css.match(/\.feedback-task-notice\s*\{([\s\S]*?)\}/)?.[1];
 
   for (const token of ["--z-feedback-task", "--z-feedback-toast", "--z-feedback-sheet", "--z-feedback-dialog"]) {
     assert.match(tokens, new RegExp(token));
   }
   assert.ok(hostRule);
+  assert.ok(taskViewportRule);
+  assert.ok(taskNoticeRule);
   assert.match(hostRule, /pointer-events:\s*none/);
   assert.doesNotMatch(hostRule, /position|z-index|transform|isolation/);
+  assert.match(taskViewportRule, /position:\s*fixed/);
+  assert.match(taskViewportRule, /display:\s*grid/);
+  assert.match(taskViewportRule, /gap:\s*12px/);
+  assert.doesNotMatch(taskNoticeRule, /position:\s*fixed|right:|bottom:|z-index:/);
   assert.match(css, /z-index:\s*var\(--z-feedback-dialog\)/);
   assert.match(css, /z-index:\s*var\(--z-feedback-sheet\)/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
