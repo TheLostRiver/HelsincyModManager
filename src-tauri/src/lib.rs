@@ -1,3 +1,4 @@
+mod app_log;
 mod background_worker;
 mod category_commands;
 mod dto;
@@ -64,7 +65,7 @@ use save_directory_discovery_commands::{
 };
 use state::AppState;
 use task_commands::cancel_task;
-use tauri::Manager;
+use tauri::{Manager, State};
 use thumbnail_protocol::register_thumbnail_protocol;
 use window_lifecycle_commands::{
     exit_app, get_app_exit_guard, hide_main_window_to_tray, register_window_lifecycle,
@@ -73,8 +74,8 @@ use window_lifecycle_commands::{
 pub use background_worker::BackgroundWorkerEntryError;
 
 #[tauri::command]
-fn app_health() -> &'static str {
-    "ok"
+fn app_health(health: State<'_, hmm_infra::AppLogHealth>) -> &'static str {
+    app_log::status_code(&health)
 }
 
 pub fn run_save_backup_worker_once_from_env() -> Result<(), BackgroundWorkerEntryError> {
@@ -85,9 +86,20 @@ pub fn run() {
     register_thumbnail_protocol(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let state = AppState::new(app.handle())?;
+            let app_log_health = app_log::initialize(app.handle());
+            app.manage(app_log_health);
+            let state = AppState::new(app.handle()).inspect_err(|_| {
+                app_log::record_state_initialization_failed();
+            })?;
+            app_log::record_state_initialized();
             app.manage(state);
-            register_window_lifecycle(app)?;
+            register_window_lifecycle(app).inspect_err(|_| {
+                app_log::record_warning(
+                    "application.window_lifecycle_initialization_failed",
+                    "window_lifecycle_initialization",
+                    "window_lifecycle_initialization_failed",
+                );
+            })?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -169,10 +181,11 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::app_health;
+    use super::app_log;
+    use hmm_infra::AppLogHealth;
 
     #[test]
-    fn app_health_returns_ok() {
-        assert_eq!(app_health(), "ok");
+    fn app_health_returns_logging_health_status() {
+        assert_eq!(app_log::status_code(&AppLogHealth::ready()), "ok");
     }
 }

@@ -228,6 +228,22 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 - `Tauri Commands`：记录调用边界和错误分类，不记录未脱敏参数。
 - `Frontend`：展示用户可读信息，不直接拼接底层文件系统日志。
 
+当前已落地的最小 App Log 能力：
+
+- `hmm-infra` 提供专用 `hmm.safe_app_log` layer，只接受命名 envelope 的固定字段；普通 tracing、
+  `message`、未知/重复字段、`Debug` 和不合规值不会写入 App Log。
+- 受控事件以单行 JSONL 写入 app data/state 下的 `logs/app/app-YYYY-MM-DD.log`，按 UTC 日期轮转，
+  默认保留含当天在内的最近 14 天；不写入游戏、Mod、存档、仓库或无命名空间临时目录。
+- 写入前统一校验稳定 event/code、短 ID、聚合计数和逻辑相对 `safe_path`。完整 home/game/save 路径、
+  Windows/Linux 用户名、Steam ID、token/cookie/API key、控制字符和第三方内容被拒绝或脱敏。
+- 最小事件覆盖应用启动、configuration/database state 初始化、游戏发现聚合结果、queued task 注册、
+  窗口/后台任务等普通稳定错误；不会记录 task message/error/result ref、候选目录或原始平台错误。
+- `app_health` 只返回 `ok`、`app_log_event_rejected`、`app_log_retention_failed`、
+  `app_log_write_failed` 或 `app_log_initialization_failed`。初始化/运行时失败不 panic、不写玩家目录，
+  也不改变 InstallPlan、manifest、backup、rollback、recovery 或 Audit Log 事实链。
+- 既有 `FileSystemTextLogReader` 和 `export_support_diagnostics` 可消费这些受控 JSONL 行；默认不远程传输，
+  L1 不实现 per-task Task Log、Audit 降级策略、日志页面或前端通知。
+
 当前已落地的最小 Audit Log 能力：
 - 安装、卸载和后端受控回滚/重装收敛任务会写入最小安装审计事件。普通安装和卸载失败事件在既有短 id/计数字段外只增加与 task event 一致的稳定 `error_code`，不会记录原始 repository 或文件系统错误。
 - `rollback_install` 与 `reconcile_reinstall` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数；`reconcile_reinstall` 的计数既可表示 post-commit cleanup，也可表示受控恢复到 pre-reinstall 状态的 remove/restore/snapshot cleanup 数量。事件不记录完整本地路径、backup/snapshot ref 或 root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。

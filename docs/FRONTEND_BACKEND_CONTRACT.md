@@ -46,6 +46,7 @@ hmm-core / hmm-ports / hmm-infra / hmm-games-*
 Tauri command 使用 `snake_case`，以动词或查询动作开头：
 
 - 查询状态：`get_game_setup_status`
+- 查询应用健康：`app_health`
 - 校验输入：`validate_game_directory`
 - 保存配置：`save_game_directory`
 - 扫描候选：`scan_game_candidates`
@@ -73,6 +74,28 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
+
+## 应用健康与 App Log
+
+`app_health()` 不接收参数，只返回下面的稳定字符串之一：
+
+| 值 | 含义 |
+| --- | --- |
+| `ok` | App Log 初始化后尚未检测到受控事件拒绝、保留或写入失败 |
+| `app_log_event_rejected` | 专用 sink 拒绝了未知、重复、敏感或不合规字段 |
+| `app_log_retention_failed` | App Log 过期文件清理失败 |
+| `app_log_write_failed` | App Log 时钟、目录、序列化或文件写入失败 |
+| `app_log_initialization_failed` | 日志目录准备或全局 subscriber 初始化失败 |
+
+前端 `AppHealth` 必须穷举这些值并对未知值 fail closed。该状态只表示诊断链路健康，不是安装、
+manifest、backup、rollback、recovery 或 Task Log 的事实来源；退化不会新增玩家目录写入。command 不返回
+日志目录、日志正文、原始平台错误、用户名、Steam ID、credential、存档或第三方 Mod 内容。
+退化状态在当前进程生命周期内保持已观测到的最严重值，应用重启时重新初始化；前端不能把它解释为
+仅代表最近一次事件，也不能据此推断安装或恢复状态。
+
+L1 App Log 只消费后端专用安全事件 envelope。任务注册只记录 `taskId/kind/status/phase` 的 queued 摘要；
+游戏发现只记录 `gameId/outcome/candidateCount` 或稳定错误码。Task Log、Audit 写入失败显式策略和日志 UI
+仍属于后续切片，不由该 command 暴露。
 
 ## DTO 边界
 
