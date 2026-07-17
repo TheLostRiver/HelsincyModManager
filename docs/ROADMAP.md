@@ -61,8 +61,8 @@ baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本
 
 Gate A/B 之后先执行 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md)：
 固化不少于 6 个 headless 生命周期场景的正式验收入口，落地安全 App/Task 日志与审计降级可见性，
-并把核心操作反馈按 Dialog、Detail Sheet、Task Notice、Toast 和 Inline state 分层。该计划当前仅为
-`planned`，尚未开始产品代码。
+并把核心操作反馈按 Dialog、Detail Sheet、Task Notice、Toast 和 Inline state 分层。该计划当前为
+`in_progress`；A1 与 L1 已完成，下一独立切片为 U1，其余切片尚未开始。
 
 ## Phase 3：玩家工作流扩展（Gate B 后已重新排序）
 

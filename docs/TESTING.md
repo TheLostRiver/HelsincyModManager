@@ -605,8 +605,10 @@ cargo test -p hmm-tauri
 
 聚焦用例必须覆盖字段白名单/未知字段拒绝、home/game path、用户名、Steam ID、token/cookie/API key、
 JSONL reader 兼容、UTC 日轮转、14 天保留、初始化/运行时写入失败稳定健康码、queued task 注册和游戏发现
-聚合摘要。测试只使用临时 app data、fixed clock 和人工敏感字符串；sidecar、日志和诊断包均为 ignored
-生成物，不能提交。
+聚合摘要。日志文件系统测试还必须覆盖 app-data capability 根内的 handle-relative 创建/打开/保留清理、
+祖先目录替换或链接无法把写入/删除引向根外、外部 sentinel 保持不变，以及 Unix `logs`/`logs/app`
+目录 `0700`、日文件 `0600`。测试只使用临时 app data、fixed clock 和人工敏感字符串；sidecar、日志和
+诊断包均为 ignored 生成物，不能提交。
 
 ## 游戏适配器
 
