@@ -14,11 +14,11 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
-  X,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppRoute } from "../../app/routing/useAppRoute";
+import { useFeedback, type FeedbackToastInput } from "../../shared/feedback";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import { useActiveProfile } from "./ActiveProfileProvider";
 import { BackupPolicyPanel } from "./BackupPolicyPanel";
@@ -201,15 +201,9 @@ type BackgroundProtectionState =
   | { status: "ready"; result: SaveBackupBackgroundStatusDto }
   | { status: "unavailable" };
 
-type ManualBackupNotice = {
-  id: string;
-  tone: "success" | "warning";
-  title: string;
-  message: string;
-};
-
 export function ProfilePage() {
   const { navigate } = useAppRoute();
+  const { pushToast } = useFeedback();
   const { activeProfile, refreshActiveProfile, setActiveProfile } = useActiveProfile();
   const { latestDiscovery, isDiscovering, discoveringTarget, runDiscovery } = useProfileSaveDirectoryDiscovery();
   const previewMode = isPlainBrowserRuntime();
@@ -242,7 +236,7 @@ export function ProfilePage() {
   const saveBackupTaskStateRef = useRef<ProfileSaveBackupTaskState>({ status: "idle" });
   const pendingSaveBackupProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const lastBackupHistoryRefreshTaskIdRef = useRef<string | null>(null);
-  const [manualBackupNotice, setManualBackupNotice] = useState<ManualBackupNotice | null>(null);
+  const pendingBackupCompletionToastRef = useRef<{ taskId: string; profileId: string } | null>(null);
   const [autoBackupCheckState, setAutoBackupCheckState] = useState<AutoBackupCheckState>({ status: "idle" });
   const [autoBackupCheckRefreshToken, setAutoBackupCheckRefreshToken] = useState(0);
   const [backgroundProtectionState, setBackgroundProtectionState] = useState<BackgroundProtectionState>({
@@ -369,6 +363,7 @@ export function ProfilePage() {
     setSaveBackupTaskState({ status: "idle" });
     pendingSaveBackupProgressEventsRef.current.clear();
     lastBackupHistoryRefreshTaskIdRef.current = null;
+    pendingBackupCompletionToastRef.current = null;
   }, [selectedProfileId]);
 
   useEffect(() => {
@@ -385,6 +380,7 @@ export function ProfilePage() {
         status: "ready",
         backups: createPreviewSaveBackups(selectedProfileId),
       });
+      publishPendingBackupCompletionToast(pendingBackupCompletionToastRef, selectedProfileId, pushToast);
       return;
     }
 
@@ -396,6 +392,7 @@ export function ProfilePage() {
       .then((backups) => {
         if (!cancelled) {
           setBackupHistoryState({ status: "ready", backups });
+          publishPendingBackupCompletionToast(pendingBackupCompletionToastRef, selectedProfileId, pushToast);
         }
       })
       .catch((error: unknown) => {
@@ -405,13 +402,24 @@ export function ProfilePage() {
             backups: current.backups,
             message: getErrorMessage(error, "备份历史不可用"),
           }));
+          const pending = pendingBackupCompletionToastRef.current;
+          if (pending?.profileId === selectedProfileId) {
+            pendingBackupCompletionToastRef.current = null;
+            pushToast({
+              eventKey: `profile.save-backup.refresh-failed.${pending.taskId}`,
+              taskId: pending.taskId,
+              title: "备份完成，历史刷新失败",
+              message: "备份任务已完成，但当前历史列表未能刷新，请稍后重试。",
+              tone: "warning",
+            });
+          }
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [backupHistoryRefreshToken, previewMode, selectedProfileId]);
+  }, [backupHistoryRefreshToken, previewMode, pushToast, selectedProfileId]);
 
   useEffect(() => {
     if (!selectedProfileId || settingsState.status !== "ready") {
@@ -548,32 +556,26 @@ export function ProfilePage() {
         lastBackupHistoryRefreshTaskIdRef.current = saveBackupTaskState.taskId;
         setBackupHistoryRefreshToken((current) => current + 1);
         setAutoBackupCheckRefreshToken((current) => current + 1);
-        setManualBackupNotice({
-          id: `save-backup-completed-${saveBackupTaskState.taskId}`,
-          tone: "success",
-          title: "存档备份完成",
-          message: "新的备份历史点已经写入当前配置档。",
-        });
+        if (selectedProfileId) {
+          pendingBackupCompletionToastRef.current = {
+            taskId: saveBackupTaskState.taskId,
+            profileId: selectedProfileId,
+          };
+        }
       }
       return;
     }
 
     if (saveBackupTaskState.status === "failed") {
-      setManualBackupNotice({
-        id: `save-backup-failed-${saveBackupTaskState.taskId ?? "start"}`,
-        tone: "warning",
+      pushToast({
+        eventKey: `profile.save-backup.failed.${saveBackupTaskState.taskId ?? "start"}`,
+        taskId: saveBackupTaskState.taskId ?? undefined,
+        tone: "danger",
         title: "存档备份失败",
         message: saveBackupTaskState.message,
       });
     }
-  }, [saveBackupTaskState]);
-
-  useEffect(() => {
-    if (!manualBackupNotice) return undefined;
-
-    const dismissTimer = window.setTimeout(() => setManualBackupNotice(null), 6000);
-    return () => window.clearTimeout(dismissTimer);
-  }, [manualBackupNotice]);
+  }, [pushToast, saveBackupTaskState, selectedProfileId]);
 
   const profiles = profileState.profiles;
   const selectedProfile = useMemo(
@@ -667,8 +669,6 @@ export function ProfilePage() {
     if (!selectedProfileId || !canStartManualSaveBackup) return;
 
     setSaveBackupTaskState({ status: "starting" });
-    setManualBackupNotice(null);
-
     if (previewMode) {
       const taskId = `preview-save-backup-${Date.now()}`;
       setSaveBackupTaskState({
@@ -699,10 +699,6 @@ export function ProfilePage() {
 
   return (
     <section className="profile-page" data-preview-mode={previewMode ? "true" : undefined} aria-labelledby="profile-page-title">
-      <ProfileManualBackupFloatingNotice
-        notice={manualBackupNotice}
-        onDismiss={() => setManualBackupNotice(null)}
-      />
       <header className="profile-page__header">
         <div className="profile-page__title-block">
           <span className="profile-page__eyebrow">
@@ -1232,33 +1228,6 @@ function ProfileHeaderSaveAction({
   );
 }
 
-function ProfileManualBackupFloatingNotice({
-  notice,
-  onDismiss,
-}: {
-  notice: ManualBackupNotice | null;
-  onDismiss: () => void;
-}) {
-  if (!notice) return null;
-
-  return (
-    <aside className={`profile-manual-backup-floating-notice is-${notice.tone}`} role="status" aria-live="polite">
-      <div className="profile-manual-backup-floating-notice__copy">
-        <strong>{notice.title}</strong>
-        <span>{notice.message}</span>
-      </div>
-      <button
-        type="button"
-        className="profile-manual-backup-floating-notice__dismiss"
-        aria-label="关闭备份提示"
-        onClick={onDismiss}
-      >
-        <X size={16} aria-hidden="true" />
-      </button>
-    </aside>
-  );
-}
-
 function getManualBackupBlockedReason({
   dirty,
   selectedProfileId,
@@ -1278,6 +1247,24 @@ function getManualBackupBlockedReason({
   if (dirty) return "请先保存存档设置";
   if (taskState.status === "starting" || taskState.status === "running") return "备份任务正在执行";
   return null;
+}
+
+function publishPendingBackupCompletionToast(
+  pendingRef: React.MutableRefObject<{ taskId: string; profileId: string } | null>,
+  profileId: string,
+  pushToast: (input: FeedbackToastInput) => void,
+) {
+  const pending = pendingRef.current;
+  if (!pending || pending.profileId !== profileId) return;
+
+  pendingRef.current = null;
+  pushToast({
+    eventKey: `profile.save-backup.completed.${pending.taskId}`,
+    taskId: pending.taskId,
+    tone: "success",
+    title: "存档备份完成",
+    message: "新的备份历史点已经写入当前配置档。",
+  });
 }
 
 function getAutoBackupCheckBlockedReason(taskState: ProfileSaveBackupTaskState) {

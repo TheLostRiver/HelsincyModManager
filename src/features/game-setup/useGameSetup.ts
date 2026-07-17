@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useFeedback } from "../../shared/feedback";
 import {
   autoDetectGameDirectory,
   getGameSetupStatus,
@@ -31,6 +32,7 @@ const DEFAULT_GAME_ID: GameId = "mhw";
 const STARTUP_DETECTION_TIMEOUT_MS = 10000;
 
 export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
+  const { pushToast } = useFeedback();
   const [state, setState] = useState<GameSetupState>({
     status: { kind: "not_configured", gameId },
     isBusy: false,
@@ -132,9 +134,15 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
         setState({
           status: mapStatusDto(dto),
           isBusy: false,
-          actionMessage: "游戏目录已保存。",
+          actionMessage: null,
           candidates: [],
           startupNotice: null,
+        });
+        pushToast({
+          eventKey: `game-setup.directory.saved.${gameId}`,
+          title: "游戏目录已保存",
+          message: "目录校验通过，当前游戏实例已准备就绪。",
+          tone: "success",
         });
       } catch (error) {
         const mapped = mapCommandError(error);
@@ -147,13 +155,19 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
             message,
           },
           isBusy: false,
-          actionMessage: message,
+          actionMessage: null,
           candidates: current.candidates,
           startupNotice: current.startupNotice,
         }));
+        pushToast({
+          eventKey: `game-setup.directory.save-failed.${gameId}.${mapped.code}`,
+          title: "游戏目录保存失败",
+          message,
+          tone: "danger",
+        });
       }
     },
-    [gameId],
+    [gameId, pushToast],
   );
 
   const scanSteam = useCallback(async () => {
@@ -167,45 +181,71 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
       );
 
       if (isDetectionReady(detection)) {
+        const message = messageForReadyDetection(detection);
         setState((current) => ({
           ...current,
           status: mapStatusDto(detection.status),
           candidates: [],
           isBusy: false,
           startupNotice: null,
-          actionMessage: messageForReadyDetection(detection),
+          actionMessage: null,
         }));
+        pushToast({
+          eventKey: `game-setup.scan.ready.${gameId}.${detection.outcome}`,
+          title: "游戏目录扫描完成",
+          message,
+          tone: "success",
+        });
         return;
       }
 
       const dto = await scanGameCandidates(gameId);
       const candidates = mapCandidateScanDto(dto);
+      const message = candidates.length > 0 ? "已发现 Steam 候选目录。" : "未发现 Steam 候选目录，可手动选择游戏目录。";
       setState((current) => ({
         ...current,
         status: mapStatusDto(detection.status),
         candidates,
         isBusy: false,
         startupNotice: setStartupNoticeForDetection(detection),
-        actionMessage:
-          candidates.length > 0 ? "已发现 Steam 候选目录。" : "未发现 Steam 候选目录，可手动选择游戏目录。",
+        actionMessage: null,
       }));
+      pushToast({
+        eventKey: `game-setup.scan.candidates.${gameId}.${candidates.length > 0 ? "found" : "empty"}`,
+        title: candidates.length > 0 ? "发现候选游戏目录" : "未发现候选游戏目录",
+        message,
+        tone: candidates.length > 0 ? "success" : "warning",
+      });
     } catch (error) {
       const mapped = mapCommandError(error);
+      const message = messageForError(mapped.code);
       setState((current) => ({
         ...current,
         isBusy: false,
-        actionMessage: messageForError(mapped.code),
+        actionMessage: null,
       }));
+      pushToast({
+        eventKey: `game-setup.scan.failed.${gameId}.${mapped.code}`,
+        title: "游戏目录扫描失败",
+        message,
+        tone: "danger",
+      });
     }
-  }, [gameId]);
+  }, [gameId, pushToast]);
 
   const reportActionError = useCallback((message: string) => {
     setState((current) => ({
       ...current,
       isBusy: false,
-      actionMessage: message,
+      actionMessage: null,
     }));
-  }, []);
+    pushToast({
+      eventKey: `game-setup.action.failed.${gameId}`,
+      title: "游戏目录操作失败",
+      message,
+      tone: "danger",
+    });
+  }, [gameId, pushToast]);
 
   const dismissStartupNotice = useCallback(() => {
     setState((current) => ({
