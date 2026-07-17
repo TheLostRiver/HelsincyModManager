@@ -25,6 +25,28 @@ test("feedback provider owns one body-level portal host", () => {
   assert.match(provider, /document\.body\.appendChild\(nextHost\)/);
   assert.match(provider, /nextHost\.remove\(\)/);
   assert.match(provider, /createPortal\(children, host\)/);
+  assert.match(provider, /event\.key\s*!==\s*"Escape"/);
+  assert.match(provider, /document\.querySelector\('\[aria-modal="true"\]'\)/);
+  assert.match(provider, /queue\.slice\(0,\s*-1\)/);
+  assert.match(provider, /enqueueFeedbackToast/);
+  assert.match(provider, /showTaskNotice/);
+  assert.match(provider, /notices\.filter\(\(notice\) => notice\.taskId !== input\.taskId\)/);
+  assert.match(provider, /taskNotices\.map\(\(notice\) => <TaskNotice key=\{notice\.taskId\}/);
+});
+
+test("shared toast pauses dismissal, supports one action, and carries stable source keys", () => {
+  const toast = readSource("src/shared/feedback/FeedbackToast.tsx");
+  const state = readSource("src/shared/feedback/feedbackToastState.ts");
+
+  assert.match(toast, /data-event-key=\{toast\.eventKey\}/);
+  assert.match(toast, /data-task-id=\{toast\.taskId\}/);
+  assert.match(toast, /onMouseEnter=\{\(\) => setPaused\(true\)\}/);
+  assert.match(toast, /onFocusCapture=\{\(\) => setPaused\(true\)\}/);
+  assert.match(toast, /toast\.action\s*\?/);
+  assert.match(state, /eventKey:\s*string/);
+  assert.match(state, /action\?:\s*FeedbackToastAction/);
+  assert.match(state, /findIndex\(\(toast\) => toast\.eventKey === input\.eventKey\)/);
+  assert.doesNotMatch(state, /toast\.message === input\.message/);
 });
 
 test("modal surface exposes dialog semantics, close policy, and shared focus behavior", () => {

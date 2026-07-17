@@ -216,6 +216,11 @@ test("profile page wires manual save backup execution, progress, and history ref
   assert.match(pageSource, /nextProfileSaveBackupTaskStateFromProgress/);
   assert.match(pageSource, /shouldRefreshProfileSaveBackupHistory/);
   assert.match(pageSource, /setBackupHistoryRefreshToken\(\(current\) => current \+ 1\)/);
+  assert.match(pageSource, /pendingBackupCompletionToastRef/);
+  assert.match(pageSource, /publishPendingBackupCompletionToast/);
+  assert.match(pageSource, /eventKey:\s*`profile\.save-backup\.completed\.\$\{pending\.taskId\}`/);
+  assert.match(pageSource, /taskId:\s*pending\.taskId/);
+  assert.doesNotMatch(pageSource, /ProfileManualBackupFloatingNotice|manualBackupNotice/);
   assert.match(pageSource, /onClick=\{\(\) => void startManualSaveBackup\(\)\}/);
   assert.match(pageSource, /disabled=\{!canStartManualSaveBackup\}/);
   assert.doesNotMatch(pageSource, /profile-create-backup-button" disabled/);
@@ -326,12 +331,12 @@ test("plain browser preview renders the redesigned profiles console instead of t
   assert.match(directorySource, /Steam\/userdata\/<steam-id>\/582010\/remote/);
 });
 
-test("profile save discovery uses a floating notice and candidate confirmation UI", () => {
+test("profile save discovery uses shared toast feedback and candidate confirmation UI", () => {
   const app = readSource("src/App.tsx");
   const main = readSource("src/main.tsx");
   const page = readSource("src/features/profiles/ProfilePage.tsx");
   const panel = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
-  const notice = readSource("src/features/profiles/ProfileSaveDirectoryFloatingNotice.tsx");
+  const provider = readSource("src/features/profiles/ProfileSaveDirectoryDiscoveryProvider.tsx");
   const candidates = readSource("src/features/profiles/ProfileSaveDirectoryCandidateList.tsx");
   const css = readSource("src/features/profiles/ProfileSaveDirectoryDiscovery.css");
 
@@ -339,17 +344,16 @@ test("profile save discovery uses a floating notice and candidate confirmation U
   assert.match(main, /ProfileSaveDirectoryDiscovery\.css/);
   assert.match(page, /ProfileSaveDirectoryCandidateList/);
   assert.match(panel, /自动检测/);
-  assert.match(notice, /positioned by CSS/);
-  assert.match(notice, /window\.setTimeout/);
-  assert.match(notice, /AUTO_DISMISS_TIMEOUT_MS\s*=\s*6000/);
+  assert.match(provider, /useFeedback/);
+  assert.match(provider, /pushToast\(\{/);
+  assert.match(provider, /eventKey:\s*`profile\.save-directory\.\$\{notice\.profileId\}/);
+  assert.match(provider, /label:\s*"查看候选"/);
+  assert.match(provider, /label:\s*"重新检测"/);
   assert.match(candidates, /accountName/);
   assert.match(candidates, /avatarUrl/);
   assert.match(candidates, /recommended/);
-  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?position:\s*fixed/);
-  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?top:\s*clamp\(72px,\s*14vh,\s*128px\)/);
-  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?left:\s*50%/);
-  assert.match(css, /\.profile-save-directory-floating-notice\s*\{[\s\S]*?transform:\s*translateX\(-50%\)/);
-  assert.doesNotMatch(page + panel + notice + candidates, forbiddenDiscoveryFields);
+  assert.doesNotMatch(css, /\.profile-save-directory-floating-notice/);
+  assert.doesNotMatch(page + panel + provider + candidates, forbiddenDiscoveryFields);
 });
 
 test("profile save discovery guards stale async results and scopes busy state per profile", () => {

@@ -159,7 +159,25 @@ Detail Sheet 呈现且关闭不改变任务；卸载以 `alertdialog` 呈现，�
 Escape 只取消；运行态 Task Notice 和 terminal Toast 不挤压 Mod 列表、长 Mod 名不溢出。重装与 retarget
 仍使用既有 DTO、phase、preview token 和 durable refresh，不因 U2 改变工作流。
 
+### T19 Feedback UI U3
+
+跨 feature 短时反馈迁移至少运行：
+
+```powershell
+node --test src/shared/feedback/feedbackToastState.test.mjs src/shared/feedback/feedbackPrimitives.test.mjs src/features/mods/modImportAction.test.mjs src/features/profiles/profileFrontendIntegration.test.mjs src/features/install-recovery/recoveryCenterRoute.test.mjs
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+```
+
+状态测试必须覆盖 stable event key 合并、不同事件不按文案误合并、队列上限与最旧项淘汰、taskId 保留和定向关闭。逐 feature 迁移时，字段错误、页面加载错误、恢复中心决策面板和全局安全告警继续保持持久语义；长任务进度继续按 taskId 显示，终态成功必须在对应刷新完成后发布。
+
+浏览器 smoke 覆盖 `1440x900`、`1366x768`、`960x640` 和 `390x844`：确认只有一个 body-level feedback host，Toast 队列不挤压页面且不产生横向溢出，长文本可换行，最多一个可选动作，hover/focus 暂停自动关闭，Escape 关闭最新通知，并验证多个任务的通知仍带稳定来源 key 与 taskId。
+
 ## Tauri / Rust 桥接改动
+
 
 适用范围：
 

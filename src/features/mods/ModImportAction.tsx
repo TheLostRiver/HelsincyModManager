@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FileArchive, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useFeedback } from "../../shared/feedback";
 import { startImportModRevisionTask, startImportModTask } from "./modImportApi";
 import {
   TASK_PROGRESS_EVENT_NAME,
@@ -86,6 +87,7 @@ export function ModImportAction({
   disabledReason,
   onImported,
 }: ModImportActionProps) {
+  const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
   const statusId = useId();
   const [listenerStatus, setListenerStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [listenerAttempt, setListenerAttempt] = useState(0);
@@ -96,6 +98,7 @@ export function ModImportAction({
   const pendingProgressEventsRef = useRef(new Map<string, TaskProgressEventDto>());
   const completedTaskIdsRef = useRef(new Set<string>());
   const onImportedRef = useRef(onImported);
+  const displayedTaskNoticeIdRef = useRef<string | null>(null);
 
   const setTrackedTaskState = useCallback((next: ModImportTaskState) => {
     taskStateRef.current = next;
@@ -108,8 +111,23 @@ export function ModImportAction({
     }
 
     completedTaskIdsRef.current.add(state.taskId);
-    void Promise.resolve(onImportedRef.current()).catch(() => undefined);
-  }, []);
+    void Promise.resolve(onImportedRef.current()).then(
+      () => pushToast({
+        eventKey: `mod-import.completed.${state.taskId}`,
+        taskId: state.taskId,
+        title: mode === "revision" ? "新版本导入完成" : "Mod 导入完成",
+        message: mode === "revision" ? "版本列表已更新。" : "Mod 列表已更新。",
+        tone: "success",
+      }),
+      () => pushToast({
+        eventKey: `mod-import.refresh-failed.${state.taskId}`,
+        taskId: state.taskId,
+        title: "导入完成，列表刷新失败",
+        message: "文件已导入，但当前列表未能刷新，请重新扫描或稍后重试。",
+        tone: "warning",
+      }),
+    );
+  }, [mode, pushToast]);
 
   const applyProgressState = useCallback(
     (next: ModImportTaskState) => {
@@ -125,6 +143,50 @@ export function ModImportAction({
   useEffect(() => {
     onImportedRef.current = onImported;
   }, [onImported]);
+
+  useEffect(() => {
+    if (taskState.status === "failed") {
+      pushToast({
+        eventKey: `mod-import.failed.${taskState.taskId ?? taskState.phase}`,
+        taskId: taskState.taskId ?? undefined,
+        title: "Mod 导入失败",
+        message: taskState.message,
+        tone: "danger",
+      });
+    } else if (taskState.status === "cancelled") {
+      pushToast({
+        eventKey: `mod-import.cancelled.${taskState.taskId}`,
+        taskId: taskState.taskId,
+        title: "Mod 导入已取消",
+        message: "未继续写入新的 Mod 版本。",
+        tone: "neutral",
+      });
+    }
+  }, [pushToast, taskState]);
+
+  useEffect(() => {
+    const previousTaskId = displayedTaskNoticeIdRef.current;
+    if (taskState.status === "running") {
+      if (previousTaskId && previousTaskId !== taskState.taskId) dismissTaskNotice(previousTaskId);
+      displayedTaskNoticeIdRef.current = taskState.taskId;
+      showTaskNotice({
+        taskId: taskState.taskId,
+        title: mode === "revision" ? "正在导入新版本" : "正在导入 Mod",
+        message: importStatusText(taskState, mode) ?? "正在执行导入任务",
+        tone: "progress",
+      });
+      return;
+    }
+    if (previousTaskId) {
+      dismissTaskNotice(previousTaskId);
+      displayedTaskNoticeIdRef.current = null;
+    }
+  }, [dismissTaskNotice, mode, showTaskNotice, taskState]);
+
+  useEffect(() => () => {
+    const taskId = displayedTaskNoticeIdRef.current;
+    if (taskId) dismissTaskNotice(taskId);
+  }, [dismissTaskNotice]);
 
   useEffect(() => {
     let disposed = false;
@@ -269,7 +331,7 @@ export function ModImportAction({
   }
 
   const taskActive = isImportTaskActive(taskState);
-  const statusText = importStatusText(taskState, mode) ?? disabledReason;
+  const statusText = disabledReason;
   const listenerLoading = listenerStatus === "loading";
   const actionDisabled =
     listenerLoading || taskActive || Boolean(disabledReason) || (mode === "revision" && !modId);

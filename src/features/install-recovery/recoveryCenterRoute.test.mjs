@@ -260,8 +260,9 @@ test("Recovery Center exposes support diagnostics export without path or raw log
   assert.match(hook, /exportSupportDiagnostics/);
   assert.match(hook, /status:\s*"confirming"/);
   assert.match(hook, /status:\s*"exporting"/);
-  assert.match(hook, /status:\s*"exported"/);
-  assert.match(hook, /status:\s*"failed"/);
+  assert.match(hook, /useFeedback/);
+  assert.match(hook, /eventKey:\s*`recovery\.diagnostics\.exported\.\$\{result\.exportId\}`/);
+  assert.match(hook, /eventKey:\s*"recovery\.diagnostics\.export\.failed"/);
   assert.match(hook, /requestExport/);
   assert.match(hook, /confirmExport/);
   assert.match(hook, /cancelExport/);
@@ -272,11 +273,7 @@ test("Recovery Center exposes support diagnostics export without path or raw log
   assert.match(page, /确认导出诊断包/);
   assert.match(page, /onConfirm/);
   assert.match(page, /onCancel/);
-  assert.match(page, /result\.fileName/);
-  assert.match(page, /result\.sizeBytes/);
-  assert.match(page, /result\.appLogLineCount/);
-  assert.match(page, /result\.taskLogLineCount/);
-  assert.match(page, /result\.auditEventCount/);
+  assert.doesNotMatch(page, /result\.fileName|result\.sizeBytes|result\.appLogLineCount|result\.taskLogLineCount|result\.auditEventCount/);
 
   const forbidden = [
     "outputPath",

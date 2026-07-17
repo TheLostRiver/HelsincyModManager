@@ -5,7 +5,7 @@ import {
   discoverProfileSaveDirectories,
 } from "./profileSaveDirectoryDiscoveryApi";
 import type { SaveDirectoryDiscoveryDto } from "./profileSaveDirectoryDiscoveryTypes";
-import { ProfileSaveDirectoryFloatingNotice } from "./ProfileSaveDirectoryFloatingNotice";
+import { useFeedback } from "../../shared/feedback";
 import { useActiveProfile } from "./ActiveProfileProvider";
 
 type DiscoveryReason = "startup" | "manual";
@@ -51,6 +51,7 @@ export function ProfileSaveDirectoryDiscoveryProvider({
   children,
 }: ProfileSaveDirectoryDiscoveryProviderProps) {
   const { activeProfile } = useActiveProfile();
+  const { pushToast } = useFeedback();
   const checkedProfileIdsRef = useRef<Set<string>>(new Set());
   const discoveryRequestSeqRef = useRef(0);
   const activeDiscoveryRequestRef = useRef<DiscoveryRequestSnapshot | null>(null);
@@ -186,6 +187,24 @@ export function ProfileSaveDirectoryDiscoveryProvider({
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  useEffect(() => {
+    if (!notice) return;
+
+    const action = notice.action === "candidates"
+      ? { label: "查看候选", onSelect: reviewCandidates }
+      : notice.action === "retry"
+        ? { label: "重新检测", onSelect: () => void retryNotice() }
+        : undefined;
+    pushToast({
+      eventKey: `profile.save-directory.${notice.profileId}.${notice.action ?? notice.tone}`,
+      title: notice.title,
+      message: `${notice.message} ${notice.detail}`,
+      tone: notice.tone === "attention" ? "neutral" : notice.tone,
+      action,
+    });
+    setNotice(null);
+  }, [notice, pushToast, retryNotice, reviewCandidates]);
+
   const value = useMemo<ProfileSaveDirectoryDiscoveryContextValue>(
     () => ({
       latestDiscovery,
@@ -202,13 +221,6 @@ export function ProfileSaveDirectoryDiscoveryProvider({
   return (
     <ProfileSaveDirectoryDiscoveryContext.Provider value={value}>
       {children}
-      <ProfileSaveDirectoryFloatingNotice
-        notice={notice}
-        isBusy={isDiscovering}
-        onReviewCandidates={reviewCandidates}
-        onRetry={retryNotice}
-        onDismiss={dismissNotice}
-      />
     </ProfileSaveDirectoryDiscoveryContext.Provider>
   );
 }
