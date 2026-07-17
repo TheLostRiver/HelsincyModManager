@@ -4,7 +4,7 @@ use std::sync::Arc;
 use hmm_core::{
     FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReplacementTargetId,
 };
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
 use crate::reinstall::{PreparedReinstall, ReinstallPreparation};
 use crate::{
@@ -557,13 +557,14 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             fields.insert("rollback_result".to_owned(), rollback_result.to_owned());
         }
 
-        let _ = self.audit_log.record(AuditLogEvent {
+        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
             category: "install".to_owned(),
             operation: "reinstall_mod".to_owned(),
             result: result.to_owned(),
             fields,
-        });
+        }, policy);
     }
 }
 

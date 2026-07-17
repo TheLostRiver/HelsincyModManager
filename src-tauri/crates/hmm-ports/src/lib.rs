@@ -3,6 +3,7 @@ mod audit;
 mod cancellation;
 mod category;
 mod diagnostics_environment;
+mod diagnostics_health;
 mod game_launch;
 mod game_prerequisites;
 mod game_running;
@@ -17,6 +18,7 @@ mod replacement;
 mod save_backup;
 mod save_directory;
 mod staging;
+mod task_log;
 mod text_log;
 
 use anyhow::Result;
@@ -26,10 +28,13 @@ pub type PortResult<T> = anyhow::Result<T>;
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
 };
-pub use audit::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter};
+pub use audit::{
+    AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
+};
 pub use cancellation::{CancellationToken, NeverCancelled};
 pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
+pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
 pub use game_launch::{
     GameLaunchError, GameLaunchMethod, GameLaunchReceipt, GameLaunchRunner, GameLauncher,
 };
@@ -86,9 +91,8 @@ pub use save_directory::{
     PendingSaveDirectoryDiscovery, ScannedSaveDirectoryCandidate, SteamAccountProfileClient,
     SteamUserdataScanRequest, SteamUserdataScanner,
 };
-pub use staging::{
-    RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
-};
+pub use staging::{RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer};
+pub use task_log::{TaskLogRecord, TaskLogWriter};
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
 
 pub trait AppClock: Send + Sync {

@@ -102,7 +102,7 @@ T19 对应切片或后续恢复顺序选中，不因门禁解除自动开工。
 
 **优先级**: P0 发布加固，当前主线
 **前置**: Gate A/B certified
-**状态**: 进行中（A1、L1、U1、U2 已完成，下一切片为 L2）
+**状态**: 进行中（A1、L1、U1、U2、L2 已完成，下一切片为 U3）
 **预估**: 大，固定拆为 7 个独立 review 切片
 **独立文档**: **已创建** -> `docs/CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md`
 
@@ -112,7 +112,7 @@ T19 对应切片或后续恢复顺序选中，不因门禁解除自动开工。
 - [x] L1：安全结构化事件、脱敏、App Log JSONL writer、UTC 日轮转、14 天保留和稳定健康退化码
 - [x] U1：共享 Dialog/Detail Sheet/Task Notice/Toast 基元，首个迁移游戏目录 Dialog
 - [x] U2：安装计划 Sheet、卸载 Modal、按 `taskId` 的 Task Notice、durable refresh 后的完成/普通失败 Toast
-- [ ] L2：Task Log、Audit 写入失败显式策略和诊断健康摘要
+- [x] L2：Task Log、Audit 写入失败显式策略和诊断健康摘要
 - [ ] U3：导入、游戏发现、Profile、备份、诊断导出等跨 feature 短时通知迁移
 - [ ] L3：只读日志/诊断页面和受控导出入口
 
@@ -476,7 +476,7 @@ JSON 做不好的需求:
 
 ```text
 已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2
-  -> 当前: T19 L2 -> U3 -> L3
+  -> 当前: T19 U3 -> L3
   -> 后续: T18 Mod 库分页 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
@@ -504,4 +504,4 @@ JSON 做不好的需求:
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
 | T18 Mod 库分页 | P2 | 已规划、暂停 | |
-| T19 核心生命周期产品化加固 | P0 发布加固 | 进行中（A1/L1/U1/U2 已完成，下一项 L2） | |
+| T19 核心生命周期产品化加固 | P0 发布加固 | 进行中（A1/L1/U1/U2/L2 已完成，下一项 U3） | |

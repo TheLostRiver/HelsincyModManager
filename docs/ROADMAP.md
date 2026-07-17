@@ -11,7 +11,7 @@
    Windows Sandbox 通过首次 Alpha retarget 安装 -> Beta target switch -> 两次重启状态恢复 ->
    manifest 卸载 -> exact baseline 纵向复验，Gate B 已标记为 `certified`。
 3. Gate B 后优先级复审已选择 T19“核心 Mod 生命周期产品化加固”为当前主线；A1 生命周期验收入口、
-   L1 安全 App Log、U1 共享反馈基元和 U2 核心 Mod 操作反馈已完成，下一切片为 L2；其余仍按 L2 -> U3 -> L3
+   L1 安全 App Log、U1 共享反馈基元、U2 核心 Mod 操作反馈和 L2 Task/Audit 降级可见性已完成，下一切片为 U3；其余仍按 U3 -> L3
    独立 review 推进。
 4. T19 完成后依次恢复 T18 分页、T17 批量迁移和 T13 批量安装/卸载。自动备份剩余切片、installer
    cleanup、T12/T14 和其他扩展继续按各自发布门禁评审，不自动开工。
@@ -63,7 +63,7 @@ baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本
 Gate A/B 之后先执行 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md)：
 固化不少于 6 个 headless 生命周期场景的正式验收入口，落地安全 App/Task 日志与审计降级可见性，
 并把核心操作反馈按 Dialog、Detail Sheet、Task Notice、Toast 和 Inline state 分层。该计划当前为
-`in_progress`；A1、L1、U1 与 U2 已完成，下一独立切片为 L2，其余切片尚未开始。
+`in_progress`；A1、L1、U1、U2 与 L2 已完成，下一独立切片为 U3，其余切片尚未开始。
 
 ## Phase 3：玩家工作流扩展（Gate B 后已重新排序）
 
