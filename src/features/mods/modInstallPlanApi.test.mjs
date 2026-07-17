@@ -165,9 +165,11 @@ test("install plan types expose preview DTO without filesystem paths", () => {
 
 test("mod library page renders a backend install plan preview workflow", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
+  const feedbackSource = readSource("src/features/mods/ModLifecycleFeedback.tsx");
 
   assert.match(source, /previewInstallPlanForImportedMod/);
-  assert.match(source, /InstallPlanPreviewPanel/);
+  assert.match(source, /InstallPlanDetailSheet/);
+  assert.match(feedbackSource, /DetailSheet/);
   assert.match(source, /preview-plan/);
   assert.match(source, /selectedIds\.size\s*!==\s*1/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath/i);
@@ -216,7 +218,8 @@ test("mod library page starts uninstall task only from manifest installed summar
   assert.match(source, /nextManagedInstallTaskStateFromProgress/);
   assert.match(taskStateSource, /install\.uninstall\.processing/);
   assert.match(taskStateSource, /install\.uninstall\.completed/);
-  assert.match(source, /onConfirmUninstall/);
+  assert.match(source, /UninstallConfirmationDialog/);
+  assert.match(source, /onConfirm=\{startSelectedUninstallTask\}/);
   assert.match(source, /refreshInstallManifestStatuses/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
@@ -231,21 +234,22 @@ test("mod library page refreshes install status from manifest summaries", () => 
   assert.match(source, /applyInstallRecoveryUnavailable/);
   assert.match(source, /useActiveProfile/);
   assert.match(source, /activeProfile\.status\s*!==\s*"ready"/);
-  assert.match(
-    source,
-    /scanInstallRecovery\([\s\S]*?\.catch\(\(\)\s*=>\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\)\)/,
-  );
+  assert.match(source, /items:\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\),\s*verified:\s*false/);
+  assert.match(source, /items:\s*applyInstallRecoveryUnavailable\(items\),\s*verified:\s*false/);
   assert.match(source, /profileId:\s*activeProfileId/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
-  assert.match(source, /installTaskState\.status\s*!==\s*"completed"/);
+  assert.match(source, /isManagedInstallTaskTerminal\(installTaskState\)/);
+  assert.match(source, /refreshInstallManifestStatusesWithOutcome/);
+  assert.match(source, /getManagedInstallTerminalToast/);
+  assert.match(source, /shouldFailClosedManagedInstallTerminal/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
 });
 
 test("mod library page blocks install and uninstall actions during unsafe recovery states", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
   const actionPanelSource = readSource("src/features/mods/CompactActionPanel.tsx");
-  const previewPanelSource = readSource("src/features/mods/InstallPlanPreviewPanel.tsx");
+  const feedbackSource = readSource("src/features/mods/ModLifecycleFeedback.tsx");
 
   assert.match(source, /canInstallSelected/);
   assert.match(source, /isUnsafeInstallStatus\(summary\?\.status\s*\?\?\s*""\)/);
@@ -256,9 +260,9 @@ test("mod library page blocks install and uninstall actions during unsafe recove
   assert.match(actionPanelSource, /canInstallSelection/);
   assert.match(actionPanelSource, /action\.id\s*===\s*"install"\s*&&\s*!canInstallSelection/);
   assert.match(actionPanelSource, /action\.id\s*===\s*"reinstall"\s*&&\s*!canReinstallSelection/);
-  assert.match(previewPanelSource, /"committed_cleanup_pending"/);
-  assert.match(previewPanelSource, /"cleanup_pending"/);
-  assert.match(previewPanelSource, /重装待收尾/);
-  assert.match(previewPanelSource, /恢复待清理/);
+  assert.match(feedbackSource, /"committed_cleanup_pending"/);
+  assert.match(feedbackSource, /"cleanup_pending"/);
+  assert.match(feedbackSource, /重装待收尾/);
+  assert.match(feedbackSource, /恢复待清理/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });

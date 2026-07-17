@@ -16,11 +16,19 @@ export type ManagedInstallTaskPhase =
 
 export type ManagedInstallTaskState =
   | { status: "idle" }
-  | { status: "starting"; operation: ManagedInstallTaskOperation; modName: string }
+  | {
+      status: "starting";
+      operation: ManagedInstallTaskOperation;
+      profileId: string;
+      modId: string;
+      modName: string;
+    }
   | {
       status: "running";
       operation: ManagedInstallTaskOperation;
       taskId: string;
+      profileId: string;
+      modId: string;
       modName: string;
       phase: ManagedInstallTaskPhase;
     }
@@ -28,6 +36,8 @@ export type ManagedInstallTaskState =
       status: "completed";
       operation: ManagedInstallTaskOperation;
       taskId: string;
+      profileId: string;
+      modId: string;
       modName: string;
       phase: "install.completed" | "install.uninstall.completed";
     }
@@ -35,6 +45,8 @@ export type ManagedInstallTaskState =
       status: "failed";
       operation: ManagedInstallTaskOperation;
       taskId: string | null;
+      profileId: string;
+      modId: string;
       modName: string;
       phase: "install.failed" | "install.uninstall.failed";
       message: string;
@@ -43,6 +55,8 @@ export type ManagedInstallTaskState =
       status: "cancelled";
       operation: "install";
       taskId: string;
+      profileId: string;
+      modId: string;
       modName: string;
       phase: "install.cancelled";
     };
@@ -94,6 +108,37 @@ export function defaultManagedInstallTaskErrorMessage(operation: ManagedInstallT
   return operation === "uninstall" ? "卸载失败" : "安装失败";
 }
 
+const installFailureMessages: Record<string, string> = {
+  planning: "无法生成安装计划",
+  lock: "安装任务暂时无法开始",
+  commit: "安装未完成，已重新检查安装状态",
+  complete: "安装收尾未完成，已重新检查安装状态",
+  recovery_pending: "安装被待处理的恢复状态阻断",
+  recovery_unavailable: "安装状态暂时无法确认",
+};
+
+const uninstallFailureMessages: Record<string, string> = {
+  lock: "卸载任务暂时无法开始",
+  uninstall: "卸载未完成，已重新检查安装状态",
+  complete: "卸载收尾未完成，已重新检查安装状态",
+  recovery_pending: "卸载被待处理的恢复状态阻断",
+  recovery_unavailable: "卸载状态暂时无法确认",
+};
+
+export function getManagedInstallTaskFailureMessage(
+  operation: ManagedInstallTaskOperation,
+  error: string | null | undefined,
+) {
+  const prefix = operation === "uninstall" ? "install_uninstall_failed:" : "install_failed:";
+  if (!error?.startsWith(prefix)) {
+    return defaultManagedInstallTaskErrorMessage(operation);
+  }
+
+  const failurePhase = error.slice(prefix.length);
+  const messages = operation === "uninstall" ? uninstallFailureMessages : installFailureMessages;
+  return messages[failurePhase] ?? defaultManagedInstallTaskErrorMessage(operation);
+}
+
 export function nextManagedInstallTaskStateFromProgress(
   current: ManagedInstallTaskState,
   event: TaskProgressEventDto,
@@ -117,6 +162,8 @@ export function nextManagedInstallTaskStateFromProgress(
       status: "completed",
       operation,
       taskId: event.taskId,
+      profileId: current.profileId,
+      modId: current.modId,
       modName: current.modName,
       phase,
     };
@@ -127,9 +174,11 @@ export function nextManagedInstallTaskStateFromProgress(
       status: "failed",
       operation,
       taskId: event.taskId,
+      profileId: current.profileId,
+      modId: current.modId,
       modName: current.modName,
       phase,
-      message: event.error ?? event.message ?? defaultManagedInstallTaskErrorMessage(operation),
+      message: getManagedInstallTaskFailureMessage(operation, event.error),
     };
   }
 
@@ -138,6 +187,8 @@ export function nextManagedInstallTaskStateFromProgress(
       status: "cancelled",
       operation: "install",
       taskId: event.taskId,
+      profileId: current.profileId,
+      modId: current.modId,
       modName: current.modName,
       phase,
     };
@@ -147,6 +198,8 @@ export function nextManagedInstallTaskStateFromProgress(
     status: "running",
     operation,
     taskId: event.taskId,
+    profileId: current.profileId,
+    modId: current.modId,
     modName: current.modName,
     phase,
   };
