@@ -1,7 +1,8 @@
 import { Clipboard, Download, RefreshCw, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, useFeedback } from "../../shared/feedback";
 import { exportSupportDiagnostics, getDiagnosticsPageSnapshot } from "./diagnosticsApi";
+import { createLatestRequestController, createSingleFlightController, runDeferred } from "./diagnosticsPageLogic";
 import type { DiagnosticsPageSnapshot } from "./diagnosticsTypes";
 import "./DiagnosticsPage.css";
 
@@ -12,30 +13,39 @@ export function DiagnosticsPage() {
   const [state, setState] = useState<PageState>({ status: "loading" });
   const [confirming, setConfirming] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const cancelExportRef = useRef<HTMLButtonElement>(null);
+  const loadControllerRef = useRef(createLatestRequestController());
+  const exportControllerRef = useRef(createSingleFlightController());
 
   const load = useCallback(() => {
     setState({ status: "loading" });
-    void getDiagnosticsPageSnapshot()
-      .then((snapshot) => setState({ status: "ready", snapshot }))
-      .catch(() => setState({ status: "failed" }));
+    void loadControllerRef.current.run(getDiagnosticsPageSnapshot, {
+      onSuccess: (snapshot) => setState({ status: "ready", snapshot }),
+      onFailure: () => setState({ status: "failed" }),
+    });
   }, []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+    const loadController = loadControllerRef.current;
+    return () => loadController.invalidate();
+  }, [load]);
 
   const copyStableValue = useCallback((value: string) => {
-    void navigator.clipboard.writeText(value)
+    void runDeferred(() => navigator.clipboard.writeText(value))
       .then(() => pushToast({ eventKey: `diagnostics.copied.${value}`, title: "已复制诊断标识", message: value, tone: "success" }))
       .catch(() => pushToast({ eventKey: "diagnostics.copy.failed", title: "复制失败", message: "无法写入剪贴板，请手动记录稳定诊断标识。", tone: "danger" }));
   }, [pushToast]);
 
   const confirmExport = useCallback(() => {
-    if (exporting) return;
+    const exportPromise = exportControllerRef.current.run(exportSupportDiagnostics);
+    if (!exportPromise) return;
     setExporting(true);
-    void exportSupportDiagnostics().then((result) => {
-      pushToast({ eventKey: `diagnostics.exported.${result.exportId}`, title: "诊断包已导出", message: `${result.fileName}，${formatBytes(result.sizeBytes)}`, tone: "success" });
+    void exportPromise.then((result) => {
+      pushToast({ eventKey: `diagnostics.exported.${result.exportId}`, title: "诊断包已导出", message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`, tone: "success" });
       setConfirming(false);
     }).catch(() => pushToast({ eventKey: "diagnostics.export.failed", title: "诊断导出失败", message: "未生成诊断包，请稍后重试。", tone: "danger" }))
       .finally(() => setExporting(false));
-  }, [exporting, pushToast]);
+  }, [pushToast]);
 
   return <section className="diagnostics-page" aria-labelledby="diagnostics-title">
     <header className="diagnostics-page__hero">
@@ -47,7 +57,7 @@ export function DiagnosticsPage() {
     {state.status === "ready" && (
       <DiagnosticsContent snapshot={state.snapshot} onCopy={copyStableValue}/>
     )}
-    <Dialog open={confirming} title="确认导出诊断包" description="导出包将包含平台摘要、已脱敏 App/Task 日志、已校验审计事件和健康聚合，不包含完整路径与原始错误。" onClose={() => !exporting && setConfirming(false)} footer={<><button onClick={() => setConfirming(false)} disabled={exporting}>取消</button><button onClick={confirmExport} disabled={exporting}>{exporting ? "导出中…" : "确认导出"}</button></>} />
+    <Dialog open={confirming} title="确认导出诊断包" description="导出包将包含平台摘要、已脱敏 App/Task 日志、已校验审计事件和健康聚合，不包含完整路径与原始错误。" busy={exporting} initialFocusRef={cancelExportRef} onClose={() => setConfirming(false)} footer={<><button ref={cancelExportRef} type="button" className="diagnostics-page__dialog-action is-secondary" onClick={() => setConfirming(false)} disabled={exporting}>取消</button><button type="button" className="diagnostics-page__dialog-action is-primary" onClick={confirmExport} disabled={exporting}><Download size={16}/>{exporting ? "导出中…" : "确认导出"}</button></>} />
   </section>;
 }
 
@@ -65,4 +75,8 @@ function DiagnosticsContent({ snapshot, onCopy }: { snapshot: DiagnosticsPageSna
 function HealthCard({ label, status }: { label: string; status: string }) { const ok = status === "ok"; return <article className={`diagnostics-page__health-card ${ok ? "is-ok" : "is-warning"}`}><span>{label}</span><strong>{ok ? "正常" : status}</strong></article>; }
 function combinedStatus(readStatus: string, writeStatus: string) { return readStatus === "ok" ? writeStatus : readStatus; }
 function LogPanel({ title, status, lines }: { title: string; status: string; lines: { source: string; line: string }[] }) { return <section className="diagnostics-page__panel"><h3>{title} <small>{status}</small></h3>{lines.length === 0 ? <p className="is-empty">没有可显示的安全日志。</p> : <div className="diagnostics-page__log">{lines.map((item, index) => <div key={`${item.source}-${index}`}><span>{item.source}</span><code>{item.line}</code></div>)}</div>}</section>; }
-function formatBytes(value: number) { return value < 1024 ? `${value} B` : `${(value / 1024).toFixed(1)} KB`; }
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
