@@ -8,7 +8,7 @@ use hmm_core::{
     GameId, ProfileId, SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerState,
     SaveBackupSummary, SaveBackupTrigger,
 };
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, SaveBackupSchedulerStateRepository};
 
 use crate::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
@@ -645,13 +645,14 @@ impl SaveBackupTaskRunner {
         fields: BTreeMap<String, String>,
     ) {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
-        let _ = self.audit_log.record(AuditLogEvent {
+        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "save_backup".to_owned(),
             operation: operation.to_owned(),
             result: result.to_owned(),
             fields,
-        });
+        }, policy);
     }
 }
 

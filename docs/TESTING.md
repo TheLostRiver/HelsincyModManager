@@ -640,6 +640,8 @@ L1 安全 App Log 聚焦验证：
 ```powershell
 cargo test -p hmm-infra app_log
 cargo test -p hmm-app support_diagnostics
+cargo test -p hmm-infra task_log
+cargo test -p hmm-infra diagnostics_health
 
 # Windows 上运行 Tauri 测试前先生成 ignored development sidecar。
 cmd /c corepack pnpm run prepare:save-backup-worker-sidecar:dev

@@ -896,6 +896,11 @@ pub struct SupportDiagnosticsExportDto {
     pub app_log_line_count: usize,
     pub task_log_line_count: usize,
     pub audit_event_count: usize,
+    pub task_log_status: String,
+    pub audit_log_status: String,
+    pub task_log_write_failure_count: u64,
+    pub audit_write_failure_count: u64,
+    pub audit_write_failure_after_commit_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1154,6 +1159,13 @@ impl From<hmm_app::SupportDiagnosticsExport> for SupportDiagnosticsExportDto {
             app_log_line_count: export.app_log_line_count,
             task_log_line_count: export.task_log_line_count,
             audit_event_count: export.audit_event_count,
+            task_log_status: export.evidence_health.task_log_status,
+            audit_log_status: export.evidence_health.audit_log_status,
+            task_log_write_failure_count: export.evidence_health.task_log_write_failure_count,
+            audit_write_failure_count: export.evidence_health.audit_write_failure_count,
+            audit_write_failure_after_commit_count: export
+                .evidence_health
+                .audit_write_failure_after_commit_count,
         }
     }
 }
@@ -1780,6 +1792,13 @@ mod preview_image_tests {
             app_log_line_count: 2,
             task_log_line_count: 3,
             audit_event_count: 4,
+            evidence_health: hmm_ports::DiagnosticsEvidenceHealthSnapshot {
+                task_log_status: "task_log_write_failed".to_owned(),
+                audit_log_status: "audit_write_failed_after_commit".to_owned(),
+                task_log_write_failure_count: 1,
+                audit_write_failure_count: 2,
+                audit_write_failure_after_commit_count: 1,
+            },
         }
         .into();
 
@@ -1791,6 +1810,11 @@ mod preview_image_tests {
         assert_eq!(value["appLogLineCount"], 2);
         assert_eq!(value["taskLogLineCount"], 3);
         assert_eq!(value["auditEventCount"], 4);
+        assert_eq!(value["taskLogStatus"], "task_log_write_failed");
+        assert_eq!(value["auditLogStatus"], "audit_write_failed_after_commit");
+        assert_eq!(value["taskLogWriteFailureCount"], 1);
+        assert_eq!(value["auditWriteFailureCount"], 2);
+        assert_eq!(value["auditWriteFailureAfterCommitCount"], 1);
         assert!(value.get("appLogLines").is_none());
         assert!(value.get("taskLogLines").is_none());
         assert!(value.get("events").is_none());

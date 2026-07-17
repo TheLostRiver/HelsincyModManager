@@ -1,6 +1,9 @@
 use crate::dto::{CommandErrorDto, TaskKindDto, TaskProgressEventDto, TaskStatusDto};
+use crate::state::AppState;
 use hmm_infra::{emit_safe_app_log, AppLogEvent};
-use tauri::{AppHandle, Emitter};
+use hmm_ports::TaskLogRecord;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub const TASK_PROGRESS_EVENT_NAME: &str = "hmm://task-progress";
 pub const INSTALL_REINSTALL_QUEUED_PHASE: &str = "install.reinstall.queued";
@@ -9,6 +12,7 @@ pub fn emit_task_progress(
     app_handle: &AppHandle,
     event: TaskProgressEventDto,
 ) -> Result<(), CommandErrorDto> {
+    record_task_log(app_handle, &event);
     if let Some(registration) = queued_task_registration_event(&event) {
         emit_safe_app_log(registration);
     }
@@ -27,6 +31,43 @@ pub fn emit_task_progress(
                 message: "failed to emit task progress event".to_owned(),
             }
         })
+}
+
+fn record_task_log(app_handle: &AppHandle, event: &TaskProgressEventDto) {
+    let Ok(timestamp_unix_millis) = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_millis())
+    else {
+        return;
+    };
+    let error_code = event
+        .error
+        .as_deref()
+        .filter(|value| is_stable_code(value))
+        .map(str::to_owned);
+    let record = TaskLogRecord {
+        timestamp_unix_millis,
+        task_id: event.task_id.clone(),
+        kind: task_kind_code(event.kind).to_owned(),
+        status: task_status_code(event.status).to_owned(),
+        phase: event.phase.clone(),
+        current: event.current,
+        total: event.total,
+        duration_ms: None,
+        error_code,
+    };
+    let _ = app_handle
+        .state::<AppState>()
+        .task_log_writer
+        .record(record);
+}
+
+fn is_stable_code(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 96
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-'))
 }
 
 fn queued_task_registration_event(event: &TaskProgressEventDto) -> Option<AppLogEvent> {

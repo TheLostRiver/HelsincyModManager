@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
-use hmm_ports::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter};
+use hmm_ports::{
+    AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
+    DiagnosticsEvidenceHealth,
+};
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 const AUDIT_LOG_DIR: &str = "audit";
 const MILLIS_PER_DAY: u128 = 86_400_000;
@@ -12,6 +15,7 @@ const MILLIS_PER_DAY: u128 = 86_400_000;
 pub struct FileSystemAuditLogWriter {
     app_data_root: PathBuf,
     write_lock: Mutex<()>,
+    health: Option<Arc<dyn DiagnosticsEvidenceHealth>>,
 }
 
 impl FileSystemAuditLogWriter {
@@ -19,6 +23,15 @@ impl FileSystemAuditLogWriter {
         Self {
             app_data_root,
             write_lock: Mutex::new(()),
+            health: None,
+        }
+    }
+
+    pub fn with_health(app_data_root: PathBuf, health: Arc<dyn DiagnosticsEvidenceHealth>) -> Self {
+        Self {
+            app_data_root,
+            write_lock: Mutex::new(()),
+            health: Some(health),
         }
     }
 
@@ -35,6 +48,34 @@ impl FileSystemAuditLogWriter {
 
 impl AuditLogWriter for FileSystemAuditLogWriter {
     fn record(&self, event: AuditLogEvent) -> Result<()> {
+        let after_commit = event.result == "success";
+        self.record_observed(event, after_commit)
+    }
+
+    fn record_with_policy(
+        &self,
+        event: AuditLogEvent,
+        policy: AuditWriteFailurePolicy,
+    ) -> Result<()> {
+        self.record_observed(
+            event,
+            policy == AuditWriteFailurePolicy::ReportAfterCommit,
+        )
+    }
+}
+
+impl FileSystemAuditLogWriter {
+    fn record_observed(&self, event: AuditLogEvent, after_commit: bool) -> Result<()> {
+        let result = self.record_inner(event);
+        if result.is_err() {
+            if let Some(health) = &self.health {
+                health.record_audit_write_failure(after_commit);
+            }
+        }
+        result
+    }
+
+    fn record_inner(&self, event: AuditLogEvent) -> Result<()> {
         validate_audit_event(&event)?;
 
         let _guard = self
@@ -258,8 +299,35 @@ fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hmm_ports::{AuditLogReadRequest, AuditLogReader};
+    use crate::DiagnosticsEvidenceHealthState;
+    use hmm_ports::{AuditLogReadRequest, AuditLogReader, DiagnosticsEvidenceHealth};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn explicit_post_commit_policy_reports_stable_health_without_retrying_player_writes() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let health = Arc::new(DiagnosticsEvidenceHealthState::default());
+        let writer = FileSystemAuditLogWriter::with_health(
+            temp.path().to_path_buf(),
+            health.clone(),
+        );
+        let event = AuditLogEvent {
+            timestamp_unix_millis: 42,
+            category: "install".to_owned(),
+            operation: "install_mod".to_owned(),
+            result: "success".to_owned(),
+            fields: BTreeMap::from([("raw_path".to_owned(), "forbidden".to_owned())]),
+        };
+
+        assert!(writer
+            .record_with_policy(event, AuditWriteFailurePolicy::ReportAfterCommit)
+            .is_err());
+        let snapshot = health.snapshot();
+        assert_eq!(snapshot.audit_log_status, "audit_write_failed_after_commit");
+        assert_eq!(snapshot.audit_write_failure_count, 1);
+        assert_eq!(snapshot.audit_write_failure_after_commit_count, 1);
+        assert!(!temp.path().join("logs/audit").exists());
+    }
 
     #[test]
     fn audit_log_writer_appends_jsonl_inside_app_data_without_returning_path() {

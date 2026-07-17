@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId};
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, ReinstallRecoveryTransactionRepository};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, ReinstallRecoveryTransactionRepository};
 use thiserror::Error;
 
 use crate::{
@@ -512,13 +512,14 @@ impl InstallTaskRunner {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
 
-        let _ = self.audit_log.record(AuditLogEvent {
+        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "install".to_owned(),
             operation: "commit_imported_mod".to_owned(),
             result: result.to_owned(),
             fields,
-        });
+        }, policy);
     }
 }
 
@@ -711,13 +712,14 @@ impl UninstallTaskRunner {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
 
-        let _ = self.audit_log.record(AuditLogEvent {
+        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "install".to_owned(),
             operation: "uninstall_mod".to_owned(),
             result: result.to_owned(),
             fields,
-        });
+        }, policy);
     }
 }
 
@@ -881,13 +883,14 @@ impl RecoveryActionTaskRunner {
                 .to_string(),
         );
 
-        let _ = self.audit_log.record(AuditLogEvent {
+        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis,
             category: "install".to_owned(),
             operation: recovery_action_operation(request.action_kind).to_owned(),
             result: result.to_owned(),
             fields,
-        });
+        }, policy);
     }
 }
 

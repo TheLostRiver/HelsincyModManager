@@ -7,7 +7,7 @@ use hmm_core::{
     SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, GameRunningDetector, GameRunningStatus,
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, GameRunningDetector, GameRunningStatus,
     ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository,
 };
@@ -309,13 +309,13 @@ impl SaveBackupAutoSchedulerService {
             ("error_code".to_owned(), error_code.to_owned()),
         ]);
         // 审计写失败不阻塞调度检查。
-        let _ = self.audit_log.record(AuditLogEvent {
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis: checked_at,
             category: "save_backup".to_owned(),
             operation: "auto_backup".to_owned(),
             result: "deferred".to_owned(),
             fields,
-        });
+        }, AuditWriteFailurePolicy::BestEffort);
     }
 
     fn save_scheduler_state(

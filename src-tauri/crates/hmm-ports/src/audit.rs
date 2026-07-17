@@ -17,8 +17,22 @@ pub struct AuditLogReadRequest {
     pub max_events: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditWriteFailurePolicy {
+    BestEffort,
+    ReportAfterCommit,
+}
+
 pub trait AuditLogWriter: Send + Sync {
     fn record(&self, event: AuditLogEvent) -> Result<()>;
+
+    fn record_with_policy(
+        &self,
+        event: AuditLogEvent,
+        _policy: AuditWriteFailurePolicy,
+    ) -> Result<()> {
+        self.record(event)
+    }
 }
 
 pub trait AuditLogReader: Send + Sync {

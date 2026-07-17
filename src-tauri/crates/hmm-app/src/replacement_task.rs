@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId, ReplacementTargetId};
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
 use crate::{
     GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, InstallPlanCommitter,
@@ -243,13 +243,14 @@ impl RetargetInstallTaskRunner {
         if let Some(error_code) = error_code {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
-        let _ = self.audit_log.record(AuditLogEvent {
+        let policy = if result == "success" { AuditWriteFailurePolicy::ReportAfterCommit } else { AuditWriteFailurePolicy::BestEffort };
+        let _ = self.audit_log.record_with_policy(AuditLogEvent {
             timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
             category: "install".to_owned(),
             operation: "commit_retargeted_mod".to_owned(),
             result: result.to_owned(),
             fields,
-        });
+        }, policy);
     }
 }
 

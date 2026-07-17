@@ -1,12 +1,29 @@
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter,
     DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary, TextLogKind, TextLogLine,
-    TextLogReadRequest, TextLogReader,
+    DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary, DiagnosticsEvidenceHealth,
+    DiagnosticsEvidenceHealthSnapshot, TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+#[cfg(test)]
+struct HealthyEvidence;
+#[cfg(test)]
+impl DiagnosticsEvidenceHealth for HealthyEvidence {
+    fn snapshot(&self) -> DiagnosticsEvidenceHealthSnapshot {
+        DiagnosticsEvidenceHealthSnapshot {
+            task_log_status: "ok".to_owned(),
+            audit_log_status: "ok".to_owned(),
+            task_log_write_failure_count: 0,
+            audit_write_failure_count: 0,
+            audit_write_failure_after_commit_count: 0,
+        }
+    }
+    fn record_task_log_write_failure(&self, _status: &'static str) {}
+    fn record_audit_write_failure(&self, _after_commit: bool) {}
+}
 
 const SUPPORT_DIAGNOSTICS_ENTRY_NAME: &str = "support-diagnostics.json";
 const APP_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "app-log-diagnostics.json";
@@ -23,6 +40,7 @@ pub struct SupportDiagnosticsExport {
     pub app_log_line_count: usize,
     pub task_log_line_count: usize,
     pub audit_event_count: usize,
+    pub evidence_health: DiagnosticsEvidenceHealthSnapshot,
 }
 
 pub struct SupportDiagnosticsExportService {
@@ -32,9 +50,11 @@ pub struct SupportDiagnosticsExportService {
     diagnostic_exporter: Arc<dyn DiagnosticPackageExporter>,
     audit_log_writer: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
+    evidence_health: Arc<dyn DiagnosticsEvidenceHealth>,
 }
 
 impl SupportDiagnosticsExportService {
+    #[cfg(test)]
     pub fn new(
         text_log_reader: Arc<dyn TextLogReader>,
         audit_log_reader: Arc<dyn AuditLogReader>,
@@ -43,6 +63,26 @@ impl SupportDiagnosticsExportService {
         audit_log_writer: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
+        Self::new_with_health(
+            text_log_reader,
+            audit_log_reader,
+            environment_provider,
+            diagnostic_exporter,
+            audit_log_writer,
+            clock,
+            Arc::new(HealthyEvidence),
+        )
+    }
+
+    pub fn new_with_health(
+        text_log_reader: Arc<dyn TextLogReader>,
+        audit_log_reader: Arc<dyn AuditLogReader>,
+        environment_provider: Arc<dyn DiagnosticsEnvironmentProvider>,
+        diagnostic_exporter: Arc<dyn DiagnosticPackageExporter>,
+        audit_log_writer: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        evidence_health: Arc<dyn DiagnosticsEvidenceHealth>,
+    ) -> Self {
         Self {
             text_log_reader,
             audit_log_reader,
@@ -50,6 +90,7 @@ impl SupportDiagnosticsExportService {
             diagnostic_exporter,
             audit_log_writer,
             clock,
+            evidence_health,
         }
     }
 
@@ -138,12 +179,14 @@ impl SupportDiagnosticsExportService {
             }
         };
 
+        let evidence_health = self.evidence_health.snapshot();
         let support_payload = serde_json::to_vec(&support_diagnostics_payload(
             export_timestamp,
             &platform_summary,
             app_log_lines.len(),
             task_log_lines.len(),
             audit_events.len(),
+            &evidence_health,
         ))
         .map_err(|_| support_diagnostics_unavailable())?;
         let app_log_payload =
@@ -212,6 +255,7 @@ impl SupportDiagnosticsExportService {
             app_log_line_count: app_log_lines.len(),
             task_log_line_count: task_log_lines.len(),
             audit_event_count: audit_events.len(),
+            evidence_health,
         })
     }
 }
@@ -226,10 +270,18 @@ fn support_diagnostics_payload(
     app_log_line_count: usize,
     task_log_line_count: usize,
     audit_event_count: usize,
+    evidence_health: &DiagnosticsEvidenceHealthSnapshot,
 ) -> serde_json::Value {
     json!({
         "generatedAtUnixMillis": generated_at_unix_millis,
         "platformSummary": platform_summary,
+        "evidenceHealth": {
+            "taskLogStatus": evidence_health.task_log_status,
+            "auditLogStatus": evidence_health.audit_log_status,
+            "taskLogWriteFailureCount": evidence_health.task_log_write_failure_count,
+            "auditWriteFailureCount": evidence_health.audit_write_failure_count,
+            "auditWriteFailureAfterCommitCount": evidence_health.audit_write_failure_after_commit_count,
+        },
         "exportCategories": [
             {
                 "category": "platform_summary",
