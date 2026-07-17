@@ -31,6 +31,6 @@ export const navItems: NavItem[] = [
   { id: "backups", label: "存档备份", icon: Archive, route: "/backups", disabledReason: "存档路径规则接入后启用" },
   { id: "games", label: "游戏管理", icon: Gamepad2, route: "/games", disabledReason: "游戏管理页面尚未接入" },
   { id: "tasks", label: "任务队列", icon: ListChecks, route: "/tasks", disabledReason: "任务队列页面尚未接入" },
-  { id: "diagnostics", label: "日志 / 诊断", icon: FileSearch, route: "/diagnostics", disabledReason: "日志诊断页面尚未接入" },
+  { id: "diagnostics", label: "日志 / 诊断", icon: FileSearch, route: "/diagnostics" },
   { id: "settings", label: "设置", icon: Settings, route: "/settings" },
 ];

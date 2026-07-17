@@ -5,6 +5,7 @@ import { SettingsPage } from "../../features/settings/SettingsPage";
 import { CategoryPage } from "../../features/categories/CategoryPage";
 import { ProfilePage } from "../../features/profiles/ProfilePage";
 import type { AppRoute } from "./routeTypes";
+import { DiagnosticsPage } from "../../features/diagnostics/DiagnosticsPage";
 
 export const appRoutes = [
   {
@@ -21,6 +22,11 @@ export const appRoutes = [
     id: "recovery",
     path: "/recovery",
     element: RecoveryCenterPage,
+  },
+  {
+    id: "diagnostics",
+    path: "/diagnostics",
+    element: DiagnosticsPage,
   },
   {
     id: "categories",
