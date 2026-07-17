@@ -72,6 +72,7 @@ export function useModalFocusTrap({
     }
 
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const containerAtActivation = containerRef.current;
     const frameId = window.requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container || !isTopmostModalSurface(container)) {
@@ -88,6 +89,12 @@ export function useModalFocusTrap({
 
     return () => {
       window.cancelAnimationFrame(frameId);
+      const activeModal = document.activeElement?.closest<HTMLElement>('[aria-modal="true"]') ?? null;
+      if (activeModal && activeModal !== containerAtActivation) {
+        restoreFocusRef.current = null;
+        return;
+      }
+
       if (restoreFocusRef.current?.isConnected) {
         restoreFocusRef.current.focus();
       }

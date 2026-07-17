@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { FeedbackPortal } from "./FeedbackProvider";
 
 type TaskNoticeTone = "neutral" | "progress" | "success" | "warning" | "danger";
 
@@ -23,21 +22,19 @@ export function TaskNotice({
   const role = tone === "danger" ? "alert" : "status";
 
   return (
-    <FeedbackPortal>
-      <section
-        className={`feedback-task-notice is-${tone}`}
-        data-task-id={taskId}
-        role={role}
-        aria-live={tone === "danger" ? "assertive" : "polite"}
-        aria-atomic="true"
-      >
-        <div className="feedback-task-notice__copy">
-          <strong>{title}</strong>
-          {message ? <p>{message}</p> : null}
-        </div>
-        {children}
-        {actions ? <div className="feedback-task-notice__actions">{actions}</div> : null}
-      </section>
-    </FeedbackPortal>
+    <section
+      className={`feedback-task-notice is-${tone}`}
+      data-task-id={taskId}
+      role={role}
+      aria-live={tone === "danger" ? "assertive" : "polite"}
+      aria-atomic="true"
+    >
+      <div className="feedback-task-notice__copy">
+        <strong>{title}</strong>
+        {message ? <p>{message}</p> : null}
+      </div>
+      {children}
+      {actions ? <div className="feedback-task-notice__actions">{actions}</div> : null}
+    </section>
   );
 }

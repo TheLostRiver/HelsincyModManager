@@ -35,13 +35,13 @@ export function getTrappedFocusIndex({ currentIndex, focusableCount, backwards }
 
 export function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (element) => element.tabIndex >= 0 && !element.hasAttribute("aria-hidden") && !element.hasAttribute("hidden"),
+    (element) => element.tabIndex >= 0 && isElementRendered(element),
   );
 }
 
 export function isTopmostModalSurface(container: HTMLElement): boolean {
   const visibleModals = Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"]')).filter(
-    (modal) => getComputedStyle(modal).display !== "none" && getComputedStyle(modal).visibility !== "hidden",
+    isElementRendered,
   );
   let topmost: HTMLElement | null = null;
   let topmostLayer = Number.NEGATIVE_INFINITY;
@@ -55,6 +55,32 @@ export function isTopmostModalSurface(container: HTMLElement): boolean {
   }
 
   return topmost === container;
+}
+
+function isElementRendered(element: HTMLElement): boolean {
+  if (element.getClientRects().length === 0) {
+    return false;
+  }
+
+  let current: HTMLElement | null = element;
+  while (current) {
+    if (
+      current.hasAttribute("hidden")
+      || current.hasAttribute("inert")
+      || current.getAttribute("aria-hidden") === "true"
+    ) {
+      return false;
+    }
+
+    const style = getComputedStyle(current);
+    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") {
+      return false;
+    }
+
+    current = current.parentElement;
+  }
+
+  return true;
 }
 
 function getModalLayer(modal: HTMLElement): number {
