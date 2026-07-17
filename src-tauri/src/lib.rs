@@ -2,6 +2,7 @@ mod app_log;
 mod background_worker;
 mod category_commands;
 mod dto;
+mod diagnostics_dto;
 mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
@@ -39,6 +40,7 @@ use install_commands::{
 };
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
+    get_diagnostics_page_snapshot,
     get_mod_dependency_graph, get_mod_detail, get_mod_detail_preview_image, get_mod_library,
     get_preview_image_candidates, get_preview_image_diagnostics, get_thumbnail_cache_settings,
     maintain_thumbnail_cache, select_preview_image_candidate, set_thumbnail_cache_settings,
@@ -139,6 +141,7 @@ pub fn run() {
             export_preview_image_diagnostics,
             export_audit_log_diagnostics,
             export_support_diagnostics,
+            get_diagnostics_page_snapshot,
             get_preview_image_candidates,
             select_preview_image_candidate,
             maintain_thumbnail_cache,

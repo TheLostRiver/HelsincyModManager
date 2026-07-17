@@ -198,6 +198,11 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 
 ## 诊断导出
 
+L3 的 `/diagnostics` 页面通过无参数 `get_diagnostics_page_snapshot` 读取固定上限安全快照。App/Task 文本
+继续由 `TextLogReader` 校验，Audit 事件继续由 `AuditLogReader` 校验；前端不接触日志目录或文件路径。
+任一类别不可读时只返回稳定状态，其他安全类别仍可展示。受控导出继续使用
+`export_support_diagnostics`，成功/失败沿用既有最小 Audit Log 策略。
+
 诊断包用于用户主动反馈问题，必须默认脱敏。
 
 可包含：

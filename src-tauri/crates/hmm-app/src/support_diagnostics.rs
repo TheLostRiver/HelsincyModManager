@@ -30,6 +30,7 @@ const APP_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "app-log-diagnostics.json";
 const TASK_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "task-log-diagnostics.json";
 const SUPPORT_AUDIT_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "audit-log-diagnostics.json";
 pub const MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES: usize = 200;
+pub const MAX_DIAGNOSTICS_PAGE_ITEMS: usize = 100;
 const SUPPORT_DIAGNOSTICS_UNAVAILABLE: &str = "support diagnostics unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +41,19 @@ pub struct SupportDiagnosticsExport {
     pub app_log_line_count: usize,
     pub task_log_line_count: usize,
     pub audit_event_count: usize,
+    pub evidence_health: DiagnosticsEvidenceHealthSnapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticsPageSnapshot {
+    pub platform_summary: Option<DiagnosticsEnvironmentSummary>,
+    pub platform_status: String,
+    pub app_log_status: String,
+    pub task_log_status: String,
+    pub audit_log_status: String,
+    pub app_log_lines: Vec<TextLogLine>,
+    pub task_log_lines: Vec<TextLogLine>,
+    pub audit_events: Vec<AuditLogEvent>,
     pub evidence_health: DiagnosticsEvidenceHealthSnapshot,
 }
 
@@ -258,6 +272,55 @@ impl SupportDiagnosticsExportService {
             evidence_health,
         })
     }
+
+    pub fn read_page_snapshot(&self) -> DiagnosticsPageSnapshot {
+        let (platform_summary, platform_status) = match self.environment_provider.summarize() {
+            Ok(summary) => (Some(summary), "ok".to_owned()),
+            Err(_) => (None, "environment_unavailable".to_owned()),
+        };
+        let (app_log_lines, app_log_status) = read_text_log_snapshot(
+            self.text_log_reader.as_ref(),
+            TextLogKind::App,
+            "app_log_read_failed",
+        );
+        let (task_log_lines, task_log_status) = read_text_log_snapshot(
+            self.text_log_reader.as_ref(),
+            TextLogKind::Task,
+            "task_log_read_failed",
+        );
+        let (audit_events, audit_log_status) = match self.audit_log_reader.read_recent_sanitized(
+            AuditLogReadRequest { max_events: MAX_DIAGNOSTICS_PAGE_ITEMS },
+        ) {
+            Ok(events) => (events, "ok".to_owned()),
+            Err(_) => (Vec::new(), "audit_log_read_failed".to_owned()),
+        };
+
+        DiagnosticsPageSnapshot {
+            platform_summary,
+            platform_status,
+            app_log_status,
+            task_log_status,
+            audit_log_status,
+            app_log_lines,
+            task_log_lines,
+            audit_events,
+            evidence_health: self.evidence_health.snapshot(),
+        }
+    }
+}
+
+fn read_text_log_snapshot(
+    reader: &dyn TextLogReader,
+    kind: TextLogKind,
+    failure_status: &str,
+) -> (Vec<TextLogLine>, String) {
+    match reader.read_recent_sanitized(TextLogReadRequest {
+        kind,
+        max_lines: MAX_DIAGNOSTICS_PAGE_ITEMS,
+    }) {
+        Ok(lines) => (lines, "ok".to_owned()),
+        Err(_) => (Vec::new(), failure_status.to_owned()),
+    }
 }
 
 fn support_diagnostics_unavailable() -> anyhow::Error {
@@ -473,6 +536,28 @@ mod tests {
         assert_eq!(event.fields["app_log_line_count"], "1");
         assert_eq!(event.fields["task_log_line_count"], "1");
         assert_eq!(event.fields["audit_event_count"], "1");
+    }
+
+    #[test]
+    fn page_snapshot_keeps_safe_sections_available_when_one_reader_fails() {
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(FailingTextLogReader { failing_kind: TextLogKind::Task }),
+            Arc::new(StaticAuditLogReader),
+            Arc::new(StaticDiagnosticsEnvironmentProvider),
+            Arc::new(RecordingDiagnosticPackageExporter::default()),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let snapshot = service.read_page_snapshot();
+
+        assert_eq!(snapshot.platform_status, "ok");
+        assert_eq!(snapshot.app_log_status, "ok");
+        assert_eq!(snapshot.app_log_lines.len(), 1);
+        assert_eq!(snapshot.task_log_status, "task_log_read_failed");
+        assert!(snapshot.task_log_lines.is_empty());
+        assert_eq!(snapshot.audit_log_status, "ok");
+        assert_eq!(snapshot.audit_events.len(), 1);
     }
 
     #[test]

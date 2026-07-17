@@ -176,6 +176,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 浏览器 smoke 覆盖 `1440x900`、`1366x768`、`960x640` 和 `390x844`：确认只有一个 body-level feedback host，Toast 队列不挤压页面且不产生横向溢出，长文本可换行，最多一个可选动作，hover/focus 暂停自动关闭，Escape 关闭最新通知，并验证多个任务的通知仍带稳定来源 key 与 taskId。
 
+### T19 Logging / Diagnostics L3
+
+```powershell
+node --test src/features/diagnostics/diagnosticsPage.test.mjs
+cargo test -p hmm-app page_snapshot_keeps_safe_sections_available_when_one_reader_fails
+cargo test -p hmm-tauri serializes_diagnostics_page_snapshot_without_path_fields
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run build
+cargo check --workspace
+```
+
+必须覆盖 reader 部分失败、空结果、稳定健康码、DTO/typed API 无路径字段、受控导出确认与失败不误报成功。
+诊断 ZIP 继续执行既有敏感片段扫描；浏览器 smoke 覆盖 `1440x900`、`960x640` 和 `390x844`。
+
 ## Tauri / Rust 桥接改动
 
 
