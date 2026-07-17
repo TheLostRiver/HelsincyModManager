@@ -8,6 +8,8 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+cap-fs-ext.workspace = true
+cap-std.workspace = true
 fs2 = "0.4.3"
 rusqlite.workspace = true
 rusqlite_migration.workspace = true
@@ -29,8 +31,5 @@ zip.workspace = true
 wait-timeout.workspace = true
 windows-sys = { workspace = true, features = ["Win32_System_SystemInformation"] }
 winreg = "0.56"
-
-[target.'cfg(unix)'.dependencies]
-libc.workspace = true
 
 [dev-dependencies]
