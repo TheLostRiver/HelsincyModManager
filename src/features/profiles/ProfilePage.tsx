@@ -235,6 +235,7 @@ export function ProfilePage() {
   const [saveBackupTaskState, setSaveBackupTaskState] = useState<ProfileSaveBackupTaskState>({ status: "idle" });
   const saveBackupTaskStateRef = useRef<ProfileSaveBackupTaskState>({ status: "idle" });
   const pendingSaveBackupProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
+  const saveBackupTaskProfileIdsRef = useRef<Map<string, string>>(new Map());
   const lastBackupHistoryRefreshTaskIdRef = useRef<string | null>(null);
   const pendingBackupCompletionToastRef = useRef<{ taskId: string; profileId: string } | null>(null);
   const [autoBackupCheckState, setAutoBackupCheckState] = useState<AutoBackupCheckState>({ status: "idle" });
@@ -245,7 +246,8 @@ export function ProfilePage() {
   const previewAutoBackupSettings =
     previewMode && settingsState.status === "ready" ? settingsState.settings : null;
 
-  const attachStartedSaveBackupTask = useCallback((task: TaskStartedDto) => {
+  const attachStartedSaveBackupTask = useCallback((task: TaskStartedDto, profileId: string) => {
+    saveBackupTaskProfileIdsRef.current.set(task.taskId, profileId);
     const initialTaskState: ProfileSaveBackupTaskState = {
       status: "running",
       taskId: task.taskId,
@@ -363,7 +365,6 @@ export function ProfilePage() {
     setSaveBackupTaskState({ status: "idle" });
     pendingSaveBackupProgressEventsRef.current.clear();
     lastBackupHistoryRefreshTaskIdRef.current = null;
-    pendingBackupCompletionToastRef.current = null;
   }, [selectedProfileId]);
 
   useEffect(() => {
@@ -380,7 +381,12 @@ export function ProfilePage() {
         status: "ready",
         backups: createPreviewSaveBackups(selectedProfileId),
       });
-      publishPendingBackupCompletionToast(pendingBackupCompletionToastRef, selectedProfileId, pushToast);
+      publishPendingBackupCompletionToast(
+        pendingBackupCompletionToastRef,
+        saveBackupTaskProfileIdsRef,
+        selectedProfileId,
+        pushToast,
+      );
       return;
     }
 
@@ -392,7 +398,12 @@ export function ProfilePage() {
       .then((backups) => {
         if (!cancelled) {
           setBackupHistoryState({ status: "ready", backups });
-          publishPendingBackupCompletionToast(pendingBackupCompletionToastRef, selectedProfileId, pushToast);
+          publishPendingBackupCompletionToast(
+            pendingBackupCompletionToastRef,
+            saveBackupTaskProfileIdsRef,
+            selectedProfileId,
+            pushToast,
+          );
         }
       })
       .catch((error: unknown) => {
@@ -405,6 +416,7 @@ export function ProfilePage() {
           const pending = pendingBackupCompletionToastRef.current;
           if (pending?.profileId === selectedProfileId) {
             pendingBackupCompletionToastRef.current = null;
+            saveBackupTaskProfileIdsRef.current.delete(pending.taskId);
             pushToast({
               eventKey: `profile.save-backup.refresh-failed.${pending.taskId}`,
               taskId: pending.taskId,
@@ -448,7 +460,7 @@ export function ProfilePage() {
         if (cancelled) return;
         setAutoBackupCheckState(autoBackupCheckStateFromResult(result));
         if (result.startedTask) {
-          attachStartedSaveBackupTask(result.startedTask);
+          attachStartedSaveBackupTask(result.startedTask, selectedProfileId);
         }
       } catch (error) {
         if (!cancelled) {
@@ -554,19 +566,23 @@ export function ProfilePage() {
     if (shouldRefreshProfileSaveBackupHistory(saveBackupTaskState)) {
       if (lastBackupHistoryRefreshTaskIdRef.current !== saveBackupTaskState.taskId) {
         lastBackupHistoryRefreshTaskIdRef.current = saveBackupTaskState.taskId;
-        setBackupHistoryRefreshToken((current) => current + 1);
-        setAutoBackupCheckRefreshToken((current) => current + 1);
-        if (selectedProfileId) {
+        const taskProfileId = saveBackupTaskProfileIdsRef.current.get(saveBackupTaskState.taskId);
+        if (taskProfileId) {
           pendingBackupCompletionToastRef.current = {
             taskId: saveBackupTaskState.taskId,
-            profileId: selectedProfileId,
+            profileId: taskProfileId,
           };
+          if (selectedProfileId === taskProfileId) {
+            setBackupHistoryRefreshToken((current) => current + 1);
+            setAutoBackupCheckRefreshToken((current) => current + 1);
+          }
         }
       }
       return;
     }
 
     if (saveBackupTaskState.status === "failed") {
+      if (saveBackupTaskState.taskId) saveBackupTaskProfileIdsRef.current.delete(saveBackupTaskState.taskId);
       pushToast({
         eventKey: `profile.save-backup.failed.${saveBackupTaskState.taskId ?? "start"}`,
         taskId: saveBackupTaskState.taskId ?? undefined,
@@ -671,6 +687,7 @@ export function ProfilePage() {
     setSaveBackupTaskState({ status: "starting" });
     if (previewMode) {
       const taskId = `preview-save-backup-${Date.now()}`;
+      saveBackupTaskProfileIdsRef.current.set(taskId, selectedProfileId);
       setSaveBackupTaskState({
         status: "completed",
         taskId,
@@ -686,7 +703,7 @@ export function ProfilePage() {
         profileId: selectedProfileId,
         note: selectedProfile ? `手动备份：${selectedProfile.name}` : null,
       });
-      attachStartedSaveBackupTask(task);
+      attachStartedSaveBackupTask(task, selectedProfileId);
     } catch (error) {
       setSaveBackupTaskState({
         status: "failed",
@@ -1251,6 +1268,7 @@ function getManualBackupBlockedReason({
 
 function publishPendingBackupCompletionToast(
   pendingRef: React.MutableRefObject<{ taskId: string; profileId: string } | null>,
+  taskProfileIdsRef: React.MutableRefObject<Map<string, string>>,
   profileId: string,
   pushToast: (input: FeedbackToastInput) => void,
 ) {
@@ -1258,6 +1276,7 @@ function publishPendingBackupCompletionToast(
   if (!pending || pending.profileId !== profileId) return;
 
   pendingRef.current = null;
+  taskProfileIdsRef.current.delete(pending.taskId);
   pushToast({
     eventKey: `profile.save-backup.completed.${pending.taskId}`,
     taskId: pending.taskId,

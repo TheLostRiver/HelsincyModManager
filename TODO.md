@@ -475,7 +475,7 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2
+已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3
   -> 当前: T19 L3
   -> 后续: T18 Mod 库分页 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审

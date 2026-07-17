@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -41,7 +42,14 @@ export function FeedbackProvider({ children }: FeedbackProviderProps) {
   }, []);
   const dismissToast = useCallback((id: string) => setToasts((queue) => dismissFeedbackToast(queue, id)), []);
   const showTaskNotice = useCallback((input: FeedbackTaskNoticeInput) => {
-    setTaskNotices((notices) => [...notices.filter((notice) => notice.taskId !== input.taskId), input]);
+    setTaskNotices((notices) => {
+      const index = notices.findIndex((notice) => notice.taskId === input.taskId);
+      if (index < 0) return [...notices, input];
+
+      const next = [...notices];
+      next[index] = input;
+      return next;
+    });
   }, []);
   const dismissTaskNotice = useCallback((taskId: string) => {
     setTaskNotices((notices) => notices.filter((notice) => notice.taskId !== taskId));
@@ -68,9 +76,14 @@ export function FeedbackProvider({ children }: FeedbackProviderProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const actions = useMemo(
+    () => ({ pushToast, dismissToast, showTaskNotice, dismissTaskNotice }),
+    [dismissTaskNotice, dismissToast, pushToast, showTaskNotice],
+  );
+
   return (
     <FeedbackHostContext.Provider value={host}>
-      <FeedbackActionsContext.Provider value={{ pushToast, dismissToast, showTaskNotice, dismissTaskNotice }}>
+      <FeedbackActionsContext.Provider value={actions}>
         {children}
         {taskNotices.length > 0 ? (
           <TaskNoticeViewport>

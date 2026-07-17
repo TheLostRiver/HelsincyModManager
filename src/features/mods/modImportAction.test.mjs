@@ -20,6 +20,7 @@ test("mod import action opens a ZIP picker and starts the controlled task", () =
   assert.match(source, /showTaskNotice\(\{/);
   assert.match(source, /taskId:\s*taskState\.taskId/);
   assert.match(source, /dismissTaskNotice\(previousTaskId\)/);
+  assert.match(source, /Promise\.resolve\(\)[\s\S]*?\.then\(\(\) => onImportedRef\.current\(\)\)[\s\S]*?mod-import\.refresh-failed/);
   assert.doesNotMatch(source, /convertFileSrc|readFile|writeFile|removeFile|asset:|thumbnail:/);
   assert.doesNotMatch(source, /event\.payload\.(message|error)/);
 });
