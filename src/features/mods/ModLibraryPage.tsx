@@ -278,7 +278,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const startFailureToastSequenceRef = useRef(0);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const installPlanPreviewGenerationRef = useRef(0);
-  activeProfileIdRef.current = activeProfile.status === "ready" ? activeProfileId : null;
+
+  useEffect(() => {
+    activeProfileIdRef.current = activeProfile.status === "ready" ? activeProfileId : null;
+  }, [activeProfile.status, activeProfileId]);
 
   const setTrackedInstallTaskState = useCallback((update: ManagedInstallTaskStateUpdate) => {
     const nextState = typeof update === "function" ? update(installTaskStateRef.current) : update;

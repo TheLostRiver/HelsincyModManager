@@ -255,6 +255,6 @@
 @media (prefers-reduced-motion: reduce) {
   .mod-lifecycle-feedback__spinner,
   .mod-lifecycle-feedback__task-progress span {
-    animation-duration: 0.01ms;
+    animation: none;
   }
 }

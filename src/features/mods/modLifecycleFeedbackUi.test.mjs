@@ -51,11 +51,17 @@ test("running notice is strictly task keyed and terminal toast stays feature loc
 
 test("terminal feedback is published only after durable manifest and recovery refresh", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
+  const profileRefEffect = page.search(
+    /useEffect\(\(\) => \{\s*activeProfileIdRef\.current = activeProfile\.status === "ready" \? activeProfileId : null;\s*\}, \[activeProfile\.status, activeProfileId\]\);/,
+  );
   const refreshStart = page.indexOf("const refreshTerminalFacts");
   const refreshCall = page.indexOf("await refreshInstallManifestStatusesWithOutcome", refreshStart);
   const identityGuard = page.indexOf("isManagedInstallTerminalRefreshCurrent", refreshCall);
   const toastCall = page.indexOf("setLifecycleToast(getManagedInstallTerminalToast", refreshStart);
 
+  assert.ok(profileRefEffect >= 0);
+  assert.ok(profileRefEffect < refreshStart);
+  assert.equal(page.match(/activeProfileIdRef\.current\s*=/g)?.length, 1);
   assert.ok(refreshStart >= 0);
   assert.ok(refreshCall > refreshStart);
   assert.ok(identityGuard > refreshCall);
@@ -66,6 +72,19 @@ test("terminal feedback is published only after durable manifest and recovery re
   assert.match(page, /setLifecycleToast\(null\)/);
   assert.match(page, /isManagedInstallTaskTerminal\(installTaskState\)/);
   assert.match(page, /handledInstallTerminalTaskIdsRef/);
+});
+
+test("reduced motion disables lifecycle feedback animations", () => {
+  const css = readSource("src/features/mods/ModLifecycleFeedback.css");
+  const reducedMotionBlock = css.match(
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/,
+  )?.[1];
+
+  assert.ok(reducedMotionBlock);
+  assert.match(reducedMotionBlock, /\.mod-lifecycle-feedback__spinner/);
+  assert.match(reducedMotionBlock, /\.mod-lifecycle-feedback__task-progress span/);
+  assert.match(reducedMotionBlock, /animation:\s*none/);
+  assert.doesNotMatch(reducedMotionBlock, /animation-duration/);
 });
 
 test("closing the install sheet invalidates pending preview without cancelling a task", () => {
