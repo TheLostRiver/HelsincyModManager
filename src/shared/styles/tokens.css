@@ -59,6 +59,10 @@
    * 避免两块吸顶元素叠压。860px 断点状态栏内容可能略高，按需在断点覆盖。
    */
   --app-header-height: 64px;
+  --z-feedback-task: 145;
+  --z-feedback-toast: 155;
+  --z-feedback-sheet: 170;
+  --z-feedback-dialog: 180;
   --shadow-soft: 0 18px 45px #0f172a12;
   --shadow-panel: 0 24px 70px #0f172a18;
   --shadow-card: 0 22px 60px #0f172a14;

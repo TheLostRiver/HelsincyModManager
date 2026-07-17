@@ -6,16 +6,6 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
-function getRuleBody(css, selector) {
-  const start = css.indexOf(`${selector} {`);
-  assert.ok(start >= 0, `missing CSS rule: ${selector}`);
-
-  const openBraceIndex = css.indexOf("{", start);
-  const closeBraceIndex = css.indexOf("}", openBraceIndex);
-  assert.ok(openBraceIndex >= 0 && closeBraceIndex > openBraceIndex, `invalid CSS rule: ${selector}`);
-  return css.slice(openBraceIndex + 1, closeBraceIndex);
-}
-
 test("game setup startup auto detection uses a narrow backend command and persists valid discoveries", () => {
   const api = readSource("src/features/game-setup/gameSetupApi.ts");
   const types = readSource("src/features/game-setup/gameSetupTypes.ts");
@@ -37,46 +27,37 @@ test("game setup startup auto detection uses a narrow backend command and persis
   assert.match(sharedApi, /autoDetectGameDirectory/);
 });
 
-test("dashboard renders startup game setup failures as a centered floating notice", () => {
-  assert.equal(existsSync("src/features/game-setup/GameSetupFloatingNotice.tsx"), true);
-  assert.equal(existsSync("src/features/game-setup/GameSetupFloatingNotice.css"), true);
+test("dashboard renders startup game setup failures in the shared modal dialog", () => {
+  assert.equal(existsSync("src/features/game-setup/GameSetupDialog.tsx"), true);
+  assert.equal(existsSync("src/features/game-setup/GameSetupDialog.css"), true);
 
   const dashboard = readSource("src/features/dashboard/DashboardPage.tsx");
-  const notice = readSource("src/features/game-setup/GameSetupFloatingNotice.tsx");
-  const css = readSource("src/features/game-setup/GameSetupFloatingNotice.css");
+  const dialog = readSource("src/features/game-setup/GameSetupDialog.tsx");
+  const modal = readSource("src/shared/feedback/ModalSurface.tsx");
 
-  assert.match(dashboard, /<GameSetupFloatingNotice/);
+  assert.match(dashboard, /<GameSetupDialog/);
   assert.match(dashboard, /notice=\{gameSetup\.startupNotice\}/);
   assert.match(dashboard, /onRetry=\{gameSetup\.retryStartupDetection\}/);
   assert.match(dashboard, /onDismiss=\{gameSetup\.dismissStartupNotice\}/);
 
-  assert.match(notice, /className="game-setup-floating-notice"/);
-  assert.match(notice, /role="status"/);
-  assert.match(notice, /aria-live="polite"/);
-  assert.match(notice, /onRetry/);
-  assert.match(notice, /onManualSelect/);
-  assert.match(notice, /onDismiss/);
-  assert.doesNotMatch(notice, /className=".*banner|role="dialog"|aria-modal="true"/);
-
-  const body = getRuleBody(css, ".game-setup-floating-notice");
-  assert.match(body, /position:\s*fixed;/);
-  assert.match(body, /top:\s*clamp\(72px,\s*14vh,\s*128px\);/);
-  assert.match(body, /left:\s*50%;/);
-  assert.match(body, /transform:\s*translateX\(-50%\);/);
-  assert.match(body, /z-index:\s*80;/);
-  assert.doesNotMatch(body, /position:\s*static|position:\s*sticky/);
+  assert.match(dialog, /<Dialog/);
+  assert.match(dialog, /closeOnEscape=\{!isBusy\}/);
+  assert.match(dialog, /closeOnBackdrop=\{!isBusy\}/);
+  assert.match(dialog, /busy=\{isBusy\}/);
+  assert.match(dialog, /initialFocusRef=\{retryButtonRef\}/);
+  assert.match(dialog, /onRetry/);
+  assert.match(dialog, /onManualSelect/);
+  assert.match(dialog, /onDismiss/);
+  assert.match(modal, /role=\{role\}/);
+  assert.match(modal, /aria-modal="true"/);
 });
 
-test("startup floating notice auto dismisses after a short idle window", () => {
-  const notice = readSource("src/features/game-setup/GameSetupFloatingNotice.tsx");
+test("startup game setup dialog requires an explicit close or successful setup", () => {
+  const dialog = readSource("src/features/game-setup/GameSetupDialog.tsx");
 
-  assert.match(notice, /AUTO_DISMISS_TIMEOUT_MS\s*=\s*6000/);
-  assert.match(notice, /useEffect/);
-  assert.match(notice, /isDismissPaused/);
-  assert.match(notice, /window\.setTimeout\(\(\)\s*=>\s*onDismiss\(\),\s*AUTO_DISMISS_TIMEOUT_MS\)/);
-  assert.match(notice, /window\.clearTimeout\(dismissTimer\)/);
-  assert.match(notice, /onPointerEnter=\{\(\)\s*=>\s*setIsDismissPaused\(true\)\}/);
-  assert.match(notice, /onPointerLeave=\{\(\)\s*=>\s*setIsDismissPaused\(false\)\}/);
-  assert.match(notice, /onFocus=\{\(\)\s*=>\s*setIsDismissPaused\(true\)\}/);
-  assert.match(notice, /onBlur=\{\(\)\s*=>\s*setIsDismissPaused\(false\)\}/);
+  assert.doesNotMatch(dialog, /AUTO_DISMISS_TIMEOUT_MS|setTimeout|isDismissPaused/);
+  assert.match(dialog, /onClose=\{onDismiss\}/);
+  assert.match(dialog, /disabled=\{isBusy\}/);
+  assert.match(dialog, /typeof selected === "string"/);
+  assert.match(dialog, /notice\.detail\.trim\(\)\s*!==\s*notice\.message\.trim\(\)/);
 });

@@ -116,6 +116,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
 
+### T19 Feedback UI U1
+
+共享反馈基元和首个游戏目录 Dialog 至少运行：
+
+```powershell
+node --test src/shared/feedback/feedbackPrimitives.test.mjs src/features/game-setup/gameSetupStartupDetection.test.mjs src/features/mods/modDetailDialog.test.mjs src/features/mods/modReinstallApi.test.mjs
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+```
+
+浏览器 smoke 覆盖 `1440x900`、`1366x768`、`960x640` 和窄屏 `390x844`：确认只存在一个
+body-level feedback host，游戏目录决策以 `aria-modal` Dialog 呈现，初始焦点和正反向 Tab wrap 正确，
+空闲态 Escape/背景点击可关闭，busy 态关闭入口全部阻断，关闭后焦点返回，长文本和按钮不溢出。
+同时确认 z-index 200 的窗口关闭保护高于共享 Dialog 180，只有视觉最顶层模态处理 Tab/Escape。
+
 ## Tauri / Rust 桥接改动
 
 适用范围：
