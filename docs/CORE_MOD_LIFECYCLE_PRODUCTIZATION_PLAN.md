@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期产品化加固实施计划
 
 - 任务编号：T19
-- 状态：`in_progress`（A1、L1、U1 已完成，下一切片为 U2）
+- 状态：`in_progress`（A1、L1、U1、U2 已完成，下一切片为 L2）
 - 规划日期：2026-07-17
 - 前置：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)中的 Gate A/B 均已 `certified`
 - 实施边界：每个切片独立 PR、独立 review；未满足当前完成定义前不启动下一切片
@@ -43,7 +43,9 @@ T19 是 Gate B 后优先级复审的结果，不是 Gate C，也不重新打开 
   reader/support diagnostics 兼容与敏感输入测试已落地。
 - [x] U1 共享反馈基元与游戏目录 Dialog：单一 overlay host、稳定层级、共享 focus trap、live region、
   reduced motion 和首个语义明确的游戏目录决策 Dialog 已落地。
-- [ ] U2、L2、U3、L3 尚未开始；U1 不提前迁移核心 Mod 操作反馈、Task Log、跨 feature 通知或日志页面。
+- [x] U2 核心 Mod 操作反馈：安装计划 Detail Sheet、危险卸载 Dialog、严格按 `taskId` 的安装/卸载
+  Task Notice，以及 durable refresh 后的完成/普通失败 Toast 已落地；恢复风险继续持久阻断。
+- [ ] L2、U3、L3 尚未开始；U2 未提前实现 Task Log/Audit 降级、跨 feature 通知框架或日志页面。
 
 ## 2. 事实基线
 
@@ -202,6 +204,11 @@ error code 或 retarget target。
 - 完成后仍重新查询 manifest/recovery；重启后动作可用性与后端事实一致。
 - 卸载确认不可被背景点击误触；任务活跃时关闭策略明确且不会丢失任务关联。
 - 覆盖 ready/blocked/running/completed/failed/cancelled/recovery-required 和窄屏视觉 smoke。
+
+实现结果（2026-07-17）：U2 复用 U1 单一 feedback host；starting 尚无后端 identity 时不伪造任务通知，
+只有 `running + taskId` 进入常驻 Task Notice。terminal event 先重查 manifest/recovery，verified false、
+持久恢复状态或 completed 与最终状态矛盾时均抑制普通 Toast，并把无法确认的目标 Mod fail closed 为
+持久 `unknown`。Toast 保持 feature-local 单条、手动关闭；队列、去重和 auto-dismiss 仍归 U3。
 
 ## 9. 切片 L2：Task Log 与 Audit 降级可见性
 

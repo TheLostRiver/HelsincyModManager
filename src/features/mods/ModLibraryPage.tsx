@@ -10,8 +10,14 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
-import { InstallPlanPreviewPanel, type InstallPlanPreviewPanelState } from "./InstallPlanPreviewPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
+import {
+  InstallPlanDetailSheet,
+  ManagedInstallTaskFeedback,
+  UninstallConfirmationDialog,
+  type InstallPlanDetailSheetState,
+  type UninstallConfirmationState,
+} from "./ModLifecycleFeedback";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { ModPosterCard } from "./ModPosterCard";
 import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
@@ -24,14 +30,20 @@ import {
 } from "./modInstallPlanApi";
 import type { UnsafeInstallStatus } from "./modInstallPlanTypes";
 import {
-  getManagedInstallTaskPhaseLabel,
-  getManagedInstallTaskStartingLabel,
   isManagedInstallTaskPhase,
   nextManagedInstallTaskStateFromProgress,
   type ManagedInstallTaskOperation,
   type ManagedInstallTaskState,
   type ManagedInstallTaskStateUpdate,
 } from "./modInstallTaskState";
+import {
+  failClosedModInstallSummary,
+  getManagedInstallTerminalToast,
+  isManagedInstallTerminalRefreshCurrent,
+  isManagedInstallTaskTerminal,
+  shouldFailClosedManagedInstallTerminal,
+  type ModLifecycleToast,
+} from "./modLifecycleFeedbackState";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModLibrary } from "./modLibraryApi";
@@ -206,56 +218,19 @@ function installTaskErrorMessage(error: unknown, operation: ManagedInstallTaskOp
   }
 }
 
-function installTaskPanelState(
-  previewState: InstallPlanPreviewPanelState,
-  installTaskState: ManagedInstallTaskState,
-): InstallPlanPreviewPanelState {
-  switch (installTaskState.status) {
-    case "idle":
-      return previewState;
-    case "starting":
-      return {
-        status: installTaskState.operation === "uninstall" ? "uninstall-starting" : "install-starting",
-        modName: installTaskState.modName,
-        phaseLabel: getManagedInstallTaskStartingLabel(installTaskState.operation),
-      };
-    case "running":
-      return {
-        status: installTaskState.operation === "uninstall" ? "uninstall-running" : "install-running",
-        modName: installTaskState.modName,
-        phaseLabel: getManagedInstallTaskPhaseLabel(installTaskState.phase),
-      };
-    case "completed":
-      return {
-        status: installTaskState.operation === "uninstall" ? "uninstall-completed" : "install-completed",
-        modName: installTaskState.modName,
-        phaseLabel: getManagedInstallTaskPhaseLabel(installTaskState.phase),
-      };
-    case "failed":
-      return {
-        status: installTaskState.operation === "uninstall" ? "uninstall-failed" : "install-failed",
-        modName: installTaskState.modName,
-        phaseLabel: getManagedInstallTaskPhaseLabel(installTaskState.phase),
-        message: installTaskState.message,
-      };
-    case "cancelled":
-      return {
-        status: "install-cancelled",
-        modName: installTaskState.modName,
-        phaseLabel: getManagedInstallTaskPhaseLabel(installTaskState.phase),
-      };
-  }
-}
-
 type UnsafeRecoverySummary = ModInstallSummary & {
   status: UnsafeInstallStatus;
+};
+
+type PendingUninstallConfirmation = UninstallConfirmationState & {
+  profileId: string;
 };
 
 function isUnsafeRecoverySummary(summary: ModInstallSummary | undefined): summary is UnsafeRecoverySummary {
   return isUnsafeInstallStatus(summary?.status ?? "");
 }
 
-function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanPreviewPanelState | null {
+function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanDetailSheetState | null {
   const summary = item.installSummary;
   if (!isUnsafeRecoverySummary(summary)) {
     return null;
@@ -290,16 +265,20 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     initialTab: ModDetailDialogTab;
     fallbackItem: ModLibraryItem | null;
   } | null>(null);
-  const [contextNotice, setContextNotice] = useState<string | null>(null);
-  const [installPlanPreviewState, setInstallPlanPreviewState] = useState<InstallPlanPreviewPanelState>({
+  const [installPlanDetailState, setInstallPlanDetailState] = useState<InstallPlanDetailSheetState>({
     status: "idle",
   });
+  const [uninstallConfirmation, setUninstallConfirmation] = useState<PendingUninstallConfirmation | null>(null);
   const [installTaskState, setInstallTaskState] = useState<ManagedInstallTaskState>({ status: "idle" });
+  const [lifecycleToast, setLifecycleToast] = useState<ModLifecycleToast | null>(null);
   const installTaskStateRef = useRef<ManagedInstallTaskState>(installTaskState);
-  const lastInstallStatusRefreshTaskIdRef = useRef<string | null>(null);
+  const activeProfileIdRef = useRef<string | null>(activeProfileId);
+  const pageMountedRef = useRef(true);
+  const handledInstallTerminalTaskIdsRef = useRef(new Set<string>());
+  const startFailureToastSequenceRef = useRef(0);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
-  const pendingUninstallRef = useRef<{ modId: string; modName: string } | null>(null);
   const installPlanPreviewGenerationRef = useRef(0);
+  activeProfileIdRef.current = activeProfile.status === "ready" ? activeProfileId : null;
 
   const setTrackedInstallTaskState = useCallback((update: ManagedInstallTaskStateUpdate) => {
     const nextState = typeof update === "function" ? update(installTaskStateRef.current) : update;
@@ -354,33 +333,46 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     });
   }, []);
 
-  const refreshInstallManifestStatuses = useCallback((items: ModLibraryItem[]) => {
+  const refreshInstallManifestStatusesWithOutcome = useCallback(async (items: ModLibraryItem[]) => {
     if (activeProfile.status !== "ready" || activeProfileId === null) {
-      return Promise.resolve(items);
+      return { items, verified: false };
     }
 
     const modIds = Array.from(new Set(items.map((item) => item.id))).filter((id) => id.length > 0);
     if (modIds.length === 0) {
-      return Promise.resolve(items);
+      return { items, verified: true };
     }
 
-    return getInstallManifestStatus({
-      gameId: DEFAULT_INSTALL_GAME_ID,
-      profileId: activeProfileId,
-      modIds,
-    })
-      .then((summaries) => applyInstallManifestStatusSummaries(items, summaries))
-      .then((itemsWithManifestStatus) =>
-        scanInstallRecovery({
+    try {
+      const manifestSummaries = await getInstallManifestStatus({
+        gameId: DEFAULT_INSTALL_GAME_ID,
+        profileId: activeProfileId,
+        modIds,
+      });
+      const itemsWithManifestStatus = applyInstallManifestStatusSummaries(items, manifestSummaries);
+
+      try {
+        const recoverySummaries = await scanInstallRecovery({
           gameId: DEFAULT_INSTALL_GAME_ID,
           profileId: activeProfileId,
           modIds,
-        })
-          .then((summaries) => applyInstallRecoverySummaries(itemsWithManifestStatus, summaries))
-          .catch(() => applyInstallRecoveryUnavailable(itemsWithManifestStatus)),
-      )
-      .catch(() => applyInstallRecoveryUnavailable(items));
+        });
+        return {
+          items: applyInstallRecoverySummaries(itemsWithManifestStatus, recoverySummaries),
+          verified: true,
+        };
+      } catch {
+        return { items: applyInstallRecoveryUnavailable(itemsWithManifestStatus), verified: false };
+      }
+    } catch {
+      return { items: applyInstallRecoveryUnavailable(items), verified: false };
+    }
   }, [activeProfile.status, activeProfileId]);
+
+  const refreshInstallManifestStatuses = useCallback(
+    async (items: ModLibraryItem[]) => (await refreshInstallManifestStatusesWithOutcome(items)).items,
+    [refreshInstallManifestStatusesWithOutcome],
+  );
 
   const loadModLibraryItems = useCallback((mode: ModLibraryLoadMode) => {
     return loadModLibraryItemsForMode({
@@ -410,10 +402,39 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     refreshLibrary: refreshModLibrary,
   });
   const { openReinstall } = reinstallWorkflow;
+  const uninstallBlockerMessage = useMemo(() => {
+    if (uninstallConfirmation === null) {
+      return null;
+    }
+    if (
+      activeProfile.status !== "ready"
+      || activeProfileId === null
+      || activeProfileId !== uninstallConfirmation.profileId
+    ) {
+      return "配置档状态已变化，当前不能安全卸载。";
+    }
+
+    const currentItem = libraryItems.find((item) => item.id === uninstallConfirmation.modId);
+    const currentSummary = currentItem?.installSummary;
+    if (currentSummary?.status !== "installed") {
+      return "后端安装状态已变化，请关闭并刷新后重试。";
+    }
+    return currentSummary.managedFileCount === uninstallConfirmation.managedFileCount
+      && currentSummary.backupCount === uninstallConfirmation.backupCount
+      ? null
+      : "后端安装摘要已变化，请关闭并刷新后重试。";
+  }, [activeProfile.status, activeProfileId, libraryItems, uninstallConfirmation]);
 
   useEffect(() => {
     libraryItemsRef.current = libraryItems;
   }, [libraryItems]);
+
+  useEffect(() => {
+    pageMountedRef.current = true;
+    return () => {
+      pageMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -450,31 +471,64 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [filterChips]);
 
   useEffect(() => {
-    if (!contextNotice) {
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => setContextNotice(null), 2600);
-    return () => window.clearTimeout(timeoutId);
-  }, [contextNotice]);
-
-  useEffect(() => {
-    if (installTaskState.status !== "completed") {
+    if (!isManagedInstallTaskTerminal(installTaskState)) {
       return;
     }
-    if (lastInstallStatusRefreshTaskIdRef.current === installTaskState.taskId) {
+    if (installTaskState.taskId === null) {
+      return;
+    }
+    const terminalTask = installTaskState;
+    const terminalTaskId: string = installTaskState.taskId;
+    if (handledInstallTerminalTaskIdsRef.current.has(terminalTaskId)) {
       return;
     }
 
-    lastInstallStatusRefreshTaskIdRef.current = installTaskState.taskId;
-    const itemsAtRefreshStart = libraryItemsRef.current;
+    handledInstallTerminalTaskIdsRef.current.add(terminalTaskId);
 
-    void refreshInstallManifestStatuses(itemsAtRefreshStart).then((itemsWithStatus) => {
-      if (libraryItemsRef.current === itemsAtRefreshStart) {
-        setLibraryItems(itemsWithStatus);
+    const refreshTerminalFacts = async () => {
+      if (activeProfileIdRef.current !== terminalTask.profileId) {
+        setLifecycleToast(null);
+        return;
       }
-    });
-  }, [installTaskState, refreshInstallManifestStatuses]);
+
+      let itemsAtRefreshStart = libraryItemsRef.current;
+      let refreshResult = await refreshInstallManifestStatusesWithOutcome(itemsAtRefreshStart);
+
+      if (libraryItemsRef.current !== itemsAtRefreshStart) {
+        itemsAtRefreshStart = libraryItemsRef.current;
+        refreshResult = await refreshInstallManifestStatusesWithOutcome(itemsAtRefreshStart);
+      }
+      if (!pageMountedRef.current) {
+        return;
+      }
+
+      const currentProfileId = activeProfileIdRef.current;
+      const libraryUnchanged = libraryItemsRef.current === itemsAtRefreshStart;
+      if (!isManagedInstallTerminalRefreshCurrent(terminalTask, currentProfileId, libraryUnchanged)) {
+        setLifecycleToast(null);
+        if (currentProfileId === terminalTask.profileId && !libraryUnchanged) {
+          const failedClosedItems = failClosedModInstallSummary(libraryItemsRef.current, terminalTask.modId);
+          libraryItemsRef.current = failedClosedItems;
+          setLibraryItems(failedClosedItems);
+        }
+        return;
+      }
+
+      const refreshedStatus =
+        refreshResult.items.find((item) => item.id === terminalTask.modId)?.installSummary?.status ?? null;
+      const terminalRefresh = { verified: refreshResult.verified, status: refreshedStatus };
+      const itemsWithTerminalFacts = shouldFailClosedManagedInstallTerminal(terminalTask, terminalRefresh)
+        ? failClosedModInstallSummary(refreshResult.items, terminalTask.modId)
+        : refreshResult.items;
+
+      libraryItemsRef.current = itemsWithTerminalFacts;
+      setLibraryItems(itemsWithTerminalFacts);
+
+      setLifecycleToast(getManagedInstallTerminalToast(terminalTask, terminalRefresh));
+    };
+
+    void refreshTerminalFacts();
+  }, [installTaskState, refreshInstallManifestStatusesWithOutcome]);
 
   useEffect(() => {
     let disposed = false;
@@ -616,14 +670,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const modName = item?.name ?? modId;
     const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
     if (recoveryPanelState) {
-      setInstallPlanPreviewState(recoveryPanelState);
+      setInstallPlanDetailState(recoveryPanelState);
       return;
     }
     if (!canInstallSelected) {
       return;
     }
 
-    setInstallPlanPreviewState({ status: "loading", modName });
+    setInstallPlanDetailState({ status: "loading", modName });
     void previewInstallPlanForImportedMod({
       gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
@@ -634,13 +688,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         if (installPlanPreviewGenerationRef.current !== previewGeneration) {
           return;
         }
-        setInstallPlanPreviewState({ status: "ready", modName, plan });
+        setInstallPlanDetailState({ status: "ready", modName, plan });
       })
       .catch((error: unknown) => {
         if (installPlanPreviewGenerationRef.current !== previewGeneration) {
           return;
         }
-        setInstallPlanPreviewState({
+        setInstallPlanDetailState({
           status: "error",
           modName,
           message: installPlanPreviewErrorMessage(error),
@@ -658,7 +712,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const modName = item?.name ?? modId;
     const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
     if (activeProfile.status !== "ready" || activeProfileId === null) {
-      setInstallPlanPreviewState({
+      setInstallPlanDetailState({
         status: "error",
         modName,
         message: "配置档尚未就绪",
@@ -667,14 +721,21 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
     if (!canInstallSelected || recoveryPanelState) {
       if (recoveryPanelState) {
-        setInstallPlanPreviewState(recoveryPanelState);
+        setInstallPlanDetailState(recoveryPanelState);
       }
       return;
     }
 
-    setInstallPlanPreviewState({ status: "idle" });
+    setInstallPlanDetailState({ status: "idle" });
+    setLifecycleToast(null);
     pendingInstallProgressEventsRef.current.clear();
-    setTrackedInstallTaskState({ status: "starting", operation: "install", modName });
+    setTrackedInstallTaskState({
+      status: "starting",
+      operation: "install",
+      profileId: activeProfileId,
+      modId,
+      modName,
+    });
     void startInstallTask({
       gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
@@ -691,9 +752,17 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             status: "failed",
             operation: "install",
             taskId: null,
+            profileId: activeProfileId,
+            modId,
             modName,
             phase: "install.failed",
             message: "安装任务返回了无效类型",
+          });
+          setLifecycleToast({
+            id: `install-start-${++startFailureToastSequenceRef.current}`,
+            title: "安装任务启动失败",
+            message: modName,
+            tone: "danger",
           });
           return;
         }
@@ -703,6 +772,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             status: "running",
             operation: "install",
             taskId: task.taskId,
+            profileId: activeProfileId,
+            modId,
             modName,
             phase: "install.queued",
           };
@@ -722,9 +793,17 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           status: "failed",
           operation: "install",
           taskId: null,
+          profileId: activeProfileId,
+          modId,
           modName,
           phase: "install.failed",
           message: installTaskErrorMessage(error, "install"),
+        });
+        setLifecycleToast({
+          id: `install-start-${++startFailureToastSequenceRef.current}`,
+          title: "安装任务启动失败",
+          message: installTaskErrorMessage(error, "install"),
+          tone: "danger",
         });
       });
   };
@@ -732,51 +811,47 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const promptSelectedUninstallTask = () => {
     if (
       reinstallWorkflow.workflowActive ||
+      activeProfileId === null ||
       !selectedItem ||
       selectedItem.installSummary?.status !== "installed"
     ) {
       return;
     }
 
-    pendingUninstallRef.current = { modId: selectedItem.id, modName: selectedItem.name };
-    setTrackedInstallTaskState({ status: "idle" });
-    setInstallPlanPreviewState({
-      status: "uninstall-confirming",
+    installPlanPreviewGenerationRef.current += 1;
+    setInstallPlanDetailState({ status: "idle" });
+    setUninstallConfirmation({
+      profileId: activeProfileId,
+      modId: selectedItem.id,
       modName: selectedItem.name,
       managedFileCount: selectedItem.installSummary.managedFileCount,
       backupCount: selectedItem.installSummary.backupCount,
     });
+    setTrackedInstallTaskState({ status: "idle" });
   };
 
   const cancelUninstallConfirmation = () => {
-    pendingUninstallRef.current = null;
-    setInstallPlanPreviewState({ status: "idle" });
+    setUninstallConfirmation(null);
   };
 
   const startSelectedUninstallTask = () => {
-    const pendingUninstall = pendingUninstallRef.current;
-    if (!pendingUninstall) {
+    if (!uninstallConfirmation || uninstallBlockerMessage !== null) {
       return;
     }
 
-    const { modId, modName } = pendingUninstall;
-    if (activeProfile.status !== "ready" || activeProfileId === null) {
-      setInstallPlanPreviewState({
-        status: "error",
-        modName,
-        message: "配置档尚未就绪",
-      });
+    const { profileId, modId, modName } = uninstallConfirmation;
+    if (activeProfile.status !== "ready" || activeProfileId !== profileId) {
       return;
     }
 
-    pendingUninstallRef.current = null;
-    setInstallPlanPreviewState({ status: "idle" });
+    setUninstallConfirmation(null);
+    setLifecycleToast(null);
     pendingInstallProgressEventsRef.current.clear();
-    setTrackedInstallTaskState({ status: "starting", operation: "uninstall", modName });
+    setTrackedInstallTaskState({ status: "starting", operation: "uninstall", profileId, modId, modName });
     void startUninstallTask({
       gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
-      profileId: activeProfileId,
+      profileId,
     })
       .then((task) => {
         const pendingProgressEvent = pendingInstallProgressEventsRef.current.get(task.taskId) ?? null;
@@ -787,9 +862,17 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             status: "failed",
             operation: "uninstall",
             taskId: null,
+            profileId,
+            modId,
             modName,
             phase: "install.uninstall.failed",
             message: "卸载任务返回了无效类型",
+          });
+          setLifecycleToast({
+            id: `uninstall-start-${++startFailureToastSequenceRef.current}`,
+            title: "卸载任务启动失败",
+            message: modName,
+            tone: "danger",
           });
           return;
         }
@@ -799,6 +882,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             status: "running",
             operation: "uninstall",
             taskId: task.taskId,
+            profileId,
+            modId,
             modName,
             phase: "install.uninstall.queued",
           };
@@ -818,9 +903,17 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           status: "failed",
           operation: "uninstall",
           taskId: null,
+          profileId,
+          modId,
           modName,
           phase: "install.uninstall.failed",
           message: installTaskErrorMessage(error, "uninstall"),
+        });
+        setLifecycleToast({
+          id: `uninstall-start-${++startFailureToastSequenceRef.current}`,
+          title: "卸载任务启动失败",
+          message: installTaskErrorMessage(error, "uninstall"),
+          tone: "danger",
         });
       });
   };
@@ -840,9 +933,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         startSelectedInstallTask();
         break;
       case "reinstall":
-        pendingUninstallRef.current = null;
+        setUninstallConfirmation(null);
         installPlanPreviewGenerationRef.current += 1;
-        setInstallPlanPreviewState({ status: "idle" });
+        setInstallPlanDetailState({ status: "idle" });
         openReinstall();
         break;
       case "uninstall":
@@ -909,13 +1002,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const installTaskActive = managedInstallTaskActive || reinstallWorkflow.workflowActive;
-  const activeInstallPanelState = installTaskPanelState(installPlanPreviewState, installTaskState);
-  const closeInstallPlanPanel = () => {
-    pendingUninstallRef.current = null;
-    setInstallPlanPreviewState({ status: "idle" });
-    setTrackedInstallTaskState((current) =>
-      current.status === "starting" || current.status === "running" ? current : { status: "idle" },
-    );
+  const closeInstallPlanDetail = () => {
+    installPlanPreviewGenerationRef.current += 1;
+    setInstallPlanDetailState({ status: "idle" });
   };
   const { showScrollUi, thumbStyle } = scrollUiState;
 
@@ -951,12 +1040,22 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         </div>
       </div>
 
-      <InstallPlanPreviewPanel
-        state={activeInstallPanelState}
-        onClose={closeInstallPlanPanel}
-        onConfirmUninstall={startSelectedUninstallTask}
-        onCancelUninstall={cancelUninstallConfirmation}
-        closeDisabled={installTaskActive}
+      <InstallPlanDetailSheet
+        state={installPlanDetailState}
+        onClose={closeInstallPlanDetail}
+      />
+
+      <UninstallConfirmationDialog
+        state={uninstallConfirmation}
+        blockerMessage={uninstallBlockerMessage}
+        onCancel={cancelUninstallConfirmation}
+        onConfirm={startSelectedUninstallTask}
+      />
+
+      <ManagedInstallTaskFeedback
+        taskState={installTaskState}
+        toast={lifecycleToast}
+        onDismissToast={() => setLifecycleToast(null)}
       />
 
       <ReinstallPlanPreviewPanel
@@ -982,12 +1081,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           onClose={() => setDetailDialogState(null)}
           onSaved={refreshModLibrary}
         />
-      ) : null}
-
-      {contextNotice ? (
-        <div className="mod-library__context-notice" role="status">
-          {contextNotice}
-        </div>
       ) : null}
 
       <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>

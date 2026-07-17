@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  getManagedInstallTaskFailureMessage,
   getManagedInstallTaskPhaseLabel,
   isManagedInstallTaskPhase,
   nextManagedInstallTaskStateFromProgress,
@@ -21,6 +22,8 @@ test("uninstall progress only updates the matching task id", () => {
     status: "running",
     operation: "uninstall",
     taskId: "task-a",
+    profileId: "profile-a",
+    modId: "mod-a",
     modName: "Mock Mod",
     phase: "install.uninstall.processing",
   };
@@ -40,6 +43,8 @@ test("uninstall completed and failed phases map to stable task states", () => {
     status: "running",
     operation: "uninstall",
     taskId: "task-a",
+    profileId: "profile-a",
+    modId: "mod-a",
     modName: "Mock Mod",
     phase: "install.uninstall.processing",
   };
@@ -55,6 +60,8 @@ test("uninstall completed and failed phases map to stable task states", () => {
       status: "completed",
       operation: "uninstall",
       taskId: "task-a",
+      profileId: "profile-a",
+      modId: "mod-a",
       modName: "Mock Mod",
       phase: "install.uninstall.completed",
     },
@@ -72,9 +79,24 @@ test("uninstall completed and failed phases map to stable task states", () => {
       status: "failed",
       operation: "uninstall",
       taskId: "task-a",
+      profileId: "profile-a",
+      modId: "mod-a",
       modName: "Mock Mod",
       phase: "install.uninstall.failed",
-      message: "install_uninstall_failed:uninstall",
+      message: "卸载未完成，已重新检查安装状态",
     },
   );
+});
+
+test("managed install failures only expose mapped stable messages", () => {
+  assert.equal(
+    getManagedInstallTaskFailureMessage("install", "install_failed:commit"),
+    "安装未完成，已重新检查安装状态",
+  );
+  assert.equal(
+    getManagedInstallTaskFailureMessage("uninstall", "install_uninstall_failed:recovery_pending"),
+    "卸载被待处理的恢复状态阻断",
+  );
+  assert.equal(getManagedInstallTaskFailureMessage("install", "C:\\Users\\private\\raw-error"), "安装失败");
+  assert.equal(getManagedInstallTaskFailureMessage("uninstall", null), "卸载失败");
 });
