@@ -1,3 +1,4 @@
+use crate::diagnostics_dto::DiagnosticsPageSnapshotDto;
 use crate::dto::{
     AppSettingsDto, AuditLogDiagnosticsExportDto, CommandErrorDto, ModDependencyGraphDto,
     ModDetailDto, ModLibraryItemDto, PreviewImageCandidateListDto, PreviewImageDiagnosticsDto,
@@ -155,6 +156,13 @@ pub fn export_support_diagnostics(
         .map_err(|_| support_diagnostics_export_unavailable_error())?;
 
     Ok(export.into())
+}
+
+#[tauri::command]
+pub fn get_diagnostics_page_snapshot(
+    state: State<'_, AppState>,
+) -> Result<DiagnosticsPageSnapshotDto, CommandErrorDto> {
+    Ok(state.support_diagnostics_export.read_page_snapshot().into())
 }
 
 #[tauri::command]

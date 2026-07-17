@@ -77,6 +77,10 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 
 ## 应用健康与 App Log
 
+L3 新增无参数 `get_diagnostics_page_snapshot`。后端固定每类最多返回 100 条已校验内容，返回平台安全摘要、
+App/Task 安全日志行、已校验 Audit 事件及稳定健康状态。契约不接受或返回日志路径、任意文件名、原始错误；
+单类读取失败只以稳定 `*_read_failed` 状态降级。前端只允许复制事件中已校验的 `error_code` / `task_id`。
+
 `app_health()` 不接收参数，只返回下面的稳定字符串之一：
 
 | 值 | 含义 |

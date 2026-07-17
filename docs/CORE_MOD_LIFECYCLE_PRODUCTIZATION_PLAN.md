@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期产品化加固实施计划
 
 - 任务编号：T19
-- 状态：`in_progress`（A1、L1、U1、U2、L2、U3 已完成，下一切片为 L3）
+- 状态：`implemented`（A1-L3 七切片均已实现，待 L3 独立 review/合并后最终收尾）
 - 规划日期：2026-07-17
 - 前置：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)中的 Gate A/B 均已 `certified`
 - 实施边界：每个切片独立 PR、独立 review；未满足当前完成定义前不启动下一切片
@@ -45,7 +45,7 @@ T19 是 Gate B 后优先级复审的结果，不是 Gate C，也不重新打开 
   reduced motion 和首个语义明确的游戏目录决策 Dialog 已落地。
 - [x] U2 核心 Mod 操作反馈：安装计划 Detail Sheet、危险卸载 Dialog、严格按 `taskId` 的安装/卸载
   Task Notice，以及 durable refresh 后的完成/普通失败 Toast 已落地；恢复风险继续持久阻断。
-- [x] L2 已完成 Task Log/Audit 降级可见性；U3 已完成跨 feature 短时通知迁移，L3 尚未开始。
+- [x] L2 已完成 Task Log/Audit 降级可见性；U3 已完成跨 feature 短时通知迁移；L3 已完成只读诊断页面、窄 snapshot command 与受控导出入口。
 
 ## 2. 事实基线
 
