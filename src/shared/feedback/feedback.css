@@ -242,8 +242,7 @@
 }
 
 .feedback-toast.is-success { border-color: color-mix(in srgb, var(--color-success-dot) 52%, var(--color-border-muted)); }
-.feedback-toast.is-warning,
-.feedback-toast.is-danger { border-color: color-mix(in srgb, var(--color-warning-dot) 58%, var(--color-border-muted)); }
+.feedback-toast.is-warning { border-color: color-mix(in srgb, var(--color-warning-dot) 58%, var(--color-border-muted)); }
 .feedback-toast.is-danger { border-color: color-mix(in srgb, var(--color-danger-dot) 58%, var(--color-border-muted)); }
 
 .feedback-toast__icon { color: var(--color-text-soft); }

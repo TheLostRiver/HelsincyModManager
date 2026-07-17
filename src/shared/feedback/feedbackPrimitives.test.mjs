@@ -30,7 +30,10 @@ test("feedback provider owns one body-level portal host", () => {
   assert.match(provider, /queue\.slice\(0,\s*-1\)/);
   assert.match(provider, /enqueueFeedbackToast/);
   assert.match(provider, /showTaskNotice/);
-  assert.match(provider, /notices\.filter\(\(notice\) => notice\.taskId !== input\.taskId\)/);
+  assert.match(provider, /findIndex\(\(notice\) => notice\.taskId === input\.taskId\)/);
+  assert.match(provider, /next\[index\] = input/);
+  assert.match(provider, /const actions = useMemo/);
+  assert.match(provider, /<FeedbackActionsContext\.Provider value=\{actions\}>/);
   assert.match(provider, /taskNotices\.map\(\(notice\) => <TaskNotice key=\{notice\.taskId\}/);
 });
 

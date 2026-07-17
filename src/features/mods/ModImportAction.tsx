@@ -111,22 +111,24 @@ export function ModImportAction({
     }
 
     completedTaskIdsRef.current.add(state.taskId);
-    void Promise.resolve(onImportedRef.current()).then(
-      () => pushToast({
-        eventKey: `mod-import.completed.${state.taskId}`,
-        taskId: state.taskId,
-        title: mode === "revision" ? "新版本导入完成" : "Mod 导入完成",
-        message: mode === "revision" ? "版本列表已更新。" : "Mod 列表已更新。",
-        tone: "success",
-      }),
-      () => pushToast({
-        eventKey: `mod-import.refresh-failed.${state.taskId}`,
-        taskId: state.taskId,
-        title: "导入完成，列表刷新失败",
-        message: "文件已导入，但当前列表未能刷新，请重新扫描或稍后重试。",
-        tone: "warning",
-      }),
-    );
+    void Promise.resolve()
+      .then(() => onImportedRef.current())
+      .then(
+        () => pushToast({
+          eventKey: `mod-import.completed.${state.taskId}`,
+          taskId: state.taskId,
+          title: mode === "revision" ? "新版本导入完成" : "Mod 导入完成",
+          message: mode === "revision" ? "版本列表已更新。" : "Mod 列表已更新。",
+          tone: "success",
+        }),
+        () => pushToast({
+          eventKey: `mod-import.refresh-failed.${state.taskId}`,
+          taskId: state.taskId,
+          title: "导入完成，列表刷新失败",
+          message: "文件已导入，但当前列表未能刷新，请重新扫描或稍后重试。",
+          tone: "warning",
+        }),
+      );
   }, [mode, pushToast]);
 
   const applyProgressState = useCallback(
