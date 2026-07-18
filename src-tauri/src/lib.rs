@@ -8,6 +8,8 @@ mod game_launch_dto;
 mod game_setup_commands;
 mod install_commands;
 mod mod_import_commands;
+mod mod_library_commands;
+mod mod_library_dto;
 mod mod_metadata_commands;
 mod profile_commands;
 mod reinstall_commands;
@@ -46,6 +48,7 @@ use mod_import_commands::{
     maintain_thumbnail_cache, select_preview_image_candidate, set_thumbnail_cache_settings,
     start_import_mod_revision_task, start_import_mod_task,
 };
+use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
@@ -134,6 +137,7 @@ pub fn run() {
             preview_retarget_reinstall,
             start_retarget_reinstall_task,
             get_mod_library,
+            query_mod_library,
             get_mod_detail,
             get_mod_dependency_graph,
             get_mod_detail_preview_image,

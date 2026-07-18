@@ -6,8 +6,8 @@ use hmm_app::{
     InstallManifestStatusSummary, InstallRecoveryActionAvailability,
     InstallRecoveryActionBlockReason, InstallRecoveryActionBlockReasonSummary,
     InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
-    InstallRecoverySummary, ModDetail, ModImportTaskError, ModLibraryItem, ModLibraryStatus,
-    TaskKind, TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
+    InstallRecoverySummary, ModDetail, ModImportTaskError, TaskKind, TaskManagerError,
+    TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     BackupCadence, GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::reinstall_dto::{
     InstallManifestStatusDto, InstallRecoveryActionKindDto, InstallRecoveryStatusDto,
 };
+pub use crate::mod_library_dto::ModLibraryItemDto;
 pub use crate::replacement_dto::{
     AnalyzeImportedModReplacementRequestDto, InitialRetargetInstallPreviewDto,
     ListReplacementTargetsRequestDto, PreviewInitialRetargetInstallRequestDto,
@@ -804,19 +805,6 @@ impl From<ProfileSaveSettings> for ProfileSaveSettingsDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ModLibraryItemDto {
-    pub id: String,
-    pub name: String,
-    pub author: Option<String>,
-    pub version_label: Option<String>,
-    pub size_label: String,
-    pub status: ModInstallStatusDto,
-    pub category_labels: Vec<CategoryLabelDto>,
-    pub preview_image: PreviewImageDto,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModDetailDto {
     pub id: String,
     pub name: String,
@@ -958,12 +946,6 @@ pub struct PreviewImageFallbackDiagnosticsDto {
     pub count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModInstallStatusDto {
-    Disabled,
-}
-
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(
@@ -1028,28 +1010,6 @@ impl From<ImportPreviewImage> for PreviewImageDto {
             ImportPreviewImage::Fallback { reason } => Self::Fallback {
                 reason: reason.into(),
             },
-        }
-    }
-}
-
-impl From<ModLibraryItem> for ModLibraryItemDto {
-    fn from(item: ModLibraryItem) -> Self {
-        Self {
-            id: item.id,
-            name: item.name,
-            author: item.author,
-            version_label: item.version_label,
-            size_label: item.size_label,
-            status: item.status.into(),
-            category_labels: item
-                .category_labels
-                .into_iter()
-                .map(|l| CategoryLabelDto {
-                    name: l.name,
-                    color: l.color,
-                })
-                .collect(),
-            preview_image: item.preview_image.into(),
         }
     }
 }
@@ -1252,14 +1212,6 @@ impl From<hmm_app::PreviewImageCandidateSummary> for PreviewImageCandidateDto {
             candidate_index: candidate.candidate_index,
             file_name: candidate.file_name,
             compressed_size_bytes: candidate.compressed_size_bytes,
-        }
-    }
-}
-
-impl From<ModLibraryStatus> for ModInstallStatusDto {
-    fn from(status: ModLibraryStatus) -> Self {
-        match status {
-            ModLibraryStatus::Disabled => Self::Disabled,
         }
     }
 }
@@ -1877,6 +1829,7 @@ mod preview_image_tests {
         assert_eq!(value["versionLabel"], "v1.2.3");
         assert_eq!(value["sizeLabel"], "导入完成");
         assert_eq!(value["status"], "disabled");
+        assert!(value.get("installSummary").is_none());
         assert_eq!(value["previewImage"]["kind"], "thumbnail");
         assert_eq!(
             value["previewImage"]["thumbnailUrl"],

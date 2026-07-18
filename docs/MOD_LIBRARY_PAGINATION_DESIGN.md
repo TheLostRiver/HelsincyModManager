@@ -1,6 +1,6 @@
 # Mod 库分页设计
 
-> 状态：已规划，待实施。
+> 状态：Slice 1 已完成（PR #186），Slice 2 实施中；分页 UI 尚不可用。
 >
 > 本文只定义 Mod 管理页面的查询、分页、选择、架构和验收边界，不表示分页功能已经可用。
 
@@ -316,6 +316,8 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 1：查询语义与 app service
 
+**实施状态：已完成（PR #186）。**
+
 - 定义 app-level query/filter/sort/page/result 类型和稳定 validation error。
 - 使用现有 repositories 实现兼容版聚合查询，严格遵守 merge/filter/sort/page 顺序。
 - 把 profile install/recovery 状态合并移入查询 use case。
@@ -323,6 +325,8 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 - 不修改前端，不移除 `get_mod_library`。
 
 ### Slice 2：Tauri DTO 与 typed API
+
+**实施状态：当前切片。**
 
 - 新增窄 `query_mod_library` command 和 camelCase DTO。
 - 校验 search 长度、filter、page 和 page size allowlist。

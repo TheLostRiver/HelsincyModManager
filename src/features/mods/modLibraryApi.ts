@@ -4,11 +4,33 @@ import type {
   GetModRevisionsInput,
   ModDetail,
   ModLibraryItem,
+  ModLibraryPage,
   ModRevisionList,
+  QueryModLibraryInput,
 } from "./modLibraryTypes";
 
 export function getModLibrary(): Promise<ModLibraryItem[]> {
   return invoke<ModLibraryItem[]>("get_mod_library");
+}
+
+export function queryModLibrary(input: QueryModLibraryInput): Promise<ModLibraryPage> {
+  return invoke<ModLibraryPage>("query_mod_library", {
+    request: {
+      ...(input.profileContext === undefined
+        ? {}
+        : {
+            profileContext: {
+              gameId: input.profileContext.gameId,
+              profileId: input.profileContext.profileId,
+            },
+          }),
+      search: input.search,
+      filter: input.filter,
+      sort: input.sort,
+      page: input.page,
+      pageSize: input.pageSize,
+    },
+  });
 }
 
 export function getModDetail(input: GetModDetailInput): Promise<ModDetail | null> {
