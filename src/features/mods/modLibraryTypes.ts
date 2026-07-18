@@ -32,6 +32,33 @@ export type ModLibraryItem = {
   previewImage?: PreviewImage;
 };
 
+export type ModLibraryProfileContext = {
+  gameId: string;
+  profileId: string;
+};
+
+export type ModLibraryQueryFilter =
+  | { kind: "all" }
+  | { kind: "status"; status: InstallManifestStatus }
+  | { kind: "category"; categoryId: string };
+
+export type QueryModLibraryInput = {
+  profileContext?: ModLibraryProfileContext;
+  search: string;
+  filter: ModLibraryQueryFilter;
+  sort: "name_asc";
+  page: number;
+  pageSize: 12 | 24 | 48 | 96;
+};
+
+export type ModLibraryPage = {
+  items: ModLibraryItem[];
+  page: number;
+  pageSize: 12 | 24 | 48 | 96;
+  libraryTotal: number;
+  matchingTotal: number;
+};
+
 export type ModPackageMetadata = {
   version?: string;
   author?: string;
