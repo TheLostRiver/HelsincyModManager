@@ -1,7 +1,7 @@
 # 核心 Mod 生命周期产品化加固实施计划
 
 - 任务编号：T19
-- 状态：`implemented`（A1-L3 七切片均已实现，待 L3 独立 review/合并后最终收尾）
+- 状态：`completed`（2026-07-18；A1-L3 七切片均已独立 review 并合并，完成定义全部满足）
 - 规划日期：2026-07-17
 - 前置：[核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md)中的 Gate A/B 均已 `certified`
 - 实施边界：每个切片独立 PR、独立 review；未满足当前完成定义前不启动下一切片
@@ -276,14 +276,20 @@ error code 或 retarget target。
 
 ## 13. T19 完成定义与后续队列
 
-只有同时满足以下条件，T19 才能从 `planned` 更新为完成：
+T19 已于 2026-07-18 满足以下全部完成条件：
 
-- A1-L3 七个切片均经独立 review 合并。
-- 生命周期正式验收入口在 CI 中实际执行不少于 6 个场景。
-- App/Task/Audit 诊断链路默认脱敏，Audit 降级不再静默。
-- 核心 Mod 操作的计划、确认、运行和结果反馈按本文语义分层。
-- 完整验证、前端视觉 smoke 和一次受控 Windows 桌面复验通过。
-- `docs/TESTING.md`、`docs/LOGGING.md`、`docs/FRONTEND_BACKEND_CONTRACT.md` 与实际契约同步。
+- [x] A1-L3 七个切片均经独立 review 合并。
+- [x] 生命周期正式验收入口在 CI 中实际执行不少于 6 个场景。
+- [x] App/Task/Audit 诊断链路默认脱敏，Audit 降级不再静默。
+- [x] 核心 Mod 操作的计划、确认、运行和结果反馈按本文语义分层。
+- [x] 完整验证、前端视觉 smoke 和一次受控 Windows 桌面复验通过。
+- [x] `docs/TESTING.md`、`docs/LOGGING.md`、`docs/FRONTEND_BACKEND_CONTRACT.md` 与实际契约同步。
+
+最终证据包括：`scripts/verify-core-mod-lifecycle.ps1` 在 GitHub Verify workflow 中发现并执行 6 个固定
+`headless_composition_*` 场景；共享反馈、核心生命周期反馈、跨 feature 通知和只读诊断页面均完成
+聚焦自动化与视觉 smoke；受控 Windows Sandbox 桌面复验覆盖 Dialog、Detail Sheet、Task Notice、
+Toast、诊断页面和受控导出；L3 最终 review 修复已随 PR #184 合并。收尾不重新打开 Gate A/B，
+也不改变任何安装事实或安全链路。
 
 T19 完成后，下一顺序固定为 T18 -> T17 -> T13：先解决大库可操作性和查询边界，再恢复默认只导入
 的第三方迁移，最后在单项操作、验收、日志和反馈均稳定后设计批量破坏性队列。P7.2c、T8、T12、
