@@ -414,10 +414,14 @@ fn searches_overlay_name_author_metadata_tags_and_user_category_names() {
         vec![
             name_record,
             record("mod-author", "Author Candidate"),
+            record("mod-overlay-name", "Original Name"),
             tag_record,
             record("mod-category", "Category Candidate"),
         ],
-        vec![overlay("mod-author", None, Some("Overlay Builder"))],
+        vec![
+            overlay("mod-author", None, Some("Overlay Builder")),
+            overlay("mod-overlay-name", Some("Renamed Sword"), None),
+        ],
         vec![user_category.clone()],
         vec![("mod-category".to_owned(), user_category)],
         Arc::new(FakeStatusProvider::empty()),
@@ -425,7 +429,9 @@ fn searches_overlay_name_author_metadata_tags_and_user_category_names() {
 
     for (search, expected_id) in [
         (" épée alpha ", "mod-name"),
+        ("import author", "mod-name"),
         ("overlay builder", "mod-author"),
+        ("renamed sword", "mod-overlay-name"),
         ("visual fx", "mod-tag"),
         ("quest tools", "mod-category"),
     ] {
@@ -607,6 +613,24 @@ fn repository_and_status_failures_return_stable_errors() {
     );
     assert_eq!(
         library_failure.query(ModLibraryQuery {
+            page_size: 12,
+            ..ModLibraryQuery::default()
+        }),
+        Err(ModLibraryQueryError::LibraryUnavailable)
+    );
+
+    let metadata_failure = test_service_with_failures(
+        vec![record("mod-a", "Alpha")],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        false,
+        true,
+        false,
+        Arc::new(FakeStatusProvider::empty()),
+    );
+    assert_eq!(
+        metadata_failure.query(ModLibraryQuery {
             page_size: 12,
             ..ModLibraryQuery::default()
         }),
