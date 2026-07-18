@@ -285,11 +285,12 @@ T19 已于 2026-07-18 满足以下全部完成条件：
 - [x] 完整验证、前端视觉 smoke 和一次受控 Windows 桌面复验通过。
 - [x] `docs/TESTING.md`、`docs/LOGGING.md`、`docs/FRONTEND_BACKEND_CONTRACT.md` 与实际契约同步。
 
-最终证据包括：`scripts/verify-core-mod-lifecycle.ps1` 在 GitHub Verify workflow 中发现并执行 6 个固定
-`headless_composition_*` 场景；共享反馈、核心生命周期反馈、跨 feature 通知和只读诊断页面均完成
-聚焦自动化与视觉 smoke；受控 Windows Sandbox 桌面复验覆盖 Dialog、Detail Sheet、Task Notice、
-Toast、诊断页面和受控导出；L3 最终 review 修复已随 PR #184 合并。收尾不重新打开 Gate A/B，
-也不改变任何安装事实或安全链路。
+最终证据包括：2026-07-18 的 GitHub Verify workflow 通过
+`scripts/verify-core-mod-lifecycle.ps1` 实际发现并执行 6 个 `headless_composition_*` 场景；这 6 个场景
+构成脚本的最低必需集合，脚本同时执行所有匹配该前缀的场景。共享反馈、核心生命周期反馈、跨
+feature 通知和只读诊断页面均完成聚焦自动化与视觉 smoke；受控 Windows Sandbox 桌面复验覆盖
+Dialog、Detail Sheet、Task Notice、Toast、诊断页面和受控导出；L3 最终 review 修复已随 PR #184
+合并。收尾不重新打开 Gate A/B，也不改变任何安装事实或安全链路。
 
 T19 完成后，下一顺序固定为 T18 -> T17 -> T13：先解决大库可操作性和查询边界，再恢复默认只导入
 的第三方迁移，最后在单项操作、验收、日志和反馈均稳定后设计批量破坏性队列。P7.2c、T8、T12、
