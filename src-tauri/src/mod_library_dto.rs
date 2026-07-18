@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 pub struct ModLibraryItemDto {
     pub id: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub version_label: Option<String>,
     pub size_label: String,
     pub status: ModInstallStatusDto,
@@ -234,6 +236,28 @@ mod tests {
                 .expect_err("unknown path field must be rejected");
             assert!(error.to_string().contains("unknown field"));
         }
+    }
+
+    #[test]
+    fn item_omits_absent_optional_metadata() {
+        let item = ModLibraryItemDto::from(ModLibraryItem {
+            id: "mod-a".to_owned(),
+            name: "Armor A".to_owned(),
+            author: None,
+            version_label: None,
+            size_label: "导入完成".to_owned(),
+            status: ModLibraryStatus::Disabled,
+            category_labels: Vec::new(),
+            preview_image: ImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            },
+        });
+
+        let value = serde_json::to_value(item).expect("serialize mod library item");
+        let object = value.as_object().expect("item object");
+
+        assert!(!object.contains_key("author"));
+        assert!(!object.contains_key("versionLabel"));
     }
 
     #[test]
