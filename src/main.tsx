@@ -13,6 +13,7 @@ import "./features/dashboard/Dashboard.css";
 import "./features/game-setup/GamePrerequisitePanel.css";
 import "./features/install-recovery/RecoveryCenterPage.css";
 import "./features/mods/ModLibraryPage.css";
+import "./features/mods/ModLibraryPaginationLayout.css";
 import "./features/settings/SettingsPage.css";
 import "./features/categories/CategoryPage.css";
 import "./features/profiles/ProfilePage.css";

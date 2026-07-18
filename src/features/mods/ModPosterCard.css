@@ -18,6 +18,10 @@
   white-space: nowrap;
 }
 
+.mod-card[aria-disabled="true"] {
+  cursor: progress;
+}
+
 .mod-card__status-pill.is-committed_cleanup_pending,
 .mod-card__status-pill.is-cleanup_pending {
   color: var(--color-warning-text);

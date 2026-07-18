@@ -90,6 +90,23 @@ test("mock generator keeps ids unique", () => {
   assert.equal(new Set(ids).size, 72);
 });
 
+test("mock generator covers every visible development category", () => {
+  const { content } = runGenerator(["--count", "72"]);
+
+  for (const category of ["外观", "防具替换", "武器替换", "语音替换", "工具 / 前置"]) {
+    assert.ok(content.includes(`{ name: ${JSON.stringify(category)} }`), `Expected generated category ${category}`);
+  }
+});
+
+test("mock generator reuses the canonical ModLibraryItem contract", () => {
+  const { content } = runGenerator(["--count", "1"]);
+
+  assert.match(content, /import type \{ ModLibraryItem \} from "\.\/modLibraryTypes";/);
+  assert.match(content, /export type \{ ModInstallStatus, ModLibraryItem \} from "\.\/modLibraryTypes";/);
+  assert.doesNotMatch(content, /export type ModLibraryItem\s*=/);
+  assert.doesNotMatch(content, /categoryLabels:\s*string\[\]/);
+});
+
 test("mock generator preserves separate import, install and true reinstall actions", () => {
   const { content } = runGenerator(["--count", "1"]);
 
@@ -99,8 +116,10 @@ test("mock generator preserves separate import, install and true reinstall actio
   assert.doesNotMatch(content, /安装 \/ 重装选中 MOD/);
 });
 
-test("committed modsLibraryData currently contains 72 generated mock items", () => {
+test("committed modsLibraryData matches the deterministic 72-item output", () => {
   const sourceContent = readFileSync(sourceFilePath, "utf8");
+  const { content } = runGenerator(["--count", "72"]);
 
   assert.equal(parseModItemCount(sourceContent), 72);
+  assert.equal(sourceContent, content);
 });

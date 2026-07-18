@@ -19,6 +19,14 @@ import {
   type UninstallConfirmationState,
 } from "./ModLifecycleFeedback";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
+import { ModLibraryPagination } from "./ModLibraryPagination";
+import {
+  ModLibraryEmptyState,
+  ModLibraryInitialError,
+  ModLibraryQueryBlockedState,
+  ModLibraryQueryFeedback,
+  ModLibrarySkeleton,
+} from "./ModLibraryQueryFeedback";
 import { ModPosterCard } from "./ModPosterCard";
 import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
 import {
@@ -39,41 +47,46 @@ import {
 import {
   failClosedModInstallSummary,
   getManagedInstallTerminalToast,
-  isManagedInstallTerminalRefreshCurrent,
   isManagedInstallTaskTerminal,
   shouldFailClosedManagedInstallTerminal,
   type ModLifecycleToast,
 } from "./modLifecycleFeedbackState";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
-import { getModLibrary } from "./modLibraryApi";
+import { queryModLibrary } from "./modLibraryApi";
 import { listCategories, type CategoryItem } from "./modCategoryApi";
 import {
   allLibraryFilter,
   buildLibraryFilterChips,
-  matchesLibraryFilter,
+  isSameLibraryFilter,
   normalizeLibraryFilter,
   type ModLibraryFilter,
 } from "./modLibraryFilters";
+import { isUnsafeInstallStatus } from "./modLibraryLoadState";
+import { createDetailDialogState } from "./modLibraryRefresh";
 import {
-  applyInstallManifestStatusSummaries,
-  applyInstallRecoveryUnavailable,
-  applyInstallRecoverySummaries,
-  isUnsafeInstallStatus,
-} from "./modLibraryLoadState";
+  isPlainBrowserDevRuntime,
+  queryBrowserMockModLibrary,
+} from "./modLibraryQueryState";
 import {
-  createDetailDialogState,
-  loadModLibraryItemsForMode,
-  preserveItemsOnRefreshFailure,
-  type ModLibraryLoadMode,
-} from "./modLibraryRefresh";
+  createModLibraryStatusProbe,
+  refreshModLibraryDurableStatuses,
+} from "./modLibraryRecoveryRefresh";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
-import type { ModInstallSummary, ModLibraryItem } from "./modLibraryTypes";
+import type {
+  ModInstallSummary,
+  ModLibraryItem,
+  ModLibraryPage as ModLibraryPageResult,
+  ModLibraryProfileContext,
+  QueryModLibraryInput,
+} from "./modLibraryTypes";
 import { applyModSelection } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModLibraryQuery } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
+import { MOD_LIBRARY_QUERY_BUSY_MESSAGE } from "./compactActionAvailability";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -102,6 +115,15 @@ function staggerStyle(index: number) {
 
 function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+function hasTauriRuntime() {
+  return (
+    typeof window !== "undefined"
+    && "__TAURI_INTERNALS__" in window
+    && typeof (window as { __TAURI_INTERNALS__?: { invoke?: unknown } }).__TAURI_INTERNALS__
+      ?.invoke === "function"
+  );
 }
 
 function readInitialCardCategoryLabelsVisibility() {
@@ -255,9 +277,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [showCardCategoryLabels, setShowCardCategoryLabels] = useState(readInitialCardCategoryLabelsVisibility);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [libraryItems, setLibraryItems] = useState<ModLibraryItem[]>(fallbackModLibraryItems);
-  const libraryItemsRef = useRef<ModLibraryItem[]>(fallbackModLibraryItems);
+  const libraryItemsRef = useRef<ModLibraryItem[]>([]);
+  const categoriesRef = useRef<CategoryItem[]>([]);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const renderedPageRef = useRef<number | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; modId: string } | null>(null);
   const [detailDialogState, setDetailDialogState] = useState<{
@@ -278,6 +301,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const startFailureToastSequenceRef = useRef(0);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const installPlanPreviewGenerationRef = useRef(0);
+  const categoriesRequestGenerationRef = useRef(0);
 
   useEffect(() => {
     activeProfileIdRef.current = activeProfile.status === "ready" ? activeProfileId : null;
@@ -289,15 +313,78 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     setInstallTaskState(nextState);
   }, []);
 
-  const visibleItems = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    return libraryItems.filter((item) => {
-      const matchesKeyword = !keyword || item.name.toLowerCase().includes(keyword);
-      return matchesKeyword && matchesLibraryFilter(item, activeFilter);
-    });
-  }, [activeFilter, libraryItems, query]);
+  const resetContentScroll = useCallback(() => {
+    contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, []);
+  const resetPageInteraction = useCallback(() => {
+    setSelectedIds(new Set());
+    resetContentScroll();
+  }, [resetContentScroll]);
 
-  const filterChips = useMemo(() => buildLibraryFilterChips(categories), [categories]);
+  const profileContext = useMemo<ModLibraryProfileContext | null>(
+    () => activeProfile.status === "ready" && activeProfileId !== null
+      ? { gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId }
+      : null,
+    [activeProfile.status, activeProfileId],
+  );
+  const browserPreviewEnabled = useMemo(
+    () => isPlainBrowserDevRuntime({
+      isDev: (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true,
+      hasWindow: typeof window !== "undefined",
+      hasTauriRuntime: hasTauriRuntime(),
+    }),
+    [],
+  );
+  const loadModLibraryPage = useCallback(async (input: QueryModLibraryInput): Promise<ModLibraryPageResult> => {
+    const page = browserPreviewEnabled
+      ? queryBrowserMockModLibrary(input, fallbackModLibraryItems, categoriesRef.current)
+      : await queryModLibrary(input);
+    if (input.profileContext === undefined) {
+      return page;
+    }
+
+    const { profileId } = input.profileContext;
+    const durableStatuses = await refreshModLibraryDurableStatuses(page.items, {
+      loadManifestStatuses: (modIds) => getInstallManifestStatus({
+        gameId: DEFAULT_INSTALL_GAME_ID,
+        profileId,
+        modIds,
+      }),
+      loadRecoveryStatuses: (modIds) => scanInstallRecovery({
+        gameId: DEFAULT_INSTALL_GAME_ID,
+        profileId,
+        modIds,
+      }),
+    });
+    return { ...page, items: durableStatuses.items };
+  }, [browserPreviewEnabled]);
+  const libraryQuery = useModLibraryQuery({
+    rawSearch: query,
+    filter: activeFilter,
+    profileContext,
+    loadPage: loadModLibraryPage,
+  });
+  const libraryPage = libraryQuery.page;
+  const renderedPage = libraryPage?.page ?? null;
+  const libraryItems = useMemo(() => libraryPage?.items ?? [], [libraryPage]);
+  const {
+    refresh: refreshLibraryPage,
+    resetPage: resetLibraryPage,
+    updateCurrentPageItems,
+  } = libraryQuery;
+  const libraryQueryBlocked = libraryQuery.blockedReason !== null;
+  const libraryQueryBusy = !libraryQueryBlocked
+    && (libraryQuery.initialLoading || libraryQuery.refreshing);
+  const libraryQueryBlockedMessage = libraryQuery.blockedReason === "profile_context_required"
+    ? "请先选择可用的配置档，再查看安装状态筛选。"
+    : "当前安装状态筛选不受支持，请选择其他筛选条件。";
+  const filterChips = useMemo(
+    () => buildLibraryFilterChips(categories, {
+      statusFiltersEnabled: profileContext !== null,
+      statusDisabledReason: activeProfile.status === "loading" ? "配置档加载中" : "选择配置档后可用",
+    }),
+    [activeProfile.status, categories, profileContext],
+  );
 
   const selectedCount = selectedIds.size;
   const selectedItem = useMemo(() => {
@@ -336,66 +423,40 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     });
   }, []);
 
-  const refreshInstallManifestStatusesWithOutcome = useCallback(async (items: ModLibraryItem[]) => {
-    if (activeProfile.status !== "ready" || activeProfileId === null) {
-      return { items, verified: false };
-    }
-
-    const modIds = Array.from(new Set(items.map((item) => item.id))).filter((id) => id.length > 0);
-    if (modIds.length === 0) {
-      return { items, verified: true };
-    }
-
+  const refreshCategories = useCallback(async () => {
+    const generation = ++categoriesRequestGenerationRef.current;
     try {
-      const manifestSummaries = await getInstallManifestStatus({
-        gameId: DEFAULT_INSTALL_GAME_ID,
-        profileId: activeProfileId,
-        modIds,
-      });
-      const itemsWithManifestStatus = applyInstallManifestStatusSummaries(items, manifestSummaries);
-
-      try {
-        const recoverySummaries = await scanInstallRecovery({
-          gameId: DEFAULT_INSTALL_GAME_ID,
-          profileId: activeProfileId,
-          modIds,
-        });
-        return {
-          items: applyInstallRecoverySummaries(itemsWithManifestStatus, recoverySummaries),
-          verified: true,
-        };
-      } catch {
-        return { items: applyInstallRecoveryUnavailable(itemsWithManifestStatus), verified: false };
+      const loadedCategories = await listCategories();
+      if (categoriesRequestGenerationRef.current === generation) {
+        categoriesRef.current = loadedCategories;
+        setCategories(loadedCategories);
       }
     } catch {
-      return { items: applyInstallRecoveryUnavailable(items), verified: false };
+      // Category chips remain on their last successful snapshot.
     }
-  }, [activeProfile.status, activeProfileId]);
+  }, []);
 
-  const refreshInstallManifestStatuses = useCallback(
-    async (items: ModLibraryItem[]) => (await refreshInstallManifestStatusesWithOutcome(items)).items,
-    [refreshInstallManifestStatusesWithOutcome],
-  );
+  const refreshModLibrary = useCallback(async () => {
+    setSelectedIds(new Set());
+    await Promise.all([refreshLibraryPage(), refreshCategories()]);
+  }, [refreshCategories, refreshLibraryPage]);
 
-  const loadModLibraryItems = useCallback((mode: ModLibraryLoadMode) => {
-    return loadModLibraryItemsForMode({
-      mode,
-      fallbackItems: fallbackModLibraryItems,
-      getModLibrary,
-      refreshInstallManifestStatuses,
-    });
-  }, [refreshInstallManifestStatuses]);
-
-  const refreshModLibrary = useCallback(() => {
-    return Promise.all([
-      loadModLibraryItems("refresh").then((result) => {
-        setLibraryItems((currentItems) => preserveItemsOnRefreshFailure(currentItems, result.items));
+  const refreshTerminalDurableStatus = useCallback(
+    (profileId: string, modId: string, modName: string) =>
+      refreshModLibraryDurableStatuses([createModLibraryStatusProbe(modId, modName)], {
+        loadManifestStatuses: (modIds) => getInstallManifestStatus({
+          gameId: DEFAULT_INSTALL_GAME_ID,
+          profileId,
+          modIds,
+        }),
+        loadRecoveryStatuses: (modIds) => scanInstallRecovery({
+          gameId: DEFAULT_INSTALL_GAME_ID,
+          profileId,
+          modIds,
+        }),
       }),
-      listCategories()
-        .then(setCategories)
-        .catch(() => undefined),
-    ]).then(() => undefined);
-  }, [loadModLibraryItems]);
+    [],
+  );
 
   const reinstallWorkflow = useModReinstallWorkflow({
     gameId: DEFAULT_INSTALL_GAME_ID,
@@ -408,6 +469,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const uninstallBlockerMessage = useMemo(() => {
     if (uninstallConfirmation === null) {
       return null;
+    }
+    if (libraryQueryBusy) {
+      return MOD_LIBRARY_QUERY_BUSY_MESSAGE;
     }
     if (
       activeProfile.status !== "ready"
@@ -426,7 +490,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       && currentSummary.backupCount === uninstallConfirmation.backupCount
       ? null
       : "后端安装摘要已变化，请关闭并刷新后重试。";
-  }, [activeProfile.status, activeProfileId, libraryItems, uninstallConfirmation]);
+  }, [activeProfile.status, activeProfileId, libraryItems, libraryQueryBusy, uninstallConfirmation]);
+
+  const confirmSelectedReinstall = () => {
+    if (libraryQueryBusy) {
+      return;
+    }
+    reinstallWorkflow.confirmReinstall();
+  };
 
   useEffect(() => {
     libraryItemsRef.current = libraryItems;
@@ -440,38 +511,45 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    void loadModLibraryItems("initial").then((result) => {
-      if (!cancelled && result.items) {
-        setLibraryItems(result.items);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loadModLibraryItems]);
+    void refreshCategories();
+  }, [refreshCategories]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    void listCategories()
-      .then((loadedCategories) => {
-        if (!cancelled) {
-          setCategories(loadedCategories);
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const normalizedFilter = normalizeLibraryFilter(activeFilter, filterChips);
+    if (normalizedFilter === activeFilter) {
+      return;
+    }
+    if (!isSameLibraryFilter(activeFilter, normalizedFilter)) {
+      resetLibraryPage();
+      resetPageInteraction();
+    }
+    setActiveFilter(normalizedFilter);
+  }, [activeFilter, filterChips, resetLibraryPage, resetPageInteraction]);
 
   useEffect(() => {
-    setActiveFilter((currentFilter) => normalizeLibraryFilter(currentFilter, filterChips));
-  }, [filterChips]);
+    setSelectedIds(new Set());
+    resetLibraryPage();
+    resetContentScroll();
+  }, [activeProfile.status, activeProfileId, resetContentScroll, resetLibraryPage]);
+
+  useEffect(() => {
+    const previousPage = renderedPageRef.current;
+    renderedPageRef.current = renderedPage;
+    if (renderedPage !== null && previousPage !== null && renderedPage !== previousPage) {
+      resetContentScroll();
+    }
+  }, [renderedPage, resetContentScroll]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setContextMenuState(null);
+  }, [libraryPage]);
+
+  useEffect(() => {
+    if (libraryQueryBusy) {
+      setContextMenuState(null);
+    }
+  }, [libraryQueryBusy]);
 
   useEffect(() => {
     if (!isManagedInstallTaskTerminal(installTaskState)) {
@@ -494,44 +572,45 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         return;
       }
 
-      let itemsAtRefreshStart = libraryItemsRef.current;
-      let refreshResult = await refreshInstallManifestStatusesWithOutcome(itemsAtRefreshStart);
-
-      if (libraryItemsRef.current !== itemsAtRefreshStart) {
-        itemsAtRefreshStart = libraryItemsRef.current;
-        refreshResult = await refreshInstallManifestStatusesWithOutcome(itemsAtRefreshStart);
-      }
+      resetContentScroll();
+      const [pageRefresh, durableRefresh] = await Promise.allSettled([
+        refreshModLibrary(),
+        refreshTerminalDurableStatus(terminalTask.profileId, terminalTask.modId, terminalTask.modName),
+      ]);
       if (!pageMountedRef.current) {
         return;
       }
 
       const currentProfileId = activeProfileIdRef.current;
-      const libraryUnchanged = libraryItemsRef.current === itemsAtRefreshStart;
-      if (!isManagedInstallTerminalRefreshCurrent(terminalTask, currentProfileId, libraryUnchanged)) {
+      if (currentProfileId !== terminalTask.profileId) {
         setLifecycleToast(null);
-        if (currentProfileId === terminalTask.profileId && !libraryUnchanged) {
-          const failedClosedItems = failClosedModInstallSummary(libraryItemsRef.current, terminalTask.modId);
-          libraryItemsRef.current = failedClosedItems;
-          setLibraryItems(failedClosedItems);
-        }
         return;
       }
 
-      const refreshedStatus =
-        refreshResult.items.find((item) => item.id === terminalTask.modId)?.installSummary?.status ?? null;
-      const terminalRefresh = { verified: refreshResult.verified, status: refreshedStatus };
-      const itemsWithTerminalFacts = shouldFailClosedManagedInstallTerminal(terminalTask, terminalRefresh)
-        ? failClosedModInstallSummary(refreshResult.items, terminalTask.modId)
-        : refreshResult.items;
-
-      libraryItemsRef.current = itemsWithTerminalFacts;
-      setLibraryItems(itemsWithTerminalFacts);
+      const durableStatus = durableRefresh.status === "fulfilled" ? durableRefresh.value : null;
+      const terminalRefresh = {
+        verified: durableStatus?.verified ?? false,
+        status: durableStatus?.items[0]?.installSummary?.status ?? null,
+      };
+      if (
+        pageRefresh.status === "rejected"
+        || shouldFailClosedManagedInstallTerminal(terminalTask, terminalRefresh)
+      ) {
+        updateCurrentPageItems((items) =>
+          failClosedModInstallSummary(items, terminalTask.modId));
+      }
 
       setLifecycleToast(getManagedInstallTerminalToast(terminalTask, terminalRefresh));
     };
 
     void refreshTerminalFacts();
-  }, [installTaskState, refreshInstallManifestStatusesWithOutcome]);
+  }, [
+    installTaskState,
+    refreshModLibrary,
+    refreshTerminalDurableStatus,
+    resetContentScroll,
+    updateCurrentPageItems,
+  ]);
 
   useEffect(() => {
     let disposed = false;
@@ -632,13 +711,51 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, [updateScrollUiState, visibleItems.length, scrollUiState.showScrollUi]);
+  }, [libraryItems.length, scrollUiState.showScrollUi, updateScrollUiState]);
+
+  const handleQueryChange = (nextQuery: string) => {
+    setQuery(nextQuery);
+    resetPageInteraction();
+  };
+
+  const handleFilterChange = (nextFilter: ModLibraryFilter) => {
+    setActiveFilter(nextFilter);
+    libraryQuery.resetPage();
+    resetPageInteraction();
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    libraryQuery.setPage(nextPage);
+    resetPageInteraction();
+  };
+
+  const handlePageSizeChange = (nextPageSize: Parameters<typeof libraryQuery.setPageSize>[0]) => {
+    libraryQuery.setPageSize(nextPageSize);
+    resetPageInteraction();
+  };
+
+  const resetSearchAndFilter = () => {
+    setQuery("");
+    setActiveFilter(allLibraryFilter);
+    libraryQuery.resetPage();
+    resetPageInteraction();
+  };
+
+  const retryLibraryQuery = () => {
+    void libraryQuery.refresh().catch(() => undefined);
+  };
 
   const selectCard = (id: string) => {
+    if (libraryQueryBusy) {
+      return;
+    }
     setSelectedIds((prev) => applyModSelection(prev, id, "replace"));
   };
 
   const handleContextMenu = (modId: string, x: number, y: number) => {
+    if (libraryQueryBusy) {
+      return;
+    }
     setContextMenuState({ x, y, modId });
     // If the card isn't selected, select it
     if (!selectedIds.has(modId)) {
@@ -647,13 +764,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const selectAll = () => {
-    setSelectedIds(new Set(visibleItems.map((item) => item.id)));
+    if (libraryQueryBusy) {
+      return;
+    }
+    setSelectedIds(new Set(libraryItems.map((item) => item.id)));
   };
 
   const invertSelection = () => {
+    if (libraryQueryBusy) {
+      return;
+    }
     setSelectedIds((prev) => {
       const next = new Set<string>();
-      for (const item of visibleItems) {
+      for (const item of libraryItems) {
         if (!prev.has(item.id)) {
           next.add(item.id);
         }
@@ -663,7 +786,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const previewSelectedInstallPlan = () => {
-    if (selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
+    if (libraryQueryBusy || selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
       return;
     }
 
@@ -706,7 +829,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const startSelectedInstallTask = () => {
-    if (selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
+    if (libraryQueryBusy || selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
       return;
     }
 
@@ -813,6 +936,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const promptSelectedUninstallTask = () => {
     if (
+      libraryQueryBusy ||
       reinstallWorkflow.workflowActive ||
       activeProfileId === null ||
       !selectedItem ||
@@ -838,7 +962,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const startSelectedUninstallTask = () => {
-    if (!uninstallConfirmation || uninstallBlockerMessage !== null) {
+    if (libraryQueryBusy || !uninstallConfirmation || uninstallBlockerMessage !== null) {
       return;
     }
 
@@ -929,6 +1053,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       case "invert":
         invertSelection();
         break;
+      case "refresh":
+        void refreshModLibrary().catch(() => undefined);
+        break;
       case "preview-plan":
         previewSelectedInstallPlan();
         break;
@@ -936,6 +1063,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         startSelectedInstallTask();
         break;
       case "reinstall":
+        if (libraryQueryBusy) {
+          break;
+        }
         setUninstallConfirmation(null);
         installPlanPreviewGenerationRef.current += 1;
         setInstallPlanDetailState({ status: "idle" });
@@ -951,6 +1081,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const handleContextMenuAction = (actionId: string, modId: string) => {
+    if (libraryQueryBusy) {
+      return;
+    }
     switch (actionId) {
       case "info-settings":
         setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "details"));
@@ -1021,8 +1154,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             filterChips={filterChips}
             viewMode={viewMode}
             showCardCategoryLabels={showCardCategoryLabels}
-            onQueryChange={setQuery}
-            onFilterChange={setActiveFilter}
+            onQueryChange={handleQueryChange}
+            onQuerySubmit={libraryQuery.flushSearch}
+            onFilterChange={handleFilterChange}
             onToggleCardCategoryLabels={toggleCardCategoryLabels}
             onViewModeChange={handleViewModeChange}
           />
@@ -1031,9 +1165,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         <div className="mod-library__actions-slot">
           <CompactActionPanel
             selectedCount={selectedCount}
-            totalCount={visibleItems.length}
+            totalCount={libraryItems.length}
             selectedModId={selectedItem?.id ?? null}
             installTaskActive={installTaskActive}
+            libraryQueryBusy={libraryQueryBusy}
+            profileReady={activeProfile.status === "ready" && activeProfileId !== null}
             canInstallSelection={canInstallSelected}
             canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
@@ -1065,11 +1201,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         state={reinstallWorkflow.dialogState}
         taskState={reinstallWorkflow.taskState}
         listenerStatus={reinstallWorkflow.listenerStatus}
-        canConfirm={reinstallWorkflow.canConfirm}
+        canConfirm={reinstallWorkflow.canConfirm && !libraryQueryBusy}
         onClose={reinstallWorkflow.closeReinstall}
         onCandidateChange={reinstallWorkflow.selectCandidateRevision}
         onPreview={reinstallWorkflow.generatePreview}
-        onConfirm={reinstallWorkflow.confirmReinstall}
+        onConfirm={confirmSelectedReinstall}
         onRetryListener={reinstallWorkflow.retryTaskProgressListener}
       />
 
@@ -1087,18 +1223,39 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       ) : null}
 
       <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
-        <div ref={contentRef} className="mod-library__content">
+        <ModLibraryQueryFeedback
+          busy={!libraryQueryBlocked && libraryQuery.refreshing}
+          errorMessage={libraryPage === null ? null : libraryQuery.errorMessage}
+          onRetry={retryLibraryQuery}
+        />
+
+        <div
+          ref={contentRef}
+          className="mod-library__content"
+          aria-busy={libraryQueryBusy}
+        >
           {showScrollUi ? (
             <div className="mod-library__main-floating-actions">
               <BackToTopButton onClick={handleBackToTop} />
             </div>
           ) : null}
 
-          {visibleItems.length === 0 ? (
-            <div className="mod-library__empty anim-stagger-item" style={staggerStyle(1)} role="status">
-              <strong>没有匹配的 Mod</strong>
-              <p>试试调整搜索关键词或筛选条件。</p>
-            </div>
+          {libraryQueryBlocked ? (
+            <ModLibraryQueryBlockedState
+              message={libraryQueryBlockedMessage}
+              onReset={resetSearchAndFilter}
+            />
+          ) : libraryQuery.initialLoading ? (
+            <ModLibrarySkeleton viewMode={viewMode} />
+          ) : libraryPage === null ? (
+            <ModLibraryInitialError
+              message={libraryQuery.errorMessage ?? "Mod 列表加载失败，请稍后重试"}
+              onRetry={retryLibraryQuery}
+            />
+          ) : libraryPage.libraryTotal === 0 ? (
+            <ModLibraryEmptyState kind="library" />
+          ) : libraryPage.matchingTotal === 0 ? (
+            <ModLibraryEmptyState kind="matches" onReset={resetSearchAndFilter} />
           ) : (
             <div
               className={`mod-grid view-${viewMode}`}
@@ -1106,11 +1263,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               data-view-transition={viewTransitionPhase}
               data-view-transition-variant={viewTransitionVariant}
             >
-              {visibleItems.map((item, index) => (
+              {libraryItems.map((item, index) => (
                 <ModPosterCard
                   key={item.id}
                   item={item}
                   selected={selectedIds.has(item.id)}
+                  interactionDisabled={libraryQueryBusy}
                   viewMode={viewMode}
                   onSelect={selectCard}
                   onContextMenu={handleContextMenu}
@@ -1132,6 +1290,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           </div>
         ) : null}
       </div>
+
+      <ModLibraryPagination
+        page={libraryPage?.page ?? 1}
+        pageSize={libraryQuery.pageSize}
+        matchingTotal={libraryPage?.matchingTotal ?? 0}
+        busy={libraryQueryBusy}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+      />
 
       {contextMenuState && (
         <ModContextMenu

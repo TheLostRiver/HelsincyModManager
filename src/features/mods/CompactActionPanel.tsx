@@ -13,6 +13,11 @@ import {
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { ModImportAction } from "./ModImportAction";
+import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
+import {
+  getCompactActionDisabledReason,
+  MOD_LIBRARY_QUERY_BUSY_MESSAGE,
+} from "./compactActionAvailability";
 import { compactActions } from "./modsLibraryData";
 
 type CompactActionPanelProps = {
@@ -20,6 +25,8 @@ type CompactActionPanelProps = {
   totalCount: number;
   selectedModId?: string | null;
   installTaskActive?: boolean;
+  libraryQueryBusy: boolean;
+  profileReady: boolean;
   canInstallSelection?: boolean;
   canReinstallSelection?: boolean;
   canUninstallSelection?: boolean;
@@ -45,6 +52,8 @@ export function CompactActionPanel({
   totalCount,
   selectedModId = null,
   installTaskActive = false,
+  libraryQueryBusy,
+  profileReady,
   canInstallSelection = true,
   canReinstallSelection = false,
   canUninstallSelection = false,
@@ -54,7 +63,9 @@ export function CompactActionPanel({
   const addAction = compactActions.find((a) => a.id === "add");
   const addRevisionAction = compactActions.find((a) => a.id === "add-revision");
   const revisionImportDisabledReason =
-    selectedCount !== 1 || !selectedModId
+    libraryQueryBusy
+      ? MOD_LIBRARY_QUERY_BUSY_MESSAGE
+      : selectedCount !== 1 || !selectedModId
       ? "请先选择一个 MOD"
       : installTaskActive
         ? "请等待当前安装任务完成"
@@ -84,20 +95,42 @@ export function CompactActionPanel({
             .filter((a) => ["select-all", "invert", "refresh"].includes(a.id))
             .map((action) => {
               const Icon = actionIcons[action.id] ?? Plus;
+              const disabledReason = getCompactActionDisabledReason({
+                actionId: action.id,
+                selectedCount,
+                profileReady,
+                installTaskActive,
+                libraryQueryBusy,
+                canInstallSelection,
+                canReinstallSelection,
+                canUninstallSelection,
+              });
               return (
-                <button
-                  key={action.id}
-                  type="button"
-                  className={`compact-action is-${action.variant}`}
-                  data-variant={action.variant}
-                  onClick={() => onAction(action.id)}
-                >
-                  <span className="compact-action__left">
-                    <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
-                    <span className="compact-action__label">{action.label}</span>
-                  </span>
-                  <span className="compact-action__dot" aria-hidden="true" />
-                </button>
+                <ModLibraryControlTooltip key={action.id} content={disabledReason}>
+                  {(descriptionId) => (
+                    <button
+                      type="button"
+                      className={`compact-action is-${action.variant}`}
+                      data-variant={action.variant}
+                      aria-disabled={disabledReason ? true : undefined}
+                      aria-describedby={descriptionId}
+                      onClick={(event) => {
+                        if (disabledReason) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          return;
+                        }
+                        onAction(action.id);
+                      }}
+                    >
+                      <span className="compact-action__left">
+                        <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
+                        <span className="compact-action__label">{action.label}</span>
+                      </span>
+                      <span className="compact-action__dot" aria-hidden="true" />
+                    </button>
+                  )}
+                </ModLibraryControlTooltip>
               );
             })}
         </div>
@@ -106,35 +139,48 @@ export function CompactActionPanel({
           .filter((a) => !["select-all", "invert", "refresh", "add", "add-revision"].includes(a.id))
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
-            const needsSingleSelection = ["preview-plan", "install", "reinstall", "uninstall"].includes(action.id);
-            const isDisabled =
-              (needsSingleSelection && selectedCount !== 1) ||
-              (needsSingleSelection && installTaskActive) ||
-              (action.id === "preview-plan" && !canInstallSelection) ||
-              (action.id === "install" && !canInstallSelection) ||
-              (action.id === "reinstall" && !canReinstallSelection) ||
-              (action.id === "uninstall" && !canUninstallSelection);
+            const disabledReason = getCompactActionDisabledReason({
+              actionId: action.id,
+              selectedCount,
+              profileReady,
+              installTaskActive,
+              libraryQueryBusy,
+              canInstallSelection,
+              canReinstallSelection,
+              canUninstallSelection,
+            });
             return (
-              <button
-                key={action.id}
-                type="button"
-                className={`compact-action is-${action.variant}`}
-                data-variant={action.variant}
-                onClick={() => onAction(action.id)}
-                disabled={isDisabled}
-              >
-                <span className="compact-action__left">
-                  <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
-                  <span className="compact-action__label">{action.label}</span>
-                </span>
-                <span className="compact-action__dot" aria-hidden="true" />
-              </button>
+              <ModLibraryControlTooltip key={action.id} content={disabledReason}>
+                {(descriptionId) => (
+                  <button
+                    type="button"
+                    className={`compact-action is-${action.variant}`}
+                    data-variant={action.variant}
+                    aria-disabled={disabledReason ? true : undefined}
+                    aria-describedby={descriptionId}
+                    onClick={(event) => {
+                      if (disabledReason) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                      }
+                      onAction(action.id);
+                    }}
+                  >
+                    <span className="compact-action__left">
+                      <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
+                      <span className="compact-action__label">{action.label}</span>
+                    </span>
+                    <span className="compact-action__dot" aria-hidden="true" />
+                  </button>
+                )}
+              </ModLibraryControlTooltip>
             );
           })}
 
         <div className="compact-panel__spacer" aria-hidden="true" />
-        <span className="compact-panel__selection-status">
-          已选中 {selectedCount} / 共 {totalCount} 项
+        <span className="compact-panel__selection-status" role="status" aria-live="polite" aria-atomic="true">
+          本页已选 {selectedCount} / 当前页 {totalCount} 项
         </span>
       </div>
     </aside>

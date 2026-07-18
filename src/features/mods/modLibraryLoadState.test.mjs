@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   applyInstallManifestStatusSummaries,
+  applyInstallManifestUnavailable,
   applyInstallRecoveryUnavailable,
   applyInstallRecoverySummaries,
   resolveLoadedModLibraryItems,
@@ -292,4 +293,39 @@ test("unavailable install recovery degrades managed states to unknown without pa
   });
   assert.equal("targetPath" in result[0], false);
   assert.equal("backupRef" in result[0], false);
+});
+
+test("unavailable manifest status fails closed even for not-installed and legacy display states", () => {
+  const result = applyInstallManifestUnavailable([
+    {
+      id: "not-installed-mod",
+      name: "Not installed Mod",
+      status: "not_installed",
+      sizeLabel: "1 KB",
+      categoryLabels: [],
+      installSummary: {
+        status: "not_installed",
+        managedFileCount: 0,
+        backupCount: 0,
+      },
+    },
+    {
+      id: "legacy-disabled-mod",
+      name: "Legacy Disabled Mod",
+      status: "disabled",
+      sizeLabel: "2 KB",
+      categoryLabels: [],
+    },
+  ]);
+
+  assert.deepEqual(result.map((item) => item.status), ["unknown", "unknown"]);
+  assert.deepEqual(result.map((item) => item.installSummary?.status), ["unknown", "unknown"]);
+  assert.deepEqual(result[1].installSummary, {
+    status: "unknown",
+    managedFileCount: 0,
+    backupCount: 0,
+    recoveryStatus: "unknown",
+    issueCount: 0,
+    issues: [],
+  });
 });

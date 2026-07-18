@@ -37,11 +37,22 @@ test("mod library types expose preview image without local paths", () => {
   assert.doesNotMatch(source, /cachePath|diskPath|localPath|convertFileSrc|asset:/i);
 });
 
-test("mod library page loads backend data with mock fallback", () => {
+test("mod library page consumes paged queries and limits mock data to plain-browser development", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
 
-  assert.match(source, /getModLibrary/);
-  assert.match(source, /fallbackModLibraryItems/);
-  assert.match(source, /setLibraryItems/);
-  assert.doesNotMatch(source, /const visibleItems = useMemo\(\(\) => \{\s*const keyword[\s\S]*?return modLibraryItems\.filter/);
+  assert.match(source, /isPlainBrowserDevRuntime/);
+  assert.match(source, /const browserPreviewEnabled = useMemo/);
+  assert.match(source, /isDev:\s*\(import\.meta[\s\S]*?\.env\?\.DEV\s*===\s*true/);
+  assert.match(source, /hasTauriRuntime:\s*hasTauriRuntime\(\)/);
+  assert.match(
+    source,
+    /const page = browserPreviewEnabled\s*\?\s*queryBrowserMockModLibrary\(input,\s*fallbackModLibraryItems,\s*categoriesRef\.current\)\s*:\s*await queryModLibrary\(input\);/,
+  );
+  assert.match(source, /const libraryQuery = useModLibraryQuery\(\{[\s\S]*?loadPage:\s*loadModLibraryPage/);
+  assert.match(source, /const libraryPage = libraryQuery\.page/);
+  assert.doesNotMatch(source, /\bgetModLibrary\b|setLibraryItems/);
+  assert.doesNotMatch(
+    source,
+    /const visibleItems = useMemo\(\(\) => \{\s*const keyword[\s\S]*?return modLibraryItems\.filter/,
+  );
 });
