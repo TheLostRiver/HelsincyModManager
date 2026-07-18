@@ -13,8 +13,9 @@
 3. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已于 2026-07-18 完成；A1、L1、
    U1、U2、L2、U3、L3 七切片均经独立 review 合并，CI 验收、默认脱敏诊断、分层反馈、完整验证、
    视觉 smoke、受控 Windows 桌面复验和契约同步均已满足完成定义。
-4. 当前主线切换到 T18 Mod 库分页，先执行 app-level query/filter/sort/page 类型、兼容聚合服务和
-   fake repository 测试；后续顺序仍为 T18 -> T17 -> T13。自动备份剩余切片、installer cleanup、
+4. 当前主线为 T18 Mod 库分页；Slice 1 的 app-level query/filter/sort/page 类型、兼容聚合服务和
+   fake repository 测试已由 PR #186 完成，当前执行 Slice 2 的 Tauri DTO、稳定错误、feature-local
+   typed API 和 contract；后续顺序仍为 T18 -> T17 -> T13。自动备份剩余切片、installer cleanup、
    T12/T14 和其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断

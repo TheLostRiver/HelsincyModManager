@@ -74,7 +74,8 @@
        └──> T10 最小 path-family / source / target preflight
   -> Gate B: ARMOR install/switch-target/uninstall certified
   -> T19 产品化加固 [completed]
-  -> T18 Mod 库分页 Slice 1 [current]
+  -> T18 Mod 库分页 Slice 1 [completed, PR #186]
+  -> T18 Mod 库分页 Slice 2 [current]
   -> T17 第三方批量迁移 -> T13 批量安装/卸载
 ```
 
@@ -395,14 +396,14 @@ JSON 做不好的需求:
 ### T18: Mod 库分页
 
 **前置**: 现有 Mod 库 + Profile install/recovery 状态查询
-**状态**: 当前主线；T19 完成后已恢复，下一切片为 Slice 1
+**状态**: 当前主线；Slice 1 已完成（PR #186），当前切片为 Slice 2
 **预估**: 中-大，建议拆为 4 个独立 review 切片
 **独立文档**: **已创建** → `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
 
 范围:
 - [x] 设计后端权威查询分页、搜索/filter/稳定排序、page-local selection 和 UI 状态边界
-- [ ] Slice 1：app-level query/filter/sort/page 类型、兼容聚合服务和 fake repository 测试
-- [ ] Slice 2：`query_mod_library` Tauri DTO、稳定错误、feature-local typed API 和 contract 文档
+- [x] Slice 1：app-level query/filter/sort/page 类型、兼容聚合服务和 fake repository 测试（PR #186）
+- [ ] Slice 2：`query_mod_library` Tauri DTO、稳定错误、feature-local typed API 和 contract 文档（当前）
 - [ ] Slice 3：数字分页 footer、debounce/stale response、loading/error/empty 和本页选择 UI
 - [ ] Slice 4：与 T17 共用可查询 read model/持久化决策、大库基准、视觉 smoke 和性能门禁
 
@@ -412,8 +413,8 @@ JSON 做不好的需求:
 - 首版只提供“选择本页/反选本页”；跨页全选和批量写操作留给 T13
 - T18 不依赖 T17，但应在 T17 Slice 4 完整迁移 UI 对外完成前落地
 - 当前 JSON 全量读取只允许作为兼容阶段，不能把 bridge payload 变小等同于大库性能完成
-- Slice 1 只实现 app-level 类型、兼容聚合服务和 fake repository 测试；不提前修改 Tauri、前端、
-  依赖或 migration
+- Slice 1 已完成 app-level 类型、兼容聚合服务和 fake repository 测试；Slice 2 只新增 Tauri DTO、
+  typed API 和 contract，不提前迁移页面消费者或实现 Slice 3 UI
 
 ---
 
@@ -480,8 +481,9 @@ JSON 做不好的需求:
 
 ```text
 已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3 -> L3
-  -> 当前: T18 Mod 库分页 Slice 1
-  -> 后续: T18 Slice 2-4 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
+  -> 已完成: T18 Mod 库分页 Slice 1（PR #186）
+  -> 当前: T18 Mod 库分页 Slice 2
+  -> 后续: T18 Slice 3-4 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
 
@@ -507,5 +509,5 @@ JSON 做不好的需求:
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
-| T18 Mod 库分页 | P2 | 当前主线（Slice 1 待实现） | |
+| T18 Mod 库分页 | P2 | 当前主线（Slice 1 已完成，Slice 2 实施中） | #186（Slice 1） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
