@@ -1,14 +1,14 @@
 # Mod 库分页设计
 
-> 状态：Slice 1 已完成（PR #186），Slice 2 实施中；分页 UI 尚不可用。
+> 状态：Slice 1（PR #186）和 Slice 2（PR #187）已完成；Slice 3 已完成实现、本地验证和独立复审、待 PR/merge，Slice 4 尚未开始，T18 整体仍在进行中。
 >
-> 本文只定义 Mod 管理页面的查询、分页、选择、架构和验收边界，不表示分页功能已经可用。
+> Slice 3 已接入数字分页 footer、250ms 搜索 debounce/latest-request gate、loading/error/empty、page-local selection 和当前页 durable status overlay；本地统一验证及四视图/四窗口视觉 smoke 已通过。
 
 ## 背景与现状审计
 
-当前 Mod 管理页面没有分页。后端 `get_mod_library()` 一次返回完整 `Vec<ModLibraryItemDto>`，前端把整个列表保存在 state，完成搜索和分类/状态筛选后，一次渲染全部结果。
+设计启动时，Mod 管理页面没有分页。后端 `get_mod_library()` 一次返回完整 `Vec<ModLibraryItemDto>`，前端把整个列表保存在 state，完成搜索和分类/状态筛选后，一次渲染全部结果。
 
-现有数据流为：
+设计启动时的数据流为：
 
 ```text
 JsonModImportResultRepository.list_analysis()
@@ -19,14 +19,16 @@ JsonModImportResultRepository.list_analysis()
   -> 一次渲染全部可见卡片
 ```
 
-这会同时产生四类问题：
+该旧路径会同时产生四类问题：
 
 - 列表很长时，定位、滚动和选择操作困难。
 - bridge 返回完整卡片 DTO，预览图和标签会放大序列化与前端内存成本。
 - install manifest / recovery 状态刷新会携带全部 Mod ID。
 - 搜索、状态、分类和总数都在不同步骤处理，加入分页后容易出现“页码基于一套结果、卡片基于另一套结果”的错误。
 
-现有搜索框提示支持“名称、作者或标签”，实际实现只匹配名称。本设计把这项不一致纳入分页查询契约修正，但不在本轮直接修改代码。
+设计启动时，搜索框提示支持“名称、作者或标签”，实际实现只匹配名称。Slice 1/2 已把三类字段统一到后端查询契约，Slice 3 的页面消费者改为使用该查询结果。
+
+当前 Slice 3 工作分支已把 Mod 管理页面迁移到 `query_mod_library()`：前端只持有当前页 DTO，并只为当前页合并 manifest/recovery durable 状态；无参 `get_mod_library()` 仅作为尚未迁移调用方的兼容入口保留。
 
 仓库已有的分页规划只服务第三方迁移批次的候选预览和结果查询，不覆盖主 Mod 库，因此需要独立任务和设计。
 
@@ -53,13 +55,13 @@ JsonModImportResultRepository.list_analysis()
 - 把分页查询建模为 TaskManager 长任务或发送 progress event。
 - 在 URL、日志或诊断包中持久化玩家搜索词。
 - 为分页读取任意文件路径、游戏目录或第三方 Mod 内容。
-- 在本设计阶段新增组件、API、DTO、Rust 类型、migration 或依赖。
+- 在 Slice 3 提前实现 Slice 4 的可查询 read model、migration、大库性能门禁，或 T13/T17 的功能。
 
 ## 核心决策
 
 ### 后端查询分页是目标架构
 
-纯前端 `visibleItems.slice(...)` 可以快速得到页码，但仍会把完整 Mod 库、全部预览 DTO 和全部状态请求送到前端，无法解决规模问题。正式实现应新增后端权威的 page query。
+纯前端 `visibleItems.slice(...)` 可以快速得到页码，但仍会把完整 Mod 库、全部预览 DTO 和全部状态请求送到前端，无法解决规模问题。Slice 1/2 已新增后端权威的 page query，Slice 3 负责迁移页面消费者。
 
 为了兼容当前 JSON 仓储，首个后端切片允许在 `hmm-app` 内先执行 `list_analysis -> merge -> filter -> sort -> page`。这可以先收窄 Tauri payload 和前端渲染范围，但仍是 O(n) 的兼容阶段，不能作为大型 Mod 库性能工作的最终完成标准。
 
@@ -142,15 +144,15 @@ category(categoryId)
 
 ## 概念契约
 
-下面名称是实施建议，不表示 API 已存在。实现时必须同步 `docs/FRONTEND_BACKEND_CONTRACT.md`。
+`query_mod_library` 已在 Slice 2 作为正式 typed contract 落地，并同步 `docs/FRONTEND_BACKEND_CONTRACT.md`；下面是当前契约摘要。
 
-当前正式 contract 的无参 `get_mod_library()` 与代码保持一致；不能把它静默改造成带 query 的同名命令。分页使用独立命令，避免旧调用方在迁移期间产生输入/输出歧义。
+无参 `get_mod_library()` 继续作为兼容 contract 保留，不能把它静默改造成带 query 的同名命令。Mod 管理页面在 Slice 3 使用独立分页命令，避免旧调用方在迁移期间产生输入/输出歧义。
 
 ```text
 query_mod_library(input) -> ModLibraryPageDto
 ```
 
-建议输入：
+当前输入：
 
 ```text
 ModLibraryQueryDto
@@ -167,7 +169,7 @@ ModLibraryQueryDto
   pageSize             # 12 | 24 | 48 | 96
 ```
 
-建议响应：
+当前响应：
 
 ```text
 ModLibraryPageDto
@@ -200,21 +202,30 @@ ModLibraryPageDto
 ```text
 Mod 库
   固定工具栏 / 快捷操作
-  安装计划或任务状态
   可滚动的当前页卡片区
-  固定分页 footer
+  独立分页 footer
+
+悬浮反馈层（不占分页网格行）
+  安装计划 Detail Sheet / 任务 Notice / 终态 Toast
 ```
 
-当前 `.mod-library` 三行 grid 应在实现时扩展出独立 pagination row。分页 footer 位于 `.mod-library__content` 之外，保持翻页入口常驻；它不能遮挡自绘滚动条、返回顶部按钮或卡片内容。
+Slice 3 已为 `.mod-library` 增加独立 pagination row。常规桌面窗口中，分页 footer 位于
+`.mod-library__content` 之外并保持在页面网格内，翻页时不随卡片内层滚动；它不得遮挡自绘滚动条、
+返回顶部按钮或卡片内容。
+
+`max-width: 1280px` 且 `max-height: 720px` 的短高桌面窗口是明确例外：为了避免搜索、筛选和安全
+操作区把卡片轨道压缩成不可用的细条，Mod 页面启用外层纵向滚动并为卡片区保留至少 `460px`
+内容轨道。分页 footer 仍位于卡片内层滚动区之外，但需要通过页面外层滚动到达，不做 viewport
+固定或覆盖式悬浮。该取舍优先保证卡片可检查、无重叠和无横向溢出。
 
 分页 footer 包含：
 
 - 当前范围，例如 `25-48 / 286`。
-- page size 选择菜单。
+- page size 使用项目自绘 listbox，不使用原生 `<select>`。
 - 首页、上一页、数字页、下一页、末页按钮。
 - 当前页使用 `aria-current="page"`。
 
-首页/上一页/下一页/末页使用 lucide 的标准 chevron 图标、accessible name 和 tooltip。数字页使用紧凑数字按钮；页数较多时最多展示 7 个页码位置，并用不可点击省略号表示间隔。
+首页/上一页/下一页/末页使用 lucide 的标准 chevron 图标、accessible name 和项目自绘 tooltip。数字页使用紧凑数字按钮；页数较多时最多展示 7 个页码位置，并用不可点击省略号表示间隔。
 
 ### 状态变化规则
 
@@ -226,7 +237,7 @@ Mod 库
 | 切换视图模式 | 保持 | 保持 | 保持 |
 | 点击其他页 | 切换目标页 | 清空 | 回到顶部 |
 | 刷新当前页 | 后端 clamp | 重新校验并默认清空 | 保持或在 clamp 时回顶部 |
-| 安装/卸载完成 | 重新查询当前条件 | 清空 | 若当前项离开 filter，则回顶部 |
+| 安装/卸载完成 | 重新查询当前条件 | 清空 | 统一回到顶部 |
 
 翻页回到 `.mod-library__content` 顶部时使用即时滚动，避免先播放跨整页平滑动画。视图切换的既有 transition 可以保留，但翻页不应对 24-96 张卡片启动长时间 stagger 动画。
 
@@ -243,6 +254,8 @@ Mod 库
 
 - 分页 footer 使用稳定 grid/flex 约束；空间不足时范围摘要和 page size 换行，页码控件不得溢出。
 - 至少覆盖 `1440x900`、`1366x768`、`1280x800` 和项目最小 `960x640` 窗口。
+- `max-width: 1280px` 且 `max-height: 720px` 的短高窗口允许页面外层滚动，但必须保留至少
+  `460px` 的可用卡片轨道、首屏内容提示和 footer 可达性，且不能出现横向溢出或内容覆盖。
 - 所有 icon-only 按钮有 `aria-label` 和 tooltip。
 - disabled 首页/上一页/下一页/末页仍保留稳定尺寸，不引起 footer 位移。
 - Tab 顺序按 page size、首页、上一页、页码、下一页、末页排列。
@@ -272,13 +285,15 @@ T18 首版选择严格限定为当前页：
 
 查询模型是 application read use case，不需要为了分页把 UI 概念放进 `hmm-core`。只有多个用例真正共享稳定领域语义时，才评估向 core 下沉。
 
-前端实现时应拆出 feature-local 模块，例如：
+Slice 3 按 feature-local 边界拆出查询、分页、反馈和 durable overlay 模块，包括：
 
 ```text
-modLibraryQueryTypes.ts
-modLibraryPagination.ts
+useModLibraryQuery.ts
+modLibraryPaginationModel.ts
 ModLibraryPagination.tsx
 ModLibraryPagination.css
+ModLibraryQueryFeedback.tsx
+modLibraryRecoveryRefresh.ts
 ```
 
 不要继续把分页、请求竞态和选择重置逻辑全部堆入已经较大的 `ModLibraryPage.tsx` / `ModLibraryPage.css`。
@@ -326,7 +341,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 2：Tauri DTO 与 typed API
 
-**实施状态：当前切片。**
+**实施状态：已完成（PR #187）。**
 
 - 新增窄 `query_mod_library` command 和 camelCase DTO。
 - 校验 search 长度、filter、page 和 page size allowlist。
@@ -336,19 +351,24 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 3：分页 UI 与 page-local selection
 
-- 增加独立 Pagination 组件、helper 和局部 CSS。
-- 接入 debounce、stale-response 防护、loading/error/empty 和 page clamp。
+**实施状态：功能实现、本地统一验证、完整视觉 smoke 及独立复审已完成，待 PR/merge。**
+
+- 增加独立数字 Pagination 组件、helper 和局部 CSS。
+- 接入 250ms debounce、latest-request gate、loading/error/empty 和 page clamp。
 - page footer 放在内层滚动区之外，并与自绘滚动条/返回顶部按钮兼容。
 - 把“全选/反选”改成明确的本页语义。
-- 当前页刷新、详情保存、安装/卸载完成后只重查当前 query。
+- 当前页只加载 manifest/recovery durable overlay；安装/卸载等终态动作后只对单 Mod durable 状态做受控探测，再重查当前 query。
+- 经典、增强网格、列表、机能四种视图和 `1440x900`、`1366x768`、`1280x800`、`960x640` 四个窗口均已完成视觉验收；分页 footer 无重叠、无横向溢出，短高窗口无顶部状态栏穿透。
 - 不实现跨页批量选择。
 
 ### Slice 4：可查询 read model 与性能门禁
 
+**实施状态：尚未开始。**
+
 - 与 T17 Slice 1 共用持久化基准和 migration 决策。
 - 消除或明确限制每次翻页的完整 JSON 解析和全量 merge。
 - 增加人工大库 fixture、查询/序列化基准和必要索引。
-- 完成四个目标窗口的浏览器/Tauri smoke。
+- 建立大库查询、序列化、翻页和渲染性能门禁，并在 read model 迁移后复跑交互回归。
 - 只有本切片通过，TODO 才能把 T18 标记为完成。
 
 ## 测试策略
@@ -394,7 +414,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-本轮仅文档规划，不执行浏览器视觉 smoke；没有运行时代码或 UI 可供验收。
+Slice 3 运行时代码和 UI 已通过本地统一验证、四视图/四窗口的完整浏览器视觉 smoke 及独立复审；当前仍待 PR/merge，Slice 4 和 T18 整体不得提前标记完成。
 
 ## 验收标准
 
@@ -410,12 +430,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 - 大库自动化只用人工数据；统一验证通过。
 - T17 完整迁移 UI 发布时，主 Mod 库分页已经可用。
 
-## 实施前确认项
+## Slice 4 实施前确认项
 
 - 用人工大库 benchmark 确认兼容版 in-memory query 可接受的临时上限。
 - 与 T17 共用的导入快照 SQLite migration 或 query projection 路线。
-- 当前 install/recovery app services 如何组合为 profile-aware library read model，避免在 Tauri command 重写规则。
+- 当前页 install/recovery durable overlay 如何迁入最终 read model，避免在 Tauri command 或前端重写规则。
 - `name_asc` 规范化算法在 Rust 与测试 fixture 中的精确定义。
-- 正式实现时是否保留浏览器开发模式 mock page；生产 Tauri 初始失败不得展示成真实 Mod。
+- Slice 3 保留的 plain-browser 开发 mock 如何继续与生产 Tauri 错误路径隔离；生产初始失败不得展示成真实 Mod。
 
 这些确认项不改变后端权威分页、page-local selection 和默认不实现跨页批量操作的核心决策。

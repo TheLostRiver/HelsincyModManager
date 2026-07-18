@@ -206,7 +206,7 @@ test("mod library page starts install task and tracks only matching task progres
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
 });
 
-test("mod library page starts uninstall task only from manifest installed summaries", () => {
+test("mod library page starts uninstall only from a durable installed summary on the current page", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
   const taskStateSource = readSource("src/features/mods/modInstallTaskState.ts");
 
@@ -220,35 +220,46 @@ test("mod library page starts uninstall task only from manifest installed summar
   assert.match(taskStateSource, /install\.uninstall\.completed/);
   assert.match(source, /UninstallConfirmationDialog/);
   assert.match(source, /onConfirm=\{startSelectedUninstallTask\}/);
-  assert.match(source, /refreshInstallManifestStatuses/);
+  assert.match(source, /refreshModLibraryDurableStatuses\(page\.items/);
+  assert.match(source, /loadManifestStatuses:[\s\S]*?getInstallManifestStatus/);
+  assert.match(source, /loadRecoveryStatuses:[\s\S]*?scanInstallRecovery/);
+  assert.match(source, /const currentItem = libraryItems\.find\(\(item\) => item\.id === uninstallConfirmation\.modId\)/);
+  assert.match(source, /currentSummary\?\.status\s*!==\s*"installed"/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
 
-test("mod library page refreshes install status from manifest summaries", () => {
+test("mod library page overlays the current query page and verifies terminal facts independently", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
+  const refreshSource = readSource("src/features/mods/modLibraryRecoveryRefresh.ts");
 
+  assert.match(source, /queryModLibrary/);
+  assert.match(source, /refreshModLibraryDurableStatuses\(page\.items/);
   assert.match(source, /getInstallManifestStatus/);
   assert.match(source, /scanInstallRecovery/);
-  assert.match(source, /applyInstallManifestStatusSummaries/);
-  assert.match(source, /applyInstallRecoverySummaries/);
-  assert.match(source, /applyInstallRecoveryUnavailable/);
   assert.match(source, /useActiveProfile/);
-  assert.match(source, /activeProfile\.status\s*!==\s*"ready"/);
-  assert.match(source, /items:\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\),\s*verified:\s*false/);
-  assert.match(source, /items:\s*applyInstallRecoveryUnavailable\(items\),\s*verified:\s*false/);
+  assert.match(source, /input\.profileContext\s*===\s*undefined/);
   assert.match(source, /profileId:\s*activeProfileId/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
+  assert.match(refreshSource, /items\.map\(\(item\) => item\.id\)/);
+  assert.match(refreshSource, /applyInstallManifestStatusSummaries\(items,\s*manifestStatuses\)/);
+  assert.match(refreshSource, /applyInstallRecoverySummaries\(itemsWithManifestStatus,\s*recoveryStatuses\)/);
+  assert.match(refreshSource, /items:\s*applyInstallManifestUnavailable\(items\)/);
+  assert.match(refreshSource, /items:\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\)/);
   assert.match(source, /isManagedInstallTaskTerminal\(installTaskState\)/);
-  assert.match(source, /refreshInstallManifestStatusesWithOutcome/);
+  assert.match(source, /refreshTerminalDurableStatus/);
+  assert.match(source, /createModLibraryStatusProbe\(modId,\s*modName\)/);
+  assert.match(source, /Promise\.allSettled\(\[/);
   assert.match(source, /getManagedInstallTerminalToast/);
   assert.match(source, /shouldFailClosedManagedInstallTerminal/);
+  assert.match(source, /updateCurrentPageItems\(\(items\)\s*=>\s*failClosedModInstallSummary\(items,\s*terminalTask\.modId\)\)/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
 });
 
 test("mod library page blocks install and uninstall actions during unsafe recovery states", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
   const actionPanelSource = readSource("src/features/mods/CompactActionPanel.tsx");
+  const availabilitySource = readSource("src/features/mods/compactActionAvailability.ts");
   const feedbackSource = readSource("src/features/mods/ModLifecycleFeedback.tsx");
 
   assert.match(source, /canInstallSelected/);
@@ -258,8 +269,10 @@ test("mod library page blocks install and uninstall actions during unsafe recove
   assert.match(source, /canInstallSelection=\{canInstallSelected\}/);
   assert.match(source, /canReinstallSelection=\{canReinstallSelected\}/);
   assert.match(actionPanelSource, /canInstallSelection/);
-  assert.match(actionPanelSource, /action\.id\s*===\s*"install"\s*&&\s*!canInstallSelection/);
-  assert.match(actionPanelSource, /action\.id\s*===\s*"reinstall"\s*&&\s*!canReinstallSelection/);
+  assert.match(actionPanelSource, /getCompactActionDisabledReason/);
+  assert.match(availabilitySource, /case "install":[\s\S]*?canInstallSelection \? undefined/);
+  assert.match(availabilitySource, /case "reinstall":[\s\S]*?canReinstallSelection \? undefined/);
+  assert.match(availabilitySource, /case "uninstall":[\s\S]*?canUninstallSelection \? undefined/);
   assert.match(feedbackSource, /"committed_cleanup_pending"/);
   assert.match(feedbackSource, /"cleanup_pending"/);
   assert.match(feedbackSource, /重装待收尾/);

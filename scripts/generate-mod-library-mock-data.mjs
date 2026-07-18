@@ -9,11 +9,13 @@ const defaultOutputPath = resolve(repoRoot, "src/features/mods/modsLibraryData.t
 const statusCycle = /** @type {const} */ (["installed", "disabled", "conflict"]);
 const categoryCycle = /** @type {const} */ ([
   ["外观"],
-  ["武器"],
-  ["语音"],
-  ["外观", "武器"],
-  ["外观", "语音"],
-  ["武器", "语音"],
+  ["防具替换"],
+  ["武器替换"],
+  ["语音替换"],
+  ["工具 / 前置"],
+  ["外观", "防具替换"],
+  ["外观", "武器替换"],
+  ["语音替换", "工具 / 前置"],
 ]);
 const gradientPairs = /** @type {const} */ ([
   ["#d7e7ff", "#77a8ff"],
@@ -49,6 +51,11 @@ const seedNames = [
   "星辉大厅换装合集",
   "工坊机巧锤纹理包",
   "随从礼帽皮肤集",
+];
+
+const featuredMetadata = [
+  { author: "NexusUser123", versionLabel: "v2.1.4" },
+  { author: "NexusUser123", versionLabel: "v1.0.0" },
 ];
 
 function parseArgs(argv) {
@@ -137,10 +144,12 @@ function buildModLibraryItems(count) {
     const [posterFrom, posterTo] = gradientPairs[index % gradientPairs.length];
     const categoryLabels = categoryCycle[index % categoryCycle.length];
     const status = statusCycle[index % statusCycle.length];
+    const metadata = featuredMetadata[index];
 
     return {
       id: `mod-${String(itemIndex).padStart(3, "0")}-${slugify(name)}`,
       name,
+      ...metadata,
       sizeLabel: makeSizeLabel(itemIndex),
       status,
       categoryLabels,
@@ -152,17 +161,26 @@ function buildModLibraryItems(count) {
 
 function formatItems(items) {
   return items
-    .map(
-      (item) => `  {
-    id: "${item.id}",
-    name: "${item.name}",
-    sizeLabel: "${item.sizeLabel}",
-    status: "${item.status}",
-    categoryLabels: [${item.categoryLabels.map((label) => `"${label}"`).join(", ")}],
-    posterFrom: "${item.posterFrom}",
-    posterTo: "${item.posterTo}",
-  },`,
-    )
+    .map((item) => {
+      const metadataLines = [
+        item.author == null ? null : `    author: ${JSON.stringify(item.author)},`,
+        item.versionLabel == null ? null : `    versionLabel: ${JSON.stringify(item.versionLabel)},`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      return `  {
+    id: ${JSON.stringify(item.id)},
+    name: ${JSON.stringify(item.name)},
+${metadataLines.length === 0 ? "" : `${metadataLines}\n`}    sizeLabel: ${JSON.stringify(item.sizeLabel)},
+    status: ${JSON.stringify(item.status)},
+    categoryLabels: [${item.categoryLabels
+      .map((label) => `{ name: ${JSON.stringify(label)} }`)
+      .join(", ")}],
+    posterFrom: ${JSON.stringify(item.posterFrom)},
+    posterTo: ${JSON.stringify(item.posterTo)},
+  },`;
+    })
     .join("\n");
 }
 
@@ -172,19 +190,8 @@ function renderFileContent(items) {
 // 当前生成数量：${items.length}
 // 现阶段使用本地 mock 数据还原设计稿，后续由 Mod 仓储或视图模型提供真实数据。
 // 业务规则（安装、冲突、依赖判定）不在此处推断，仅承载展示字段。
-export type ModInstallStatus = "installed" | "disabled" | "conflict";
-
-export type ModLibraryItem = {
-  id: string;
-  name: string;
-  sizeLabel: string;
-  status: ModInstallStatus;
-  categoryLabels: string[];
-  // 海报背景的渐变色，用于无预览图时的占位。
-  // 设计稿中每张卡片有独立色调，这里保留为语义化的色卡描述。
-  posterFrom: string;
-  posterTo: string;
-};
+import type { ModLibraryItem } from "./modLibraryTypes";
+export type { ModInstallStatus, ModLibraryItem } from "./modLibraryTypes";
 
 export const modLibraryItems: ModLibraryItem[] = [
 ${formatItems(items)}
@@ -203,8 +210,8 @@ export type CompactAction = {
 export const compactActions: CompactAction[] = [
   { id: "add", label: "添加 MOD", variant: "primary" },
   { id: "add-revision", label: "导入新版本", variant: "info" },
-  { id: "select-all", label: "全选", variant: "neutral" },
-  { id: "invert", label: "反选", variant: "neutral" },
+  { id: "select-all", label: "选择本页", variant: "neutral" },
+  { id: "invert", label: "反选本页", variant: "neutral" },
   { id: "refresh", label: "刷新", variant: "neutral" },
   { id: "enable-all", label: "启用全部 MOD", variant: "success" },
   { id: "disable-all", label: "禁用全部 MOD", variant: "warning" },

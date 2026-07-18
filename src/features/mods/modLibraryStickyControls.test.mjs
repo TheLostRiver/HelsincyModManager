@@ -21,7 +21,7 @@ function getRuleBody(css, selector) {
   return css.slice(openBraceIndex + 1, closeBraceIndex);
 }
 
-test("ModLibraryPage groups toolbar and quick actions into one sticky controls area", () => {
+test("ModLibraryPage groups controls while keeping selection and action counts page-local", () => {
   const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
 
   // sticky-controls 整体承载入场动画；内部 slot 不再各自动画。
@@ -30,9 +30,18 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   assert.match(source, /className="mod-library__actions-slot"/);
   assert.match(source, /<LibraryToolbar[\s\S]*?query={query}[\s\S]*?activeFilter={activeFilter}/);
   assert.match(source, /<CompactActionPanel[\s\S]*?selectedCount={selectedCount}/);
-  assert.match(source, /<CompactActionPanel[\s\S]*?totalCount={visibleItems\.length}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?totalCount={libraryItems\.length}/);
   assert.match(source, /<CompactActionPanel[\s\S]*?installTaskActive={installTaskActive}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?libraryQueryBusy={libraryQueryBusy}/);
+  assert.match(
+    source,
+    /<CompactActionPanel[\s\S]*?profileReady=\{activeProfile\.status === "ready" && activeProfileId !== null\}/,
+  );
   assert.match(source, /<CompactActionPanel[\s\S]*?onAction={handleAction}/);
+  assert.match(source, /const selectAll = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?setSelectedIds\(new Set\(libraryItems\.map\(\(item\) => item\.id\)\)\);/);
+  assert.match(source, /const invertSelection = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?for \(const item of libraryItems\)/);
+  assert.match(source, /const handlePageChange = \(nextPage: number\) => \{[\s\S]*?resetPageInteraction\(\);/);
+  assert.match(source, /const handlePageSizeChange = \(nextPageSize:[\s\S]*?resetPageInteraction\(\);/);
 
   const toolbarIndex = source.indexOf("mod-library__toolbar-slot");
   const actionsIndex = source.indexOf("mod-library__actions-slot");
@@ -44,6 +53,48 @@ test("ModLibraryPage groups toolbar and quick actions into one sticky controls a
   // sticky-controls 在 content 之外（mod-library 第1行），故 slot 先于 content 出现。
   assert.ok(toolbarIndex < gridIndex, "toolbar slot should render before content");
   assert.ok(actionsIndex < gridIndex, "actions slot should render before content");
+});
+
+test("query refresh fails closed for stale page interactions and clears landed-page selection", () => {
+  const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+  const panel = readProjectFile("src/features/mods/CompactActionPanel.tsx");
+
+  assert.match(page, /const selectCard = \(id: string\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
+  assert.match(page, /const handleContextMenu = \(modId: string, x: number, y: number\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
+  assert.match(page, /if \(libraryQueryBusy \|\| selectedIds\.size !== 1 \|\| reinstallWorkflow\.workflowActive\)/);
+  assert.equal(
+    page.match(/if \(libraryQueryBusy \|\| selectedIds\.size !== 1 \|\| reinstallWorkflow\.workflowActive\)/g)?.length,
+    2,
+  );
+  assert.match(page, /const promptSelectedUninstallTask = \(\) => \{\s*if \(\s*libraryQueryBusy \|\|/);
+  assert.match(page, /case "reinstall":\s*if \(libraryQueryBusy\) \{\s*break;/);
+  assert.match(page, /const handleContextMenuAction = \(actionId: string, modId: string\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
+  assert.match(
+    page,
+    /useEffect\(\(\) => \{\s*setSelectedIds\(new Set\(\)\);\s*setContextMenuState\(null\);\s*\}, \[libraryPage\]\);/,
+  );
+  assert.equal(
+    panel.match(/<ModLibraryControlTooltip key=\{action\.id\} content=\{disabledReason\}>/g)?.length,
+    2,
+  );
+  assert.equal(panel.match(/aria-disabled=\{disabledReason \? true : undefined\}/g)?.length, 2);
+  assert.equal(panel.match(/aria-describedby=\{descriptionId\}/g)?.length, 2);
+  assert.doesNotMatch(panel, /aria-label=\{disabledReason/);
+  assert.doesNotMatch(panel, /\sdisabled=\{disabledReason/);
+  assert.match(page, /<ModPosterCard[\s\S]*?interactionDisabled=\{libraryQueryBusy\}/);
+  assert.match(
+    panel,
+    /const revisionImportDisabledReason =\s*libraryQueryBusy\s*\? MOD_LIBRARY_QUERY_BUSY_MESSAGE/,
+  );
+});
+
+test("automatic filter reconciliation resets page interaction only when the filter key changes", () => {
+  const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(page, /const normalizedFilter = normalizeLibraryFilter\(activeFilter, filterChips\);/);
+  assert.match(page, /if \(normalizedFilter === activeFilter\) \{\s*return;/);
+  assert.match(page, /if \(!isSameLibraryFilter\(activeFilter, normalizedFilter\)\) \{[\s\S]*?resetLibraryPage\(\);[\s\S]*?resetPageInteraction\(\);/);
+  assert.match(page, /setActiveFilter\(normalizedFilter\);/);
 });
 
 test("ModLibraryPage persists card category label visibility as a local UI preference", () => {
@@ -58,6 +109,54 @@ test("ModLibraryPage persists card category label visibility as a local UI prefe
   assert.match(source, /showCategoryLabels=\{showCardCategoryLabels\}/);
 });
 
+test("library search submits on Enter without interrupting IME composition", () => {
+  const source = readProjectFile("src/features/mods/LibraryToolbar.tsx");
+
+  assert.match(source, /event\.key === "Enter" && !event\.nativeEvent\.isComposing/);
+  assert.match(source, /event\.preventDefault\(\);\s*onQuerySubmit\(\);/);
+});
+
+test("disabled status chips stay focusable and expose a custom accessible reason", () => {
+  const source = readProjectFile("src/features/mods/LibraryToolbar.tsx");
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+
+  assert.match(source, /<ModLibraryControlTooltip key=\{chip\.key\} content=\{chip\.disabledReason\}>/);
+  assert.match(source, /aria-disabled=\{chip\.disabled \|\| undefined\}/);
+  assert.match(source, /aria-describedby=\{descriptionId\}/);
+  assert.match(source, /if \(chip\.disabled\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?return;/);
+  assert.doesNotMatch(source, /disabled=\{chip\.disabled\}/);
+  assert.doesNotMatch(source, /title=\{chip\.disabledReason\}/);
+  assert.match(css, /\.library-chip\[aria-disabled="true"\]/);
+  assert.match(css, /\.library-chip:hover:not\(\[aria-disabled="true"\]\)/);
+});
+
+test("lifecycle and future batch actions fail closed with focusable custom reasons", () => {
+  const source = readProjectFile("src/features/mods/CompactActionPanel.tsx");
+
+  assert.match(source, /getCompactActionDisabledReason\(\{/);
+  assert.match(source, /<ModLibraryControlTooltip key=\{action\.id\} content=\{disabledReason\}>/);
+  assert.match(source, /aria-disabled=\{disabledReason \? true : undefined\}/);
+  assert.match(source, /aria-describedby=\{descriptionId\}/);
+  assert.match(source, /if \(disabledReason\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?return;/);
+  assert.doesNotMatch(source, /disabled=\{isDisabled\}/);
+  assert.match(source, /role="status" aria-live="polite" aria-atomic="true"/);
+});
+
+test("compact page-selection tooltips escape the segmented group without losing separators", () => {
+  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+
+  assert.match(css, /\.compact-action-group\s*{[\s\S]*?overflow:\s*visible;/);
+  assert.match(
+    css,
+    /\.compact-action-group\s*>\s*\.mod-library-control-tooltip:last-child\s+\.compact-action\s*{[\s\S]*?border-right:\s*none;/,
+  );
+  assert.match(
+    css,
+    /\.compact-action-group\s*>\s*\.mod-library-control-tooltip:first-child\s+\.compact-action\s*{[\s\S]*?border-start-start-radius:\s*9999px;/,
+  );
+  assert.doesNotMatch(css, /\.compact-action-group\s+\.compact-action:last-child/);
+});
+
 test("global status bar stays pinned so the sticky controls can sit beneath it", () => {
   const css = readProjectFile("src/app/frame/AppFrame.css");
 
@@ -70,6 +169,7 @@ test("global status bar stays pinned so the sticky controls can sit beneath it",
 
 test("sticky controls are an opaque single-column bar fixed above the scroll container", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const paginationLayoutCss = readProjectFile("src/features/mods/ModLibraryPaginationLayout.css");
 
   // 滚动容器已下沉到 .mod-library__content：它是 overflow-y:auto 的滚动容器，
   // 高度由路由作用域闭合的高度链约束，滚动条只出现在卡片区域，不达到状态栏高度。
@@ -84,6 +184,7 @@ test("sticky controls are an opaque single-column bar fixed above the scroll con
   assert.doesNotMatch(stickyControlsBody, /position:\s*sticky;/);
   assert.match(stickyControlsBody, /grid-row:\s*1;/);
   assert.match(getRuleBody(css, ".mod-library__content-shell"), /grid-row:\s*2;/);
+  assert.match(getRuleBody(paginationLayoutCss, ".mod-library > .mod-library-pagination"), /grid-row:\s*3;/);
   assert.match(getRuleBody(css, ".mod-library__content"), /overflow-y:\s*auto;/);
   // 单列垂直堆叠：搜索栏独占上行，操作区在下行，杜绝操作按钮贴在搜索框右侧被误当成搜索按钮。
   assert.match(
@@ -130,8 +231,32 @@ test("narrow screens keep the mod list usable beneath tall controls", () => {
   );
   assert.match(
     css,
-    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(320px,\s*1fr\);/,
+    /@media\s*\(max-width:\s*860px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(320px,\s*1fr\)\s+auto;/,
   );
+});
+
+test("short desktop windows allow outer scrolling and reserve a usable content track", () => {
+  const css = readProjectFile("src/features/mods/ModLibraryPaginationLayout.css");
+
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*1280px\)\s*and\s*\(max-height:\s*720px\)\s*{[\s\S]*?\.app-surface:has\(\.route-transition__layer\[data-route-id="mods"\]\)\s*{[\s\S]*?overflow-y:\s*auto;/,
+  );
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*1280px\)\s*and\s*\(max-height:\s*720px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(460px,\s*1fr\)\s+auto;/,
+  );
+
+  const topGapCoverBody = getRuleBody(
+    css,
+    '.app-surface:has(.route-transition__layer[data-route-id="mods"])\n    > .top-status-bar::before',
+  );
+  assert.match(topGapCoverBody, /position:\s*absolute;/);
+  assert.match(topGapCoverBody, /inset-inline:\s*calc\(-1 \* var\(--layout-page-padding\)\);/);
+  assert.match(topGapCoverBody, /inset-block-end:\s*100%;/);
+  assert.match(topGapCoverBody, /block-size:\s*var\(--layout-page-padding\);/);
+  assert.match(topGapCoverBody, /background:\s*var\(--color-bg\);/);
+  assert.match(topGapCoverBody, /pointer-events:\s*none;/);
 });
 
 test("quick action panel no longer owns sticky positioning directly", () => {
@@ -145,11 +270,14 @@ test("quick action panel no longer owns sticky positioning directly", () => {
 test("primary add action keeps contrast-safe blue gradients for white text", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
   const primaryBody = getRuleBody(css, ".compact-action.is-primary");
-  const primaryHoverBody = getRuleBody(css, ".compact-action.is-primary:not(:disabled):hover");
+  const primaryHoverBody = getRuleBody(
+    css,
+    '.compact-action.is-primary:not(:disabled):not([aria-disabled="true"]):hover',
+  );
   const darkPrimaryBody = getRuleBody(css, ':root[data-color-scheme="dark"] .compact-action.is-primary');
   const darkPrimaryHoverBody = getRuleBody(
     css,
-    ':root[data-color-scheme="dark"] .compact-action.is-primary:not(:disabled):hover',
+    ':root[data-color-scheme="dark"]\n  .compact-action.is-primary:not(:disabled):not([aria-disabled="true"]):hover',
   );
 
   for (const body of [primaryBody, primaryHoverBody, darkPrimaryBody, darkPrimaryHoverBody]) {

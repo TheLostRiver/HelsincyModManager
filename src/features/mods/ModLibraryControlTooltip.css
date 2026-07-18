@@ -1,0 +1,173 @@
+.mod-library-control-tooltip {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.library-filters > .mod-library-control-tooltip {
+  max-width: 180px;
+}
+
+.library-filters .library-chip {
+  max-width: 100%;
+}
+
+.compact-panel__stack > .mod-library-control-tooltip {
+  flex: 0 0 auto;
+}
+
+.library-toolbar__display-controls > .mod-library-control-tooltip {
+  flex: 0 0 36px;
+  inline-size: 36px;
+  block-size: 36px;
+}
+
+.library-toolbar__display-controls .library-view-toggles {
+  overflow: visible;
+}
+
+.library-view-toggles > .mod-library-control-tooltip {
+  flex: 0 0 var(--view-toggle-size);
+  inline-size: var(--view-toggle-size);
+  block-size: var(--view-toggle-size);
+}
+
+.mod-library-control-tooltip__bubble {
+  --mod-library-tooltip-bg: color-mix(in srgb, var(--color-text) 96%, transparent);
+
+  position: absolute;
+  z-index: 120;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-start: 50%;
+  inline-size: max-content;
+  max-inline-size: min(260px, calc(100vw - 32px));
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-surface) 16%, transparent);
+  border-radius: 6px;
+  background: var(--mod-library-tooltip-bg);
+  box-shadow: var(--shadow-panel);
+  color: var(--color-surface);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, 4px) scale(0.98);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
+}
+
+.mod-library-control-tooltip__bubble::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline: 0;
+  block-size: 9px;
+}
+
+.mod-library-control-tooltip__bubble::after {
+  content: "";
+  position: absolute;
+  inset-block-start: calc(100% - 4px);
+  inset-inline-start: calc(50% - 4px);
+  inline-size: 8px;
+  block-size: 8px;
+  background: var(--mod-library-tooltip-bg);
+  transform: rotate(45deg);
+}
+
+.mod-library-control-tooltip:hover > .mod-library-control-tooltip__bubble,
+.mod-library-control-tooltip:focus-within > .mod-library-control-tooltip__bubble {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.mod-library-control-tooltip[data-tooltip-dismissed="true"]
+  > .mod-library-control-tooltip__bubble {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, 4px) scale(0.98);
+}
+
+.library-toolbar__display-controls
+  .mod-library-control-tooltip
+  > .mod-library-control-tooltip__bubble {
+  inset-block-start: calc(100% + 8px);
+  inset-block-end: auto;
+  transform: translate(-50%, -4px) scale(0.98);
+  transform-origin: 50% 0;
+}
+
+.library-toolbar__display-controls
+  .mod-library-control-tooltip
+  > .mod-library-control-tooltip__bubble::before {
+  inset-block-start: auto;
+  inset-block-end: 100%;
+}
+
+.library-toolbar__display-controls
+  .mod-library-control-tooltip
+  > .mod-library-control-tooltip__bubble::after {
+  inset-block-start: -4px;
+}
+
+.library-toolbar__display-controls
+  .mod-library-control-tooltip:hover
+  > .mod-library-control-tooltip__bubble,
+.library-toolbar__display-controls
+  .mod-library-control-tooltip:focus-within
+  > .mod-library-control-tooltip__bubble {
+  transform: translate(-50%, 0) scale(1);
+}
+
+.library-toolbar__display-controls
+  .mod-library-control-tooltip[data-tooltip-dismissed="true"]
+  > .mod-library-control-tooltip__bubble {
+  transform: translate(-50%, -4px) scale(0.98);
+}
+
+.library-view-toggles
+  > .mod-library-control-tooltip:last-child
+  > .mod-library-control-tooltip__bubble {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  transform: translate(0, -4px) scale(0.98);
+}
+
+.library-view-toggles
+  > .mod-library-control-tooltip:last-child
+  > .mod-library-control-tooltip__bubble::after {
+  inset-inline-start: auto;
+  inset-inline-end: 10px;
+}
+
+.library-view-toggles
+  > .mod-library-control-tooltip:last-child:hover
+  > .mod-library-control-tooltip__bubble,
+.library-view-toggles
+  > .mod-library-control-tooltip:last-child:focus-within
+  > .mod-library-control-tooltip__bubble {
+  transform: translate(0, 0) scale(1);
+}
+
+.library-view-toggles
+  > .mod-library-control-tooltip:last-child[data-tooltip-dismissed="true"]
+  > .mod-library-control-tooltip__bubble {
+  transform: translate(0, -4px) scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-library-control-tooltip__bubble {
+    transition: none;
+  }
+}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  allLibraryFilter,
   buildLibraryFilterChips,
   libraryFilterKey,
   matchesLibraryFilter,
@@ -34,9 +35,25 @@ test("buildLibraryFilterChips keeps status filters and appends non-empty categor
 
   assert.deepEqual(
     chips.map((chip) => chip.label),
-    ["全部", "已安装", "已禁用", "存在冲突", "外观", "武器"],
+    ["全部", "已安装", "未安装", "外观", "武器"],
   );
-  assert.deepEqual(chips.slice(4).map((chip) => chip.color), ["#db2777", "#2563eb"]);
+  assert.deepEqual(chips.slice(3).map((chip) => chip.color), ["#db2777", "#2563eb"]);
+});
+
+test("status filters stay selected but disabled without an active profile", () => {
+  const chips = buildLibraryFilterChips([], {
+    statusFiltersEnabled: false,
+    statusDisabledReason: "选择配置档后可用",
+  });
+  const statusChips = chips.filter((chip) => chip.kind === "status");
+
+  assert.deepEqual(statusChips.map((chip) => chip.label), ["已安装", "未安装"]);
+  assert.ok(statusChips.every((chip) => chip.disabled));
+  assert.ok(statusChips.every((chip) => chip.disabledReason === "选择配置档后可用"));
+  assert.deepEqual(
+    normalizeLibraryFilter({ kind: "status", status: "installed" }, chips),
+    { kind: "status", status: "installed" },
+  );
 });
 
 test("library category filters do not collide with status labels of the same name", () => {
@@ -72,6 +89,22 @@ test("normalizeLibraryFilter refreshes renamed category filters from the current
     categoryId: "cat-weapons",
     categoryName: "Weapons",
   });
+});
+
+test("normalizeLibraryFilter preserves references when rebuilt chips are semantically unchanged", () => {
+  const statusFilter = { kind: "status", status: "installed" };
+  const categoryFilter = {
+    kind: "category",
+    categoryId: "cat-weapons",
+    categoryName: "Weapons",
+  };
+  const chips = buildLibraryFilterChips([
+    { id: "cat-weapons", name: "Weapons", color: "#2563eb", sortOrder: 0, modCount: 1 },
+  ]);
+
+  assert.strictEqual(normalizeLibraryFilter(statusFilter, chips), statusFilter);
+  assert.strictEqual(normalizeLibraryFilter(categoryFilter, chips), categoryFilter);
+  assert.strictEqual(normalizeLibraryFilter(allLibraryFilter, chips), allLibraryFilter);
 });
 
 test("visibleCategoryLabelsForCard limits visible labels and reports overflow count", () => {
