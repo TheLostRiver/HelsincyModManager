@@ -1,6 +1,6 @@
 # 路线图
 
-## 当前执行焦点（2026-07-17）
+## 当前执行焦点（2026-07-18）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -10,11 +10,12 @@
    manifest 卸载和受控 UI 已完成；修复当前 target 呈现缺陷后的最终 artifact 已在全新 disposable
    Windows Sandbox 通过首次 Alpha retarget 安装 -> Beta target switch -> 两次重启状态恢复 ->
    manifest 卸载 -> exact baseline 纵向复验，Gate B 已标记为 `certified`。
-3. Gate B 后优先级复审已选择 T19“核心 Mod 生命周期产品化加固”为当前主线；A1 生命周期验收入口、
-   L1 安全 App Log、U1 共享反馈基元、U2 核心 Mod 操作反馈、L2 Task/Audit 降级可见性、U3 跨 feature 通知和 L3 只读诊断页面均已实现；
-   独立 review 推进。
-4. T19 完成后依次恢复 T18 分页、T17 批量迁移和 T13 批量安装/卸载。自动备份剩余切片、installer
-   cleanup、T12/T14 和其他扩展继续按各自发布门禁评审，不自动开工。
+3. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已于 2026-07-18 完成；A1、L1、
+   U1、U2、L2、U3、L3 七切片均经独立 review 合并，CI 验收、默认脱敏诊断、分层反馈、完整验证、
+   视觉 smoke、受控 Windows 桌面复验和契约同步均已满足完成定义。
+4. 当前主线切换到 T18 Mod 库分页，先执行 app-level query/filter/sort/page 类型、兼容聚合服务和
+   fake repository 测试；后续顺序仍为 T18 -> T17 -> T13。自动备份剩余切片、installer cleanup、
+   T12/T14 和其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -60,10 +61,10 @@ baseline 恢复、诊断脱敏和 cleanup 已有 L1/L2/L3 证据；CL4 独立本
 `implemented`；修复后最终 artifact 的全新 Sandbox 纵向复验已完成，Gate B 同日标记为
 `certified`。
 
-Gate A/B 之后先执行 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md)：
-固化不少于 6 个 headless 生命周期场景的正式验收入口，落地安全 App/Task 日志与审计降级可见性，
-并把核心操作反馈按 Dialog、Detail Sheet、Task Notice、Toast 和 Inline state 分层。该计划当前为
-`implemented`；A1-L3 七切片均已实现，待 L3 独立 review/合并后补齐最终完成证据。
+Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 已于
+2026-07-18 标记为 `completed`：不少于 6 个 headless 生命周期场景已有正式 CI 验收入口，安全 App/Task
+日志、审计降级可见性和分层操作反馈均已落地，A1-L3 七切片的独立 review、完整验证、视觉 smoke、
+受控 Windows 桌面复验和契约同步均已完成。
 
 ## Phase 3：玩家工作流扩展（Gate B 后已重新排序）
 
@@ -76,8 +77,8 @@ Gate A/B 之后先执行 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加第三方 Mod 管理器批量迁移，首个兼容来源为狩技盒子目录，默认只导入而不安装或启用。详见 [第三方 Mod 管理器批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)。
 - 添加任务进度和取消 UI。
 
-已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集已经完成；当前先完成
-T19 产品化加固，再按 T18 -> T17 -> T13 恢复大库分页、默认只导入的第三方迁移和批量破坏性操作。
+已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集和 T19 产品化加固均已完成；
+当前按 T18 -> T17 -> T13 的顺序推进大库分页、默认只导入的第三方迁移和批量破坏性操作。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 

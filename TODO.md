@@ -2,7 +2,7 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e1d4e868` (main)
-最近同步：2026-07-17，基于 `d3579a7`（Gate B closeout 与 T19 规划基线）
+最近同步：2026-07-18，基于 `ba718a37`（T19 A1-L3 合并与最终 closeout 基线）
 
 ---
 
@@ -47,7 +47,7 @@
 | **P2** | 重要增强 — 提升完整度和用户体验 | P1 基本就绪后推进 |
 | **P3** | 长线 feature — Phase 4+ 的大型功能 | 按 Roadmap 节奏 |
 
-### 当前执行覆盖规则（2026-07-16）
+### 当前执行覆盖规则（2026-07-18）
 
 [核心 Mod 生命周期优先级计划](docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 已完成 Gate A/B 优先级覆盖
 目标，但不覆盖架构和玩家数据安全规则：
@@ -55,8 +55,8 @@
 1. P0：安装/卸载/真正重装闭环已通过 Gate A `certified`。
 2. P1：ARMOR_RETARGET 最窄纵向闭环已通过 Gate B `certified`。
 3. T9/T10 的 Gate A/B 最小 manifest/preflight 子集已经落地，不在本次认证后自动扩张。
-4. Gate B 后优先级复审已选择 T19“核心 Mod 生命周期产品化加固”为当前主线；T19 完成后按
-   T18 -> T17 -> T13 恢复分页、批量迁移和批量安装/卸载，其余候选继续按发布门禁评审。
+4. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已完成；当前主线切换到 T18，
+   后续按 T18 -> T17 -> T13 推进分页、批量迁移和批量安装/卸载，其余候选继续按发布门禁评审。
 
 ---
 
@@ -73,7 +73,9 @@
        ├──> T9 最小 replacement binding snapshot / write-state gate
        └──> T10 最小 path-family / source / target preflight
   -> Gate B: ARMOR install/switch-target/uninstall certified
-  -> 重新排序并恢复 T8/T12/T13/T14/T17/T18
+  -> T19 产品化加固 [completed]
+  -> T18 Mod 库分页 Slice 1 [current]
+  -> T17 第三方批量迁移 -> T13 批量安装/卸载
 ```
 
 ---
@@ -93,16 +95,16 @@
   - [x] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
 - [x] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
-Gate A 与 Gate B 均已通过；P7.2c、分页、批量迁移、批量操作、任务队列和新的非阻断视觉工作仍待
-T19 对应切片或后续恢复顺序选中，不因门禁解除自动开工。
+Gate A、Gate B 与 T19 均已完成；T18 分页已按后续顺序恢复为当前主线。P7.2c、批量迁移、批量操作、
+任务队列和新的非阻断视觉工作仍按各自恢复门禁评审，不因门禁解除自动开工。
 
 ---
 
 ### T19: 核心 Mod 生命周期产品化加固
 
-**优先级**: P0 发布加固，当前主线
+**优先级**: P0 发布加固，已完成
 **前置**: Gate A/B certified
-**状态**: 已实现（A1-L3 七切片均完成，待 L3 独立 review/合并后最终收尾）
+**状态**: 已完成（2026-07-18；A1-L3 七切片均经独立 review 合并，完成定义全部满足）
 **预估**: 大，固定拆为 7 个独立 review 切片
 **独立文档**: **已创建** -> `docs/CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md`
 
@@ -298,7 +300,8 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 已完成部分保留；P7.2a 安装态 acceptance、P7.2c 实现、retention 扩展和备份中心暂停到 Gate B 后重排
+**状态**: 已完成部分保留；P7.2a 安装态 acceptance、P7.2c 实现、retention 扩展和备份中心在 T19
+完成后仍按各自发布门禁评审，当前未恢复
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`、`docs/superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md`、`docs/superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md`
 
@@ -310,7 +313,7 @@ JSON 做不好的需求:
 - [x] 自动备份游戏运行保护（运行中或状态未知时延后，不获取 lease、不启动备份任务）
 - [x] P7.1 headless worker 基础（固定 `--once` 入口、共享 scheduler/备份链路、heartbeat 与 fallback registry；当前仍为 `tray_only`）
 - [x] P7.2a Windows 平台核心（用户级 Scheduled Task 注册/更新/移除、read-back、独立 heartbeat、双条件 `protected` 派生和 sidecar；自动化仅使用 fake/临时依赖）
-- [ ] P7.2a Windows 安装态 runtime acceptance（暂停；Gate B 后按发布风险重排）
+- [ ] P7.2a Windows 安装态 runtime acceptance（暂停；T19 完成后仍按发布风险另行评审）
 - [x] P7.2b Settings 全局后台保障开关、Profile 只读状态、5 分钟 `starting` / 45 分钟 `protected` 健康派生与统一退出保护
 - [x] P7.2c NSIS/WiX owned Scheduled Task 卸载 cleanup 设计规格与实施计划（本项仅代表 docs 完成）
 - [ ] P7.2c helper、NSIS PREUNINSTALL、WiX custom action 与 disposable VM gate（已规划、暂停；不得删除 foreign task）
@@ -392,7 +395,7 @@ JSON 做不好的需求:
 ### T18: Mod 库分页
 
 **前置**: 现有 Mod 库 + Profile install/recovery 状态查询
-**状态**: 已规划、暂停；Gate B 后仅在大库数据证明成为主要阻塞时恢复
+**状态**: 当前主线；T19 完成后已恢复，下一切片为 Slice 1
 **预估**: 中-大，建议拆为 4 个独立 review 切片
 **独立文档**: **已创建** → `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
 
@@ -409,7 +412,8 @@ JSON 做不好的需求:
 - 首版只提供“选择本页/反选本页”；跨页全选和批量写操作留给 T13
 - T18 不依赖 T17，但应在 T17 Slice 4 完整迁移 UI 对外完成前落地
 - 当前 JSON 全量读取只允许作为兼容阶段，不能把 bridge payload 变小等同于大库性能完成
-- 本轮不修改前端、Tauri、Rust、依赖或 migration
+- Slice 1 只实现 app-level 类型、兼容聚合服务和 fake repository 测试；不提前修改 Tauri、前端、
+  依赖或 migration
 
 ---
 
@@ -475,9 +479,9 @@ JSON 做不好的需求:
 ## 推荐执行顺序
 
 ```text
-已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3
-  -> 当前: T19 L3
-  -> 后续: T18 Mod 库分页 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
+已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3 -> L3
+  -> 当前: T18 Mod 库分页 Slice 1
+  -> 后续: T18 Slice 2-4 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
 
@@ -496,12 +500,12 @@ JSON 做不好的需求:
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
-| T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围待 Gate B 后优先级复审 | |
-| T10 依赖检查 | P0/P1 支撑 | Gate A/B 最小 preflight 已完成；其余范围待优先级复审 | |
+| T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围未被当前复审选中 | |
+| T10 依赖检查 | P0/P1 支撑 | Gate A/B 最小 preflight 已完成；其余范围未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
-| T18 Mod 库分页 | P2 | 已规划、暂停 | |
-| T19 核心生命周期产品化加固 | P0 发布加固 | 已实现（A1-L3 完成，待 L3 review/合并收尾） | |
+| T18 Mod 库分页 | P2 | 当前主线（Slice 1 待实现） | |
+| T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
