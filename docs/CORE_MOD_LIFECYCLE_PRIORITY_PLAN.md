@@ -44,10 +44,12 @@
 | 状态 | 含义 |
 | --- | --- |
 | `implemented` | 代码和聚焦自动化存在，但未完成本文要求的完整闭环证据 |
+| `completed` | 任务自身的完成定义已满足，且计划内的独立 review 与合并均已完成；不自动等同于 Gate 的 `certified` |
 | `certified` | 自动化验收矩阵、桌面手动 smoke、状态恢复和清理证据均通过 |
 | `planned` | 已有设计/实施计划，但没有运行时代码 |
 | `paused` | 资产保留，当前不得主动实施；满足恢复门禁后再继续 |
 | `blocked` | 已开始核心切片，但被明确技术/环境前置阻断 |
+| `current` | 仅表示路线图中当前唯一执行主线，不作为实现程度或验收成熟度证据 |
 
 当前基线：安装、卸载和真正重装均为 `implemented`，Core Mod Lifecycle Gate A 为
 `certified`；ARMOR_RETARGET AR1-AR5 为 `implemented`，修复当前 target 呈现缺陷后的最终 artifact
