@@ -54,24 +54,70 @@ test("terminal feedback is published only after durable manifest and recovery re
   const profileRefEffect = page.search(
     /useEffect\(\(\) => \{\s*activeProfileIdRef\.current = activeProfile\.status === "ready" \? activeProfileId : null;\s*\}, \[activeProfile\.status, activeProfileId\]\);/,
   );
+  const durableProbeStart = page.indexOf("const refreshTerminalDurableStatus");
+  const durableProbeEnd = page.indexOf("const reinstallWorkflow", durableProbeStart);
+  const durableProbe = page.slice(durableProbeStart, durableProbeEnd);
   const refreshStart = page.indexOf("const refreshTerminalFacts");
-  const refreshCall = page.indexOf("await refreshInstallManifestStatusesWithOutcome", refreshStart);
-  const identityGuard = page.indexOf("isManagedInstallTerminalRefreshCurrent", refreshCall);
+  const scrollReset = page.indexOf("resetContentScroll();", refreshStart);
+  const allSettledCall = page.indexOf("await Promise.allSettled", refreshStart);
+  const pageRefreshCall = page.indexOf("refreshModLibrary()", allSettledCall);
+  const durableRefreshCall = page.indexOf("refreshTerminalDurableStatus(", allSettledCall);
+  const mountedGuard = page.indexOf("if (!pageMountedRef.current)", durableRefreshCall);
+  const identityGuard = page.indexOf("currentProfileId !== terminalTask.profileId", mountedGuard);
+  const terminalRefresh = page.indexOf("const terminalRefresh", identityGuard);
+  const failClosedCall = page.indexOf("failClosedModInstallSummary(items, terminalTask.modId)", terminalRefresh);
   const toastCall = page.indexOf("setLifecycleToast(getManagedInstallTerminalToast", refreshStart);
 
   assert.ok(profileRefEffect >= 0);
-  assert.ok(profileRefEffect < refreshStart);
+  assert.ok(profileRefEffect < durableProbeStart);
   assert.equal(page.match(/activeProfileIdRef\.current\s*=/g)?.length, 1);
+  assert.ok(durableProbeStart >= 0);
+  assert.match(durableProbe, /refreshModLibraryDurableStatuses\(\[createModLibraryStatusProbe\(modId,\s*modName\)\]/);
+  assert.match(durableProbe, /loadManifestStatuses:[\s\S]*?getInstallManifestStatus/);
+  assert.match(durableProbe, /loadRecoveryStatuses:[\s\S]*?scanInstallRecovery/);
+  assert.doesNotMatch(durableProbe, /libraryItems(?:Ref)?|libraryPage/);
   assert.ok(refreshStart >= 0);
-  assert.ok(refreshCall > refreshStart);
-  assert.ok(identityGuard > refreshCall);
-  assert.ok(toastCall > identityGuard);
+  assert.ok(scrollReset > refreshStart);
+  assert.ok(scrollReset < allSettledCall);
+  assert.ok(allSettledCall > refreshStart);
+  assert.ok(pageRefreshCall > allSettledCall);
+  assert.ok(durableRefreshCall > pageRefreshCall);
+  assert.ok(mountedGuard > durableRefreshCall);
+  assert.ok(identityGuard > mountedGuard);
+  assert.ok(terminalRefresh > identityGuard);
+  assert.ok(failClosedCall > terminalRefresh);
+  assert.ok(toastCall > failClosedCall);
   assert.match(page, /failClosedModInstallSummary/);
   assert.match(page, /activeProfileIdRef\.current\s*!==\s*terminalTask\.profileId/);
-  assert.match(page, /const libraryUnchanged = libraryItemsRef\.current === itemsAtRefreshStart/);
+  assert.match(page, /durableRefresh\.status\s*===\s*"fulfilled"/);
+  assert.match(page, /verified:\s*durableStatus\?\.verified\s*\?\?\s*false/);
+  assert.match(page, /status:\s*durableStatus\?\.items\[0\]\?\.installSummary\?\.status\s*\?\?\s*null/);
+  assert.match(page, /pageRefresh\.status\s*===\s*"rejected"/);
+  assert.match(page, /shouldFailClosedManagedInstallTerminal\(terminalTask,\s*terminalRefresh\)/);
   assert.match(page, /setLifecycleToast\(null\)/);
   assert.match(page, /isManagedInstallTaskTerminal\(installTaskState\)/);
   assert.match(page, /handledInstallTerminalTaskIdsRef/);
+});
+
+test("query refresh blocks already-open uninstall and reinstall write confirmations", () => {
+  const page = readSource("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(
+    page,
+    /const uninstallBlockerMessage = useMemo\(\(\) => \{[\s\S]*?if \(libraryQueryBusy\) \{\s*return MOD_LIBRARY_QUERY_BUSY_MESSAGE;/,
+  );
+  assert.match(
+    page,
+    /const startSelectedUninstallTask = \(\) => \{\s*if \(libraryQueryBusy \|\| !uninstallConfirmation \|\| uninstallBlockerMessage !== null\) \{\s*return;/,
+  );
+  assert.match(
+    page,
+    /const confirmSelectedReinstall = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?reinstallWorkflow\.confirmReinstall\(\);/,
+  );
+  assert.match(
+    page,
+    /<ReinstallPlanPreviewPanel[\s\S]*?canConfirm=\{reinstallWorkflow\.canConfirm && !libraryQueryBusy\}[\s\S]*?onConfirm=\{confirmSelectedReinstall\}/,
+  );
 });
 
 test("reduced motion disables lifecycle feedback animations", () => {

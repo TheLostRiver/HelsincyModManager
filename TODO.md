@@ -2,7 +2,7 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e1d4e868` (main)
-最近同步：2026-07-18，基于 `ba718a37`（T19 A1-L3 合并与最终 closeout 基线）
+最近同步：2026-07-18，基于 `0fda646`（T18 Slice 2 合并后的 Slice 3 开工基线）
 
 ---
 
@@ -75,8 +75,9 @@
   -> Gate B: ARMOR install/switch-target/uninstall certified
   -> T19 产品化加固 [completed]
   -> T18 Mod 库分页 Slice 1 [completed, PR #186]
-  -> T18 Mod 库分页 Slice 2 [current]
-  -> T17 第三方批量迁移 -> T13 批量安装/卸载
+  -> T18 Mod 库分页 Slice 2 [completed, PR #187]
+  -> T18 Mod 库分页 Slice 3 [implemented, verified and independently reviewed; PR/merge pending]
+  -> T18 Mod 库分页 Slice 4 -> T17 第三方批量迁移 -> T13 批量安装/卸载
 ```
 
 ---
@@ -396,16 +397,17 @@ JSON 做不好的需求:
 ### T18: Mod 库分页
 
 **前置**: 现有 Mod 库 + Profile install/recovery 状态查询
-**状态**: 当前主线；Slice 1 已完成（PR #186），当前切片为 Slice 2
+**状态**: 当前主线；Slice 1/2 已完成（PR #186/#187），Slice 3 已完成实现、本地验证和独立复审、待 PR/merge，T18 整体未完成
 **预估**: 中-大，建议拆为 4 个独立 review 切片
 **独立文档**: **已创建** → `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
 
 范围:
 - [x] 设计后端权威查询分页、搜索/filter/稳定排序、page-local selection 和 UI 状态边界
 - [x] Slice 1：app-level query/filter/sort/page 类型、兼容聚合服务和 fake repository 测试（PR #186）
-- [ ] Slice 2：`query_mod_library` Tauri DTO、稳定错误、feature-local typed API 和 contract 文档（当前）
-- [ ] Slice 3：数字分页 footer、debounce/stale response、loading/error/empty 和本页选择 UI
-- [ ] Slice 4：与 T17 共用可查询 read model/持久化决策、大库基准、视觉 smoke 和性能门禁
+- [x] Slice 2：`query_mod_library` Tauri DTO、稳定错误、feature-local typed API 和 contract 文档（PR #187）
+- [ ] Slice 3：已实现数字分页 footer、250ms debounce/latest-request gate、loading/error/empty、
+  本页选择和当前页 durable overlay；本地统一验证、四视图/四窗口视觉 smoke 及独立复审已通过，待 PR/merge
+- [ ] Slice 4：与 T17 共用可查询 read model/持久化决策、大库基准和性能门禁（下一步）
 
 关键语义:
 - 默认每页 24，可选 12/24/48/96；使用 1-based 数字页
@@ -413,8 +415,9 @@ JSON 做不好的需求:
 - 首版只提供“选择本页/反选本页”；跨页全选和批量写操作留给 T13
 - T18 不依赖 T17，但应在 T17 Slice 4 完整迁移 UI 对外完成前落地
 - 当前 JSON 全量读取只允许作为兼容阶段，不能把 bridge payload 变小等同于大库性能完成
-- Slice 1 已完成 app-level 类型、兼容聚合服务和 fake repository 测试；Slice 2 只新增 Tauri DTO、
-  typed API 和 contract，不提前迁移页面消费者或实现 Slice 3 UI
+- Slice 1/2 已完成 app-level 查询服务与 Tauri typed contract；Slice 3 已把页面消费者迁移到
+  当前页查询和 durable overlay，本地统一验证、视觉 smoke 与独立复审已完成，PR/merge 尚未完成
+- Slice 4 才处理可查询 read model、持久化决策、大库基准与性能门禁；不能把 T18 提前标记为完成
 
 ---
 
@@ -482,8 +485,9 @@ JSON 做不好的需求:
 ```text
 已完成: T11 ARMOR_RETARGET Gate B certified -> T19 A1 -> L1 -> U1 -> U2 -> L2 -> U3 -> L3
   -> 已完成: T18 Mod 库分页 Slice 1（PR #186）
-  -> 当前: T18 Mod 库分页 Slice 2
-  -> 后续: T18 Slice 3-4 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
+  -> 已完成: T18 Mod 库分页 Slice 2（PR #187）
+  -> 当前: T18 Mod 库分页 Slice 3（实现/本地验证/视觉 smoke/独立复审已完成，PR/merge 待完成）
+  -> 后续: T18 Slice 4 -> T17 第三方管理器批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
 
@@ -509,5 +513,5 @@ JSON 做不好的需求:
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
-| T18 Mod 库分页 | P2 | 当前主线（Slice 1 已完成，Slice 2 实施中） | #186（Slice 1） |
+| T18 Mod 库分页 | P2 | 当前主线（Slice 1/2 已完成，Slice 3 已实现并通过本地验证和独立复审、待 PR/merge，Slice 4 尚未开始） | #186（Slice 1）/ #187（Slice 2） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |

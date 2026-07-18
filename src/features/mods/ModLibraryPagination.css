@@ -1,0 +1,300 @@
+.mod-library-pagination {
+  container-type: inline-size;
+  min-width: 0;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border-muted);
+  color: var(--color-text-soft);
+}
+
+.mod-library-pagination__layout {
+  display: grid;
+  grid-template-columns: minmax(104px, 1fr) auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 8px;
+  block-size: 48px;
+  min-width: 0;
+  padding-inline: 8px;
+}
+
+.mod-library-pagination__page-size {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  justify-self: start;
+}
+
+.mod-library-pagination__segment-label,
+.mod-library-pagination__range-compact,
+.mod-library-pagination__busy {
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mod-library-pagination__segment-label {
+  color: var(--color-text-muted);
+}
+
+.mod-library-pagination__page-size-trigger,
+.mod-library-pagination__page-size-option,
+.mod-library-pagination__icon-button,
+.mod-library-pagination__page-button {
+  margin: 0;
+  border: 1px solid transparent;
+  font: inherit;
+  color: var(--color-text-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.mod-library-pagination__page-size-trigger:focus-visible,
+.mod-library-pagination__page-size-option:focus-visible,
+.mod-library-pagination__icon-button:focus-visible,
+.mod-library-pagination__page-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.mod-library-pagination__page-size-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-inline-size: 68px;
+  block-size: 32px;
+  padding-inline: 8px 6px;
+  border-color: var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.mod-library-pagination__page-size-trigger:hover:not([aria-disabled="true"]),
+.mod-library-pagination__page-size-trigger.is-open {
+  border-color: var(--color-accent-alpha-40);
+  color: var(--color-accent-strong);
+  background: var(--color-accent-weak);
+}
+
+.mod-library-pagination__page-size-trigger[aria-disabled="true"] {
+  border-color: var(--color-border-muted);
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  cursor: default;
+  opacity: 0.55;
+}
+
+.mod-library-pagination__page-size-trigger svg {
+  transition: transform 140ms ease;
+}
+
+.mod-library-pagination__page-size-trigger.is-open svg {
+  transform: rotate(180deg);
+}
+
+.mod-library-pagination__page-size-listbox {
+  position: absolute;
+  z-index: 80;
+  bottom: calc(100% + 8px);
+  left: 22px;
+  display: grid;
+  gap: 2px;
+  min-inline-size: 92px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.mod-library-pagination__page-size-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  min-inline-size: 0;
+  block-size: 32px;
+  padding-inline: 8px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mod-library-pagination__page-size-option svg {
+  opacity: 0;
+  color: var(--color-accent);
+}
+
+.mod-library-pagination__page-size-option:hover,
+.mod-library-pagination__page-size-option:focus-visible {
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+}
+
+.mod-library-pagination__page-size-option.is-selected {
+  background: var(--color-accent-weak);
+  color: var(--color-accent-strong);
+}
+
+.mod-library-pagination__page-size-option.is-selected svg {
+  opacity: 1;
+}
+
+.mod-library-pagination__navigation,
+.mod-library-pagination__page-list {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mod-library-pagination__navigation {
+  gap: 4px;
+  min-width: 0;
+}
+
+.mod-library-pagination__navigation > .mod-library-control-tooltip {
+  flex: 0 0 32px;
+  inline-size: 32px;
+}
+
+.mod-library-pagination__page-list {
+  gap: 4px;
+}
+
+.mod-library-pagination__icon-button,
+.mod-library-pagination__page-button,
+.mod-library-pagination__ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 6px;
+}
+
+.mod-library-pagination__icon-button,
+.mod-library-pagination__page-button {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.mod-library-pagination__icon-button:hover:not([aria-disabled="true"]),
+.mod-library-pagination__page-button:hover:not([aria-disabled="true"]) {
+  border-color: var(--color-border);
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+}
+
+.mod-library-pagination__page-button[aria-current="page"] {
+  border-color: var(--color-primary-action-border);
+  background: var(--color-primary-action-bg);
+  color: var(--color-primary-action-text);
+}
+
+.mod-library-pagination__icon-button[aria-disabled="true"],
+.mod-library-pagination__page-button[aria-disabled="true"] {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.mod-library-pagination__page-button[aria-current="page"][aria-disabled="true"] {
+  opacity: 0.7;
+}
+
+.mod-library-pagination__ellipsis {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.mod-library-pagination__range {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mod-library-pagination__range-compact {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+}
+
+.mod-library-pagination__busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-accent-strong);
+}
+
+.mod-library-pagination__busy-indicator {
+  inline-size: 10px;
+  block-size: 10px;
+  border: 2px solid var(--color-accent-alpha-25);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: mod-library-pagination-spin 700ms linear infinite;
+}
+
+.mod-library-pagination__range-live {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes mod-library-pagination-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@container (max-width: 680px) {
+  .mod-library-pagination__layout {
+    grid-template-columns: minmax(98px, 1fr) auto minmax(104px, 1fr);
+    gap: 6px;
+    padding-inline: 6px;
+  }
+
+  .mod-library-pagination__navigation,
+  .mod-library-pagination__page-list {
+    gap: 2px;
+  }
+
+  .mod-library-pagination__range,
+  .mod-library-pagination__page-size {
+    gap: 4px;
+  }
+
+  .mod-library-pagination__busy {
+    font-size: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-library-pagination__page-size-trigger,
+  .mod-library-pagination__page-size-option,
+  .mod-library-pagination__icon-button,
+  .mod-library-pagination__page-button,
+  .mod-library-pagination__page-size-trigger svg {
+    transition: none;
+  }
+
+  .mod-library-pagination__busy-indicator {
+    animation: none;
+  }
+}

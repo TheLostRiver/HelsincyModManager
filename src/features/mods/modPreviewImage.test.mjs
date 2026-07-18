@@ -95,6 +95,18 @@ test("mod poster card can hide category labels without affecting card rendering"
   assert.match(css, /\.mod-card__categories\[data-visible="false"\]\s*{[\s\S]*?transform:\s*translateY\(-4px\);/);
 });
 
+test("mod poster cards stay focusable but expose and guard busy interaction", () => {
+  const source = readSource("src/features/mods/ModPosterCard.tsx");
+
+  assert.match(source, /interactionDisabled\?:\s*boolean/);
+  assert.match(source, /interactionDisabled = false/);
+  assert.match(source, /tabIndex=\{0\}/);
+  assert.match(source, /aria-disabled=\{interactionDisabled \|\| undefined\}/);
+  assert.match(source, /onClick=\{\(\) => \{\s*if \(!interactionDisabled\) \{\s*onSelect\(item\.id\);/);
+  assert.match(source, /onContextMenu=\{\(e\) => \{[\s\S]*?if \(interactionDisabled\) \{\s*return;/);
+  assert.match(source, /onKeyDown=\{\(e\) => \{[\s\S]*?if \(interactionDisabled\) \{\s*return;/);
+});
+
 test("mod poster image fills stable poster frame", () => {
   const css = readSource("src/features/mods/ModLibraryPage.css");
   const body = getRuleBody(css, ".mod-card__poster-img");

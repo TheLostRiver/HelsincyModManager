@@ -9,6 +9,7 @@ import "./ModPosterCard.css";
 type ModPosterCardProps = {
   item: ModLibraryItem;
   selected: boolean;
+  interactionDisabled?: boolean;
   viewMode: ModViewMode;
   onSelect: (id: string) => void;
   onContextMenu?: (id: string, x: number, y: number) => void;
@@ -74,6 +75,7 @@ function statusLabelForItem(item: ModLibraryItem) {
 export function ModPosterCard({
   item,
   selected,
+  interactionDisabled = false,
   viewMode,
   onSelect,
   onContextMenu,
@@ -127,10 +129,17 @@ export function ModPosterCard({
       tabIndex={0}
       className={`mod-card${selected ? " is-selected" : ""}`}
       style={{ "--stagger-idx": index + 1 } as CSSProperties}
-      onClick={() => onSelect(item.id)}
+      onClick={() => {
+        if (!interactionDisabled) {
+          onSelect(item.id);
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (interactionDisabled) {
+          return;
+        }
         if (onContextMenu) {
           onContextMenu(item.id, e.clientX, e.clientY);
         }
@@ -138,10 +147,14 @@ export function ModPosterCard({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
+          if (interactionDisabled) {
+            return;
+          }
           onSelect(item.id);
         }
       }}
       aria-pressed={selected}
+      aria-disabled={interactionDisabled || undefined}
       aria-label={`选择 ${item.name}${categorySummary}`}
       data-status={item.status}
     >

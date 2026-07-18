@@ -126,3 +126,22 @@ export function applyInstallRecoveryUnavailable(items: ModLibraryItem[]): ModLib
     };
   });
 }
+
+export function applyInstallManifestUnavailable(items: ModLibraryItem[]): ModLibraryItem[] {
+  return items.map((item) => {
+    const summary = item.installSummary;
+
+    return {
+      ...item,
+      status: "unknown",
+      installSummary: {
+        status: "unknown",
+        managedFileCount: summary?.managedFileCount ?? 0,
+        backupCount: summary?.backupCount ?? 0,
+        recoveryStatus: "unknown",
+        issueCount: summary?.issueCount ?? 0,
+        issues: summary?.issues ?? [],
+      },
+    };
+  });
+}
