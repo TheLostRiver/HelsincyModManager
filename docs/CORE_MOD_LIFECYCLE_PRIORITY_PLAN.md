@@ -2,7 +2,8 @@
 
 - 日期：2026-07-12
 - 状态：Gate A 已于 2026-07-15 标记为 `certified`；AR1-AR5 与最终 Sandbox 纵向复验已于
-  2026-07-16 完成，Gate B 已标记为 `certified`；当前进入 Gate B 后优先级复审
+  2026-07-16 完成，Gate B 已标记为 `certified`；Gate B 后优先级复审选定的 T19 已于 2026-07-18
+  完成，当前主线为 T18 Mod 库分页 Slice 1
 - 适用范围：安装、卸载、真正重装、ARMOR_RETARGET 及其直接前置
 - 决策目的：在继续扩展外围能力前，先把已有安全基础转化为可重复验收的玩家核心闭环
 
@@ -50,7 +51,8 @@
 
 当前基线：安装、卸载和真正重装均为 `implemented`，Core Mod Lifecycle Gate A 为
 `certified`；ARMOR_RETARGET AR1-AR5 为 `implemented`，修复当前 target 呈现缺陷后的最终 artifact
-已通过全新 Sandbox 纵向复验，Gate B 为 `certified`；P7.2c 等候选项在优先级复审前保持原暂停状态。
+已通过全新 Sandbox 纵向复验，Gate B 为 `certified`；T19 为 `completed`，T18 Slice 1 为当前主线，
+P7.2c 等其余候选继续按各自恢复门禁评审。
 
 ## 4. 立即执行顺序
 
@@ -66,7 +68,8 @@ CL0 事实基线与可重复验收入口
   -> AR4 Tauri typed contract + 选择目标 / 预览 / 安装 UI [implemented]
   -> AR5 真正重装 target switch / 卸载 / 当前 target 重启呈现 [implemented]
   -> Gate B 最终 artifact 全新 Sandbox 复验 [certified]
-  -> 恢复被暂停任务的重新排序 [current]
+  -> T19 产品化加固 [completed]
+  -> T18 Mod 库分页 Slice 1 [current]
 ```
 
 任一时刻只推进一条主切片。安全缺陷、构建阻断和当前切片必需的小修可以插入；其他“顺手”
@@ -247,14 +250,14 @@ T9 Rich Manifest 和 T10 Dependency/Preflight 不再作为可独立扩张的主�
 
 ## 8. 暂停清单与恢复门禁
 
-Gate B 已通过，因此表中的 Gate B 时间门禁已经满足；这只允许进入重新评审，不代表任务自动恢复。
-在维护者明确选定下一条主线前，当前状态继续保持暂停。
+Gate B 已通过，因此表中的 Gate B 时间门禁已经满足；任务仍需经明确优先级复审才能恢复。复审已先
+选择并完成 T19，随后按 T19 完成定义把 T18 恢复为当前主线；其他候选继续保持下表状态。
 
 | 工作 | 当前状态 | 最早恢复条件 |
 | --- | --- | --- |
 | P7.2c installer cleanup | 设计/计划保留，实施暂停 | Gate B 后、Windows beta packaging 前重新评审 |
 | P7.2a 安装态后台备份验收与备份中心 | 暂停 | Gate B 后按发布风险重排 |
-| T18 Mod 库分页 | 设计保留，实施暂停 | Gate B 通过且大库数据证明成为主要阻塞 |
+| T18 Mod 库分页 | 已恢复，Slice 1 为当前主线 | T19 完成；先落地 app-level query/filter/sort/page 兼容切片 |
 | T17 第三方管理器批量迁移 | 设计保留，实施暂停 | Gate B 通过，且单包生命周期已 certified |
 | T13 批量安装/卸载 | 暂停 | 单项 install/uninstall/reinstall certified 后重新设计队列语义 |
 | T14 任务队列 UI | 暂停 | T13 恢复且出现多个真实长任务需求 |
@@ -284,9 +287,11 @@ CL0-CL4 与 AR1-AR5 已完成，Gate A/B 均标记为 `certified`。最终 artif
 覆盖首次 retarget 安装、Alpha -> Beta 真正重装 target switch、两次重启状态恢复、manifest 卸载和
 逐字节 baseline 恢复，并确认 source/旧 target/staging/recovery 无残留。
 
-当前下一项固定为 **Gate B 后优先级复审**：按 Windows beta 发布风险、玩家数据安全和实际使用阻塞
-重新排序 P7.2c、P7.2a/T8、T12、T13、T14、T17、T18。该复审只选择下一条主线；本认证切片不提前
-实现任何候选功能。
+Gate B 后优先级复审选定的
+[T19 核心 Mod 生命周期产品化加固](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 已于 2026-07-18
+满足完成定义。当前下一项固定为 **T18 Mod 库分页 Slice 1**：只实现 app-level query/filter/sort/page
+类型、兼容聚合服务和 fake repository 测试；Tauri contract、前端分页 UI、可查询 read model、T17
+和 T13 均保留到各自独立切片。
 
 CL1 的已执行范围和证据见
 [CL1 实施计划](superpowers/plans/2026-07-12-core-mod-lifecycle-cl1-implementation.md) 与
