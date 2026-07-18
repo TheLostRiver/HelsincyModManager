@@ -409,6 +409,11 @@ pub struct ModLibraryService {
     category_repository: Arc<dyn CategoryRepository>,
 }
 
+pub(crate) struct ModLibrarySnapshotItem {
+    pub(crate) item: ModLibraryItem,
+    pub(crate) user_category_ids: Vec<String>,
+}
+
 impl ModLibraryService {
     pub fn new(
         result_repository: Arc<dyn ModImportResultRepository>,
@@ -423,11 +428,29 @@ impl ModLibraryService {
     }
 
     pub fn get_mod_library(&self) -> anyhow::Result<Vec<ModLibraryItem>> {
+        Ok(self
+            .get_mod_library_snapshot()?
+            .into_iter()
+            .map(|entry| entry.item)
+            .collect())
+    }
+
+    pub(crate) fn get_mod_library_snapshot(
+        &self,
+    ) -> anyhow::Result<Vec<ModLibrarySnapshotItem>> {
         let records = self.result_repository.list_analysis()?;
         let overlays = self.metadata_repository.list_all()?;
         let overlay_map: std::collections::HashMap<_, _> =
             overlays.iter().map(|o| (o.mod_id.as_str(), o)).collect();
         let pairs = self.category_repository.list_mod_category_pairs()?;
+        let mut user_cat_id_map: std::collections::HashMap<_, Vec<_>> =
+            std::collections::HashMap::new();
+        for (mod_id, category) in &pairs {
+            user_cat_id_map
+                .entry(mod_id.clone())
+                .or_default()
+                .push(category.id.clone());
+        }
         let mut user_cat_map = crate::category::build_user_category_map(pairs);
         Ok(records
             .into_iter()
@@ -435,6 +458,7 @@ impl ModLibraryService {
                 let mod_id = record.mod_id.clone();
                 let overlay = overlay_map.get(record.mod_id.as_str()).copied();
                 let mut item = library_item_from_stored(record);
+                let user_category_ids = user_cat_id_map.remove(&mod_id).unwrap_or_default();
                 if let Some(o) = overlay {
                     if let Some(name) = &o.display_name { item.name = name.clone(); }
                     if let Some(author) = &o.author { item.author = Some(author.clone()); }
@@ -442,11 +466,19 @@ impl ModLibraryService {
                 }
                 if let Some(user_cats) = user_cat_map.remove(&mod_id) {
                     let import_labels = std::mem::take(&mut item.category_labels);
-                    item.category_labels = crate::category::merge_category_labels(user_cats, import_labels);
+                    item.category_labels =
+                        crate::category::merge_category_labels(user_cats, import_labels);
                 }
-                item
+                ModLibrarySnapshotItem {
+                    item,
+                    user_category_ids,
+                }
             })
             .collect())
+    }
+
+    pub(crate) fn category_exists(&self, category_id: &str) -> anyhow::Result<bool> {
+        Ok(self.category_repository.get(category_id)?.is_some())
     }
 
     pub fn get_mod_detail(&self, mod_id: &str) -> anyhow::Result<Option<ModDetail>> {
