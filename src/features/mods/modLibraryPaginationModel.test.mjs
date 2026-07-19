@@ -34,6 +34,14 @@ test("calculates inclusive 1-based item ranges and clamps the last page", () => 
   assert.deepEqual(getModLibraryItemRange(99, 24, 50), { start: 49, end: 50 });
 });
 
+test("normalizes non-finite pages before calculating ranges and page slots", () => {
+  assert.deepEqual(getModLibraryItemRange(Number.NaN, 24, 50), { start: 1, end: 24 });
+  assert.deepEqual(
+    getModLibraryPageSlots(Number.NaN, 12),
+    [1, 2, 3, 4, 5, "ellipsis", 12],
+  );
+});
+
 test("returns the empty 1-based range when there are no matching items", () => {
   assert.deepEqual(getModLibraryItemRange(1, 24, 0), { start: 0, end: 0 });
 });

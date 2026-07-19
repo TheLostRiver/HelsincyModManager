@@ -252,7 +252,7 @@
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
@@ -282,6 +282,89 @@
 
   .mod-library-pagination__busy {
     font-size: 0;
+  }
+}
+
+@container (max-width: 580px) {
+  .mod-library-pagination__layout {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    row-gap: 4px;
+    block-size: auto;
+    min-block-size: 80px;
+    padding-block: 6px;
+  }
+
+  .mod-library-pagination__navigation {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: center;
+  }
+
+  .mod-library-pagination__page-size {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .mod-library-pagination__range {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .mod-library-pagination__navigation
+    > .mod-library-control-tooltip:first-child,
+  .mod-library-pagination__navigation
+    > .mod-library-control-tooltip:last-child {
+    display: none;
+  }
+
+  .mod-library-pagination__navigation > .mod-library-control-tooltip,
+  .mod-library-pagination__icon-button,
+  .mod-library-pagination__page-button,
+  .mod-library-pagination__ellipsis {
+    flex-basis: 30px;
+    inline-size: 30px;
+  }
+
+  .mod-library-pagination__icon-button,
+  .mod-library-pagination__page-button,
+  .mod-library-pagination__ellipsis {
+    block-size: 30px;
+  }
+
+  .mod-library-pagination__page-size-listbox {
+    bottom: calc(100% + 44px);
+    left: 0;
+  }
+}
+
+@container (max-width: 390px) {
+  .mod-library-pagination__layout {
+    padding-inline: 4px;
+  }
+
+  .mod-library-pagination__navigation,
+  .mod-library-pagination__page-list {
+    gap: 1px;
+  }
+
+  .mod-library-pagination__navigation > .mod-library-control-tooltip,
+  .mod-library-pagination__icon-button,
+  .mod-library-pagination__page-button {
+    flex-basis: 26px;
+    inline-size: 26px;
+  }
+
+  .mod-library-pagination__icon-button,
+  .mod-library-pagination__page-button,
+  .mod-library-pagination__ellipsis {
+    block-size: 26px;
+    border-radius: 5px;
+  }
+
+  .mod-library-pagination__ellipsis {
+    flex-basis: 12px;
+    inline-size: 12px;
   }
 }
 

@@ -86,6 +86,7 @@ export function ModPosterCard({
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
   const isClassic = viewMode === "classic";
+  const versionLabel = item.versionLabel ?? "v1.0.0";
   const [posterFailed, setPosterFailed] = useState(false);
   const previewThumbnail = item.previewImage?.kind === "thumbnail" ? item.previewImage : null;
   const canShowPoster = previewThumbnail !== null && !posterFailed;
@@ -172,7 +173,7 @@ export function ModPosterCard({
           className="mod-card__poster"
           style={{ "--poster-from": item.posterFrom, "--poster-to": item.posterTo } as CSSProperties}
         >
-          {isGrid && <div className="mod-card__version-badge">v1.0.0</div>}
+          {isGrid && <div className="mod-card__version-badge">{versionLabel}</div>}
 
           {canShowPoster && (
             <img
@@ -237,7 +238,7 @@ export function ModPosterCard({
             <div className="mod-card__desc">这是一个完全重新制作的模型替换 Mod，修复了原版服装在过场动画中的穿模问题，并提供了全套高清贴图支持。</div>
           </div>
           <div className="mod-card__footer-list">
-            <span>版本: v1.0.0</span>
+            <span>版本: {versionLabel}</span>
             <span>大小: {item.sizeLabel}</span>
           </div>
         </div>
@@ -252,7 +253,7 @@ export function ModPosterCard({
             {categoryStrip}
           </div>
           <div className="mod-card__tech-footer">
-            <span className="mod-card__tech-version" data-label="Version">{item.versionLabel || "v1.0.0"}</span>
+            <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span>
             <span className="mod-card__tech-size" data-label="Size">{item.sizeLabel || "Unknown"}</span>
           </div>
           <div className="mod-card__tech-status" data-status={item.status}>

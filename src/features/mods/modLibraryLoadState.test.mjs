@@ -329,3 +329,33 @@ test("unavailable manifest status fails closed even for not-installed and legacy
     issues: [],
   });
 });
+
+test("unavailable manifest status preserves existing durable counters while failing closed", () => {
+  const [result] = applyInstallManifestUnavailable([
+    {
+      id: "installed-mod",
+      name: "Installed Mod",
+      status: "installed",
+      sizeLabel: "3 KB",
+      categoryLabels: [],
+      installSummary: {
+        status: "installed",
+        managedFileCount: 4,
+        backupCount: 2,
+        recoveryStatus: "completed",
+        issueCount: 0,
+        issues: [],
+      },
+    },
+  ]);
+
+  assert.equal(result.status, "unknown");
+  assert.deepEqual(result.installSummary, {
+    status: "unknown",
+    managedFileCount: 4,
+    backupCount: 2,
+    recoveryStatus: "unknown",
+    issueCount: 0,
+    issues: [],
+  });
+});
