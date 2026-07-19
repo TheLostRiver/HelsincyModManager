@@ -203,7 +203,7 @@ test("mod library page starts install task and tracks only matching task progres
   assert.match(taskStateSource, /install\.commit\.processing/);
   assert.match(taskStateSource, /install\.completed/);
   assert.match(taskStateSource, /install\.cancelled/);
-  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
+  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
 
 test("mod library page starts uninstall only from a durable installed summary on the current page", () => {
@@ -253,7 +253,7 @@ test("mod library page overlays the current query page and verifies terminal fac
   assert.match(source, /getManagedInstallTerminalToast/);
   assert.match(source, /shouldFailClosedManagedInstallTerminal/);
   assert.match(source, /updateCurrentPageItems\(\(items\)\s*=>\s*failClosedModInstallSummary\(items,\s*terminalTask\.modId\)\)/);
-  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot/i);
+  assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
 
 test("mod library page blocks install and uninstall actions during unsafe recovery states", () => {

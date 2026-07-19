@@ -38,6 +38,15 @@ test("mod poster card renders controlled lazy thumbnails with fallback", () => {
   assert.match(source, /item\.previewImage\?\.kind === "thumbnail"/);
 });
 
+test("mod poster card displays the same generated version in grid, list, and tech views", () => {
+  const source = readSource("src/features/mods/ModPosterCard.tsx");
+
+  assert.match(source, /const versionLabel = item\.versionLabel \?\? "v1\.0\.0"/);
+  assert.equal(source.match(/\{versionLabel\}/g)?.length, 3);
+  assert.doesNotMatch(source, />v1\.0\.0<\/div>/);
+  assert.doesNotMatch(source, /版本:\s*v1\.0\.0/);
+});
+
 test("mod poster card retries when thumbnail url changes", () => {
   const source = readSource("src/features/mods/ModPosterCard.tsx");
 

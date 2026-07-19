@@ -71,6 +71,10 @@ test("busy pagination closes the menu without dropping focus from its controls",
   assert.match(source, /if \(busy && pageSizeMenuOpen\) \{\s*closePageSizeMenu\(true\);/);
   assert.match(source, /const openPageSizeMenu = useCallback\(\(\) => \{\s*if \(busy\)/);
   assert.match(source, /const commitPageSize = \(nextPageSize:[\s\S]*?if \(busy\)/);
+  assert.match(
+    source,
+    /const requestPage = \(nextPage:[\s\S]*?if \(busy[\s\S]*?return;[\s\S]*?onPageChange/,
+  );
   assert.match(source, /aria-expanded=\{pageSizeMenuOpen && !busy\}/);
   assert.match(source, /aria-disabled=\{busy \|\| undefined\}/);
   assert.doesNotMatch(source, /disabled=\{busy\}/);
@@ -78,6 +82,27 @@ test("busy pagination closes the menu without dropping focus from its controls",
   assert.match(css, /\.mod-library-pagination__page-size-trigger\[aria-disabled="true"\]/);
   assert.match(css, /\.mod-library-pagination__page-size-trigger:hover:not\(\[aria-disabled="true"\]\)/);
   assert.doesNotMatch(css, /\.mod-library-pagination__[^{]+:disabled/);
+});
+
+test("pagination stacks and compacts all essential controls in narrow containers", () => {
+  const css = readPaginationSource("ModLibraryPagination.css");
+
+  assert.match(
+    css,
+    /@container\s*\(max-width:\s*580px\)[\s\S]*?grid-template-rows:\s*auto auto/,
+  );
+  assert.match(
+    css,
+    /@container\s*\(max-width:\s*580px\)[\s\S]*?\.mod-library-pagination__navigation[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
+  );
+  assert.match(
+    css,
+    /\.mod-library-pagination__navigation[\s\S]*?>\s*\.mod-library-control-tooltip:first-child,[\s\S]*?>\s*\.mod-library-control-tooltip:last-child[\s\S]*?display:\s*none/,
+  );
+  assert.match(
+    css,
+    /@container\s*\(max-width:\s*390px\)[\s\S]*?\.mod-library-pagination__page-button[\s\S]*?inline-size:\s*26px/,
+  );
 });
 
 test("pagination footer stays a compact semantic-token toolbar without overlay styling", () => {
@@ -97,4 +122,6 @@ test("pagination footer stays a compact semantic-token toolbar without overlay s
   assert.match(css, /inline-size:\s*32px/);
   assert.match(css, /block-size:\s*32px/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(css, /clip-path:\s*inset\(50%\)/);
+  assert.doesNotMatch(css, /\bclip:\s*rect\(/);
 });

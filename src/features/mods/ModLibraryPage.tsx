@@ -339,7 +339,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const page = browserPreviewEnabled
       ? queryBrowserMockModLibrary(input, fallbackModLibraryItems, categoriesRef.current)
       : await queryModLibrary(input);
-    if (input.profileContext === undefined) {
+    if (browserPreviewEnabled || input.profileContext === undefined) {
       return page;
     }
 
@@ -441,6 +441,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     await Promise.all([refreshLibraryPage(), refreshCategories()]);
   }, [refreshCategories, refreshLibraryPage]);
 
+  const refreshModLibraryAfterWrite = useCallback(async () => {
+    resetContentScroll();
+    await refreshModLibrary();
+  }, [refreshModLibrary, resetContentScroll]);
+
   const refreshTerminalDurableStatus = useCallback(
     (profileId: string, modId: string, modName: string) =>
       refreshModLibraryDurableStatuses([createModLibraryStatusProbe(modId, modName)], {
@@ -463,7 +468,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     profileId: activeProfile.status === "ready" ? activeProfileId : null,
     selectedItem,
     writeTaskActive: managedInstallTaskActive,
-    refreshLibrary: refreshModLibrary,
+    refreshLibrary: refreshModLibraryAfterWrite,
   });
   const { openReinstall } = reinstallWorkflow;
   const uninstallBlockerMessage = useMemo(() => {
@@ -572,9 +577,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         return;
       }
 
-      resetContentScroll();
       const [pageRefresh, durableRefresh] = await Promise.allSettled([
-        refreshModLibrary(),
+        refreshModLibraryAfterWrite(),
         refreshTerminalDurableStatus(terminalTask.profileId, terminalTask.modId, terminalTask.modName),
       ]);
       if (!pageMountedRef.current) {
@@ -606,9 +610,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     void refreshTerminalFacts();
   }, [
     installTaskState,
-    refreshModLibrary,
+    refreshModLibraryAfterWrite,
     refreshTerminalDurableStatus,
-    resetContentScroll,
     updateCurrentPageItems,
   ]);
 
@@ -1173,7 +1176,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             canInstallSelection={canInstallSelected}
             canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
-            onImportCompleted={refreshModLibrary}
+            onImportCompleted={refreshModLibraryAfterWrite}
             onAction={handleAction}
           />
         </div>
@@ -1218,7 +1221,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           profileId={activeProfile.status === "ready" ? activeProfileId : null}
           installStatus={detailDialogState.fallbackItem?.installSummary?.status}
           onClose={() => setDetailDialogState(null)}
-          onSaved={refreshModLibrary}
+          onSaved={refreshModLibraryAfterWrite}
         />
       ) : null}
 

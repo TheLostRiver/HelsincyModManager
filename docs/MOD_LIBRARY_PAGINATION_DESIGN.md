@@ -237,7 +237,7 @@ Slice 3 已为 `.mod-library` 增加独立 pagination row。常规桌面窗口�
 | 切换视图模式 | 保持 | 保持 | 保持 |
 | 点击其他页 | 切换目标页 | 清空 | 回到顶部 |
 | 刷新当前页 | 后端 clamp | 重新校验并默认清空 | 保持或在 clamp 时回顶部 |
-| 安装/卸载完成 | 重新查询当前条件 | 清空 | 统一回到顶部 |
+| 安装、重装、卸载、导入或详情保存等写操作完成 | 重新查询当前条件 | 清空 | 统一回到顶部 |
 
 翻页回到 `.mod-library__content` 顶部时使用即时滚动，避免先播放跨整页平滑动画。视图切换的既有 transition 可以保留，但翻页不应对 24-96 张卡片启动长时间 stagger 动画。
 
@@ -357,7 +357,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 - 接入 250ms debounce、latest-request gate、loading/error/empty 和 page clamp。
 - page footer 放在内层滚动区之外，并与自绘滚动条/返回顶部按钮兼容。
 - 把“全选/反选”改成明确的本页语义。
-- 当前页只加载 manifest/recovery durable overlay；安装/卸载等终态动作后只对单 Mod durable 状态做受控探测，再重查当前 query。
+- 当前页只加载 manifest/recovery durable overlay；安装、重装和卸载终态后只对单 Mod durable 状态做受控探测，再重查当前 query；导入和详情保存完成后也统一重查当前条件、清空选择并回到顶部。
 - 经典、增强网格、列表、机能四种视图和 `1440x900`、`1366x768`、`1280x800`、`960x640` 四个窗口均已完成视觉验收；分页 footer 无重叠、无横向溢出，短高窗口无顶部状态栏穿透。
 - 不实现跨页批量选择。
 
@@ -396,7 +396,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 - 初始加载、刷新中、空库、无匹配、错误保留和重试。
 - 页码窗口、省略号、首页/末页和 disabled 状态。
 - `aria-current`、accessible names、状态播报和键盘导航。
-- install/uninstall 后 filter membership 变化时重新查询并 clamp。
+- 安装、重装、卸载、导入和详情保存后重新查询；filter membership 变化时由后端 clamp，并统一清空选择、回到顶部。
 
 ### 性能与视觉
 

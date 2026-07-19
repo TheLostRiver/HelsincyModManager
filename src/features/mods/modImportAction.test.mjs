@@ -30,7 +30,7 @@ test("the existing add action owns import and refreshes the library on completio
   const pageSource = readSource("src/features/mods/ModLibraryPage.tsx");
 
   assert.match(panelSource, /<ModImportAction\s+label=\{addAction\.label\}\s+onImported=\{onImportCompleted\}/);
-  assert.match(pageSource, /onImportCompleted=\{refreshModLibrary\}/);
+  assert.match(pageSource, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
 });
 
 test("candidate import reuses the picker task UI with an explicit selected mod owner", () => {
