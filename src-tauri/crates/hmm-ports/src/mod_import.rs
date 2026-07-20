@@ -192,6 +192,14 @@ pub trait ModImportResultRepository: Send + Sync {
         anyhow::bail!("revision append is not supported by this repository")
     }
 
+    /// Upserts a bounded batch without guaranteeing call-wide atomicity.
+    ///
+    /// Implementations may persist chunks independently. If a later chunk fails,
+    /// earlier successful chunks remain durable; callers must not assume
+    /// all-or-nothing behavior. Callers must support idempotent retries and mark
+    /// dependent projections dirty until they can be rebuilt from authoritative
+    /// repository state. The default implementation accepts only an empty batch
+    /// and fails closed for non-empty input.
     fn upsert_many(&self, upserts: &[ModImportCatalogUpsert]) -> Result<()> {
         if upserts.is_empty() {
             return Ok(());

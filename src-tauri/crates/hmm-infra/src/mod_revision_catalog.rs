@@ -475,12 +475,6 @@ fn apply_catalog_upsert(
                 && existing_mod.origin_provenance == upsert.logical_mod.origin_provenance,
             "logical Mod origin does not match"
         );
-        let existing_mod = catalog
-            .mods
-            .iter_mut()
-            .find(|logical_mod| logical_mod.mod_id == upsert.logical_mod.mod_id)
-            .ok_or_else(|| anyhow::anyhow!("mod revision catalog is corrupted"))?;
-        existing_mod.display_revision_id = upsert.logical_mod.display_revision_id.clone();
         return Ok(());
     }
 

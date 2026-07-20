@@ -420,6 +420,46 @@ fn mod_import_catalog_upsert_many_exact_retry_handles_multiple_revisions_for_one
 }
 
 #[test]
+fn mod_import_catalog_upsert_many_retrying_older_revision_keeps_latest_display_revision() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let revision_v1 = ModImportCatalogUpsert {
+        logical_mod: logical_mod("mod-a", "revision-v1"),
+        revision: revision("revision-v1", "mod-a", "package-v1", "task-v1"),
+    };
+    let mut revision_v2_logical_mod = logical_mod("mod-a", "revision-v2");
+    revision_v2_logical_mod.origin_revision_id = ModRevisionId::new("revision-v1");
+    let revision_v2 = ModImportCatalogUpsert {
+        logical_mod: revision_v2_logical_mod,
+        revision: revision("revision-v2", "mod-a", "package-v2", "task-v2"),
+    };
+
+    repo.upsert_many(std::slice::from_ref(&revision_v1))
+        .expect("first revision succeeds");
+    repo.upsert_many(&[revision_v2])
+        .expect("second revision succeeds");
+    assert_eq!(repo.catalog_save_count_for_test(), 2);
+
+    repo.upsert_many(&[revision_v1])
+        .expect("retrying the older revision is a no-op");
+
+    assert_eq!(repo.catalog_save_count_for_test(), 2);
+    assert_eq!(
+        repo.get_mod(&ModId::new("mod-a"))
+            .expect("read logical Mod")
+            .expect("logical Mod exists")
+            .display_revision_id,
+        ModRevisionId::new("revision-v2")
+    );
+    assert_eq!(
+        repo.list_revisions(&ModId::new("mod-a"))
+            .expect("list revisions")
+            .len(),
+        2
+    );
+}
+
+#[test]
 fn mod_import_catalog_upsert_many_keeps_committed_chunks_when_a_later_chunk_fails() {
     let temp = tempfile::tempdir().expect("temp dir");
     let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
