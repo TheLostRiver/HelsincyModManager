@@ -1,8 +1,9 @@
 use crate::mod_revision_catalog::{JsonModImportResultRepository, ModImportCatalogWriteFailure};
 use hmm_core::{ModId, ModRevisionId, PreviewImageRejectionReason};
 use hmm_ports::{
-    ModImportResultRepository, StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
-    StoredModOriginProvenance, StoredModPackageMetadata, StoredModRevision,
+    ModImportCatalogUpsert, ModImportResultRepository, StoredImportPreviewImage, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision,
 };
 use serde_json::Value;
 use std::fs;
@@ -291,12 +292,7 @@ fn mod_import_catalog_rejects_duplicate_package_for_distinct_revisions() {
     .expect("save Mod B");
 
     let error = repo
-        .append_revision(&revision(
-            "revision-c",
-            "mod-b",
-            "shared-package",
-            "task-c",
-        ))
+        .append_revision(&revision("revision-c", "mod-b", "shared-package", "task-c"))
         .expect_err("package identity cannot be reused by another revision");
 
     assert!(error
@@ -347,6 +343,149 @@ fn mod_import_catalog_rejects_tampered_v1_migration_provenance() {
     assert!(error
         .to_string()
         .contains("migration provenance does not match origin revision"));
+}
+
+#[test]
+fn mod_import_catalog_upsert_many_rewrites_once_per_bounded_chunk_and_is_idempotent() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    let repo = JsonModImportResultRepository::new(path);
+    let upserts = (0..401)
+        .map(|index| {
+            let mod_id = format!("mod-{index:03}");
+            let revision_id = format!("revision-{index:03}");
+            ModImportCatalogUpsert {
+                logical_mod: logical_mod(&mod_id, &revision_id),
+                revision: revision(
+                    &revision_id,
+                    &mod_id,
+                    &format!("package-{index:03}"),
+                    "task",
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    repo.upsert_many(&upserts).expect("bounded batch succeeds");
+    assert_eq!(repo.catalog_save_count_for_test(), 3);
+    assert_eq!(repo.list_mods().expect("list batch mods").len(), 401);
+
+    repo.upsert_many(&upserts)
+        .expect("retrying the same batch is idempotent");
+    assert_eq!(repo.catalog_save_count_for_test(), 3);
+    assert_eq!(
+        repo.list_revisions(&ModId::new("mod-400")).unwrap().len(),
+        1
+    );
+}
+
+#[test]
+fn mod_import_catalog_upsert_many_exact_retry_handles_multiple_revisions_for_one_mod() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    let repo = JsonModImportResultRepository::new(path);
+    let mut revision_v2_logical_mod = logical_mod("mod-a", "revision-v2");
+    revision_v2_logical_mod.origin_revision_id = ModRevisionId::new("revision-v1");
+    let upserts = vec![
+        ModImportCatalogUpsert {
+            logical_mod: logical_mod("mod-a", "revision-v1"),
+            revision: revision("revision-v1", "mod-a", "package-v1", "task-v1"),
+        },
+        ModImportCatalogUpsert {
+            logical_mod: revision_v2_logical_mod,
+            revision: revision("revision-v2", "mod-a", "package-v2", "task-v2"),
+        },
+    ];
+
+    repo.upsert_many(&upserts)
+        .expect("multiple revisions in one batch succeed");
+    assert_eq!(repo.catalog_save_count_for_test(), 1);
+    assert_eq!(
+        repo.get_mod(&ModId::new("mod-a"))
+            .expect("read logical Mod")
+            .expect("logical Mod exists")
+            .display_revision_id,
+        ModRevisionId::new("revision-v2")
+    );
+
+    repo.upsert_many(&upserts)
+        .expect("retrying the multi-revision batch is idempotent");
+    assert_eq!(repo.catalog_save_count_for_test(), 1);
+    assert_eq!(
+        repo.list_revisions(&ModId::new("mod-a"))
+            .expect("list revisions")
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn mod_import_catalog_upsert_many_keeps_committed_chunks_when_a_later_chunk_fails() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let mut upserts = (0..200)
+        .map(|index| {
+            let mod_id = format!("mod-{index:03}");
+            let revision_id = format!("revision-{index:03}");
+            ModImportCatalogUpsert {
+                logical_mod: logical_mod(&mod_id, &revision_id),
+                revision: revision(
+                    &revision_id,
+                    &mod_id,
+                    &format!("package-{index:03}"),
+                    "task",
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+    upserts.push(ModImportCatalogUpsert {
+        logical_mod: logical_mod("conflicting-mod", "revision-000"),
+        revision: revision(
+            "revision-000",
+            "conflicting-mod",
+            "conflicting-package",
+            "task",
+        ),
+    });
+
+    let error = repo
+        .upsert_many(&upserts)
+        .expect_err("the conflicting second chunk must fail");
+    assert!(error
+        .to_string()
+        .contains("revision upsert conflicts with existing catalog state"));
+    assert_eq!(repo.catalog_save_count_for_test(), 1);
+    assert_eq!(
+        repo.list_mods().expect("list committed first chunk").len(),
+        200
+    );
+    assert!(repo
+        .get_mod(&ModId::new("conflicting-mod"))
+        .expect("read conflicting Mod")
+        .is_none());
+}
+
+#[test]
+fn mod_import_catalog_upsert_many_rejects_batches_over_hard_limit_before_writing() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let upserts = (0..10_001)
+        .map(|index| {
+            let mod_id = format!("mod-{index}");
+            let revision_id = format!("revision-{index}");
+            ModImportCatalogUpsert {
+                logical_mod: logical_mod(&mod_id, &revision_id),
+                revision: revision(&revision_id, &mod_id, &format!("package-{index}"), "task"),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let error = repo
+        .upsert_many(&upserts)
+        .expect_err("batch over hard limit is rejected");
+    assert!(error.to_string().contains("supported limit"));
+    assert_eq!(repo.catalog_save_count_for_test(), 0);
+    assert!(repo.list_mods().expect("list empty catalog").is_empty());
 }
 
 fn logical_mod(mod_id: &str, revision_id: &str) -> StoredLogicalMod {

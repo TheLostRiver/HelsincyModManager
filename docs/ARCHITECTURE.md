@@ -389,15 +389,17 @@ Commit 阶段
 SQLite 存储用户数据和运行状态：
 
 - 游戏实例
-- 已导入 Mod
-- 分类和标签
+- Mod 元数据 overlay、分类和标签
 - Profile
 - 替换绑定
 - 安装清单
 - 备份历史
 - 用户设置
+- 可删除、可重建的 Mod 库 query projection（不是安装事实）
 
-JSON 或 TOML 存储偏规则的数据：
+JSON revision catalog 继续作为已导入 Mod 的权威来源，保存 logical Mod、revision lineage、import provenance 和展示 revision；SQLite projection 只保存查询展示所需的派生列、规范化 key、分类关系和稀疏 profile status。
+
+JSON 或 TOML 还可存储偏规则的数据：
 
 - 默认分类
 - 官方替换目标 catalog

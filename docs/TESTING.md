@@ -266,6 +266,26 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - wall-clock 结果只在固定 runner 或相同机器/工具链上比较，不在普通单元测试中加入跨机器绝对时延断言。
 - 4B/4C 必须复用相同 fixture schema、warmup/sample 和 JSON 输出格式，不能通过减少数据字段或跳过 status filter 制造虚假提升。
 
+### T18 Slice 4B projection writer/rebuild
+
+Slice 4B 的自动化只使用人工 projection records、临时 JSON 和临时 SQLite，不读取真实 Mod、游戏目录、manifest、存档或用户 AppData。聚焦入口：
+
+```powershell
+cargo test -p hmm-infra mod_library_projection -- --nocapture
+cargo test -p hmm-infra mod_import_catalog_upsert_many -- --nocapture
+cargo test -p hmm-ports mod_library_projection -- --nocapture
+cargo test -p hmm-app mod_library_query -- --nocapture
+```
+
+必须覆盖：
+
+- migration 的 projection 表、`BINARY` 索引、query-key version 和 profile status 复合外键。
+- rebuild 的 dirty -> complete generation、旧行清理、重复 Mod/revision/package 拒绝，以及失败后不发布部分 rows。
+- profile 首次发布/替换、generation completeness、未知 Mod 外键失败和 dirty fail-closed 语义。
+- `upsert_many` 的 10,000 总上限、200 分块、同一 Mod 多 revision 的 exact retry 幂等且不重复写入，以及后块失败时前块保持已提交。
+
+4B 不执行生产 SQLite query/count/page、Tauri/前端 smoke 或性能门禁；这些属于 Slice 4C。完整交付仍需运行 workspace tests/check/clippy 和 `scripts/verify.ps1`。
+
 ## Mod 导入与压缩包处理
 
 适用范围：

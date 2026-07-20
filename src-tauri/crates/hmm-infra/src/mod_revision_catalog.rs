@@ -2,14 +2,17 @@ use anyhow::{Context, Result};
 use fs2::FileExt;
 use hmm_core::{ModId, ModRevisionId};
 use hmm_ports::{
-    ModImportResultRepository, StoredLogicalMod, StoredModImportAnalysis,
-    StoredModOriginProvenance, StoredModRevision,
+    ModImportCatalogUpsert, ModImportResultRepository, StoredLogicalMod, StoredModImportAnalysis,
+    StoredModOriginProvenance, StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE,
+    MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,7 +25,7 @@ struct ModImportResultsV1 {
     records: Vec<StoredModImportAnalysis>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ModRevisionCatalogV2 {
     version: u32,
     mods: Vec<StoredLogicalMod>,
@@ -49,6 +52,8 @@ pub struct JsonModImportResultRepository {
     write_lock: Mutex<()>,
     #[cfg(test)]
     test_write_failure: Option<ModImportCatalogWriteFailure>,
+    #[cfg(test)]
+    test_catalog_save_count: AtomicUsize,
 }
 
 #[cfg(test)]
@@ -66,6 +71,8 @@ impl JsonModImportResultRepository {
             write_lock: Mutex::new(()),
             #[cfg(test)]
             test_write_failure: None,
+            #[cfg(test)]
+            test_catalog_save_count: AtomicUsize::new(0),
         }
     }
 
@@ -73,6 +80,11 @@ impl JsonModImportResultRepository {
     pub(crate) fn with_test_write_failure(mut self, failure: ModImportCatalogWriteFailure) -> Self {
         self.test_write_failure = Some(failure);
         self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn catalog_save_count_for_test(&self) -> usize {
+        self.test_catalog_save_count.load(Ordering::SeqCst)
     }
 
     fn read_catalog<T>(
@@ -207,6 +219,8 @@ impl JsonModImportResultRepository {
             fs::rename(&temp_path, &self.file_path)
                 .context("failed to replace mod revision catalog")?;
             self.sync_parent_directory()?;
+            #[cfg(test)]
+            self.test_catalog_save_count.fetch_add(1, Ordering::SeqCst);
             Ok(())
         })();
 
@@ -319,6 +333,34 @@ impl ModImportResultRepository for JsonModImportResultRepository {
         })
     }
 
+    fn upsert_many(&self, upserts: &[ModImportCatalogUpsert]) -> Result<()> {
+        anyhow::ensure!(
+            upserts.len() <= MOD_IMPORT_UPSERT_MAX_ENTRIES,
+            "mod import upsert batch exceeds the supported limit"
+        );
+        if upserts.is_empty() {
+            return Ok(());
+        }
+
+        self.with_exclusive_lock(|| {
+            let loaded = self.load_catalog()?;
+            let mut catalog = loaded.catalog;
+            let mut migration_pending = loaded.migrated_from_v1;
+            for chunk in upserts.chunks(MOD_IMPORT_UPSERT_CHUNK_SIZE) {
+                let before_chunk = catalog.clone();
+                for upsert in chunk {
+                    apply_catalog_upsert(&mut catalog, upsert)?;
+                }
+                if migration_pending || catalog != before_chunk {
+                    validate_catalog(&catalog)?;
+                    self.save_catalog(&catalog)?;
+                    migration_pending = false;
+                }
+            }
+            Ok(())
+        })
+    }
+
     fn get_mod(&self, mod_id: &ModId) -> Result<Option<StoredLogicalMod>> {
         self.read_catalog(|catalog| {
             Ok(catalog
@@ -401,6 +443,71 @@ impl ModImportResultRepository for JsonModImportResultRepository {
                 .find(|analysis| analysis.mod_id == mod_id))
         })
     }
+}
+
+fn apply_catalog_upsert(
+    catalog: &mut ModRevisionCatalogV2,
+    upsert: &ModImportCatalogUpsert,
+) -> Result<()> {
+    anyhow::ensure!(
+        upsert.logical_mod.mod_id == upsert.revision.mod_id
+            && upsert.logical_mod.display_revision_id == upsert.revision.revision_id,
+        "logical Mod and display revision do not match"
+    );
+
+    if let Some(existing_revision) = catalog
+        .revisions
+        .iter()
+        .find(|revision| revision.revision_id == upsert.revision.revision_id)
+        .cloned()
+    {
+        anyhow::ensure!(
+            existing_revision == upsert.revision,
+            "revision upsert conflicts with existing catalog state"
+        );
+        let existing_mod = catalog
+            .mods
+            .iter()
+            .find(|logical_mod| logical_mod.mod_id == upsert.logical_mod.mod_id)
+            .ok_or_else(|| anyhow::anyhow!("mod revision catalog is corrupted"))?;
+        anyhow::ensure!(
+            existing_mod.origin_revision_id == upsert.logical_mod.origin_revision_id
+                && existing_mod.origin_provenance == upsert.logical_mod.origin_provenance,
+            "logical Mod origin does not match"
+        );
+        let existing_mod = catalog
+            .mods
+            .iter_mut()
+            .find(|logical_mod| logical_mod.mod_id == upsert.logical_mod.mod_id)
+            .ok_or_else(|| anyhow::anyhow!("mod revision catalog is corrupted"))?;
+        existing_mod.display_revision_id = upsert.logical_mod.display_revision_id.clone();
+        return Ok(());
+    }
+
+    match catalog
+        .mods
+        .iter_mut()
+        .find(|logical_mod| logical_mod.mod_id == upsert.logical_mod.mod_id)
+    {
+        Some(existing_mod) => {
+            anyhow::ensure!(
+                existing_mod.origin_revision_id == upsert.logical_mod.origin_revision_id
+                    && existing_mod.origin_provenance == upsert.logical_mod.origin_provenance,
+                "logical Mod origin does not match"
+            );
+            existing_mod.display_revision_id = upsert.revision.revision_id.clone();
+            catalog.revisions.push(upsert.revision.clone());
+        }
+        None => {
+            anyhow::ensure!(
+                upsert.logical_mod.origin_revision_id == upsert.revision.revision_id,
+                "new logical Mod origin revision does not match"
+            );
+            catalog.mods.push(upsert.logical_mod.clone());
+            catalog.revisions.push(upsert.revision.clone());
+        }
+    }
+    Ok(())
 }
 
 fn migrate_v1_catalog(legacy: ModImportResultsV1) -> Result<ModRevisionCatalogV2> {
@@ -504,9 +611,7 @@ fn validate_catalog(catalog: &ModRevisionCatalogV2) -> Result<()> {
     let mut revisions_by_id = HashMap::new();
     let mut package_revision_ids = HashMap::new();
     for revision in &catalog.revisions {
-        if let Some(existing) =
-            revisions_by_id.insert(revision.revision_id.as_str(), revision)
-        {
+        if let Some(existing) = revisions_by_id.insert(revision.revision_id.as_str(), revision) {
             if existing.mod_id != revision.mod_id {
                 anyhow::bail!("revision already belongs to another logical Mod");
             }

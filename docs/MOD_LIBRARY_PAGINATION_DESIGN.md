@@ -1,6 +1,6 @@
 # Mod 库分页设计
 
-> 状态：Slice 1（PR #186）、Slice 2（PR #187）和 Slice 3 已完成并合并；Slice 4A（读模型基准与持久化决策）当前进行中，Slice 4B/4C 尚未开始，T18 整体仍在进行中。
+> 状态：Slice 1（PR #186）、Slice 2（PR #187）、Slice 3 和 Slice 4A 已完成并合并；Slice 4B（projection schema/rebuild、infra writer 与 T17 `upsert_many` 协调）已实现并进入独立复审/PR，Slice 4C 尚未开始，T18 整体仍在进行中。
 >
 > Slice 3 已接入数字分页 footer、250ms 搜索 debounce/latest-request gate、loading/error/empty、page-local selection 和当前页 durable status overlay；本地统一验证、独立复审、合并及四视图/四窗口视觉 smoke 已通过。
 
@@ -363,12 +363,12 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 4：可查询 read model 与性能门禁
 
-**实施状态：Slice 4A 基准与决策进行中；Slice 4B/4C 尚未开始。**
+**实施状态：Slice 4A 已完成并合并；Slice 4B 实现已完成并进入独立复审；Slice 4C 尚未开始。**
 
-- **Slice 4A（本切片）**：建立 1,000/10,000 条人工 fixture，测量 JSON 读取/投影、overlay/category merge、profile status、兼容 query 分解和 page DTO serialization；确定 JSON revision catalog provenance + SQLite rebuildable query projection，并锁定 Unicode/profile status 语义。
-- **Slice 4B**：实现 projection schema/rebuild、必要 ports/infra writer，以及与 T17 `upsert_many` 的共享持久化边界。
+- **Slice 4A（已完成）**：建立 1,000/10,000 条人工 fixture，测量 JSON 读取/投影、overlay/category merge、profile status、兼容 query 分解和 page DTO serialization；确定 JSON revision catalog provenance + SQLite rebuildable query projection，并锁定 Unicode/profile status 语义。
+- **Slice 4B（当前切片）**：实现 migration 009、可删除可重建的 projection items/labels/profile generations/status 表、generation/dirty/fingerprint 发布语义、共享 NFKC query-key helper、必要 ports/infra writer，以及总上限 10,000、每块 200 的 T17 `upsert_many` 边界。JSON revision catalog 仍是权威来源，投影失败必须 fail closed。
 - **Slice 4C**：生产 query switch、同一短 read transaction 的 count/page、性能门禁和交互回归。
-- 4A 不实现 SQLite migration、生产 projection、生产查询切换、Tauri contract 或 UI。
+- 4A 不实现 SQLite migration、生产 projection、生产查询切换、Tauri contract 或 UI；4B 也不切换生产查询、不实现 count/page 或前端接线。
 - 只有本切片通过，TODO 才能把 T18 标记为完成。
 
 ## 测试策略

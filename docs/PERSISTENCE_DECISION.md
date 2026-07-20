@@ -83,7 +83,7 @@
 
 ## 2A. T18/T17 read-model 补充决策（2026-07-20）
 
-T18 Slice 4A 选择：**JSON revision catalog 继续作为 Mod/revision/provenance 权威来源；在既有 `hmm.db` 中增加可删除、可重建的 SQLite query projection。** 这不是把安装 manifest 或 revision catalog 迁移为 SQLite，也不改变现有安装链路事实边界。
+T18 Slice 4A 选择并由 Slice 4B 落地：**JSON revision catalog 继续作为 Mod/revision/provenance 权威来源；在既有 `hmm.db` 中增加可删除、可重建的 SQLite query projection。** 这不是把安装 manifest 或 revision catalog 迁移为 SQLite，也不改变现有安装链路事实边界。
 
 ### 数据职责
 
@@ -102,7 +102,15 @@ projection 丢失、损坏、schema/version 不匹配或 source fingerprint 不�
 2. 权威写入完成后，projection writer 在 SQLite 短事务中更新展示行、分类关系、规范化 key、status 派生行和 projection revision。
 3. JSON 与 SQLite 不存在跨存储原子事务。projection 更新失败、进程在两者之间退出或 revision 对不上时，必须保持/写入 dirty marker；查询不能把旧 projection 伪装成新事实。
 4. rebuild 从 JSON revision catalog、既有 overlay/category 表和 manifest/recovery 派生；可取消的准备工作不得持有长 SQLite 写事务，最终发布使用短事务切换完整 generation。
-5. app 只依赖后续 4B 定义的窄 read-model/rebuild ports；连接、SQL、索引和 generation marker 留在 `hmm-infra`。
+5. app 只依赖 4B 定义的窄 read-model/rebuild ports；连接、SQL、索引和 generation marker 留在 `hmm-infra`。4B 不把 projection 接入生产 query，4C 才负责该切换。
+
+### Slice 4B 已落地的投影边界
+
+- migration 009 在既有 `hmm.db` 中创建全局 state、items、labels、profile generations 和稀疏 profile status 表；items 的 display revision/package 唯一约束与显式索引使用 `BINARY`。
+- rebuild 先提交 dirty marker，再在 SQLite 写锁外完成 snapshot 校验/序列化，最后用短事务清理旧 generation、写入全部 rows 并一次性发布 complete generation；失败会回滚 rows 但保留 dirty。
+- profile status 使用 generation 0 dirty 起点和 generation 1 起的 complete 发布；status row 通过复合外键绑定到对应 profile generation。未知 Mod、未知 status、来源 fingerprint 不一致或 dirty 状态不能解释为 `not_installed`。
+- `upsert_many` 总上限为 10,000、每块最多 200；每块最多一次完整 JSON 原子替换，后续 chunk 失败时已提交 chunk 保持有效，调用方应据错误标脏并重建 projection。只有权威 JSON repository 显式实现这套批量语义；其他 repository 的 trait 默认实现直接拒绝，不能退化为逐候选写入。
+- 4B 只提供 writer/rebuild 端口和 infra 实现，不提供 SQLite count/page、生产 query switch、Tauri/前端接线或性能门禁；这些属于 4C。
 
 ### Unicode query key
 
@@ -118,7 +126,7 @@ Unicode NFKC
 - 展示名称、作者和分类原文不改写；只持久化派生 search/sort key。
 - 搜索词使用同一 Rust helper 规范化；名称排序使用 normalized name 的 SQLite `BINARY` 顺序，再以 `mod_id` `BINARY` 升序 tie-break。
 - SQLite `NOCASE` 只覆盖有限 ASCII 语义，禁止替代该算法。
-- 当前兼容实现只有 whitespace collapse + lowercase，尚未执行 NFKC。4B 必须补共享 helper/差异 fixture，4C 只有在兼容查询与 projection 对 composed/decomposed、全角/半角和多字符 lowercase 样本一致后才能切换生产查询。
+- 4B 已补共享 Rust helper 和差异 fixture；兼容查询与 projection 现在统一使用 NFKC、Unicode lowercase 和 whitespace collapse。4C 只有在 composed/decomposed、全角/半角和多字符 lowercase 样本的生产 query 回归通过后才能切换。
 - 算法变化必须增加 key version 并触发全量 rebuild，不能原地改变旧 key 的含义。
 
 ### Profile status filter
@@ -147,8 +155,8 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 
 ### 实施切片
 
-- **Slice 4A**：本补充决策、确定性 baseline harness 和文档；不改生产行为。
-- **Slice 4B**：migration、projection writer/rebuild、ports、infra repository 和 T17 `upsert_many` 协调。
+- **Slice 4A**：本补充决策、确定性 baseline harness 和文档；不改生产行为（已完成并合并）。
+- **Slice 4B**：migration、projection writer/rebuild、ports、infra repository 和 T17 `upsert_many` 协调（当前切片已实现，待独立复审/PR）。
 - **Slice 4C**：生产 query switch、同一短 read transaction 内 count/page、性能门禁和回归。
 
 ---

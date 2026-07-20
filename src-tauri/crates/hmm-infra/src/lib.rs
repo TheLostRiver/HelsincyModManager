@@ -11,6 +11,8 @@ mod game_running_detector;
 mod install_commit;
 mod mod_import;
 mod mod_import_install_files;
+#[cfg(test)]
+mod mod_library_projection_tests;
 mod mod_revision_catalog;
 #[cfg(test)]
 mod mod_revision_catalog_tests;
@@ -70,11 +72,11 @@ pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
 pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
-pub use sqlite::SqliteModMetadataRepository;
 pub use sqlite::SqliteProfileRepository;
 pub use sqlite::SqliteSaveBackupBackgroundSettingsRepository;
 pub use sqlite::SqliteSaveBackupRepository;
 pub use sqlite::SqliteSaveBackupSchedulerStateRepository;
+pub use sqlite::{SqliteModLibraryProjectionRepository, SqliteModMetadataRepository};
 pub use staging::{FileSystemRetargetStagingMaterializer, RetargetStagingInstallSourceFileReader};
 pub use steam_discovery::PlatformSteamRootProvider;
 pub use steam_profile::{
