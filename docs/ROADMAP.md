@@ -1,6 +1,6 @@
 # 路线图
 
-## 当前执行焦点（2026-07-18）
+## 当前执行焦点（2026-07-20）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -14,11 +14,11 @@
    U1、U2、L2、U3、L3 七切片均经独立 review 合并，CI 验收、默认脱敏诊断、分层反馈、完整验证、
    视觉 smoke、受控 Windows 桌面复验和契约同步均已满足完成定义。
 4. 当前主线为 T18 Mod 库分页；Slice 1 的 app-level 查询服务已由 PR #186 完成，Slice 2 的 Tauri
-   DTO、稳定错误、feature-local typed API 和 contract 已由 PR #187 完成。Slice 3 已实现数字分页
-   footer、250ms debounce/latest-request gate、loading/error/empty、本页选择和当前页 durable overlay，
-   本地统一验证、四视图/四窗口视觉 smoke 及独立复审已通过，当前待 PR/merge；Slice 4 的 read model/
-   持久化决策、大库基准和性能门禁尚未开始。之后仍按 T18 -> T17 -> T13 推进；其他扩展继续按各自
-   发布门禁评审，不自动开工。
+   DTO、稳定错误、feature-local typed API 和 contract 已由 PR #187 完成。Slice 3 的数字分页 footer、
+   250ms debounce/latest-request gate、loading/error/empty、本页选择和当前页 durable overlay 已合并，
+   本地统一验证、四视图/四窗口视觉 smoke 及独立复审均已通过。当前进入 Slice 4A：人工 1,000/10,000
+   条基准与 T18/T17 共用 read-model 持久化决策；Slice 4B/4C 的 SQLite projection 实现和生产切换
+   尚未开始。之后仍按 T18 -> T17 -> T13 推进；其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -81,8 +81,8 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加任务进度和取消 UI。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集和 T19 产品化加固均已完成；
-当前先完成 T18 Slice 3 的 PR 与合并，再进入 Slice 4，T18 整体完成后才按 T17 -> T13 推进
-默认只导入的第三方迁移和批量破坏性操作。
+T18 Slice 3 已合并；当前进入 Slice 4A 基准与持久化决策，随后再按独立 PR 推进 Slice 4B/4C。
+T18 整体完成后才按 T17 -> T13 推进默认只导入的第三方迁移和批量破坏性操作。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 

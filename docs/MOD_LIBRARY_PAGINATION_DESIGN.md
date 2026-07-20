@@ -1,8 +1,8 @@
 # Mod 库分页设计
 
-> 状态：Slice 1（PR #186）和 Slice 2（PR #187）已完成；Slice 3 已完成实现、本地验证和独立复审、待 PR/merge，Slice 4 尚未开始，T18 整体仍在进行中。
+> 状态：Slice 1（PR #186）、Slice 2（PR #187）和 Slice 3 已完成并合并；Slice 4A（读模型基准与持久化决策）当前进行中，Slice 4B/4C 尚未开始，T18 整体仍在进行中。
 >
-> Slice 3 已接入数字分页 footer、250ms 搜索 debounce/latest-request gate、loading/error/empty、page-local selection 和当前页 durable status overlay；本地统一验证及四视图/四窗口视觉 smoke 已通过。
+> Slice 3 已接入数字分页 footer、250ms 搜索 debounce/latest-request gate、loading/error/empty、page-local selection 和当前页 durable status overlay；本地统一验证、独立复审、合并及四视图/四窗口视觉 smoke 已通过。
 
 ## 背景与现状审计
 
@@ -28,7 +28,7 @@ JsonModImportResultRepository.list_analysis()
 
 设计启动时，搜索框提示支持“名称、作者或标签”，实际实现只匹配名称。Slice 1/2 已把三类字段统一到后端查询契约，Slice 3 的页面消费者改为使用该查询结果。
 
-当前 Slice 3 工作分支已把 Mod 管理页面迁移到 `query_mod_library()`：前端只持有当前页 DTO，并只为当前页合并 manifest/recovery durable 状态；无参 `get_mod_library()` 仅作为尚未迁移调用方的兼容入口保留。
+Slice 3 已把 Mod 管理页面迁移到 `query_mod_library()`：前端只持有当前页 DTO，并只为当前页合并 manifest/recovery durable 状态；无参 `get_mod_library()` 仅作为尚未迁移调用方的兼容入口保留。
 
 仓库已有的分页规划只服务第三方迁移批次的候选预览和结果查询，不覆盖主 Mod 库，因此需要独立任务和设计。
 
@@ -351,7 +351,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 3：分页 UI 与 page-local selection
 
-**实施状态：功能实现、本地统一验证、完整视觉 smoke 及独立复审已完成，待 PR/merge。**
+**实施状态：功能实现、本地统一验证、完整视觉 smoke、独立复审和合并均已完成。**
 
 - 增加独立数字 Pagination 组件、helper 和局部 CSS。
 - 接入 250ms debounce、latest-request gate、loading/error/empty 和 page clamp。
@@ -363,12 +363,12 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 4：可查询 read model 与性能门禁
 
-**实施状态：尚未开始。**
+**实施状态：Slice 4A 基准与决策进行中；Slice 4B/4C 尚未开始。**
 
-- 与 T17 Slice 1 共用持久化基准和 migration 决策。
-- 消除或明确限制每次翻页的完整 JSON 解析和全量 merge。
-- 增加人工大库 fixture、查询/序列化基准和必要索引。
-- 建立大库查询、序列化、翻页和渲染性能门禁，并在 read model 迁移后复跑交互回归。
+- **Slice 4A（本切片）**：建立 1,000/10,000 条人工 fixture，测量 JSON 读取/投影、overlay/category merge、profile status、兼容 query 分解和 page DTO serialization；确定 JSON revision catalog provenance + SQLite rebuildable query projection，并锁定 Unicode/profile status 语义。
+- **Slice 4B**：实现 projection schema/rebuild、必要 ports/infra writer，以及与 T17 `upsert_many` 的共享持久化边界。
+- **Slice 4C**：生产 query switch、同一短 read transaction 的 count/page、性能门禁和交互回归。
+- 4A 不实现 SQLite migration、生产 projection、生产查询切换、Tauri contract 或 UI。
 - 只有本切片通过，TODO 才能把 T18 标记为完成。
 
 ## 测试策略
@@ -414,7 +414,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-Slice 3 运行时代码和 UI 已通过本地统一验证、四视图/四窗口的完整浏览器视觉 smoke 及独立复审；当前仍待 PR/merge，Slice 4 和 T18 整体不得提前标记完成。
+Slice 3 运行时代码和 UI 已通过本地统一验证、四视图/四窗口的完整浏览器视觉 smoke、独立复审并合并；Slice 4A 的 release-only benchmark 使用人工 fixture，不读取真实 Mod、游戏目录或存档。
 
 ## 验收标准
 
@@ -430,12 +430,25 @@ Slice 3 运行时代码和 UI 已通过本地统一验证、四视图/四窗口�
 - 大库自动化只用人工数据；统一验证通过。
 - T17 完整迁移 UI 发布时，主 Mod 库分页已经可用。
 
-## Slice 4 实施前确认项
+## Slice 4A 基准与决策基线
 
-- 用人工大库 benchmark 确认兼容版 in-memory query 可接受的临时上限。
-- 与 T17 共用的导入快照 SQLite migration 或 query projection 路线。
-- 当前页 install/recovery durable overlay 如何迁入最终 read model，避免在 Tauri command 或前端重写规则。
-- `name_asc` 规范化算法在 Rust 与测试 fixture 中的精确定义。
-- Slice 3 保留的 plain-browser 开发 mock 如何继续与生产 Tauri 错误路径隔离；生产初始失败不得展示成真实 Mod。
+运行入口（只在显式 release ignored 模式运行）：
 
-这些确认项不改变后端权威分页、page-local selection 和默认不实现跨页批量操作的核心决策。
+```powershell
+cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored --nocapture
+```
+
+固定 1,000 / 10,000 条人工记录；每条含 metadata/tags，1/3 overlay、category pairs、1/4 manifest entries，page size=96；每个测量阶段固定 5 次 warmup 和 40 次 sample，避免把少量样本的最大值误报为 p95。2026-07-20 Windows release 基线：
+
+| 记录数 | JSON 读取/投影 p95 | snapshot merge p95 | profile status p95 | full status-filter query p95 | page DTO serialization p95 |
+|---:|---:|---:|---:|---:|---:|
+| 1,000 | 21.63 ms | 6.83 ms | 4.18 ms | 14.23 ms | 0.156 ms |
+| 10,000 | 241.11 ms | 74.79 ms | 138.62 ms | 204.25 ms | 0.073 ms |
+
+10,000 条无 profile query 中位数为 59.24 ms；扣除 snapshot merge 中位数后的 processing 派生值为 11.59 ms，仅作近似分解。
+
+- 兼容路径临时数据预算定为 1,000 条 profile-aware query；10,000 条只作为 migration trigger baseline。
+- 4C 的 projection 目标预算以本表 1,000 条 full status-filter query p95（14.23 ms）为同机比较基线，必须用同一 harness 重跑后再决定是否收紧；本表不是跨机器 SLA。
+- 最终规范化 key 采用版本化 Rust `NFKC -> Unicode lowercase -> whitespace collapse`；SQLite `NOCASE` 不得替代。
+- profile status 使用稀疏派生行和 completeness/dirty marker；来源缺失或 projection 更新失败时 fail closed。
+- 这些决策不改变后端权威分页、page-local selection 和默认不实现跨页批量操作的核心决策。

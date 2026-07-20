@@ -246,6 +246,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 游戏适配规则是否封装在 adapter 内。
 - 错误类型是否能表达可恢复失败和不可恢复失败。
 
+### T18 Mod 库 read-model 基准
+
+Slice 4A 提供显式、release-only、默认 ignored 的确定性 harness：
+
+```powershell
+# 新 worktree 首次运行 hmm-tauri 测试时先准备 ignored development sidecar。
+cmd /c corepack pnpm run prepare:save-backup-worker-sidecar:dev
+cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored --nocapture
+```
+
+要求：
+
+- 固定生成 1,000 / 10,000 条人工 Mod/revision、metadata overlay、category pair 和 profile manifest fixture。
+- 每个测量阶段固定 5 次 warmup 和 40 次 sample；后续切片不得降低样本数来改善表面 p95。
+- 只使用内存和 temp JSON；不读取真实 Mod、游戏目录、manifest、玩家存档或用户 AppData。
+- 报告 JSON catalog read/project、snapshot overlay/category merge、profile status query、兼容 query、status-filter query 和 exact page DTO serialization 的 median/p95/min/max。
+- debug build 必须拒绝运行，避免把未优化结果写成基线；普通 `cargo test --workspace` 不执行 ignored benchmark。
+- wall-clock 结果只在固定 runner 或相同机器/工具链上比较，不在普通单元测试中加入跨机器绝对时延断言。
+- 4B/4C 必须复用相同 fixture schema、warmup/sample 和 JSON 输出格式，不能通过减少数据字段或跳过 status filter 制造虚假提升。
+
 ## Mod 导入与压缩包处理
 
 适用范围：
