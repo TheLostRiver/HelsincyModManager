@@ -70,7 +70,7 @@
 - `InstallManifestRepository` — 安装链路崩溃恢复关键，temp-write-rename 已验证稳定
 - `InstallRecoveryRecordRepository` — 同上
 - `AuditLogWriter` / `AuditLogReader` — JSONL 只追加，不需要查询索引
-- `ModImportResultRepository` — 暂保留，但 `results.json` 的增长问题可在后续考虑迁移
+- `ModImportResultRepository` — JSON revision catalog 继续作为 logical Mod/revision/import provenance 的权威来源；后续只允许增加可重建、非权威的 query projection，不迁移或替代该 JSON 来源
 
 ### 理由
 
