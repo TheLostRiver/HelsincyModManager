@@ -261,12 +261,13 @@ materializer 必须：
 - selection snapshot 与 batch journal 一起通过短事务持久化；应用重启后仍能恢复 revision 和 sealed 事实，但来源失效时仍须玩家重新选择并完成 source fingerprint 对账。
 - `expiresAt` 只限制仍处于 `editing` 的选择会话；snapshot 一旦 sealed，就按 batch journal 生命周期保留，不能在运行、取消或重试期间因编辑 TTL 到期而消失。
 
-当前 `ModImportResultRepository` 仍是 JSON 单文件。实施批量功能前必须补充批量写入策略，禁止每个候选都完整重写一次结果文件。首个实施切片应在以下路径中选择并记录基准：
+当前 `ModImportResultRepository` 仍是 JSON 单文件。T18 Slice 4A 已决定保留 JSON revision catalog 作为 logical Mod/revision/import provenance 的权威来源，同时在既有 SQLite 中建立可重建 query projection。T17 不再另选一套竞争的 Mod read model：
 
-- 为现有仓储增加分块 `upsert_many` 和原子替换，每个 chunk 最多写一次。
-- 将只读导入快照迁移到 SQLite，并提供旧 JSON 的一次性兼容读取/迁移。
+- 为权威 JSON 仓储增加有界、分块 `upsert_many` 和原子替换，每个 chunk 最多完整写一次，禁止每个候选都重写全文件。
+- T18/T17 共用 SQLite query projection；projection 只保存可重建查询列、规范化 key、分类关系和 profile status 派生值，不成为导入或安装事实。
+- JSON chunk 成功而 projection 更新失败时标记 projection dirty，由 rebuild 对账；不能回滚已确认的导入事实，也不能返回 stale projection。
 
-无论选择哪条路径，批次 journal 建议使用 SQLite 短事务；导入结果仍是 Mod 库事实来源，batch journal 只记录编排和 provenance，不能取代导入快照。
+批次 journal/selection 继续使用 SQLite 短事务；它们只记录编排、selection 和 provenance 引用，不能取代 revision catalog、query projection generation 或安装 manifest。
 
 ## 任务与并发
 
@@ -353,11 +354,11 @@ cancel_task(taskId)
 
 每个切片应独立 review 和提交；在前一切片通过门禁前不进入下一切片。
 
-### Slice 1：领域契约、仓储决策与人工 fixtures
+### Slice 1：领域契约、批量写入与人工 fixtures
 
 - 定义无路径的 batch/candidate/selection/provenance/status/reason 模型，以及 200 项 mutation、10,000 项批次选择和资源预算策略。
 - 定义 scanner、materializer 和 batch repository ports。
-- 对 `ModImportResultRepository` 做批量写入基准，决定 JSON `upsert_many` 或 SQLite 迁移。
+- 对 `ModImportResultRepository` 增加有界 JSON `upsert_many` 基准与原子写入，并复用 T18 SQLite query projection；不迁移或替代 JSON provenance。
 - 建立完全人工构造的目录/XML fixtures 和安全拒绝矩阵。
 - 不接入 Tauri，不提供 UI，不扫描真实第三方目录。
 
@@ -452,7 +453,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 - 兼容范围是否只接受根级数字目录，还是存在必须支持的合法层级变体。
 - 集中资源上限应复用单包导入默认值，还是为整个批次增加独立总预算。
-- `ModImportResultRepository` 采用分块 JSON 原子写还是迁移 SQLite。
+- `ModImportResultRepository` 的 JSON `upsert_many` chunk 大小、失败重试和 projection dirty/rebuild 对账预算。
 - 外部 `modType` 到 HMM 分类的默认映射表是否需要随 adapter 版本发布。
 - 在最多 10,000 个选中候选的硬上限内，定稿首版性能验收的候选数量、总文件数和总字节预算；基准只能收紧上限，放宽必须另行 review。
 

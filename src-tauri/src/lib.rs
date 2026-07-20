@@ -10,6 +10,8 @@ mod install_commands;
 mod mod_import_commands;
 mod mod_library_commands;
 mod mod_library_dto;
+#[cfg(test)]
+mod mod_library_read_model_benchmark_tests;
 mod mod_metadata_commands;
 mod profile_commands;
 mod reinstall_commands;
