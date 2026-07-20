@@ -162,10 +162,6 @@ fn benchmark_case(record_count: usize) -> Value {
         },
     );
 
-    let query_processing_median_ns = query_without_status_total
-        .median_ns
-        .saturating_sub(snapshot_merge.median_ns);
-
     json!({
         "schemaVersion": 1,
         "profile": "release",
@@ -179,7 +175,6 @@ fn benchmark_case(record_count: usize) -> Value {
             "snapshotOverlayCategoryMerge": snapshot_merge.as_json(),
             "profileStatusQuery": status_query.as_json(),
             "queryWithoutStatusTotal": query_without_status_total.as_json(),
-            "queryProcessingDerivedMedianNs": query_processing_median_ns,
             "profileStatusFilterQueryTotal": profile_query_total.as_json(),
             "pageDtoSerialization": dto_serialization.as_json(),
         }
