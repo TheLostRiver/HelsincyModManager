@@ -445,7 +445,7 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 | 1,000 | 21.63 ms | 6.83 ms | 4.18 ms | 14.23 ms | 0.156 ms |
 | 10,000 | 241.11 ms | 74.79 ms | 138.62 ms | 204.25 ms | 0.073 ms |
 
-10,000 条无 profile query 中位数为 59.24 ms；扣除 snapshot merge 中位数后的 processing 派生值为 11.59 ms，仅作近似分解。
+10,000 条无 profile query 中位数为 59.24 ms；本基线只采用端到端 query 指标，不从 snapshot merge 相减推导独立 processing 时间。
 
 - 兼容路径临时数据预算定为 1,000 条 profile-aware query；10,000 条只作为 migration trigger baseline。
 - 4C 的 projection 目标预算以本表 1,000 条 full status-filter query p95（14.23 ms）为同机比较基线，必须用同一 harness 重跑后再决定是否收紧；本表不是跨机器 SLA。
