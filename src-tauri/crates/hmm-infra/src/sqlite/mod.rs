@@ -1,5 +1,6 @@
 mod category_repository;
 mod migrations;
+mod mod_library_projection_repository;
 mod mod_metadata_repository;
 mod profile_repository;
 mod save_backup_background_settings_repository;
@@ -7,6 +8,7 @@ mod save_backup_repository;
 mod save_backup_scheduler_repository;
 
 pub use category_repository::SqliteCategoryRepository;
+pub use mod_library_projection_repository::SqliteModLibraryProjectionRepository;
 pub use mod_metadata_repository::SqliteModMetadataRepository;
 pub use profile_repository::SqliteProfileRepository;
 pub use save_backup_background_settings_repository::SqliteSaveBackupBackgroundSettingsRepository;

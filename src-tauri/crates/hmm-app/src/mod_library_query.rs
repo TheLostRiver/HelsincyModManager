@@ -3,6 +3,7 @@ use crate::{
     InstallManifestStatusSummary, ModLibraryItem, ModLibraryService,
 };
 use hmm_core::{GameId, ModId, ProfileId};
+use hmm_ports::normalize_mod_library_query_key;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use thiserror::Error;
@@ -281,11 +282,7 @@ fn validated_status_map(
 }
 
 fn normalize_text(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
+    normalize_mod_library_query_key(value)
 }
 
 fn matches_search(candidate: &ModLibraryCandidate, search: &str) -> bool {

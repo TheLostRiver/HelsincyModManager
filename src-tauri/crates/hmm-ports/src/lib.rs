@@ -10,6 +10,7 @@ mod game_running;
 mod game_setup;
 mod install;
 mod mod_import;
+mod mod_library_projection;
 mod mod_metadata;
 mod preview_image;
 mod profile;
@@ -57,12 +58,19 @@ pub use install::{
 };
 pub use mod_import::{
     DiagnosticPackageEntry, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
-    DiagnosticPackageExporter, ModImportPackagePrepareRequest, ModImportPackagePreparer,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ModPackageMetadata,
-    ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage, StoredLogicalMod,
-    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
-    StoredModRevision,
+    DiagnosticPackageExporter, ModImportCatalogUpsert, ModImportPackagePrepareRequest,
+    ModImportPackagePreparer, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFile, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
+    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
+};
+pub use mod_library_projection::{
+    normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
+    ModLibraryProjectionLabel, ModLibraryProjectionReadiness, ModLibraryProjectionRecord,
+    ModLibraryProjectionRepository, ModLibraryProjectionSnapshot, ModLibraryProjectionState,
+    ModLibraryProjectionStatus, ModLibraryProjectionStatusRecord,
+    MOD_LIBRARY_PROJECTION_SCHEMA_VERSION, MOD_LIBRARY_QUERY_KEY_VERSION,
 };
 pub use mod_metadata::ModMetadataRepository;
 pub use preview_image::{

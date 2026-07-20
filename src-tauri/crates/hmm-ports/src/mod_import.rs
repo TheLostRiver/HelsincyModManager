@@ -3,6 +3,9 @@ use hmm_core::{ModId, ModRevisionId, PreviewImageRejectionReason};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub const MOD_IMPORT_UPSERT_CHUNK_SIZE: usize = 200;
+pub const MOD_IMPORT_UPSERT_MAX_ENTRIES: usize = 10_000;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedModPackage {
     pub package_id: String,
@@ -106,6 +109,12 @@ pub struct StoredModRevision {
     pub preview_image: StoredImportPreviewImage,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModImportCatalogUpsert {
+    pub logical_mod: StoredLogicalMod,
+    pub revision: StoredModRevision,
+}
+
 impl StoredModRevision {
     pub fn as_analysis(&self) -> StoredModImportAnalysis {
         StoredModImportAnalysis {
@@ -181,6 +190,13 @@ pub trait ModImportResultRepository: Send + Sync {
 
     fn append_revision(&self, _revision: &StoredModRevision) -> Result<()> {
         anyhow::bail!("revision append is not supported by this repository")
+    }
+
+    fn upsert_many(&self, upserts: &[ModImportCatalogUpsert]) -> Result<()> {
+        if upserts.is_empty() {
+            return Ok(());
+        }
+        anyhow::bail!("batch Mod import upsert is not supported by this repository")
     }
 
     fn get_mod(&self, mod_id: &ModId) -> Result<Option<StoredLogicalMod>> {
@@ -277,6 +293,22 @@ pub trait DiagnosticPackageExporter: Send + Sync {
 mod tests {
     use super::*;
 
+    struct CompatibilityOnlyRepository;
+
+    impl ModImportResultRepository for CompatibilityOnlyRepository {
+        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> Result<()> {
+            Ok(())
+        }
+
+        fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
+            Ok(Vec::new())
+        }
+
+        fn get_analysis(&self, _mod_id: &str) -> Result<Option<StoredModImportAnalysis>> {
+            Ok(None)
+        }
+    }
+
     #[test]
     fn revision_catalog_records_serialize_distinct_identity_and_provenance() {
         let logical_mod = StoredLogicalMod {
@@ -332,5 +364,35 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn compatibility_repository_rejects_non_empty_batch_upsert() {
+        let repository = CompatibilityOnlyRepository;
+        let revision_id = ModRevisionId::new("revision-v1");
+        let error = repository
+            .upsert_many(&[ModImportCatalogUpsert {
+                logical_mod: StoredLogicalMod {
+                    mod_id: ModId::new("mod-a"),
+                    origin_revision_id: revision_id.clone(),
+                    display_revision_id: revision_id.clone(),
+                    origin_provenance: StoredModOriginProvenance::Imported,
+                },
+                revision: StoredModRevision {
+                    revision_id,
+                    mod_id: ModId::new("mod-a"),
+                    import_task_id: "task-v1".to_owned(),
+                    package_id: "package-v1".to_owned(),
+                    display_name: "Mod A".to_owned(),
+                    metadata: StoredModPackageMetadata::default(),
+                    preview_image: default_preview_image(),
+                },
+            }])
+            .expect_err("compatibility repository must fail closed");
+
+        assert!(error.to_string().contains("not supported"));
+        repository
+            .upsert_many(&[])
+            .expect("empty batch is always a no-op");
     }
 }

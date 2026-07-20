@@ -16,9 +16,10 @@
 4. 当前主线为 T18 Mod 库分页；Slice 1 的 app-level 查询服务已由 PR #186 完成，Slice 2 的 Tauri
    DTO、稳定错误、feature-local typed API 和 contract 已由 PR #187 完成。Slice 3 的数字分页 footer、
    250ms debounce/latest-request gate、loading/error/empty、本页选择和当前页 durable overlay 已合并，
-   本地统一验证、四视图/四窗口视觉 smoke 及独立复审均已通过。当前进入 Slice 4A：人工 1,000/10,000
-   条基准与 T18/T17 共用 read-model 持久化决策；Slice 4B/4C 的 SQLite projection 实现和生产切换
-   尚未开始。之后仍按 T18 -> T17 -> T13 推进；其他扩展继续按各自发布门禁评审，不自动开工。
+   本地统一验证、四视图/四窗口视觉 smoke 及独立复审均已通过。Slice 4A 的人工 1,000/10,000
+   条基准与 T18/T17 共用 read-model 持久化决策已合并；Slice 4B 的 SQLite projection
+   schema/rebuild、窄 ports、infra writer 和 T17 `upsert_many` 协调已实现并进入独立复审/PR。Slice 4C 的生产切换、同事务
+   count/page 和性能门禁尚未开始。之后仍按 T18 -> T17 -> T13 推进；其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -81,7 +82,8 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加任务进度和取消 UI。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集和 T19 产品化加固均已完成；
-T18 Slice 3 已合并；当前进入 Slice 4A 基准与持久化决策，随后再按独立 PR 推进 Slice 4B/4C。
+T18 Slice 3 已合并，Slice 4A 基准与持久化决策已合并；Slice 4B projection writer/rebuild 已实现并
+进入独立复审/PR，随后再以独立 PR 推进 Slice 4C 生产查询切换与性能门禁。
 T18 整体完成后才按 T17 -> T13 推进默认只导入的第三方迁移和批量破坏性操作。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
