@@ -81,6 +81,78 @@
 
 ---
 
+## 2A. T18/T17 read-model 补充决策（2026-07-20）
+
+T18 Slice 4A 选择：**JSON revision catalog 继续作为 Mod/revision/provenance 权威来源；在既有 `hmm.db` 中增加可删除、可重建的 SQLite query projection。** 这不是把安装 manifest 或 revision catalog 迁移为 SQLite，也不改变现有安装链路事实边界。
+
+### 数据职责
+
+| 数据 | 权威来源 | SQLite projection 的职责 |
+|---|---|---|
+| logical Mod、revision、origin/display lineage、import provenance | JSON revision catalog | 保存当前展示 revision 的查询列和 source revision/fingerprint；可重建 |
+| metadata overlay、用户分类 | 既有 SQLite 表 | 在同一 projection refresh 中生成展示值、规范化 key 和关系索引 |
+| profile install/recovery status、managed/backup count | JSON manifest/recovery records | 保存 profile-aware 稀疏派生行；不是安装事实 |
+| batch journal/selection | T17 后续 SQLite 短事务 | 编排和恢复，不替代 Mod 库或安装事实 |
+
+projection 丢失、损坏、schema/version 不匹配或 source fingerprint 不一致时，处理方式是标脏并从权威来源重建；不能反向用 projection 修复 JSON，也不能因为 projection 可删而删除玩家 overlay 数据。
+
+### 写入、重建与失败语义
+
+1. 单包导入继续先原子提交 JSON revision catalog；T17 增加有界、分块的 `upsert_many`，每个 chunk 最多进行一次权威 catalog 原子替换，禁止逐候选重写全文件。
+2. 权威写入完成后，projection writer 在 SQLite 短事务中更新展示行、分类关系、规范化 key、status 派生行和 projection revision。
+3. JSON 与 SQLite 不存在跨存储原子事务。projection 更新失败、进程在两者之间退出或 revision 对不上时，必须保持/写入 dirty marker；查询不能把旧 projection 伪装成新事实。
+4. rebuild 从 JSON revision catalog、既有 overlay/category 表和 manifest/recovery 派生；可取消的准备工作不得持有长 SQLite 写事务，最终发布使用短事务切换完整 generation。
+5. app 只依赖后续 4B 定义的窄 read-model/rebuild ports；连接、SQL、索引和 generation marker 留在 `hmm-infra`。
+
+### Unicode query key
+
+`mod-library-query-key-v1` 的精确算法是：
+
+```text
+Unicode NFKC
+  -> Unicode lowercase（逐 scalar 展开多字符 lowercase）
+  -> split_whitespace
+  -> 以单个 ASCII 空格 join
+```
+
+- 展示名称、作者和分类原文不改写；只持久化派生 search/sort key。
+- 搜索词使用同一 Rust helper 规范化；名称排序使用 normalized name 的 SQLite `BINARY` 顺序，再以 `mod_id` `BINARY` 升序 tie-break。
+- SQLite `NOCASE` 只覆盖有限 ASCII 语义，禁止替代该算法。
+- 当前兼容实现只有 whitespace collapse + lowercase，尚未执行 NFKC。4B 必须补共享 helper/差异 fixture，4C 只有在兼容查询与 projection 对 composed/decomposed、全角/半角和多字符 lowercase 样本一致后才能切换生产查询。
+- 算法变化必须增加 key version 并触发全量 rebuild，不能原地改变旧 key 的含义。
+
+### Profile status filter
+
+status filter 必须在 count/page 之前执行，不能只查询当前页状态。projection 采用：
+
+- `(profile_id, mod_id)` 稀疏 status 派生行，保存非默认状态以及 `managed_file_count` / `backup_count`。
+- 每个 profile 的 completeness/dirty generation 记录，证明 manifest/recovery 来源已完整投影。
+- 只有 profile generation 为 complete 且与权威来源 revision/fingerprint 一致时，缺失 status 行才解释为 `not_installed`。
+- generation dirty、来源不可读、出现未知状态或 projection 更新失败时，profile-aware query 返回稳定 unavailable/fail-closed 结果；不得返回 stale “已安装/未安装”。
+- 安装/卸载/重装/恢复仍只提交既有 manifest/recovery；projection 更新是提交后的派生步骤，不加入游戏写事务，也不改变 rollback 责任。
+
+### 基准与性能预算
+
+固定 release harness：
+
+```powershell
+cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored --nocapture
+```
+
+2026-07-20 的人工 fixture（每阶段 5 次 warmup、40 次 sample）测得 full profile status-filter query p95：1,000 条为 `14.23 ms`，10,000 条为 `204.25 ms`；10,000 条 JSON 读取/投影、status query p95 分别为 `241.11 ms`、`138.62 ms`，page DTO serialization p95 为 `0.073 ms`。
+
+- 当前兼容路径的数据预算定为 1,000 条 profile-aware query；10,000 条结果是必须迁移 read model 的触发基线，不是完成证据。
+- 4C 的 10,000 条 projection query 目标预算取同机当前 1,000 条 full-query p95（`14.23 ms`）。4B/4C 必须用相同 fixture、build profile、warmup/sample 和指标重跑；只有实测后才能收紧，放宽需要独立 review。
+- 本机 wall-clock 数值不是跨机器 SLA。CI 性能门禁应固定 runner 或保存同 runner baseline；普通单元测试不加入易受噪声影响的 wall-clock 断言。
+
+### 实施切片
+
+- **Slice 4A**：本补充决策、确定性 baseline harness 和文档；不改生产行为。
+- **Slice 4B**：migration、projection writer/rebuild、ports、infra repository 和 T17 `upsert_many` 协调。
+- **Slice 4C**：生产 query switch、同一短 read transaction 内 count/page、性能门禁和回归。
+
+---
+
 ## 3. 库选型
 
 ### 选定
@@ -383,7 +455,7 @@ static MIGRATIONS: Migrations<'static> = Migrations::from_slice(&[
 |---|---|
 | `Mutex<Connection>` 不用连接池 | 单用户桌面应用，短暂调用，匹配 JSON 仓储现有模式 |
 | `mod_categories.mod_id` 无 FK 到 `mod_metadata` | Mod 身份源是 JSON `ModImportResultRepository`，overlay 行非必需 |
-| 不迁移 JSON 仓储到 SQLite | 安装链路已验证稳定 22 个 PR，迁移无收益有风险 |
+| 不把 JSON 权威仓储迁移为 SQLite | 安装链路和 revision provenance 继续保留 JSON；T18/T17 只增加可重建 query projection |
 | SQL 嵌入 Rust 源码 | `include_str!()` + `rusqlite_migration` 设计模式，编译时固化 |
 | 前向迁移，无 down migration | 桌面应用回滚策略 = 删库重建，overlay 数据丢失可接受 |
 | `rusqlite` 而非 `sqlx` | 所有 trait 是同步签名，异步开销不值得 |
