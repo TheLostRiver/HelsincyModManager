@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：分 Slice 实施中。Slice 1 已完成；Slice 2“只读来源扫描与分页预览”进行中。
+> 状态：分 Slice 实施中。Slice 1 与 Slice 2“只读来源扫描与分页预览”已完成；当前为 Slice 3“安全物化与批量导入编排”。
 >
 > 本文只定义产品、架构、安全和验收边界，不表示功能已经可用。
 
@@ -245,6 +245,7 @@ materializer 必须：
 - 批次重试只调度 `retryable = true` 且玩家再次选择的条目。
 - 成功、已存在和显式跳过项不会因重试重复创建。
 - 如果导入结果已持久化、批次日志尚未来得及标记成功，恢复时按 provenance/content fingerprint 对账并补记结果。
+- 应用启动时只把前一进程遗留的 `running` batch 收敛为 `failed`，保留 sealed selection 与已有结果；不会自动恢复来源 I/O 或重新导入。玩家重新选择匹配来源后再显式 retry，既有 catalog/provenance 继续参与幂等对账。
 - 取消后保留已成功项；未开始项标为 cancelled，运行中项在安全检查点停止并清理临时目录。
 - 单项失败不回滚其他已成功的只读导入；批次最终状态可以是 `completed_with_errors`。
 - 批次级仓储故障、来源整体失效或无法保证结果持久化时，应停止调度新项。
@@ -317,11 +318,11 @@ get_external_import_batch_result(batchId, cursor, limit)
 cancel_task(taskId)
 ```
 
-Slice 2 的已定稿最小 bridge 只包含 `select_external_import_source()`、
-`start_external_import_scan(sourceId)` 和 `get_external_import_preview(batchId, cursor?, limit?)`：首个 command
-固定登记唯一的 `hunting_box_directory_v1` 来源，不接受 adapter/path 参数；原生选择器中的路径只保留在 Rust
-registry。selection、服务端全选、物化、batch import 与结果 query 继续留在后续 Slice，不能被本 Slice 的 preview
-契约提前暴露。
+已完成的 Slice 2 bridge 包含 `select_external_import_source()`、`start_external_import_scan(sourceId)` 和
+`get_external_import_preview(batchId, cursor?, limit?)`：首个 command 固定登记唯一的
+`hunting_box_directory_v1` 来源，不接受 adapter/path 参数；原生选择器中的路径只保留在 Rust registry。
+当前 Slice 3 在保留上述只读契约的前提下增加 selection create/update、服务端全选、sealed batch start/retry 和
+分页 result query；完整 React 工作流仍留在 Slice 4。
 
 约束：
 
@@ -330,7 +331,7 @@ registry。selection、服务端全选、物化、batch import 与结果 query �
 - preview/result query 必须分页；默认 `limit = 50`，最大 `limit = 100`，非法值整体拒绝。
 - selection create 返回小型 `{ selectionId, revision, selectedCount, expiresAt }`；preview 可以用绑定同一 batch 的 selection id 返回当前页选择状态，但不得返回全部 selected IDs。
 - selection update 的 `entries` 形如 `{ candidateId, selected, decision? }`，每次必须包含 `1..=200` 项；只接受同一 batch 的后端 candidate id、稳定 enum 和已有 category id，重复、未知或跨 batch candidate 整体拒绝。`selected = true` 拒绝 blocked 候选；`selected = false` 可以移除同 batch 的已有 entry，且不保留孤立 decision。
-- `select_all_external_import_candidates` 只接受稳定 query/filter，不接受候选 ID 数组；后端在 `10,000` 项总上限和资源预算内更新 selection snapshot。
+- Slice 3 的 `select_all_external_import_candidates` 使用固定的“所有 ready 候选”后端谓词，不接受候选 ID 数组；未来筛选扩展只能追加稳定 query/filter，仍不得把 ID 数组展开到前端。后端在 `10,000` 项总上限和资源预算内更新 selection snapshot。
 - `start_external_import_batch` 只接受 `batchId + selectionId + expectedRevision`；不接受 candidate ID 或 decision 数组，并在启动前封存选择快照。
 - selection 相关稳定错误至少包括 `selection_revision_conflict`、`selection_empty`、`selection_mutation_empty`、`selection_mutation_limit_exceeded`、`selection_total_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。
 - DTO 不接受或返回 root/path/archive/sandbox/cache/hash 原文。

@@ -76,13 +76,23 @@ impl HuntingBoxDirectorySourceRegistry {
         &self,
         source_id: &ExternalImportSourceId,
     ) -> Result<Option<RegisteredHuntingBoxSource>> {
+        self.resolve_registered(|registration| &registration.source.source_id == source_id)
+    }
+
+    fn resolve_registered(
+        &self,
+        predicate: impl Fn(&RegisteredHuntingBoxSource) -> bool,
+    ) -> Result<Option<RegisteredHuntingBoxSource>> {
         let now = now_unix_millis()?;
         let mut registrations = self
             .registrations
             .lock()
             .map_err(|_| anyhow!("external import source registry lock poisoned"))?;
         registrations.retain(|_, registration| registration.source.expires_at_unix_millis > now);
-        Ok(registrations.get(source_id).cloned())
+        Ok(registrations
+            .values()
+            .find(|registration| predicate(registration))
+            .cloned())
     }
 
     pub(crate) fn source_item_key_hash(
@@ -121,6 +131,20 @@ impl ExternalImportSourceRegistry for HuntingBoxDirectorySourceRegistry {
                 source_fingerprint: registration.source_fingerprint,
             }
         }))
+    }
+
+    fn resolve_matching_source(
+        &self,
+        source_fingerprint: &str,
+    ) -> Result<Option<ExternalImportSourceRegistration>> {
+        Ok(self
+            .resolve_registered(|registration| {
+                registration.source_fingerprint == source_fingerprint
+            })?
+            .map(|registration| ExternalImportSourceRegistration {
+                source: registration.source,
+                source_fingerprint: registration.source_fingerprint,
+            }))
     }
 }
 
