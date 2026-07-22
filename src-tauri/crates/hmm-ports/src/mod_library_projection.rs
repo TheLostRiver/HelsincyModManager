@@ -58,6 +58,83 @@ impl ModLibraryProjectionStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModLibraryProjectionQueryStatus {
+    NotInstalled,
+    Installed,
+    CommittedCleanupPending,
+    CleanupPending,
+    RollbackRequired,
+    RepairRequired,
+    Unknown,
+}
+
+impl ModLibraryProjectionQueryStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotInstalled => "not_installed",
+            Self::Installed => "installed",
+            Self::CommittedCleanupPending => "committed_cleanup_pending",
+            Self::CleanupPending => "cleanup_pending",
+            Self::RollbackRequired => "rollback_required",
+            Self::RepairRequired => "repair_required",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModLibraryProjectionQueryFilter {
+    All,
+    Status(ModLibraryProjectionQueryStatus),
+    Category(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModLibraryProjectionProfileQuery {
+    pub profile_id: ProfileId,
+    pub source_fingerprint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModLibraryProjectionQueryRequest {
+    pub source_fingerprint: String,
+    pub profile: Option<ModLibraryProjectionProfileQuery>,
+    pub normalized_search: String,
+    pub filter: ModLibraryProjectionQueryFilter,
+    pub page: u64,
+    pub page_size: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModLibraryProjectionPageItem {
+    pub record: ModLibraryProjectionRecord,
+    pub status: Option<ModLibraryProjectionStatusRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModLibraryProjectionQueryPage {
+    pub items: Vec<ModLibraryProjectionPageItem>,
+    pub page: u64,
+    pub page_size: u32,
+    pub library_total: usize,
+    pub matching_total: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModLibraryProjectionQueryError {
+    Unavailable,
+    ProfileUnavailable,
+    CategoryNotFound,
+}
+
+pub trait ModLibraryProjectionQueryRepository: Send + Sync {
+    fn query(
+        &self,
+        request: &ModLibraryProjectionQueryRequest,
+    ) -> std::result::Result<ModLibraryProjectionQueryPage, ModLibraryProjectionQueryError>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModLibraryProjectionStatusRecord {
     pub mod_id: ModId,

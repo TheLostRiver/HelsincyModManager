@@ -83,7 +83,7 @@
 
 ## 2A. T18/T17 read-model 补充决策（2026-07-20）
 
-T18 Slice 4A 选择并由 Slice 4B 落地：**JSON revision catalog 继续作为 Mod/revision/provenance 权威来源；在既有 `hmm.db` 中增加可删除、可重建的 SQLite query projection。** 这不是把安装 manifest 或 revision catalog 迁移为 SQLite，也不改变现有安装链路事实边界。
+T18 Slice 4A 选择、Slice 4B 落地存储、Slice 4C 接入生产查询：**JSON revision catalog 继续作为 Mod/revision/provenance 权威来源；在既有 `hmm.db` 中维护可删除、可重建的 SQLite query projection。** 这不是把安装 manifest 或 revision catalog 迁移为 SQLite，也不改变现有安装链路事实边界。
 
 ### 数据职责
 
@@ -98,19 +98,20 @@ projection 丢失、损坏、schema/version 不匹配或 source fingerprint 不�
 
 ### 写入、重建与失败语义
 
-1. 单包导入继续先原子提交 JSON revision catalog；T17 增加有界、分块的 `upsert_many`，每个 chunk 最多进行一次权威 catalog 原子替换，禁止逐候选重写全文件。
-2. 权威写入完成后，projection writer 在 SQLite 短事务中更新展示行、分类关系、规范化 key、status 派生行和 projection revision。
+1. 单包导入继续原子提交 JSON revision catalog；T17 增加有界、分块的 `upsert_many`，每个 chunk 最多进行一次权威 catalog 原子替换，禁止逐候选重写全文件。
+2. catalog/metadata/category decorator 在权威写入前强制标 global dirty，提交成功后再次标 dirty，关闭查询在两次跨存储操作间重建旧快照的并发窗口。manifest decorator 在提交前后 best-effort 标 profile dirty，不把 projection 故障升级为 manifest 提交失败。
 3. JSON 与 SQLite 不存在跨存储原子事务。projection 更新失败、进程在两者之间退出或 revision 对不上时，必须保持/写入 dirty marker；查询不能把旧 projection 伪装成新事实。
 4. rebuild 从 JSON revision catalog、既有 overlay/category 表和 manifest/recovery 派生；可取消的准备工作不得持有长 SQLite 写事务，最终发布使用短事务切换完整 generation。
-5. app 只依赖 4B 定义的窄 read-model/rebuild ports；连接、SQL、索引和 generation marker 留在 `hmm-infra`。4B 不把 projection 接入生产 query，4C 才负责该切换。
+5. app 只依赖窄 read-model/rebuild/query ports；连接、SQL、索引、transaction 和 generation marker 留在 `hmm-infra`。Slice 4C 的生产 query 不回退兼容 JSON 路径。
 
-### Slice 4B 已落地的投影边界
+### Slice 4B/4C 已落地的投影边界
 
 - migration 009 在既有 `hmm.db` 中创建全局 state、items、labels、profile generations 和稀疏 profile status 表；items 的 display revision/package 唯一约束与显式索引使用 `BINARY`。
 - rebuild 先提交 dirty marker，再在 SQLite 写锁外完成 snapshot 校验/序列化，最后用短事务清理旧 generation、写入全部 rows 并一次性发布 complete generation；失败会回滚 rows 但保留 dirty。
 - profile status 使用 generation 0 dirty 起点和 generation 1 起的 complete 发布；status row 通过复合外键绑定到对应 profile generation。未知 Mod、未知 status、来源 fingerprint 不一致或 dirty 状态不能解释为 `not_installed`。
 - `upsert_many` 总上限为 10,000、每块最多 200；每块最多一次完整 JSON 原子替换，后续 chunk 失败时已提交 chunk 保持有效，调用方应据错误标脏并重建 projection。只有权威 JSON repository 显式实现这套批量语义；其他 repository 的 trait 默认实现直接拒绝，不能退化为逐候选写入。
-- 4B 只提供 writer/rebuild 端口和 infra 实现，不提供 SQLite count/page、生产 query switch、Tauri/前端接线或性能门禁；这些属于 4C。
+- 4C 增加窄 query port，并在同一短 SQLite read transaction 中验证 complete generation、计算 count/page、读取 rows/labels/status；Tauri command 只复用 AppState 中的 production query service。
+- dirty/missing projection 由 app refresh service 从权威 repositories 重建；未知状态、fingerprint/generation 不一致或 dirty marker 不可用时返回既有稳定 unavailable 错误，不回退 JSON 全量查询。
 
 ### Unicode query key
 
@@ -152,12 +153,13 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - 当前兼容路径的数据预算定为 1,000 条 profile-aware query；10,000 条结果是必须迁移 read model 的触发基线，不是完成证据。
 - 4C 的 10,000 条 projection query 目标预算取同机当前 1,000 条 full-query p95（`14.23 ms`）。4B/4C 必须用相同 fixture、build profile、warmup/sample 和指标重跑；只有实测后才能收紧，放宽需要独立 review。
 - 本机 wall-clock 数值不是跨机器 SLA。CI 性能门禁应固定 runner 或保存同 runner baseline；普通单元测试不加入易受噪声影响的 wall-clock 断言。
+- Slice 4C 最终代码使用相同 harness 实测 projection full status-filter query p95：1,000 条 `1.2963 ms`，10,000 条 `9.2966 ms`；10,000 条固定 `14.23 ms` 门禁未放宽。
 
 ### 实施切片
 
 - **Slice 4A**：本补充决策、确定性 baseline harness 和文档；不改生产行为（已完成并合并）。
-- **Slice 4B**：migration、projection writer/rebuild、ports、infra repository 和 T17 `upsert_many` 协调（当前切片已实现，待独立复审/PR）。
-- **Slice 4C**：生产 query switch、同一短 read transaction 内 count/page、性能门禁和回归。
+- **Slice 4B**：migration、projection writer/rebuild、ports、infra repository 和 T17 `upsert_many` 协调（已完成，PR #191）。
+- **Slice 4C**：生产 query switch、同一短 read transaction 内 count/page、freshness tracking、性能门禁和回归（已实现，进入独立复审/PR）。
 
 ---
 

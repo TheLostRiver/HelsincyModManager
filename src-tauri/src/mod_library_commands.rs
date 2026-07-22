@@ -5,10 +5,9 @@ use crate::mod_library_dto::{
 use crate::state::AppState;
 use hmm_app::{
     InstallManifestStatus, ModLibraryFilter, ModLibraryProfileContext, ModLibraryQuery,
-    ModLibraryQueryError, ModLibraryQueryService, ModLibrarySort,
+    ModLibraryQueryError, ModLibrarySort,
 };
 use hmm_core::{GameId, ProfileId};
-use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command]
@@ -17,13 +16,11 @@ pub fn query_mod_library(
     state: State<'_, AppState>,
 ) -> Result<ModLibraryPageDto, CommandErrorDto> {
     let query = mod_library_query_from_dto(request)?;
-    ModLibraryQueryService::new(
-        Arc::clone(&state.mod_library),
-        state.install_manifest_query.clone(),
-    )
-    .query(query)
-    .map(Into::into)
-    .map_err(mod_library_query_error_to_command_error)
+    state
+        .mod_library_query
+        .query(query)
+        .map(Into::into)
+        .map_err(mod_library_query_error_to_command_error)
 }
 
 fn mod_library_query_from_dto(
@@ -346,9 +343,7 @@ mod tests {
             .expect("production command source");
         let registration = include_str!("lib.rs");
 
-        assert!(source.contains("ModLibraryQueryService::new"));
-        assert!(source.contains("state.mod_library"));
-        assert!(source.contains("state.install_manifest_query"));
+        assert!(source.contains(".mod_library_query"));
         assert!(source.contains(".query(query)"));
         assert!(registration.contains("mod_library_commands::query_mod_library"));
         assert!(registration.contains("query_mod_library,"));

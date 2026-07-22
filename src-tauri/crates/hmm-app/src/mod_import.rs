@@ -3,16 +3,15 @@ use crate::mod_import_diagnostics::{
 };
 use hmm_core::{CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason};
 use hmm_ports::{
-    AppSettingsRepository, CancellationToken, CategoryRepository,
-    ModImportPackagePrepareRequest,
-    ModImportPackagePreparer, ModImportResultRepository, ModMetadataRepository,
-    ModPackageMetadataAnalyzer,
-    NeverCancelled, PreviewImageProcessingResult, StoredImportPreviewImage,
-    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
-    StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
-    ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
+    AppSettingsRepository, CancellationToken, CategoryRepository, ModImportPackagePrepareRequest,
+    ModImportPackagePreparer, ModImportResultRepository, ModLibraryProjectionLabel,
+    ModLibraryProjectionRecord, ModMetadataRepository, ModPackageMetadataAnalyzer, NeverCancelled,
+    PreviewImageProcessingResult, StoredImportPreviewImage, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest, ThumbnailRef,
+    ThumbnailStore,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -412,6 +411,10 @@ pub struct ModLibraryService {
 pub(crate) struct ModLibrarySnapshotItem {
     pub(crate) item: ModLibraryItem,
     pub(crate) user_category_ids: Vec<String>,
+    pub(crate) projection_labels: Vec<ModLibraryProjectionLabel>,
+    pub(crate) package_id: String,
+    pub(crate) display_revision_id: ModRevisionId,
+    pub(crate) stored_preview_image: StoredImportPreviewImage,
 }
 
 impl ModLibraryService {
@@ -435,44 +438,123 @@ impl ModLibraryService {
             .collect())
     }
 
-    pub(crate) fn get_mod_library_snapshot(
-        &self,
-    ) -> anyhow::Result<Vec<ModLibrarySnapshotItem>> {
+    pub(crate) fn get_mod_library_snapshot(&self) -> anyhow::Result<Vec<ModLibrarySnapshotItem>> {
         let records = self.result_repository.list_analysis()?;
+        let display_revisions = self
+            .result_repository
+            .list_mods()?
+            .into_iter()
+            .map(|logical_mod| {
+                (
+                    logical_mod.mod_id.as_str().to_owned(),
+                    logical_mod.display_revision_id,
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let overlays = self.metadata_repository.list_all()?;
         let overlay_map: std::collections::HashMap<_, _> =
             overlays.iter().map(|o| (o.mod_id.as_str(), o)).collect();
         let pairs = self.category_repository.list_mod_category_pairs()?;
         let mut user_cat_id_map: std::collections::HashMap<_, Vec<_>> =
             std::collections::HashMap::new();
+        let mut user_projection_label_map: HashMap<String, Vec<ModLibraryProjectionLabel>> =
+            HashMap::new();
         for (mod_id, category) in &pairs {
             user_cat_id_map
                 .entry(mod_id.clone())
                 .or_default()
                 .push(category.id.clone());
+            user_projection_label_map
+                .entry(mod_id.clone())
+                .or_default()
+                .push(ModLibraryProjectionLabel {
+                    category_id: Some(category.id.clone()),
+                    name: category.name.clone(),
+                    color: category.color.clone(),
+                });
         }
         let mut user_cat_map = crate::category::build_user_category_map(pairs);
         Ok(records
             .into_iter()
             .map(|record| {
                 let mod_id = record.mod_id.clone();
+                let package_id = record.package_id.clone();
+                let stored_preview_image = record.preview_image.clone();
                 let overlay = overlay_map.get(record.mod_id.as_str()).copied();
                 let mut item = library_item_from_stored(record);
                 let user_category_ids = user_cat_id_map.remove(&mod_id).unwrap_or_default();
+                let mut projection_labels = user_projection_label_map
+                    .remove(&mod_id)
+                    .unwrap_or_default();
                 if let Some(o) = overlay {
-                    if let Some(name) = &o.display_name { item.name = name.clone(); }
-                    if let Some(author) = &o.author { item.author = Some(author.clone()); }
-                    if let Some(v) = &o.version { item.version_label = Some(format_version_label(v)); }
+                    if let Some(name) = &o.display_name {
+                        item.name = name.clone();
+                    }
+                    if let Some(author) = &o.author {
+                        item.author = Some(author.clone());
+                    }
+                    if let Some(v) = &o.version {
+                        item.version_label = Some(format_version_label(v));
+                    }
                 }
                 if let Some(user_cats) = user_cat_map.remove(&mod_id) {
                     let import_labels = std::mem::take(&mut item.category_labels);
+                    for import_label in &import_labels {
+                        if !projection_labels
+                            .iter()
+                            .any(|label| label.name == import_label.name)
+                        {
+                            projection_labels.push(ModLibraryProjectionLabel {
+                                category_id: None,
+                                name: import_label.name.clone(),
+                                color: import_label.color.clone(),
+                            });
+                        }
+                    }
                     item.category_labels =
                         crate::category::merge_category_labels(user_cats, import_labels);
+                } else {
+                    let import_labels = std::mem::take(&mut item.category_labels);
+                    for import_label in &import_labels {
+                        projection_labels.push(ModLibraryProjectionLabel {
+                            category_id: None,
+                            name: import_label.name.clone(),
+                            color: import_label.color.clone(),
+                        });
+                    }
+                    item.category_labels = import_labels;
                 }
                 ModLibrarySnapshotItem {
                     item,
                     user_category_ids,
+                    projection_labels,
+                    package_id: package_id.clone(),
+                    display_revision_id: display_revisions
+                        .get(&mod_id)
+                        .cloned()
+                        .unwrap_or_else(|| ModRevisionId::new(&package_id)),
+                    stored_preview_image,
                 }
+            })
+            .collect())
+    }
+
+    pub(crate) fn get_mod_library_projection_records(
+        &self,
+    ) -> anyhow::Result<Vec<ModLibraryProjectionRecord>> {
+        Ok(self
+            .get_mod_library_snapshot()?
+            .into_iter()
+            .map(|entry| ModLibraryProjectionRecord {
+                mod_id: ModId::new(&entry.item.id),
+                display_revision_id: entry.display_revision_id,
+                package_id: entry.package_id,
+                display_name: entry.item.name,
+                author: entry.item.author,
+                version_label: entry.item.version_label,
+                size_label: entry.item.size_label,
+                preview_image: entry.stored_preview_image,
+                labels: entry.projection_labels,
             })
             .collect())
     }
@@ -487,9 +569,15 @@ impl ModLibraryService {
             Some(record) => {
                 let mut detail = detail_from_stored(record);
                 if let Some(o) = self.metadata_repository.get(mod_id)? {
-                    if let Some(name) = &o.display_name { detail.name = name.clone(); }
-                    if let Some(author) = &o.author { detail.metadata.author = Some(author.clone()); }
-                    if let Some(version) = &o.version { detail.metadata.version = Some(version.clone()); }
+                    if let Some(name) = &o.display_name {
+                        detail.name = name.clone();
+                    }
+                    if let Some(author) = &o.author {
+                        detail.metadata.author = Some(author.clone());
+                    }
+                    if let Some(version) = &o.version {
+                        detail.metadata.version = Some(version.clone());
+                    }
                     detail.description = o.description.clone();
                     detail.nexus_mod_id = o.nexus_mod_id;
                 }
@@ -606,7 +694,9 @@ fn stored_preview_from_import(preview_image: &ImportPreviewImage) -> StoredImpor
     }
 }
 
-fn import_preview_from_stored(preview_image: StoredImportPreviewImage) -> ImportPreviewImage {
+pub(crate) fn import_preview_from_stored(
+    preview_image: StoredImportPreviewImage,
+) -> ImportPreviewImage {
     match preview_image {
         StoredImportPreviewImage::Thumbnail {
             thumbnail_url,

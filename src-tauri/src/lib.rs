@@ -23,6 +23,7 @@ mod save_backup_dto;
 mod save_directory_discovery_commands;
 mod save_directory_discovery_dto;
 mod state;
+mod state_mod_library;
 mod task_commands;
 mod task_events;
 mod thumbnail_protocol;
