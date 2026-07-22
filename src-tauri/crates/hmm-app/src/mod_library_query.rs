@@ -1,9 +1,15 @@
+use crate::mod_library_projection::{
+    map_projection_query_error, projection_query_request, ModLibraryProjectionRefreshService,
+};
 use crate::{
     InstallManifestQueryRequest, InstallManifestQueryService, InstallManifestStatus,
     InstallManifestStatusSummary, ModLibraryItem, ModLibraryService,
 };
 use hmm_core::{GameId, ModId, ProfileId};
-use hmm_ports::normalize_mod_library_query_key;
+use hmm_ports::{
+    normalize_mod_library_query_key, ModLibraryProjectionPageItem,
+    ModLibraryProjectionQueryRepository, ModLibraryProjectionStatus,
+};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use thiserror::Error;
@@ -120,8 +126,18 @@ pub enum ModLibraryQueryError {
 }
 
 pub struct ModLibraryQueryService {
-    library_service: Arc<ModLibraryService>,
-    status_provider: Arc<dyn ModLibraryStatusProvider>,
+    backend: ModLibraryQueryBackend,
+}
+
+enum ModLibraryQueryBackend {
+    Compatibility {
+        library_service: Arc<ModLibraryService>,
+        status_provider: Arc<dyn ModLibraryStatusProvider>,
+    },
+    Projection {
+        query_repository: Arc<dyn ModLibraryProjectionQueryRepository>,
+        refresh_service: Arc<ModLibraryProjectionRefreshService>,
+    },
 }
 
 impl ModLibraryQueryService {
@@ -130,23 +146,51 @@ impl ModLibraryQueryService {
         status_provider: Arc<dyn ModLibraryStatusProvider>,
     ) -> Self {
         Self {
-            library_service,
-            status_provider,
+            backend: ModLibraryQueryBackend::Compatibility {
+                library_service,
+                status_provider,
+            },
+        }
+    }
+
+    pub fn new_projection(
+        query_repository: Arc<dyn ModLibraryProjectionQueryRepository>,
+        refresh_service: Arc<ModLibraryProjectionRefreshService>,
+    ) -> Self {
+        Self {
+            backend: ModLibraryQueryBackend::Projection {
+                query_repository,
+                refresh_service,
+            },
         }
     }
 
     pub fn query(&self, query: ModLibraryQuery) -> Result<ModLibraryPage, ModLibraryQueryError> {
         validate_query(&query)?;
+        match &self.backend {
+            ModLibraryQueryBackend::Compatibility {
+                library_service,
+                status_provider,
+            } => Self::query_compatibility(&query, library_service, status_provider),
+            ModLibraryQueryBackend::Projection {
+                query_repository,
+                refresh_service,
+            } => Self::query_projection(&query, query_repository, refresh_service),
+        }
+    }
 
-        let snapshot = self
-            .library_service
+    fn query_compatibility(
+        query: &ModLibraryQuery,
+        library_service: &Arc<ModLibraryService>,
+        status_provider: &Arc<dyn ModLibraryStatusProvider>,
+    ) -> Result<ModLibraryPage, ModLibraryQueryError> {
+        let snapshot = library_service
             .get_mod_library_snapshot()
             .map_err(|_| ModLibraryQueryError::LibraryUnavailable)?;
         let library_total = snapshot.len();
 
         if let ModLibraryFilter::Category(category_id) = &query.filter {
-            let exists = self
-                .library_service
+            let exists = library_service
                 .category_exists(category_id)
                 .map_err(|_| ModLibraryQueryError::LibraryUnavailable)?;
             if !exists {
@@ -159,7 +203,7 @@ impl ModLibraryQueryService {
             .map(|entry| ModId::new(&entry.item.id))
             .collect::<Vec<_>>();
         ensure_unique_mod_ids(&mod_ids)?;
-        let mut status_by_mod_id = self.load_statuses(&query, &mod_ids)?;
+        let mut status_by_mod_id = load_statuses(status_provider, query, &mod_ids)?;
         let normalized_search = normalize_text(&query.search);
 
         let mut candidates = snapshot
@@ -207,23 +251,114 @@ impl ModLibraryQueryService {
         })
     }
 
-    fn load_statuses(
-        &self,
+    fn query_projection(
         query: &ModLibraryQuery,
-        mod_ids: &[ModId],
-    ) -> Result<HashMap<String, InstallManifestStatusSummary>, ModLibraryQueryError> {
-        let Some(context) = &query.profile_context else {
-            return Ok(HashMap::new());
-        };
-        if mod_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
+        query_repository: &Arc<dyn ModLibraryProjectionQueryRepository>,
+        refresh_service: &Arc<ModLibraryProjectionRefreshService>,
+    ) -> Result<ModLibraryPage, ModLibraryQueryError> {
+        let (state, profile_fingerprint) =
+            refresh_service.ensure(query.profile_context.as_ref())?;
+        let request = projection_query_request(query, &state, profile_fingerprint)?;
+        let page = query_repository
+            .query(&request)
+            .map_err(map_projection_query_error)?;
+        let items = page
+            .items
+            .into_iter()
+            .map(|item| projection_page_item_to_app(item, query.profile_context.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ModLibraryPage {
+            items,
+            page: page.page,
+            page_size: page.page_size,
+            library_total: page.library_total,
+            matching_total: page.matching_total,
+        })
+    }
+}
 
-        let summaries = self
-            .status_provider
-            .query_statuses(context, mod_ids)
-            .map_err(|_| ModLibraryQueryError::StatusUnavailable)?;
-        validated_status_map(context, mod_ids, summaries)
+fn load_statuses(
+    status_provider: &Arc<dyn ModLibraryStatusProvider>,
+    query: &ModLibraryQuery,
+    mod_ids: &[ModId],
+) -> Result<HashMap<String, InstallManifestStatusSummary>, ModLibraryQueryError> {
+    let Some(context) = &query.profile_context else {
+        return Ok(HashMap::new());
+    };
+    if mod_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let summaries = status_provider
+        .query_statuses(context, mod_ids)
+        .map_err(|_| ModLibraryQueryError::StatusUnavailable)?;
+    validated_status_map(context, mod_ids, summaries)
+}
+
+fn projection_page_item_to_app(
+    page_item: ModLibraryProjectionPageItem,
+    context: Option<&ModLibraryProfileContext>,
+) -> Result<ModLibraryPageItem, ModLibraryQueryError> {
+    let record = page_item.record;
+    let install_summary = match context {
+        Some(context) => {
+            let (status, managed_file_count, backup_count) = match page_item.status {
+                Some(status) => {
+                    if status.mod_id != record.mod_id {
+                        return Err(ModLibraryQueryError::StatusUnavailable);
+                    }
+                    (
+                        install_status_from_projection(status.status),
+                        usize::try_from(status.managed_file_count)
+                            .map_err(|_| ModLibraryQueryError::StatusUnavailable)?,
+                        usize::try_from(status.backup_count)
+                            .map_err(|_| ModLibraryQueryError::StatusUnavailable)?,
+                    )
+                }
+                None => (InstallManifestStatus::NotInstalled, 0, 0),
+            };
+            Some(InstallManifestStatusSummary {
+                profile_id: context.profile_id.clone(),
+                mod_id: record.mod_id.clone(),
+                status,
+                managed_file_count,
+                backup_count,
+            })
+        }
+        None if page_item.status.is_none() => None,
+        None => return Err(ModLibraryQueryError::LibraryUnavailable),
+    };
+    Ok(ModLibraryPageItem {
+        item: ModLibraryItem {
+            id: record.mod_id.as_str().to_owned(),
+            name: record.display_name,
+            author: record.author,
+            version_label: record.version_label,
+            status: crate::ModLibraryStatus::Disabled,
+            size_label: record.size_label,
+            category_labels: record
+                .labels
+                .into_iter()
+                .map(|label| hmm_core::CategoryLabel {
+                    name: label.name,
+                    color: label.color,
+                })
+                .collect(),
+            preview_image: crate::mod_import::import_preview_from_stored(record.preview_image),
+        },
+        install_summary,
+    })
+}
+
+fn install_status_from_projection(status: ModLibraryProjectionStatus) -> InstallManifestStatus {
+    match status {
+        ModLibraryProjectionStatus::Installed => InstallManifestStatus::Installed,
+        ModLibraryProjectionStatus::CommittedCleanupPending => {
+            InstallManifestStatus::CommittedCleanupPending
+        }
+        ModLibraryProjectionStatus::CleanupPending => InstallManifestStatus::CleanupPending,
+        ModLibraryProjectionStatus::RollbackRequired => InstallManifestStatus::RollbackRequired,
+        ModLibraryProjectionStatus::RepairRequired => InstallManifestStatus::RepairRequired,
     }
 }
 
@@ -257,7 +392,7 @@ fn ensure_unique_mod_ids(mod_ids: &[ModId]) -> Result<(), ModLibraryQueryError> 
     Ok(())
 }
 
-fn validated_status_map(
+pub(crate) fn validated_status_map(
     context: &ModLibraryProfileContext,
     mod_ids: &[ModId],
     summaries: Vec<InstallManifestStatusSummary>,
@@ -281,7 +416,7 @@ fn validated_status_map(
     Ok(result)
 }
 
-fn normalize_text(value: &str) -> String {
+pub(crate) fn normalize_text(value: &str) -> String {
     normalize_mod_library_query_key(value)
 }
 

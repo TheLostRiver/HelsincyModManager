@@ -1,13 +1,17 @@
 use anyhow::{Context, Result};
-use hmm_core::ProfileId;
+use hmm_core::{ModRevisionId, ProfileId};
 use hmm_ports::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
+    ModLibraryProjectionLabel, ModLibraryProjectionPageItem, ModLibraryProjectionQueryError,
+    ModLibraryProjectionQueryFilter, ModLibraryProjectionQueryPage,
+    ModLibraryProjectionQueryRepository, ModLibraryProjectionQueryRequest,
     ModLibraryProjectionReadiness, ModLibraryProjectionRecord, ModLibraryProjectionRepository,
-    ModLibraryProjectionSnapshot, ModLibraryProjectionState, MOD_LIBRARY_PROJECTION_SCHEMA_VERSION,
+    ModLibraryProjectionSnapshot, ModLibraryProjectionState, ModLibraryProjectionStatus,
+    ModLibraryProjectionStatusRecord, MOD_LIBRARY_PROJECTION_SCHEMA_VERSION,
     MOD_LIBRARY_QUERY_KEY_VERSION,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -172,6 +176,441 @@ impl ModLibraryProjectionRepository for SqliteModLibraryProjectionRepository {
         drop(conn);
         self.profile_state(&projection.profile_id)?
             .ok_or_else(|| anyhow::anyhow!("Mod library profile projection was not published"))
+    }
+}
+
+impl ModLibraryProjectionQueryRepository for SqliteModLibraryProjectionRepository {
+    fn query(
+        &self,
+        request: &ModLibraryProjectionQueryRequest,
+    ) -> std::result::Result<ModLibraryProjectionQueryPage, ModLibraryProjectionQueryError> {
+        if request.page == 0 || request.page_size == 0 {
+            return Err(ModLibraryProjectionQueryError::Unavailable);
+        }
+
+        let mut conn = self
+            .lock_connection()
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        let transaction = conn
+            .transaction()
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        let state =
+            read_state(&transaction).map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        if state.generation == 0 || !state.is_complete_for(&request.source_fingerprint) {
+            return Err(ModLibraryProjectionQueryError::Unavailable);
+        }
+
+        let generation_count = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM mod_library_projection_items WHERE generation = ?1",
+                params![sqlite_i64(state.generation)
+                    .map_err(|_| { ModLibraryProjectionQueryError::Unavailable })?],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        let item_count = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM mod_library_projection_items",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        if generation_count != item_count || generation_count < 0 {
+            return Err(ModLibraryProjectionQueryError::Unavailable);
+        }
+        let library_total = usize::try_from(generation_count)
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+
+        let profile_state = if let Some(profile) = &request.profile {
+            let profile_state = read_profile_state(&transaction, &profile.profile_id)
+                .map_err(|_| ModLibraryProjectionQueryError::ProfileUnavailable)?
+                .filter(|state| state.is_complete_for(&profile.source_fingerprint));
+            let Some(profile_state) = profile_state else {
+                return Err(ModLibraryProjectionQueryError::ProfileUnavailable);
+            };
+            if profile_state.generation == 0 {
+                return Err(ModLibraryProjectionQueryError::ProfileUnavailable);
+            }
+            Some(profile_state)
+        } else {
+            None
+        };
+
+        if let ModLibraryProjectionQueryFilter::Category(category_id) = &request.filter {
+            let exists = transaction
+                .query_row(
+                    "SELECT EXISTS(
+                         SELECT 1 FROM categories WHERE category_id = ?1
+                     )",
+                    params![category_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+            if exists == 0 {
+                return Err(ModLibraryProjectionQueryError::CategoryNotFound);
+            }
+        }
+
+        let (filter_kind, filter_status, filter_category) = query_filter_parts(&request.filter);
+        let profile_id = request
+            .profile
+            .as_ref()
+            .map(|profile| profile.profile_id.as_str());
+        let profile_generation = profile_state.as_ref().map(|state| state.generation);
+        let stored_status_filter = match &request.filter {
+            ModLibraryProjectionQueryFilter::Status(status)
+                if *status != hmm_ports::ModLibraryProjectionQueryStatus::NotInstalled =>
+            {
+                profile_id
+                    .zip(profile_generation)
+                    .map(|(profile_id, generation)| (status.as_str(), profile_id, generation))
+            }
+            _ => None,
+        };
+        let matching_total =
+            if let Some((status, profile_id, profile_generation)) = stored_status_filter {
+                transaction
+                    .query_row(
+                        STORED_STATUS_COUNT_SQL,
+                        rusqlite::params![
+                            sqlite_i64(state.generation)
+                                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                            profile_id,
+                            sqlite_i64(profile_generation)
+                                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                            status,
+                            request.normalized_search,
+                        ],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?
+            } else {
+                let count_sql = format!(
+                    "SELECT COUNT(*) FROM mod_library_projection_items i WHERE {QUERY_FILTER_SQL}"
+                );
+                transaction
+                    .query_row(
+                        &count_sql,
+                        rusqlite::params![
+                            sqlite_i64(state.generation)
+                                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                            request.normalized_search,
+                            filter_kind,
+                            filter_category,
+                            filter_status,
+                            profile_id,
+                            profile_generation
+                                .map(sqlite_i64)
+                                .transpose()
+                                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?
+                        ],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?
+            };
+        if matching_total < 0 {
+            return Err(ModLibraryProjectionQueryError::Unavailable);
+        }
+        let matching_total = usize::try_from(matching_total)
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        let total_pages = if matching_total == 0 {
+            1
+        } else {
+            matching_total
+                .checked_add(request.page_size as usize - 1)
+                .ok_or(ModLibraryProjectionQueryError::Unavailable)?
+                / request.page_size as usize
+        } as u64;
+        let page = request.page.min(total_pages);
+        let offset = (page - 1)
+            .checked_mul(u64::from(request.page_size))
+            .ok_or(ModLibraryProjectionQueryError::Unavailable)?;
+        let limit = i64::from(request.page_size);
+        let offset =
+            i64::try_from(offset).map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+
+        let mut items = if let Some((status, profile_id, profile_generation)) = stored_status_filter
+        {
+            let mut statement = transaction
+                .prepare(STORED_STATUS_ROWS_SQL)
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+            let items = statement
+                .query_map(
+                    rusqlite::params![
+                        sqlite_i64(state.generation)
+                            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                        profile_id,
+                        sqlite_i64(profile_generation)
+                            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                        status,
+                        request.normalized_search,
+                        limit,
+                        offset,
+                    ],
+                    read_projection_page_item,
+                )
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+            items
+        } else {
+            let rows_sql = format!(
+                "SELECT i.mod_id, i.display_revision_id, i.package_id, i.display_name, i.author,\n\
+                 i.version_label, i.size_label, i.preview_image_json, status_row.status,\n\
+                 status_row.managed_file_count, status_row.backup_count\n\
+                 FROM mod_library_projection_items i\n\
+                 LEFT JOIN mod_library_projection_profile_status status_row\n\
+                 ON status_row.profile_id = ?6 AND status_row.profile_generation = ?7\n\
+                 AND status_row.mod_id = i.mod_id WHERE {QUERY_FILTER_SQL}\n\
+                 ORDER BY i.normalized_name COLLATE BINARY, i.mod_id COLLATE BINARY\n\
+                 LIMIT ?8 OFFSET ?9"
+            );
+            let mut statement = transaction
+                .prepare(&rows_sql)
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+            let items = statement
+                .query_map(
+                    rusqlite::params![
+                        sqlite_i64(state.generation)
+                            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                        request.normalized_search,
+                        filter_kind,
+                        filter_category,
+                        filter_status,
+                        profile_id,
+                        profile_generation
+                            .map(sqlite_i64)
+                            .transpose()
+                            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?,
+                        limit,
+                        offset,
+                    ],
+                    read_projection_page_item,
+                )
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+            items
+        };
+
+        let mod_ids = items
+            .iter()
+            .map(|item| item.record.mod_id.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let labels = read_projection_labels(&transaction, &mod_ids)?;
+        for item in &mut items {
+            item.record.labels = labels
+                .get(item.record.mod_id.as_str())
+                .cloned()
+                .unwrap_or_default();
+        }
+        transaction
+            .commit()
+            .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+
+        Ok(ModLibraryProjectionQueryPage {
+            items,
+            page,
+            page_size: request.page_size,
+            library_total,
+            matching_total,
+        })
+    }
+}
+
+const STORED_STATUS_COUNT_SQL: &str = "
+    SELECT COUNT(*)
+    FROM mod_library_projection_profile_status status_row
+    JOIN mod_library_projection_items i ON i.mod_id = status_row.mod_id
+    WHERE i.generation = ?1
+      AND status_row.profile_id = ?2
+      AND status_row.profile_generation = ?3
+      AND status_row.status = ?4
+      AND (
+          ?5 = ''
+          OR instr(i.normalized_name, ?5) > 0
+          OR instr(i.normalized_author, ?5) > 0
+          OR EXISTS (
+              SELECT 1 FROM mod_library_projection_labels search_label
+              WHERE search_label.mod_id = i.mod_id
+                AND instr(search_label.normalized_name, ?5) > 0
+          )
+      )";
+
+const STORED_STATUS_ROWS_SQL: &str = "
+    SELECT i.mod_id, i.display_revision_id, i.package_id, i.display_name, i.author,
+           i.version_label, i.size_label, i.preview_image_json, status_row.status,
+           status_row.managed_file_count, status_row.backup_count
+    FROM mod_library_projection_items i INDEXED BY idx_mod_library_projection_items_name
+    CROSS JOIN mod_library_projection_profile_status status_row
+    ON status_row.profile_id = ?2
+       AND status_row.profile_generation = ?3
+       AND status_row.mod_id = i.mod_id
+       AND status_row.status = ?4
+    WHERE i.generation = ?1
+      AND (
+          ?5 = ''
+          OR instr(i.normalized_name, ?5) > 0
+          OR instr(i.normalized_author, ?5) > 0
+          OR EXISTS (
+              SELECT 1 FROM mod_library_projection_labels search_label
+              WHERE search_label.mod_id = i.mod_id
+                AND instr(search_label.normalized_name, ?5) > 0
+          )
+      )
+    ORDER BY i.normalized_name COLLATE BINARY, i.mod_id COLLATE BINARY
+    LIMIT ?6 OFFSET ?7";
+
+const QUERY_FILTER_SQL: &str = "
+    i.generation = ?1
+    AND (
+        ?2 = ''
+        OR instr(i.normalized_name, ?2) > 0
+        OR instr(i.normalized_author, ?2) > 0
+        OR EXISTS (
+            SELECT 1 FROM mod_library_projection_labels search_label
+            WHERE search_label.mod_id = i.mod_id
+              AND instr(search_label.normalized_name, ?2) > 0
+        )
+    )
+    AND (
+        ?3 = 'all'
+        OR (?3 = 'category' AND EXISTS (
+            SELECT 1 FROM mod_library_projection_labels category_label
+            WHERE category_label.mod_id = i.mod_id
+              AND category_label.category_id = ?4
+        ))
+        OR (?3 = 'status' AND (
+            (?5 = 'not_installed' AND ?6 IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM mod_library_projection_profile_status status_row
+                WHERE status_row.profile_id = ?6
+                  AND status_row.profile_generation = ?7
+                  AND status_row.mod_id = i.mod_id
+            ))
+            OR (?5 <> 'not_installed' AND EXISTS (
+                SELECT 1 FROM mod_library_projection_profile_status status_row
+                WHERE status_row.profile_id = ?6
+                  AND status_row.profile_generation = ?7
+                  AND status_row.mod_id = i.mod_id
+                  AND status_row.status = ?5
+            ))
+        ))
+    )";
+
+fn query_filter_parts(
+    filter: &hmm_ports::ModLibraryProjectionQueryFilter,
+) -> (&'static str, Option<&str>, Option<&str>) {
+    match filter {
+        hmm_ports::ModLibraryProjectionQueryFilter::All => ("all", None, None),
+        hmm_ports::ModLibraryProjectionQueryFilter::Status(status) => {
+            ("status", Some(status.as_str()), None)
+        }
+        hmm_ports::ModLibraryProjectionQueryFilter::Category(category_id) => {
+            ("category", None, Some(category_id.as_str()))
+        }
+    }
+}
+
+fn read_projection_page_item(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ModLibraryProjectionPageItem> {
+    let status = row
+        .get::<_, Option<String>>(8)?
+        .map(
+            |status| -> rusqlite::Result<ModLibraryProjectionStatusRecord> {
+                Ok(ModLibraryProjectionStatusRecord {
+                    mod_id: hmm_core::ModId::new(row.get::<_, String>(0)?),
+                    status: parse_stored_status(&status)?,
+                    managed_file_count: u64::try_from(row.get::<_, i64>(9)?).map_err(|_| {
+                        rusqlite::Error::InvalidColumnType(
+                            9,
+                            "managed_file_count".to_owned(),
+                            rusqlite::types::Type::Integer,
+                        )
+                    })?,
+                    backup_count: u64::try_from(row.get::<_, i64>(10)?).map_err(|_| {
+                        rusqlite::Error::InvalidColumnType(
+                            10,
+                            "backup_count".to_owned(),
+                            rusqlite::types::Type::Integer,
+                        )
+                    })?,
+                })
+            },
+        )
+        .transpose()?;
+    let preview_image_json: String = row.get(7)?;
+    let preview_image = serde_json::from_str(&preview_image_json).map_err(|_| {
+        rusqlite::Error::InvalidColumnType(
+            7,
+            "preview_image_json".to_owned(),
+            rusqlite::types::Type::Text,
+        )
+    })?;
+    Ok(ModLibraryProjectionPageItem {
+        record: ModLibraryProjectionRecord {
+            mod_id: hmm_core::ModId::new(row.get::<_, String>(0)?),
+            display_revision_id: ModRevisionId::new(row.get::<_, String>(1)?),
+            package_id: row.get(2)?,
+            display_name: row.get(3)?,
+            author: row.get(4)?,
+            version_label: row.get(5)?,
+            size_label: row.get(6)?,
+            preview_image,
+            labels: Vec::new(),
+        },
+        status,
+    })
+}
+
+fn read_projection_labels(
+    transaction: &Transaction<'_>,
+    mod_ids: &[String],
+) -> std::result::Result<
+    HashMap<String, Vec<ModLibraryProjectionLabel>>,
+    ModLibraryProjectionQueryError,
+> {
+    if mod_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = std::iter::repeat_n("?", mod_ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT mod_id, category_id, name, color FROM mod_library_projection_labels
+         WHERE mod_id IN ({placeholders}) ORDER BY mod_id COLLATE BINARY, ordinal"
+    );
+    let mut statement = transaction
+        .prepare(&sql)
+        .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(mod_ids.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                ModLibraryProjectionLabel {
+                    category_id: row.get(1)?,
+                    name: row.get(2)?,
+                    color: row.get(3)?,
+                },
+            ))
+        })
+        .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+    let mut labels = HashMap::new();
+    for row in rows {
+        let (mod_id, label) = row.map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
+        labels.entry(mod_id).or_insert_with(Vec::new).push(label);
+    }
+    Ok(labels)
+}
+
+fn parse_stored_status(value: &str) -> rusqlite::Result<ModLibraryProjectionStatus> {
+    match value {
+        "installed" => Ok(ModLibraryProjectionStatus::Installed),
+        "committed_cleanup_pending" => Ok(ModLibraryProjectionStatus::CommittedCleanupPending),
+        "cleanup_pending" => Ok(ModLibraryProjectionStatus::CleanupPending),
+        "rollback_required" => Ok(ModLibraryProjectionStatus::RollbackRequired),
+        "repair_required" => Ok(ModLibraryProjectionStatus::RepairRequired),
+        _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
 

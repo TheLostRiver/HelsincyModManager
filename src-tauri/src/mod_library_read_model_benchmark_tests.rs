@@ -1,26 +1,32 @@
 use crate::mod_library_dto::ModLibraryPageDto;
 use hmm_app::{
     InstallManifestQueryRequest, InstallManifestQueryService, InstallManifestStatus,
-    ModLibraryFilter, ModLibraryProfileContext, ModLibraryQuery, ModLibraryQueryService,
-    ModLibraryService,
+    ModLibraryFilter, ModLibraryProfileContext, ModLibraryProjectionFreshnessGuard,
+    ModLibraryProjectionRefreshService, ModLibraryQuery, ModLibraryQueryService, ModLibraryService,
+    ModLibraryStatusProvider,
 };
 use hmm_core::{
     Category, FileLayer, InstallManifest, InstallManifestEntry, InstallTargetPath, ModId,
     ModMetadataOverlay, ModRevisionId, PackageFileId, PreviewImageRejectionReason, ProfileId,
 };
-use hmm_infra::{JsonInstallManifestRepository, JsonModImportResultRepository};
+use hmm_infra::{
+    JsonInstallManifestRepository, JsonModImportResultRepository,
+    SqliteModLibraryProjectionRepository,
+};
 use hmm_ports::{
     CategoryRepository, InstallManifestRepository, ModImportResultRepository,
-    ModMetadataRepository, StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
-    StoredModOriginProvenance, StoredModPackageMetadata, StoredModRevision,
+    ModLibraryProjectionQueryRepository, ModLibraryProjectionRepository, ModMetadataRepository,
+    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
+    StoredModPackageMetadata, StoredModRevision,
 };
 use serde_json::{json, Value};
 use std::hint::black_box;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 const RECORD_COUNTS: [usize; 2] = [1_000, 10_000];
 const PAGE_SIZE: u32 = 96;
+const SQLITE_PROJECTION_10K_P95_BUDGET_NS: u128 = 14_230_000;
 
 #[test]
 #[ignore = "explicit release-only performance harness"]
@@ -88,6 +94,7 @@ fn benchmark_case(record_count: usize) -> Value {
         .save_manifest(&fixture.manifest)
         .expect("write artificial install manifest");
     let status_service = Arc::new(InstallManifestQueryService::new(manifest_repository));
+    let status_provider: Arc<dyn ModLibraryStatusProvider> = status_service.clone();
     let profile_id = fixture.manifest.profile_id.clone();
     let mod_ids = fixture
         .records
@@ -108,7 +115,8 @@ fn benchmark_case(record_count: usize) -> Value {
         },
     );
 
-    let query_service = ModLibraryQueryService::new(library_service, status_service);
+    let query_service =
+        ModLibraryQueryService::new(Arc::clone(&library_service), status_provider.clone());
     let query_without_status = ModLibraryQuery {
         search: "mod".to_owned(),
         page: 3,
@@ -147,6 +155,50 @@ fn benchmark_case(record_count: usize) -> Value {
         },
     );
 
+    let projection_db = Arc::new(Mutex::new(
+        hmm_infra::open_database(&temp.path().join("projection.db"))
+            .expect("open artificial projection database"),
+    ));
+    let projection_repository = Arc::new(SqliteModLibraryProjectionRepository::new(projection_db));
+    let projection_writer: Arc<dyn ModLibraryProjectionRepository> = projection_repository.clone();
+    let projection_query_repository: Arc<dyn ModLibraryProjectionQueryRepository> =
+        projection_repository;
+    let projection_query_service = ModLibraryQueryService::new_projection(
+        projection_query_repository,
+        Arc::new(ModLibraryProjectionRefreshService::new(
+            Arc::clone(&library_service),
+            status_provider,
+            projection_writer,
+            Arc::new(ModLibraryProjectionFreshnessGuard::default()),
+        )),
+    );
+    let projected_page = projection_query_service
+        .query(profile_query.clone())
+        .expect("warm artificial SQLite projection query");
+    let compatible_page = query_service
+        .query(profile_query.clone())
+        .expect("prepare compatibility comparison page");
+    assert_eq!(projected_page, compatible_page);
+    let sqlite_projection_status_filter_query_total = measure_with_setup(
+        config,
+        || profile_query.clone(),
+        |query| {
+            let page = projection_query_service
+                .query(query)
+                .expect("query artificial SQLite projection with profile status");
+            page.items.len() + page.matching_total
+        },
+    );
+    if record_count == 10_000 {
+        assert!(
+            sqlite_projection_status_filter_query_total.p95_ns
+                <= SQLITE_PROJECTION_10K_P95_BUDGET_NS,
+            "10,000-record SQLite projection status-filter query p95 {}ns exceeds {}ns same-machine budget",
+            sqlite_projection_status_filter_query_total.p95_ns,
+            SQLITE_PROJECTION_10K_P95_BUDGET_NS
+        );
+    }
+
     let serialization_page = query_service
         .query(query_without_status.clone())
         .expect("prepare artificial serialization page");
@@ -176,6 +228,7 @@ fn benchmark_case(record_count: usize) -> Value {
             "profileStatusQuery": status_query.as_json(),
             "queryWithoutStatusTotal": query_without_status_total.as_json(),
             "profileStatusFilterQueryTotal": profile_query_total.as_json(),
+            "sqliteProjectionStatusFilterQueryTotal": sqlite_projection_status_filter_query_total.as_json(),
             "pageDtoSerialization": dto_serialization.as_json(),
         }
     })

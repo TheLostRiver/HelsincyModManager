@@ -286,6 +286,29 @@ cargo test -p hmm-app mod_library_query -- --nocapture
 
 4B 不执行生产 SQLite query/count/page、Tauri/前端 smoke 或性能门禁；这些属于 Slice 4C。完整交付仍需运行 workspace tests/check/clippy 和 `scripts/verify.ps1`。
 
+### T18 Slice 4C production projection query
+
+Slice 4C 继续只使用人工 Mod/metadata/category/manifest fixture、临时 JSON 和临时 SQLite。聚焦入口：
+
+```powershell
+cargo test -p hmm-app mod_library_projection -- --nocapture
+cargo test -p hmm-app mod_library_query -- --nocapture
+cargo test -p hmm-infra mod_library_projection -- --nocapture
+cargo test -p hmm-tauri mod_library_commands -- --nocapture
+cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored --nocapture
+```
+
+必须覆盖：
+
+- production command 只调用 `AppState.mod_library_query`，不现场构造兼容 JSON 查询或静默回退。
+- global/profile dirty、missing generation、fingerprint 不一致、未知 manifest status 和 dirty marker 写入失败均 fail closed。
+- catalog/metadata/category 权威写入前后都标 global dirty；manifest 提交前后 best-effort 标 profile dirty，projection 失败不改变已提交 manifest 事实，但必须通过 freshness guard 阻断 stale query。
+- count、clamp 后 page、rows、labels 和 profile status 在同一短 SQLite read transaction 与同一 complete generation 中完成。
+- 搜索、category/status filter、NFKC query key、稳定 name/modId 排序、稀疏 `not_installed` 和完整 page DTO 与兼容语义一致。
+- release harness 保持 1,000/10,000 fixture、5 次 warmup、40 次 sample 和完整 status filter；10,000 条 `sqliteProjectionStatusFilterQueryTotal` p95 固定不高于 `14.23 ms`，不得通过删字段、减样本或放宽门槛改善结果。
+
+2026-07-22 最终代码同机复验：1,000 条 projection p95=`1.2963 ms`，10,000 条 p95=`9.2966 ms`，门禁通过。该 wall-clock 结果不是跨机器 SLA，ignored benchmark 不由普通 `cargo test --workspace` 自动执行。
+
 ## Mod 导入与压缩包处理
 
 适用范围：

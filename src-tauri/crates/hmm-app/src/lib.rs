@@ -11,6 +11,8 @@ mod mod_dependency_graph;
 mod mod_import;
 mod mod_import_diagnostics;
 mod mod_import_task;
+mod mod_library_projection;
+mod mod_library_projection_tracking;
 mod mod_library_query;
 mod mod_metadata;
 mod preview_image;
@@ -88,6 +90,12 @@ pub use mod_import_diagnostics::{
 pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModRevisionTaskRequest,
     StartImportModTaskRequest, TaskStarted,
+};
+pub use mod_library_projection::ModLibraryProjectionRefreshService;
+pub use mod_library_projection_tracking::{
+    ModLibraryProjectionFreshnessGuard, ProjectionTrackingCategoryRepository,
+    ProjectionTrackingInstallManifestRepository, ProjectionTrackingModImportResultRepository,
+    ProjectionTrackingModMetadataRepository,
 };
 pub use mod_library_query::{
     ModLibraryFilter, ModLibraryPage, ModLibraryPageItem, ModLibraryProfileContext,

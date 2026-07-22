@@ -18,8 +18,10 @@
    250ms debounce/latest-request gate、loading/error/empty、本页选择和当前页 durable overlay 已合并，
    本地统一验证、四视图/四窗口视觉 smoke 及独立复审均已通过。Slice 4A 的人工 1,000/10,000
    条基准与 T18/T17 共用 read-model 持久化决策已合并；Slice 4B 的 SQLite projection
-   schema/rebuild、窄 ports、infra writer 和 T17 `upsert_many` 协调已实现并进入独立复审/PR。Slice 4C 的生产切换、同事务
-   count/page 和性能门禁尚未开始。之后仍按 T18 -> T17 -> T13 推进；其他扩展继续按各自发布门禁评审，不自动开工。
+   schema/rebuild、窄 ports、infra writer 和 T17 `upsert_many` 协调已由 PR #191 完成。Slice 4C 的生产
+   query switch、同事务 count/page、fail-closed freshness tracking 和性能门禁已实现并进入独立复审/PR；
+   最终 10,000 条 full status-filter projection query p95 为 `9.2966 ms`，低于固定 `14.23 ms` 同机预算。
+   Slice 4C 合并后主线转入 T17，再按 T17 -> T13 推进；其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。

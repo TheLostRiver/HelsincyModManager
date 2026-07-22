@@ -1,3 +1,4 @@
+use crate::state_mod_library::ModLibraryComposition;
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
     CommitInstallPlanRequest, GameLaunchService, GameProfileWriteLockRegistry, GameSetupService,
@@ -9,30 +10,29 @@ use hmm_app::{
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
-    InstallRecoverySummary, InstallTaskRunner, InstallTaskService, LimitedPreviewImageProcessor,
+    InstallRecoverySummary, InstallTaskRunner, InstallTaskService,
+    InstalledReplacementReinstallResolution, LimitedPreviewImageProcessor,
     ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
-    ModImportTaskRunner, ModImportTaskService, ModLibraryService, ModMetadataService,
-    InstalledReplacementReinstallResolution, ModUninstaller, PlannedInitialRetargetInstall,
-    PreparedReinstall,
+    ModImportTaskRunner, ModImportTaskService, ModLibraryQueryService, ModLibraryService,
+    ModMetadataService, ModUninstaller, PlannedInitialRetargetInstall, PreparedReinstall,
     PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
-    ProfileSaveDirectoryDiscoveryService, ProfileService,
-    RecoveryActionTaskRunner, RecoveryActionTaskService, ReinstallCandidateSourceReader,
-    ReinstallCommitError, ReinstallCommitResult, ReinstallCommitService, ReinstallPlanPreview,
-    ReinstallPreparation, ReinstallPreviewError, ReinstallPreviewRequest,
-    ReinstallPreviewService,
+    ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
+    RecoveryActionTaskService, ReinstallCandidateSourceReader, ReinstallCommitError,
+    ReinstallCommitResult, ReinstallCommitService, ReinstallPlanPreview, ReinstallPreparation,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
     ReinstallRecoveryWriteAdmission, ReinstallTargetCounts, ReinstallTaskAuditContext,
     ReinstallTaskExecutor, ReinstallTaskExecutorService, ReinstallTaskPrepareError,
     ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementWorkflowError,
     ReplacementWorkflowService, RetargetInstallTaskRunner, RetargetInstallTaskService,
-    RetargetReinstallRequest, RetargetReinstallTaskExecutor,
-    SaveBackupAutoSchedulerService, SaveBackupBackgroundService, SaveBackupBackgroundWorker,
-    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
-    SaveBackupTaskScopeRegistry, SaveBackupTaskService, StartRecoveryActionTaskRequest,
-    StartRetargetInstallTaskRequest, StartUninstallTaskRequest, SupportDiagnosticsExportService,
-    TaskManager, ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest,
-    UninstallModResult, UninstallModService, UninstallTaskRunner, UninstallTaskService,
+    RetargetReinstallRequest, RetargetReinstallTaskExecutor, SaveBackupAutoSchedulerService,
+    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
+    SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
+    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
+    StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
+    UninstallModService, UninstallTaskRunner, UninstallTaskService,
     DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
@@ -56,12 +56,10 @@ use hmm_infra::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
-    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository,
-    JsonReinstallRecoveryTransactionRepository, PlatformSteamRootProvider,
-    RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
+    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
-    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteCategoryRepository,
-    SqliteModMetadataRepository, SqliteProfileRepository,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
     SqliteSaveBackupSchedulerStateRepository, SteamCommunityProfileClient,
     SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
@@ -97,6 +95,7 @@ pub struct AppState {
     pub game_setup: Arc<GameSetupService>,
     pub game_launch: Arc<GameLaunchService>,
     pub mod_library: Arc<ModLibraryService>,
+    pub mod_library_query: Arc<ModLibraryQueryService>,
     pub mod_dependency_graph: Arc<ModDependencyGraphService>,
     pub preview_image_candidates: Arc<PreviewImageCandidateListService>,
     pub preview_image_selection: Arc<PreviewImageCandidateSelectionService>,
@@ -178,8 +177,10 @@ impl AppState {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
-        let mod_metadata_repository = Arc::new(SqliteModMetadataRepository::new(Arc::clone(&db)));
-        let category_repository = Arc::new(SqliteCategoryRepository::new(Arc::clone(&db)));
+        let mod_library_composition = ModLibraryComposition::new(&db, mod_import_results_path)?;
+        let mod_metadata_repository = mod_library_composition.mod_metadata_repository();
+        let category_repository = mod_library_composition.category_repository();
+        let mod_import_result_repository = mod_library_composition.mod_import_result_repository();
         let profile_repository = Arc::new(SqliteProfileRepository::new(Arc::clone(&db)));
         let profile_repository_for_profiles: Arc<dyn ProfileRepository> =
             profile_repository.clone();
@@ -251,8 +252,6 @@ impl AppState {
         ));
         let game_config_repository: Arc<dyn GameConfigRepository> =
             Arc::new(JsonGameConfigRepository::new(config_path));
-        let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
-            Arc::new(JsonModImportResultRepository::new(mod_import_results_path));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
             TaskScopedModImportSandboxLocator::new(mod_import_sandbox_root.clone()),
         );
@@ -304,7 +303,8 @@ impl AppState {
         ));
         let app_settings_repository: Arc<dyn AppSettingsRepository> =
             Arc::new(JsonAppSettingsRepository::new(settings_path));
-        let install_manifest_repository = install_manifest_repository_for(&app_data_dir);
+        let install_manifest_repository = mod_library_composition
+            .install_manifest_repository(install_manifest_repository_for(&app_data_dir));
         let reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository> =
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
@@ -330,11 +330,7 @@ impl AppState {
                 Box::new(SandboxModPackageMetadataAnalyzer),
             ),
         ));
-        let mod_library = Arc::new(ModLibraryService::new(
-            Arc::clone(&mod_import_result_repository),
-            Arc::clone(&mod_metadata_repository) as _,
-            Arc::clone(&category_repository) as _,
-        ));
+        let mod_library = mod_library_composition.library_service();
         let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(
             &mod_import_result_repository,
         )));
@@ -464,6 +460,8 @@ impl AppState {
         let install_manifest_query = Arc::new(InstallManifestQueryService::new(Arc::clone(
             &install_manifest_repository,
         )));
+        let mod_library_query = mod_library_composition
+            .query_service(Arc::clone(&mod_library), install_manifest_query.clone());
         let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
         let install_recovery_scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
             Arc::clone(&game_config_repository),
@@ -594,6 +592,7 @@ impl AppState {
                 Arc::clone(&game_config_repository),
             )),
             mod_library,
+            mod_library_query,
             mod_dependency_graph,
             preview_image_candidates,
             preview_image_selection,
