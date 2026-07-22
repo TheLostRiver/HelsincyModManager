@@ -1,3 +1,4 @@
+use crate::external_import_source_registry::is_symlink_or_reparse_point;
 use anyhow::{Context, Result};
 use hmm_ports::{
     CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
@@ -76,6 +77,11 @@ impl ModImportSandboxLocator for TaskScopedModImportSandboxLocator {
     fn sandbox_root_for_package(&self, package_id: &str) -> Result<PathBuf> {
         validate_task_id_segment(package_id)?;
         Ok(self.sandbox_root.join(package_id))
+    }
+
+    fn cleanup_sandbox_for_package(&self, package_id: &str) -> Result<()> {
+        let sandbox_root = self.sandbox_root_for_package(package_id)?;
+        remove_controlled_sandbox_directory(&self.sandbox_root, &sandbox_root)
     }
 }
 
@@ -449,6 +455,64 @@ fn validate_task_id_segment(task_id: &str) -> Result<()> {
     Ok(())
 }
 
+fn remove_controlled_sandbox_directory(root: &Path, sandbox_root: &Path) -> Result<()> {
+    let root_metadata = match fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error).context("failed to inspect mod import sandbox root"),
+    };
+    if !root_metadata.is_dir() || is_symlink_or_reparse_point(&root_metadata) {
+        anyhow::bail!("mod import sandbox root is not a regular directory");
+    }
+
+    remove_controlled_sandbox_tree(sandbox_root)
+}
+
+fn remove_controlled_sandbox_tree(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error).context("failed to inspect mod import sandbox entry"),
+    };
+    if is_symlink_or_reparse_point(&metadata) || !metadata.is_dir() {
+        anyhow::bail!("mod import sandbox entry is not a regular directory");
+    }
+
+    for entry in fs::read_dir(path).context("failed to read mod import sandbox directory")? {
+        let entry = entry.context("failed to read mod import sandbox entry")?;
+        let entry_path = entry.path();
+        let entry_metadata = match fs::symlink_metadata(&entry_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(error).context("failed to inspect mod import sandbox entry");
+            }
+        };
+        if is_symlink_or_reparse_point(&entry_metadata) {
+            anyhow::bail!("mod import sandbox entry is a link or reparse point");
+        }
+        if entry_metadata.is_dir() {
+            remove_controlled_sandbox_tree(&entry_path)?;
+        } else if entry_metadata.is_file() {
+            match fs::remove_file(&entry_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("failed to remove mod import sandbox file");
+                }
+            }
+        } else {
+            anyhow::bail!("mod import sandbox entry has an unsupported type");
+        }
+    }
+
+    match fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).context("failed to remove mod import sandbox directory"),
+    }
+}
+
 fn validate_diagnostic_package_file_name(file_name: &str) -> Result<()> {
     validate_diagnostic_name_segment(file_name, "diagnostic package file name")?;
     if !file_name.ends_with(".zip") {
@@ -809,6 +873,26 @@ mod tests {
             .expect_err("unsafe package id rejected");
 
         assert!(error.to_string().contains("unsafe task id segment"));
+    }
+
+    #[test]
+    fn sandbox_locator_cleans_only_a_valid_task_scoped_directory() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("sandboxes");
+        let package_root = sandbox_root.join("task-1");
+        fs::create_dir_all(package_root.join("nested")).expect("create package sandbox");
+        fs::write(package_root.join("nested").join("fixture.bin"), b"fixture")
+            .expect("write fixture");
+        let sibling = sandbox_root.join("task-2");
+        fs::create_dir_all(&sibling).expect("create sibling sandbox");
+
+        let locator = TaskScopedModImportSandboxLocator::new(sandbox_root);
+        locator
+            .cleanup_sandbox_for_package("task-1")
+            .expect("cleanup task sandbox");
+
+        assert!(!package_root.exists());
+        assert!(sibling.exists());
     }
 
     #[test]

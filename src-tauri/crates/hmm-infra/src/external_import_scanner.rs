@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs::{self, DirEntry, File};
 use std::io::{Read, Take};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
@@ -93,6 +93,7 @@ impl ExternalImportScanner for HuntingBoxDirectoryScanner {
         }
 
         mark_duplicate_content(&mut candidates);
+        mark_duplicate_display_names(&mut candidates);
         Ok(ExternalImportScanResult {
             candidates,
             observed_resource_usage,
@@ -296,6 +297,23 @@ fn mark_duplicate_content(candidates: &mut [ExternalImportCandidate]) {
     }
 }
 
+fn mark_duplicate_display_names(candidates: &mut [ExternalImportCandidate]) {
+    let mut display_names = BTreeSet::new();
+    for candidate in candidates {
+        if candidate.preview_status != ExternalImportCandidateStatus::Ready {
+            continue;
+        }
+        let Some(display_name) = candidate.metadata_hint.display_name.as_deref() else {
+            continue;
+        };
+        let normalized = display_name.trim().to_lowercase();
+        if !normalized.is_empty() && !display_names.insert(normalized) {
+            candidate.preview_status = ExternalImportCandidateStatus::NameCollision;
+            candidate.conflict_kind = ExternalImportConflictKind::NameCollision;
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ContentLimits {
     max_files: u64,
@@ -365,6 +383,28 @@ fn add_observed_usage(
 struct ContentScan {
     usage: ExternalImportResourceUsage,
     content_fingerprint: String,
+}
+
+#[derive(Clone)]
+pub(crate) struct ValidatedContentFile {
+    pub source_path: PathBuf,
+    /// A normalized, case-insensitive-safe archive entry path.
+    pub archive_path: String,
+    pub size_bytes: u64,
+    pub content_hash: [u8; 32],
+}
+
+#[derive(Clone)]
+pub(crate) struct ValidatedContent {
+    pub usage: ExternalImportResourceUsage,
+    pub content_fingerprint: String,
+    pub files: Vec<ValidatedContentFile>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ContentValidationError {
+    Cancelled,
+    Rejected,
 }
 
 enum ContentScanOutcome {
@@ -437,6 +477,26 @@ fn scan_content(
     }
 }
 
+/// Reuses the scan walker's hostile-filesystem validation for one selected candidate. The
+/// materializer must compare its returned fingerprint with the durable preview before writing.
+pub(crate) fn validate_materialization_content(
+    files_directory: &Path,
+    resource_budget: &ExternalImportResourceBudget,
+    cancellation_token: &dyn CancellationToken,
+) -> Result<ValidatedContent, ContentValidationError> {
+    let limits = remaining_content_limits(resource_budget, ExternalImportResourceUsage::default());
+    if limits.max_files == 0 || limits.max_total_bytes == 0 {
+        return Err(ContentValidationError::Rejected);
+    }
+
+    let mut walker = ContentWalker::new(limits, cancellation_token);
+    match walker.walk(files_directory, &[], 0) {
+        Ok(()) => Ok(walker.validated_content()),
+        Err(WalkFailure::Cancelled) => Err(ContentValidationError::Cancelled),
+        Err(_) => Err(ContentValidationError::Rejected),
+    }
+}
+
 struct ContentWalker<'a> {
     limits: ContentLimits,
     cancellation_token: &'a dyn CancellationToken,
@@ -446,6 +506,7 @@ struct ContentWalker<'a> {
 }
 
 struct FileDigest {
+    source_path: PathBuf,
     size_bytes: u64,
     content_hash: [u8; 32],
 }
@@ -542,6 +603,7 @@ impl<'a> ContentWalker<'a> {
         self.files.insert(
             path_key,
             FileDigest {
+                source_path: path.to_path_buf(),
                 size_bytes,
                 content_hash,
             },
@@ -559,6 +621,23 @@ impl<'a> ContentWalker<'a> {
             hasher.update(digest.content_hash);
         }
         format!("sha256:{}", hex_encode(&hasher.finalize()))
+    }
+
+    fn validated_content(&self) -> ValidatedContent {
+        ValidatedContent {
+            usage: self.usage,
+            content_fingerprint: self.content_fingerprint(),
+            files: self
+                .files
+                .iter()
+                .map(|(archive_path, file)| ValidatedContentFile {
+                    source_path: file.source_path.clone(),
+                    archive_path: archive_path.clone(),
+                    size_bytes: file.size_bytes,
+                    content_hash: file.content_hash,
+                })
+                .collect(),
+        }
     }
 
     fn ensure_not_cancelled(&self) -> std::result::Result<(), WalkFailure> {
@@ -774,6 +853,23 @@ fn parse_info_xml(
     }
 }
 
+/// Rechecks the only XML-derived data that can affect an external-import selection. A selected
+/// metadata-invalid candidate remains eligible only while its XML is still invalid and the caller
+/// has already recorded the explicit ignore decision in the sealed selection.
+pub(crate) fn metadata_matches_preview(
+    info_xml: &Path,
+    preview_status: ExternalImportCandidateStatus,
+    expected_metadata: &ExternalImportMetadataHint,
+) -> bool {
+    match parse_info_xml(info_xml) {
+        Ok(metadata) => {
+            preview_status != ExternalImportCandidateStatus::MetadataInvalid
+                && metadata == *expected_metadata
+        }
+        Err(_) => preview_status == ExternalImportCandidateStatus::MetadataInvalid,
+    }
+}
+
 fn read_bounded_xml(path: &Path) -> std::result::Result<Vec<u8>, MetadataParseError> {
     ensure_regular_file(path).map_err(|_| MetadataParseError::Invalid)?;
     let metadata = fs::symlink_metadata(path).map_err(|_| MetadataParseError::Invalid)?;
@@ -916,6 +1012,37 @@ mod tests {
         assert_ne!(
             candidate.content_fingerprint,
             UNAVAILABLE_CONTENT_FINGERPRINT
+        );
+    }
+
+    #[test]
+    fn scanner_marks_later_same_name_different_content_as_a_collision() {
+        let fixture = tempfile::tempdir().expect("fixture root");
+        for (id, bytes) in [
+            ("211", b"first-content".as_slice()),
+            ("212", b"second-content".as_slice()),
+        ] {
+            write_candidate(
+                fixture.path(),
+                id,
+                "<info><moduleName>Shared Name</moduleName></info>",
+                &[("file.bin", bytes)],
+            );
+        }
+
+        let result = scan_fixture(fixture.path(), ExternalImportResourceBudget::default());
+
+        assert_eq!(
+            result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::Ready
+        );
+        assert_eq!(
+            result.candidates[1].preview_status,
+            ExternalImportCandidateStatus::NameCollision
+        );
+        assert_eq!(
+            result.candidates[1].conflict_kind,
+            ExternalImportConflictKind::NameCollision
         );
     }
 
@@ -1094,9 +1221,10 @@ mod tests {
             .expect("scan fixture")
     }
 
-    fn batch_for(_source: &hmm_core::ExternalImportSource, batch_id: &str) -> ExternalImportBatch {
+    fn batch_for(source: &hmm_core::ExternalImportSource, batch_id: &str) -> ExternalImportBatch {
         ExternalImportBatch {
             batch_id: ExternalImportBatchId::new(batch_id),
+            source_id: Some(source.source_id.clone()),
             adapter_id: ExternalImportAdapterId::new(HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID),
             source_fingerprint: "private-test-fingerprint".to_owned(),
             scan_status: ExternalImportScanStatus::Pending,

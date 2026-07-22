@@ -595,6 +595,7 @@ fn validate_catalog(catalog: &ModRevisionCatalogV2) -> Result<()> {
     );
 
     let mut mod_ids = HashSet::new();
+    let mut external_content_fingerprints = HashSet::new();
     for logical_mod in &catalog.mods {
         anyhow::ensure!(
             mod_ids.insert(logical_mod.mod_id.as_str()),
@@ -638,9 +639,15 @@ fn validate_catalog(catalog: &ModRevisionCatalogV2) -> Result<()> {
         }
         match &logical_mod.origin_provenance {
             StoredModOriginProvenance::Imported => {}
-            StoredModOriginProvenance::ExternalImport { provenance } => provenance
-                .validate()
-                .context("external import provenance is invalid")?,
+            StoredModOriginProvenance::ExternalImport { provenance } => {
+                provenance
+                    .validate()
+                    .context("external import provenance is invalid")?;
+                anyhow::ensure!(
+                    external_content_fingerprints.insert(provenance.content_fingerprint.as_str()),
+                    "mod revision catalog contains duplicate external import content fingerprints"
+                );
+            }
             StoredModOriginProvenance::MigratedV1 {
                 legacy_mod_id,
                 legacy_package_id,

@@ -1,13 +1,13 @@
 mod app_log;
 mod background_worker;
 mod category_commands;
-mod dto;
 mod diagnostics_dto;
+mod dto;
+mod external_import_commands;
+mod external_import_dto;
 mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
-mod external_import_commands;
-mod external_import_dto;
 mod install_commands;
 mod mod_import_commands;
 mod mod_library_commands;
@@ -38,7 +38,10 @@ use category_commands::{
     update_category,
 };
 use external_import_commands::{
-    get_external_import_preview, select_external_import_source, start_external_import_scan,
+    create_external_import_selection, get_external_import_batch_result,
+    get_external_import_preview, retry_external_import_batch,
+    select_all_external_import_candidates, select_external_import_source,
+    start_external_import_batch, start_external_import_scan, update_external_import_selection,
 };
 use game_launch_commands::launch_game;
 use game_setup_commands::{
@@ -52,11 +55,11 @@ use install_commands::{
 };
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
-    get_diagnostics_page_snapshot,
-    get_mod_dependency_graph, get_mod_detail, get_mod_detail_preview_image, get_mod_library,
-    get_preview_image_candidates, get_preview_image_diagnostics, get_thumbnail_cache_settings,
-    maintain_thumbnail_cache, select_preview_image_candidate, set_thumbnail_cache_settings,
-    start_import_mod_revision_task, start_import_mod_task,
+    get_diagnostics_page_snapshot, get_mod_dependency_graph, get_mod_detail,
+    get_mod_detail_preview_image, get_mod_library, get_preview_image_candidates,
+    get_preview_image_diagnostics, get_thumbnail_cache_settings, maintain_thumbnail_cache,
+    select_preview_image_candidate, set_thumbnail_cache_settings, start_import_mod_revision_task,
+    start_import_mod_task,
 };
 use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
@@ -130,6 +133,12 @@ pub fn run() {
             select_external_import_source,
             start_external_import_scan,
             get_external_import_preview,
+            create_external_import_selection,
+            update_external_import_selection,
+            select_all_external_import_candidates,
+            start_external_import_batch,
+            retry_external_import_batch,
+            get_external_import_batch_result,
             preview_install_plan,
             preview_imported_mod_install_plan,
             start_install_task,

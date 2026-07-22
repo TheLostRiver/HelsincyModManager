@@ -620,6 +620,40 @@ fn mod_import_catalog_preserves_external_import_provenance_and_rejects_invalid_v
         StoredModOriginProvenance::ExternalImport { provenance }
     );
 
+    let duplicate_revision = revision(
+        "duplicate-external-revision",
+        "duplicate-external-mod",
+        "duplicate-external-package",
+        "task-duplicate",
+    );
+    let duplicate = ModImportCatalogUpsert {
+        logical_mod: StoredLogicalMod {
+            mod_id: ModId::new("duplicate-external-mod"),
+            origin_revision_id: duplicate_revision.revision_id.clone(),
+            display_revision_id: duplicate_revision.revision_id.clone(),
+            origin_provenance: StoredModOriginProvenance::ExternalImport {
+                provenance: ExternalImportProvenance {
+                    adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
+                    batch_id: ExternalImportBatchId::new("batch-b"),
+                    source_item_key_hash: "duplicate-source-item-key-hash".to_owned(),
+                    content_fingerprint: "content-fingerprint".to_owned(),
+                    imported_at_unix_millis: 43,
+                },
+            },
+        },
+        revision: duplicate_revision,
+    };
+    let error = repo
+        .upsert_many(&[duplicate])
+        .expect_err("a second external Mod with the same content is rejected");
+    assert!(error
+        .to_string()
+        .contains("duplicate external import content fingerprints"));
+    assert!(repo
+        .get_mod(&ModId::new("duplicate-external-mod"))
+        .expect("read duplicate external Mod")
+        .is_none());
+
     let invalid_revision = revision(
         "invalid-revision",
         "invalid-mod",

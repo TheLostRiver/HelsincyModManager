@@ -50,6 +50,10 @@ pub struct ExternalImportSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExternalImportBatch {
     pub batch_id: ExternalImportBatchId,
+    /// Ephemeral opaque source handle. It never contains a path and may become unavailable
+    /// after the source registry expires it.
+    #[serde(default)]
+    pub source_id: Option<ExternalImportSourceId>,
     pub adapter_id: ExternalImportAdapterId,
     /// A keyed local digest. It is intentionally not a source path or ordinary path hash.
     pub source_fingerprint: String,
@@ -381,6 +385,50 @@ impl ExternalImportSelection {
         })
     }
 
+    /// Server-side select-all only adds candidates that are immediately selectable without an
+    /// extra conflict decision. Existing explicit decisions remain part of the snapshot.
+    pub fn select_all_ready(
+        &mut self,
+        expected_revision: u64,
+        candidates: &[ExternalImportCandidate],
+        budget: &ExternalImportResourceBudget,
+        now_unix_millis: u64,
+    ) -> Result<ExternalImportSelectionMutationResult, ExternalImportSelectionError> {
+        self.ensure_editable(expected_revision, now_unix_millis)?;
+
+        let candidates_by_id = candidates_by_id(candidates)?;
+        let mut next_entries = entries_by_candidate_id(&self.entries)?;
+        for candidate in candidates_by_id.values() {
+            if candidate.batch_id != self.batch_id {
+                return Err(ExternalImportSelectionError::CandidateInvalid);
+            }
+            if candidate.preview_status == ExternalImportCandidateStatus::Ready {
+                next_entries
+                    .entry(candidate.candidate_id.clone())
+                    .or_insert_with(|| ExternalImportSelectionEntry {
+                        candidate_id: candidate.candidate_id.clone(),
+                        decision: None,
+                        updated_at_unix_millis: now_unix_millis,
+                    });
+            }
+        }
+
+        let (entries, usage) =
+            validated_entries_and_usage(next_entries, &self.batch_id, &candidates_by_id, budget)?;
+        self.entries = entries;
+        self.selected_resource_usage = usage;
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(ExternalImportSelectionError::RevisionOverflow)?;
+
+        Ok(ExternalImportSelectionMutationResult {
+            revision: self.revision,
+            selected_count: self.selected_count(),
+            selected_resource_usage: self.selected_resource_usage,
+        })
+    }
+
     fn ensure_editable(
         &self,
         expected_revision: u64,
@@ -542,11 +590,15 @@ impl ExternalImportProvenance {
             self.adapter_id.as_str(),
             self.batch_id.as_str(),
             self.source_item_key_hash.as_str(),
-            self.content_fingerprint.as_str(),
         ] {
             if !is_valid_opaque_value(value) {
                 return Err(ExternalImportProvenanceError::InvalidOpaqueValue);
             }
+        }
+        if !is_valid_opaque_value(&self.content_fingerprint)
+            && !is_sha256_content_fingerprint(&self.content_fingerprint)
+        {
+            return Err(ExternalImportProvenanceError::InvalidOpaqueValue);
         }
         Ok(())
     }
@@ -567,6 +619,12 @@ fn is_valid_opaque_value(value: &str) -> bool {
                 && !character.is_whitespace()
                 && !matches!(character, '/' | '\\' | ':')
         })
+}
+
+fn is_sha256_content_fingerprint(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
 }
 
 fn candidates_by_id(
@@ -656,7 +714,9 @@ fn selection_decision_is_valid(
 
     let resolution = decision.and_then(|decision| decision.conflict_resolution);
     match candidate.preview_status {
-        ExternalImportCandidateStatus::Ready => resolution.is_none(),
+        ExternalImportCandidateStatus::Ready => {
+            resolution.is_none() || resolution == Some(ExternalImportConflictResolution::KeepBoth)
+        }
         ExternalImportCandidateStatus::NameCollision => {
             resolution == Some(ExternalImportConflictResolution::KeepBoth)
         }
