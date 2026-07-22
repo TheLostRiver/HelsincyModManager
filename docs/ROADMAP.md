@@ -84,9 +84,9 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加任务进度和取消 UI。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集和 T19 产品化加固均已完成；
-T18 Slice 3 已合并，Slice 4A 基准与持久化决策已合并；Slice 4B projection writer/rebuild 已实现并
-进入独立复审/PR，随后再以独立 PR 推进 Slice 4C 生产查询切换与性能门禁。
-T18 整体完成后才按 T17 -> T13 推进默认只导入的第三方迁移和批量破坏性操作。
+T18 Slice 1/2/3/4A/4B 已完成，Slice 4C 的生产查询切换、同事务 count/page、fail-closed freshness
+tracking 和性能门禁已实现并进入独立复审/PR。Slice 4C 合并后 T18 整体完成，再按 T17 -> T13
+推进默认只导入的第三方迁移和批量破坏性操作。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 
