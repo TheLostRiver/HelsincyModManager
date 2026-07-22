@@ -457,4 +457,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 - 外部 `modType` 到 HMM 分类的默认映射表是否需要随 adapter 版本发布。
 - 在最多 10,000 个选中候选的硬上限内，定稿首版性能验收的候选数量、总文件数和总字节预算；基准只能收紧上限，放宽必须另行 review。
 
+### Slice 1 定稿（2026-07-22）
+
+- 兼容范围保持根级数字直接子目录；本切片的人工 fixture 不推断更多真实目录变体，也不实现 scanner。
+- selection 使用独立集中预算：最多 `10,000` 个候选、`1,000,000` 个文件、`64 GiB` 源字节和 `64 GiB`
+  物化字节。单项物化预算为最多 `16,384` 个文件、`1 GiB` 单文件、`4 GiB` 总字节和 `64` 层目录深度；
+  放宽任何值必须单独 review。
+- 权威 JSON `upsert_many` 固定为最多 `10,000` 项、每 `200` 项一个原子替换。前块成功、后块失败时前块保持
+  durable，调用方做 exact retry；既有 projection tracking 在权威写入前标记 dirty，写后标记失败则使查询
+  fail closed，rebuild 从 JSON 权威事实对账。
+- 首版基准使用 `10,000` 条完全人工、无路径的候选/导入记录和 `50` 个 chunk；记录 warmup/sample 的同机
+  基线，但不把 wall-clock 作为跨机器 SLA。
+- 外部 `modType` 只保留为不可信 metadata hint，不在 Slice 1 创建默认分类映射；映射和来源 UI 留到后续
+  adapter/UI Slice。
+- Slice 1 仅交付领域契约、ports、JSON provenance/有界写入协调和临时 fixture 矩阵；不建立 SQLite batch
+  journal、source registry、真实目录扫描、XML parser、materializer、Tauri command 或游戏目录写入。
+
 这些确认项只影响实现细节，不改变本文的只读来源、显式预览、复用安全导入链路和默认不安装边界。

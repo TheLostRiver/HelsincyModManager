@@ -636,19 +636,24 @@ fn validate_catalog(catalog: &ModRevisionCatalogV2) -> Result<()> {
                 "mod revision catalog contains a revision owner mismatch"
             );
         }
-        if let StoredModOriginProvenance::MigratedV1 {
-            legacy_mod_id,
-            legacy_package_id,
-        } = &logical_mod.origin_provenance
-        {
-            let origin_revision = revisions_by_id
-                .get(logical_mod.origin_revision_id.as_str())
-                .ok_or_else(|| anyhow::anyhow!("mod revision catalog is corrupted"))?;
-            anyhow::ensure!(
-                legacy_mod_id == logical_mod.mod_id.as_str()
-                    && legacy_package_id == &origin_revision.package_id,
-                "migration provenance does not match origin revision"
-            );
+        match &logical_mod.origin_provenance {
+            StoredModOriginProvenance::Imported => {}
+            StoredModOriginProvenance::ExternalImport { provenance } => provenance
+                .validate()
+                .context("external import provenance is invalid")?,
+            StoredModOriginProvenance::MigratedV1 {
+                legacy_mod_id,
+                legacy_package_id,
+            } => {
+                let origin_revision = revisions_by_id
+                    .get(logical_mod.origin_revision_id.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("mod revision catalog is corrupted"))?;
+                anyhow::ensure!(
+                    legacy_mod_id == logical_mod.mod_id.as_str()
+                        && legacy_package_id == &origin_revision.package_id,
+                    "migration provenance does not match origin revision"
+                );
+            }
         }
     }
     Ok(())

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use hmm_core::{ModId, ModRevisionId, PreviewImageRejectionReason};
+use hmm_core::{ExternalImportProvenance, ModId, ModRevisionId, PreviewImageRejectionReason};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -90,6 +90,9 @@ pub struct StoredLogicalMod {
 )]
 pub enum StoredModOriginProvenance {
     Imported,
+    ExternalImport {
+        provenance: ExternalImportProvenance,
+    },
     MigratedV1 {
         legacy_mod_id: String,
         legacy_package_id: String,

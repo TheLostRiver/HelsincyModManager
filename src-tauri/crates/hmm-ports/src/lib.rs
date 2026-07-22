@@ -4,6 +4,7 @@ mod cancellation;
 mod category;
 mod diagnostics_environment;
 mod diagnostics_health;
+mod external_import;
 mod game_launch;
 mod game_prerequisites;
 mod game_running;
@@ -36,6 +37,12 @@ pub use cancellation::{CancellationToken, NeverCancelled};
 pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
+pub use external_import::{
+    ExternalImportBatchRepository, ExternalImportMaterializeRequest,
+    ExternalImportMaterializedPackage, ExternalImportMaterializer, ExternalImportScanRequest,
+    ExternalImportScanResult, ExternalImportScanner, ExternalImportSelectionCompareAndSwapRequest,
+    ExternalImportSelectionCompareAndSwapResult,
+};
 pub use game_launch::{
     GameLaunchError, GameLaunchMethod, GameLaunchReceipt, GameLaunchRunner, GameLauncher,
 };
