@@ -3,6 +3,8 @@ mod app_settings_repository;
 mod audit_log;
 mod diagnostics_environment;
 mod diagnostics_health;
+mod external_import_scanner;
+mod external_import_source_registry;
 mod game_config_repository;
 mod game_directory_probe;
 mod game_discovery;
@@ -42,6 +44,10 @@ pub use app_settings_repository::JsonAppSettingsRepository;
 pub use audit_log::FileSystemAuditLogWriter;
 pub use diagnostics_environment::SystemDiagnosticsEnvironmentProvider;
 pub use diagnostics_health::DiagnosticsEvidenceHealthState;
+pub use external_import_scanner::HuntingBoxDirectoryScanner;
+pub use external_import_source_registry::{
+    HuntingBoxDirectorySourceRegistry, HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID,
+};
 pub use game_config_repository::JsonGameConfigRepository;
 pub use game_directory_probe::{RealGameDirectoryProbe, RealGameDirectoryProbeFactory};
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
@@ -72,6 +78,7 @@ pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
 pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
+pub use sqlite::SqliteExternalImportBatchRepository;
 pub use sqlite::SqliteProfileRepository;
 pub use sqlite::SqliteSaveBackupBackgroundSettingsRepository;
 pub use sqlite::SqliteSaveBackupRepository;

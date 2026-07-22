@@ -71,6 +71,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 手动后端维护：`maintain_thumbnail_cache`
 - 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`
 - 取消长任务：`cancel_task`
+- T17 Slice 2 只读迁移预览：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
@@ -133,6 +134,30 @@ pub struct CommandErrorDto {
 ```
 
 当前 `CommandErrorDto` 只有 `code` 和 `message`。后续新增高风险或长任务 command 时，应扩展为上面的通用形态，旧 command 可以分阶段迁移。
+
+### T17 Slice 2 只读迁移预览
+
+当前仅支持 `hunting_box_directory_v1` 的 Windows + MHW:I 迁移预览。原生目录选择器只在 Rust 内返回路径，
+路径立即登记到短生命周期的后端 source registry；前端永远不接收、提交或记录该路径。此切片不提供 React
+迁移页面、selection、物化、实际导入、安装、启用或游戏目录写入。
+
+| command | 输入 | 返回 |
+| --- | --- | --- |
+| `select_external_import_source` | 无 | `ExternalImportSourceDto \| null`；取消原生选择器时返回 `null` |
+| `start_external_import_scan` | `sourceId` | `{ task: TaskStartedDto, batchId }` |
+| `get_external_import_preview` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportPreviewPageDto` |
+
+`sourceId` 与 `batchId` 必须是受限字符集的 opaque ID；路径、URI、空白或超长值整体拒绝。preview cursor 是
+后端解释的十进制 offset token，前端应只复用响应的下一 cursor，省略时从 `0` 开始；`limit` 默认 `50`、最大
+`100`，不在 `1..=100` 的值整体拒绝。响应只包含 batch/source adapter 的稳定 ID、scan/import status、candidate ID、受限 metadata hint、文件数、
+总字节数、preview/conflict/reason code、总数和下一 cursor；不得包含 source fingerprint、source item key hash、
+content fingerprint、路径、XML、archive/sandbox/cache ref 或第三方文件内容。
+
+稳定错误至少包括 `external_import_source_picker_unavailable`、`external_import_source_unavailable`、
+`external_import_source_id_invalid`、`external_import_batch_id_invalid`、
+`external_import_preview_cursor_invalid`、`external_import_preview_limit_invalid`、
+`external_import_task_unavailable`、`external_import_batch_unavailable`、`external_import_scan_failed` 和
+`external_import_clock_unavailable`。错误 message 不能回显路径或底层 I/O 文本。
 
 ## 错误契约
 
@@ -310,6 +335,12 @@ TaskProgressEventDto
 | `mod_import` | `mod_import.prepare.completed` | prepare 阶段已完成，后续结果通过查询或持久化链路获取 |
 | `mod_import` | `mod_import.analyze.processing` | 包结构和依赖分析 |
 | `mod_import` | `mod_import.commit.processing` | 写入游戏实例前的 plan 落地 |
+| `mod_import` | `external_import.scan.queued` | 第三方来源只读扫描已登记，`resultRef` 为 opaque batch ID |
+| `mod_import` | `external_import.scan.discovering` | 只读枚举来源根目录的直接候选，不获取 game/profile 写锁 |
+| `mod_import` | `external_import.scan.fingerprinting` | 受限 XML 解析、资源计数和内容指纹阶段；事件不包含候选明细 |
+| `mod_import` | `external_import.scan.completed` | 脱敏 preview 已在短 SQLite 事务中持久化，明细通过分页 query 获取 |
+| `mod_import` | `external_import.scan.failed` | 扫描失败；`error` 只携带稳定 external-import code |
+| `mod_import` | `external_import.scan.cancelled` | 扫描在目录/XML/hash 安全点取消；不会执行物化或游戏写入 |
 | `install` | `install.queued` | 安装任务已登记，等待后续执行 |
 | `install` | `install.plan.building` | 后端正在从已导入 Mod 和游戏 adapter 重建 `InstallPlan` |
 | `install` | `install.commit.processing` | 后端正在执行受写锁保护的 backup / commit / manifest 流程 |
@@ -348,7 +379,7 @@ TaskProgressEventDto
 
 - 每个进度事件必须携带 `taskId`。
 - 前端不能靠“当前页面只有一个任务”来匹配事件。
-- 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。
+- 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。T17 scan 在目录/XML/hash 阶段可取消；写入 preview 的短 SQLite 事务进入取消屏障后以 completed/failed 终态为准。通用 `mod_import.cancelled` 事件可能先由 `cancel_task` 发出，scan runner 随后会发送带同一 `taskId` 的 `external_import.scan.cancelled` 终态。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 
