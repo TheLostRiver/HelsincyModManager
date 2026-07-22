@@ -38,10 +38,11 @@ pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
 pub use external_import::{
-    ExternalImportBatchRepository, ExternalImportMaterializeRequest,
+    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportMaterializeRequest,
     ExternalImportMaterializedPackage, ExternalImportMaterializer, ExternalImportScanRequest,
     ExternalImportScanResult, ExternalImportScanner, ExternalImportSelectionCompareAndSwapRequest,
-    ExternalImportSelectionCompareAndSwapResult,
+    ExternalImportSelectionCompareAndSwapResult, ExternalImportSourceRegistration,
+    ExternalImportSourceRegistry,
 };
 pub use game_launch::{
     GameLaunchError, GameLaunchMethod, GameLaunchReceipt, GameLaunchRunner, GameLauncher,

@@ -6,6 +6,8 @@ use thiserror::Error;
 pub const EXTERNAL_IMPORT_SELECTION_MUTATION_MAX_ITEMS: usize = 200;
 pub const EXTERNAL_IMPORT_SELECTION_MAX_ITEMS: usize = 10_000;
 
+pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_CANDIDATES: u64 =
+    EXTERNAL_IMPORT_SELECTION_MAX_ITEMS as u64;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_FILES: u64 = 1_000_000;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_MATERIALIZATION_BYTES: u64 = 64 * 1024 * 1024 * 1024;
@@ -125,6 +127,10 @@ impl Default for ExternalImportMaterializationBudget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExternalImportResourceBudget {
+    /// Bounds the number of root-level source entries the scanner may retain for one preview.
+    /// This prevents empty or malformed directories from bypassing file and byte budgets.
+    #[serde(default = "default_external_import_batch_max_candidates")]
+    pub max_total_candidates: u64,
     pub max_total_files: u64,
     pub max_total_source_bytes: u64,
     pub max_total_materialization_bytes: u64,
@@ -134,6 +140,7 @@ pub struct ExternalImportResourceBudget {
 impl Default for ExternalImportResourceBudget {
     fn default() -> Self {
         Self {
+            max_total_candidates: DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_CANDIDATES,
             max_total_files: DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_FILES,
             max_total_source_bytes: DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_SOURCE_BYTES,
             max_total_materialization_bytes:
@@ -141,6 +148,10 @@ impl Default for ExternalImportResourceBudget {
             materialization: ExternalImportMaterializationBudget::default(),
         }
     }
+}
+
+fn default_external_import_batch_max_candidates() -> u64 {
+    DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_CANDIDATES
 }
 
 impl ExternalImportResourceBudget {
