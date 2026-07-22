@@ -1,5 +1,8 @@
 use crate::mod_revision_catalog::{JsonModImportResultRepository, ModImportCatalogWriteFailure};
-use hmm_core::{ModId, ModRevisionId, PreviewImageRejectionReason};
+use hmm_core::{
+    ExternalImportAdapterId, ExternalImportBatchId, ExternalImportProvenance, ModId, ModRevisionId,
+    PreviewImageRejectionReason,
+};
 use hmm_ports::{
     ModImportCatalogUpsert, ModImportResultRepository, StoredImportPreviewImage, StoredLogicalMod,
     StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
@@ -8,6 +11,7 @@ use hmm_ports::{
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 #[test]
 fn mod_import_catalog_migrates_v1_record_without_losing_identity_or_provenance() {
@@ -528,6 +532,129 @@ fn mod_import_catalog_upsert_many_rejects_batches_over_hard_limit_before_writing
     assert!(repo.list_mods().expect("list empty catalog").is_empty());
 }
 
+#[test]
+fn mod_import_catalog_upsert_many_10000_entries_use_exactly_50_atomic_writes() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let upserts = benchmark_upserts();
+
+    repo.upsert_many(&upserts)
+        .expect("10,000 artificial upserts succeed");
+    assert_eq!(repo.catalog_save_count_for_test(), 50);
+    assert_eq!(repo.list_mods().expect("list imported Mods").len(), 10_000);
+
+    repo.upsert_many(&upserts)
+        .expect("exact retry of 10,000 artificial upserts succeeds");
+    assert_eq!(repo.catalog_save_count_for_test(), 50);
+}
+
+#[test]
+#[ignore = "release-only deterministic baseline; run explicitly with --ignored --nocapture"]
+fn mod_import_catalog_upsert_many_10000_baseline() {
+    const WARMUP_SAMPLES: usize = 5;
+    const MEASURED_SAMPLES: usize = 40;
+
+    let upserts = benchmark_upserts();
+    for _ in 0..WARMUP_SAMPLES {
+        let _ = benchmark_sample(&upserts);
+    }
+
+    let mut samples_millis = (0..MEASURED_SAMPLES)
+        .map(|_| benchmark_sample(&upserts).as_secs_f64() * 1_000.0)
+        .collect::<Vec<_>>();
+    samples_millis.sort_by(f64::total_cmp);
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "fixture": "external_import_artificial_v1",
+            "candidateCount": 10_000,
+            "chunkSize": 200,
+            "chunkCount": 50,
+            "warmupSamples": WARMUP_SAMPLES,
+            "measuredSamples": MEASURED_SAMPLES,
+            "medianMillis": samples_millis[MEASURED_SAMPLES / 2],
+            "p95Millis": samples_millis[37],
+            "minMillis": samples_millis[0],
+            "maxMillis": samples_millis[MEASURED_SAMPLES - 1],
+        })
+    );
+}
+
+#[test]
+fn mod_import_catalog_preserves_external_import_provenance_and_rejects_invalid_values() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let external_revision = revision(
+        "external-revision",
+        "external-mod",
+        "external-package",
+        "task-a",
+    );
+    let provenance = ExternalImportProvenance {
+        adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
+        batch_id: ExternalImportBatchId::new("batch-a"),
+        source_item_key_hash: "source-item-key-hash".to_owned(),
+        content_fingerprint: "content-fingerprint".to_owned(),
+        imported_at_unix_millis: 42,
+    };
+    let upsert = ModImportCatalogUpsert {
+        logical_mod: StoredLogicalMod {
+            mod_id: ModId::new("external-mod"),
+            origin_revision_id: external_revision.revision_id.clone(),
+            display_revision_id: external_revision.revision_id.clone(),
+            origin_provenance: StoredModOriginProvenance::ExternalImport {
+                provenance: provenance.clone(),
+            },
+        },
+        revision: external_revision,
+    };
+
+    repo.upsert_many(std::slice::from_ref(&upsert))
+        .expect("external provenance is durable");
+    assert_eq!(
+        repo.get_mod(&ModId::new("external-mod"))
+            .expect("read external Mod")
+            .expect("external Mod exists")
+            .origin_provenance,
+        StoredModOriginProvenance::ExternalImport { provenance }
+    );
+
+    let invalid_revision = revision(
+        "invalid-revision",
+        "invalid-mod",
+        "invalid-package",
+        "task-b",
+    );
+    let invalid = ModImportCatalogUpsert {
+        logical_mod: StoredLogicalMod {
+            mod_id: ModId::new("invalid-mod"),
+            origin_revision_id: invalid_revision.revision_id.clone(),
+            display_revision_id: invalid_revision.revision_id.clone(),
+            origin_provenance: StoredModOriginProvenance::ExternalImport {
+                provenance: ExternalImportProvenance {
+                    adapter_id: ExternalImportAdapterId::new(""),
+                    batch_id: ExternalImportBatchId::new("batch-b"),
+                    source_item_key_hash: "source-item-key-hash".to_owned(),
+                    content_fingerprint: "content-fingerprint".to_owned(),
+                    imported_at_unix_millis: 43,
+                },
+            },
+        },
+        revision: invalid_revision,
+    };
+    let error = repo
+        .upsert_many(&[invalid])
+        .expect_err("invalid opaque provenance is rejected before persistence");
+    assert!(error
+        .to_string()
+        .contains("external import provenance is invalid"));
+    assert!(repo
+        .get_mod(&ModId::new("invalid-mod"))
+        .expect("read invalid Mod")
+        .is_none());
+}
+
 fn logical_mod(mod_id: &str, revision_id: &str) -> StoredLogicalMod {
     let revision_id = ModRevisionId::new(revision_id);
     StoredLogicalMod {
@@ -550,6 +677,35 @@ fn revision(revision_id: &str, mod_id: &str, package_id: &str, task_id: &str) ->
             reason: PreviewImageRejectionReason::Missing,
         },
     }
+}
+
+fn benchmark_upserts() -> Vec<ModImportCatalogUpsert> {
+    (0..10_000)
+        .map(|index| {
+            let mod_id = format!("benchmark-mod-{index:05}");
+            let revision_id = format!("benchmark-revision-{index:05}");
+            ModImportCatalogUpsert {
+                logical_mod: logical_mod(&mod_id, &revision_id),
+                revision: revision(
+                    &revision_id,
+                    &mod_id,
+                    &format!("benchmark-package-{index:05}"),
+                    "benchmark-task",
+                ),
+            }
+        })
+        .collect()
+}
+
+fn benchmark_sample(upserts: &[ModImportCatalogUpsert]) -> std::time::Duration {
+    let temp = tempfile::tempdir().expect("benchmark temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let started = Instant::now();
+    repo.upsert_many(upserts)
+        .expect("artificial benchmark upsert succeeds");
+    let elapsed = started.elapsed();
+    assert_eq!(repo.catalog_save_count_for_test(), 50);
+    elapsed
 }
 
 fn analysis(

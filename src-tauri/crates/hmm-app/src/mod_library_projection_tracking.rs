@@ -354,9 +354,10 @@ mod tests {
     use super::*;
     use hmm_core::{Category, PreviewImageRejectionReason};
     use hmm_ports::{
-        ModLibraryProfileProjection, ModLibraryProfileProjectionState,
+        ModImportCatalogUpsert, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
         ModLibraryProjectionReadiness, ModLibraryProjectionSnapshot, ModLibraryProjectionState,
-        StoredImportPreviewImage, StoredModPackageMetadata,
+        StoredImportPreviewImage, StoredLogicalMod, StoredModOriginProvenance,
+        StoredModPackageMetadata, StoredModRevision,
     };
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::mpsc;
@@ -371,6 +372,15 @@ mod tests {
     }
 
     impl FakeProjectionRepository {
+        fn available() -> Self {
+            Self {
+                fail_global_dirty_calls: HashSet::new(),
+                fail_profile_dirty_calls: HashSet::new(),
+                global_dirty_calls: AtomicUsize::new(0),
+                profile_dirty_calls: AtomicUsize::new(0),
+            }
+        }
+
         fn failing_global_dirty() -> Self {
             Self {
                 fail_global_dirty_calls: HashSet::from([1, 2, 3]),
@@ -458,9 +468,39 @@ mod tests {
     }
 
     impl ModImportResultRepository for RecordingCatalogRepository {
+        fn upsert_many(&self, _upserts: &[ModImportCatalogUpsert]) -> Result<()> {
+            self.wrote.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
         fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> Result<()> {
             self.wrote.store(true, Ordering::SeqCst);
             Ok(())
+        }
+
+        fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
+            Ok(Vec::new())
+        }
+
+        fn get_analysis(&self, _mod_id: &str) -> Result<Option<StoredModImportAnalysis>> {
+            Ok(None)
+        }
+    }
+
+    #[derive(Default)]
+    struct PartiallyFailingCatalogRepository {
+        committed_first_chunk: AtomicBool,
+    }
+
+    impl ModImportResultRepository for PartiallyFailingCatalogRepository {
+        fn upsert_many(&self, _upserts: &[ModImportCatalogUpsert]) -> Result<()> {
+            // Models a JSON repository that durably committed an earlier chunk before a later one failed.
+            self.committed_first_chunk.store(true, Ordering::SeqCst);
+            anyhow::bail!("simulated later catalog chunk failure")
+        }
+
+        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> Result<()> {
+            anyhow::bail!("not used by this test repository")
         }
 
         fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
@@ -642,6 +682,87 @@ mod tests {
         assert!(delegate.wrote.load(Ordering::SeqCst));
         assert_eq!(projection.global_dirty_calls.load(Ordering::SeqCst), 2);
         assert!(freshness_guard.global_is_unavailable());
+    }
+
+    #[test]
+    fn catalog_upsert_many_remains_durable_and_fails_closed_when_post_commit_dirty_marking_fails() {
+        let projection = Arc::new(FakeProjectionRepository::failing_second_global_dirty());
+        let delegate = Arc::new(RecordingCatalogRepository::default());
+        let freshness_guard = Arc::new(ModLibraryProjectionFreshnessGuard::default());
+        let repository = ProjectionTrackingModImportResultRepository::new(
+            delegate.clone(),
+            projection.clone(),
+            freshness_guard.clone(),
+        );
+        let revision_id = ModRevisionId::new("revision-a");
+        let upsert = ModImportCatalogUpsert {
+            logical_mod: StoredLogicalMod {
+                mod_id: ModId::new("mod-a"),
+                origin_revision_id: revision_id.clone(),
+                display_revision_id: revision_id.clone(),
+                origin_provenance: StoredModOriginProvenance::Imported,
+            },
+            revision: StoredModRevision {
+                revision_id,
+                mod_id: ModId::new("mod-a"),
+                import_task_id: "task-a".to_owned(),
+                package_id: "package-a".to_owned(),
+                display_name: "Alpha".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::Missing,
+                },
+            },
+        };
+
+        repository
+            .upsert_many(&[upsert])
+            .expect("catalog fact remains durable when freshness update fails");
+
+        assert!(delegate.wrote.load(Ordering::SeqCst));
+        assert_eq!(projection.global_dirty_calls.load(Ordering::SeqCst), 2);
+        assert!(freshness_guard.global_is_unavailable());
+    }
+
+    #[test]
+    fn catalog_upsert_many_keeps_projection_dirty_when_a_later_chunk_fails() {
+        let projection = Arc::new(FakeProjectionRepository::available());
+        let delegate = Arc::new(PartiallyFailingCatalogRepository::default());
+        let freshness_guard = Arc::new(ModLibraryProjectionFreshnessGuard::default());
+        let repository = ProjectionTrackingModImportResultRepository::new(
+            delegate.clone(),
+            projection.clone(),
+            freshness_guard.clone(),
+        );
+
+        let error = repository
+            .upsert_many(&[ModImportCatalogUpsert {
+                logical_mod: StoredLogicalMod {
+                    mod_id: ModId::new("mod-a"),
+                    origin_revision_id: ModRevisionId::new("revision-a"),
+                    display_revision_id: ModRevisionId::new("revision-a"),
+                    origin_provenance: StoredModOriginProvenance::Imported,
+                },
+                revision: StoredModRevision {
+                    revision_id: ModRevisionId::new("revision-a"),
+                    mod_id: ModId::new("mod-a"),
+                    import_task_id: "task-a".to_owned(),
+                    package_id: "package-a".to_owned(),
+                    display_name: "Alpha".to_owned(),
+                    metadata: StoredModPackageMetadata::default(),
+                    preview_image: StoredImportPreviewImage::Fallback {
+                        reason: PreviewImageRejectionReason::Missing,
+                    },
+                },
+            }])
+            .expect_err("a later catalog chunk failure remains visible to the caller");
+
+        assert!(error
+            .to_string()
+            .contains("simulated later catalog chunk failure"));
+        assert!(delegate.committed_first_chunk.load(Ordering::SeqCst));
+        assert_eq!(projection.global_dirty_calls.load(Ordering::SeqCst), 1);
+        assert!(!freshness_guard.global_is_unavailable());
     }
 
     #[test]

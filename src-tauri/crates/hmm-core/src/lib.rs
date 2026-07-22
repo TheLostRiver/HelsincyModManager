@@ -1,4 +1,5 @@
 mod category;
+mod external_import;
 mod game;
 mod install;
 mod mod_metadata;
@@ -11,6 +12,26 @@ mod save_backup;
 mod save_directory;
 
 pub use category::{Category, CategoryLabel};
+pub use external_import::{
+    ExternalImportAdapterId, ExternalImportBatch, ExternalImportBatchId,
+    ExternalImportBatchImportStatus, ExternalImportCandidate, ExternalImportCandidateId,
+    ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportConflictResolution,
+    ExternalImportItemResult, ExternalImportItemStatus, ExternalImportMaterializationBudget,
+    ExternalImportMetadataHint, ExternalImportProvenance, ExternalImportProvenanceError,
+    ExternalImportReasonCode, ExternalImportResourceBudget, ExternalImportResourceUsage,
+    ExternalImportScanStatus, ExternalImportSelection, ExternalImportSelectionDecision,
+    ExternalImportSelectionEntry, ExternalImportSelectionError, ExternalImportSelectionId,
+    ExternalImportSelectionMutation, ExternalImportSelectionMutationResult,
+    ExternalImportSelectionStatus, ExternalImportSource, ExternalImportSourceId,
+    DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_FILES,
+    DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_MATERIALIZATION_BYTES,
+    DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_SOURCE_BYTES,
+    DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_DEPTH,
+    DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_FILES,
+    DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_SINGLE_FILE_BYTES,
+    DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_TOTAL_BYTES, EXTERNAL_IMPORT_SELECTION_MAX_ITEMS,
+    EXTERNAL_IMPORT_SELECTION_MUTATION_MAX_ITEMS,
+};
 pub use game::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
     GameId, GameIdError, GameInstance, GameSetupErrorCode, GameSetupStatus, MHW_GAME_ID,
@@ -19,10 +40,9 @@ pub use install::{
     FileLayer, InstallAction, InstallConflict, InstallFileProvider, InstallManifest,
     InstallManifestEntry, InstallManifestStatus, InstallManifestStatusConsumption,
     InstallManifestValidationError, InstallPlan, InstallPlanValidationError, InstallRecoveryRecord,
-    InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
-    InstallRecoveryRecordTransitionError, InstallTargetPath, InstallTargetPathError,
-    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
-    INSTALL_MANIFEST_SCHEMA_VERSION, INSTALL_MANIFEST_SCHEMA_VERSION_V1,
+    InstallRecoveryRecordEntry, InstallRecoveryRecordStatus, InstallRecoveryRecordTransitionError,
+    InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, ModRevisionId,
+    PackageFileId, ProfileId, INSTALL_MANIFEST_SCHEMA_VERSION, INSTALL_MANIFEST_SCHEMA_VERSION_V1,
     INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 pub use mod_metadata::ModMetadataOverlay;
@@ -45,9 +65,8 @@ pub use reinstall::{
 };
 pub use replacement::{
     LocalizedText, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-    ReplacementCatalog,
-    ReplacementCatalogVersion, ReplacementError, ReplacementSourceId, ReplacementTarget,
-    ReplacementTargetId, ReplacementTargetKind,
+    ReplacementCatalog, ReplacementCatalogVersion, ReplacementError, ReplacementSourceId,
+    ReplacementTarget, ReplacementTargetId, ReplacementTargetKind,
 };
 pub use retarget::{
     ReplacementAnalysis, ReplacementSource, ReplacementWarning, RetargetAction, RetargetError,
@@ -66,3 +85,6 @@ pub use save_directory::{
     SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
     SteamAccountProfileSummary, STEAM_ID64_ACCOUNT_ID_OFFSET,
 };
+
+#[cfg(test)]
+mod external_import_tests;
