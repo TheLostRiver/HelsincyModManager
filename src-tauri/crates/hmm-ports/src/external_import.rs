@@ -2,8 +2,8 @@ use anyhow::Result;
 use hmm_core::{
     ExternalImportBatch, ExternalImportBatchId, ExternalImportCandidate, ExternalImportCandidateId,
     ExternalImportItemResult, ExternalImportResourceBudget, ExternalImportResourceUsage,
-    ExternalImportSelection, ExternalImportSelectionId, ExternalImportSource,
-    ExternalImportSourceId,
+    ExternalImportSelection, ExternalImportSelectionError, ExternalImportSelectionId,
+    ExternalImportSource, ExternalImportSourceId,
 };
 
 /// A path-free lookup result for an ephemeral external source registration.
@@ -21,6 +21,15 @@ pub trait ExternalImportSourceRegistry: Send + Sync {
         &self,
         source_id: &ExternalImportSourceId,
     ) -> Result<Option<ExternalImportSourceRegistration>>;
+
+    /// Finds a newly selected ephemeral source that exactly matches a durable, protected batch
+    /// fingerprint. Neither a source root nor the fingerprint crosses the Tauri boundary.
+    fn resolve_matching_source(
+        &self,
+        _source_fingerprint: &str,
+    ) -> Result<Option<ExternalImportSourceRegistration>> {
+        Ok(None)
+    }
 }
 
 pub struct ExternalImportScanRequest<'a> {
@@ -68,11 +77,18 @@ pub struct ExternalImportMaterializedPackage {
     pub resource_usage: ExternalImportResourceUsage,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalImportMaterializationOutcome {
+    Materialized(ExternalImportMaterializedPackage),
+    /// The source no longer matches the preview fingerprint or safe structure.
+    SourceChanged,
+}
+
 pub trait ExternalImportMaterializer: Send + Sync {
     fn materialize(
         &self,
         request: ExternalImportMaterializeRequest<'_>,
-    ) -> Result<ExternalImportMaterializedPackage>;
+    ) -> Result<ExternalImportMaterializationOutcome>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +101,36 @@ pub struct ExternalImportSelectionCompareAndSwapRequest<'a> {
 pub enum ExternalImportSelectionCompareAndSwapResult {
     Applied(ExternalImportSelection),
     RevisionConflict { current_revision: u64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalImportSealAndStartRequest<'a> {
+    pub selection_id: &'a ExternalImportSelectionId,
+    pub expected_revision: u64,
+    pub now_unix_millis: u64,
+    pub resource_budget: &'a ExternalImportResourceBudget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalImportSealAndStartResult {
+    Started {
+        batch: ExternalImportBatch,
+        selection: Box<ExternalImportSelection>,
+    },
+    RevisionConflict {
+        current_revision: u64,
+    },
+    SelectionRejected {
+        error: ExternalImportSelectionError,
+    },
+    BatchNotStartable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalImportItemResultPage {
+    pub results: Vec<ExternalImportItemResult>,
+    pub total_count: usize,
+    pub next_offset: Option<usize>,
 }
 
 pub trait ExternalImportBatchRepository: Send + Sync {
@@ -137,6 +183,32 @@ pub trait ExternalImportBatchRepository: Send + Sync {
         request: ExternalImportSelectionCompareAndSwapRequest<'_>,
     ) -> Result<ExternalImportSelectionCompareAndSwapResult>;
 
+    /// Seals an editing selection and transitions the containing batch to `running` inside one
+    /// short repository transaction. File I/O must happen only after this call returns.
+    fn seal_selection_and_start(
+        &self,
+        _request: ExternalImportSealAndStartRequest<'_>,
+    ) -> Result<ExternalImportSealAndStartResult> {
+        anyhow::bail!("external import sealed start is not supported by this repository")
+    }
+
+    /// Restarts a terminal import batch while preserving its already sealed selection fact.
+    fn restart_batch(
+        &self,
+        _batch_id: &ExternalImportBatchId,
+    ) -> Result<Option<ExternalImportBatch>> {
+        anyhow::bail!("external import batch retry is not supported by this repository")
+    }
+
+    /// Marks batches left `running` by a previous process as failed while preserving their sealed
+    /// selection and already durable item results. A later explicit retry performs source
+    /// re-association and reconciliation; startup must never resume source I/O automatically.
+    fn recover_interrupted_batches(&self) -> Result<usize> {
+        anyhow::bail!(
+            "external import interrupted batch recovery is not supported by this repository"
+        )
+    }
+
     fn append_item_results(
         &self,
         batch_id: &ExternalImportBatchId,
@@ -147,4 +219,14 @@ pub trait ExternalImportBatchRepository: Send + Sync {
         &self,
         batch_id: &ExternalImportBatchId,
     ) -> Result<Vec<ExternalImportItemResult>>;
+
+    /// Reads a bounded result page in stable scanner candidate order.
+    fn list_item_results_page(
+        &self,
+        _batch_id: &ExternalImportBatchId,
+        _offset: usize,
+        _limit: usize,
+    ) -> Result<ExternalImportItemResultPage> {
+        anyhow::bail!("external import result paging is not supported by this repository")
+    }
 }

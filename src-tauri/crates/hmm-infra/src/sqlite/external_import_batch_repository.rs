@@ -1,10 +1,12 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use hmm_core::{
-    ExternalImportBatch, ExternalImportBatchId, ExternalImportCandidate, ExternalImportItemResult,
+    ExternalImportBatch, ExternalImportBatchId, ExternalImportBatchImportStatus,
+    ExternalImportCandidate, ExternalImportItemResult, ExternalImportScanStatus,
     ExternalImportSelection, ExternalImportSelectionId,
 };
 use hmm_ports::{
-    ExternalImportBatchRepository, ExternalImportCandidatePage,
+    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
+    ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
     ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction};
@@ -257,6 +259,173 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         ))
     }
 
+    fn seal_selection_and_start(
+        &self,
+        request: ExternalImportSealAndStartRequest<'_>,
+    ) -> Result<ExternalImportSealAndStartResult> {
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin external import sealed start transaction")?;
+        let selection_json: Option<String> = transaction
+            .query_row(
+                "SELECT selection_json FROM external_import_selections WHERE selection_id = ?1",
+                rusqlite::params![request.selection_id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("failed to read external import selection for sealed start")?;
+        let Some(selection_json) = selection_json else {
+            anyhow::bail!("external import selection is unavailable");
+        };
+        let mut selection: ExternalImportSelection =
+            deserialize(&selection_json, "external import selection")?;
+        if selection.revision != request.expected_revision {
+            return Ok(ExternalImportSealAndStartResult::RevisionConflict {
+                current_revision: selection.revision,
+            });
+        }
+
+        let batch_json: Option<String> = transaction
+            .query_row(
+                "SELECT batch_json FROM external_import_batches WHERE batch_id = ?1",
+                rusqlite::params![selection.batch_id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("failed to read external import batch for sealed start")?;
+        let Some(batch_json) = batch_json else {
+            anyhow::bail!("external import batch is unavailable");
+        };
+        let mut batch: ExternalImportBatch = deserialize(&batch_json, "external import batch")?;
+        if batch.scan_status != ExternalImportScanStatus::Completed
+            || batch.import_status != ExternalImportBatchImportStatus::Pending
+        {
+            return Ok(ExternalImportSealAndStartResult::BatchNotStartable);
+        }
+
+        let candidates = list_candidates_from_transaction(&transaction, &batch.batch_id)?;
+        if let Err(error) = selection.seal(
+            request.expected_revision,
+            &candidates,
+            request.resource_budget,
+            request.now_unix_millis,
+        ) {
+            return Ok(ExternalImportSealAndStartResult::SelectionRejected { error });
+        }
+        batch.import_status = ExternalImportBatchImportStatus::Running;
+
+        let selection_json = serialize(&selection, "external import sealed selection")?;
+        let batch_json = serialize(&batch, "external import running batch")?;
+        let selection_changed = transaction
+            .execute(
+                "UPDATE external_import_selections SET selection_json = ?2 WHERE selection_id = ?1",
+                rusqlite::params![selection.selection_id.as_str(), selection_json],
+            )
+            .context("failed to write external import sealed selection")?;
+        ensure!(
+            selection_changed == 1,
+            "external import selection is unavailable"
+        );
+        let batch_changed = transaction
+            .execute(
+                "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
+                rusqlite::params![batch.batch_id.as_str(), batch_json],
+            )
+            .context("failed to write external import running batch")?;
+        ensure!(batch_changed == 1, "external import batch is unavailable");
+        transaction
+            .commit()
+            .context("failed to commit external import sealed start")?;
+
+        Ok(ExternalImportSealAndStartResult::Started {
+            batch,
+            selection: Box::new(selection),
+        })
+    }
+
+    fn restart_batch(
+        &self,
+        batch_id: &ExternalImportBatchId,
+    ) -> Result<Option<ExternalImportBatch>> {
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin external import batch retry transaction")?;
+        let batch_json: Option<String> = transaction
+            .query_row(
+                "SELECT batch_json FROM external_import_batches WHERE batch_id = ?1",
+                rusqlite::params![batch_id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("failed to read external import batch for retry")?;
+        let Some(batch_json) = batch_json else {
+            return Ok(None);
+        };
+        let mut batch: ExternalImportBatch = deserialize(&batch_json, "external import batch")?;
+        if !matches!(
+            batch.import_status,
+            ExternalImportBatchImportStatus::CompletedWithErrors
+                | ExternalImportBatchImportStatus::Failed
+                | ExternalImportBatchImportStatus::Cancelled
+        ) {
+            return Ok(None);
+        }
+        batch.import_status = ExternalImportBatchImportStatus::Running;
+        let batch_json = serialize(&batch, "external import retried batch")?;
+        let changed = transaction
+            .execute(
+                "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
+                rusqlite::params![batch.batch_id.as_str(), batch_json],
+            )
+            .context("failed to write external import retried batch")?;
+        ensure!(changed == 1, "external import batch is unavailable");
+        transaction
+            .commit()
+            .context("failed to commit external import batch retry")?;
+        Ok(Some(batch))
+    }
+
+    fn recover_interrupted_batches(&self) -> Result<usize> {
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin external import interrupted batch recovery")?;
+        let mut statement = transaction
+            .prepare("SELECT batch_json FROM external_import_batches")
+            .context("failed to prepare external import interrupted batch query")?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .context("failed to query external import interrupted batches")?;
+        let mut batches: Vec<ExternalImportBatch> =
+            deserialize_rows(rows, "external import batch")?;
+        drop(statement);
+
+        let mut recovered = 0_usize;
+        for batch in &mut batches {
+            if batch.import_status != ExternalImportBatchImportStatus::Running {
+                continue;
+            }
+            batch.import_status = ExternalImportBatchImportStatus::Failed;
+            let batch_json = serialize(batch, "external import recovered batch")?;
+            let changed = transaction
+                .execute(
+                    "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
+                    rusqlite::params![batch.batch_id.as_str(), batch_json],
+                )
+                .context("failed to write external import recovered batch")?;
+            ensure!(changed == 1, "external import batch is unavailable");
+            recovered = recovered
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("external import recovered batch count overflow"))?;
+        }
+        transaction
+            .commit()
+            .context("failed to commit external import interrupted batch recovery")?;
+        Ok(recovered)
+    }
+
     fn append_item_results(
         &self,
         batch_id: &ExternalImportBatchId,
@@ -280,14 +449,24 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
                     result_json = excluded.result_json",
             )
             .context("failed to prepare external import item result write")?;
-        for (ordinal, result) in results.iter().enumerate() {
+        for result in results {
             let result_json = serialize(result, "external import item result")?;
+            let ordinal: Option<i64> = transaction
+                .query_row(
+                    "SELECT ordinal FROM external_import_candidates
+                     WHERE batch_id = ?1 AND candidate_id = ?2",
+                    rusqlite::params![batch_id.as_str(), result.candidate_id.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()
+                .context("failed to resolve external import item result candidate order")?;
+            let ordinal = ordinal
+                .ok_or_else(|| anyhow!("external import item result candidate is unavailable"))?;
             statement
                 .execute(rusqlite::params![
                     batch_id.as_str(),
                     result.candidate_id.as_str(),
-                    i64::try_from(ordinal)
-                        .context("external import item result count is too large")?,
+                    ordinal,
                     result_json,
                 ])
                 .context("failed to append external import item result")?;
@@ -318,6 +497,57 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
             })
             .context("failed to query external import item results")?;
         deserialize_rows(rows, "external import item result")
+    }
+
+    fn list_item_results_page(
+        &self,
+        batch_id: &ExternalImportBatchId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportItemResultPage> {
+        ensure!(
+            limit > 0,
+            "external import item result page limit must be positive"
+        );
+        let offset =
+            i64::try_from(offset).context("external import result page offset is too large")?;
+        let limit =
+            i64::try_from(limit).context("external import result page limit is too large")?;
+        let conn = self.lock_db()?;
+        let total_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM external_import_item_results WHERE batch_id = ?1",
+                rusqlite::params![batch_id.as_str()],
+                |row| row.get(0),
+            )
+            .context("failed to count external import item results")?;
+        let total_count =
+            usize::try_from(total_count).context("external import item result count is invalid")?;
+        let mut statement = conn
+            .prepare(
+                "SELECT result_json
+                 FROM external_import_item_results
+                 WHERE batch_id = ?1
+                 ORDER BY ordinal ASC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .context("failed to prepare external import item result page")?;
+        let rows = statement
+            .query_map(rusqlite::params![batch_id.as_str(), limit, offset], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("failed to query external import item result page")?;
+        let results = deserialize_rows(rows, "external import item result")?;
+        let next_offset = usize::try_from(offset)
+            .ok()
+            .and_then(|offset| offset.checked_add(results.len()))
+            .filter(|next| *next < total_count);
+
+        Ok(ExternalImportItemResultPage {
+            results,
+            total_count,
+            next_offset,
+        })
     }
 }
 
@@ -382,6 +612,26 @@ fn list_candidates_from_connection(
     deserialize_rows(rows, "external import candidate")
 }
 
+fn list_candidates_from_transaction(
+    transaction: &Transaction<'_>,
+    batch_id: &ExternalImportBatchId,
+) -> Result<Vec<ExternalImportCandidate>> {
+    let mut statement = transaction
+        .prepare(
+            "SELECT candidate_json
+             FROM external_import_candidates
+             WHERE batch_id = ?1
+             ORDER BY ordinal ASC",
+        )
+        .context("failed to prepare external import candidate transaction query")?;
+    let rows = statement
+        .query_map(rusqlite::params![batch_id.as_str()], |row| {
+            row.get::<_, String>(0)
+        })
+        .context("failed to query external import candidate transaction rows")?;
+    deserialize_rows(rows, "external import candidate")
+}
+
 fn validate_candidate_batch_ids(
     batch_id: &ExternalImportBatchId,
     candidates: &[ExternalImportCandidate],
@@ -420,8 +670,9 @@ mod tests {
     use super::*;
     use hmm_core::{
         ExternalImportAdapterId, ExternalImportBatchImportStatus, ExternalImportCandidateId,
-        ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportMetadataHint,
-        ExternalImportResourceUsage, ExternalImportScanStatus,
+        ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportItemResult,
+        ExternalImportItemStatus, ExternalImportMetadataHint, ExternalImportResourceBudget,
+        ExternalImportResourceUsage, ExternalImportScanStatus, ExternalImportSelectionMutation,
     };
 
     #[test]
@@ -561,9 +812,205 @@ mod tests {
         );
     }
 
+    #[test]
+    fn sealed_start_persists_selection_and_running_batch_together() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        let mut batch = batch("batch-sealed-start");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let candidate = candidate(&batch.batch_id, "candidate-1");
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, std::slice::from_ref(&candidate))
+            .expect("save scan result");
+        let mut selection = ExternalImportSelection::new(
+            ExternalImportSelectionId::new("selection-sealed-start"),
+            batch.batch_id.clone(),
+            1000,
+        );
+        selection
+            .apply_mutation(
+                0,
+                &[ExternalImportSelectionMutation {
+                    candidate_id: candidate.candidate_id.clone(),
+                    selected: true,
+                    decision: None,
+                }],
+                std::slice::from_ref(&candidate),
+                &ExternalImportResourceBudget::default(),
+                1,
+            )
+            .expect("select candidate");
+        repository
+            .create_selection(&selection)
+            .expect("create selection");
+
+        let result = repository
+            .seal_selection_and_start(ExternalImportSealAndStartRequest {
+                selection_id: &selection.selection_id,
+                expected_revision: selection.revision,
+                now_unix_millis: 2,
+                resource_budget: &ExternalImportResourceBudget::default(),
+            })
+            .expect("sealed start transaction");
+
+        let ExternalImportSealAndStartResult::Started {
+            batch: started_batch,
+            selection: sealed_selection,
+        } = result
+        else {
+            panic!("selection should seal and batch should start");
+        };
+        assert_eq!(
+            started_batch.import_status,
+            ExternalImportBatchImportStatus::Running
+        );
+        assert_eq!(
+            sealed_selection.status,
+            hmm_core::ExternalImportSelectionStatus::Sealed
+        );
+        assert_eq!(
+            repository
+                .get_batch(&batch.batch_id)
+                .expect("read batch")
+                .expect("batch exists")
+                .import_status,
+            ExternalImportBatchImportStatus::Running
+        );
+        assert_eq!(
+            repository
+                .get_selection(&selection.selection_id)
+                .expect("read selection")
+                .expect("selection exists")
+                .status,
+            hmm_core::ExternalImportSelectionStatus::Sealed
+        );
+    }
+
+    #[test]
+    fn startup_recovery_marks_running_batches_failed_without_losing_the_sealed_selection() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        let mut batch = batch("batch-interrupted");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let candidate = candidate(&batch.batch_id, "candidate-1");
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, std::slice::from_ref(&candidate))
+            .expect("save scan result");
+        let mut selection = ExternalImportSelection::new(
+            ExternalImportSelectionId::new("selection-interrupted"),
+            batch.batch_id.clone(),
+            1000,
+        );
+        selection
+            .apply_mutation(
+                0,
+                &[ExternalImportSelectionMutation {
+                    candidate_id: candidate.candidate_id.clone(),
+                    selected: true,
+                    decision: None,
+                }],
+                std::slice::from_ref(&candidate),
+                &ExternalImportResourceBudget::default(),
+                1,
+            )
+            .expect("select candidate");
+        repository
+            .create_selection(&selection)
+            .expect("create selection");
+        repository
+            .seal_selection_and_start(ExternalImportSealAndStartRequest {
+                selection_id: &selection.selection_id,
+                expected_revision: selection.revision,
+                now_unix_millis: 2,
+                resource_budget: &ExternalImportResourceBudget::default(),
+            })
+            .expect("seal selection");
+
+        assert_eq!(
+            repository
+                .recover_interrupted_batches()
+                .expect("recover interrupted batches"),
+            1
+        );
+        assert_eq!(
+            repository
+                .get_batch(&batch.batch_id)
+                .expect("read recovered batch")
+                .expect("batch exists")
+                .import_status,
+            ExternalImportBatchImportStatus::Failed
+        );
+        assert_eq!(
+            repository
+                .get_selection(&selection.selection_id)
+                .expect("read sealed selection")
+                .expect("selection exists")
+                .status,
+            hmm_core::ExternalImportSelectionStatus::Sealed
+        );
+    }
+
+    #[test]
+    fn item_result_pages_follow_candidate_scan_order_across_multiple_appends() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        let mut batch = batch("batch-result-page");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let first = candidate(&batch.batch_id, "candidate-1");
+        let second = candidate(&batch.batch_id, "candidate-2");
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, &[first.clone(), second.clone()])
+            .expect("save scan result");
+
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[ExternalImportItemResult {
+                    candidate_id: second.candidate_id.clone(),
+                    status: ExternalImportItemStatus::Imported,
+                    reason_code: None,
+                    imported_mod_id: None,
+                    retryable: false,
+                }],
+            )
+            .expect("append later candidate result");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[ExternalImportItemResult {
+                    candidate_id: first.candidate_id.clone(),
+                    status: ExternalImportItemStatus::Failed,
+                    reason_code: None,
+                    imported_mod_id: None,
+                    retryable: true,
+                }],
+            )
+            .expect("append first candidate result");
+
+        let page = repository
+            .list_item_results_page(&batch.batch_id, 0, 1)
+            .expect("read result page");
+        assert_eq!(page.total_count, 2);
+        assert_eq!(page.next_offset, Some(1));
+        assert_eq!(page.results[0].candidate_id, first.candidate_id);
+    }
+
     fn batch(id: &str) -> ExternalImportBatch {
         ExternalImportBatch {
             batch_id: ExternalImportBatchId::new(id),
+            source_id: None,
             adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
             source_fingerprint: "private-fingerprint".to_owned(),
             scan_status: ExternalImportScanStatus::Pending,

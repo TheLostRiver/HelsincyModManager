@@ -38,9 +38,11 @@ pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
 pub use external_import::{
-    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportMaterializeRequest,
+    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
+    ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
     ExternalImportMaterializedPackage, ExternalImportMaterializer, ExternalImportScanRequest,
-    ExternalImportScanResult, ExternalImportScanner, ExternalImportSelectionCompareAndSwapRequest,
+    ExternalImportScanResult, ExternalImportScanner, ExternalImportSealAndStartRequest,
+    ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
     ExternalImportSelectionCompareAndSwapResult, ExternalImportSourceRegistration,
     ExternalImportSourceRegistry,
 };

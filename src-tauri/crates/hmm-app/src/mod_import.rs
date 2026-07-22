@@ -4,12 +4,12 @@ use crate::mod_import_diagnostics::{
 use hmm_core::{CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason};
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, CategoryRepository, ModImportPackagePrepareRequest,
-    ModImportPackagePreparer, ModImportResultRepository, ModLibraryProjectionLabel,
-    ModLibraryProjectionRecord, ModMetadataRepository, ModPackageMetadataAnalyzer, NeverCancelled,
-    PreviewImageProcessingResult, StoredImportPreviewImage, StoredLogicalMod,
-    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
-    StoredModRevision, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest, ThumbnailRef,
-    ThumbnailStore,
+    ModImportPackagePreparer, ModImportResultRepository, ModImportSandboxLocator,
+    ModLibraryProjectionLabel, ModLibraryProjectionRecord, ModMetadataRepository,
+    ModPackageMetadataAnalyzer, NeverCancelled, PreviewImageProcessingResult,
+    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
+    StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
+    ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -645,7 +645,7 @@ fn stored_analysis_from_result(
     }
 }
 
-fn stored_revision_from_result(
+pub(crate) fn stored_revision_from_result(
     mod_id: &ModId,
     result: &ModImportAnalysisResult,
 ) -> StoredModRevision {
@@ -863,6 +863,26 @@ impl ModImportPrepareService {
         }
 
         Ok(ModImportPrepareResult { analysis, events })
+    }
+
+    /// Analyzes an already prepared package through the controlled package-id-to-sandbox seam.
+    /// Callers never receive or supply the sandbox filesystem path.
+    pub fn analyze_prepared_package_with_cancellation(
+        &self,
+        task_id: String,
+        package_id: String,
+        sandbox_locator: &dyn ModImportSandboxLocator,
+        cancellation_token: &dyn CancellationToken,
+    ) -> anyhow::Result<ModImportAnalysisResult> {
+        let sandbox_root = sandbox_locator.sandbox_root_for_package(&package_id)?;
+        self.analysis_service.analyze_sandbox_with_cancellation(
+            ModImportAnalysisRequest {
+                task_id,
+                package_id,
+                sandbox_root,
+            },
+            cancellation_token,
+        )
     }
 }
 

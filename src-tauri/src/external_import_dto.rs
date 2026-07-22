@@ -1,11 +1,17 @@
 use crate::dto::TaskStartedDto;
-use hmm_app::{ExternalImportPreviewPage, ExternalImportScanLaunch};
+use hmm_app::{
+    ExternalImportBatchLaunch, ExternalImportPreviewPage, ExternalImportResultPage,
+    ExternalImportScanLaunch,
+};
 use hmm_core::{
     ExternalImportBatch, ExternalImportBatchImportStatus, ExternalImportCandidate,
-    ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportMetadataHint,
-    ExternalImportScanStatus, ExternalImportSource,
+    ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportConflictResolution,
+    ExternalImportItemResult, ExternalImportItemStatus, ExternalImportMetadataHint,
+    ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportScanStatus,
+    ExternalImportSelection, ExternalImportSelectionMutationResult, ExternalImportSelectionStatus,
+    ExternalImportSource,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +51,133 @@ impl From<&ExternalImportScanLaunch> for ExternalImportScanStartedDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExternalImportBatchStartedDto {
+    pub task: TaskStartedDto,
+    pub batch_id: String,
+}
+
+impl From<&ExternalImportBatchLaunch> for ExternalImportBatchStartedDto {
+    fn from(launch: &ExternalImportBatchLaunch) -> Self {
+        Self {
+            task: launch.task.clone().into(),
+            batch_id: launch.batch_id.as_str().to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportSelectionDto {
+    pub selection_id: String,
+    pub revision: u64,
+    pub status: ExternalImportSelectionStatusDto,
+    pub selected_count: usize,
+    pub selected_resource_usage: ExternalImportResourceUsageDto,
+    pub expires_at_unix_millis: u64,
+}
+
+impl From<ExternalImportSelection> for ExternalImportSelectionDto {
+    fn from(selection: ExternalImportSelection) -> Self {
+        Self {
+            selection_id: selection.selection_id.as_str().to_owned(),
+            revision: selection.revision,
+            status: selection.status.into(),
+            selected_count: selection.selected_count(),
+            selected_resource_usage: selection.selected_resource_usage.into(),
+            expires_at_unix_millis: selection.expires_at_unix_millis,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportSelectionMutationResultDto {
+    pub revision: u64,
+    pub selected_count: usize,
+    pub selected_resource_usage: ExternalImportResourceUsageDto,
+}
+
+impl From<ExternalImportSelectionMutationResult> for ExternalImportSelectionMutationResultDto {
+    fn from(result: ExternalImportSelectionMutationResult) -> Self {
+        Self {
+            revision: result.revision,
+            selected_count: result.selected_count,
+            selected_resource_usage: result.selected_resource_usage.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportSelectionMutationInputDto {
+    pub candidate_id: String,
+    pub selected: bool,
+    pub decision: Option<ExternalImportSelectionDecisionInputDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportSelectionDecisionInputDto {
+    pub conflict_resolution: Option<ExternalImportConflictResolutionInputDto>,
+    pub category_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalImportConflictResolutionInputDto {
+    KeepBoth,
+    IgnoreInvalidMetadata,
+}
+
+impl From<ExternalImportConflictResolutionInputDto> for ExternalImportConflictResolution {
+    fn from(value: ExternalImportConflictResolutionInputDto) -> Self {
+        match value {
+            ExternalImportConflictResolutionInputDto::KeepBoth => Self::KeepBoth,
+            ExternalImportConflictResolutionInputDto::IgnoreInvalidMetadata => {
+                Self::IgnoreInvalidMetadata
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalImportSelectionStatusDto {
+    Editing,
+    Sealed,
+    Expired,
+}
+
+impl From<ExternalImportSelectionStatus> for ExternalImportSelectionStatusDto {
+    fn from(status: ExternalImportSelectionStatus) -> Self {
+        match status {
+            ExternalImportSelectionStatus::Editing => Self::Editing,
+            ExternalImportSelectionStatus::Sealed => Self::Sealed,
+            ExternalImportSelectionStatus::Expired => Self::Expired,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportResourceUsageDto {
+    pub file_count: u64,
+    pub source_bytes: u64,
+    pub materialization_bytes: u64,
+}
+
+impl From<ExternalImportResourceUsage> for ExternalImportResourceUsageDto {
+    fn from(usage: ExternalImportResourceUsage) -> Self {
+        Self {
+            file_count: usage.file_count,
+            source_bytes: usage.source_bytes,
+            materialization_bytes: usage.materialization_bytes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExternalImportPreviewPageDto {
     pub batch: ExternalImportPreviewBatchDto,
     pub candidates: Vec<ExternalImportPreviewCandidateDto>,
@@ -59,6 +192,77 @@ impl From<ExternalImportPreviewPage> for ExternalImportPreviewPageDto {
             candidates: page.candidates.into_iter().map(Into::into).collect(),
             total_count: page.total_count,
             next_cursor: page.next_offset.map(|offset| offset.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportBatchResultPageDto {
+    pub batch: ExternalImportPreviewBatchDto,
+    pub results: Vec<ExternalImportItemResultDto>,
+    pub total_count: usize,
+    pub next_cursor: Option<String>,
+}
+
+impl From<ExternalImportResultPage> for ExternalImportBatchResultPageDto {
+    fn from(page: ExternalImportResultPage) -> Self {
+        Self {
+            batch: page.batch.into(),
+            results: page.results.into_iter().map(Into::into).collect(),
+            total_count: page.total_count,
+            next_cursor: page.next_offset.map(|offset| offset.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportItemResultDto {
+    pub candidate_id: String,
+    pub status: ExternalImportItemStatusDto,
+    pub reason_code: Option<String>,
+    pub imported_mod_id: Option<String>,
+    pub retryable: bool,
+}
+
+impl From<ExternalImportItemResult> for ExternalImportItemResultDto {
+    fn from(result: ExternalImportItemResult) -> Self {
+        Self {
+            candidate_id: result.candidate_id.as_str().to_owned(),
+            status: result.status.into(),
+            reason_code: result
+                .reason_code
+                .map(ExternalImportReasonCode::as_str)
+                .map(str::to_owned),
+            imported_mod_id: result
+                .imported_mod_id
+                .map(|mod_id| mod_id.as_str().to_owned()),
+            retryable: result.retryable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalImportItemStatusDto {
+    Imported,
+    AlreadyImported,
+    Skipped,
+    Blocked,
+    Failed,
+    Cancelled,
+}
+
+impl From<ExternalImportItemStatus> for ExternalImportItemStatusDto {
+    fn from(status: ExternalImportItemStatus) -> Self {
+        match status {
+            ExternalImportItemStatus::Imported => Self::Imported,
+            ExternalImportItemStatus::AlreadyImported => Self::AlreadyImported,
+            ExternalImportItemStatus::Skipped => Self::Skipped,
+            ExternalImportItemStatus::Blocked => Self::Blocked,
+            ExternalImportItemStatus::Failed => Self::Failed,
+            ExternalImportItemStatus::Cancelled => Self::Cancelled,
         }
     }
 }
@@ -231,7 +435,8 @@ mod tests {
     use super::*;
     use hmm_core::{
         ExternalImportAdapterId, ExternalImportBatchId, ExternalImportCandidateId,
-        ExternalImportConflictKind, ExternalImportResourceUsage,
+        ExternalImportConflictKind, ExternalImportItemResult, ExternalImportItemStatus,
+        ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportSourceId, ModId,
     };
 
     #[test]
@@ -239,6 +444,7 @@ mod tests {
         let page = ExternalImportPreviewPage {
             batch: ExternalImportBatch {
                 batch_id: ExternalImportBatchId::new("external-import-batch-1"),
+                source_id: None,
                 adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
                 source_fingerprint: "C:/private/source-fingerprint".to_owned(),
                 scan_status: ExternalImportScanStatus::Completed,
@@ -274,6 +480,41 @@ mod tests {
         assert!(value.contains("external-import-candidate-1"));
         assert!(!value.contains("C:/private"));
         assert!(!value.contains("private-content-fingerprint"));
+        assert!(!value.contains("sourceFingerprint"));
+        assert!(!value.contains("sourceItemKeyHash"));
+        assert!(!value.contains("contentFingerprint"));
+    }
+
+    #[test]
+    fn result_dto_omits_source_paths_and_private_digests() {
+        let page = ExternalImportResultPage {
+            batch: ExternalImportBatch {
+                batch_id: ExternalImportBatchId::new("external-import-batch-1"),
+                source_id: Some(ExternalImportSourceId::new("private-source-id")),
+                adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
+                source_fingerprint: "C:/private/source-fingerprint".to_owned(),
+                scan_status: ExternalImportScanStatus::Completed,
+                import_status: ExternalImportBatchImportStatus::CompletedWithErrors,
+                created_at_unix_millis: 1,
+            },
+            results: vec![ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("external-import-candidate-1"),
+                status: ExternalImportItemStatus::Blocked,
+                reason_code: Some(ExternalImportReasonCode::SourceChanged),
+                imported_mod_id: Some(ModId::new("imported-mod-1")),
+                retryable: false,
+            }],
+            total_count: 1,
+            next_offset: None,
+        };
+
+        let value = serde_json::to_string(&ExternalImportBatchResultPageDto::from(page))
+            .expect("serialize external import result dto");
+
+        assert!(value.contains("external-import-candidate-1"));
+        assert!(value.contains("imported-mod-1"));
+        assert!(!value.contains("C:/private"));
+        assert!(!value.contains("private-source-id"));
         assert!(!value.contains("sourceFingerprint"));
         assert!(!value.contains("sourceItemKeyHash"));
         assert!(!value.contains("contentFingerprint"));
