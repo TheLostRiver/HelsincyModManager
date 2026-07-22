@@ -42,6 +42,12 @@ pub trait ModPackageMetadataAnalyzer: Send + Sync {
 
 pub trait ModImportSandboxLocator: Send + Sync {
     fn sandbox_root_for_package(&self, package_id: &str) -> Result<PathBuf>;
+
+    /// Removes an unpersisted task-scoped sandbox by its opaque package identity. Implementations
+    /// must keep the operation inside their controlled sandbox root.
+    fn cleanup_sandbox_for_package(&self, _package_id: &str) -> Result<()> {
+        anyhow::bail!("sandbox cleanup is unavailable")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -135,17 +135,24 @@ pub struct CommandErrorDto {
 
 当前 `CommandErrorDto` 只有 `code` 和 `message`。后续新增高风险或长任务 command 时，应扩展为上面的通用形态，旧 command 可以分阶段迁移。
 
-### T17 Slice 2 只读迁移预览
+### T17 Slice 3 安全物化与批量导入后端契约
 
-当前仅支持 `hunting_box_directory_v1` 的 Windows + MHW:I 迁移预览。原生目录选择器只在 Rust 内返回路径，
-路径立即登记到短生命周期的后端 source registry；前端永远不接收、提交或记录该路径。此切片不提供 React
-迁移页面、selection、物化、实际导入、安装、启用或游戏目录写入。
+已完成的 Slice 2 提供 `hunting_box_directory_v1` 的 Windows + MHW:I 只读来源选择、扫描和分页预览。
+当前 Slice 3 在此基础上增加后端 selection snapshot、task-scoped 安全物化、批量导入编排和结果分页；原生目录
+选择器只在 Rust 内返回路径，路径立即登记到短生命周期的 source registry。前端永远不接收、提交或记录该路径。
+本切片不提供 React 迁移页面，也不安装、启用、获取 game/profile 写锁或写入游戏目录。
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
 | `select_external_import_source` | 无 | `ExternalImportSourceDto \| null`；取消原生选择器时返回 `null` |
 | `start_external_import_scan` | `sourceId` | `{ task: TaskStartedDto, batchId }` |
 | `get_external_import_preview` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportPreviewPageDto` |
+| `create_external_import_selection` | `batchId` | `ExternalImportSelectionDto` |
+| `update_external_import_selection` | `selectionId`、`expectedRevision`、`entries` | `ExternalImportSelectionMutationResultDto` |
+| `select_all_external_import_candidates` | `selectionId`、`expectedRevision` | `ExternalImportSelectionMutationResultDto` |
+| `start_external_import_batch` | `batchId`、`selectionId`、`expectedRevision` | `{ task: TaskStartedDto, batchId }` |
+| `retry_external_import_batch` | `batchId`、已 sealed 的 `selectionId` | `{ task: TaskStartedDto, batchId }` |
+| `get_external_import_batch_result` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportBatchResultPageDto` |
 
 `sourceId` 与 `batchId` 必须是受限字符集的 opaque ID；路径、URI、空白或超长值整体拒绝。preview cursor 是
 后端解释的十进制 offset token，前端应只复用响应的下一 cursor，省略时从 `0` 开始；`limit` 默认 `50`、最大
@@ -153,11 +160,29 @@ pub struct CommandErrorDto {
 总字节数、preview/conflict/reason code、总数和下一 cursor；不得包含 source fingerprint、source item key hash、
 content fingerprint、路径、XML、archive/sandbox/cache ref 或第三方文件内容。
 
+`update_external_import_selection.entries` 必须包含 `1..=200` 个 mutation；每项只包含同一 batch 的 opaque
+`candidateId`、`selected` 和可选的稳定冲突/分类决定。重复、未知、跨 batch、blocked、空 mutation、过期或
+sealed selection 全部整体拒绝，不截断、不部分应用。`select_all_external_import_candidates` 使用固定的后端
+“所有 ready 候选”谓词，不接受前端展开的 candidate ID 数组，并继续受 10,000 项和资源预算限制。
+`start_external_import_batch` 只消费 batch/selection/revision 三元组，并通过短 SQLite 事务封存 selection；
+retry 只可重放 sealed snapshot 中仍可重试的项。结果 cursor 与 preview cursor 一样是十进制 offset token，
+默认 `limit = 50`、最大 `100`，响应只返回 candidate ID、状态、稳定 reason code、可选内部 `modId`、
+`retryable`、总数和下一 cursor。
+
 稳定错误至少包括 `external_import_source_picker_unavailable`、`external_import_source_unavailable`、
 `external_import_source_id_invalid`、`external_import_batch_id_invalid`、
+`external_import_selection_id_invalid`、`external_import_candidate_id_invalid`、
+`external_import_category_id_invalid`、
 `external_import_preview_cursor_invalid`、`external_import_preview_limit_invalid`、
-`external_import_task_unavailable`、`external_import_batch_unavailable`、`external_import_scan_failed` 和
-`external_import_clock_unavailable`。错误 message 不能回显路径或底层 I/O 文本。
+`external_import_task_unavailable`、`external_import_batch_unavailable`、`external_import_scan_failed`、
+`external_import_clock_unavailable`、`external_import_result_cursor_invalid`、
+`external_import_result_limit_invalid`、`external_import_selection_unavailable`、
+`external_import_batch_not_startable`、`external_import_catalog_unavailable`、
+`external_import_category_unavailable`、`external_import_result_request_invalid`、
+`selection_revision_conflict`、`selection_empty`、
+`selection_mutation_empty`、`selection_mutation_limit_exceeded`、`selection_total_limit_exceeded`、
+`selection_resource_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。
+错误 message 不能回显路径或底层 I/O 文本。
 
 ## 错误契约
 
@@ -341,6 +366,13 @@ TaskProgressEventDto
 | `mod_import` | `external_import.scan.completed` | 脱敏 preview 已在短 SQLite 事务中持久化，明细通过分页 query 获取 |
 | `mod_import` | `external_import.scan.failed` | 扫描失败；`error` 只携带稳定 external-import code |
 | `mod_import` | `external_import.scan.cancelled` | 扫描在目录/XML/hash 安全点取消；不会执行物化或游戏写入 |
+| `mod_import` | `external_import.import.queued` | 已封存 selection 的批量导入已登记，`resultRef` 为 opaque batch ID |
+| `mod_import` | `external_import.import.materializing` | 后端正在重新校验来源并在 app-private task scope 物化内部包；不获取 game/profile 写锁 |
+| `mod_import` | `external_import.import.preparing` | 内部包正在复用既有 sandbox 分析链路；事件不包含候选明细或路径 |
+| `mod_import` | `external_import.import.persisting` | JSON authority catalog 正在按有界 chunk 持久化；SQLite projection 仍是可重建读模型 |
+| `mod_import` | `external_import.import.completed` | 批量导入终态已持久化；partial success 通过结果分页查询表达 |
+| `mod_import` | `external_import.import.failed` | 批次级故障停止后续调度；已持久化成功项与结果页不被回滚 |
+| `mod_import` | `external_import.import.cancelled` | 导入在安全检查点取消；已成功项保留，未开始项以可重试取消结果持久化 |
 | `install` | `install.queued` | 安装任务已登记，等待后续执行 |
 | `install` | `install.plan.building` | 后端正在从已导入 Mod 和游戏 adapter 重建 `InstallPlan` |
 | `install` | `install.commit.processing` | 后端正在执行受写锁保护的 backup / commit / manifest 流程 |
@@ -379,7 +411,7 @@ TaskProgressEventDto
 
 - 每个进度事件必须携带 `taskId`。
 - 前端不能靠“当前页面只有一个任务”来匹配事件。
-- 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。T17 scan 在目录/XML/hash 阶段可取消；写入 preview 的短 SQLite 事务进入取消屏障后以 completed/failed 终态为准。通用 `mod_import.cancelled` 事件可能先由 `cancel_task` 发出，scan runner 随后会发送带同一 `taskId` 的 `external_import.scan.cancelled` 终态。
+- 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。T17 scan 在目录/XML/hash 阶段可取消；Slice 3 import 在物化、sandbox 分析和 chunk 间安全点可取消，已成功项保留、未开始项以分页结果表达。写入 preview 或 batch terminal state 的短 SQLite 事务进入取消屏障后以后端终态为准。通用 `mod_import.cancelled` 事件可能先由 `cancel_task` 发出，runner 随后会发送带同一 `taskId` 的 `external_import.scan.cancelled` 或 `external_import.import.cancelled` 终态。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 

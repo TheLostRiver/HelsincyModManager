@@ -3,6 +3,7 @@ mod app_settings_repository;
 mod audit_log;
 mod diagnostics_environment;
 mod diagnostics_health;
+mod external_import_materializer;
 mod external_import_scanner;
 mod external_import_source_registry;
 mod game_config_repository;
@@ -44,6 +45,7 @@ pub use app_settings_repository::JsonAppSettingsRepository;
 pub use audit_log::FileSystemAuditLogWriter;
 pub use diagnostics_environment::SystemDiagnosticsEnvironmentProvider;
 pub use diagnostics_health::DiagnosticsEvidenceHealthState;
+pub use external_import_materializer::HuntingBoxDirectoryMaterializer;
 pub use external_import_scanner::HuntingBoxDirectoryScanner;
 pub use external_import_source_registry::{
     HuntingBoxDirectorySourceRegistry, HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID,

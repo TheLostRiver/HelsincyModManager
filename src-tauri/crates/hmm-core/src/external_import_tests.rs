@@ -84,6 +84,57 @@ fn selection_mutation_accepts_one_199_and_200_items_but_rejects_zero_and_201() {
 }
 
 #[test]
+fn server_side_select_all_adds_only_ready_candidates_and_keeps_explicit_decisions() {
+    let candidates = vec![
+        candidate("batch-a", "ready", ExternalImportCandidateStatus::Ready),
+        candidate(
+            "batch-a",
+            "blocked",
+            ExternalImportCandidateStatus::StructureInvalid,
+        ),
+        candidate(
+            "batch-a",
+            "metadata",
+            ExternalImportCandidateStatus::MetadataInvalid,
+        ),
+    ];
+    let budget = ExternalImportResourceBudget::default();
+    let mut current = selection();
+    current
+        .apply_mutation(
+            0,
+            &[ExternalImportSelectionMutation {
+                candidate_id: ExternalImportCandidateId::new("metadata"),
+                selected: true,
+                decision: Some(ExternalImportSelectionDecision {
+                    conflict_resolution: Some(
+                        ExternalImportConflictResolution::IgnoreInvalidMetadata,
+                    ),
+                    category_id: Some("category-a".to_owned()),
+                }),
+            }],
+            &candidates,
+            &budget,
+            1,
+        )
+        .expect("explicit metadata decision is valid");
+
+    let result = current
+        .select_all_ready(current.revision, &candidates, &budget, 2)
+        .expect("server-side select all succeeds");
+
+    assert_eq!(result.selected_count, 2);
+    assert_eq!(
+        current
+            .entries
+            .iter()
+            .map(|entry| entry.candidate_id.as_str())
+            .collect::<Vec<_>>(),
+        ["metadata", "ready"]
+    );
+}
+
+#[test]
 fn selection_enforces_9999_10000_and_10001_total_limits_atomically() {
     let candidates = (0..10_001)
         .map(|index| {
@@ -328,6 +379,21 @@ fn provenance_serialization_contains_only_opaque_import_facts() {
             "imported_at_unix_millis": 42
         })
     );
+}
+
+#[test]
+fn provenance_accepts_the_scanner_sha256_fingerprint_shape() {
+    let provenance = ExternalImportProvenance {
+        adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
+        batch_id: ExternalImportBatchId::new("batch-a"),
+        source_item_key_hash: "item-key-hash".to_owned(),
+        content_fingerprint: format!("sha256:{}", "a".repeat(64)),
+        imported_at_unix_millis: 42,
+    };
+
+    provenance
+        .validate()
+        .expect("scanner content fingerprints are valid provenance facts");
 }
 
 #[test]
