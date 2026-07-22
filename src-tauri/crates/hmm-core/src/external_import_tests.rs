@@ -290,6 +290,7 @@ fn selection_rejects_resource_budget_overruns_without_mutating_snapshot() {
         materialization_bytes: 101,
     };
     let budget = ExternalImportResourceBudget {
+        max_total_candidates: EXTERNAL_IMPORT_SELECTION_MAX_ITEMS as u64,
         max_total_files: 10,
         max_total_source_bytes: 100,
         max_total_materialization_bytes: 100,

@@ -18,9 +18,11 @@
    完成，最后的 Slice 4C 已由 PR #192 rebase 合并。其生产 query switch、同事务 count/page、fail-closed
    freshness tracking 和性能门禁的最终 10,000 条 full status-filter query p95 为 `9.2966 ms`，低于固定
    `14.23 ms` 同机预算。
-5. 当前主线为 T17 Slice 1“第三方 Mod 管理器批量迁移基础”：只定义无路径领域/selection、窄 ports、
-   有界 JSON `upsert_many` 与 projection 协调、人工临时 fixtures；不扫描真实来源、不接入 Tauri/UI、
-   不物化、不安装或启用。完整 T17 后再评审 T13；其他扩展继续按各自发布门禁评审，不自动开工。
+5. T17 Slice 1“第三方 Mod 管理器批量迁移基础”已完成并合并；当前主线为 Slice 2“只读来源扫描与分页预览”：
+   仅交付 `hunting_box_directory_v1` scanner、受限 XML、内容指纹、ephemeral source registry、可取消 scan task、
+   durable preview 与窄 Tauri DTO。不会物化、实际导入、安装、启用或写游戏目录，完整 React 迁移 UI 留在 Slice 4。
+   当前排期冻结为 Windows + MHW:I；Linux/Steam Deck 与更多游戏适配不纳入 T17 工期。完整 T17 后再评审 T13；
+   其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -83,8 +85,9 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加任务进度和取消 UI。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固与 T18
-Slice 1/2/3/4A/4B/4C 均已完成；当前推进 T17 Slice 1 的 import-only 基础。T17 的只读扫描、
-安全物化、Tauri/UI 和批量破坏性操作仍分别留在后续 Slice 或 T13，不能因本切片开工自动进入。
+Slice 1/2/3/4A/4B/4C 均已完成；T17 Slice 1 已完成，当前推进 Slice 2 的只读扫描、分页 preview 与窄
+Tauri contract。安全物化和实际导入仍留在 Slice 3，完整迁移 UI 留在 Slice 4，批量破坏性操作仍属于 T13；
+不能因本切片开工自动进入。当前 T17 计划只覆盖 Windows + MHW:I，不安排 Linux/Steam Deck 或更多游戏工作。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 

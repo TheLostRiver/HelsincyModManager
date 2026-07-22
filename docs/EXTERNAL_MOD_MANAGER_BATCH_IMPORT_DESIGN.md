@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：已规划，待实施。
+> 状态：分 Slice 实施中。Slice 1 已完成；Slice 2“只读来源扫描与分页预览”进行中。
 >
 > 本文只定义产品、架构、安全和验收边界，不表示功能已经可用。
 
@@ -279,6 +279,10 @@ materializer 必须：
 - scan、hash、inspect、extract 和 analyze 可以受控并行。
 - 仓储写入使用短事务或分块原子写，不能让长任务持有数据库写事务。
 - 整个流程不获取 game/profile 写锁，因为它不写游戏目录也不改变启用状态。
+- scanner 必须在保留 root 直接子项前应用 `max_total_candidates` 预算，默认最多 `10,000` 项；超过时停止
+  枚举，并只持久化一个无路径的 `resource_limit_exceeded` 预览项，不能把大量空目录收集进内存或 SQLite。
+- queued task 的进度事件若无法发射，command 必须把刚创建的 task 与 batch 收敛为失败，不能留下前端无法取得
+  identity 的 `pending` 记录。
 - 若未来提供“导入后安装”，必须作为独立任务进入现有 game/profile 串行写队列，不能塞进本批次。
 
 建议 phase code：
@@ -312,6 +316,12 @@ start_external_import_batch(batchId, selectionId, expectedRevision)
 get_external_import_batch_result(batchId, cursor, limit)
 cancel_task(taskId)
 ```
+
+Slice 2 的已定稿最小 bridge 只包含 `select_external_import_source()`、
+`start_external_import_scan(sourceId)` 和 `get_external_import_preview(batchId, cursor?, limit?)`：首个 command
+固定登记唯一的 `hunting_box_directory_v1` 来源，不接受 adapter/path 参数；原生选择器中的路径只保留在 Rust
+registry。selection、服务端全选、物化、batch import 与结果 query 继续留在后续 Slice，不能被本 Slice 的 preview
+契约提前暴露。
 
 约束：
 
@@ -367,7 +377,7 @@ cancel_task(taskId)
 - 实现 `hunting_box_directory_v1` scanner、受限 XML parser 和内容指纹。
 - 实现 ephemeral source registry、scan task、取消和 durable batch preview。
 - 增加 Tauri scan/query DTO，但保持路径不出后端。
-- 前端暂不执行导入，只完成可验证的预览工作流。
+- 不新增 React 迁移页面；以 native picker、窄 Tauri contract 和 bridge tests 完成可验证预览工作流。
 
 ### Slice 3：安全物化与批量导入编排
 
@@ -396,6 +406,7 @@ cancel_task(taskId)
 - `files`/`info.xml` 是 symlink、junction、reparse point 或特殊文件。
 - 父级穿越、绝对路径、保留名、尾随点/空格、无效 UTF-8 和大小写碰撞。
 - 文件数、单文件大小、总大小、深度和 XML 限制。
+- root 直接候选数量超过集中 `max_total_candidates` 预算时，scanner 在有界读取后停止，并返回脱敏资源拒绝项。
 - XML 损坏、DOCTYPE、外部实体、超深节点、超长字段和控制字符。
 - `moduleName`/`name` 回退及 author/modType/version 映射。
 - 扫描后修改、替换或删除来源项时返回 `source_changed`。
@@ -463,6 +474,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 - selection 使用独立集中预算：最多 `10,000` 个候选、`1,000,000` 个文件、`64 GiB` 源字节和 `64 GiB`
   物化字节。单项物化预算为最多 `16,384` 个文件、`1 GiB` 单文件、`4 GiB` 总字节和 `64` 层目录深度；
   放宽任何值必须单独 review。
+- Slice 2 的只读 scanner 复用该 `10,000` 项上限作为 `max_total_candidates`：它限制来源根目录的直接项枚举，
+  不是前端分页限制。超限时不保留任意未完整扫描的部分列表，只返回一个不可选择的资源拒绝预览项。
 - 权威 JSON `upsert_many` 固定为最多 `10,000` 项、每 `200` 项一个原子替换。前块成功、后块失败时前块保持
   durable，调用方做 exact retry；既有 projection tracking 在权威写入前标记 dirty，写后标记失败则使查询
   fail closed，rebuild 从 JSON 权威事实对账。

@@ -6,6 +6,23 @@ use hmm_core::{
     ExternalImportSourceId,
 };
 
+/// A path-free lookup result for an ephemeral external source registration.
+///
+/// `source_fingerprint` is deliberately retained inside application and infrastructure
+/// code. It must never be copied into a DTO, task event, log, or diagnostic package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalImportSourceRegistration {
+    pub source: ExternalImportSource,
+    pub source_fingerprint: String,
+}
+
+pub trait ExternalImportSourceRegistry: Send + Sync {
+    fn resolve_source(
+        &self,
+        source_id: &ExternalImportSourceId,
+    ) -> Result<Option<ExternalImportSourceRegistration>>;
+}
+
 pub struct ExternalImportScanRequest<'a> {
     /// The source is an opaque, short-lived handle. It deliberately contains no filesystem path.
     pub source: &'a ExternalImportSource,
@@ -22,6 +39,13 @@ pub struct ExternalImportScanResult {
 
 pub trait ExternalImportScanner: Send + Sync {
     fn scan(&self, request: ExternalImportScanRequest<'_>) -> Result<ExternalImportScanResult>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalImportCandidatePage {
+    pub candidates: Vec<ExternalImportCandidate>,
+    pub total_count: usize,
+    pub next_offset: Option<usize>,
 }
 
 pub struct ExternalImportMaterializeRequest<'a> {
@@ -68,6 +92,18 @@ pub trait ExternalImportBatchRepository: Send + Sync {
 
     fn get_batch(&self, batch_id: &ExternalImportBatchId) -> Result<Option<ExternalImportBatch>>;
 
+    fn update_batch(&self, batch: &ExternalImportBatch) -> Result<()>;
+
+    /// Persists the terminal scan state and its preview candidates together.
+    ///
+    /// Implementations must keep this write short and atomic. Directory traversal,
+    /// XML parsing, and hashing must have completed before this method is called.
+    fn save_scan_result(
+        &self,
+        batch: &ExternalImportBatch,
+        candidates: &[ExternalImportCandidate],
+    ) -> Result<()>;
+
     fn replace_candidates(
         &self,
         batch_id: &ExternalImportBatchId,
@@ -78,6 +114,15 @@ pub trait ExternalImportBatchRepository: Send + Sync {
         &self,
         batch_id: &ExternalImportBatchId,
     ) -> Result<Vec<ExternalImportCandidate>>;
+
+    /// Reads one stable preview page. `offset` is an application-owned cursor value,
+    /// never a filesystem path or source identifier.
+    fn list_candidates_page(
+        &self,
+        batch_id: &ExternalImportBatchId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportCandidatePage>;
 
     fn create_selection(&self, selection: &ExternalImportSelection) -> Result<()>;
 
