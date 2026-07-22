@@ -1,6 +1,6 @@
 # Mod 库分页设计
 
-> 状态：Slice 1（PR #186）、Slice 2（PR #187）、Slice 3 和 Slice 4A 已完成并合并；Slice 4B（projection schema/rebuild、infra writer 与 T17 `upsert_many` 协调）已实现并进入独立复审/PR，Slice 4C 尚未开始，T18 整体仍在进行中。
+> 状态：Slice 1（PR #186）、Slice 2（PR #187）、Slice 3、Slice 4A（PR #190）和 Slice 4B（PR #191）已完成并合并；Slice 4C 的生产 projection query switch、同事务 count/page、freshness tracking 和性能门禁已实现并进入独立复审/PR，T18 整体仍在进行中。
 >
 > Slice 3 已接入数字分页 footer、250ms 搜索 debounce/latest-request gate、loading/error/empty、page-local selection 和当前页 durable status overlay；本地统一验证、独立复审、合并及四视图/四窗口视觉 smoke 已通过。
 
@@ -363,11 +363,11 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 
 ### Slice 4：可查询 read model 与性能门禁
 
-**实施状态：Slice 4A 已完成并合并；Slice 4B 实现已完成并进入独立复审；Slice 4C 尚未开始。**
+**实施状态：Slice 4A 和 Slice 4B 已完成并合并；Slice 4C 已实现并进入独立复审/PR。**
 
 - **Slice 4A（已完成）**：建立 1,000/10,000 条人工 fixture，测量 JSON 读取/投影、overlay/category merge、profile status、兼容 query 分解和 page DTO serialization；确定 JSON revision catalog provenance + SQLite rebuildable query projection，并锁定 Unicode/profile status 语义。
-- **Slice 4B（当前切片）**：实现 migration 009、可删除可重建的 projection items/labels/profile generations/status 表、generation/dirty/fingerprint 发布语义、共享 NFKC query-key helper、必要 ports/infra writer，以及总上限 10,000、每块 200 的 T17 `upsert_many` 边界。JSON revision catalog 仍是权威来源，投影失败必须 fail closed。
-- **Slice 4C**：生产 query switch、同一短 read transaction 的 count/page、性能门禁和交互回归。
+- **Slice 4B（已完成，PR #191）**：实现 migration 009、可删除可重建的 projection items/labels/profile generations/status 表、generation/dirty/fingerprint 发布语义、共享 NFKC query-key helper、必要 ports/infra writer，以及总上限 10,000、每块 200 的 T17 `upsert_many` 边界。JSON revision catalog 仍是权威来源，投影失败必须 fail closed。
+- **Slice 4C（当前切片）**：生产 `query_mod_library` 已切换为 projection query port；count/page/labels/profile status 在同一短 SQLite read transaction 中完成。dirty/missing projection 从权威仓储受控重建，来源不可读、未知 status、generation/fingerprint 不一致或 dirty marker 不可用时 fail closed，不回退 JSON 全量查询。catalog/metadata/category 写入采用写前和写后 dirty tracking，manifest 写入采用不改变提交事实的 best-effort profile tracking，并以进程内 freshness guard 关闭 dirty marker 失败窗口。
 - 4A 不实现 SQLite migration、生产 projection、生产查询切换、Tauri contract 或 UI；4B 也不切换生产查询、不实现 count/page 或前端接线。
 - 只有本切片通过，TODO 才能把 T18 标记为完成。
 
@@ -414,7 +414,7 @@ T17 批量迁移和 T18 分页应共享同一份持久化基准与迁移决策�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-Slice 3 运行时代码和 UI 已通过本地统一验证、四视图/四窗口的完整浏览器视觉 smoke、独立复审并合并；Slice 4A 的 release-only benchmark 使用人工 fixture，不读取真实 Mod、游戏目录或存档。
+Slice 3 运行时代码和 UI 已通过本地统一验证、四视图/四窗口的完整浏览器视觉 smoke、独立复审并合并；Slice 4A/4C 的 release-only benchmark 使用人工 fixture，不读取真实 Mod、游戏目录或存档。Slice 4C 不修改前端结构或 Tauri DTO，因此复用 Slice 3 已验收的交互与视觉契约，聚焦回归 command 薄壳、同事务查询、状态语义和现有 frontend test suite。
 
 ## 验收标准
 
@@ -452,3 +452,17 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - 最终规范化 key 采用版本化 Rust `NFKC -> Unicode lowercase -> whitespace collapse`；SQLite `NOCASE` 不得替代。
 - profile status 使用稀疏派生行和 completeness/dirty marker；来源缺失或 projection 更新失败时 fail closed。
 - 这些决策不改变后端权威分页、page-local selection 和默认不实现跨页批量操作的核心决策。
+
+## Slice 4C 生产 projection 结果
+
+最终代码使用同一 release harness、相同 1,000/10,000 fixture、5 次 warmup、40 次 sample 和完整 status filter/page DTO 字段复验：
+
+| 记录数 | SQLite projection full status-filter query p95 | 4C 同机预算 |
+|---:|---:|---:|
+| 1,000 | 1.2963 ms | 14.23 ms |
+| 10,000 | 9.2966 ms | 14.23 ms |
+
+- 10,000 条门禁没有放宽；harness 对超过预算的结果直接失败。
+- 生产查询不再解析完整 JSON catalog，也不在 Tauri command 中临时构造兼容查询服务；兼容 backend 只保留给回归和基准对照。
+- total、clamp 后 page、rows、labels 和 profile status 来自同一 SQLite read transaction 和 complete generation。
+- 该结果是 2026-07-22 同机基准，不是跨机器 SLA；后续固定 runner 数据可另行收紧，但不得无独立 review 放宽。

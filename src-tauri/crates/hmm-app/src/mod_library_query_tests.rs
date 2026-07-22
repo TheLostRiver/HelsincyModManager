@@ -1,8 +1,13 @@
 use super::*;
-use hmm_core::{Category, ModMetadataOverlay, PreviewImageRejectionReason};
+use hmm_core::{Category, ModMetadataOverlay, ModRevisionId, PreviewImageRejectionReason};
 use hmm_ports::{
-    CategoryRepository, ModImportResultRepository, ModMetadataRepository, StoredImportPreviewImage,
-    StoredModImportAnalysis, StoredModPackageMetadata,
+    CategoryRepository, ModImportResultRepository, ModLibraryProfileProjection,
+    ModLibraryProfileProjectionState, ModLibraryProjectionPageItem, ModLibraryProjectionQueryError,
+    ModLibraryProjectionQueryPage, ModLibraryProjectionQueryRepository,
+    ModLibraryProjectionQueryRequest, ModLibraryProjectionReadiness, ModLibraryProjectionRecord,
+    ModLibraryProjectionRepository, ModLibraryProjectionSnapshot, ModLibraryProjectionState,
+    ModMetadataRepository, StoredImportPreviewImage, StoredModImportAnalysis,
+    StoredModPackageMetadata, MOD_LIBRARY_PROJECTION_SCHEMA_VERSION, MOD_LIBRARY_QUERY_KEY_VERSION,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -186,6 +191,217 @@ impl ModLibraryStatusProvider for FakeStatusProvider {
     }
 }
 
+struct FakeProjectionRepository {
+    state: Mutex<ModLibraryProjectionState>,
+    rebuilt: Mutex<Vec<ModLibraryProjectionSnapshot>>,
+    profile_states: Mutex<HashMap<String, ModLibraryProfileProjectionState>>,
+    query_requests: Mutex<Vec<ModLibraryProjectionQueryRequest>>,
+    query_result: Result<ModLibraryProjectionQueryPage, ModLibraryProjectionQueryError>,
+}
+
+impl FakeProjectionRepository {
+    fn dirty(
+        query_result: Result<ModLibraryProjectionQueryPage, ModLibraryProjectionQueryError>,
+    ) -> Self {
+        Self {
+            state: Mutex::new(ModLibraryProjectionState {
+                schema_version: 0,
+                key_version: "outdated".to_owned(),
+                generation: 0,
+                source_fingerprint: None,
+                readiness: ModLibraryProjectionReadiness::Dirty,
+            }),
+            rebuilt: Mutex::new(Vec::new()),
+            profile_states: Mutex::new(HashMap::new()),
+            query_requests: Mutex::new(Vec::new()),
+            query_result,
+        }
+    }
+
+    fn rebuilds(&self) -> Vec<ModLibraryProjectionSnapshot> {
+        self.rebuilt.lock().expect("rebuild lock").clone()
+    }
+
+    fn query_requests(&self) -> Vec<ModLibraryProjectionQueryRequest> {
+        self.query_requests
+            .lock()
+            .expect("query request lock")
+            .clone()
+    }
+}
+
+impl ModLibraryProjectionRepository for FakeProjectionRepository {
+    fn state(&self) -> anyhow::Result<ModLibraryProjectionState> {
+        Ok(self.state.lock().expect("projection state lock").clone())
+    }
+
+    fn mark_dirty(&self, observed_source_fingerprint: Option<&str>) -> anyhow::Result<()> {
+        let mut state = self.state.lock().expect("projection state lock");
+        state.readiness = ModLibraryProjectionReadiness::Dirty;
+        if let Some(fingerprint) = observed_source_fingerprint {
+            state.source_fingerprint = Some(fingerprint.to_owned());
+        }
+        Ok(())
+    }
+
+    fn rebuild(
+        &self,
+        snapshot: &ModLibraryProjectionSnapshot,
+    ) -> anyhow::Result<ModLibraryProjectionState> {
+        self.rebuilt
+            .lock()
+            .expect("rebuild lock")
+            .push(snapshot.clone());
+        self.profile_states
+            .lock()
+            .expect("profile state lock")
+            .clear();
+        let mut state = self.state.lock().expect("projection state lock");
+        *state = ModLibraryProjectionState {
+            schema_version: MOD_LIBRARY_PROJECTION_SCHEMA_VERSION,
+            key_version: MOD_LIBRARY_QUERY_KEY_VERSION.to_owned(),
+            generation: state.generation + 1,
+            source_fingerprint: Some(snapshot.source_fingerprint.clone()),
+            readiness: ModLibraryProjectionReadiness::Complete,
+        };
+        Ok(state.clone())
+    }
+
+    fn profile_state(
+        &self,
+        profile_id: &ProfileId,
+    ) -> anyhow::Result<Option<ModLibraryProfileProjectionState>> {
+        Ok(self
+            .profile_states
+            .lock()
+            .expect("profile state lock")
+            .get(profile_id.as_str())
+            .cloned())
+    }
+
+    fn mark_profile_dirty(
+        &self,
+        profile_id: &ProfileId,
+        observed_source_fingerprint: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let mut profiles = self.profile_states.lock().expect("profile state lock");
+        let previous = profiles.get(profile_id.as_str()).cloned();
+        profiles.insert(
+            profile_id.as_str().to_owned(),
+            ModLibraryProfileProjectionState {
+                profile_id: profile_id.clone(),
+                generation: previous.as_ref().map_or(0, |state| state.generation),
+                source_fingerprint: observed_source_fingerprint
+                    .map(str::to_owned)
+                    .or_else(|| previous.and_then(|state| state.source_fingerprint)),
+                readiness: ModLibraryProjectionReadiness::Dirty,
+            },
+        );
+        Ok(())
+    }
+
+    fn replace_profile(
+        &self,
+        projection: &ModLibraryProfileProjection,
+    ) -> anyhow::Result<ModLibraryProfileProjectionState> {
+        let mut profiles = self.profile_states.lock().expect("profile state lock");
+        let generation = profiles
+            .get(projection.profile_id.as_str())
+            .map_or(1, |state| state.generation + 1);
+        let state = ModLibraryProfileProjectionState {
+            profile_id: projection.profile_id.clone(),
+            generation,
+            source_fingerprint: Some(projection.source_fingerprint.clone()),
+            readiness: ModLibraryProjectionReadiness::Complete,
+        };
+        profiles.insert(projection.profile_id.as_str().to_owned(), state.clone());
+        Ok(state)
+    }
+}
+
+impl ModLibraryProjectionQueryRepository for FakeProjectionRepository {
+    fn query(
+        &self,
+        request: &ModLibraryProjectionQueryRequest,
+    ) -> Result<ModLibraryProjectionQueryPage, ModLibraryProjectionQueryError> {
+        self.query_requests
+            .lock()
+            .expect("query request lock")
+            .push(request.clone());
+        self.query_result.clone()
+    }
+}
+
+fn projection_page(mod_id: &str, name: &str) -> ModLibraryProjectionQueryPage {
+    ModLibraryProjectionQueryPage {
+        items: vec![ModLibraryProjectionPageItem {
+            record: ModLibraryProjectionRecord {
+                mod_id: ModId::new(mod_id),
+                display_revision_id: ModRevisionId::new(format!("revision-{mod_id}")),
+                package_id: format!("package-{mod_id}"),
+                display_name: name.to_owned(),
+                author: None,
+                version_label: None,
+                size_label: "1 B".to_owned(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::Missing,
+                },
+                labels: Vec::new(),
+            },
+            status: None,
+        }],
+        page: 1,
+        page_size: 24,
+        library_total: 1,
+        matching_total: 1,
+    }
+}
+
+fn projection_service(
+    records: Vec<StoredModImportAnalysis>,
+    status_provider: Arc<dyn ModLibraryStatusProvider>,
+    projection: Arc<FakeProjectionRepository>,
+) -> ModLibraryQueryService {
+    projection_service_with_guard(
+        records,
+        status_provider,
+        projection,
+        Arc::new(crate::ModLibraryProjectionFreshnessGuard::default()),
+    )
+}
+
+fn projection_service_with_guard(
+    records: Vec<StoredModImportAnalysis>,
+    status_provider: Arc<dyn ModLibraryStatusProvider>,
+    projection: Arc<FakeProjectionRepository>,
+    freshness_guard: Arc<crate::ModLibraryProjectionFreshnessGuard>,
+) -> ModLibraryQueryService {
+    let library_service = Arc::new(ModLibraryService::new(
+        Arc::new(FakeModImportResultRepository {
+            records,
+            fail_list: false,
+        }),
+        Arc::new(FakeMetadataRepository {
+            overlays: Vec::new(),
+            fail_list: false,
+        }),
+        Arc::new(FakeCategoryRepository {
+            categories: Vec::new(),
+            pairs: Vec::new(),
+            fail_get: false,
+        }),
+    ));
+    let writer: Arc<dyn ModLibraryProjectionRepository> = projection.clone();
+    let query_repository: Arc<dyn ModLibraryProjectionQueryRepository> = projection;
+    let refresh = Arc::new(ModLibraryProjectionRefreshService::new(
+        library_service,
+        status_provider,
+        writer,
+        freshness_guard,
+    ));
+    ModLibraryQueryService::new_projection(query_repository, refresh)
+}
+
 fn record(mod_id: &str, name: &str) -> StoredModImportAnalysis {
     StoredModImportAnalysis {
         mod_id: mod_id.to_owned(),
@@ -288,6 +504,104 @@ fn empty_service() -> ModLibraryQueryService {
         Vec::new(),
         Arc::new(FakeStatusProvider::empty()),
     )
+}
+
+#[test]
+fn projection_backend_rebuilds_dirty_library_then_queries_projection_port() {
+    let projection = Arc::new(FakeProjectionRepository::dirty(Ok(projection_page(
+        "mod-a", "Alpha",
+    ))));
+    let service = projection_service(
+        vec![record("mod-a", "Alpha")],
+        Arc::new(FakeStatusProvider::empty()),
+        Arc::clone(&projection),
+    );
+
+    let page = service
+        .query(ModLibraryQuery::default())
+        .expect("production projection query succeeds after rebuild");
+
+    assert_eq!(ids(&page), vec!["mod-a"]);
+    let rebuilds = projection.rebuilds();
+    assert_eq!(rebuilds.len(), 1);
+    assert_eq!(rebuilds[0].records.len(), 1);
+    let requests = projection.query_requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].source_fingerprint, rebuilds[0].source_fingerprint,
+        "the production query receives the generation published by the refresh"
+    );
+}
+
+#[test]
+fn projection_backend_fails_closed_when_status_refresh_is_unknown() {
+    let projection = Arc::new(FakeProjectionRepository::dirty(Ok(projection_page(
+        "mod-a", "Alpha",
+    ))));
+    let status_provider = Arc::new(FakeStatusProvider {
+        statuses: HashMap::from([("mod-a".to_owned(), InstallManifestStatus::Unknown)]),
+        ..FakeStatusProvider::empty()
+    });
+    let service = projection_service(
+        vec![record("mod-a", "Alpha")],
+        status_provider,
+        Arc::clone(&projection),
+    );
+
+    assert_eq!(
+        service.query(ModLibraryQuery {
+            profile_context: Some(profile_context()),
+            ..ModLibraryQuery::default()
+        }),
+        Err(ModLibraryQueryError::StatusUnavailable)
+    );
+    assert_eq!(projection.rebuilds().len(), 1);
+    assert!(
+        projection.query_requests().is_empty(),
+        "unknown manifest state must not fall back to, or query through, stale status projection"
+    );
+}
+
+#[test]
+fn projection_backend_maps_port_errors_to_existing_query_contract() {
+    let projection = Arc::new(FakeProjectionRepository::dirty(Err(
+        ModLibraryProjectionQueryError::CategoryNotFound,
+    )));
+    let service = projection_service(
+        vec![record("mod-a", "Alpha")],
+        Arc::new(FakeStatusProvider::empty()),
+        projection,
+    );
+
+    assert_eq!(
+        service.query(ModLibraryQuery {
+            filter: ModLibraryFilter::Category("missing".to_owned()),
+            ..ModLibraryQuery::default()
+        }),
+        Err(ModLibraryQueryError::CategoryNotFound)
+    );
+}
+
+#[test]
+fn projection_backend_fails_closed_when_global_freshness_marker_is_unavailable() {
+    let projection = Arc::new(FakeProjectionRepository::dirty(Ok(projection_page(
+        "mod-a", "Alpha",
+    ))));
+    let freshness_guard = Arc::new(crate::ModLibraryProjectionFreshnessGuard::default());
+    freshness_guard.mark_global_unavailable();
+    let service = projection_service_with_guard(
+        vec![record("mod-a", "Alpha")],
+        Arc::new(FakeStatusProvider::empty()),
+        Arc::clone(&projection),
+        freshness_guard,
+    );
+
+    assert_eq!(
+        service.query(ModLibraryQuery::default()),
+        Err(ModLibraryQueryError::LibraryUnavailable)
+    );
+    assert!(projection.rebuilds().is_empty());
+    assert!(projection.query_requests().is_empty());
 }
 
 fn ids(page: &ModLibraryPage) -> Vec<&str> {

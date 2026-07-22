@@ -1,10 +1,12 @@
 use crate::SqliteModLibraryProjectionRepository;
 use hmm_core::{ModId, ModRevisionId, ProfileId};
 use hmm_ports::{
-    ModLibraryProfileProjection, ModLibraryProjectionLabel, ModLibraryProjectionReadiness,
-    ModLibraryProjectionRecord, ModLibraryProjectionRepository, ModLibraryProjectionSnapshot,
-    ModLibraryProjectionStatus, ModLibraryProjectionStatusRecord, StoredImportPreviewImage,
-    MOD_LIBRARY_QUERY_KEY_VERSION,
+    ModLibraryProfileProjection, ModLibraryProjectionLabel, ModLibraryProjectionProfileQuery,
+    ModLibraryProjectionQueryError, ModLibraryProjectionQueryFilter,
+    ModLibraryProjectionQueryRepository, ModLibraryProjectionQueryRequest,
+    ModLibraryProjectionQueryStatus, ModLibraryProjectionReadiness, ModLibraryProjectionRecord,
+    ModLibraryProjectionRepository, ModLibraryProjectionSnapshot, ModLibraryProjectionStatus,
+    ModLibraryProjectionStatusRecord, StoredImportPreviewImage, MOD_LIBRARY_QUERY_KEY_VERSION,
 };
 use std::sync::{Arc, Mutex};
 
@@ -354,6 +356,167 @@ fn failed_rebuild_keeps_projection_fail_closed_and_does_not_publish_partial_rows
     assert_eq!(state.generation, 1);
     assert_eq!(state.source_fingerprint.as_deref(), Some("bad"));
     assert!(!state.is_complete_for("good"));
+}
+
+#[test]
+fn projection_query_keeps_totals_clamp_sort_filters_and_unicode_in_one_snapshot() {
+    let temp = tempfile::tempdir().expect("temporary app data");
+    let conn = crate::open_database(&temp.path().join("hmm.db")).expect("open database");
+    conn.execute(
+        "INSERT INTO categories (category_id, name, color, sort_order, created_at)
+         VALUES ('category-a', 'Quest', NULL, 0, 1), ('category-b', 'Visual', NULL, 1, 1)",
+        [],
+    )
+    .expect("seed categories");
+    let conn = Arc::new(Mutex::new(conn));
+    let repository = SqliteModLibraryProjectionRepository::new(Arc::clone(&conn));
+    let mut beta = record("mod-b", "Beta");
+    beta.labels[0].category_id = Some("category-b".to_owned());
+    beta.labels[0].name = "Visual".to_owned();
+    let mut cafe = record("mod-c", "Cafe\u{301}");
+    cafe.labels[0].name = "Other".to_owned();
+    repository
+        .rebuild(&ModLibraryProjectionSnapshot {
+            source_fingerprint: "catalog-v1".to_owned(),
+            records: vec![record("mod-a", "  Ａrmor\u{3000}CAFÉ  "), beta, cafe],
+            profiles: vec![ModLibraryProfileProjection {
+                profile_id: ProfileId::new("profile-a"),
+                source_fingerprint: "manifest-v1".to_owned(),
+                statuses: vec![
+                    ModLibraryProjectionStatusRecord {
+                        mod_id: ModId::new("mod-b"),
+                        status: ModLibraryProjectionStatus::Installed,
+                        managed_file_count: 2,
+                        backup_count: 1,
+                    },
+                    ModLibraryProjectionStatusRecord {
+                        mod_id: ModId::new("mod-c"),
+                        status: ModLibraryProjectionStatus::CleanupPending,
+                        managed_file_count: 3,
+                        backup_count: 0,
+                    },
+                ],
+            }],
+        })
+        .expect("publish projection");
+
+    let page = repository
+        .query(&ModLibraryProjectionQueryRequest {
+            source_fingerprint: "catalog-v1".to_owned(),
+            profile: Some(ModLibraryProjectionProfileQuery {
+                profile_id: ProfileId::new("profile-a"),
+                source_fingerprint: "manifest-v1".to_owned(),
+            }),
+            normalized_search: "café".to_owned(),
+            filter: ModLibraryProjectionQueryFilter::All,
+            page: u64::MAX,
+            page_size: 12,
+        })
+        .expect("query projection");
+    assert_eq!(page.library_total, 3);
+    assert_eq!(page.matching_total, 2);
+    assert_eq!(page.page, 1);
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.items[0].record.mod_id.as_str(), "mod-a");
+    assert!(page.items[0].status.is_none());
+    assert_eq!(page.items[1].record.mod_id.as_str(), "mod-c");
+    assert_eq!(
+        page.items[1].status.as_ref().map(|status| status.status),
+        Some(ModLibraryProjectionStatus::CleanupPending)
+    );
+
+    let installed = repository
+        .query(&ModLibraryProjectionQueryRequest {
+            source_fingerprint: "catalog-v1".to_owned(),
+            profile: Some(ModLibraryProjectionProfileQuery {
+                profile_id: ProfileId::new("profile-a"),
+                source_fingerprint: "manifest-v1".to_owned(),
+            }),
+            normalized_search: String::new(),
+            filter: ModLibraryProjectionQueryFilter::Status(
+                ModLibraryProjectionQueryStatus::Installed,
+            ),
+            page: 1,
+            page_size: 12,
+        })
+        .expect("status filter");
+    assert_eq!(installed.matching_total, 1);
+    assert_eq!(installed.items[0].record.mod_id.as_str(), "mod-b");
+
+    let category = repository
+        .query(&ModLibraryProjectionQueryRequest {
+            source_fingerprint: "catalog-v1".to_owned(),
+            profile: None,
+            normalized_search: String::new(),
+            filter: ModLibraryProjectionQueryFilter::Category("category-b".to_owned()),
+            page: 1,
+            page_size: 12,
+        })
+        .expect("category filter");
+    assert_eq!(category.matching_total, 1);
+    assert_eq!(category.items[0].record.mod_id.as_str(), "mod-b");
+}
+
+#[test]
+fn projection_query_fails_closed_for_dirty_or_mismatched_generations() {
+    let temp = tempfile::tempdir().expect("temporary app data");
+    let conn = crate::open_database(&temp.path().join("hmm.db")).expect("open database");
+    let conn = Arc::new(Mutex::new(conn));
+    let repository = SqliteModLibraryProjectionRepository::new(Arc::clone(&conn));
+    repository
+        .rebuild(&ModLibraryProjectionSnapshot {
+            source_fingerprint: "catalog-v1".to_owned(),
+            records: vec![record("mod-a", "Alpha")],
+            profiles: vec![ModLibraryProfileProjection {
+                profile_id: ProfileId::new("profile-a"),
+                source_fingerprint: "manifest-v1".to_owned(),
+                statuses: vec![],
+            }],
+        })
+        .expect("publish projection");
+    let request = ModLibraryProjectionQueryRequest {
+        source_fingerprint: "catalog-v1".to_owned(),
+        profile: Some(ModLibraryProjectionProfileQuery {
+            profile_id: ProfileId::new("profile-a"),
+            source_fingerprint: "manifest-v1".to_owned(),
+        }),
+        normalized_search: String::new(),
+        filter: ModLibraryProjectionQueryFilter::All,
+        page: 1,
+        page_size: 12,
+    };
+    repository
+        .query(&request)
+        .expect("complete projection is readable");
+
+    let mut wrong_source = request.clone();
+    wrong_source.source_fingerprint = "catalog-v2".to_owned();
+    assert_eq!(
+        repository.query(&wrong_source),
+        Err(ModLibraryProjectionQueryError::Unavailable)
+    );
+
+    repository
+        .mark_dirty(Some("catalog-v2"))
+        .expect("mark projection dirty");
+    assert_eq!(
+        repository.query(&request),
+        Err(ModLibraryProjectionQueryError::Unavailable)
+    );
+
+    repository
+        .rebuild(&ModLibraryProjectionSnapshot {
+            source_fingerprint: "catalog-v2".to_owned(),
+            records: vec![record("mod-a", "Alpha")],
+            profiles: vec![],
+        })
+        .expect("publish second projection");
+    let mut missing_profile = request;
+    missing_profile.source_fingerprint = "catalog-v2".to_owned();
+    assert_eq!(
+        repository.query(&missing_profile),
+        Err(ModLibraryProjectionQueryError::ProfileUnavailable)
+    );
 }
 
 fn record(mod_id: &str, display_name: &str) -> ModLibraryProjectionRecord {

@@ -2,7 +2,7 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e1d4e868` (main)
-最近同步：2026-07-20，基于 `5ee1b3c`（T18 Slice 4A 合并后的 Slice 4B 开工基线）
+最近同步：2026-07-20，基于 `ac80e8a`（T18 Slice 4B / PR #191 合并后的 Slice 4C 开工基线）
 
 ---
 
@@ -78,8 +78,9 @@
   -> T18 Mod 库分页 Slice 2 [completed, PR #187]
   -> T18 Mod 库分页 Slice 3 [completed, merged]
   -> T18 Mod 库分页 Slice 4A [completed, PR #190]
-  -> T18 Mod 库分页 Slice 4B [implemented: independent review/PR]
-  -> T18 Mod 库分页 Slice 4C -> T17 第三方批量迁移 -> T13 批量安装/卸载
+  -> T18 Mod 库分页 Slice 4B [completed, PR #191]
+  -> T18 Mod 库分页 Slice 4C [implemented: independent review/PR]
+  -> T17 第三方批量迁移 -> T13 批量安装/卸载
 ```
 
 ---
@@ -399,7 +400,7 @@ JSON 做不好的需求:
 ### T18: Mod 库分页
 
 **前置**: 现有 Mod 库 + Profile install/recovery 状态查询
-**状态**: 当前主线；Slice 1/2 已完成（PR #186/#187），Slice 3 已合并，Slice 4A 已完成（PR #190），Slice 4B 已实现并进入独立复审/PR，Slice 4C 未开始，T18 整体未完成
+**状态**: 当前主线；Slice 1/2 已完成（PR #186/#187），Slice 3 已合并，Slice 4A 已完成（PR #190），Slice 4B 已完成（PR #191），Slice 4C 已实现并进入独立复审/PR，T18 整体待 4C 合并后完成
 **预估**: 中-大，建议拆为 6 个独立 review 切片（Slice 4 拆为 4A/4B/4C）
 **独立文档**: **已创建** → `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
 
@@ -409,8 +410,8 @@ JSON 做不好的需求:
 - [x] Slice 2：`query_mod_library` Tauri DTO、稳定错误、feature-local typed API 和 contract 文档（PR #187）
 - [x] Slice 3：数字分页 footer、250ms debounce/latest-request gate、loading/error/empty、本页选择和当前页 durable overlay；本地统一验证、四视图/四窗口视觉 smoke、独立复审与合并已完成
 - [x] Slice 4A：1,000/10,000 条人工读路径基准、JSON provenance + SQLite projection 决策、Unicode/profile status 策略（PR #190）
-- [x] Slice 4B：projection schema/rebuild、ports、infra writer 与 T17 批量写入协调（当前实现/独立复审）
-- [ ] Slice 4C：生产 query switch、同事务 count/page、性能门禁与回归
+- [x] Slice 4B：projection schema/rebuild、ports、infra writer 与 T17 批量写入协调（PR #191）
+- [x] Slice 4C：生产 query switch、同事务 count/page、fail-closed freshness tracking、固定 10,000 条性能门禁与回归（当前实现/独立复审）
 
 关键语义:
 - 默认每页 24，可选 12/24/48/96；使用 1-based 数字页
@@ -491,8 +492,9 @@ JSON 做不好的需求:
   -> 已完成: T18 Mod 库分页 Slice 2（PR #187）
   -> 已完成: T18 Mod 库分页 Slice 3（已合并）
   -> 已完成: T18 Mod 库分页 Slice 4A（PR #190）
-  -> 当前: T18 Mod 库分页 Slice 4B（已实现，独立复审/PR）
-  -> 后续: T18 Mod 库分页 Slice 4C -> T17 第三方批量迁移 -> T13 批量安装/卸载
+  -> 已完成: T18 Mod 库分页 Slice 4B（PR #191）
+  -> 当前: T18 Mod 库分页 Slice 4C（已实现，独立复审/PR）
+  -> 后续: T17 第三方批量迁移 -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
 
@@ -517,6 +519,6 @@ JSON 做不好的需求:
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |
-| T17 第三方管理器批量迁移 | P2 | 已规划、暂停 | |
-| T18 Mod 库分页 | P2 | 当前主线（Slice 1/2 已完成，Slice 3 已合并，Slice 4A 已完成，Slice 4B 已实现并进入独立复审/PR，4C 未开始） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A） |
+| T17 第三方管理器批量迁移 | P2 | 已规划；T18 Slice 4C 合并后的下一主线 | |
+| T18 Mod 库分页 | P2 | 当前主线（Slice 1/2/3/4A/4B 已完成，Slice 4C 已实现并进入独立复审/PR） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |

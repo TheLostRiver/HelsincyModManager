@@ -67,7 +67,10 @@ pub use mod_import::{
 };
 pub use mod_library_projection::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
-    ModLibraryProjectionLabel, ModLibraryProjectionReadiness, ModLibraryProjectionRecord,
+    ModLibraryProjectionLabel, ModLibraryProjectionPageItem, ModLibraryProjectionProfileQuery,
+    ModLibraryProjectionQueryError, ModLibraryProjectionQueryFilter, ModLibraryProjectionQueryPage,
+    ModLibraryProjectionQueryRepository, ModLibraryProjectionQueryRequest,
+    ModLibraryProjectionQueryStatus, ModLibraryProjectionReadiness, ModLibraryProjectionRecord,
     ModLibraryProjectionRepository, ModLibraryProjectionSnapshot, ModLibraryProjectionState,
     ModLibraryProjectionStatus, ModLibraryProjectionStatusRecord,
     MOD_LIBRARY_PROJECTION_SCHEMA_VERSION, MOD_LIBRARY_QUERY_KEY_VERSION,
