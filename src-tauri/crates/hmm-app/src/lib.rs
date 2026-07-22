@@ -1,5 +1,6 @@
 mod app_settings;
 mod category;
+mod external_import;
 mod game_launch;
 mod game_setup;
 mod install;
@@ -34,6 +35,14 @@ mod task_manager;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use category::{CategoryService, CategoryWithCount};
+pub use external_import::{
+    ExternalImportPreviewPage, ExternalImportScanError, ExternalImportScanLaunch,
+    ExternalImportScanService, DEFAULT_EXTERNAL_IMPORT_PREVIEW_LIMIT,
+    EXTERNAL_IMPORT_SCAN_CANCELLED_PHASE, EXTERNAL_IMPORT_SCAN_COMPLETED_PHASE,
+    EXTERNAL_IMPORT_SCAN_DISCOVERING_PHASE, EXTERNAL_IMPORT_SCAN_FAILED_PHASE,
+    EXTERNAL_IMPORT_SCAN_FINGERPRINTING_PHASE, EXTERNAL_IMPORT_SCAN_QUEUED_PHASE,
+    MAX_EXTERNAL_IMPORT_PREVIEW_LIMIT,
+};
 pub use game_launch::{GameLaunchService, GameLaunchServiceError};
 pub use game_setup::{
     GameAutoDetection, GameAutoDetectionOutcome, GameCandidateScan, GameSetupCandidate,

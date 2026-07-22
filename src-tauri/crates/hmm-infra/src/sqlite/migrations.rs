@@ -19,6 +19,7 @@ pub(crate) fn migrations() -> Migrations<'static> {
             "migrations/008_save_backup_background_settings.sql"
         )),
         M::up(include_str!("migrations/009_mod_library_projection.sql")),
+        M::up(include_str!("migrations/010_external_import_preview.sql")),
     ])
 }
 

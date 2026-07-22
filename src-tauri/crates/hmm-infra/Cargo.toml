@@ -11,6 +11,7 @@ anyhow.workspace = true
 cap-fs-ext.workspace = true
 cap-std.workspace = true
 fs2 = "0.4.3"
+hmac.workspace = true
 rusqlite.workspace = true
 rusqlite_migration.workspace = true
 hmm-core = { path = "../hmm-core" }
@@ -25,6 +26,8 @@ tempfile = "3.27.0"
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+unicode-normalization.workspace = true
+uuid.workspace = true
 zip.workspace = true
 
 [target.'cfg(windows)'.dependencies]

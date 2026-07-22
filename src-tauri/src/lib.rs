@@ -6,6 +6,8 @@ mod diagnostics_dto;
 mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
+mod external_import_commands;
+mod external_import_dto;
 mod install_commands;
 mod mod_import_commands;
 mod mod_library_commands;
@@ -23,7 +25,9 @@ mod save_backup_dto;
 mod save_directory_discovery_commands;
 mod save_directory_discovery_dto;
 mod state;
+mod state_external_import;
 mod state_mod_library;
+mod state_uninstall;
 mod task_commands;
 mod task_events;
 mod thumbnail_protocol;
@@ -32,6 +36,9 @@ mod window_lifecycle_commands;
 use category_commands::{
     create_category, delete_category, get_mod_categories, list_categories, set_mod_categories,
     update_category,
+};
+use external_import_commands::{
+    get_external_import_preview, select_external_import_source, start_external_import_scan,
 };
 use game_launch_commands::launch_game;
 use game_setup_commands::{
@@ -120,6 +127,9 @@ pub fn run() {
             save_game_directory,
             scan_game_candidates,
             cancel_task,
+            select_external_import_source,
+            start_external_import_scan,
+            get_external_import_preview,
             preview_install_plan,
             preview_imported_mod_install_plan,
             start_install_task,

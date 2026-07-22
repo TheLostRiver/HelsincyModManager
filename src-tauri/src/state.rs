@@ -14,7 +14,7 @@ use hmm_app::{
     InstalledReplacementReinstallResolution, LimitedPreviewImageProcessor,
     ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
     ModImportTaskRunner, ModImportTaskService, ModLibraryQueryService, ModLibraryService,
-    ModMetadataService, ModUninstaller, PlannedInitialRetargetInstall, PreparedReinstall,
+    ModMetadataService, PlannedInitialRetargetInstall, PreparedReinstall,
     PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
@@ -30,10 +30,9 @@ use hmm_app::{
     SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
     SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
     SaveBackupTaskService, StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
-    StartUninstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, UninstallModError, UninstallModRequest, UninstallModResult,
-    UninstallModService, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
@@ -127,6 +126,7 @@ pub struct AppState {
     pub uninstall_tasks: Arc<UninstallTaskService>,
     pub mod_import_task_runner: Arc<ModImportTaskRunner>,
     pub mod_import_tasks: Arc<ModImportTaskService>,
+    pub(crate) external_import: crate::state_external_import::ExternalImportComposition,
     pub app_settings: Arc<AppSettingsService>,
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
@@ -236,6 +236,8 @@ impl AppState {
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
+        let external_import =
+            crate::state_external_import::compose(&app_data_dir, &db, &task_manager)?;
         let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(JsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -497,10 +499,10 @@ impl AppState {
                 Arc::clone(&mod_import_sandbox_locator),
                 app_data_dir.clone(),
             ));
-        let mod_uninstaller: Arc<dyn ModUninstaller> = Arc::new(ConfiguredModUninstaller::new(
+        let mod_uninstaller = crate::state_uninstall::mod_uninstaller(
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
-        ));
+        );
         let recovery_action_executor: Arc<dyn InstallRecoveryActionExecutor> =
             Arc::new(ConfiguredInstallRecoveryActionExecutor::new(
                 Arc::clone(&game_config_repository),
@@ -624,6 +626,7 @@ impl AppState {
             uninstall_tasks: Arc::new(UninstallTaskService::new(Arc::clone(&task_manager))),
             mod_import_task_runner,
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
+            external_import,
             app_settings,
             mod_metadata: Arc::new(ModMetadataService::new(
                 mod_metadata_repository,
@@ -1358,47 +1361,6 @@ impl InstallRecoveryActionExecutor for ConfiguredInstallRecoveryActionExecutor {
             profile_id: request.profile_id,
             mod_id: request.mod_id,
             action_kind: request.action_kind,
-        })
-    }
-}
-
-struct ConfiguredModUninstaller {
-    game_config_repository: Arc<dyn GameConfigRepository>,
-    app_data_dir: PathBuf,
-}
-
-impl ConfiguredModUninstaller {
-    fn new(game_config_repository: Arc<dyn GameConfigRepository>, app_data_dir: PathBuf) -> Self {
-        Self {
-            game_config_repository,
-            app_data_dir,
-        }
-    }
-}
-
-impl ModUninstaller for ConfiguredModUninstaller {
-    fn uninstall_mod(
-        &self,
-        request: StartUninstallTaskRequest,
-    ) -> Result<UninstallModResult, UninstallModError> {
-        let game_instance = self
-            .game_config_repository
-            .load_game_instance(&request.game_id)
-            .map_err(|_| UninstallModError::GameInstanceUnavailable)?
-            .ok_or(UninstallModError::GameInstanceUnavailable)?;
-        let service = UninstallModService::new(
-            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
-            Arc::new(FileSystemInstallBackupStore::new(
-                self.app_data_dir.join("install").join("backups"),
-            )),
-            Arc::new(JsonInstallManifestRepository::new(
-                self.app_data_dir.join("install").join("manifests"),
-            )),
-        );
-
-        service.uninstall_mod(UninstallModRequest {
-            profile_id: request.profile_id,
-            mod_id: request.mod_id,
         })
     }
 }
