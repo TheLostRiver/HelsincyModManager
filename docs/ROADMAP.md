@@ -1,6 +1,6 @@
 # 路线图
 
-## 当前执行焦点（2026-07-20）
+## 当前执行焦点（2026-07-22）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -13,15 +13,14 @@
 3. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已于 2026-07-18 完成；A1、L1、
    U1、U2、L2、U3、L3 七切片均经独立 review 合并，CI 验收、默认脱敏诊断、分层反馈、完整验证、
    视觉 smoke、受控 Windows 桌面复验和契约同步均已满足完成定义。
-4. 当前主线为 T18 Mod 库分页；Slice 1 的 app-level 查询服务已由 PR #186 完成，Slice 2 的 Tauri
-   DTO、稳定错误、feature-local typed API 和 contract 已由 PR #187 完成。Slice 3 的数字分页 footer、
-   250ms debounce/latest-request gate、loading/error/empty、本页选择和当前页 durable overlay 已合并，
-   本地统一验证、四视图/四窗口视觉 smoke 及独立复审均已通过。Slice 4A 的人工 1,000/10,000
-   条基准与 T18/T17 共用 read-model 持久化决策已合并；Slice 4B 的 SQLite projection
-   schema/rebuild、窄 ports、infra writer 和 T17 `upsert_many` 协调已由 PR #191 完成。Slice 4C 的生产
-   query switch、同事务 count/page、fail-closed freshness tracking 和性能门禁已实现并进入独立复审/PR；
-   最终 10,000 条 full status-filter projection query p95 为 `9.2966 ms`，低于固定 `14.23 ms` 同机预算。
-   Slice 4C 合并后主线转入 T17，再按 T17 -> T13 推进；其他扩展继续按各自发布门禁评审，不自动开工。
+4. T18 Mod 库分页已完成：Slice 1 的 app-level 查询服务由 PR #186 完成，Slice 2 的 Tauri DTO、稳定错误、
+   feature-local typed API 和 contract 由 PR #187 完成，Slice 3 已合并，Slice 4A/4B 分别由 PR #190/#191
+   完成，最后的 Slice 4C 已由 PR #192 rebase 合并。其生产 query switch、同事务 count/page、fail-closed
+   freshness tracking 和性能门禁的最终 10,000 条 full status-filter query p95 为 `9.2966 ms`，低于固定
+   `14.23 ms` 同机预算。
+5. 当前主线为 T17 Slice 1“第三方 Mod 管理器批量迁移基础”：只定义无路径领域/selection、窄 ports、
+   有界 JSON `upsert_many` 与 projection 协调、人工临时 fixtures；不扫描真实来源、不接入 Tauri/UI、
+   不物化、不安装或启用。完整 T17 后再评审 T13；其他扩展继续按各自发布门禁评审，不自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -83,10 +82,9 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加第三方 Mod 管理器批量迁移，首个兼容来源为狩技盒子目录，默认只导入而不安装或启用。详见 [第三方 Mod 管理器批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)。
 - 添加任务进度和取消 UI。
 
-已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集和 T19 产品化加固均已完成；
-T18 Slice 1/2/3/4A/4B 已完成，Slice 4C 的生产查询切换、同事务 count/page、fail-closed freshness
-tracking 和性能门禁已实现并进入独立复审/PR。Slice 4C 合并后 T18 整体完成，再按 T17 -> T13
-推进默认只导入的第三方迁移和批量破坏性操作。
+已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固与 T18
+Slice 1/2/3/4A/4B/4C 均已完成；当前推进 T17 Slice 1 的 import-only 基础。T17 的只读扫描、
+安全物化、Tauri/UI 和批量破坏性操作仍分别留在后续 Slice 或 T13，不能因本切片开工自动进入。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 
