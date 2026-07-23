@@ -1,9 +1,10 @@
 use anyhow::Result;
 use hmm_core::{Category, InstallManifest, ModId, ModMetadataOverlay, ModRevisionId, ProfileId};
 use hmm_ports::{
-    CategoryRepository, InstallManifestRepository, ModImportCatalogUpsert,
-    ModImportResultRepository, ModLibraryProjectionRepository, ModMetadataRepository,
-    StoredLogicalMod, StoredModImportAnalysis, StoredModRevision,
+    CategoryRepository, InstallManifestRepository, ModImportCatalogSnapshot,
+    ModImportCatalogUpsert, ModImportExternalCatalogUpsert, ModImportResultRepository,
+    ModLibraryProjectionRepository, ModMetadataRepository, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModRevision,
 };
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -153,6 +154,23 @@ impl ModImportResultRepository for ProjectionTrackingModImportResultRepository {
         self.delegate.upsert_many(upserts)?;
         self.finish_write();
         Ok(())
+    }
+
+    fn upsert_external_import_many(
+        &self,
+        upserts: &[ModImportExternalCatalogUpsert],
+    ) -> Result<()> {
+        if upserts.is_empty() {
+            return self.delegate.upsert_external_import_many(upserts);
+        }
+        let _activity_guard = self.tracker.begin_write()?;
+        self.delegate.upsert_external_import_many(upserts)?;
+        self.finish_write();
+        Ok(())
+    }
+
+    fn catalog_snapshot(&self) -> Result<ModImportCatalogSnapshot> {
+        self.delegate.catalog_snapshot()
     }
 
     fn get_mod(&self, mod_id: &ModId) -> Result<Option<StoredLogicalMod>> {

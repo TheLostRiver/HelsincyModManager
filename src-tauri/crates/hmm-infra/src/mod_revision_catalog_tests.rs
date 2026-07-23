@@ -4,13 +4,16 @@ use hmm_core::{
     PreviewImageRejectionReason,
 };
 use hmm_ports::{
-    ModImportCatalogUpsert, ModImportResultRepository, StoredImportPreviewImage, StoredLogicalMod,
-    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    ModImportCatalogUpsert, ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
+    ModImportExternalDisplayNameAdmission, ModImportResultRepository, StoredImportPreviewImage,
+    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
     StoredModRevision,
 };
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, Barrier};
+use std::thread;
 use std::time::Instant;
 
 #[test]
@@ -549,6 +552,122 @@ fn mod_import_catalog_upsert_many_10000_entries_use_exactly_50_atomic_writes() {
 }
 
 #[test]
+fn mod_import_catalog_snapshot_uses_one_authoritative_catalog_load() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let upserts = benchmark_upserts()
+        .into_iter()
+        .take(401)
+        .collect::<Vec<_>>();
+    repo.upsert_many(&upserts)
+        .expect("artificial catalog entries are durable");
+
+    let loads_before_snapshot = repo.catalog_load_count_for_test();
+    let snapshot = repo.catalog_snapshot().expect("read catalog snapshot");
+
+    assert_eq!(
+        repo.catalog_load_count_for_test(),
+        loads_before_snapshot + 1
+    );
+    assert_eq!(snapshot.logical_mods.len(), 401);
+    assert_eq!(snapshot.revisions.len(), 401);
+}
+
+#[test]
+fn mod_import_catalog_external_name_admission_requires_an_explicit_keep_both_decision() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let repo = JsonModImportResultRepository::new(temp.path().join("results.json"));
+    let first = external_import_upsert(
+        "external-first",
+        "Shared Display Name",
+        "content-first",
+        ModImportExternalDisplayNameAdmission::RequireUnique,
+    );
+    repo.upsert_external_import_many(std::slice::from_ref(&first))
+        .expect("first external import is durable");
+
+    let rejected = external_import_upsert(
+        "external-rejected",
+        "Shared Display Name",
+        "content-rejected",
+        ModImportExternalDisplayNameAdmission::RequireUnique,
+    );
+    let error = repo
+        .upsert_external_import_many(&[rejected])
+        .expect_err("same display name requires an explicit admission");
+    assert!(matches!(
+        error.downcast_ref::<ModImportExternalCatalogAdmissionError>(),
+        Some(ModImportExternalCatalogAdmissionError::DisplayNameCollision { display_name })
+            if display_name == "Shared Display Name"
+    ));
+
+    let keep_both = external_import_upsert(
+        "external-keep-both",
+        "Shared Display Name",
+        "content-keep-both",
+        ModImportExternalDisplayNameAdmission::AllowExisting,
+    );
+    repo.upsert_external_import_many(&[keep_both])
+        .expect("explicit keep-both admission is durable");
+    assert_eq!(
+        repo.catalog_snapshot()
+            .expect("read catalog after admissions")
+            .logical_mods
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn mod_import_catalog_external_admission_serializes_name_and_content_races() {
+    let name_race = tempfile::tempdir().expect("name race temp dir");
+    assert_concurrent_external_admission_race(
+        name_race.path().join("results.json"),
+        external_import_upsert(
+            "name-race-first",
+            "Racing Display Name",
+            "name-race-content-first",
+            ModImportExternalDisplayNameAdmission::RequireUnique,
+        ),
+        external_import_upsert(
+            "name-race-second",
+            "Racing Display Name",
+            "name-race-content-second",
+            ModImportExternalDisplayNameAdmission::RequireUnique,
+        ),
+        |error| {
+            matches!(
+                error,
+                ModImportExternalCatalogAdmissionError::DisplayNameCollision { .. }
+            )
+        },
+    );
+
+    let content_race = tempfile::tempdir().expect("content race temp dir");
+    assert_concurrent_external_admission_race(
+        content_race.path().join("results.json"),
+        external_import_upsert(
+            "content-race-first",
+            "First Racing Name",
+            "same-racing-content",
+            ModImportExternalDisplayNameAdmission::RequireUnique,
+        ),
+        external_import_upsert(
+            "content-race-second",
+            "Second Racing Name",
+            "same-racing-content",
+            ModImportExternalDisplayNameAdmission::RequireUnique,
+        ),
+        |error| {
+            matches!(
+                error,
+                ModImportExternalCatalogAdmissionError::ContentAlreadyImported { .. }
+            )
+        },
+    );
+}
+
+#[test]
 #[ignore = "release-only deterministic baseline; run explicitly with --ignored --nocapture"]
 fn mod_import_catalog_upsert_many_10000_baseline() {
     const WARMUP_SAMPLES: usize = 5;
@@ -697,6 +816,78 @@ fn logical_mod(mod_id: &str, revision_id: &str) -> StoredLogicalMod {
         display_revision_id: revision_id,
         origin_provenance: StoredModOriginProvenance::Imported,
     }
+}
+
+fn external_import_upsert(
+    mod_id: &str,
+    display_name: &str,
+    content_fingerprint: &str,
+    display_name_admission: ModImportExternalDisplayNameAdmission,
+) -> ModImportExternalCatalogUpsert {
+    let revision_id = format!("{mod_id}-revision");
+    let mut revision = revision(
+        &revision_id,
+        mod_id,
+        &format!("{mod_id}-package"),
+        "external-import-task",
+    );
+    revision.display_name = display_name.to_owned();
+    ModImportExternalCatalogUpsert {
+        upsert: ModImportCatalogUpsert {
+            logical_mod: StoredLogicalMod {
+                mod_id: ModId::new(mod_id),
+                origin_revision_id: revision.revision_id.clone(),
+                display_revision_id: revision.revision_id.clone(),
+                origin_provenance: StoredModOriginProvenance::ExternalImport {
+                    provenance: ExternalImportProvenance {
+                        adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
+                        batch_id: ExternalImportBatchId::new(format!("batch-{mod_id}")),
+                        source_item_key_hash: format!("source-item-{mod_id}"),
+                        content_fingerprint: content_fingerprint.to_owned(),
+                        imported_at_unix_millis: 1,
+                    },
+                },
+            },
+            revision,
+        },
+        display_name_admission,
+    }
+}
+
+fn assert_concurrent_external_admission_race(
+    catalog_path: std::path::PathBuf,
+    first_upsert: ModImportExternalCatalogUpsert,
+    second_upsert: ModImportExternalCatalogUpsert,
+    matches_expected: fn(&ModImportExternalCatalogAdmissionError) -> bool,
+) {
+    let barrier = Arc::new(Barrier::new(2));
+    let second_catalog_path = catalog_path.clone();
+    let first_barrier = Arc::clone(&barrier);
+    let first = thread::spawn(move || {
+        let repository = JsonModImportResultRepository::new(catalog_path);
+        first_barrier.wait();
+        repository.upsert_external_import_many(&[first_upsert])
+    });
+    let second_barrier = Arc::clone(&barrier);
+    let second = thread::spawn(move || {
+        let repository = JsonModImportResultRepository::new(second_catalog_path);
+        second_barrier.wait();
+        repository.upsert_external_import_many(&[second_upsert])
+    });
+
+    let first_result = first.join().expect("first race worker completes");
+    let second_result = second.join().expect("second race worker completes");
+    let outcomes = [&first_result, &second_result];
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    let failures = outcomes
+        .iter()
+        .filter_map(|result| result.as_ref().err())
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1);
+    let admission = failures[0]
+        .downcast_ref::<ModImportExternalCatalogAdmissionError>()
+        .expect("the losing race result is a typed authority admission rejection");
+    assert!(matches_expected(admission));
 }
 
 fn revision(revision_id: &str, mod_id: &str, package_id: &str, task_id: &str) -> StoredModRevision {

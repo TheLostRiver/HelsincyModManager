@@ -1,6 +1,7 @@
 use anyhow::Result;
 use hmm_core::{ExternalImportProvenance, ModId, ModRevisionId, PreviewImageRejectionReason};
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
 pub const MOD_IMPORT_UPSERT_CHUNK_SIZE: usize = 200;
@@ -28,11 +29,30 @@ pub struct ModImportPackagePrepareRequest<'a> {
     pub cancellation_token: &'a dyn crate::CancellationToken,
 }
 
+pub trait ModImportArchiveReader: Read + Seek {}
+
+impl<T> ModImportArchiveReader for T where T: Read + Seek + ?Sized {}
+
+/// Uses an already-open archive handle. This lets an infrastructure adapter retain a no-follow
+/// capability chain when the archive was generated in an app-private temporary directory.
+pub struct ModImportPackagePrepareReaderRequest<'a> {
+    pub task_id: &'a str,
+    pub archive: &'a mut dyn ModImportArchiveReader,
+    pub cancellation_token: &'a dyn crate::CancellationToken,
+}
+
 pub trait ModImportPackagePreparer: Send + Sync {
     fn prepare_package(
         &self,
         request: ModImportPackagePrepareRequest<'_>,
     ) -> Result<PreparedModPackage>;
+
+    fn prepare_package_from_reader(
+        &self,
+        _request: ModImportPackagePrepareReaderRequest<'_>,
+    ) -> Result<PreparedModPackage> {
+        anyhow::bail!("preparing an already-open Mod import archive is not supported")
+    }
 }
 
 pub trait ModPackageMetadataAnalyzer: Send + Sync {
@@ -124,6 +144,54 @@ pub struct ModImportCatalogUpsert {
     pub revision: StoredModRevision,
 }
 
+/// Captures the authority-side decision required before an external import may reuse a display
+/// name already owned by another logical Mod.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModImportExternalDisplayNameAdmission {
+    RequireUnique,
+    AllowExisting,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModImportExternalCatalogUpsert {
+    pub upsert: ModImportCatalogUpsert,
+    pub display_name_admission: ModImportExternalDisplayNameAdmission,
+}
+
+/// A single authoritative catalog read for callers that need both logical Mod provenance and
+/// display revisions. Implementations should avoid per-entry reloads.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModImportCatalogSnapshot {
+    pub logical_mods: Vec<StoredLogicalMod>,
+    pub revisions: Vec<StoredModRevision>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModImportExternalCatalogAdmissionError {
+    ContentAlreadyImported {
+        content_fingerprint: String,
+        existing_mod_id: ModId,
+    },
+    DisplayNameCollision {
+        display_name: String,
+    },
+}
+
+impl std::fmt::Display for ModImportExternalCatalogAdmissionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ContentAlreadyImported { .. } => {
+                formatter.write_str("external import content is already present")
+            }
+            Self::DisplayNameCollision { .. } => {
+                formatter.write_str("external import display name is already present")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ModImportExternalCatalogAdmissionError {}
+
 impl StoredModRevision {
     pub fn as_analysis(&self) -> StoredModImportAnalysis {
         StoredModImportAnalysis {
@@ -214,6 +282,36 @@ pub trait ModImportResultRepository: Send + Sync {
             return Ok(());
         }
         anyhow::bail!("batch Mod import upsert is not supported by this repository")
+    }
+
+    /// Persists external-import entries after authority-side content and display-name admission.
+    /// Generic repositories retain compatibility by delegating to `upsert_many`; the production
+    /// JSON authority overrides this method while holding its catalog lock.
+    fn upsert_external_import_many(
+        &self,
+        upserts: &[ModImportExternalCatalogUpsert],
+    ) -> Result<()> {
+        let plain_upserts = upserts
+            .iter()
+            .map(|upsert| upsert.upsert.clone())
+            .collect::<Vec<_>>();
+        self.upsert_many(&plain_upserts)
+    }
+
+    /// Returns a consistent catalog snapshot. Implementations with a single catalog backing
+    /// should override this rather than composing repeated point reads.
+    fn catalog_snapshot(&self) -> Result<ModImportCatalogSnapshot> {
+        let logical_mods = self.list_mods()?;
+        let mut revisions = Vec::with_capacity(logical_mods.len());
+        for logical_mod in &logical_mods {
+            if let Some(revision) = self.get_revision(&logical_mod.display_revision_id)? {
+                revisions.push(revision);
+            }
+        }
+        Ok(ModImportCatalogSnapshot {
+            logical_mods,
+            revisions,
+        })
     }
 
     fn get_mod(&self, mod_id: &ModId) -> Result<Option<StoredLogicalMod>> {

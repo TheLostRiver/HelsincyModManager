@@ -1,13 +1,20 @@
-use crate::external_import_source_registry::is_symlink_or_reparse_point;
+use crate::controlled_fs::{
+    create_new_regular_file, open_child_directory_nofollow, open_existing_directory_chain,
+    open_existing_directory_nofollow, open_or_create_child_directory,
+    open_or_create_directory_chain, open_or_create_directory_nofollow, open_regular_file_nofollow,
+    remove_child_tree_nofollow,
+};
 use anyhow::{Context, Result};
+use cap_std::fs::Dir;
 use hmm_ports::{
     CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
-    DiagnosticPackageExporter, ModImportPackagePrepareRequest, ModImportPackagePreparer,
-    ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
+    DiagnosticPackageExporter, ModImportPackagePrepareReaderRequest,
+    ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportSandboxLocator,
+    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
 };
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
@@ -17,6 +24,8 @@ const DEFAULT_ZIP_MAX_ENTRIES: usize = 16 * 1024;
 const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const DIAGNOSTIC_PACKAGE_DIR: &str = "diagnostics";
+const MOD_IMPORT_APP_DATA_DIRECTORY: &str = "mod-import";
+const MOD_IMPORT_SANDBOX_DIRECTORY: &str = "sandboxes";
 
 #[cfg(windows)]
 fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
@@ -37,6 +46,7 @@ fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
 
 pub struct ZipModImportPackagePreparer {
     sandbox_root: PathBuf,
+    app_data_root: Option<PathBuf>,
     limits: ZipExtractionLimits,
 }
 
@@ -46,13 +56,33 @@ pub struct FileSystemDiagnosticPackageExporter {
 
 pub struct TaskScopedModImportSandboxLocator {
     sandbox_root: PathBuf,
+    app_data_root: Option<PathBuf>,
 }
 
 impl ZipModImportPackagePreparer {
     pub fn new(sandbox_root: PathBuf) -> Self {
         Self {
             sandbox_root,
+            app_data_root: None,
             limits: ZipExtractionLimits::default(),
+        }
+    }
+
+    /// Uses an app-data capability root and fixed child names for production sandboxes.
+    pub fn new_in_app_data(app_data_root: PathBuf) -> Self {
+        Self {
+            sandbox_root: mod_import_sandbox_root_path(&app_data_root),
+            app_data_root: Some(app_data_root),
+            limits: ZipExtractionLimits::default(),
+        }
+    }
+
+    fn open_sandbox_root(&self) -> Result<Dir> {
+        match self.app_data_root.as_deref() {
+            Some(app_data_root) => open_managed_sandbox_root(app_data_root, true),
+            None => {
+                open_or_create_directory_nofollow(&self.sandbox_root, "mod import sandbox root")
+            }
         }
     }
 }
@@ -69,7 +99,25 @@ impl FileSystemDiagnosticPackageExporter {
 
 impl TaskScopedModImportSandboxLocator {
     pub fn new(sandbox_root: PathBuf) -> Self {
-        Self { sandbox_root }
+        Self {
+            sandbox_root,
+            app_data_root: None,
+        }
+    }
+
+    /// Keeps cleanup rooted below a verified app-data directory in production composition.
+    pub fn new_in_app_data(app_data_root: PathBuf) -> Self {
+        Self {
+            sandbox_root: mod_import_sandbox_root_path(&app_data_root),
+            app_data_root: Some(app_data_root),
+        }
+    }
+
+    fn open_existing_sandbox_root(&self) -> Result<Dir> {
+        match self.app_data_root.as_deref() {
+            Some(app_data_root) => open_managed_sandbox_root(app_data_root, false),
+            None => open_existing_directory_nofollow(&self.sandbox_root, "mod import sandbox root"),
+        }
     }
 }
 
@@ -80,8 +128,17 @@ impl ModImportSandboxLocator for TaskScopedModImportSandboxLocator {
     }
 
     fn cleanup_sandbox_for_package(&self, package_id: &str) -> Result<()> {
-        let sandbox_root = self.sandbox_root_for_package(package_id)?;
-        remove_controlled_sandbox_directory(&self.sandbox_root, &sandbox_root)
+        validate_task_id_segment(package_id)?;
+        let root = match self.open_existing_sandbox_root() {
+            Ok(root) => root,
+            Err(_error) if sandbox_root_is_missing(&self.sandbox_root) => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        remove_child_tree_nofollow(
+            &root,
+            std::ffi::OsStr::new(package_id),
+            "mod import sandbox",
+        )
     }
 }
 
@@ -107,28 +164,60 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
         &self,
         request: ModImportPackagePrepareRequest<'_>,
     ) -> Result<PreparedModPackage> {
-        let task_id = request.task_id;
-        let archive_path = request.archive_path;
-        validate_task_id_segment(task_id)?;
+        let mut archive = open_archive_file_nofollow(request.archive_path)?;
+        self.prepare_package_from_reader(ModImportPackagePrepareReaderRequest {
+            task_id: request.task_id,
+            archive: &mut archive,
+            cancellation_token: request.cancellation_token,
+        })
+    }
 
-        fs::create_dir_all(&self.sandbox_root)
-            .context("failed to create mod import sandbox root")?;
-        let sandbox_root = self.sandbox_root.join(task_id);
-        fs::create_dir(&sandbox_root).context("failed to create task-scoped mod import sandbox")?;
+    fn prepare_package_from_reader(
+        &self,
+        request: ModImportPackagePrepareReaderRequest<'_>,
+    ) -> Result<PreparedModPackage> {
+        validate_task_id_segment(request.task_id)?;
+        let root = self.open_sandbox_root()?;
+        match root.create_dir(request.task_id) {
+            Ok(()) => {}
+            Err(error) => {
+                return Err(error).context("failed to create task-scoped mod import sandbox");
+            }
+        }
+        let sandbox = match open_child_directory_nofollow(
+            &root,
+            std::ffi::OsStr::new(request.task_id),
+            "task-scoped mod import sandbox",
+        ) {
+            Ok(sandbox) => sandbox,
+            Err(error) => {
+                let _ = remove_child_tree_nofollow(
+                    &root,
+                    std::ffi::OsStr::new(request.task_id),
+                    "task-scoped mod import sandbox",
+                );
+                return Err(error);
+            }
+        };
 
         if let Err(error) = extract_zip_archive_with_limits(
-            archive_path,
-            &sandbox_root,
+            request.archive,
+            &sandbox,
             request.cancellation_token,
             self.limits,
         ) {
-            let _ = fs::remove_dir_all(&sandbox_root);
+            drop(sandbox);
+            let _ = remove_child_tree_nofollow(
+                &root,
+                std::ffi::OsStr::new(request.task_id),
+                "task-scoped mod import sandbox",
+            );
             return Err(error);
         }
 
         Ok(PreparedModPackage {
-            package_id: task_id.to_owned(),
-            sandbox_root,
+            package_id: request.task_id.to_owned(),
+            sandbox_root: self.sandbox_root.join(request.task_id),
         })
     }
 }
@@ -455,62 +544,47 @@ fn validate_task_id_segment(task_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn remove_controlled_sandbox_directory(root: &Path, sandbox_root: &Path) -> Result<()> {
-    let root_metadata = match fs::symlink_metadata(root) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error).context("failed to inspect mod import sandbox root"),
-    };
-    if !root_metadata.is_dir() || is_symlink_or_reparse_point(&root_metadata) {
-        anyhow::bail!("mod import sandbox root is not a regular directory");
-    }
-
-    remove_controlled_sandbox_tree(sandbox_root)
+fn sandbox_root_is_missing(root: &Path) -> bool {
+    matches!(fs::symlink_metadata(root), Err(error) if error.kind() == io::ErrorKind::NotFound)
 }
 
-fn remove_controlled_sandbox_tree(path: &Path) -> Result<()> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error).context("failed to inspect mod import sandbox entry"),
+fn mod_import_sandbox_root_path(app_data_root: &Path) -> PathBuf {
+    app_data_root
+        .join(MOD_IMPORT_APP_DATA_DIRECTORY)
+        .join(MOD_IMPORT_SANDBOX_DIRECTORY)
+}
+
+fn open_managed_sandbox_root(app_data_root: &Path, create: bool) -> Result<Dir> {
+    let app_data = if create {
+        open_or_create_directory_nofollow(app_data_root, "mod import app data root")?
+    } else {
+        open_existing_directory_nofollow(app_data_root, "mod import app data root")?
     };
-    if is_symlink_or_reparse_point(&metadata) || !metadata.is_dir() {
-        anyhow::bail!("mod import sandbox entry is not a regular directory");
+    if create {
+        open_or_create_directory_chain(
+            &app_data,
+            &[MOD_IMPORT_APP_DATA_DIRECTORY, MOD_IMPORT_SANDBOX_DIRECTORY],
+            "mod import sandbox root",
+        )
+    } else {
+        open_existing_directory_chain(
+            &app_data,
+            &[MOD_IMPORT_APP_DATA_DIRECTORY, MOD_IMPORT_SANDBOX_DIRECTORY],
+            "mod import sandbox root",
+        )
     }
+}
 
-    for entry in fs::read_dir(path).context("failed to read mod import sandbox directory")? {
-        let entry = entry.context("failed to read mod import sandbox entry")?;
-        let entry_path = entry.path();
-        let entry_metadata = match fs::symlink_metadata(&entry_path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-            Err(error) => {
-                return Err(error).context("failed to inspect mod import sandbox entry");
-            }
-        };
-        if is_symlink_or_reparse_point(&entry_metadata) {
-            anyhow::bail!("mod import sandbox entry is a link or reparse point");
-        }
-        if entry_metadata.is_dir() {
-            remove_controlled_sandbox_tree(&entry_path)?;
-        } else if entry_metadata.is_file() {
-            match fs::remove_file(&entry_path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(error).context("failed to remove mod import sandbox file");
-                }
-            }
-        } else {
-            anyhow::bail!("mod import sandbox entry has an unsupported type");
-        }
-    }
-
-    match fs::remove_dir(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error).context("failed to remove mod import sandbox directory"),
-    }
+fn open_archive_file_nofollow(path: &Path) -> Result<File> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .context("Mod import archive must have a parent directory")?;
+    let file_name = path
+        .file_name()
+        .context("Mod import archive must have a final path component")?;
+    let parent = open_existing_directory_nofollow(parent, "Mod import archive parent directory")?;
+    Ok(open_regular_file_nofollow(&parent, file_name, "Mod import archive")?.into_std())
 }
 
 fn validate_diagnostic_package_file_name(file_name: &str) -> Result<()> {
@@ -543,13 +617,15 @@ fn validate_diagnostic_name_segment(value: &str, label: &str) -> Result<()> {
     Ok(())
 }
 
-fn extract_zip_archive_with_limits(
-    archive_path: &Path,
-    sandbox_root: &Path,
+fn extract_zip_archive_with_limits<R>(
+    archive_file: &mut R,
+    sandbox_root: &Dir,
     cancellation_token: &dyn CancellationToken,
     limits: ZipExtractionLimits,
-) -> Result<()> {
-    let archive_file = fs::File::open(archive_path).context("failed to open archive")?;
+) -> Result<()>
+where
+    R: Read + Seek + ?Sized,
+{
     let mut archive = zip::ZipArchive::new(archive_file).context("failed to read zip archive")?;
     reject_too_many_archive_entries(archive.len(), limits.max_entries)?;
     let mut seen_paths = HashSet::new();
@@ -565,10 +641,8 @@ fn extract_zip_archive_with_limits(
 
         let relative_path = safe_zip_entry_path(entry.name())?;
         reject_case_insensitive_collision(&mut seen_paths, &relative_path)?;
-        let target_path = sandbox_root.join(&relative_path);
-
         if entry.is_dir() {
-            fs::create_dir_all(&target_path).context("failed to create archive directory")?;
+            let _ = open_or_create_archive_directory(sandbox_root, &relative_path)?;
             continue;
         }
 
@@ -578,17 +652,31 @@ fn extract_zip_archive_with_limits(
             limits.max_total_uncompressed_bytes,
         )?;
 
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).context("failed to create archive parent directory")?;
-        }
-
+        let parent = relative_path.parent().unwrap_or_else(|| Path::new(""));
+        let parent = open_or_create_archive_directory(sandbox_root, parent)?;
+        let file_name = relative_path
+            .file_name()
+            .context("unsafe archive path: missing file name")?;
         let mut target_file =
-            fs::File::create(&target_path).context("failed to create extracted file")?;
+            create_new_regular_file(&parent, file_name, "extracted archive file")?;
         copy_with_cancellation(&mut entry, &mut target_file, cancellation_token)
             .context("failed to extract archive file")?;
     }
 
     Ok(())
+}
+
+fn open_or_create_archive_directory(root: &Dir, relative_path: &Path) -> Result<Dir> {
+    let mut current = root
+        .try_clone()
+        .context("failed to clone archive sandbox directory handle")?;
+    for component in relative_path.components() {
+        let Component::Normal(name) = component else {
+            anyhow::bail!("unsafe archive path component");
+        };
+        current = open_or_create_child_directory(&current, name, "archive sandbox directory")?;
+    }
+    Ok(current)
 }
 
 fn reject_too_many_archive_entries(actual_entries: usize, max_entries: usize) -> Result<()> {
@@ -896,6 +984,36 @@ mod tests {
     }
 
     #[test]
+    fn sandbox_locator_rejects_a_linked_task_scope_without_touching_outside_sentinel() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("sandboxes");
+        fs::create_dir_all(&sandbox_root).expect("create sandbox root");
+        let outside = tempfile::tempdir().expect("outside root");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, b"outside remains untouched").expect("write outside sentinel");
+        let linked_scope = sandbox_root.join("task-1");
+        if !try_create_directory_link(outside.path(), &linked_scope) {
+            return;
+        }
+
+        let locator = TaskScopedModImportSandboxLocator::new(sandbox_root);
+        let error = locator
+            .cleanup_sandbox_for_package("task-1")
+            .expect_err("linked task scope must be rejected");
+
+        assert!(error.to_string().contains("mod import sandbox"));
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        assert!(
+            fs::symlink_metadata(&linked_scope).is_ok(),
+            "cleanup must not remove a rejected linked scope"
+        );
+        remove_directory_link(&linked_scope);
+    }
+
+    #[test]
     fn rejects_zip_archives_with_too_many_entries_and_cleans_task_sandbox() {
         let temp = tempfile::tempdir().expect("temp dir");
         let archive_path = temp.path().join("too-many.zip");
@@ -908,6 +1026,7 @@ mod tests {
         };
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
+            app_data_root: None,
             limits,
         };
 
@@ -931,6 +1050,7 @@ mod tests {
         };
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
+            app_data_root: None,
             limits,
         };
 
@@ -962,6 +1082,7 @@ mod tests {
         };
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
+            app_data_root: None,
             limits,
         };
 
@@ -1165,6 +1286,35 @@ mod tests {
         zip.add_symlink_from_path(PathBuf::from(name), PathBuf::from(target), options)
             .expect("add symlink");
         zip.finish().expect("finish zip");
+    }
+
+    #[cfg(unix)]
+    fn try_create_directory_link(target: &Path, link: &Path) -> bool {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+
+    #[cfg(windows)]
+    fn try_create_directory_link(target: &Path, link: &Path) -> bool {
+        std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                link.to_str().expect("link path"),
+                target.to_str().expect("target path"),
+            ])
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_file(link).expect("remove directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_dir(link).expect("remove directory junction");
     }
 
     struct AlwaysCancelled;
