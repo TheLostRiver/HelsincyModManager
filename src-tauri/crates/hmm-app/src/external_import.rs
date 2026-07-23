@@ -22,7 +22,8 @@ use hmm_ports::{
     ExternalImportMaterializeRequest, ExternalImportMaterializer, ExternalImportScanRequest,
     ExternalImportScanner, ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
     ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
-    ExternalImportSourceRegistry, ModImportResultRepository, ModImportSandboxLocator,
+    ExternalImportSourceRegistry, ModImportExternalCatalogAdmissionError,
+    ModImportResultRepository, ModImportSandboxLocator,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -1110,10 +1111,100 @@ impl ExternalImportBatchService {
         let entries = std::mem::take(pending_catalog);
         let upserts = entries
             .iter()
-            .map(|entry| entry.upsert.clone())
+            .map(PendingCatalogImport::external_catalog_upsert)
             .collect::<Vec<_>>();
-        if self.catalog.upsert_many(&upserts).is_err() {
+        if let Err(error) = self.catalog.upsert_external_import_many(&upserts) {
             let reconciled = CatalogIndex::load(self.catalog.as_ref()).ok();
+            let admission = error
+                .downcast_ref::<ModImportExternalCatalogAdmissionError>()
+                .cloned();
+            if let (Some(reconciled), Some(admission)) = (reconciled.as_ref(), admission) {
+                *catalog_index = reconciled.clone();
+                let mut retry = Vec::new();
+                for entry in entries {
+                    if let Some(existing_import) = reconciled
+                        .by_content_fingerprint
+                        .get(&entry.content_fingerprint)
+                    {
+                        let own_logical_mod =
+                            existing_import.mod_id == entry.upsert.logical_mod.mod_id;
+                        let status = if own_logical_mod {
+                            ExternalImportItemStatus::Imported
+                        } else {
+                            ExternalImportItemStatus::AlreadyImported
+                        };
+                        if !own_logical_mod {
+                            self.cleanup_unpersisted_sandbox(&entry.analysis.package_id);
+                        }
+                        pending_results.push(self.catalog_result(
+                            &entry.candidate,
+                            &existing_import.mod_id,
+                            entry.decision.as_ref(),
+                            status,
+                            own_logical_mod,
+                        ));
+                        continue;
+                    }
+
+                    let permits_keep_both = entry
+                        .decision
+                        .as_ref()
+                        .and_then(|decision| decision.conflict_resolution)
+                        == Some(ExternalImportConflictResolution::KeepBoth);
+                    let rejected_for_name = matches!(
+                        &admission,
+                        ModImportExternalCatalogAdmissionError::DisplayNameCollision { display_name }
+                            if !permits_keep_both
+                                && normalize_display_name(&entry.analysis.display_name)
+                                    == normalize_display_name(display_name)
+                    );
+                    let rejected_for_content = matches!(
+                        &admission,
+                        ModImportExternalCatalogAdmissionError::ContentAlreadyImported {
+                            content_fingerprint,
+                            ..
+                        } if entry.content_fingerprint == *content_fingerprint
+                    );
+                    if rejected_for_name {
+                        self.cleanup_unpersisted_sandbox(&entry.analysis.package_id);
+                        pending_results.push(item_result(
+                            &entry.candidate,
+                            ExternalImportItemStatus::Blocked,
+                            Some(ExternalImportReasonCode::NameCollision),
+                            None,
+                            false,
+                        ));
+                    } else if rejected_for_content {
+                        let ModImportExternalCatalogAdmissionError::ContentAlreadyImported {
+                            existing_mod_id,
+                            ..
+                        } = &admission
+                        else {
+                            unreachable!("content admission branch requires a content rejection");
+                        };
+                        self.cleanup_unpersisted_sandbox(&entry.analysis.package_id);
+                        pending_results.push(self.catalog_result(
+                            &entry.candidate,
+                            existing_mod_id,
+                            entry.decision.as_ref(),
+                            ExternalImportItemStatus::AlreadyImported,
+                            false,
+                        ));
+                    } else {
+                        retry.push(entry);
+                    }
+                }
+                if !retry.is_empty() {
+                    *pending_catalog = retry;
+                    self.flush_catalog_upserts(
+                        batch_id,
+                        pending_catalog,
+                        pending_results,
+                        catalog_index,
+                    )?;
+                }
+                return Ok(());
+            }
             for entry in entries {
                 if let Some(existing_import) = reconciled
                     .as_ref()

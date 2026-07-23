@@ -1,22 +1,28 @@
+use crate::controlled_fs::{
+    create_new_regular_file, open_child_directory_nofollow, open_existing_directory_nofollow,
+    open_or_create_child_directory, open_or_create_directory_chain,
+    open_or_create_directory_nofollow, open_regular_file_nofollow, remove_empty_child_directory,
+};
 use crate::external_import_scanner::{
     metadata_matches_preview, validate_materialization_content, ContentValidationError,
     ValidatedContentFile,
 };
 use crate::external_import_source_registry::{
-    is_symlink_or_reparse_point, HuntingBoxDirectorySourceRegistry,
+    HuntingBoxDirectorySourceRegistry, RegisteredHuntingBoxSource,
     HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID,
 };
 use anyhow::{anyhow, Context, Result};
+use cap_std::fs::{Dir, File, Metadata};
 use hmm_core::ExternalImportCandidate;
 use hmm_ports::{
     CancellationToken, ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
-    ExternalImportMaterializedPackage, ExternalImportMaterializer, ModImportPackagePrepareRequest,
-    ModImportPackagePreparer,
+    ExternalImportMaterializedPackage, ExternalImportMaterializer,
+    ModImportPackagePrepareReaderRequest, ModImportPackagePreparer,
 };
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
+use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
@@ -27,21 +33,33 @@ const COPY_BUFFER_BYTES: usize = 64 * 1024;
 /// and delegates archive extraction to the existing single-package safety boundary.
 pub struct HuntingBoxDirectoryMaterializer {
     registry: Arc<HuntingBoxDirectorySourceRegistry>,
-    artifact_root: PathBuf,
+    app_data_root: PathBuf,
     package_preparer: Arc<dyn ModImportPackagePreparer>,
 }
 
 impl HuntingBoxDirectoryMaterializer {
     pub fn new(
         registry: Arc<HuntingBoxDirectorySourceRegistry>,
-        artifact_root: PathBuf,
+        app_data_root: PathBuf,
         package_preparer: Arc<dyn ModImportPackagePreparer>,
     ) -> Self {
         Self {
             registry,
-            artifact_root,
+            app_data_root,
             package_preparer,
         }
+    }
+
+    fn open_artifact_root(&self) -> Result<Dir> {
+        let app_data_root = open_or_create_directory_nofollow(
+            &self.app_data_root,
+            "external import app data root",
+        )?;
+        open_or_create_directory_chain(
+            &app_data_root,
+            &["external-import", "materialized"],
+            "external import materialization directory",
+        )
     }
 }
 
@@ -64,13 +82,18 @@ impl ExternalImportMaterializer for HuntingBoxDirectoryMaterializer {
         if registration.source.adapter_id.as_str() != HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID {
             return Ok(ExternalImportMaterializationOutcome::SourceChanged);
         }
-        let Some(selected_paths) =
-            find_selected_files_directory(&self.registry, &registration, request.candidate)?
+        let Some(mut selected_paths) = find_selected_candidate(
+            &self.registry,
+            &registration,
+            request.candidate,
+            request.resource_budget.max_total_candidates,
+            request.cancellation_token,
+        )?
         else {
             return Ok(ExternalImportMaterializationOutcome::SourceChanged);
         };
         if !metadata_matches_preview(
-            &selected_paths.info_xml,
+            &mut selected_paths.info_xml,
             request.candidate.preview_status,
             &request.candidate.metadata_hint,
         ) {
@@ -78,7 +101,7 @@ impl ExternalImportMaterializer for HuntingBoxDirectoryMaterializer {
         }
 
         let content = match validate_materialization_content(
-            &selected_paths.files_directory,
+            selected_paths.files_directory,
             request.resource_budget,
             request.cancellation_token,
         ) {
@@ -98,32 +121,62 @@ impl ExternalImportMaterializer for HuntingBoxDirectoryMaterializer {
         }
 
         let package_id = format!("external-import-package-{}", Uuid::new_v4());
-        let scope_directory = self.artifact_root.join(task_scope_id(request.task_id));
-        fs::create_dir_all(&scope_directory)
-            .context("failed to create external import materialization scope")?;
-        let archive_path = scope_directory.join(format!("{package_id}.zip"));
+        let artifact_root = self.open_artifact_root()?;
+        let scope_name = task_scope_id(request.task_id);
+        let scope_directory = open_or_create_child_directory(
+            &artifact_root,
+            OsStr::new(&scope_name),
+            "external import materialization task scope",
+        )?;
+        let archive_name = OsString::from(format!("{package_id}.zip"));
 
-        let write_result =
-            write_normalized_archive(&archive_path, &content.files, request.cancellation_token);
-        if write_result.is_err() {
-            let _ = fs::remove_file(&archive_path);
-        }
-        match write_result? {
+        let write_result = write_normalized_archive(
+            &scope_directory,
+            &archive_name,
+            &content.source_directory,
+            &content.files,
+            request.cancellation_token,
+        );
+        let write_result = match write_result {
+            Ok(result) => result,
+            Err(error) => {
+                cleanup_materialized_archive(
+                    &artifact_root,
+                    scope_directory,
+                    &scope_name,
+                    &archive_name,
+                );
+                return Err(error);
+            }
+        };
+        match write_result {
             ArchiveWriteOutcome::SourceChanged => {
-                let _ = fs::remove_file(&archive_path);
+                cleanup_materialized_archive(
+                    &artifact_root,
+                    scope_directory,
+                    &scope_name,
+                    &archive_name,
+                );
                 return Ok(ExternalImportMaterializationOutcome::SourceChanged);
             }
             ArchiveWriteOutcome::Written => {}
         }
 
-        let prepared = self
-            .package_preparer
-            .prepare_package(ModImportPackagePrepareRequest {
-                task_id: &package_id,
-                archive_path: &archive_path,
-                cancellation_token: request.cancellation_token,
-            });
-        let _ = fs::remove_file(&archive_path);
+        let prepared = (|| -> Result<_> {
+            let mut archive = open_regular_file_nofollow(
+                &scope_directory,
+                &archive_name,
+                "external import materialized archive",
+            )?;
+            self.package_preparer.prepare_package_from_reader(
+                ModImportPackagePrepareReaderRequest {
+                    task_id: &package_id,
+                    archive: &mut archive,
+                    cancellation_token: request.cancellation_token,
+                },
+            )
+        })();
+        cleanup_materialized_archive(&artifact_root, scope_directory, &scope_name, &archive_name);
         let prepared = prepared.context("failed to prepare external import internal package")?;
         if prepared.package_id != package_id {
             return Err(anyhow!(
@@ -142,29 +195,36 @@ impl ExternalImportMaterializer for HuntingBoxDirectoryMaterializer {
     }
 }
 
-struct SelectedCandidatePaths {
-    files_directory: PathBuf,
-    info_xml: PathBuf,
+struct SelectedCandidateHandles {
+    files_directory: Dir,
+    info_xml: File,
 }
 
-fn find_selected_files_directory(
+fn find_selected_candidate(
     registry: &HuntingBoxDirectorySourceRegistry,
-    registration: &crate::external_import_source_registry::RegisteredHuntingBoxSource,
+    registration: &RegisteredHuntingBoxSource,
     candidate: &ExternalImportCandidate,
-) -> Result<Option<SelectedCandidatePaths>> {
-    let root_metadata = match fs::symlink_metadata(&registration.root_directory) {
-        Ok(metadata) => metadata,
+    max_candidates: u64,
+    cancellation_token: &dyn CancellationToken,
+) -> Result<Option<SelectedCandidateHandles>> {
+    let root_directory = match open_existing_directory_nofollow(
+        &registration.root_directory,
+        "external import source root",
+    ) {
+        Ok(directory) => directory,
         Err(_) => return Ok(None),
     };
-    if is_symlink_or_reparse_point(&root_metadata) || !root_metadata.is_dir() {
-        return Ok(None);
-    }
-
-    let entries = match fs::read_dir(&registration.root_directory) {
+    let entries = match root_directory.entries() {
         Ok(entries) => entries,
         Err(_) => return Ok(None),
     };
+    let mut entries_seen = 0_u64;
     for entry in entries {
+        ensure_not_cancelled(cancellation_token)?;
+        entries_seen = match entries_seen.checked_add(1) {
+            Some(value) if value <= max_candidates => value,
+            _ => return Ok(None),
+        };
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => return Ok(None),
@@ -182,31 +242,36 @@ fn find_selected_files_directory(
             continue;
         }
 
-        let item_path = entry.path();
-        let files_directory = item_path.join("files");
-        let info_xml = item_path.join("info.xml");
-        if is_regular_directory(&item_path)
-            && is_regular_directory(&files_directory)
-            && is_regular_file(&info_xml)
-        {
-            return Ok(Some(SelectedCandidatePaths {
-                files_directory,
-                info_xml,
-            }));
-        }
-        return Ok(None);
+        let item_directory = match open_child_directory_nofollow(
+            &root_directory,
+            &file_name,
+            "external import candidate directory",
+        ) {
+            Ok(directory) => directory,
+            Err(_) => return Ok(None),
+        };
+        let files_directory = match open_child_directory_nofollow(
+            &item_directory,
+            OsStr::new("files"),
+            "external import candidate files directory",
+        ) {
+            Ok(directory) => directory,
+            Err(_) => return Ok(None),
+        };
+        let info_xml = match open_regular_file_nofollow(
+            &item_directory,
+            OsStr::new("info.xml"),
+            "external import candidate metadata",
+        ) {
+            Ok(file) => file,
+            Err(_) => return Ok(None),
+        };
+        return Ok(Some(SelectedCandidateHandles {
+            files_directory,
+            info_xml,
+        }));
     }
     Ok(None)
-}
-
-fn is_regular_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .is_ok_and(|metadata| !is_symlink_or_reparse_point(&metadata) && metadata.is_dir())
-}
-
-fn is_regular_file(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .is_ok_and(|metadata| !is_symlink_or_reparse_point(&metadata) && metadata.is_file())
 }
 
 enum ArchiveWriteOutcome {
@@ -215,15 +280,17 @@ enum ArchiveWriteOutcome {
 }
 
 fn write_normalized_archive(
-    archive_path: &Path,
+    scope_directory: &Dir,
+    archive_name: &OsStr,
+    source_directory: &Dir,
     files: &[ValidatedContentFile],
     cancellation_token: &dyn CancellationToken,
 ) -> Result<ArchiveWriteOutcome> {
-    let file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(archive_path)
-        .context("failed to create external import internal archive")?;
+    let file = create_new_regular_file(
+        scope_directory,
+        archive_name,
+        "external import materialized archive",
+    )?;
     let mut archive = zip::ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
@@ -232,7 +299,12 @@ fn write_normalized_archive(
         archive
             .start_file(&content_file.archive_path, options)
             .context("failed to create external import internal archive entry")?;
-        match copy_verified_file(&mut archive, content_file, cancellation_token)? {
+        match copy_verified_file(
+            &mut archive,
+            source_directory,
+            content_file,
+            cancellation_token,
+        )? {
             ArchiveWriteOutcome::Written => {}
             ArchiveWriteOutcome::SourceChanged => return Ok(ArchiveWriteOutcome::SourceChanged),
         }
@@ -248,20 +320,37 @@ fn write_normalized_archive(
 
 fn copy_verified_file(
     archive: &mut zip::ZipWriter<File>,
+    source_directory: &Dir,
     expected: &ValidatedContentFile,
     cancellation_token: &dyn CancellationToken,
 ) -> Result<ArchiveWriteOutcome> {
-    let Some(before) = regular_file_metadata(&expected.source_path, expected.size_bytes) else {
+    let Some((parent, file_name)) =
+        open_source_file_parent(source_directory, &expected.source_segments)
+    else {
+        return Ok(ArchiveWriteOutcome::SourceChanged);
+    };
+    let Some(before) = regular_file_metadata(&parent, &file_name, expected.size_bytes) else {
         return Ok(ArchiveWriteOutcome::SourceChanged);
     };
     let before_modified = match before.modified() {
         Ok(value) => value,
         Err(_) => return Ok(ArchiveWriteOutcome::SourceChanged),
     };
-    let mut input = match File::open(&expected.source_path) {
+    let mut input = match open_regular_file_nofollow(
+        &parent,
+        &file_name,
+        "external import source file during materialization",
+    ) {
         Ok(file) => file,
         Err(_) => return Ok(ArchiveWriteOutcome::SourceChanged),
     };
+    let opened = match input.metadata() {
+        Ok(metadata) if metadata.is_file() && metadata.len() == expected.size_bytes => metadata,
+        _ => return Ok(ArchiveWriteOutcome::SourceChanged),
+    };
+    if opened.modified().ok() != Some(before_modified) {
+        return Ok(ArchiveWriteOutcome::SourceChanged);
+    }
     let mut hasher = Sha256::new();
     let mut bytes_read = 0_u64;
     let mut buffer = [0_u8; COPY_BUFFER_BYTES];
@@ -285,7 +374,7 @@ fn copy_verified_file(
             .context("failed to write external import internal archive entry")?;
     }
 
-    let Some(after) = regular_file_metadata(&expected.source_path, expected.size_bytes) else {
+    let Some(after) = regular_file_metadata(&parent, &file_name, expected.size_bytes) else {
         return Ok(ArchiveWriteOutcome::SourceChanged);
     };
     if bytes_read != expected.size_bytes
@@ -297,12 +386,44 @@ fn copy_verified_file(
     Ok(ArchiveWriteOutcome::Written)
 }
 
-fn regular_file_metadata(path: &Path, expected_size: u64) -> Option<fs::Metadata> {
-    fs::symlink_metadata(path).ok().filter(|metadata| {
-        !is_symlink_or_reparse_point(metadata)
-            && metadata.is_file()
+fn open_source_file_parent(
+    source_directory: &Dir,
+    source_segments: &[OsString],
+) -> Option<(Dir, OsString)> {
+    let (file_name, parent_segments) = source_segments.split_last()?;
+    let mut parent = source_directory.try_clone().ok()?;
+    for segment in parent_segments {
+        parent = open_child_directory_nofollow(
+            &parent,
+            segment,
+            "external import source content directory",
+        )
+        .ok()?;
+    }
+    Some((parent, file_name.clone()))
+}
+
+fn regular_file_metadata(parent: &Dir, file_name: &OsStr, expected_size: u64) -> Option<Metadata> {
+    parent.symlink_metadata(file_name).ok().filter(|metadata| {
+        metadata.is_file()
             && metadata.len() == expected_size
+            && open_regular_file_nofollow(parent, file_name, "external import source file").is_ok()
     })
+}
+
+fn cleanup_materialized_archive(
+    artifact_root: &Dir,
+    scope_directory: Dir,
+    scope_name: &str,
+    archive_name: &OsStr,
+) {
+    let _ = scope_directory.remove_file(archive_name);
+    drop(scope_directory);
+    let _ = remove_empty_child_directory(
+        artifact_root,
+        OsStr::new(scope_name),
+        "external import materialization task scope",
+    );
 }
 
 fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
@@ -338,6 +459,8 @@ mod tests {
     use hmm_ports::{
         ExternalImportScanRequest, ExternalImportScanner, ModImportSandboxLocator, NeverCancelled,
     };
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn materializer_builds_a_sandboxed_package_without_mutating_the_source_fixture() {
@@ -368,7 +491,7 @@ mod tests {
         let sandbox_root = app_data.path().join("sandboxes");
         let materializer = HuntingBoxDirectoryMaterializer::new(
             Arc::clone(&registry),
-            app_data.path().join("materialized"),
+            app_data.path().to_path_buf(),
             Arc::new(ZipModImportPackagePreparer::new(sandbox_root.clone())),
         );
 
@@ -401,10 +524,20 @@ mod tests {
         assert!(
             !app_data
                 .path()
+                .join("external-import")
                 .join("materialized")
                 .to_string_lossy()
                 .contains("fixture-source"),
             "materialization scope does not derive from the source path"
+        );
+        assert!(
+            !app_data
+                .path()
+                .join("external-import")
+                .join("materialized")
+                .join(task_scope_id("mod-import-fixture-task"))
+                .exists(),
+            "successful materialization removes its transient task scope"
         );
     }
 
@@ -434,10 +567,10 @@ mod tests {
             .next()
             .expect("candidate");
         fs::write(&source_file, b"changed fixture content").expect("change fixture source");
-        let artifact_root = app_data.path().join("materialized");
+        let artifact_root = app_data.path().join("external-import").join("materialized");
         let materializer = HuntingBoxDirectoryMaterializer::new(
             Arc::clone(&registry),
-            artifact_root.clone(),
+            app_data.path().to_path_buf(),
             Arc::new(ZipModImportPackagePreparer::new(
                 app_data.path().join("sandboxes"),
             )),
@@ -491,7 +624,7 @@ mod tests {
         .expect("change fixture metadata");
         let materializer = HuntingBoxDirectoryMaterializer::new(
             Arc::clone(&registry),
-            app_data.path().join("materialized"),
+            app_data.path().to_path_buf(),
             Arc::new(ZipModImportPackagePreparer::new(
                 app_data.path().join("sandboxes"),
             )),
@@ -510,6 +643,202 @@ mod tests {
             .expect("changed metadata is an expected outcome");
 
         assert_eq!(outcome, ExternalImportMaterializationOutcome::SourceChanged);
+    }
+
+    #[test]
+    fn materializer_rejects_a_files_directory_replaced_with_a_link() {
+        let app_data = tempfile::tempdir().expect("app data");
+        let source_root = tempfile::tempdir().expect("source root");
+        write_fixture(source_root.path());
+        let registry = Arc::new(
+            HuntingBoxDirectorySourceRegistry::new(app_data.path()).expect("source registry"),
+        );
+        let source = registry
+            .register_directory(source_root.path().to_path_buf())
+            .expect("register source");
+        let batch = batch_for(&source);
+        let scanner = HuntingBoxDirectoryScanner::new(Arc::clone(&registry));
+        let candidate = scanner
+            .scan(ExternalImportScanRequest {
+                source: &source,
+                batch: &batch,
+                resource_budget: &Default::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan fixture")
+            .candidates
+            .into_iter()
+            .next()
+            .expect("candidate");
+        let outside = tempfile::tempdir().expect("outside root");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, b"outside remains untouched").expect("write outside sentinel");
+        let files_directory = source_root.path().join("1001").join("files");
+        fs::remove_dir_all(&files_directory).expect("remove scanned files directory");
+        if !try_create_directory_link(outside.path(), &files_directory) {
+            return;
+        }
+        let materializer = HuntingBoxDirectoryMaterializer::new(
+            Arc::clone(&registry),
+            app_data.path().to_path_buf(),
+            Arc::new(ZipModImportPackagePreparer::new(
+                app_data.path().join("sandboxes"),
+            )),
+        );
+
+        let outcome = materializer
+            .materialize(ExternalImportMaterializeRequest {
+                source_id: &source.source_id,
+                batch_id: &batch.batch_id,
+                candidate: &candidate,
+                expected_content_fingerprint: &candidate.content_fingerprint,
+                task_id: "mod-import-linked-files",
+                resource_budget: &Default::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("linked source is an expected source change");
+
+        assert_eq!(outcome, ExternalImportMaterializationOutcome::SourceChanged);
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        assert!(!app_data
+            .path()
+            .join("external-import")
+            .join("materialized")
+            .join(task_scope_id("mod-import-linked-files"))
+            .exists());
+        remove_directory_link(&files_directory);
+    }
+
+    #[test]
+    fn materializer_rejects_metadata_replaced_with_a_link() {
+        let app_data = tempfile::tempdir().expect("app data");
+        let source_root = tempfile::tempdir().expect("source root");
+        write_fixture(source_root.path());
+        let registry = Arc::new(
+            HuntingBoxDirectorySourceRegistry::new(app_data.path()).expect("source registry"),
+        );
+        let source = registry
+            .register_directory(source_root.path().to_path_buf())
+            .expect("register source");
+        let batch = batch_for(&source);
+        let scanner = HuntingBoxDirectoryScanner::new(Arc::clone(&registry));
+        let candidate = scanner
+            .scan(ExternalImportScanRequest {
+                source: &source,
+                batch: &batch,
+                resource_budget: &Default::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan fixture")
+            .candidates
+            .into_iter()
+            .next()
+            .expect("candidate");
+        let outside = tempfile::tempdir().expect("outside root");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, b"outside remains untouched").expect("write outside sentinel");
+        let metadata_path = source_root.path().join("1001").join("info.xml");
+        fs::remove_file(&metadata_path).expect("remove scanned metadata");
+        if !try_create_directory_link(outside.path(), &metadata_path) {
+            return;
+        }
+        let materializer = HuntingBoxDirectoryMaterializer::new(
+            Arc::clone(&registry),
+            app_data.path().to_path_buf(),
+            Arc::new(ZipModImportPackagePreparer::new(
+                app_data.path().join("sandboxes"),
+            )),
+        );
+
+        let outcome = materializer
+            .materialize(ExternalImportMaterializeRequest {
+                source_id: &source.source_id,
+                batch_id: &batch.batch_id,
+                candidate: &candidate,
+                expected_content_fingerprint: &candidate.content_fingerprint,
+                task_id: "mod-import-linked-metadata",
+                resource_budget: &Default::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("linked metadata is an expected source change");
+
+        assert_eq!(outcome, ExternalImportMaterializationOutcome::SourceChanged);
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        remove_directory_link(&metadata_path);
+    }
+
+    #[test]
+    fn materializer_refuses_a_linked_app_data_artifact_root() {
+        let registry_data = tempfile::tempdir().expect("registry app data");
+        let app_data_parent = tempfile::tempdir().expect("app data parent");
+        let outside = tempfile::tempdir().expect("outside root");
+        let app_data_link = app_data_parent.path().join("linked-app-data");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, b"outside remains untouched").expect("write outside sentinel");
+        if !try_create_directory_link(outside.path(), &app_data_link) {
+            return;
+        }
+        let source_root = tempfile::tempdir().expect("source root");
+        write_fixture(source_root.path());
+        let registry = Arc::new(
+            HuntingBoxDirectorySourceRegistry::new(registry_data.path()).expect("source registry"),
+        );
+        let source = registry
+            .register_directory(source_root.path().to_path_buf())
+            .expect("register source");
+        let batch = batch_for(&source);
+        let scanner = HuntingBoxDirectoryScanner::new(Arc::clone(&registry));
+        let candidate = scanner
+            .scan(ExternalImportScanRequest {
+                source: &source,
+                batch: &batch,
+                resource_budget: &Default::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan fixture")
+            .candidates
+            .into_iter()
+            .next()
+            .expect("candidate");
+        let materializer = HuntingBoxDirectoryMaterializer::new(
+            registry,
+            app_data_link.clone(),
+            Arc::new(ZipModImportPackagePreparer::new(
+                registry_data.path().join("sandboxes"),
+            )),
+        );
+
+        let error = materializer
+            .materialize(ExternalImportMaterializeRequest {
+                source_id: &source.source_id,
+                batch_id: &batch.batch_id,
+                candidate: &candidate,
+                expected_content_fingerprint: &candidate.content_fingerprint,
+                task_id: "mod-import-linked-app-data",
+                resource_budget: &Default::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect_err("linked app data root must be rejected");
+
+        assert!(!error
+            .to_string()
+            .contains(outside.path().to_string_lossy().as_ref()));
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        assert!(!outside
+            .path()
+            .join("external-import")
+            .join("materialized")
+            .exists());
+        remove_directory_link(&app_data_link);
     }
 
     fn write_fixture(root: &Path) -> PathBuf {
@@ -536,5 +865,34 @@ mod tests {
             import_status: ExternalImportBatchImportStatus::Pending,
             created_at_unix_millis: 1,
         }
+    }
+
+    #[cfg(unix)]
+    fn try_create_directory_link(target: &Path, link: &Path) -> bool {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+
+    #[cfg(windows)]
+    fn try_create_directory_link(target: &Path, link: &Path) -> bool {
+        std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                link.to_str().expect("link path"),
+                target.to_str().expect("target path"),
+            ])
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_file(link).expect("remove directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_dir(link).expect("remove directory junction");
     }
 }
