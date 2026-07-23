@@ -28,7 +28,6 @@ pub(crate) fn compose(
     category_repository: Arc<dyn CategoryRepository>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     prepare_service: Arc<ModImportPrepareService>,
-    mod_import_sandbox_root: &Path,
 ) -> Result<ExternalImportComposition, String> {
     let source_registry = Arc::new(
         HuntingBoxDirectorySourceRegistry::new(&app_data_dir.join("external-import"))
@@ -50,12 +49,12 @@ pub(crate) fn compose(
         Arc::new(SystemClock),
     ));
     let package_preparer: Arc<dyn ModImportPackagePreparer> = Arc::new(
-        ZipModImportPackagePreparer::new(mod_import_sandbox_root.to_path_buf()),
+        ZipModImportPackagePreparer::new_in_app_data(app_data_dir.to_path_buf()),
     );
     let materializer: Arc<dyn ExternalImportMaterializer> =
         Arc::new(HuntingBoxDirectoryMaterializer::new(
             Arc::clone(&source_registry),
-            app_data_dir.join("external-import").join("materialized"),
+            app_data_dir.to_path_buf(),
             package_preparer,
         ));
     let batches = Arc::new(ExternalImportBatchService::new(

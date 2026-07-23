@@ -1,8 +1,13 @@
+use crate::controlled_fs::{
+    is_link_or_reparse, open_child_directory_nofollow, open_existing_directory_nofollow,
+    open_regular_file_nofollow,
+};
 use crate::external_import_source_registry::{
-    is_symlink_or_reparse_point, HuntingBoxDirectorySourceRegistry, RegisteredHuntingBoxSource,
+    HuntingBoxDirectorySourceRegistry, RegisteredHuntingBoxSource,
     HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID,
 };
 use anyhow::{anyhow, bail, Result};
+use cap_std::fs::{Dir, File, Metadata};
 use hmm_core::{
     ExternalImportBatchId, ExternalImportCandidate, ExternalImportCandidateId,
     ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportMetadataHint,
@@ -16,9 +21,8 @@ use quick_xml::Reader;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
-use std::fs::{self, DirEntry, File};
+use std::ffi::OsString;
 use std::io::{Read, Take};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
@@ -54,11 +58,14 @@ impl ExternalImportScanner for HuntingBoxDirectoryScanner {
         {
             bail!("external import source adapter is invalid");
         }
-        ensure_regular_directory(&registration.root_directory)
-            .map_err(|_| anyhow!("external import source is unavailable"))?;
+        let root_directory = open_existing_directory_nofollow(
+            &registration.root_directory,
+            "external import source root",
+        )
+        .map_err(|_| anyhow!("external import source is unavailable"))?;
 
         let mut entries = match read_root_entries(
-            &registration.root_directory,
+            &root_directory,
             request.resource_budget.max_total_candidates,
             request.cancellation_token,
         ) {
@@ -75,7 +82,7 @@ impl ExternalImportScanner for HuntingBoxDirectoryScanner {
             Err(WalkFailure::Cancelled) => bail!("external import scan cancelled"),
             Err(_) => return Err(anyhow!("external import source is unavailable")),
         };
-        entries.sort_by_key(root_entry_sort_key);
+        entries.sort_by_key(|entry| root_entry_sort_key(entry));
 
         let mut candidates = Vec::with_capacity(entries.len());
         let mut observed_resource_usage = ExternalImportResourceUsage::default();
@@ -83,6 +90,7 @@ impl ExternalImportScanner for HuntingBoxDirectoryScanner {
             ensure_not_cancelled(request.cancellation_token)?;
             candidates.push(self.scan_entry(
                 &registration,
+                &root_directory,
                 request.batch.batch_id.clone(),
                 ordinal,
                 entry,
@@ -120,21 +128,20 @@ impl HuntingBoxDirectoryScanner {
     fn scan_entry(
         &self,
         registration: &RegisteredHuntingBoxSource,
+        root_directory: &Dir,
         batch_id: ExternalImportBatchId,
         ordinal: usize,
-        entry: DirEntry,
+        file_name: OsString,
         resource_budget: &ExternalImportResourceBudget,
         cancellation_token: &dyn CancellationToken,
         observed_resource_usage: &mut ExternalImportResourceUsage,
     ) -> Result<ExternalImportCandidate> {
-        let file_name = entry.file_name();
         let item_identity = source_item_identity(&file_name, ordinal);
         let source_item_key_hash = self
             .registry
             .source_item_key_hash(registration, item_identity.as_bytes());
         let mut candidate = new_candidate(batch_id, source_item_key_hash);
-        let entry_path = entry.path();
-        let entry_metadata = match fs::symlink_metadata(&entry_path) {
+        let entry_metadata = match root_directory.symlink_metadata(&file_name) {
             Ok(metadata) => metadata,
             Err(_) => {
                 candidate.preview_status = ExternalImportCandidateStatus::SourceUnreadable;
@@ -142,7 +149,7 @@ impl HuntingBoxDirectoryScanner {
             }
         };
 
-        if is_symlink_or_reparse_point(&entry_metadata) {
+        if is_link_or_reparse(&entry_metadata) {
             candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
             return Ok(candidate);
         }
@@ -159,10 +166,42 @@ impl HuntingBoxDirectoryScanner {
             return Ok(candidate);
         }
 
-        let files_directory = entry_path.join("files");
-        let info_xml = entry_path.join("info.xml");
-        if ensure_regular_directory(&files_directory).is_err()
-            || ensure_regular_file(&info_xml).is_err()
+        let item_directory = match open_child_directory_nofollow(
+            root_directory,
+            &file_name,
+            "external import candidate directory",
+        ) {
+            Ok(directory) => directory,
+            Err(_) => {
+                candidate.preview_status = ExternalImportCandidateStatus::SourceUnreadable;
+                return Ok(candidate);
+            }
+        };
+        let files_directory = match open_child_directory_nofollow(
+            &item_directory,
+            std::ffi::OsStr::new("files"),
+            "external import candidate files directory",
+        ) {
+            Ok(directory) => directory,
+            Err(_) => {
+                candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
+                return Ok(candidate);
+            }
+        };
+        let mut info_xml = match open_regular_file_nofollow(
+            &item_directory,
+            std::ffi::OsStr::new("info.xml"),
+            "external import candidate metadata",
+        ) {
+            Ok(file) => file,
+            Err(_) => {
+                candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
+                return Ok(candidate);
+            }
+        };
+        if !files_directory
+            .dir_metadata()
+            .is_ok_and(|metadata| metadata.is_dir() && !is_link_or_reparse(&metadata))
         {
             candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
             return Ok(candidate);
@@ -189,7 +228,7 @@ impl HuntingBoxDirectoryScanner {
             }
         }
 
-        match parse_info_xml(&info_xml) {
+        match parse_info_xml(&mut info_xml) {
             Ok(metadata_hint) => {
                 candidate.metadata_hint = metadata_hint;
                 candidate.preview_status = ExternalImportCandidateStatus::Ready;
@@ -233,8 +272,8 @@ fn is_numeric_directory_name(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-fn root_entry_sort_key(entry: &DirEntry) -> (u8, u64, String) {
-    let name = entry.file_name().to_string_lossy().into_owned();
+fn root_entry_sort_key(entry: &std::ffi::OsStr) -> (u8, u64, String) {
+    let name = entry.to_string_lossy().into_owned();
     let numeric = name
         .bytes()
         .all(|byte| byte.is_ascii_digit())
@@ -246,16 +285,16 @@ fn root_entry_sort_key(entry: &DirEntry) -> (u8, u64, String) {
 }
 
 enum RootEntryRead {
-    Complete(Vec<DirEntry>),
+    Complete(Vec<OsString>),
     CandidateLimitExceeded,
 }
 
 fn read_root_entries(
-    root: &Path,
+    root: &Dir,
     max_candidates: u64,
     cancellation_token: &dyn CancellationToken,
 ) -> std::result::Result<RootEntryRead, WalkFailure> {
-    let entries = fs::read_dir(root).map_err(|_| WalkFailure::SourceUnreadable)?;
+    let entries = root.entries().map_err(|_| WalkFailure::SourceUnreadable)?;
     let mut result = Vec::new();
     for entry in entries {
         if cancellation_token.is_cancelled() {
@@ -264,25 +303,13 @@ fn read_root_entries(
         if u64::try_from(result.len()).unwrap_or(u64::MAX) >= max_candidates {
             return Ok(RootEntryRead::CandidateLimitExceeded);
         }
-        result.push(entry.map_err(|_| WalkFailure::SourceUnreadable)?);
+        result.push(
+            entry
+                .map_err(|_| WalkFailure::SourceUnreadable)?
+                .file_name(),
+        );
     }
     Ok(RootEntryRead::Complete(result))
-}
-
-fn ensure_regular_directory(path: &Path) -> std::result::Result<(), WalkFailure> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| WalkFailure::SourceUnreadable)?;
-    if is_symlink_or_reparse_point(&metadata) || !metadata.is_dir() {
-        return Err(WalkFailure::StructureInvalid);
-    }
-    Ok(())
-}
-
-fn ensure_regular_file(path: &Path) -> std::result::Result<(), WalkFailure> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| WalkFailure::SourceUnreadable)?;
-    if is_symlink_or_reparse_point(&metadata) || !metadata.is_file() {
-        return Err(WalkFailure::StructureInvalid);
-    }
-    Ok(())
 }
 
 fn mark_duplicate_content(candidates: &mut [ExternalImportCandidate]) {
@@ -320,6 +347,7 @@ struct ContentLimits {
     max_single_file_bytes: u64,
     max_total_bytes: u64,
     max_directory_depth: u32,
+    max_directory_entries: u64,
 }
 
 fn remaining_content_limits(
@@ -346,6 +374,13 @@ fn remaining_content_limits(
                     .saturating_sub(observed.materialization_bytes),
             ),
         max_directory_depth: budget.materialization.max_directory_depth,
+        max_directory_entries: budget
+            .materialization
+            .max_files
+            .min(budget.max_total_files.saturating_sub(observed.file_count))
+            .saturating_mul(2)
+            .saturating_add(u64::from(budget.materialization.max_directory_depth))
+            .max(1),
     }
 }
 
@@ -387,15 +422,15 @@ struct ContentScan {
 
 #[derive(Clone)]
 pub(crate) struct ValidatedContentFile {
-    pub source_path: PathBuf,
+    pub source_segments: Vec<OsString>,
     /// A normalized, case-insensitive-safe archive entry path.
     pub archive_path: String,
     pub size_bytes: u64,
     pub content_hash: [u8; 32],
 }
 
-#[derive(Clone)]
 pub(crate) struct ValidatedContent {
+    pub source_directory: Dir,
     pub usage: ExternalImportResourceUsage,
     pub content_fingerprint: String,
     pub files: Vec<ValidatedContentFile>,
@@ -452,7 +487,7 @@ impl From<WalkFailure> for CandidateIssue {
 }
 
 fn scan_content(
-    files_directory: &Path,
+    files_directory: &Dir,
     limits: ContentLimits,
     cancellation_token: &dyn CancellationToken,
 ) -> ContentScanOutcome {
@@ -464,7 +499,7 @@ fn scan_content(
     }
 
     let mut walker = ContentWalker::new(limits, cancellation_token);
-    match walker.walk(files_directory, &[], 0) {
+    match walker.walk(files_directory, &[], &[], 0) {
         Ok(()) => ContentScanOutcome::Complete(ContentScan {
             usage: walker.usage,
             content_fingerprint: walker.content_fingerprint(),
@@ -480,7 +515,7 @@ fn scan_content(
 /// Reuses the scan walker's hostile-filesystem validation for one selected candidate. The
 /// materializer must compare its returned fingerprint with the durable preview before writing.
 pub(crate) fn validate_materialization_content(
-    files_directory: &Path,
+    files_directory: Dir,
     resource_budget: &ExternalImportResourceBudget,
     cancellation_token: &dyn CancellationToken,
 ) -> Result<ValidatedContent, ContentValidationError> {
@@ -490,8 +525,8 @@ pub(crate) fn validate_materialization_content(
     }
 
     let mut walker = ContentWalker::new(limits, cancellation_token);
-    match walker.walk(files_directory, &[], 0) {
-        Ok(()) => Ok(walker.validated_content()),
+    match walker.walk(&files_directory, &[], &[], 0) {
+        Ok(()) => Ok(walker.into_validated_content(files_directory)),
         Err(WalkFailure::Cancelled) => Err(ContentValidationError::Cancelled),
         Err(_) => Err(ContentValidationError::Rejected),
     }
@@ -502,11 +537,12 @@ struct ContentWalker<'a> {
     cancellation_token: &'a dyn CancellationToken,
     usage: ExternalImportResourceUsage,
     seen_path_keys: BTreeSet<String>,
+    directory_entries_seen: u64,
     files: BTreeMap<String, FileDigest>,
 }
 
 struct FileDigest {
-    source_path: PathBuf,
+    source_segments: Vec<OsString>,
     size_bytes: u64,
     content_hash: [u8; 32],
 }
@@ -518,32 +554,36 @@ impl<'a> ContentWalker<'a> {
             cancellation_token,
             usage: ExternalImportResourceUsage::default(),
             seen_path_keys: BTreeSet::new(),
+            directory_entries_seen: 0,
             files: BTreeMap::new(),
         }
     }
 
     fn walk(
         &mut self,
-        directory: &Path,
+        directory: &Dir,
         relative_segments: &[String],
+        source_segments: &[OsString],
         depth: u32,
     ) -> std::result::Result<(), WalkFailure> {
         self.ensure_not_cancelled()?;
-        let mut entries = read_normalized_entries(directory)?;
+        let mut entries = self.read_normalized_entries(directory)?;
         entries.sort_by(|left, right| left.0.cmp(&right.0));
-        for (segment, entry) in entries {
+        for (segment, source_name) in entries {
             self.ensure_not_cancelled()?;
             let mut child_segments = relative_segments.to_vec();
             child_segments.push(segment);
+            let mut child_source_segments = source_segments.to_vec();
+            child_source_segments.push(source_name.clone());
             let path_key = child_segments.join("/");
             if !self.seen_path_keys.insert(path_key.clone()) {
                 return Err(WalkFailure::StructureInvalid);
             }
 
-            let entry_path = entry.path();
-            let metadata =
-                fs::symlink_metadata(&entry_path).map_err(|_| WalkFailure::SourceUnreadable)?;
-            if is_symlink_or_reparse_point(&metadata) {
+            let metadata = directory
+                .symlink_metadata(&source_name)
+                .map_err(|_| WalkFailure::SourceUnreadable)?;
+            if is_link_or_reparse(&metadata) {
                 return Err(WalkFailure::StructureInvalid);
             }
             if metadata.is_dir() {
@@ -553,9 +593,21 @@ impl<'a> ContentWalker<'a> {
                 if child_depth > self.limits.max_directory_depth {
                     return Err(WalkFailure::ResourceLimitExceeded);
                 }
-                self.walk(&entry_path, &child_segments, child_depth)?;
+                let child = open_child_directory_nofollow(
+                    directory,
+                    &source_name,
+                    "external import content directory",
+                )
+                .map_err(|_| WalkFailure::SourceUnreadable)?;
+                self.walk(&child, &child_segments, &child_source_segments, child_depth)?;
             } else if metadata.is_file() {
-                self.add_file(&entry_path, path_key, metadata)?;
+                self.add_file(
+                    directory,
+                    &source_name,
+                    path_key,
+                    child_source_segments,
+                    metadata,
+                )?;
             } else {
                 return Err(WalkFailure::StructureInvalid);
             }
@@ -565,9 +617,11 @@ impl<'a> ContentWalker<'a> {
 
     fn add_file(
         &mut self,
-        path: &Path,
+        directory: &Dir,
+        source_name: &OsStr,
         path_key: String,
-        metadata: fs::Metadata,
+        source_segments: Vec<OsString>,
+        metadata: Metadata,
     ) -> std::result::Result<(), WalkFailure> {
         let size_bytes = metadata.len();
         if size_bytes > self.limits.max_single_file_bytes {
@@ -599,11 +653,12 @@ impl<'a> ContentWalker<'a> {
             source_bytes: next_source_bytes,
             materialization_bytes: next_materialization_bytes,
         };
-        let content_hash = hash_regular_file(path, &metadata, self.cancellation_token)?;
+        let content_hash =
+            hash_regular_file(directory, source_name, &metadata, self.cancellation_token)?;
         self.files.insert(
             path_key,
             FileDigest {
-                source_path: path.to_path_buf(),
+                source_segments,
                 size_bytes,
                 content_hash,
             },
@@ -623,16 +678,17 @@ impl<'a> ContentWalker<'a> {
         format!("sha256:{}", hex_encode(&hasher.finalize()))
     }
 
-    fn validated_content(&self) -> ValidatedContent {
+    fn into_validated_content(self, source_directory: Dir) -> ValidatedContent {
         ValidatedContent {
             usage: self.usage,
             content_fingerprint: self.content_fingerprint(),
+            source_directory,
             files: self
                 .files
-                .iter()
+                .into_iter()
                 .map(|(archive_path, file)| ValidatedContentFile {
-                    source_path: file.source_path.clone(),
-                    archive_path: archive_path.clone(),
+                    source_segments: file.source_segments,
+                    archive_path,
                     size_bytes: file.size_bytes,
                     content_hash: file.content_hash,
                 })
@@ -647,23 +703,49 @@ impl<'a> ContentWalker<'a> {
             Ok(())
         }
     }
-}
 
-fn read_normalized_entries(
-    directory: &Path,
-) -> std::result::Result<Vec<(String, DirEntry)>, WalkFailure> {
-    let entries = fs::read_dir(directory).map_err(|_| WalkFailure::SourceUnreadable)?;
-    let mut normalized = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|_| WalkFailure::SourceUnreadable)?;
-        normalized.push((normalized_path_segment(&entry.file_name())?, entry));
+    fn read_normalized_entries(
+        &mut self,
+        directory: &Dir,
+    ) -> std::result::Result<Vec<(String, OsString)>, WalkFailure> {
+        let entries = directory
+            .entries()
+            .map_err(|_| WalkFailure::SourceUnreadable)?;
+        let mut normalized = Vec::new();
+        for entry in entries {
+            self.ensure_not_cancelled()?;
+            let entry = entry.map_err(|_| WalkFailure::SourceUnreadable)?;
+            self.directory_entries_seen = self
+                .directory_entries_seen
+                .checked_add(1)
+                .ok_or(WalkFailure::ResourceLimitExceeded)?;
+            if self.directory_entries_seen > self.limits.max_directory_entries {
+                return Err(WalkFailure::ResourceLimitExceeded);
+            }
+            let source_name = entry.file_name();
+            normalized.push((normalized_path_segment(&source_name)?, source_name));
+        }
+        Ok(normalized)
     }
-    Ok(normalized)
 }
 
 fn normalized_path_segment(value: &OsStr) -> std::result::Result<String, WalkFailure> {
     let value = value.to_str().ok_or(WalkFailure::StructureInvalid)?;
-    if value.is_empty()
+    if unsafe_path_segment(value) {
+        return Err(WalkFailure::StructureInvalid);
+    }
+    let normalized = value
+        .nfkc()
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    if unsafe_path_segment(&normalized) {
+        return Err(WalkFailure::StructureInvalid);
+    }
+    Ok(normalized)
+}
+
+fn unsafe_path_segment(value: &str) -> bool {
+    value.is_empty()
         || value == "."
         || value == ".."
         || value.ends_with([' ', '.'])
@@ -671,10 +753,6 @@ fn normalized_path_segment(value: &OsStr) -> std::result::Result<String, WalkFai
             .chars()
             .any(|character| character.is_control() || matches!(character, ':' | '/' | '\\'))
         || is_windows_reserved_name(value)
-    {
-        return Err(WalkFailure::StructureInvalid);
-    }
-    Ok(value.nfkc().flat_map(char::to_lowercase).collect())
 }
 
 fn is_windows_reserved_name(value: &str) -> bool {
@@ -692,16 +770,23 @@ fn is_windows_reserved_name(value: &str) -> bool {
 }
 
 fn hash_regular_file(
-    path: &Path,
-    metadata: &fs::Metadata,
+    directory: &Dir,
+    source_name: &OsStr,
+    metadata: &Metadata,
     cancellation_token: &dyn CancellationToken,
 ) -> std::result::Result<[u8; 32], WalkFailure> {
     let initial_size = metadata.len();
-    let initial_modified = metadata
+    let mut file =
+        open_regular_file_nofollow(directory, source_name, "external import content file")
+            .map_err(|_| WalkFailure::SourceUnreadable)?;
+    let opened = file.metadata().map_err(|_| WalkFailure::SourceUnreadable)?;
+    if !opened.is_file() || is_link_or_reparse(&opened) || opened.len() != initial_size {
+        return Err(WalkFailure::SourceUnreadable);
+    }
+    let initial_modified = opened
         .modified()
         .map_err(|_| WalkFailure::SourceUnreadable)?;
-    let file = File::open(path).map_err(|_| WalkFailure::SourceUnreadable)?;
-    let mut reader: Take<File> = file.take(initial_size.saturating_add(1));
+    let mut reader: Take<&mut File> = (&mut file).take(initial_size.saturating_add(1));
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; FINGERPRINT_READ_BUFFER_BYTES];
     let mut bytes_read = 0_u64;
@@ -726,8 +811,8 @@ fn hash_regular_file(
     if bytes_read != initial_size {
         return Err(WalkFailure::SourceUnreadable);
     }
-    let after = fs::symlink_metadata(path).map_err(|_| WalkFailure::SourceUnreadable)?;
-    if is_symlink_or_reparse_point(&after)
+    let after = file.metadata().map_err(|_| WalkFailure::SourceUnreadable)?;
+    if is_link_or_reparse(&after)
         || !after.is_file()
         || after.len() != initial_size
         || after
@@ -791,9 +876,9 @@ enum MetadataParseError {
 }
 
 fn parse_info_xml(
-    path: &Path,
+    file: &mut File,
 ) -> std::result::Result<ExternalImportMetadataHint, MetadataParseError> {
-    let xml = read_bounded_xml(path)?;
+    let xml = read_bounded_xml(file)?;
     let mut reader = Reader::from_reader(xml.as_slice());
     reader.config_mut().trim_text(true);
     let mut buffer = Vec::new();
@@ -857,7 +942,7 @@ fn parse_info_xml(
 /// metadata-invalid candidate remains eligible only while its XML is still invalid and the caller
 /// has already recorded the explicit ignore decision in the sealed selection.
 pub(crate) fn metadata_matches_preview(
-    info_xml: &Path,
+    info_xml: &mut File,
     preview_status: ExternalImportCandidateStatus,
     expected_metadata: &ExternalImportMetadataHint,
 ) -> bool {
@@ -870,19 +955,26 @@ pub(crate) fn metadata_matches_preview(
     }
 }
 
-fn read_bounded_xml(path: &Path) -> std::result::Result<Vec<u8>, MetadataParseError> {
-    ensure_regular_file(path).map_err(|_| MetadataParseError::Invalid)?;
-    let metadata = fs::symlink_metadata(path).map_err(|_| MetadataParseError::Invalid)?;
-    if metadata.len() > INFO_XML_MAX_BYTES {
+fn read_bounded_xml(file: &mut File) -> std::result::Result<Vec<u8>, MetadataParseError> {
+    let before = file.metadata().map_err(|_| MetadataParseError::Invalid)?;
+    if !before.is_file() || is_link_or_reparse(&before) || before.len() > INFO_XML_MAX_BYTES {
         return Err(MetadataParseError::Invalid);
     }
-    let file = File::open(path).map_err(|_| MetadataParseError::Invalid)?;
-    let mut reader = file.take(INFO_XML_MAX_BYTES.saturating_add(1));
+    let before_modified = before.modified().map_err(|_| MetadataParseError::Invalid)?;
+    let mut reader = (&mut *file).take(INFO_XML_MAX_BYTES.saturating_add(1));
     let mut bytes = Vec::new();
     reader
         .read_to_end(&mut bytes)
         .map_err(|_| MetadataParseError::Invalid)?;
     if bytes.len() as u64 > INFO_XML_MAX_BYTES {
+        return Err(MetadataParseError::Invalid);
+    }
+    let after = file.metadata().map_err(|_| MetadataParseError::Invalid)?;
+    if !after.is_file()
+        || is_link_or_reparse(&after)
+        || after.len() != before.len()
+        || after.modified().map_err(|_| MetadataParseError::Invalid)? != before_modified
+    {
         return Err(MetadataParseError::Invalid);
     }
     Ok(bytes)
@@ -949,6 +1041,7 @@ mod tests {
     };
     use hmm_ports::NeverCancelled;
     use std::fs;
+    use std::path::Path;
 
     #[test]
     fn scanner_discovers_direct_numeric_directories_and_never_serializes_source_paths() {
@@ -1076,6 +1169,151 @@ mod tests {
         assert!(result.candidates.iter().any(|candidate| {
             candidate.preview_status == ExternalImportCandidateStatus::ResourceLimitExceeded
         }));
+    }
+
+    #[test]
+    fn scanner_rejects_linked_files_and_metadata_without_following_them() {
+        let fixture = tempfile::tempdir().expect("fixture root");
+        let outside = tempfile::tempdir().expect("outside root");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, b"outside remains untouched").expect("write outside sentinel");
+        write_candidate(
+            fixture.path(),
+            "320",
+            "<info><name>Linked files</name></info>",
+            &[("safe.bin", b"safe")],
+        );
+        let files_directory = fixture.path().join("320").join("files");
+        fs::remove_dir_all(&files_directory).expect("remove fixture files directory");
+        if !try_create_directory_link(outside.path(), &files_directory) {
+            return;
+        }
+
+        let files_result = scan_fixture(fixture.path(), ExternalImportResourceBudget::default());
+
+        assert_eq!(
+            files_result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::StructureInvalid
+        );
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        remove_directory_link(&files_directory);
+
+        let metadata_fixture = tempfile::tempdir().expect("metadata fixture root");
+        write_candidate(
+            metadata_fixture.path(),
+            "321",
+            "<info><name>Linked metadata</name></info>",
+            &[("safe.bin", b"safe")],
+        );
+        let metadata_path = metadata_fixture.path().join("321").join("info.xml");
+        fs::remove_file(&metadata_path).expect("remove fixture metadata");
+        if !try_create_directory_link(outside.path(), &metadata_path) {
+            return;
+        }
+
+        let metadata_result = scan_fixture(
+            metadata_fixture.path(),
+            ExternalImportResourceBudget::default(),
+        );
+
+        assert_eq!(
+            metadata_result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::StructureInvalid
+        );
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        remove_directory_link(&metadata_path);
+    }
+
+    #[test]
+    fn scanner_rejects_linked_content_and_nfkc_dangerous_segments() {
+        let linked_fixture = tempfile::tempdir().expect("linked fixture root");
+        let outside = tempfile::tempdir().expect("outside root");
+        let sentinel = outside.path().join("sentinel.txt");
+        fs::write(&sentinel, b"outside remains untouched").expect("write outside sentinel");
+        write_candidate(
+            linked_fixture.path(),
+            "322",
+            "<info><name>Linked content</name></info>",
+            &[("safe.bin", b"safe")],
+        );
+        let linked_content = linked_fixture
+            .path()
+            .join("322")
+            .join("files")
+            .join("escape");
+        if !try_create_directory_link(outside.path(), &linked_content) {
+            return;
+        }
+
+        let linked_result = scan_fixture(
+            linked_fixture.path(),
+            ExternalImportResourceBudget::default(),
+        );
+
+        assert_eq!(
+            linked_result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::StructureInvalid
+        );
+        assert_eq!(
+            fs::read(&sentinel).expect("read outside sentinel"),
+            b"outside remains untouched"
+        );
+        remove_directory_link(&linked_content);
+
+        let unicode_fixture = tempfile::tempdir().expect("unicode fixture root");
+        let dangerous_name = "safe\u{ff0f}segment.bin";
+        write_candidate(
+            unicode_fixture.path(),
+            "323",
+            "<info><name>Unicode</name></info>",
+            &[(dangerous_name, b"safe")],
+        );
+
+        let unicode_result = scan_fixture(
+            unicode_fixture.path(),
+            ExternalImportResourceBudget::default(),
+        );
+
+        assert_eq!(
+            unicode_result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::StructureInvalid
+        );
+    }
+
+    #[test]
+    fn scanner_bounds_empty_directory_fanout_before_collecting_all_entries() {
+        let fixture = tempfile::tempdir().expect("fixture root");
+        write_candidate(
+            fixture.path(),
+            "324",
+            "<info><name>Fanout</name></info>",
+            &[],
+        );
+        let files = fixture.path().join("324").join("files");
+        for index in 0..4 {
+            fs::create_dir(files.join(format!("empty-{index}"))).expect("create empty directory");
+        }
+        let budget = ExternalImportResourceBudget {
+            materialization: hmm_core::ExternalImportMaterializationBudget {
+                max_files: 1,
+                max_directory_depth: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let result = scan_fixture(fixture.path(), budget);
+
+        assert_eq!(
+            result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::ResourceLimitExceeded
+        );
     }
 
     #[test]
@@ -1245,5 +1483,34 @@ mod tests {
             }
             fs::write(path, bytes).expect("write fixture content");
         }
+    }
+
+    #[cfg(unix)]
+    fn try_create_directory_link(target: &Path, link: &Path) -> bool {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+
+    #[cfg(windows)]
+    fn try_create_directory_link(target: &Path, link: &Path) -> bool {
+        std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                link.to_str().expect("link path"),
+                target.to_str().expect("target path"),
+            ])
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_file(link).expect("remove directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_dir(link).expect("remove directory junction");
     }
 }

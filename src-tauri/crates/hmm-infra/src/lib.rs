@@ -1,6 +1,7 @@
 mod app_log;
 mod app_settings_repository;
 mod audit_log;
+mod controlled_fs;
 mod diagnostics_environment;
 mod diagnostics_health;
 mod external_import_materializer;

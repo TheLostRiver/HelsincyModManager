@@ -20,15 +20,19 @@ use hmm_ports::{
     ExternalImportMaterializer, ExternalImportSealAndStartRequest,
     ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
     ExternalImportSelectionCompareAndSwapResult, ExternalImportSourceRegistration,
-    ExternalImportSourceRegistry, ModImportCatalogUpsert, ModImportPackagePrepareRequest,
-    ModImportPackagePreparer, ModImportResultRepository, ModImportSandboxLocator,
-    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
-    PreviewImageProcessingResult, StoredLogicalMod, StoredModImportAnalysis, StoredModRevision,
-    ThumbnailRef, ThumbnailStore,
+    ExternalImportSourceRegistry, ModImportCatalogSnapshot, ModImportCatalogUpsert,
+    ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
+    ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
+    ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
+    PreviewImageProcessingResult, StoredLogicalMod, StoredModImportAnalysis,
+    StoredModOriginProvenance, StoredModRevision, ThumbnailRef, ThumbnailStore,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -910,6 +914,157 @@ fn analysis_name_collision_within_one_catalog_chunk_requires_keep_both() {
 }
 
 #[test]
+fn successful_external_import_uses_one_catalog_snapshot() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let batch = fixture_batch(
+        "batch-catalog-snapshot",
+        "source-current",
+        ExternalImportBatchImportStatus::Pending,
+    );
+    let selection = fixture_selection(
+        &batch,
+        ExternalImportSelectionStatus::Editing,
+        &["candidate-a"],
+        None,
+    );
+    repository.seed(
+        &batch,
+        &selection,
+        &[fixture_candidate(&batch, "candidate-a", 1)],
+    );
+    let catalog = Arc::new(FixtureCatalog::succeeds());
+    let (service, _) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(Some(fixture_registration("source-current")), None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::clone(&catalog),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+    );
+
+    let launch = service
+        .start_import(&batch.batch_id, &selection.selection_id, selection.revision)
+        .expect("start import");
+    service.run_import(launch).expect("import completes");
+
+    assert_eq!(catalog.snapshot_reads(), 1);
+}
+
+#[test]
+fn authority_name_admission_becomes_a_non_retryable_blocked_result() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let batch = fixture_batch(
+        "batch-authority-name",
+        "source-current",
+        ExternalImportBatchImportStatus::Pending,
+    );
+    let selection = fixture_selection(
+        &batch,
+        ExternalImportSelectionStatus::Editing,
+        &["candidate-a"],
+        None,
+    );
+    repository.seed(
+        &batch,
+        &selection,
+        &[fixture_candidate(&batch, "candidate-a", 1)],
+    );
+    let catalog = Arc::new(FixtureCatalog::rejects_authority_name());
+    let sandbox_locator = Arc::new(FixtureSandboxLocator::default());
+    let (service, task_manager) = fixture_service_with_sandbox_locator(
+        Arc::clone(&repository),
+        fixture_registry(Some(fixture_registration("source-current")), None),
+        Arc::new(FixtureMaterializer::default()),
+        catalog,
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+        Arc::clone(&sandbox_locator),
+    );
+
+    let launch = service
+        .start_import(&batch.batch_id, &selection.selection_id, selection.revision)
+        .expect("start import");
+    service
+        .run_import(launch.clone())
+        .expect("authority rejection is a terminal result");
+
+    assert_eq!(
+        task_manager.task_status(&launch.task.task_id),
+        Some(TaskStatus::Completed)
+    );
+    assert_result(
+        &repository.results(&batch.batch_id),
+        "candidate-a",
+        ExternalImportItemStatus::Blocked,
+        false,
+        Some(ExternalImportReasonCode::NameCollision),
+    );
+    assert_eq!(
+        sandbox_locator.cleaned_packages(),
+        vec!["pkg-candidate-a".to_owned()]
+    );
+}
+
+#[test]
+fn authority_content_admission_becomes_a_non_retryable_already_imported_result() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let batch = fixture_batch(
+        "batch-authority-content",
+        "source-current",
+        ExternalImportBatchImportStatus::Pending,
+    );
+    let selection = fixture_selection(
+        &batch,
+        ExternalImportSelectionStatus::Editing,
+        &["candidate-a"],
+        None,
+    );
+    repository.seed(
+        &batch,
+        &selection,
+        &[fixture_candidate(&batch, "candidate-a", 1)],
+    );
+    let catalog = Arc::new(FixtureCatalog::rejects_authority_content());
+    let sandbox_locator = Arc::new(FixtureSandboxLocator::default());
+    let (service, task_manager) = fixture_service_with_sandbox_locator(
+        Arc::clone(&repository),
+        fixture_registry(Some(fixture_registration("source-current")), None),
+        Arc::new(FixtureMaterializer::default()),
+        catalog,
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+        Arc::clone(&sandbox_locator),
+    );
+
+    let launch = service
+        .start_import(&batch.batch_id, &selection.selection_id, selection.revision)
+        .expect("start import");
+    service
+        .run_import(launch.clone())
+        .expect("authority rejection is a terminal result");
+
+    assert_eq!(
+        task_manager.task_status(&launch.task.task_id),
+        Some(TaskStatus::Completed)
+    );
+    let result = repository
+        .results(&batch.batch_id)
+        .into_iter()
+        .find(|result| result.candidate_id.as_str() == "candidate-a")
+        .expect("candidate result exists");
+    assert_eq!(result.status, ExternalImportItemStatus::AlreadyImported);
+    assert_eq!(
+        result.imported_mod_id,
+        Some(ModId::new("authority-existing-mod"))
+    );
+    assert!(!result.retryable);
+    assert_eq!(
+        sandbox_locator.cleaned_packages(),
+        vec!["pkg-candidate-a".to_owned()]
+    );
+}
+
+#[test]
 fn result_page_limits_are_rejected_before_repository_access() {
     let repository = Arc::new(FixtureBatchRepository::default());
     let (service, _) = fixture_service(
@@ -1590,36 +1745,47 @@ impl ExternalImportMaterializer for FixtureMaterializer {
     }
 }
 
+#[derive(Clone, Copy)]
 enum FixtureCatalogMode {
     Succeeds,
     PersistsFirstThenFails,
     PersistsForeignDuplicateThenFails,
+    RejectsAuthorityName,
+    RejectsAuthorityContent,
 }
 
 struct FixtureCatalog {
     mode: FixtureCatalogMode,
     entries: Mutex<Vec<ModImportCatalogUpsert>>,
+    snapshot_reads: AtomicUsize,
 }
 
 impl FixtureCatalog {
     fn succeeds() -> Self {
-        Self {
-            mode: FixtureCatalogMode::Succeeds,
-            entries: Mutex::new(Vec::new()),
-        }
+        Self::with_mode(FixtureCatalogMode::Succeeds)
     }
 
     fn persists_first_then_fails() -> Self {
-        Self {
-            mode: FixtureCatalogMode::PersistsFirstThenFails,
-            entries: Mutex::new(Vec::new()),
-        }
+        Self::with_mode(FixtureCatalogMode::PersistsFirstThenFails)
     }
 
     fn persists_foreign_duplicate_then_fails() -> Self {
+        Self::with_mode(FixtureCatalogMode::PersistsForeignDuplicateThenFails)
+    }
+
+    fn rejects_authority_name() -> Self {
+        Self::with_mode(FixtureCatalogMode::RejectsAuthorityName)
+    }
+
+    fn rejects_authority_content() -> Self {
+        Self::with_mode(FixtureCatalogMode::RejectsAuthorityContent)
+    }
+
+    fn with_mode(mode: FixtureCatalogMode) -> Self {
         Self {
-            mode: FixtureCatalogMode::PersistsForeignDuplicateThenFails,
+            mode,
             entries: Mutex::new(Vec::new()),
+            snapshot_reads: AtomicUsize::new(0),
         }
     }
 
@@ -1636,6 +1802,10 @@ impl FixtureCatalog {
             .iter()
             .map(|entry| entry.logical_mod.clone())
             .collect()
+    }
+
+    fn snapshot_reads(&self) -> usize {
+        self.snapshot_reads.load(Ordering::SeqCst)
     }
 }
 
@@ -1670,7 +1840,65 @@ impl ModImportResultRepository for FixtureCatalog {
                 }
                 bail!("fixture JSON catalog rejected an externally persisted content duplicate")
             }
+            FixtureCatalogMode::RejectsAuthorityName
+            | FixtureCatalogMode::RejectsAuthorityContent => {
+                bail!("typed authority rejections must use the external import entrypoint")
+            }
         }
+    }
+
+    fn upsert_external_import_many(
+        &self,
+        upserts: &[ModImportExternalCatalogUpsert],
+    ) -> Result<()> {
+        match self.mode {
+            FixtureCatalogMode::RejectsAuthorityName => {
+                let display_name = upserts
+                    .first()
+                    .expect("external import entry exists")
+                    .upsert
+                    .revision
+                    .display_name
+                    .clone();
+                Err(
+                    ModImportExternalCatalogAdmissionError::DisplayNameCollision { display_name }
+                        .into(),
+                )
+            }
+            FixtureCatalogMode::RejectsAuthorityContent => {
+                let first = upserts.first().expect("external import entry exists");
+                let StoredModOriginProvenance::ExternalImport { provenance } =
+                    &first.upsert.logical_mod.origin_provenance
+                else {
+                    unreachable!("external import upserts carry external provenance");
+                };
+                Err(
+                    ModImportExternalCatalogAdmissionError::ContentAlreadyImported {
+                        content_fingerprint: provenance.content_fingerprint.clone(),
+                        existing_mod_id: ModId::new("authority-existing-mod"),
+                    }
+                    .into(),
+                )
+            }
+            _ => self.upsert_many(
+                &upserts
+                    .iter()
+                    .map(|upsert| upsert.upsert.clone())
+                    .collect::<Vec<_>>(),
+            ),
+        }
+    }
+
+    fn catalog_snapshot(&self) -> Result<ModImportCatalogSnapshot> {
+        self.snapshot_reads.fetch_add(1, Ordering::SeqCst);
+        let entries = self.entries.lock().expect("catalog lock");
+        Ok(ModImportCatalogSnapshot {
+            logical_mods: entries
+                .iter()
+                .map(|entry| entry.logical_mod.clone())
+                .collect(),
+            revisions: entries.iter().map(|entry| entry.revision.clone()).collect(),
+        })
     }
 
     fn list_mods(&self) -> Result<Vec<StoredLogicalMod>> {
