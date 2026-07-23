@@ -269,16 +269,9 @@ impl AppState {
                     .map(|game_id| game_id.as_str().to_owned())
                     .collect(),
             ));
-        let evidence_health: Arc<dyn DiagnosticsEvidenceHealth> =
-            Arc::new(DiagnosticsEvidenceHealthState::default());
-        let task_log_writer: Arc<dyn TaskLogWriter> = Arc::new(FileSystemTaskLogWriter::new(
-            app_data_dir.clone(),
-            Arc::clone(&evidence_health),
-        ));
-        let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::with_health(
-            app_data_dir.clone(),
-            Arc::clone(&evidence_health),
-        ));
+        let evidence_health: Arc<dyn DiagnosticsEvidenceHealth> = Arc::new(DiagnosticsEvidenceHealthState::default());
+        let task_log_writer: Arc<dyn TaskLogWriter> = Arc::new(FileSystemTaskLogWriter::new(app_data_dir.clone(), Arc::clone(&evidence_health)));
+        let file_system_audit_log = Arc::new(FileSystemAuditLogWriter::with_health(app_data_dir.clone(), Arc::clone(&evidence_health)));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
         let save_backup_background_clock: Arc<dyn AppClock> = Arc::new(SystemClock);
@@ -398,16 +391,13 @@ impl AppState {
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
         ));
-        let support_diagnostics_export =
-            Arc::new(SupportDiagnosticsExportService::new_with_health(
+        let support_diagnostics_export = Arc::new(SupportDiagnosticsExportService::new_with_health(
                 text_log_reader,
                 audit_log_reader,
                 diagnostics_environment_provider,
                 diagnostic_package_exporter,
-                Arc::clone(&audit_log_writer),
-                Arc::new(SystemClock),
-                evidence_health,
-            ));
+                Arc::clone(&audit_log_writer), Arc::new(SystemClock),
+                evidence_health));
         let save_backups = Arc::new(SaveBackupService::new(
             profile_repository_for_save_backups,
             profile_save_settings_repository_for_save_backups,
@@ -1506,9 +1496,7 @@ fn retarget_reinstall_staging_root(app_data_dir: &Path) -> PathBuf {
 fn discard_retarget_staging(staging_root: &Path) {
     if std::fs::remove_dir_all(staging_root).is_err() && staging_root.exists() {
         crate::app_log::record_warning(
-            "retarget.staging_cleanup_failed",
-            "discard",
-            "retarget_staging_cleanup_failed",
+            "retarget.staging_cleanup_failed", "discard", "retarget_staging_cleanup_failed",
         );
     }
 }
@@ -1642,9 +1630,7 @@ fn start_best_effort_background_task<E>(
 ) {
     if spawn().is_err() {
         crate::app_log::record_warning(
-            "background_task.spawn_failed",
-            task_name,
-            "background_task_spawn_failed",
+            "background_task.spawn_failed", task_name, "background_task_spawn_failed",
         );
     }
 }
