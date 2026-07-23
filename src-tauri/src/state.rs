@@ -171,7 +171,6 @@ impl AppState {
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
-        let mod_import_sandbox_root = app_data_dir.join("mod-import").join("sandboxes");
 
         let db_path = app_data_dir.join("hmm.db");
         let db = hmm_infra::open_database(&db_path)
@@ -253,7 +252,7 @@ impl AppState {
         let game_config_repository: Arc<dyn GameConfigRepository> =
             Arc::new(JsonGameConfigRepository::new(config_path));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
-            TaskScopedModImportSandboxLocator::new(mod_import_sandbox_root.clone()),
+            TaskScopedModImportSandboxLocator::new_in_app_data(app_data_dir.clone()),
         );
         let thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance> =
             Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()));
@@ -330,8 +329,8 @@ impl AppState {
             )),
         );
         let mod_import_prepare_service = Arc::new(ModImportPrepareService::new(
-            Box::new(ZipModImportPackagePreparer::new(
-                mod_import_sandbox_root.clone(),
+            Box::new(ZipModImportPackagePreparer::new_in_app_data(
+                app_data_dir.clone(),
             )),
             ModImportAnalysisService::new(
                 Box::new(preview_image_service),
@@ -347,7 +346,6 @@ impl AppState {
             Arc::clone(&category_repository),
             Arc::clone(&mod_import_sandbox_locator),
             Arc::clone(&mod_import_prepare_service),
-            &mod_import_sandbox_root,
         )?;
         let mod_library = mod_library_composition.library_service();
         let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(

@@ -6,15 +6,18 @@ use hmm_core::{
     ExternalImportSelectionDecision, ModId,
 };
 use hmm_ports::{
-    ModImportCatalogUpsert, ModImportResultRepository, StoredLogicalMod, StoredModOriginProvenance,
+    ModImportCatalogUpsert, ModImportExternalCatalogUpsert, ModImportExternalDisplayNameAdmission,
+    ModImportResultRepository, StoredLogicalMod, StoredModOriginProvenance,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+#[derive(Clone)]
 pub(super) struct CatalogIndex {
     pub(super) by_content_fingerprint: BTreeMap<String, CatalogExternalImport>,
     pub(super) display_names: BTreeSet<String>,
 }
 
+#[derive(Clone)]
 pub(super) struct CatalogExternalImport {
     pub(super) mod_id: ModId,
     batch_id: ExternalImportBatchId,
@@ -36,8 +39,14 @@ impl CatalogIndex {
     pub(super) fn load(catalog: &dyn ModImportResultRepository) -> anyhow::Result<Self> {
         let mut by_content_fingerprint = BTreeMap::new();
         let mut display_names = BTreeSet::new();
-        for logical_mod in catalog.list_mods()? {
-            if let Some(revision) = catalog.get_revision(&logical_mod.display_revision_id)? {
+        let snapshot = catalog.catalog_snapshot()?;
+        let revisions = snapshot
+            .revisions
+            .into_iter()
+            .map(|revision| (revision.revision_id.clone(), revision))
+            .collect::<BTreeMap<_, _>>();
+        for logical_mod in snapshot.logical_mods {
+            if let Some(revision) = revisions.get(&logical_mod.display_revision_id) {
                 display_names.insert(normalize_display_name(&revision.display_name));
             }
             if let StoredModOriginProvenance::ExternalImport { provenance } =
@@ -125,6 +134,22 @@ impl PendingCatalogImport {
                 revision,
             },
         })
+    }
+
+    pub(super) fn external_catalog_upsert(&self) -> ModImportExternalCatalogUpsert {
+        let permits_keep_both = self
+            .decision
+            .as_ref()
+            .and_then(|decision| decision.conflict_resolution)
+            == Some(hmm_core::ExternalImportConflictResolution::KeepBoth);
+        ModImportExternalCatalogUpsert {
+            upsert: self.upsert.clone(),
+            display_name_admission: if permits_keep_both {
+                ModImportExternalDisplayNameAdmission::AllowExisting
+            } else {
+                ModImportExternalDisplayNameAdmission::RequireUnique
+            },
+        }
     }
 }
 

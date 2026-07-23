@@ -154,7 +154,7 @@ pub struct CommandErrorDto {
 | `retry_external_import_batch` | `batchId`、已 sealed 的 `selectionId` | `{ task: TaskStartedDto, batchId }` |
 | `get_external_import_batch_result` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportBatchResultPageDto` |
 
-`sourceId` 与 `batchId` 必须是受限字符集的 opaque ID；路径、URI、空白或超长值整体拒绝。preview cursor 是
+`sourceId` 与 `batchId` 会先去除两端空白，再按受限字符集校验为 opaque ID；去除后为空、包含路径/URI/内部空白或超长的值整体拒绝。preview cursor 是
 后端解释的十进制 offset token，前端应只复用响应的下一 cursor，省略时从 `0` 开始；`limit` 默认 `50`、最大
 `100`，不在 `1..=100` 的值整体拒绝。响应只包含 batch/source adapter 的稳定 ID、scan/import status、candidate ID、受限 metadata hint、文件数、
 总字节数、preview/conflict/reason code、总数和下一 cursor；不得包含 source fingerprint、source item key hash、

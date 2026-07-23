@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use fs2::FileExt;
 use hmm_core::{ModId, ModRevisionId};
 use hmm_ports::{
-    ModImportCatalogUpsert, ModImportResultRepository, StoredLogicalMod, StoredModImportAnalysis,
+    ModImportCatalogSnapshot, ModImportCatalogUpsert, ModImportExternalCatalogAdmissionError,
+    ModImportExternalCatalogUpsert, ModImportExternalDisplayNameAdmission,
+    ModImportResultRepository, StoredLogicalMod, StoredModImportAnalysis,
     StoredModOriginProvenance, StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE,
     MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
@@ -54,6 +56,8 @@ pub struct JsonModImportResultRepository {
     test_write_failure: Option<ModImportCatalogWriteFailure>,
     #[cfg(test)]
     test_catalog_save_count: AtomicUsize,
+    #[cfg(test)]
+    test_catalog_load_count: AtomicUsize,
 }
 
 #[cfg(test)]
@@ -73,6 +77,8 @@ impl JsonModImportResultRepository {
             test_write_failure: None,
             #[cfg(test)]
             test_catalog_save_count: AtomicUsize::new(0),
+            #[cfg(test)]
+            test_catalog_load_count: AtomicUsize::new(0),
         }
     }
 
@@ -85,6 +91,11 @@ impl JsonModImportResultRepository {
     #[cfg(test)]
     pub(crate) fn catalog_save_count_for_test(&self) -> usize {
         self.test_catalog_save_count.load(Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn catalog_load_count_for_test(&self) -> usize {
+        self.test_catalog_load_count.load(Ordering::SeqCst)
     }
 
     fn read_catalog<T>(
@@ -145,6 +156,8 @@ impl JsonModImportResultRepository {
     }
 
     fn load_catalog(&self) -> Result<LoadedCatalog> {
+        #[cfg(test)]
+        self.test_catalog_load_count.fetch_add(1, Ordering::SeqCst);
         if !self.file_path.exists() {
             return Ok(LoadedCatalog {
                 catalog: ModRevisionCatalogV2::default(),
@@ -361,6 +374,46 @@ impl ModImportResultRepository for JsonModImportResultRepository {
         })
     }
 
+    fn upsert_external_import_many(
+        &self,
+        upserts: &[ModImportExternalCatalogUpsert],
+    ) -> Result<()> {
+        anyhow::ensure!(
+            upserts.len() <= MOD_IMPORT_UPSERT_MAX_ENTRIES,
+            "external import catalog upsert batch exceeds the supported limit"
+        );
+        if upserts.is_empty() {
+            return Ok(());
+        }
+
+        self.with_exclusive_lock(|| {
+            let loaded = self.load_catalog()?;
+            let mut catalog = loaded.catalog;
+            let mut migration_pending = loaded.migrated_from_v1;
+            for chunk in upserts.chunks(MOD_IMPORT_UPSERT_CHUNK_SIZE) {
+                let before_chunk = catalog.clone();
+                for upsert in chunk {
+                    apply_external_import_catalog_upsert(&mut catalog, upsert)?;
+                }
+                if migration_pending || catalog != before_chunk {
+                    validate_catalog(&catalog)?;
+                    self.save_catalog(&catalog)?;
+                    migration_pending = false;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn catalog_snapshot(&self) -> Result<ModImportCatalogSnapshot> {
+        self.read_catalog(|catalog| {
+            Ok(ModImportCatalogSnapshot {
+                logical_mods: catalog.mods.clone(),
+                revisions: catalog.revisions.clone(),
+            })
+        })
+    }
+
     fn get_mod(&self, mod_id: &ModId) -> Result<Option<StoredLogicalMod>> {
         self.read_catalog(|catalog| {
             Ok(catalog
@@ -502,6 +555,75 @@ fn apply_catalog_upsert(
         }
     }
     Ok(())
+}
+
+fn apply_external_import_catalog_upsert(
+    catalog: &mut ModRevisionCatalogV2,
+    external_upsert: &ModImportExternalCatalogUpsert,
+) -> Result<()> {
+    let upsert = &external_upsert.upsert;
+    let StoredModOriginProvenance::ExternalImport { provenance } =
+        &upsert.logical_mod.origin_provenance
+    else {
+        anyhow::bail!("external import admission requires external import provenance");
+    };
+
+    if let Some(existing_mod) = catalog.mods.iter().find(|logical_mod| {
+        matches!(
+            &logical_mod.origin_provenance,
+            StoredModOriginProvenance::ExternalImport {
+                provenance: existing_provenance,
+            } if existing_provenance.content_fingerprint == provenance.content_fingerprint
+                && logical_mod.mod_id != upsert.logical_mod.mod_id
+        )
+    }) {
+        return Err(
+            ModImportExternalCatalogAdmissionError::ContentAlreadyImported {
+                content_fingerprint: provenance.content_fingerprint.clone(),
+                existing_mod_id: existing_mod.mod_id.clone(),
+            }
+            .into(),
+        );
+    }
+
+    if external_upsert.display_name_admission
+        == ModImportExternalDisplayNameAdmission::RequireUnique
+        && catalog_contains_other_display_name(catalog, upsert)?
+    {
+        return Err(
+            ModImportExternalCatalogAdmissionError::DisplayNameCollision {
+                display_name: upsert.revision.display_name.clone(),
+            }
+            .into(),
+        );
+    }
+
+    apply_catalog_upsert(catalog, upsert)
+}
+
+fn catalog_contains_other_display_name(
+    catalog: &ModRevisionCatalogV2,
+    candidate: &ModImportCatalogUpsert,
+) -> Result<bool> {
+    let candidate_name = normalize_display_name_for_admission(&candidate.revision.display_name);
+    for logical_mod in &catalog.mods {
+        if logical_mod.mod_id == candidate.logical_mod.mod_id {
+            continue;
+        }
+        let revision = catalog
+            .revisions
+            .iter()
+            .find(|revision| revision.revision_id == logical_mod.display_revision_id)
+            .ok_or_else(|| anyhow::anyhow!("mod revision catalog is corrupted"))?;
+        if normalize_display_name_for_admission(&revision.display_name) == candidate_name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn normalize_display_name_for_admission(value: &str) -> String {
+    value.trim().to_lowercase()
 }
 
 fn migrate_v1_catalog(legacy: ModImportResultsV1) -> Result<ModRevisionCatalogV2> {
