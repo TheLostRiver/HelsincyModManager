@@ -5,7 +5,7 @@ export const EXTERNAL_IMPORT_DISPLAY_TEXT_MAX_LENGTH = 160;
 
 const EXTERNAL_IMPORT_OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
+export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

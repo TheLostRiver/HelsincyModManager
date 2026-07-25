@@ -16,6 +16,8 @@ test("external import action owns a task-scoped listener and keeps early events 
   assert.match(source, /pendingProgressEventsRef\.current\.set\(event\.payload\.taskId/);
   assert.match(source, /pendingProgressEventsRef\.current\.get\(launch\.task\.taskId\)/);
   assert.match(source, /nextExternalImportScanTaskStateFromProgress/);
+  assert.match(source, /isExternalImportOpaqueId\(value\.task\.taskId\)/);
+  assert.match(source, /isExternalImportOpaqueId\(value\.batchId\)/);
   assert.match(source, /showTaskNotice\(\{/);
   assert.match(source, /dismissTaskNotice\(previousTaskId\)/);
   assert.match(source, /listenerStatus === "failed"/);

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isExternalImportSourceDto } from "./externalImportTypes.ts";
+import {
+  isExternalImportDisplayText,
+  isExternalImportOpaqueId,
+  isExternalImportSourceDto,
+  isPlainRecord,
+} from "./externalImportTypes.ts";
 
 function source(overrides = {}) {
   return {
@@ -22,4 +27,15 @@ test("external import source DTO rejects path-like, unsafe, and malformed values
   assert.equal(isExternalImportSourceDto(source({ displayLabel: "x".repeat(161) })), false);
   assert.equal(isExternalImportSourceDto(source({ sourceId: "source/path" })), false);
   assert.equal(isExternalImportSourceDto(source({ expiresAtUnixMillis: 1.5 })), false);
+});
+
+test("external import validators provide one shared fail-closed boundary", () => {
+  const controlCharacter = String.fromCharCode(0);
+
+  assert.equal(isPlainRecord({ candidateId: "candidate-a" }), true);
+  assert.equal(isPlainRecord([]), false);
+  assert.equal(isExternalImportOpaqueId("candidate-a"), true);
+  assert.equal(isExternalImportOpaqueId("candidate/path"), false);
+  assert.equal(isExternalImportDisplayText("人工候选"), true);
+  assert.equal(isExternalImportDisplayText(`unsafe${controlCharacter}label`), false);
 });
