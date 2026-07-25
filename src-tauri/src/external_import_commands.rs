@@ -80,6 +80,7 @@ pub fn start_external_import_scan(
 #[tauri::command]
 pub fn get_external_import_preview(
     batch_id: String,
+    selection_id: Option<String>,
     cursor: Option<String>,
     limit: Option<i64>,
     state: State<'_, AppState>,
@@ -89,13 +90,23 @@ pub fn get_external_import_preview(
         "external_import_batch_id_invalid",
         "external import batch id is invalid",
     )?);
+    let selection_id = selection_id
+        .map(|selection_id| {
+            parse_external_import_id(
+                selection_id,
+                "external_import_selection_id_invalid",
+                "external import selection id is invalid",
+            )
+            .map(ExternalImportSelectionId::new)
+        })
+        .transpose()?;
     let offset = parse_external_import_cursor(cursor)?;
     let limit = parse_external_import_preview_limit(limit)?;
     let page = state
         .external_import
-        .scans
-        .get_preview(&batch_id, offset, limit)
-        .map_err(external_import_scan_error)?;
+        .batches
+        .get_preview(&batch_id, selection_id.as_ref(), offset, limit)
+        .map_err(external_import_batch_error)?;
 
     Ok(page.into())
 }
@@ -552,6 +563,9 @@ fn external_import_batch_error(error: ExternalImportBatchError) -> CommandErrorD
         ExternalImportBatchError::BatchNotStartable => "external import batch is not startable",
         ExternalImportBatchError::CatalogUnavailable => "external import catalog is unavailable",
         ExternalImportBatchError::CategoryUnavailable => "external import category is unavailable",
+        ExternalImportBatchError::PreviewPageInvalid => {
+            "external import preview request is invalid"
+        }
         ExternalImportBatchError::ResultPageInvalid => "external import result request is invalid",
         ExternalImportBatchError::ClockUnavailable => "external import clock is unavailable",
     };
