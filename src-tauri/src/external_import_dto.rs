@@ -1,15 +1,15 @@
 use crate::dto::TaskStartedDto;
 use hmm_app::{
-    ExternalImportBatchLaunch, ExternalImportPreviewPage, ExternalImportResultPage,
-    ExternalImportScanLaunch,
+    ExternalImportBatchLaunch, ExternalImportPreviewCandidate, ExternalImportPreviewPage,
+    ExternalImportResultPage, ExternalImportScanLaunch,
 };
 use hmm_core::{
-    ExternalImportBatch, ExternalImportBatchImportStatus, ExternalImportCandidate,
-    ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportConflictResolution,
-    ExternalImportItemResult, ExternalImportItemStatus, ExternalImportMetadataHint,
-    ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportScanStatus,
-    ExternalImportSelection, ExternalImportSelectionMutationResult, ExternalImportSelectionStatus,
-    ExternalImportSource,
+    ExternalImportBatch, ExternalImportBatchImportStatus, ExternalImportCandidateStatus,
+    ExternalImportConflictKind, ExternalImportConflictResolution, ExternalImportItemResult,
+    ExternalImportItemStatus, ExternalImportMetadataHint, ExternalImportReasonCode,
+    ExternalImportResourceUsage, ExternalImportScanStatus, ExternalImportSelection,
+    ExternalImportSelectionDecision, ExternalImportSelectionMutationResult,
+    ExternalImportSelectionStatus, ExternalImportSource,
 };
 use serde::{Deserialize, Serialize};
 
@@ -140,6 +140,40 @@ impl From<ExternalImportConflictResolutionInputDto> for ExternalImportConflictRe
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportSelectionDecisionDto {
+    pub conflict_resolution: Option<ExternalImportConflictResolutionDto>,
+    pub category_id: Option<String>,
+}
+
+impl From<ExternalImportSelectionDecision> for ExternalImportSelectionDecisionDto {
+    fn from(decision: ExternalImportSelectionDecision) -> Self {
+        Self {
+            conflict_resolution: decision.conflict_resolution.map(Into::into),
+            category_id: decision.category_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalImportConflictResolutionDto {
+    KeepBoth,
+    IgnoreInvalidMetadata,
+}
+
+impl From<ExternalImportConflictResolution> for ExternalImportConflictResolutionDto {
+    fn from(value: ExternalImportConflictResolution) -> Self {
+        match value {
+            ExternalImportConflictResolution::KeepBoth => Self::KeepBoth,
+            ExternalImportConflictResolution::IgnoreInvalidMetadata => {
+                Self::IgnoreInvalidMetadata
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExternalImportSelectionStatusDto {
@@ -180,6 +214,7 @@ impl From<ExternalImportResourceUsage> for ExternalImportResourceUsageDto {
 #[serde(rename_all = "camelCase")]
 pub struct ExternalImportPreviewPageDto {
     pub batch: ExternalImportPreviewBatchDto,
+    pub selection: Option<ExternalImportSelectionDto>,
     pub candidates: Vec<ExternalImportPreviewCandidateDto>,
     pub total_count: usize,
     pub next_cursor: Option<String>,
@@ -189,6 +224,7 @@ impl From<ExternalImportPreviewPage> for ExternalImportPreviewPageDto {
     fn from(page: ExternalImportPreviewPage) -> Self {
         Self {
             batch: page.batch.into(),
+            selection: page.selection.map(Into::into),
             candidates: page.candidates.into_iter().map(Into::into).collect(),
             total_count: page.total_count,
             next_cursor: page.next_offset.map(|offset| offset.to_string()),
@@ -297,10 +333,13 @@ pub struct ExternalImportPreviewCandidateDto {
     pub preview_status: ExternalImportCandidateStatusDto,
     pub conflict_kind: ExternalImportConflictKindDto,
     pub reason_code: Option<String>,
+    pub selected: bool,
+    pub selection_decision: Option<ExternalImportSelectionDecisionDto>,
 }
 
-impl From<ExternalImportCandidate> for ExternalImportPreviewCandidateDto {
-    fn from(candidate: ExternalImportCandidate) -> Self {
+impl From<ExternalImportPreviewCandidate> for ExternalImportPreviewCandidateDto {
+    fn from(preview: ExternalImportPreviewCandidate) -> Self {
+        let candidate = preview.candidate;
         Self {
             candidate_id: candidate.candidate_id.as_str().to_owned(),
             metadata: candidate.metadata_hint.into(),
@@ -312,6 +351,8 @@ impl From<ExternalImportCandidate> for ExternalImportPreviewCandidateDto {
                 .preview_status
                 .reason_code()
                 .map(|reason| reason.as_str().to_owned()),
+            selected: preview.selected,
+            selection_decision: preview.selection_decision.map(Into::into),
         }
     }
 }
@@ -434,13 +475,19 @@ impl From<ExternalImportConflictKind> for ExternalImportConflictKindDto {
 mod tests {
     use super::*;
     use hmm_core::{
-        ExternalImportAdapterId, ExternalImportBatchId, ExternalImportCandidateId,
-        ExternalImportConflictKind, ExternalImportItemResult, ExternalImportItemStatus,
-        ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportSourceId, ModId,
+        ExternalImportAdapterId, ExternalImportBatchId, ExternalImportCandidate,
+        ExternalImportCandidateId, ExternalImportConflictKind, ExternalImportConflictResolution,
+        ExternalImportItemResult, ExternalImportItemStatus, ExternalImportReasonCode,
+        ExternalImportResourceUsage, ExternalImportSelectionDecision,
+        ExternalImportSelectionEntry, ExternalImportSelectionId, ExternalImportSourceId, ModId,
     };
 
     #[test]
     fn preview_dto_omits_source_paths_and_private_digests() {
+        let decision = ExternalImportSelectionDecision {
+            conflict_resolution: Some(ExternalImportConflictResolution::KeepBoth),
+            category_id: Some("category-safe".to_owned()),
+        };
         let page = ExternalImportPreviewPage {
             batch: ExternalImportBatch {
                 batch_id: ExternalImportBatchId::new("external-import-batch-1"),
@@ -451,38 +498,76 @@ mod tests {
                 import_status: ExternalImportBatchImportStatus::Pending,
                 created_at_unix_millis: 1,
             },
-            candidates: vec![ExternalImportCandidate {
-                batch_id: ExternalImportBatchId::new("external-import-batch-1"),
-                candidate_id: ExternalImportCandidateId::new("external-import-candidate-1"),
-                source_item_key_hash: "C:/private/source-item-key".to_owned(),
-                content_fingerprint: "sha256:private-content-fingerprint".to_owned(),
-                metadata_hint: ExternalImportMetadataHint {
-                    display_name: Some("Fixture Mod".to_owned()),
-                    author: None,
-                    version: None,
-                    source_mod_type: None,
-                },
-                resource_usage: ExternalImportResourceUsage {
+            selection: Some(ExternalImportSelection {
+                selection_id: ExternalImportSelectionId::new("external-import-selection-1"),
+                batch_id: ExternalImportBatchId::new("private-selection-batch-id"),
+                revision: 2,
+                status: ExternalImportSelectionStatus::Editing,
+                entries: vec![ExternalImportSelectionEntry {
+                    candidate_id: ExternalImportCandidateId::new("private-selection-entry"),
+                    decision: Some(decision.clone()),
+                    updated_at_unix_millis: 99,
+                }],
+                selected_resource_usage: ExternalImportResourceUsage {
                     file_count: 2,
                     source_bytes: 3,
                     materialization_bytes: 3,
                 },
-                preview_status: ExternalImportCandidateStatus::Ready,
-                conflict_kind: ExternalImportConflictKind::None,
+                expires_at_unix_millis: 100,
+            }),
+            candidates: vec![ExternalImportPreviewCandidate {
+                candidate: ExternalImportCandidate {
+                    batch_id: ExternalImportBatchId::new("external-import-batch-1"),
+                    candidate_id: ExternalImportCandidateId::new("external-import-candidate-1"),
+                    source_item_key_hash: "C:/private/source-item-key".to_owned(),
+                    content_fingerprint: "sha256:private-content-fingerprint".to_owned(),
+                    metadata_hint: ExternalImportMetadataHint {
+                        display_name: Some("Fixture Mod".to_owned()),
+                        author: None,
+                        version: None,
+                        source_mod_type: None,
+                    },
+                    resource_usage: ExternalImportResourceUsage {
+                        file_count: 2,
+                        source_bytes: 3,
+                        materialization_bytes: 3,
+                    },
+                    preview_status: ExternalImportCandidateStatus::Ready,
+                    conflict_kind: ExternalImportConflictKind::None,
+                },
+                selected: true,
+                selection_decision: Some(decision),
             }],
             total_count: 1,
             next_offset: None,
         };
 
-        let value = serde_json::to_string(&ExternalImportPreviewPageDto::from(page))
+        let value = serde_json::to_value(ExternalImportPreviewPageDto::from(page))
             .expect("serialize external import preview dto");
+        let serialized = value.to_string();
 
-        assert!(value.contains("external-import-candidate-1"));
-        assert!(!value.contains("C:/private"));
-        assert!(!value.contains("private-content-fingerprint"));
-        assert!(!value.contains("sourceFingerprint"));
-        assert!(!value.contains("sourceItemKeyHash"));
-        assert!(!value.contains("contentFingerprint"));
+        assert_eq!(value["selection"]["selectionId"], "external-import-selection-1");
+        assert_eq!(value["selection"]["selectedCount"], 1);
+        assert_eq!(value["candidates"][0]["selected"], true);
+        assert_eq!(
+            value["candidates"][0]["selectionDecision"]["conflictResolution"],
+            "keep_both"
+        );
+        assert_eq!(
+            value["candidates"][0]["selectionDecision"]["categoryId"],
+            "category-safe"
+        );
+        assert!(value["selection"].get("batchId").is_none());
+        assert!(value["selection"].get("entries").is_none());
+        assert!(value["selection"].get("updatedAtUnixMillis").is_none());
+        assert!(serialized.contains("external-import-candidate-1"));
+        assert!(!serialized.contains("C:/private"));
+        assert!(!serialized.contains("private-content-fingerprint"));
+        assert!(!serialized.contains("private-selection-batch-id"));
+        assert!(!serialized.contains("private-selection-entry"));
+        assert!(!serialized.contains("sourceFingerprint"));
+        assert!(!serialized.contains("sourceItemKeyHash"));
+        assert!(!serialized.contains("contentFingerprint"));
     }
 
     #[test]

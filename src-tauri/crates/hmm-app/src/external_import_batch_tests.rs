@@ -35,6 +35,9 @@ use std::sync::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[path = "external_import_preview_tests.rs"]
+mod external_import_preview_tests;
+
 #[test]
 fn start_and_retry_repository_failures_close_the_created_task() {
     let repository = Arc::new(FixtureBatchRepository::default());
