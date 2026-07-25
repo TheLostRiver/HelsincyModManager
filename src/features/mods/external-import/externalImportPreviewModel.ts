@@ -2,7 +2,9 @@ import {
   EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE,
   isExternalImportDisplayText,
   isExternalImportOpaqueId,
+  isOptionalDisplayText,
   isPlainRecord,
+  isSafeNonNegativeInteger,
   type ExternalImportPreviewCandidateDto,
   type ExternalImportPreviewPageDto,
 } from "./externalImportTypes.ts";
@@ -37,14 +39,6 @@ const conflictLabels: Readonly<Record<string, string | null>> = {
   content_duplicate: "内容重复",
   name_collision: "同名冲突",
 };
-
-function isOptionalDisplayText(value: unknown) {
-  return value === null || isExternalImportDisplayText(value);
-}
-
-function isSafeNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
 
 function isCandidateShape(value: unknown) {
   if (!isPlainRecord(value) || !isExternalImportOpaqueId(value.candidateId) || !isPlainRecord(value.metadata)) {

@@ -24,6 +24,14 @@ export function isExternalImportDisplayText(value: unknown): value is string {
   );
 }
 
+export function isOptionalDisplayText(value: unknown): value is string | null {
+  return value === null || isExternalImportDisplayText(value);
+}
+
+export function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 export type ExternalImportSourceDto = {
   sourceId: string;
   adapterId: string;
@@ -42,9 +50,7 @@ export function isExternalImportSourceDto(value: unknown): value is ExternalImpo
     isExternalImportDisplayText(value.displayLabel) &&
     value.displayLabel.trim().length > 0 &&
     !/[\\/:]/.test(value.displayLabel) &&
-    typeof value.expiresAtUnixMillis === "number" &&
-    Number.isSafeInteger(value.expiresAtUnixMillis) &&
-    value.expiresAtUnixMillis >= 0
+    isSafeNonNegativeInteger(value.expiresAtUnixMillis)
   );
 }
 
