@@ -82,6 +82,42 @@ export type ExternalImportCandidateStatus =
 
 export type ExternalImportConflictKind = "none" | "content_duplicate" | "name_collision";
 
+export type ExternalImportConflictResolution = "keep_both" | "ignore_invalid_metadata";
+
+export type ExternalImportSelectionStatus = "editing" | "sealed" | "expired";
+
+export type ExternalImportResourceUsageDto = {
+  fileCount: number;
+  sourceBytes: number;
+  materializationBytes: number;
+};
+
+export type ExternalImportSelectionDecisionDto = {
+  conflictResolution: ExternalImportConflictResolution | null;
+  categoryId: string | null;
+};
+
+export type ExternalImportSelectionDto = {
+  selectionId: string;
+  revision: number;
+  status: ExternalImportSelectionStatus;
+  selectedCount: number;
+  selectedResourceUsage: ExternalImportResourceUsageDto;
+  expiresAtUnixMillis: number;
+};
+
+export type ExternalImportSelectionMutationInputDto = {
+  candidateId: string;
+  selected: boolean;
+  decision: ExternalImportSelectionDecisionDto | null;
+};
+
+export type ExternalImportSelectionMutationResultDto = {
+  revision: number;
+  selectedCount: number;
+  selectedResourceUsage: ExternalImportResourceUsageDto;
+};
+
 export type ExternalImportMetadataHintDto = {
   displayName: string | null;
   author: string | null;
@@ -104,11 +140,19 @@ export type ExternalImportPreviewCandidateDto = {
   previewStatus: ExternalImportCandidateStatus;
   conflictKind: ExternalImportConflictKind;
   reasonCode: string | null;
+  selected: boolean;
+  selectionDecision: ExternalImportSelectionDecisionDto | null;
 };
 
 export type ExternalImportPreviewPageDto = {
   batch: ExternalImportPreviewBatchDto;
+  selection: ExternalImportSelectionDto | null;
   candidates: ExternalImportPreviewCandidateDto[];
   totalCount: number;
   nextCursor: string | null;
+};
+
+export type ExternalImportBatchStartedDto = {
+  task: TaskStartedDto;
+  batchId: string;
 };

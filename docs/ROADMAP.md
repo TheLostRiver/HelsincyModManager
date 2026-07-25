@@ -18,13 +18,13 @@
    完成，最后的 Slice 4C 已由 PR #192 rebase 合并。其生产 query switch、同事务 count/page、fail-closed
    freshness tracking 和性能门禁的最终 10,000 条 full status-filter query p95 为 `9.2966 ms`，低于固定
    `14.23 ms` 同机预算。
-5. T17 Slice 1“第三方 Mod 管理器批量迁移基础”、Slice 2“只读来源扫描与分页预览”与 Slice 3“安全物化与
-   批量导入编排”已完成（Slice 3 由 PR #195 合并）。当前主线为 Slice 4A“外部来源与只读预览”：它以既有
-   `hunting_box_directory_v1` scanner、受限 XML、内容指纹、ephemeral source registry、可取消 scan task、
-   durable preview 与窄 Tauri DTO 为基础，只消费已有 source/scan/preview 契约。已完成的 Slice 3 已提供 sealed
-   selection、task-scoped 内部包物化、既有 sandbox 分析复用、JSON authority catalog 持久化、partial success/retry
-   和分页结果查询；selection、decision、batch start/progress 留在 4B，
-   result/retry/性能加固留在 4C。默认仍只导入，不安装、启用或写游戏目录。
+5. T17 Slice 1“第三方 Mod 管理器批量迁移基础”、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与
+   批量导入编排”和 Slice 4A“外部来源与只读预览”已完成（Slice 3 由 PR #195 合并，Slice 4A 由
+   PR #196 合并并由 PR #197 补齐 review 遗漏）。当前切片完成 Slice 4B：在既有
+   `hunting_box_directory_v1` scanner、durable preview、后端 selection snapshot 与批量编排基础上，增加
+   selection-aware preview、候选/服务端全选、已有分类映射、显式冲突决定、sealed batch start 和严格按
+   `taskId` 的 import progress。result/retry/大批次体验和最终性能加固仍留在 4C。默认仍只导入，不安装、
+   启用或写游戏目录。
    当前排期冻结为 Windows + MHW:I；Linux/Steam Deck 与更多游戏适配不纳入 T17 工期。完整 T17 后再评审 T13；
    其他扩展继续按各自发布门禁评审，不自动开工。
 
@@ -89,8 +89,8 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加任务进度和取消 UI。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固与 T18
-Slice 1/2/3/4A/4B/4C 均已完成；T17 Slice 1/2/3 已完成，当前推进 Slice 4A 的外部来源选择、scan task 状态与
-只读分页预览。后续 4B/4C 才处理选择/决定/批量导入进度与结果/重试/性能加固，批量破坏性操作仍属于 T13；
+Slice 1/2/3/4A/4B/4C 均已完成；T17 Slice 1/2/3/4A 已完成，当前切片完成 Slice 4B 的选择、决定、sealed
+batch start 与导入进度。后续 4C 继续结果/重试/大批次体验和性能加固，批量破坏性操作仍属于 T13；
 不能因本切片开工自动进入。当前 T17 计划只覆盖 Windows + MHW:I，不安排 Linux/Steam Deck 或更多游戏工作。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）

@@ -1,20 +1,14 @@
 import { listen } from "@tauri-apps/api/event";
-import { CircleAlert, FileSearch, FolderInput, LoaderCircle, RefreshCcw, XCircle } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { CircleAlert, FolderInput, LoaderCircle, RefreshCcw, XCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, useFeedback } from "../../../shared/feedback";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../modImportTypes";
 import {
   cancelExternalImportScan,
-  getExternalImportPreview,
   selectExternalImportSource,
   startExternalImportScan,
 } from "./externalImportApi";
-import {
-  appendExternalImportPreviewCandidates,
-  isExternalImportPreviewPageForBatch,
-  toExternalImportPreviewCandidateViewModel,
-  type ExternalImportPreviewCandidateViewModel,
-} from "./externalImportPreviewModel";
+import { ExternalImportSelectionPanel } from "./ExternalImportSelectionPanel";
 import {
   getExternalImportScanErrorMessage,
   getExternalImportScanPhaseLabel,
@@ -27,24 +21,10 @@ import {
   isExternalImportSourceDto,
   type ExternalImportSourceDto,
 } from "./externalImportTypes.ts";
+import { useExternalImportSelectionWorkflow } from "./useExternalImportSelectionWorkflow";
 import "./ExternalImportAction.css";
 
 type ListenerStatus = "loading" | "ready" | "failed";
-
-type PreviewState =
-  | { status: "idle" }
-  | { status: "loading"; batchId: string }
-  | {
-      status: "ready";
-      batchId: string;
-      candidates: ExternalImportPreviewCandidateViewModel[];
-      totalCount: number;
-      nextCursor: string | null;
-      loadingMore: boolean;
-      loadMoreError: string | null;
-    }
-  | { status: "empty"; batchId: string; totalCount: number }
-  | { status: "failed"; message: string };
 
 function errorCodeFrom(error: unknown, fallback: string) {
   if (
@@ -76,7 +56,6 @@ function isScanActive(state: ExternalImportScanTaskState) {
 
 export function ExternalImportAction() {
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
-  const previewHeadingId = useId();
   const chooseSourceButtonRef = useRef<HTMLButtonElement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [listenerStatus, setListenerStatus] = useState<ListenerStatus>("loading");
@@ -84,17 +63,25 @@ export function ExternalImportAction() {
   const [sourcePickerActive, setSourcePickerActive] = useState(false);
   const [cancelPending, setCancelPending] = useState(false);
   const [source, setSource] = useState<ExternalImportSourceDto | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [scanState, setScanState] = useState<ExternalImportScanTaskState>({ status: "idle" });
-  const [previewState, setPreviewState] = useState<PreviewState>({ status: "idle" });
   const scanStateRef = useRef<ExternalImportScanTaskState>(scanState);
   const taskIdRef = useRef<string | null>(null);
-  const batchIdRef = useRef<string | null>(null);
   const startPendingRef = useRef(false);
   const pendingProgressEventsRef = useRef(new Map<string, TaskProgressEventDto>());
-  const previewRequestRef = useRef(0);
-  const completedPreviewBatchesRef = useRef(new Set<string>());
   const displayedTaskNoticeIdRef = useRef<string | null>(null);
   const terminalNoticeKeysRef = useRef(new Set<string>());
+  const selectionWorkflow = useExternalImportSelectionWorkflow(
+    scanState.status === "completed" ? batchId : null,
+  );
+  const selectionWorkflowBusy =
+    selectionWorkflow.pendingAction !== null ||
+    selectionWorkflow.importActive ||
+    selectionWorkflow.previewState.status === "loading" ||
+    (
+      selectionWorkflow.previewState.status === "ready" &&
+      selectionWorkflow.previewState.loadingMore
+    );
 
   const setTrackedScanState = useCallback((next: ExternalImportScanTaskState) => {
     scanStateRef.current = next;
@@ -102,79 +89,12 @@ export function ExternalImportAction() {
   }, []);
 
   const resetWorkflow = useCallback(() => {
-    previewRequestRef.current += 1;
     taskIdRef.current = null;
-    batchIdRef.current = null;
     pendingProgressEventsRef.current.clear();
-    completedPreviewBatchesRef.current.clear();
     setSource(null);
-    setPreviewState({ status: "idle" });
+    setBatchId(null);
     setTrackedScanState({ status: "idle" });
   }, [setTrackedScanState]);
-
-  const loadPreview = useCallback(async (batchId: string, cursor: string | null, append: boolean) => {
-    const requestId = previewRequestRef.current + 1;
-    previewRequestRef.current = requestId;
-
-    if (append) {
-      setPreviewState((current) =>
-        current.status === "ready" && current.batchId === batchId
-          ? { ...current, loadingMore: true, loadMoreError: null }
-          : current,
-      );
-    } else {
-      setPreviewState({ status: "loading", batchId });
-    }
-
-    try {
-      const page = await getExternalImportPreview({ batchId, cursor });
-      if (!isExternalImportPreviewPageForBatch(page, batchId)) {
-        throw { code: "external_import_preview_invalid" };
-      }
-      if (previewRequestRef.current !== requestId) {
-        return;
-      }
-
-      const candidates = page.candidates.map(toExternalImportPreviewCandidateViewModel);
-      if (!append && candidates.length === 0) {
-        setPreviewState({ status: "empty", batchId, totalCount: page.totalCount });
-        return;
-      }
-
-      setPreviewState((current) => {
-        const mergedCandidates =
-          append && current.status === "ready" && current.batchId === batchId
-            ? appendExternalImportPreviewCandidates(current.candidates, page.candidates)
-            : candidates;
-        return {
-          status: "ready",
-          batchId,
-          candidates: mergedCandidates,
-          totalCount: page.totalCount,
-          nextCursor: page.nextCursor,
-          loadingMore: false,
-          loadMoreError: null,
-        };
-      });
-    } catch (error) {
-      if (previewRequestRef.current !== requestId) {
-        return;
-      }
-
-      const message = getExternalImportScanErrorMessage(
-        errorCodeFrom(error, "external_import_preview_invalid"),
-      );
-      if (append) {
-        setPreviewState((current) =>
-          current.status === "ready" && current.batchId === batchId
-            ? { ...current, loadingMore: false, loadMoreError: message }
-            : current,
-        );
-        return;
-      }
-      setPreviewState({ status: "failed", message });
-    }
-  }, []);
 
   const applyProgressEvent = useCallback(
     (event: TaskProgressEventDto) => {
@@ -188,16 +108,8 @@ export function ExternalImportAction() {
         taskIdRef.current = null;
       }
       setTrackedScanState(next);
-
-      if (next.status === "completed") {
-        const batchId = batchIdRef.current;
-        if (batchId && !completedPreviewBatchesRef.current.has(batchId)) {
-          completedPreviewBatchesRef.current.add(batchId);
-          void loadPreview(batchId, null, false);
-        }
-      }
     },
-    [loadPreview, setTrackedScanState],
+    [setTrackedScanState],
   );
 
   useEffect(() => {
@@ -307,7 +219,7 @@ export function ExternalImportAction() {
     async (selectedSource: ExternalImportSourceDto) => {
       startPendingRef.current = true;
       pendingProgressEventsRef.current.clear();
-      setPreviewState({ status: "idle" });
+      setBatchId(null);
       setTrackedScanState({ status: "starting" });
 
       try {
@@ -322,7 +234,7 @@ export function ExternalImportAction() {
           return;
         }
 
-        batchIdRef.current = launch.batchId;
+        setBatchId(launch.batchId);
         taskIdRef.current = launch.task.taskId;
         const startedState: ExternalImportScanTaskState = {
           status: "running",
@@ -351,7 +263,12 @@ export function ExternalImportAction() {
   );
 
   const chooseSource = useCallback(async () => {
-    if (listenerStatus !== "ready" || sourcePickerActive || isScanActive(scanStateRef.current)) {
+    if (
+      listenerStatus !== "ready" ||
+      sourcePickerActive ||
+      isScanActive(scanStateRef.current) ||
+      selectionWorkflowBusy
+    ) {
       return;
     }
 
@@ -384,7 +301,14 @@ export function ExternalImportAction() {
     } finally {
       setSourcePickerActive(false);
     }
-  }, [launchScan, listenerStatus, resetWorkflow, setTrackedScanState, sourcePickerActive]);
+  }, [
+    launchScan,
+    listenerStatus,
+    resetWorkflow,
+    selectionWorkflowBusy,
+    setTrackedScanState,
+    sourcePickerActive,
+  ]);
 
   const requestCancel = useCallback(async () => {
     if (scanState.status !== "running" || cancelPending) {
@@ -419,17 +343,6 @@ export function ExternalImportAction() {
     setListenerAttempt((attempt) => attempt + 1);
   }
 
-  function loadMore() {
-    if (
-      previewState.status !== "ready" ||
-      previewState.nextCursor === null ||
-      previewState.loadingMore
-    ) {
-      return;
-    }
-    void loadPreview(previewState.batchId, previewState.nextCursor, true);
-  }
-
   function openDialog() {
     setDialogOpen(true);
     if (scanStateRef.current.status === "idle" && source === null && listenerStatus === "ready") {
@@ -444,10 +357,12 @@ export function ExternalImportAction() {
         ? "正在创建扫描任务"
         : scanState.status === "running"
           ? getExternalImportScanPhaseLabel(scanState.phase)
-          : scanState.status === "completed" && previewState.status === "idle"
-            ? "扫描完成，正在读取预览"
-            : null;
-  const sourceButtonDisabled = listenerStatus !== "ready" || sourcePickerActive || isScanActive(scanState);
+          : null;
+  const sourceButtonDisabled =
+    listenerStatus !== "ready" ||
+    sourcePickerActive ||
+    isScanActive(scanState) ||
+    selectionWorkflowBusy;
 
   return (
     <>
@@ -469,7 +384,11 @@ export function ExternalImportAction() {
         title="第三方 Mod 迁移"
         description={source?.displayLabel ?? "只读扫描与候选预览"}
         icon={<FolderInput size={20} />}
-        busy={sourcePickerActive || scanState.status === "starting"}
+        busy={
+          sourcePickerActive ||
+          scanState.status === "starting" ||
+          selectionWorkflow.importState.status === "starting"
+        }
         initialFocusRef={chooseSourceButtonRef}
         onClose={() => setDialogOpen(false)}
         footer={
@@ -545,77 +464,8 @@ export function ExternalImportAction() {
             </div>
           ) : null}
 
-          {previewState.status === "loading" ? (
-            <div className="external-import__state" role="status" aria-live="polite">
-              <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-              <span>正在读取候选预览</span>
-            </div>
-          ) : null}
-
-          {previewState.status === "failed" ? (
-            <div className="external-import__state is-error" role="alert">
-              <CircleAlert size={18} aria-hidden="true" />
-              <span>{previewState.message}</span>
-            </div>
-          ) : null}
-
-          {previewState.status === "empty" ? (
-            <div className="external-import__empty" role="status" aria-live="polite">
-              <FileSearch size={24} aria-hidden="true" />
-              <strong>没有可显示的候选</strong>
-              <span>扫描到 {previewState.totalCount} 项。</span>
-            </div>
-          ) : null}
-
-          {previewState.status === "ready" ? (
-            <section className="external-import__preview" aria-labelledby={previewHeadingId}>
-              <header className="external-import__preview-header">
-                <div>
-                  <span className="external-import__eyebrow">候选预览</span>
-                  <h3 id={previewHeadingId}>已加载 {previewState.candidates.length} / {previewState.totalCount} 项</h3>
-                </div>
-              </header>
-
-              <ul className="external-import__candidate-list">
-                {previewState.candidates.map((candidate) => (
-                  <li key={candidate.candidateId} className="external-import__candidate">
-                    <div className="external-import__candidate-main">
-                      <strong>{candidate.title}</strong>
-                      {candidate.metadata.length > 0 ? (
-                        <span>{candidate.metadata.join(" · ")}</span>
-                      ) : null}
-                    </div>
-                    <div className="external-import__candidate-meta">
-                      <span>{candidate.fileCount}</span>
-                      <span>{candidate.totalBytes}</span>
-                    </div>
-                    <div className="external-import__candidate-statuses">
-                      <span className={`external-import__badge is-${candidate.statusTone}`}>{candidate.statusLabel}</span>
-                      {candidate.conflictLabel ? <span className="external-import__badge is-neutral">{candidate.conflictLabel}</span> : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-
-              {previewState.loadMoreError ? (
-                <div className="external-import__load-error" role="alert">
-                  <CircleAlert size={15} aria-hidden="true" />
-                  <span>{previewState.loadMoreError}</span>
-                </div>
-              ) : null}
-
-              {previewState.nextCursor !== null ? (
-                <button
-                  type="button"
-                  className="external-import__button is-secondary external-import__load-more"
-                  disabled={previewState.loadingMore}
-                  onClick={loadMore}
-                >
-                  {previewState.loadingMore ? <LoaderCircle className="external-import__spinner" size={15} /> : <FileSearch size={15} />}
-                  {previewState.loadingMore ? "正在载入" : "载入更多候选"}
-                </button>
-              ) : null}
-            </section>
+          {scanState.status === "completed" && batchId ? (
+            <ExternalImportSelectionPanel workflow={selectionWorkflow} />
           ) : null}
         </div>
       </Dialog>

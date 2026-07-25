@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 export type CategoryItem = {
   id: string;
   name: string;
-  color?: string;
+  color?: string | null;
   sortOrder: number;
   modCount: number;
 };
@@ -98,7 +98,11 @@ function isCategoryItem(value: unknown): value is CategoryItem {
     && Number.isFinite(category.sortOrder)
     && typeof category.modCount === "number"
     && Number.isFinite(category.modCount)
-    && (category.color === undefined || typeof category.color === "string")
+    && (
+      category.color === undefined
+      || category.color === null
+      || typeof category.color === "string"
+    )
   );
 }
 
