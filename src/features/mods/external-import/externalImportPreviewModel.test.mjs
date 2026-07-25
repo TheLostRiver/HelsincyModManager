@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -39,6 +40,18 @@ function previewPage(overrides = {}) {
     ...overrides,
   };
 }
+
+test("preview model reuses the shared validator definitions", () => {
+  const source = readFileSync(
+    "src/features/mods/external-import/externalImportPreviewModel.ts",
+    "utf8",
+  );
+
+  assert.match(source, /\bisOptionalDisplayText\b/);
+  assert.match(source, /\bisSafeNonNegativeInteger\b/);
+  assert.doesNotMatch(source, /(?:function|const|let|var)\s+isOptionalDisplayText\b/);
+  assert.doesNotMatch(source, /(?:function|const|let|var)\s+isSafeNonNegativeInteger\b/);
+});
 
 test("preview page accepts only the completed pending batch shape and an opaque cursor", () => {
   assert.equal(isExternalImportPreviewPageForBatch(previewPage(), "batch-a"), true);

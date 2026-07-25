@@ -5,7 +5,9 @@ import {
   isExternalImportDisplayText,
   isExternalImportOpaqueId,
   isExternalImportSourceDto,
+  isOptionalDisplayText,
   isPlainRecord,
+  isSafeNonNegativeInteger,
 } from "./externalImportTypes.ts";
 
 function source(overrides = {}) {
@@ -38,4 +40,11 @@ test("external import validators provide one shared fail-closed boundary", () =>
   assert.equal(isExternalImportOpaqueId("candidate/path"), false);
   assert.equal(isExternalImportDisplayText("人工候选"), true);
   assert.equal(isExternalImportDisplayText(`unsafe${controlCharacter}label`), false);
+  assert.equal(isOptionalDisplayText(null), true);
+  assert.equal(isOptionalDisplayText("人工候选"), true);
+  assert.equal(isOptionalDisplayText(undefined), false);
+  assert.equal(isSafeNonNegativeInteger(0), true);
+  assert.equal(isSafeNonNegativeInteger(Number.MAX_SAFE_INTEGER), true);
+  assert.equal(isSafeNonNegativeInteger(-1), false);
+  assert.equal(isSafeNonNegativeInteger(1.5), false);
 });
