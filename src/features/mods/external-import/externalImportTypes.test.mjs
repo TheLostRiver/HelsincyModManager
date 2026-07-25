@@ -45,6 +45,9 @@ test("external import validators provide one shared fail-closed boundary", () =>
   assert.equal(isOptionalDisplayText(undefined), false);
   assert.equal(isSafeNonNegativeInteger(0), true);
   assert.equal(isSafeNonNegativeInteger(Number.MAX_SAFE_INTEGER), true);
+  assert.equal(isSafeNonNegativeInteger(Number.MAX_SAFE_INTEGER + 1), false);
   assert.equal(isSafeNonNegativeInteger(-1), false);
   assert.equal(isSafeNonNegativeInteger(1.5), false);
+  assert.equal(isSafeNonNegativeInteger(NaN), false);
+  assert.equal(isSafeNonNegativeInteger(Infinity), false);
 });

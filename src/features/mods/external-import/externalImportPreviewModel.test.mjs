@@ -46,9 +46,13 @@ test("preview model reuses the shared validator definitions", () => {
     "src/features/mods/external-import/externalImportPreviewModel.ts",
     "utf8",
   );
+  const sharedTypesImport = source.match(
+    /import\s*\{([^}]*)\}\s*from\s*["']\.\/externalImportTypes\.ts["'];?/,
+  );
 
-  assert.match(source, /\bisOptionalDisplayText\b/);
-  assert.match(source, /\bisSafeNonNegativeInteger\b/);
+  assert.notEqual(sharedTypesImport, null);
+  assert.match(sharedTypesImport?.[1] ?? "", /\bisOptionalDisplayText\b/);
+  assert.match(sharedTypesImport?.[1] ?? "", /\bisSafeNonNegativeInteger\b/);
   assert.doesNotMatch(source, /(?:function|const|let|var)\s+isOptionalDisplayText\b/);
   assert.doesNotMatch(source, /(?:function|const|let|var)\s+isSafeNonNegativeInteger\b/);
 });
