@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：分 Slice 实施中。Slice 1 与 Slice 2“只读来源扫描与分页预览”已完成；当前为 Slice 3“安全物化与批量导入编排”。
+> 状态：分 Slice 实施中。Slice 1、Slice 2“只读来源扫描与分页预览”与 Slice 3“安全物化与批量导入编排”已完成；当前为 Slice 4A“外部来源与只读预览”。
 >
 > 本文只定义产品、架构、安全和验收边界，不表示功能已经可用。
 
@@ -321,8 +321,9 @@ cancel_task(taskId)
 已完成的 Slice 2 bridge 包含 `select_external_import_source()`、`start_external_import_scan(sourceId)` 和
 `get_external_import_preview(batchId, cursor?, limit?)`：首个 command 固定登记唯一的
 `hunting_box_directory_v1` 来源，不接受 adapter/path 参数；原生选择器中的路径只保留在 Rust registry。
-当前 Slice 3 在保留上述只读契约的前提下增加 selection create/update、服务端全选、sealed batch start/retry 和
-分页 result query；完整 React 工作流仍留在 Slice 4。
+已完成的 Slice 3 在保留上述只读契约的前提下增加 selection create/update、服务端全选、sealed batch start/retry 和
+分页 result query。当前 Slice 4A 只消费 source picker、scan task 和 preview query；selection/decision/start/progress
+留在 4B，result/retry/大批次体验与最终加固留在 4C。
 
 约束：
 
@@ -387,12 +388,21 @@ cancel_task(taskId)
 - 实现去重、`keep_both`、partial success、取消、重试和崩溃对账。
 - 证明不会安装、启用或写入游戏目录。
 
-### Slice 4：完整前端迁移体验与加固
+### Slice 4A：外部来源与只读预览（当前）
 
-- 完成来源选择、预览、筛选/全选、分类映射、冲突决定、进度和结果页。
-- 增加大批次分页、空状态、过期来源和可重试失败体验。
-- 完成浏览器/Tauri smoke、性能基准、日志脱敏和文档同步。
-- 只有完成全部验收后，才在 TODO 中把 T17 标为已完成。
+- 在既有 Mod 管理导入工作流中完成来源选择、scan task 状态、取消、空/失败/过期来源状态与只读分页预览。
+- 前端只消费受控 source/scan/preview DTO，不接收路径、XML、fingerprint、archive/sandbox/cache 引用，也不创建 selection 或启动批量导入。
+- 完成 feature-local typed API、taskId scoped listener、browser smoke 与状态文档同步。
+
+### Slice 4B：选择、决定与批量启动
+
+- 完成候选选择、服务端全选、分类映射、冲突决定、sealed selection 和 batch start/import progress。
+- 每次 selection mutation 保持 200 项上限，跨页全选继续由后端谓词执行。
+
+### Slice 4C：结果、重试与最终加固
+
+- 完成结果分页、可重试失败、大批次体验、性能/日志脱敏加固与全流程 smoke。
+- 只有完成 4A/4B/4C 全部验收后，才在 TODO 中把 T17 标为已完成。
 
 后续新增其他第三方来源时，只增加 adapter、来源契约文档和 fixtures；不得在现有 adapter 里加入来源名称分支。
 
