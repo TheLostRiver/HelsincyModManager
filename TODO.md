@@ -1,8 +1,8 @@
 # HelsincyModManager 后续任务总纲
 
 创建时间：2026-06-27
-基于 HEAD：`b20e571` (main)
-最近同步：2026-07-23，基于 `b20e571`（T17 Slice 1/2 已合并；T17 Slice 3 安全物化与批量导入编排为当前独立切片）
+基于 HEAD：`7b1f9be` (main)
+最近同步：2026-07-23，基于 `7b1f9be`（T17 Slice 1/2/3 已合并；T17 Slice 4A 外部来源与只读预览为当前独立切片）
 
 ---
 
@@ -56,8 +56,8 @@
 2. P1：ARMOR_RETARGET 最窄纵向闭环已通过 Gate B `certified`。
 3. T9/T10 的 Gate A/B 最小 manifest/preflight 子集已经落地，不在本次认证后自动扩张。
 4. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已完成；T18 Mod 库分页已由
-   PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2 已完成，当前主线是 T17 Slice 3；后续仍按完整 T17 -> T13
-   推进批量迁移和批量安装/卸载，其余候选继续按发布门禁评审。
+   PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2/3 已完成，当前主线是 T17 Slice 4A；后续先完成
+   4B/4C，再按完整 T17 -> T13 推进批量迁移和批量安装/卸载，其余候选继续按发布门禁评审。
 
 ---
 
@@ -83,8 +83,10 @@
   -> T18 Mod 库分页 Slice 4C [completed, PR #192]
   -> T17 第三方批量迁移 Slice 1 [completed]
   -> T17 Slice 2 只读扫描与分页预览 [completed, PR #194]
-  -> T17 Slice 3 安全物化与批量导入编排 [current]
-  -> T17 Slice 4 -> T13 批量安装/卸载
+  -> T17 Slice 3 安全物化与批量导入编排 [completed, PR #195]
+  -> T17 Slice 4A 外部来源与只读预览 [current]
+  -> T17 Slice 4B selection/decision/start/progress
+  -> T17 Slice 4C result/retry/performance/hardening -> T13 批量安装/卸载
 ```
 
 ---
@@ -104,7 +106,7 @@
   - [x] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
 - [x] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
-Gate A、Gate B、T19 与 T18 均已完成；T17 Slice 1/2 已完成，当前主线为 T17 Slice 3。P7.2c、T17 后续切片、批量操作、
+Gate A、Gate B、T19 与 T18 均已完成；T17 Slice 1/2/3 已完成，当前主线为 T17 Slice 4A。P7.2c、T17 后续切片、批量操作、
 任务队列和新的非阻断视觉工作仍按各自恢复门禁评审，不因门禁解除自动开工。
 
 ---
@@ -381,16 +383,18 @@ JSON 做不好的需求:
 ### T17: 第三方 Mod 管理器批量迁移（狩技盒子兼容）
 
 **前置**: 单包安全导入链路 + TaskManager/取消 + Mod 导入结果持久化
-**状态**: 当前主线；Slice 1/2 已完成，Slice 3 正在独立实施，T17 整体仍在进行中
-**预估**: 大，建议拆为 4 个独立 review 切片
+**状态**: 当前主线；Slice 1/2/3 已完成，Slice 4A 正在独立实施，T17 整体仍在进行中
+**预估**: 大，按 6 个独立 review 切片推进（Slice 4 拆为 4A/4B/4C）
 **独立文档**: **已创建** → `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
 
 范围:
 - [x] 设计来源 adapter、批次预览、去重/冲突、取消/重试和安全边界
 - [x] Slice 1：无路径领域/selection 契约、批次选择上限、ports、仓储基准/决策和人工 fixtures（已完成）
 - [x] Slice 2：`hunting_box_directory_v1` 只读扫描、内容指纹、分页预览和 scan task（PR #194 已合并）
-- [ ] Slice 3：安全物化、复用单包导入链路、partial success、幂等和恢复对账（当前独立切片）
-- [ ] Slice 4：来源选择、候选选择/服务端全选、分类映射、冲突决定、进度/结果 UI 和完整加固
+- [x] Slice 3：安全物化、复用单包导入链路、partial success、幂等和恢复对账（PR #195 已合并）
+- [ ] Slice 4A：来源选择、scan task 状态和只读分页预览（当前独立切片）
+- [ ] Slice 4B：候选选择/服务端全选、分类映射、冲突决定、sealed batch start 与导入进度
+- [ ] Slice 4C：结果/重试、大批次体验、性能与最终加固
 
 硬边界:
 - 默认只导入，不自动安装、启用或写游戏目录
@@ -501,8 +505,9 @@ JSON 做不好的需求:
   -> 已完成: T18 Mod 库分页 Slice 4C（PR #192）
   -> 已完成: T17 第三方批量迁移 Slice 1
   -> 已完成: T17 第三方批量迁移 Slice 2（PR #194）
-  -> 当前: T17 第三方批量迁移 Slice 3（Windows + MHW:I 安全物化与批量导入编排）
-  -> 后续: T17 Slice 4 -> T13 批量安装/卸载
+  -> 已完成: T17 第三方批量迁移 Slice 3（PR #195）
+  -> 当前: T17 第三方批量迁移 Slice 4A（Windows + MHW:I 外部来源与只读预览）
+  -> 后续: T17 Slice 4B -> Slice 4C -> T13 批量安装/卸载
   -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
 ```
 
@@ -527,6 +532,6 @@ JSON 做不好的需求:
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P2 | 暂停 | |
 | T14 任务队列 UI | P3 | 暂停 | |
-| T17 第三方管理器批量迁移 | P2 | 当前主线（Slice 1/2 已完成；Slice 3 独立实施中；T17 整体未完成） | |
+| T17 第三方管理器批量迁移 | P2 | 当前主线（Slice 1/2/3 已完成；Slice 4A 独立实施中；T17 整体未完成） | #194（Slice 2）/ #195（Slice 3） |
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
