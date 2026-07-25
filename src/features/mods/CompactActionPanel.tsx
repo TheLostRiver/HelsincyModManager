@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
+import { ExternalImportAction } from "./external-import/ExternalImportAction";
 import { ModImportAction } from "./ModImportAction";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import {
@@ -80,6 +81,7 @@ export function CompactActionPanel({
 
       <div className="compact-panel__stack">
         {addAction ? <ModImportAction label={addAction.label} onImported={onImportCompleted} /> : null}
+        <ExternalImportAction />
         {addRevisionAction ? (
           <ModImportAction
             label={addRevisionAction.label}

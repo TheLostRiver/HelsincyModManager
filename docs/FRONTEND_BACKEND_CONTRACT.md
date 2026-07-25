@@ -135,12 +135,15 @@ pub struct CommandErrorDto {
 
 当前 `CommandErrorDto` 只有 `code` 和 `message`。后续新增高风险或长任务 command 时，应扩展为上面的通用形态，旧 command 可以分阶段迁移。
 
-### T17 Slice 3 安全物化与批量导入后端契约
+### T17 Slice 3 后端契约与 Slice 4A 只读前端边界
 
-已完成的 Slice 2 提供 `hunting_box_directory_v1` 的 Windows + MHW:I 只读来源选择、扫描和分页预览。
-当前 Slice 3 在此基础上增加后端 selection snapshot、task-scoped 安全物化、批量导入编排和结果分页；原生目录
-选择器只在 Rust 内返回路径，路径立即登记到短生命周期的 source registry。前端永远不接收、提交或记录该路径。
-本切片不提供 React 迁移页面，也不安装、启用、获取 game/profile 写锁或写入游戏目录。
+已完成的 Slice 2 提供 `hunting_box_directory_v1` 的 Windows + MHW:I 只读来源选择、扫描和分页预览。已完成的
+Slice 3 在此基础上增加后端 selection snapshot、task-scoped 安全物化、批量导入编排和结果分页；原生目录选择器只在
+Rust 内返回路径，路径立即登记到短生命周期的 source registry。前端永远不接收、提交或记录该路径。
+
+当前 Slice 4A 的 React 工作流只消费来源选择、scan task、取消和分页 preview，用于展示脱敏来源标签、taskId-scoped
+状态和只读候选。它不创建或更新 selection、不启动批量导入、不读取 result page，也不计算路径、物化包、安装、启用、
+获取 game/profile 写锁或写入游戏目录；selection/decision/start/progress 留在 4B，result/retry/性能加固留在 4C。
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
