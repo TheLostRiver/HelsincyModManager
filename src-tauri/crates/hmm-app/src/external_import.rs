@@ -2,9 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod external_import_catalog;
+mod external_import_preview;
 use external_import_catalog::{
     merge_external_metadata_hint, normalize_display_name, CatalogIndex, PendingCatalogImport,
 };
+pub use external_import_preview::{ExternalImportPreviewCandidate, ExternalImportPreviewPage};
 
 use hmm_core::{
     ExternalImportBatch, ExternalImportBatchId, ExternalImportBatchImportStatus,
@@ -58,14 +60,6 @@ pub struct ExternalImportScanLaunch {
     pub task: TaskStarted,
     pub batch_id: ExternalImportBatchId,
     source: ExternalImportSource,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExternalImportPreviewPage {
-    pub batch: ExternalImportBatch,
-    pub candidates: Vec<ExternalImportCandidate>,
-    pub total_count: usize,
-    pub next_offset: Option<usize>,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -336,7 +330,16 @@ impl ExternalImportScanService {
 
         Ok(ExternalImportPreviewPage {
             batch,
-            candidates: page.candidates,
+            selection: None,
+            candidates: page
+                .candidates
+                .into_iter()
+                .map(|candidate| ExternalImportPreviewCandidate {
+                    candidate,
+                    selected: false,
+                    selection_decision: None,
+                })
+                .collect(),
             total_count: page.total_count,
             next_offset: page.next_offset,
         })
@@ -468,6 +471,8 @@ pub enum ExternalImportBatchError {
     CatalogUnavailable,
     #[error("external import category is unavailable")]
     CategoryUnavailable,
+    #[error("external import preview page is invalid")]
+    PreviewPageInvalid,
     #[error("external import result page is invalid")]
     ResultPageInvalid,
     #[error("external import clock is unavailable")]
@@ -485,6 +490,7 @@ impl ExternalImportBatchError {
             Self::BatchNotStartable => "external_import_batch_not_startable",
             Self::CatalogUnavailable => "external_import_catalog_unavailable",
             Self::CategoryUnavailable => "external_import_category_unavailable",
+            Self::PreviewPageInvalid => "external_import_preview_request_invalid",
             Self::ResultPageInvalid => "external_import_result_request_invalid",
             Self::ClockUnavailable => "external_import_clock_unavailable",
         }
