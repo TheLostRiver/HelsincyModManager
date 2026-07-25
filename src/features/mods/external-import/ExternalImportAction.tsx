@@ -23,9 +23,10 @@ import {
   type ExternalImportScanTaskState,
 } from "./externalImportScanState";
 import {
+  isExternalImportOpaqueId,
   isExternalImportSourceDto,
   type ExternalImportSourceDto,
-} from "./externalImportTypes";
+} from "./externalImportTypes.ts";
 import "./ExternalImportAction.css";
 
 type ListenerStatus = "loading" | "ready" | "failed";
@@ -64,8 +65,8 @@ function hasExpectedScanLaunch(value: {
   return (
     value.task.kind === "mod_import" &&
     value.task.status === "queued" &&
-    /^[A-Za-z0-9_-]{1,160}$/.test(value.task.taskId) &&
-    /^[A-Za-z0-9_-]{1,160}$/.test(value.batchId)
+    isExternalImportOpaqueId(value.task.taskId) &&
+    isExternalImportOpaqueId(value.batchId)
   );
 }
 

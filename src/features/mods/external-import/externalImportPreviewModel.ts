@@ -1,7 +1,11 @@
-import type {
-  ExternalImportPreviewCandidateDto,
-  ExternalImportPreviewPageDto,
-} from "./externalImportTypes";
+import {
+  EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE,
+  isExternalImportDisplayText,
+  isExternalImportOpaqueId,
+  isPlainRecord,
+  type ExternalImportPreviewCandidateDto,
+  type ExternalImportPreviewPageDto,
+} from "./externalImportTypes.ts";
 
 export type ExternalImportPreviewCandidateViewModel = {
   candidateId: string;
@@ -34,35 +38,12 @@ const conflictLabels: Readonly<Record<string, string | null>> = {
   name_collision: "同名冲突",
 };
 
-const EXTERNAL_IMPORT_PREVIEW_RESPONSE_LIMIT = 50;
-const EXTERNAL_IMPORT_OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
-const EXTERNAL_IMPORT_DISPLAY_TEXT_MAX_LENGTH = 160;
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isOptionalDisplayText(value: unknown) {
   return value === null || isExternalImportDisplayText(value);
 }
 
 function isSafeNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isExternalImportOpaqueId(value: unknown): value is string {
-  return typeof value === "string" && EXTERNAL_IMPORT_OPAQUE_ID_PATTERN.test(value);
-}
-
-function isExternalImportDisplayText(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    Array.from(value).length <= EXTERNAL_IMPORT_DISPLAY_TEXT_MAX_LENGTH &&
-    !Array.from(value).some((character) => {
-      const code = character.charCodeAt(0);
-      return code < 32 || code === 127;
-    })
-  );
 }
 
 function isCandidateShape(value: unknown) {
@@ -102,7 +83,7 @@ export function isExternalImportPreviewPageForBatch(
     batch.importStatus === "pending" &&
     isSafeNonNegativeInteger(totalCount) &&
     totalCount >= value.candidates.length &&
-    value.candidates.length <= EXTERNAL_IMPORT_PREVIEW_RESPONSE_LIMIT &&
+    value.candidates.length <= EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE &&
     (value.nextCursor === null || (typeof value.nextCursor === "string" && /^\d+$/.test(value.nextCursor))) &&
     value.candidates.every(isCandidateShape)
   );
