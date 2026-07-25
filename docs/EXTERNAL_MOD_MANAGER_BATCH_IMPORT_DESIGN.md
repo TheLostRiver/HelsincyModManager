@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：分 Slice 实施中。Slice 1、Slice 2“只读来源扫描与分页预览”与 Slice 3“安全物化与批量导入编排”已完成；当前为 Slice 4A“外部来源与只读预览”。
+> 状态：分 Slice 实施中。Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”及 Slice 4A“外部来源与只读预览”已完成；当前切片完成 Slice 4B“选择、决定与批量启动”，Slice 4C 仍待实施。
 >
 > 本文只定义产品、架构、安全和验收边界，不表示功能已经可用。
 
@@ -304,40 +304,42 @@ phase code 一经写入前后端契约就必须保持稳定。部分成功的明
 
 ## Tauri 与前端契约规划
 
-建议的窄命令如下；名称是实施建议，不是当前已存在 API：
+当前实现的窄命令如下：
 
 ```text
-select_external_import_source(adapterId)
+select_external_import_source()
 start_external_import_scan(sourceId)
 get_external_import_preview(batchId, selectionId?, cursor, limit)
 create_external_import_selection(batchId)
 update_external_import_selection(selectionId, expectedRevision, entries)
-select_all_external_import_candidates(selectionId, expectedRevision, query)
+select_all_external_import_candidates(selectionId, expectedRevision)
 start_external_import_batch(batchId, selectionId, expectedRevision)
 get_external_import_batch_result(batchId, cursor, limit)
 cancel_task(taskId)
 ```
 
 已完成的 Slice 2 bridge 包含 `select_external_import_source()`、`start_external_import_scan(sourceId)` 和
-`get_external_import_preview(batchId, cursor?, limit?)`：首个 command 固定登记唯一的
+基础 preview query；首个 command 固定登记唯一的
 `hunting_box_directory_v1` 来源，不接受 adapter/path 参数；原生选择器中的路径只保留在 Rust registry。
 已完成的 Slice 3 在保留上述只读契约的前提下增加 selection create/update、服务端全选、sealed batch start/retry 和
-分页 result query。当前 Slice 4A 只消费 source picker、scan task 和 preview query；selection/decision/start/progress
-留在 4B，result/retry/大批次体验与最终加固留在 4C。
+分页 result query。Slice 4A 消费 source picker、scan task 和基础 preview；当前 Slice 4B 将 preview 扩展为
+`get_external_import_preview(batchId, selectionId?, cursor?, limit?)`，并消费 selection/decision/start/progress。
+result/retry/大批次体验与最终加固继续留在 4C。
 
 约束：
 
 - 来源选择命令返回 opaque `sourceId` 和不含完整路径的显示标签。
 - scan start 返回小型 `{ task, batchId }`；不得把候选数组塞进启动响应或完成事件。
 - preview/result query 必须分页；默认 `limit = 50`，最大 `limit = 100`，非法值整体拒绝。
-- selection create 返回小型 `{ selectionId, revision, selectedCount, expiresAt }`；preview 可以用绑定同一 batch 的 selection id 返回当前页选择状态，但不得返回全部 selected IDs。
+- selection create 返回小型 selection summary；selection-aware preview 只返回同 batch selection summary，以及当前页每个候选的 `selected` 和可选 decision，不得返回全部 selected IDs。selection 不存在或跨 batch 时统一返回 `external_import_selection_unavailable`；只读 preview 可以派生 editing selection 的 `expired` 状态，但不得写回 repository。
 - selection update 的 `entries` 形如 `{ candidateId, selected, decision? }`，每次必须包含 `1..=200` 项；只接受同一 batch 的后端 candidate id、稳定 enum 和已有 category id，重复、未知或跨 batch candidate 整体拒绝。`selected = true` 拒绝 blocked 候选；`selected = false` 可以移除同 batch 的已有 entry，且不保留孤立 decision。
 - Slice 3 的 `select_all_external_import_candidates` 使用固定的“所有 ready 候选”后端谓词，不接受候选 ID 数组；未来筛选扩展只能追加稳定 query/filter，仍不得把 ID 数组展开到前端。后端在 `10,000` 项总上限和资源预算内更新 selection snapshot。
 - `start_external_import_batch` 只接受 `batchId + selectionId + expectedRevision`；不接受 candidate ID 或 decision 数组，并在启动前封存选择快照。
 - selection 相关稳定错误至少包括 `selection_revision_conflict`、`selection_empty`、`selection_mutation_empty`、`selection_mutation_limit_exceeded`、`selection_total_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。
 - DTO 不接受或返回 root/path/archive/sandbox/cache/hash 原文。
 - 前端将入口放在 `features/mods/` 的导入工作流内，不新建营销式页面，也不在浏览器侧读取目录。
-- 前端需要完整覆盖 loading、empty、partial、cancelled、stale source、retry 和分页状态。
+- Slice 4B 前端覆盖 selection loading/empty/editing/error、分页、CAS 冲突刷新、sealed start、running/completed/failed/cancelled；partial-success 明细、result 和 retry 状态仍由 Slice 4C 覆盖。
+- import listener 与 task state 由入口组件持有的持久 workflow hook 管理，Dialog 内 panel 只渲染；关闭 Dialog 不得丢失 `taskId`、early-event buffer 或运行中进度。事件必须同时匹配 `kind = mod_import`、精确 `taskId` 与登记的 `external_import.import.*` phase。
 
 ## 安全与隐私
 
@@ -388,16 +390,18 @@ cancel_task(taskId)
 - 实现去重、`keep_both`、partial success、取消、重试和崩溃对账。
 - 证明不会安装、启用或写入游戏目录。
 
-### Slice 4A：外部来源与只读预览（当前）
+### Slice 4A：外部来源与只读预览（已完成，PR #196；PR #197 补齐 review 遗漏）
 
 - 在既有 Mod 管理导入工作流中完成来源选择、scan task 状态、取消、空/失败/过期来源状态与只读分页预览。
 - 前端只消费受控 source/scan/preview DTO，不接收路径、XML、fingerprint、archive/sandbox/cache 引用，也不创建 selection 或启动批量导入。
 - 完成 feature-local typed API、taskId scoped listener、browser smoke 与状态文档同步。
 
-### Slice 4B：选择、决定与批量启动
+### Slice 4B：选择、决定与批量启动（当前切片完成）
 
 - 完成候选选择、服务端全选、分类映射、冲突决定、sealed selection 和 batch start/import progress。
 - 每次 selection mutation 保持 200 项上限，跨页全选继续由后端谓词执行。
+- selection-aware preview 返回服务端权威的 selection summary 与当前页选择/决定；CAS 冲突和服务端全选后重新读取权威首屏，不在浏览器展开候选 ID。
+- import listener 严格匹配 `kind + taskId + phase`；通用 `mod_import.cancelled` 只进入非终态 cancelling，等待 external-import 专用 cancelled 终态。failed/cancelled 的聚合计数不用于推断 partial success。
 
 ### Slice 4C：结果、重试与最终加固
 

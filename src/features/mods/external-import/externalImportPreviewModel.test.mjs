@@ -22,6 +22,8 @@ function candidate(overrides = {}) {
     previewStatus: "ready",
     conflictKind: "none",
     reasonCode: null,
+    selected: false,
+    selectionDecision: null,
     ...overrides,
   };
 }
@@ -34,6 +36,7 @@ function previewPage(overrides = {}) {
       scanStatus: "completed",
       importStatus: "pending",
     },
+    selection: null,
     candidates: [candidate()],
     totalCount: 1,
     nextCursor: null,
@@ -58,7 +61,7 @@ test("preview model reuses the shared validator definitions", () => {
 });
 
 test("preview page accepts only the completed pending batch shape and an opaque cursor", () => {
-  assert.equal(isExternalImportPreviewPageForBatch(previewPage(), "batch-a"), true);
+  assert.equal(isExternalImportPreviewPageForBatch(previewPage(), "batch-a", null), true);
   assert.equal(
     isExternalImportPreviewPageForBatch(previewPage({ nextCursor: "next/page" }), "batch-a"),
     false,
@@ -67,6 +70,78 @@ test("preview page accepts only the completed pending batch shape and an opaque 
     isExternalImportPreviewPageForBatch(
       previewPage({ batch: { ...previewPage().batch, importStatus: "running" } }),
       "batch-a",
+    ),
+    false,
+  );
+});
+
+test("selection-aware preview requires the exact selection and consistent candidate facts", () => {
+  const boundSelection = {
+    selectionId: "selection-a",
+    revision: 2,
+    status: "editing",
+    selectedCount: 1,
+    selectedResourceUsage: {
+      fileCount: 12,
+      sourceBytes: 2048,
+      materializationBytes: 2048,
+    },
+    expiresAtUnixMillis: 10_000,
+  };
+  const boundPage = previewPage({
+    selection: boundSelection,
+    candidates: [
+      candidate({
+        selected: true,
+        selectionDecision: { conflictResolution: null, categoryId: "category-a" },
+      }),
+    ],
+  });
+
+  assert.equal(isExternalImportPreviewPageForBatch(boundPage, "batch-a", "selection-a"), true);
+  assert.equal(isExternalImportPreviewPageForBatch(boundPage, "batch-a", "selection-b"), false);
+  assert.equal(
+    isExternalImportPreviewPageForBatch(
+      previewPage({ candidates: [candidate({ selected: true })] }),
+      "batch-a",
+      null,
+    ),
+    false,
+  );
+  assert.equal(
+    isExternalImportPreviewPageForBatch(
+      {
+        ...boundPage,
+        candidates: [
+          candidate({
+            previewStatus: "name_collision",
+            selected: true,
+            selectionDecision: null,
+          }),
+        ],
+      },
+      "batch-a",
+      "selection-a",
+    ),
+    false,
+  );
+  assert.equal(
+    isExternalImportPreviewPageForBatch(
+      {
+        ...boundPage,
+        candidates: [
+          candidate({
+            previewStatus: "metadata_invalid",
+            selected: true,
+            selectionDecision: {
+              conflictResolution: "keep_both",
+              categoryId: null,
+            },
+          }),
+        ],
+      },
+      "batch-a",
+      "selection-a",
     ),
     false,
   );
