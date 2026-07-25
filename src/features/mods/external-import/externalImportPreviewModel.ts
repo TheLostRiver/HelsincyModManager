@@ -8,6 +8,10 @@ import {
   type ExternalImportPreviewCandidateDto,
   type ExternalImportPreviewPageDto,
 } from "./externalImportTypes.ts";
+import {
+  isExternalImportCandidateSelectionFactValid,
+  isExternalImportSelectionDto,
+} from "./externalImportSelectionModel.ts";
 
 export type ExternalImportPreviewCandidateViewModel = {
   candidateId: string;
@@ -18,6 +22,9 @@ export type ExternalImportPreviewCandidateViewModel = {
   statusLabel: string;
   statusTone: "ready" | "warning" | "danger";
   conflictLabel: string | null;
+  previewStatus: ExternalImportPreviewCandidateDto["previewStatus"];
+  selected: boolean;
+  selectionDecision: ExternalImportPreviewCandidateDto["selectionDecision"];
 };
 
 const previewStatusPresentation: Readonly<
@@ -40,7 +47,7 @@ const conflictLabels: Readonly<Record<string, string | null>> = {
   name_collision: "同名冲突",
 };
 
-function isCandidateShape(value: unknown) {
+function isCandidateShape(value: unknown): value is ExternalImportPreviewCandidateDto {
   if (!isPlainRecord(value) || !isExternalImportOpaqueId(value.candidateId) || !isPlainRecord(value.metadata)) {
     return false;
   }
@@ -55,13 +62,19 @@ function isCandidateShape(value: unknown) {
     typeof value.conflictKind === "string" &&
     isOptionalDisplayText(value.reasonCode) &&
     isSafeNonNegativeInteger(value.fileCount) &&
-    isSafeNonNegativeInteger(value.totalBytes)
+    isSafeNonNegativeInteger(value.totalBytes) &&
+    isExternalImportCandidateSelectionFactValid(
+      value.previewStatus,
+      value.selected,
+      value.selectionDecision,
+    )
   );
 }
 
 export function isExternalImportPreviewPageForBatch(
   value: unknown,
   batchId: string,
+  expectedSelectionId: string | null = null,
 ): value is ExternalImportPreviewPageDto {
   if (!isPlainRecord(value) || !isPlainRecord(value.batch) || !Array.isArray(value.candidates)) {
     return false;
@@ -69,17 +82,35 @@ export function isExternalImportPreviewPageForBatch(
 
   const batch = value.batch;
   const totalCount = value.totalCount;
+  if (!isSafeNonNegativeInteger(totalCount)) {
+    return false;
+  }
+  const selectionMatches =
+    expectedSelectionId === null
+      ? value.selection === null
+      : isExternalImportSelectionDto(value.selection) &&
+        value.selection.selectionId === expectedSelectionId;
+  const selectionCountIsValid =
+    value.selection === null ||
+    (isExternalImportSelectionDto(value.selection) &&
+      value.selection.selectedCount <= totalCount);
+  const candidatesAreValid = value.candidates.every(
+    (candidate) =>
+      isCandidateShape(candidate) &&
+      (value.selection !== null || candidate.selected === false),
+  );
   return (
     batch.batchId === batchId &&
     isExternalImportOpaqueId(batch.batchId) &&
     isExternalImportOpaqueId(batch.adapterId) &&
     batch.scanStatus === "completed" &&
     batch.importStatus === "pending" &&
-    isSafeNonNegativeInteger(totalCount) &&
+    selectionMatches &&
+    selectionCountIsValid &&
     totalCount >= value.candidates.length &&
     value.candidates.length <= EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE &&
     (value.nextCursor === null || (typeof value.nextCursor === "string" && /^\d+$/.test(value.nextCursor))) &&
-    value.candidates.every(isCandidateShape)
+    candidatesAreValid
   );
 }
 
@@ -132,6 +163,9 @@ export function toExternalImportPreviewCandidateViewModel(
     statusLabel: presentation.statusLabel,
     statusTone: presentation.statusTone,
     conflictLabel: conflictLabels[candidate.conflictKind] ?? "需要复核",
+    previewStatus: candidate.previewStatus,
+    selected: candidate.selected,
+    selectionDecision: candidate.selectionDecision,
   };
 }
 

@@ -71,7 +71,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 手动后端维护：`maintain_thumbnail_cache`
 - 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`
 - 取消长任务：`cancel_task`
-- T17 Slice 2 只读迁移预览：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`
+- T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
@@ -135,21 +135,22 @@ pub struct CommandErrorDto {
 
 当前 `CommandErrorDto` 只有 `code` 和 `message`。后续新增高风险或长任务 command 时，应扩展为上面的通用形态，旧 command 可以分阶段迁移。
 
-### T17 Slice 3 后端契约与 Slice 4A 只读前端边界
+### T17 Slice 3 后端契约与 Slice 4B 选择/进度前端边界
 
 已完成的 Slice 2 提供 `hunting_box_directory_v1` 的 Windows + MHW:I 只读来源选择、扫描和分页预览。已完成的
 Slice 3 在此基础上增加后端 selection snapshot、task-scoped 安全物化、批量导入编排和结果分页；原生目录选择器只在
 Rust 内返回路径，路径立即登记到短生命周期的 source registry。前端永远不接收、提交或记录该路径。
 
-当前 Slice 4A 的 React 工作流只消费来源选择、scan task、取消和分页 preview，用于展示脱敏来源标签、taskId-scoped
-状态和只读候选。它不创建或更新 selection、不启动批量导入、不读取 result page，也不计算路径、物化包、安装、启用、
-获取 game/profile 写锁或写入游戏目录；selection/decision/start/progress 留在 4B，result/retry/性能加固留在 4C。
+Slice 4A 的 React 工作流消费来源选择、scan task、取消和基础分页 preview。当前 Slice 4B 在同一入口内增加后端
+selection snapshot、selection-aware preview、候选 mutation、服务端全选、已有分类映射、显式冲突决定、sealed
+batch start、取消和严格按 `taskId` 的 import progress。它仍不读取 result page，也不计算路径、物化包、安装、
+启用、获取 game/profile 写锁或写入游戏目录；result/retry/partial-success 明细和性能加固留在 4C。
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
 | `select_external_import_source` | 无 | `ExternalImportSourceDto \| null`；取消原生选择器时返回 `null` |
 | `start_external_import_scan` | `sourceId` | `{ task: TaskStartedDto, batchId }` |
-| `get_external_import_preview` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportPreviewPageDto` |
+| `get_external_import_preview` | `batchId`、可选 `selectionId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportPreviewPageDto`；绑定 selection 时返回 summary 与当前页选择事实 |
 | `create_external_import_selection` | `batchId` | `ExternalImportSelectionDto` |
 | `update_external_import_selection` | `selectionId`、`expectedRevision`、`entries` | `ExternalImportSelectionMutationResultDto` |
 | `select_all_external_import_candidates` | `selectionId`、`expectedRevision` | `ExternalImportSelectionMutationResultDto` |
@@ -157,11 +158,19 @@ Rust 内返回路径，路径立即登记到短生命周期的 source registry�
 | `retry_external_import_batch` | `batchId`、已 sealed 的 `selectionId` | `{ task: TaskStartedDto, batchId }` |
 | `get_external_import_batch_result` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportBatchResultPageDto` |
 
-`sourceId` 与 `batchId` 会先去除两端空白，再按受限字符集校验为 opaque ID；去除后为空、包含路径/URI/内部空白或超长的值整体拒绝。preview cursor 是
+`sourceId`、`batchId` 与 `selectionId` 会先去除两端空白，再按受限字符集校验为 opaque ID；去除后为空、包含路径/URI/内部空白或超长的值整体拒绝。preview cursor 是
 后端解释的十进制 offset token，前端应只复用响应的下一 cursor，省略时从 `0` 开始；`limit` 默认 `50`、最大
-`100`，不在 `1..=100` 的值整体拒绝。响应只包含 batch/source adapter 的稳定 ID、scan/import status、candidate ID、受限 metadata hint、文件数、
-总字节数、preview/conflict/reason code、总数和下一 cursor；不得包含 source fingerprint、source item key hash、
-content fingerprint、路径、XML、archive/sandbox/cache ref 或第三方文件内容。
+`100`，不在 `1..=100` 的值整体拒绝。响应只包含 batch/source adapter 的稳定 ID、scan/import status、
+可选 selection summary、candidate ID、受限 metadata hint、文件数、总字节数、preview/conflict/reason code、
+当前页候选 `selected` 与可选 `{ conflictResolution, categoryId }` decision、总数和下一 cursor；不得包含
+selection 的 batch/entries/updatedAt、source fingerprint、source item key hash、content fingerprint、路径、
+XML、archive/sandbox/cache ref 或第三方文件内容。
+
+省略 `selectionId` 时响应 `selection = null`，所有当前页候选必须为 `selected = false` 且 decision 为 `null`。
+提供 `selectionId` 时 selection 必须存在并绑定同一 batch；不存在或跨 batch 均返回
+`external_import_selection_unavailable`，不能静默降级成无 selection，也不能泄露跨 batch selection 是否存在。
+仍处于 `editing` 但已达到 `expiresAtUnixMillis` 的 selection 可以在只读响应中派生为 `expired`，该查询不得产生
+repository 写入。
 
 `update_external_import_selection.entries` 必须包含 `1..=200` 个 mutation；每项只包含同一 batch 的 opaque
 `candidateId`、`selected` 和可选的稳定冲突/分类决定。重复、未知、跨 batch、blocked、空 mutation、过期或
@@ -414,6 +423,10 @@ TaskProgressEventDto
 
 - 每个进度事件必须携带 `taskId`。
 - 前端不能靠“当前页面只有一个任务”来匹配事件。
+- Slice 4B import listener 必须同时匹配 `kind = mod_import`、精确 `taskId` 和登记的
+  `external_import.import.*` phase。通用 `mod_import.cancelled` 只表示正在取消，不是 external-import
+  专用终态；前端必须等待同一 task 的 `external_import.import.cancelled`。failed/cancelled 的聚合计数不能用于
+  推断 partial success。
 - 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。T17 scan 在目录/XML/hash 阶段可取消；Slice 3 import 在物化、sandbox 分析和 chunk 间安全点可取消，已成功项保留、未开始项以分页结果表达。写入 preview 或 batch terminal state 的短 SQLite 事务进入取消屏障后以后端终态为准。通用 `mod_import.cancelled` 事件可能先由 `cancel_task` 发出，runner 随后会发送带同一 `taskId` 的 `external_import.scan.cancelled` 或 `external_import.import.cancelled` 终态。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。

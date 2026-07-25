@@ -52,8 +52,13 @@
 }
 
 .external-import__state.is-error,
-.external-import__load-error {
+.external-import__load-error,
+.external-import__inline-action.is-error {
   color: var(--color-danger-text);
+}
+
+.external-import__state.is-success {
+  color: var(--color-success-text);
 }
 
 .external-import__state.is-muted {
@@ -80,7 +85,8 @@
   animation: external-import-spin 0.9s linear infinite;
 }
 
-.external-import__preview {
+.external-import__preview,
+.external-import__selection {
   display: grid;
   gap: 12px;
 }
@@ -106,6 +112,30 @@
   gap: 8px 16px;
   padding: 14px 0;
   border-bottom: 1px solid var(--color-border-muted);
+}
+
+.external-import__candidate-selection {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.external-import__candidate-selection input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  accent-color: var(--color-accent);
+}
+
+.external-import__candidate-selection label {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.external-import__candidate-selection input:disabled + label {
+  cursor: not-allowed;
 }
 
 .external-import__candidate-main {
@@ -143,6 +173,51 @@
 .external-import__candidate-statuses {
   grid-column: 1 / -1;
   justify-content: flex-start;
+}
+
+.external-import__candidate-field {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.external-import__candidate-field label {
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.external-import__candidate-field select {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 30px 6px 9px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.external-import__candidate-field select:focus-visible,
+.external-import__candidate-selection input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.external-import__candidate-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.external-import__candidate-blocked {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .external-import__badge {
@@ -228,6 +303,70 @@
   justify-self: start;
 }
 
+.external-import__selection-toolbar,
+.external-import__start-row,
+.external-import__inline-action,
+.external-import__import-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.external-import__selection-toolbar {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.external-import__inline-action {
+  padding: 10px 12px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.external-import__start-row {
+  padding: 14px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 9px;
+}
+
+.external-import__start-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.external-import__start-row strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.external-import__start-row span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.external-import__import-progress {
+  padding-top: 4px;
+}
+
+.external-import__import-progress > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--color-text-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.external-import__import-progress span {
+  overflow-wrap: anywhere;
+}
+
 @keyframes external-import-spin {
   to {
     transform: rotate(360deg);
@@ -256,6 +395,30 @@
 
   .external-import__candidate-statuses {
     grid-column: auto;
+  }
+
+  .external-import__candidate-field,
+  .external-import__candidate-blocked {
+    grid-column: auto;
+  }
+
+  .external-import__candidate-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .external-import__selection-toolbar,
+  .external-import__start-row,
+  .external-import__inline-action,
+  .external-import__import-progress {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .external-import__selection-toolbar .external-import__button,
+  .external-import__start-row .external-import__button,
+  .external-import__inline-action .external-import__button,
+  .external-import__import-progress .external-import__button {
+    width: 100%;
   }
 }
 
