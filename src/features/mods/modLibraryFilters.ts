@@ -84,7 +84,7 @@ export function buildLibraryFilterChips(
         key: libraryFilterKey(filter),
         label: category.name,
         kind: "category" as const,
-        color: category.color,
+        color: category.color ?? undefined,
         filter,
       };
     }),
