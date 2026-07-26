@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { getTrappedFocusIndex } from "../../shared/feedback/focusTrap.ts";
@@ -148,4 +151,37 @@ test("getTrappedFocusIndex wraps keyboard focus inside the dialog", () => {
   assert.equal(getTrappedFocusIndex({ currentIndex: 2, focusableCount: 3, backwards: false }), 0);
   assert.equal(getTrappedFocusIndex({ currentIndex: 1, focusableCount: 3, backwards: false }), null);
   assert.equal(getTrappedFocusIndex({ currentIndex: -1, focusableCount: 0, backwards: false }), -1);
+});
+
+test("dialog exit animation duration stays in sync with the component's close delay", () => {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
+  const component = read("src/features/mods/ModDetailDialog.tsx");
+  const css = read("src/features/mods/ModDetailDialog.css");
+
+  /*
+   * 退场是"先标记、等动画播完再卸载"两段式：组件按常量延迟才调用 onClose，
+   * CSS 负责这段时间内的动画。两者不一致会让对话框先消失再空等，或动画被卸载打断。
+   * 这条契约没有类型或运行时保护，因此显式锁定。
+   */
+  const exitDurationMs = Number(component.match(/const DIALOG_EXIT_DURATION_MS = (\d+);/)?.[1]);
+  assert.ok(Number.isInteger(exitDurationMs) && exitDurationMs > 0, "缺少 DIALOG_EXIT_DURATION_MS 常量");
+
+  const exitRules = [...css.matchAll(/\.mod-detail-dialog__backdrop\.is-exiting[^{]*\{([\s\S]*?)\}/g)];
+  assert.ok(exitRules.length > 0, "缺少退场规则");
+  for (const [, body] of exitRules) {
+    const declaredMs = body.match(/animation:[^;]*?(\d+)ms/)?.[1];
+    if (declaredMs === undefined) {
+      continue;
+    }
+    assert.equal(Number(declaredMs), exitDurationMs, `退场动画 ${declaredMs}ms 与组件常量 ${exitDurationMs}ms 不一致`);
+  }
+
+  // 所有关闭入口都必须走 requestClose，否则那条路径不会播退场动画。
+  assert.match(component, /const requestClose = useCallback/);
+  assert.match(component, /onRequestClose: requestClose/);
+  assert.equal(component.match(/onClick=\{requestClose\}/g)?.length, 3);
+  assert.equal(component.match(/onClose\(\)/g)?.length, 1);
+  // 退场期间屏蔽交互，避免点到正在消失的控件。
+  assert.match(css, /\.mod-detail-dialog__backdrop\.is-exiting\s*\{[\s\S]*?pointer-events:\s*none/);
 });
