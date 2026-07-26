@@ -11,6 +11,17 @@ function readProjectFile(relativePath) {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
+/*
+ * Mod 库样式分布在页面骨架与卡片两个文件中。断言按合并后的样式表检查，
+ * 不绑定规则落在哪个文件，避免后续在两者间搬迁规则时产生假失败。
+ * 拼接顺序与实际加载顺序一致：ModPosterCard.css 由卡片组件先加载。
+ */
+function readModLibraryCss() {
+  const cardCss = readProjectFile("src/features/mods/ModPosterCard.css");
+  const pageCss = readProjectFile("src/features/mods/ModLibraryPage.css");
+  return `${cardCss}\n${pageCss}`;
+}
+
 function getRuleBody(css, selector) {
   const start = css.indexOf(`${selector} {`);
   assert.ok(start >= 0, `missing CSS rule: ${selector}`);
@@ -118,7 +129,7 @@ test("library search submits on Enter without interrupting IME composition", () 
 
 test("disabled status chips stay focusable and expose a custom accessible reason", () => {
   const source = readProjectFile("src/features/mods/LibraryToolbar.tsx");
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(source, /<ModLibraryControlTooltip key=\{chip\.key\} content=\{chip\.disabledReason\}>/);
   assert.match(source, /aria-disabled=\{chip\.disabled \|\| undefined\}/);
@@ -143,7 +154,7 @@ test("lifecycle and future batch actions fail closed with focusable custom reaso
 });
 
 test("compact page-selection tooltips escape the segmented group without losing separators", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(css, /\.compact-action-group\s*{[\s\S]*?overflow:\s*visible;/);
   assert.match(
@@ -215,7 +226,7 @@ test("sticky header dock paints an opaque full-bleed backdrop so content cannot 
 });
 
 test("sticky controls are an opaque single-column bar fixed above the scroll container", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
   const paginationLayoutCss = readProjectFile("src/features/mods/ModLibraryPaginationLayout.css");
 
   // 滚动容器已下沉到 .mod-library__content：它是 overflow-y:auto 的滚动容器，
@@ -257,7 +268,7 @@ test("sticky controls are an opaque single-column bar fixed above the scroll con
 });
 
 test("quick actions wrap instead of horizontally scrolling, so no ugly scrollbar or layout overflow", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   // 按钮容器换行，不再强制单行横排；移除横向滚动条，杜绝水平溢出截断返回顶部按钮。
   assert.match(css, /\.compact-panel__stack\s*{[\s\S]*?flex-wrap:\s*wrap;/);
@@ -266,7 +277,7 @@ test("quick actions wrap instead of horizontally scrolling, so no ugly scrollbar
 });
 
 test("narrow screens keep the mod list usable beneath tall controls", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(
     css,
@@ -300,7 +311,7 @@ test("short desktop windows allow outer scrolling and reserve a usable content t
 });
 
 test("quick action panel no longer owns sticky positioning directly", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
   const compactPanelBody = getRuleBody(css, ".compact-panel");
 
   assert.doesNotMatch(compactPanelBody, /position:\s*sticky;/);
@@ -308,7 +319,7 @@ test("quick action panel no longer owns sticky positioning directly", () => {
 });
 
 test("primary add action keeps contrast-safe blue gradients for white text", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
   const primaryBody = getRuleBody(css, ".compact-action.is-primary");
   const primaryHoverBody = getRuleBody(
     css,
@@ -332,7 +343,7 @@ test("primary add action keeps contrast-safe blue gradients for white text", () 
 });
 
 test("tech view mod cards are allowed to grow to their full data panel height", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
   const contentBody = getRuleBody(css, ".mod-library__content");
   const techCardBody = getRuleBody(css, ".mod-grid.view-tech .mod-card");
 
@@ -348,7 +359,7 @@ test("tech view mod cards are allowed to grow to their full data panel height", 
 });
 
 test("tech view selection styling overrides the generic blue filled card state", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
   const techHoverBody = getRuleBody(css, ".mod-grid.view-tech .mod-card:hover:not(.is-selected)");
   const techSelectedBody = getRuleBody(css, ".mod-grid.view-tech .mod-card.is-selected");
 
