@@ -160,14 +160,31 @@ function deferred() {
 }
 
 /*
- * 取出某个选择器的规则体。要求选择器独立成规则（其后紧跟 `{`），
- * 因此不会误匹配 `.diagnostics-page__hero` 这类以它为前缀的选择器。
+ * 取出某个选择器的规则体，要求整段选择器前奏（prelude）与传入值完全相等。
+ *
+ * 只要求"选择器文本后紧跟 {" 是不够的：那样 `.wrapper .diagnostics-page { ... }`
+ * 也会被当成 `.diagnostics-page` 命中，断言就会校验到错误的规则体。
+ * 这里按规则边界切分，再逐个比对完整 prelude。
  */
 function readRuleBody(css, selector) {
-  const pattern = new RegExp(`${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`);
-  const match = pattern.exec(css);
-  assert.notEqual(match, null, `missing CSS rule: ${selector}`);
-  return match[1];
+  /*
+   * 必须先剥掉注释：prelude 从上一条规则的 `}` 之后开始，会把中间的注释块一并吃进去，
+   * 于是 trim() 得到的是「注释 + 选择器」而非纯选择器。
+   *
+   * prelude 用 [^{}]+ 即可：它跨不过大括号，每次匹配天然从上一条规则的 `}` 之后开始。
+   * 不要在前面加 (?:^|\}) 之类的分隔符——那会把 `}` 一并消费掉，相邻规则只能匹配到隔一个。
+   *
+   * 该 helper 只用于顶层规则；@media 内的嵌套规则无法用这种扁平匹配寻址。
+   */
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const rulePattern = /([^{}]+)\{([^}]*)\}/g;
+  for (let match = rulePattern.exec(withoutComments); match !== null; match = rulePattern.exec(withoutComments)) {
+    if (match[1].trim() === selector) {
+      return match[2];
+    }
+  }
+
+  assert.fail(`missing CSS rule: ${selector}`);
 }
 
 function assertSelectorAfter(css, laterSelector, earlierSelector) {
