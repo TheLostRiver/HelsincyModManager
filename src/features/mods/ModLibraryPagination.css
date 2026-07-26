@@ -11,7 +11,7 @@
   grid-template-columns: minmax(104px, 1fr) auto minmax(120px, 1fr);
   align-items: center;
   gap: 8px;
-  block-size: 48px;
+  block-size: 52px;
   min-width: 0;
   padding-inline: 8px;
 }
@@ -66,14 +66,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  min-inline-size: 68px;
-  block-size: 32px;
+  min-inline-size: 72px;
+  block-size: 34px;
   padding-inline: 8px 6px;
   border-color: var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-surface-muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .mod-library-pagination__page-size-trigger:hover:not([aria-disabled="true"]),
@@ -99,17 +99,23 @@
   transform: rotate(180deg);
 }
 
+/* 定位锚点：浮层相对触发器本身对齐，不再依赖"每页"两字宽度的硬偏移。 */
+.mod-library-pagination__page-size-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
 .mod-library-pagination__page-size-listbox {
   position: absolute;
   z-index: 80;
   bottom: calc(100% + 8px);
-  left: 22px;
+  left: 0;
   display: grid;
   gap: 2px;
   min-inline-size: 92px;
   padding: 4px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--color-surface);
 }
 
@@ -119,9 +125,9 @@
   align-items: center;
   gap: 8px;
   min-inline-size: 0;
-  block-size: 32px;
-  padding-inline: 8px;
-  border-radius: 5px;
+  block-size: 34px;
+  padding-inline: 9px;
+  border-radius: 8px;
   text-align: left;
   font-size: 12px;
   font-weight: 600;
@@ -160,8 +166,8 @@
 }
 
 .mod-library-pagination__navigation > .mod-library-control-tooltip {
-  flex: 0 0 32px;
-  inline-size: 32px;
+  flex: 0 0 34px;
+  inline-size: 34px;
 }
 
 .mod-library-pagination__page-list {
@@ -174,16 +180,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 32px;
-  inline-size: 32px;
-  block-size: 32px;
-  border-radius: 6px;
+  flex: 0 0 34px;
+  inline-size: 34px;
+  block-size: 34px;
+  border-radius: 10px;
 }
 
 .mod-library-pagination__icon-button,
 .mod-library-pagination__page-button {
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 等宽数字：页码在 1 与 11 之间切换时按钮宽度不变，整条不会抖动。 */
+.mod-library-pagination__page-button {
+  font-variant-numeric: tabular-nums;
 }
 
 .mod-library-pagination__icon-button:hover:not([aria-disabled="true"]),
@@ -211,8 +222,41 @@
 
 .mod-library-pagination__ellipsis {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 13px;
   user-select: none;
+}
+
+/*
+ * 可跳转的省略号。它本就占着一个按钮位，做成纯装饰是浪费——想去中间页只能连点上一页。
+ * 静态外观与不可交互时保持一致，仅在悬停/聚焦时显露可点性，避免在页码行里多出一个抢眼元素。
+ */
+.mod-library-pagination__ellipsis.is-interactive {
+  margin: 0;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.mod-library-pagination__ellipsis.is-interactive:hover:not([aria-disabled="true"]) {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.mod-library-pagination__ellipsis.is-interactive:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.mod-library-pagination__ellipsis.is-interactive[aria-disabled="true"] {
+  opacity: 0.42;
+  cursor: default;
 }
 
 .mod-library-pagination__range {
@@ -280,8 +324,12 @@
     gap: 4px;
   }
 
-  .mod-library-pagination__busy {
-    font-size: 0;
+  /*
+   * 窄容器只留转圈指示，隐藏文字。原先用 font-size: 0 抹掉文本——那会连带影响
+   * 该元素内所有继承字号的内容，而且"把字缩到 0"并不表达"隐藏这段文字"的意图。
+   */
+  .mod-library-pagination__busy-label {
+    display: none;
   }
 }
 
@@ -359,7 +407,16 @@
   .mod-library-pagination__page-button,
   .mod-library-pagination__ellipsis {
     block-size: 26px;
-    border-radius: 5px;
+    border-radius: 8px;
+  }
+
+  /*
+   * 装饰态的省略号可以收窄让位给页码；可交互态必须保住完整点击区，
+   * 12px 宽的按钮在最窄断点上已经点不准了。
+   */
+  .mod-library-pagination__ellipsis.is-interactive {
+    flex-basis: 26px;
+    inline-size: 26px;
   }
 
   .mod-library-pagination__ellipsis {
