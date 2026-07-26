@@ -247,13 +247,6 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     });
   }, [gameId, pushToast]);
 
-  const dismissStartupNotice = useCallback(() => {
-    setState((current) => ({
-      ...current,
-      startupNotice: null,
-    }));
-  }, []);
-
   useEffect(() => {
     void runStartupDetection();
   }, [runStartupDetection]);
@@ -264,7 +257,6 @@ export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
     actionMessage: state.actionMessage,
     candidates: state.candidates,
     startupNotice: state.startupNotice,
-    dismissStartupNotice,
     refresh,
     reportActionError,
     retryStartupDetection: runStartupDetection,

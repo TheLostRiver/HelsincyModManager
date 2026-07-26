@@ -27,37 +27,30 @@ test("game setup startup auto detection uses a narrow backend command and persis
   assert.match(sharedApi, /autoDetectGameDirectory/);
 });
 
-test("dashboard renders startup game setup failures in the shared modal dialog", () => {
-  assert.equal(existsSync("src/features/game-setup/GameSetupDialog.tsx"), true);
-  assert.equal(existsSync("src/features/game-setup/GameSetupDialog.css"), true);
+test("startup game setup failures surface in-page instead of an auto-opened modal", () => {
+  /*
+   * 启动检测失败曾经自动弹出模态。它提供的标题、文案与两个操作在工作台的页头、
+   * Hero 卡片和设置状态面板里都已存在——模态只贡献阻塞；而且 dismiss 只清组件本地 state，
+   * 离开工作台再回来必然重弹，事实上关不掉。组件已整体移除。
+   */
+  assert.equal(existsSync("src/features/game-setup/GameSetupDialog.tsx"), false);
+  assert.equal(existsSync("src/features/game-setup/GameSetupDialog.css"), false);
 
   const dashboard = readSource("src/features/dashboard/DashboardPage.tsx");
-  const dialog = readSource("src/features/game-setup/GameSetupDialog.tsx");
-  const modal = readSource("src/shared/feedback/ModalSurface.tsx");
+  assert.doesNotMatch(dashboard, /GameSetupDialog/);
+  assert.doesNotMatch(dashboard, /dismissStartupNotice/);
 
-  assert.match(dashboard, /<GameSetupDialog/);
-  assert.match(dashboard, /notice=\{gameSetup\.startupNotice\}/);
-  assert.match(dashboard, /onRetry=\{gameSetup\.retryStartupDetection\}/);
-  assert.match(dashboard, /onDismiss=\{gameSetup\.dismissStartupNotice\}/);
+  /*
+   * 模态独有的诊断细节不得随组件一起丢失：它区分「扫到候选但校验未通过」与
+   * 「根本没扫到 Steam 目录」，两者该做的事完全不同。改为交给设置状态面板常驻展示。
+   */
+  assert.match(dashboard, /startupDetail=\{gameSetup\.startupNotice\?\.detail \?\? null\}/);
+  const panel = readSource("src/features/dashboard/SetupStatusPanel.tsx");
+  assert.match(panel, /startupDetail: string \| null/);
+  assert.match(panel, /startupDetail \? <p className="state-detail">\{startupDetail\}<\/p> : null/);
 
-  assert.match(dialog, /<Dialog/);
-  assert.match(dialog, /closeOnEscape=\{!isBusy\}/);
-  assert.match(dialog, /closeOnBackdrop=\{!isBusy\}/);
-  assert.match(dialog, /busy=\{isBusy\}/);
-  assert.match(dialog, /initialFocusRef=\{retryButtonRef\}/);
-  assert.match(dialog, /onRetry/);
-  assert.match(dialog, /onManualSelect/);
-  assert.match(dialog, /onDismiss/);
-  assert.match(modal, /role=\{role\}/);
-  assert.match(modal, /aria-modal="true"/);
-});
-
-test("startup game setup dialog requires an explicit close or successful setup", () => {
-  const dialog = readSource("src/features/game-setup/GameSetupDialog.tsx");
-
-  assert.doesNotMatch(dialog, /AUTO_DISMISS_TIMEOUT_MS|setTimeout|isDismissPaused/);
-  assert.match(dialog, /onClose=\{onDismiss\}/);
-  assert.match(dialog, /disabled=\{isBusy\}/);
-  assert.match(dialog, /typeof selected === "string"/);
-  assert.match(dialog, /notice\.detail\.trim\(\)\s*!==\s*notice\.message\.trim\(\)/);
+  // 推导逻辑保留在 hook 中，只是不再驱动模态。
+  const hook = readSource("src/features/game-setup/useGameSetup.ts");
+  assert.match(hook, /setStartupNoticeForDetection/);
+  assert.doesNotMatch(hook, /dismissStartupNotice/);
 });
