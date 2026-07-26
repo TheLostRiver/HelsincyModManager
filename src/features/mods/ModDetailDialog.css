@@ -54,6 +54,33 @@
   }
 }
 
+/*
+ * 退场。时长必须与 ModDetailDialog.tsx 的 DIALOG_EXIT_DURATION_MS 一致：
+ * 组件先标记退场、等这段动画播完才通知父级卸载。
+ * 退场期间屏蔽交互，避免点到正在消失的控件。
+ */
+.mod-detail-dialog__backdrop.is-exiting {
+  pointer-events: none;
+  animation: mod-detail-dialog-backdrop-out 160ms ease-in both;
+}
+
+.mod-detail-dialog__backdrop.is-exiting .mod-detail-dialog__panel {
+  animation: mod-detail-dialog-panel-out 160ms ease-in both;
+}
+
+@keyframes mod-detail-dialog-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes mod-detail-dialog-panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
 /* ---------- 页头 ---------- */
 
 .mod-detail-dialog__header {
@@ -598,6 +625,18 @@
   .mod-detail-dialog__backdrop,
   .mod-detail-dialog__panel {
     animation: none;
+  }
+
+  /*
+   * 退场保留同时长的纯淡出，不能设为 none：组件按固定 160ms 延迟才卸载，
+   * 若这里直接取消动画，对话框会先瞬间消失再空等一段时间，反而更突兀。
+   */
+  .mod-detail-dialog__backdrop.is-exiting {
+    animation: mod-detail-dialog-backdrop-out 160ms linear both;
+  }
+
+  .mod-detail-dialog__backdrop.is-exiting .mod-detail-dialog__panel {
+    animation: mod-detail-dialog-backdrop-out 160ms linear both;
   }
 
   .mod-detail-dialog__close,
