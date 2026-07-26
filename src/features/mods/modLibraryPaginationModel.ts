@@ -55,6 +55,30 @@ export function getModLibraryItemRange(
   };
 }
 
+/*
+ * 省略号代表一段被折叠的页码区间。点击它跳到该区间的中点：
+ * 目标完全由相邻的两个页码推导，不引入"每次跳 5 页"这类魔法常量，
+ * 也让用户可以通过反复点击二分逼近任意页，而不必逐页翻。
+ * 相邻槽位不是数字、或两者之间没有真正的空隙时返回 null，调用方据此判定不可跳转。
+ */
+export function getModLibraryEllipsisTarget(
+  slots: readonly ModLibraryPageSlot[],
+  ellipsisIndex: number,
+): number | null {
+  const before = slots[ellipsisIndex - 1];
+  const after = slots[ellipsisIndex + 1];
+
+  if (typeof before !== "number" || typeof after !== "number") {
+    return null;
+  }
+
+  if (after - before <= 1) {
+    return null;
+  }
+
+  return Math.floor((before + after) / 2);
+}
+
 export function getModLibraryPageSlots(currentPage: number, totalPages: number): ModLibraryPageSlot[] {
   const normalizedTotalPages = normalizeNonNegativeInteger(totalPages);
 
