@@ -159,12 +159,44 @@ test("compact page-selection tooltips escape the segmented group without losing 
 
 test("global status bar stays pinned so the sticky controls can sit beneath it", () => {
   const css = readProjectFile("src/app/frame/AppFrame.css");
+  const dockBody = getRuleBody(css, ".app-surface__header-dock");
+  const statusBarBody = getRuleBody(css, ".top-status-bar");
 
-  assert.match(css, /\.top-status-bar\s*{[\s\S]*?position:\s*sticky;/);
-  assert.match(css, /\.top-status-bar\s*{[\s\S]*?top:\s*0;/);
+  // 吸顶职责在满幅背板上，不在状态栏卡片自身：卡片背景只覆盖圆角矩形，挡不住身后滚过的内容。
+  assert.match(dockBody, /position:\s*sticky;/);
+  assert.match(dockBody, /top:\s*0;/);
+  assert.match(dockBody, /z-index:\s*40;/);
+  assert.doesNotMatch(statusBarBody, /position:\s*sticky;/);
+  assert.doesNotMatch(statusBarBody, /z-index:/);
   // header 高度 token 是状态栏与吸顶条的对齐基准，必须在 tokens 中存在。
   const tokens = readProjectFile("src/shared/styles/tokens.css");
   assert.match(tokens, /--app-header-height:\s*64px;/);
+});
+
+test("sticky header dock paints an opaque full-bleed backdrop so content cannot stack under the status bar", () => {
+  const css = readProjectFile("src/app/frame/AppFrame.css");
+  const dockBody = getRuleBody(css, ".app-surface__header-dock");
+
+  // 背板必须不透明，否则滚动内容仍会从状态栏四周和圆角缺口透出来。
+  assert.match(dockBody, /background:\s*var\(--color-bg\);/);
+  // 负 margin 撑到 surface padding 外沿并盖住 grid gap；内侧 padding 还原状态栏原有留白。
+  assert.match(dockBody, /margin:[\s\S]*?calc\(-1 \* var\(--app-surface-inset\)\)/);
+  assert.match(dockBody, /margin:[\s\S]*?calc\(-1 \* var\(--layout-content-gap\)\)/);
+  assert.match(dockBody, /padding:[\s\S]*?var\(--app-surface-inset\)/);
+  assert.match(dockBody, /padding:[\s\S]*?var\(--layout-content-gap\)/);
+
+  // 背板尺寸依赖 --app-surface-inset，因此每个改写 .app-surface padding 的断点都必须同步该变量，
+  // 否则背板会与实际内边距错位，重新露出被遮挡的内容。
+  const surfaceRules = css.match(/\.app-surface\s*{[^}]*}/g) ?? [];
+  const paddingRules = surfaceRules.filter((rule) => /(^|[;{])\s*padding:/.test(rule));
+  assert.ok(paddingRules.length > 0, "expected at least one .app-surface padding rule");
+  for (const rule of paddingRules) {
+    assert.match(
+      rule,
+      /--app-surface-inset:/,
+      `.app-surface rule declares padding without syncing --app-surface-inset: ${rule}`,
+    );
+  }
 });
 
 test("sticky controls are an opaque single-column bar fixed above the scroll container", () => {
@@ -247,16 +279,9 @@ test("short desktop windows allow outer scrolling and reserve a usable content t
     /@media\s*\(max-width:\s*1280px\)\s*and\s*\(max-height:\s*720px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(460px,\s*1fr\)\s+auto;/,
   );
 
-  const topGapCoverBody = getRuleBody(
-    css,
-    '.app-surface:has(.route-transition__layer[data-route-id="mods"])\n    > .top-status-bar::before',
-  );
-  assert.match(topGapCoverBody, /position:\s*absolute;/);
-  assert.match(topGapCoverBody, /inset-inline:\s*calc\(-1 \* var\(--layout-page-padding\)\);/);
-  assert.match(topGapCoverBody, /inset-block-end:\s*100%;/);
-  assert.match(topGapCoverBody, /block-size:\s*var\(--layout-page-padding\);/);
-  assert.match(topGapCoverBody, /background:\s*var\(--color-bg\);/);
-  assert.match(topGapCoverBody, /pointer-events:\s*none;/);
+  // 顶部遮挡不再由本断点的局部 ::before 承担，改由 AppFrame 的满幅背板全局负责，
+  // 因此这里不得再出现只覆盖单一断点/单一路由的补丁式遮挡。
+  assert.doesNotMatch(css, /\.top-status-bar::before\s*\{/);
 });
 
 test("quick action panel no longer owns sticky positioning directly", () => {
