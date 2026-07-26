@@ -7,10 +7,22 @@ import { resolveSetupSteps, type SetupStepItem } from "./setupStatusSteps";
 type SetupStatusPanelProps = {
   status: GameSetupStatus;
   actionMessage: string | null;
+  /*
+   * 启动检测的补充说明。它区分了两种处境完全不同的失败：
+   * 「Steam 返回了候选目录但校验未通过」（扫到了、目录不对，该换一个）与
+   * 「没有找到可直接保存的 Steam 安装目录」（根本没扫到，该手动选）。
+   * 该信息原先只存在于启动时自动弹出的模态里，模态移除后并入这里常驻展示。
+   */
+  startupDetail: string | null;
   recoveryHealth: InstallRecoveryHealthLoadState;
 };
 
-export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: SetupStatusPanelProps) {
+export function SetupStatusPanel({
+  status,
+  actionMessage,
+  startupDetail,
+  recoveryHealth,
+}: SetupStatusPanelProps) {
   const copy = statusPanelCopy(status, actionMessage);
   const stepItems = resolveSetupSteps(status);
 
@@ -28,6 +40,7 @@ export function SetupStatusPanel({ status, actionMessage, recoveryHealth }: Setu
           <h3 id="current-state-title">{copy.title}</h3>
         </div>
         <p>{copy.description}</p>
+        {startupDetail ? <p className="state-detail">{startupDetail}</p> : null}
         <span className="soft-badge">{copy.badge}</span>
       </section>
 

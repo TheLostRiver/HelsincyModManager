@@ -1,6 +1,5 @@
 import { useGameSetup } from "../game-setup/useGameSetup";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
-import { GameSetupDialog } from "../game-setup/GameSetupDialog";
 import { useGameLaunch } from "../game-launch/useGameLaunch";
 import { useInstallRecoveryHealth } from "../install-recovery/useInstallRecoveryHealth";
 import { DashboardHeroCard } from "./DashboardHeroCard";
@@ -16,17 +15,14 @@ export function DashboardPage() {
     enabled: gameSetup.status.kind === "configured",
   });
 
+  /*
+   * 启动检测失败不再弹模态。原实现在每次进入工作台时自动弹出「需要配置游戏目录」，
+   * 而它提供的标题、文案与两个操作在本页的页头、Hero 卡片和设置状态面板里都已存在——
+   * 模态只贡献了阻塞。且 dismiss 只清组件本地 state，离开再回来必然重弹，事实上关不掉。
+   * 现在只把模态独有的诊断细节交给设置状态面板常驻展示。
+   */
   return (
     <>
-      <GameSetupDialog
-        notice={gameSetup.startupNotice}
-        isBusy={gameSetup.isBusy}
-        onRetry={gameSetup.retryStartupDetection}
-        onManualSelect={gameSetup.saveDirectory}
-        onActionError={gameSetup.reportActionError}
-        onDismiss={gameSetup.dismissStartupNotice}
-      />
-
       <section className="main-workspace" aria-labelledby="workbench-title">
         <header className="main-header">
           <h2 id="workbench-title">工作台</h2>
@@ -55,6 +51,7 @@ export function DashboardPage() {
       <SetupStatusPanel
         status={gameSetup.status}
         actionMessage={gameSetup.actionMessage}
+        startupDetail={gameSetup.startupNotice?.detail ?? null}
         recoveryHealth={recoveryHealth}
       />
     </>
