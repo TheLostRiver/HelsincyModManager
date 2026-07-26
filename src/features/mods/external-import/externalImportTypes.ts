@@ -3,6 +3,7 @@ import type { TaskStartedDto } from "../modImportTypes";
 export const EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE = 50;
 export const EXTERNAL_IMPORT_RESULT_PAGE_SIZE = 50;
 export const EXTERNAL_IMPORT_RESULT_PAGE_MAX_SIZE = 100;
+export const EXTERNAL_IMPORT_RESULT_TOTAL_MAX_SIZE = 10_000;
 export const EXTERNAL_IMPORT_DISPLAY_TEXT_MAX_LENGTH = 160;
 
 const EXTERNAL_IMPORT_OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;

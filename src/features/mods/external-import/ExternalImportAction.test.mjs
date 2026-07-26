@@ -97,6 +97,10 @@ test("external import action composes selection, result, and retry without a fro
   assert.match(resultPanel, /role="alert"/);
   assert.match(resultPanel, /<ul className="external-import__result-list">/);
   assert.match(resultPanel, /disabled=\{state\.loadingMore/);
+  assert.match(
+    resultPanel,
+    /state\.status === "ready" && state\.loadingMore[\s\S]{0,120}workflow\.retryPending[\s\S]{0,80}workflow\.resultStale/,
+  );
   assert.match(resultPanel, /重新读取结果|载入更多结果|重试可恢复项/);
   assert.doesNotMatch(
     `${source}\n${selectionPanel}\n${candidateSelection}\n${resultPanel}\n${selectionWorkflow}`,

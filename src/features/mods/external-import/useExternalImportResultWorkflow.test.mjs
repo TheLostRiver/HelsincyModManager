@@ -24,6 +24,14 @@ test("result workflow queries terminal tasks with request and batch identity gat
   assert.match(source, /appendExternalImportResults/);
   assert.match(
     source,
+    /isExternalImportResultCoverageValid\(\s*page\.totalCount,\s*page\.nextCursor,\s*results\.length/,
+  );
+  assert.match(
+    source,
+    /isExternalImportResultCoverageValid\(\s*page\.totalCount,\s*page\.nextCursor,\s*mergedResults\.length/,
+  );
+  assert.match(
+    source,
     /Number\(page\.nextCursor\)\s*<=\s*Number\(current\.nextCursor\)/,
   );
   assert.match(source, /refreshedTaskIdsRef\.current\.has\(taskId\)/);
@@ -41,6 +49,10 @@ test("result retry sends only the sealed selection and reuses task progress laun
   assert.match(source, /retryPendingRef\.current/);
   assert.match(source, /progressReady && canRetryState\(visibleState\)/);
   assert.match(source, /!progressReady/);
+  assert.match(
+    source,
+    /currentState\.status === "ready" && currentState\.loadingMore/,
+  );
   assert.match(source, /const retryResults = useCallback/);
   assert.match(source, /const loadMore = useCallback/);
   assert.match(source, /const retryResultQuery = useCallback/);
