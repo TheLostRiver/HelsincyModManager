@@ -176,7 +176,11 @@ export function ExternalImportResultPanel({
           <button
             type="button"
             className="external-import__button is-primary"
-            disabled={workflow.retryPending || workflow.resultStale}
+            disabled={
+              (state.status === "ready" && state.loadingMore) ||
+              workflow.retryPending ||
+              workflow.resultStale
+            }
             onClick={workflow.retryResults}
           >
             {workflow.retryPending ? (

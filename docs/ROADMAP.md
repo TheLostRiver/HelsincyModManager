@@ -22,7 +22,7 @@
    共同交付 `hunting_box_directory_v1` 只读来源扫描、durable preview、后端 selection snapshot、
    显式决定、sealed batch start、严格按 `taskId` 的 import progress、权威分页结果、partial success 和
    服务端 retryable 重试。4C 复用同一 task progress 状态机处理重试返回的新 taskId，并在每个终态 task
-   的首屏权威结果验证后至多刷新一次 Mod 库；10,000 条人工脱敏 result 的本机 p95=`4.378 ms`，低于固定
+   的首屏权威结果验证后至多刷新一次 Mod 库；10,000 条人工脱敏 result 的本机 p95=`3.937 ms`，低于固定
    `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
    T17 范围保持 Windows + MHW:I；Linux/Steam Deck、更多游戏和 T13 批量安装/卸载仍须单独评审，
    不因 T17 完成自动开工。
