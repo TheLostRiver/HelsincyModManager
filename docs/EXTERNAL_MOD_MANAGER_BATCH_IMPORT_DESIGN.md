@@ -309,12 +309,13 @@ phase code 一经写入前后端契约就必须保持稳定。部分成功的明
 ```text
 select_external_import_source()
 start_external_import_scan(sourceId)
-get_external_import_preview(batchId, selectionId?, cursor, limit)
+get_external_import_preview(batchId, selectionId?, cursor?, limit?)
 create_external_import_selection(batchId)
 update_external_import_selection(selectionId, expectedRevision, entries)
 select_all_external_import_candidates(selectionId, expectedRevision)
 start_external_import_batch(batchId, selectionId, expectedRevision)
-get_external_import_batch_result(batchId, cursor, limit)
+retry_external_import_batch(batchId, selectionId)
+get_external_import_batch_result(batchId, cursor?, limit?)
 cancel_task(taskId)
 ```
 

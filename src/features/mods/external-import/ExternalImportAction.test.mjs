@@ -35,6 +35,9 @@ test("external import action composes the 4B selection panel without a frontend 
   const selectionWorkflow = readSource(
     "src/features/mods/external-import/useExternalImportSelectionWorkflow.ts",
   );
+  const progressState = readSource(
+    "src/features/mods/external-import/externalImportProgressState.ts",
+  );
   const candidateSelection = readSource(
     "src/features/mods/external-import/ExternalImportCandidateSelectionItem.tsx",
   );
@@ -55,6 +58,12 @@ test("external import action composes the 4B selection panel without a frontend 
   assert.match(selectionWorkflow, /listen<TaskProgressEventDto>\(TASK_PROGRESS_EVENT_NAME/);
   assert.match(selectionWorkflow, /event\.payload\.taskId\s*!==\s*taskId/);
   assert.match(selectionWorkflow, /nextExternalImportTaskStateFromProgress/);
+  assert.match(progressState, /Object\.hasOwn\(importPhaseLabels,\s*event\.phase\)/);
+  assert.match(progressState, /event\.phase === "mod_import\.cancelled"/);
+  assert.match(progressState, /external_import\.import\./);
+  assert.match(selectionWorkflow, /cancelPendingRef\.current/);
+  assert.match(selectionWorkflow, /const runLoadMore = useCallback/);
+  assert.match(selectionWorkflow, /const runCancelImport = useCallback/);
   assert.match(selectionWorkflow, /currentPreview\.loadingMore/);
   assert.match(selectionWorkflow, /workflowGenerationRef\.current === expectedGeneration/);
   assert.match(selectionWorkflow, /isExternalImportSelectionExpired\(current, Date\.now\(\)\)/);

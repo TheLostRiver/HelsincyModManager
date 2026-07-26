@@ -114,4 +114,21 @@ test("terminal counts remain aggregate hints and malformed progress fails closed
   );
   assert.equal(unknown.status, "failed");
   assert.equal(unknown.errorCode, "external_import_progress_unrecognized");
+
+  const unlistedCode = nextExternalImportTaskStateFromProgress(
+    running,
+    event({
+      status: "failed",
+      phase: "external_import.import.failed",
+      current: 0,
+      total: 0,
+      error: "some_backend_code_we_do_not_know",
+    }),
+  );
+  assert.equal(unlistedCode.errorCode, "external_import_batch_failed");
+
+  assert.deepEqual(
+    nextExternalImportTaskStateFromProgress(unlistedCode, event()),
+    unlistedCode,
+  );
 });
