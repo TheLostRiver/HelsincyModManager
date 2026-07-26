@@ -40,7 +40,7 @@
   --color-neutral-bg: #f1f5f9;
   --color-neutral-dot: #64748b;
   --radius-nav: 8px;
-  --radius-card: 28px;
+  --radius-card: 16px;
   --radius-panel: 24px;
   --radius-pill: 999px;
   --radius-inner: 8px;
@@ -116,7 +116,7 @@
   --color-neutral-bg: #334155;
   --color-neutral-dot: #94a3b8;
   --radius-nav: 8px;
-  --radius-card: 28px;
+  --radius-card: 16px;
   --radius-panel: 24px;
   --radius-pill: 999px;
   --radius-inner: 8px;
