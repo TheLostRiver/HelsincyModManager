@@ -326,6 +326,37 @@ test("Mod 管理页小屏契约保留：960/640 断点", () => {
   );
 });
 
+test("悬浮侧边栏留白跟随页面内边距，保证与顶部状态栏顶边对齐", () => {
+  const rules = parseCssRules(readProjectFile("src/app/shell/layouts/floating-sidebar/FloatingSidebar.css"));
+  const base = findRule(rules, ".floating-sidebar");
+  const narrow = findRule(rules, ".floating-sidebar", "(max-width: 860px)");
+
+  // 状态栏顶边由 .app-surface 的 padding 决定，该 padding 是随分辨率变化的 token。
+  // 侧边栏若写死 28px，在 --layout-page-padding 升到 32px / 36px 的 2K/4K 下会高出 4-8px。
+  expectDeclaration(
+    base,
+    /height:\s*calc\(100vh - var\(--layout-page-padding\) \* 2\);/,
+    "悬浮侧边栏上下留白必须跟随 --layout-page-padding",
+  );
+  expectDeclaration(
+    base,
+    /margin-left:\s*var\(--layout-page-padding\);/,
+    "悬浮侧边栏左侧留白必须跟随 --layout-page-padding",
+  );
+  // ≤860px 时 .app-surface 内边距收缩到 16px，侧边栏必须同步收缩。
+  expectDeclaration(narrow, /height:\s*calc\(100vh - 32px\);/, "860px 下侧边栏留白未与 16px 内边距对齐");
+  expectDeclaration(narrow, /margin-left:\s*16px;/, "860px 下侧边栏左留白未与 16px 内边距对齐");
+
+  // .floating-sidebar 没有 position，top/bottom/left 属于不生效的死声明，不得再出现。
+  for (const rule of rules.filter((entry) => entry.selector === ".floating-sidebar")) {
+    assert.doesNotMatch(
+      rule.body,
+      /(^|[;{])\s*(top|bottom|left|right):/,
+      `.floating-sidebar 未定位，偏移声明不会生效: ${rule.media ?? "base"}`,
+    );
+  }
+});
+
 // ===== L2: 断点方向不冲突 =====
 
 test("宽屏断点全部为 min-width，不与 max-width 小屏断点方向冲突", () => {
