@@ -169,24 +169,66 @@
   pointer-events: auto;
 }
 
+/*
+ * 通知类浮层（任务通知条与 toast）统一为 14px 圆角：它们比模态框小得多，
+ * 沿用面板级圆角会显得头重脚轻；内部控件统一 8px。
+ *
+ * 阴影不用 --shadow-panel（0 24px 70px）——那是给大面板的，压在一条 60px 高的通知上
+ * 会糊成一团。改用近距离细阴影勾边加中距离柔和阴影托底的双层结构。
+ */
 .feedback-task-notice {
+  position: relative;
   display: grid;
   gap: 12px;
-  padding: 16px;
+  padding: 14px 16px 14px 18px;
   color: var(--color-text);
   background: color-mix(in srgb, var(--color-surface) 96%, transparent);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-inner);
-  box-shadow: var(--shadow-panel);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #020617 8%, transparent),
+    0 12px 28px -14px color-mix(in srgb, #020617 32%, transparent);
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: feedback-notice-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * 语气用左侧色条表达，而不是只给整圈边框上色。整圈淡色边框在浅色主题下几乎看不出差别，
+ * 而色条能在不加重边框的前提下一眼分辨，也不依赖颜色以外的唯一线索（文案仍然自述状态）。
+ */
+.feedback-task-notice::before {
+  content: "";
+  position: absolute;
+  inset-block: 10px;
+  inset-inline-start: 0;
+  inline-size: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-neutral-dot);
+}
+
+.feedback-task-notice.is-progress::before {
+  background: var(--color-accent);
+}
+
+.feedback-task-notice.is-success::before {
+  background: var(--color-success-dot);
 }
 
 .feedback-task-notice.is-warning {
-  border-color: color-mix(in srgb, var(--color-warning-dot) 44%, var(--color-border));
+  border-color: color-mix(in srgb, var(--color-warning-dot) 30%, var(--color-border-muted));
+}
+
+.feedback-task-notice.is-warning::before {
+  background: var(--color-warning-dot);
 }
 
 .feedback-task-notice.is-danger {
-  border-color: color-mix(in srgb, var(--color-danger-dot) 44%, var(--color-border));
+  border-color: color-mix(in srgb, var(--color-danger-dot) 30%, var(--color-border-muted));
+}
+
+.feedback-task-notice.is-danger::before {
+  background: var(--color-danger-dot);
 }
 
 .feedback-task-notice__copy {
@@ -237,12 +279,20 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  padding: 13px 14px;
+  border: 1px solid var(--color-border-muted);
   border-radius: 14px;
   background: color-mix(in srgb, var(--color-surface-raised) 94%, transparent);
-  box-shadow: var(--shadow-panel);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #020617 8%, transparent),
+    0 12px 28px -14px color-mix(in srgb, #020617 32%, transparent);
   backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  /*
+   * 桌面端 toast 锚在右上角，因此从右侧滑入；窄屏改为锚底，动画在下方断点改为向上滑入。
+   * 方向与锚定位置一致，出现过程才不会显得突兀。
+   */
+  animation: feedback-toast-enter-inline 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .feedback-toast.is-success { border-color: color-mix(in srgb, var(--color-success-dot) 52%, var(--color-border-muted)); }
@@ -258,22 +308,35 @@
 .feedback-toast__copy strong,
 .feedback-toast__copy p,
 .feedback-toast__copy small { display: block; overflow-wrap: anywhere; }
-.feedback-toast__copy p { margin: 4px 0 0; color: var(--color-text-soft); }
-.feedback-toast__copy small { margin-top: 6px; color: var(--color-text-muted); }
+.feedback-toast__copy strong { font-size: 13px; font-weight: 600; line-height: 1.4; }
+/* 正文与补充说明原本没有字号，直接继承正文尺寸，与标题几乎同大、层级不清。 */
+.feedback-toast__copy p { margin: 3px 0 0; color: var(--color-text-soft); font-size: 13px; line-height: 1.45; }
+.feedback-toast__copy small { margin-top: 5px; color: var(--color-text-muted); font-size: 12px; }
 
 .feedback-toast__actions { display: flex; align-items: center; gap: 6px; }
 .feedback-toast__actions button {
-  min-height: 32px;
-  padding: 6px 9px;
-  border: 1px solid var(--color-border-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
   border-radius: 8px;
-  color: var(--color-text);
-  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  background: transparent;
   cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
 }
 
 .feedback-toast__actions button:hover {
   color: var(--color-accent);
+  background: var(--color-accent-weak);
   border-color: var(--color-accent-alpha-40);
 }
 
@@ -295,6 +358,46 @@
   }
 }
 
+/* 锚在右上角时从右侧滑入。 */
+@keyframes feedback-toast-enter-inline {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+}
+
+/* 锚在底部时从下方滑入，任务通知条同理。 */
+@keyframes feedback-notice-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+/*
+ * 退场。时长必须与 FeedbackToast.tsx 的 TOAST_EXIT_DURATION_MS 一致：
+ * 组件先标记退场、等这段动画播完才真正移除节点。
+ * 退场期间屏蔽交互，避免用户点到一个正在消失的按钮。
+ */
+.feedback-toast.is-exiting {
+  pointer-events: none;
+  animation: feedback-toast-exit-inline 160ms ease-in both;
+}
+
+@keyframes feedback-toast-exit-inline {
+  to {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+}
+
+@keyframes feedback-toast-exit-block {
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
 /*
  * ≤860px 时状态栏 height:auto、允许换行增高，--app-header-height 的固定 64px 不再成立，
  * 按它计算的顶部避让在状态栏变高后会失效。窄屏改为从底部锚定，完全不依赖头部高度。
@@ -312,6 +415,15 @@
   .feedback-toast-viewport {
     top: auto;
     bottom: var(--feedback-stack-inset);
+  }
+
+  /* 锚定方向从右上改为底部，入场与退场方向同步改为纵向，与锚点保持一致。 */
+  .feedback-toast {
+    animation-name: feedback-notice-enter;
+  }
+
+  .feedback-toast.is-exiting {
+    animation-name: feedback-toast-exit-block;
   }
 
   .feedback-task-notice-viewport {
@@ -368,11 +480,44 @@
 
 @media (prefers-reduced-motion: reduce) {
   .feedback-overlay,
-  .feedback-modal {
+  .feedback-modal,
+  .feedback-toast,
+  .feedback-task-notice {
     animation-duration: 0.01ms;
   }
 
-  .feedback-modal__close {
+  /*
+   * 位移必须一并清零：只把时长压到 0.01ms 仍会让元素在起始位移处渲染一帧，
+   * 在降级偏好下反而是一次可见的跳动。
+   */
+  .feedback-toast,
+  .feedback-task-notice {
+    animation-name: feedback-fade-enter;
+  }
+
+  /*
+   * 退场不压缩时长：组件按固定 160ms 延迟才移除节点，若这里把动画瞬间跑完，
+   * toast 会先消失再空等一段时间，反而更突兀。保留同时长的纯淡出。
+   */
+  .feedback-toast.is-exiting {
+    animation: feedback-fade-exit 160ms ease-in both;
+  }
+
+  .feedback-modal__close,
+  .feedback-toast__actions button {
     transition-duration: 0.01ms;
+  }
+}
+
+/* 动效降级下只保留淡入淡出，不带任何位移。 */
+@keyframes feedback-fade-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes feedback-fade-exit {
+  to {
+    opacity: 0;
   }
 }
