@@ -56,9 +56,11 @@
 .app-surface__header-dock {
   position: sticky;
   /*
-   * 直接钉在原位（页面内边距之下），而不是 top:0 贴视口顶边，避免滚动瞬间发生位置跳变。
+   * 必须是 0，不能用页面内边距去"钉在原位"。粘滞是绘制期偏移：只要 top 大于元素在
+   * 滚动视口中的自然偏移量，绘制位置就会被下推，背板随之越过状态栏底边压住下方内容。
+   * top:0 时绘制位置在静止状态下恒等于布局位置，不存在下推的可能。
    */
-  top: var(--app-surface-inset);
+  top: 0;
   z-index: 40;
   min-width: 0;
 }
@@ -68,19 +70,24 @@
  * 若用负 margin 把自身边框盒撑得比 grid area 更大，sticky 偏移会被钳制，粘滞行为不再等价于
  * 改动前的状态栏。伪元素不参与布局，因此 dock 的盒模型与原 .top-status-bar 完全一致。
  *
- * 负 inset 向上盖住页面内边距、向两侧盖到 padding 外沿、向下盖住 .app-surface 的 grid gap，
- * 形成一块完整不透明区域。它是 z-index:-1 的子元素，按绘制顺序位于 .top-status-bar 之下、
- * 位于 dock 层叠上下文(40)之外的所有页面内容之上，因此只遮内容不遮状态栏。
- * 不设 pointer-events:none：被遮住的内容本就不该被点到。
+ * 负 inset 向上盖住页面内边距、向两侧盖到 padding 外沿。它是 z-index:-1 的子元素，
+ * 按绘制顺序位于 .top-status-bar 之下、位于 dock 层叠上下文(40)之外的所有页面内容之上，
+ * 因此只遮内容不遮状态栏。不设 pointer-events:none：被遮住的内容本就不该被点到。
+ *
+ * 高度写成"页面内边距 + 状态栏高度"的显式值，不用 bottom 去贴 dock 的盒底：dock 的盒高不一定
+ * 等于状态栏高度，用 bottom:0 会让背板越过状态栏底边、压住内容区首行（Mod 页表现为搜索栏顶部被裁）。
+ *
+ * 这个方向必须偏保守：背板只需要遮住状态栏卡片以外的区域，卡片自身有不透明背景。
+ * 背板短一点最多是卡片圆角缺口没盖全，长一点就会裁掉下方 UI，因此宁短勿长。
  */
 .app-surface__header-dock::before {
   content: "";
   position: absolute;
   z-index: -1;
-  inset:
-    calc(-1 * var(--app-surface-inset))
-    calc(-1 * var(--app-surface-inset))
-    calc(-1 * var(--layout-content-gap));
+  top: calc(-1 * var(--app-surface-inset));
+  right: calc(-1 * var(--app-surface-inset));
+  left: calc(-1 * var(--app-surface-inset));
+  height: calc(var(--app-surface-inset) + var(--app-header-height));
   background: var(--color-bg);
 }
 
