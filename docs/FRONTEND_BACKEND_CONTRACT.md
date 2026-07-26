@@ -135,16 +135,16 @@ pub struct CommandErrorDto {
 
 当前 `CommandErrorDto` 只有 `code` 和 `message`。后续新增高风险或长任务 command 时，应扩展为上面的通用形态，旧 command 可以分阶段迁移。
 
-### T17 Slice 3 后端契约与 Slice 4B 选择/进度前端边界
+### T17 批量迁移后端契约与 Slice 4C 结果/重试前端边界
 
 已完成的 Slice 2 提供 `hunting_box_directory_v1` 的 Windows + MHW:I 只读来源选择、扫描和分页预览。已完成的
 Slice 3 在此基础上增加后端 selection snapshot、task-scoped 安全物化、批量导入编排和结果分页；原生目录选择器只在
 Rust 内返回路径，路径立即登记到短生命周期的 source registry。前端永远不接收、提交或记录该路径。
 
-Slice 4A 的 React 工作流消费来源选择、scan task、取消和基础分页 preview。当前 Slice 4B 在同一入口内增加后端
-selection snapshot、selection-aware preview、候选 mutation、服务端全选、已有分类映射、显式冲突决定、sealed
-batch start、取消和严格按 `taskId` 的 import progress。它仍不读取 result page，也不计算路径、物化包、安装、
-启用、获取 game/profile 写锁或写入游戏目录；result/retry/partial-success 明细和性能加固留在 4C。
+Slice 4A 的 React 工作流消费来源选择、scan task、取消和基础分页 preview。PR #198 的 Slice 4B 在同一入口内增加
+后端 selection snapshot、selection-aware preview、候选 mutation、服务端全选、已有分类映射、显式冲突决定、
+sealed batch start、取消和严格按 `taskId` 的 import progress。当前 Slice 4C 消费权威分页 result、partial
+success 与 retry；它仍不计算路径、物化包、安装、启用、获取 game/profile 写锁或写入游戏目录。
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
@@ -180,6 +180,14 @@ sealed selection 全部整体拒绝，不截断、不部分应用。`select_all_
 retry 只可重放 sealed snapshot 中仍可重试的项。结果 cursor 与 preview cursor 一样是十进制 offset token，
 默认 `limit = 50`、最大 `100`，响应只返回 candidate ID、状态、稳定 reason code、可选内部 `modId`、
 `retryable`、总数和下一 cursor。
+
+前端在同一 import task 进入 `completed`、`failed` 或 `cancelled` 后，必须从 cursor `0` 查询结果；progress
+event 的聚合计数不得解释为 partial success。result page 必须按 exact DTO key、同一 batch、稳定终态 status/
+reason、opaque ID、页大小和重复 candidate fail closed；后续页只复用 `nextCursor` 并按 candidate ID 去重。
+`retry_external_import_batch` 只接收 `batchId + sealed selectionId`，前端不得提交候选 ID 或重建 retryable
+谓词；成功返回的新 taskId 必须复用同一 taskId-scoped listener、early-event buffer、取消和终态状态机。
+每个 terminal taskId 只有在首屏权威结果验证成功后才可触发一次 best-effort Mod 库刷新；刷新失败不能改写
+batch/result 事实或伪造导入失败。
 
 稳定错误至少包括 `external_import_source_picker_unavailable`、`external_import_source_unavailable`、
 `external_import_source_id_invalid`、`external_import_batch_id_invalid`、
@@ -423,7 +431,7 @@ TaskProgressEventDto
 
 - 每个进度事件必须携带 `taskId`。
 - 前端不能靠“当前页面只有一个任务”来匹配事件。
-- Slice 4B import listener 必须同时匹配 `kind = mod_import`、精确 `taskId` 和登记的
+- T17 import listener 必须同时匹配 `kind = mod_import`、精确 `taskId` 和登记的
   `external_import.import.*` phase。通用 `mod_import.cancelled` 只表示正在取消，不是 external-import
   专用终态；前端必须等待同一 task 的 `external_import.import.cancelled`。failed/cancelled 的聚合计数不能用于
   推断 partial success。
