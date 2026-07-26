@@ -87,6 +87,13 @@ export function ModPosterCard({
   const isGrid = viewMode === "grid";
   const isClassic = viewMode === "classic";
   const versionLabel = item.versionLabel ?? "v1.0.0";
+  /*
+   * 作者只来自真实数据。原实现在 grid / list 视图硬编码 "NexusUser123"、
+   * 在 list 视图硬编码一整段中文描述，导致整屏卡片显示同一个作者和同一段文案；
+   * tech 视图虽然读了 item.author，但也用同一个假名做 fallback。
+   * ModLibraryItem 上没有描述字段，因此列表视图不再渲染描述位，而不是编一段占位文案。
+   */
+  const authorLabel = item.author?.trim() ? item.author.trim() : null;
   const [posterFailed, setPosterFailed] = useState(false);
   const previewThumbnail = item.previewImage?.kind === "thumbnail" ? item.previewImage : null;
   const canShowPoster = previewThumbnail !== null && !posterFailed;
@@ -173,8 +180,6 @@ export function ModPosterCard({
           className="mod-card__poster"
           style={{ "--poster-from": item.posterFrom, "--poster-to": item.posterTo } as CSSProperties}
         >
-          {isGrid && <div className="mod-card__version-badge">{versionLabel}</div>}
-
           {canShowPoster && (
             <img
               className="mod-card__poster-img"
@@ -196,7 +201,7 @@ export function ModPosterCard({
 
           {/* 状态徽标：Classic, Grid, List 通用 */}
           <span className={`mod-card__status-pill is-${item.status}`}>
-            <Check size={15} strokeWidth={2.6} aria-hidden="true" />
+            <Check size={13} strokeWidth={2.6} aria-hidden="true" />
             <span className="mod-card__status-label">{statusLabelForItem(item)}</span>
           </span>
 
@@ -220,7 +225,10 @@ export function ModPosterCard({
           <strong className="mod-card__title">{item.name}</strong>
           {categoryStrip}
           <div className="mod-card__meta-row">
-            <span className="mod-card__author">NexusUser123</span>
+            <span className="mod-card__meta-lead">
+              {authorLabel ? <span className="mod-card__author">{authorLabel}</span> : null}
+              <span className="mod-card__version-badge">{versionLabel}</span>
+            </span>
             <span className="mod-card__size">{item.sizeLabel}</span>
           </div>
         </div>
@@ -233,9 +241,8 @@ export function ModPosterCard({
             <div className="mod-card__header">
               <strong className="mod-card__title">{item.name}</strong>
             </div>
-            <div className="mod-card__author">by NexusUser123</div>
+            {authorLabel ? <div className="mod-card__author">by {authorLabel}</div> : null}
             {categoryStrip}
-            <div className="mod-card__desc">这是一个完全重新制作的模型替换 Mod，修复了原版服装在过场动画中的穿模问题，并提供了全套高清贴图支持。</div>
           </div>
           <div className="mod-card__footer-list">
             <span>版本: {versionLabel}</span>
@@ -249,7 +256,9 @@ export function ModPosterCard({
         <div className="mod-card__info-tech">
           <div>
             <div className="mod-card__title">{item.name}</div>
-            <div className="mod-card__tech-author" data-label="Author">{item.author || "NexusUser123"}</div>
+            {authorLabel ? (
+              <div className="mod-card__tech-author" data-label="Author">{authorLabel}</div>
+            ) : null}
             {categoryStrip}
           </div>
           <div className="mod-card__tech-footer">
