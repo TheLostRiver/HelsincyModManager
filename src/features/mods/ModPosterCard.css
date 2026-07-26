@@ -249,7 +249,7 @@
 }
 
 .mod-grid.view-tech .mod-card__tech-author {
-  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text);
@@ -278,7 +278,7 @@
 
 .mod-grid.view-tech .mod-card__tech-version,
 .mod-grid.view-tech .mod-card__tech-size {
-  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text);
@@ -291,7 +291,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   font-weight: bold;
   color: var(--color-text); /* ACTIVE VALID 默认颜色 */

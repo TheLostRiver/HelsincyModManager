@@ -39,6 +39,11 @@
   --color-neutral-text: #475569;
   --color-neutral-bg: #f1f5f9;
   --color-neutral-dot: #64748b;
+  /*
+   * 等宽字体栈。面板与 tech 视图要展示 ID、路径片段、版本号这类需要对齐的短文本；
+   * 不指定时浏览器回落到 monospace，在 Windows 上就是 Courier New。
+   */
+  --font-family-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
   --radius-nav: 8px;
   --radius-card: 16px;
   --radius-panel: 24px;
@@ -115,6 +120,11 @@
   --color-neutral-text: #cbd5e1;
   --color-neutral-bg: #334155;
   --color-neutral-dot: #94a3b8;
+  /*
+   * 等宽字体栈。面板与 tech 视图要展示 ID、路径片段、版本号这类需要对齐的短文本；
+   * 不指定时浏览器回落到 monospace，在 Windows 上就是 Courier New。
+   */
+  --font-family-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
   --radius-nav: 8px;
   --radius-card: 16px;
   --radius-panel: 24px;
