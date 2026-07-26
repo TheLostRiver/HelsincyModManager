@@ -17,6 +17,11 @@
   gap: var(--layout-content-gap);
   min-width: 0;
   min-height: 0;
+  /*
+   * 吸顶背板要用负 margin 精确撑到 surface 的 padding 外沿，因此必须知道当前实际内边距。
+   * 断点里改 padding 时必须同步改这个变量，否则背板会错位露出身后内容。
+   */
+  --app-surface-inset: var(--layout-page-padding);
   padding: var(--layout-page-padding);
   /*
    * 拆分 overflow：垂直方向按需滚动，水平方向彻底禁止——卡片网格是自上而下布局，
@@ -37,6 +42,33 @@
   grid-template-columns: auto minmax(0, 1fr);
 }
 
+/*
+ * 全局吸顶背板。状态栏常驻 .app-surface 顶部，避免滚动后顶部留空，
+ * 也为 Mod 吸顶条提供稳定的上层参照。z-index 高于 mod 吸顶条(30) 与 back-to-top(20)。
+ *
+ * 吸顶职责放在这层而不是 .top-status-bar 自身：状态栏是带圆角和阴影的悬浮卡片，
+ * 背景只覆盖那个圆角矩形，它上方的页面留白、左右两侧和与下方内容之间的 gap 全是透明的。
+ * 直接让它 sticky 会让滚动内容从这些透明区域穿过并钻进圆角底下，看起来像两层叠在一起。
+ * 背板用负 margin 撑到 surface 的 padding 外沿、向下盖住 grid gap，形成一块不透明区域，
+ * 内容在够到状态栏之前就被挡住；内侧 padding 让状态栏滚动后仍保留原有留白，
+ * 不会从"距顶 28px"跳变成贴边 0px。
+ */
+.app-surface__header-dock {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  min-width: 0;
+  margin:
+    calc(-1 * var(--app-surface-inset))
+    calc(-1 * var(--app-surface-inset))
+    calc(-1 * var(--layout-content-gap));
+  padding:
+    var(--app-surface-inset)
+    var(--app-surface-inset)
+    var(--layout-content-gap);
+  background: var(--color-bg);
+}
+
 .top-status-bar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto;
@@ -49,13 +81,6 @@
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-soft);
-  /*
-   * 全局吸顶：状态栏常驻 .app-surface 顶部，避免滚动后顶部留空，
-   * 也为 Mod 吸顶条提供稳定的上层参照。z-index 高于 mod 吸顶条(30) 与 back-to-top(20)。
-   */
-  position: sticky;
-  top: 0;
-  z-index: 40;
 }
 
 .install-recovery-global-alert {
@@ -259,6 +284,8 @@
 
   .app-surface {
     min-height: auto;
+    /* 与 padding 成对：吸顶背板据此撑到 padding 外沿，改一个必须改另一个。 */
+    --app-surface-inset: 16px;
     padding: 16px;
   }
 
