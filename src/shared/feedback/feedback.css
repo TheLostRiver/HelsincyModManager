@@ -296,12 +296,26 @@
 }
 
 /*
- * ≤860px 时 .app-surface 内边距收缩到 16px，toast 避让高度同步收缩。
- * 该断点下状态栏允许换行增高，这里仍按 min-height 做近似避让，与既有基线一致。
+ * ≤860px 时状态栏 height:auto、允许换行增高，--app-header-height 的固定 64px 不再成立，
+ * 按它计算的顶部避让在状态栏变高后会失效。窄屏改为从底部锚定，完全不依赖头部高度。
+ *
+ * 两个 viewport 都锚底，故用 --feedback-stack-inset 统一底部基准：
+ * toast 贴基准，任务通知条在其上方留出一条通知的高度，避免互相压盖。
+ * 更小断点只需覆盖这个变量，两者偏移自动配套。
  */
 @media (max-width: 860px) {
+  .feedback-toast-viewport,
+  .feedback-task-notice-viewport {
+    --feedback-stack-inset: 20px;
+  }
+
   .feedback-toast-viewport {
-    top: calc(16px + var(--app-header-height) + 16px);
+    top: auto;
+    bottom: var(--feedback-stack-inset);
+  }
+
+  .feedback-task-notice-viewport {
+    bottom: calc(var(--feedback-stack-inset) + 104px);
   }
 }
 
@@ -334,12 +348,11 @@
 
   .feedback-task-notice-viewport,
   .feedback-toast-viewport {
+    /* 覆盖 860px 的底部基准；两个 viewport 的相对偏移由该变量统一派生。 */
+    --feedback-stack-inset: 12px;
+
     right: 12px;
     width: calc(100vw - 24px);
-  }
-
-  .feedback-task-notice-viewport {
-    bottom: 12px;
   }
 
   .feedback-toast {
