@@ -16,6 +16,7 @@ import {
 } from "react";
 import {
   MOD_LIBRARY_PAGE_SIZES,
+  getModLibraryEllipsisTarget,
   getModLibraryItemRange,
   getModLibraryPageSlots,
   getModLibraryTotalPages,
@@ -208,6 +209,11 @@ export function ModLibraryPagination({
           }}
         >
           <span className="mod-library-pagination__segment-label">每页</span>
+          {/*
+           * 触发器与浮层单独包一层定位锚点：浮层原先靠外层容器加 left: 22px 硬偏移
+           * 才勉强对齐触发器，"每页"两字的宽度一变就会错位。
+           */}
+          <span className="mod-library-pagination__page-size-anchor">
           <button
             ref={pageSizeTriggerRef}
             type="button"
@@ -266,6 +272,7 @@ export function ModLibraryPagination({
               })}
             </div>
           ) : null}
+          </span>
         </div>
 
         <nav
@@ -303,13 +310,46 @@ export function ModLibraryPagination({
           <div className="mod-library-pagination__page-list" aria-label="可选页码">
             {pageSlots.map((slot, index) =>
               slot === "ellipsis" ? (
-                <span
-                  key={`ellipsis-${index}`}
-                  className="mod-library-pagination__ellipsis"
-                  aria-hidden="true"
-                >
-                  …
-                </span>
+                (() => {
+                  /*
+                   * 省略号原本是纯装饰文本，却占满一个按钮位——想跳到中间页只能连点上一页。
+                   * 改为可点按钮，跳到被折叠区间的中点；无法推导目标时退回不可交互的文本，
+                   * 避免出现点了却停在原地的按钮。
+                   */
+                  const target = getModLibraryEllipsisTarget(pageSlots, index);
+
+                  if (target === null) {
+                    return (
+                      <span
+                        key={`ellipsis-${index}`}
+                        className="mod-library-pagination__ellipsis"
+                        aria-hidden="true"
+                      >
+                        …
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <ModLibraryControlTooltip
+                      key={`ellipsis-${index}`}
+                      content={`跳至第 ${target} 页`}
+                      describeControl={false}
+                    >
+                      {() => (
+                        <button
+                          type="button"
+                          className="mod-library-pagination__ellipsis is-interactive"
+                          aria-label={`跳至第 ${target} 页`}
+                          aria-disabled={busy || undefined}
+                          onClick={() => requestPage(target)}
+                        >
+                          …
+                        </button>
+                      )}
+                    </ModLibraryControlTooltip>
+                  );
+                })()
               ) : (
                 <button
                   key={slot}
@@ -358,7 +398,8 @@ export function ModLibraryPagination({
           {busy ? (
             <span className="mod-library-pagination__busy" aria-hidden="true">
               <span className="mod-library-pagination__busy-indicator" />
-              更新中
+              {/* 文字单独成元素，窄容器下用 display:none 隐藏，不再靠 font-size:0 抹掉。 */}
+              <span className="mod-library-pagination__busy-label">更新中</span>
             </span>
           ) : null}
           <span className="mod-library-pagination__range-compact" aria-hidden="true">

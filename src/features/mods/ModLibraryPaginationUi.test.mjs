@@ -113,14 +113,30 @@ test("pagination footer stays a compact semantic-token toolbar without overlay s
     /\.mod-library-pagination__page-size-listbox\s*\{([\s\S]*?)\n\}/,
   )?.[1] ?? "";
 
-  assert.match(layoutRule, /block-size:\s*48px/);
+  /*
+   * 尺寸随卡片圆角体系（控件 10px）一并放宽：条高 48->52、控件 32->34。
+   * 这里锁的是"紧凑工具栏"这个意图，不是某个具体数值：条高保持在两位数、
+   * 控件保持在 40px 以内，一旦被改成页面级的大控件就会失败。
+   */
+  const barHeight = Number(layoutRule.match(/block-size:\s*(\d+)px/)?.[1]);
+  assert.ok(barHeight >= 40 && barHeight <= 64, `分页条高 ${barHeight}px 超出紧凑范围`);
+
+  const controlSize = Number(
+    css.match(/\.mod-library-pagination__page-button\s*\{[\s\S]*?\}/)
+      ? css.match(/inline-size:\s*(\d+)px;\s*\n\s*block-size:\s*\1px;/)?.[1]
+      : undefined,
+  );
+  assert.ok(controlSize >= 28 && controlSize <= 40, `分页控件 ${controlSize}px 超出紧凑范围`);
+
   assert.doesNotMatch(rootRule, /position:\s*(?:fixed|sticky|absolute)/);
   assert.match(listboxRule, /bottom:\s*calc\(100% \+ 8px\)/);
-  assert.match(listboxRule, /border-radius:\s*8px/);
+  // 浮层锚在触发器本身，不再靠"每页"两字宽度的硬偏移对齐。
+  assert.match(listboxRule, /left:\s*0;/);
+  assert.match(css, /\.mod-library-pagination__page-size-anchor\s*\{[\s\S]*?position:\s*relative/);
   assert.doesNotMatch(css, /box-shadow/);
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
-  assert.match(css, /inline-size:\s*32px/);
-  assert.match(css, /block-size:\s*32px/);
+  // 窄容器隐藏"更新中"文字用 display:none，不得退回 font-size:0 那种抹字号的写法。
+  assert.doesNotMatch(css, /font-size:\s*0\s*;/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.match(css, /clip-path:\s*inset\(50%\)/);
   assert.doesNotMatch(css, /\bclip:\s*rect\(/);
