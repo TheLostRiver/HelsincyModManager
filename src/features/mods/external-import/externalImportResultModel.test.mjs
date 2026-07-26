@@ -8,6 +8,7 @@ import {
   getExternalImportBatchStatusLabel,
   getExternalImportResultErrorMessage,
   isExternalImportBatchResultPageForBatch,
+  isExternalImportResultCoverageValid,
   summarizeExternalImportResults,
   toExternalImportResultViewModel,
 } from "./externalImportResultModel.ts";
@@ -115,6 +116,20 @@ test("result validation rejects unsafe identities, unknown status/reason, duplic
   );
   assert.equal(
     isExternalImportBatchResultPageForBatch(
+      resultPage({ results: [], totalCount: 1, nextCursor: null }),
+      "batch-a",
+    ),
+    false,
+  );
+  assert.equal(
+    isExternalImportBatchResultPageForBatch(
+      resultPage({ totalCount: 10_001, nextCursor: "1" }),
+      "batch-a",
+    ),
+    false,
+  );
+  assert.equal(
+    isExternalImportBatchResultPageForBatch(
       resultPage({
         results: [item(), item({ importedModId: "mod-b" })],
         totalCount: 2,
@@ -196,6 +211,10 @@ test("result pagination deduplicates candidate ids and unknown UI errors remain 
     getExternalImportResultErrorMessage("C:\\private\\raw-error"),
     "无法读取批量导入结果，请稍后重试",
   );
+  assert.equal(isExternalImportResultCoverageValid(100, "50", 50), true);
+  assert.equal(isExternalImportResultCoverageValid(100, null, 100), true);
+  assert.equal(isExternalImportResultCoverageValid(100, null, 50), false);
+  assert.equal(isExternalImportResultCoverageValid(100, "50", 100), false);
 });
 
 test("10,000 artificial redacted results keep fixed page validation within budget", (testContext) => {

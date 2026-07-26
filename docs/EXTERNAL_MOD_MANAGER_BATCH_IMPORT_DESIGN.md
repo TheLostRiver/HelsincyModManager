@@ -417,7 +417,7 @@ cancel_task(taskId)
 - 每个 terminal taskId 只有在首屏权威结果通过验证后才 best-effort 刷新一次 Mod 库；刷新失败不改变
   已持久化导入/result 事实，只显示稳定可恢复反馈。
 - task progress concern 已从 selection workflow 拆到独立 hook；大批次自动化使用 10,000 条人工脱敏
-  result、5 次 warmup、40 次 sample，本机 p95=`4.378 ms`，低于固定 `250 ms` 同机预算。
+  result、5 次 warmup、40 次 sample，本机 p95=`3.937 ms`，低于固定 `250 ms` 同机预算。
 - 默认继续 import-only，不安装、启用、获取 game/profile 写锁或写游戏目录。
 
 后续新增其他第三方来源时，只增加 adapter、来源契约文档和 fixtures；不得在现有 adapter 里加入来源名称分支。
