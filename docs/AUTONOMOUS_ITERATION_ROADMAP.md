@@ -9,12 +9,40 @@
 
 ---
 
+## 两条必须先知道的事实
+
+这两条经实际核实，会改变你对"验证通过"的理解。
+
+### 一、CI 与 `verify` 都不跑前端测试，也不跑 clippy
+
+| 门禁 | 前端 | Rust |
+|------|------|------|
+| `scripts/verify.sh`（CI 走这条） | typecheck / lint / build | `cargo test --workspace`、`cargo check --workspace` |
+| `scripts/verify.ps1`（本地） | typecheck / lint / build | 同上 |
+
+`package.json` 的 `test` 脚本（`node --test "src/**/*.test.mjs"`，约 400 个测试）
+**没有被任何门禁调用**。`cargo clippy` 同样不在任何门禁里。
+
+**因此「CI 全绿」不等于「测试通过」。** 前端测试与 clippy 必须由你手动运行，
+并把结果作为验收证据。这条差距本身是 A6 要修的问题。
+
+### 二、治理文件改动没有强制拦截
+
+`scripts/check-governance-changes.ps1` 只打印黄色警告，**从不非零退出**；
+它只被 `.githooks/pre-commit` 与 `pre-push` 调用，而 hooks 是可选安装、可被 `--no-verify` 绕过，
+`verify.ps1` / `verify.sh` / CI 都不调用它。
+
+**因此改动 `policy/`、`scripts/`、`.github/`、`AGENTS.md` 等治理文件时，
+没有任何自动机制会拦住你或通知任何人。** 只能靠自觉。
+
+---
+
 ## 选任务的唯一标准：能否无人自证
 
 本队列里的每个任务都必须满足：**修复的正确性可以由测试、类型检查、lint、构建、
 逐字节等价或变异验证证明，不依赖任何人去看界面。**
 
-这条标准不是保守，是有代价换来的教训。此前的迭代中反复出现同一种失败模式：
+这条标准是有代价换来的。此前迭代中反复出现同一种失败模式：
 
 - 修吸顶状态栏重叠时，连续三次基于静态 CSS 推理判断根因，三次都错，全靠人工截图纠正。
   真因是 `position: sticky` 的 `top` 大于元素在滚动视口中的自然偏移量时，
@@ -30,22 +58,24 @@
 
 ## 执行规则
 
-### 分档
+### 全部任务只做到 PR，一律不合并
 
-| 档位 | 任务 | 完成后 |
-|------|------|--------|
-| **自动档** | A1 – A3 | CI 全绿且 review 意见处理完毕后，rebase 合并并 fast-forward `main` |
-| **待审档** | A4 – A6 | 完成实现、开 PR、**停在这里等待人工 review，不得自行合并** |
+无人值守期间**禁止使用 `gh pr merge`（含 `--admin`）**，也不得 fast-forward `main`。
 
-待审档的三项都改动 `policy/project-policy.json` 或 `scripts/check-*`，属于
-[工程治理与强制约束](GOVERNANCE.md#治理文件变更规则) 定义的"修改规则本身"。
-该文档要求这类改动"必须被视为修改规则本身"并接受人工 review。
-无人值守时没有 reviewer，因此只做到 PR 为止。
+原因：本仓库 `main` 的分支保护要求人工 approving review 与 Code Owner review，
+而 `--admin` 会同时绕过人工审查**和必需状态检查**。结合上面"CI 不跑前端测试"这一事实，
+自动合并等于把主干的唯一防线交给一个已知不充分的信号。
+
+每个任务的终态是：**分支已推送 + PR 已开 + PR 正文写清验收证据**。
+人工回来后逐个 review 并合并。
+
+因此每个任务都必须能**独立从 `main` 分出**，不依赖前一个任务已合并。
+下面的任务划分已经保证了这一点（同一批治理文件的改动被合并为一个任务）。
 
 ### 顺序
 
-按 A1 → A6 顺序执行。A1 有时效性（见下），其余按序即可。
-一个任务未合并（自动档）或未开 PR（待审档）前，不开始下一个。
+按 A1 → A6 顺序执行。A1/A2 有时效性（见下）。
+一个任务未开出 PR 前，不开始下一个。
 
 ### 每个任务的交付形态
 
@@ -54,64 +84,66 @@
 
 ---
 
-## A1 · 把 `state.rs` / `dto.rs` 的内联测试外置
+## A1 · 把 `state.rs` 的内联测试外置
 
-**优先级**：最高，有时效性
-**风险**：medium（落点是装配全部服务与写锁的组合根）
-**预计**：2 个 PR（两个文件各一个）
+**优先级**：最高，有时效性 · **风险**：medium · **1 个 PR**
 
 ### 问题
 
-`policy/project-policy.json` 对 `.rs` 设了 **2200 行**的硬性阻断上限，超过会让
+`policy/project-policy.json` 对 `.rs` 设了 **2200 行**硬性阻断上限，超过会让
 `verify.ps1`、pre-commit、pre-push 和 GitHub `Verify` 作业**同时失败**。
 
-当前：
-
-| 文件 | 行数 | 距硬门禁 |
-|------|------|----------|
-| `src-tauri/src/state.rs` | 2169 | **31 行** |
-| `src-tauri/src/dto.rs` | 2133 | **67 行** |
-
-这两个恰恰是最高频改动的文件：`state.rs` 是装配所有服务的组合根，
-`dto.rs` 承载全部前后端 DTO。**下一个新增 command / DTO / AppState 字段就可能把文件推过
-2200，阻断整条流水线。** 在无人值守场景下这会直接卡死后续所有任务。
+`src-tauri/src/state.rs` 当前 **2169 行，距硬门禁仅 31 行**。
+它是装配所有服务的组合根，属最高频改动文件——下一个新增 AppState 字段就可能推过上限，
+阻断整条流水线。
 
 ### 修法
 
-两文件都带着大段内联 `mod tests`，而仓库已有成熟的外置约定
-（`#[cfg(test)] #[path = "..._tests.rs"] mod tests;`）：
+仓库已有成熟的外置约定 `#[cfg(test)] #[path = "..._tests.rs"] mod tests;`：
+`state.rs:1639` 自身已用该模式外置了 `state_core_mod_lifecycle_tests.rs`，
+另有 `install.rs:1190`、`install_recovery.rs:1824`、`lib.rs:212`、
+`mod_library_query.rs:471`、`reinstall_task.rs:661` 等多处同款。
 
-- `state.rs:1639` 自身已用该模式外置了 `state_core_mod_lifecycle_tests.rs`
-- 另有 `install.rs:1190`、`install_recovery.rs:1824`、`lib.rs:212`、
-  `mod_library_query.rs:471`、`reinstall_task.rs:661` 等多处同款
-
-照此把 `state.rs` 的内联 `mod tests`（约 1643 起）搬到 `state_tests.rs`，
-`dto.rs` 的（约 1416 起）搬到 `dto_tests.rs`。**生产代码与测试断言逐字不动，仅物理迁移。**
-迁移后约为 1642 / 1415 行，远离硬门禁。
+把内联 `mod tests`（约 1643 起）整体搬到 `state_tests.rs`。
+**生产代码与测试断言逐字不动，仅物理迁移。** 迁移后约 1642 行。
 
 ### 必须注意
 
-- `dto.rs` 顶部有 `#[cfg(test)] use hmm_app::InstallManifestStatus;` 这类 **test-only import**，
-  测试外置后要一并迁移，否则触发 unused-import 告警。
-- `state.rs` 的测试里包含并发锁测试（如 `recovery_scan_waits_for_shared_game_profile_write_lock`），
-  迁移后必须确认它**仍被发现并执行**，不能只看"测试没报错"——测试文件没被加载也不会报错。
+测试里包含并发锁测试（如 `recovery_scan_waits_for_shared_game_profile_write_lock`）。
+**测试文件没被加载也不会报错** —— 因此必须先记录迁移前 `cargo test -p hmm-tauri` 的
+测试总条数，迁移后逐条比对，确认锁测试仍在其中。只看"没有失败"不算验证。
 
 ### 验证
 
 ```
-cargo test -p hmm-tauri        # 断言测试总数与迁移前一致，锁测试仍在其中
+cargo test -p hmm-tauri
 cargo check -p hmm-tauri
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-file-size.ps1
 ```
 
-迁移前先记录 `cargo test -p hmm-tauri` 的测试条数，迁移后逐条比对。零行为变化。
+---
+
+## A2 · 把 `dto.rs` 的内联测试外置
+
+**优先级**：最高，有时效性 · **风险**：low · **1 个 PR**
+
+同 A1 的问题与修法。`src-tauri/src/dto.rs` 当前 **2133 行，距硬门禁 67 行**，
+承载全部前后端 DTO，同样高频改动。测试模块约从 1416 行起，搬到 `dto_tests.rs`。
+
+### 必须注意
+
+`dto.rs` 顶部有 `#[cfg(test)] use hmm_app::InstallManifestStatus;` 这类
+**test-only import**，测试外置后要一并迁移，否则触发 unused-import 告警。
+
+### 验证
+
+同 A1（`-p hmm-tauri`），同样先记录测试条数再比对。
 
 ---
 
-## A2 · 清除 reinstall 提交/回滚路径上已失效的 `dead_code` 抑制
+## A3 · 清除 reinstall 提交/回滚路径上已失效的 `dead_code` 抑制
 
-**风险**：medium（落点是安装重装/回滚引擎）
-**预计**：1 个 PR
+**风险**：**high**（落点是安装重装/回滚引擎） · **1 个 PR**
 
 ### 问题
 
@@ -120,28 +152,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-file-size.ps
 `reinstall.rs:869/877/884` 三处 `#[allow(dead_code)]` 注释写着「deferred to Task 6」。
 
 **Task 6 早已完成并接线**，这些抑制的理由已经过期：
+`reinstall_task.rs:240` 与 `:407` 实际调用 `.commit(...)`；
+`state.rs:111-112 / :574 / :619-620` 装配 `ReinstallTaskRunner` / `ReinstallTaskService`；
+`lib.rs:154` 注册 `start_reinstall_task`；
+`install_recovery.rs:17` 使用 `cleanup_reinstall_transaction` / `promote_manifest_snapshots`。
 
-- `reinstall_task.rs:240` 与 `:407` 实际调用 `.commit(...)`
-- `state.rs:111-112 / :574 / :619-620` 把 `ReinstallTaskRunner` / `ReinstallTaskService`
-  装配进 `AppState`
-- `lib.rs:154` 注册 `start_reinstall_task` command
-- `install_recovery.rs:17` 使用 `cleanup_reinstall_transaction` / `promote_manifest_snapshots`
-
-文件级 blanket allow 会对整个 868 行的提交/回滚模块**永久关闭 dead-code 检测**——
-将来真出现未读字段或死路径也不会被发现，而这正是治理要求格外谨慎的区域。
+文件级 blanket allow 对整个 868 行的提交/回滚模块**永久关闭 dead-code 检测**。
 
 ### 修法
 
 删除该文件级 `#![allow(dead_code)]` 与三处过期的 `#[allow(dead_code)]`（连同失效注释）。
 
-### 必须注意
+### 硬性约束
 
-**这不是"逐字节不变的纯清理"。** 移除 allow 后若 clippy 报出确实 never-read 的字段，
-删字段是对回滚数据结构的**结构性改动**：必须逐个确认该字段确非序列化所需、
-确非 manifest/recovery 契约的一部分，**不得盲删**。
+**这不是"逐字节不变的纯清理"。** 移除 allow 后若 clippy 报出 never-read 字段：
 
-若出现无法确信可删的字段：保留一个**精确到该字段**的 `#[allow(dead_code)]` 并写明理由，
-而不是恢复文件级 blanket allow。把这种情况记入 `findings.md`。
+> **禁止删除任何字段或分支。** 改为加一个**精确到该字段**的 `#[allow(dead_code)]`
+> 并写明理由，记入 `findings.md`，然后**停止本任务并在 PR 中标注需要人工判断**。
+
+理由：删字段是对回滚数据结构的结构性改动，可能移除 manifest/recovery 契约或序列化所需的字段。
+`SECURITY.md` 的红线是"游戏目录写入必须走 manifest/backup/rollback"，
+一旦削弱，将来触发回滚时可能无法正确还原游戏目录——这是本项目最高危的失败面。
 
 ### 验证
 
@@ -153,10 +184,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ---
 
-## A3 · 契约文档补齐 8 个已上线命令 + 防回归测试
+## A4 · 契约文档补齐 8 个已上线命令 + 防回归测试
 
-**风险**：low
-**预计**：1 个 PR
+**风险**：low · **1 个 PR**
 
 ### 问题
 
@@ -173,23 +203,20 @@ update_mod_metadata  delete_mod_metadata
 对文档逐个 grep 这 8 个命令名：全部 0 命中；其余 74 个已注册命令均有出现。
 而它们前后端全链路早已接通（`lib.rs:176-183` 注册，
 `category_commands.rs` / `mod_metadata_commands.rs` 定义，
-`categoryApi.ts` / `modCategoryApi.ts` / `modMetadataApi.ts` 消费），
-`TODO.md` 也把 T3/T4 标记为已完成且交付含"前端 typed API"。
+`categoryApi.ts` / `modCategoryApi.ts` / `modMetadataApi.ts` 消费）。
 
 ### 修法
 
 补两族命名条目与逐命令 params / returns / 错误码小节。
-**参数与错误码必须照抄真实签名，不得臆造** —— 逐个对照
-`src-tauri/src/category_commands.rs`、`src-tauri/src/mod_metadata_commands.rs`
-与前端 `*Api.ts`。
+**参数与错误码必须照抄真实签名，不得臆造** —— 逐个对照后端命令定义与前端 `*Api.ts`。
 
-同时新增一个防回归测试：解析 `lib.rs` 中 `generate_handler!` 的命令清单，
-断言每个命令名都出现在契约文档中。这条护栏能防止将来再出现整族缺席。
+同时新增防回归测试：解析 `lib.rs` 中 `generate_handler!` 的命令清单，
+断言每个命令名都出现在契约文档中。
 
 ### 验证
 
 ```
-node --test src/**/*.test.mjs      # 新增的契约覆盖测试
+corepack pnpm run test
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
 ```
 
@@ -197,107 +224,87 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps
 
 ---
 
-## A4 · 文件大小门禁补字节与单行长度上限 ⚠️ 待人工 review
+## A5 · 治理检查加固（三合一）
 
-**风险**：medium（治理变更）
-**预计**：1 个 PR，**完成后停在 PR，不自行合并**
+**风险**：medium（治理变更） · **1 个 PR，三个提交**
 
-### 问题
+这三项都改 `policy/project-policy.json` 或 `scripts/check-*`，彼此会冲突，
+因此合并为一个任务、一个分支、三个边界清晰的提交。
+
+### 提交 1：文件大小门禁补字节与单行长度上限
 
 防止单文件无边界膨胀的唯一强门禁**只统计换行符数量**。任何把代码字节压进极少行的文件
-（minify、超长 JSON/字符串、内嵌 data-URI）都能以任意大小畅通无阻。
+都能以任意大小畅通无阻。`policy.fileSize.block` 全部是按行上限，无字节或单行长度限制；
+CI 走的 `check-policy.mjs` 与本地走的 `check-file-size.ps1` 用同一种按行逻辑，
+因此**两条路径同时被绕过**。
 
-`policy.fileSize.block` 全部是按行的行数上限，没有任何字节上限或单行最大长度限制。
-CI 走的 `check-policy.mjs` 与本地 `verify.ps1` 走的 `check-file-size.ps1` 用的是同一种按行逻辑，
-因此两条路径**同时**被绕过。
+**这不是理论风险**：诊断页此前正是把整页 CSS 压成 5 行（其中一行约 3000 字符）以通过该门禁。
+该实例已修复，机制漏洞仍在。
 
-**这不是理论风险** —— 诊断页此前正是把整页 CSS 压成 5 行（其中一行约 3000 字符）
-以通过该门禁，代价是无法维护。该实例已在近期修复，但机制漏洞仍在。
+修法：在 policy 增加 `fileSize.blockBytes` 与可选 `maxLineLength`，
+在两个检查器中**同步**实现（`.ps1` 与 `.mjs` 是两套独立实现，必须行为等价，
+否则造成 CI 与本地门禁分叉，那本身就是新的治理缺陷）。
 
-### 修法
+阈值须足够宽以不误伤（`Cargo.lock` / `pnpm-lock.yaml` 进 allowlist）。
+当前仓库最长源码行为 1926 字符（`docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md`），
+次为 1715 / 1379，均为 docs 的表格或散文；若阈值与之冲突应豁免 docs 而非抬高全局阈值。
 
-在 policy 增加 `fileSize.blockBytes` 与可选 `maxLineLength`，
-在 `check-file-size.ps1` 与 `check-policy.mjs` 中**同步**实现。
-
-阈值必须设得足够宽以不误伤合法文件（`Cargo.lock` / `pnpm-lock.yaml` 等进 allowlist），
-但足以挡住 minify 规避。当前仓库最长源码行为 1926 字符
-（`docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md`），次为 1715 / 1379，
-均为 docs 的表格或散文；阈值若与之冲突应豁免 docs 而不是抬高全局阈值。
-
-### 必须注意
-
-`.ps1`（本地）与 `.mjs`（CI）是两套独立实现，**必须保持行为等价**，
-否则会造成 CI 与本地门禁分叉——这本身就是新的治理缺陷。
-
-### 验证
-
-新增 `node --test`：构造一个约 300KB 但行数合法的 fixture 断言失败；
-构造一个 3000 字符逻辑压缩成 5 行的 fixture 断言失败；
-构造正常文件断言通过。随后跑一次完整 `verify.ps1` 确认无既有文件被误报。
-
----
-
-## A5 · secret 强制扫描扩展名补 `.py` / `.sql` ⚠️ 待人工 review
-
-**风险**：medium（治理变更）
-**预计**：1 个 PR，**完成后停在 PR，不自行合并**
-
-### 问题
+### 提交 2：secret 强制扫描补 `.py` / `.sql`
 
 secret 扫描按硬编码文本扩展名清单生效，该清单**缺 `.py` 与 `.sql`**。
-
-而 policy 专门配置了 `secretScan.forceIncludePathPatterns = ['.codex/**']`
-来对上下文管理目录强制扫描——因为 `AGENTS.md:39` 明令禁止在 `.codex` 内写入真实
-token、会话日志、私有路径。但该目录下的 **11 个 `.py` 钩子/技能脚本因扩展名不在清单而被默认排除**，
-恰恰是最可能夹带 token 或私有路径的文件类型。
-
+而 policy 专门配置了 `secretScan.forceIncludePathPatterns = ['.codex/**']` 来强制扫描
+上下文管理目录——因为 `AGENTS.md:39` 明令禁止在 `.codex` 内写入真实 token、会话日志、私有路径。
+但该目录下的 **11 个 `.py` 脚本因扩展名不在清单而被默认排除**。
 另有 10 个 `src-tauri` 下的 `.sql` 迁移既不在 secret 扫描范围，也不在任何 `fileSize` 限制内。
 
-### 修法
-
-在两处扫描器的 `textExtensions` 中同步加入 `.py`、`.sql`；
+修法：两处扫描器的 `textExtensions` 同步加入 `.py`、`.sql`；
 顺带补 policy `fileSize.extensions` 的 `sql` 类别。
 
-### 验证
+### 提交 3：CODEOWNERS 与 `governanceFiles` 对齐
 
-新增 `node --test`：临时在 `.codex/` 下写入含伪造 token 的 `.py` fixture，
-断言 `checkSecrets` 能命中；`.sql` 同理。对现存的 11 个 `.py` / 10 个 `.sql`
-跑一次扫描确认无历史泄漏（作为回归基线）。
+`check-governance-changes.ps1` 只读取 `policy.governanceFiles`，而该清单
+**缺 `.github/CODEOWNERS` 自身**、只有 `policy/project-policy.json` 单文件而非 `policy/**`、
+只有 `docs/release` 而非 `docs/release/**`。因此修改 `CODEOWNERS` 本身或那两个目录下的
+其他文件时，告警完全不触发。而 `CODEOWNERS` 自带注释要求与该清单保持同步，
+`docs/GOVERNANCE.md:173-188` 的清单也列出了 `.github/CODEOWNERS`——三处应一致，实际漂移。
 
----
-
-## A6 · CODEOWNERS 与 `policy.governanceFiles` 对齐 ⚠️ 待人工 review
-
-**风险**：medium（治理变更）
-**预计**：1 个 PR，**完成后停在 PR，不自行合并**
-
-### 问题
-
-治理文件变更告警（`check-governance-changes.ps1`）只读取 `policy.governanceFiles`，
-而该清单：
-
-- **缺 `.github/CODEOWNERS` 自身**
-- 只有 `policy/project-policy.json` 单文件，不是 `policy/**`
-- 只有 `docs/release` 而非该目录下的具体文件
-
-因此修改 `CODEOWNERS` 本身、或 `policy/` 与 `docs/release/` 下的**其他**文件时，
-本地治理告警完全不触发。
-
-而 `CODEOWNERS` 文件自带注释要求「Keep this in sync with policy/project-policy.json
-governanceFiles」，`docs/GOVERNANCE.md:173-188` 的治理文件清单也明确列出 `.github/CODEOWNERS`。
-三处应当一致，实际漂移。
-
-### 修法
-
-在 `policy.governanceFiles` 补 `.github/CODEOWNERS`，
-把 `policy/project-policy.json` 改为 `policy/**`，
+修法：补 `.github/CODEOWNERS`，把 `policy/project-policy.json` 改为 `policy/**`，
 把 `docs/release` 改为 `docs/release/**`。
 
 ### 验证
 
-新增小测：断言 `CODEOWNERS` 每条路径前缀都能被某条 `policy.governanceFiles` glob 覆盖。
-再故意暂存一次 `CODEOWNERS` 改动，确认 `check-governance-changes.ps1 -Mode staged`
-把它列进告警。
+每个提交都要有对应的 `node --test`（fixture 断言拦截生效 + 正常文件不误伤），
+并对现存文件跑一次完整 `verify.ps1` 确认无既有文件被误报。
+最后补一条小测：断言 `CODEOWNERS` 每条路径前缀都能被某条 `governanceFiles` glob 覆盖。
+
+---
+
+## A6 · 把前端测试与 clippy 接入门禁 ⚠️ 需人工确认范围
+
+**风险**：medium（治理变更，改 `scripts/verify.*`） · **1 个 PR**
+
+### 问题
+
+见本文开头「必须先知道的事实」第一条：`package.json` 的 `test` 脚本（约 400 个前端测试）
+与 `cargo clippy` **从未被任何门禁调用**。CI 绿灯不代表测试通过。
+
+### 修法
+
+在 `scripts/verify.sh` 与 `scripts/verify.ps1` 中同步加入 `pnpm run test` 与
+`cargo clippy --workspace --all-targets -- -D warnings`。
+
+### 必须注意
+
+- 加 clippy 后可能暴露一批既有告警。**若数量可控就一并修；若数量很大，
+  不要在本任务里硬扛** —— 改为先只接入 `pnpm run test`，把 clippy 接入拆成独立候选记入候选池，
+  并在 PR 中说明实际告警数量。
+- 加入前端测试会显著拉长 CI 时长，需在 PR 中说明。
+- `.sh` 与 `.ps1` 必须行为等价。
+
+### 验证
+
+在本分支上跑完整 `verify.ps1`，确认新加的两步实际执行且通过；
+故意让一个前端测试失败，确认 `verify` 整体非零退出；随后还原。
 
 ---
 
@@ -307,7 +314,7 @@ governanceFiles」，`docs/GOVERNANCE.md:173-188` 的治理文件清单也明确
 
 | 项 | 排除理由 |
 |---|---|
-| 任何纯视觉美化 | 无法无人自证，见本文开头 |
+| 任何纯视觉美化 | 无法无人自证，见上文 |
 | T13 批量操作 | 大特性，需人工优先级评审（`TODO.md` 明确要求） |
 | T20 浮层基元收敛 | 重构会动已稳定的模态框/Sheet 链路，需人工确认范围 |
 | `ProfilePage.tsx` 1612 行拆分 | 超说明线但未超硬线；拆分方案影响观感，需人工定 |
@@ -325,12 +332,14 @@ README 文档索引遗漏。
 
 ## 队列耗尽之后
 
-全部任务完成后**不要自行寻找新任务开工**。改为：
+A1–A6 全部开出 PR 后**立即停止并进入空闲**。明确禁止：
 
-1. 在 `findings.md` 中汇总本轮完成情况、遇到的问题、以及执行过程中发现但未处理的线索
-2. 把新发现的候选追加到本文件末尾的「候选池」小节，标注是否可无人自证
-3. 停下等待人工决策
+- 自拟新任务并实现
+- 执行下方候选池中的条目
+- 回头"优化"已经开出 PR 的任务
+
+执行过程中发现的新线索，只允许**追加到候选池文本**并停下等待人工决策。
 
 ### 候选池
 
-（执行过程中发现的新线索追加到这里，不要直接开工）
+（执行过程中发现的新线索追加到这里，标注是否可无人自证，不要直接开工）
