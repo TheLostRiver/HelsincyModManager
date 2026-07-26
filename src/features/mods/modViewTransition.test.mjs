@@ -11,6 +11,17 @@ function readProjectFile(relativePath) {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
+/*
+ * Mod 库样式分布在页面骨架与卡片两个文件中。断言按合并后的样式表检查，
+ * 不绑定规则落在哪个文件，避免后续在两者间搬迁规则时产生假失败。
+ * 拼接顺序与实际加载顺序一致：ModPosterCard.css 由卡片组件先加载。
+ */
+function readModLibraryCss() {
+  const cardCss = readProjectFile("src/features/mods/ModPosterCard.css");
+  const pageCss = readProjectFile("src/features/mods/ModLibraryPage.css");
+  return `${cardCss}\n${pageCss}`;
+}
+
 function getRuleBody(css, selector) {
   const start = css.indexOf(`${selector} {`);
   assert.ok(start >= 0, `missing CSS rule: ${selector}`);
@@ -44,7 +55,7 @@ function getRuleBodies(css, selector) {
 
 test("view mode toggle owns a sliding selected-state indicator", () => {
   const toolbar = readProjectFile("src/features/mods/LibraryToolbar.tsx");
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(toolbar, /const viewModeIndex/);
   assert.match(toolbar, /library-view-toggle-indicator/);
@@ -63,7 +74,7 @@ test("view mode toggle owns a sliding selected-state indicator", () => {
 
 test("toolbar exposes an icon-only category label visibility toggle beside view modes", () => {
   const toolbar = readProjectFile("src/features/mods/LibraryToolbar.tsx");
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(toolbar, /Tags/);
   assert.match(toolbar, /showCardCategoryLabels:\s*boolean/);
@@ -94,7 +105,7 @@ test("toolbar exposes an icon-only category label visibility toggle beside view 
 test("mod library switches views through a visible two-phase transition", () => {
   const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
   const card = readProjectFile("src/features/mods/ModPosterCard.tsx");
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(page, /useModViewTransition/);
   assert.match(page, /viewTransitionPhase/);
@@ -136,7 +147,7 @@ test("reduced-motion view switches clear pending transition timers first", () =>
 
 test("each target view maps to a distinct list transition variant", () => {
   const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(page, /type ViewTransitionVariant = "morph" \| "wave" \| "flip3d" \| "blur";/);
   assert.match(page, /classic:\s*"morph"/);

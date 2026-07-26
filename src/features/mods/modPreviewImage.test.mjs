@@ -11,6 +11,18 @@ function readSource(relativePath) {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
+/*
+ * Mod 库样式分布在页面骨架与卡片两个文件中。断言按合并后的样式表检查，
+ * 不绑定规则落在哪个文件，避免后续在两者间搬迁规则时产生假失败。
+ * 拼接顺序与实际加载顺序一致：ModPosterCard.css 由卡片组件先加载。
+ */
+function readModLibraryCss() {
+  return [
+    readSource("src/features/mods/ModPosterCard.css"),
+    readSource("src/features/mods/ModLibraryPage.css"),
+  ].join("\n");
+}
+
 function getRuleBody(css, selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([\\s\\S]*?)\\n\\}`));
@@ -73,7 +85,7 @@ test("mod poster card prefers unsafe recovery issue count over managed file coun
 
 test("mod poster card renders compact category labels with overflow", () => {
   const source = readSource("src/features/mods/ModPosterCard.tsx");
-  const css = readSource("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(source, /visibleCategoryLabelsForCard/);
   assert.match(source, /categoryLabelLimit = isList \|\| isTech \? 3 : 2/);
@@ -86,7 +98,7 @@ test("mod poster card renders compact category labels with overflow", () => {
 
 test("mod poster card can hide category labels without affecting card rendering", () => {
   const source = readSource("src/features/mods/ModPosterCard.tsx");
-  const css = readSource("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
 
   assert.match(source, /showCategoryLabels\?:\s*boolean/);
   assert.match(source, /showCategoryLabels = true/);
@@ -117,9 +129,12 @@ test("mod poster cards stay focusable but expose and guard busy interaction", ()
 });
 
 test("mod poster image fills stable poster frame", () => {
-  const css = readSource("src/features/mods/ModLibraryPage.css");
+  const css = readModLibraryCss();
   const body = getRuleBody(css, ".mod-card__poster-img");
-  const statusBody = getRuleBody(css, ".mod-card__status-pill");
+
+  // .mod-card__status-pill 有两条规则（定位一条、文本截断一条），getRuleBody 只取首个匹配，
+  // 因此这里直接按"定位规则内含 z-index"匹配，不依赖两条规则的先后顺序。
+  assert.match(css, /\.mod-card__status-pill\s*\{[^}]*position:\s*absolute;[^}]*z-index:\s*2;/);
 
   assert.match(body, /position:\s*absolute;/);
   assert.match(body, /inset:\s*0;/);
@@ -127,5 +142,4 @@ test("mod poster image fills stable poster frame", () => {
   assert.match(body, /height:\s*100%;/);
   assert.match(body, /object-fit:\s*cover;/);
   assert.match(body, /object-position:\s*center top;/);
-  assert.match(statusBody, /z-index:\s*2;/);
 });

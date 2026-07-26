@@ -221,7 +221,14 @@ test("RouterOutlet 与 Dashboard 都消费 route aside token，且无残留 360p
 });
 
 test("Mod 管理页消费密度 token，无残留硬编码", () => {
-  const css = readProjectFile("src/features/mods/ModLibraryPage.css");
+  /*
+   * Mod 库样式分布在页面骨架与卡片两个文件中，密度 token 的消费与硬编码残留
+   * 都要按合并后的样式表检查，否则把规则搬到另一个文件就能绕过本断言。
+   */
+  const css = [
+    readProjectFile("src/features/mods/ModPosterCard.css"),
+    readProjectFile("src/features/mods/ModLibraryPage.css"),
+  ].join("\n");
 
   // 卡片网格密度仍由 token 驱动；操作面板宽度 token 在单列吸顶条下不再被消费。
   assert.match(css, /repeat\(auto-fill,\s*minmax\(var\(--layout-mod-card-min-width\),\s*1fr\)\)/);
