@@ -164,7 +164,8 @@ test("global status bar stays pinned so the sticky controls can sit beneath it",
 
   // 吸顶职责在满幅背板上，不在状态栏卡片自身：卡片背景只覆盖圆角矩形，挡不住身后滚过的内容。
   assert.match(dockBody, /position:\s*sticky;/);
-  assert.match(dockBody, /top:\s*0;/);
+  // 钉在页面内边距之下而不是贴视口顶边，滚动瞬间不发生位置跳变。
+  assert.match(dockBody, /top:\s*var\(--app-surface-inset\);/);
   assert.match(dockBody, /z-index:\s*40;/);
   assert.doesNotMatch(statusBarBody, /position:\s*sticky;/);
   assert.doesNotMatch(statusBarBody, /z-index:/);
@@ -176,14 +177,19 @@ test("global status bar stays pinned so the sticky controls can sit beneath it",
 test("sticky header dock paints an opaque full-bleed backdrop so content cannot stack under the status bar", () => {
   const css = readProjectFile("src/app/frame/AppFrame.css");
   const dockBody = getRuleBody(css, ".app-surface__header-dock");
+  const backdropBody = getRuleBody(css, ".app-surface__header-dock::before");
 
   // 背板必须不透明，否则滚动内容仍会从状态栏四周和圆角缺口透出来。
-  assert.match(dockBody, /background:\s*var\(--color-bg\);/);
-  // 负 margin 撑到 surface padding 外沿并盖住 grid gap；内侧 padding 还原状态栏原有留白。
-  assert.match(dockBody, /margin:[\s\S]*?calc\(-1 \* var\(--app-surface-inset\)\)/);
-  assert.match(dockBody, /margin:[\s\S]*?calc\(-1 \* var\(--layout-content-gap\)\)/);
-  assert.match(dockBody, /padding:[\s\S]*?var\(--app-surface-inset\)/);
-  assert.match(dockBody, /padding:[\s\S]*?var\(--layout-content-gap\)/);
+  assert.match(backdropBody, /background:\s*var\(--color-bg\);/);
+  // 负 inset 向上盖住页面内边距、向两侧盖到 padding 外沿、向下盖住 grid gap。
+  assert.match(backdropBody, /inset:[\s\S]*?calc\(-1 \* var\(--app-surface-inset\)\)/);
+  assert.match(backdropBody, /inset:[\s\S]*?calc\(-1 \* var\(--layout-content-gap\)\)/);
+  // 位于 .top-status-bar 之下、dock 层叠上下文之外的页面内容之上，只遮内容不遮状态栏。
+  assert.match(backdropBody, /z-index:\s*-1;/);
+  // 背板必须画在伪元素上：dock 是 grid item，sticky 包含块就是它的 grid area，
+  // 自身盒模型一旦被负 margin 撑大就会改变粘滞行为，不再等价于改动前的状态栏。
+  assert.doesNotMatch(dockBody, /margin:/);
+  assert.doesNotMatch(dockBody, /background:/);
 
   // 背板尺寸依赖 --app-surface-inset，因此每个改写 .app-surface padding 的断点都必须同步该变量，
   // 否则背板会与实际内边距错位，重新露出被遮挡的内容。

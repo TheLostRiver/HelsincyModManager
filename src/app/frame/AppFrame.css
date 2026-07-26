@@ -55,17 +55,32 @@
  */
 .app-surface__header-dock {
   position: sticky;
-  top: 0;
+  /*
+   * 直接钉在原位（页面内边距之下），而不是 top:0 贴视口顶边，避免滚动瞬间发生位置跳变。
+   */
+  top: var(--app-surface-inset);
   z-index: 40;
   min-width: 0;
-  margin:
+}
+
+/*
+ * 背板画在伪元素上而不是 dock 自身：dock 是 grid item，sticky 的包含块就是它的 grid area，
+ * 若用负 margin 把自身边框盒撑得比 grid area 更大，sticky 偏移会被钳制，粘滞行为不再等价于
+ * 改动前的状态栏。伪元素不参与布局，因此 dock 的盒模型与原 .top-status-bar 完全一致。
+ *
+ * 负 inset 向上盖住页面内边距、向两侧盖到 padding 外沿、向下盖住 .app-surface 的 grid gap，
+ * 形成一块完整不透明区域。它是 z-index:-1 的子元素，按绘制顺序位于 .top-status-bar 之下、
+ * 位于 dock 层叠上下文(40)之外的所有页面内容之上，因此只遮内容不遮状态栏。
+ * 不设 pointer-events:none：被遮住的内容本就不该被点到。
+ */
+.app-surface__header-dock::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset:
     calc(-1 * var(--app-surface-inset))
     calc(-1 * var(--app-surface-inset))
     calc(-1 * var(--layout-content-gap));
-  padding:
-    var(--app-surface-inset)
-    var(--app-surface-inset)
-    var(--layout-content-gap);
   background: var(--color-bg);
 }
 
