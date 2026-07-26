@@ -94,9 +94,16 @@ test("no compact action is unconditionally disabled", () => {
    * 这条断言防止再引入同类按钮：面板里的每个动作，都必须存在至少一种可用状态。
    */
   const actionIds = compactActions.map((action) => action.id);
-  assert.ok(actionIds.length > 0);
   assert.ok(!actionIds.includes("enable-all"));
   assert.ok(!actionIds.includes("disable-all"));
+
+  /*
+   * 显式断言必须存在的动作。只遍历"已存在的动作"是不够的——误删 select-all 或 invert
+   * 会让循环少跑一轮而静默通过，正好漏掉这条断言本该保护的东西。
+   */
+  for (const requiredId of ["select-all", "invert", "refresh", "preview-plan", "install", "reinstall", "uninstall"]) {
+    assert.ok(actionIds.includes(requiredId), `快捷操作栏缺少动作 ${requiredId}`);
+  }
 
   for (const actionId of actionIds) {
     // add / add-revision 由 ModImportAction 自行判定可用性，不走本函数。
