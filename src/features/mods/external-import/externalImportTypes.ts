@@ -1,6 +1,8 @@
 import type { TaskStartedDto } from "../modImportTypes";
 
 export const EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE = 50;
+export const EXTERNAL_IMPORT_RESULT_PAGE_SIZE = 50;
+export const EXTERNAL_IMPORT_RESULT_PAGE_MAX_SIZE = 100;
 export const EXTERNAL_IMPORT_DISPLAY_TEXT_MAX_LENGTH = 160;
 
 const EXTERNAL_IMPORT_OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
@@ -155,4 +157,27 @@ export type ExternalImportPreviewPageDto = {
 export type ExternalImportBatchStartedDto = {
   task: TaskStartedDto;
   batchId: string;
+};
+
+export type ExternalImportItemStatus =
+  | "imported"
+  | "already_imported"
+  | "skipped"
+  | "blocked"
+  | "failed"
+  | "cancelled";
+
+export type ExternalImportItemResultDto = {
+  candidateId: string;
+  status: ExternalImportItemStatus;
+  reasonCode: string | null;
+  importedModId: string | null;
+  retryable: boolean;
+};
+
+export type ExternalImportBatchResultPageDto = {
+  batch: ExternalImportPreviewBatchDto;
+  results: ExternalImportItemResultDto[];
+  totalCount: number;
+  nextCursor: string | null;
 };

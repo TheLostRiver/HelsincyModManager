@@ -54,7 +54,11 @@ function isScanActive(state: ExternalImportScanTaskState) {
   return state.status === "starting" || state.status === "running";
 }
 
-export function ExternalImportAction() {
+type ExternalImportActionProps = {
+  onImported: () => Promise<void> | void;
+};
+
+export function ExternalImportAction({ onImported }: ExternalImportActionProps) {
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
   const chooseSourceButtonRef = useRef<HTMLButtonElement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,6 +77,7 @@ export function ExternalImportAction() {
   const terminalNoticeKeysRef = useRef(new Set<string>());
   const selectionWorkflow = useExternalImportSelectionWorkflow(
     scanState.status === "completed" ? batchId : null,
+    onImported,
   );
   const selectionWorkflowBusy =
     selectionWorkflow.pendingAction !== null ||
