@@ -72,8 +72,6 @@ pub enum ExternalImportScanError {
     BatchUnavailable,
     #[error("external import scan failed")]
     ScanFailed,
-    #[error("external import preview request is invalid")]
-    PreviewRequestInvalid,
     #[error("external import clock is unavailable")]
     ClockUnavailable,
 }
@@ -85,7 +83,6 @@ impl ExternalImportScanError {
             Self::TaskUnavailable => "external_import_task_unavailable",
             Self::BatchUnavailable => "external_import_batch_unavailable",
             Self::ScanFailed => "external_import_scan_failed",
-            Self::PreviewRequestInvalid => "external_import_preview_request_invalid",
             Self::ClockUnavailable => "external_import_clock_unavailable",
         }
     }
@@ -306,43 +303,6 @@ impl ExternalImportScanService {
                 Ok(events)
             }
         }
-    }
-
-    pub fn get_preview(
-        &self,
-        batch_id: &ExternalImportBatchId,
-        offset: usize,
-        limit: usize,
-    ) -> Result<ExternalImportPreviewPage, ExternalImportScanError> {
-        if !(1..=MAX_EXTERNAL_IMPORT_PREVIEW_LIMIT).contains(&limit) {
-            return Err(ExternalImportScanError::PreviewRequestInvalid);
-        }
-
-        let batch = self
-            .batch_repository
-            .get_batch(batch_id)
-            .map_err(|_| ExternalImportScanError::BatchUnavailable)?
-            .ok_or(ExternalImportScanError::BatchUnavailable)?;
-        let page = self
-            .batch_repository
-            .list_candidates_page(batch_id, offset, limit)
-            .map_err(|_| ExternalImportScanError::BatchUnavailable)?;
-
-        Ok(ExternalImportPreviewPage {
-            batch,
-            selection: None,
-            candidates: page
-                .candidates
-                .into_iter()
-                .map(|candidate| ExternalImportPreviewCandidate {
-                    candidate,
-                    selected: false,
-                    selection_decision: None,
-                })
-                .collect(),
-            total_count: page.total_count,
-            next_offset: page.next_offset,
-        })
     }
 
     fn finish_cancelled(
@@ -1680,9 +1640,13 @@ mod tests {
         let batch_id = launch.batch_id.clone();
 
         let events = service.run_scan(launch).expect("scan succeeds");
-        let preview = service
-            .get_preview(&batch_id, 0, 50)
-            .expect("preview is readable");
+        let persisted_batch = repository
+            .get_batch(&batch_id)
+            .expect("read batch")
+            .expect("batch exists");
+        let persisted_candidates = repository
+            .list_candidates_page(&batch_id, 0, 50)
+            .expect("read candidates");
 
         assert_eq!(scanner.calls.load(Ordering::SeqCst), 1);
         assert_eq!(
@@ -1690,11 +1654,11 @@ mod tests {
             Some(TaskStatus::Completed)
         );
         assert_eq!(
-            preview.batch.scan_status,
+            persisted_batch.scan_status,
             ExternalImportScanStatus::Completed
         );
-        assert_eq!(preview.total_count, 1);
-        assert_eq!(preview.candidates.len(), 1);
+        assert_eq!(persisted_candidates.total_count, 1);
+        assert_eq!(persisted_candidates.candidates.len(), 1);
         assert_eq!(
             events
                 .iter()
@@ -1712,14 +1676,6 @@ mod tests {
                 && event.message.is_none()
                 && event.error.is_none()
         }));
-        assert_eq!(
-            repository
-                .get_batch(&batch_id)
-                .expect("read batch")
-                .expect("batch exists")
-                .scan_status,
-            ExternalImportScanStatus::Completed
-        );
     }
 
     #[test]
