@@ -18,7 +18,7 @@
    完成，最后的 Slice 4C 已由 PR #192 rebase 合并。其生产 query switch、同事务 count/page、fail-closed
    freshness tracking 和性能门禁的最终 10,000 条 full status-filter query p95 为 `9.2966 ms`，低于固定
    `14.23 ms` 同机预算。
-5. T17 第三方 Mod 管理器批量迁移已完成：Slice 1/2/3/4A、PR #198 的 Slice 4B 与当前独立 Slice 4C
+5. T17 第三方 Mod 管理器批量迁移已完成：Slice 1/2/3/4A、PR #198 的 Slice 4B 与 PR #199 的 Slice 4C
    共同交付 `hunting_box_directory_v1` 只读来源扫描、durable preview、后端 selection snapshot、
    显式决定、sealed batch start、严格按 `taskId` 的 import progress、权威分页结果、partial success 和
    服务端 retryable 重试。4C 复用同一 task progress 状态机处理重试返回的新 taskId，并在每个终态 task
