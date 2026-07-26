@@ -47,6 +47,13 @@ type ModDetailDialogProps = {
 
 type CategoryLoadState = "idle" | "ready" | "unavailable";
 
+/*
+ * 退场动画时长。纯 CSS 无法为卸载中的节点播放动画（父级把状态置空后节点已不存在），
+ * 因此先标记退场、等动画播完再调用真正的 onClose。该值必须与 ModDetailDialog.css 中
+ * .mod-detail-dialog__backdrop.is-exiting 的动画时长保持一致。
+ */
+const DIALOG_EXIT_DURATION_MS = 160;
+
 export function ModDetailDialog({
   modId,
   fallbackItem,
@@ -81,12 +88,47 @@ export function ModDetailDialog({
   const [replacementInstallStatus, setReplacementInstallStatus] =
     useState<InstallManifestStatus | undefined>(installStatus);
   const dialogBusy = saving || replacementBusy;
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<number | null>(null);
+
+  const clearExitTimer = useCallback(() => {
+    if (exitTimerRef.current !== null) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+  }, []);
+
+  /*
+   * 所有关闭入口（ESC、点遮罩、关闭按钮、取消、保存成功）统一走这里：
+   * 先播退场动画，播完再通知父级卸载。重入保护避免连点或多入口同时触发时重复计时。
+   */
+  const requestClose = useCallback(() => {
+    if (exitTimerRef.current !== null) {
+      return;
+    }
+    setExiting(true);
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null;
+      onClose();
+    }, DIALOG_EXIT_DURATION_MS);
+  }, [onClose]);
+
+  useEffect(() => clearExitTimer, [clearExitTimer]);
+
+  /*
+   * 切换到另一个 Mod 时组件不卸载、只换 props，因此必须取消进行中的退场，
+   * 否则新打开的对话框会带着上一个的退场状态、并在动画结束后被误关闭。
+   */
+  useEffect(() => {
+    setExiting(false);
+    clearExitTimer();
+  }, [clearExitTimer, modId]);
 
   useModalFocusTrap({
     active: true,
     containerRef: panelRef,
-    closeOnEscape: !dialogBusy,
-    onRequestClose: onClose,
+    closeOnEscape: !dialogBusy && !exiting,
+    onRequestClose: requestClose,
     focusKey: modId,
   });
 
@@ -220,7 +262,7 @@ export function ModDetailDialog({
 
       switch (saveResult.status) {
         case "saved":
-          onClose();
+          requestClose();
           break;
         case "metadata-failure":
           setMessage("信息保存失败，请稍后重试。");
@@ -239,11 +281,11 @@ export function ModDetailDialog({
 
   return createPortal(
     <div
-      className="mod-detail-dialog__backdrop"
+      className={`mod-detail-dialog__backdrop${exiting ? " is-exiting" : ""}`}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !dialogBusy) {
-          onClose();
+        if (event.target === event.currentTarget && !dialogBusy && !exiting) {
+          requestClose();
         }
       }}
     >
@@ -269,7 +311,7 @@ export function ModDetailDialog({
               <h2 title={displayModName}>{displayModName}</h2>
             </div>
           </div>
-          <button className="mod-detail-dialog__close" type="button" onClick={onClose} disabled={dialogBusy} aria-label="关闭">
+          <button className="mod-detail-dialog__close" type="button" onClick={requestClose} disabled={dialogBusy || exiting} aria-label="关闭">
             <X size={18} />
           </button>
         </header>
@@ -420,7 +462,7 @@ export function ModDetailDialog({
         <footer className="mod-detail-dialog__footer">
           {activeTab === "details" ? (
             <>
-              <button className="mod-detail-dialog__button is-secondary" type="button" onClick={onClose} disabled={dialogBusy}>
+              <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
                 取消
               </button>
               <button className="mod-detail-dialog__button is-primary" type="submit" disabled={loading || dialogBusy}>
@@ -429,7 +471,7 @@ export function ModDetailDialog({
               </button>
             </>
           ) : (
-            <button className="mod-detail-dialog__button is-secondary" type="button" onClick={onClose} disabled={dialogBusy}>
+            <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
               关闭
             </button>
           )}
