@@ -1,5 +1,6 @@
 import {
   EXTERNAL_IMPORT_RESULT_PAGE_MAX_SIZE,
+  EXTERNAL_IMPORT_RESULT_TOTAL_MAX_SIZE,
   isExternalImportOpaqueId,
   isPlainRecord,
   isSafeNonNegativeInteger,
@@ -193,6 +194,8 @@ export function isExternalImportBatchResultPageForBatch(
     !terminalBatchStatuses.has(batch.importStatus) ||
     !isSafeNonNegativeInteger(value.totalCount) ||
     value.totalCount < value.results.length ||
+    value.totalCount > EXTERNAL_IMPORT_RESULT_TOTAL_MAX_SIZE ||
+    (value.totalCount > 0 && value.results.length === 0) ||
     value.results.length > EXTERNAL_IMPORT_RESULT_PAGE_MAX_SIZE ||
     !isValidNextCursor(value.nextCursor, value.totalCount, value.results.length)
   ) {
@@ -243,6 +246,23 @@ export function appendExternalImportResults(
     next.push(toExternalImportResultViewModel(result));
   }
   return next;
+}
+
+export function isExternalImportResultCoverageValid(
+  totalCount: number,
+  nextCursor: string | null,
+  loadedCount: number,
+) {
+  if (
+    !isSafeNonNegativeInteger(totalCount) ||
+    !isSafeNonNegativeInteger(loadedCount) ||
+    loadedCount > totalCount
+  ) {
+    return false;
+  }
+  return nextCursor === null
+    ? loadedCount === totalCount
+    : loadedCount < totalCount;
 }
 
 export function summarizeExternalImportResults(

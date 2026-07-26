@@ -8,6 +8,7 @@ import {
   appendExternalImportResults,
   getExternalImportResultErrorMessage,
   isExternalImportBatchResultPageForBatch,
+  isExternalImportResultCoverageValid,
   summarizeExternalImportResults,
   toExternalImportResultViewModel,
   type ExternalImportResultSummary,
@@ -201,6 +202,15 @@ export function useExternalImportResultWorkflow({
         }
 
         const results = page.results.map(toExternalImportResultViewModel);
+        if (
+          !isExternalImportResultCoverageValid(
+            page.totalCount,
+            page.nextCursor,
+            results.length,
+          )
+        ) {
+          throw { code: "external_import_result_invalid" };
+        }
         setTrackedState(
           results.length === 0
             ? {
@@ -307,9 +317,22 @@ export function useExternalImportResultWorkflow({
         return;
       }
 
+      const mergedResults = appendExternalImportResults(
+        current.results,
+        page.results,
+      );
+      if (
+        !isExternalImportResultCoverageValid(
+          page.totalCount,
+          page.nextCursor,
+          mergedResults.length,
+        )
+      ) {
+        throw { code: "external_import_result_invalid" };
+      }
       setTrackedState({
         ...current,
-        results: appendExternalImportResults(current.results, page.results),
+        results: mergedResults,
         nextCursor: page.nextCursor,
         loadingMore: false,
         loadMoreError: null,
@@ -354,6 +377,7 @@ export function useExternalImportResultWorkflow({
       currentBatchId === null ||
       currentSelectionId === null ||
       !canRetryState(currentState) ||
+      (currentState.status === "ready" && currentState.loadingMore) ||
       importActive ||
       !progressReady ||
       retryPendingRef.current
