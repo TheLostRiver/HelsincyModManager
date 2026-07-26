@@ -147,6 +147,7 @@ export function useExternalImportTaskProgress(
       })
       .catch(() => {
         if (!disposed) {
+          // Keep the active task id so a retried listener can resume this task's events.
           setListenerStatus("failed");
         }
       });
