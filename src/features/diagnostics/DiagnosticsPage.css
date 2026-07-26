@@ -1,5 +1,554 @@
-.diagnostics-page{grid-column:1/-1;width:100%;min-width:0}
-.diagnostics-page__dialog-action{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
-.diagnostics-page{display:grid;gap:18px}.diagnostics-page__hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.diagnostics-page__hero span,.diagnostics-page__hero p,.diagnostics-page small,.diagnostics-page__platform span{color:var(--color-text-muted)}.diagnostics-page__hero h2{margin:4px 0}.diagnostics-page__actions{display:flex;gap:10px}.diagnostics-page button{display:inline-flex;align-items:center;gap:7px}.diagnostics-page__actions button,.diagnostics-page__audit button{border:1px solid var(--color-border-muted);border-radius:10px;background:var(--color-surface-raised);color:inherit;padding:9px 12px}.diagnostics-page__actions .is-primary{background:var(--color-primary-action-bg);color:var(--color-primary-action-text)}.diagnostics-page__dialog-action{min-height:40px;padding:9px 18px;font:inherit;font-weight:650;border-radius:10px;cursor:pointer;transition:background-color 160ms ease,border-color 160ms ease,box-shadow 160ms ease,transform 160ms ease}.diagnostics-page__dialog-action.is-secondary{color:var(--color-text-soft);background:var(--color-surface);border:1px solid var(--color-border)}.diagnostics-page__dialog-action.is-primary{color:var(--color-primary-action-text);background:var(--color-primary-action-bg);border:1px solid var(--color-primary-action-border);box-shadow:var(--shadow-primary-action)}.diagnostics-page__dialog-action:hover:not(:disabled){transform:translateY(-1px)}.diagnostics-page__dialog-action.is-secondary:hover:not(:disabled){color:var(--color-text);background:var(--color-surface-subtle)}.diagnostics-page__dialog-action.is-primary:hover:not(:disabled){background:var(--color-primary-action-bg-hover)}.diagnostics-page__dialog-action:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}.diagnostics-page__dialog-action:disabled{cursor:wait;opacity:.56;transform:none}.diagnostics-page__health{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.diagnostics-page__health-card,.diagnostics-page__panel,.diagnostics-page__platform,.diagnostics-page__state{border:1px solid var(--color-border-muted);border-radius:14px;background:var(--color-surface);padding:16px}.diagnostics-page__health-card{display:grid;gap:8px}.diagnostics-page__health-card.is-warning{border-color:var(--color-warning-dot)}.diagnostics-page__platform{display:flex;gap:12px;align-items:center}.diagnostics-page__platform div{display:grid;gap:4px}.diagnostics-page__columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.diagnostics-page__panel h3{display:flex;justify-content:space-between;margin:0 0 12px}.diagnostics-page__log{display:grid;gap:8px;max-height:340px;overflow:auto}.diagnostics-page__log>div{display:grid;gap:4px;border-top:1px solid var(--color-border-muted);padding-top:8px}.diagnostics-page__log span{font-size:12px;color:var(--color-text-muted)}.diagnostics-page__log code{white-space:pre-wrap;overflow-wrap:anywhere}.diagnostics-page__audit{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--color-border-muted)}.diagnostics-page__audit>div{display:flex;gap:8px;align-items:center}.diagnostics-page__audit>div:first-child{display:grid}.diagnostics-page__audit span,.diagnostics-page .is-empty{color:var(--color-text-muted)}@media(max-width:900px){.diagnostics-page__health{grid-template-columns:1fr 1fr}.diagnostics-page__columns{grid-template-columns:1fr}.diagnostics-page__hero{display:grid}}@media(max-width:520px){.diagnostics-page__health{grid-template-columns:1fr}.diagnostics-page__actions{flex-wrap:wrap}.diagnostics-page__audit{display:grid}.diagnostics-page__audit>div:last-child{flex-wrap:wrap}}
-.diagnostics-page__dialog-action.is-secondary:active:not(:disabled){background:var(--color-surface-muted);transform:none}
-.diagnostics-page__dialog-action.is-primary:active:not(:disabled){background:var(--color-primary-action-bg-active);box-shadow:var(--shadow-primary-action-active);transform:none}
+/*
+ * 日志与诊断页样式。
+ *
+ * 本文件此前被压缩成 5 行（其中一行约 3000 字符）。项目的文件大小治理数的是行数不是字符数，
+ * 压缩后能"合规"，代价是无法维护——这也是该页视觉长期停在最粗糙状态的直接原因。
+ * 现已展开，行数远低于 style 类 1800 行的硬性上限，不需要靠压缩换取合规。
+ *
+ * 视觉体系与应用其余部分对齐：面板 16px 圆角、控件 10px、字重只用 500/600/700，
+ * 颜色一律走语义 token，日志正文使用 --font-family-mono。
+ */
+
+.diagnostics-page {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* ---------- 页头 ---------- */
+
+/*
+ * 页头做成完整卡片，与恢复中心（同为只读支持工具页）的 hero 同构。
+ * 原实现是裸文字直接浮在页面背景上——没有容器、没有内边距，右侧按钮被推到很远，
+ * 中间留出一大片无主的空白，正是"朴素简陋"的直接来源。
+ */
+.diagnostics-page__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px 22px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 100% 0%, var(--color-accent-alpha-12) 0%, transparent 55%),
+    var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.diagnostics-page__hero > div:first-child {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.diagnostics-page__hero p,
+.diagnostics-page small,
+.diagnostics-page__platform span {
+  color: var(--color-text-muted);
+}
+
+/* eyebrow 做成胶囊 chip，与恢复中心一致；原来只是一行灰色小字，几乎注意不到。 */
+.diagnostics-page__hero > div > span {
+  width: fit-content;
+  padding: 2px 9px;
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.diagnostics-page__hero h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.diagnostics-page__hero p {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.diagnostics-page__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.diagnostics-page button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.diagnostics-page__actions button,
+.diagnostics-page__audit button {
+  padding: 9px 12px;
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.diagnostics-page__actions button:hover,
+.diagnostics-page__audit button:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.diagnostics-page__actions button:focus-visible,
+.diagnostics-page__audit button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.diagnostics-page__actions .is-primary {
+  color: var(--color-primary-action-text);
+  background: var(--color-primary-action-bg);
+  border-color: var(--color-primary-action-border, transparent);
+  box-shadow: var(--shadow-primary-action);
+}
+
+.diagnostics-page__actions .is-primary:hover {
+  color: var(--color-primary-action-text);
+  background: var(--color-primary-action-bg-hover);
+  border-color: var(--color-primary-action-border, transparent);
+  box-shadow: var(--shadow-primary-action-hover);
+}
+
+/* ---------- 导出确认对话框的按钮 ---------- */
+
+.diagnostics-page__dialog-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.diagnostics-page__dialog-action.is-secondary {
+  color: var(--color-text-soft);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.diagnostics-page__dialog-action.is-primary {
+  color: var(--color-primary-action-text);
+  background: var(--color-primary-action-bg);
+  border: 1px solid var(--color-primary-action-border);
+  box-shadow: var(--shadow-primary-action);
+}
+
+.diagnostics-page__dialog-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.diagnostics-page__dialog-action.is-secondary:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+}
+
+.diagnostics-page__dialog-action.is-primary:hover:not(:disabled) {
+  background: var(--color-primary-action-bg-hover);
+}
+
+/*
+ * :active 必须排在 :hover 之后，否则同特异度下按下态会被悬停态覆盖。
+ * 测试对这两条规则的先后顺序有断言。
+ */
+.diagnostics-page__dialog-action.is-secondary:active:not(:disabled) {
+  background: var(--color-surface-muted);
+  transform: none;
+}
+
+.diagnostics-page__dialog-action.is-primary:active:not(:disabled) {
+  background: var(--color-primary-action-bg-active);
+  box-shadow: var(--shadow-primary-action-active);
+  transform: none;
+}
+
+.diagnostics-page__dialog-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.diagnostics-page__dialog-action:disabled {
+  cursor: wait;
+  opacity: 0.56;
+  transform: none;
+}
+
+/* ---------- 健康摘要 ---------- */
+
+.diagnostics-page__health {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.diagnostics-page__health-card,
+.diagnostics-page__panel,
+.diagnostics-page__platform,
+.diagnostics-page__state {
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 16px;
+}
+
+.diagnostics-page__health-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.diagnostics-page__health-card span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/*
+ * 状态用色点加文字表达，而不是只靠边框换色——原实现异常态只把边框改成警告色，
+ * 在一排卡片里很难一眼扫到，且颜色成了唯一线索。
+ */
+.diagnostics-page__health-card strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.diagnostics-page__health-card strong::before {
+  content: "";
+  flex: 0 0 auto;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 9999px;
+  background: var(--color-success-dot);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success-dot) 18%, transparent);
+}
+
+.diagnostics-page__health-card.is-ok strong {
+  color: var(--color-success-text);
+}
+
+.diagnostics-page__health-card.is-warning {
+  background: color-mix(in srgb, var(--color-warning-bg) 40%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-warning-dot) 42%, var(--color-border-muted));
+}
+
+.diagnostics-page__health-card.is-warning strong {
+  color: var(--color-warning-text);
+}
+
+.diagnostics-page__health-card.is-warning strong::before {
+  background: var(--color-warning-dot);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning-dot) 20%, transparent);
+}
+
+/* ---------- 平台摘要 ---------- */
+
+.diagnostics-page__platform {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.diagnostics-page__platform svg {
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.diagnostics-page__platform div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.diagnostics-page__platform strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.diagnostics-page__platform span {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ---------- 日志与审计面板 ---------- */
+
+.diagnostics-page__columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  min-width: 0;
+}
+
+.diagnostics-page__panel {
+  min-width: 0;
+}
+
+.diagnostics-page__panel h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* 面板标题右侧的状态字样退为次要信息，不与标题同级抢注意力。 */
+.diagnostics-page__panel h3 small {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  background: var(--color-surface-subtle);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.diagnostics-page__log {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.diagnostics-page__log > div {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.diagnostics-page__log > div:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.diagnostics-page__log span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 日志正文用等宽字体：时间戳与结构化字段能对齐，扫读明显更快。 */
+.diagnostics-page__log code {
+  overflow-wrap: anywhere;
+  color: var(--color-text-soft);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.diagnostics-page__audit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.diagnostics-page__audit:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.diagnostics-page__audit > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diagnostics-page__audit > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.diagnostics-page__audit strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.diagnostics-page__audit span,
+.diagnostics-page .is-empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 可复制的稳定标识做成紧凑等宽 chip，与普通按钮区分开。 */
+.diagnostics-page__audit button {
+  padding: 5px 9px;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.diagnostics-page .is-empty {
+  margin: 0;
+  padding: 14px 0;
+}
+
+/*
+ * 加载态与失败态是整页唯一内容时的主体，不能只是一张 16px 内边距的空盒子。
+ * 给足高度并居中排布，让空白成为构图的一部分而不是"没做完"的观感。
+ */
+.diagnostics-page__state {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 10px;
+  min-height: 260px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.diagnostics-page__state-icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  margin-bottom: 2px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  border-radius: 9999px;
+}
+
+.diagnostics-page__state.is-error {
+  border-color: color-mix(in srgb, var(--color-danger-dot) 36%, var(--color-border-muted));
+}
+
+.diagnostics-page__state.is-error .diagnostics-page__state-icon {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+.diagnostics-page__state h3 {
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.diagnostics-page__state p {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+/* 失败文案里写着"可重试"，就必须在同一处给出重试入口，而不是让用户回到页头去找。 */
+.diagnostics-page__state button {
+  margin-top: 4px;
+  padding: 9px 14px;
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.diagnostics-page__state button:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.diagnostics-page__state button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---------- 响应式 ---------- */
+
+@media (max-width: 900px) {
+  .diagnostics-page__health {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .diagnostics-page__columns {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnostics-page__hero {
+    display: grid;
+  }
+}
+
+@media (max-width: 520px) {
+  .diagnostics-page__health {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnostics-page__actions {
+    flex-wrap: wrap;
+  }
+
+  .diagnostics-page__audit {
+    display: grid;
+  }
+
+  .diagnostics-page__audit > div:last-child {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostics-page__actions button,
+  .diagnostics-page__audit button,
+  .diagnostics-page__dialog-action {
+    transition: none;
+  }
+
+  .diagnostics-page__dialog-action:hover:not(:disabled) {
+    transform: none;
+  }
+}
