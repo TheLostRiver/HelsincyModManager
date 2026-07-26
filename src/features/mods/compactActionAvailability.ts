@@ -30,12 +30,6 @@ export function getCompactActionDisabledReason({
   canReinstallSelection,
   canUninstallSelection,
 }: CompactActionAvailabilityInput): string | undefined {
-  if (actionId === "enable-all") {
-    return "批量启用暂不可用";
-  }
-  if (actionId === "disable-all") {
-    return "批量禁用暂不可用";
-  }
   if (
     libraryQueryBusy
     && (actionId === "select-all"
@@ -51,7 +45,12 @@ export function getCompactActionDisabledReason({
     return "请先选择一个 MOD";
   }
   if (selectedCount > 1) {
-    return "每次只能选择一个 MOD";
+    /*
+     * 这是当前实现的限制，不是产品规则：批量安装/卸载属于尚未开工的 T13。
+     * 文案要说清"暂未开放"并给出脱困方式，否则用户用"选择本页"选中整页后，
+     * 会看到一排全灰的按钮和一句听起来像永久规则的提示。
+     */
+    return "批量操作暂未开放，请只选择一个 MOD";
   }
   if (installTaskActive) {
     return "请等待当前安装任务完成";

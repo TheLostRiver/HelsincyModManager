@@ -1,6 +1,4 @@
 import {
-  Ban,
-  BadgeCheck,
   CheckCheck,
   ClipboardList,
   Download,
@@ -40,8 +38,6 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
   "select-all": CheckCheck,
   invert: Shuffle,
   refresh: RotateCw,
-  "enable-all": BadgeCheck,
-  "disable-all": Ban,
   "preview-plan": ClipboardList,
   install: Download,
   reinstall: RefreshCcw,
