@@ -540,9 +540,6 @@ fn external_import_scan_error(error: ExternalImportScanError) -> CommandErrorDto
         ExternalImportScanError::TaskUnavailable => "external import task is unavailable",
         ExternalImportScanError::BatchUnavailable => "external import batch is unavailable",
         ExternalImportScanError::ScanFailed => "external import scan failed",
-        ExternalImportScanError::PreviewRequestInvalid => {
-            "external import preview request is invalid"
-        }
         ExternalImportScanError::ClockUnavailable => "external import clock is unavailable",
     };
     CommandErrorDto {

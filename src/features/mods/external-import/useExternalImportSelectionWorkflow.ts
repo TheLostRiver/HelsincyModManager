@@ -142,6 +142,7 @@ export function useExternalImportSelectionWorkflow(
   const [listenerStatus, setListenerStatus] = useState<ListenerStatus>("loading");
   const [listenerAttempt, setListenerAttempt] = useState(0);
   const [cancelPending, setCancelPending] = useState(false);
+  const cancelPendingRef = useRef(false);
   const batchIdRef = useRef<string | null>(batchId);
   const workflowGenerationRef = useRef(0);
   const previewRequestRef = useRef(0);
@@ -392,6 +393,7 @@ export function useExternalImportSelectionWorkflow(
     setTrackedPendingAction(null);
     setTrackedImportState({ status: "idle" });
     setSelectionError(null);
+    cancelPendingRef.current = false;
     setCancelPending(false);
 
     if (batchId === null) {
@@ -972,10 +974,12 @@ export function useExternalImportSelectionWorkflow(
 
   const cancelImport = useCallback(async () => {
     const current = importStateRef.current;
-    if (current.status !== "running" || cancelPending) {
+    if (current.status !== "running" || cancelPendingRef.current) {
       return;
     }
 
+    const generation = workflowGenerationRef.current;
+    cancelPendingRef.current = true;
     setCancelPending(true);
     try {
       const cancelledTask = await cancelExternalImportTask({ taskId: current.taskId });
@@ -986,6 +990,9 @@ export function useExternalImportSelectionWorkflow(
         throw { code: "external_import_task_unavailable" };
       }
     } catch (error) {
+      if (workflowGenerationRef.current !== generation) {
+        return;
+      }
       pushToast({
         eventKey: `external-import.import.cancel-failed.${current.taskId}`,
         taskId: current.taskId,
@@ -996,9 +1003,12 @@ export function useExternalImportSelectionWorkflow(
         tone: "warning",
       });
     } finally {
-      setCancelPending(false);
+      if (workflowGenerationRef.current === generation) {
+        cancelPendingRef.current = false;
+        setCancelPending(false);
+      }
     }
-  }, [cancelPending, pushToast]);
+  }, [pushToast]);
 
   const loadMore = useCallback(async () => {
     const currentBatchId = batchIdRef.current;
@@ -1107,6 +1117,22 @@ export function useExternalImportSelectionWorkflow(
     setListenerAttempt((attempt) => attempt + 1);
   }, [listenerStatus]);
 
+  const runLoadMore = useCallback(() => {
+    void loadMore();
+  }, [loadMore]);
+
+  const runSelectAll = useCallback(() => {
+    void selectAll();
+  }, [selectAll]);
+
+  const runStartImport = useCallback(() => {
+    void startImport();
+  }, [startImport]);
+
+  const runCancelImport = useCallback(() => {
+    void cancelImport();
+  }, [cancelImport]);
+
   const selectionEditable =
     selection !== null &&
     selection.status === "editing" &&
@@ -1126,22 +1152,14 @@ export function useExternalImportSelectionWorkflow(
     cancelPending,
     selectionEditable,
     importActive: isImportActiveState(importState),
-    loadMore: () => {
-      void loadMore();
-    },
+    loadMore: runLoadMore,
     retryPreview,
     retryCategories,
     retryListener,
     setCandidateDecision,
     setCandidateSelected,
-    selectAll: () => {
-      void selectAll();
-    },
-    startImport: () => {
-      void startImport();
-    },
-    cancelImport: () => {
-      void cancelImport();
-    },
+    selectAll: runSelectAll,
+    startImport: runStartImport,
+    cancelImport: runCancelImport,
   };
 }
