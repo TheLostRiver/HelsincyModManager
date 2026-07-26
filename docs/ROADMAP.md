@@ -1,5 +1,8 @@
 # 路线图
 
+> 无人值守自主迭代的具体任务队列见 [自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
+> 本文件描述产品阶段，那份描述在没有人盯着时可以安全推进哪些工作。
+
 ## 当前执行焦点（2026-07-26）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
