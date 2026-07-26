@@ -15,17 +15,11 @@
     height: 0;
   }
 
-  .app-surface:has(.route-transition__layer[data-route-id="mods"])
-    > .top-status-bar::before {
-    content: "";
-    position: absolute;
-    inset-inline: calc(-1 * var(--layout-page-padding));
-    inset-block-end: 100%;
-    block-size: var(--layout-page-padding);
-    background: var(--color-bg);
-    pointer-events: none;
-  }
-
+  /*
+   * 本断点切回外层滚动，但顶部遮挡不在这里处理：AppFrame 的 .app-surface__header-dock
+   * 满幅背板已在所有断点、所有路由覆盖状态栏上方留白、左右两侧与下方 gap。
+   * 不要在此再加只针对本断点或 mods 路由的局部遮挡补丁，否则会与背板重复且容易失配。
+   */
   .mod-library {
     grid-template-rows: auto minmax(460px, 1fr) auto;
   }
