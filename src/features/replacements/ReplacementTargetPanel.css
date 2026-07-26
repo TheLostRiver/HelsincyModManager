@@ -13,7 +13,7 @@
   min-height: 220px;
   color: var(--color-text-muted);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .replacement-panel__state.is-error {
@@ -31,9 +31,20 @@
   color: inherit;
   background: var(--color-surface);
   border: 1px solid currentcolor;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.replacement-panel__state button:hover,
+.replacement-panel__notice button:hover {
+  background: var(--color-surface-subtle);
 }
 
 .replacement-panel__notice,
@@ -44,15 +55,16 @@
   gap: 9px;
   min-width: 0;
   padding: 10px 12px;
+  border-radius: 10px;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .replacement-panel__notice {
   justify-content: flex-start;
   background: var(--color-warning-bg);
   border: 1px solid color-mix(in srgb, var(--color-warning-text) 24%, transparent);
-  border-radius: 7px;
+  border-radius: 10px;
 }
 
 .replacement-panel__notice span {
@@ -93,14 +105,14 @@
 .replacement-panel__section-heading h3 {
   margin: 0;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .replacement-panel__section-heading span {
   margin-left: auto;
   color: var(--color-text-muted);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .replacement-panel__source-facts {
@@ -115,15 +127,17 @@
   gap: 12px;
   align-items: center;
   min-height: 38px;
-  padding: 0 10px;
-  background: var(--color-surface-subtle);
-  border-left: 3px solid var(--color-accent);
+  padding: 0 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 10px;
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
 .replacement-panel__source-facts dt {
   color: var(--color-text-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -131,9 +145,9 @@
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .replacement-panel__warnings,
@@ -151,7 +165,7 @@
   gap: 7px;
   color: var(--color-warning-text);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .replacement-panel__search {
@@ -160,11 +174,18 @@
   align-items: center;
   gap: 8px;
   height: 38px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--color-text-muted);
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border-muted);
-  border-radius: 7px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.replacement-panel__search:hover:not(:focus-within) {
+  border-color: var(--color-accent-alpha-40);
 }
 
 .replacement-panel__search:focus-within {
@@ -183,15 +204,16 @@
   outline: 0;
   font: inherit;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .replacement-panel__target-list {
   display: grid;
   max-height: 250px;
-  overflow: auto;
+  overflow: hidden auto;
+  background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
-  border-radius: 7px;
+  border-radius: 10px;
 }
 
 .replacement-panel__target-row {
@@ -200,17 +222,29 @@
   gap: 10px;
   align-items: center;
   min-height: 54px;
-  padding: 7px 10px;
+  padding: 8px 11px;
   cursor: pointer;
+  transition: background-color 160ms ease;
 }
 
 .replacement-panel__target-row + .replacement-panel__target-row {
   border-top: 1px solid var(--color-border-muted);
 }
 
-.replacement-panel__target-row:hover,
+.replacement-panel__target-row:hover:not([data-selected="true"]) {
+  background: var(--color-surface-subtle);
+}
+
+/*
+ * 选中态用更实的底色与强调色文字。原实现让 hover 与选中共用同一个 accent-weak，
+ * 于是"悬停在未选中项"和"已选中项"长得一样，扫一眼分不出当前选的是哪一个。
+ */
 .replacement-panel__target-row[data-selected="true"] {
   background: var(--color-accent-weak);
+}
+
+.replacement-panel__target-row[data-selected="true"] .replacement-panel__target-name strong {
+  color: var(--color-accent-strong);
 }
 
 .replacement-panel__target-row[data-installed="true"] {
@@ -252,7 +286,7 @@
   gap: 4px;
   color: var(--color-success-text);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .replacement-panel__target-row code,
@@ -268,9 +302,11 @@
 }
 
 .replacement-panel__action-list li {
-  padding: 7px 9px;
-  background: var(--color-surface-subtle);
-  border-left: 2px solid var(--color-border);
+  padding: 8px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 10px;
+  box-shadow: inset 2px 0 0 var(--color-border);
 }
 
 .replacement-panel__counts {
@@ -282,23 +318,23 @@
 
 .replacement-panel__counts > div {
   min-width: 0;
-  padding: 9px 10px;
-  background: var(--color-surface-subtle);
+  padding: 10px 12px;
+  background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
-  border-radius: 6px;
+  border-radius: 10px;
 }
 
 .replacement-panel__counts dt {
   color: var(--color-text-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .replacement-panel__counts dd {
   margin: 2px 0 0;
   color: var(--color-text);
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .replacement-panel__counts [data-kind="replaced"] dd,
@@ -323,11 +359,12 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   color: var(--color-warning-text);
   background: var(--color-warning-bg);
+  border-radius: 10px;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .replacement-panel__inline-state.is-error,
@@ -348,8 +385,10 @@
 }
 
 .replacement-panel__task-state {
-  background: var(--color-surface-subtle);
-  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 10px;
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
 .replacement-panel__task-state > span {
@@ -367,7 +406,7 @@
   color: inherit;
   background: var(--color-surface);
   border: 1px solid currentcolor;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   font: inherit;
 }
@@ -379,11 +418,13 @@
 
 .replacement-panel__empty {
   margin: 0;
-  padding: 14px 10px;
+  padding: 16px 12px;
   color: var(--color-text-muted);
-  background: var(--color-surface-subtle);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: 10px;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
   text-align: center;
 }
 
@@ -402,23 +443,49 @@
   gap: 7px;
   min-height: 36px;
   padding: 0 12px;
-  border-radius: 7px;
+  border-radius: 10px;
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.replacement-panel__actions button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .replacement-panel__actions button.is-secondary {
   color: var(--color-text-soft);
   background: var(--color-surface);
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border);
 }
 
+.replacement-panel__actions button.is-secondary:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+}
+
+/* 与详情对话框的主操作保持同一套 token 与反馈，避免同一弹层里两种按钮语言。 */
 .replacement-panel__actions button.is-primary {
   color: var(--color-primary-action-text);
   background: var(--color-primary-action-bg);
   border: 1px solid var(--color-primary-action-border, transparent);
+  box-shadow: var(--shadow-primary-action);
+}
+
+.replacement-panel__actions button.is-primary:hover:not(:disabled) {
+  background: var(--color-primary-action-bg-hover);
+  box-shadow: var(--shadow-primary-action-hover);
+}
+
+.replacement-panel__actions button.is-primary:active:not(:disabled) {
+  box-shadow: var(--shadow-primary-action-active);
 }
 
 .replacement-panel__actions button:disabled {
@@ -476,5 +543,13 @@
 @media (prefers-reduced-motion: reduce) {
   .replacement-panel__spinner {
     animation: none;
+  }
+
+  .replacement-panel__search,
+  .replacement-panel__target-row,
+  .replacement-panel__state button,
+  .replacement-panel__notice button,
+  .replacement-panel__actions button {
+    transition: none;
   }
 }

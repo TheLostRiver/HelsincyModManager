@@ -70,3 +70,51 @@ test("MOD file edit context action opens the existing detail panel on replacemen
   assert.match(refresh, /initialTab:\s*ModDetailDialogTab/);
   assert.doesNotMatch(page, /MOD 文件修改功能开发中/);
 });
+
+test("replacement panel blocks stay legible on the dialog's tinted content area", () => {
+  const panelCss = readSource("src/features/replacements/ReplacementTargetPanel.css");
+  const dialogCss = readSource("src/features/mods/ModDetailDialog.css");
+
+  /*
+   * 该面板嵌在详情对话框的内容区里，而内容区背景是 --color-surface-subtle。
+   * 面板内部的可读区块（搜索框、统计卡、来源事实、动作列表、空态、任务状态条）
+   * 曾经也用同一个 surface-subtle 做底色，于是在对话框改为浅底内容区后整片隐形。
+   * 这条断言锁住"浅底托白块"的方向：内容区是浅底，面板内的块必须是白底。
+   */
+  const bodyRule = dialogCss.match(/\.mod-detail-dialog__body\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(
+    bodyRule,
+    /background:\s*var\(--color-surface-subtle\)/,
+    "对话框内容区不再是浅底，本断言的前提已变，需要重新评估面板底色",
+  );
+  /*
+   * 只检查区块的静态底色。:hover / :focus 等交互态用 surface-subtle 是有意的——
+   * 它们叠在白底块之上作为反馈，不会与内容区背景混淆。
+   */
+  const staticSubtleBlocks = [...panelCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(
+    ([, selector, body]) =>
+      /background:\s*var\(--color-surface-subtle\)/.test(body)
+      && !/:hover|:focus|:active/.test(selector),
+  );
+  assert.deepEqual(
+    staticSubtleBlocks.map(([, selector]) => selector.trim()),
+    [],
+    "面板区块使用了与内容区相同的浅底，会与背景融为一体",
+  );
+
+  // 等宽字体走 token，不再是悬空引用（浏览器回落 monospace，在 Windows 上是 Courier New）。
+  assert.match(panelCss, /font-family:\s*var\(--font-family-mono\)/);
+  assert.doesNotMatch(panelCss, /var\(--font-family-mono,\s*monospace\)/);
+  const tokens = readSource("src/shared/styles/tokens.css");
+  assert.equal(
+    tokens.match(/--font-family-mono:/g)?.length,
+    2,
+    "--font-family-mono 必须在浅色与深色两套 token 中都定义",
+  );
+
+  // hover 与选中不得同色，否则扫一眼分不出当前选的是哪一项。
+  assert.match(
+    panelCss,
+    /\.replacement-panel__target-row:hover:not\(\[data-selected="true"\]\)/,
+  );
+});
