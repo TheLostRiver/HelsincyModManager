@@ -6,8 +6,13 @@
   justify-items: center;
   gap: 16px;
   width: 88px;
-  height: calc(100vh - 56px);
-  margin-left: 28px;
+  /*
+   * 上下留白与左侧留白必须跟随 .app-surface 的页面内边距，否则在 2K/4K 下
+   * （--layout-page-padding 升到 32px / 36px）侧边栏顶边会比顶部状态栏高 4-8px，
+   * 看起来两块面板没对齐。这里不能写死 28px。
+   */
+  height: calc(100vh - var(--layout-page-padding) * 2);
+  margin-left: var(--layout-page-padding);
   align-self: center;
   padding: 14px 18px;
   overflow-anchor: none;
@@ -94,9 +99,12 @@ button.floating-sidebar__item {
 
 @media (max-width: 860px) {
   .floating-sidebar {
-    top: 12px;
-    bottom: 12px;
-    left: 10px;
+    /*
+     * .app-surface 在本断点把内边距收缩到 16px，侧边栏同步收缩才能继续与状态栏顶边对齐。
+     * 原有的 top/bottom/left 声明是死代码：.floating-sidebar 没有 position，偏移属性不生效。
+     */
+    height: calc(100vh - 32px);
+    margin-left: 16px;
     gap: 10px;
     width: 52px;
     padding: 8px;
@@ -117,8 +125,10 @@ button.floating-sidebar__item {
 
 @media (max-height: 820px) and (min-width: 861px) {
   .floating-sidebar {
-    top: 18px;
-    bottom: 18px;
+    /*
+     * 本断点只收窄侧边栏本体，上下留白继续由基础规则跟随页面内边距，保持与状态栏对齐。
+     * 原有的 top/bottom 声明是死代码：.floating-sidebar 没有 position，偏移属性不生效。
+     */
     gap: 10px;
     width: 76px;
     padding: 10px 14px;
