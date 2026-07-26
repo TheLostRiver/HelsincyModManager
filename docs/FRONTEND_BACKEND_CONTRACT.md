@@ -143,7 +143,7 @@ Rust 内返回路径，路径立即登记到短生命周期的 source registry�
 
 Slice 4A 的 React 工作流消费来源选择、scan task、取消和基础分页 preview。PR #198 的 Slice 4B 在同一入口内增加
 后端 selection snapshot、selection-aware preview、候选 mutation、服务端全选、已有分类映射、显式冲突决定、
-sealed batch start、取消和严格按 `taskId` 的 import progress。当前 Slice 4C 消费权威分页 result、partial
+sealed batch start、取消和严格按 `taskId` 的 import progress。PR #199 的 Slice 4C 消费权威分页 result、partial
 success 与 retry；它仍不计算路径、物化包、安装、启用、获取 game/profile 写锁或写入游戏目录。
 
 | command | 输入 | 返回 |

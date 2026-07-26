@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：已完成。Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”和 PR #198 的 Slice 4B“选择、决定与批量启动”已合并；当前独立切片完成最后的 Slice 4C“结果、重试与最终加固”。
+> 状态：已完成。Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”和 PR #198 的 Slice 4B“选择、决定与批量启动”已合并；PR #199 交付最后的 Slice 4C“结果、重试与最终加固”。
 >
 > 本文定义产品、架构、安全和验收边界并记录分 Slice 状态；实际可用性仍以对应 PR 与验证证据为准。
 
@@ -404,7 +404,7 @@ cancel_task(taskId)
 - selection-aware preview 返回服务端权威的 selection summary 与当前页选择/决定；CAS 冲突和服务端全选后重新读取权威首屏，不在浏览器展开候选 ID。
 - import listener 严格匹配 `kind + taskId + phase`；通用 `mod_import.cancelled` 只进入非终态 cancelling，等待 external-import 专用 cancelled 终态。failed/cancelled 的聚合计数不用于推断 partial success。
 
-### Slice 4C：结果、重试与最终加固（当前切片完成）
+### Slice 4C：结果、重试与最终加固（PR #199）
 
 - task 进入 completed/failed/cancelled 终态后，从 cursor `0` 查询服务端权威 result page；partial success
   只由 result item status 汇总，不能从 progress event 的聚合计数推断。
