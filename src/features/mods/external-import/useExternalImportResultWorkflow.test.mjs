@@ -53,6 +53,10 @@ test("result retry sends only the sealed selection and reuses task progress laun
     source,
     /currentState\.status === "ready" && currentState\.loadingMore/,
   );
+  assert.match(
+    source,
+    /launchResult\.status === "ignored"[\s\S]{0,180}external_import_task_unavailable/,
+  );
   assert.match(source, /const retryResults = useCallback/);
   assert.match(source, /const loadMore = useCallback/);
   assert.match(source, /const retryResultQuery = useCallback/);
