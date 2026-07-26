@@ -766,6 +766,12 @@ export function useExternalImportSelectionWorkflow(
         setSelectionError(
           getExternalImportSelectionErrorMessage(launchResult.errorCode),
         );
+      } else if (launchResult.status === "ignored") {
+        setSelectionError(
+          getExternalImportSelectionErrorMessage(
+            "external_import_task_unavailable",
+          ),
+        );
       }
     } catch (error) {
       if (

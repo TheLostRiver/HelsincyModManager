@@ -405,6 +405,12 @@ export function useExternalImportResultWorkflow({
         setActionError(
           getExternalImportResultErrorMessage(launchResult.errorCode),
         );
+      } else if (launchResult.status === "ignored") {
+        setActionError(
+          getExternalImportResultErrorMessage(
+            "external_import_task_unavailable",
+          ),
+        );
       }
     } finally {
       if (generationRef.current === generation) {

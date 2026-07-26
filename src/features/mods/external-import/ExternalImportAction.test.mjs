@@ -44,6 +44,9 @@ test("external import action composes selection, result, and retry without a fro
   const resultPanel = readSource(
     "src/features/mods/external-import/ExternalImportResultPanel.tsx",
   );
+  const styles = readSource(
+    "src/features/mods/external-import/ExternalImportAction.css",
+  );
   const panelSource = readSource("src/features/mods/CompactActionPanel.tsx");
 
   assert.match(source, /<Dialog/);
@@ -100,6 +103,12 @@ test("external import action composes selection, result, and retry without a fro
   assert.match(
     resultPanel,
     /state\.status === "ready" && state\.loadingMore[\s\S]{0,120}workflow\.retryPending[\s\S]{0,80}workflow\.resultStale/,
+  );
+  assert.match(styles, /clip-path:\s*inset\(50%\)/);
+  assert.doesNotMatch(styles, /\bclip:\s*rect\(/);
+  assert.match(
+    selectionWorkflow,
+    /launchResult\.status === "ignored"[\s\S]{0,180}external_import_task_unavailable/,
   );
   assert.match(resultPanel, /重新读取结果|载入更多结果|重试可恢复项/);
   assert.doesNotMatch(
