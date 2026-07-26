@@ -133,3 +133,40 @@ test("feedback styles keep stable layers and reduced-motion behavior", () => {
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.match(css, /max-height:\s*calc\(100dvh\s*-\s*32px\)/);
 });
+
+test("toast exit animation duration stays in sync with the component's removal delay", () => {
+  const css = readSource("src/shared/feedback/feedback.css");
+  const component = readSource("src/shared/feedback/FeedbackToast.tsx");
+
+  /*
+   * 退场是"先标记、等动画播完再卸载"两段式：组件按常量延迟移除节点，CSS 负责这段时间内的动画。
+   * 两者一旦不一致，要么 toast 先消失再空等（看起来卡顿），要么动画被卸载打断（看起来仍然生硬）。
+   * 这条隐性契约没有类型或运行时保护，因此在此显式锁定。
+   */
+  const exitDurationMs = Number(
+    component.match(/const TOAST_EXIT_DURATION_MS = (\d+);/)?.[1],
+  );
+  assert.ok(Number.isInteger(exitDurationMs) && exitDurationMs > 0, "缺少 TOAST_EXIT_DURATION_MS 常量");
+
+  const exitRules = [...css.matchAll(/\.feedback-toast\.is-exiting\s*\{([\s\S]*?)\}/g)].map(
+    (match) => match[1],
+  );
+  assert.ok(exitRules.length > 0, "缺少 .feedback-toast.is-exiting 规则");
+
+  for (const rule of exitRules) {
+    const declaredMs = rule.match(/animation(?:-duration)?:[^;]*?(\d+)ms/)?.[1];
+    if (declaredMs === undefined) {
+      continue;
+    }
+    assert.equal(
+      Number(declaredMs),
+      exitDurationMs,
+      `退场动画时长 ${declaredMs}ms 与组件常量 ${exitDurationMs}ms 不一致`,
+    );
+  }
+
+  // 退场期间必须屏蔽交互，避免点到正在消失的按钮。
+  assert.match(css, /\.feedback-toast\.is-exiting\s*\{[\s\S]*?pointer-events:\s*none/);
+  // 动效降级下退场只做淡出，不带位移。
+  assert.match(css, /@keyframes feedback-fade-exit/);
+});
