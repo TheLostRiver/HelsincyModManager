@@ -191,6 +191,33 @@ cargo check --workspace
 必须覆盖 reader 部分失败、空结果、稳定健康码、DTO/typed API 无路径字段、受控导出确认与失败不误报成功。
 诊断 ZIP 继续执行既有敏感片段扫描；浏览器 smoke 覆盖 `1440x900`、`960x640` 和 `390x844`。
 
+### T17 Slice 4C 批量导入结果与重试
+
+Slice 4C 只使用人工、无路径 DTO，不读取真实第三方 Mod、来源目录、游戏目录、玩家存档或 AppData。聚焦入口：
+
+```powershell
+node --test src/features/mods/external-import/externalImportResultModel.test.mjs src/features/mods/external-import/useExternalImportTaskProgress.test.mjs src/features/mods/external-import/useExternalImportResultWorkflow.test.mjs src/features/mods/external-import/ExternalImportAction.test.mjs src/features/mods/external-import/externalImportApi.test.mjs
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+```
+
+必须覆盖：
+
+- terminal taskId -> cursor `0` 权威结果查询、foreign/late request 与 batch/task generation 丢弃。
+- exact-key result DTO、稳定 status/reason、opaque ID、页大小、重复 candidate 与路径/未知字段 fail closed。
+- cursor append 去重、load-more/result-query/retry 重入保护和 partial success 汇总不依赖 event 计数。
+- retry 只提交 `batchId + sealed selectionId`，新 taskId 复用 listener、early-event buffer、取消与终态状态机。
+- 每个 terminal taskId 在首屏结果验证后至多刷新一次 Mod 库；刷新失败不覆盖导入/result 事实。
+- 10,000 条人工脱敏 result 固定 5 次 warmup、40 次 sample，每次只验证最多 100 项的页，并输出 p95；
+  固定同机预算为 `250 ms`，不得通过减样本、删字段或展开全量 DOM 制造虚假提升。该值不是跨机器 SLA。
+
+浏览器 smoke 覆盖桌面和 `<=600px` 窄窗口下的 result loading、query failed、empty、partial-success、
+load-more failed 与 retrying 状态；确认 heading/list、live status、alert、disabled action、长 ID 换行和
+操作区堆叠可用，且 UI 不显示路径、XML、fingerprint、sandbox/cache/materialization 或安装事实。
+
 ## Tauri / Rust 桥接改动
 
 

@@ -1,8 +1,8 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：分 Slice 实施中。Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”及 Slice 4A“外部来源与只读预览”已完成；当前切片完成 Slice 4B“选择、决定与批量启动”，Slice 4C 仍待实施。
+> 状态：已完成。Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”和 PR #198 的 Slice 4B“选择、决定与批量启动”已合并；当前独立切片完成最后的 Slice 4C“结果、重试与最终加固”。
 >
-> 本文只定义产品、架构、安全和验收边界，不表示功能已经可用。
+> 本文定义产品、架构、安全和验收边界并记录分 Slice 状态；实际可用性仍以对应 PR 与验证证据为准。
 
 ## 背景与规划审计结论
 
@@ -242,7 +242,7 @@ materializer 必须：
 
 - `batchId + candidateId` 是批次条目的幂等键。
 - 内容指纹是跨批次去重依据；显示名称不是身份。
-- 批次重试只调度 `retryable = true` 且玩家再次选择的条目。
+- 批次重试由后端从同一 sealed selection 中只调度 `retryable = true` 的条目；前端不重新选择或提交 candidate ID。
 - 成功、已存在和显式跳过项不会因重试重复创建。
 - 如果导入结果已持久化、批次日志尚未来得及标记成功，恢复时按 provenance/content fingerprint 对账并补记结果。
 - 应用启动时只把前一进程遗留的 `running` batch 收敛为 `failed`，保留 sealed selection 与已有结果；不会自动恢复来源 I/O 或重新导入。玩家重新选择匹配来源后再显式 retry，既有 catalog/provenance 继续参与幂等对账。
@@ -323,9 +323,9 @@ cancel_task(taskId)
 基础 preview query；首个 command 固定登记唯一的
 `hunting_box_directory_v1` 来源，不接受 adapter/path 参数；原生选择器中的路径只保留在 Rust registry。
 已完成的 Slice 3 在保留上述只读契约的前提下增加 selection create/update、服务端全选、sealed batch start/retry 和
-分页 result query。Slice 4A 消费 source picker、scan task 和基础 preview；当前 Slice 4B 将 preview 扩展为
+分页 result query。Slice 4A 消费 source picker、scan task 和基础 preview；PR #198 的 Slice 4B 将 preview 扩展为
 `get_external_import_preview(batchId, selectionId?, cursor?, limit?)`，并消费 selection/decision/start/progress。
-result/retry/大批次体验与最终加固继续留在 4C。
+当前 Slice 4C 消费脱敏 result page 与 sealed selection retry；后端契约和 Rust projection 无需扩张。
 
 约束：
 
@@ -397,17 +397,28 @@ result/retry/大批次体验与最终加固继续留在 4C。
 - 前端只消费受控 source/scan/preview DTO，不接收路径、XML、fingerprint、archive/sandbox/cache 引用，也不创建 selection 或启动批量导入。
 - 完成 feature-local typed API、taskId scoped listener、browser smoke 与状态文档同步。
 
-### Slice 4B：选择、决定与批量启动（当前切片完成）
+### Slice 4B：选择、决定与批量启动（已完成，PR #198）
 
 - 完成候选选择、服务端全选、分类映射、冲突决定、sealed selection 和 batch start/import progress。
 - 每次 selection mutation 保持 200 项上限，跨页全选继续由后端谓词执行。
 - selection-aware preview 返回服务端权威的 selection summary 与当前页选择/决定；CAS 冲突和服务端全选后重新读取权威首屏，不在浏览器展开候选 ID。
 - import listener 严格匹配 `kind + taskId + phase`；通用 `mod_import.cancelled` 只进入非终态 cancelling，等待 external-import 专用 cancelled 终态。failed/cancelled 的聚合计数不用于推断 partial success。
 
-### Slice 4C：结果、重试与最终加固
+### Slice 4C：结果、重试与最终加固（当前切片完成）
 
-- 完成结果分页、可重试失败、大批次体验、性能/日志脱敏加固与全流程 smoke。
-- 只有完成 4A/4B/4C 全部验收后，才在 TODO 中把 T17 标为已完成。
+- task 进入 completed/failed/cancelled 终态后，从 cursor `0` 查询服务端权威 result page；partial success
+  只由 result item status 汇总，不能从 progress event 的聚合计数推断。
+- 首屏默认 `50` 项、单页最多 `100` 项；后续页只复用 opaque `nextCursor` 并按 `candidateId` 去重，
+  总量可到 `10,000`，前端不把全量 ID 展开进 DOM 或 retry 请求。
+- result DTO 使用 exact-key allowlist 和稳定 status/reason code；未知字段、路径式 identity、未知 code、
+  重复候选或超页 payload 全部 fail closed，不显示底层错误或敏感事实。
+- retry 只提交 `batchId + sealed selectionId`，由后端选择全部 retryable 项；返回的新 taskId 复用同一
+  listener、early-event buffer、terminal stickiness、cancel 与 race gate。
+- 每个 terminal taskId 只有在首屏权威结果通过验证后才 best-effort 刷新一次 Mod 库；刷新失败不改变
+  已持久化导入/result 事实，只显示稳定可恢复反馈。
+- task progress concern 已从 selection workflow 拆到独立 hook；大批次自动化使用 10,000 条人工脱敏
+  result、5 次 warmup、40 次 sample，本机 p95=`4.378 ms`，低于固定 `250 ms` 同机预算。
+- 默认继续 import-only，不安装、启用、获取 game/profile 写锁或写游戏目录。
 
 后续新增其他第三方来源时，只增加 adapter、来源契约文档和 fixtures；不得在现有 adapter 里加入来源名称分支。
 
@@ -449,6 +460,12 @@ result/retry/大批次体验与最终加固继续留在 4C。
 - 未知 status/reason code 前端 fail closed，并显示通用可恢复文案。
 - 默认冲突策略不会覆盖已有导入。
 - 取消、部分成功、过期来源、重试和刷新 Mod 库流程。
+- result page exact-key/status/reason/identity/页大小校验、cursor append 去重与 stale request/batch/task
+  generation 丢弃。
+- retry 请求不包含 candidate ID，返回新 taskId 后复用 progress listener；每个 terminal taskId 的
+  Mod 库刷新至多一次，刷新失败不覆盖权威结果。
+- 10,000 条人工、无路径 result 固定执行 5 次 warmup 与 40 次 sample，每次只验证最多 100 项的页；
+  输出 p95 并保持 `250 ms` 同机预算，不把该 wall-clock 门禁描述为跨机器 SLA。
 
 ### 验证入口
 

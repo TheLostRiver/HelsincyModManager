@@ -1,6 +1,6 @@
 # 路线图
 
-## 当前执行焦点（2026-07-23）
+## 当前执行焦点（2026-07-26）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -18,15 +18,14 @@
    完成，最后的 Slice 4C 已由 PR #192 rebase 合并。其生产 query switch、同事务 count/page、fail-closed
    freshness tracking 和性能门禁的最终 10,000 条 full status-filter query p95 为 `9.2966 ms`，低于固定
    `14.23 ms` 同机预算。
-5. T17 Slice 1“第三方 Mod 管理器批量迁移基础”、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与
-   批量导入编排”和 Slice 4A“外部来源与只读预览”已完成（Slice 3 由 PR #195 合并，Slice 4A 由
-   PR #196 合并并由 PR #197 补齐 review 遗漏）。当前切片完成 Slice 4B：在既有
-   `hunting_box_directory_v1` scanner、durable preview、后端 selection snapshot 与批量编排基础上，增加
-   selection-aware preview、候选/服务端全选、已有分类映射、显式冲突决定、sealed batch start 和严格按
-   `taskId` 的 import progress。result/retry/大批次体验和最终性能加固仍留在 4C。默认仍只导入，不安装、
-   启用或写游戏目录。
-   当前排期冻结为 Windows + MHW:I；Linux/Steam Deck 与更多游戏适配不纳入 T17 工期。完整 T17 后再评审 T13；
-   其他扩展继续按各自发布门禁评审，不自动开工。
+5. T17 第三方 Mod 管理器批量迁移已完成：Slice 1/2/3/4A、PR #198 的 Slice 4B 与当前独立 Slice 4C
+   共同交付 `hunting_box_directory_v1` 只读来源扫描、durable preview、后端 selection snapshot、
+   显式决定、sealed batch start、严格按 `taskId` 的 import progress、权威分页结果、partial success 和
+   服务端 retryable 重试。4C 复用同一 task progress 状态机处理重试返回的新 taskId，并在每个终态 task
+   的首屏权威结果验证后至多刷新一次 Mod 库；10,000 条人工脱敏 result 的本机 p95=`4.378 ms`，低于固定
+   `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
+   T17 范围保持 Windows + MHW:I；Linux/Steam Deck、更多游戏和 T13 批量安装/卸载仍须单独评审，
+   不因 T17 完成自动开工。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
@@ -88,10 +87,9 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加第三方 Mod 管理器批量迁移，首个兼容来源为狩技盒子目录，默认只导入而不安装或启用。详见 [第三方 Mod 管理器批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)。
 - 添加任务进度和取消 UI。
 
-已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固与 T18
-Slice 1/2/3/4A/4B/4C 均已完成；T17 Slice 1/2/3/4A 已完成，当前切片完成 Slice 4B 的选择、决定、sealed
-batch start 与导入进度。后续 4C 继续结果/重试/大批次体验和性能加固，批量破坏性操作仍属于 T13；
-不能因本切片开工自动进入。当前 T17 计划只覆盖 Windows + MHW:I，不安排 Linux/Steam Deck 或更多游戏工作。
+已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固、T18
+Slice 1/2/3/4A/4B/4C 与 T17 Slice 1/2/3/4A/4B/4C 均已完成。批量破坏性操作仍属于 T13，必须另行
+评审；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 
