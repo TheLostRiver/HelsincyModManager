@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { TaskStartedDto } from "../modImportTypes";
 import {
   EXTERNAL_IMPORT_PREVIEW_PAGE_SIZE,
+  EXTERNAL_IMPORT_RESULT_PAGE_SIZE,
+  type ExternalImportBatchResultPageDto,
   type ExternalImportBatchStartedDto,
   type ExternalImportPreviewPageDto,
   type ExternalImportScanStartedDto,
@@ -69,6 +71,27 @@ export function startExternalImportBatch(input: {
   expectedRevision: number;
 }): Promise<ExternalImportBatchStartedDto> {
   return invoke<ExternalImportBatchStartedDto>("start_external_import_batch", input);
+}
+
+export function getExternalImportBatchResult(input: {
+  batchId: string;
+  cursor?: string | null;
+}): Promise<ExternalImportBatchResultPageDto> {
+  return invoke<ExternalImportBatchResultPageDto>("get_external_import_batch_result", {
+    batchId: input.batchId,
+    cursor: input.cursor ?? null,
+    limit: EXTERNAL_IMPORT_RESULT_PAGE_SIZE,
+  });
+}
+
+export function retryExternalImportBatch(input: {
+  batchId: string;
+  selectionId: string;
+}): Promise<ExternalImportBatchStartedDto> {
+  return invoke<ExternalImportBatchStartedDto>("retry_external_import_batch", {
+    batchId: input.batchId,
+    selectionId: input.selectionId,
+  });
 }
 
 export function cancelExternalImportTask(input: { taskId: string }): Promise<TaskStartedDto> {

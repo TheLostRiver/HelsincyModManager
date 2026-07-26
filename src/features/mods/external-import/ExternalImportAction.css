@@ -367,6 +367,90 @@
   overflow-wrap: anywhere;
 }
 
+.external-import__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.external-import__results {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.external-import__result-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.external-import__result-summary span {
+  padding: 4px 7px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.external-import__result-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.external-import__result-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 11px 12px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+}
+
+.external-import__result-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.external-import__result-main strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.external-import__result-main code,
+.external-import__result-main span,
+.external-import__result-reason {
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.external-import__result-reason {
+  grid-column: 1 / -1;
+}
+
+.external-import__result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 @keyframes external-import-spin {
   to {
     transform: rotate(360deg);
@@ -386,6 +470,15 @@
 
   .external-import__candidate {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .external-import__result-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .external-import__result-item .external-import__candidate-statuses,
+  .external-import__result-reason {
+    grid-column: auto;
   }
 
   .external-import__candidate-meta {
@@ -418,6 +511,15 @@
   .external-import__start-row .external-import__button,
   .external-import__inline-action .external-import__button,
   .external-import__import-progress .external-import__button {
+    width: 100%;
+  }
+
+  .external-import__result-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .external-import__result-actions .external-import__button {
     width: 100%;
   }
 }
