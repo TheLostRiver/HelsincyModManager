@@ -35,10 +35,22 @@ test("diagnostics page exposes stable states, controlled export confirmation and
   const css = read("src/features/diagnostics/DiagnosticsPage.css");
   assert.match(css, /\.diagnostics-page__dialog-action\.is-primary/);
   assert.match(css, /\.diagnostics-page__dialog-action:focus-visible/);
-  assert.match(css, /\.diagnostics-page__dialog-action\{display:inline-flex;align-items:center;justify-content:center;gap:8px/);
+  /*
+   * 断言声明内容而不是字符串形态。这两条原本写成压缩后的字面量
+   * （`.diagnostics-page{grid-column:1/-1;...}`，要求 `{` 后无空格、无换行），
+   * 等于把「样式表必须保持压缩」写进了测试——而该文件被压缩正是为了绕过
+   * 按行数计的文件大小治理，代价是无法维护。展开后这类形态断言必须失效。
+   */
+  const dialogActionRule = readRuleBody(css, ".diagnostics-page__dialog-action");
+  for (const declaration of [/display:\s*inline-flex/, /align-items:\s*center/, /justify-content:\s*center/, /gap:\s*8px/]) {
+    assert.match(dialogActionRule, declaration);
+  }
   assertSelectorAfter(css, ".diagnostics-page__dialog-action.is-secondary:active:not(:disabled)", ".diagnostics-page__dialog-action.is-secondary:hover:not(:disabled)");
   assertSelectorAfter(css, ".diagnostics-page__dialog-action.is-primary:active:not(:disabled)", ".diagnostics-page__dialog-action.is-primary:hover:not(:disabled)");
-  assert.match(css, /\.diagnostics-page\{grid-column:1\/-1;width:100%;min-width:0\}/);
+  const pageRule = readRuleBody(css, ".diagnostics-page");
+  for (const declaration of [/grid-column:\s*1\s*\/\s*-1/, /width:\s*100%/, /min-width:\s*0/]) {
+    assert.match(pageRule, declaration);
+  }
   assert.match(page, /fields\.error_code/);
   assert.match(page, /fields\.task_id/);
   assert.match(page, /combinedStatus\(snapshot\.taskLogStatus/);
@@ -145,6 +157,17 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+/*
+ * 取出某个选择器的规则体。要求选择器独立成规则（其后紧跟 `{`），
+ * 因此不会误匹配 `.diagnostics-page__hero` 这类以它为前缀的选择器。
+ */
+function readRuleBody(css, selector) {
+  const pattern = new RegExp(`${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`);
+  const match = pattern.exec(css);
+  assert.notEqual(match, null, `missing CSS rule: ${selector}`);
+  return match[1];
 }
 
 function assertSelectorAfter(css, laterSelector, earlierSelector) {
