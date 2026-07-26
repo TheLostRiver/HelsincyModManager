@@ -215,7 +215,11 @@
 
 .feedback-toast-viewport {
   position: fixed;
-  top: calc(var(--app-header-height) + 16px);
+  /*
+   * 状态栏卡片位于 .app-surface 的内边距之下，并由吸顶背板固定在该位置，不是贴着视口顶边。
+   * 因此避让高度必须算上这段内边距，否则 toast 会压在状态栏底边上。
+   */
+  top: calc(var(--layout-page-padding) + var(--app-header-height) + 16px);
   right: 20px;
   z-index: var(--z-feedback-toast);
   display: grid;
@@ -288,6 +292,16 @@
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.99);
+  }
+}
+
+/*
+ * ≤860px 时 .app-surface 内边距收缩到 16px，toast 避让高度同步收缩。
+ * 该断点下状态栏允许换行增高，这里仍按 min-height 做近似避让，与既有基线一致。
+ */
+@media (max-width: 860px) {
+  .feedback-toast-viewport {
+    top: calc(16px + var(--app-header-height) + 16px);
   }
 }
 
