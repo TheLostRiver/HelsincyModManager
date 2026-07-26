@@ -81,7 +81,7 @@ export function CompactActionPanel({
 
       <div className="compact-panel__stack">
         {addAction ? <ModImportAction label={addAction.label} onImported={onImportCompleted} /> : null}
-        <ExternalImportAction />
+        <ExternalImportAction onImported={onImportCompleted} />
         {addRevisionAction ? (
           <ModImportAction
             label={addRevisionAction.label}

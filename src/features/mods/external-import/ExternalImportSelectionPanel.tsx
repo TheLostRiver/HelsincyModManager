@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useId } from "react";
 import { ExternalImportCandidateSelectionItem } from "./ExternalImportCandidateSelectionItem";
+import { ExternalImportResultPanel } from "./ExternalImportResultPanel";
 import { getExternalImportPhaseLabel } from "./externalImportProgressState";
 import type { ExternalImportSelectionWorkflow } from "./useExternalImportSelectionWorkflow";
 
@@ -75,7 +76,7 @@ function ImportProgress({
     return (
       <div className="external-import__state is-success" role="status" aria-live="polite">
         <CheckCircle2 size={18} aria-hidden="true" />
-        <span>批量导入已完成。结果明细与重试将在后续结果视图中提供。</span>
+        <span>批量导入已完成。正在读取下方的权威结果明细。</span>
       </div>
     );
   }
@@ -90,7 +91,7 @@ function ImportProgress({
   return (
     <div className="external-import__state is-error" role="alert">
       <CircleAlert size={18} aria-hidden="true" />
-      <span>批量导入未完成。请保留当前批次，等待结果视图提供可恢复操作。</span>
+      <span>批量导入未完成。正在读取已保留结果与可恢复操作。</span>
     </div>
   );
 }
@@ -292,6 +293,7 @@ export function ExternalImportSelectionPanel({
       ) : null}
 
       <ImportProgress workflow={workflow} />
+      <ExternalImportResultPanel workflow={workflow.result} />
     </section>
   );
 }
