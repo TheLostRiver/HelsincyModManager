@@ -29,6 +29,7 @@
 - Mod 预览图: `docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md` + `docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md`
 - 第三方 Mod 管理器批量迁移: `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
 - Mod 库分页: `docs/MOD_LIBRARY_PAGINATION_DESIGN.md`
+- 自主迭代任务队列: `docs/AUTONOMOUS_ITERATION_ROADMAP.md`
 - T8 存档目录自动发现: `docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md` + `docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`
 
 ### 需要新建独立文档的任务
