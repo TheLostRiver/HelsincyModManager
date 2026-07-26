@@ -27,7 +27,7 @@ test("external import action owns a task-scoped listener and keeps early events 
   assert.doesNotMatch(source, /event\.payload\.(message|error)/);
 });
 
-test("external import action composes the 4B selection panel without a frontend file picker", () => {
+test("external import action composes selection, result, and retry without a frontend file picker", () => {
   const source = readSource("src/features/mods/external-import/ExternalImportAction.tsx");
   const selectionPanel = readSource(
     "src/features/mods/external-import/ExternalImportSelectionPanel.tsx",
@@ -40,6 +40,9 @@ test("external import action composes the 4B selection panel without a frontend 
   );
   const candidateSelection = readSource(
     "src/features/mods/external-import/ExternalImportCandidateSelectionItem.tsx",
+  );
+  const resultPanel = readSource(
+    "src/features/mods/external-import/ExternalImportResultPanel.tsx",
   );
   const panelSource = readSource("src/features/mods/CompactActionPanel.tsx");
 
@@ -55,15 +58,17 @@ test("external import action composes the 4B selection panel without a frontend 
   assert.match(selectionWorkflow, /selectAllExternalImportCandidates/);
   assert.match(selectionWorkflow, /startExternalImportBatch/);
   assert.match(selectionWorkflow, /listCategories/);
-  assert.match(selectionWorkflow, /listen<TaskProgressEventDto>\(TASK_PROGRESS_EVENT_NAME/);
-  assert.match(selectionWorkflow, /event\.payload\.taskId\s*!==\s*taskId/);
-  assert.match(selectionWorkflow, /nextExternalImportTaskStateFromProgress/);
+  assert.match(selectionWorkflow, /useExternalImportTaskProgress\(batchId\)/);
+  assert.doesNotMatch(selectionWorkflow, /listen<TaskProgressEventDto>/);
   assert.match(progressState, /Object\.hasOwn\(importPhaseLabels,\s*event\.phase\)/);
   assert.match(progressState, /event\.phase === "mod_import\.cancelled"/);
   assert.match(progressState, /external_import\.import\./);
-  assert.match(selectionWorkflow, /cancelPendingRef\.current/);
   assert.match(selectionWorkflow, /const runLoadMore = useCallback/);
-  assert.match(selectionWorkflow, /const runCancelImport = useCallback/);
+  assert.match(
+    selectionWorkflow,
+    /const\s*\{[\s\S]{0,240}launchImport,[\s\S]{0,160}cancelImport,[\s\S]{0,80}\}\s*=\s*useExternalImportTaskProgress\(batchId\)/,
+  );
+  assert.doesNotMatch(selectionWorkflow, /taskProgress\./);
   assert.match(selectionWorkflow, /currentPreview\.loadingMore/);
   assert.match(selectionWorkflow, /workflowGenerationRef\.current === expectedGeneration/);
   assert.match(selectionWorkflow, /isExternalImportSelectionExpired\(current, Date\.now\(\)\)/);
@@ -82,14 +87,19 @@ test("external import action composes the 4B selection panel without a frontend 
   assert.match(candidateSelection, /ignore_invalid_metadata|resolutionLabel/);
   assert.doesNotMatch(candidateSelection, /sourceModType/);
   assert.match(source, /isExternalImportSourceDto\(selectedSource\)/);
-  assert.match(panelSource, /<ExternalImportAction\s*\/>/);
+  assert.match(panelSource, /<ExternalImportAction\s+onImported=\{onImportCompleted\}\s*\/>/);
   assert.doesNotMatch(source, /@tauri-apps\/plugin-dialog|open\(\{/);
+  assert.match(selectionWorkflow, /useExternalImportResultWorkflow/);
+  assert.match(selectionPanel, /ExternalImportResultPanel/);
+  assert.match(resultPanel, /<section[^>]*aria-labelledby=\{headingId\}/);
+  assert.match(resultPanel, /<h3 id=\{headingId\}/);
+  assert.match(resultPanel, /role="status" aria-live="polite"/);
+  assert.match(resultPanel, /role="alert"/);
+  assert.match(resultPanel, /<ul className="external-import__result-list">/);
+  assert.match(resultPanel, /disabled=\{state\.loadingMore/);
+  assert.match(resultPanel, /重新读取结果|载入更多结果|重试可恢复项/);
   assert.doesNotMatch(
-    `${selectionPanel}\n${candidateSelection}\n${selectionWorkflow}`,
-    /retryExternalImportBatch|getExternalImportBatchResult/,
-  );
-  assert.doesNotMatch(
-    `${source}\n${selectionPanel}\n${candidateSelection}\n${selectionWorkflow}`,
+    `${source}\n${selectionPanel}\n${candidateSelection}\n${resultPanel}\n${selectionWorkflow}`,
     /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i,
   );
 });

@@ -1,10 +1,6 @@
-import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listCategories, type CategoryItem } from "../../categories/categoryApi";
-import { useFeedback } from "../../../shared/feedback";
-import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../modImportTypes";
 import {
-  cancelExternalImportTask,
   createExternalImportSelection,
   getExternalImportPreview,
   selectAllExternalImportCandidates,
@@ -17,17 +13,11 @@ import {
   toExternalImportPreviewCandidateViewModel,
   type ExternalImportPreviewCandidateViewModel,
 } from "./externalImportPreviewModel";
-import {
-  getExternalImportPhaseLabel,
-  isExternalImportTaskTerminal,
-  nextExternalImportTaskStateFromProgress,
-  type ExternalImportTaskState,
-} from "./externalImportProgressState";
+import type { ExternalImportTaskState } from "./externalImportProgressState";
 import {
   applyExternalImportSelectionMutationResult,
   canSelectExternalImportCandidateWithDecision,
   getExternalImportSelectionErrorMessage,
-  isExternalImportBatchStartedDto,
   isExternalImportSelectionCategory,
   isExternalImportSelectionDto,
   isExternalImportSelectionExpired,
@@ -37,8 +27,14 @@ import {
   type ExternalImportSelectionDecisionDto,
   type ExternalImportSelectionDto,
 } from "./externalImportTypes";
-
-type ListenerStatus = "loading" | "ready" | "failed";
+import {
+  useExternalImportTaskProgress,
+  type ExternalImportListenerStatus,
+} from "./useExternalImportTaskProgress";
+import {
+  useExternalImportResultWorkflow,
+  type ExternalImportResultWorkflow,
+} from "./useExternalImportResultWorkflow";
 
 export type ExternalImportSelectionPreviewState =
   | { status: "idle" }
@@ -69,10 +65,11 @@ export type ExternalImportSelectionWorkflow = {
   selectionError: string | null;
   pendingAction: PendingSelectionAction;
   importState: ExternalImportTaskState;
-  listenerStatus: ListenerStatus;
+  listenerStatus: ExternalImportListenerStatus;
   cancelPending: boolean;
   selectionEditable: boolean;
   importActive: boolean;
+  result: ExternalImportResultWorkflow;
   loadMore: () => void;
   retryPreview: () => void;
   retryCategories: () => void;
@@ -108,18 +105,20 @@ function decisionForCandidate(candidate: ExternalImportPreviewCandidateViewModel
   return candidate.selectionDecision ?? emptyDecision;
 }
 
-function isImportActiveState(state: ExternalImportTaskState) {
-  return (
-    state.status === "starting" ||
-    state.status === "running" ||
-    state.status === "cancelling"
-  );
-}
-
 export function useExternalImportSelectionWorkflow(
   batchId: string | null,
+  onImported: () => Promise<void> | void,
 ): ExternalImportSelectionWorkflow {
-  const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
+  const {
+    importState,
+    listenerStatus,
+    cancelPending,
+    importActive,
+    isImportActive,
+    launchImport,
+    retryListener,
+    cancelImport,
+  } = useExternalImportTaskProgress(batchId);
   const [previewState, setPreviewState] =
     useState<ExternalImportSelectionPreviewState>({ status: "idle" });
   const previewStateRef = useRef<ExternalImportSelectionPreviewState>(previewState);
@@ -137,22 +136,20 @@ export function useExternalImportSelectionWorkflow(
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingSelectionAction>(null);
   const pendingActionRef = useRef<PendingSelectionAction>(pendingAction);
-  const [importState, setImportState] = useState<ExternalImportTaskState>({ status: "idle" });
-  const importStateRef = useRef<ExternalImportTaskState>(importState);
-  const [listenerStatus, setListenerStatus] = useState<ListenerStatus>("loading");
-  const [listenerAttempt, setListenerAttempt] = useState(0);
-  const [cancelPending, setCancelPending] = useState(false);
-  const cancelPendingRef = useRef(false);
   const batchIdRef = useRef<string | null>(batchId);
   const workflowGenerationRef = useRef(0);
   const previewRequestRef = useRef(0);
   const categoryRequestRef = useRef(0);
-  const taskIdRef = useRef<string | null>(null);
-  const startPendingRef = useRef(false);
-  const pendingProgressEventsRef = useRef(new Map<string, TaskProgressEventDto>());
-  const displayedTaskNoticeIdRef = useRef<string | null>(null);
-  const terminalNoticeKeysRef = useRef(new Set<string>());
   batchIdRef.current = batchId;
+  const resultWorkflow = useExternalImportResultWorkflow({
+    batchId,
+    selectionId: selection?.selectionId ?? null,
+    importState,
+    importActive,
+    progressReady: listenerStatus === "ready",
+    launchImport,
+    onImported,
+  });
 
   const setTrackedPreviewState = useCallback(
     (
@@ -200,11 +197,6 @@ export function useExternalImportSelectionWorkflow(
   const setTrackedPendingAction = useCallback((next: PendingSelectionAction) => {
     pendingActionRef.current = next;
     setPendingAction(next);
-  }, []);
-
-  const setTrackedImportState = useCallback((next: ExternalImportTaskState) => {
-    importStateRef.current = next;
-    setImportState(next);
   }, []);
 
   const isCurrentSelectionWorkflow = useCallback(
@@ -385,16 +377,10 @@ export function useExternalImportSelectionWorkflow(
     workflowGenerationRef.current = generation;
     previewRequestRef.current += 1;
     categoryRequestRef.current += 1;
-    taskIdRef.current = null;
-    startPendingRef.current = false;
-    pendingProgressEventsRef.current.clear();
     setTrackedSelection(null);
     setTrackedDecisionDrafts({});
     setTrackedPendingAction(null);
-    setTrackedImportState({ status: "idle" });
     setSelectionError(null);
-    cancelPendingRef.current = false;
-    setCancelPending(false);
 
     if (batchId === null) {
       setTrackedPreviewState({ status: "idle" });
@@ -410,7 +396,6 @@ export function useExternalImportSelectionWorkflow(
     loadCategoryOptions,
     setTrackedCategoryState,
     setTrackedDecisionDrafts,
-    setTrackedImportState,
     setTrackedPendingAction,
     setTrackedPreviewState,
     setTrackedSelection,
@@ -442,145 +427,6 @@ export function useExternalImportSelectionWorkflow(
     const timeoutId = window.setTimeout(markExpired, delay);
     return () => window.clearTimeout(timeoutId);
   }, [selection, setTrackedSelection]);
-
-  const applyProgressEvent = useCallback(
-    (event: TaskProgressEventDto) => {
-      const current = importStateRef.current;
-      const next = nextExternalImportTaskStateFromProgress(current, event);
-      if (next === current) {
-        return;
-      }
-      if (isExternalImportTaskTerminal(next)) {
-        taskIdRef.current = null;
-      }
-      setTrackedImportState(next);
-    },
-    [setTrackedImportState],
-  );
-
-  useEffect(() => {
-    let disposed = false;
-    let unlistenTaskProgress: (() => void) | null = null;
-
-    void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, (event) => {
-      if (disposed || event.payload.kind !== "mod_import") {
-        return;
-      }
-
-      const taskId = taskIdRef.current;
-      if (taskId === null) {
-        if (startPendingRef.current) {
-          pendingProgressEventsRef.current.set(event.payload.taskId, event.payload);
-        }
-        return;
-      }
-      if (event.payload.taskId !== taskId) {
-        return;
-      }
-
-      applyProgressEvent(event.payload);
-    })
-      .then((unlisten) => {
-        if (disposed) {
-          unlisten();
-          return;
-        }
-        unlistenTaskProgress = unlisten;
-        setListenerStatus("ready");
-      })
-      .catch(() => {
-        if (!disposed) {
-          setListenerStatus("failed");
-        }
-      });
-
-    return () => {
-      disposed = true;
-      unlistenTaskProgress?.();
-    };
-  }, [applyProgressEvent, listenerAttempt]);
-
-  useEffect(() => {
-    const previousTaskId = displayedTaskNoticeIdRef.current;
-    if (importState.status === "running" || importState.status === "cancelling") {
-      if (previousTaskId && previousTaskId !== importState.taskId) {
-        dismissTaskNotice(previousTaskId);
-      }
-      displayedTaskNoticeIdRef.current = importState.taskId;
-      const progress =
-        importState.status === "running" &&
-        importState.current !== null &&
-        importState.total !== null
-          ? `（${importState.current} / ${importState.total}）`
-          : "";
-      showTaskNotice({
-        taskId: importState.taskId,
-        title: "正在批量导入 Mod",
-        message: `${getExternalImportPhaseLabel(importState.phase)}${progress}`,
-        tone: "progress",
-      });
-      return;
-    }
-
-    if (previousTaskId) {
-      dismissTaskNotice(previousTaskId);
-      displayedTaskNoticeIdRef.current = null;
-    }
-  }, [dismissTaskNotice, importState, showTaskNotice]);
-
-  useEffect(
-    () => () => {
-      const taskId = displayedTaskNoticeIdRef.current;
-      if (taskId) {
-        dismissTaskNotice(taskId);
-      }
-    },
-    [dismissTaskNotice],
-  );
-
-  useEffect(() => {
-    if (!isExternalImportTaskTerminal(importState)) {
-      return;
-    }
-
-    const noticeKey = `${importState.status}.${
-      importState.taskId ?? `${batchIdRef.current ?? "no-batch"}.${importState.phase}`
-    }`;
-    if (terminalNoticeKeysRef.current.has(noticeKey)) {
-      return;
-    }
-    terminalNoticeKeysRef.current.add(noticeKey);
-
-    if (importState.status === "completed") {
-      pushToast({
-        eventKey: `external-import.import.completed.${noticeKey}`,
-        taskId: importState.taskId,
-        title: "批量导入已完成",
-        message: "导入任务已完成；结果明细将在后续结果视图中提供。",
-        tone: "success",
-      });
-      return;
-    }
-
-    if (importState.status === "cancelled") {
-      pushToast({
-        eventKey: `external-import.import.cancelled.${noticeKey}`,
-        taskId: importState.taskId,
-        title: "批量导入已取消",
-        message: "已保留后端确认的结果；本页面不推断部分成功数量。",
-        tone: "neutral",
-      });
-      return;
-    }
-
-    pushToast({
-      eventKey: `external-import.import.failed.${noticeKey}`,
-      taskId: importState.taskId ?? undefined,
-      title: "批量导入失败",
-      message: getExternalImportSelectionErrorMessage(importState.errorCode),
-      tone: "danger",
-    });
-  }, [importState, pushToast]);
 
   const reloadAuthoritativeFirstPage = useCallback(async () => {
     const currentBatchId = batchIdRef.current;
@@ -888,7 +734,7 @@ export function useExternalImportSelectionWorkflow(
       currentSelection === null ||
       currentSelection.status !== "editing" ||
       currentSelection.selectedCount === 0 ||
-      isImportActiveState(importStateRef.current) ||
+      isImportActive() ||
       previewStateRef.current.status !== "ready" ||
       previewStateRef.current.loadingMore
     ) {
@@ -897,18 +743,14 @@ export function useExternalImportSelectionWorkflow(
 
     setTrackedPendingAction("start");
     setSelectionError(null);
-    startPendingRef.current = true;
-    pendingProgressEventsRef.current.clear();
-    setTrackedImportState({ status: "starting" });
     try {
-      const launch = await startExternalImportBatch({
-        batchId: currentBatchId,
-        selectionId: currentSelection.selectionId,
-        expectedRevision: currentSelection.revision,
-      });
-      if (!isExternalImportBatchStartedDto(launch, currentBatchId)) {
-        throw { code: "external_import_task_unavailable" };
-      }
+      const launchResult = await launchImport(() =>
+        startExternalImportBatch({
+          batchId: currentBatchId,
+          selectionId: currentSelection.selectionId,
+          expectedRevision: currentSelection.revision,
+        }),
+      );
       if (
         !isCurrentSelectionWorkflow(
           currentBatchId,
@@ -918,19 +760,12 @@ export function useExternalImportSelectionWorkflow(
       ) {
         return;
       }
-
-      taskIdRef.current = launch.task.taskId;
-      setTrackedSelection({ ...currentSelection, status: "sealed" });
-      setTrackedImportState({
-        status: "running",
-        taskId: launch.task.taskId,
-        phase: "external_import.import.queued",
-        current: null,
-        total: null,
-      });
-      const pendingEvent = pendingProgressEventsRef.current.get(launch.task.taskId);
-      if (pendingEvent) {
-        applyProgressEvent(pendingEvent);
+      if (launchResult.status === "started") {
+        setTrackedSelection({ ...currentSelection, status: "sealed" });
+      } else if (launchResult.status === "failed") {
+        setSelectionError(
+          getExternalImportSelectionErrorMessage(launchResult.errorCode),
+        );
       }
     } catch (error) {
       if (
@@ -943,16 +778,8 @@ export function useExternalImportSelectionWorkflow(
         return;
       }
       const code = errorCodeFrom(error, "external_import_task_unavailable");
-      setTrackedImportState({
-        status: "failed",
-        taskId: null,
-        phase: "external_import.import.start.failed",
-        errorCode: code,
-      });
       setSelectionError(getExternalImportSelectionErrorMessage(code));
     } finally {
-      startPendingRef.current = false;
-      pendingProgressEventsRef.current.clear();
       if (
         isCurrentSelectionWorkflow(
           currentBatchId,
@@ -964,51 +791,13 @@ export function useExternalImportSelectionWorkflow(
       }
     }
   }, [
-    applyProgressEvent,
     isCurrentSelectionWorkflow,
-    listenerStatus,
-    setTrackedImportState,
     setTrackedPendingAction,
     setTrackedSelection,
+    isImportActive,
+    launchImport,
+    listenerStatus,
   ]);
-
-  const cancelImport = useCallback(async () => {
-    const current = importStateRef.current;
-    if (current.status !== "running" || cancelPendingRef.current) {
-      return;
-    }
-
-    const generation = workflowGenerationRef.current;
-    cancelPendingRef.current = true;
-    setCancelPending(true);
-    try {
-      const cancelledTask = await cancelExternalImportTask({ taskId: current.taskId });
-      if (
-        cancelledTask.taskId !== current.taskId ||
-        cancelledTask.kind !== "mod_import"
-      ) {
-        throw { code: "external_import_task_unavailable" };
-      }
-    } catch (error) {
-      if (workflowGenerationRef.current !== generation) {
-        return;
-      }
-      pushToast({
-        eventKey: `external-import.import.cancel-failed.${current.taskId}`,
-        taskId: current.taskId,
-        title: "无法取消批量导入",
-        message: getExternalImportSelectionErrorMessage(
-          errorCodeFrom(error, "external_import_task_unavailable"),
-        ),
-        tone: "warning",
-      });
-    } finally {
-      if (workflowGenerationRef.current === generation) {
-        cancelPendingRef.current = false;
-        setCancelPending(false);
-      }
-    }
-  }, [pushToast]);
 
   const loadMore = useCallback(async () => {
     const currentBatchId = batchIdRef.current;
@@ -1019,7 +808,7 @@ export function useExternalImportSelectionWorkflow(
       currentSelection === null ||
       currentSelection.status !== "editing" ||
       pendingActionRef.current !== null ||
-      isImportActiveState(importStateRef.current) ||
+      isImportActive() ||
       currentPreview.status !== "ready" ||
       currentPreview.nextCursor === null ||
       currentPreview.loadingMore
@@ -1085,6 +874,7 @@ export function useExternalImportSelectionWorkflow(
     }
   }, [
     reconcileDecisionDrafts,
+    isImportActive,
     setTrackedPreviewState,
     setTrackedSelection,
   ]);
@@ -1109,14 +899,6 @@ export function useExternalImportSelectionWorkflow(
     void loadCategoryOptions();
   }, [loadCategoryOptions]);
 
-  const retryListener = useCallback(() => {
-    if (listenerStatus !== "failed" || isImportActiveState(importStateRef.current)) {
-      return;
-    }
-    setListenerStatus("loading");
-    setListenerAttempt((attempt) => attempt + 1);
-  }, [listenerStatus]);
-
   const runLoadMore = useCallback(() => {
     void loadMore();
   }, [loadMore]);
@@ -1129,15 +911,11 @@ export function useExternalImportSelectionWorkflow(
     void startImport();
   }, [startImport]);
 
-  const runCancelImport = useCallback(() => {
-    void cancelImport();
-  }, [cancelImport]);
-
   const selectionEditable =
     selection !== null &&
     selection.status === "editing" &&
     !isExternalImportSelectionExpired(selection, Date.now()) &&
-    !isImportActiveState(importState) &&
+    !importActive &&
     !(previewState.status === "ready" && previewState.loadingMore);
 
   return {
@@ -1151,7 +929,8 @@ export function useExternalImportSelectionWorkflow(
     listenerStatus,
     cancelPending,
     selectionEditable,
-    importActive: isImportActiveState(importState),
+    importActive,
+    result: resultWorkflow,
     loadMore: runLoadMore,
     retryPreview,
     retryCategories,
@@ -1160,6 +939,6 @@ export function useExternalImportSelectionWorkflow(
     setCandidateSelected,
     selectAll: runSelectAll,
     startImport: runStartImport,
-    cancelImport: runCancelImport,
+    cancelImport,
   };
 }

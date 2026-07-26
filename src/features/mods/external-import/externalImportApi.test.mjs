@@ -6,7 +6,7 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
-test("external import API invokes only the documented 4B boundaries", () => {
+test("external import API invokes the documented result and retry boundaries", () => {
   const source = readSource("src/features/mods/external-import/externalImportApi.ts");
 
   assert.match(source, /invoke<ExternalImportSourceDto \| null>\("select_external_import_source"\)/);
@@ -23,6 +23,11 @@ test("external import API invokes only the documented 4B boundaries", () => {
   assert.match(source, /"update_external_import_selection"/);
   assert.match(source, /"select_all_external_import_candidates"/);
   assert.match(source, /"start_external_import_batch"/);
-  assert.doesNotMatch(source, /retry_external_import_batch|get_external_import_batch_result/);
+  assert.match(source, /invoke<ExternalImportBatchResultPageDto>\("get_external_import_batch_result"/);
+  assert.match(source, /limit:\s*EXTERNAL_IMPORT_RESULT_PAGE_SIZE/);
+  assert.match(source, /invoke<ExternalImportBatchStartedDto>\("retry_external_import_batch"/);
+  assert.match(source, /batchId:\s*input\.batchId/);
+  assert.match(source, /selectionId:\s*input\.selectionId/);
+  assert.doesNotMatch(source, /candidateIds|results:\s*input|decisions:\s*input/);
   assert.doesNotMatch(source, /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i);
 });
