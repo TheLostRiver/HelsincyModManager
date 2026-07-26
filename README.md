@@ -50,6 +50,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [Dashboard v2 与侧边栏模式设计](docs/DASHBOARD_V2_SIDEBAR_MODES.md)
 - [Dashboard v2 侧边栏模式实现计划](docs/superpowers/plans/2026-05-31-dashboard-v2-sidebar-modes-implementation.md)
 - [路线图](docs/ROADMAP.md)
+- [自主迭代路线图](docs/AUTONOMOUS_ITERATION_ROADMAP.md)
 - [发布与产物说明](docs/release/发布与产物说明.md)
 - [构建发布与脚本说明](docs/release/构建发布与脚本说明.md)
 - [更新日志](CHANGELOG.md)
