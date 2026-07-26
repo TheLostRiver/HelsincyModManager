@@ -42,6 +42,7 @@
 .mod-card__status-pill.is-cleanup_pending svg {
   color: var(--color-warning-dot);
 }
+
 /* ---------- GRID 增强网格视图 ---------- */
 .mod-grid.view-grid {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -55,17 +56,21 @@
   border-radius: 0;
 }
 
+/*
+ * 版本改为信息行内的一枚小标签，不再浮在海报上。原实现定位在 top:8px/left:8px，
+ * 与同样落在左上角的选中指示器（top:12px/left:12px、24×24、悬停出现）直接压在一起；
+ * 而 grid 视图四角都已占用（左上选中圈、右上状态标、底部整条毛玻璃信息块），
+ * 没有空闲角可挪。版本与作者、大小同属元数据，收进信息行才是它该在的位置。
+ */
 .view-grid .mod-card__version-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  background: rgba(0, 0, 0, 0.4);
-  color: #fff;
-  padding: 2px 6px;
-  border-radius: 4px;
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
+  border-radius: 999px;
   font-size: 11px;
-  font-weight: 700;
-  backdrop-filter: blur(4px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .view-grid .mod-card__info-enhanced {
@@ -87,13 +92,30 @@
 
 .view-grid .mod-card__meta-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   color: var(--color-text-muted);
 }
 
+.view-grid .mod-card__meta-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .view-grid .mod-card__author {
+  min-width: 0;
+  overflow: hidden;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-grid .mod-card__size {
+  flex: 0 0 auto;
 }
 
 /* ---------- LIST 紧凑列表视图 ---------- */
@@ -151,15 +173,11 @@
   margin-bottom: 6px;
 }
 
-.view-list .mod-card__desc {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+/*
+ * 这里原有一条 .mod-card__desc 规则。ModLibraryItem 上没有描述字段，
+ * 原实现是在组件里硬编码一段中文占位文案，整屏卡片显示同一句话。
+ * 描述位与该样式一并移除；后端补上描述字段前不要再加回占位文案。
+ */
 
 .view-list .mod-card__footer-list {
   display: flex;
@@ -182,7 +200,7 @@
   border-width: 2px;
   border-color: var(--color-border);
   border-radius: 4px; /* 硬朗的直角 */
-  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.05);
+  box-shadow: 4px 4px 0 color-mix(in srgb, #0f172a 7%, transparent);
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -194,7 +212,7 @@
 }
 
 :root[data-color-scheme="dark"] .mod-grid.view-tech .mod-card {
-  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+  box-shadow: 4px 4px 0 color-mix(in srgb, #020617 40%, transparent);
 }
 
 .mod-grid.view-tech .mod-card:hover:not(.is-selected) {
@@ -231,7 +249,7 @@
 }
 
 .mod-grid.view-tech .mod-card__tech-author {
-  font-family: "Courier New", Courier, monospace;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text);
@@ -260,7 +278,7 @@
 
 .mod-grid.view-tech .mod-card__tech-version,
 .mod-grid.view-tech .mod-card__tech-size {
-  font-family: "Courier New", Courier, monospace;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text);
@@ -273,18 +291,18 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-family: "Courier New", Courier, monospace;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", Consolas, monospace;
   font-size: 12px;
   font-weight: bold;
   color: var(--color-text); /* ACTIVE VALID 默认颜色 */
 }
 
 .mod-grid.view-tech .mod-card__tech-status[data-status="conflict"] {
-  color: #ef4444; /* ERROR */
+  color: var(--color-danger-dot);
 }
 
 .mod-grid.view-tech .mod-card__tech-status[data-status="disabled"] {
-  color: #f59e0b; /* STANDBY */
+  color: var(--color-warning-dot);
 }
 
 .mod-grid.view-tech .mod-card__tech-status[data-status="not_installed"],
@@ -308,7 +326,7 @@
 
 /* 覆盖 installed 状态下的指示器颜色，因为文字是默认色，但指示器需绿色 */
 .mod-grid.view-tech .mod-card__tech-status[data-status="installed"] .tech-indicator {
-  color: #10b981;
+  color: var(--color-success-dot);
 }
 
 /* ---------- 卡片网格 ---------- */
@@ -332,8 +350,21 @@
   border: none;
   border-radius: var(--radius-card);
   padding: 0;
-  box-shadow: var(--shadow-card);
-  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  /*
+   * 双层短阴影，不用全局 --shadow-card（0 22px 60px）。那个偏移和模糊适合工作台上
+   * 两三张大卡片，但网格里一屏几十张时会互相叠成一片灰。这里用一层近距离细阴影勾边、
+   * 一层中距离柔和阴影托底，密集排布下更干净。
+   */
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #0f172a 6%, transparent),
+    0 6px 16px -8px color-mix(in srgb, #0f172a 18%, transparent);
+  /*
+   * 只过渡实际会变的属性。原先是 transition: all，会把布局属性一并纳入过渡，
+   * 网格里几十张卡片同时 hover 时容易掉帧。
+   */
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   position: relative;
   cursor: pointer;
   user-select: none;
@@ -515,17 +546,26 @@
 }
 
 .mod-card:hover:not(.is-selected) {
-  transform: translateY(-4px);
+  transform: translateY(-3px);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #0f172a 8%, transparent),
+    0 12px 24px -10px color-mix(in srgb, #0f172a 26%, transparent);
 }
 
 .mod-card:hover:not(.is-selected)::after {
   border-color: var(--color-border);
 }
 
+/*
+ * 选中态只用 ::after 的一层描边，不再叠加 box-shadow 的 0 0 0 1px：
+ * 两者相加视觉上是 3px 粗描边，在密集网格里过重。
+ */
 .mod-card.is-selected {
   background: var(--color-surface);
-  transform: translateY(-4px);
-  box-shadow: 0 0 0 1px var(--color-accent), 0 12px 32px var(--color-accent-alpha-20);
+  transform: translateY(-3px);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #0f172a 8%, transparent),
+    0 12px 28px -10px var(--color-accent-alpha-25);
 }
 
 .mod-card.is-selected::after {
@@ -552,9 +592,14 @@
   justify-content: center;
   opacity: 0;
   transform: scale(0.8);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 200ms ease,
+    background-color 200ms ease,
+    border-color 200ms ease;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px color-mix(in srgb, #0f172a 12%, transparent);
 }
 
 .mod-card:hover .mod-card__selection-indicator {
@@ -635,7 +680,7 @@
   height: 84px;
   top: 18px;
   left: 18px;
-  background: #ffffff;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
 }
 
 .mod-card__silhouette::after {
@@ -643,7 +688,7 @@
   height: 62px;
   top: 101px;
   left: 84px;
-  background: #0000001f;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
 }
 
 .mod-card__head {
@@ -653,7 +698,7 @@
   width: 40px;
   height: 40px;
   margin-left: -20px;
-  background: #f8fafc;
+  background: var(--color-surface-muted);
   border-radius: 50%;
 }
 
@@ -664,7 +709,7 @@
   width: 58px;
   height: 104px;
   margin-left: -29px;
-  background: #cbd5e1;
+  background: color-mix(in srgb, var(--color-text-muted) 55%, var(--color-surface));
   border-radius: 24px 24px 10px 10px;
 }
 
@@ -673,7 +718,7 @@
   top: 28px;
   width: 28px;
   height: 82px;
-  background: #e2e8f0;
+  background: color-mix(in srgb, var(--color-text-muted) 32%, var(--color-surface));
   border-radius: 14px 14px 6px 6px;
 }
 
@@ -692,16 +737,22 @@
   z-index: 2;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 12px;
+  /*
+   * 收紧尺寸与字重：一屏几十张卡片各挂一枚 32px 高、字重 800 的胶囊时，
+   * 状态标反而盖过 Mod 名称成为视觉主体。这里降到 26px / 600，
+   * 让它退回"标注"的角色，需要时仍然一眼可辨。
+   */
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
   border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--color-success-text);
   background: var(--color-success-bg);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid color-mix(in srgb, currentcolor 14%, transparent);
 }
 
 .mod-card__status-pill svg {
