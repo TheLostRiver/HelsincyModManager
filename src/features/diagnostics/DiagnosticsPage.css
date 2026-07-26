@@ -217,6 +217,10 @@
   gap: 12px;
 }
 
+/*
+ * 内层卡片用 --radius-card，外层 hero 用 --radius-panel，形成"外大内小"的层级。
+ * 不写死数值：16px 恰好是 --radius-card 的当前取值，改用 token 后随体系统一变化。
+ */
 .diagnostics-page__health-card,
 .diagnostics-page__panel,
 .diagnostics-page__platform,
@@ -224,7 +228,7 @@
   padding: 16px;
   background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
-  border-radius: 16px;
+  border-radius: var(--radius-card);
 }
 
 .diagnostics-page__health-card {
@@ -518,8 +522,16 @@
     grid-template-columns: 1fr;
   }
 
+  /*
+   * 页头改为单列堆叠。基础态已是双列 grid，因此这里必须显式改回单列——
+   * 只写 display: grid 是空操作（原实现基础态为 flex 时才有效），窄屏下页头不会堆叠。
+   */
   .diagnostics-page__hero {
-    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diagnostics-page__actions {
+    justify-content: flex-start;
   }
 }
 
