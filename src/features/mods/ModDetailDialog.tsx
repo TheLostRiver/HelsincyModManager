@@ -253,9 +253,15 @@ export function ModDetailDialog({
             <span className="mod-detail-dialog__icon" aria-hidden="true">
               {activeTab === "replacement" ? <Target size={18} /> : <Info size={18} />}
             </span>
-            <div>
-              <h2>Mod 详情</h2>
-              <p>{fallbackSnapshotItem?.name ?? modId}</p>
+            {/*
+             * 层级以用户关心的信息为主：Mod 名称作为标题，"Mod 详情" 降为上方小字说明。
+             * 原实现把通用词当标题、把 Mod 名称当副标题，层级是反的。
+             */}
+            <div className="mod-detail-dialog__heading">
+              <span className="mod-detail-dialog__eyebrow">Mod 详情</span>
+              <h2 title={fallbackSnapshotItem?.name ?? modId}>
+                {fallbackSnapshotItem?.name ?? modId}
+              </h2>
             </div>
           </div>
           <button className="mod-detail-dialog__close" type="button" onClick={onClose} disabled={dialogBusy} aria-label="关闭">
