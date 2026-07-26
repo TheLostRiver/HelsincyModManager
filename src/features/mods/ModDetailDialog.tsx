@@ -156,6 +156,13 @@ export function ModDetailDialog({
 
   const previewImage = detail?.previewImage ?? fallbackSnapshotItem?.previewImage ?? null;
   const previewThumbnail = previewImage?.kind === "thumbnail" ? previewImage : null;
+  /*
+   * 标题优先用已加载的权威 detail.name。fallbackSnapshotItem 只是打开对话框时的列表快照，
+   * 可能已过期或缺失；modId 是最后兜底。名称提升为主标题后，这个优先级尤其重要——
+   * 主标签显示过期名称会直接误导用户在编辑哪个 Mod。
+   * 优先级与上方 previewImage 保持一致。
+   */
+  const displayModName = detail?.name ?? fallbackSnapshotItem?.name ?? modId;
   const selectedCategoryNames = useMemo(() => {
     const selected = new Set(selectedCategoryIds);
     return categories.filter((category) => selected.has(category.id)).map((category) => category.name);
@@ -259,9 +266,7 @@ export function ModDetailDialog({
              */}
             <div className="mod-detail-dialog__heading">
               <span className="mod-detail-dialog__eyebrow">Mod 详情</span>
-              <h2 title={fallbackSnapshotItem?.name ?? modId}>
-                {fallbackSnapshotItem?.name ?? modId}
-              </h2>
+              <h2 title={displayModName}>{displayModName}</h2>
             </div>
           </div>
           <button className="mod-detail-dialog__close" type="button" onClick={onClose} disabled={dialogBusy} aria-label="关闭">
