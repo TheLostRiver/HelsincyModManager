@@ -115,7 +115,7 @@
 
 ### 验证
 
-```
+```powershell
 cargo test -p hmm-tauri
 cargo check -p hmm-tauri
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-file-size.ps1
@@ -176,7 +176,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-file-size.ps
 
 ### 验证
 
-```
+```powershell
 cargo clippy -p hmm-app --all-targets -- -D warnings
 cargo test -p hmm-app
 cargo clippy --workspace --all-targets -- -D warnings
@@ -194,7 +194,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 长期架构契约，并逐族记录了几乎所有命令族。但 T3（Mod 元数据编辑）与 T4（分类 CRUD）的
 **8 个命令整族缺席**：
 
-```
+```text
 create_category  update_category  delete_category  list_categories
 set_mod_categories  get_mod_categories
 update_mod_metadata  delete_mod_metadata
@@ -215,7 +215,7 @@ update_mod_metadata  delete_mod_metadata
 
 ### 验证
 
-```
+```powershell
 corepack pnpm run test
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
 ```
