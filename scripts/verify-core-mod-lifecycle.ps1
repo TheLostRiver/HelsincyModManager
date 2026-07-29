@@ -3,14 +3,15 @@ Set-StrictMode -Version Latest
 
 $PSNativeCommandUseErrorActionPreference = $false
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$scenarioPackage = "hmm-runtime"
 $scenarioFilter = "headless_composition_"
 $expectedScenarios = @(
-    "state::core_mod_lifecycle_tests::headless_composition_imports_v1_and_rebuilds_plan_after_restart",
-    "state::core_mod_lifecycle_tests::headless_composition_installs_restarts_uninstalls_and_restores_baseline",
-    "state::core_mod_lifecycle_tests::headless_composition_reinstalls_v1_to_v2_and_restores_baseline",
-    "state::core_mod_lifecycle_tests::headless_composition_retargets_staging_commits_and_persists_binding_snapshot",
-    "state::core_mod_lifecycle_tests::headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_baseline",
-    "state::core_mod_lifecycle_tests::headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails"
+    "composition::core_mod_lifecycle_tests::headless_composition_imports_v1_and_rebuilds_plan_after_restart",
+    "composition::core_mod_lifecycle_tests::headless_composition_installs_restarts_uninstalls_and_restores_baseline",
+    "composition::core_mod_lifecycle_tests::headless_composition_reinstalls_v1_to_v2_and_restores_baseline",
+    "composition::core_mod_lifecycle_tests::headless_composition_retargets_staging_commits_and_persists_binding_snapshot",
+    "composition::core_mod_lifecycle_tests::headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_baseline",
+    "composition::core_mod_lifecycle_tests::headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails"
 )
 
 function Assert-CommandAvailable {
@@ -117,7 +118,7 @@ try {
         "test",
         "--quiet",
         "-p",
-        "hmm-tauri",
+        $scenarioPackage,
         $scenarioFilter,
         "--",
         "--list"
@@ -127,7 +128,7 @@ try {
         Stop-Acceptance -Message "Core Mod lifecycle scenario discovery failed." -ExitCode $discovery.ExitCode
     }
 
-    $scenarioPattern = "^(?<name>state::core_mod_lifecycle_tests::headless_composition_[A-Za-z0-9_]+): test$"
+    $scenarioPattern = "^(?<name>composition::core_mod_lifecycle_tests::headless_composition_[A-Za-z0-9_]+): test$"
     $discoveredScenarios = @(@(
         foreach ($item in $discovery.Output) {
             $line = $item.ToString().Trim()
@@ -168,7 +169,7 @@ try {
         "test",
         "--quiet",
         "-p",
-        "hmm-tauri",
+        $scenarioPackage,
         $scenarioFilter
     )
     Write-SafeOutput -Output $execution.Output

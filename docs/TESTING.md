@@ -550,7 +550,7 @@ PowerShell 7 或非 Windows 环境使用同一脚本：
 pwsh -NoProfile -File ./scripts/verify-core-mod-lifecycle.ps1
 ```
 
-脚本先从 `hmm-tauri` 测试列表发现 `headless_composition_*` 场景，要求发现数不少于固定基线 6，
+脚本先从 `hmm-runtime` 测试列表发现 `headless_composition_*` 场景，要求发现数不少于固定基线 6，
 并逐项确认 T19 计划记录的 6 个固定场景仍然存在；发现数为 0、少于基线、缺少固定场景或场景被
 标记为 ignored 时均失败。发现成功后，脚本通过同一个公共前缀一次执行全部场景，并保留 cargo 的
 非零退出码。Windows 新 worktree 会在发现测试前通过仓库既有 helper 准备 debug sidecar；生成的
@@ -562,11 +562,11 @@ AppData、temp MHW:I-like game root、fake port 和受控 staging/backup/manifes
 
 CL0/CL1 test-only composition harness 使用人工 zip、temp AppData 与 temp MHW:I-like game root。
 CL0 覆盖 fixture 分类、真实 importer、持久化 import/game config、MHW adapter InstallPlan 和
-AppState restart；CL1 在同一 harness 上覆盖 install -> restart -> uninstall -> baseline、manifest/
+runtime restart；CL1 在同一 harness 上覆盖 install -> restart -> uninstall -> baseline、manifest/
 recovery counts、task identity/phase、Audit Log 字段白名单和公开证据脱敏：
 
 ```powershell
-cargo test -p hmm-tauri state::core_mod_lifecycle_tests
+cargo test -p hmm-runtime composition::core_mod_lifecycle_tests
 cargo test -p hmm-app install
 ```
 
@@ -584,9 +584,9 @@ CL3 的测试矩阵见
 L1/L2 已有实际聚焦入口：
 
 ```powershell
-cargo test -p hmm-tauri state::core_mod_lifecycle_tests
-cargo test -p hmm-tauri state::core_mod_lifecycle_tests::headless_composition_reinstalls_v1_to_v2_and_restores_baseline -- --nocapture
-cargo test -p hmm-tauri state::core_mod_lifecycle_tests::headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails -- --nocapture
+cargo test -p hmm-runtime composition::core_mod_lifecycle_tests
+cargo test -p hmm-runtime composition::core_mod_lifecycle_tests::headless_composition_reinstalls_v1_to_v2_and_restores_baseline -- --nocapture
+cargo test -p hmm-runtime composition::core_mod_lifecycle_tests::headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails -- --nocapture
 cargo test -p hmm-app mod_import::revision_tests
 cargo test -p hmm-core reinstall
 cargo test -p hmm-app reinstall
