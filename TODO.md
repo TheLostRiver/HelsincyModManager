@@ -586,7 +586,8 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: T17 第三方批量迁移 Slice 4A（PR #196；PR #197 补齐 review 遗漏）
   -> 已完成: T17 Slice 4B（selection/decision/start/progress，PR #198）
   -> 已完成: T17 Slice 4C（result/retry/performance/hardening，PR #199）
-  -> 优先独立开启: QG-01 CI 门禁（仅等人工治理 review 时不阻塞产品队列）
+  -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
+  -> 优先独立开启并完成: QG-01 CI 门禁
   -> 当前产品 P0: T13-00 批量设计
   -> CLI-2A/2B/2C observer、Sandbox 写许可和单项生命周期 E2E
   -> CORE-PREF-01 单项 preflight 一致化
@@ -622,3 +623,5 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
 | T20 浮层动画收敛到共享基元 | P3 | 待评审（下次新增浮层前处理，或出现第三处重复实现时立即处理） | |
+| QG-01 CI 质量门禁 | P0 治理 | Ready：下一独立 task | |
+| GOV-01 至 GOV-04 工程治理 | P3 治理 | 已完成 | #211 / #212 / #213 / #214 |
