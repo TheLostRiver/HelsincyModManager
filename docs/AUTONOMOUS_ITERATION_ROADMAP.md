@@ -96,12 +96,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```mermaid
 flowchart TD
   QG["QG-01 CI 质量门禁"] --> B0["T13-00 批量语义设计"]
-  B0 --> B1["T13-01 Sealed BatchPlan"]
-  O["CLI-2A 流式 Observer"] --> S["CLI-2B Sandbox 写许可"]
+  B0 --> O["CLI-2A 流式 Observer"]
+  O --> S["CLI-2B Sandbox 写许可"]
   S --> C["CLI-2C 单项生命周期 CLI E2E"]
   C --> CORE["CORE-PREF-01 单项 Preflight 一致化"]
+  CORE --> B1["T13-01 Sealed BatchPlan"]
   B1 --> BI["T13-02 批量安装"]
-  CORE --> BI
   BI --> BU["T13-03 批量卸载"]
   BU --> BR["T13-04 批量真正重装"]
   BR --> BC["T13-05 CLI 批量契约"]
@@ -164,7 +164,7 @@ QG-01
 
 ### T13-00：冻结批量领域语义
 
-状态：`ready`，高风险设计 task。
+状态：`blocked`，依赖 QG-01 合并；高风险设计 task。
 
 设计必须决定：
 
@@ -183,7 +183,7 @@ QG-01
 
 ### CLI-2A：逐阶段任务 Observer 与 JSONL
 
-状态：`ready`。
+状态：`blocked`，依赖 T13-00 合并。
 
 范围：
 
@@ -617,7 +617,7 @@ recovery 语义未改变：
 5. 全部 required CI terminal success。
 6. 所有评论逐条处理；真实 bug 已修复，误报已有证据。
 7. CodeRabbit 缺席时已有独立全 diff 自审记录。
-8. 没有未处理 Critical/Important finding。
+8. 所有已确认的真实 bug、测试或契约缺口均已处理，且没有未处理 Critical/Important finding。
 9. 需要 disposable Windows 环境的 task 已完成真实安装态验收和 cleanup。
 10. 普通合并优先；使用 `--admin` 时满足目标模式提示词的额外限制。
 

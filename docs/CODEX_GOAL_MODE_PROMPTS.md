@@ -126,7 +126,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 4. 检查测试是否覆盖成功、失败、取消、回滚/恢复、并发、脱敏和负向 containment。
 5. 运行当前任务的聚焦验证、完整 verify、前端测试和 clippy。
 6. 在 PR 留下“外部机器人 review 缺席，已完成独立自审”的证据摘要，包括 commit SHA 和实际命令。
-7. 仍有 Critical/Important finding、未解决线程或不确定的高风险行为时禁止合并。
+7. 仍有任何已确认的真实 bug、测试/契约缺口、Critical/Important finding、未解决线程或
+   不确定的高风险行为时禁止合并。
 ```
 
 ## CI 等待与失败处理提示词
@@ -154,7 +155,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 3. 所有 required checks 已到 terminal success；没有 pending、failure、cancelled、timed_out、
    action_required、skipped 或 neutral required check。
 4. 当前 commit 已执行任务聚焦测试、完整 verify，以及尚未纳入 CI 的前端测试和 clippy。
-5. 已完成最后一次 push 后的完整本地自审，Critical/Important finding 为零。
+5. 已完成最后一次 push 后的完整本地自审；所有已确认的真实 bug、测试或契约缺口均已处理，
+   Critical/Important finding 为零。
 6. 所有 review thread 和评论已处理；真实 bug 已修复并补测试，误报已有可复核证据。
 7. CodeRabbit 缺席时已经执行并记录独立全 diff 自审，不能用“无评论”代替 review。
 8. 没有需要维护者决策的产品、安全、许可或数据来源问题。
