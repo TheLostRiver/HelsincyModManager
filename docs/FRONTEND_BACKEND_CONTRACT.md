@@ -30,13 +30,19 @@ feature typed API
   封装 invoke，提供 TypeScript 输入/输出类型
 
 Tauri commands
-  薄边界：参数校验、DTO 转换、调用 AppState 中的应用服务
+  薄边界：参数校验、DTO 转换、调用 AppState 暴露的 runtime 服务
+
+hmm-runtime
+  Tauri-free composition root：装配 app、ports、infra 和 game adapters
 
 hmm-app
   用例编排：依赖 ports，不依赖具体文件系统或平台实现
 
-hmm-core / hmm-ports / hmm-infra / hmm-games-*
-  领域模型、traits、真实 I/O 和游戏适配规则
+hmm-ports
+  应用层依赖的 traits/interfaces，不包含具体 infra
+
+hmm-core / hmm-infra / hmm-games-*
+  领域模型、真实 I/O 和游戏适配规则
 ```
 
 前端可以展示 `pathLabel`、`displayName`、`internalId` 等后端提供的字段，但不能据此拼接写入路径或推断安装行为。
@@ -259,13 +265,15 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 
 ## AppState 和服务装配
 
-`AppState` 只保存应用服务和共享基础设施句柄，不保存前端 view 状态。
+`AppState` 是 `HmmRuntime` 的薄包装，只负责解析 Tauri app data、触发 GUI-only 生命周期行为并
+向 command 暴露 runtime 服务；它不保存前端 view 状态，也不重新装配业务依赖。
 
 新增服务时应遵循：
 
 1. 在 `hmm-app` 中定义用例服务。
 2. 依赖 `hmm-ports` traits。
-3. 在 `src-tauri/src/state.rs` 中组合具体 infra 和 adapter。
+3. 在 `hmm-runtime` 中组合具体 infra 和 adapter；只有 GUI-only 生命周期留在
+   `src-tauri/src/state.rs`。
 4. 在 command 中通过 `State<'_, AppState>` 调用服务。
 
 如果服务需要内部可变状态，优先让服务内部用清晰的锁或队列表达，而不是在 command 中临时拼装全局状态。
