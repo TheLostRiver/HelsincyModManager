@@ -63,7 +63,7 @@ pub fn start_external_import_scan(
         .map_err(external_import_scan_error)?;
     let response = ExternalImportScanStartedDto::from(&launch);
 
-    if let Err(error) = emit_task_progress(&app_handle, queued_event_for_scan(&launch).into()) {
+    if let Err(error) = emit_task_progress(&app_handle, queued_event_for_scan(&launch)) {
         let _ = state.external_import.scans.abort_queued_scan(&launch);
         return Err(error);
     }
@@ -280,7 +280,7 @@ fn spawn_external_import_scan_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }
@@ -292,7 +292,7 @@ fn launch_external_import_batch(
     launch: ExternalImportBatchLaunch,
 ) -> Result<ExternalImportBatchStartedDto, CommandErrorDto> {
     let response = ExternalImportBatchStartedDto::from(&launch);
-    if let Err(error) = emit_task_progress(&app_handle, queued_event_for_batch(&launch).into()) {
+    if let Err(error) = emit_task_progress(&app_handle, queued_event_for_batch(&launch)) {
         let _ = service.abort_queued_import(&launch);
         return Err(error);
     }
@@ -325,7 +325,7 @@ fn spawn_external_import_batch_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }

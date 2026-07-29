@@ -9,7 +9,7 @@ use hmm_ports::GameConfigRepository;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub(crate) fn mod_uninstaller(
+pub(super) fn mod_uninstaller(
     game_config_repository: Arc<dyn GameConfigRepository>,
     app_data_dir: PathBuf,
 ) -> Arc<dyn ModUninstaller> {

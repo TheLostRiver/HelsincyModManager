@@ -103,7 +103,7 @@ pub fn start_retarget_install_task(
     let request = start_request_from_dto(request)?;
     let runner_request = request.clone();
     let task = queue_retarget_install_task(&state.retarget_install_tasks, request)?;
-    let _ = emit_task_progress(&app_handle, queued_event(&task).into());
+    let _ = emit_task_progress(&app_handle, queued_event(&task));
     spawn_runner(
         Arc::clone(&state.retarget_install_task_runner),
         app_handle,
@@ -129,8 +129,7 @@ pub fn start_retarget_reinstall_task(
             task.kind,
             task.status,
             INSTALL_REINSTALL_QUEUED_PHASE,
-        )
-        .into(),
+        ),
     );
     spawn_retarget_reinstall_runner(
         Arc::clone(&state.reinstall_task_runner),
@@ -162,7 +161,7 @@ fn spawn_retarget_reinstall_runner(
             Err(error) => error.events,
         };
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }
@@ -188,7 +187,7 @@ fn spawn_runner(
             Err(error) => error.events,
         };
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }

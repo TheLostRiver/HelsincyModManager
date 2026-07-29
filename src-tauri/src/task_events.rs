@@ -1,7 +1,9 @@
 use crate::dto::{CommandErrorDto, TaskKindDto, TaskProgressEventDto, TaskStatusDto};
 use crate::state::AppState;
+use hmm_app::TaskProgressEvent;
 use hmm_infra::{emit_safe_app_log, AppLogEvent};
 use hmm_ports::TaskLogRecord;
+use hmm_runtime::TaskProgressObserver;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -9,6 +11,31 @@ pub const TASK_PROGRESS_EVENT_NAME: &str = "hmm://task-progress";
 pub const INSTALL_REINSTALL_QUEUED_PHASE: &str = "install.reinstall.queued";
 
 pub fn emit_task_progress(
+    app_handle: &AppHandle,
+    event: TaskProgressEvent,
+) -> Result<(), CommandErrorDto> {
+    TauriTaskProgressObserver::new(app_handle).observe(&event)
+}
+
+struct TauriTaskProgressObserver<'a> {
+    app_handle: &'a AppHandle,
+}
+
+impl<'a> TauriTaskProgressObserver<'a> {
+    fn new(app_handle: &'a AppHandle) -> Self {
+        Self { app_handle }
+    }
+}
+
+impl TaskProgressObserver for TauriTaskProgressObserver<'_> {
+    type Error = CommandErrorDto;
+
+    fn observe(&self, event: &TaskProgressEvent) -> Result<(), Self::Error> {
+        emit_task_progress_dto(self.app_handle, event.clone().into())
+    }
+}
+
+fn emit_task_progress_dto(
     app_handle: &AppHandle,
     event: TaskProgressEventDto,
 ) -> Result<(), CommandErrorDto> {
