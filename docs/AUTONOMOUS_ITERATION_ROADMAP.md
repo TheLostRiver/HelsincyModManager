@@ -1,345 +1,633 @@
-# 自主迭代路线图
+# Windows 自主迭代路线图
 
-本文件是**无人值守自主迭代**的任务队列。它与 [路线图](ROADMAP.md)（产品阶段）和
-[任务总纲](../TODO.md)（长期功能规划）分工不同：那两份描述"要做什么产品"，
-本文件描述"在没有人盯着的情况下，可以安全推进哪些具体工作"。
+本文档是 Helsincy Mod Manager 的无人值守任务队列。产品阶段见 [路线图](ROADMAP.md)，当前事实见
+[项目任务状态快照](PROJECT_TASK_STATUS.md)，可复制执行提示词见
+[Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。
 
-创建时间：2026-07-27
-基线：`main == 9a8e665`
+更新时间：2026-07-30
+规划基线：`fe649baceddebab7a09dc31102c9ad477c578fd3`
 
----
+## 固定范围
 
-## 两条必须先知道的事实
+- 平台：Windows。
+- 游戏：MHW:I。
+- 首要目标：单项安装/卸载/真正重装基线之上的批量安装、批量卸载和批量真正重装。
+- 后续目标：装备重定向 catalog 与武器链路、狩技来源导入验收、自动存档备份、日志和 CLI。
+- Linux / Steam Deck 明确不在本轮范围，不创建实现、打包、验收或兼容任务，也不阻塞 Windows 队列。
+- 纯视觉美化不进入无人值守队列；涉及 UI 的 task 必须有行为测试，必要时保留人工视觉 smoke gate。
 
-这两条经实际核实，会改变你对"验证通过"的理解。
+## 状态口径
 
-### 一、CI 与 `verify` 都不跑前端测试，也不跑 clippy
+| 状态 | 含义 |
+| --- | --- |
+| `completed` | 已实现并有当前自动化证据 |
+| `certified` | 除实现外，已完成对应独立复审与受控 Windows 纵向验收 |
+| `ready` | 前置已满足，可以作为下一个独立 task |
+| `blocked` | 缺少明确依赖、外部环境或维护者决策 |
+| `conditional` | 只在出现复现缺陷或获得受控验收输入时启动 |
+| `out_of_scope` | 本轮不处理 |
 
-| 门禁 | 前端 | Rust |
-|------|------|------|
-| `scripts/verify.sh`（CI 走这条） | typecheck / lint / build | `cargo test --workspace`、`cargo check --workspace` |
-| `scripts/verify.ps1`（本地） | typecheck / lint / build | 同上 |
+## 已完成基线
 
-`package.json` 的 `test` 脚本（`node --test "src/**/*.test.mjs"`，约 400 个测试）
-**没有被任何门禁调用**。`cargo clippy` 同样不在任何门禁里。
+以下能力不重新实现：
 
-**因此「CI 全绿」不等于「测试通过」。** 前端测试与 clippy 必须由你手动运行，
-并把结果作为验收证据。这条差距本身是 A6 要修的问题。
+- 单项安装、manifest 驱动卸载、真正重装、失败回滚/恢复和重启恢复：Gate A `certified`。
+- Armor Retarget AR1-AR5、同 revision target switch、重启恢复和 manifest 卸载：Gate B
+  `certified`。
+- T17 狩技来源批量迁移 Slice 1-4C：`completed`，保持 import-only。
+- 多 Steam 用户存档候选发现、显式选择、昵称/头像展示和隐私降级：`completed`。
+- 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
+  support export：核心已完成，发布/保留治理仍有缺口。
+- CLI-0A/0B/1A/1B：`completed`，Production 写命令仍不可达。
 
-### 二、治理文件改动没有强制拦截
+“已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
+任务/审计事实。
 
-`scripts/check-governance-changes.ps1` 只打印黄色警告，**从不非零退出**；
-它只被 `.githooks/pre-commit` 与 `pre-push` 调用，而 hooks 是可选安装、可被 `--no-verify` 绕过，
-`verify.ps1` / `verify.sh` / CI 都不调用它。
+## 硬门禁
 
-**因此改动 `policy/`、`scripts/`、`.github/`、`AGENTS.md` 等治理文件时，
-没有任何自动机制会拦住你或通知任何人。** 只能靠自觉。
+### 数据安全
 
----
+任何游戏目录写入必须保持：
 
-## 选任务的唯一标准：能否无人自证
-
-本队列里的每个任务都必须满足：**修复的正确性可以由测试、类型检查、lint、构建、
-逐字节等价或变异验证证明，不依赖任何人去看界面。**
-
-这条标准是有代价换来的。此前迭代中反复出现同一种失败模式：
-
-- 修吸顶状态栏重叠时，连续三次基于静态 CSS 推理判断根因，三次都错，全靠人工截图纠正。
-  真因是 `position: sticky` 的 `top` 大于元素在滚动视口中的自然偏移量时，
-  **绘制位置**被下推而**布局盒不变**——量 DOM 尺寸量不出来，只有实际渲染能暴露。
-- 修诊断页时把页头基础态从 `flex` 改成 `grid`，导致 `@media (max-width: 900px)` 里的
-  `display: grid` 变成空操作，窄屏页头不再堆叠。全量测试、类型检查、构建**全绿**。
-- 重做详情对话框时把内容区背景改成浅底，使嵌在其中的替换目标面板 6 处同色区块**整片隐形**。
-  同样全绿。
-
-结论：**纯视觉改动不进入自主队列。** 它们不是不重要，而是无人值守时无法判定成败。
-
----
-
-## 执行规则
-
-### 全部任务只做到 PR，一律不合并
-
-无人值守期间**禁止使用 `gh pr merge`（含 `--admin`）**，也不得 fast-forward `main`。
-
-原因：本仓库 `main` 的分支保护要求人工 approving review 与 Code Owner review，
-而 `--admin` 会同时绕过人工审查**和必需状态检查**。结合上面"CI 不跑前端测试"这一事实，
-自动合并等于把主干的唯一防线交给一个已知不充分的信号。
-
-每个任务的终态是：**分支已推送 + PR 已开 + PR 正文写清验收证据**。
-人工回来后逐个 review 并合并。
-
-因此每个任务都必须能**独立从 `main` 分出**，不依赖前一个任务已合并。
-下面的任务划分已经保证了这一点（同一批治理文件的改动被合并为一个任务）。
-
-### 顺序
-
-按 A1 → A6 顺序执行。A1/A2 有时效性（见下）。
-一个任务未开出 PR 前，不开始下一个。
-
-### 每个任务的交付形态
-
-独立 `hy/` 分支 + 独立 worktree + 独立 PR。任务内部按清晰边界拆成多个提交，
-每完成一个可独立验证的子步骤就提交一次，不要攒到最后一次性提交。
-
----
-
-## A1 · 把 `state.rs` 的内联测试外置
-
-**优先级**：最高，有时效性 · **风险**：medium · **1 个 PR**
-
-### 问题
-
-`policy/project-policy.json` 对 `.rs` 设了 **2200 行**硬性阻断上限，超过会让
-`verify.ps1`、pre-commit、pre-push 和 GitHub `Verify` 作业**同时失败**。
-
-`src-tauri/src/state.rs` 当前 **2169 行，距硬门禁仅 31 行**。
-它是装配所有服务的组合根，属最高频改动文件——下一个新增 AppState 字段就可能推过上限，
-阻断整条流水线。
-
-### 修法
-
-仓库已有成熟的外置约定 `#[cfg(test)] #[path = "..._tests.rs"] mod tests;`：
-`state.rs:1639` 自身已用该模式外置了 `state_core_mod_lifecycle_tests.rs`，
-另有 `install.rs:1190`、`install_recovery.rs:1824`、`lib.rs:212`、
-`mod_library_query.rs:471`、`reinstall_task.rs:661` 等多处同款。
-
-把内联 `mod tests`（约 1643 起）整体搬到 `state_tests.rs`。
-**生产代码与测试断言逐字不动，仅物理迁移。** 迁移后约 1642 行。
-
-### 必须注意
-
-测试里包含并发锁测试（如 `recovery_scan_waits_for_shared_game_profile_write_lock`）。
-**测试文件没被加载也不会报错** —— 因此必须先记录迁移前 `cargo test -p hmm-tauri` 的
-测试总条数，迁移后逐条比对，确认锁测试仍在其中。只看"没有失败"不算验证。
-
-### 验证
-
-```powershell
-cargo test -p hmm-tauri
-cargo check -p hmm-tauri
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-file-size.ps1
+```text
+sealed input
+  -> analyze / preflight
+  -> InstallPlan
+  -> backup
+  -> commit
+  -> manifest
+  -> rollback / recovery
 ```
 
----
+- 原始 Mod 输入只读；派生内容只进入 sandbox/staging。
+- 同一 game/profile 写入严格串行；scan/hash/extract/analyze 不持有写锁。
+- 卸载只消费 manifest/recovery 事实，不根据包内容猜测。
+- 重装必须消费 retained/replaced/added/stale 与 durable recovery transaction。
+- 取消只发生在安全点；已经进入不可抢占 commit 的单项必须完成一致性收尾。
+- Task/Audit 失败不能伪造玩家文件回滚，也不能隐藏证据健康降级。
 
-## A2 · 把 `dto.rs` 的内联测试外置
+### Git、CI 与 review
 
-**优先级**：最高，有时效性 · **风险**：low · **1 个 PR**
-
-同 A1 的问题与修法。`src-tauri/src/dto.rs` 当前 **2133 行，距硬门禁 67 行**，
-承载全部前后端 DTO，同样高频改动。测试模块约从 1416 行起，搬到 `dto_tests.rs`。
-
-### 必须注意
-
-`dto.rs` 顶部有 `#[cfg(test)] use hmm_app::InstallManifestStatus;` 这类
-**test-only import**，测试外置后要一并迁移，否则触发 unused-import 告警。
-
-### 验证
-
-同 A1（`-p hmm-tauri`），同样先记录测试条数再比对。
-
----
-
-## A3 · 清除 reinstall 提交/回滚路径上已失效的 `dead_code` 抑制
-
-**风险**：**high**（落点是安装重装/回滚引擎） · **1 个 PR**
-
-### 问题
-
-`crates/hmm-app/src/reinstall_commit.rs:1` 有**文件级** `#![allow(dead_code)]`，
-注释写着「Task 6 runner will call this crate-internal prepared commit seam」；
-`reinstall.rs:869/877/884` 三处 `#[allow(dead_code)]` 注释写着「deferred to Task 6」。
-
-**Task 6 早已完成并接线**，这些抑制的理由已经过期：
-`reinstall_task.rs:240` 与 `:407` 实际调用 `.commit(...)`；
-`state.rs:111-112 / :574 / :619-620` 装配 `ReinstallTaskRunner` / `ReinstallTaskService`；
-`lib.rs:154` 注册 `start_reinstall_task`；
-`install_recovery.rs:17` 使用 `cleanup_reinstall_transaction` / `promote_manifest_snapshots`。
-
-文件级 blanket allow 对整个 868 行的提交/回滚模块**永久关闭 dead-code 检测**。
-
-### 修法
-
-删除该文件级 `#![allow(dead_code)]` 与三处过期的 `#[allow(dead_code)]`（连同失效注释）。
-
-### 硬性约束
-
-**这不是"逐字节不变的纯清理"。** 移除 allow 后若 clippy 报出 never-read 字段：
-
-> **禁止删除任何字段或分支。** 改为加一个**精确到该字段**的 `#[allow(dead_code)]`
-> 并写明理由，记入 `findings.md`，然后**停止本任务并在 PR 中标注需要人工判断**。
-
-理由：删字段是对回滚数据结构的结构性改动，可能移除 manifest/recovery 契约或序列化所需的字段。
-`SECURITY.md` 的红线是"游戏目录写入必须走 manifest/backup/rollback"，
-一旦削弱，将来触发回滚时可能无法正确还原游戏目录——这是本项目最高危的失败面。
-
-### 验证
+- 一个 task 一个独立 `hy/` 分支、worktree 和 PR。
+- 每个可独立验证步骤立即 commit；不把多个 task 攒成一个提交或一个 PR。
+- 当前 `verify`/CI 尚不包含前端测试和 clippy。在 QG-01 合并前，每个相关 PR 必须额外运行：
 
 ```powershell
-cargo clippy -p hmm-app --all-targets -- -D warnings
-cargo test -p hmm-app
+cmd /c corepack pnpm run test
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
----
+- 每次最后变更后运行聚焦验证、完整 `verify.ps1` 和 `hmm-review-gate` 本地自审。
+- required CI 只有 terminal `success` 才算通过。`pending`、`failure`、`cancelled`、`timed_out`、
+  `action_required`、`skipped` 或 `neutral` 都禁止合并。
+- 获取并处理全部 review thread/comment。真实 bug 必须修复并补测试；误报必须在 PR 留下源码、测试
+  或契约证据，不能凭感觉关闭。
+- CodeRabbit 未 review 不能视为批准；必须完成独立全 diff 自审并记录证据。
+- 优先普通合并。`--admin` 的允许条件和禁止条件以
+  [合并提示词](CODEX_GOAL_MODE_PROMPTS.md#合并提示词) 为准。
+- 治理、安全门禁、workflow、policy、AGENTS 或核心安全文档变更仍需要项目要求的人工 review，
+  不能使用 `--admin` 绕过。
 
-## A4 · 契约文档补齐 8 个已上线命令 + 防回归测试
+## 依赖图
 
-**风险**：low · **1 个 PR**
+```mermaid
+flowchart TD
+  QG["QG-01 CI 质量门禁"] -. "合并前仍手动补测" .-> CORE
+  B0["T13-00 批量语义设计"] --> B1["T13-01 Sealed BatchPlan"]
+  O["CLI-2A 流式 Observer"] --> S["CLI-2B Sandbox 写许可"]
+  S --> C["CLI-2C 单项生命周期 CLI E2E"]
+  C --> CORE["CORE-PREF-01 单项 Preflight 一致化"]
+  B1 --> BI["T13-02 批量安装"]
+  CORE --> BI
+  BI --> BU["T13-03 批量卸载"]
+  BU --> BR["T13-04 批量真正重装"]
+  BR --> BC["T13-05 CLI 批量契约"]
+  BR --> BT["T13-06 Tauri/Typed API"]
+  BT --> BF["T13-07 前端任务与结果页"]
+  BC --> BG["T13-08 Windows Sandbox Gate C"]
+  BF --> BG
+  BG --> CAT["CAT-01 装备数据治理"]
+  CAT --> AR["AR6 防具 Catalog 扩容"]
+  CAT --> WD["WR-01 武器重定向设计"]
+  WD --> WC["WR-02 武器 Catalog/Parser"]
+  WC --> WI["WR-03 武器安装集成"]
+  WI --> WU["WR-04 武器 UI/验收"]
+  AR --> SAVE["SAVE/LOG 发布加固"]
+  WU --> SAVE
+```
 
-### 问题
+QG-01 是最先开的治理 PR，但如果仅因缺人工 governance review 不能合并，产品 task 可以继续；后续
+PR 必须继续手动执行前端测试和 clippy，不能假设 QG-01 已生效。
 
-`docs/FRONTEND_BACKEND_CONTRACT.md` 自称是"统一 Tauri command 的命名、参数、返回值和错误结构"的
-长期架构契约，并逐族记录了几乎所有命令族。但 T3（Mod 元数据编辑）与 T4（分类 CRUD）的
-**8 个命令整族缺席**：
+## P0 核心生命周期与批量能力
+
+推荐开启顺序如下。QG-01 优先独立开启，但不是 T13 的产品硬依赖；如果它只因必需的人工治理
+review 等待，保留该 PR 并从当前 `main` 独立启动 T13-00，后续继续手动补跑额外门禁。
 
 ```text
-create_category  update_category  delete_category  list_categories
-set_mod_categories  get_mod_categories
-update_mod_metadata  delete_mod_metadata
+QG-01（优先开启；等待人工治理 review 时保留 PR）
+
+T13-00
+  -> CLI-2A
+  -> CLI-2B
+  -> CLI-2C
+  -> CORE-PREF-01
+  -> T13-01
+  -> T13-02
+  -> T13-03
+  -> T13-04
+  -> T13-05 / T13-06
+  -> T13-07
+  -> T13-08
 ```
 
-对文档逐个 grep 这 8 个命令名：全部 0 命中；其余 74 个已注册命令均有出现。
-而它们前后端全链路早已接通（`lib.rs:176-183` 注册，
-`category_commands.rs` / `mod_metadata_commands.rs` 定义，
-`categoryApi.ts` / `modCategoryApi.ts` / `modMetadataApi.ts` 消费）。
+### QG-01：补齐 CI 质量门禁
 
-### 修法
+状态：`ready`，治理变更，需要人工 review。
 
-补两族命名条目与逐命令 params / returns / 错误码小节。
-**参数与错误码必须照抄真实签名，不得臆造** —— 逐个对照后端命令定义与前端 `*Api.ts`。
+范围：
 
-同时新增防回归测试：解析 `lib.rs` 中 `generate_handler!` 的命令清单，
-断言每个命令名都出现在契约文档中。
+- 同步修改 Windows/CI 验证入口，把 `pnpm run test` 和
+  `cargo clippy --workspace --all-targets -- -D warnings` 纳入强制门禁。
+- 保证 `.ps1` 与 `.sh` 行为等价，失败时整体非零退出。
+- 增加验证脚本的负向测试或变异证据。
 
-### 验证
+完成定义：
 
-```powershell
-corepack pnpm run test
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
+- 完整验证实际执行前端测试和 clippy。
+- 人工制造一个前端测试失败和一个 clippy failure 时，入口均 fail closed；还原后通过。
+- CI 时间增长和治理影响写入 PR。
+
+提交边界：验证脚本/测试一个提交，文档同步一个提交。
+
+### T13-00：冻结批量领域语义
+
+状态：`ready`，高风险设计 task。
+
+设计必须决定：
+
+- sealed input snapshot、batch digest、跨 Mod 最终 target 冲突和 plan 过期。
+- 每个 Mod 独立事务，不宣称整个批次全局原子。
+- 默认 `stop_on_failure`；可选 `continue` 必须是显式领域策略。
+- 首次阻断项默认在任何写入前终止整批。
+- 已提交项保留真实成功事实，partial result 不回滚已成功的独立 Mod。
+- 取消停止启动新项；运行中 commit 不抢占，在安全点收尾。
+- retry 只消费 sealed batch 中 retryable 项，成功项不重放。
+- 批量安装、卸载和真正重装分别定义输入、前置、结果和 recovery 行为。
+
+完成定义：新增独立 T13 设计文档，更新 contract/TODO/测试矩阵；没有产品代码。
+
+提交边界：领域语义与安全设计一个提交，契约/路线图同步一个提交。
+
+### CLI-2A：逐阶段任务 Observer 与 JSONL
+
+状态：`ready`。
+
+范围：
+
+- runner 在任务实际推进时调用 observer，不再只在结束后返回事件集合。
+- Tauri event、CLI JSONL 和 Task Log 共享 task id、phase 与顺序事实。
+- 每个已启动任务恰好一个 terminal event，sequence 从 0 单调递增。
+- observer 写入失败不改变已经提交的玩家文件事实。
+
+完成定义：
+
+- 安装、卸载、重装和恢复 runner 的顺序/terminal/cancel tests 通过。
+- Tauri wire DTO 不发生未记录变化。
+- CLI JSONL 不包含自由文本 message、原始 error、result ref 或路径。
+
+提交边界：app/runtime observer 接线一个提交，Tauri/CLI adapter 与 contract tests 一个提交。
+
+### CLI-2B：Sandbox 写许可与 containment
+
+状态：`blocked`，依赖 CLI-2A。
+
+范围：
+
+- 版本化 sandbox marker 和不可伪造的进程内 write capability。
+- 词法与 canonical containment；拒绝 symlink/junction/reparse point 和祖先替换。
+- game/save/backup/app-data 根全部位于显式 sandbox 根。
+- Production 始终拒绝，不存在环境变量/debug flag 绕过。
+- 外部 sentinel 在所有成功/失败场景保持不变。
+
+完成定义：只建立安全写 admission，不开放业务写命令。
+
+提交边界：marker/capability 一个提交，containment/负向 fixture 一个提交。
+
+### CLI-2C：单项生命周期 Sandbox CLI E2E
+
+状态：`blocked`，依赖 CLI-2B。
+
+范围：
+
+- 接入 `install apply`、`uninstall`、`reinstall` 和 `recovery apply` 的 Sandbox 命令。
+- 写操作要求 `--commit --yes` 和短期 opaque plan token；锁内重建并重验计划。
+- 复用现有 application service，不复制 Tauri command 或 executor。
+- 覆盖 install -> restart -> uninstall、reinstall、manifest save failure、rollback/recovery、Ctrl+C。
+
+完成定义：真实 `hmm` binary 在 temp root 复验 Gate A 类闭环；Production 写命令 parser/runtime 双重
+不可达。
+
+提交边界：plan/apply token 一个提交，单项命令 adapter 一个提交，E2E/failure injection 一个提交。
+
+### CORE-PREF-01：单项安装前置检查一致化
+
+状态：`blocked`，依赖 CLI-2C。
+
+范围：
+
+- 审计当前 `game prerequisites`、InstallPlan preflight 和桌面安装/重装的 decision 是否同源。
+- 固定 required/warning/unverified 的稳定 code 和阻断语义。
+- 单项、批量预览、Tauri 和 CLI 只消费同一 app-level decision。
+- 如果现有实现已满足，增加证明性回归测试；发现真实缺口才做最小修复。
+
+完成定义：缺失必需前置在任何写入前阻断；warning 不被误当 success；规则不可用 fail closed 且不泄漏
+原始路径或配置。
+
+提交边界：证明性测试一个提交；只有测试暴露缺陷时再增加实现提交。
+
+### T13-01：Sealed BatchPlan 与预览
+
+状态：`blocked`，依赖 T13-00 和 CORE-PREF-01。
+
+范围：
+
+- 领域模型、ports、app service、batch digest、跨 Mod conflict/preflight。
+- 输入顺序规范化并封存；结果顺序确定。
+- 预览完全只读，不写游戏目录、manifest、backup、DB 投影或 Audit。
+- 限制批次数量、计划大小和资源预算。
+
+完成定义：相同 snapshot 生成相同 digest；任何阻断项默认使整个 apply 不可用；plan 过期必须重建。
+
+提交边界：core/ports 一个提交，app preview 一个提交，聚焦测试一个提交。
+
+### T13-02：批量安装
+
+状态：`blocked`，依赖 T13-01。
+
+范围：
+
+- 确定性逐项执行，每项复用单项安装事务。
+- 同一 game/profile 写入串行；项目间释放不需要的资源。
+- 默认首个失败停止；已成功项保留；结果明确 success/blocked/failed/cancelled/retryable。
+- batch 与 per-item Audit 只记录短 ID、计数和稳定 code。
+
+完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败和重试均有 temp/fake
+测试；外部 sentinel 不变。
+
+提交边界：runner/state machine 一个提交，audit/result repository 一个提交，failure/cancel tests 一个提交。
+
+### T13-03：批量卸载
+
+状态：`blocked`，依赖 T13-02。
+
+范围：
+
+- 只消费 manifest/recovery facts；未知文件和玩家修改文件 fail closed。
+- 预检跨 Mod 共享目标、backup ownership 和旧 manifest 摘要。
+- 每项独立 rollback/recovery；默认首个失败停止。
+
+完成定义：未知文件保留，已成功卸载项不被伪回滚，失败项仍可由 recovery 扫描识别。
+
+提交边界：uninstall plan 一个提交，executor/recovery 一个提交，负向测试一个提交。
+
+### T13-04：批量真正重装
+
+状态：`blocked`，依赖 T13-03。
+
+范围：
+
+- 每项复用真正重装 retained/replaced/added/stale 和 durable transaction。
+- revision/binding lineage、plan token 和候选状态在写锁内重验。
+- 支持 Armor target switch，但不增加独立 retarget 写入旁路。
+
+完成定义：多 Mod mixed result、重启恢复、同 revision target switch、stale plan、失败收敛和幂等 retry
+均有测试。
+
+提交边界：batch reinstall plan 一个提交，runner/recovery 一个提交，retarget regression 一个提交。
+
+### T13-05：CLI 批量契约
+
+状态：`blocked`，依赖 T13-04。
+
+范围：
+
+- CLI 适配领域 batch service，不在 shell 中循环单项命令。
+- JSON/JSONL 包含 batch task id、item status、唯一 terminal event 和 exit code `5` partial success。
+- 首版仅 Sandbox；Production 继续拒绝。
+
+完成定义：跨 Mod conflict、partial success、cancel、retry 和敏感 canary contract tests 通过。
+
+提交边界：CLI parser/schema 一个提交，runtime adapter/E2E 一个提交。
+
+### T13-06：Tauri command 与 typed API
+
+状态：`blocked`，依赖 T13-04。
+
+范围：
+
+- 窄 plan/start/query/retry commands，稳定 camelCase DTO 和 error/phase codes。
+- 大结果通过 result query 分页读取，不塞进 progress event。
+- 前端不传路径、manifest、backup、plan 内部或 adapter metadata。
+
+完成定义：contract 文档、Rust serialization、feature-local typed API 和 taskId tests 同步。
+
+提交边界：Tauri DTO/commands 一个提交，typed API/contract tests 一个提交。
+
+### T13-07：批量操作 UI
+
+状态：`blocked`，依赖 T13-06。
+
+范围：
+
+- 恢复多选消费能力；提供批量安装、卸载、重装的预览、确认、进度、结果和 retry。
+- 只允许后端返回可用的动作；不恢复永远 disabled 的占位按钮。
+- page-local/cross-page selection 语义明确；选择变化使旧 batch plan 失效。
+- loading/error/empty/partial/cancelled/recovery-required 状态完整。
+
+完成定义：前端行为测试、typecheck/lint/build 和 `1440x900`、`1366x768`、`1280x800`、`480x800`
+受控 smoke；无重叠、截断或路径泄漏。
+
+提交边界：state/workflow 一个提交，UI 一个提交，行为/视觉回归一个提交。
+
+### T13-08：Windows Sandbox Gate C
+
+状态：`blocked`，依赖 T13-05 和 T13-07。
+
+使用全新 disposable Windows Sandbox 和人工 fixture 验收：
+
+```text
+批量安装
+  -> 完全重启
+  -> 批量真正重装（包含一个 Armor target switch）
+  -> 制造一个受控 partial failure
+  -> 重试 retryable 项
+  -> 再次重启
+  -> 批量卸载
+  -> exact baseline
 ```
 
-新测试必须做**变异验证**：临时从文档中删掉一个命令名，确认测试报错；随后还原。
+完成定义：source/旧 target/staging/recovery 无残留，manifest/backup/Audit/taskId 一致，外部 sentinel
+未变化。Gate C 只有完整自动化、独立 review、CI 与该纵向验收全部通过后才能标记 `certified`。
 
----
+## P1 装备重定向
 
-## A5 · 治理检查加固（三合一）
+候选数据审计已确认：
 
-**风险**：medium（治理变更） · **1 个 PR，三个提交**
+- 防具候选有 272 条相对路径；display name 不能作为稳定 ID。
+- 武器候选有 14 类、3125 个展示名称，但只有 603 个唯一目标路径；同一路径最多 48 个名称。
+- 原始 JSON 不是运行时信任源，必须先验证 schema、路径、大小写碰撞、重复项、别名、dummy 条目、
+  版本和可分发权利，再生成 bundled artifact。
 
-这三项都改 `policy/project-policy.json` 或 `scripts/check-*`，彼此会冲突，
-因此合并为一个任务、一个分支、三个边界清晰的提交。
+### CAT-01：装备数据治理
 
-### 提交 1：文件大小门禁补字节与单行长度上限
+状态：`blocked`，依赖 T13-08。
 
-防止单文件无边界膨胀的唯一强门禁**只统计换行符数量**。任何把代码字节压进极少行的文件
-都能以任意大小畅通无阻。`policy.fileSize.block` 全部是按行上限，无字节或单行长度限制；
-CI 走的 `check-policy.mjs` 与本地走的 `check-file-size.ps1` 用同一种按行逻辑，
-因此**两条路径同时被绕过**。
+- 定义候选输入 schema、validator、stable ID 生成、alias/localization、dummy/隐藏条目策略和版本。
+- 明确数据 provenance/licensing；未确认可分发权利时不得把候选数据提交为 bundled catalog。
+- validator 覆盖绝对路径、`..`、大小写碰撞、重复稳定 ID、重复展示名和路径族错误。
 
-**这不是理论风险**：诊断页此前正是把整页 CSS 压成 5 行（其中一行约 3000 字符）以通过该门禁。
-该实例已修复，机制漏洞仍在。
+提交边界：schema/validator 一个提交；经过审计的生成 artifact 另一个提交。
 
-修法：在 policy 增加 `fileSize.blockBytes` 与可选 `maxLineLength`，
-在两个检查器中**同步**实现（`.ps1` 与 `.mjs` 是两套独立实现，必须行为等价，
-否则造成 CI 与本地门禁分叉，那本身就是新的治理缺陷）。
+### AR6：防具 Catalog 扩容
 
-阈值须足够宽以不误伤（`Cargo.lock` / `pnpm-lock.yaml` 进 allowlist）。
-当前仓库最长源码行为 1926 字符（`docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md`），
-次为 1715 / 1379，均为 docs 的表格或散文；若阈值与之冲突应豁免 docs 而非抬高全局阈值。
+状态：`blocked`，依赖 CAT-01。
 
-### 提交 2：secret 强制扫描补 `.py` / `.sql`
+- 把最小 seed 扩展为经过审计、版本化的防具 catalog。
+- 保持 `mhw-games-mhw` 中的 Unicode、alias、monster/rank/variant 和 `pl/f_equip` 规则。
+- 增加全 catalog 唯一性、搜索隔离、加载性能和旧 target ID 兼容测试。
 
-secret 扫描按硬编码文本扩展名清单生效，该清单**缺 `.py` 与 `.sql`**。
-而 policy 专门配置了 `secretScan.forceIncludePathPatterns = ['.codex/**']` 来强制扫描
-上下文管理目录——因为 `AGENTS.md:39` 明令禁止在 `.codex` 内写入真实 token、会话日志、私有路径。
-但该目录下的 **11 个 `.py` 脚本因扩展名不在清单而被默认排除**。
-另有 10 个 `src-tauri` 下的 `.sql` 迁移既不在 secret 扫描范围，也不在任何 `fileSize` 限制内。
+不改变 AR1-AR5 安装链；数据扩容不得触发新的文件写入实现。
 
-修法：两处扫描器的 `textExtensions` 同步加入 `.py`、`.sql`；
-顺带补 policy `fileSize.extensions` 的 `sql` 类别。
+### WR-01：武器重定向设计
 
-### 提交 3：CODEOWNERS 与 `governanceFiles` 对齐
+状态：`blocked`，依赖 CAT-01。
 
-`check-governance-changes.ps1` 只读取 `policy.governanceFiles`，而该清单
-**缺 `.github/CODEOWNERS` 自身**、只有 `policy/project-policy.json` 单文件而非 `policy/**`、
-只有 `docs/release` 而非 `docs/release/**`。因此修改 `CODEOWNERS` 本身或那两个目录下的
-其他文件时，告警完全不触发。而 `CODEOWNERS` 自带注释要求与该清单保持同步，
-`docs/GOVERNANCE.md:173-188` 的清单也列出了 `.github/CODEOWNERS`——三处应一致，实际漂移。
+- 独立定义 weapon target kind、14 类 family、stable identity、alias 与 source/target path schema。
+- 明确多名称同一路径是 alias/display variant，不生成重复安装目标。
+- 不复用或扩张 `MhwArmorReplacementAdapter`；武器 parser/adapter 留在 `hmm-games-mhw`。
+- 决定哪些资源只需路径重定向，哪些需要二进制 transformer；未证明安全的类别 fail closed。
 
-修法：补 `.github/CODEOWNERS`，把 `policy/project-policy.json` 改为 `policy/**`，
-把 `docs/release` 改为 `docs/release/**`。
+完成定义：设计、安全测试矩阵和分阶段实现计划评审完成。
 
-### 验证
+### WR-02：武器 Catalog、Parser 与 RetargetPlan
 
-每个提交都要有对应的 `node --test`（fixture 断言拦截生效 + 正常文件不误伤），
-并对现存文件跑一次完整 `verify.ps1` 确认无既有文件被误报。
-最后补一条小测：断言 `CODEOWNERS` 每条路径前缀都能被某条 `governanceFiles` glob 覆盖。
+状态：`blocked`，依赖 WR-01。
 
----
+- 生成 versioned weapon catalog；结构化解析 `nativePC/wp/<family>/<internal-id>`。
+- 只替换经过 parser 识别的 target 段，不做整路径字符串替换。
+- 覆盖 14 类、603 个唯一路径、alias、unknown family、多 source 和碰撞测试。
 
-## A6 · 把前端测试与 clippy 接入门禁 ⚠️ 需人工确认范围
+### WR-03：武器 staging、InstallPlan 与 manifest
 
-**风险**：medium（治理变更，改 `scripts/verify.*`） · **1 个 PR**
+状态：`blocked`，依赖 WR-02。
 
-### 问题
+- 原始输入只读，materialize 只写 staging。
+- 最终 target 进入 InstallPlan/conflict、binding snapshot、manifest、backup、rollback/recovery。
+- 首次安装、真正重装 target switch 和卸载复用 Gate A/T13 单项事务。
 
-见本文开头「必须先知道的事实」第一条：`package.json` 的 `test` 脚本（约 400 个前端测试）
-与 `cargo clippy` **从未被任何门禁调用**。CI 绿灯不代表测试通过。
+### WR-04：武器 Tauri/UI 与 Windows 验收
 
-### 修法
+状态：`blocked`，依赖 WR-03。
 
-在 `scripts/verify.sh` 与 `scripts/verify.ps1` 中同步加入 `pnpm run test` 与
-`cargo clippy --workspace --all-targets -- -D warnings`。
+- 窄 Tauri DTO、feature-local typed API、Mod 详情目标选择/预览/确认。
+- 后端提供 category/capability/catalog；前端不解析 `nativePC/wp`。
+- 使用人工最小 fixture 完成安装 -> 重启 -> target switch -> 重启 -> manifest 卸载 -> baseline。
 
-### 必须注意
+## P1 条件任务：狩技来源导入
 
-- 加 clippy 后可能暴露一批既有告警。**若数量可控就一并修；若数量很大，
-  不要在本任务里硬扛** —— 改为先只接入 `pnpm run test`，把 clippy 接入拆成独立候选记入候选池，
-  并在 PR 中说明实际告警数量。
-- 加入前端测试会显著拉长 CI 时长，需在 PR 中说明。
-- `.sh` 与 `.ps1` 必须行为等价。
+T17 Slice 1-4C 已 `completed`，不重新创建同名开发任务。
 
-### 验证
+### T17-ACCEPT：脱敏真实来源 smoke
 
-在本分支上跑完整 `verify.ps1`，确认新加的两步实际执行且通过；
-故意让一个前端测试失败，确认 `verify` 整体非零退出；随后还原。
+状态：`conditional`。
 
----
+只有维护者主动提供可使用、已脱敏的来源目录，或出现明确可复现缺陷时启动。验收只覆盖：
 
-## 不要做的事
+- 来源选择、分页预览、sealed selection、显式决定。
+- import-only、partial success、权威结果、retry 和 10,000 项门禁。
+- 不安装、不启用、不写游戏目录。
 
-以下项目**已经过评估并明确排除**，不要重新发现、不要自行开工：
+发现 bug 时创建聚焦 bugfix task；没有 bug 就只记录验收证据，不改代码。正式项目材料不得记录、
+引用或复制任何未授权外部实现。
 
-| 项 | 排除理由 |
-|---|---|
-| 任何纯视觉美化 | 无法无人自证，见上文 |
-| T13 批量操作 | 大特性，需人工优先级评审（`TODO.md` 明确要求） |
-| T20 浮层基元收敛 | 重构会动已稳定的模态框/Sheet 链路，需人工确认范围 |
-| `ProfilePage.tsx` 1612 行拆分 | 超说明线但未超硬线；拆分方案影响观感，需人工定 |
-| 全项目 47 处非标准字重 | 会让部分文字**看起来变细**，属可见视觉变化 |
-| 改变安装/卸载/回滚/备份的行为语义 | 高风险安全链路，需完整设计与安全评审 |
-| 新增 Tauri 命令或改变现有命令契约 | 属公共契约变更，需人工评审 |
+## P2 Windows 存档备份
 
-以下候选在勘察中被**对抗验证推翻**，不要重提：MHW 专属规则泄漏进 `hmm-core`、
-CSS 缺失 token 引用导致的对比度缺陷、Mod 右键菜单项不可达、仪表盘日志时间戳、
-未被引用的 `FirstLaunchDashboard.tsx`、备份路径测试跨平台问题、
-存档备份 writer 拒绝码缺测试、前端测试锁实现形态、契约文档描述不存在的命令、
-README 文档索引遗漏。
+### 已完成且必须保持
 
----
+- 多 Steam 用户候选必须由用户显式确认；最近修改项只能作为推荐。
+- 真实路径和 account id 留在后端 pending cache；前端只传 opaque candidate id。
+- 昵称和头像只是展示增强；网络失败不阻断本地选择。
+- scheduler/worker 只能使用 Profile 已确认的 `save_directory`，备份执行时不得重新猜测或切换账号。
 
-## 队列耗尽之后
+### SAVE-01：多账号回归门禁
 
-A1–A6 全部开出 PR 后**立即停止并进入空闲**。明确禁止：
+状态：`blocked`，在装备链路后执行。
 
-- 自拟新任务并实现
-- 执行下方候选池中的条目
-- 回头"优化"已经开出 PR 的任务
+- 增加 scheduler/worker 针对已确认目录的证明性回归测试。
+- 覆盖多候选、推荐项变化、资料网络失败、头像 URL 拒绝和 Profile 切换。
+- 任何自动账号绑定、Steam Cloud/OAuth/API key 都不在范围。
 
-执行过程中发现的新线索，只允许**追加到候选池文本**并停下等待人工决策。
+### SAVE-02：安装态后台保护验收
 
-### 候选池
+状态：`blocked`，需要 disposable Windows VM/一次性账户。
 
-（执行过程中发现的新线索追加到这里，标注是否可无人自证，不要直接开工）
+验收 sibling worker -> user Scheduled Task -> trigger -> fresh heartbeat -> idempotent cleanup。不得在日常
+Windows 账户中为完成 checklist 注册真实任务。
+
+### SAVE-03：Installer ownership cleanup
+
+状态：`blocked`，依赖 SAVE-02 环境可用。
+
+- 实现 ownership-checked cleanup helper、NSIS `PREUNINSTALL` 和 WiX custom action。
+- foreign task 保留；running/unknown owned task fail closed。
+- disposable VM 覆盖 install/run/uninstall/reinstall 和最终 cleanup。
+
+### SAVE-04：玩家存档恢复
+
+状态：`blocked`，依赖 SAVE-03。
+
+- 独立设计 preview、manifest/hash 校验、二次确认、restore 前安全备份和 rollback/recovery。
+- source/target containment、账号/Profile 一致性和游戏运行状态必须 fail closed。
+- 不复用 Mod 安装恢复中心来冒充存档恢复。
+
+### SAVE-05：Retention 与备份中心
+
+状态：`blocked`，依赖 SAVE-04。
+
+- 增加按时间/空间 retention、不可删/部分清理结果和空间预算。
+- 建立独立备份中心，展示 Profile、确认的 Steam 账号摘要、历史、状态和受控恢复入口。
+
+## P2 日志与空间治理
+
+### LOG-01：Task/Audit retention
+
+状态：`blocked`，在核心批量 Gate C 后执行。
+
+- Task Log 30 天、Audit Log 90 天；使用 capability-relative handle 和 fail-closed containment。
+- 删除失败只影响 evidence health，不篡改玩家文件事实。
+- CLI/Tauri/worker 使用相同策略和稳定健康码。
+
+### LOG-02：总空间上限
+
+状态：`blocked`，依赖 LOG-01。
+
+- 可配置总空间上限；优先清理最旧 Debug/Task，再按策略处理 App/Audit。
+- Audit 最低保留边界明确；清理写最小审计但避免递归日志风暴。
+
+### LOG-03：Debug Log
+
+状态：`blocked`，依赖 LOG-02。
+
+- 用户主动开启、默认关闭、7 天 retention，仍经过统一脱敏。
+- 不提供 raw path/error/manifest dump，不把 Debug Log 当作绕过安全 schema 的后门。
+
+## P3 Production CLI 写能力
+
+### CLI-3A：跨进程 admission
+
+状态：`blocked`，依赖 T13-08、SAVE-03 和 LOG-01。
+
+- 定义 `game-profile-write`、`save-profile-write`、`background-registration-write` scopes。
+- GUI、CLI、worker 使用相同 admission；锁内重验，固定获取顺序。
+- 至少两个独立进程竞争、timeout、崩溃释放和 stale owner 测试。
+
+### CLI-3B：逐命令开放 Production 写入
+
+状态：`blocked`，依赖 CLI-3A。
+
+按 install/uninstall/reinstall/recovery、backup、background registration、diagnostics export 分开评审。
+每个命令只有在对应 scope、测试、Audit、Windows 验收和文档齐全后单独开放；不提供全局 `--force`。
+
+## P3 工程治理 Backlog
+
+这些任务仍是当前仓库的真实缺口，但不得无条件抢占 P0/P1 产品链路。`GOV-01` 和 `GOV-02` 有明确
+前拉条件：对应核心阶段开始前必须完成，避免文件硬门禁或失效 lint 抑制污染批量实现。其余任务在
+P0/P1/P2 队列后执行，或在同一文件被产品 task 修改时一并前拉为独立 PR。
+
+### GOV-01：外置 `dto.rs` 内联测试
+
+状态：`queued`；最迟在 T13-06 开始前完成。
+
+当前 `src-tauri/src/dto.rs` 为 2133 行，距 Rust 文件 2200 行硬门禁只剩 67 行；1416 行后的多个
+测试模块仍内联。只做物理迁移：
+
+- 把测试模块迁入独立 `dto_tests.rs`，生产 DTO、序列化和断言行为不变。
+- 同步迁移 test-only import，不能用新的 allow 绕过 unused import。
+- 迁移前后比对 `hmm-tauri` 测试清单/数量，防止外置文件未被加载却“测试通过”。
+
+完成定义：`cargo test -p hmm-tauri`、`cargo check -p hmm-tauri` 和文件大小门禁通过；生产代码
+diff 只包含测试模块引用所需的最小变化。
+
+### GOV-02：收窄重装路径 `dead_code` 抑制
+
+状态：`queued`；最迟在 T13-04 开始前完成，高风险安装/回滚 review。
+
+当前 `reinstall_commit.rs` 仍有文件级 `allow(dead_code)`，`reinstall.rs` 仍有三处引用已完成
+Task 6 的局部抑制。删除这些过期 allow 和注释后：
+
+- 禁止为了让 clippy 通过而删除 manifest、backup、rollback 或 recovery 字段/分支。
+- 如果出现真正的 never-read 字段，只能先收窄到字段级 allow、写明证据并停止等待人工判断。
+- 不在该 task 改变任何重装、提交、回滚或恢复语义。
+
+完成定义：`cargo clippy -p hmm-app --all-targets -- -D warnings`、
+`cargo test -p hmm-app` 和 workspace clippy 通过；完整 diff 经安装安全自审。
+
+### GOV-03：补齐 Tauri 契约命令与防回归测试
+
+状态：`queued`。
+
+`FRONTEND_BACKEND_CONTRACT.md` 仍缺 8 个已注册命令：
+`create_category`、`update_category`、`delete_category`、`list_categories`、
+`set_mod_categories`、`get_mod_categories`、`update_mod_metadata` 和
+`delete_mod_metadata`。
+
+- 参数、返回值和错误码必须来自当前 Rust command 与 typed API，不得臆造。
+- 新增测试解析 `generate_handler!` 的注册命令，断言每个命令都出现在契约文档。
+- 做变异验证：临时删除一个命令名时测试必须失败，还原后通过。
+
+### GOV-04：治理检查加固
+
+状态：`queued`，治理变更，需要人工 review，不允许用 `--admin` 绕过。
+
+按三个独立提交推进：
+
+1. 为文件大小门禁增加 byte 上限和单行长度上限，PowerShell/Node 检查器行为等价，lockfile 明确豁免。
+2. secret 扫描同步覆盖 `.py`/`.sql`，file-size policy 增加 SQL 类别和合理阈值。
+3. `governanceFiles` 与 CODEOWNERS 对齐，覆盖 `.github/CODEOWNERS`、`policy/**` 和
+   `docs/release/**`。
+
+每个提交必须有正/负 fixture 或变异测试；最后执行完整验证，确认既有文件没有被误报。
+
+## P4 与本轮无关
+
+- Linux / Steam Deck：`out_of_scope`。
+- Rise / Wilds：`out_of_scope`。
+- Steam Cloud/OAuth/跨设备同步：`out_of_scope`。
+- 纯视觉美化、无行为证据的 UI 重构：`out_of_scope`。
+
+## 每个 Task 的完成定义
+
+每个任务只有同时满足以下条件才算完成：
+
+1. 独立 branch/worktree/PR，提交按可验证步骤拆分。
+2. 当前 task 的专题设计、源码、contract、TODO/状态文档同步。
+3. 聚焦测试、完整 `verify.ps1`、前端测试、clippy 实际通过。
+4. 最后变更后完成 `hmm-review-gate` 本地自审。
+5. 全部 required CI terminal success。
+6. 所有评论逐条处理；真实 bug 已修复，误报已有证据。
+7. CodeRabbit 缺席时已有独立全 diff 自审记录。
+8. 没有未处理 Critical/Important finding。
+9. 需要 disposable Windows 环境的 task 已完成真实安装态验收和 cleanup。
+10. 普通合并优先；使用 `--admin` 时满足目标模式提示词的额外限制。
+
+## 停止条件
+
+- 当前 task 需要维护者选择未定义的产品/安全/许可策略。
+- required CI 无法达到 success。
+- 缺少 disposable Windows 环境且该环境是完成定义。
+- 数据来源或分发权利未确认。
+- 发现会扩大到真实玩家数据、真实第三方 Mod 或未授权外部状态。
+- 路线图没有 `ready` task。
+
+停止时保留分支、PR、测试证据和 findings，汇报阻塞点；不要降低门禁或自拟范围外任务。

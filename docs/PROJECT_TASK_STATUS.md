@@ -1,8 +1,8 @@
 # 项目任务状态快照
 
-本文档记录 Helsincy Mod Manager 在 **2026-07-29** 的项目任务全景，基准为
-`main@beb22ae9015c4f1ca77ee4b4c6ba903404d9bca7`，并包含当前工作区的 CLI-0A contract、
-CLI-0B shared runtime composition、CLI-1A read-only game automation 与完整 CLI-1B read-only
+本文档记录 Helsincy Mod Manager 在 **2026-07-30** 的 Windows 项目任务全景，基准为
+`fe649baceddebab7a09dc31102c9ad477c578fd3`，包含 CLI-0A contract、CLI-0B shared runtime
+composition、CLI-1A read-only game automation 与完整 CLI-1B read-only
 install/backup/diagnostics automation。
 
 本文件是一次证据快照，用于回答“当前已经具备什么、还缺什么、下一步先做什么”。持续变化的任务
@@ -27,8 +27,10 @@ install/backup/diagnostics automation。
 回滚/恢复、Armor Retarget、Mod 库分页、第三方管理器批量迁移，以及 App/Task/Audit 日志和诊断页
 已经形成可测试的后端链路。Gate A 和 Gate B 均为 `certified`。
 
-当前最主要的发布缺口集中在 Windows 后台存档保障的真实安装态验收和卸载清理，而不是基础 Mod
-生命周期。完整前置依赖平台、批量安装/卸载、玩家存档恢复、日志全量保留策略和 Debug Log 仍未完成。
+当前开发优先级已经调整为核心 Mod 生命周期的批量能力：先冻结批量语义和 CLI Sandbox 自动化基础，
+再实现批量安装、批量卸载、批量真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
+Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺口；完整前置依赖平台、玩家存档恢复、
+日志全量保留策略和 Debug Log 也仍未完成。
 后端命令化已完成 CLI-1A 和 CLI-1B：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
 校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照。安装提交、
@@ -36,8 +38,7 @@ install/backup/diagnostics automation。
 
 快照时：
 
-- `main == origin/main == beb22ae`。
-- GitHub 没有 open PR 或 open issue。
+- 规划基线为 `fe649ba`，后续任务以最新 `main` 创建独立 branch/worktree。
 - PR #196 已合并；其 review 遗漏由 PR #197 补齐。
 - PR #199 已完成 T17 Slice 4C，T17 全部切片已交付。
 
@@ -56,11 +57,11 @@ install/backup/diagnostics automation。
 | T8 存档备份 | 部分完成 | 备份与后台核心已落地；玩家存档恢复、完整 retention、安装态验收和卸载清理未完成 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 部分完成 | MHW:I bundled rules 与状态查询、Gate A/B preflight 已有；安装前完整阻断/警告和产品展示未完成 |
-| T11 Armor Retarget | Certified | AR1-AR5、目标切换、重启恢复、manifest 卸载和 Sandbox 纵向验收已完成 |
+| T11 Armor Retarget | Certified（流程）/ 数据待扩容 | AR1-AR5 流程已认证；bundled armor catalog 仍是最小 seed，武器重定向未实现 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
-| T13 批量操作 | 暂停 | 批量安装/卸载队列、进度和产品语义尚未设计落地 |
+| T13 批量操作 | P0 待实施 | 先冻结 sealed plan、失败/取消/重试语义，再实现批量安装、卸载和真正重装 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
-| T15 Linux / Steam Deck | 远期 | 需要独立设计和社区/设备验证 |
+| T15 Linux / Steam Deck | 本轮排除 | 不进入本轮任务、实现、验收或发布判断 |
 | T16 Rise / Wilds | 远期 | 每个游戏需要独立 adapter 与设计 |
 | T17 第三方管理器批量迁移 | 已完成 | Windows + MHW:I、狩技盒子来源、只导入不安装 |
 | T18 Mod 库分页 | 已完成 | 后端权威分页、projection、freshness gate 和 10,000 条性能门禁已落地 |
@@ -96,6 +97,22 @@ T17 已实现第三方 Mod 管理器的批量迁移，包括只读来源扫描�
 
 T13 才是批量安装/卸载。T17 完成不代表 T13 已完成，也不能借 T17 的批处理编排绕过单项安装的
 `InstallPlan`、manifest、backup、rollback、锁和审计语义。
+
+## 装备重定向数据
+
+Armor Retarget 的流程认证与 catalog 完整度是两个状态：
+
+- AR1-AR5 已证明 armor source 分析、结构化 slot 改写、staging、InstallPlan、binding snapshot、
+  真正重装 target switch、重启恢复和 manifest 卸载安全链。
+- 当前 bundled armor catalog 仍只有最小稳定 seed，不代表完整防具目标已经进入产品。
+- 本地候选防具数据有 272 条安全相对路径；display name 存在重复，因此名称不能作为稳定 ID。
+- 本地候选武器数据覆盖 14 类、3125 个展示名称，但只有 603 个唯一目标路径；同一路径最多对应
+  48 个名称，必须建模为稳定 target + aliases，而不是重复安装目标。
+- 武器目标属于独立的 MHW:I weapon catalog/path parser/adapter。不能塞进
+  `MhwArmorReplacementAdapter`，也不能让前端解析 `nativePC/wp`。
+
+两份候选数据都不是运行时信任源。接入前必须完成 schema、路径安全、大小写碰撞、重复项、stable
+ID、alias/localization、dummy 条目、版本和可分发权利审计，再生成 versioned bundled artifact。
 
 ## Steam 多账号存档
 
@@ -296,17 +313,15 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 - 自动化只使用 temp SQLite、fake registry/fixed clock 和人工日志；未执行 Production
   backup/diagnostics 命令，未读取真实 AppData/日志/存档，也未查询或修改真实 Scheduled Task。
 
-此前总体状态审计在同一基准上还记录：
+2026-07-30 在独立 clean Windows worktree 对本路线图文档基线实际执行：
 
-- 前端测试：400/400 通过。
-- 前端 build：通过；仅有约 597 KB 主 chunk 超过 500 KB 的非阻断 warning。
-- App Log、Task Log、Audit Log、diagnostics、support export、save backup 和后台 worker 等聚焦
-  Rust/Node 测试通过。
-
-统一 `scripts/verify.ps1` 未完整通过。原因不是主工作区源码 lint 失败，而是 `eslint .` 扫描了
-Git ignored 的 `.worktrees/` 历史 worktree 和其中的 generated/cache/target 产物，产生 1970 个
-无关错误并提前退出。临时排除 `.worktrees/**` 后，主工作区 lint 通过。该问题应作为验证稳定性缺口
-处理，不能把统一验证写成已通过。
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：通过；包含 policy/docs、
+  frontend typecheck/lint/build、`cargo test --workspace` 和 `cargo check --workspace`。
+- `cmd /c corepack pnpm run test`：400/400 通过。
+- `cargo clippy --workspace --all-targets -- -D warnings`：通过。
+- frontend build 仍有约 597 KB 主 chunk 超过 500 KB 的既有非阻断 warning。
+- 测试使用 temp/fake/人工 fixture；开发 sidecar、`node_modules`、`target` 和 `dist` 均为 ignored
+  生成物，不进入本次文档提交。
 
 真实 Windows Scheduled Task、安装态 sibling worker、heartbeat 和 installer cleanup 没有在日常
 开发账户中执行；这些检查只能在一次性账户或 disposable VM 中完成。
@@ -315,15 +330,30 @@ Git ignored 的 `.worktrees/` 历史 worktree 和其中的 generated/cache/targe
 
 - `SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md` 仍写 P7.2b 未实现，与较新的自动化设计、
   `TODO.md`、源码和测试不一致。
-- ESLint ignore 未覆盖仓库允许存在的 `.worktrees/`，导致统一验证对本地历史 worktree 敏感。
-- 无人值守治理队列 A1-A6 尚未实施：超大 `state.rs` / `dto.rs`、命令契约缺口、统一 verify
-  未运行前端 tests 或 clippy 等问题仍需按治理路线处理。
+- 当前 GitHub `Verify` 和本地统一验证仍未运行 frontend tests 或 clippy；在 QG-01 合并前，
+  每个相关 PR 必须额外手动执行并记录。
+- Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
+  bundle 中存在 sibling worker 就标记完成。
+- `src-tauri/src/dto.rs` 仍为 2133 行且测试模块内联，距 2200 行硬门禁只剩 67 行；GOV-01
+  最迟必须在 T13-06 新增批量 DTO 前完成。
+- 重装生产路径仍保留一处文件级和三处局部 `allow(dead_code)` 及过期 Task 6 注释；GOV-02
+  最迟必须在 T13-04 批量真正重装前完成，且不得借清理名义删除回滚字段或分支。
+- `FRONTEND_BACKEND_CONTRACT.md` 仍缺 8 个已注册的分类/Mod 元数据命令，也没有注册命令与
+  契约文档一致性的防回归测试。
+- 文件门禁仍只有行数限制，secret 扫描仍缺 `.py`/`.sql`，`governanceFiles` 也未与
+  CODEOWNERS 完全对齐；这些归入 GOV-04，不阻塞当前 P0，但属于需要人工 review 的治理欠账。
 
 ## 建议执行顺序
 
-1. 在首个长任务 CLI 命令前完成 runner 逐阶段 observer 与 JSONL 顺序/terminal 测试。
-2. 完成 P7.2a disposable Windows VM 的安装态 worker -> Scheduled Task -> heartbeat -> cleanup smoke。
-3. 实现 P7.2c ownership-checked cleanup helper、NSIS/WiX 接入和卸载矩阵。
-4. 补齐 Task/Audit retention、日志总空间上限；决定 Debug Log 是实现还是正式延期。
-5. 修复后台调度文档漂移与 ESLint `.worktrees/` ignore，继续推进治理队列。
-6. 单独评审 T13 批量安装/卸载的队列、原子性、失败与取消语义。
+1. QG-01 把前端测试与 clippy 接入本地/CI 门禁；在治理 PR 获得要求的 review 前继续手动补跑。
+2. T13-00 冻结批量 sealed plan、失败、取消、partial result 和 retry 语义。
+3. CLI-2A/2B/2C 完成逐阶段 observer、Sandbox 写许可和单项生命周期 binary E2E。
+4. CORE-PREF-01 证明并补齐单项安装前置检查的一致 decision。
+5. T13-01 至 T13-08 依次完成批量 plan、安装、卸载、真正重装、CLI/Tauri/前端和 Gate C。
+6. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
+7. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
+8. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
+9. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
+10. 执行 GOV-01 至 GOV-04 工程治理 backlog；其中 GOV-01/GOV-02 按上面的核心阶段依赖前拉。
+
+完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
