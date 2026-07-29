@@ -49,6 +49,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-whitespace.p
 ./scripts/verify.ps1
 ```
 
+修改 `policy/`、`scripts/check-*.ps1`、`scripts/check-policy.mjs` 或 `.github/CODEOWNERS` 时，
+还需运行治理 fixture：
+
+```powershell
+node --test scripts/check-policy.test.mjs
+```
+
+该测试使用临时 Git 仓库和人工最小文件；Windows 上会同时执行 Node 与 PowerShell 生产入口，
+其他平台至少验证 CI 使用的 Node 入口。测试不得写入真实凭据、玩家数据或本地私有路径。
+
 Linux / Steam Deck 开发环境可以使用：
 
 ```bash

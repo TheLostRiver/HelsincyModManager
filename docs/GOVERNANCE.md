@@ -110,12 +110,16 @@ CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分
 - `AGENTS.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
+- `CHANGELOG.md`
+- `docs/GOVERNANCE.md`
+- `docs/LOGGING.md`
 - `docs/TESTING.md`
 - `docs/release/`
 - `policy/`
 - `scripts/`
 - `.githooks/`
 - `.github/workflows/`
+- `.github/CODEOWNERS`
 - `.codex/`
 - `.agents/`
 

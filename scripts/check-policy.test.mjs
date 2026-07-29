@@ -130,6 +130,31 @@ function resultOutput(result) {
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
+function policyGlobToRegex(pattern) {
+  const normalized = pattern.replaceAll("\\", "/");
+  const escaped = normalized.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+  const regex = escaped.replaceAll("**", "\0").replaceAll("*", "[^/]*").replaceAll("\0", ".*");
+  return new RegExp(`^${regex}$`);
+}
+
+function readCodeownerPrefixes(content) {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split(/\s+/, 1)[0].replace(/^\/+/, ""));
+}
+
+function governancePatternToPrefix(pattern) {
+  const normalized = pattern.replaceAll("\\", "/");
+  if (normalized.endsWith("/**")) {
+    return normalized.slice(0, -2);
+  }
+
+  assert.doesNotMatch(normalized, /[*?[\]]/, `Unsupported governance glob: ${pattern}`);
+  return normalized;
+}
+
 function assertPolicyResult(repoRoot, { succeeds, message }) {
   const nodeResult = runNodePolicy(repoRoot);
   assert.equal(nodeResult.status === 0, succeeds, resultOutput(nodeResult));
@@ -234,6 +259,51 @@ test("project policy assigns SQL files to a file-size category", () => {
 
   assert.deepEqual(policy.fileSize.extensions.sql, [".sql"]);
   assert.equal(policy.fileSize.block.sql, 1200);
+});
+
+test("CODEOWNERS governance prefixes stay aligned with policy and docs", () => {
+  const repoRoot = join(scriptsDir, "..");
+  const policy = JSON.parse(
+    readFileSync(join(repoRoot, "policy", "project-policy.json"), "utf8"),
+  );
+  const codeownersPrefixes = readCodeownerPrefixes(
+    readFileSync(join(repoRoot, ".github", "CODEOWNERS"), "utf8"),
+  );
+  const policyPrefixes = policy.governanceFiles.map(governancePatternToPrefix);
+  const governanceRegexes = policy.governanceFiles.map(policyGlobToRegex);
+
+  assert.deepEqual(
+    [...policyPrefixes].sort(),
+    [...codeownersPrefixes].sort(),
+    "policy.governanceFiles must describe the same prefixes as CODEOWNERS",
+  );
+
+  const uncovered = [];
+  for (const prefix of codeownersPrefixes) {
+    const probes = prefix.endsWith("/")
+      ? [`${prefix}__governance_probe__`, `${prefix}nested/__governance_probe__`]
+      : [prefix];
+    for (const probe of probes) {
+      if (!governanceRegexes.some((regex) => regex.test(probe))) {
+        uncovered.push(probe);
+      }
+    }
+  }
+  assert.deepEqual(uncovered, [], "every CODEOWNERS prefix must be covered by a governance glob");
+
+  const governanceDoc = readFileSync(join(repoRoot, "docs", "GOVERNANCE.md"), "utf8");
+  const governanceList = governanceDoc.match(
+    /治理文件包括：\r?\n(?<body>[\s\S]*?)\r?\nCODEOWNERS 本身/,
+  );
+  assert.ok(governanceList?.groups?.body, "docs/GOVERNANCE.md must list governance files");
+  const documentedPrefixes = [...governanceList.groups.body.matchAll(/^- `([^`]+)`/gm)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(
+    [...documentedPrefixes].sort(),
+    [...codeownersPrefixes].sort(),
+    "docs/GOVERNANCE.md must describe the same prefixes as CODEOWNERS",
+  );
 });
 
 test("secret checks scan forced Python and application SQL files", (t) => {
