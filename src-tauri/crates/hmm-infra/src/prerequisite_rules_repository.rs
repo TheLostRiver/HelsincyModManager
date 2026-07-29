@@ -5,7 +5,7 @@ use hmm_ports::{
 };
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,6 +16,16 @@ pub struct JsonGamePrerequisiteRuleRepository {
     write_lock: Mutex<()>,
 }
 
+pub struct ReadOnlyJsonGamePrerequisiteRuleRepository {
+    file_path: PathBuf,
+}
+
+impl ReadOnlyJsonGamePrerequisiteRuleRepository {
+    pub fn new(file_path: PathBuf) -> Self {
+        Self { file_path }
+    }
+}
+
 impl JsonGamePrerequisiteRuleRepository {
     pub fn new(file_path: PathBuf) -> Self {
         Self {
@@ -24,7 +34,10 @@ impl JsonGamePrerequisiteRuleRepository {
         }
     }
 
-    fn ensure_seeded(&self, bundled_default: &str) -> Result<(), GamePrerequisiteRuleRepositoryError> {
+    fn ensure_seeded(
+        &self,
+        bundled_default: &str,
+    ) -> Result<(), GamePrerequisiteRuleRepositoryError> {
         if self.file_path.exists() {
             return Ok(());
         }
@@ -33,9 +46,9 @@ impl JsonGamePrerequisiteRuleRepository {
             GamePrerequisiteRuleRepositoryError::StorageFailed("write lock poisoned".to_owned())
         })?;
         let lock_file = self.open_lock_file()?;
-        lock_file
-            .lock_exclusive()
-            .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
+        lock_file.lock_exclusive().map_err(|error| {
+            GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+        })?;
 
         if !self.file_path.exists() {
             self.save_default_file(bundled_default)?;
@@ -51,25 +64,30 @@ impl JsonGamePrerequisiteRuleRepository {
         bundled_default: &str,
     ) -> Result<(), GamePrerequisiteRuleRepositoryError> {
         if let Some(parent) = self.file_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
+            fs::create_dir_all(parent).map_err(|error| {
+                GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+            })?;
         }
 
         let temp_path = self.unique_temp_path();
 
         {
-            let mut temp_file = File::create(&temp_path)
-                .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
+            let mut temp_file = File::create(&temp_path).map_err(|error| {
+                GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+            })?;
             temp_file
                 .write_all(bundled_default.as_bytes())
-                .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
-            temp_file
-                .sync_all()
-                .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
+                .map_err(|error| {
+                    GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+                })?;
+            temp_file.sync_all().map_err(|error| {
+                GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+            })?;
         }
 
-        fs::rename(&temp_path, &self.file_path)
-            .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
+        fs::rename(&temp_path, &self.file_path).map_err(|error| {
+            GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+        })?;
         self.sync_parent_directory()?;
 
         Ok(())
@@ -79,18 +97,10 @@ impl JsonGamePrerequisiteRuleRepository {
         &self,
         game_id: &GameId,
     ) -> Result<GamePrerequisiteRuleSet, GamePrerequisiteRuleRepositoryError> {
-        let bytes = fs::read(&self.file_path)
-            .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
-        let content = String::from_utf8(bytes)
-            .map_err(|_| GamePrerequisiteRuleRepositoryError::StorageCorrupted)?;
-        let rules: GamePrerequisiteRuleSet = serde_json::from_str(&content)
-            .map_err(|_| GamePrerequisiteRuleRepositoryError::StorageCorrupted)?;
-
-        if rules.version != CURRENT_SCHEMA_VERSION || &rules.game_id != game_id {
-            return Err(GamePrerequisiteRuleRepositoryError::StorageCorrupted);
-        }
-
-        Ok(rules)
+        let bytes = fs::read(&self.file_path).map_err(|error| {
+            GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+        })?;
+        parse_rule_bytes(&bytes, game_id)
     }
 
     fn sync_parent_directory(&self) -> Result<(), GamePrerequisiteRuleRepositoryError> {
@@ -143,8 +153,9 @@ impl JsonGamePrerequisiteRuleRepository {
 
     fn open_lock_file(&self) -> Result<File, GamePrerequisiteRuleRepositoryError> {
         if let Some(parent) = self.file_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string()))?;
+            fs::create_dir_all(parent).map_err(|error| {
+                GamePrerequisiteRuleRepositoryError::StorageFailed(error.to_string())
+            })?;
         }
 
         OpenOptions::new()
@@ -184,4 +195,80 @@ impl GamePrerequisiteRuleRepository for JsonGamePrerequisiteRuleRepository {
         self.ensure_seeded(bundled_default)?;
         self.load_file(game_id)
     }
+}
+
+impl GamePrerequisiteRuleRepository for ReadOnlyJsonGamePrerequisiteRuleRepository {
+    fn load_rules(
+        &self,
+        game_id: &GameId,
+        bundled_default: &str,
+    ) -> Result<GamePrerequisiteRuleSet, GamePrerequisiteRuleRepositoryError> {
+        match fs::read(&self.file_path) {
+            Ok(bytes) => parse_rule_bytes(&bytes, game_id),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                parse_rule_bytes(bundled_default.as_bytes(), game_id)
+            }
+            Err(error) => Err(GamePrerequisiteRuleRepositoryError::StorageFailed(
+                error.to_string(),
+            )),
+        }
+    }
+}
+
+fn parse_rule_bytes(
+    bytes: &[u8],
+    game_id: &GameId,
+) -> Result<GamePrerequisiteRuleSet, GamePrerequisiteRuleRepositoryError> {
+    let content = std::str::from_utf8(bytes)
+        .map_err(|_| GamePrerequisiteRuleRepositoryError::StorageCorrupted)?;
+    let rules: GamePrerequisiteRuleSet = serde_json::from_str(content)
+        .map_err(|_| GamePrerequisiteRuleRepositoryError::StorageCorrupted)?;
+
+    if rules.version != CURRENT_SCHEMA_VERSION
+        || &rules.game_id != game_id
+        || !rules
+            .prerequisites
+            .iter()
+            .all(|rule| prerequisite_id_is_safe(&rule.id) && rule_paths_are_safe(rule))
+    {
+        return Err(GamePrerequisiteRuleRepositoryError::StorageCorrupted);
+    }
+
+    Ok(rules)
+}
+
+fn prerequisite_id_is_safe(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn rule_paths_are_safe(rule: &hmm_ports::GamePrerequisiteRule) -> bool {
+    rule.required_files
+        .iter()
+        .all(|path| prerequisite_path_is_safe(path))
+        && rule
+            .signature_files
+            .iter()
+            .all(|rule| prerequisite_path_is_safe(&rule.path))
+        && rule
+            .json_checks
+            .iter()
+            .all(|rule| prerequisite_path_is_safe(&rule.path))
+}
+
+fn prerequisite_path_is_safe(value: &str) -> bool {
+    let path = Path::new(value);
+    !value.is_empty()
+        && !value.starts_with(['/', '\\'])
+        && !value.contains(':')
+        && !value
+            .split(['/', '\\'])
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+        && !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
 }

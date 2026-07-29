@@ -43,7 +43,7 @@ pub use app_log::{
     AppLogLevel,
 };
 pub use app_settings_repository::JsonAppSettingsRepository;
-pub use audit_log::FileSystemAuditLogWriter;
+pub use audit_log::{FileSystemAuditLogReader, FileSystemAuditLogWriter};
 pub use diagnostics_environment::SystemDiagnosticsEnvironmentProvider;
 pub use diagnostics_health::DiagnosticsEvidenceHealthState;
 pub use external_import_materializer::HuntingBoxDirectoryMaterializer;
@@ -67,7 +67,9 @@ pub use mod_import::{
 };
 pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
 pub use mod_revision_catalog::JsonModImportResultRepository;
-pub use prerequisite_rules_repository::JsonGamePrerequisiteRuleRepository;
+pub use prerequisite_rules_repository::{
+    JsonGamePrerequisiteRuleRepository, ReadOnlyJsonGamePrerequisiteRuleRepository,
+};
 pub use preview_image::{
     FileSystemThumbnailStore, ImageCratePreviewImageProcessor, SandboxPackagePreviewScanner,
     ThumbnailPruneReport, ThumbnailSizePruneReport,
@@ -79,13 +81,13 @@ pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry
 pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
-pub use sqlite::open_database;
 pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteExternalImportBatchRepository;
 pub use sqlite::SqliteProfileRepository;
 pub use sqlite::SqliteSaveBackupBackgroundSettingsRepository;
 pub use sqlite::SqliteSaveBackupRepository;
 pub use sqlite::SqliteSaveBackupSchedulerStateRepository;
+pub use sqlite::{open_database, open_database_read_only};
 pub use sqlite::{SqliteModLibraryProjectionRepository, SqliteModMetadataRepository};
 pub use staging::{FileSystemRetargetStagingMaterializer, RetargetStagingInstallSourceFileReader};
 pub use steam_discovery::PlatformSteamRootProvider;

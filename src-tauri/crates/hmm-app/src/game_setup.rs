@@ -102,28 +102,42 @@ impl GameSetupService {
         &self,
         game_id: GameId,
     ) -> Result<GamePrerequisiteReport, GameSetupServiceError> {
-        let status = self.get_status(game_id.clone())?;
+        self.require_adapter(&game_id)?;
+        let instance = self
+            .repository
+            .load_game_instance(&game_id)
+            .map_err(Self::map_storage_error)?;
 
-        match status.status {
-            GameDirectoryStatus::NotConfigured => {
-                Ok(GamePrerequisiteReport::not_configured(game_id))
+        match instance {
+            Some(instance) => {
+                self.get_prerequisite_status_for_directory(game_id, instance.root_dir)
             }
-            GameDirectoryStatus::Invalid => Ok(GamePrerequisiteReport::game_directory_invalid(
-                game_id,
-                status.error_code.unwrap_or(GameSetupErrorCode::Unknown),
-                status
-                    .message
-                    .unwrap_or_else(|| "saved game directory is no longer valid".to_owned()),
-            )),
-            GameDirectoryStatus::Configured => {
-                let instance = status
-                    .instance
-                    .expect("configured status should include a game instance");
-                let adapter = self.require_adapter(&game_id)?;
-                let probe = self.probe_factory.create(instance.root_dir);
-                Ok(adapter.inspect_prerequisites(probe.as_ref()))
-            }
+            None => Ok(GamePrerequisiteReport::not_configured(game_id)),
         }
+    }
+
+    pub fn get_prerequisite_status_for_directory(
+        &self,
+        game_id: GameId,
+        directory: PathBuf,
+    ) -> Result<GamePrerequisiteReport, GameSetupServiceError> {
+        let adapter = self.require_adapter(&game_id)?;
+        let validation = self.validate_with_adapter(adapter.as_ref(), directory.clone());
+
+        if !validation.is_valid {
+            return Ok(GamePrerequisiteReport::game_directory_invalid(
+                game_id,
+                validation
+                    .errors
+                    .first()
+                    .cloned()
+                    .unwrap_or(GameSetupErrorCode::Unknown),
+                "saved game directory is no longer valid",
+            ));
+        }
+
+        let probe = self.probe_factory.create(directory);
+        Ok(adapter.inspect_prerequisites(probe.as_ref()))
     }
 
     pub fn validate_directory(

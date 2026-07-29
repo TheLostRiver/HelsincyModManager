@@ -19,6 +19,8 @@ Helsincy Mod Manager 是一个基于 Tauri 的本地桌面应用，计划由以�
 - Rust 应用用例：`src-tauri/crates/hmm-app/`
 - Rust 基础设施：`src-tauri/crates/hmm-infra/`
 - MHW:I 游戏适配器：`src-tauri/crates/hmm-games-mhw/`
+- Tauri-free runtime 策略与共享装配边界：`src-tauri/crates/hmm-runtime/`
+- CLI transport 与机器契约：`src-tauri/crates/hmm-cli/`
 - 项目治理文档：`README.md`、`CONTRIBUTING.md`、`SECURITY.md`、`AGENTS.md`、`docs/`
 
 提交前必须先判断改动属于哪个边界，避免把多个职责堆进同一个文件或同一个模块。

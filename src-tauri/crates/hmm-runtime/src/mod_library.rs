@@ -15,7 +15,7 @@ use hmm_ports::{
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct ModLibraryComposition {
+pub(super) struct ModLibraryComposition {
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
     mod_metadata_repository: Arc<dyn ModMetadataRepository>,
     category_repository: Arc<dyn CategoryRepository>,

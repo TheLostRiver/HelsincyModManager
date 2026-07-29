@@ -122,7 +122,7 @@ Gate A 必须同时消费 L1、L2 和实际执行的 L3 证据。单独一层不
 聚焦执行入口：
 
 ```powershell
-cargo test -p hmm-tauri state::core_mod_lifecycle_tests
+cargo test -p hmm-runtime composition::core_mod_lifecycle_tests
 ```
 
 CL3-I1/P1/R1/F1/T1 是已执行的 L1/L2 自动化证据；CL3-D1 是 Task 10 已实际执行的 L3 桌面证据。

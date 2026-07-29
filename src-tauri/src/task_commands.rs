@@ -20,7 +20,7 @@ pub fn cancel_task(
         .cancel_task(&task_id)
         .map_err(CommandErrorDto::from_task_manager_error)?;
 
-    emit_task_progress(&app_handle, cancelled_event_for_task(&task).into())?;
+    emit_task_progress(&app_handle, cancelled_event_for_task(&task))?;
 
     Ok(TaskStarted {
         task_id: task.task_id,

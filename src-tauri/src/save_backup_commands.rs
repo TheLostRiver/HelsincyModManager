@@ -36,7 +36,7 @@ pub fn start_save_backup_task(
 
     let _ = emit_task_progress(
         &app_handle,
-        queued_event_for_started_save_backup_task(&task).into(),
+        queued_event_for_started_save_backup_task(&task),
     );
     spawn_save_backup_runner(
         Arc::clone(&state.save_backup_task_runner),
@@ -88,7 +88,7 @@ pub fn check_auto_save_backup(
 
         let _ = emit_task_progress(
             &app_handle,
-            queued_event_for_started_save_backup_task(&task).into(),
+            queued_event_for_started_save_backup_task(&task),
         );
         spawn_save_backup_runner(
             Arc::clone(&state.save_backup_task_runner),
@@ -178,7 +178,7 @@ fn spawn_save_backup_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }

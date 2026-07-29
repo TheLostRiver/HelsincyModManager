@@ -65,6 +65,104 @@ fn mod_import_catalog_migrates_v1_record_without_losing_identity_or_provenance()
 }
 
 #[test]
+fn read_only_mod_import_catalog_projects_v1_without_writing_or_locking() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    let lock_path = temp.path().join("results.json.lock");
+    write_v1_catalog(&path);
+    let original = fs::read(&path).expect("read original catalog");
+    let repo = JsonModImportResultRepository::new_read_only(path.clone());
+
+    let analysis = repo
+        .get_analysis("legacy-mod")
+        .expect("read legacy catalog")
+        .expect("legacy analysis");
+
+    assert_eq!(analysis.package_id, "legacy-package");
+    assert_eq!(fs::read(&path).expect("read catalog after query"), original);
+    assert!(!lock_path.exists());
+    assert_eq!(repo.catalog_save_count_for_test(), 0);
+}
+
+#[test]
+fn read_only_mod_import_catalog_missing_file_does_not_create_parent_or_lock() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let parent = temp.path().join("missing");
+    let path = parent.join("results.json");
+    let repo = JsonModImportResultRepository::new_read_only(path);
+
+    assert!(repo
+        .list_analysis()
+        .expect("missing catalog is empty")
+        .is_empty());
+    assert!(!parent.exists());
+}
+
+#[test]
+fn read_only_mod_import_catalog_rejects_mutation_without_writing() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    write_v1_catalog(&path);
+    let original = fs::read(&path).expect("read original catalog");
+    let repo = JsonModImportResultRepository::new_read_only(path.clone());
+
+    let error = repo
+        .save_analysis(&analysis(
+            "mod-a",
+            "package-a",
+            PreviewImageRejectionReason::Missing,
+        ))
+        .expect_err("read-only repository rejects mutation");
+
+    assert!(error.to_string().contains("read-only"));
+    assert_eq!(
+        fs::read(path).expect("read catalog after rejection"),
+        original
+    );
+    assert!(!temp.path().join("results.json.lock").exists());
+}
+
+#[test]
+fn read_only_mod_import_catalog_rejects_all_batch_mutations_without_writing() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    let lock_path = temp.path().join("results.json.lock");
+    write_v1_catalog(&path);
+    let original = fs::read(&path).expect("read original catalog");
+    let repo = JsonModImportResultRepository::new_read_only(path.clone());
+    let upsert = ModImportCatalogUpsert {
+        logical_mod: logical_mod("mod-a", "revision-a"),
+        revision: revision("revision-a", "mod-a", "package-a", "task-a"),
+    };
+    let external_upsert = external_import_upsert(
+        "external-a",
+        "External A",
+        "content-a",
+        ModImportExternalDisplayNameAdmission::RequireUnique,
+    );
+
+    let errors = [
+        repo.upsert_many(&[])
+            .expect_err("read-only repository rejects an empty generic batch"),
+        repo.upsert_many(std::slice::from_ref(&upsert))
+            .expect_err("read-only repository rejects a non-empty generic batch"),
+        repo.upsert_external_import_many(&[])
+            .expect_err("read-only repository rejects an empty external batch"),
+        repo.upsert_external_import_many(std::slice::from_ref(&external_upsert))
+            .expect_err("read-only repository rejects a non-empty external batch"),
+    ];
+
+    assert!(errors
+        .iter()
+        .all(|error| error.to_string().contains("read-only")));
+    assert_eq!(
+        fs::read(path).expect("read catalog after batch rejections"),
+        original
+    );
+    assert!(!lock_path.exists());
+}
+
+#[test]
 fn mod_import_catalog_append_preserves_origin_and_projects_one_display_card_after_reload() {
     let temp = tempfile::tempdir().expect("temp dir");
     let path = temp.path().join("results.json");

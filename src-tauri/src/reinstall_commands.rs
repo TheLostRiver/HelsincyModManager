@@ -60,10 +60,7 @@ pub fn start_reinstall_task(
         .start_reinstall_task(request)
         .map_err(|_| reinstall_start_unavailable_error())?;
 
-    let _ = emit_task_progress(
-        &app_handle,
-        queued_event_for_started_reinstall_task(&task).into(),
-    );
+    let _ = emit_task_progress(&app_handle, queued_event_for_started_reinstall_task(&task));
     spawn_reinstall_runner(
         Arc::clone(&state.reinstall_task_runner),
         app_handle,
@@ -86,7 +83,7 @@ fn spawn_reinstall_runner(
             Err(error) => error.events,
         };
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }

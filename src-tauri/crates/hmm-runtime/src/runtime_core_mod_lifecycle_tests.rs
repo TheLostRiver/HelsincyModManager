@@ -1,14 +1,10 @@
-use super::{
-    retarget_reinstall_staging_root, with_install_manifest_repository_override, AppState,
-    RetargetStagingCleanup,
-};
+use super::{retarget_reinstall_staging_root, HmmRuntime, RetargetStagingCleanup};
 use hmm_app::{
     BuildImportedModInstallPlanRequest, InstallManifestQueryRequest, InstallManifestStatus,
     InstallRecoveryScanRequest, InstallRecoveryStatus, ReinstallPlanPreview,
     ReinstallPreviewRequest, ReinstallPreviewStatus, ReinstallTargetCounts,
-    RetargetReinstallRequest,
-    StartImportModRevisionTaskRequest, StartImportModTaskRequest, StartInstallTaskRequest,
-    StartReinstallTaskRequest, StartRetargetInstallTaskRequest,
+    RetargetReinstallRequest, StartImportModRevisionTaskRequest, StartImportModTaskRequest,
+    StartInstallTaskRequest, StartReinstallTaskRequest, StartRetargetInstallTaskRequest,
     StartRetargetReinstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
 };
 use hmm_core::{
@@ -125,7 +121,7 @@ fn headless_composition_imports_v1_and_rebuilds_plan_after_restart() {
     prepare_game_root(&game_root);
     create_fixture_zip(&archive_path, V1_FILES);
 
-    let state = AppState::from_app_data_dir(app_data_dir.clone())
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("compose headless state from temp AppData");
     let setup = state
         .game_setup
@@ -169,7 +165,7 @@ fn headless_composition_imports_v1_and_rebuilds_plan_after_restart() {
 
     drop(state);
 
-    let restarted = AppState::from_app_data_dir(app_data_dir)
+    let restarted = HmmRuntime::from_app_data_dir(app_data_dir)
         .expect("recompose headless state from persisted AppData");
     let restarted_setup = restarted
         .game_setup
@@ -202,7 +198,7 @@ fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot(
     prepare_game_root(&game_root);
     create_fixture_zip(&archive_path, &[(ARMOR_SOURCE_TARGET, ARMOR_FIXTURE_BYTES)]);
 
-    let state = AppState::from_app_data_dir(app_data_dir.clone())
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("compose headless state from temp AppData");
     state
         .game_setup
@@ -301,7 +297,7 @@ fn headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_
     let baseline = snapshot_file_tree(&game_root);
     create_fixture_zip(&archive_path, &[(ARMOR_SOURCE_TARGET, ARMOR_FIXTURE_BYTES)]);
 
-    let state = AppState::from_app_data_dir(app_data_dir.clone())
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("compose headless state from temp AppData");
     state
         .game_setup
@@ -418,7 +414,7 @@ fn headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_
     );
 
     drop(state);
-    let restarted = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("restart from switched retarget manifest");
     assert_eq!(read_fixture_manifest(&app_data_dir), switched_manifest);
     let uninstall = StartUninstallTaskRequest {
@@ -441,7 +437,7 @@ fn headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_
     assert_no_reinstall_recovery_transactions(&app_data_dir);
 
     drop(restarted);
-    let restarted_uninstalled = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted_uninstalled = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("restart after retarget uninstall");
     let summaries = restarted_uninstalled
         .install_recovery_scanner
@@ -479,7 +475,7 @@ fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
     create_fixture_zip(&archive_path, V1_FILES);
     let baseline = snapshot_file_tree(&game_root);
 
-    let state = AppState::from_app_data_dir(app_data_dir.clone())
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("compose headless state from temp AppData");
     state
         .game_setup
@@ -515,7 +511,7 @@ fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
     let install_events = state
         .install_task_runner
         .run_install_task(&install_task.task_id, install_request)
-        .expect("install fixture through AppState composition");
+        .expect("install fixture through HmmRuntime composition");
     assert!(install_events
         .iter()
         .all(|event| event.task_id == install_task.task_id));
@@ -567,7 +563,7 @@ fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
 
     drop(state);
 
-    let restarted = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("recompose installed fixture state from persisted AppData");
     let manifest_statuses = restarted
         .install_manifest_query
@@ -618,7 +614,7 @@ fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
     let uninstall_events = restarted
         .uninstall_task_runner
         .run_uninstall_task(&uninstall_task.task_id, uninstall_request)
-        .expect("uninstall fixture through AppState composition");
+        .expect("uninstall fixture through HmmRuntime composition");
     assert!(uninstall_events
         .iter()
         .all(|event| event.task_id == uninstall_task.task_id));
@@ -694,7 +690,7 @@ fn headless_composition_installs_restarts_uninstalls_and_restores_baseline() {
 
     drop(restarted);
 
-    let restarted_after_uninstall = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted_after_uninstall = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("recompose uninstalled fixture state from persisted AppData");
     let manifest_statuses = restarted_after_uninstall
         .install_manifest_query
@@ -745,7 +741,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
     create_fixture_zip(&v2_archive_path, V2_FILES);
     let baseline = snapshot_file_tree(&game_root);
 
-    let state = AppState::from_app_data_dir(app_data_dir.clone())
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("compose reinstall lifecycle state from temp AppData");
     state
         .game_setup
@@ -763,7 +759,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
 
     drop(state);
 
-    let restarted_v1 = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted_v1 = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("recompose installed v1 state from persisted AppData");
     assert_manifest_status(
         &restarted_v1,
@@ -829,7 +825,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
     let reinstall_events = restarted_v1
         .reinstall_task_runner
         .run_reinstall_task(&reinstall_task.task_id, reinstall_request)
-        .expect("reinstall v2 through AppState composition");
+        .expect("reinstall v2 through HmmRuntime composition");
     assert_eq!(
         reinstall_events
             .iter()
@@ -895,7 +891,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
 
     drop(restarted_v1);
 
-    let restarted_v2 = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted_v2 = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("recompose installed v2 state from persisted AppData");
     assert_manifest_status(
         &restarted_v2,
@@ -933,7 +929,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
     restarted_v2
         .uninstall_task_runner
         .run_uninstall_task(&uninstall_task.task_id, uninstall_request)
-        .expect("uninstall v2 through AppState composition");
+        .expect("uninstall v2 through HmmRuntime composition");
     assert_eq!(snapshot_file_tree(&game_root), baseline);
     assert!(!game_root.join("nativePC/lifecycle/added-v2.bin").exists());
     assert_eq!(
@@ -945,7 +941,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
 
     drop(restarted_v2);
 
-    let restarted_uninstalled = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted_uninstalled = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("recompose uninstalled v2 state from persisted AppData");
     assert_manifest_status(
         &restarted_uninstalled,
@@ -989,10 +985,10 @@ fn headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails() {
     let manifest_repository = Arc::new(FailNextManifestSaveRepository::new(
         app_data_dir.join("install").join("manifests"),
     ));
-    let state = with_install_manifest_repository_override(manifest_repository.clone(), || {
-        AppState::from_app_data_dir(app_data_dir.clone())
-    })
-    .expect("compose fault-injected AppState from temp AppData");
+    let state = HmmRuntime::builder(app_data_dir.clone())
+        .with_install_manifest_repository(manifest_repository.clone())
+        .build()
+        .expect("compose fault-injected runtime from temp AppData");
     state
         .game_setup
         .save_game_directory(GameId::mhw(), game_root.clone())
@@ -1086,7 +1082,7 @@ fn headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails() {
 
     drop(state);
 
-    let restarted_v1 = AppState::from_app_data_dir(app_data_dir.clone())
+    let restarted_v1 = HmmRuntime::from_app_data_dir(app_data_dir.clone())
         .expect("recompose rolled-back v1 state from persisted AppData");
     assert_manifest_status(
         &restarted_v1,
@@ -1145,7 +1141,7 @@ fn fixture_map(
 }
 
 fn import_initial_fixture_revision(
-    state: &AppState,
+    state: &HmmRuntime,
     archive_path: &Path,
 ) -> (String, ModId, ModRevisionId) {
     let task = state
@@ -1172,7 +1168,7 @@ fn import_initial_fixture_revision(
 }
 
 fn import_candidate_fixture_revision(
-    state: &AppState,
+    state: &HmmRuntime,
     archive_path: &Path,
     mod_id: &ModId,
     previous_revision_id: &ModRevisionId,
@@ -1207,7 +1203,7 @@ fn import_candidate_fixture_revision(
     (task.task_id, candidates[0].clone())
 }
 
-fn install_fixture_revision(state: &AppState, mod_id: &ModId, profile_id: &ProfileId) -> String {
+fn install_fixture_revision(state: &HmmRuntime, mod_id: &ModId, profile_id: &ProfileId) -> String {
     let request = StartInstallTaskRequest {
         game_id: GameId::mhw(),
         mod_id: mod_id.clone(),
@@ -1226,7 +1222,7 @@ fn install_fixture_revision(state: &AppState, mod_id: &ModId, profile_id: &Profi
 }
 
 fn preview_fixture_reinstall(
-    state: &AppState,
+    state: &HmmRuntime,
     profile_id: &ProfileId,
     mod_id: &ModId,
     candidate_revision_id: &ModRevisionId,
@@ -1240,7 +1236,7 @@ fn preview_fixture_reinstall(
             candidate_revision_id: candidate_revision_id.clone(),
             layer: FileLayer::new("base", 0),
         })
-        .expect("preview fixture reinstall through AppState composition")
+        .expect("preview fixture reinstall through HmmRuntime composition")
 }
 
 fn assert_ready_preview(
@@ -1339,7 +1335,7 @@ fn original_overwrite_backup_ref(manifest: &InstallManifest, mod_id: &ModId) -> 
 }
 
 fn assert_manifest_status(
-    state: &AppState,
+    state: &HmmRuntime,
     profile_id: &ProfileId,
     mod_id: &ModId,
     expected_status: InstallManifestStatus,
@@ -1463,7 +1459,7 @@ fn create_fixture_zip(path: &Path, files: &[(&str, &[u8])]) {
     archive.finish().expect("finish synthetic fixture archive");
 }
 
-fn library_ids(state: &AppState) -> Vec<String> {
+fn library_ids(state: &HmmRuntime) -> Vec<String> {
     state
         .mod_library
         .get_mod_library()
@@ -1473,7 +1469,7 @@ fn library_ids(state: &AppState) -> Vec<String> {
         .collect()
 }
 
-fn build_target_paths(state: &AppState, mod_id: ModId) -> Vec<String> {
+fn build_target_paths(state: &HmmRuntime, mod_id: ModId) -> Vec<String> {
     let plan = state
         .install_planning
         .build_plan_from_imported_mod(BuildImportedModInstallPlanRequest {

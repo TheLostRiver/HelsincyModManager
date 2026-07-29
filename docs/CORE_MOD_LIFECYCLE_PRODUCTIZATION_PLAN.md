@@ -51,7 +51,8 @@ T19 是 Gate B 后优先级复审的结果，不是 Gate C，也不重新打开 
 
 ### 2.1 已可依赖
 
-- `src-tauri/src/state_core_mod_lifecycle_tests.rs` 已有 6 个 `headless_composition_*` 场景。
+- `src-tauri/crates/hmm-runtime/src/runtime_core_mod_lifecycle_tests.rs` 已有 6 个
+  `headless_composition_*` 场景。
 - 这些场景已覆盖导入后重启重建计划、普通安装/卸载、V1 -> V2 真正重装、ARMOR 首次安装、
   ARMOR target switch/卸载，以及 manifest 保存失败后的回滚。
 - 安装、卸载、重装和 retarget 已通过窄 Tauri command、后端事实查询、`taskId` 事件和受控 UI 使用。

@@ -18,6 +18,16 @@ pub struct FileSystemAuditLogWriter {
     health: Option<Arc<dyn DiagnosticsEvidenceHealth>>,
 }
 
+pub struct FileSystemAuditLogReader {
+    app_data_root: PathBuf,
+}
+
+impl FileSystemAuditLogReader {
+    pub fn new(app_data_root: PathBuf) -> Self {
+        Self { app_data_root }
+    }
+}
+
 impl FileSystemAuditLogWriter {
     pub fn new(app_data_root: PathBuf) -> Self {
         Self {
@@ -57,10 +67,7 @@ impl AuditLogWriter for FileSystemAuditLogWriter {
         event: AuditLogEvent,
         policy: AuditWriteFailurePolicy,
     ) -> Result<()> {
-        self.record_observed(
-            event,
-            policy == AuditWriteFailurePolicy::ReportAfterCommit,
-        )
+        self.record_observed(event, policy == AuditWriteFailurePolicy::ReportAfterCommit)
     }
 }
 
@@ -107,61 +114,74 @@ impl FileSystemAuditLogWriter {
 
 impl AuditLogReader for FileSystemAuditLogWriter {
     fn read_recent_sanitized(&self, request: AuditLogReadRequest) -> Result<Vec<AuditLogEvent>> {
-        if request.max_events == 0 {
-            return Ok(Vec::new());
+        read_recent_sanitized(&self.app_data_root, request)
+    }
+}
+
+impl AuditLogReader for FileSystemAuditLogReader {
+    fn read_recent_sanitized(&self, request: AuditLogReadRequest) -> Result<Vec<AuditLogEvent>> {
+        read_recent_sanitized(&self.app_data_root, request)
+    }
+}
+
+fn read_recent_sanitized(
+    app_data_root: &Path,
+    request: AuditLogReadRequest,
+) -> Result<Vec<AuditLogEvent>> {
+    if request.max_events == 0 {
+        return Ok(Vec::new());
+    }
+
+    let audit_dir = app_data_root.join("logs").join(AUDIT_LOG_DIR);
+    let directory_entries = match fs::read_dir(&audit_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).context("failed to read audit log directory"),
+    };
+    let mut audit_paths = Vec::new();
+    for entry in directory_entries {
+        let entry = entry.context("failed to read audit log directory entry")?;
+        if !entry
+            .file_type()
+            .context("failed to inspect audit log entry")?
+            .is_file()
+        {
+            continue;
         }
 
-        let audit_dir = self.audit_dir();
-        let directory_entries = match fs::read_dir(&audit_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error).context("failed to read audit log directory"),
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
         };
-        let mut audit_paths = Vec::new();
-        for entry in directory_entries {
-            let entry = entry.context("failed to read audit log directory entry")?;
-            if !entry
-                .file_type()
-                .context("failed to inspect audit log entry")?
-                .is_file()
-            {
+        if is_audit_log_file_name(file_name) {
+            audit_paths.push(entry.path());
+        }
+    }
+    audit_paths.sort();
+
+    let mut events = VecDeque::new();
+    for audit_path in audit_paths {
+        let file = File::open(&audit_path).context("failed to open audit log")?;
+        for line in BufReader::new(file).lines() {
+            let line = line.context("failed to read audit log event")?;
+            if line.trim().is_empty() {
                 continue;
             }
 
-            let file_name = entry.file_name();
-            let Some(file_name) = file_name.to_str() else {
+            let Ok(event) = serde_json::from_str::<AuditLogEvent>(&line) else {
                 continue;
             };
-            if is_audit_log_file_name(file_name) {
-                audit_paths.push(entry.path());
+            if validate_audit_event(&event).is_err() {
+                continue;
             }
-        }
-        audit_paths.sort();
-
-        let mut events = VecDeque::new();
-        for audit_path in audit_paths {
-            let file = File::open(&audit_path).context("failed to open audit log")?;
-            for line in BufReader::new(file).lines() {
-                let line = line.context("failed to read audit log event")?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-
-                let Ok(event) = serde_json::from_str::<AuditLogEvent>(&line) else {
-                    continue;
-                };
-                if validate_audit_event(&event).is_err() {
-                    continue;
-                }
-                if events.len() == request.max_events {
-                    events.pop_front();
-                }
-                events.push_back(event);
+            if events.len() == request.max_events {
+                events.pop_front();
             }
+            events.push_back(event);
         }
-
-        Ok(events.into_iter().collect())
     }
+
+    Ok(events.into_iter().collect())
 }
 
 fn is_audit_log_file_name(file_name: &str) -> bool {
@@ -307,10 +327,8 @@ mod tests {
     fn explicit_post_commit_policy_reports_stable_health_without_retrying_player_writes() {
         let temp = tempfile::tempdir().expect("temp dir");
         let health = Arc::new(DiagnosticsEvidenceHealthState::default());
-        let writer = FileSystemAuditLogWriter::with_health(
-            temp.path().to_path_buf(),
-            health.clone(),
-        );
+        let writer =
+            FileSystemAuditLogWriter::with_health(temp.path().to_path_buf(), health.clone());
         let event = AuditLogEvent {
             timestamp_unix_millis: 42,
             category: "install".to_owned(),
