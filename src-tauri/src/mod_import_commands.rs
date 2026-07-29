@@ -31,7 +31,7 @@ pub fn start_import_mod_task(
         .start_import_mod_task(StartImportModTaskRequest { archive_path })
         .map_err(CommandErrorDto::from_mod_import_task_error)?;
 
-    emit_task_progress(&app_handle, queued_event_for_started_task(&task).into())?;
+    emit_task_progress(&app_handle, queued_event_for_started_task(&task))?;
     spawn_prepare_runner(
         Arc::clone(&state.mod_import_task_runner),
         app_handle,
@@ -60,7 +60,7 @@ pub fn start_import_mod_revision_task(
         })
         .map_err(CommandErrorDto::from_mod_import_task_error)?;
 
-    let _ = emit_task_progress(&app_handle, queued_event_for_started_task(&task).into());
+    let _ = emit_task_progress(&app_handle, queued_event_for_started_task(&task));
     spawn_prepare_revision_runner(
         Arc::clone(&state.mod_import_task_runner),
         app_handle,
@@ -254,7 +254,7 @@ fn spawn_prepare_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }
@@ -273,7 +273,7 @@ fn spawn_prepare_revision_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }

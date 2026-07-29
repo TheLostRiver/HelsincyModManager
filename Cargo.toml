@@ -6,6 +6,7 @@ members = [
     "src-tauri/crates/hmm-app",
     "src-tauri/crates/hmm-infra",
     "src-tauri/crates/hmm-games-mhw",
+    "src-tauri/crates/hmm-runtime",
 ]
 resolver = "2"
 

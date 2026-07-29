@@ -13,14 +13,14 @@ use hmm_ports::{
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct ExternalImportComposition {
-    pub(crate) source_registry: Arc<HuntingBoxDirectorySourceRegistry>,
-    pub(crate) scans: Arc<ExternalImportScanService>,
-    pub(crate) batches: Arc<ExternalImportBatchService>,
+pub struct ExternalImportComposition {
+    pub source_registry: Arc<HuntingBoxDirectorySourceRegistry>,
+    pub scans: Arc<ExternalImportScanService>,
+    pub batches: Arc<ExternalImportBatchService>,
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compose(
+pub(super) fn compose(
     app_data_dir: &Path,
     db: &Arc<Mutex<rusqlite::Connection>>,
     task_manager: &Arc<TaskManager>,

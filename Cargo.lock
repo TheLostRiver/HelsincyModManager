@@ -1515,7 +1515,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hmm-tauri"
+name = "hmm-runtime"
 version = "0.1.0-alpha.0"
 dependencies = [
  "anyhow",
@@ -1525,6 +1525,24 @@ dependencies = [
  "hmm-games-mhw",
  "hmm-infra",
  "hmm-ports",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "uuid",
+ "zip",
+]
+
+[[package]]
+name = "hmm-tauri"
+version = "0.1.0-alpha.0"
+dependencies = [
+ "anyhow",
+ "hmm-app",
+ "hmm-core",
+ "hmm-games-mhw",
+ "hmm-infra",
+ "hmm-ports",
+ "hmm-runtime",
  "rusqlite",
  "serde",
  "serde_json",
