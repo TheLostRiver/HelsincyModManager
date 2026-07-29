@@ -221,18 +221,6 @@ function getCategory(policy, relativePath) {
   return null;
 }
 
-function countLines(content) {
-  if (content.length === 0) {
-    return 0;
-  }
-
-  const lines = content.split(/\r\n|\n|\r/);
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
-  return lines.length;
-}
-
 function checkFileSize(repoRoot, policy, files, scope) {
   const errors = [];
   const allowlist = new Set(policy.fileSize?.allowlist ?? []);
@@ -276,17 +264,17 @@ function checkFileSize(repoRoot, policy, files, scope) {
     }
 
     const content = fs.readFileSync(fullPath, "utf8");
-    const lineCount = countLines(content);
+    const lines = content.length === 0 ? [] : content.split(/\r\n|\n|\r/);
+    if (lines.at(-1) === "") {
+      lines.pop();
+    }
+
+    const lineCount = lines.length;
     if (limit !== null && lineCount > limit) {
       errors.push(`${normalized} exceeds hard line limit: ${lineCount} / ${limit}`);
     }
 
-    if (checkMaxLineLength && content.length > 0) {
-      const lines = content.split(/\r\n|\n|\r/);
-      if (lines.at(-1) === "") {
-        lines.pop();
-      }
-
+    if (checkMaxLineLength) {
       let longestLineLength = 0;
       let longestLineNumber = 0;
       for (let index = 0; index < lines.length; index += 1) {

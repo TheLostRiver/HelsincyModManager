@@ -229,6 +229,51 @@ test("file size checks reject a single overlong line", (t) => {
   });
 });
 
+test("line-length exclusions exempt matching paths from only the line-length limit", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: 8,
+    maxLineLengthExcludePathPatterns: ["docs/**"],
+    files: {
+      "docs/long-line.txt": "123456789\n",
+    },
+  });
+
+  assertPolicyResult(repoRoot, { succeeds: true });
+});
+
+test("line-length exclusions still enforce the byte limit", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 8,
+    maxLineLength: 8,
+    maxLineLengthExcludePathPatterns: ["docs/**"],
+    files: {
+      "docs/oversized.txt": "123456789\n",
+    },
+  });
+
+  assertPolicyResult(repoRoot, {
+    succeeds: false,
+    message: /docs\/oversized\.txt exceeds hard byte limit: 10 \/ 8/,
+  });
+});
+
+test("line-length exclusions still enforce the line-count limit", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: 8,
+    maxLineLengthExcludePathPatterns: ["docs/**"],
+    files: {
+      "docs/too-many-lines.txt": "x\n".repeat(101),
+    },
+  });
+
+  assertPolicyResult(repoRoot, {
+    succeeds: false,
+    message: /docs\/too-many-lines\.txt exceeds hard line limit: 101 \/ 100/,
+  });
+});
+
 test("file size checks accept a normal text file", (t) => {
   const repoRoot = createPolicyFixture(t, {
     files: {
