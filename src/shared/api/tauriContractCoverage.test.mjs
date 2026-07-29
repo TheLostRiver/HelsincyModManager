@@ -16,31 +16,16 @@ const contractSource = readFileSync(
 );
 const handlerMarker = "tauri::generate_handler![";
 
-function extractHandlerBody(source) {
-  const markerOffsets = [];
-  let offset = source.indexOf(handlerMarker);
-  while (offset !== -1) {
-    markerOffsets.push(offset);
-    offset = source.indexOf(handlerMarker, offset + handlerMarker.length);
-  }
-
-  assert.equal(
-    markerOffsets.length,
-    1,
-    "expected exactly one tauri::generate_handler! command registry",
-  );
-
-  const bodyStart = markerOffsets[0] + handlerMarker.length;
-  let bracketDepth = 1;
+function stripRustComments(source) {
   let blockCommentDepth = 0;
   let inLineComment = false;
-  let body = "";
-  for (let index = bodyStart; index < source.length; index += 1) {
+  let uncommentedSource = "";
+  for (let index = 0; index < source.length; index += 1) {
     const pair = source.slice(index, index + 2);
     if (inLineComment) {
       if (source[index] === "\n") {
         inLineComment = false;
-        body += "\n";
+        uncommentedSource += "\n";
       }
       continue;
     }
@@ -52,7 +37,7 @@ function extractHandlerBody(source) {
         blockCommentDepth -= 1;
         index += 1;
       } else if (source[index] === "\n") {
-        body += "\n";
+        uncommentedSource += "\n";
       }
       continue;
     }
@@ -66,15 +51,42 @@ function extractHandlerBody(source) {
       index += 1;
       continue;
     }
-    if (source[index] === "[") {
+    uncommentedSource += source[index];
+  }
+
+  assert.equal(blockCommentDepth, 0, "Rust block comment is not closed");
+  return uncommentedSource;
+}
+
+function extractHandlerBody(source) {
+  const uncommentedSource = stripRustComments(source);
+  const markerOffsets = [];
+  let offset = uncommentedSource.indexOf(handlerMarker);
+  while (offset !== -1) {
+    markerOffsets.push(offset);
+    offset = uncommentedSource.indexOf(
+      handlerMarker,
+      offset + handlerMarker.length,
+    );
+  }
+
+  assert.equal(
+    markerOffsets.length,
+    1,
+    "expected exactly one tauri::generate_handler! command registry",
+  );
+
+  const bodyStart = markerOffsets[0] + handlerMarker.length;
+  let bracketDepth = 1;
+  for (let index = bodyStart; index < uncommentedSource.length; index += 1) {
+    if (uncommentedSource[index] === "[") {
       bracketDepth += 1;
-    } else if (source[index] === "]") {
+    } else if (uncommentedSource[index] === "]") {
       bracketDepth -= 1;
       if (bracketDepth === 0) {
-        return body;
+        return uncommentedSource.slice(bodyStart, index);
       }
     }
-    body += source[index];
   }
 
   assert.fail("tauri::generate_handler! command registry is not closed");
@@ -104,8 +116,14 @@ function contractContainsCommand(contract, command) {
   ).test(contract);
 }
 
-test("extracts commands without treating comment brackets as registry syntax", () => {
+test("ignores Rust comments while locating and parsing the command registry", () => {
   const fixture = `
+// tauri::generate_handler![line_comment_example]
+/*
+  tauri::generate_handler![
+    block_comment_example,
+  ]
+*/
 tauri::generate_handler![
   first,
   // This closing bracket is commentary: ]
