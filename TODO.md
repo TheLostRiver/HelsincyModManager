@@ -59,8 +59,9 @@
 4. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已完成；T18 Mod 库分页已由
    PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2/3/4A/4B 已合并，PR #199 交付最后的
    Slice 4C；完整 T17 已具备分页结果、partial success、服务端重试和大批次门禁。
-5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：先执行 T13-00 独立设计与安全评审，
-   再按 T13-01 至 T13-08 推进，不能把 T17 import-only 编排当成批量安装实现。
+5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：先完成 QG-01 CI 质量门禁，
+   再执行 T13-00 独立设计与安全评审，并按 T13-01 至 T13-08 推进；不能把 T17 import-only
+   编排当成批量安装实现。
 
 ---
 
@@ -90,7 +91,8 @@
   -> T17 Slice 4A 外部来源与只读预览 [completed, PR #196；PR #197 补齐 review 遗漏]
   -> T17 Slice 4B selection/decision/start/progress [completed, PR #198]
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
-  -> T13-00 批量语义设计 [P0 ready]
+  -> QG-01 CI 质量门禁 [P0 ready]
+  -> T13-00 批量语义设计 [P0 blocked，等待 QG-01 合并]
   -> CLI-2A/2B/2C Sandbox 自动化基础
   -> CORE-PREF-01 单项 preflight 一致化
   -> T13-01..08 批量安装/卸载/真正重装与 Gate C
