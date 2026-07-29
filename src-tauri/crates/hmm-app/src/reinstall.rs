@@ -866,7 +866,6 @@ type InstalledPreflight = (
 );
 
 #[derive(Clone)]
-#[allow(dead_code)] // Consumed by the Task 5 commit engine; external wiring is deferred to Task 6.
 pub(crate) struct PreparedSourceFile {
     pub(crate) provider: InstallFileProvider,
     pub(crate) summary: InstalledFileSummary,
@@ -874,14 +873,12 @@ pub(crate) struct PreparedSourceFile {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub(crate) struct PreparedFile {
     pub(crate) summary: InstalledFileSummary,
     pub(crate) bytes: Arc<[u8]>,
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub(crate) struct PreparedReinstallTarget {
     pub(crate) target_path: InstallTargetPath,
     pub(crate) class: ReinstallTargetClass,

@@ -1,5 +1,3 @@
-#![allow(dead_code)] // The Task 6 runner will call this crate-internal prepared commit seam.
-
 use crate::reinstall::{
     summarize, PreparedReinstall, PreparedReinstallTarget, ReinstallCandidateSourceReader,
 };
