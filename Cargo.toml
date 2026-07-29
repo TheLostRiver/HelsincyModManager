@@ -7,6 +7,7 @@ members = [
     "src-tauri/crates/hmm-infra",
     "src-tauri/crates/hmm-games-mhw",
     "src-tauri/crates/hmm-runtime",
+    "src-tauri/crates/hmm-cli",
 ]
 resolver = "2"
 
@@ -19,6 +20,7 @@ repository = "https://github.com/TheLostRiver/HelsincyModManager"
 anyhow = "1.0.100"
 cap-fs-ext = "4.0.2"
 cap-std = "4.0.2"
+clap = { version = "4.5", features = ["derive"] }
 dirs = "6.0.0"
 hmac = "0.12.1"
 libc = "0.2.186"
