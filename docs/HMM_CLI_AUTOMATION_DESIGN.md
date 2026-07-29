@@ -559,8 +559,12 @@ CLI-4 只能在 T13 的领域语义、应用服务、锁和测试先落地后接
 | `6` | runtime、存储或内部能力不可用 |
 | `130` | 任务已确认取消，或收到终止信号后退出 |
 
-脚本要判断具体原因时读取 `error.code`，不能依赖新增退出码。`rollback_failed` 和
-`data_safety_risk` 仍使用 `4`，但必须由 error category 和 Audit Log 明确标识。
+脚本要判断具体原因时读取 `error.code`，不能依赖新增退出码。未执行写入的参数、
+前置条件或安全门禁拒绝使用 `3`，即使 error category 为 `data_safety_risk`；
+只有已经进入受控写入或恢复语义的 `rollback_failed` / `data_safety_risk` 才使用
+`4`，并且必须由 error category 和 Audit Log 明确标识。当前 CLI-1A/CLI-1B
+全部是只读命令，因此 sandbox containment、受控路径或持久化状态校验失败均属于
+退出码 `3`，不会伪装成已经开始执行的受控失败。
 
 ## 自动化测试设计
 
