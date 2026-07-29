@@ -3,7 +3,7 @@
 > 无人值守自主迭代的具体任务队列见 [自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
 > 本文件描述产品阶段，那份描述在没有人盯着时可以安全推进哪些工作。
 
-## 当前执行焦点（2026-07-26）
+## 当前执行焦点（2026-07-30）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -27,8 +27,22 @@
    服务端 retryable 重试。4C 复用同一 task progress 状态机处理重试返回的新 taskId，并在每个终态 task
    的首屏权威结果验证后至多刷新一次 Mod 库；10,000 条人工脱敏 result 的本机 p95=`3.937 ms`，低于固定
    `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
-   T17 范围保持 Windows + MHW:I；Linux/Steam Deck、更多游戏和 T13 批量安装/卸载仍须单独评审，
-   不因 T17 完成自动开工。
+   T17 范围保持 Windows + MHW:I；Linux/Steam Deck 和更多游戏不进入本轮。T13 与 T17 继续正交，
+   已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
+6. 当前 P0 调整为核心生命周期批量能力。先补齐 CI 质量门禁、T13 sealed batch 语义、CLI
+   逐阶段 observer/Sandbox 写许可与单项生命周期 E2E，再依次实现批量安装、批量卸载、批量真正重装、
+   CLI/Tauri/前端契约和 disposable Windows Sandbox Gate C。
+7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的
+   MHW:I catalog/path parser/adapter、InstallPlan/manifest 集成和受控 UI。防具 AR1-AR5 已认证不等于
+   完整防具数据或武器链路已完成。
+8. Windows 存档后续重点是已确认 Steam 账号目录的回归门禁、安装态 Scheduled Task/heartbeat/cleanup
+   验收、ownership-checked installer cleanup、玩家存档恢复和 retention/备份中心。账号昵称/头像和
+   多候选显式选择已完成，不重新实现。
+9. 日志后续补 Task/Audit retention、总空间上限和 Debug Log。Production CLI 写入继续等待跨进程
+   admission；Sandbox CLI 可较早作为核心生命周期和批量能力的自动化入口。
+
+本轮任务、实现和验收只覆盖 Windows + MHW:I。Linux / Steam Deck 不进入当前队列，也不阻塞上述
+Windows 任务。详细依赖与 PR/CI/review 门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
 
 旧 Phase 编号继续表示产品能力层次，不再表示当前实施顺序。安全、构建或 Gate A/B 直接阻断
 可以插入；其他工作满足恢复门禁后重新排序。
