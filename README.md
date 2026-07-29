@@ -24,6 +24,8 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 
 ## 文档
 
+- [项目任务状态快照](docs/PROJECT_TASK_STATUS.md)
+- [HMM CLI 与自动化测试设计](docs/HMM_CLI_AUTOMATION_DESIGN.md)
 - [架构设计](docs/ARCHITECTURE.md)
 - [InstallPlan 模块现状](docs/INSTALL_PLAN_STATUS.md)
 - [InstallPlan MVP 待办](docs/INSTALL_PLAN_MVP_TODO.md)
@@ -93,9 +95,26 @@ cmd /c corepack pnpm run dev
 cmd /c corepack pnpm run build
 cmd /c corepack pnpm run tauri:dev
 cargo test --workspace
+cargo run -p hmm-cli -- --format json runtime status
+cargo run -p hmm-cli -- --format json game status --game mhw
+cargo run -p hmm-cli -- --environment sandbox --data-dir C:\temp\hmm-fixture --format json install plan --mod mod-a
+cargo run -p hmm-cli -- --environment sandbox --data-dir C:\temp\hmm-fixture --format json install status --profile default --mod mod-a
+cargo run -p hmm-cli -- --environment sandbox --data-dir C:\temp\hmm-fixture --format json backup list --profile default
+cargo run -p hmm-cli -- --environment sandbox --data-dir C:\temp\hmm-fixture --format json diagnostics snapshot
 ```
 
 Tauri CLI 通过 `@tauri-apps/cli` 作为项目内 devDependency 提供，不要求全局安装 `cargo-tauri`。
+当前已完成 CLI-1A 与 CLI-1B 只读自动化：桌面端与固定 `--once` 存档 worker 复用
+Tauri-free runtime composition；`hmm` 提供 `runtime status`、
+`game status|scan|validate|prerequisites` 和
+`install plan|status|recovery scan|recovery preview`、`backup list|background status` 与
+`diagnostics snapshot`。backup 查询只读取已 checkpoint 且不存在 `hmm.db-wal`/`hmm.db-shm`
+sidecar 的 SQLite；发现任一 sidecar 时以 `backup_database_unavailable` fail closed，不执行
+checkpoint、修复、创建或修改。为满足 immutable snapshot 的一致性前提，backup 查询应在桌面端
+关闭、数据库静止时运行；当前没有跨进程只读快照锁。backup/diagnostics 只输出稳定状态、受控平台
+摘要和聚合计数，不返回存档/备份路径、Steam ID、日志正文、manifest/hash 列表或 Scheduled Task
+原始信息。安装提交、卸载、重装、恢复执行、备份创建/恢复、后台启停与诊断导出等写命令仍未开放，
+Production 没有 CLI 写能力。
 
 ## 当前验证入口
 

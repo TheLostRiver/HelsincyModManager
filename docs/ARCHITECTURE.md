@@ -30,6 +30,14 @@ Tauri Commands
   前端与 Rust 后端之间的薄边界
   负责参数校验和 DTO 转换
 
+CLI Transport
+  独立的 hmm 命令行入口
+  负责参数解析、机器输出契约和退出码，不依赖 Tauri
+
+Runtime Boundary
+  Tauri-free 的运行环境策略与共享 composition 边界
+  CLI-0A 落地环境策略；CLI-0B 迁移共享装配；CLI-1A/1B 增加独立只读 automation facade
+
 Application 应用层
   导入 Mod、安装 Mod、禁用 Mod、备份存档、启动游戏等用例
 
@@ -58,12 +66,72 @@ src-tauri/              # Tauri 应用 crate，包名 hmm-tauri
     hmm-app/           # 应用用例和流程编排
     hmm-infra/         # SQLite、文件系统、压缩包、hash、Steam 扫描
     hmm-games-mhw/     # MHW:I 适配器和游戏规则
+    hmm-runtime/       # Tauri-free runtime policy、共享 composition 与 task observer contract
+    hmm-cli/           # hmm binary、CLI parser 与 JSON/JSONL contract
     hmm-games-rise/    # 后续 Rise 适配器和游戏规则
     hmm-games-wilds/   # 后续 Wilds 适配器和游戏规则
     hmm-games-common/  # 可选，怪物猎人系列共享适配工具
 ```
 
 `src-tauri/` 本身作为 Tauri 应用 crate，包名为 `hmm-tauri`。这样可以保留 Tauri CLI 默认约定，避免额外配置成本；可复用业务 crate 放在 `src-tauri/crates/` 下。
+
+`hmm-runtime` 与 `hmm-cli` 已在 CLI-0A 加入 workspace。CLI-0B 已把真实 adapter composition、
+configured executors、共享 repositories、`TaskManager` 与 game/profile 写锁迁入 `hmm-runtime`。
+Tauri `AppState` 现在只是解析 app data、启动 GUI-only 缩略图维护并解引用到 `HmmRuntime` 的薄包装；
+固定 `--once` worker 直接构造 `HmmRuntime`，不再通过 Tauri state 获取后台备份服务。
+
+`TaskProgressObserver` 以 `hmm-app::TaskProgressEvent` 为输入。Tauri adapter 仍按原顺序转换安全 DTO、
+写 Task Log、记录 queued task 注册并发送 `hmm://task-progress`。现有 runner 暂时仍返回
+`Vec<TaskProgressEvent>`；逐阶段流式 observer 必须在首个 CLI 长任务命令开放前补齐。
+
+CLI-1A 在 `hmm-runtime` 中增加 `ReadOnlyGameAutomation`。它不构造会打开/迁移 SQLite 或执行恢复
+装配的完整 `HmmRuntime`，只装配 game config reader、MHW:I adapter、只读 prerequisite rules、
+directory probe 和 Steam discovery。facade 返回的安全 snapshot 类型不包含游戏/candidate/rule
+路径、自由文本 message、Steam ID 或用户名。
+
+CLI-1B 的只读安装子切片增加 `ReadOnlyInstallAutomation`。它独立装配 install planning、
+manifest status、recovery scan/preview 所需的 app services 和只读 infra readers，不打开 SQLite、
+不使 projection dirty，也不装配 install/uninstall/recovery executor 或 task service。Mod revision
+catalog 使用显式 read-only 模式：查询不创建 lock，不把 v1 内存迁移写回 v2，所有 mutator fail
+closed。Sandbox 在读取前校验固定 config/catalog/sandbox/manifest/recovery/backup 根仍位于显式
+data root，recovery 使用的 game root 仍必须位于 `<data-dir>/fixtures` canonical 边界。
+
+CLI-1B 的备份/诊断子切片增加 `ReadOnlyBackupAutomation` 与
+`ReadOnlyDiagnosticsAutomation`。备份 facade 只读取已 checkpoint 且没有
+`hmm.db-wal`/`hmm.db-shm` sidecar 的既有 SQLite：infra 通过 percent-encoded immutable URI、
+read-only flags 和 connection-local query-only mode 打开数据库。任一 sidecar 存在都 fail
+closed，不尝试读取 live WAL，也不 checkpoint、修复、创建或修改 DB/WAL/SHM，不执行
+migration/default seed。该可用性取舍避免普通 SQLite read-only 查询创建 sidecar 或修改 SHM
+bytes，但不提供跨进程只读快照锁；需要一致结果的自动化应在桌面端关闭、数据库静止后运行。
+Sandbox 的平台注册状态和时钟来自固定 `fixtures/background/status.json`，不会触碰真实 Scheduled
+Task。诊断 facade 复用独立的 `DiagnosticsPageSnapshotService`、
+`FileSystemTextLogReader` 与只读 `FileSystemAuditLogReader`，只投影受控平台摘要、分类状态和
+聚合计数，不返回日志正文、来源文件名、Audit fields 或导出路径。
+
+`hmm-cli` 当前开放 `hmm runtime status` 与
+`hmm game status|scan|validate|prerequisites --game mhw`，以及
+`hmm install plan|status|recovery scan|recovery preview`、
+`hmm backup list|background status` 和 `hmm diagnostics snapshot`，继续使用 `hmm.cli/v1`、单对象
+JSON/JSONL、stdout/stderr 和稳定退出码契约。Production 只读取系统 HMM app data 和平台 Steam
+discovery，并允许后台状态执行只读平台注册 inspect；Sandbox 只读取显式数据根下的受控
+config/state/logs 与 `<data-dir>/fixtures`，其中 Steam root 固定为 `fixtures/steam`。保存的 game
+root、VDF library、discovery candidate、install/backup state roots 和日志目录在读取前执行词法与
+canonical containment。两种环境都不创建 marker，也不签发写 capability。
+
+目标依赖方向：
+
+```text
+hmm-tauri -----\
+hmm-cli --------+--> hmm-runtime
+backup worker --/       |--> hmm-app -------> hmm-ports
+                       |       \-----------> hmm-core
+                       |--> hmm-infra -----> hmm-ports / hmm-core
+                       \--> hmm-games-* ---> hmm-ports / hmm-core
+```
+
+`hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。Production 的 CLI
+写命令在跨进程 admission 完成前保持不可达，Sandbox 写策略在 marker、canonical containment 和写许可
+落地前也只是一条策略声明。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 

@@ -51,6 +51,7 @@ struct LoadedCatalog {
 
 pub struct JsonModImportResultRepository {
     file_path: PathBuf,
+    access_mode: ModImportCatalogAccessMode,
     write_lock: Mutex<()>,
     #[cfg(test)]
     test_write_failure: Option<ModImportCatalogWriteFailure>,
@@ -58,6 +59,12 @@ pub struct JsonModImportResultRepository {
     test_catalog_save_count: AtomicUsize,
     #[cfg(test)]
     test_catalog_load_count: AtomicUsize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModImportCatalogAccessMode {
+    ReadWrite,
+    ReadOnly,
 }
 
 #[cfg(test)]
@@ -70,8 +77,17 @@ pub(crate) enum ModImportCatalogWriteFailure {
 
 impl JsonModImportResultRepository {
     pub fn new(file_path: PathBuf) -> Self {
+        Self::with_access_mode(file_path, ModImportCatalogAccessMode::ReadWrite)
+    }
+
+    pub fn new_read_only(file_path: PathBuf) -> Self {
+        Self::with_access_mode(file_path, ModImportCatalogAccessMode::ReadOnly)
+    }
+
+    fn with_access_mode(file_path: PathBuf, access_mode: ModImportCatalogAccessMode) -> Self {
         Self {
             file_path,
+            access_mode,
             write_lock: Mutex::new(()),
             #[cfg(test)]
             test_write_failure: None,
@@ -102,6 +118,11 @@ impl JsonModImportResultRepository {
         &self,
         operation: impl FnOnce(&ModRevisionCatalogV2) -> Result<T>,
     ) -> Result<T> {
+        if self.access_mode == ModImportCatalogAccessMode::ReadOnly {
+            let loaded = self.load_catalog()?;
+            return operation(&loaded.catalog);
+        }
+
         self.with_exclusive_lock(|| {
             let loaded = self.load_catalog()?;
             if loaded.migrated_from_v1 {
@@ -115,6 +136,7 @@ impl JsonModImportResultRepository {
         &self,
         operation: impl FnOnce(&mut ModRevisionCatalogV2) -> Result<T>,
     ) -> Result<T> {
+        self.ensure_writable()?;
         self.with_exclusive_lock(|| {
             let mut catalog = self.load_catalog()?.catalog;
             let value = operation(&mut catalog)?;
@@ -122,6 +144,14 @@ impl JsonModImportResultRepository {
             self.save_catalog(&catalog)?;
             Ok(value)
         })
+    }
+
+    fn ensure_writable(&self) -> Result<()> {
+        anyhow::ensure!(
+            self.access_mode == ModImportCatalogAccessMode::ReadWrite,
+            "mod revision catalog is read-only"
+        );
+        Ok(())
     }
 
     fn with_exclusive_lock<T>(&self, operation: impl FnOnce() -> Result<T>) -> Result<T> {
@@ -351,6 +381,7 @@ impl ModImportResultRepository for JsonModImportResultRepository {
             upserts.len() <= MOD_IMPORT_UPSERT_MAX_ENTRIES,
             "mod import upsert batch exceeds the supported limit"
         );
+        self.ensure_writable()?;
         if upserts.is_empty() {
             return Ok(());
         }
@@ -382,6 +413,7 @@ impl ModImportResultRepository for JsonModImportResultRepository {
             upserts.len() <= MOD_IMPORT_UPSERT_MAX_ENTRIES,
             "external import catalog upsert batch exceeds the supported limit"
         );
+        self.ensure_writable()?;
         if upserts.is_empty() {
             return Ok(());
         }

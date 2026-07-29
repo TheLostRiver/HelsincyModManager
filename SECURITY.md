@@ -80,6 +80,41 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - 新增 Tauri command 时必须确认调用边界和参数校验。
 - 新增文件写入逻辑时必须说明备份、回滚和失败恢复策略。
 
+## CLI 只读自动化边界
+
+- Production CLI 禁止 `--data-dir`。当前只开放 runtime status、game
+  status/scan/validate/prerequisites、install plan/status/recovery scan/preview、
+  backup list/background status 与 diagnostics snapshot 读取；install apply/uninstall/reinstall/
+  recovery apply、backup create/restore/background enable|disable 和 diagnostics export 继续在
+  parser 边界不可达。
+- Sandbox game 命令只读取显式数据根下的 `config` 和 `fixtures`；保存游戏目录、Steam library 与
+  discovery candidate 必须通过词法和 canonical containment。
+- `libraryfolders.vdf` 中声明的隔离根外 library 必须在读取 app manifest 前拒绝。
+- prerequisite rule path 必须是无 `.`/`..`、盘符或绝对前缀的安全相对路径；只读查询不得 seed
+  默认规则、创建目录或 lock/temp 文件。
+- Sandbox install 查询只读取显式 data root 下固定的 config、Mod catalog/sandbox、
+  manifest/recovery/backup 子路径；已存在的 symlink/junction 不能把读取逃逸到 data root 外。
+- Mod catalog 只读模式不创建 lock、不回写 v1 -> v2 migration，并拒绝所有 mutator。install plan
+  只输出经 `InstallTargetPath` 校验的逻辑相对 target 与聚合计数，不输出 package/source path。
+- profile/mod ID 必须是短的安全标识符，拒绝 `/`、`\`、盘符、`.`/`..` 和其他路径型输入。
+- recovery 全量扫描从 manifest/recovery 投影出的 ID 也必须重新校验；篡改后的路径型 ID 和含控制字符
+  的逻辑 target 必须在进入 CLI 输出前 fail closed。
+- CLI machine projection 不返回完整本地路径、Steam ID、用户名、原始 loader config、自由文本错误
+  prerequisite issue path、package file id、backup/recovery ref 或 manifest/sandbox path。
+- CLI backup 只读取已 checkpoint 且没有 `hmm.db-wal`/`hmm.db-shm` sidecar 的既有
+  `hmm.db`，通过 percent-encoded immutable URI、SQLite read-only flags 和 connection-local
+  query-only mode 打开。任一 WAL/SHM sidecar 存在时返回脱敏
+  `backup_database_unavailable` 并 fail closed；CLI 不 checkpoint、修复、创建或修改 DB/WAL/SHM，
+  也不 migration/seed。immutable 读取不提供跨进程快照锁；需要一致结果时必须在桌面端关闭、
+  数据库静止后执行。background status 只读取固定 fake registry/clock，不注册、修复、启动 worker、
+  获取 lease 或写 Audit。backup projection 不返回 archive/manifest 文件名、save/backup path、
+  Steam ID、source label、notes 或 hash。
+- Sandbox diagnostics 只读取固定 `logs/app|tasks|audit`，目录必须通过 canonical containment；
+  machine projection 只包含 bounded platform summary、分类状态和计数，不返回日志正文、来源文件名、
+  Audit fields、完整本机信息或 export path。
+- 自动测试只使用 temp/fake/人工 fixture，不执行 Production game 命令或读取测试机真实 Steam、
+  AppData、游戏、日志和存档，也不查询、注册、更新、启动或删除真实 Windows Scheduled Task。
+
 ## Mod 文件安全基线
 
 导入 Mod 包时至少需要考虑：

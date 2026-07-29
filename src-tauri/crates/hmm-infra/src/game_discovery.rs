@@ -1,6 +1,4 @@
-use crate::steam_discovery::{
-    parse_app_manifest, parse_library_folders, SteamLibraryFolder, SteamRootProvider,
-};
+use crate::steam_discovery::{parse_app_manifest, parse_library_folders, SteamRootProvider};
 use hmm_ports::{
     GameCandidate, GameCandidateSource, GameDiscoveryError, GameDiscoveryRequest,
     GameDiscoveryService,
@@ -23,11 +21,25 @@ impl GameDiscoveryService for NoopGameDiscoveryService {
 
 pub struct SteamGameDiscoveryService {
     root_provider: Arc<dyn SteamRootProvider>,
+    allowed_root: Option<std::path::PathBuf>,
 }
 
 impl SteamGameDiscoveryService {
     pub fn new(root_provider: Arc<dyn SteamRootProvider>) -> Self {
-        Self { root_provider }
+        Self {
+            root_provider,
+            allowed_root: None,
+        }
+    }
+
+    pub fn new_contained(
+        root_provider: Arc<dyn SteamRootProvider>,
+        allowed_root: std::path::PathBuf,
+    ) -> Self {
+        Self {
+            root_provider,
+            allowed_root: Some(allowed_root),
+        }
     }
 
     fn scan_steam_root(
@@ -53,8 +65,11 @@ impl SteamGameDiscoveryService {
             if !library.app_ids.contains(&app_id) {
                 continue;
             }
+            let Some(library_path) = self.admit_path(&library.path) else {
+                continue;
+            };
 
-            self.scan_library(&library, request, app_id, seen_roots, candidates)?;
+            self.scan_library(&library_path, request, app_id, seen_roots, candidates)?;
         }
 
         Ok(())
@@ -62,14 +77,13 @@ impl SteamGameDiscoveryService {
 
     fn scan_library(
         &self,
-        library: &SteamLibraryFolder,
+        library_path: &Path,
         request: &GameDiscoveryRequest,
         app_id: u32,
         seen_roots: &mut BTreeSet<String>,
         candidates: &mut Vec<GameCandidate>,
     ) -> Result<(), GameDiscoveryError> {
-        let manifest_path = library
-            .path
+        let manifest_path = library_path
             .join("steamapps")
             .join(format!("appmanifest_{app_id}.acf"));
         if !manifest_path.exists() {
@@ -90,11 +104,14 @@ impl SteamGameDiscoveryService {
             return Ok(());
         }
 
-        let common_dir = library.path.join("steamapps").join("common");
+        let common_dir = library_path.join("steamapps").join("common");
         let root_dir = common_dir.join(install_dir);
         if !is_path_within(&root_dir, &common_dir) {
             return Ok(());
         }
+        let Some(root_dir) = self.admit_path(&root_dir) else {
+            return Ok(());
+        };
 
         let normalized = normalize_path_key(&root_dir);
         if !seen_roots.insert(normalized) {
@@ -111,6 +128,14 @@ impl SteamGameDiscoveryService {
 
         Ok(())
     }
+
+    fn admit_path(&self, path: &Path) -> Option<std::path::PathBuf> {
+        let Some(allowed_root) = self.allowed_root.as_deref() else {
+            return Some(path.to_path_buf());
+        };
+
+        canonical_path_within(path, allowed_root)
+    }
 }
 
 impl GameDiscoveryService for SteamGameDiscoveryService {
@@ -126,6 +151,9 @@ impl GameDiscoveryService for SteamGameDiscoveryService {
         let mut seen_roots = BTreeSet::new();
 
         for steam_root in self.root_provider.steam_roots() {
+            let Some(steam_root) = self.admit_path(&steam_root) else {
+                continue;
+            };
             self.scan_steam_root(
                 &steam_root,
                 request,
@@ -171,6 +199,17 @@ fn is_path_within(path: &Path, parent: &Path) -> bool {
     }
 
     normalized_path.starts_with(&normalized_parent)
+}
+
+fn canonical_path_within(path: &Path, parent: &Path) -> Option<std::path::PathBuf> {
+    let canonical_parent = parent.canonicalize().ok()?;
+    let canonical_path = path.canonicalize().ok()?;
+
+    is_path_within_or_equal(&canonical_path, &canonical_parent).then_some(canonical_path)
+}
+
+fn is_path_within_or_equal(path: &Path, parent: &Path) -> bool {
+    normalize_path_key(path) == normalize_path_key(parent) || is_path_within(path, parent)
 }
 
 #[cfg(test)]
@@ -360,6 +399,88 @@ mod tests {
         let candidates = service
             .scan_candidates(&mhw_request(Some(582010)))
             .expect("scan");
+
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn contained_discovery_accepts_library_inside_allowed_root() {
+        let temp = create_temp_steam_root();
+        write_libraryfolders_with_mhw(&temp);
+        write_mhw_manifest(&temp, "Monster Hunter World");
+        fs::create_dir_all(
+            temp.path()
+                .join("steamapps")
+                .join("common")
+                .join("Monster Hunter World"),
+        )
+        .expect("create contained game root");
+
+        let service = SteamGameDiscoveryService::new_contained(
+            Arc::new(FakeSteamRootProvider {
+                roots: vec![temp.path().to_path_buf()],
+            }),
+            temp.path().to_path_buf(),
+        );
+
+        let candidates = service
+            .scan_candidates(&mhw_request(Some(582010)))
+            .expect("scan");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].root_dir,
+            temp.path()
+                .join("steamapps")
+                .join("common")
+                .join("Monster Hunter World")
+                .canonicalize()
+                .expect("canonical game root")
+        );
+    }
+
+    #[test]
+    fn contained_discovery_does_not_read_library_outside_allowed_root() {
+        let temp = create_temp_steam_root();
+        let external = create_temp_steam_root();
+        write_libraryfolders(
+            &temp,
+            format!(
+                r#"
+                "libraryfolders"
+                {{
+                    "0"
+                    {{
+                        "path" "{}"
+                        "apps"
+                        {{
+                            "582010" "123456"
+                        }}
+                    }}
+                }}
+                "#,
+                external.path().display()
+            ),
+        );
+        fs::write(
+            external
+                .path()
+                .join("steamapps")
+                .join("appmanifest_582010.acf"),
+            "{ invalid manifest",
+        )
+        .expect("write external invalid manifest");
+
+        let service = SteamGameDiscoveryService::new_contained(
+            Arc::new(FakeSteamRootProvider {
+                roots: vec![temp.path().to_path_buf()],
+            }),
+            temp.path().to_path_buf(),
+        );
+
+        let candidates = service
+            .scan_candidates(&mhw_request(Some(582010)))
+            .expect("external library must be rejected before manifest read");
 
         assert!(candidates.is_empty());
     }

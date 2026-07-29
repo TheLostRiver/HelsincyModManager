@@ -299,6 +299,7 @@ fn parse_background_status(
         "protected" => Ok(SaveBackupBackgroundProtectionStatus::Protected),
         "tray_only" => Ok(SaveBackupBackgroundProtectionStatus::TrayOnly),
         "not_enabled" => Ok(SaveBackupBackgroundProtectionStatus::NotEnabled),
+        "starting" => Ok(SaveBackupBackgroundProtectionStatus::Starting),
         "registration_failed" => Ok(SaveBackupBackgroundProtectionStatus::RegistrationFailed),
         "worker_unhealthy" => Ok(SaveBackupBackgroundProtectionStatus::WorkerUnhealthy),
         "permission_required" => Ok(SaveBackupBackgroundProtectionStatus::PermissionRequired),
@@ -338,4 +339,17 @@ fn i64_to_u128(value: i64) -> u128 {
 
 fn to_i64(value: u128) -> i64 {
     value.min(i64::MAX as u128) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persisted_starting_background_status_is_supported() {
+        assert_eq!(
+            parse_background_status("starting"),
+            Ok(SaveBackupBackgroundProtectionStatus::Starting)
+        );
+    }
 }

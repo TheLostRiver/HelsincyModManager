@@ -1,0 +1,24 @@
+[package]
+name = "hmm-runtime"
+version = "0.1.0-alpha.0"
+description = "Tauri-free runtime policy and shared composition for Helsincy Mod Manager"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+dirs.workspace = true
+hmm-app = { path = "../hmm-app" }
+hmm-core = { path = "../hmm-core" }
+hmm-games-mhw = { path = "../hmm-games-mhw" }
+hmm-infra = { path = "../hmm-infra" }
+hmm-ports = { path = "../hmm-ports" }
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+zip.workspace = true

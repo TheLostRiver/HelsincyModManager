@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 
-use crate::state::AppState;
+use hmm_runtime::{production_app_data_dir, HmmRuntime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackgroundWorkerCommand {
@@ -44,15 +44,13 @@ where
 pub fn run_save_backup_worker_once_from_env() -> Result<(), BackgroundWorkerEntryError> {
     parse_background_worker_args(std::env::args_os())?;
 
-    let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
-    let app_data_dir = dirs::data_dir()
-        .map(|path| path.join(&context.config().identifier))
-        .ok_or(BackgroundWorkerEntryError::AppDataUnavailable)?;
-    let state = AppState::from_app_data_dir(app_data_dir)
+    let app_data_dir =
+        production_app_data_dir().ok_or(BackgroundWorkerEntryError::AppDataUnavailable)?;
+    let runtime = HmmRuntime::from_app_data_dir(app_data_dir)
         .map_err(|_| BackgroundWorkerEntryError::StateUnavailable)?;
     let worker_instance_id = format!("worker-{}", uuid::Uuid::new_v4());
 
-    state
+    runtime
         .save_backup_background_worker
         .run_once(&worker_instance_id)
         .map_err(|error| BackgroundWorkerEntryError::WorkerFailed(error.code()))?;

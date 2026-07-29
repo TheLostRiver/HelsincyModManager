@@ -57,6 +57,38 @@ pub struct DiagnosticsPageSnapshot {
     pub evidence_health: DiagnosticsEvidenceHealthSnapshot,
 }
 
+pub struct DiagnosticsPageSnapshotService {
+    text_log_reader: Arc<dyn TextLogReader>,
+    audit_log_reader: Arc<dyn AuditLogReader>,
+    environment_provider: Arc<dyn DiagnosticsEnvironmentProvider>,
+    evidence_health: Arc<dyn DiagnosticsEvidenceHealth>,
+}
+
+impl DiagnosticsPageSnapshotService {
+    pub fn new(
+        text_log_reader: Arc<dyn TextLogReader>,
+        audit_log_reader: Arc<dyn AuditLogReader>,
+        environment_provider: Arc<dyn DiagnosticsEnvironmentProvider>,
+        evidence_health: Arc<dyn DiagnosticsEvidenceHealth>,
+    ) -> Self {
+        Self {
+            text_log_reader,
+            audit_log_reader,
+            environment_provider,
+            evidence_health,
+        }
+    }
+
+    pub fn read(&self) -> DiagnosticsPageSnapshot {
+        read_page_snapshot(
+            self.text_log_reader.as_ref(),
+            self.audit_log_reader.as_ref(),
+            self.environment_provider.as_ref(),
+            self.evidence_health.as_ref(),
+        )
+    }
+}
+
 pub struct SupportDiagnosticsExportService {
     text_log_reader: Arc<dyn TextLogReader>,
     audit_log_reader: Arc<dyn AuditLogReader>,
@@ -274,38 +306,47 @@ impl SupportDiagnosticsExportService {
     }
 
     pub fn read_page_snapshot(&self) -> DiagnosticsPageSnapshot {
-        let (platform_summary, platform_status) = match self.environment_provider.summarize() {
-            Ok(summary) => (Some(summary), "ok".to_owned()),
-            Err(_) => (None, "environment_unavailable".to_owned()),
-        };
-        let (app_log_lines, app_log_status) = read_text_log_snapshot(
+        read_page_snapshot(
             self.text_log_reader.as_ref(),
-            TextLogKind::App,
-            "app_log_read_failed",
-        );
-        let (task_log_lines, task_log_status) = read_text_log_snapshot(
-            self.text_log_reader.as_ref(),
-            TextLogKind::Task,
-            "task_log_read_failed",
-        );
-        let (audit_events, audit_log_status) = match self.audit_log_reader.read_recent_sanitized(
-            AuditLogReadRequest { max_events: MAX_DIAGNOSTICS_PAGE_ITEMS },
-        ) {
+            self.audit_log_reader.as_ref(),
+            self.environment_provider.as_ref(),
+            self.evidence_health.as_ref(),
+        )
+    }
+}
+
+fn read_page_snapshot(
+    text_log_reader: &dyn TextLogReader,
+    audit_log_reader: &dyn AuditLogReader,
+    environment_provider: &dyn DiagnosticsEnvironmentProvider,
+    evidence_health: &dyn DiagnosticsEvidenceHealth,
+) -> DiagnosticsPageSnapshot {
+    let (platform_summary, platform_status) = match environment_provider.summarize() {
+        Ok(summary) => (Some(summary), "ok".to_owned()),
+        Err(_) => (None, "environment_unavailable".to_owned()),
+    };
+    let (app_log_lines, app_log_status) =
+        read_text_log_snapshot(text_log_reader, TextLogKind::App, "app_log_read_failed");
+    let (task_log_lines, task_log_status) =
+        read_text_log_snapshot(text_log_reader, TextLogKind::Task, "task_log_read_failed");
+    let (audit_events, audit_log_status) =
+        match audit_log_reader.read_recent_sanitized(AuditLogReadRequest {
+            max_events: MAX_DIAGNOSTICS_PAGE_ITEMS,
+        }) {
             Ok(events) => (events, "ok".to_owned()),
             Err(_) => (Vec::new(), "audit_log_read_failed".to_owned()),
         };
 
-        DiagnosticsPageSnapshot {
-            platform_summary,
-            platform_status,
-            app_log_status,
-            task_log_status,
-            audit_log_status,
-            app_log_lines,
-            task_log_lines,
-            audit_events,
-            evidence_health: self.evidence_health.snapshot(),
-        }
+    DiagnosticsPageSnapshot {
+        platform_summary,
+        platform_status,
+        app_log_status,
+        task_log_status,
+        audit_log_status,
+        app_log_lines,
+        task_log_lines,
+        audit_events,
+        evidence_health: evidence_health.snapshot(),
     }
 }
 
@@ -541,7 +582,9 @@ mod tests {
     #[test]
     fn page_snapshot_keeps_safe_sections_available_when_one_reader_fails() {
         let service = SupportDiagnosticsExportService::new(
-            Arc::new(FailingTextLogReader { failing_kind: TextLogKind::Task }),
+            Arc::new(FailingTextLogReader {
+                failing_kind: TextLogKind::Task,
+            }),
             Arc::new(StaticAuditLogReader),
             Arc::new(StaticDiagnosticsEnvironmentProvider),
             Arc::new(RecordingDiagnosticPackageExporter::default()),

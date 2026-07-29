@@ -67,10 +67,7 @@ pub fn start_install_task(
         .start_install_task(request)
         .map_err(CommandErrorDto::from_task_manager_error)?;
 
-    let _ = emit_task_progress(
-        &app_handle,
-        queued_event_for_started_install_task(&task).into(),
-    );
+    let _ = emit_task_progress(&app_handle, queued_event_for_started_install_task(&task));
     spawn_install_runner(
         Arc::clone(&state.install_task_runner),
         app_handle,
@@ -94,10 +91,7 @@ pub fn start_uninstall_task(
         .start_uninstall_task(request)
         .map_err(CommandErrorDto::from_task_manager_error)?;
 
-    let _ = emit_task_progress(
-        &app_handle,
-        queued_event_for_started_uninstall_task(&task).into(),
-    );
+    let _ = emit_task_progress(&app_handle, queued_event_for_started_uninstall_task(&task));
     spawn_uninstall_runner(
         Arc::clone(&state.uninstall_task_runner),
         app_handle,
@@ -181,7 +175,7 @@ pub fn start_recovery_action_task(
 
     let _ = emit_task_progress(
         &app_handle,
-        queued_event_for_started_recovery_action_task(&task).into(),
+        queued_event_for_started_recovery_action_task(&task),
     );
     spawn_recovery_action_runner(
         Arc::clone(&state.recovery_action_task_runner),
@@ -206,7 +200,7 @@ fn spawn_recovery_action_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }
@@ -224,7 +218,7 @@ fn spawn_uninstall_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }
@@ -242,7 +236,7 @@ fn spawn_install_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event.into());
+            let _ = emit_task_progress(&app_handle, event);
         }
     });
 }
