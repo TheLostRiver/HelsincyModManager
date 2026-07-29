@@ -221,21 +221,14 @@ function getCategory(policy, relativePath) {
   return null;
 }
 
-function countLines(content) {
-  if (content.length === 0) {
-    return 0;
-  }
-
-  const lines = content.split(/\r\n|\n|\r/);
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
-  return lines.length;
-}
-
 function checkFileSize(repoRoot, policy, files, scope) {
   const errors = [];
   const allowlist = new Set(policy.fileSize?.allowlist ?? []);
+  const byteLimit = policy.fileSize?.blockBytes ?? null;
+  const maxLineLength = policy.fileSize?.maxLineLength ?? null;
+  const maxLineLengthExcludeRegexes = (
+    policy.fileSize?.maxLineLengthExcludePathPatterns ?? []
+  ).map(globToRegex);
   const excludePatterns = [
     ...(policy.fileSize?.excludePathPatterns ?? []),
     ...getScopeExcludePatterns(policy, scope),
@@ -248,20 +241,54 @@ function checkFileSize(repoRoot, policy, files, scope) {
       continue;
     }
 
-    const category = getCategory(policy, normalized);
-    const limit = category ? policy.fileSize?.block?.[category] : null;
-    if (!limit) {
-      continue;
-    }
-
     const fullPath = joinRepoPath(repoRoot, normalized);
     if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
       continue;
     }
 
-    const lineCount = countLines(fs.readFileSync(fullPath, "utf8"));
-    if (lineCount > limit) {
+    const fileSize = fs.statSync(fullPath).size;
+    if (byteLimit !== null && fileSize > byteLimit) {
+      errors.push(`${normalized} exceeds hard byte limit: ${fileSize} / ${byteLimit}`);
+    }
+
+    const category = getCategory(policy, normalized);
+    if (!category) {
+      continue;
+    }
+
+    const limit = policy.fileSize?.block?.[category] ?? null;
+    const checkMaxLineLength =
+      maxLineLength !== null && !pathMatchesAny(normalized, maxLineLengthExcludeRegexes);
+    if (limit === null && !checkMaxLineLength) {
+      continue;
+    }
+
+    const content = fs.readFileSync(fullPath, "utf8");
+    const lines = content.length === 0 ? [] : content.split(/\r\n|\n|\r/);
+    if (lines.at(-1) === "") {
+      lines.pop();
+    }
+
+    const lineCount = lines.length;
+    if (limit !== null && lineCount > limit) {
       errors.push(`${normalized} exceeds hard line limit: ${lineCount} / ${limit}`);
+    }
+
+    if (checkMaxLineLength) {
+      let longestLineLength = 0;
+      let longestLineNumber = 0;
+      for (let index = 0; index < lines.length; index += 1) {
+        if (lines[index].length > longestLineLength) {
+          longestLineLength = lines[index].length;
+          longestLineNumber = index + 1;
+        }
+      }
+
+      if (longestLineLength > maxLineLength) {
+        errors.push(
+          `${normalized} exceeds hard line length: ${longestLineLength} at line ${longestLineNumber} / ${maxLineLength}`,
+        );
+      }
     }
   }
 
@@ -429,6 +456,8 @@ function checkSecrets(repoRoot, policy, files, scope) {
     ".yaml",
     ".ps1",
     ".psm1",
+    ".py",
+    ".sql",
     ".rs",
     ".ts",
     ".tsx",
