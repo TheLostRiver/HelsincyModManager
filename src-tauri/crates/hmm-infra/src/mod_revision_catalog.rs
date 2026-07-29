@@ -77,23 +77,17 @@ pub(crate) enum ModImportCatalogWriteFailure {
 
 impl JsonModImportResultRepository {
     pub fn new(file_path: PathBuf) -> Self {
-        Self {
-            file_path,
-            access_mode: ModImportCatalogAccessMode::ReadWrite,
-            write_lock: Mutex::new(()),
-            #[cfg(test)]
-            test_write_failure: None,
-            #[cfg(test)]
-            test_catalog_save_count: AtomicUsize::new(0),
-            #[cfg(test)]
-            test_catalog_load_count: AtomicUsize::new(0),
-        }
+        Self::with_access_mode(file_path, ModImportCatalogAccessMode::ReadWrite)
     }
 
     pub fn new_read_only(file_path: PathBuf) -> Self {
+        Self::with_access_mode(file_path, ModImportCatalogAccessMode::ReadOnly)
+    }
+
+    fn with_access_mode(file_path: PathBuf, access_mode: ModImportCatalogAccessMode) -> Self {
         Self {
             file_path,
-            access_mode: ModImportCatalogAccessMode::ReadOnly,
+            access_mode,
             write_lock: Mutex::new(()),
             #[cfg(test)]
             test_write_failure: None,

@@ -1785,10 +1785,8 @@ mod tests {
 
     #[test]
     fn state_composes_shared_background_settings_for_service_and_worker() {
-        let app_data_dir = std::env::temp_dir().join(format!(
-            "hmm-background-settings-composition-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
         let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
             .expect("headless state composition succeeds");
 
@@ -1821,15 +1819,12 @@ mod tests {
         drop(settings);
         drop(settings_db);
         drop(state);
-        std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
     }
 
     #[test]
     fn headless_state_composes_reinstall_tasks_with_shared_task_manager() {
-        let app_data_dir = std::env::temp_dir().join(format!(
-            "hmm-reinstall-state-composition-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
         let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
             .expect("headless state composition succeeds");
         let request = hmm_app::StartReinstallTaskRequest {
@@ -1858,7 +1853,6 @@ mod tests {
         ));
 
         drop(state);
-        std::fs::remove_dir_all(app_data_dir).expect("remove temporary app data directory");
     }
 
     #[test]

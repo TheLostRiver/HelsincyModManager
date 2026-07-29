@@ -123,6 +123,46 @@ fn read_only_mod_import_catalog_rejects_mutation_without_writing() {
 }
 
 #[test]
+fn read_only_mod_import_catalog_rejects_all_batch_mutations_without_writing() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let path = temp.path().join("results.json");
+    let lock_path = temp.path().join("results.json.lock");
+    write_v1_catalog(&path);
+    let original = fs::read(&path).expect("read original catalog");
+    let repo = JsonModImportResultRepository::new_read_only(path.clone());
+    let upsert = ModImportCatalogUpsert {
+        logical_mod: logical_mod("mod-a", "revision-a"),
+        revision: revision("revision-a", "mod-a", "package-a", "task-a"),
+    };
+    let external_upsert = external_import_upsert(
+        "external-a",
+        "External A",
+        "content-a",
+        ModImportExternalDisplayNameAdmission::RequireUnique,
+    );
+
+    let errors = [
+        repo.upsert_many(&[])
+            .expect_err("read-only repository rejects an empty generic batch"),
+        repo.upsert_many(std::slice::from_ref(&upsert))
+            .expect_err("read-only repository rejects a non-empty generic batch"),
+        repo.upsert_external_import_many(&[])
+            .expect_err("read-only repository rejects an empty external batch"),
+        repo.upsert_external_import_many(std::slice::from_ref(&external_upsert))
+            .expect_err("read-only repository rejects a non-empty external batch"),
+    ];
+
+    assert!(errors
+        .iter()
+        .all(|error| error.to_string().contains("read-only")));
+    assert_eq!(
+        fs::read(path).expect("read catalog after batch rejections"),
+        original
+    );
+    assert!(!lock_path.exists());
+}
+
+#[test]
 fn mod_import_catalog_append_preserves_origin_and_projects_one_display_card_after_reload() {
     let temp = tempfile::tempdir().expect("temp dir");
     let path = temp.path().join("results.json");
