@@ -5,7 +5,7 @@
 [Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。
 
 更新时间：2026-07-30
-规划基线：`fe649baceddebab7a09dc31102c9ad477c578fd3`
+规划基线：`main@a439112ab61425f4b89fee010a9e953ff9d92fb5`
 
 ## 固定范围
 
@@ -39,6 +39,8 @@
 - 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
   support export：核心已完成，发布/保留治理仍有缺口。
 - CLI-0A/0B/1A/1B：`completed`，Production 写命令仍不可达。
+- 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
+  Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -85,15 +87,16 @@ cargo clippy --workspace --all-targets -- -D warnings
 - CodeRabbit 未 review 不能视为批准；必须完成独立全 diff 自审并记录证据。
 - 优先普通合并。`--admin` 的允许条件和禁止条件以
   [合并提示词](CODEX_GOAL_MODE_PROMPTS.md#合并提示词) 为准。
-- 治理、安全门禁、workflow、policy、AGENTS 或核心安全文档变更仍需要项目要求的人工 review，
-  不能使用 `--admin` 绕过。
+- 治理、安全门禁、workflow、policy、AGENTS 或核心安全文档变更必须提升自审强度并明确标注治理
+  影响；外部 review 因额度缺席时必须完整复审增量。`--admin` 只能在当前目标已获明确授权且合并
+  提示词的全部条件满足时使用，绝不能绕过 CI、真实 finding 或未解决评论。
 
 ## 依赖图
 
 ```mermaid
 flowchart TD
-  QG["QG-01 CI 质量门禁"] -. "合并前仍手动补测" .-> CORE
-  B0["T13-00 批量语义设计"] --> B1["T13-01 Sealed BatchPlan"]
+  QG["QG-01 CI 质量门禁"] --> B0["T13-00 批量语义设计"]
+  B0 --> B1["T13-01 Sealed BatchPlan"]
   O["CLI-2A 流式 Observer"] --> S["CLI-2B Sandbox 写许可"]
   S --> C["CLI-2C 单项生命周期 CLI E2E"]
   C --> CORE["CORE-PREF-01 单项 Preflight 一致化"]
@@ -116,18 +119,17 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01 是最先开的治理 PR，但如果仅因缺人工 governance review 不能合并，产品 task 可以继续；后续
-PR 必须继续手动执行前端测试和 clippy，不能假设 QG-01 已生效。
+QG-01 是最先执行的治理 task。它合并前不得开始 T13-00；如果外部 review 因额度缺席，按
+CodeRabbit 缺席流程完成独立全 diff 自审，但仍必须等待全部 CI 到 terminal success。
 
 ## P0 核心生命周期与批量能力
 
-推荐开启顺序如下。QG-01 优先独立开启，但不是 T13 的产品硬依赖；如果它只因必需的人工治理
-review 等待，保留该 PR 并从当前 `main` 独立启动 T13-00，后续继续手动补跑额外门禁。
+推荐开启顺序如下。先完成 QG-01，让后续产品 PR 的统一门禁实际包含前端测试和 clippy，再启动
+T13-00；不得把尚未合并的治理分支作为产品 task 的隐式基线。
 
 ```text
-QG-01（优先开启；等待人工治理 review 时保留 PR）
-
-T13-00
+QG-01
+  -> T13-00
   -> CLI-2A
   -> CLI-2B
   -> CLI-2C
@@ -143,7 +145,7 @@ T13-00
 
 ### QG-01：补齐 CI 质量门禁
 
-状态：`ready`，治理变更，需要人工 review。
+状态：`ready`，治理变更，需要完整增量自审和远端门禁。
 
 范围：
 
@@ -539,18 +541,16 @@ Windows 账户中为完成 checklist 注册真实任务。
 按 install/uninstall/reinstall/recovery、backup、background registration、diagnostics export 分开评审。
 每个命令只有在对应 scope、测试、Audit、Windows 验收和文档齐全后单独开放；不提供全局 `--force`。
 
-## P3 工程治理 Backlog
+## P3 工程治理已完成基线
 
-这些任务仍是当前仓库的真实缺口，但不得无条件抢占 P0/P1 产品链路。`GOV-01` 和 `GOV-02` 有明确
-前拉条件：对应核心阶段开始前必须完成，避免文件硬门禁或失效 lint 抑制污染批量实现。其余任务在
-P0/P1/P2 队列后执行，或在同一文件被产品 task 修改时一并前拉为独立 PR。
+GOV-01 至 GOV-04 已在 QG-01 前完成。后续 task 必须保留这些门禁和回归测试；除非出现明确复现，
+不要重新开启同名治理任务。
 
 ### GOV-01：外置 `dto.rs` 内联测试
 
-状态：`queued`；最迟在 T13-06 开始前完成。
+状态：`completed`，PR #211。
 
-当前 `src-tauri/src/dto.rs` 为 2133 行，距 Rust 文件 2200 行硬门禁只剩 67 行；1416 行后的多个
-测试模块仍内联。只做物理迁移：
+`src-tauri/src/dto.rs` 已降为 1416 行，并通过 `dto_tests.rs` 外置测试模块：
 
 - 把测试模块迁入独立 `dto_tests.rs`，生产 DTO、序列化和断言行为不变。
 - 同步迁移 test-only import，不能用新的 allow 绕过 unused import。
@@ -561,10 +561,10 @@ diff 只包含测试模块引用所需的最小变化。
 
 ### GOV-02：收窄重装路径 `dead_code` 抑制
 
-状态：`queued`；最迟在 T13-04 开始前完成，高风险安装/回滚 review。
+状态：`completed`，PR #212。
 
-当前 `reinstall_commit.rs` 仍有文件级 `allow(dead_code)`，`reinstall.rs` 仍有三处引用已完成
-Task 6 的局部抑制。删除这些过期 allow 和注释后：
+重装生产路径的文件级和三处局部过期 `allow(dead_code)` 已移除；manifest、backup、rollback 和
+recovery 语义未改变：
 
 - 禁止为了让 clippy 通过而删除 manifest、backup、rollback 或 recovery 字段/分支。
 - 如果出现真正的 never-read 字段，只能先收窄到字段级 allow、写明证据并停止等待人工判断。
@@ -575,22 +575,22 @@ Task 6 的局部抑制。删除这些过期 allow 和注释后：
 
 ### GOV-03：补齐 Tauri 契约命令与防回归测试
 
-状态：`queued`。
+状态：`completed`，PR #213。
 
-`FRONTEND_BACKEND_CONTRACT.md` 仍缺 8 个已注册命令：
+`FRONTEND_BACKEND_CONTRACT.md` 已补齐 8 个已注册命令：
 `create_category`、`update_category`、`delete_category`、`list_categories`、
 `set_mod_categories`、`get_mod_categories`、`update_mod_metadata` 和
 `delete_mod_metadata`。
 
-- 参数、返回值和错误码必须来自当前 Rust command 与 typed API，不得臆造。
-- 新增测试解析 `generate_handler!` 的注册命令，断言每个命令都出现在契约文档。
-- 做变异验证：临时删除一个命令名时测试必须失败，还原后通过。
+- 参数、返回值和错误码来自当前 Rust command 与 typed API。
+- 防回归测试解析 `generate_handler!` 注册表并断言每个命令都出现在契约文档。
+- 变异验证已证明临时删除命令名时测试失败，还原后通过。
 
 ### GOV-04：治理检查加固
 
-状态：`queued`，治理变更，需要人工 review，不允许用 `--admin` 绕过。
+状态：`completed`，PR #214。
 
-按三个独立提交推进：
+已按三个独立提交完成：
 
 1. 为文件大小门禁增加 byte 上限和单行长度上限，PowerShell/Node 检查器行为等价，lockfile 明确豁免。
 2. secret 扫描同步覆盖 `.py`/`.sql`，file-size policy 增加 SQL 类别和合理阈值。

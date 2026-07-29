@@ -40,6 +40,8 @@
    多候选显式选择已完成，不重新实现。
 9. 日志后续补 Task/Audit retention、总空间上限和 Debug Log。Production CLI 写入继续等待跨进程
    admission；Sandbox CLI 可较早作为核心生命周期和批量能力的自动化入口。
+10. GOV-01 至 GOV-04 已由 PR #211 至 #214 完成；DTO 测试外置、重装 dead-code 抑制清理、
+    Tauri command 契约覆盖和治理检查加固成为后续任务必须保持的工程基线。
 
 本轮任务、实现和验收只覆盖 Windows + MHW:I。Linux / Steam Deck 不进入当前队列，也不阻塞上述
 Windows 任务。详细依赖与 PR/CI/review 门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

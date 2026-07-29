@@ -1,9 +1,8 @@
 # 项目任务状态快照
 
 本文档记录 Helsincy Mod Manager 在 **2026-07-30** 的 Windows 项目任务全景，基准为
-`fe649baceddebab7a09dc31102c9ad477c578fd3`，包含 CLI-0A contract、CLI-0B shared runtime
-composition、CLI-1A read-only game automation 与完整 CLI-1B read-only
-install/backup/diagnostics automation。
+`main@a439112ab61425f4b89fee010a9e953ff9d92fb5`，包含 CLI-0A 至 CLI-1B，以及
+PR #211 至 #214 的 DTO 测试外置、重装 dead-code 清理、Tauri 契约覆盖和治理门禁加固。
 
 本文件是一次证据快照，用于回答“当前已经具备什么、还缺什么、下一步先做什么”。持续变化的任务
 优先级、依赖和实施状态仍以 [任务总纲](../TODO.md) 与 [路线图](ROADMAP.md) 为准；功能设计和安全
@@ -38,9 +37,10 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 
 快照时：
 
-- 规划基线为 `fe649ba`，后续任务以最新 `main` 创建独立 branch/worktree。
+- 规划基线为 `main@a439112`，后续任务以最新 `main` 创建独立 branch/worktree。
 - PR #196 已合并；其 review 遗漏由 PR #197 补齐。
 - PR #199 已完成 T17 Slice 4C，T17 全部切片已交付。
+- PR #210 已合并并交付 CLI-0B/1A/1B；PR #211 至 #214 已完成 GOV-01 至 GOV-04。
 
 ## 任务矩阵
 
@@ -68,6 +68,7 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T19 生命周期产品化加固 | 已完成 | A1-L3：headless acceptance、日志/诊断与反馈 UI 均已交付 |
 | T20 浮层动画共享基元 | 待评审 | 下次新增浮层前或出现第三处重复实现时再启动 |
 | CLI 自动化入口 | CLI-1B 已实现 | 已有四个只读 game 命令、install plan/status/recovery scan/preview、backup list/background status 与 diagnostics snapshot；Sandbox containment/no-write、checkpointed sidecar-free SQLite/log readers 与脱敏 contract 已覆盖，写命令未接入 |
+| 工程治理 GOV-01 至 GOV-04 | 已完成 | DTO 测试外置、重装 lint 抑制清理、Tauri 契约防回归和治理检查加固已由 PR #211 至 #214 交付 |
 
 ### Gate A / Gate B
 
@@ -317,7 +318,7 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：通过；包含 policy/docs、
   frontend typecheck/lint/build、`cargo test --workspace` 和 `cargo check --workspace`。
-- `cmd /c corepack pnpm run test`：400/400 通过。
+- `cmd /c corepack pnpm run test`：403/403 通过。
 - `cargo clippy --workspace --all-targets -- -D warnings`：通过。
 - frontend build 仍有约 597 KB 主 chunk 超过 500 KB 的既有非阻断 warning。
 - 测试使用 temp/fake/人工 fixture；开发 sidecar、`node_modules`、`target` 和 `dist` 均为 ignored
@@ -334,18 +335,12 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
   每个相关 PR 必须额外手动执行并记录。
 - Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
   bundle 中存在 sibling worker 就标记完成。
-- `src-tauri/src/dto.rs` 仍为 2133 行且测试模块内联，距 2200 行硬门禁只剩 67 行；GOV-01
-  最迟必须在 T13-06 新增批量 DTO 前完成。
-- 重装生产路径仍保留一处文件级和三处局部 `allow(dead_code)` 及过期 Task 6 注释；GOV-02
-  最迟必须在 T13-04 批量真正重装前完成，且不得借清理名义删除回滚字段或分支。
-- `FRONTEND_BACKEND_CONTRACT.md` 仍缺 8 个已注册的分类/Mod 元数据命令，也没有注册命令与
-  契约文档一致性的防回归测试。
-- 文件门禁仍只有行数限制，secret 扫描仍缺 `.py`/`.sql`，`governanceFiles` 也未与
-  CODEOWNERS 完全对齐；这些归入 GOV-04，不阻塞当前 P0，但属于需要人工 review 的治理欠账。
+- GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri
+  command 契约回归门禁。
 
 ## 建议执行顺序
 
-1. QG-01 把前端测试与 clippy 接入本地/CI 门禁；在治理 PR 获得要求的 review 前继续手动补跑。
+1. QG-01 把前端测试与 clippy 接入本地/CI 门禁并完成合并。
 2. T13-00 冻结批量 sealed plan、失败、取消、partial result 和 retry 语义。
 3. CLI-2A/2B/2C 完成逐阶段 observer、Sandbox 写许可和单项生命周期 binary E2E。
 4. CORE-PREF-01 证明并补齐单项安装前置检查的一致 decision。
@@ -354,6 +349,5 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 7. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
 8. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
 9. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
-10. 执行 GOV-01 至 GOV-04 工程治理 backlog；其中 GOV-01/GOV-02 按上面的核心阶段依赖前拉。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
