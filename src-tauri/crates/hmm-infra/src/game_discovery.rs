@@ -1,6 +1,4 @@
-use crate::steam_discovery::{
-    parse_app_manifest, parse_library_folders, SteamLibraryFolder, SteamRootProvider,
-};
+use crate::steam_discovery::{parse_app_manifest, parse_library_folders, SteamRootProvider};
 use hmm_ports::{
     GameCandidate, GameCandidateSource, GameDiscoveryError, GameDiscoveryRequest,
     GameDiscoveryService,
@@ -67,11 +65,11 @@ impl SteamGameDiscoveryService {
             if !library.app_ids.contains(&app_id) {
                 continue;
             }
-            if !self.path_is_admitted(&library.path) {
+            let Some(library_path) = self.admit_path(&library.path) else {
                 continue;
-            }
+            };
 
-            self.scan_library(&library, request, app_id, seen_roots, candidates)?;
+            self.scan_library(&library_path, request, app_id, seen_roots, candidates)?;
         }
 
         Ok(())
@@ -79,14 +77,13 @@ impl SteamGameDiscoveryService {
 
     fn scan_library(
         &self,
-        library: &SteamLibraryFolder,
+        library_path: &Path,
         request: &GameDiscoveryRequest,
         app_id: u32,
         seen_roots: &mut BTreeSet<String>,
         candidates: &mut Vec<GameCandidate>,
     ) -> Result<(), GameDiscoveryError> {
-        let manifest_path = library
-            .path
+        let manifest_path = library_path
             .join("steamapps")
             .join(format!("appmanifest_{app_id}.acf"));
         if !manifest_path.exists() {
@@ -107,11 +104,14 @@ impl SteamGameDiscoveryService {
             return Ok(());
         }
 
-        let common_dir = library.path.join("steamapps").join("common");
+        let common_dir = library_path.join("steamapps").join("common");
         let root_dir = common_dir.join(install_dir);
-        if !is_path_within(&root_dir, &common_dir) || !self.path_is_admitted(&root_dir) {
+        if !is_path_within(&root_dir, &common_dir) {
             return Ok(());
         }
+        let Some(root_dir) = self.admit_path(&root_dir) else {
+            return Ok(());
+        };
 
         let normalized = normalize_path_key(&root_dir);
         if !seen_roots.insert(normalized) {
@@ -129,10 +129,12 @@ impl SteamGameDiscoveryService {
         Ok(())
     }
 
-    fn path_is_admitted(&self, path: &Path) -> bool {
-        self.allowed_root
-            .as_deref()
-            .is_none_or(|allowed_root| is_canonically_within(path, allowed_root))
+    fn admit_path(&self, path: &Path) -> Option<std::path::PathBuf> {
+        let Some(allowed_root) = self.allowed_root.as_deref() else {
+            return Some(path.to_path_buf());
+        };
+
+        canonical_path_within(path, allowed_root)
     }
 }
 
@@ -149,9 +151,9 @@ impl GameDiscoveryService for SteamGameDiscoveryService {
         let mut seen_roots = BTreeSet::new();
 
         for steam_root in self.root_provider.steam_roots() {
-            if !self.path_is_admitted(&steam_root) {
+            let Some(steam_root) = self.admit_path(&steam_root) else {
                 continue;
-            }
+            };
             self.scan_steam_root(
                 &steam_root,
                 request,
@@ -199,19 +201,11 @@ fn is_path_within(path: &Path, parent: &Path) -> bool {
     normalized_path.starts_with(&normalized_parent)
 }
 
-fn is_canonically_within(path: &Path, parent: &Path) -> bool {
-    if !is_path_within_or_equal(path, parent) {
-        return false;
-    }
+fn canonical_path_within(path: &Path, parent: &Path) -> Option<std::path::PathBuf> {
+    let canonical_parent = parent.canonicalize().ok()?;
+    let canonical_path = path.canonicalize().ok()?;
 
-    let Ok(canonical_parent) = parent.canonicalize() else {
-        return false;
-    };
-    let Ok(canonical_path) = path.canonicalize() else {
-        return false;
-    };
-
-    is_path_within_or_equal(&canonical_path, &canonical_parent)
+    is_path_within_or_equal(&canonical_path, &canonical_parent).then_some(canonical_path)
 }
 
 fn is_path_within_or_equal(path: &Path, parent: &Path) -> bool {
@@ -434,6 +428,15 @@ mod tests {
             .expect("scan");
 
         assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].root_dir,
+            temp.path()
+                .join("steamapps")
+                .join("common")
+                .join("Monster Hunter World")
+                .canonicalize()
+                .expect("canonical game root")
+        );
     }
 
     #[test]

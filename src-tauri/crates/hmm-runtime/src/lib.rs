@@ -336,10 +336,11 @@ mod tests {
     }
 
     #[test]
-    fn rust_app_identifier_matches_tauri_configuration() {
+    fn rust_app_metadata_matches_tauri_configuration() {
         let config: serde_json::Value =
             serde_json::from_str(include_str!("../../../tauri.conf.json")).expect("tauri config");
 
         assert_eq!(config["identifier"], APP_IDENTIFIER);
+        assert_eq!(config["version"], env!("CARGO_PKG_VERSION"));
     }
 }

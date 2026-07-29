@@ -16,6 +16,7 @@ use hmm_ports::{
     GamePrerequisiteReportState, GamePrerequisiteRuleRepository, GamePrerequisiteSummaryStatus,
 };
 use serde::Serialize;
+use std::fmt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -102,6 +103,14 @@ impl ReadOnlyGameAutomationError {
         }
     }
 }
+
+impl fmt::Display for ReadOnlyGameAutomationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code())
+    }
+}
+
+impl std::error::Error for ReadOnlyGameAutomationError {}
 
 pub struct ReadOnlyGameAutomation {
     service: GameSetupService,
@@ -448,8 +457,12 @@ impl SteamRootProvider for FixedSteamRootProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hmm_infra::JsonGamePrerequisiteRuleRepository;
     use serde_json::Value;
     use std::fs;
+
+    const BUNDLED_MHW_PREREQUISITE_RULES: &str =
+        include_str!("../../hmm-games-mhw/data/mhw-prerequisites.default.json");
 
     fn create_sandbox() -> tempfile::TempDir {
         tempfile::tempdir().expect("sandbox")
@@ -542,6 +555,31 @@ mod tests {
         assert_eq!(snapshot.state, GamePrerequisiteReportState::Ready);
         assert!(!override_path.exists());
         assert!(!override_path.parent().expect("override parent").exists());
+    }
+
+    #[test]
+    fn bundled_prerequisite_rules_seed_and_reload_through_writable_repository() {
+        let sandbox = create_sandbox();
+        let rules_path = sandbox
+            .path()
+            .join("config")
+            .join("prerequisite-rules")
+            .join("mhw.json");
+        let repository = JsonGamePrerequisiteRuleRepository::new(rules_path.clone());
+
+        let seeded = repository
+            .load_rules(&GameId::mhw(), BUNDLED_MHW_PREREQUISITE_RULES)
+            .expect("seed bundled rules");
+        let reloaded = repository
+            .load_rules(&GameId::mhw(), "{ invalid fallback")
+            .expect("reload seeded rules");
+
+        assert_eq!(seeded, reloaded);
+        assert_eq!(seeded.prerequisites.len(), 2);
+        assert_eq!(
+            fs::read_to_string(rules_path).expect("read seeded rules"),
+            BUNDLED_MHW_PREREQUISITE_RULES
+        );
     }
 
     #[test]
