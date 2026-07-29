@@ -1,17 +1,41 @@
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
+mod backup_automation;
 mod composition;
+mod diagnostics_automation;
 mod external_import;
+mod game_automation;
+mod install_automation;
 mod mod_library;
 mod uninstall;
 
+pub use backup_automation::{
+    BackupBackgroundStatusSnapshot, BackupListItemSnapshot, BackupListSnapshot,
+    ReadOnlyBackupAutomation, ReadOnlyBackupAutomationError,
+};
 pub use composition::{
     ConfiguredInstallRecoveryActionPreviewer, ConfiguredInstallRecoveryScanner,
     ConfiguredReinstallExecutor, ConfiguredRetargetReinstallError, HmmRuntime, HmmRuntimeBuilder,
 };
+pub use diagnostics_automation::{
+    DiagnosticsPlatformSnapshot, DiagnosticsSnapshot, ReadOnlyDiagnosticsAutomation,
+    ReadOnlyDiagnosticsAutomationError,
+};
 pub use external_import::ExternalImportComposition;
+pub use game_automation::{
+    GamePrerequisiteItemSnapshot, GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot,
+    GameValidationSnapshot, GameValidationState, ReadOnlyGameAutomation,
+    ReadOnlyGameAutomationError,
+};
 pub use hmm_app::TaskProgressEvent;
+pub use install_automation::{
+    InstallPlanActionSnapshot, InstallPlanConflictSnapshot, InstallPlanSnapshot,
+    InstallRecoveryBlockReasonSnapshot, InstallRecoveryIssueSnapshot, InstallRecoveryItemSnapshot,
+    InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot, InstallStatusItemSnapshot,
+    InstallStatusSnapshot, ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError,
+    ReadOnlyInstallRecoveryAction,
+};
 
 pub const APP_IDENTIFIER: &str = "dev.helsincy.modmanager";
 

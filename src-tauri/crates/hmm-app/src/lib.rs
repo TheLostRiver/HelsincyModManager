@@ -187,8 +187,9 @@ pub use save_directory_discovery::{
     ProfileSaveDirectoryDiscoveryService, SaveDirectoryDiscoveryError,
 };
 pub use support_diagnostics::{
-    DiagnosticsPageSnapshot, SupportDiagnosticsExport, SupportDiagnosticsExportService,
-    MAX_DIAGNOSTICS_PAGE_ITEMS, MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
+    DiagnosticsPageSnapshot, DiagnosticsPageSnapshotService, SupportDiagnosticsExport,
+    SupportDiagnosticsExportService, MAX_DIAGNOSTICS_PAGE_ITEMS,
+    MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
 };
 pub use task_manager::{
     TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot, TaskStatus,
