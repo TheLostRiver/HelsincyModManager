@@ -46,6 +46,11 @@
     ]
   },
   "fileSize": {
+    "blockBytes": 262144,
+    "maxLineLength": 1000,
+    "maxLineLengthExcludePathPatterns": [
+      "docs/**"
+    ],
     "block": {
       "rust": 2200,
       "typescript": 2500,
@@ -58,6 +63,7 @@
       "yaml": 700,
       "powershell": 1200,
       "python": 1800,
+      "sql": 1200,
       "shell": 1200,
       "toml": 1200,
       "json": 1200,
@@ -75,6 +81,7 @@
       "yaml": [".yml", ".yaml"],
       "powershell": [".ps1", ".psm1"],
       "python": [".py"],
+      "sql": [".sql"],
       "shell": [".sh", ".bash", ".zsh"],
       "toml": [".toml"],
       "json": [".json"],
@@ -139,13 +146,13 @@
     "CONTRIBUTING.md",
     "SECURITY.md",
     "docs/TESTING.md",
-    "docs/release/发布与产物说明.md",
-    "docs/release/构建发布与脚本说明.md",
-    "policy/project-policy.json",
+    "docs/release/**",
+    "policy/**",
     "scripts/**",
     ".codex/**",
     ".agents/**",
     ".githooks/**",
-    ".github/workflows/**"
+    ".github/workflows/**",
+    ".github/CODEOWNERS"
   ]
 }
