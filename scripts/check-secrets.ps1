@@ -18,7 +18,7 @@ if ($null -ne $policy.PSObject.Properties["secretScan"] -and $null -ne $policy.s
 $forceIncludedFiles = Select-PolicyMatchingFiles -Files $candidateFiles -IncludePathPatterns $forceIncludePathPatterns
 $files = Merge-PolicyFileLists -PrimaryFiles $scopeFiles -AdditionalFiles $forceIncludedFiles
 $errors = New-Object System.Collections.Generic.List[string]
-$textExtensions = @(".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".ps1", ".psm1", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html", ".sh", ".bash", ".zsh")
+$textExtensions = @(".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".ps1", ".psm1", ".py", ".sql", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html", ".sh", ".bash", ".zsh")
 
 foreach ($file in $files) {
     $normalized = $file -replace '\\', '/'

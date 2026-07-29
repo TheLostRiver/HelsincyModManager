@@ -468,6 +468,8 @@ function checkSecrets(repoRoot, policy, files, scope) {
     ".yaml",
     ".ps1",
     ".psm1",
+    ".py",
+    ".sql",
     ".rs",
     ".ts",
     ".tsx",
