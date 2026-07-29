@@ -61,6 +61,8 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 预览计划：`preview_install_plan`、`preview_retarget_plan`
 - 启动长任务：`start_import_mod_task`
 - 查询导入结果：`get_mod_library`、`get_mod_detail`、`get_mod_dependency_graph`、`get_mod_detail_preview_image`
+- 分类管理：`create_category`、`update_category`、`delete_category`、`list_categories`、`set_mod_categories`、`get_mod_categories`
+- Mod 展示元数据：`update_mod_metadata`、`delete_mod_metadata`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
 - Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`
 - 全局存档后台保护：`get_save_backup_background_control_status`、`enable_save_backup_background_protection`、`disable_save_backup_background_protection`
@@ -1375,6 +1377,50 @@ type SupportDiagnosticsExportDto = {
 ```
 
 `fileName` 只是文件名，不是完整本地路径；前端不能传入或拼接导出路径。当前导出包可包含已脱敏平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和最多 200 条已校验 Audit Log 事件，但命令 DTO 本身不返回日志正文、事件正文、诊断包路径、本地路径、原始 Mod 包内容、缩略图 URL、`contentHash`、缓存/sandbox 路径、原始日志或未脱敏错误文本。
+
+### 7. 分类与 Mod 展示元数据
+
+分类 command 管理用户定义的分类及 Mod 与分类的关联；Mod 展示元数据 command 管理用户对已导入 Mod 的展示信息覆盖。两者都是短任务，不创建 `TaskManager` 任务，也不发送进度事件。
+
+| command | 输入 | 返回 |
+| --- | --- | --- |
+| `create_category` | `{ name, color?, sortOrder? }` | 新分类的 `string` id |
+| `update_category` | `{ categoryId, name?, color?, sortOrder? }` | `void` |
+| `delete_category` | `{ categoryId }` | `void` |
+| `list_categories` | 无 | `CategoryWithCountDto[]` |
+| `set_mod_categories` | `{ modId, categoryIds }` | `void` |
+| `get_mod_categories` | `{ modId }` | `CategoryDto[]` |
+| `update_mod_metadata` | `{ modId, displayName?, author?, version?, description?, nexusModId? }` | `void` |
+| `delete_mod_metadata` | `{ modId }` | `void` |
+
+分类 DTO 的前端可见形状固定为：
+
+```ts
+type CategoryDto = {
+  id: string;
+  name: string;
+  color: string | null;
+  sortOrder: number;
+};
+
+type CategoryWithCountDto = CategoryDto & {
+  modCount: number;
+};
+```
+
+分类契约边界：
+
+- `create_category` 会去除 `name` 和可选 `color` 两端空白；空名称被拒绝，空颜色按未设置处理，省略 `sortOrder` 时使用后端默认顺序 `0`。
+- `update_category` 是字段级更新：省略 `name`、`color` 或 `sortOrder` 表示保留原值；`color: null` 明确清空颜色，字符串表示设置去除两端空白后的颜色。空名称被拒绝。
+- `set_mod_categories` 以本次 `categoryIds` 替换指定 Mod 的分类关联；后端会去重 id。前端只提交后端分类查询返回的 id，不把分类名称、颜色或展示顺序解释为安装事实。
+- 六个分类 command 的应用层失败统一映射为稳定错误码 `category_error`。前端不得解析 `message` 区分验证、未找到或存储失败。
+
+Mod 展示元数据契约边界：
+
+- `update_mod_metadata` 会先去除 `modId` 两端空白并拒绝空值，然后保存或替换该 logical Mod 的整份用户 overlay。`displayName`、`author`、`version` 和 `description` 会去除两端空白，空字符串归一化为未设置；省略的可选字段也以未设置写入本次 overlay。`nexusModId` 仅为可选展示字段。
+- `delete_mod_metadata` 删除指定 Mod 的用户 overlay；后续展示回退到原始导入分析元数据。删除 overlay 不删除 Mod、安装记录、manifest、备份或玩家文件。
+- 两个命令对空 `modId` 返回稳定错误码 `mod_id_empty`；时钟、仓储或服务失败统一返回 `mod_metadata_unavailable`。错误响应不暴露底层路径或存储错误。
+- 展示元数据和分类都是 library overlay，不是安装、依赖、冲突、路径、manifest、profile 或 game adapter 的事实来源。前端不得据此生成 `InstallPlan`、拼接写入路径或绕过后端安装流程。
 
 ## 窗口关闭与托盘生命周期
 
