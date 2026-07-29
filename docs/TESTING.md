@@ -258,6 +258,8 @@ cmd /c corepack pnpm run tauri:dev
 - `src-tauri/crates/hmm-app/`
 - `src-tauri/crates/hmm-infra/`
 - `src-tauri/crates/hmm-games-mhw/`
+- `src-tauri/crates/hmm-runtime/`
+- `src-tauri/crates/hmm-cli/`
 
 最小验证：
 
@@ -272,6 +274,151 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 应用层是否依赖 trait，而不是具体实现。
 - 游戏适配规则是否封装在 adapter 内。
 - 错误类型是否能表达可恢复失败和不可恢复失败。
+
+### CLI/runtime contract
+
+CLI-0A/0B/1A/1B contract 与只读 game/install automation 的聚焦入口：
+
+```powershell
+cargo test -p hmm-app game_setup --no-fail-fast
+cargo test -p hmm-infra prerequisite --no-fail-fast
+cargo test -p hmm-infra contained_discovery --no-fail-fast
+cargo test -p hmm-runtime game_automation --no-fail-fast
+cargo test -p hmm-runtime install_automation --no-fail-fast
+cargo test -p hmm-runtime backup_automation --no-fail-fast
+cargo test -p hmm-runtime diagnostics_automation --no-fail-fast
+cargo test -p hmm-infra read_only_open --no-fail-fast
+cargo test -p hmm-infra read_only_mod_import_catalog --no-fail-fast
+cargo test -p hmm-cli --no-fail-fast
+cargo clippy -p hmm-app -p hmm-infra -p hmm-runtime -p hmm-cli -p hmm-tauri --all-targets -- -D warnings
+cargo run -p hmm-cli -- --format json runtime status
+```
+
+CLI-0A contract 测试必须确认：
+
+- `hmm-cli` 不依赖 Tauri，`runtime status` 不构造真实 composition 或访问真实文件系统。
+- Production 禁止 `--data-dir`，并始终报告 `productionWritesAllowed=false` 与
+  `writeCommandPolicy=disabled`。
+- Sandbox 缺少数据根、使用相对路径、文件系统根或包含 `.` / `..` 时 fail closed。
+- `sandbox_only` 只是策略声明；测试不得创建 marker、签发写 permit 或把它表述成写能力已开放。
+- JSON/JSONL 每次输出完整合法 object，stdout 不混入日志，机器解析错误使用稳定脱敏 envelope。
+- CLI-0A 的 clap human/help/error 输出不含 ANSI；`--no-color` 不改变机器契约。
+- stdout/stderr 不回显 sandbox 绝对路径、用户名、Steam ID、真实 Mod/存档内容或内部错误文本。
+- 所有写命令仍在 parser 边界拒绝；`install apply/uninstall/reinstall/recovery apply`、
+  `backup create/restore/background enable|disable` 和 `diagnostics export` 不得因为相邻只读
+  命令树存在而变得可达。
+
+CLI-1A binary contract 使用测试进程创建的临时根：
+
+```text
+<data-dir>/
+  config/games.json
+  fixtures/
+    steam/steamapps/...
+    games/mhw-minimal/...
+```
+
+测试必须确认：
+
+- `game status|scan|validate|prerequisites --game mhw` 只返回聚合状态、稳定 evidence/issue code 和计数。
+- snapshot/envelope 不包含 game root、candidate root、prerequisite rule path、display label、自由文本
+  message、用户名或 Steam ID。
+- Sandbox 保存目录先限制在 `fixtures` canonical 边界；Steam VDF 声明的隔离根外 library 在读取
+  app manifest 前被拒绝。
+- prerequisite override 缺失时直接解析 bundled rules，不 seed 文件、不创建目录/lock/temp。
+- 四命令执行前后的目录与文件内容树完全一致；JSONL 短命令恰好输出一个 terminal envelope。
+- 自动测试不得执行 Production game 命令，避免读取测试机真实 AppData、Steam registry/library 或
+  游戏目录；Production 只读行为通过纯路径策略、依赖边界和 Sandbox 等价 composition 验证。
+
+CLI-1B install 子切片使用以下人工树：
+
+```text
+<data-dir>/
+  config/games.json
+  fixtures/games/mhw-minimal/...
+  mod-import/results.json
+  mod-import/sandboxes/<package-id>/nativePC/...
+  install/
+    manifests/             # 可省略
+    recovery/              # 可省略
+    reinstall-recovery/    # 可省略
+    backups/               # 可省略
+```
+
+测试必须确认：
+
+- `install plan|status|recovery scan|recovery preview` 支持 human/json/jsonl 与
+  `hmm.cli/v1`，短命令 JSONL 只有一个完整 envelope。
+- plan 复用 `InstallPlanningService` 和 game adapter，只返回稳定 ID、逻辑相对 target 与聚合计数；
+  不返回 package file id、source/sandbox root、absolute target、manifest path 或 backup ref。
+- Mod catalog read-only reader 在 catalog 缺失时不创建父目录；读取 v1 时只做内存投影，不回写 v2、
+  不创建 `.lock`；任何 mutator fail closed。
+- status/recovery 复用 app query services，读取前校验 Sandbox 固定 state roots 和 game root
+  containment；profile/mod 路径型 ID fail closed 且错误 envelope 不回显输入。
+- recovery 全量扫描拒绝持久化状态中的路径型/非规范 Mod ID；plan 投影拒绝含控制字符的 target，
+  防止篡改状态或第三方文件名破坏 machine/human 输出契约。
+- 四命令执行前后的完整目录/文件树相同，不创建 install、manifest、recovery、backup、marker、
+  lock 或 temp 文件。
+- 自动测试不得执行 Production install 命令，不读取真实 AppData、游戏、Mod、Steam 或存档；
+  Production 零写入通过独立只读 composition、无 SQLite 依赖和 Sandbox 等价 no-write 测试证明。
+
+CLI-1B backup/diagnostics 子切片使用以下人工树：
+
+```text
+<data-dir>/
+  hmm.db                              # 测试创建的最小 SQLite schema/rows
+  hmm.db-wal / hmm.db-shm             # 仅 fail-closed 用例创建的人工 sidecar
+  fixtures/background/status.json   # fake registration status + fixed clock
+  logs/
+    app/app-YYYY-MM-DD.log
+    tasks/task-<safe-id>.log
+    audit/audit-YYYY-MM-DD.log
+```
+
+测试必须确认：
+
+- `backup list --profile <id> [--limit N]` 只返回稳定 backup/game/profile ID、trigger/status、
+  created/size/file count；不返回 archive/manifest 文件名、备份/存档目录、source label、notes、
+  hash 或 Steam ID。
+- backup facade 只读取已 checkpoint 且没有 `hmm.db-wal`/`hmm.db-shm` sidecar 的既有
+  `hmm.db`，使用 percent-encoded immutable URI、SQLite read-only flags 和 connection-local
+  query-only mode；缺失 DB 不创建文件/父目录，repository mutator 无法通过该 connection 写入，
+  也不运行 migration/default seed。
+- 任一 WAL/SHM sidecar 存在时，`backup list` 必须以 runtime unavailable 退出码和脱敏
+  `backup_database_unavailable` fail closed；不得 checkpoint、修复、创建或修改 DB/WAL/SHM，
+  stdout 不得回显路径，执行前后的完整目录树和文件 bytes 必须一致。
+- immutable opener 不构成跨进程快照锁；自动测试只证明静止 fixture 和已存在 sidecar 的零写入
+  行为，不证明桌面 writer 在 sidecar preflight 后启动时的 snapshot 一致性。需要一致结果的
+  Production 人工验证必须先关闭桌面端。
+- `backup background status` 只调用 registry `inspect` 和状态派生，不调用 register/unregister、
+  不启动 worker、不获取 scheduler lease、不写 Audit Log；Sandbox 只使用 fixed JSON registry/clock。
+- background projection 不包含 lease owner/expiry、worker instance、task name、SID、worker path、
+  PowerShell/XML 或 raw platform output；持久化错误码和 ID 在输出前重新校验。
+- `diagnostics snapshot` 复用 `/diagnostics` 的独立分类读取语义，只返回 bounded platform summary、
+  App/Task/Audit status 与计数；不返回日志正文、来源文件名、Audit fields、完整本机信息或 export path。
+- 三条命令支持 human/json/jsonl，JSONL 各输出一个完整 envelope；成功或 fail-closed 执行前后的
+  完整目录/文件树相同，不创建 DB/WAL/SHM、日志目录、marker、lock、temp、备份或导出文件。
+- 普通自动化不得执行 Production backup/diagnostics 命令，不读取真实 AppData/日志/存档，也不得
+  inspect/register/update/start/delete 真实 Windows Scheduled Task。Production 行为由依赖边界、
+  Sandbox 等价 composition 和 disposable VM 人工 gate 分开验证。
+
+CLI-0B shared composition 的聚焦入口：
+
+```powershell
+cargo check -p hmm-runtime -p hmm-tauri --all-targets
+cargo test -p hmm-runtime -p hmm-tauri
+cargo clippy -p hmm-runtime -p hmm-tauri --all-targets -- -D warnings
+```
+
+CLI-0B 测试必须确认：
+
+- `HmmRuntime` 装配真实 repositories/services，但所有测试只使用 temp/fake/人工 fixture。
+- Tauri `AppState` 的 headless/GUI 生命周期选择保持不变，GUI-only 维护不会被 worker 启动。
+- worker 直接构造 `HmmRuntime`，参数仍只接受固定 `--once`。
+- manifest repository 故障通过显式 builder 注入，重装失败仍回滚到原 manifest/baseline。
+- install/reinstall/retarget/uninstall/recovery 继续共享 `TaskManager` 与 game/profile 写锁。
+- Tauri observer 继续使用同一领域事件、Task Log allowlist、queued App Log 和 wire DTO。
+- 测试不得访问真实游戏目录、Steam userdata、玩家存档、用户 AppData 或 Windows Scheduled Task。
 
 ### T18 Mod 库 read-model 基准
 

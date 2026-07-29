@@ -203,6 +203,12 @@ L3 的 `/diagnostics` 页面通过无参数 `get_diagnostics_page_snapshot` 读�
 任一类别不可读时只返回稳定状态，其他安全类别仍可展示。受控导出继续使用
 `export_support_diagnostics`，成功/失败沿用既有最小 Audit Log 策略。
 
+CLI-1B 的 `hmm diagnostics snapshot` 复用从上述流程抽出的 reader-only
+`DiagnosticsPageSnapshotService`。CLI 只投影 bounded platform summary、App/Task/Audit 分类状态和
+聚合计数；不返回日志正文、来源文件名、Audit fields、evidence health 进程内计数、完整本机信息或
+export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志目录必须位于显式 data root
+内，自动测试只使用人工日志 fixture。
+
 诊断包用于用户主动反馈问题，必须默认脱敏。
 
 可包含：
