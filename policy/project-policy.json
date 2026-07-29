@@ -46,6 +46,11 @@
     ]
   },
   "fileSize": {
+    "blockBytes": 262144,
+    "maxLineLength": 1000,
+    "maxLineLengthExcludePathPatterns": [
+      "docs/**"
+    ],
     "block": {
       "rust": 2200,
       "typescript": 2500,

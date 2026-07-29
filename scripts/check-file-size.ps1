@@ -12,6 +12,19 @@ $policy = Read-ProjectPolicy -RepoRoot $repoRoot
 $files = Get-GitCandidateFiles -RepoRoot $repoRoot
 $errors = New-Object System.Collections.Generic.List[string]
 $allowlist = @($policy.fileSize.allowlist)
+$byteLimit = $null
+if ($null -ne $policy.fileSize.PSObject.Properties["blockBytes"]) {
+    $byteLimit = [long]$policy.fileSize.blockBytes
+}
+$maxLineLength = $null
+if ($null -ne $policy.fileSize.PSObject.Properties["maxLineLength"]) {
+    $maxLineLength = [int]$policy.fileSize.maxLineLength
+}
+$maxLineLengthExcludePathPatterns = @()
+if ($null -ne $policy.fileSize.PSObject.Properties["maxLineLengthExcludePathPatterns"]) {
+    $maxLineLengthExcludePathPatterns = @($policy.fileSize.maxLineLengthExcludePathPatterns)
+}
+$maxLineLengthExcludePathRegexes = @(Convert-PolicyGlobListToRegexes -Patterns $maxLineLengthExcludePathPatterns)
 $fileSizeExcludePathPatterns = @()
 if ($null -ne $policy.fileSize.PSObject.Properties["excludePathPatterns"]) {
     $fileSizeExcludePathPatterns += @($policy.fileSize.excludePathPatterns)
@@ -50,28 +63,46 @@ foreach ($file in $files) {
         continue
     }
 
+    $fullPath = Join-RepoPath -RepoRoot $repoRoot -RelativePath $normalized
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+        continue
+    }
+
+    $fileInfo = Get-Item -LiteralPath $fullPath
+    if ($null -ne $byteLimit -and $fileInfo.Length -gt $byteLimit) {
+        $errors.Add("$normalized exceeds hard byte limit: $($fileInfo.Length) / $byteLimit")
+    }
+
     $category = Get-PolicyCategory -Path $normalized
     if ($null -eq $category) {
         continue
     }
 
     $limitProperty = $policy.fileSize.block.PSObject.Properties[$category]
-    if ($null -eq $limitProperty) {
-        continue
-    }
-
-    $fullPath = Join-RepoPath -RepoRoot $repoRoot -RelativePath $normalized
-    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+    $checkMaxLineLength = $null -ne $maxLineLength -and -not (
+        Test-PolicyPathExcluded -Path $normalized -Regexes $maxLineLengthExcludePathRegexes
+    )
+    if ($null -eq $limitProperty -and -not $checkMaxLineLength) {
         continue
     }
 
     $lineCount = 0
+    $longestLineLength = 0
+    $longestLineNumber = 0
     foreach ($line in [System.IO.File]::ReadLines($fullPath)) {
         $lineCount++
+        if ($line.Length -gt $longestLineLength) {
+            $longestLineLength = $line.Length
+            $longestLineNumber = $lineCount
+        }
     }
 
-    if ($lineCount -gt [int]$limitProperty.Value) {
+    if ($null -ne $limitProperty -and $lineCount -gt [int]$limitProperty.Value) {
         $errors.Add("$normalized exceeds hard line limit: $lineCount / $($limitProperty.Value)")
+    }
+
+    if ($checkMaxLineLength -and $longestLineLength -gt $maxLineLength) {
+        $errors.Add("$normalized exceeds hard line length: $longestLineLength at line $longestLineNumber / $maxLineLength")
     }
 }
 

@@ -131,6 +131,12 @@ CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ru
 - 单个 `.ts` / `.tsx` / `.js` / `.jsx` 文件膨胀到数千行。
 - 前端样式、页面、配置、脚本文件长期堆积。
 - Markdown 文档无边界增长。
+- 通过压缩换行把大量代码塞进极少行。
+
+`fileSize.block` 按类别定义行数硬上限，`fileSize.blockBytes` 对候选文件定义全局字节硬上限，
+可选的 `fileSize.maxLineLength` 限制受管文本的单行长度。
+现有 `docs/**` 通过 `maxLineLengthExcludePathPatterns` 只豁免单行长度检查，仍受行数和字节上限约束；
+lockfile 则必须显式列入 `allowlist`。
 
 超过硬性限制会导致：
 
@@ -139,7 +145,8 @@ CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ru
 - pre-push 失败。
 - GitHub Actions `Verify` 失败。
 
-如果确实是生成代码、协议定义、静态 catalog，或与主应用无关的独立工具目录，应加入 allowlist 或 `fileSize.excludePathPatterns`，并在 PR 中解释原因。
+如果确实是生成代码、协议定义、静态 catalog，或与主应用无关的独立工具目录，应加入 allowlist、
+`fileSize.excludePathPatterns` 或对应的窄检查排除项，并在 PR 中解释原因。
 
 当前 `.codex/` 是独立的上下文管理工具，不属于主应用运行时代码边界；文件大小硬性限制默认通过 `fileSize.excludePathPatterns` 排除该目录，避免工具自身演进被主应用代码体量门禁误拦截。
 
