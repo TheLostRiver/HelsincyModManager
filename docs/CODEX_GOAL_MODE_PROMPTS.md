@@ -32,8 +32,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 
 任务选择：
 1. 从自主路线图选择第一个状态为 ready 且前置已满足的任务。
-2. QG-01 当前处于独立 PR 的 CI/review/合并阶段；它合并后，T13-00 是第一个 ready task。
-   必须从最新 main 启动 T13-00，不把未合并治理分支作为产品 task 的隐式基线。
+2. QG-01 已由 PR #215 合并，T13-00 已完成设计与规划契约，产品实现未开始。CLI-2A 是第一个
+   ready task，必须从包含 T13-00 的最新 main 创建独立 worktree。
 3. 不重新实现已标记 completed/certified 的能力；先根据源码和测试确认真实缺口。
 4. 一个 task 使用一个独立 hy/ 分支、独立 worktree 和独立 PR。
 5. 大 task 按路线图切片；每完成一个可独立验证的步骤就立即提交 Git。
@@ -42,7 +42,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 实现边界：
 1. 游戏目录写入必须复用 InstallPlan -> preflight -> backup -> commit -> manifest ->
    rollback/recovery。
-2. 批量安装、卸载和重装不能在 CLI 或前端循环调用单项命令来冒充；必须消费服务端 sealed batch plan。
+2. 批量安装、卸载和重装不能在 CLI 或前端循环调用单项命令来冒充；必须消费服务端
+   `preview -> seal -> start` 与 sealed batch plan。
 3. 同一 game/profile 写入严格串行；scan/hash/extract/analyze 留在写锁外。
 4. 原始 Mod 输入只读，派生产物只进入 staging/sandbox。
 5. 前端只负责展示、交互和 typed API；不计算路径、重定向目标、备份或回滚规则。
