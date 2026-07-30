@@ -48,7 +48,7 @@
 | **P2** | 重要增强 — 提升完整度和用户体验 | P1 基本就绪后推进 |
 | **P3** | 长线 feature — Phase 4+ 的大型功能 | 按 Roadmap 节奏 |
 
-### 当前执行覆盖规则（2026-07-23）
+### 当前执行覆盖规则（2026-07-30）
 
 [核心 Mod 生命周期优先级计划](docs/CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 已完成 Gate A/B 优先级覆盖
 目标，但不覆盖架构和玩家数据安全规则：
@@ -58,8 +58,10 @@
 3. T9/T10 的 Gate A/B 最小 manifest/preflight 子集已经落地，不在本次认证后自动扩张。
 4. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已完成；T18 Mod 库分页已由
    PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2/3/4A/4B 已合并，PR #199 交付最后的
-   Slice 4C；完整 T17 已具备分页结果、partial success、服务端重试和大批次门禁。T13 批量安装/卸载
-   仍须单独优先级评审，不因 T17 完成自动开工。
+   Slice 4C；完整 T17 已具备分页结果、partial success、服务端重试和大批次门禁。
+5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：先完成 QG-01 CI 质量门禁，
+   再执行 T13-00 独立设计与安全评审，然后依次完成 CLI-2A/2B/2C 和 CORE-PREF-01，
+   最后按 T13-01 至 T13-08 推进；不能把 T17 import-only 编排当成批量安装实现。
 
 ---
 
@@ -89,7 +91,11 @@
   -> T17 Slice 4A 外部来源与只读预览 [completed, PR #196；PR #197 补齐 review 遗漏]
   -> T17 Slice 4B selection/decision/start/progress [completed, PR #198]
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
-  -> T13 批量安装/卸载 [pending separate review]
+  -> QG-01 CI 质量门禁 [P0 ready]
+  -> T13-00 批量语义设计 [P0 blocked，等待 QG-01 合并]
+  -> CLI-2A/2B/2C Sandbox 自动化基础
+  -> CORE-PREF-01 单项 preflight 一致化
+  -> T13-01..08 批量安装/卸载/真正重装与 Gate C
 ```
 
 ---
@@ -369,17 +375,34 @@ JSON 做不好的需求:
 
 ---
 
-### T13: 批量操作
+## P0 — T13: 批量操作
 
-**前置**: T6
-**状态**: 暂停；单项 install/uninstall/reinstall certified 后重新设计批量队列语义
-**预估**: 中
-**独立文档**: 不需要
+**T13-00 前置**: QG-01 已合并 + T6 + Gate A certified
+**实现链前置**: T13-00 -> CLI-2A -> CLI-2B -> CLI-2C -> CORE-PREF-01；T13-01 至 T13-08
+继续按自主迭代路线图逐项解锁
+**状态**: P0 待实施；按 T13-00 至 T13-08 独立 task 推进
+**预估**: 大
+**独立文档**: **待创建**；任务边界见 `docs/AUTONOMOUS_ITERATION_ROADMAP.md`
 
 概要:
-- [ ] 批量安装/卸载任务队列
-- [ ] 前端多选 + 批量按钮
-- [ ] 批量进度面板
+- [ ] T13-00：sealed input、跨 Mod conflict、失败/取消/partial/retry 领域语义
+- [ ] T13-01：服务端 `BatchPlan`、digest、资源预算与只读预览
+- [ ] T13-02：批量安装，每个 Mod 独立事务，默认首次失败停止
+- [ ] T13-03：manifest/recovery 驱动的批量卸载
+- [ ] T13-04：复用真正重装事务的批量重装与 Armor target switch
+- [ ] T13-05：CLI Sandbox 批量 JSON/JSONL contract
+- [ ] T13-06：窄 Tauri commands、DTO 和 feature-local typed API
+- [ ] T13-07：前端多选、预览、确认、进度、结果和 retry
+- [ ] T13-08：disposable Windows Sandbox Gate C 纵向验收
+
+硬边界:
+
+- 不能由 CLI、Tauri 或前端循环调用单项 command 来冒充批量用例。
+- 同一 game/profile 写入严格串行；每项继续走
+  `InstallPlan -> preflight -> backup -> commit -> manifest -> rollback/recovery`。
+- 不宣称整批全局原子；已成功项保留真实成功事实，partial result 必须明确。
+- 取消只停止启动新项；正在 commit 的项目在安全点完成一致性收尾。
+- retry 只消费 sealed batch 中 retryable 项，成功项不重复提交。
 
 当前前端状态（T13 开工时需一并恢复）:
 
@@ -400,6 +423,8 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 只遍历「已存在的动作」的话，删掉某个动作只会让循环少跑一轮而静默通过。
 
 ---
+
+## P2 — 重要增强（续）
 
 ### T17: 第三方 Mod 管理器批量迁移（狩技盒子兼容）
 
@@ -546,7 +571,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 
 ## 远期 (P4)
 
-- **T15**: 跨平台 Linux / Steam Deck — 需要独立文档
+- **T15**: 跨平台 Linux / Steam Deck — 本轮明确排除，不进入任务和验收
 - **T16**: 更多游戏 Rise / Wilds — 每个游戏一份文档
 
 ---
@@ -567,8 +592,16 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: T17 第三方批量迁移 Slice 4A（PR #196；PR #197 补齐 review 遗漏）
   -> 已完成: T17 Slice 4B（selection/decision/start/progress，PR #198）
   -> 已完成: T17 Slice 4C（result/retry/performance/hardening，PR #199）
-  -> 后续需独立评审: T13 批量安装/卸载
-  -> P7.2c、T8、T12、T14 等按各自发布门禁另行评审
+  -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
+  -> 优先独立开启并完成: QG-01 CI 门禁
+  -> 当前产品 P0: T13-00 批量设计
+  -> CLI-2A/2B/2C observer、Sandbox 写许可和单项生命周期 E2E
+  -> CORE-PREF-01 单项 preflight 一致化
+  -> T13-01/02/03/04 BatchPlan、安装、卸载、真正重装
+  -> T13-05/06/07 CLI、Tauri/typed API、前端工作流
+  -> T13-08 disposable Windows Sandbox Gate C
+  -> 装备数据治理、防具 catalog 扩容、独立武器重定向
+  -> Windows 存档后台发布加固、日志治理和 Production CLI admission
 ```
 
 ---
@@ -590,9 +623,11 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T10 依赖检查 | P0/P1 支撑 | Gate A/B 最小 preflight 已完成；其余范围未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
-| T13 批量操作 | P2 | 暂停 | |
+| T13 批量操作 | P0 | 待实施（T13-00 至 T13-08） | |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；4C 由 PR #199 交付） | #194（Slice 2）/ #195（Slice 3）/ #196（Slice 4A）/ #197（4A review 补救）/ #198（Slice 4B）/ #199（Slice 4C） |
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
 | T20 浮层动画收敛到共享基元 | P3 | 待评审（下次新增浮层前处理，或出现第三处重复实现时立即处理） | |
+| QG-01 CI 质量门禁 | P0 治理 | Ready：下一独立 task | |
+| GOV-01 至 GOV-04 工程治理 | P3 治理 | 已完成 | #211 / #212 / #213 / #214 |
