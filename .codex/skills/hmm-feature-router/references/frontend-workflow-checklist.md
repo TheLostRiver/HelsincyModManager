@@ -36,8 +36,10 @@
 
 ## 验证
 
-- Typecheck、lint 和 build 已运行；否则 final handoff 说明原因。
-- UI workflow/state/helper changes 相关时已运行 `cmd /c corepack pnpm run test`；否则 final handoff 说明原因。
+- 开发期间运行与改动匹配的 typecheck、lint、聚焦 frontend test 或 browser smoke，不把全部命令当成
+  每个 commit 的固定套餐。
+- Bundling、route registration、asset 或 build config 变化时补 production build。
+- 首次 PR ready 前按 router 风险分级决定是否由完整 `verify.ps1` 覆盖全套 frontend checks。
 - App shell/sidebar/Dashboard work 已运行 `scripts/check-frontend-boundaries.ps1`。
 - Visual changes 已在相关 states/viewports 检查，并记录 findings。
-- Cross-boundary changes 也满足 `hmm-tauri-command` 检查。
+- 跨 Tauri 边界时同时读取 `tauri-command-checklist.md`。

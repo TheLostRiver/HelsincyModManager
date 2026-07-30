@@ -11,14 +11,16 @@ $repoRoot = Get-RepoRoot
 $policy = Read-ProjectPolicy -RepoRoot $repoRoot
 $files = Get-GitCandidateFiles -RepoRoot $repoRoot
 $errors = New-Object System.Collections.Generic.List[string]
+$warnings = New-Object System.Collections.Generic.List[string]
 $allowlist = @($policy.fileSize.allowlist)
 $byteLimit = $null
 if ($null -ne $policy.fileSize.PSObject.Properties["blockBytes"]) {
     $byteLimit = [long]$policy.fileSize.blockBytes
 }
 $maxLineLength = $null
-if ($null -ne $policy.fileSize.PSObject.Properties["maxLineLength"]) {
-    $maxLineLength = [int]$policy.fileSize.maxLineLength
+$maxLineLengthProperty = $policy.fileSize.PSObject.Properties["maxLineLength"]
+if ($null -ne $maxLineLengthProperty -and $null -ne $maxLineLengthProperty.Value) {
+    $maxLineLength = [int]$maxLineLengthProperty.Value
 }
 $maxLineLengthExcludePathPatterns = @()
 if ($null -ne $policy.fileSize.PSObject.Properties["maxLineLengthExcludePathPatterns"]) {
@@ -79,10 +81,18 @@ foreach ($file in $files) {
     }
 
     $limitProperty = $policy.fileSize.block.PSObject.Properties[$category]
+    $reviewLimitProperty = $null
+    if ($null -ne $policy.fileSize.PSObject.Properties["review"]) {
+        $reviewLimitProperty = $policy.fileSize.review.PSObject.Properties[$category]
+    }
     $checkMaxLineLength = $null -ne $maxLineLength -and -not (
         Test-PolicyPathExcluded -Path $normalized -Regexes $maxLineLengthExcludePathRegexes
     )
-    if ($null -eq $limitProperty -and -not $checkMaxLineLength) {
+    if (
+        $null -eq $limitProperty -and
+        $null -eq $reviewLimitProperty -and
+        -not $checkMaxLineLength
+    ) {
         continue
     }
 
@@ -99,10 +109,19 @@ foreach ($file in $files) {
 
     if ($null -ne $limitProperty -and $lineCount -gt [int]$limitProperty.Value) {
         $errors.Add("$normalized exceeds hard line limit: $lineCount / $($limitProperty.Value)")
+    } elseif ($null -ne $reviewLimitProperty -and $lineCount -gt [int]$reviewLimitProperty.Value) {
+        $warnings.Add("$normalized exceeds review line threshold: $lineCount / $($reviewLimitProperty.Value)")
     }
 
     if ($checkMaxLineLength -and $longestLineLength -gt $maxLineLength) {
         $errors.Add("$normalized exceeds hard line length: $longestLineLength at line $longestLineNumber / $maxLineLength")
+    }
+}
+
+if ($warnings.Count -gt 0) {
+    Write-Host "File size review warnings:"
+    foreach ($warning in $warnings) {
+        Write-Host "  - $warning"
     }
 }
 

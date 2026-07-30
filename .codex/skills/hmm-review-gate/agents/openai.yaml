@@ -1,7 +1,7 @@
 interface:
   display_name: "HMM Review Gate"
-  short_description: "Review 和交付安全门禁"
-  default_prompt: "review HMM 改动、准备 final handoff、检查 PR readiness，或审计 governance、safety、test、artifact risks 时，使用 $hmm-review-gate。"
+  short_description: "执行 HMM findings-first 自审与合并门禁"
+  default_prompt: "使用 $hmm-review-gate 对当前 HMM PR 做 findings-first 自审、验证证据检查和合并门禁评估。"
 
 policy:
   allow_implicit_invocation: true

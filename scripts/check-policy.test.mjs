@@ -29,6 +29,8 @@ function createPolicyFixture(
     blockBytes = 64,
     maxLineLength = 16,
     maxLineLengthExcludePathPatterns = [],
+    reviewLineLimit = 80,
+    blockLineLimit = 100,
     allowlist = [],
     forceIncludePathPatterns = [],
     secretPatterns = [],
@@ -63,9 +65,10 @@ function createPolicyFixture(
       blockBytes,
       maxLineLength,
       maxLineLengthExcludePathPatterns,
-      block: {
-        text: 100,
+      review: {
+        text: reviewLineLimit,
       },
+      block: blockLineLimit === null ? {} : { text: blockLineLimit },
       extensions: {
         text: [".txt", ".lock", ".yaml"],
       },
@@ -284,6 +287,40 @@ test("file size checks accept a normal text file", (t) => {
   assertPolicyResult(repoRoot, { succeeds: true });
 });
 
+test("file size review threshold warns without failing", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: 128,
+    reviewLineLimit: 3,
+    blockLineLimit: 8,
+    files: {
+      "src/review.txt": "x\n".repeat(4),
+    },
+  });
+
+  assertPolicyResult(repoRoot, {
+    succeeds: true,
+    message: /src\/review\.txt exceeds review line threshold: 4 \/ 3/,
+  });
+});
+
+test("file size review-only category warns without other line checks", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: null,
+    reviewLineLimit: 3,
+    blockLineLimit: null,
+    files: {
+      "src/review-only.txt": "x\n".repeat(4),
+    },
+  });
+
+  assertPolicyResult(repoRoot, {
+    succeeds: true,
+    message: /src\/review-only\.txt exceeds review line threshold: 4 \/ 3/,
+  });
+});
+
 test("file size checks honor the lockfile allowlist", (t) => {
   const repoRoot = createPolicyFixture(t, {
     blockBytes: 16,
@@ -303,7 +340,8 @@ test("project policy assigns SQL files to a file-size category", () => {
   const policy = JSON.parse(readFileSync(policyPath, "utf8"));
 
   assert.deepEqual(policy.fileSize.extensions.sql, [".sql"]);
-  assert.equal(policy.fileSize.block.sql, 1200);
+  assert.equal(policy.fileSize.review.sql, 1200);
+  assert.equal(policy.fileSize.block.sql, 3000);
 });
 
 test("CODEOWNERS governance prefixes stay aligned with policy and docs", () => {

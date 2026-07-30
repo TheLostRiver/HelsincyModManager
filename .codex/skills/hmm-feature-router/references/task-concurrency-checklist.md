@@ -10,12 +10,12 @@
 - Phase code 稳定、已文档化，且不从用户可见文本推断。
 - Large results 使用引用，不嵌入 progress events。
 
-## 边界路由
+## 相关边界
 
-- Rust crate placement、dependency direction、AppState services、repositories 或 DTO/domain mapping changes 也使用 `hmm-rust-crate-boundary`。
-- Command/event DTO、custom protocol 或 frontend/backend contract changes 也使用 `hmm-tauri-command`。
-- React task UI、frontend listeners、typed API wrappers、task state 或 browser-visible workflow changes 也使用 `hmm-frontend-workflow`。
-- File write/delete/backup/restore/install/uninstall/rollback changes 也使用 `hmm-install-safety`。
+- Rust crate placement 或 dependency direction 同时读取 `rust-crate-boundary-checklist.md`。
+- Command/event DTO 或 frontend contract 同时读取 `tauri-command-checklist.md`。
+- React task UI 或 listener 同时读取 `frontend-workflow-checklist.md`。
+- 真实文件写入同时使用 `hmm-install-safety`。
 
 ## Cancellation
 
@@ -42,7 +42,9 @@
 ## 验证
 
 - Rust tests 覆盖 task id propagation 和 phase/status mapping。
-- Rust task/concurrency changes 运行 `cargo clippy --workspace --all-targets -- -D warnings`，除非有文档化原因阻止。
+- 开发期间运行 touched task/concurrency module 的聚焦 tests；中高风险 PR candidate 的 workspace clippy
+  由一次完整 `verify.ps1` 覆盖。
 - Concurrency tests 使用 fake services 或 temp fixtures。
 - 自动测试不要求真实 game directories、真实 saves 或第三方 Mod packages。
-- 如果 UI task behavior 改变，bridge/frontend tests 覆盖 listener matching 和 `hmm-frontend-workflow` 检查。
+- 如果 UI task behavior 改变，bridge/frontend tests 覆盖 listener matching，并按
+  `frontend-workflow-checklist.md` 检查可见工作流。
