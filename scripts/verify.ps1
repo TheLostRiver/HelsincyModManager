@@ -66,6 +66,12 @@ try {
         Assert-RequiredFile -RelativePath "src-tauri/icons/icon.png"
     }
 
+    Write-Host "Running verification entrypoint contract tests..."
+    node --test scripts/verify-entrypoints.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
     if (Test-Path -LiteralPath (Join-Path $repoRoot "package.json")) {
         if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "node_modules"))) {
             Write-Host "node_modules is missing. Run: cmd /c corepack pnpm install --frozen-lockfile" -ForegroundColor Red
@@ -77,6 +83,9 @@ try {
 
         Write-Host "Running frontend lint..."
         Invoke-Pnpm -Arguments @("run", "lint")
+
+        Write-Host "Running frontend tests..."
+        Invoke-Pnpm -Arguments @("run", "test")
 
         Write-Host "Running frontend build..."
         Invoke-Pnpm -Arguments @("run", "build")
@@ -94,6 +103,12 @@ try {
 
         Write-Host "Running Rust check..."
         cargo check --workspace
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+
+        Write-Host "Running Rust clippy..."
+        cargo clippy --workspace --all-targets -- -D warnings
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }
