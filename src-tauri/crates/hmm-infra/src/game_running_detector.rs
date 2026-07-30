@@ -150,6 +150,7 @@ fn pgrep_status_to_game_running_status(success: bool, code: Option<i32>) -> Game
 
 /// 纯匹配逻辑：tasklist CSV 输出是否包含目标映像名（大小写不敏感）。
 /// 不匹配 tasklist 的本地化提示文本（如 "INFO: 没有运行的任务…"）。
+#[cfg(any(target_os = "windows", test))]
 fn tasklist_output_contains_image(output: &str, image_name: &str) -> GameRunningStatus {
     let needle = image_name.to_ascii_lowercase();
     let found = output

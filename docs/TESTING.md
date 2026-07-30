@@ -59,6 +59,18 @@ node --test scripts/check-policy.test.mjs
 该测试使用临时 Git 仓库和人工最小文件；Windows 上会同时执行 Node 与 PowerShell 生产入口，
 其他平台至少验证 CI 使用的 Node 入口。测试不得写入真实凭据、玩家数据或本地私有路径。
 
+修改 `scripts/verify.ps1`、`scripts/verify.sh` 或 `.github/workflows/verify.yml` 时，还需运行统一入口
+契约测试：
+
+```powershell
+node --test scripts/verify-entrypoints.test.mjs
+```
+
+该测试锁定 PowerShell/Bash 的命令顺序、非零退出传播和 CI 对 `verify.sh` 的委托。完整
+`verify.ps1`/`verify.sh` 已包含 frontend tests 与
+`cargo clippy --workspace --all-targets -- -D warnings`；运行完整入口后不需要为这两项再做一次重复的
+全量手工补跑。针对当前改动的聚焦测试仍须单独执行并记录。
+
 Linux / Steam Deck 开发环境可以使用：
 
 ```bash

@@ -19,6 +19,7 @@
   "requiredScripts": [
     "scripts/verify.ps1",
     "scripts/verify.sh",
+    "scripts/verify-entrypoints.test.mjs",
     "scripts/check-policy.ps1",
     "scripts/check-policy.mjs",
     "scripts/check-file-size.ps1",

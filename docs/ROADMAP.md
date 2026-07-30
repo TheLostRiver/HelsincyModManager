@@ -29,9 +29,9 @@
    `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
    T17 范围保持 Windows + MHW:I；Linux/Steam Deck 和更多游戏不进入本轮。T13 与 T17 继续正交，
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
-6. 当前 P0 调整为核心生命周期批量能力。先补齐 CI 质量门禁、T13 sealed batch 语义、CLI
-   逐阶段 observer/Sandbox 写许可与单项生命周期 E2E，再依次实现批量安装、批量卸载、批量真正重装、
-   CLI/Tauri/前端契约和 disposable Windows Sandbox Gate C。
+6. QG-01 已在当前独立 PR 补齐 CI 质量门禁；该 PR 合并后，当前 P0 转为 T13 sealed batch
+   语义，再推进 CLI 逐阶段 observer/Sandbox 写许可与单项生命周期 E2E，并依次实现批量安装、
+   批量卸载、批量真正重装、CLI/Tauri/前端契约和 disposable Windows Sandbox Gate C。
 7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的
    MHW:I catalog/path parser/adapter、InstallPlan/manifest 集成和受控 UI。防具 AR1-AR5 已认证不等于
    完整防具数据或武器链路已完成。

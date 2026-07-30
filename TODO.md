@@ -2,7 +2,8 @@
 
 创建时间：2026-06-27
 基于 HEAD：`7b1f9be` (main)
-最近同步：2026-07-26，基于 `0439f70`（T17 Slice 1/2/3/4A/4B 已合并；Slice 4C 结果、重试、性能与最终加固由 PR #199 交付）
+最近同步：2026-07-30，基于 `62323f1` 与当前 QG-01 PR（Windows/CI 统一质量门禁已实现；
+T13-00 在 QG-01 合并后成为下一任务）
 
 ---
 
@@ -59,8 +60,9 @@
 4. Gate B 后优先级复审选择的 T19“核心 Mod 生命周期产品化加固”已完成；T18 Mod 库分页已由
    PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2/3/4A/4B 已合并，PR #199 交付最后的
    Slice 4C；完整 T17 已具备分页结果、partial success、服务端重试和大批次门禁。
-5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：先完成 QG-01 CI 质量门禁，
-   再执行 T13-00 独立设计与安全评审，然后依次完成 CLI-2A/2B/2C 和 CORE-PREF-01，
+5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：QG-01 CI 质量门禁已在当前
+   独立 PR 实现并等待合并；合并后执行 T13-00 独立设计与安全评审，再依次完成
+   CLI-2A/2B/2C 和 CORE-PREF-01，
    最后按 T13-01 至 T13-08 推进；不能把 T17 import-only 编排当成批量安装实现。
 
 ---
@@ -91,8 +93,8 @@
   -> T17 Slice 4A 外部来源与只读预览 [completed, PR #196；PR #197 补齐 review 遗漏]
   -> T17 Slice 4B selection/decision/start/progress [completed, PR #198]
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
-  -> QG-01 CI 质量门禁 [P0 ready]
-  -> T13-00 批量语义设计 [P0 blocked，等待 QG-01 合并]
+  -> QG-01 CI 质量门禁 [P0 implemented，等待当前 PR CI/review/合并]
+  -> T13-00 批量语义设计 [P0 next ready，QG-01 合并后启动]
   -> CLI-2A/2B/2C Sandbox 自动化基础
   -> CORE-PREF-01 单项 preflight 一致化
   -> T13-01..08 批量安装/卸载/真正重装与 Gate C
@@ -377,7 +379,7 @@ JSON 做不好的需求:
 
 ## P0 — T13: 批量操作
 
-**T13-00 前置**: QG-01 已合并 + T6 + Gate A certified
+**T13-00 前置**: QG-01 合并 + T6 + Gate A certified
 **实现链前置**: T13-00 -> CLI-2A -> CLI-2B -> CLI-2C -> CORE-PREF-01；T13-01 至 T13-08
 继续按自主迭代路线图逐项解锁
 **状态**: P0 待实施；按 T13-00 至 T13-08 独立 task 推进
@@ -593,8 +595,8 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: T17 Slice 4B（selection/decision/start/progress，PR #198）
   -> 已完成: T17 Slice 4C（result/retry/performance/hardening，PR #199）
   -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
-  -> 优先独立开启并完成: QG-01 CI 门禁
-  -> 当前产品 P0: T13-00 批量设计
+  -> 当前合并门禁: QG-01 CI 质量门禁
+  -> 合并后首个产品 P0: T13-00 批量设计
   -> CLI-2A/2B/2C observer、Sandbox 写许可和单项生命周期 E2E
   -> CORE-PREF-01 单项 preflight 一致化
   -> T13-01/02/03/04 BatchPlan、安装、卸载、真正重装
@@ -629,5 +631,5 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
 | T20 浮层动画收敛到共享基元 | P3 | 待评审（下次新增浮层前处理，或出现第三处重复实现时立即处理） | |
-| QG-01 CI 质量门禁 | P0 治理 | Ready：下一独立 task | |
+| QG-01 CI 质量门禁 | P0 治理 | 已实现：等待当前 PR CI/review/合并 | |
 | GOV-01 至 GOV-04 工程治理 | P3 治理 | 已完成 | #211 / #212 / #213 / #214 |
