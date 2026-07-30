@@ -32,8 +32,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 
 任务选择：
 1. 从自主路线图选择第一个状态为 ready 且前置已满足的任务。
-2. QG-01 是当前第一个 ready task；它合并后再从最新 main 启动 T13-00，不把未合并治理分支
-   作为产品 task 的隐式基线。
+2. QG-01 当前处于独立 PR 的 CI/review/合并阶段；它合并后，T13-00 是第一个 ready task。
+   必须从最新 main 启动 T13-00，不把未合并治理分支作为产品 task 的隐式基线。
 3. 不重新实现已标记 completed/certified 的能力；先根据源码和测试确认真实缺口。
 4. 一个 task 使用一个独立 hy/ 分支、独立 worktree 和独立 PR。
 5. 大 task 按路线图切片；每完成一个可独立验证的步骤就立即提交 Git。
@@ -56,9 +56,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 3. 每个可独立验证步骤单独 commit；提交信息保持单一职责。
 4. 运行路线图指定的聚焦验证。
 5. 运行 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1。
-6. 只要当前 CI 尚未覆盖前端测试和 clippy，还必须显式运行：
-   cmd /c corepack pnpm run test
-   cargo clippy --workspace --all-targets -- -D warnings
+6. 统一入口已经覆盖前端 tests 和 workspace clippy；不得跳过其中任一项，也不需要在完整入口通过后
+   重复手工补跑同一组全量命令。
 7. 执行 hmm-review-gate 的 findings-first 本地自审，检查完整 task diff、边界、测试、
    文档同步、禁入产物、secret、私有路径和残余风险。
 8. 有真实 finding 就修复、补测试、提交并从第 4 步重新执行；误报必须记录源码/测试/契约证据。
@@ -124,7 +123,7 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 2. 使用 hmm-review-gate 对完整 PR diff 做一次独立 findings-first 自审。
 3. 对安全、安装/卸载/重装、批量、存档、日志、Tauri contract、并发和游戏 adapter 分别检查边界。
 4. 检查测试是否覆盖成功、失败、取消、回滚/恢复、并发、脱敏和负向 containment。
-5. 运行当前任务的聚焦验证、完整 verify、前端测试和 clippy。
+5. 运行当前任务的聚焦验证和完整 verify，并确认统一入口实际执行前端 tests 和 workspace clippy。
 6. 在 PR 留下“外部机器人 review 缺席，已完成独立自审”的证据摘要，包括 commit SHA 和实际命令。
 7. 仍有任何已确认的真实 bug、测试/契约缺口、Critical/Important finding、未解决线程或
    不确定的高风险行为时禁止合并。
@@ -154,7 +153,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 2. 分支已基于最新目标分支，或 GitHub 明确判定可合并且没有未处理的基线变化。
 3. 所有 required checks 已到 terminal success；没有 pending、failure、cancelled、timed_out、
    action_required、skipped 或 neutral required check。
-4. 当前 commit 已执行任务聚焦测试、完整 verify，以及尚未纳入 CI 的前端测试和 clippy。
+4. 当前 commit 已执行任务聚焦测试和完整 verify；统一入口中的前端 tests 和 workspace clippy
+   均实际通过。
 5. 已完成最后一次 push 后的完整本地自审；所有已确认的真实 bug、测试或契约缺口均已处理，
    Critical/Important finding 为零。
 6. 所有 review thread 和评论已处理；真实 bug 已修复并补测试，误报已有可复核证据。

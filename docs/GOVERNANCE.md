@@ -55,14 +55,21 @@ bash scripts/verify.sh
 
 当前检查：
 
+- PowerShell/Bash 验证入口契约。
 - 统一空白检查。
-- 必需文件和大小写检查
-- 文件大小硬性限制
-- 禁止文件检查
-- Markdown 内链检查
-- 敏感信息扫描
+- 必需文件和大小写检查。
+- 文件大小硬性限制。
+- 禁止文件检查。
+- Markdown 内链检查。
+- 敏感信息扫描。
+- 前端 typecheck、lint、tests 和 build。
+- Rust workspace tests、check 和 `clippy --all-targets -D warnings`。
 
 检查作用域由 `policy/project-policy.json` 的 `checkScopes` 定义。`preCommit` 可以配置局部排除路径，例如 `.codex/**`；`verify` 默认保持全量检查。新增排除目录时优先修改 policy，不应在 hook 或检查脚本里硬编码路径。
+
+QG-01 将前端 tests 和 workspace clippy 纳入两个统一入口。后续 PR 运行完整统一入口后，不需要再把
+这两项作为 CI 缺口额外手工补跑；聚焦测试仍按改动边界执行。当前 Windows 本机观察中，前端 tests
+约增加 3-4 秒，clippy 在缓存命中时约增加 20 秒，冷 worktree 或远端 CI 的实际耗时可能更长。
 
 ### 4. Git Hooks 层
 
@@ -93,7 +100,9 @@ GitHub Actions 工作流：
 .github/workflows/verify.yml
 ```
 
-该工作流在 push 和 pull request 时通过 `bash scripts/verify.sh` 运行 Linux 原生入口。
+该工作流在 push 和 pull request 时通过 `bash scripts/verify.sh` 运行 Linux 原生入口，required job
+名称保持 `Policy and docs`。因此 CI 与 Windows 本地入口共享前端 tests 和 workspace clippy 门禁，
+不在 workflow 中复制命令。
 
 CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分支保护配合。
 

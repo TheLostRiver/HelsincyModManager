@@ -98,6 +98,9 @@ if [[ "${policy_only}" == "true" ]]; then
   exit 0
 fi
 
+echo "Running verification entrypoint contract tests..."
+"${node_bin}" --test scripts/verify-entrypoints.test.mjs
+
 if [[ -f "package.json" ]]; then
   corepack_bin="$(resolve_posix_command corepack)"
 
@@ -112,6 +115,9 @@ if [[ -f "package.json" ]]; then
   echo "Running frontend lint..."
   invoke_pnpm run lint
 
+  echo "Running frontend tests..."
+  invoke_pnpm run test
+
   echo "Running frontend build..."
   invoke_pnpm run build
 else
@@ -124,6 +130,9 @@ if [[ -f "Cargo.toml" ]]; then
 
   echo "Running Rust check..."
   cargo check --workspace
+
+  echo "Running Rust clippy..."
+  cargo clippy --workspace --all-targets -- -D warnings
 else
   echo "Skipping Rust checks: Cargo.toml does not exist yet."
 fi
