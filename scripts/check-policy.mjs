@@ -272,7 +272,7 @@ function checkFileSize(repoRoot, policy, files, scope) {
     const reviewLimit = policy.fileSize?.review?.[category] ?? null;
     const checkMaxLineLength =
       maxLineLength !== null && !pathMatchesAny(normalized, maxLineLengthExcludeRegexes);
-    if (limit === null && !checkMaxLineLength) {
+    if (limit === null && reviewLimit === null && !checkMaxLineLength) {
       continue;
     }
 

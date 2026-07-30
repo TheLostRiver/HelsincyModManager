@@ -3,61 +3,64 @@ name: hmm-install-safety
 description: Use for HMM work that can affect player data or real filesystem state, including Mod import, archive extraction, staging, path validation, install plans, game directory writes, overwrite/delete, manifest, backup, uninstall, rollback/recovery, save backup/restore, Steam save-account selection, audit logging, and their safety tests. Do not trigger for ordinary UI, read-only queries, or unrelated repository work.
 ---
 
-# HMM Install Safety
+# HMM 安装安全
 
-Protect player data while keeping the workflow focused on the touched risk.
+保护玩家数据，同时只加载当前风险需要的规则。
 
-## Load Context
+## 加载上下文
 
-1. Read `AGENTS.md`, current implementation/tests, `SECURITY.md`, and the relevant `docs/TESTING.md` section.
-2. Read `docs/LOGGING.md` when the flow writes, deletes, backs up, restores, or changes evidence health.
-3. Read `references/install-safety-checklist.md`.
-4. Use `../hmm-feature-router/references/safety-boundary.md` for the detailed project safety map.
-5. Load router checklists for Tauri, Rust, task/concurrency, or frontend only when those boundaries are touched.
+1. 阅读 `AGENTS.md`、当前实现和测试、`SECURITY.md`，以及 `docs/TESTING.md` 的相关章节。
+2. 流程会写入、删除、备份、恢复或改变 evidence health 时，读取 `docs/LOGGING.md`。
+3. 读取 `references/install-safety-checklist.md`。
+4. 需要完整项目安全边界时，读取 `../hmm-feature-router/references/safety-boundary.md`。
+5. 仅在触及对应边界时加载 router 的 Tauri、Rust、task/concurrency 或 frontend checklist。
 
-## Preserve The Safety Chain
+## 保留安全事实链
 
 ```text
 sealed input
   -> analyze / preflight
   -> InstallPlan
-  -> backup
-  -> commit
-  -> manifest
-  -> rollback / recovery
+  -> 持久化 Planned recovery intent
+  -> 读取 source/target 并建立 backup
+  -> 持久化 Committing rollback facts
+  -> commit 玩家文件
+  -> 原子保存最终 manifest
+success -> 标记 Completed 并清理 recovery
+failure -> rollback；rollback 失败则保留 RollbackRequired
 ```
 
-- Keep imported source packages read-only; write derived variants only to disposable staging.
-- Reject parent traversal, absolute paths, links/junction escapes, case-insensitive collisions, suspicious types,
-  archive bombs, and any target outside the approved root.
-- Back up existing targets before overwrite. Drive uninstall from manifest/recovery facts, never package guesses.
-- Keep commit short and serialized per game/profile. Do scan/hash/extract/analyze outside the write lock.
-- Treat task/audit evidence failure as an explicit degraded result; never falsify player-file rollback.
-- Keep save backups outside the game install directory. Record a backup manifest and validate source, target,
-  selected Steam account/profile, game state, and confirmation before restore.
-- Redact local paths, usernames, Steam IDs, tokens, save contents, and third-party Mod contents from logs and output.
+- 原始导入包保持只读；派生 variant 只写入可丢弃 staging。
+- 拒绝父级穿越、绝对路径、link/junction 逃逸、大小写不敏感碰撞、可疑类型、archive bomb，以及任何
+  超出批准 root 的 target。
+- 覆盖前备份已有 target。卸载以 manifest/recovery 事实为准，不根据 package 猜测。
+- Commit 保持短小并按 game/profile 串行；scan/hash/extract/analyze 放在 write lock 外。
+- Task/audit 证据失败必须成为显式 degraded result，不能伪造玩家文件 rollback。
+- 存档备份放在游戏安装目录外，写入 backup manifest；restore 前验证 source、target、用户选择的
+  Steam account/profile、游戏状态和确认。
+- 日志与输出必须脱敏本地路径、用户名、Steam ID、token、存档内容和第三方 Mod 内容。
 
-## Stop Conditions
+## 硬性停止条件
 
-- Do not add a direct-copy, direct-delete, or direct-overwrite path outside the install executor.
-- Do not expose a broad filesystem Tauri or CLI command.
-- Do not implement real game writes before logging/redaction, task identity, manifest, backup, and recovery exist.
-- Do not restore saves without validated containment, explicit confirmation, and a backup manifest.
-- Do not use real game/save directories or third-party Mod packages in automated tests.
-- Do not put MHW:I path grammar or retarget rules in generic core or frontend code.
+- 不要在 install executor 外新增直接复制、删除或覆盖路径。
+- 不要暴露宽泛文件系统 Tauri 或 CLI command。
+- Logging/redaction、task identity、manifest、backup 和 recovery 完成前，不要实现真实游戏写入。
+- 没有 containment 验证、明确确认和 backup manifest 时，不要恢复存档。
+- 自动测试不得使用真实游戏/存档目录或第三方 Mod 包。
+- 不要把 MHW:I 路径语法或 retarget 规则放进 generic core 或 frontend。
 
-## Focused Tests
+## 聚焦测试
 
-Cover every changed risk with temp/fake fixtures:
+使用 temp/fake fixture 覆盖每个变更风险：
 
-- archive traversal, absolute path, link/junction, collision, size and containment rejection;
-- final target normalization, conflict detection, stale plan/binding rejection, and preflight decisions;
-- backup-before-overwrite, manifest contents, rollback/restart recovery, and unknown-file preservation;
-- uninstall and true reinstall retained/replaced/added/stale behavior;
-- save-account selection, backup manifest, unwritable destination, retention, restore validation and confirmation;
-- cancellation safe points, per-game/profile serialization, and task id propagation;
-- Audit Log coverage, redaction, and explicit evidence-health degradation.
+- archive traversal、绝对路径、link/junction、碰撞、大小和 containment 拒绝；
+- 最终 target normalization、冲突、stale plan/binding 拒绝和 preflight 决策；
+- 覆盖前备份、manifest 内容、rollback/restart recovery 和未知文件保留；
+- 卸载和真正重装的 retained/replaced/added/stale 行为；
+- 存档账号选择、backup manifest、不可写目标、retention、restore 验证和确认；
+- cancellation safe point、同 game/profile 串行和 task id 传播；
+- Audit Log 覆盖、脱敏和显式 evidence-health degradation。
 
-Run focused tests during iteration. Because these paths are high risk, run one full `scripts/verify.ps1` on the PR
-candidate and use `hmm-review-gate` before publishing. Small review fixes require another full run only when they
-change the safety boundary or invalidate the previous result; required CI still validates the final commit.
+开发期间运行聚焦测试。由于这些路径是高风险，PR candidate 运行一次完整 `scripts/verify.ps1`，发布前
+使用 `hmm-review-gate`。Review 小修仅在改变安全边界或使旧结果失效时重复完整验证；最终 commit 仍由
+required CI 验证。

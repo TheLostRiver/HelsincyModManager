@@ -55,10 +55,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-whitespace.p
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
 ```
 
+项目 skill 结构验证：
+
+```powershell
+$skillValidator = Join-Path $env:USERPROFILE ".codex\skills\.system\skill-creator\scripts\quick_validate.py"
+python $skillValidator .codex\skills\hmm-feature-router
+python $skillValidator .codex\skills\hmm-install-safety
+python $skillValidator .codex\skills\hmm-review-gate
+```
+
 ## 按改动类型
 
 - 仅文档：whitespace、doc links；涉及治理文件时跑 policy/secret 等聚焦检查，并在首次 PR ready 前按
   风险决定是否运行统一验证。
+- `.codex/skills`：运行 `skill-creator` 的 `quick_validate.py` 验证每个变更 skill，再按治理风险补
+  whitespace、doc links、policy、secret 或统一验证。
 - 前端 UI：选择 typecheck、lint、相关 test 或 smoke；bundling/asset/build config 变化时补 build。
 - Tauri command/DTO：运行 touched command/DTO 的 Rust contract tests；API wrapper 变化时补前端检查。
 - Rust domain/app/infra/adapter：运行 touched crate/module tests；共享行为或依赖边界变化时在候选阶段

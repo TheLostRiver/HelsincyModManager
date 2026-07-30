@@ -68,9 +68,7 @@ function createPolicyFixture(
       review: {
         text: reviewLineLimit,
       },
-      block: {
-        text: blockLineLimit,
-      },
+      block: blockLineLimit === null ? {} : { text: blockLineLimit },
       extensions: {
         text: [".txt", ".lock", ".yaml"],
       },
@@ -303,6 +301,23 @@ test("file size review threshold warns without failing", (t) => {
   assertPolicyResult(repoRoot, {
     succeeds: true,
     message: /src\/review\.txt exceeds review line threshold: 4 \/ 3/,
+  });
+});
+
+test("file size review-only category warns without other line checks", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: null,
+    reviewLineLimit: 3,
+    blockLineLimit: null,
+    files: {
+      "src/review-only.txt": "x\n".repeat(4),
+    },
+  });
+
+  assertPolicyResult(repoRoot, {
+    succeeds: true,
+    message: /src\/review-only\.txt exceeds review line threshold: 4 \/ 3/,
   });
 });
 
