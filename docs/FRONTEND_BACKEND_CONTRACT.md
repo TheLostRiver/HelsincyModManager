@@ -500,7 +500,8 @@ binding identity、revision、internal id、相对/绝对路径、staging 或 ma
 `start_retarget_install_task` 继续使用 `TaskKind::Install`、`hmm://task-progress` 和既有
 game/profile 写锁。新增 phase 为 `install.retarget.queued`、`install.retarget.plan.building`、
 `install.retarget.commit.processing`、`install.retarget.completed`、`install.retarget.failed`；失败事件的
-`error` 使用 `install_retarget_failed:<phase>`。commit 必须继续经过 Audit Log、backup、manifest、
+`error` 使用 `install_retarget_failed:<phase>`，其中 `prerequisite` 表示前置被阻断或 preview 后
+decision 漂移。commit 必须继续经过 Audit Log、backup、manifest、
 rollback/recovery 链路。原始导入包只读，retarget staging 是可清理、可重建的临时输入，不是事实来源。
 
 ## 长任务契约
@@ -579,7 +580,6 @@ TaskProgressEventDto
 | `install` | `install.reinstall.rollback.processing` | 同步失败后正在恢复 pre-reinstall revision |
 | `install` | `install.reinstall.completed` | candidate manifest entry set 已固化并完成受控收尾 |
 | `install` | `install.reinstall.failed` | 重装失败，或已越过 commit point 但仍需受控 reconciliation |
-| `install` | `install.reinstall.cancelled` | 任务在 queued/prepare 安全点取消；commit 开始后不抢占式中断 |
 | `install` | `install.recovery.queued` | 恢复动作任务已登记，等待后续执行 |
 | `install` | `install.recovery.planning` | 后端正在等待写锁并准备受控恢复动作 |
 | `install` | `install.recovery.processing` | 后端正在执行受写锁保护的恢复动作 |
@@ -605,6 +605,9 @@ TaskProgressEventDto
   专用终态；前端必须等待同一 task 的 `external_import.import.cancelled`。failed/cancelled 的聚合计数不能用于
   推断 partial success。
 - 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。T17 scan 在目录/XML/hash 阶段可取消；Slice 3 import 在物化、sandbox 分析和 chunk 间安全点可取消，已成功项保留、未开始项以分页结果表达。写入 preview 或 batch terminal state 的短 SQLite 事务进入取消屏障后以后端终态为准。通用 `mod_import.cancelled` 事件可能先由 `cancel_task` 发出，runner 随后会发送带同一 `taskId` 的 `external_import.scan.cancelled` 或 `external_import.import.cancelled` 终态。
+- install/uninstall/reinstall/recovery/retarget 共用 `install.cancelled` 作为 transport 发出的取消 terminal。runner
+  在观察到 `TaskManager` 的取消事实后只停止后续安全阶段，不再发送第二个 cancelled；commit 取消屏障
+  生效后以后端完成或失败终态为准。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 
@@ -640,7 +643,7 @@ TaskProgressEventDto
 - 对真实目录只返回必要 `pathLabel`，完整路径只在明确需要时返回。
 - `auto_detect_game_directory(gameId)` 只接收稳定 `gameId`，由后端复用 Steam discovery、adapter 校验与 `save_game_directory` 持久化有效候选；返回稳定 `outcome`、状态摘要、错误码和候选数量，不返回自动保存过程中使用的真实目录。
 
-`get_game_prerequisite_status(gameId)` 是只读前置依赖诊断入口。前端只提交稳定 `gameId`；后端先读取已保存的游戏目录配置，再在当前已配置游戏目录内检查受控规则，不接受测试目录、任意本地路径、archive 路径或前端拼接的文件名。当前第一版只覆盖 `Stracker's Loader` 和 `CRCBypass`，`loader-config.json` 只校验 `enablePluginLoader = true`，不做自动安装、自动修复或 preflight 阻断。
+`get_game_prerequisite_status(gameId)` 是只读前置依赖诊断入口。前端只提交稳定 `gameId`；后端先读取已保存的游戏目录配置，再在当前已配置游戏目录内检查受控规则，不接受测试目录、任意本地路径、archive 路径或前端拼接的文件名。当前第一版只覆盖 `Stracker's Loader` 和 `CRCBypass`，`loader-config.json` 只校验 `enablePluginLoader = true`，不做自动安装或自动修复。单项 install/reinstall lifecycle 不再自行解释这份展示 DTO，而是与诊断入口复用同一个 app-level prerequisite decision provider。
 
 返回 DTO 形状：
 
@@ -688,16 +691,43 @@ type GamePrerequisiteReportDto = {
   errorCode: GameSetupErrorCode | null;
   message: string | null;
 };
+
+type GamePrerequisiteDecisionStatus = "ready" | "warning" | "blocked";
+
+type GamePrerequisiteDecisionCode =
+  | "game_not_configured"
+  | "game_directory_invalid"
+  | "rules_unavailable"
+  | "rules_corrupted"
+  | "storage_unavailable"
+  | "storage_corrupted"
+  | "unsupported_game"
+  | "missing_required_file"
+  | "signature_unverified"
+  | "config_read_failed"
+  | "config_invalid_json"
+  | "config_field_mismatch"
+  | "prerequisite_decision_invalid";
+
+type GamePrerequisiteDecisionDto = {
+  status: GamePrerequisiteDecisionStatus;
+  rulesVersion: number | null;
+  codes: GamePrerequisiteDecisionCode[];
+};
 ```
 
 边界：
 
 - `not_configured` 表示当前游戏尚未保存有效目录；前端只做空状态提示。
 - `game_directory_invalid` 表示已保存目录重新校验失败；前端可展示稳定 `errorCode` 和用户可读 `message`，但不能把它解释为前置缺失。
-- `rules_unavailable` 表示本地前置规则文件不可读或已损坏；前端只能做只读告警，不得降级为“已验证通过”。
+- `rules_unavailable` 表示本地前置规则文件不可读或已损坏；诊断页显示只读告警，install/reinstall
+  lifecycle decision 必须 fail closed，不得降级为“已验证通过”。
 - `ready` 表示规则已加载并完成检查；`summaryStatus` 只用于展示聚合诊断，逐项判断应基于 `items[].status` 和 `issues[].code`。
-- `installed_unverified` 表示检测到文件存在但签名未命中当前已知规则集；这是 warning，不是阻断或自动修复信号。
+- `installed_unverified` 表示检测到文件存在但签名未命中当前已知规则集；lifecycle decision 必须显式
+  返回 `warning`，可以继续但不能在 UI 中显示为“预检通过”。
 - `issues[].path` 只能返回脱敏后的相对路径片段，例如 `dinput8.dll`、`loader-config.json`、`nativePC/plugins/QuestLoader.dll`；DTO、错误消息和日志都不能暴露绝对盘符、用户名或真实游戏目录。
+- `GamePrerequisiteDecisionDto` 只用于 lifecycle preview/confirm。它不包含 `items`、issue path、
+  display name、message 或配置正文；前端只按稳定 status/code 展示，不重算 adapter 规则。
 
 ### 2. `replacement / retarget`
 
@@ -722,6 +752,11 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
 - 返回 preview 时可展示最终相对路径摘要，但前端不能自行生成路径。
 - initial preview/start 只允许 recovery status 严格为 `not_installed`；retarget reinstall preview/start 只允许
   `installed`，并复用真正重装的 plan token、锁、backup、manifest、rollback/recovery 与 task phases。
+- initial preview 顶层返回与普通 install/reinstall 同源的 `prerequisiteDecision`，nested
+  `installPlan` 仍是纯计划 DTO，不伪造前置事实。`blocked` 禁止确认，`warning` 可显式继续；
+  start runner 在 materialize staging 前读取 decision，并在获取 game/profile 写锁前完成最终 provider
+  重验和 status、stable codes、rules version 比较。写锁内不读取 prerequisite 规则或做文件 hash；
+  blocked 或漂移必须在 commit/manifest/game write 前拒绝。
 
 ### 3. Profile 管理
 
@@ -1057,7 +1092,14 @@ cancel_task(taskId)
 - `preview_install_plan` 的 `allowedTargetRoots` 和 `files[].targetPath` 必须来自后端分析/adapter 结果或测试夹具；正式前端 UI 不得根据游戏名、Mod 内容或用户输入自行拼接最终安装路径。后续 package analyzer / game adapter 接入后，应优先让前端只提交后端生成的 `modId`、`packageId`、`profileId` 或 `targetId`。
 - `preview_imported_mod_install_plan` 是正式前端优先使用的后端驱动预览入口。前端只提交 `gameId`、`modId` 和 layer 摘要；后端通过已持久化导入记录定位受控 sandbox，只读枚举包内普通文件，并使用对应 game adapter 声明的允许安装根生成 `InstallPlan` 输入。
 - `preview_imported_mod_install_plan` 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径或游戏目录路径；DTO 和错误 message 不应包含完整本地路径或第三方 Mod 内容。
+- `preview_imported_mod_install_plan` 返回 flattened `InstallPlanPreviewDto` 加
+  `prerequisiteDecision`。required missing、规则不可用/损坏、目录/存储不可用或 decision 无法证明时
+  为 `blocked`；`signature_unverified` 为 `warning`。通用 `preview_install_plan` 没有游戏上下文，
+  保持只返回纯计划，不伪造 prerequisite decision。
 - `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
+- `start_install_task` 在锁外构建 plan 和 prerequisite decision，并在获取写锁前立即重读同一个
+  provider。blocked 或 status/codes/rulesVersion 漂移时必须在 commit、manifest 和游戏目录写入前
+  fail closed；锁内只重验已封存 plan/token、write admission 和当前写入状态。
 - `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。失败事件的 `error` 使用稳定前缀 `install_failed:<phase>`，当前 phase 可为 `planning`、`lock`、`commit`、`complete`、`recovery_pending` 或 `recovery_unavailable`；后两者表示在 commit 前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
 - `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。
 - `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
@@ -1069,10 +1111,24 @@ cancel_task(taskId)
 - `start_import_mod_revision_task` 接收 `archivePath` 和既有 `modId`，复用普通导入的安全解压、取消和持久化链路，并返回 `TaskStartedDto { taskId, kind: "mod_import", status: "queued" }`。archive path 只允许出现在这个 picker 驱动的导入入口；`get_mod_revisions`、`preview_reinstall_plan` 和 `start_reinstall_task` 均不接受 archive/source/sandbox/game-root/target/backup/manifest path。
 - `get_mod_revisions` 返回一张 logical Mod 的 `originRevisionId`、`displayRevisionId` 和全部受其所有的 revision ids。origin/display revision 的权威来源是 revision catalog；installed revision 的权威来源始终是当前 profile 的 completed manifest entry set，不能从 display revision、导入顺序、任务内存或“最新版本”推断。
 - `preview_reinstall_plan` 是只读入口。后端按请求的 `candidateRevisionId` 校验 owner/readiness，并使用该 revision 自己的 `packageId` 定位受控 sandbox，而不是使用当前 display revision projection；随后从 manifest、当前 target 摘要、original backup 和 durable reinstall transaction 构建 strict preview union。该命令不写 game/manifest/recovery，不返回 path、backup/snapshot ref、hash、manifest/source content 或第三方 Mod 内容。
-- `ReinstallPlanPreviewDto.status` 是判别字段：`ready` 必须同时返回非空 installed/candidate revision、非空 `planToken`、四类计数和空 reasons；`blocked` 必须返回 `planToken: null`，revision 可以为 null。`candidate_not_found` 必须返回 `candidateRevision: null`，前端不得伪造 summary 或提交 token。
+- `ReinstallPlanPreviewDto.status` 是判别字段：两个分支都必须返回 `prerequisiteDecision`。`ready`
+  必须同时返回非空 installed/candidate revision、非空 `planToken`、四类计数和空 reasons；
+  `blocked` 必须返回 `planToken: null`，revision 可以为 null。`candidate_not_found` 必须返回
+  `candidateRevision: null`，前端不得伪造 summary 或提交 token。
 - `start_reinstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，先发送 `install.reinstall.queued`，后台 runner 再以同一 taskId 发送 `install.reinstall.*`。prepare/source/plan 在 write lock 外执行；commit 与 install/uninstall/controlled recovery 共享同一 `gameId/profileId` 写锁、reinstall recovery admission 和 Audit writer。
-- `start_reinstall_task` 的 token 对前端是不透明值。后端在写锁内重新校验 game instance 未在 prepare 后改变、token、candidate ownership/source、旧 manifest、target/backup facts，并确认该 profile 没有任一 active reinstall transaction；不匹配时 fail closed。失败 event 使用 `install_reinstall_failed:<phase>`，phase 为 `planning`、`preflight`、`lock`、`backup`、`commit`、`manifest`、`post_commit`、`rollback` 或 `complete`。`post_commit` 表示 candidate manifest 已越过 commit point，不能伪装为 rolled back；后续由受控 reconciliation 收敛。
-- 重装 preview blocking reason 的稳定值为 `not_installed`、`candidate_not_found`、`candidate_not_ready`、`candidate_owner_mismatch`、`candidate_already_installed`、`manifest_state_unsafe`、`installed_revision_unknown`、`source_unavailable`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing`、`backup_read_failed`、`plan_conflict`、`cross_mod_target_conflict` 和预留的 `preview_stale`。command error 负责输入/用例不可用，reason 只负责可展示预检结论。
+- `start_reinstall_task` 的 token 对前端是不透明值。完整 prerequisite provider 重验在获取写锁前完成；
+  后端在写锁内重新校验 game instance 未在 prepare 后改变、token、candidate ownership/source、旧
+  manifest、target/backup facts，并确认该 profile 没有任一 active reinstall transaction；不匹配时
+  fail closed。失败 event 使用 `install_reinstall_failed:<phase>`，phase 为 `planning`、`preflight`、
+  `lock`、`backup`、`commit`、`manifest`、`post_commit`、`rollback` 或 `complete`。`post_commit`
+  表示 candidate manifest 已越过 commit point，不能伪装为 rolled back；后续由受控 reconciliation
+  收敛。
+- 重装 preview blocking reason 的稳定值为 `prerequisites_blocked`、`not_installed`、
+  `candidate_not_found`、`candidate_not_ready`、`candidate_owner_mismatch`、
+  `candidate_already_installed`、`manifest_state_unsafe`、`installed_revision_unknown`、
+  `source_unavailable`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing`、
+  `backup_read_failed`、`plan_conflict`、`cross_mod_target_conflict` 和预留的 `preview_stale`。
+  command error 负责输入/用例不可用，reason 只负责可展示预检结论。
 - Task 7 落地上述 Rust/Tauri contract 与 AppState composition；Task 8 已接入 feature-local TypeScript wrapper、显式 logical Mod revision 导入、revision 选择、strict preview/confirm 和按 taskId 监听的真正重装 UI。
 - 安装提交写入 manifest entry 时会记录后端内部使用的 `installed_file` 摘要（写入内容 size + SHA-256）。该摘要不进入当前前端 DTO，不暴露目标路径、backup ref、manifest path、sandbox/cache path 或文件内容；后续卸载/恢复扫描可用它判断目标文件是否仍与受控安装事实一致。
 - `get_install_manifest_status` 是只读安装状态摘要入口。前端提交 `profileId`、`modIds`，并可以提交 `gameId`。传入 `gameId` 时，后端复用只读 recovery scan，在同一 `gameId/profileId` 写锁下读取受控 manifest、目标文件摘要和 backup 是否存在，并按 `modId` 返回 `status`、`managedFileCount` 和 `backupCount`；未传 `gameId` 时，后端保留旧的 manifest-only 查询，只从受控 manifest 仓储读取对应 profile 的 manifest。该 command 不接受 `targetPath`、manifest root/path、backup root/ref、sandbox/cache 路径、导入包路径或游戏目录路径。
@@ -1172,6 +1228,7 @@ type ReinstallTargetCountsDto = {
 };
 
 type ReinstallBlockingReasonDto =
+  | "prerequisites_blocked"
   | "not_installed"
   | "candidate_not_found"
   | "candidate_not_ready"
@@ -1192,6 +1249,7 @@ type ReinstallBlockingReasonDto =
 type ReinstallPlanPreviewDto =
   | {
       status: "ready";
+      prerequisiteDecision: GamePrerequisiteDecisionDto;
       planToken: string;
       installedRevision: ModRevisionSummaryDto;
       candidateRevision: ModRevisionSummaryDto;
@@ -1200,6 +1258,7 @@ type ReinstallPlanPreviewDto =
     }
   | {
       status: "blocked";
+      prerequisiteDecision: GamePrerequisiteDecisionDto;
       planToken: null;
       installedRevision: ModRevisionSummaryDto | null;
       candidateRevision: ModRevisionSummaryDto | null;
@@ -1329,6 +1388,10 @@ type InstallPlanPreviewDto = {
       layerPriority: number;
     }>;
   }>;
+};
+
+type ImportedModInstallPreflightDto = InstallPlanPreviewDto & {
+  prerequisiteDecision: GamePrerequisiteDecisionDto;
 };
 ```
 

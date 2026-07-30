@@ -1,4 +1,4 @@
-use crate::dto::InstallPlanPreviewDto;
+use crate::dto::{GamePrerequisiteDecisionDto, InstallPlanPreviewDto};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -128,11 +128,13 @@ pub struct InitialRetargetInstallPreviewDto {
     pub actions: Vec<RetargetActionPreviewDto>,
     pub warnings: Vec<ReplacementWarningDto>,
     pub install_plan: InstallPlanPreviewDto,
+    pub prerequisite_decision: GamePrerequisiteDecisionDto,
 }
 
 #[cfg(test)]
 mod replacement_dto_tests {
     use super::*;
+    use crate::dto::{GamePrerequisiteDecisionCodeDto, GamePrerequisiteDecisionStatusDto};
     use serde_json::json;
 
     #[test]
@@ -292,5 +294,54 @@ mod replacement_dto_tests {
             }))
             .expect("profile is optional while setup is unavailable");
         assert_eq!(without_profile.profile_id, None);
+    }
+
+    #[test]
+    fn initial_retarget_preview_serializes_prerequisite_decision_at_the_preflight_boundary() {
+        let dto = InitialRetargetInstallPreviewDto {
+            analysis: ReplacementAnalysisDto {
+                game_id: "mhw".to_owned(),
+                installed_target_id: None,
+                retargetable: true,
+                matched_asset_count: 1,
+                sources: Vec::new(),
+                warnings: Vec::new(),
+            },
+            target: ReplacementTargetDto {
+                id: "mhw:armor:fatalis-alpha".to_owned(),
+                game_id: "mhw".to_owned(),
+                target_type: "armor".to_owned(),
+                display_name: "Target".to_owned(),
+                secondary_name: None,
+                aliases: Vec::new(),
+                internal_id: "pl129_0000".to_owned(),
+                metadata: BTreeMap::new(),
+            },
+            actions: Vec::new(),
+            warnings: Vec::new(),
+            install_plan: InstallPlanPreviewDto {
+                actions: Vec::new(),
+                conflicts: Vec::new(),
+                has_blocking_conflicts: false,
+            },
+            prerequisite_decision: GamePrerequisiteDecisionDto {
+                status: GamePrerequisiteDecisionStatusDto::Warning,
+                rules_version: Some(1),
+                codes: vec![GamePrerequisiteDecisionCodeDto::SignatureUnverified],
+            },
+        };
+
+        let value = serde_json::to_value(dto).expect("serialize initial retarget preview");
+        assert_eq!(value["prerequisiteDecision"]["status"], "warning");
+        assert_eq!(value["prerequisiteDecision"]["rulesVersion"], 1);
+        assert_eq!(
+            value["prerequisiteDecision"]["codes"],
+            json!(["signature_unverified"])
+        );
+        assert!(
+            value["installPlan"].get("prerequisiteDecision").is_none(),
+            "generic nested InstallPlan must not fabricate lifecycle prerequisite facts"
+        );
+        assert!(!value.to_string().contains(r"C:\Users\fixture"));
     }
 }

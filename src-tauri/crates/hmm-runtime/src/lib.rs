@@ -7,7 +7,9 @@ mod diagnostics_automation;
 mod external_import;
 mod game_automation;
 mod install_automation;
+mod lifecycle_automation;
 mod mod_library;
+mod sandbox_write;
 mod uninstall;
 
 pub use backup_automation::{
@@ -28,25 +30,28 @@ pub use game_automation::{
     GameValidationSnapshot, GameValidationState, ReadOnlyGameAutomation,
     ReadOnlyGameAutomationError,
 };
-pub use hmm_app::TaskProgressEvent;
+pub use hmm_app::{TaskKind, TaskProgressEvent, TaskProgressObserver, TaskStatus};
 pub use install_automation::{
     InstallPlanActionSnapshot, InstallPlanConflictSnapshot, InstallPlanSnapshot,
     InstallRecoveryBlockReasonSnapshot, InstallRecoveryIssueSnapshot, InstallRecoveryItemSnapshot,
     InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot, InstallStatusItemSnapshot,
     InstallStatusSnapshot, ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError,
-    ReadOnlyInstallRecoveryAction,
+    ReadOnlyInstallRecoveryAction, ReinstallBlockingReasonSnapshot, ReinstallPlanSnapshot,
+    UninstallPlanSnapshot,
+};
+pub use lifecycle_automation::{
+    LifecycleTaskCancellationHandle, LifecycleTaskOutcome, SandboxLifecycleAutomation,
+    SandboxLifecycleAutomationError,
+};
+pub use sandbox_write::{
+    SandboxWriteAdmission, SandboxWriteCapability, SandboxWriteCapabilityError, SandboxWriteRoots,
+    SANDBOX_MARKER_FILE_NAME, SANDBOX_MARKER_SCHEMA,
 };
 
 pub const APP_IDENTIFIER: &str = "dev.helsincy.modmanager";
 
 pub fn production_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|path| path.join(APP_IDENTIFIER))
-}
-
-pub trait TaskProgressObserver: Send + Sync {
-    type Error;
-
-    fn observe(&self, event: &TaskProgressEvent) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,9 +100,9 @@ impl CliWriteCommandPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuntimeEnvironment {
-    Production,
-    Sandbox { data_dir: PathBuf },
+pub struct RuntimeEnvironment {
+    kind: RuntimeEnvironmentKind,
+    sandbox_data_dir: Option<PathBuf>,
 }
 
 impl RuntimeEnvironment {
@@ -106,7 +111,10 @@ impl RuntimeEnvironment {
         data_dir: Option<PathBuf>,
     ) -> Result<Self, RuntimeEnvironmentError> {
         match (kind, data_dir) {
-            (RuntimeEnvironmentKind::Production, None) => Ok(Self::Production),
+            (RuntimeEnvironmentKind::Production, None) => Ok(Self {
+                kind: RuntimeEnvironmentKind::Production,
+                sandbox_data_dir: None,
+            }),
             (RuntimeEnvironmentKind::Production, Some(_)) => {
                 Err(RuntimeEnvironmentError::ProductionDataDirForbidden)
             }
@@ -119,35 +127,43 @@ impl RuntimeEnvironment {
 
     pub fn sandbox(data_dir: PathBuf) -> Result<Self, RuntimeEnvironmentError> {
         validate_sandbox_data_dir(&data_dir)?;
-        Ok(Self::Sandbox { data_dir })
+        Ok(Self {
+            kind: RuntimeEnvironmentKind::Sandbox,
+            sandbox_data_dir: Some(data_dir),
+        })
     }
 
     pub const fn kind(&self) -> RuntimeEnvironmentKind {
-        match self {
-            Self::Production => RuntimeEnvironmentKind::Production,
-            Self::Sandbox { .. } => RuntimeEnvironmentKind::Sandbox,
-        }
+        self.kind
     }
 
     pub const fn data_root_mode(&self) -> RuntimeDataRootMode {
-        match self {
-            Self::Production => RuntimeDataRootMode::System,
-            Self::Sandbox { .. } => RuntimeDataRootMode::ExplicitSandbox,
+        match self.kind {
+            RuntimeEnvironmentKind::Production => RuntimeDataRootMode::System,
+            RuntimeEnvironmentKind::Sandbox => RuntimeDataRootMode::ExplicitSandbox,
         }
     }
 
     pub const fn cli_write_command_policy(&self) -> CliWriteCommandPolicy {
-        match self {
-            Self::Production => CliWriteCommandPolicy::Disabled,
-            Self::Sandbox { .. } => CliWriteCommandPolicy::SandboxOnly,
+        match self.kind {
+            RuntimeEnvironmentKind::Production => CliWriteCommandPolicy::Disabled,
+            RuntimeEnvironmentKind::Sandbox => CliWriteCommandPolicy::SandboxOnly,
         }
     }
 
     pub fn sandbox_data_dir(&self) -> Option<&Path> {
-        match self {
-            Self::Production => None,
-            Self::Sandbox { data_dir } => Some(data_dir.as_path()),
-        }
+        self.sandbox_data_dir.as_deref()
+    }
+
+    /// Acquires the process-local write capability for a validated Sandbox root.
+    ///
+    /// Production deliberately has no construction path for this capability. The marker is
+    /// created only when a future Sandbox write command explicitly requests admission; read-only
+    /// commands and `runtime status` never initialize it.
+    pub fn acquire_sandbox_write_capability(
+        &self,
+    ) -> Result<SandboxWriteCapability, SandboxWriteCapabilityError> {
+        SandboxWriteCapability::acquire(self)
     }
 }
 

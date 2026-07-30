@@ -1,25 +1,36 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
 use crate::{production_app_data_dir, RuntimeEnvironment};
 use hmm_app::{
-    BuildImportedModInstallPlanRequest, InstallManifestQueryRequest, InstallManifestQueryService,
-    InstallManifestStatus, InstallPlanningError, InstallPlanningService,
-    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason, InstallRecoveryActionKind,
-    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
-    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
+    BuildImportedModInstallPlanRequest, GamePrerequisiteDecision, GamePrerequisiteDecisionProvider,
+    GameSetupService, ImportedModInstallPreflightService, InstallManifestQueryRequest,
+    InstallManifestQueryService, InstallManifestStatus, InstallPlanningError,
+    InstallPlanningService, InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
+    InstallRecoveryActionKind, InstallRecoveryActionPreview, InstallRecoveryActionPreviewRequest,
+    InstallRecoveryActionPreviewService, InstallRecoveryIssue, InstallRecoveryScanRequest,
+    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
+    ReinstallBlockingReason, ReinstallCandidateSourceReader, ReinstallPlanPreview,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreviewStatus,
 };
-use hmm_core::{FileLayer, GameId, GameInstance, InstallTargetPath, ModId, ProfileId};
+use hmm_core::{
+    FileLayer, GameId, GameInstance, InstallManifest, InstallRecoveryRecord, InstallTargetPath,
+    ModId, ModRevisionId, PackageFileId, ProfileId, ReinstallRecoveryTransaction,
+};
 use hmm_games_mhw::MonsterHunterWorldAdapter;
 use hmm_infra::{
-    FileSystemInstallBackupStore, FileSystemInstallGameFileSystem, JsonGameConfigRepository,
-    JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
-    JsonModImportResultRepository, JsonReinstallRecoveryTransactionRepository,
-    ReadOnlyJsonGamePrerequisiteRuleRepository, SandboxModPackageInstallFileScanner,
+    FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
+    FileSystemInstallSourceFileReader, JsonGameConfigRepository, JsonInstallManifestRepository,
+    JsonInstallRecoveryRecordRepository, JsonModImportResultRepository,
+    JsonReinstallRecoveryTransactionRepository, PlatformSteamRootProvider,
+    ReadOnlyJsonGamePrerequisiteRuleRepository, RealGameDirectoryProbeFactory,
+    SandboxModPackageInstallFileScanner, SteamGameDiscoveryService, SystemClock,
     TaskScopedModImportSandboxLocator,
 };
 use hmm_ports::{
     GameAdapter, GameConfigRepository, GamePrerequisiteRuleRepository, InstallManifestRepository,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanner,
-    ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
+    InstallRecoveryRecordRepository, InstallSourceFileReader, ModImportResultRepository,
+    ModImportSandboxLocator, ModPackageInstallFileScanner, ReinstallRecoveryTransactionRepository,
+    ReinstallSnapshotStore, StoredModRevision,
 };
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -33,12 +44,27 @@ const MAX_QUERY_MOD_IDS: usize = 256;
 #[serde(rename_all = "camelCase")]
 pub struct InstallPlanSnapshot {
     pub game_id: String,
+    pub profile_id: String,
     pub mod_id: String,
     pub action_count: usize,
     pub conflict_count: usize,
     pub has_blocking_conflicts: bool,
+    pub prerequisite_decision: GamePrerequisiteDecisionSnapshot,
     pub actions: Vec<InstallPlanActionSnapshot>,
     pub conflicts: Vec<InstallPlanConflictSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix_millis: Option<u128>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GamePrerequisiteDecisionSnapshot {
+    pub status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rules_version: Option<u32>,
+    pub codes: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -53,6 +79,50 @@ pub struct InstallPlanActionSnapshot {
 pub struct InstallPlanConflictSnapshot {
     pub target_path: String,
     pub provider_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UninstallPlanSnapshot {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+    pub status: &'static str,
+    pub available: bool,
+    pub managed_file_count: usize,
+    pub backup_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix_millis: Option<u128>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReinstallPlanSnapshot {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+    pub candidate_revision_id: String,
+    pub status: &'static str,
+    pub prerequisite_decision: GamePrerequisiteDecisionSnapshot,
+    pub installed_revision_id: Option<String>,
+    pub retained_count: usize,
+    pub replaced_count: usize,
+    pub added_count: usize,
+    pub stale_count: usize,
+    pub blocking_reasons: Vec<ReinstallBlockingReasonSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix_millis: Option<u128>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReinstallBlockingReasonSnapshot {
+    pub code: &'static str,
+    pub count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -113,6 +183,10 @@ pub struct InstallRecoveryPreviewSnapshot {
     pub backup_count: usize,
     pub blocking_issue_count: usize,
     pub blocking_reasons: Vec<InstallRecoveryBlockReasonSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix_millis: Option<u128>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -152,6 +226,7 @@ pub enum ReadOnlyInstallAutomationError {
     UnsupportedGame,
     ProfileIdInvalid,
     ModIdInvalid,
+    CandidateRevisionIdInvalid,
     SandboxStoragePathRejected,
     ConfiguredGamePathRejected,
     SandboxGamePathRejected,
@@ -176,6 +251,7 @@ impl ReadOnlyInstallAutomationError {
             Self::UnsupportedGame => "unsupported_game",
             Self::ProfileIdInvalid => "profile_id_invalid",
             Self::ModIdInvalid => "mod_id_invalid",
+            Self::CandidateRevisionIdInvalid => "candidate_revision_id_invalid",
             Self::SandboxStoragePathRejected => "sandbox_storage_path_rejected",
             Self::ConfiguredGamePathRejected => "configured_game_path_rejected",
             Self::SandboxGamePathRejected => "sandbox_game_path_rejected",
@@ -213,9 +289,23 @@ pub struct ReadOnlyInstallAutomation {
     app_data_dir: PathBuf,
     sandbox_fixture_root: Option<PathBuf>,
     game_config_repository: Arc<dyn GameConfigRepository>,
-    planning: InstallPlanningService,
+    catalog: Arc<dyn ModImportResultRepository>,
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    planning: Arc<InstallPlanningService>,
+    prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
+    preflight: Arc<ImportedModInstallPreflightService>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
+    install_recovery_repository: Arc<dyn InstallRecoveryRecordRepository>,
     manifest_query: InstallManifestQueryService,
     reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LifecycleInstallState {
+    manifest: Option<InstallManifest>,
+    install_recovery: Option<InstallRecoveryRecord>,
+    reinstall_recovery: Option<ReinstallRecoveryTransaction>,
 }
 
 struct ContainedReadOnlyModImportSandboxLocator {
@@ -251,21 +341,38 @@ impl ModImportSandboxLocator for ContainedReadOnlyModImportSandboxLocator {
     }
 }
 
+struct ReadOnlyReinstallCandidateSourceReader {
+    sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+}
+
+impl ReinstallCandidateSourceReader for ReadOnlyReinstallCandidateSourceReader {
+    fn read_candidate_source_file(
+        &self,
+        candidate: &StoredModRevision,
+        package_file_id: &PackageFileId,
+    ) -> anyhow::Result<Vec<u8>> {
+        let source_root = self
+            .sandbox_locator
+            .sandbox_root_for_package(&candidate.package_id)?;
+        FileSystemInstallSourceFileReader::new(source_root).read_source_file(package_file_id)
+    }
+}
+
 impl ReadOnlyInstallAutomation {
     pub fn from_environment(
         environment: &RuntimeEnvironment,
     ) -> Result<Self, ReadOnlyInstallAutomationError> {
-        let (app_data_dir, sandbox_fixture_root) = match environment {
-            RuntimeEnvironment::Production => (
-                production_app_data_dir()
-                    .ok_or(ReadOnlyInstallAutomationError::AppDataUnavailable)?,
-                None,
-            ),
-            RuntimeEnvironment::Sandbox { data_dir } => {
+        let (app_data_dir, sandbox_fixture_root) =
+            if let Some(data_dir) = environment.sandbox_data_dir() {
                 validate_sandbox_storage_paths(data_dir)?;
-                (data_dir.clone(), Some(data_dir.join("fixtures")))
-            }
-        };
+                (data_dir.to_path_buf(), Some(data_dir.join("fixtures")))
+            } else {
+                (
+                    production_app_data_dir()
+                        .ok_or(ReadOnlyInstallAutomationError::AppDataUnavailable)?,
+                    None,
+                )
+            };
 
         let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
             JsonGameConfigRepository::new(app_data_dir.join("config").join("games.json")),
@@ -287,16 +394,33 @@ impl ReadOnlyInstallAutomation {
             ));
         let game_adapters: Vec<Arc<dyn GameAdapter>> =
             vec![Arc::new(MonsterHunterWorldAdapter::new(prerequisite_rules))];
-        let planning = InstallPlanningService::with_imported_mod_sources(
-            catalog,
-            sandbox_locator,
+        let planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
+            Arc::clone(&catalog),
+            Arc::clone(&sandbox_locator),
             file_scanner,
+            game_adapters.clone(),
+        ));
+        let game_setup = Arc::new(GameSetupService::new(
             game_adapters,
-        );
+            Arc::clone(&game_config_repository),
+            Arc::new(RealGameDirectoryProbeFactory),
+            Arc::new(SteamGameDiscoveryService::new(Arc::new(
+                PlatformSteamRootProvider,
+            ))),
+            Arc::new(SystemClock),
+        ));
+        let prerequisites: Arc<dyn GamePrerequisiteDecisionProvider> = game_setup;
+        let preflight = Arc::new(ImportedModInstallPreflightService::new(
+            Arc::clone(&planning),
+            Arc::clone(&prerequisites),
+        ));
         let manifest_repository: Arc<dyn InstallManifestRepository> = Arc::new(
             JsonInstallManifestRepository::new(app_data_dir.join("install").join("manifests")),
         );
-        let manifest_query = InstallManifestQueryService::new(manifest_repository);
+        let manifest_query = InstallManifestQueryService::new(Arc::clone(&manifest_repository));
+        let install_recovery_repository: Arc<dyn InstallRecoveryRecordRepository> = Arc::new(
+            JsonInstallRecoveryRecordRepository::new(app_data_dir.join("install").join("recovery")),
+        );
         let reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository> =
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
@@ -306,7 +430,13 @@ impl ReadOnlyInstallAutomation {
             app_data_dir,
             sandbox_fixture_root,
             game_config_repository,
+            catalog,
+            sandbox_locator,
             planning,
+            prerequisites,
+            preflight,
+            manifest_repository,
+            install_recovery_repository,
             manifest_query,
             reinstall_recovery_repository,
         })
@@ -317,19 +447,31 @@ impl ReadOnlyInstallAutomation {
         game_id: &str,
         mod_id: &str,
     ) -> Result<InstallPlanSnapshot, ReadOnlyInstallAutomationError> {
-        let game_id = parse_game_id(game_id)?;
-        let mod_id = ModId::new(parse_safe_id(
-            mod_id,
-            ReadOnlyInstallAutomationError::ModIdInvalid,
-        )?);
-        let plan = self
-            .planning
-            .build_plan_from_imported_mod(BuildImportedModInstallPlanRequest {
-                game_id: game_id.clone(),
-                mod_id: mod_id.clone(),
-                layer: FileLayer::new("base", 0),
-            })
-            .map_err(map_planning_error)?;
+        self.plan_for_profile(game_id, "default", mod_id)
+    }
+
+    pub fn plan_for_profile(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+    ) -> Result<InstallPlanSnapshot, ReadOnlyInstallAutomationError> {
+        let (game_id, profile_id, mod_id, plan, prerequisite_decision) =
+            self.build_install_plan(game_id, profile_id, mod_id)?;
+        let issued_token = (self.sandbox_fixture_root.is_some()
+            && !plan.has_blocking_conflicts()
+            && !prerequisite_decision.is_blocked())
+        .then(|| {
+            crate::lifecycle_automation::issue_install_plan_token(
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            )
+        })
+        .transpose()
+        .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
         let actions = plan
             .actions
             .iter()
@@ -353,13 +495,246 @@ impl ReadOnlyInstallAutomation {
 
         Ok(InstallPlanSnapshot {
             game_id: game_id.as_str().to_owned(),
+            profile_id: profile_id.as_str().to_owned(),
             mod_id: mod_id.as_str().to_owned(),
             action_count: actions.len(),
             conflict_count: conflicts.len(),
             has_blocking_conflicts: plan.has_blocking_conflicts(),
+            prerequisite_decision: project_prerequisite_decision(&prerequisite_decision),
             actions,
             conflicts,
+            plan_token: issued_token.as_ref().map(|issued| issued.token.clone()),
+            expires_at_unix_millis: issued_token.map(|issued| issued.expires_at_unix_millis),
         })
+    }
+
+    pub(crate) fn build_install_plan(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+    ) -> Result<
+        (
+            GameId,
+            ProfileId,
+            ModId,
+            hmm_core::InstallPlan,
+            GamePrerequisiteDecision,
+        ),
+        ReadOnlyInstallAutomationError,
+    > {
+        let game_id = parse_game_id(game_id)?;
+        let profile_id = ProfileId::new(parse_safe_id(
+            profile_id,
+            ReadOnlyInstallAutomationError::ProfileIdInvalid,
+        )?);
+        let mod_id = ModId::new(parse_safe_id(
+            mod_id,
+            ReadOnlyInstallAutomationError::ModIdInvalid,
+        )?);
+        let preflight = self
+            .preflight
+            .preview(BuildImportedModInstallPlanRequest {
+                game_id: game_id.clone(),
+                mod_id: mod_id.clone(),
+                layer: FileLayer::new("base", 0),
+            })
+            .map_err(map_planning_error)?;
+        Ok((
+            game_id,
+            profile_id,
+            mod_id,
+            preflight.plan,
+            preflight.prerequisite_decision,
+        ))
+    }
+
+    pub fn reinstall_preview(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+        candidate_revision_id: &str,
+    ) -> Result<ReinstallPlanSnapshot, ReadOnlyInstallAutomationError> {
+        let (game_id, profile_id, mod_id, candidate_revision_id, preview) =
+            self.build_reinstall_facts(game_id, profile_id, mod_id, candidate_revision_id)?;
+        let available = preview.status == ReinstallPreviewStatus::Ready;
+        let issued_token = (available && self.sandbox_fixture_root.is_some())
+            .then(|| {
+                crate::lifecycle_automation::issue_reinstall_plan_token(
+                    &game_id,
+                    &profile_id,
+                    &mod_id,
+                    &candidate_revision_id,
+                    &preview,
+                )
+            })
+            .transpose()
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
+
+        Ok(ReinstallPlanSnapshot {
+            game_id: game_id.as_str().to_owned(),
+            profile_id: profile_id.as_str().to_owned(),
+            mod_id: mod_id.as_str().to_owned(),
+            candidate_revision_id: candidate_revision_id.as_str().to_owned(),
+            status: reinstall_preview_status_code(preview.status),
+            prerequisite_decision: project_prerequisite_decision(&preview.prerequisite_decision),
+            installed_revision_id: preview
+                .installed_revision
+                .map(|revision| revision.revision_id.as_str().to_owned()),
+            retained_count: preview.counts.retained,
+            replaced_count: preview.counts.replaced,
+            added_count: preview.counts.added,
+            stale_count: preview.counts.stale,
+            blocking_reasons: preview
+                .blocking_reasons
+                .into_iter()
+                .map(|reason| ReinstallBlockingReasonSnapshot {
+                    code: reinstall_blocking_reason_code(reason.reason),
+                    count: reason.count,
+                })
+                .collect(),
+            plan_token: issued_token.as_ref().map(|issued| issued.token.clone()),
+            expires_at_unix_millis: issued_token.map(|issued| issued.expires_at_unix_millis),
+        })
+    }
+
+    pub(crate) fn build_reinstall_facts(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+        candidate_revision_id: &str,
+    ) -> Result<
+        (
+            GameId,
+            ProfileId,
+            ModId,
+            ModRevisionId,
+            ReinstallPlanPreview,
+        ),
+        ReadOnlyInstallAutomationError,
+    > {
+        let game_id = parse_game_id(game_id)?;
+        let profile_id = ProfileId::new(parse_safe_id(
+            profile_id,
+            ReadOnlyInstallAutomationError::ProfileIdInvalid,
+        )?);
+        let mod_id = ModId::new(parse_safe_id(
+            mod_id,
+            ReadOnlyInstallAutomationError::ModIdInvalid,
+        )?);
+        let candidate_revision_id = ModRevisionId::new(parse_safe_id(
+            candidate_revision_id,
+            ReadOnlyInstallAutomationError::CandidateRevisionIdInvalid,
+        )?);
+        let game_instance = self.load_admitted_game_instance(&game_id)?;
+        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
+            self.app_data_dir.join("install").join("backups"),
+        ));
+        let source: Arc<dyn ReinstallCandidateSourceReader> =
+            Arc::new(ReadOnlyReinstallCandidateSourceReader {
+                sandbox_locator: Arc::clone(&self.sandbox_locator),
+            });
+        let service = ReinstallPreviewService::new(
+            Arc::clone(&self.prerequisites),
+            Arc::clone(&self.catalog),
+            self.planning.clone(),
+            source,
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            backup_store,
+            Arc::clone(&self.manifest_repository),
+            Arc::clone(&self.reinstall_recovery_repository),
+        );
+        let preview = service
+            .preview(ReinstallPreviewRequest {
+                game_id: game_id.clone(),
+                profile_id: profile_id.clone(),
+                mod_id: mod_id.clone(),
+                candidate_revision_id: candidate_revision_id.clone(),
+                layer: FileLayer::new("base", 0),
+            })
+            .map_err(map_reinstall_preview_error)?;
+        Ok((game_id, profile_id, mod_id, candidate_revision_id, preview))
+    }
+
+    pub fn uninstall_preview(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+    ) -> Result<UninstallPlanSnapshot, ReadOnlyInstallAutomationError> {
+        let (game_id, profile_id, mod_id, summary, state_binding) =
+            self.build_uninstall_facts(game_id, profile_id, mod_id)?;
+        let available = summary.status == InstallRecoveryStatus::Completed;
+        let issued_token = (available && self.sandbox_fixture_root.is_some())
+            .then(|| {
+                crate::lifecycle_automation::issue_uninstall_plan_token(
+                    &game_id,
+                    &profile_id,
+                    &mod_id,
+                    &summary,
+                    &state_binding,
+                )
+            })
+            .transpose()
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallStateInvalid)?;
+
+        Ok(UninstallPlanSnapshot {
+            game_id: game_id.as_str().to_owned(),
+            profile_id: profile_id.as_str().to_owned(),
+            mod_id: mod_id.as_str().to_owned(),
+            status: recovery_status_code(summary.status),
+            available,
+            managed_file_count: summary.managed_file_count,
+            backup_count: summary.backup_count,
+            plan_token: issued_token.as_ref().map(|issued| issued.token.clone()),
+            expires_at_unix_millis: issued_token.map(|issued| issued.expires_at_unix_millis),
+        })
+    }
+
+    pub(crate) fn build_uninstall_facts(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+    ) -> Result<
+        (GameId, ProfileId, ModId, InstallRecoverySummary, String),
+        ReadOnlyInstallAutomationError,
+    > {
+        let game_id = parse_game_id(game_id)?;
+        let profile_id = ProfileId::new(parse_safe_id(
+            profile_id,
+            ReadOnlyInstallAutomationError::ProfileIdInvalid,
+        )?);
+        let mod_id = ModId::new(parse_safe_id(
+            mod_id,
+            ReadOnlyInstallAutomationError::ModIdInvalid,
+        )?);
+        let state_before = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
+        let mut summaries = self.scan_recovery(
+            game_id.clone(),
+            InstallRecoveryScanRequest {
+                profile_id: profile_id.clone(),
+                mod_ids: vec![mod_id.clone()],
+            },
+        )?;
+        if summaries.len() != 1 {
+            return Err(ReadOnlyInstallAutomationError::InstallStateInvalid);
+        }
+        let state_after = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
+        if state_before != state_after {
+            return Err(ReadOnlyInstallAutomationError::InstallStateInvalid);
+        }
+        let state_binding = crate::lifecycle_automation::lifecycle_state_binding(&state_after)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallStateInvalid)?;
+        Ok((
+            game_id,
+            profile_id,
+            mod_id,
+            summaries.remove(0),
+            state_binding,
+        ))
     }
 
     pub fn status(
@@ -472,31 +847,20 @@ impl ReadOnlyInstallAutomation {
         mod_id: &str,
         action: ReadOnlyInstallRecoveryAction,
     ) -> Result<InstallRecoveryPreviewSnapshot, ReadOnlyInstallAutomationError> {
-        let game_id = parse_game_id(game_id)?;
-        let profile_id = ProfileId::new(parse_safe_id(
-            profile_id,
-            ReadOnlyInstallAutomationError::ProfileIdInvalid,
-        )?);
-        let mod_id = ModId::new(parse_safe_id(
-            mod_id,
-            ReadOnlyInstallAutomationError::ModIdInvalid,
-        )?);
-        let game_instance = self.load_admitted_game_instance(&game_id)?;
-        let service = InstallRecoveryActionPreviewService::new(
-            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
-            Arc::new(FileSystemInstallBackupStore::new(
-                self.app_data_dir.join("install").join("backups"),
-            )),
-            Arc::new(JsonInstallRecoveryRecordRepository::new(
-                self.app_data_dir.join("install").join("recovery"),
-            )),
-        );
-        let preview = service
-            .preview(InstallRecoveryActionPreviewRequest {
-                profile_id: profile_id.clone(),
-                mod_id: mod_id.clone(),
-                action_kind: action.into(),
+        let (game_id, profile_id, mod_id, preview, state_binding) =
+            self.build_recovery_preview_facts(game_id, profile_id, mod_id, action)?;
+        let available = preview.availability == InstallRecoveryActionAvailability::Available;
+        let issued_token = (available && self.sandbox_fixture_root.is_some())
+            .then(|| {
+                crate::lifecycle_automation::issue_recovery_plan_token(
+                    &game_id,
+                    &profile_id,
+                    &mod_id,
+                    &preview,
+                    &state_binding,
+                )
             })
+            .transpose()
             .map_err(|_| ReadOnlyInstallAutomationError::InstallRecoveryPreviewUnavailable)?;
 
         Ok(InstallRecoveryPreviewSnapshot {
@@ -504,10 +868,7 @@ impl ReadOnlyInstallAutomation {
             profile_id: profile_id.as_str().to_owned(),
             mod_id: mod_id.as_str().to_owned(),
             action: action.as_str(),
-            availability: match preview.availability {
-                InstallRecoveryActionAvailability::Available => "available",
-                InstallRecoveryActionAvailability::Blocked => "blocked",
-            },
+            availability: if available { "available" } else { "blocked" },
             remove_file_count: preview.remove_file_count,
             restore_file_count: preview.restore_file_count,
             backup_count: preview.backup_count,
@@ -520,7 +881,93 @@ impl ReadOnlyInstallAutomation {
                     count: reason.count,
                 })
                 .collect(),
+            plan_token: issued_token.as_ref().map(|issued| issued.token.clone()),
+            expires_at_unix_millis: issued_token.map(|issued| issued.expires_at_unix_millis),
         })
+    }
+
+    pub(crate) fn build_recovery_preview_facts(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+        action: ReadOnlyInstallRecoveryAction,
+    ) -> Result<
+        (
+            GameId,
+            ProfileId,
+            ModId,
+            InstallRecoveryActionPreview,
+            String,
+        ),
+        ReadOnlyInstallAutomationError,
+    > {
+        let game_id = parse_game_id(game_id)?;
+        let profile_id = ProfileId::new(parse_safe_id(
+            profile_id,
+            ReadOnlyInstallAutomationError::ProfileIdInvalid,
+        )?);
+        let mod_id = ModId::new(parse_safe_id(
+            mod_id,
+            ReadOnlyInstallAutomationError::ModIdInvalid,
+        )?);
+        let state_before = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
+        let game_instance = self.load_admitted_game_instance(&game_id)?;
+        let service = InstallRecoveryActionPreviewService::new(
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            Arc::new(FileSystemInstallBackupStore::new(
+                self.app_data_dir.join("install").join("backups"),
+            )),
+            Arc::clone(&self.install_recovery_repository),
+        );
+        let preview = service
+            .preview(InstallRecoveryActionPreviewRequest {
+                profile_id: profile_id.clone(),
+                mod_id: mod_id.clone(),
+                action_kind: action.into(),
+            })
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallRecoveryPreviewUnavailable)?;
+        let state_after = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
+        if state_before != state_after {
+            return Err(ReadOnlyInstallAutomationError::InstallRecoveryPreviewUnavailable);
+        }
+        let state_binding = crate::lifecycle_automation::lifecycle_state_binding(&state_after)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallRecoveryPreviewUnavailable)?;
+        Ok((game_id, profile_id, mod_id, preview, state_binding))
+    }
+
+    fn load_lifecycle_install_state(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<LifecycleInstallState, ReadOnlyInstallAutomationError> {
+        let manifest = self
+            .manifest_repository
+            .load_manifest(profile_id)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallManifestUnavailable)?;
+        let install_recovery = self
+            .install_recovery_repository
+            .load_record(profile_id, mod_id)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallRecoveryUnavailable)?;
+        let reinstall_recovery = self
+            .reinstall_recovery_repository
+            .load_transaction(profile_id, mod_id)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallRecoveryUnavailable)?;
+        Ok(LifecycleInstallState {
+            manifest,
+            install_recovery,
+            reinstall_recovery,
+        })
+    }
+
+    pub(crate) fn load_lifecycle_state_binding(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<String, ReadOnlyInstallAutomationError> {
+        let state = self.load_lifecycle_install_state(profile_id, mod_id)?;
+        crate::lifecycle_automation::lifecycle_state_binding(&state)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallStateInvalid)
     }
 
     fn scan_recovery(
@@ -664,6 +1111,16 @@ fn is_safe_projected_id(value: &str) -> bool {
         .is_ok_and(|parsed| parsed == value)
 }
 
+fn project_prerequisite_decision(
+    decision: &GamePrerequisiteDecision,
+) -> GamePrerequisiteDecisionSnapshot {
+    GamePrerequisiteDecisionSnapshot {
+        status: decision.status.as_str(),
+        rules_version: decision.rules_version,
+        codes: decision.codes.iter().map(|code| code.as_str()).collect(),
+    }
+}
+
 fn project_install_target_path(
     target_path: &InstallTargetPath,
 ) -> Result<String, ReadOnlyInstallAutomationError> {
@@ -693,6 +1150,51 @@ fn map_planning_error(error: InstallPlanningError) -> ReadOnlyInstallAutomationE
         | InstallPlanningError::GameAdapterNotFound { .. } => {
             ReadOnlyInstallAutomationError::InstallPlanInvalid
         }
+    }
+}
+
+fn map_reinstall_preview_error(error: ReinstallPreviewError) -> ReadOnlyInstallAutomationError {
+    match error {
+        ReinstallPreviewError::CatalogUnavailable => {
+            ReadOnlyInstallAutomationError::ImportedModCatalogUnavailable
+        }
+        ReinstallPreviewError::ManifestUnavailable => {
+            ReadOnlyInstallAutomationError::InstallManifestUnavailable
+        }
+        ReinstallPreviewError::RecoveryUnavailable => {
+            ReadOnlyInstallAutomationError::InstallRecoveryUnavailable
+        }
+        ReinstallPreviewError::CandidatePlanUnavailable => {
+            ReadOnlyInstallAutomationError::ImportedModFilesUnavailable
+        }
+    }
+}
+
+fn reinstall_preview_status_code(status: ReinstallPreviewStatus) -> &'static str {
+    match status {
+        ReinstallPreviewStatus::Ready => "ready",
+        ReinstallPreviewStatus::Blocked => "blocked",
+    }
+}
+
+fn reinstall_blocking_reason_code(reason: ReinstallBlockingReason) -> &'static str {
+    match reason {
+        ReinstallBlockingReason::PrerequisitesBlocked => "prerequisites_blocked",
+        ReinstallBlockingReason::NotInstalled => "not_installed",
+        ReinstallBlockingReason::CandidateNotFound => "candidate_not_found",
+        ReinstallBlockingReason::CandidateNotReady => "candidate_not_ready",
+        ReinstallBlockingReason::CandidateOwnerMismatch => "candidate_owner_mismatch",
+        ReinstallBlockingReason::CandidateAlreadyInstalled => "candidate_already_installed",
+        ReinstallBlockingReason::ManifestStateUnsafe => "manifest_state_unsafe",
+        ReinstallBlockingReason::InstalledRevisionUnknown => "installed_revision_unknown",
+        ReinstallBlockingReason::SourceUnavailable => "source_unavailable",
+        ReinstallBlockingReason::TargetMissing => "target_missing",
+        ReinstallBlockingReason::TargetChanged => "target_changed",
+        ReinstallBlockingReason::TargetReadFailed => "target_read_failed",
+        ReinstallBlockingReason::BackupMissing => "backup_missing",
+        ReinstallBlockingReason::BackupReadFailed => "backup_read_failed",
+        ReinstallBlockingReason::PlanConflict => "plan_conflict",
+        ReinstallBlockingReason::CrossModTargetConflict => "cross_mod_target_conflict",
     }
 }
 

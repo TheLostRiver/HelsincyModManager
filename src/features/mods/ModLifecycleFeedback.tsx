@@ -10,6 +10,10 @@ import {
 import type { InstallPlanPreview, InstallRecoveryIssueSummary, UnsafeInstallStatus } from "./modInstallPlanTypes";
 import { getManagedInstallTaskPhaseLabel, type ManagedInstallTaskState } from "./modInstallTaskState";
 import type { ModLifecycleToast } from "./modLifecycleFeedbackState";
+import {
+  getPrerequisiteDecisionCodeLabel,
+  getPrerequisiteDecisionMessage,
+} from "./modPrerequisiteDecision";
 import "./ModLifecycleFeedback.css";
 
 export type InstallPlanDetailSheetState =
@@ -58,6 +62,9 @@ function sheetTitle(state: Exclude<InstallPlanDetailSheetState, { status: "idle"
   if (state.status === "recovery-required") {
     return recoveryTitle(state.recoveryStatus);
   }
+  if (state.status === "ready" && state.plan.prerequisiteDecision.status === "blocked") {
+    return "安装前置未就绪";
+  }
   if (state.status === "ready" && state.plan.hasBlockingConflicts) {
     return "安装计划存在冲突";
   }
@@ -72,7 +79,8 @@ export function InstallPlanDetailSheet({ state, onClose }: InstallPlanDetailShee
   const warning =
     state.status === "error" ||
     state.status === "recovery-required" ||
-    (state.status === "ready" && state.plan.hasBlockingConflicts);
+    (state.status === "ready"
+      && (state.plan.hasBlockingConflicts || state.plan.prerequisiteDecision.status !== "ready"));
   const icon = state.status === "loading"
     ? <Loader2 className="mod-lifecycle-feedback__spinner" size={20} />
     : warning
@@ -156,9 +164,32 @@ function RecoveryRequiredSummary({
 function InstallPlanSummary({ plan }: { plan: InstallPlanPreview }) {
   const previewActions = plan.actions.slice(0, 5);
   const previewConflicts = plan.conflicts.slice(0, 3);
+  const prerequisiteDecision = plan.prerequisiteDecision;
 
   return (
     <section className="mod-lifecycle-feedback__section" aria-label="安装计划详情">
+      <p
+        className={[
+          "mod-lifecycle-feedback__status",
+          prerequisiteDecision.status === "blocked"
+            ? "is-danger"
+            : prerequisiteDecision.status === "warning"
+              ? "is-warning"
+              : "",
+        ].filter(Boolean).join(" ")}
+        role={prerequisiteDecision.status === "ready" ? "status" : "alert"}
+      >
+        {getPrerequisiteDecisionMessage(prerequisiteDecision)}
+      </p>
+      {prerequisiteDecision.codes.length > 0 ? (
+        <ul className="mod-lifecycle-feedback__rows" aria-label="安装前置检查结果">
+          {prerequisiteDecision.codes.map((code) => (
+            <li key={code}>
+              <span>{getPrerequisiteDecisionCodeLabel(code)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <SummaryMetrics
         items={[
           { label: "可执行动作", value: plan.actions.length },

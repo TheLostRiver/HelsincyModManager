@@ -5,9 +5,9 @@ use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId, ReplacementTarg
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
 use crate::{
-    GameProfileWriteLockRegistry, ImportedModInstallCommitRequest, InstallPlanCommitter,
-    InstallWriteAdmission, ReplacementWorkflowError, TaskKind, TaskManager, TaskManagerError,
-    TaskProgressEvent, TaskStarted, TaskStatus,
+    GamePrerequisiteDecision, GameProfileWriteLockRegistry, ImportedModInstallCommitRequest,
+    InstallPlanCommitter, InstallWriteAdmission, ReplacementWorkflowError, TaskKind, TaskManager,
+    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 
 const PLAN_BUILDING_PHASE: &str = "install.retarget.plan.building";
@@ -35,6 +35,8 @@ pub trait InitialRetargetInstallPlanner: Send + Sync {
         &self,
         request: &StartRetargetInstallTaskRequest,
     ) -> Result<(), ReplacementWorkflowError>;
+
+    fn prerequisite_decision(&self, game_id: &GameId) -> GamePrerequisiteDecision;
 
     fn discard_initial_retarget_install(&self, plan: &InstallPlan);
 }
@@ -108,6 +110,10 @@ impl RetargetInstallTaskRunner {
         }
 
         let mut events = vec![running_event(task_id, PLAN_BUILDING_PHASE)];
+        let prerequisite_decision = self.planner.prerequisite_decision(&request.game_id);
+        if prerequisite_decision.is_blocked() {
+            return Err(self.fail(task_id, &request, events, "prerequisite", 0));
+        }
         let plan = match self
             .planner
             .build_initial_retarget_install_plan(request.clone())
@@ -121,6 +127,18 @@ impl RetargetInstallTaskRunner {
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
             self.planner.discard_initial_retarget_install(&plan);
             return Ok(events);
+        }
+
+        let current_prerequisite_decision = self.planner.prerequisite_decision(&request.game_id);
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            self.planner.discard_initial_retarget_install(&plan);
+            return Ok(events);
+        }
+        if current_prerequisite_decision.is_blocked()
+            || current_prerequisite_decision != prerequisite_decision
+        {
+            self.planner.discard_initial_retarget_install(&plan);
+            return Err(self.fail(task_id, &request, events, "prerequisite", action_count));
         }
 
         let write_lock = self
@@ -244,13 +262,16 @@ impl RetargetInstallTaskRunner {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
-            category: "install".to_owned(),
-            operation: "commit_retargeted_mod".to_owned(),
-            result: result.to_owned(),
-            fields,
-        }, policy);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
+                category: "install".to_owned(),
+                operation: "commit_retargeted_mod".to_owned(),
+                result: result.to_owned(),
+                fields,
+            },
+            policy,
+        );
     }
 }
 
@@ -285,8 +306,12 @@ mod tests {
 
     struct RecordingPlanner {
         revalidate_result: Result<(), ReplacementWorkflowError>,
+        preview_decision: GamePrerequisiteDecision,
+        revalidation_decision: GamePrerequisiteDecision,
+        build_count: Mutex<usize>,
         revalidated: Mutex<bool>,
         discard_count: Mutex<usize>,
+        prerequisite_write_lock: Option<Arc<std::sync::Mutex<()>>>,
     }
 
     impl InitialRetargetInstallPlanner for RecordingPlanner {
@@ -294,6 +319,7 @@ mod tests {
             &self,
             request: StartRetargetInstallTaskRequest,
         ) -> Result<InstallPlan, ReplacementWorkflowError> {
+            *self.build_count.lock().expect("build count") += 1;
             Ok(InstallPlan::from_providers([InstallFileProvider::new(
                 request.mod_id,
                 PackageFileId::new("body"),
@@ -312,6 +338,19 @@ mod tests {
         ) -> Result<(), ReplacementWorkflowError> {
             *self.revalidated.lock().expect("revalidated") = true;
             self.revalidate_result.clone()
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            if let Some(write_lock) = &self.prerequisite_write_lock {
+                let _guard = write_lock
+                    .try_lock()
+                    .expect("prerequisite checks must run outside the write lock");
+            }
+            if *self.build_count.lock().expect("build count") == 0 {
+                self.preview_decision.clone()
+            } else {
+                self.revalidation_decision.clone()
+            }
         }
 
         fn discard_initial_retarget_install(&self, _plan: &InstallPlan) {
@@ -422,8 +461,12 @@ mod tests {
         let task_manager = Arc::new(TaskManager::new());
         let planner = Arc::new(RecordingPlanner {
             revalidate_result: Ok(()),
+            preview_decision: ready_prerequisite_decision(),
+            revalidation_decision: ready_prerequisite_decision(),
+            build_count: Mutex::new(0),
             revalidated: Mutex::new(false),
             discard_count: Mutex::new(0),
+            prerequisite_write_lock: None,
         });
         let committer = Arc::new(RecordingCommitter::default());
         let audit = Arc::new(RecordingAudit::default());
@@ -457,8 +500,12 @@ mod tests {
             revalidate_result: Err(ReplacementWorkflowError::InitialInstallBlocked {
                 status: crate::InstallRecoveryStatus::Completed,
             }),
+            preview_decision: ready_prerequisite_decision(),
+            revalidation_decision: ready_prerequisite_decision(),
+            build_count: Mutex::new(0),
             revalidated: Mutex::new(false),
             discard_count: Mutex::new(0),
+            prerequisite_write_lock: None,
         });
         let committer = Arc::new(RecordingCommitter::default());
         let audit = Arc::new(RecordingAudit::default());
@@ -488,12 +535,94 @@ mod tests {
     }
 
     #[test]
+    fn runner_blocks_missing_prerequisites_before_materializing_staging() {
+        let task_manager = Arc::new(TaskManager::new());
+        let planner = Arc::new(RecordingPlanner {
+            revalidate_result: Ok(()),
+            preview_decision: blocked_prerequisite_decision(),
+            revalidation_decision: blocked_prerequisite_decision(),
+            build_count: Mutex::new(0),
+            revalidated: Mutex::new(false),
+            discard_count: Mutex::new(0),
+            prerequisite_write_lock: None,
+        });
+        let committer = Arc::new(RecordingCommitter::default());
+        let audit = Arc::new(RecordingAudit::default());
+        let task = RetargetInstallTaskService::new(Arc::clone(&task_manager))
+            .start_retarget_install_task(request())
+            .expect("start task");
+
+        let error = runner(
+            task_manager,
+            Arc::clone(&planner),
+            Arc::clone(&committer),
+            audit,
+        )
+        .run_retarget_install_task(&task.task_id, request())
+        .expect_err("missing prerequisites must block retarget install");
+
+        assert_eq!(*planner.build_count.lock().expect("build count"), 0);
+        assert_eq!(*planner.discard_count.lock().expect("discard count"), 0);
+        assert_eq!(*committer.commit_count.lock().expect("commit count"), 0);
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_retarget_failed:prerequisite")
+        );
+    }
+
+    #[test]
+    fn runner_rejects_prerequisite_drift_before_write_lock() {
+        let task_manager = Arc::new(TaskManager::new());
+        let write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let write_lock = write_locks.lock_for(&GameId::mhw(), &ProfileId::new("profile-a"));
+        let planner = Arc::new(RecordingPlanner {
+            revalidate_result: Ok(()),
+            preview_decision: warning_prerequisite_decision(),
+            revalidation_decision: blocked_prerequisite_decision(),
+            build_count: Mutex::new(0),
+            revalidated: Mutex::new(false),
+            discard_count: Mutex::new(0),
+            prerequisite_write_lock: Some(write_lock),
+        });
+        let committer = Arc::new(RecordingCommitter::default());
+        let audit = Arc::new(RecordingAudit::default());
+        let task = RetargetInstallTaskService::new(Arc::clone(&task_manager))
+            .start_retarget_install_task(request())
+            .expect("start task");
+
+        let error = RetargetInstallTaskRunner::with_write_coordination(
+            task_manager,
+            planner.clone(),
+            committer.clone(),
+            audit,
+            Arc::new(FixedClock),
+            write_locks,
+            Arc::new(AllowWrites),
+        )
+        .run_retarget_install_task(&task.task_id, request())
+        .expect_err("prerequisite drift must block retarget install");
+
+        assert_eq!(*planner.build_count.lock().expect("build count"), 1);
+        assert_eq!(*planner.discard_count.lock().expect("discard count"), 1);
+        assert_eq!(*committer.commit_count.lock().expect("commit count"), 0);
+        assert!(!*planner.revalidated.lock().expect("revalidated"));
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_retarget_failed:prerequisite")
+        );
+    }
+
+    #[test]
     fn runner_blocks_cancellation_before_commit_and_completes_consistently() {
         let task_manager = Arc::new(TaskManager::new());
         let planner = Arc::new(RecordingPlanner {
             revalidate_result: Ok(()),
+            preview_decision: ready_prerequisite_decision(),
+            revalidation_decision: ready_prerequisite_decision(),
+            build_count: Mutex::new(0),
             revalidated: Mutex::new(false),
             discard_count: Mutex::new(0),
+            prerequisite_write_lock: None,
         });
         let audit = Arc::new(RecordingAudit::default());
         let task = RetargetInstallTaskService::new(Arc::clone(&task_manager))
@@ -536,5 +665,32 @@ mod tests {
             events.last().expect("completed event").phase,
             COMPLETED_PHASE
         );
+    }
+
+    fn ready_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Ready,
+            rules_version: Some(1),
+            codes: Vec::new(),
+        }
+    }
+
+    fn warning_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Warning,
+            rules_version: Some(1),
+            codes: vec![crate::GamePrerequisiteDecisionCode::SignatureUnverified],
+        }
+    }
+
+    fn blocked_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Blocked,
+            rules_version: Some(1),
+            codes: vec![crate::GamePrerequisiteDecisionCode::MissingRequiredFile],
+        }
     }
 }

@@ -17,6 +17,10 @@
   color: var(--color-danger-text);
 }
 
+.mod-lifecycle-feedback__status.is-warning {
+  color: var(--color-warning-text);
+}
+
 .mod-lifecycle-feedback__spinner {
   animation: mod-lifecycle-spin 0.9s linear infinite;
 }

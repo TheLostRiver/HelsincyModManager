@@ -17,12 +17,12 @@ pub fn emit_task_progress(
     TauriTaskProgressObserver::new(app_handle).observe(&event)
 }
 
-struct TauriTaskProgressObserver<'a> {
+pub(crate) struct TauriTaskProgressObserver<'a> {
     app_handle: &'a AppHandle,
 }
 
 impl<'a> TauriTaskProgressObserver<'a> {
-    fn new(app_handle: &'a AppHandle) -> Self {
+    pub(crate) fn new(app_handle: &'a AppHandle) -> Self {
         Self { app_handle }
     }
 }

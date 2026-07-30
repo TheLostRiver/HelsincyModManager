@@ -106,17 +106,23 @@ cargo run -p hmm-cli -- --environment sandbox --data-dir C:\temp\hmm-fixture --f
 ```
 
 Tauri CLI 通过 `@tauri-apps/cli` 作为项目内 devDependency 提供，不要求全局安装 `cargo-tauri`。
-当前已完成 CLI-1A 与 CLI-1B 只读自动化：桌面端与固定 `--once` 存档 worker 复用
+当前已完成 CLI-2C Sandbox 单项生命周期自动化：桌面端、CLI 与固定 `--once` 存档 worker 复用
 Tauri-free runtime composition；`hmm` 提供 `runtime status`、
 `game status|scan|validate|prerequisites` 和
 `install plan|status|recovery scan|recovery preview`、`backup list|background status` 与
-`diagnostics snapshot`。backup 查询只读取已 checkpoint 且不存在 `hmm.db-wal`/`hmm.db-shm`
+`diagnostics snapshot` 等只读命令。Sandbox 另外开放单项
+`install apply|uninstall|reinstall|recovery apply`：ready preview 签发 5 分钟 opaque token，
+提交要求 `--commit --yes`；安装/重装在获取共享写锁前最终重验前置 decision，锁内再重验封存计划、
+manifest/recovery 状态和 containment。安装与重装
+preview 只返回 `prerequisiteDecision` 的 status、stable codes 和 rules version；required missing
+或 rules unavailable 阻断且不签 token，未知签名以 warning 显式继续。
+
+backup 查询只读取已 checkpoint 且不存在 `hmm.db-wal`/`hmm.db-shm`
 sidecar 的 SQLite；发现任一 sidecar 时以 `backup_database_unavailable` fail closed，不执行
 checkpoint、修复、创建或修改。为满足 immutable snapshot 的一致性前提，backup 查询应在桌面端
 关闭、数据库静止时运行；当前没有跨进程只读快照锁。backup/diagnostics 只输出稳定状态、受控平台
 摘要和聚合计数，不返回存档/备份路径、Steam ID、日志正文、manifest/hash 列表或 Scheduled Task
-原始信息。安装提交、卸载、重装、恢复执行、备份创建/恢复、后台启停与诊断导出等写命令仍未开放，
-Production 没有 CLI 写能力。
+原始信息。备份创建/恢复、后台启停与诊断导出仍未开放；Production 没有 CLI 写能力。
 
 ## 当前验证入口
 

@@ -72,6 +72,40 @@ impl TaskProgressEvent {
     }
 }
 
+/// Transport-neutral hook invoked while a task runner advances.
+///
+/// Observer failures are intentionally isolated from task state and player-file facts. Callers
+/// can retain the error for reporting, but runners must not turn an observer failure into a
+/// commit, rollback, or task transition.
+pub trait TaskProgressObserver: Send + Sync {
+    type Error;
+
+    fn observe(&self, event: &TaskProgressEvent) -> Result<(), Self::Error>;
+}
+
+pub(crate) struct NoopTaskProgressObserver;
+
+impl TaskProgressObserver for NoopTaskProgressObserver {
+    type Error = std::convert::Infallible;
+
+    fn observe(&self, _event: &TaskProgressEvent) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+pub(crate) fn observe_task_progress<O: TaskProgressObserver + ?Sized>(
+    events: &mut Vec<TaskProgressEvent>,
+    observer: &O,
+    event: TaskProgressEvent,
+) {
+    let _ = observer.observe(&event);
+    events.push(event);
+}
+
+pub(crate) fn noop_task_progress_observer() -> NoopTaskProgressObserver {
+    NoopTaskProgressObserver
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum TaskManagerError {
     #[error("failed to generate task id: {0}")]

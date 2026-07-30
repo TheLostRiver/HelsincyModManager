@@ -140,8 +140,35 @@ export type InstallPlanConflict = {
   providers: InstallPlanProvider[];
 };
 
-export type InstallPlanPreview = {
+export type GamePrerequisiteDecisionStatus = "ready" | "warning" | "blocked";
+
+export type GamePrerequisiteDecisionCode =
+  | "game_not_configured"
+  | "game_directory_invalid"
+  | "rules_unavailable"
+  | "rules_corrupted"
+  | "storage_unavailable"
+  | "storage_corrupted"
+  | "unsupported_game"
+  | "missing_required_file"
+  | "signature_unverified"
+  | "config_read_failed"
+  | "config_invalid_json"
+  | "config_field_mismatch"
+  | "prerequisite_decision_invalid";
+
+export type GamePrerequisiteDecision = {
+  status: GamePrerequisiteDecisionStatus;
+  rulesVersion: number | null;
+  codes: GamePrerequisiteDecisionCode[];
+};
+
+export type InstallPlanSummary = {
   hasBlockingConflicts: boolean;
   actions: InstallPlanAction[];
   conflicts: InstallPlanConflict[];
+};
+
+export type InstallPlanPreview = InstallPlanSummary & {
+  prerequisiteDecision: GamePrerequisiteDecision;
 };
