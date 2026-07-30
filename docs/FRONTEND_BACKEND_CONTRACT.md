@@ -212,6 +212,147 @@ batch/result 事实或伪造导入失败。
 `selection_resource_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。
 错误 message 不能回显路径或底层 I/O 文本。
 
+### T13 批量生命周期规划契约
+
+本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的未来 transport 形状，
+用于约束 T13-01 至 T13-08。**T13-00 没有实现下列 command、DTO、AppState service 或 typed API；
+T13-06 完成前前端不得调用、注册 wrapper 或以 mock 假装它们可用：**
+
+```text
+preview_batch_mod_lifecycle
+seal_batch_mod_lifecycle
+start_batch_mod_lifecycle
+get_batch_mod_lifecycle_result
+retry_batch_mod_lifecycle
+```
+
+取消继续复用受控 `cancel_task(taskId)`，但只有 `start`/`retry` 返回真实 `TaskStartedDto` 后才有可取消
+task。前端不能在本地循环调用单项 install/uninstall/reinstall command 来构造批次。
+
+规划中的 preview/seal request 使用同一完整输入：
+
+```text
+BatchModLifecycleRequestDto
+  schemaVersion
+  operation                install | uninstall | reinstall
+  gameId
+  profileId
+  executionPolicy          stop_on_failure | continue_on_item_failure
+  items[]
+
+InstallBatchItemDto
+  modId
+  revisionId
+  layer
+  replacementBindingSnapshot?
+
+UninstallBatchItemDto
+  modId
+  expectedInstalledRevisionId
+
+ReinstallBatchItemDto
+  modId
+  installedRevisionId
+  candidateRevisionId
+  layer
+  replacementBindingSnapshot?
+```
+
+输入不包含路径、package file id、manifest generation、backup/snapshot ref、hash、digest、item ID 或
+plan token。一个 request 只允许一种 operation、一个 game/profile，最多 100 项；同一 `modId` 重复时
+整体拒绝。后端按稳定 item key 规范排序，前端选择顺序不定义执行顺序。
+
+| command | 输入 | 规划返回 |
+| --- | --- | --- |
+| `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
+| `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAt` 和 opaque `planToken` |
+| `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId }` |
+| `get_batch_mod_lifecycle_result` | `batchId`、可选 `cursor`、可选 `limit` | `BatchModLifecycleResultPageDto` |
+| `retry_batch_mod_lifecycle` | `batchId` | `{ task: TaskStartedDto, batchId }`；retry item set 完全由后端从 sealed batch 和已有终态计算 |
+
+`preview` 必须零写入：不创建 batch journal、projection、Audit、manifest、backup、recovery 或 temp
+artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
+`batch_plan_stale`，不持久化部分 snapshot。`start` 只消费 `batchId + planToken`，token 默认 30 分钟
+过期；digest 是内部确定性身份，不是公开写权限，也不得进入 DTO、日志或诊断。
+
+`previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
+内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
+
+首版资源上限固定为 100 items、50,000 target actions 和 16 MiB canonical plan。任一上限超出时整体
+返回 `batch_resource_limit_exceeded`，不截断、不部分 seal。跨 item 最终 target、卸载 remove/restore
+集合或 backup ownership 冲突是 `batch_global_target_conflict`，`continue_on_item_failure` 不能绕过。
+
+Result page 默认 `limit = 50`、最大 `100`；cursor 是后端解释的 opaque 分页值，前端只复用
+`nextCursor`。非法 cursor/limit 整体拒绝。页面按 `ordinal` 稳定排序，批量摘要必须伴随各 item count；
+返回 item 仅包含：
+
+```text
+itemId
+ordinal
+modId
+status
+reasonCode?
+retryable
+actionSummary
+```
+
+单项终态稳定值为 `succeeded`、`blocked`、`failed`、`recovery_required`、`cancelled`、`skipped`。
+Batch 终态稳定值为 `completed`、`completed_with_errors`、`blocked`、`cancelled`、
+`recovery_required`、`failed`。`retryable` 是独立布尔事实；成功项和 `recovery_required` 项不能重放。
+运行中 commit 收到取消但安全提交成功时，item 仍是 `succeeded`，取消只阻止启动后续项。
+
+未来 batch task phase family 固定为：
+
+```text
+install.batch.<operation>.queued
+install.batch.<operation>.planning
+install.batch.<operation>.preflight
+install.batch.<operation>.processing
+install.batch.<operation>.stopping
+install.batch.<operation>.completed
+install.batch.<operation>.completed_with_errors
+install.batch.<operation>.cancelled
+install.batch.<operation>.recovery_required
+install.batch.<operation>.failed
+```
+
+`<operation>` 只能是 `install`、`uninstall` 或 `reinstall`。每个 attempt 对外只有一个 taskId 和恰好
+一个 terminal event；progress 只提供聚合计数，大型 item 结果必须通过分页 query 读取。
+
+规划中的 batch-level stable code 至少包括：
+
+```text
+batch_input_invalid
+batch_duplicate_item
+batch_resource_limit_exceeded
+batch_global_target_conflict
+batch_plan_blocked
+batch_plan_stale
+batch_plan_expired
+batch_token_invalid
+batch_recovery_pending
+batch_journal_unavailable
+batch_write_admission_unavailable
+batch_evidence_unavailable
+batch_retry_unavailable
+batch_result_unavailable
+batch_cancelled
+batch_internal_error
+```
+
+Item reason 优先复用既有单项 code；批量调度新增
+`stopped_after_item_failure`、`cancelled_before_start`、`batch_item_plan_stale`、
+`source_revision_changed`、`manifest_changed`、`target_changed`、`rollback_succeeded` 和
+`recovery_required`。前端按稳定 code 映射本地化文案，不能根据 message 分支。
+
+除 preview/seal 对应的直接 response 返回各自 opaque token 外，result、progress/event、其他 DTO、
+CLI stdout/JSON/JSONL、Task/Audit Log 和诊断都不得公开完整路径、Windows 用户名、Steam ID、
+token、digest、target/hash 列表、backup/snapshot ref、manifest/source/package 正文或原始错误。
+公开错误只含稳定 code、category、retryable 与脱敏 message。
+
+CLI-4 只能映射相同 app use case；在 T13-00、CLI-2A/2B/2C、CORE-PREF-01 与 T13-01 至 T13-04
+完成前，Sandbox batch parser 也保持不可达。Production batch 写入还必须等待独立跨进程 admission。
+
 ## 错误契约
 
 错误分为四类：

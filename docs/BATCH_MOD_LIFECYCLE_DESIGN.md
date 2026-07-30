@@ -662,6 +662,10 @@ Preview request 只包含 operation、gameId、profileId、executionPolicy 和�
 Seal response 只返回 batchId、status、operation、policy、expiresAt 和 opaque planToken；seal 前后任一
 fact 变化都返回 `batch_plan_stale`，不会持久化部分 snapshot。
 
+`previewToken` 和 `planToken` 只允许出现在各自的直接 command response 中，调用方仅在内存持有，
+不得持久化、记录或转发到 result/progress/event/log/Audit/diagnostics。CLI adapter 应在单次受控流程
+内部消费 token，不得写入 stdout、JSON/JSONL 或 shell history。
+
 Result query 分页返回 itemId、ordinal、短 modId、status、reasonCode、retryable 和聚合计数。它不返回
 target path、hash、backup/ref、manifest、source/package 或原始 error。
 
@@ -754,8 +758,9 @@ recovery_required
 
 ### Privacy 与 contract
 
-- DTO/JSON/JSONL/Task/Audit/diagnostics 不含完整路径、Steam ID、plan token、digest、backup/snapshot ref、
-  manifest/source 正文、hash 列表或原始 error。
+- 除 preview/seal 对应的直接 response 返回各自 opaque token 外，result/progress/event/其他 DTO、
+  CLI JSON/JSONL、Task/Audit/diagnostics 不含完整路径、Steam ID、token、digest、backup/snapshot
+  ref、manifest/source 正文、hash 列表或原始 error；token 不落盘、不写日志。
 - Result pagination 默认 50、最大 100，非法 cursor/limit 整体拒绝。
 - Stable status/code serialization 有快照/contract tests。
 - Production CLI 写命令在 admission 前 parser 不可达。
