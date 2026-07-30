@@ -5,7 +5,7 @@
 [Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。
 
 更新时间：2026-07-30
-规划基线：`main@a439112ab61425f4b89fee010a9e953ff9d92fb5`
+规划基线：`main@62323f18dd66bea454ecc834bc2014c1b62396a2`，含当前 QG-01 PR 的治理变更
 
 ## 固定范围
 
@@ -22,6 +22,7 @@
 | --- | --- |
 | `completed` | 已实现并有当前自动化证据 |
 | `certified` | 除实现外，已完成对应独立复审与受控 Windows 纵向验收 |
+| `implemented` | 当前独立分支已实现，但 task 仍需完成 CI、review 和合并门禁 |
 | `ready` | 前置已满足，可以作为下一个独立 task |
 | `blocked` | 缺少明确依赖、外部环境或维护者决策 |
 | `conditional` | 只在出现复现缺陷或获得受控验收输入时启动 |
@@ -72,13 +73,8 @@ sealed input
 
 - 一个 task 一个独立 `hy/` 分支、worktree 和 PR。
 - 每个可独立验证步骤立即 commit；不把多个 task 攒成一个提交或一个 PR。
-- 当前 `verify`/CI 尚不包含前端测试和 clippy。在 QG-01 合并前，每个相关 PR 必须额外运行：
-
-```powershell
-cmd /c corepack pnpm run test
-cargo clippy --workspace --all-targets -- -D warnings
-```
-
+- QG-01 合并后，`verify.ps1`、`verify.sh` 和 required CI 已统一包含前端 tests 与 workspace
+  clippy。后续 PR 不再重复手工补跑这两项全量命令；聚焦验证仍按 touched boundary 执行。
 - 每次最后变更后运行聚焦验证、完整 `verify.ps1` 和 `hmm-review-gate` 本地自审。
 - required CI 只有 terminal `success` 才算通过。`pending`、`failure`、`cancelled`、`timed_out`、
   `action_required`、`skipped` 或 `neutral` 都禁止合并。
@@ -119,13 +115,14 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01 是最先执行的治理 task。它合并前不得开始 T13-00；如果外部 review 因额度缺席，按
-CodeRabbit 缺席流程完成独立全 diff 自审，但仍必须等待全部 CI 到 terminal success。
+QG-01 已在当前独立 PR 实现；只有该 PR 的 CI、review 和合并门禁全部完成后，T13-00 才成为
+第一个 ready 产品 task。如果外部 review 因额度缺席，按 CodeRabbit 缺席流程完成独立全 diff
+自审，但仍必须等待全部 CI 到 terminal success。
 
 ## P0 核心生命周期与批量能力
 
-推荐开启顺序如下。先完成 QG-01，让后续产品 PR 的统一门禁实际包含前端测试和 clippy，再启动
-T13-00；不得把尚未合并的治理分支作为产品 task 的隐式基线。
+推荐开启顺序如下。当前完成 QG-01 的 CI/review/合并门禁后，从最新 `main` 启动 T13-00；不得把
+尚未合并的治理分支作为产品 task 的隐式基线。
 
 ```text
 QG-01
@@ -145,7 +142,8 @@ QG-01
 
 ### QG-01：补齐 CI 质量门禁
 
-状态：`ready`，治理变更，需要完整增量自审和远端门禁。
+状态：`implemented`，已在当前独立 PR 实现；通过完整增量自审、远端 CI、评论处理并合并后标记
+`completed`。
 
 范围：
 
@@ -164,7 +162,7 @@ QG-01
 
 ### T13-00：冻结批量领域语义
 
-状态：`blocked`，依赖 QG-01 合并；高风险设计 task。
+状态：QG-01 合并后的第一个 `ready` task；QG-01 未合并前保持 `blocked`。这是高风险设计 task。
 
 设计必须决定：
 
@@ -612,7 +610,7 @@ recovery 语义未改变：
 
 1. 独立 branch/worktree/PR，提交按可验证步骤拆分。
 2. 当前 task 的专题设计、源码、contract、TODO/状态文档同步。
-3. 聚焦测试、完整 `verify.ps1`、前端测试、clippy 实际通过。
+3. 聚焦测试和完整 `verify.ps1` 实际通过；统一入口必须实际执行前端 tests 和 workspace clippy。
 4. 最后变更后完成 `hmm-review-gate` 本地自审。
 5. 全部 required CI terminal success。
 6. 所有评论逐条处理；真实 bug 已修复，误报已有证据。
