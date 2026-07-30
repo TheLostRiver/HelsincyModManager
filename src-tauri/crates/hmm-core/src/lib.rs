@@ -1,4 +1,5 @@
 mod category;
+mod batch;
 mod external_import;
 mod game;
 mod install;
@@ -12,6 +13,16 @@ mod save_backup;
 mod save_directory;
 
 pub use category::{Category, CategoryLabel};
+pub use batch::{
+    build_batch_plan, BatchActionSummary, BatchExecutionPolicy, BatchItemFacts, BatchItemInput,
+    BatchItemPlan, BatchOperation, BatchPlan, BatchPlanError, BatchPlanFacts, BatchPlanRequest,
+    BatchPlanStatus, BatchPreflightDecision, BatchPreflightStatus, BatchReasonSummary,
+    BatchResource, BatchResourceLimits, BatchResourceUsage, BatchTargetClaim, BatchTargetWriteKind,
+    InstallBatchItemInput, NormalizedBatchPlanRequest, ReinstallBatchItemInput,
+    UninstallBatchItemInput, BATCH_PLAN_SCHEMA_VERSION, BATCH_RESOURCE_LIMITS_VERSION,
+    DEFAULT_BATCH_MAX_CANONICAL_BYTES, DEFAULT_BATCH_MAX_ITEMS, DEFAULT_BATCH_MAX_TARGET_ACTIONS,
+    DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS,
+};
 pub use external_import::{
     ExternalImportAdapterId, ExternalImportBatch, ExternalImportBatchId,
     ExternalImportBatchImportStatus, ExternalImportCandidate, ExternalImportCandidateId,
