@@ -266,9 +266,9 @@ plan token。一个 request 只允许一种 operation、一个 game/profile，�
 | --- | --- | --- |
 | `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
 | `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAt` 和 opaque `planToken` |
-| `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId }` |
-| `get_batch_mod_lifecycle_result` | `batchId`、可选 `cursor`、可选 `limit` | `BatchModLifecycleResultPageDto` |
-| `retry_batch_mod_lifecycle` | `batchId` | `{ task: TaskStartedDto, batchId }`；retry item set 完全由后端从 sealed batch 和已有终态计算 |
+| `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }` |
+| `get_batch_mod_lifecycle_result` | `batchId`、`attemptNumber`、可选 `cursor`、可选 `limit` | `BatchModLifecycleResultPageDto`；cursor 只属于该 attempt |
+| `retry_batch_mod_lifecycle` | `batchId`、`expectedAttemptNumber` | `{ task: TaskStartedDto, batchId, attemptNumber }`；retry item set 完全由后端从 sealed batch 和已有终态计算 |
 
 `preview` 必须零写入：不创建 batch journal、projection、Audit、manifest、backup、recovery 或 temp
 artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
@@ -277,6 +277,11 @@ artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
+后端也不持久化原始 token，只能保存单向 verifier/metadata 或使用经过审计的 keyed token。
+
+Preview `status` 只有 `ready` 和 `blocked`。默认 `stop_on_failure` 只有零 item blocker 时为
+`ready`；显式 `continue_on_item_failure` 在没有 global blocker 且至少一个 item ready 时为 `ready`，
+此时 `blockedItemCount` 可以大于零。其他情况均为 `blocked` 且 `previewToken = null`。
 
 首版资源上限固定为 100 items、50,000 target actions 和 16 MiB canonical plan。任一上限超出时整体
 返回 `batch_resource_limit_exceeded`，不截断、不部分 seal。跨 item 最终 target、卸载 remove/restore
@@ -284,7 +289,7 @@ artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任
 
 Result page 默认 `limit = 50`、最大 `100`；cursor 是后端解释的 opaque 分页值，前端只复用
 `nextCursor`。非法 cursor/limit 整体拒绝。页面按 `ordinal` 稳定排序，批量摘要必须伴随各 item count；
-返回 item 仅包含：
+summary 还返回当前 `attemptNumber`；返回 item 仅包含：
 
 ```text
 itemId
@@ -300,6 +305,10 @@ actionSummary
 Batch 终态稳定值为 `completed`、`completed_with_errors`、`blocked`、`cancelled`、
 `recovery_required`、`failed`。`retryable` 是独立布尔事实；成功项和 `recovery_required` 项不能重放。
 运行中 commit 收到取消但安全提交成功时，item 仍是 `succeeded`，取消只阻止启动后续项。
+同一 attempt 的 start 使用后端 CAS 只登记一个 task；重复调用幂等返回同一 task。Retry 必须匹配最近
+terminal `expectedAttemptNumber`，并发 retry 最多一个创建下一 attempt，另一个返回
+`batch_attempt_stale`。Result query 和 cursor 必须绑定确切 attempt；新 attempt 不改变旧 attempt 的
+分页身份。
 
 未来 batch task phase family 固定为：
 
@@ -335,6 +344,7 @@ batch_journal_unavailable
 batch_write_admission_unavailable
 batch_evidence_unavailable
 batch_retry_unavailable
+batch_attempt_stale
 batch_result_unavailable
 batch_cancelled
 batch_internal_error
