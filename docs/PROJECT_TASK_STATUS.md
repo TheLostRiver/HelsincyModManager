@@ -1,8 +1,8 @@
 # 项目任务状态快照
 
 本文档记录 Helsincy Mod Manager 在 **2026-07-30** 的 Windows 项目任务全景，基准为
-`main@a439112ab61425f4b89fee010a9e953ff9d92fb5`，包含 CLI-0A 至 CLI-1B，以及
-PR #211 至 #214 的 DTO 测试外置、重装 dead-code 清理、Tauri 契约覆盖和治理门禁加固。
+`main@62323f18dd66bea454ecc834bc2014c1b62396a2` 与当前 QG-01 PR，包含 CLI-0A 至 CLI-1B、
+PR #211 至 #214 的工程治理，以及统一验证入口中的 frontend tests/workspace clippy 门禁。
 
 本文件是一次证据快照，用于回答“当前已经具备什么、还缺什么、下一步先做什么”。持续变化的任务
 优先级、依赖和实施状态仍以 [任务总纲](../TODO.md) 与 [路线图](ROADMAP.md) 为准；功能设计和安全
@@ -37,10 +37,12 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 
 快照时：
 
-- 规划基线为 `main@a439112`，后续任务以最新 `main` 创建独立 branch/worktree。
+- 规划基线为 `main@62323f1` 与当前 QG-01 PR；后续任务以最新 `main` 创建独立 branch/worktree。
 - PR #196 已合并；其 review 遗漏由 PR #197 补齐。
 - PR #199 已完成 T17 Slice 4C，T17 全部切片已交付。
 - PR #210 已合并并交付 CLI-0B/1A/1B；PR #211 至 #214 已完成 GOV-01 至 GOV-04。
+- QG-01 已在独立分支实现统一 frontend tests/workspace clippy 门禁，等待当前 PR 的 CI、review
+  和合并完成。
 
 ## 任务矩阵
 
@@ -314,12 +316,13 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 - 自动化只使用 temp SQLite、fake registry/fixed clock 和人工日志；未执行 Production
   backup/diagnostics 命令，未读取真实 AppData/日志/存档，也未查询或修改真实 Scheduled Task。
 
-2026-07-30 在独立 clean Windows worktree 对本路线图文档基线实际执行：
+2026-07-30 在独立 clean Windows QG-01 worktree 对当前治理 diff 实际执行：
 
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：通过；包含 policy/docs、
-  frontend typecheck/lint/build、`cargo test --workspace` 和 `cargo check --workspace`。
-- `cmd /c corepack pnpm run test`：403/403 通过。
-- `cargo clippy --workspace --all-targets -- -D warnings`：通过。
+  入口契约、frontend typecheck/lint/tests/build，以及 workspace tests/check/clippy；frontend
+  tests 为 403/403。
+- 前端失败变异为 403 pass / 1 fail，入口退出 1 且未进入 build/Rust；fixture 已删除。
+- clippy `useless_vec` 失败变异使入口在最终 clippy 退出 1；fixture 已删除。
 - frontend build 仍有约 597 KB 主 chunk 超过 500 KB 的既有非阻断 warning。
 - 测试使用 temp/fake/人工 fixture；开发 sidecar、`node_modules`、`target` 和 `dist` 均为 ignored
   生成物，不进入本次文档提交。
@@ -331,8 +334,8 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 
 - `SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md` 仍写 P7.2b 未实现，与较新的自动化设计、
   `TODO.md`、源码和测试不一致。
-- 当前 GitHub `Verify` 和本地统一验证仍未运行 frontend tests 或 clippy；在 QG-01 合并前，
-  每个相关 PR 必须额外手动执行并记录。
+- QG-01 已在当前 PR 把 frontend tests 和 workspace clippy 纳入本地/CI 统一入口；该治理能力
+  只有在 PR 通过 CI/review 并合并后才成为后续产品 PR 的主干基线。
 - Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
   bundle 中存在 sibling worker 就标记完成。
 - GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri
@@ -340,8 +343,8 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 
 ## 建议执行顺序
 
-1. QG-01 把前端测试与 clippy 接入本地/CI 门禁并完成合并。
-2. T13-00 冻结批量 sealed plan、失败、取消、partial result 和 retry 语义。
+1. 完成当前 QG-01 PR 的 CI、评论处理和合并门禁。
+2. 从最新 `main` 启动 T13-00，冻结批量 sealed plan、失败、取消、partial result 和 retry 语义。
 3. CLI-2A/2B/2C 完成逐阶段 observer、Sandbox 写许可和单项生命周期 binary E2E。
 4. CORE-PREF-01 证明并补齐单项安装前置检查的一致 decision。
 5. T13-01 至 T13-08 依次完成批量 plan、安装、卸载、真正重装、CLI/Tauri/前端和 Gate C。

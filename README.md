@@ -137,7 +137,9 @@ bash scripts/verify.sh
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-该脚本会检查必需文档、文件大小硬性线、禁止提交的文件类型、Markdown 内链、明显敏感信息、前端类型检查、前端 lint、前端构建以及 Rust workspace 测试和编译检查。
+该脚本会检查验证入口契约、必需文档、文件大小硬性线、禁止提交的文件类型、Markdown 内链、
+明显敏感信息、前端类型检查/lint/tests/build，以及 Rust workspace tests/check/clippy。
+PowerShell 与 Bash 入口执行同一质量序列；任一命令失败都会使统一验证非零退出。
 
 可选安装本地 Git hooks：
 
