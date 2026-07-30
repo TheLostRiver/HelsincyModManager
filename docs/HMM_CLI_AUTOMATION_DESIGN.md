@@ -29,7 +29,8 @@ CLI 不是第二套后端，也不是对 Tauri command 的脚本封装。它必�
   `runtime status`、四个 `game` 只读命令、install plan/status/recovery scan/preview、
   backup list/background status 和 diagnostics snapshot。
 - T17 已实现第三方管理器批量导入，但默认只导入 HMM，不安装到游戏目录。
-- T13 批量安装/卸载仍处于暂停状态，不能由 CLI 循环单项命令来冒充。
+- T13-00 已冻结批量安装、卸载和真正重装的领域语义；BatchPlan、应用服务、Tauri/CLI adapter
+  与前端仍未实现，不能由 CLI 循环单项命令来冒充。
 
 项目整体能力与缺口见 [项目任务状态快照](PROJECT_TASK_STATUS.md)。
 
@@ -41,7 +42,7 @@ CLI 不是第二套后端，也不是对 Tauri command 的脚本封装。它必�
 - 为短命令定义 JSON 契约，为长任务定义 JSONL 事件流。
 - 让 CLI 事件、Tauri event、Task Log 和 Audit Log 使用同一个 `task_id` 和稳定 code。
 - 明确真实游戏目录、真实 app data、真实存档和 Windows user 级 Scheduled Task 的安全门禁。
-- 为未来 T13 批量安装/卸载定义最小 CLI 接入要求，但不提前伪造批量业务语义。
+- 为 T13 批量安装、卸载和真正重装定义最小 CLI 接入要求，但不提前伪造尚未实现的业务能力。
 
 ## 非目标
 
@@ -228,9 +229,18 @@ hmm
     batch
       plan
       apply
+      result
+      retry
     uninstall-batch
       plan
       apply
+      result
+      retry
+    reinstall-batch
+      plan
+      apply
+      result
+      retry
   backup
     list
     create
@@ -255,12 +265,13 @@ hmm
 | CLI-1 | `install plan/status/recovery scan/recovery preview` | Production 只读、Sandbox | 只返回计划、状态和聚合问题 |
 | CLI-1 | `backup list/background status` | Production 只读、Sandbox | 不触发备份或注册变更 |
 | CLI-1 | `diagnostics snapshot` | Production 只读、Sandbox | 复用受控安全快照，不返回日志文件路径 |
-| CLI-2 | `mod import`、`external-import apply` | 仅 Sandbox | 使用人工 archive/source fixture |
-| CLI-2 | `install apply/uninstall/reinstall/recovery apply` | 仅 Sandbox | 验证完整安全链路和失败恢复 |
-| CLI-2 | `backup create`、`diagnostics export` | 仅 Sandbox | 写入隔离 app data/backup 根 |
+| CLI-2A | 无新增写命令 | Test/Sandbox | runner 逐阶段 observer、唯一 terminal event 与 JSONL 顺序事实 |
+| CLI-2 后续切片 | `mod import`、`external-import apply` | 仅 Sandbox | 使用人工 archive/source fixture；不自动归入单项 lifecycle task |
+| CLI-2B/2C | `install apply/uninstall/reinstall/recovery apply` | 仅 Sandbox | 验证完整安全链路和失败恢复 |
+| CLI-2 后续切片 | `backup create`、`diagnostics export` | 仅 Sandbox | 写入隔离 app data/backup 根；需各自独立安全评审 |
 | CLI-3 | CLI-2 写命令 | Production | 仅在对应跨进程 admission 和写侧重验完成后开放 |
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
-| CLI-4 | `install batch`、`install uninstall-batch` | Production/Sandbox | T13 完成并独立评审后开放 |
+| CLI-4 | `install batch`、`install uninstall-batch`、`install reinstall-batch` | Sandbox；Production 受 CLI-3 门禁 | T13-01 至 T13-04 完成并独立评审后开放 |
 
 CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。所有写命令必须在持有写 admission 后重新
 读取配置、manifest/recovery、目标摘要、前置状态和计划事实。
@@ -310,7 +321,8 @@ T17 的 `external-import` 可以成为 CLI-2 sandbox 自动化入口，但语义
 - action/conflict/warning 聚合计数。
 - 稳定 target family 或逻辑相对路径。
 - prerequisite 状态和稳定 code。
-- 版本化、短期有效的 opaque `planToken` 或等价 plan digest。
+- 版本化、短期有效的 opaque `planToken`，或只用于 stale guard 的 plan digest。Digest 本身不是写入
+  授权，不能替代 admission。
 
 输出禁止包含 game root、source root、target absolute path、backup ref、manifest path、sandbox path
 或第三方内容。
@@ -392,7 +404,8 @@ CLI 自身不得新增“打印原始错误”“显示内部路径”“dump ma
 - 缺少任一参数时不写入，只返回计划或稳定拒绝 code。
 - 非交互环境不允许通过 stdin 隐式确认。
 - `--yes` 只确认本次已展示/已绑定的计划，不绕过冲突、前置、安全校验或锁。
-- plan/apply 之间必须使用后端生成的 opaque token 或等价 digest 防止 TOCTOU。
+- plan/apply 之间必须使用后端生成的 opaque token，或版本化 digest 作为 stale guard 防止 TOCTOU；
+  裸 digest 不是 capability，不能授权写入或替代 admission。
 - token 绑定 command、game、profile、mod/revision、计划摘要、环境和 schema version。
 - production token 不能在 sandbox 使用，反之亦然。
 - 写入开始前必须再次验证 token、配置和目标状态。
@@ -433,7 +446,10 @@ CLI 自身不得新增“打印原始错误”“显示内部路径”“dump ma
 
 Production 写命令开放前，必须有两个独立进程竞争同一 scope 的集成测试，而不只是两个线程。
 
-## 批量安装/卸载
+## 批量安装/卸载/真正重装
+
+本节服从 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只冻结语义；
+本节命令在 CLI-4 前不可调用。
 
 ### 不允许的实现
 
@@ -450,22 +466,59 @@ for mod in mods:
 
 T13 至少需要：
 
-- 服务端生成不可变 batch plan 和 plan digest。
+- 只读 `preview` 规范化完整 request、生成 batch plan 摘要和短期 opaque preview token；不得写
+  journal、projection、Audit、manifest、backup、recovery 或临时产物。
+- `seal` 重新读取当前事实并验证 request、preview token 和 digest；一致时才持久化不可变 sealed
+  batch、签发 `batchId` 与短期 opaque plan token。
+- Preview 只使用 `ready/blocked`：默认策略要求零 item blocker；continue 策略允许存在 isolated
+  blocked item，但至少要有一个 ready item。Blocked preview 不签发 token。
+- `start` 只接受 `batchId + planToken`，不会让 CLI 提交 target path、manifest generation、
+  backup ref、hash 或任意 item ID。
+- 同一 batch attempt 通过后端 CAS 只获得一次执行 admission；重复 start 不得重复写入。
 - 在一个一致的 profile/manifest 快照上计算跨 Mod target 冲突。
 - 同一 game/profile 的写入串行，不同 game/profile 是否并行由 task policy 决定。
 - 每个 Mod 仍经过 InstallPlan、backup、manifest、rollback/recovery。
 - 默认在任何阻断项存在时于写入前终止整个批次。
 - 执行阶段不宣称全局原子事务；已成功项保留真实成功事实。
-- 失败策略显式为 `stop` 或 `continue`，默认 `stop`。
+- 失败策略为默认 `stop_on_failure` 或显式 `continue_on_item_failure`；continue 只能越过未写入或
+  rollback 已证明成功的可隔离 item failure，不能越过 global blocker、recovery required 或证据故障。
 - 取消停止启动新项；运行中项只在安全检查点取消并完成一致性收尾。
-- 结果区分 success、skipped、blocked、failed、cancelled 和 retryable。
-- 重试只消费同一 sealed batch plan 中可重试项，已成功项不重复提交。
+- 单项结果区分 `succeeded`、`blocked`、`failed`、`recovery_required`、`cancelled` 和 `skipped`；
+  `retryable` 是独立布尔事实。
+- 重试只接收 `batchId + expectedAttemptNumber`，不接收 item IDs；由后端从同一 sealed batch 和已有
+  终态计算 retryable 项。已成功项和 recovery-required 项不重复提交，并发 retry 最多一个创建下一
+  attempt。
 - Audit Log 既有 per-item 证据，也有不含路径/内容的 batch 聚合证据。
 
-批量卸载还必须基于 manifest/recovery 事实，并在跨 Mod 共享目标、backup ownership 或旧 manifest
-缺少摘要时 fail closed。
+批量安装、卸载和真正重装使用同一 `preview -> seal -> start -> result/retry` 协议，但 item 输入与
+事实来源不同：安装绑定候选 revision/layer/binding；卸载只绑定已安装 revision 并消费
+manifest/recovery；真正重装同时绑定 installed/candidate revision、layer 和可选 binding，复用既有
+retained/replaced/added/stale 与 durable transaction。跨 item 最终 target/remove/restore 重叠、
+backup ownership 不明确或旧 manifest 缺少摘要都是 global blocker，不能由执行顺序或 continue 策略绕过。
 
-CLI-4 只能在 T13 的领域语义、应用服务、锁和测试先落地后接入。CLI 层不能自行决定批量原子性。
+首版固定上限是每批 100 项、50,000 个 target action、16 MiB canonical plan；结果页默认 50、最大
+100，preview/plan token 默认 30 分钟。机器输出只公开短 ID、稳定 status/code、聚合计数和
+retryable，不返回路径、Steam ID、token/digest、backup/snapshot ref、manifest/source 正文、hash
+列表或原始错误。原始 token 只在单次 adapter 流程内存中消费，不持久化或记录。
+Result query/cursor 绑定确切 attempt；CLI 在 retry 后不得拿旧 cursor 查询隐式“最新结果”。
+
+CLI-4 依赖 T13-00、CLI-2A、CLI-2B、CLI-2C、CORE-PREF-01 以及 T13-01 至 T13-04 的领域/app
+实现和测试。CLI 只能映射同一 app use case，不能自行决定批量原子性、retryable 谓词或写入顺序。
+Sandbox parser 也必须等上述依赖完成；Production 继续额外等待 CLI-3 跨进程 admission。
+
+三种 operation root 都暴露同一组子命令，分别固定映射 `install`、`uninstall` 和 `reinstall`：
+
+```text
+plan
+apply
+result --batch <id> --attempt <n> [--cursor <cursor>] [--limit <n>]
+retry --batch <id> --expected-attempt <n>
+```
+
+`plan` 只执行 preview 并返回脱敏摘要。`apply` 在同一受控进程内重新 preview，完成用户确认后依次
+seal 和 start；preview token 与 plan token 只在内存传递，不作为参数或机器输出暴露。`result` 必须
+查询显式 attempt，不能使用隐式 latest。`retry` 成功后返回新 task identity 和 attempt number；调用方
+必须使用该 attempt number 重新执行 `result`，不能复用旧 attempt 的 cursor。
 
 ## 输出协议
 
@@ -725,12 +778,14 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - Production 模式没有写命令可达路径。
 - 所有错误通过稳定 code 表达。
 
-### CLI-2：Sandbox 写链路
+### CLI-2A/2B/2C：Observer、Sandbox 写许可与单项 E2E
 
-- 接入人工 archive import 和 T17 external import fixture。
-- 接入 install/uninstall/reinstall/recovery apply。
-- 接入 backup create 和 diagnostics export。
-- 覆盖失败注入、取消、重启恢复和 sentinel containment。
+- CLI-2A 先让 runner 逐阶段调用 observer，锁定 task id、sequence、phase、取消和唯一 terminal
+  event；不新增写命令。
+- CLI-2B 再建立 Sandbox marker/capability、canonical containment 与写侧重验。
+- CLI-2C 接入人工 archive/T17 external import fixture、install/uninstall/reinstall/recovery apply，
+  并覆盖失败注入、取消、重启恢复和 sentinel containment。
+- backup create 和 diagnostics export 仍按独立安全切片开放，不能被生命周期写许可自动解锁。
 
 完成定义：
 
@@ -752,11 +807,12 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - 不存在 debug/环境变量绕过。
 - Windows 安装态验收与普通 CI 结果分开记录。
 
-### CLI-4：T13 批量安装/卸载
+### CLI-4：T13 批量安装/卸载/真正重装
 
-- 先实现并评审 T13 的 batch plan、sealed snapshot、冲突、失败、取消和重试语义。
+- 前置必须包含 T13-00、CLI-2A/2B/2C、CORE-PREF-01 和 T13-01 至 T13-04。
+- 先实现并评审 T13 的 preview/seal/start、sealed snapshot、冲突、失败、取消、重试和真正重装语义。
 - 再添加 CLI adapter 和机器 contract。
-- 增加跨 Mod 冲突、partial success、幂等重试和跨进程竞争测试。
+- 增加跨 Mod 冲突、partial success、幂等重试、批量 true reinstall 和跨进程竞争测试。
 
 完成定义：
 
@@ -793,6 +849,6 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - 测试只使用 temp/fake/人工 fixture，并验证 sandbox 外 sentinel 不变。
 
 CLI-0A、CLI-0B、CLI-1A 与 CLI-1B 已满足 contract/policy、共享 composition、transport observer
-接缝和只读 game/install/backup/diagnostics automation 条件。下一步在任何 CLI-2 长任务写命令前，
-必须先完成 runner 逐阶段 observer、Sandbox write marker/capability、canonical containment 与完整
-安全链路；不要为每个 Tauri command 添加 shell 包装。
+接缝和只读 game/install/backup/diagnostics automation 条件。T13-00 合并后，CLI-2A 是下一个
+ready task；任何 CLI-2 长任务写命令前，必须先完成 runner 逐阶段 observer，再完成 Sandbox write
+marker/capability、canonical containment 与完整安全链路；不要为每个 Tauri command 添加 shell 包装。

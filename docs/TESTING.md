@@ -558,6 +558,42 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - 不直接操作真实 MHW:I 安装目录。
 - 每个测试结束后校验临时目录状态。
 
+### T13 批量生命周期分阶段矩阵
+
+T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只交付
+设计与规划契约，当前不存在可调用的 batch Rust service、Tauri command、CLI parser 或前端工作流；
+不得把下面的未来测试名称、command 或场景写成已经通过。
+
+| Task | 实现后必须覆盖的自动化 |
+| --- | --- |
+| T13-00 | policy、Markdown links、secret、whitespace、文件大小、`git diff --check`、完整 `verify.ps1` 与 findings-first 全 diff 自审 |
+| T13-01 | 规范 item 顺序与 deterministic digest；operation/policy/revision/binding/target/preflight 任一变化使 digest 变化；duplicate、101 items、50,001 actions、超过 16 MiB plan 整体拒绝；Windows 规范化后的跨 item target conflict；preview 零写入；stop/continue 的 ready/blocked 与 token 规则；preview/plan token 过期、环境或 digest 不匹配 fail closed；seal 重读事实时 request/token/fact 任一漂移均返回 `batch_plan_stale`，且不留下部分 snapshot、journal、attempt 或 projection；原始 token 不持久化 |
+| T13-02 | 批量 install 全成功、默认预检 blocker 整批零写入、首项成功后次项失败保留首项、continue 只越过 pre-write/rollback-succeeded failure；同一 attempt 重复 start 幂等返回同一 task；manifest save/rollback/journal/Audit before/after commit fault matrix；sandbox 外 sentinel 不变 |
+| T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing、backup unavailable 和 remove/restore overlap 阻断；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
+| T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |
+| T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment 和机器输出脱敏；CLI 不循环调用单项 command |
+| T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、分页和 typed API wrapper；T13-06 前 contract test 应证明 command 未注册 |
+| T13-07 | 多选、preview、确认、progress、取消、分页 result、partial success 和 retry UI；监听严格按 taskId；选择变化使旧 preview/token 失效；前端不计算 target/retryable/文件规则 |
+| T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> restart -> recovery 检查 -> batch uninstall -> exact baseline，并清理受控产物 |
+
+所有实现切片还必须覆盖以下横向不变量：
+
+- queued、prepare、item 间、commit 中和 rollback/recovery 中取消。Commit 成功时 item 必须是
+  `succeeded`，取消只阻止后项启动。
+- retry 只由后端从 sealed batch 选择 retryable item；成功项和 `recovery_required` 项不重放，
+  revision/target/policy 变化必须创建新 batch；expected attempt 不匹配时拒绝，两个并发 retry 最多一个
+  创建下一 attempt。
+- 同一 game/profile 写入严格串行；plan/scan 在写锁外；item 间释放写锁。不同 game/profile 的
+  并行仍受资源预算和现有 coordination 控制。
+- 一个 batch task 恰好一个 terminal event；结果按 `ordinal` 分页，默认 50、最大 100，不能依赖
+  progress event 携带 item 明细；result query/cursor 绑定确切 attempt，retry 不能让旧分页漂移。
+- 除 preview/seal 的直接 response 分别返回 opaque token 外，result/progress/event/其他 DTO、
+  CLI stdout/JSON/JSONL、Task/Audit/diagnostics 不含完整路径、Windows 用户名、Steam ID、
+  token/digest、target/hash 列表、backup/snapshot ref、manifest/source 正文或原始 error；
+  原始 token 不持久化、不写日志，只允许保存单向 verifier/metadata。
+- 所有测试只用 temp/fake/人工 fixture；不得读取真实 MHW:I、真实 Steam userdata、玩家存档或第三方
+  Mod 包，也不得在普通 CI 操作真实 Windows Scheduled Task。
+
 ### Core Mod Lifecycle Gate A
 
 核心 Mod 生命周期的正式自动验收入口为：
