@@ -22,9 +22,18 @@ function assertOrdered(content, excerpts, label) {
 
 test("PowerShell verification runs the full quality sequence and fails closed", () => {
   const script = readRepoFile("scripts/verify.ps1");
+  const invokePnpmStart = script.indexOf("function Invoke-Pnpm");
+  const invokePnpmEnd = script.indexOf("function Assert-RequiredFile");
+
+  assert.notEqual(invokePnpmStart, -1, "scripts/verify.ps1 must define Invoke-Pnpm");
+  assert.ok(
+    invokePnpmEnd > invokePnpmStart,
+    "Invoke-Pnpm must end before Assert-RequiredFile",
+  );
+  const invokePnpm = script.slice(invokePnpmStart, invokePnpmEnd);
 
   assert.match(
-    script,
+    invokePnpm,
     /function Invoke-Pnpm[\s\S]*?if \(\$LASTEXITCODE -ne 0\) \{\s*exit \$LASTEXITCODE\s*\}/,
     "Invoke-Pnpm must propagate a failing pnpm exit code",
   );

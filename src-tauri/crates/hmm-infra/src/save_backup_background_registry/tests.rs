@@ -419,6 +419,21 @@ fn inspect_maps_missing_drift_permission_and_module_statuses() {
 }
 
 #[test]
+fn inspect_maps_runner_ownership_conflict_to_safe_error() {
+    let fixture = RegistryFixture::new();
+    let runner = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
+    ]);
+    let registry = ScheduledTaskRegistry::new(runner, fixture.worker_path);
+
+    assert_eq!(
+        registry.inspect().expect_err("ownership conflict blocked"),
+        SaveBackupBackgroundRegistryError::TaskOwnershipConflict
+    );
+}
+
+#[test]
 fn register_maps_write_permission_and_module_outcomes_without_readback() {
     for (outcome, expected) in [
         (
