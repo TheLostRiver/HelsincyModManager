@@ -424,6 +424,20 @@ TaskManager 的 Cancelled 状态不能覆盖成功 manifest/Audit 事实。
 
 ### Batch terminal status
 
+Batch 非终态 control status：
+
+| Status | 含义 |
+| --- | --- |
+| `sealed` | sealed batch 与 attempt 0 已持久化，但尚未获得写 admission |
+| `queued` | 某个 attempt 已通过一次性 admission 并登记 task，尚未开始 item 调度 |
+| `running` | attempt 正在按 ordinal 调度或执行 item |
+| `stopping` | 已停止启动新 item，正在等待当前 item/rollback/recovery 安全收尾 |
+
+这些值描述编排阶段，不覆盖 item write truth。`sealed` 是 seal response 的唯一成功状态；
+`queued/running/stopping` 通过 result summary 和 task progress 表达。
+
+Batch 终态：
+
 | Status | 含义 |
 | --- | --- |
 | `completed` | 全部 item succeeded |
@@ -676,7 +690,10 @@ retry_batch_mod_lifecycle(batchId, expectedAttemptNumber)
 cancel_task(taskId)
 ```
 
-Preview request 只包含 operation、gameId、profileId、executionPolicy 和有界 item inputs。Response 只返回：
+Preview request 只包含 `schemaVersion`、operation、gameId、profileId、executionPolicy 和有界 item
+inputs。首版 `schemaVersion` 必须是整数 `1`；它由调用方显式提交，后端只接受已登记版本，并把同一值
+绑定到 canonical digest、preview token 和 plan token。未知版本返回 `batch_input_invalid`，不能由前端
+或 adapter 自动降级。Response 只返回：
 
 - status、operation 和 policy。
 - item/global reason 聚合计数。
@@ -684,8 +701,13 @@ Preview request 只包含 operation、gameId、profileId、executionPolicy 和�
 - ready/blocked item 数量。
 - opaque previewToken 或 `null`。
 
-Seal response 只返回 batchId、status、operation、policy、expiresAt 和 opaque planToken；seal 前后任一
-fact 变化都返回 `batch_plan_stale`，不会持久化部分 snapshot。
+Seal response 只返回 batchId、status、operation、policy、expiresAt 和 opaque planToken。成功时
+`status` 固定为 `sealed`；它不是 preview 的 `ready/blocked`，也不是 batch 终态。`expiresAt` 只表示
+planToken 的执行有效期，不是 sealed batch、journal 或 result 的保留期限。Token 过期后不得 start，
+必须重新 preview/seal；已经存在的 terminal attempt 仍按 batch journal 保留策略查询和 retry。
+
+Seal 前后任一 request/token/fact 变化都返回 `batch_plan_stale`，不会持久化部分 snapshot、journal、
+attempt 或 projection。
 
 `previewToken` 和 `planToken` 只允许出现在各自的直接 command response 中，调用方仅在内存持有，
 不得持久化、记录或转发到 result/progress/event/log/Audit/diagnostics。CLI adapter 应在单次受控流程

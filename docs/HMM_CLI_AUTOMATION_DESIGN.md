@@ -229,12 +229,18 @@ hmm
     batch
       plan
       apply
+      result
+      retry
     uninstall-batch
       plan
       apply
+      result
+      retry
     reinstall-batch
       plan
       apply
+      result
+      retry
   backup
     list
     create
@@ -499,6 +505,20 @@ Result query/cursor 绑定确切 attempt；CLI 在 retry 后不得拿旧 cursor 
 CLI-4 依赖 T13-00、CLI-2A、CLI-2B、CLI-2C、CORE-PREF-01 以及 T13-01 至 T13-04 的领域/app
 实现和测试。CLI 只能映射同一 app use case，不能自行决定批量原子性、retryable 谓词或写入顺序。
 Sandbox parser 也必须等上述依赖完成；Production 继续额外等待 CLI-3 跨进程 admission。
+
+三种 operation root 都暴露同一组子命令，分别固定映射 `install`、`uninstall` 和 `reinstall`：
+
+```text
+plan
+apply
+result --batch <id> --attempt <n> [--cursor <cursor>] [--limit <n>]
+retry --batch <id> --expected-attempt <n>
+```
+
+`plan` 只执行 preview 并返回脱敏摘要。`apply` 在同一受控进程内重新 preview，完成用户确认后依次
+seal 和 start；preview token 与 plan token 只在内存传递，不作为参数或机器输出暴露。`result` 必须
+查询显式 attempt，不能使用隐式 latest。`retry` 成功后返回新 task identity 和 attempt number；调用方
+必须使用该 attempt number 重新执行 `result`，不能复用旧 attempt 的 cursor。
 
 ## 输出协议
 

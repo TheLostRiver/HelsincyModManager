@@ -29,9 +29,9 @@
    `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
    T17 范围保持 Windows + MHW:I；Linux/Steam Deck 和更多游戏不进入本轮。T13 与 T17 继续正交，
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
-6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。当前 P0 是 T13-00：批量 sealed batch
-   语义已在 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 冻结，正在完成契约、
-   验证与独立合并门禁；合并后推进 CLI-2A/2B/2C observer、Sandbox 写许可与单项生命周期 E2E，
+6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。T13-00 已完成批量 sealed batch
+   语义与规划契约，产品实现未开始；[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)
+   是后续实现的权威语义。CLI-2A 是 next ready，随后推进 CLI-2B/2C Sandbox 写许可与单项生命周期 E2E，
    再依次实现批量安装、批量卸载、批量真正重装、CLI/Tauri/前端契约和 disposable Windows
    Sandbox Gate C。
 7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的

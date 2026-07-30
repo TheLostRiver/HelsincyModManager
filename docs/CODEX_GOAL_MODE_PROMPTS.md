@@ -32,9 +32,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 
 任务选择：
 1. 从自主路线图选择第一个状态为 ready 且前置已满足的任务。
-2. QG-01 已由 PR #215 合并。当前完成 T13-00 的验证/PR/CI/review/合并门禁；T13-00 合并后，
-   CLI-2A 是第一个 ready task，必须从最新 main 创建独立 worktree，不把未合并 T13-00 分支作为
-   CLI-2A 的隐式基线。
+2. QG-01 已由 PR #215 合并，T13-00 已完成设计与规划契约，产品实现未开始。CLI-2A 是第一个
+   ready task，必须从包含 T13-00 的最新 main 创建独立 worktree。
 3. 不重新实现已标记 completed/certified 的能力；先根据源码和测试确认真实缺口。
 4. 一个 task 使用一个独立 hy/ 分支、独立 worktree 和独立 PR。
 5. 大 task 按路线图切片；每完成一个可独立验证的步骤就立即提交 Git。
