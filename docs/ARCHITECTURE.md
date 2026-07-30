@@ -80,9 +80,12 @@ configured executors、共享 repositories、`TaskManager` 与 game/profile 写�
 Tauri `AppState` 现在只是解析 app data、启动 GUI-only 缩略图维护并解引用到 `HmmRuntime` 的薄包装；
 固定 `--once` worker 直接构造 `HmmRuntime`，不再通过 Tauri state 获取后台备份服务。
 
-`TaskProgressObserver` 以 `hmm-app::TaskProgressEvent` 为输入。Tauri adapter 仍按原顺序转换安全 DTO、
-写 Task Log、记录 queued task 注册并发送 `hmm://task-progress`。现有 runner 暂时仍返回
-`Vec<TaskProgressEvent>`；逐阶段流式 observer 必须在首个 CLI 长任务命令开放前补齐。
+`TaskProgressObserver` 以 `hmm-app::TaskProgressEvent` 为输入。install、uninstall、reinstall 和
+recovery runner 会在阶段实际推进时调用 observer，同时继续返回 `Vec<TaskProgressEvent>` 兼容既有
+调用方。Tauri adapter 按原顺序转换安全 DTO、写 Task Log、记录 queued task 注册并发送
+`hmm://task-progress`；CLI adapter 从 0 分配单调 `sequence`，先写共享 Task Log，再 flush 脱敏
+JSONL。observer 失败不改变 task 状态、commit、rollback 或玩家文件事实。取消 terminal 由发起取消的
+transport 发送，runner 只停止后续安全阶段，避免重复 terminal。
 
 CLI-1A 在 `hmm-runtime` 中增加 `ReadOnlyGameAutomation`。它不构造会打开/迁移 SQLite 或执行恢复
 装配的完整 `HmmRuntime`，只装配 game config reader、MHW:I adapter、只读 prerequisite rules、
@@ -116,7 +119,18 @@ JSON/JSONL、stdout/stderr 和稳定退出码契约。Production 只读取系统
 discovery，并允许后台状态执行只读平台注册 inspect；Sandbox 只读取显式数据根下的受控
 config/state/logs 与 `<data-dir>/fixtures`，其中 Steam root 固定为 `fixtures/steam`。保存的 game
 root、VDF library、discovery candidate、install/backup state roots 和日志目录在读取前执行词法与
-canonical containment。两种环境都不创建 marker，也不签发写 capability。
+canonical containment。Production 与 Sandbox 的所有只读命令都不创建 marker，也不签发写
+capability。
+
+CLI-2B 在 `hmm-runtime` 增加了 `SandboxWriteCapability`。只有显式 Sandbox 环境可以通过
+`RuntimeEnvironment::acquire_sandbox_write_capability` 申请；Production 没有 capability 构造路径。
+空 Sandbox 根会在申请时通过 no-follow 目录句柄创建固定 `.hmm-sandbox.json` v1 marker，非空根
+必须已经包含完全匹配的 marker。marker 不是授权秘密，不能替代 capability；真正的授权对象字段和
+构造器私有、不可序列化，并在存活期间保留打开的根目录句柄、canonical root 和目录身份。
+`SandboxWriteRoots` 对本次操作实际使用的 app-data、game、save、backup 根执行词法、canonical、
+symlink/junction/reparse-point containment，返回的 `SandboxWriteAdmission` 绑定原 capability
+生命周期。写侧可在安全阶段前重新调用 `revalidate`；Windows 通过打开句柄阻止祖先替换，其他平台
+在允许替换时通过目录身份变化 fail closed。该基础设施本身不开放 CLI 写命令。
 
 目标依赖方向：
 
@@ -130,8 +144,9 @@ backup worker --/       |--> hmm-app -------> hmm-ports
 ```
 
 `hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。Production 的 CLI
-写命令在跨进程 admission 完成前保持不可达，Sandbox 写策略在 marker、canonical containment 和写许可
-落地前也只是一条策略声明。
+写命令在跨进程 admission 完成前保持不可达。Sandbox marker、canonical containment 和进程内写许可
+已经落地，但具体写命令只有在复用完整 application service、InstallPlan、backup、manifest、
+rollback/recovery、Audit Log 和写锁后才能逐项开放。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 

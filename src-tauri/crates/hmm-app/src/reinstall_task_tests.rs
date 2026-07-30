@@ -390,10 +390,7 @@ fn cancellation_during_prepare_stops_before_commit_without_audit() {
 
     assert_eq!(
         event_phases(&events),
-        vec![
-            "install.reinstall.plan.building",
-            "install.reinstall.cancelled",
-        ]
+        vec!["install.reinstall.plan.building"]
     );
     assert_eq!(executor.commit_count(), 0);
     assert_eq!(
@@ -430,13 +427,14 @@ fn atomic_failure_transition_preserves_cancelled_task_without_failure_audit() {
             &sample_request(),
             audit_context(),
             Vec::new(),
+            &crate::task_manager::noop_task_progress_observer(),
             "planning",
             "not_attempted",
             false,
         )
         .expect("cancelled task is not reported as failed");
 
-    assert_eq!(event_phases(&events), vec!["install.reinstall.cancelled"]);
+    assert!(events.is_empty());
     assert_eq!(
         task_manager.task_status(&task.task_id),
         Some(crate::TaskStatus::Cancelled)
@@ -469,7 +467,7 @@ fn queued_cancellation_stops_before_prepare_or_commit() {
         .run_reinstall_task(&task.task_id, sample_request())
         .expect("queued cancellation is not a failure");
 
-    assert_eq!(event_phases(&events), vec!["install.reinstall.cancelled"]);
+    assert!(events.is_empty());
     assert_eq!(executor.commit_count(), 0);
     assert!(audit.is_empty());
 }

@@ -4,7 +4,9 @@ use crate::reinstall_dto::{
     StartReinstallTaskRequestDto,
 };
 use crate::state::{AppState, ConfiguredReinstallExecutor};
-use crate::task_events::{emit_task_progress, INSTALL_REINSTALL_QUEUED_PHASE};
+use crate::task_events::{
+    emit_task_progress, TauriTaskProgressObserver, INSTALL_REINSTALL_QUEUED_PHASE,
+};
 use hmm_app::{
     ReinstallPreviewError, ReinstallPreviewRequest, StartReinstallTaskRequest, TaskProgressEvent,
     TaskStarted,
@@ -78,13 +80,8 @@ fn spawn_reinstall_runner(
     request: StartReinstallTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let events = match runner.run_reinstall_task(&task_id, request) {
-            Ok(events) => events,
-            Err(error) => error.events,
-        };
-        for event in events {
-            let _ = emit_task_progress(&app_handle, event);
-        }
+        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let _ = runner.run_reinstall_task_with_observer(&task_id, request, &observer);
     });
 }
 

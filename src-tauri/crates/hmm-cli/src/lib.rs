@@ -1,4 +1,5 @@
 mod contract;
+mod task_events;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hmm_runtime::{
@@ -18,8 +19,9 @@ use std::path::PathBuf;
 
 pub use contract::{
     CliErrorCategory, CliErrorEnvelope, CliExitCode, CliTaskStatus, CommandEnvelope,
-    TaskEventEnvelope, TaskEventType, CLI_SCHEMA_VERSION,
+    TaskEventEnvelope, TaskEventError, TaskEventType, CLI_SCHEMA_VERSION,
 };
+pub use task_events::{CliTaskProgressObserver, CliTaskProgressObserverError};
 
 const RUNTIME_STATUS_COMMAND: &str = "runtime.status";
 const GAME_STATUS_COMMAND: &str = "game.status";

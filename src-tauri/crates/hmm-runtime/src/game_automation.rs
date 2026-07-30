@@ -126,26 +126,25 @@ impl ReadOnlyGameAutomation {
             PathBuf,
             Arc<dyn GameDiscoveryService>,
             Option<PathBuf>,
-        ) = match environment {
-            RuntimeEnvironment::Production => (
+        ) = if let Some(data_dir) = environment.sandbox_data_dir() {
+            let fixture_root = data_dir.join("fixtures");
+            let steam_root = fixture_root.join("steam");
+            (
+                data_dir.to_path_buf(),
+                Arc::new(SteamGameDiscoveryService::new_contained(
+                    Arc::new(FixedSteamRootProvider::new(steam_root)),
+                    fixture_root.clone(),
+                )),
+                Some(fixture_root),
+            )
+        } else {
+            (
                 production_app_data_dir().ok_or(ReadOnlyGameAutomationError::AppDataUnavailable)?,
                 Arc::new(SteamGameDiscoveryService::new(Arc::new(
                     PlatformSteamRootProvider,
                 ))),
                 None,
-            ),
-            RuntimeEnvironment::Sandbox { data_dir } => {
-                let fixture_root = data_dir.join("fixtures");
-                let steam_root = fixture_root.join("steam");
-                (
-                    data_dir.clone(),
-                    Arc::new(SteamGameDiscoveryService::new_contained(
-                        Arc::new(FixedSteamRootProvider::new(steam_root)),
-                        fixture_root.clone(),
-                    )),
-                    Some(fixture_root),
-                )
-            }
+            )
         };
 
         let repository: Arc<dyn GameConfigRepository> = Arc::new(JsonGameConfigRepository::new(
