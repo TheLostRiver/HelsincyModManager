@@ -1,4 +1,4 @@
-# 安全边界
+# 文件、安装与并发安全边界
 
 处理压缩包、文件写入、安装、卸载、备份、存档、回滚、任务并发、日志、诊断、loader、DLL 检测、retarget staging 或 Tauri 文件命令前读取本文件。
 
@@ -25,7 +25,15 @@
 真实写入必须遵循：
 
 ```text
-analyze -> build InstallPlan -> conflict/dependency checks -> backup -> commit -> manifest -> rollback/recover path
+analyze / preflight
+  -> InstallPlan
+  -> 持久化 Planned recovery intent
+  -> 读取 source/target 并建立 backup
+  -> 持久化 Committing rollback facts
+  -> commit 玩家文件
+  -> 原子保存最终 manifest
+success -> 标记 Completed 并清理 recovery
+failure -> rollback；rollback 失败则保留 RollbackRequired
 ```
 
 卸载必须基于 manifest，不能根据当前包内容猜测。

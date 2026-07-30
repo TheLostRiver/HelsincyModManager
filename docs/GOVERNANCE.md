@@ -134,9 +134,9 @@ CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分
 
 CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ruleset 中的 review 规则。
 
-## 文件大小强制策略
+## 文件大小治理策略
 
-文件大小硬性限制由 `policy/project-policy.json` 控制。
+文件大小软提醒和硬性限制由 `policy/project-policy.json` 控制。
 
 当前重点防止：
 
@@ -146,12 +146,15 @@ CODEOWNERS 本身不会阻止合并，必须配合 GitHub branch protection / ru
 - Markdown 文档无边界增长。
 - 通过压缩换行把大量代码塞进极少行。
 
-`fileSize.block` 按类别定义行数硬上限，`fileSize.blockBytes` 对候选文件定义全局字节硬上限，
-可选的 `fileSize.maxLineLength` 限制受管文本的单行长度。
+`fileSize.review` 按类别定义非阻断行数提醒；超过时 Node 和 PowerShell 入口输出 review warning，
+但保持成功退出。`fileSize.block` 只定义防止灾难性膨胀的行数硬上限。
+`fileSize.blockBytes` 对候选文件定义全局字节硬上限，可选的 `fileSize.maxLineLength` 限制受管
+文本的单行长度。
 现有 `docs/**` 通过 `maxLineLengthExcludePathPatterns` 只豁免单行长度检查，仍受行数和字节上限约束；
 lockfile 则必须显式列入 `allowlist`。
 
-超过硬性限制会导致：
+review warning 用于发现混合职责和维护性风险，应在相关功能 PR 中拆分或记录暂不拆分的理由，
+不能仅为消除 warning 创建独立重构 PR。超过 `fileSize.block`、全局字节或单行长度硬限制才会导致：
 
 - 本地 `verify.ps1` 或 `verify.sh` 失败。
 - pre-commit 失败。
@@ -162,6 +165,32 @@ lockfile 则必须显式列入 `allowlist`。
 `fileSize.excludePathPatterns` 或对应的窄检查排除项，并在 PR 中解释原因。
 
 当前 `.codex/` 是独立的上下文管理工具，不属于主应用运行时代码边界；文件大小硬性限制默认通过 `fileSize.excludePathPatterns` 排除该目录，避免工具自身演进被主应用代码体量门禁误拦截。
+
+## 交付单位与验证分级
+
+默认交付单位是一条可演示的纵向产品能力或一个 release blocker，不是内部 task、文件或文档。一个
+纵向 PR 可以包含设计、后端、CLI/Tauri、前端、测试和文档，但应以单一职责 commit 保持边界清晰。
+文档同步、测试搬迁、dead-code、文件拆分和内部前置默认并入相邻产品 PR。
+
+只有下列情况才拆 PR：
+
+- 改动彼此无关。
+- 需要独立回滚或独立发布。
+- 安全风险或玩家数据影响明显扩大。
+- diff 已大到无法连贯 review。
+
+本地验证按风险分级：
+
+- Low：docs、隔离内部重构、隔离 UI，运行 touched boundary 的最小检查。
+- Medium：跨层行为、public DTO/contract、task/event 语义，运行聚焦测试，并在首次 PR ready 前运行
+  一次完整 `verify.ps1`。
+- High：安装/卸载/重装、存档、真实文件写入、回滚、安全、并发或治理/CI，运行正负聚焦测试、
+  一次完整 `verify.ps1` 和 findings-first 全 diff 自审。
+
+review 小修默认只重跑受影响的聚焦验证。只有风险边界扩大、公共契约或治理规则变化、依赖/基线变化，
+或旧完整验证证据已不适用于当前 diff 时，才重复本地完整验证。无论本地分级如何，最终 commit 的
+required CI 必须到 terminal `success`；CodeRabbit 缺席时必须独立全 diff 自审，但不因此无限等待或
+无条件重复完整本地验证。
 
 ## GitHub 分支保护建议
 

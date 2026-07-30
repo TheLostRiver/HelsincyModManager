@@ -24,20 +24,23 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 开始前：
 1. 读取 AGENTS.md、README.md、docs/ARCHITECTURE.md、docs/ROADMAP.md、
    CONTRIBUTING.md、docs/TESTING.md、docs/GOVERNANCE.md、SECURITY.md。
-2. 使用 planning-with-files，并读取项目路由、guardrails、相关边界 skill 和 review gate。
+2. 每个纵向切片使用一个 planning-with-files task；只在阶段转换、重要 finding、阻塞和恢复时更新。
+   使用 hmm-feature-router 按 touched boundary 读取最小上下文；只在真实文件/玩家数据风险时增加
+   hmm-install-safety，只在 review 或 PR ready 时使用 hmm-review-gate。
 3. 读取 docs/PROJECT_TASK_STATUS.md、docs/AUTONOMOUS_ITERATION_ROADMAP.md、
    docs/HMM_CLI_AUTOMATION_DESIGN.md 以及当前任务指定的专题文档。
 4. 检查 git status、当前分支、open PR 和当前 CI；保留所有用户或其他任务的未提交改动。
 5. 本轮明确排除 Linux / Steam Deck，不创建相关实现、适配、打包或验收任务。
 
 任务选择：
-1. 从自主路线图选择第一个状态为 ready 且前置已满足的任务。
-2. QG-01 已由 PR #215 合并，T13-00 已完成设计与规划契约，产品实现未开始。CLI-2A 是第一个
-   ready task，必须从包含 T13-00 的最新 main 创建独立 worktree。
+1. 从自主路线图选择第一个状态为 ready 且前置已满足的纵向切片。
+2. QG-01 已由 PR #215 合并，T13-00 已完成设计与规划契约。Slice A 是第一个 ready 交付单元，
+   必须从包含 T13-00 的最新 main 创建独立 worktree。
 3. 不重新实现已标记 completed/certified 的能力；先根据源码和测试确认真实缺口。
-4. 一个 task 使用一个独立 hy/ 分支、独立 worktree 和独立 PR。
-5. 大 task 按路线图切片；每完成一个可独立验证的步骤就立即提交 Git。
-6. 不把多个 task 塞进同一 PR，不顺手做无关重构。
+4. 一个纵向切片或一个 release blocker 使用一个独立 hy/ 分支、worktree 和 PR。
+5. 同一切片内的设计、后端、CLI/Tauri、前端、测试和文档按可 review 的步骤提交 Git；内部 task
+   不自动拆成独立 PR。
+6. 文档同步、测试搬迁、dead-code、文件拆分和内部前置并入相邻产品 PR；不顺手做无关功能或重构。
 
 实现边界：
 1. 游戏目录写入必须复用 InstallPlan -> preflight -> backup -> commit -> manifest ->
@@ -51,25 +54,26 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 7. 所有测试只使用 temp/fake/人工 fixture，不使用真实游戏、Mod、Steam userdata 或玩家存档。
 8. 正式代码、文档、提交、PR 和评论不得出现未授权外部项目的名称、路径、来源说明或复制代码。
 
-每个 task 的完成循环：
-1. 写清任务目标、允许修改范围、禁止修改范围、风险和验收命令。
+每个纵向切片的完成循环：
+1. 写清切片的可演示目标、内部工作包、允许/禁止范围、风险和验收命令；只维护一个 PWF task。
 2. 先补或更新测试，再做最小实现；高风险写入链路必须有失败、取消、回滚/恢复和脱敏测试。
 3. 每个可独立验证步骤单独 commit；提交信息保持单一职责。
-4. 运行路线图指定的聚焦验证。
-5. 运行 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1。
-6. 统一入口已经覆盖前端 tests 和 workspace clippy；不得跳过其中任一项，也不需要在完整入口通过后
-   重复手工补跑同一组全量命令。
-7. 执行 hmm-review-gate 的 findings-first 本地自审，检查完整 task diff、边界、测试、
+4. 开发期间运行路线图指定的聚焦验证，不在每个 commit 后重复跑完整统一入口。
+5. 跨层/public contract、高风险写入、安全、并发或治理切片在首次 PR ready 前运行一次
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1。低风险切片本地可只保留
+   聚焦证据，但 required CI 仍必须执行统一入口。
+6. 执行 hmm-review-gate 的 findings-first 本地自审，检查完整切片 diff、边界、测试、
    文档同步、禁入产物、secret、私有路径和残余风险。
-8. 有真实 finding 就修复、补测试、提交并从第 4 步重新执行；误报必须记录源码/测试/契约证据。
-9. 推送分支并创建 PR，PR 正文列出范围、提交、已执行验证、未执行验证、风险和 Windows-only 影响。
-10. 等待 CI 到 terminal 状态；pending/running/queued 时只等待，不合并。
-11. 获取所有 review、inline thread 和评论，逐条分析。CodeRabbit 没有 review 不等于没有问题，
+7. 有真实 finding 就修复、补测试和提交；先重跑受影响的聚焦测试。只有高风险/公共契约/治理边界
+   扩大、依赖或基线变化，或旧证据失效时才重新跑本地完整 verify。误报必须记录可复核证据。
+8. 推送分支并创建 PR，PR 正文列出范围、提交、已执行验证、未执行验证、风险和 Windows-only 影响。
+9. 等待 CI 到 terminal 状态；pending/running/queued 时只等待，不合并。
+10. 获取所有 review、inline thread 和评论，逐条分析。CodeRabbit 没有 review 不等于没有问题，
     必须完成独立全 diff 自审。
-12. 评论若为真实 bug：修复、补测试、commit、push，重新等待全部 CI 并重新 review。
-13. 评论若为误报：必须在 PR 中写出可复核证据后才能 resolve，不能凭“我觉得没问题”忽略。
-14. 只有满足 docs/CODEX_GOAL_MODE_PROMPTS.md 的合并门禁时才合并。
-15. 合并后更新任务状态和正式文档，从最新 main 创建下一个独立 task。
+11. 评论若为真实 bug：修复、补测试、commit、push，重新等待全部 CI 并复审增量。
+12. 评论若为误报：必须在 PR 中写出可复核证据后才能 resolve，不能凭“我觉得没问题”忽略。
+13. 只有满足 docs/CODEX_GOAL_MODE_PROMPTS.md 的合并门禁时才合并。
+14. 合并后一次性更新活跃队列；只有里程碑结论变化时同步路线图/状态快照，再从最新 main 开始下个切片。
 
 硬停止：
 1. 任何 required check 失败、取消、超时、被跳过或仍未完成。
@@ -90,12 +94,12 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 先恢复而不是重新开始：
 1. 读取当前 planning-with-files 的 task_plan.md、findings.md、progress.md。
 2. 检查当前分支/worktree、git status、最近 commit、对应 PR、最新 CI、review threads 和评论。
-3. 对照 docs/AUTONOMOUS_ITERATION_ROADMAP.md 确认当前 task、依赖和完成定义。
+3. 对照 docs/AUTONOMOUS_ITERATION_ROADMAP.md 确认当前纵向切片、内部工作包、依赖和完成定义。
 4. 汇报当前处于实现、验证、review 修复、CI 等待还是合并门禁阶段。
 5. 从尚未完成的最早步骤继续；不要重复已经成功且仍然适用于当前 commit 的操作。
 
 若最后一次验证后代码、文档或依赖发生变化，按影响范围重新运行验证。
-若最后一次 push 后出现新评论或 CI 失败，先处理它们，不开始下一 task。
+若最后一次 push 后出现新评论或 CI 失败，先处理它们，不开始下一切片。
 所有 Git、CI、review、误报证据和合并门禁继续遵守 docs/CODEX_GOAL_MODE_PROMPTS.md。
 ```
 
@@ -111,7 +115,8 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 5. 真实 bug：说明根因，做最小修复，补能在修复前失败的测试，commit、push。
 6. 误报：引用具体源码、测试、契约或运行输出，说明判断为何不成立；把证据回复到 PR 后再 resolve。
 7. 需维护者决策：停止该 PR 的合并，不替用户选择会扩大行为或安全范围的方案。
-8. 每次 push 后重新等待全部 CI，并复审新增 diff；安全链路、公共契约或治理规则变化时重新做完整自审。
+8. 每次 push 后重新等待全部 CI，并复审新增 diff、重跑受影响的聚焦测试；安全链路、公共契约或
+   治理规则扩大，或旧完整验证证据失效时，再重新运行完整本地验证。
 9. 最终输出 findings-first 状态，不隐藏未解决项。
 ```
 
@@ -124,7 +129,7 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 2. 使用 hmm-review-gate 对完整 PR diff 做一次独立 findings-first 自审。
 3. 对安全、安装/卸载/重装、批量、存档、日志、Tauri contract、并发和游戏 adapter 分别检查边界。
 4. 检查测试是否覆盖成功、失败、取消、回滚/恢复、并发、脱敏和负向 containment。
-5. 运行当前任务的聚焦验证和完整 verify，并确认统一入口实际执行前端 tests 和 workspace clippy。
+5. 确认当前切片已有风险等级要求的聚焦/完整本地证据；不要仅因机器人缺席额外重复完整 verify。
 6. 在 PR 留下“外部机器人 review 缺席，已完成独立自审”的证据摘要，包括 commit SHA 和实际命令。
 7. 仍有任何已确认的真实 bug、测试/契约缺口、Critical/Important finding、未解决线程或
    不确定的高风险行为时禁止合并。
@@ -150,12 +155,13 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 ```text
 评估并合并当前 PR。必须逐项证明：
 
-1. PR 范围只包含当前 task，提交按独立步骤拆分，工作区无禁入或无关产物。
+1. PR 范围只包含当前纵向切片或 release blocker，提交按设计、实现、adapter/UI、测试和文档等
+   可 review 步骤拆分，工作区无禁入或无关产物。
 2. 分支已基于最新目标分支，或 GitHub 明确判定可合并且没有未处理的基线变化。
 3. 所有 required checks 已到 terminal success；没有 pending、failure、cancelled、timed_out、
    action_required、skipped 或 neutral required check。
-4. 当前 commit 已执行任务聚焦测试和完整 verify；统一入口中的前端 tests 和 workspace clippy
-   均实际通过。
+4. 当前 commit 已执行 touched boundary 的聚焦测试；跨层/public contract、高风险或治理切片已有一次
+   适用于当前 diff 的完整本地 verify。统一入口未在本地运行时，原因和远端 required CI 证据已明确。
 5. 已完成最后一次 push 后的完整本地自审；所有已确认的真实 bug、测试或契约缺口均已处理，
    Critical/Important finding 为零。
 6. 所有 review thread 和评论已处理；真实 bug 已修复并补测试，误报已有可复核证据。
@@ -163,42 +169,47 @@ Windows + MHW:I 任务队列，直到队列耗尽、遇到硬停止条件，或�
 8. 没有需要维护者决策的产品、安全、许可或数据来源问题。
 9. 治理、安全门禁、CI、workflow、policy、AGENTS 或核心安全文档变更已明确标注影响，并在
    CodeRabbit 缺席或限额时完成更严格的独立增量自审；没有把机器人 success 或“无评论”当作批准。
-10. 高风险 Windows 安装态验收若是该 task 的完成定义，必须在 disposable VM/一次性账户完成并 cleanup。
+10. 高风险 Windows 安装态验收若是该切片的完成定义，必须在 disposable VM/一次性账户完成并 cleanup。
 
 合并动作：
 1. 先尝试普通合并。
 2. 只有上述 10 项全部满足、当前目标已有明确的 admin 合并授权、普通合并仅被已知的分支保护批准
    规则阻挡时，才允许使用 gh pr merge --admin。
 3. --admin 绝不用于绕过未完成/失败 CI、过期分支、未解决评论、缺失测试、真实 bug或人工决策。
-4. 合并成功后确认目标分支包含 PR commit，更新路线图状态，再开始下一个 task。
+4. 合并成功后确认目标分支包含 PR commit，更新活跃队列；只有里程碑变化时同步路线图/状态快照，
+   再开始下一个切片。
 ```
 
-## 单 Task 提示词模板
+## 单纵向切片提示词模板
 
 ```text
-执行任务：<task id 和标题>
+执行切片：<slice id 和可演示标题>
 
 来源：docs/AUTONOMOUS_ITERATION_ROADMAP.md
-前置：<依赖 task / gate>
+内部工作包：<task ids>
+前置：<依赖 slice / gate>
 允许修改：<目录和文件>
 禁止修改：<目录和文件>
 风险：<low/medium/high>
 完成定义：<可验证行为>
 聚焦验证：<命令>
+完整本地验证：<首次 PR ready 前需要，或 low-risk 不需要及理由>
 人工/环境验收：<无，或 disposable Windows VM gate>
 
 严格执行：
-- 一个 task 一个 hy/ 分支、worktree 和 PR。
-- 每个可独立验证步骤单独 commit。
-- 不实现 task 外行为。
-- 完成后按主提示词执行 verify、自审、CI、评论和合并循环。
+- 一个纵向切片一个 hy/ 分支、worktree 和 PR；内部工作包不单独开 PR。
+- 设计、后端、CLI/Tauri、前端、测试和文档按可独立 review 的步骤 commit。
+- 一个 PWF task 只记录阶段转换、重要 finding、阻塞和恢复信息。
+- 不实现切片外行为，不把无关重构混进来。
+- 开发期间跑聚焦验证；按风险在首次 PR ready 前决定是否跑完整 verify。
+- 完成后按主提示词执行自审、CI、评论和合并循环。
 ```
 
 ## 任务耗尽
 
-路线图中没有 `ready` 任务时：
+路线图中没有 `ready` 切片时：
 
 - 不自拟新功能。
-- 汇总已合并、待 review、被阻塞和需要维护者决策的任务。
+- 汇总已合并、待 review、被阻塞和需要维护者决策的切片。
 - 保留所有未合并 PR 和证据，不用 `--admin` 清空队列。
-- 将目标标记为完成的前提是：路线图范围全部完成，且没有 required task、CI 或 review 工作残留。
+- 将目标标记为完成的前提是：路线图范围全部完成，且没有 required slice、CI 或 review 工作残留。

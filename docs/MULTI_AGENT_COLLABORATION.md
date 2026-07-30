@@ -116,6 +116,14 @@ agent/<topic>
 - 同一时间多个 worker 并行时，必须分配互不重叠的写入范围。
 - 合并前由主控 agent 统一检查 `git status --short --branch`。
 
+### Worker 任务包与 PR 边界
+
+- Worker 任务包用于限制写入范围和并发冲突，不自动等于一个 branch 或 PR。
+- 一个可演示纵向切片可以由 frontend、Rust、Tauri、测试和文档 worker 分工，主控在同一切片分支中
+  按 commit 集成，最终形成一个 PR。
+- 同一 worker 仍应保持窄边界；跨层集成由主控完成。只有改动无关、可独立回滚、安全风险明显扩大，
+  或 diff 已无法连贯 review 时才拆 PR。
+
 ## 任务分发流程
 
 标准流程：
@@ -268,6 +276,9 @@ cmd /c corepack pnpm run build
 - 组件实现和发布文档。
 - 测试配置和功能代码。
 
+这约束的是单个 worker 的上下文和写入范围，不禁止主控把服务于同一纵向切片的多层 commit 集成到
+同一 PR。
+
 ## 审查门禁
 
 ### 规格审查清单
@@ -325,7 +336,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
-如果某项验证不能执行，必须在汇报中写清楚原因。
+开发期间只运行 touched boundary 的聚焦验证。跨层/public contract、高风险写入、安全、并发或治理
+切片在首次 PR ready 前运行一次完整统一入口；低风险切片可由聚焦本地证据加 required CI 覆盖。
+review 小修只重跑受影响的聚焦验证，除非风险边界扩大或旧完整证据失效。
+
+如果某项风险等级要求的验证不能执行，必须在汇报中写清楚原因。
 
 ## 失败处理
 
@@ -365,7 +380,7 @@ worker agent 返回状态必须使用：
 - [ ] cmd /c corepack pnpm run typecheck
 - [ ] cmd /c corepack pnpm run lint
 - [ ] cmd /c corepack pnpm run build
-- [ ] powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+- [ ] powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1（按风险；未运行时说明）
 
 ## 视觉证据
 - 截图：
@@ -380,7 +395,7 @@ worker agent 返回状态必须使用：
 
 - 让前端 agent 自己探索全仓库并自由修改。
 - 把“看起来能用”的 UI 直接合并。
-- 用一个 PR 同时改 UI、后端、脚本、文档和治理配置。
+- 把多个无关功能、独立治理改动或无法连贯 review 的风险变更塞进一个 PR。
 - 为了通过验证而降低 lint、测试或 policy 约束。
 - 在没有截图或浏览器验证的情况下声称 UI 已还原。
 - 把临时 demo、缓存、截图、真实路径提交到仓库。
@@ -392,12 +407,12 @@ worker agent 返回状态必须使用：
 推荐默认模式：
 
 ```text
-Codex 主控拆任务
-  -> Gemini 前端 worker 实现 UI
-  -> Codex 或独立审查 agent 做规格审查
-  -> Codex 或独立审查 agent 做质量审查
+Codex 主控定义纵向切片和 worker 边界
+  -> frontend/backend/adapter/test worker 在互不重叠范围内实现
+  -> 主控按 commit 集成同一切片
+  -> Codex 或独立审查 agent 做规格与质量审查
   -> 人工确认视觉效果
-  -> verify 通过
+  -> 聚焦验证和风险要求的完整 verify 通过
   -> PR
 ```
 

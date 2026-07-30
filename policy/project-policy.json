@@ -52,7 +52,7 @@
     "maxLineLengthExcludePathPatterns": [
       "docs/**"
     ],
-    "block": {
+    "review": {
       "rust": 2200,
       "typescript": 2500,
       "javascript": 2500,
@@ -69,6 +69,24 @@
       "toml": 1200,
       "json": 1200,
       "config": 1200
+    },
+    "block": {
+      "rust": 5000,
+      "typescript": 5000,
+      "javascript": 5000,
+      "style": 4000,
+      "html": 4000,
+      "vue": 4000,
+      "svelte": 4000,
+      "markdown": 6000,
+      "yaml": 2000,
+      "powershell": 3000,
+      "python": 3000,
+      "sql": 3000,
+      "shell": 3000,
+      "toml": 3000,
+      "json": 10000,
+      "config": 3000
     },
     "extensions": {
       "rust": [".rs"],

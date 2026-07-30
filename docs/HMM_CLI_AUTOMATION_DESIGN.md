@@ -271,7 +271,7 @@ hmm
 | CLI-2 后续切片 | `backup create`、`diagnostics export` | 仅 Sandbox | 写入隔离 app data/backup 根；需各自独立安全评审 |
 | CLI-3 | CLI-2 写命令 | Production | 仅在对应跨进程 admission 和写侧重验完成后开放 |
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
-| CLI-4 | `install batch`、`install uninstall-batch`、`install reinstall-batch` | Sandbox；Production 受 CLI-3 门禁 | T13-01 至 T13-04 完成并独立评审后开放 |
+| CLI-4（Slice B/C） | `install batch`、`install uninstall-batch`、`install reinstall-batch` | Sandbox；Production 受 CLI-3 门禁 | 按 operation 增量开放：Slice B 交付批量安装，Slice C 再交付批量卸载与真正重装 |
 
 CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。所有写命令必须在持有写 admission 后重新
 读取配置、manifest/recovery、目标摘要、前置状态和计划事实。
@@ -502,9 +502,11 @@ retryable，不返回路径、Steam ID、token/digest、backup/snapshot ref、ma
 列表或原始错误。原始 token 只在单次 adapter 流程内存中消费，不持久化或记录。
 Result query/cursor 绑定确切 attempt；CLI 在 retry 后不得拿旧 cursor 查询隐式“最新结果”。
 
-CLI-4 依赖 T13-00、CLI-2A、CLI-2B、CLI-2C、CORE-PREF-01 以及 T13-01 至 T13-04 的领域/app
-实现和测试。CLI 只能映射同一 app use case，不能自行决定批量原子性、retryable 谓词或写入顺序。
-Sandbox parser 也必须等上述依赖完成；Production 继续额外等待 CLI-3 跨进程 admission。
+CLI-4 的共同基线是 T13-00、CLI-2A、CLI-2B、CLI-2C 和 CORE-PREF-01。Sandbox 子命令按 operation
+的实际领域/app 依赖增量开放：T13-01 的只读 BatchPlan 完成后即可实现批量安装 plan/parser，
+T13-02 完成后再开放批量安装 apply/result/retry；批量卸载与真正重装分别等待 T13-03 和 T13-04，
+并在 Slice C 补齐剩余 CLI contract。CLI 只能映射同一 app use case，不能自行决定批量原子性、
+retryable 谓词或写入顺序。Production 继续额外等待 CLI-3 跨进程 admission。
 
 三种 operation root 都暴露同一组子命令，分别固定映射 `install`、`uninstall` 和 `reinstall`：
 
@@ -809,9 +811,12 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 
 ### CLI-4：T13 批量安装/卸载/真正重装
 
-- 前置必须包含 T13-00、CLI-2A/2B/2C、CORE-PREF-01 和 T13-01 至 T13-04。
-- 先实现并评审 T13 的 preview/seal/start、sealed snapshot、冲突、失败、取消、重试和真正重装语义。
-- 再添加 CLI adapter 和机器 contract。
+- 共同前置包含 T13-00、CLI-2A/2B/2C 和 CORE-PREF-01；不要求每个 Sandbox parser 等待所有
+  operation 的领域实现。
+- Slice B 在 T13-01 后接入批量安装 plan/parser，在 T13-02 后接入 preview/seal/start、
+  sealed snapshot、冲突、partial result、retry 和对应机器 contract。
+- Slice C 在 T13-03/04 后接入批量卸载、真正重装、取消/恢复和剩余机器 contract。
+- 每个 CLI adapter 都映射已经存在并完成聚焦测试的 app use case，不在 shell 中抢跑领域语义。
 - 增加跨 Mod 冲突、partial success、幂等重试、批量 true reinstall 和跨进程竞争测试。
 
 完成定义：
@@ -849,6 +854,7 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - 测试只使用 temp/fake/人工 fixture，并验证 sandbox 外 sentinel 不变。
 
 CLI-0A、CLI-0B、CLI-1A 与 CLI-1B 已满足 contract/policy、共享 composition、transport observer
-接缝和只读 game/install/backup/diagnostics automation 条件。T13-00 合并后，CLI-2A 是下一个
-ready task；任何 CLI-2 长任务写命令前，必须先完成 runner 逐阶段 observer，再完成 Sandbox write
-marker/capability、canonical containment 与完整安全链路；不要为每个 Tauri command 添加 shell 包装。
+接缝和只读 game/install/backup/diagnostics automation 条件。T13-00 合并后，Slice A 是下一个
+ready 交付单元，CLI-2A 是其首个内部工作包；任何 CLI-2 长任务写命令前，必须先完成 runner
+逐阶段 observer，再完成 Sandbox write marker/capability、canonical containment 与完整安全链路。
+Slice A 完成后进入 Slice B，不要为每个 Tauri command 添加 shell 包装。

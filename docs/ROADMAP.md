@@ -31,9 +31,9 @@
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
 6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。T13-00 已完成批量 sealed batch
    语义与规划契约，产品实现未开始；[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)
-   是后续实现的权威语义。CLI-2A 是 next ready，随后推进 CLI-2B/2C Sandbox 写许可与单项生命周期 E2E，
-   再依次实现批量安装、批量卸载、批量真正重装、CLI/Tauri/前端契约和 disposable Windows
-   Sandbox Gate C。
+   是后续实现的权威语义。Slice A 是 next ready，在同一纵向 PR 内依次完成 CLI-2A/2B/2C 与
+   CORE-PREF-01；随后 Slice B-D 交付批量安装、批量卸载/真正重装、CLI/Tauri/前端契约和 disposable
+   Windows Sandbox Gate C。
 7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的
    MHW:I catalog/path parser/adapter、InstallPlan/manifest 集成和受控 UI。防具 AR1-AR5 已认证不等于
    完整防具数据或武器链路已完成。

@@ -1,4 +1,4 @@
-# 前后端边界
+# 前端、Tauri 与后端边界
 
 添加 UI、hooks、typed API、DTO、Tauri command、事件、app state 或前端工作流时读取本文件。
 

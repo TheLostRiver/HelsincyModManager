@@ -1,16 +1,12 @@
-# 功能文档索引
+# 按功能选择源文档
 
 用本文件决定开工前应读哪些文档。打开长文档前，优先用 `rg -n` 或标题扫描定位章节。
 
-## 总是相关
+## 基础入口
 
-- 项目概览：`README.md`
-- Agent 规则：`AGENTS.md`
-- 架构：`docs/ARCHITECTURE.md`
-- 贡献与模块边界：`CONTRIBUTING.md`
-- 测试：`docs/TESTING.md`
-- 治理：`docs/GOVERNANCE.md`
-- 安全：`SECURITY.md`
+- 始终先读 `AGENTS.md`，再检查当前任务、源码、测试和 `git status`。
+- 按 `AGENTS.md` 要求检查基础文档，但不要因为打开本索引就重复加载所有长文档。
+- 架构、贡献、测试、治理和安全文档优先用标题或关键词定位当前 boundary 的章节。
 
 ## 前端 Shell / 外观系统
 
@@ -61,4 +57,4 @@
 
 - `docs/ROADMAP.md`
 
-用路线图阶段判断是否误做了未来阶段范围。
+只在需要判断优先级、前置或是否误做未来范围时读取路线图。

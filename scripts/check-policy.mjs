@@ -152,6 +152,17 @@ function writeErrors(title, errors) {
   }
 }
 
+function writeWarnings(title, warnings) {
+  if (warnings.length === 0) {
+    return;
+  }
+
+  console.warn(title);
+  for (const warning of warnings) {
+    console.warn(`  - ${warning}`);
+  }
+}
+
 function runCheck(name, check) {
   const errors = check();
   if (errors.length > 0) {
@@ -223,6 +234,7 @@ function getCategory(policy, relativePath) {
 
 function checkFileSize(repoRoot, policy, files, scope) {
   const errors = [];
+  const warnings = [];
   const allowlist = new Set(policy.fileSize?.allowlist ?? []);
   const byteLimit = policy.fileSize?.blockBytes ?? null;
   const maxLineLength = policy.fileSize?.maxLineLength ?? null;
@@ -257,9 +269,10 @@ function checkFileSize(repoRoot, policy, files, scope) {
     }
 
     const limit = policy.fileSize?.block?.[category] ?? null;
+    const reviewLimit = policy.fileSize?.review?.[category] ?? null;
     const checkMaxLineLength =
       maxLineLength !== null && !pathMatchesAny(normalized, maxLineLengthExcludeRegexes);
-    if (limit === null && !checkMaxLineLength) {
+    if (limit === null && reviewLimit === null && !checkMaxLineLength) {
       continue;
     }
 
@@ -272,6 +285,10 @@ function checkFileSize(repoRoot, policy, files, scope) {
     const lineCount = lines.length;
     if (limit !== null && lineCount > limit) {
       errors.push(`${normalized} exceeds hard line limit: ${lineCount} / ${limit}`);
+    } else if (reviewLimit !== null && lineCount > reviewLimit) {
+      warnings.push(
+        `${normalized} exceeds review line threshold: ${lineCount} / ${reviewLimit}`,
+      );
     }
 
     if (checkMaxLineLength) {
@@ -292,6 +309,7 @@ function checkFileSize(repoRoot, policy, files, scope) {
     }
   }
 
+  writeWarnings("File size review warnings:", warnings);
   return errors;
 }
 
