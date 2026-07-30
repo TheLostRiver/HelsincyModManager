@@ -15,6 +15,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
+import {
+  getPrerequisiteDecisionCodeLabel,
+  getPrerequisiteDecisionMessage,
+} from "../mods/modPrerequisiteDecision";
 import { getReinstallBlockingReasonLabel } from "../mods/modReinstallTaskState";
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import {
@@ -414,6 +418,7 @@ export function ReplacementTargetPanel({
               completedLocally: installCompletedLocally,
               hasPreview: true,
               hasBlockingConflicts: previewState.preview.installPlan.hasBlockingConflicts,
+              prerequisiteStatus: previewState.preview.prerequisiteDecision.status,
               taskActive,
               listenerReady: listenerStatus === "ready",
             })
@@ -688,6 +693,43 @@ export function ReplacementTargetPanel({
                       未检测到阻断冲突
                     </div>
                   )}
+                  <div
+                    className={[
+                      "replacement-panel__inline-state",
+                      previewState.preview.prerequisiteDecision.status === "blocked"
+                        ? "is-error"
+                        : previewState.preview.prerequisiteDecision.status === "warning"
+                          ? "is-warning"
+                          : "is-success",
+                    ].join(" ")}
+                    role={
+                      previewState.preview.prerequisiteDecision.status === "ready"
+                        ? "status"
+                        : "alert"
+                    }
+                  >
+                    {previewState.preview.prerequisiteDecision.status === "ready" ? (
+                      <CheckCircle2 size={17} aria-hidden="true" />
+                    ) : (
+                      <ShieldAlert size={17} aria-hidden="true" />
+                    )}
+                    {getPrerequisiteDecisionMessage(
+                      previewState.preview.prerequisiteDecision,
+                    )}
+                  </div>
+                  {previewState.preview.prerequisiteDecision.codes.length > 0 ? (
+                    <ul
+                      className="replacement-panel__blocking-list"
+                      aria-label="安装前置检查结果"
+                    >
+                      {previewState.preview.prerequisiteDecision.codes.map((code) => (
+                        <li key={code}>
+                          <AlertTriangle size={15} aria-hidden="true" />
+                          <span>{getPrerequisiteDecisionCodeLabel(code)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -859,6 +901,7 @@ export function ReplacementTargetPanel({
                   completedLocally: installCompletedLocally,
                   hasPreview: true,
                   hasBlockingConflicts: previewState.preview.installPlan.hasBlockingConflicts,
+                  prerequisiteStatus: previewState.preview.prerequisiteDecision.status,
                   taskActive,
                   listenerReady: listenerStatus === "ready",
                 }))

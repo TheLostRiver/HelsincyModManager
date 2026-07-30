@@ -9,6 +9,10 @@ import {
   type ReinstallTaskState,
 } from "./modReinstallTaskState";
 import type { ReinstallPlanPreview } from "./modReinstallTypes";
+import {
+  getPrerequisiteDecisionCodeLabel,
+  getPrerequisiteDecisionMessage,
+} from "./modPrerequisiteDecision";
 import type { ReinstallDialogState } from "./useModReinstallWorkflow";
 import "./ReinstallPlanPreviewPanel.css";
 
@@ -98,7 +102,26 @@ function PreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
         </div>
       </dl>
 
-      {preview.status === "ready" ? (
+      {preview.prerequisiteDecision.status !== "ready" ? (
+        <div
+          className={`reinstall-dialog__notice ${
+            preview.prerequisiteDecision.status === "blocked" ? "is-danger" : "is-warning"
+          }`}
+          role="alert"
+        >
+          <AlertTriangle size={17} aria-hidden="true" />
+          <span>
+            {getPrerequisiteDecisionMessage(preview.prerequisiteDecision)}
+            {preview.prerequisiteDecision.codes.length > 0
+              ? ` ${preview.prerequisiteDecision.codes
+                  .map(getPrerequisiteDecisionCodeLabel)
+                  .join("、")}`
+              : ""}
+          </span>
+        </div>
+      ) : null}
+
+      {preview.status === "ready" && preview.prerequisiteDecision.status === "ready" ? (
         <div className="reinstall-dialog__notice is-success" role="status">
           <CheckCircle2 size={17} aria-hidden="true" />
           <span>预检通过，可以提交重装。</span>

@@ -74,6 +74,10 @@ impl ReinstallTaskExecutor for FakeExecutor {
             .expect("prepare called once")
     }
 
+    fn revalidate(&self, _prepared: &Self::Prepared) -> Result<(), ReinstallCommitError> {
+        Ok(())
+    }
+
     fn commit(
         &self,
         _prepared: Self::Prepared,
@@ -113,6 +117,7 @@ impl RetargetReinstallTaskExecutor for FakeExecutor {
 
 struct BlockingExecutor {
     prepare_started: Mutex<Option<mpsc::Sender<()>>>,
+    revalidate_started: Mutex<Option<mpsc::Sender<()>>>,
     commit_started: Mutex<Option<mpsc::Sender<()>>>,
     release_commit: Mutex<mpsc::Receiver<()>>,
 }
@@ -135,6 +140,18 @@ impl ReinstallTaskExecutor for BlockingExecutor {
         Ok(FakePrepared {
             audit: audit_context(),
         })
+    }
+
+    fn revalidate(&self, _prepared: &Self::Prepared) -> Result<(), ReinstallCommitError> {
+        if let Some(sender) = self
+            .revalidate_started
+            .lock()
+            .expect("revalidate sender lock")
+            .take()
+        {
+            sender.send(()).expect("revalidate signal receiver");
+        }
+        Ok(())
     }
 
     fn commit(
@@ -659,12 +676,14 @@ fn prepare_runs_outside_same_scope_write_lock_and_commit_waits_for_release() {
     let held_lock = write_locks.lock_for(&GameId::mhw(), &ProfileId::new("default"));
     let held_guard = held_lock.lock().expect("test write lock");
     let (prepare_tx, prepare_rx) = mpsc::channel();
+    let (revalidate_tx, revalidate_rx) = mpsc::channel();
     let (commit_tx, commit_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
     let runner = ReinstallTaskRunner::with_write_locks(
         Arc::clone(&task_manager),
         Arc::new(BlockingExecutor {
             prepare_started: Mutex::new(Some(prepare_tx)),
+            revalidate_started: Mutex::new(Some(revalidate_tx)),
             commit_started: Mutex::new(Some(commit_tx)),
             release_commit: Mutex::new(release_rx),
         }),
@@ -678,6 +697,9 @@ fn prepare_runs_outside_same_scope_write_lock_and_commit_waits_for_release() {
     prepare_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("prepare completes while write lock is held");
+    revalidate_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("prerequisite revalidation completes while write lock is held elsewhere");
     assert!(
         matches!(commit_rx.try_recv(), Err(mpsc::TryRecvError::Empty)),
         "commit must remain outside the executor while the scope lock is held"
@@ -707,6 +729,7 @@ fn different_profile_commit_is_not_blocked_by_another_scope_lock() {
         Arc::clone(&task_manager),
         Arc::new(BlockingExecutor {
             prepare_started: Mutex::new(Some(prepare_tx)),
+            revalidate_started: Mutex::new(None),
             commit_started: Mutex::new(Some(commit_tx)),
             release_commit: Mutex::new(release_rx),
         }),
@@ -750,6 +773,7 @@ fn install_uninstall_and_controlled_recovery_wait_for_reinstall_shared_lock() {
         Arc::clone(&task_manager),
         Arc::new(BlockingExecutor {
             prepare_started: Mutex::new(None),
+            revalidate_started: Mutex::new(None),
             commit_started: Mutex::new(Some(reinstall_commit_tx)),
             release_commit: Mutex::new(release_reinstall_rx),
         }),
@@ -905,18 +929,32 @@ impl crate::ImportedModInstallPlanner for NotifyingInstallPlanner {
     fn build_imported_mod_install_plan(
         &self,
         _request: crate::BuildImportedModInstallPlanRequest,
-    ) -> Result<hmm_core::InstallPlan, crate::InstallPlanningError> {
+    ) -> Result<crate::ImportedModInstallPreflight, crate::InstallPlanningError> {
         if let Some(sender) = self.planned.lock().expect("planned sender lock").take() {
             sender.send(()).expect("planned signal receiver");
         }
-        Ok(hmm_core::InstallPlan::from_providers(vec![
-            hmm_core::InstallFileProvider::new(
+        Ok(crate::ImportedModInstallPreflight {
+            plan: hmm_core::InstallPlan::from_providers(vec![hmm_core::InstallFileProvider::new(
                 ModId::new("mod-a"),
                 hmm_core::PackageFileId::new("nativePC/a.bin"),
                 sample_target(),
                 FileLayer::new("base", 0),
-            ),
-        ]))
+            )]),
+            prerequisite_decision: ready_prerequisite_decision(),
+        })
+    }
+
+    fn prerequisite_decision(&self, _game_id: &GameId) -> crate::GamePrerequisiteDecision {
+        ready_prerequisite_decision()
+    }
+}
+
+fn ready_prerequisite_decision() -> crate::GamePrerequisiteDecision {
+    crate::GamePrerequisiteDecision {
+        game_id: GameId::mhw(),
+        status: crate::GamePrerequisiteDecisionStatus::Ready,
+        rules_version: Some(1),
+        codes: Vec::new(),
     }
 }
 

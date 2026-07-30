@@ -78,6 +78,26 @@ fn create_game_fixture(sandbox: &Path, include_executable: bool) -> PathBuf {
     game_root
 }
 
+fn write_unverified_prerequisite_fixture(game_root: &Path) {
+    fs::create_dir_all(game_root.join("nativePC/plugins"))
+        .expect("create prerequisite fixture directory");
+    for relative_path in [
+        "dinput8.dll",
+        "loader.dll",
+        "nativePC/plugins/MonsterLoader.dll",
+        "nativePC/plugins/QuestLoader.dll",
+        "nativePC/plugins/!CRCBypass.dll",
+    ] {
+        fs::write(game_root.join(relative_path), b"artificial-prerequisite")
+            .expect("write prerequisite fixture");
+    }
+    fs::write(
+        game_root.join("loader-config.json"),
+        br#"{"enablePluginLoader":true}"#,
+    )
+    .expect("write prerequisite config");
+}
+
 fn write_game_config(sandbox: &Path, game_root: &Path) {
     let config_root = sandbox.join("config");
     fs::create_dir_all(&config_root).expect("create config root");
@@ -730,19 +750,55 @@ fn sandbox_install_plan_blocks_missing_required_prerequisites_without_token() {
     assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
     let value: Value =
         serde_json::from_str(&stdout_text(&output)).expect("blocked install plan json");
-    assert_eq!(
-        value["result"]["prerequisiteDecision"]["status"],
-        "blocked"
-    );
-    assert_eq!(
-        value["result"]["prerequisiteDecision"]["rulesVersion"],
-        1
-    );
+    assert_eq!(value["result"]["prerequisiteDecision"]["status"], "blocked");
+    assert_eq!(value["result"]["prerequisiteDecision"]["rulesVersion"], 1);
     assert!(value["result"]["prerequisiteDecision"]["codes"]
         .as_array()
         .expect("prerequisite decision codes")
         .iter()
         .any(|code| code == "missing_required_file"));
+    assert!(value["result"].get("planToken").is_none());
+    assert!(value["result"].get("expiresAtUnixMillis").is_none());
+    assert_eq!(tree_snapshot(sandbox.path()), before);
+}
+
+#[test]
+fn sandbox_reinstall_preview_blocks_missing_prerequisites_without_token() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_game_config(sandbox.path(), &game_root);
+    write_reinstall_v1_catalog_and_sandbox(sandbox.path());
+    let before = tree_snapshot(sandbox.path());
+
+    let output = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "package-v1",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+    let value: Value =
+        serde_json::from_str(&stdout_text(&output)).expect("blocked reinstall preview json");
+    assert_eq!(value["result"]["status"], "blocked");
+    assert_eq!(value["result"]["prerequisiteDecision"]["status"], "blocked");
+    assert_eq!(value["result"]["prerequisiteDecision"]["rulesVersion"], 1);
+    assert!(value["result"]["prerequisiteDecision"]["codes"]
+        .as_array()
+        .expect("prerequisite decision codes")
+        .iter()
+        .any(|code| code == "missing_required_file"));
+    assert_eq!(
+        value["result"]["blockingReasons"][0]["code"],
+        "prerequisites_blocked"
+    );
     assert!(value["result"].get("planToken").is_none());
     assert!(value["result"].get("expiresAtUnixMillis").is_none());
     assert_eq!(tree_snapshot(sandbox.path()), before);
@@ -1167,6 +1223,7 @@ fn sandbox_recovery_rejects_game_root_outside_fixtures_without_echoing_it() {
 fn sandbox_install_apply_requires_dual_confirmation_and_plan_token() {
     let sandbox = tempfile::tempdir().expect("sandbox");
     let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
     write_game_config(sandbox.path(), &game_root);
     write_mod_catalog_and_sandbox(sandbox.path());
     let before = tree_snapshot(sandbox.path());
@@ -1188,6 +1245,12 @@ fn sandbox_install_apply_requires_dual_confirmation_and_plan_token() {
         let value: Value = serde_json::from_str(&stdout_text(&output)).expect("dry-run apply json");
         assert_eq!(value["command"], "install.apply");
         assert_eq!(value["result"]["profileId"], "default");
+        assert_eq!(value["result"]["prerequisiteDecision"]["status"], "warning");
+        assert!(value["result"]["prerequisiteDecision"]["codes"]
+            .as_array()
+            .expect("prerequisite warning codes")
+            .iter()
+            .any(|code| code == "signature_unverified"));
         assert!(value["result"]["planToken"].as_str().is_some());
         assert!(value["result"]["expiresAtUnixMillis"].as_u64().is_some());
         assert_eq!(tree_snapshot(sandbox.path()), before);
@@ -1221,6 +1284,7 @@ fn sandbox_install_apply_binary_writes_only_fixture_tree_and_emits_jsonl() {
     fs::write(&sentinel, b"outside").expect("write sentinel");
     write_sandbox_marker(sandbox.path());
     let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
     fs::create_dir_all(game_root.join("nativePC/models")).expect("baseline target parents");
     write_game_config(sandbox.path(), &game_root);
     write_mod_catalog_and_sandbox(sandbox.path());
@@ -1521,6 +1585,7 @@ fn sandbox_reinstall_binary_replaces_revision_and_restores_exact_baseline() {
     fs::write(&sentinel, b"outside").expect("write sentinel");
     write_sandbox_marker(sandbox.path());
     let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
     let models_root = game_root.join("nativePC/models");
     fs::create_dir_all(&models_root).expect("create reinstall fixture parent");
     fs::write(models_root.join("replaced.mod3"), b"game-replaced")
@@ -1635,6 +1700,19 @@ fn sandbox_reinstall_binary_replaces_revision_and_restores_exact_baseline() {
             serde_json::from_str(&stdout_text(&preview)).expect("reinstall preview json");
         assert_eq!(preview_value["command"], "install.reinstall");
         assert_eq!(preview_value["result"]["status"], "ready");
+        assert_eq!(
+            preview_value["result"]["prerequisiteDecision"]["status"],
+            "warning"
+        );
+        assert_eq!(
+            preview_value["result"]["prerequisiteDecision"]["rulesVersion"],
+            1
+        );
+        assert!(preview_value["result"]["prerequisiteDecision"]["codes"]
+            .as_array()
+            .expect("prerequisite warning codes")
+            .iter()
+            .any(|code| code == "signature_unverified"));
         assert_eq!(preview_value["result"]["installedRevisionId"], "package-v1");
         assert_eq!(
             preview_value["result"]["candidateRevisionId"],
@@ -1851,6 +1929,7 @@ fn sandbox_reinstall_rejects_stale_token_before_task_or_game_write() {
     fs::write(&sentinel, b"outside").expect("write sentinel");
     write_sandbox_marker(sandbox.path());
     let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
     fs::create_dir_all(game_root.join("nativePC/models")).expect("create game parent");
     write_game_config(sandbox.path(), &game_root);
     write_reinstall_v1_catalog_and_sandbox(sandbox.path());
@@ -1953,6 +2032,7 @@ fn sandbox_reinstall_manifest_save_failure_rolls_back_v1_in_real_binary() {
     fs::write(&sentinel, b"outside").expect("write sentinel");
     write_sandbox_marker(sandbox.path());
     let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
     fs::create_dir_all(game_root.join("nativePC/models")).expect("create game parent");
     write_game_config(sandbox.path(), &game_root);
     write_reinstall_v1_catalog_and_sandbox(sandbox.path());

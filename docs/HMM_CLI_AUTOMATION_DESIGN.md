@@ -289,8 +289,9 @@ hmm
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
 | CLI-4（Slice B/C） | `install batch`、`install uninstall-batch`、`install reinstall-batch` | Sandbox；Production 受 CLI-3 门禁 | 按 operation 增量开放：Slice B 交付批量安装，Slice C 再交付批量卸载与真正重装 |
 
-CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。所有写命令必须在持有写 admission 后重新
-读取配置、manifest/recovery、目标摘要、前置状态和计划事实。
+CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。生命周期写命令必须在获取 game/profile
+写锁前重新读取可能包含规则解析或 hash 的前置状态；取得写 admission 和写锁后，再对已封存 token、
+manifest/recovery、目标摘要和计划事实做有界重验。
 
 ## 命令语义
 
@@ -381,11 +382,12 @@ fail closed，避免篡改状态或第三方文件名进入 CLI 输出。
 `install apply` 不是复制命令。它必须：
 
 1. 获取对应写 admission。
-2. 在锁内重新读取 game/profile、recovery、manifest、前置和候选 revision。
-3. 重建计划并校验 `planToken` 或等价计划事实。
-4. 执行 conflict/preflight、backup、commit、manifest、rollback/recovery。
-5. 写 Task Log 和 Audit Log。
-6. 只返回稳定任务结果和聚合摘要。
+2. 在锁外重新读取 prerequisite 规则、配置和文件 hash，并与 token 绑定的 decision 比较。
+3. 在锁内重新校验 game/profile、recovery、manifest、候选 revision 和受控目标摘要。
+4. 重建计划并校验 `planToken` 或等价计划事实。
+5. 执行 conflict/preflight、backup、commit、manifest、rollback/recovery。
+6. 写 Task Log 和 Audit Log。
+7. 只返回稳定任务结果和聚合摘要。
 
 计划过期、配置变化、目标摘要变化或前置状态变化时必须 fail closed，要求重新执行 `install plan`。
 
@@ -659,6 +661,10 @@ seal 和 start；preview token 与 plan token 只在内存传递，不作为参�
 task/write 前发生的 token、containment、前置或 Production 拒绝都使用退出码 `3`，不会伪装成已经
 开始执行的受控失败。
 
+生命周期 facade 只持有稳定 task failure code 和 task id、无法证明底层回滚结果时，必须保守投影为
+`data_safety_risk`，不能声称 `rollback_succeeded`。机器消费者应结合 Task/Audit Log 或后续
+recovery/status 查询确认真实恢复状态。
+
 ## 自动化测试设计
 
 ### 测试层级
@@ -832,6 +838,29 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - sandbox marker、路径 containment 和 production gate 均有负向测试。
 - 不读取真实 Steam、AppData、游戏或存档。
 
+### CORE-PREF-01：单项 lifecycle 前置 decision
+
+- `GamePrerequisiteDecisionProvider` 是 desktop、CLI、install 和 true reinstall 的 app-level
+  单一事实源；transport 不解析诊断 message、路径或 MHW:I 规则。
+- install/reinstall preview 都返回 `prerequisiteDecision { status, rulesVersion, codes }`。
+  required missing、rules unavailable/corrupted 和无法证明的状态为 `blocked`，不签 token；
+  `signature_unverified` 为显式 `warning`，允许继续但不能显示为 success。
+- install lifecycle token 直接绑定 decision facts；reinstall 内部 token 绑定 decision，外层
+  Sandbox token 绑定完整 preview/internal token。规则版本、codes 或 status 漂移都会使旧 token
+  失效。
+- 规则读取、hash、配置检查和最终 decision 重验都在 game/profile 写锁外；runner 在获取锁前立即将
+  最终 decision 与 preview/token facts 比较。锁内只校验已封存 token/plan、identity、containment
+  和当前 manifest/目标状态，blocked 或漂移在 staging、manifest、commit 和 game write 前 fail closed。
+- CLI/Tauri DTO 不返回 issue path、display message、配置正文、完整本地路径或第三方 Mod 内容。
+
+完成定义：
+
+- install/reinstall 的 required-missing blocked/no-token 与 unverified warning/token 由真实 binary
+  contract 固定。
+- 桌面 install/reinstall runner 的锁前 decision drift tests 证明 prerequisite provider 不在写锁内
+  调用，且发生漂移时 commit service 和文件写入未发生。
+- Tauri DTO、frontend typed contract 和 UI warning/blocked 状态消费同一 decision。
+
 ### CLI-3：跨进程 admission 与生产写入
 
 - 设计并实现 game/save/background registration admission ports。
@@ -890,8 +919,7 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - 日志、诊断和机器输出都遵守统一脱敏白名单。
 - 测试只使用 temp/fake/人工 fixture，并验证 sandbox 外 sentinel 不变。
 
-CLI-0A、CLI-0B、CLI-1A 与 CLI-1B 已满足 contract/policy、共享 composition、transport observer
-接缝和只读 game/install/backup/diagnostics automation 条件。T13-00 合并后，Slice A 是下一个
-ready 交付单元，CLI-2A 是其首个内部工作包；任何 CLI-2 长任务写命令前，必须先完成 runner
-逐阶段 observer，再完成 Sandbox write marker/capability、canonical containment 与完整安全链路。
-Slice A 完成后进入 Slice B，不要为每个 Tauri command 添加 shell 包装。
+CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CORE-PREF-01 已形成 Slice A：共享
+composition、逐阶段 observer、Sandbox write capability、完整单项 lifecycle E2E 和统一 prerequisite
+decision 均已落地。Slice B 从已合并的 Slice A 启动 T13 sealed 批量安装，不要为每个 Tauri command
+添加 shell 包装，也不要让 CLI 循环调用单项命令伪装 batch。

@@ -129,6 +129,15 @@ runner 取得共享 game/profile 写锁后，再由 configured committer/admissi
 manifest/recovery facts、重验 token 和 capability，之后才进入既有写入事务。Production 在 CLI
 policy 和 runtime composition 两层固定拒绝。
 
+CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
+`ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和
+`ReadOnlyInstallAutomation` 复用 runtime 中同一个 provider。preview 和提交前最终重验都在写锁外
+读取规则、hash 和配置，返回 `ready | warning | blocked`、stable codes 与 rules version；runner
+在获取 game/profile 写锁前立即比较最终 decision 与 preview/token facts。取得写锁后只校验已封存的
+plan/token、identity、containment 和当前 manifest/目标状态，不再执行 prerequisite 规则读取或 hash。
+blocked 或任何 decision 漂移都在 commit、staging 和游戏目录写入前 fail closed。Tauri、CLI 和
+React 只投影该 decision，不重算 MHW:I 规则，也不返回 issue path、自由文本 message 或配置正文。
+
 CLI-2B 在 `hmm-runtime` 增加了 `SandboxWriteCapability`。只有显式 Sandbox 环境可以通过
 `RuntimeEnvironment::acquire_sandbox_write_capability` 申请；Production 没有 capability 构造路径。
 空 Sandbox 根会在申请时通过 no-follow 目录句柄创建固定 `.hmm-sandbox.json` v1 marker，非空根
@@ -321,7 +330,17 @@ DependencyRule
 - 文件 hash 匹配已知值
 - 安装清单中存在某个前置 Mod
 
-缺少必需前置时，安装应被阻止或给出明确警告，具体行为由严重级别决定。
+app 层把 adapter report 归一化为版本化 `GamePrerequisiteDecision`：
+
+- required missing、规则不可用/损坏、目录或存储不可用为 `blocked`，不得签发计划 token。
+- 签名未命中等可继续状态为 `warning`，允许执行但不能在 UI/CLI 中伪装成“预检通过”。
+- 只有规则验证完成且没有 issue 才是 `ready`。
+- install、true reinstall、retarget staging、Tauri 和 CLI 必须消费同一个 decision；runner 在获取
+  写锁前完成最终 provider 重验并比较 status、stable codes 与 rules version，任何漂移都要求重新
+  preview。规则读取、配置解析和文件 hash 不得在 game/profile 写锁内执行。
+
+详细诊断 report 可以返回受控相对 issue path；生命周期 decision 只返回聚合 status、stable codes
+和 rules version，不传播完整路径、display message 或配置正文。
 
 ### 替换目标映射
 

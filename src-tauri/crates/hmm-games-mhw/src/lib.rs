@@ -136,6 +136,7 @@ impl GameAdapter for MonsterHunterWorldAdapter {
             Err(error) => GamePrerequisiteReport {
                 game_id: self.game_id(),
                 state: GamePrerequisiteReportState::RulesUnavailable,
+                rules_version: None,
                 summary_status: None,
                 items: Vec::new(),
                 error_code: Some(match &error {

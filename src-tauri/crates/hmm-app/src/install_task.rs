@@ -10,12 +10,13 @@ use thiserror::Error;
 
 use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 use crate::{
-    BuildImportedModInstallPlanRequest, CommitInstallPlanRequest, InstallCommitError,
-    InstallCommitResult, InstallCommitService, InstallPlanningError, InstallPlanningService,
-    InstallRecoveryActionError, InstallRecoveryActionKind, InstallRecoveryActionRequest,
-    InstallRecoveryActionResult, InstallRecoveryActionService, TaskKind, TaskManager,
-    TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted, TaskStatus,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    BuildImportedModInstallPlanRequest, CommitInstallPlanRequest, GamePrerequisiteDecision,
+    ImportedModInstallPreflight, ImportedModInstallPreflightService, InstallCommitError,
+    InstallCommitResult, InstallCommitService, InstallPlanningError, InstallRecoveryActionError,
+    InstallRecoveryActionKind, InstallRecoveryActionRequest, InstallRecoveryActionResult,
+    InstallRecoveryActionService, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent,
+    TaskProgressObserver, TaskStarted, TaskStatus, UninstallModError, UninstallModRequest,
+    UninstallModResult, UninstallModService,
 };
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
@@ -94,15 +95,21 @@ pub trait ImportedModInstallPlanner: Send + Sync {
     fn build_imported_mod_install_plan(
         &self,
         request: BuildImportedModInstallPlanRequest,
-    ) -> Result<InstallPlan, InstallPlanningError>;
+    ) -> Result<ImportedModInstallPreflight, InstallPlanningError>;
+
+    fn prerequisite_decision(&self, game_id: &GameId) -> GamePrerequisiteDecision;
 }
 
-impl ImportedModInstallPlanner for InstallPlanningService {
+impl ImportedModInstallPlanner for ImportedModInstallPreflightService {
     fn build_imported_mod_install_plan(
         &self,
         request: BuildImportedModInstallPlanRequest,
-    ) -> Result<InstallPlan, InstallPlanningError> {
-        self.build_plan_from_imported_mod(request)
+    ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+        self.preview(request)
+    }
+
+    fn prerequisite_decision(&self, game_id: &GameId) -> GamePrerequisiteDecision {
+        ImportedModInstallPreflightService::prerequisite_decision(self, game_id)
     }
 }
 
@@ -180,6 +187,17 @@ pub trait InstallWriteAdmission: Send + Sync {
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<(), InstallWriteAdmissionError>;
+
+    fn ensure_install_plan_allowed(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        _mod_id: &ModId,
+        _plan: &InstallPlan,
+        _prerequisite_decision: &GamePrerequisiteDecision,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        self.ensure_write_allowed(game_id, profile_id)
+    }
 }
 
 pub(crate) struct AllowInstallWriteAdmission;
@@ -403,7 +421,7 @@ impl InstallTaskRunner {
             observer,
             running_event(task_id, INSTALL_PLAN_BUILDING_PHASE),
         );
-        let plan =
+        let preflight =
             match self
                 .planner
                 .build_imported_mod_install_plan(BuildImportedModInstallPlanRequest {
@@ -411,17 +429,47 @@ impl InstallTaskRunner {
                     mod_id: request.mod_id.clone(),
                     layer: request.layer.clone(),
                 }) {
-                Ok(plan) => plan,
+                Ok(preflight) => preflight,
                 Err(_) => {
                     return Err(
                         self.fail_with_audit(task_id, &request, events, observer, "planning", 0)
                     )
                 }
             };
+        let action_count = preflight.plan.actions.len();
+        if preflight.prerequisite_decision.is_blocked() {
+            return Err(self.fail_with_audit(
+                task_id,
+                &request,
+                events,
+                observer,
+                "prerequisite",
+                action_count,
+            ));
+        }
+        let prerequisite_decision = preflight.prerequisite_decision;
+        let plan = preflight.plan;
         let action_count = plan.actions.len();
 
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
             return Ok(events);
+        }
+
+        let current_prerequisite_decision = self.planner.prerequisite_decision(&request.game_id);
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            return Ok(events);
+        }
+        if current_prerequisite_decision.is_blocked()
+            || current_prerequisite_decision != prerequisite_decision
+        {
+            return Err(self.fail_with_audit(
+                task_id,
+                &request,
+                events,
+                observer,
+                "prerequisite",
+                action_count,
+            ));
         }
 
         let write_lock = self
@@ -441,11 +489,27 @@ impl InstallTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
-            match self
-                .write_admission
-                .ensure_write_allowed(&request.game_id, &request.profile_id)
-            {
+            match self.write_admission.ensure_install_plan_allowed(
+                &request.game_id,
+                &request.profile_id,
+                &request.mod_id,
+                &plan,
+                &current_prerequisite_decision,
+            ) {
                 Ok(()) => {
+                    if self.task_manager.block_task_cancellation(task_id).is_err() {
+                        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                            return Ok(events);
+                        }
+                        return Err(self.fail_with_audit(
+                            task_id,
+                            &request,
+                            events,
+                            observer,
+                            "lock",
+                            action_count,
+                        ));
+                    }
                     observe_task_progress(
                         &mut events,
                         observer,
@@ -678,7 +742,17 @@ impl UninstallTaskRunner {
                 .write_admission
                 .ensure_write_allowed(&request.game_id, &request.profile_id)
             {
-                Ok(()) => Ok(self.uninstaller.uninstall_mod(request.clone())),
+                Ok(()) => {
+                    if self.task_manager.block_task_cancellation(task_id).is_err() {
+                        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                            return Ok(events);
+                        }
+                        return Err(self.fail_uninstall_with_audit(
+                            task_id, &request, events, observer, "lock", None,
+                        ));
+                    }
+                    Ok(self.uninstaller.uninstall_mod(request.clone()))
+                }
                 Err(error) => Err(error),
             }
         };
@@ -922,6 +996,14 @@ impl RecoveryActionTaskRunner {
                     observer,
                     error.failure_phase(),
                     None,
+                ));
+            }
+            if self.task_manager.block_task_cancellation(task_id).is_err() {
+                if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                    return Ok(events);
+                }
+                return Err(self.fail_recovery_action_with_audit(
+                    task_id, &request, events, observer, "lock", None,
                 ));
             }
             self.action_executor.run_recovery_action(request.clone())
@@ -1399,6 +1481,82 @@ mod tests {
     }
 
     #[test]
+    fn run_install_task_passes_current_plan_to_admission_before_commit() {
+        struct RejectingPlanAdmission {
+            expected_plan: InstallPlan,
+            expected_decision: GamePrerequisiteDecision,
+        }
+
+        impl InstallWriteAdmission for RejectingPlanAdmission {
+            fn ensure_write_allowed(
+                &self,
+                _game_id: &GameId,
+                _profile_id: &ProfileId,
+            ) -> Result<(), InstallWriteAdmissionError> {
+                panic!("install runner must use plan-aware admission")
+            }
+
+            fn ensure_install_plan_allowed(
+                &self,
+                game_id: &GameId,
+                profile_id: &ProfileId,
+                mod_id: &ModId,
+                plan: &InstallPlan,
+                prerequisite_decision: &GamePrerequisiteDecision,
+            ) -> Result<(), InstallWriteAdmissionError> {
+                assert_eq!(game_id, &GameId::mhw());
+                assert_eq!(profile_id, &ProfileId::new("default"));
+                assert_eq!(mod_id, &ModId::new("mod-a"));
+                assert_eq!(plan, &self.expected_plan);
+                assert_eq!(prerequisite_decision, &self.expected_decision);
+                Err(InstallWriteAdmissionError::SafetyRejected)
+            }
+        }
+
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("install task can be created");
+        let plan = sample_plan();
+        let prerequisite_decision = ready_prerequisite_decision();
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let runner = InstallTaskRunner::with_write_coordination(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::with_decisions(
+                plan.clone(),
+                prerequisite_decision.clone(),
+                prerequisite_decision.clone(),
+            )),
+            committer.clone(),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            Arc::new(RejectingPlanAdmission {
+                expected_plan: plan,
+                expected_decision: prerequisite_decision,
+            }),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("admission rejection must stop commit");
+
+        assert_eq!(
+            error
+                .events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec!["install.plan.building", "install.failed"]
+        );
+        assert!(committer.take_profiles().is_empty());
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Failed)
+        );
+    }
+
+    #[test]
     fn run_install_task_with_observer_streams_events_and_ignores_observer_failure() {
         #[derive(Default)]
         struct FailingObserver {
@@ -1822,44 +1980,132 @@ mod tests {
     }
 
     #[test]
-    fn run_install_task_does_not_emit_failed_when_task_is_cancelled_during_commit() {
+    fn lifecycle_write_runners_reject_cancellation_after_commit_barrier() {
         let task_manager = Arc::new(crate::TaskManager::new());
-        let task = task_manager
+        let install_task = task_manager
             .create_task(crate::TaskKind::Install)
             .expect("task can be created");
-        let planner = Arc::new(RecordingInstallPlanner::new(sample_plan()));
-        let committer = Arc::new(CancellingInstallCommitter {
-            task_manager: Arc::clone(&task_manager),
-            task_id: task.task_id.clone(),
-            manifest: sample_manifest(),
-        });
-        let audit_log = Arc::new(RecordingAuditLogWriter::default());
-        let runner = InstallTaskRunner::new(
+        let install_cancellation = Arc::new(CommitCancellationProbe::new(
             Arc::clone(&task_manager),
-            planner,
-            committer,
-            audit_log.clone(),
+            install_task.task_id.clone(),
+        ));
+        let install_runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            Arc::new(CancellationProbingInstallCommitter {
+                cancellation: Arc::clone(&install_cancellation),
+                manifest: sample_manifest(),
+            }),
+            Arc::new(RecordingAuditLogWriter::default()),
             Arc::new(FixedClock),
         );
 
-        let events = runner
-            .run_install_task(&task.task_id, sample_request())
-            .expect("commit succeeds even if task was cancelled during commit");
+        let install_events = install_runner
+            .run_install_task(&install_task.task_id, sample_request())
+            .expect("install commit succeeds after rejecting cancellation");
 
         assert_eq!(
-            events
+            install_events
                 .iter()
                 .map(|event| event.phase.as_str())
                 .collect::<Vec<_>>(),
-            vec!["install.plan.building", "install.commit.processing"]
+            vec![
+                "install.plan.building",
+                "install.commit.processing",
+                "install.completed"
+            ]
         );
+        install_cancellation.assert_rejected();
         assert_eq!(
-            task_manager.task_status(&task.task_id),
-            Some(crate::TaskStatus::Cancelled)
+            task_manager.task_status(&install_task.task_id),
+            Some(crate::TaskStatus::Completed)
         );
-        let event = audit_log.take_event().expect("audit event recorded");
-        assert_eq!(event.result, "success");
-        assert_eq!(event.fields["task_id"], task.task_id);
+
+        let uninstall_task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let uninstall_cancellation = Arc::new(CommitCancellationProbe::new(
+            Arc::clone(&task_manager),
+            uninstall_task.task_id.clone(),
+        ));
+        let uninstall_runner = UninstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(CancellationProbingUninstaller {
+                cancellation: Arc::clone(&uninstall_cancellation),
+                result: UninstallModResult {
+                    manifest: sample_manifest(),
+                    removed_file_count: 1,
+                    restored_file_count: 0,
+                },
+            }),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+        );
+
+        let uninstall_events = uninstall_runner
+            .run_uninstall_task(&uninstall_task.task_id, sample_uninstall_request())
+            .expect("uninstall commit succeeds after rejecting cancellation");
+
+        assert_eq!(
+            uninstall_events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "install.uninstall.processing",
+                "install.uninstall.completed"
+            ]
+        );
+        uninstall_cancellation.assert_rejected();
+        assert_eq!(
+            task_manager.task_status(&uninstall_task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+
+        let recovery_task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let recovery_cancellation = Arc::new(CommitCancellationProbe::new(
+            Arc::clone(&task_manager),
+            recovery_task.task_id.clone(),
+        ));
+        let recovery_runner = RecoveryActionTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(CancellationProbingRecoveryActionExecutor {
+                cancellation: Arc::clone(&recovery_cancellation),
+                result: crate::InstallRecoveryActionResult {
+                    profile_id: ProfileId::new("default"),
+                    mod_id: ModId::new("mod-a"),
+                    action_kind: crate::InstallRecoveryActionKind::RollbackInstall,
+                    remove_file_count: 1,
+                    restore_file_count: 1,
+                    backup_count: 1,
+                },
+            }),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+        );
+
+        let recovery_events = recovery_runner
+            .run_recovery_action_task(&recovery_task.task_id, sample_recovery_action_request())
+            .expect("recovery commit succeeds after rejecting cancellation");
+
+        assert_eq!(
+            recovery_events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "install.recovery.planning",
+                "install.recovery.processing",
+                "install.recovery.completed"
+            ]
+        );
+        recovery_cancellation.assert_rejected();
+        assert_eq!(
+            task_manager.task_status(&recovery_task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
     }
 
     #[test]
@@ -1938,6 +2184,86 @@ mod tests {
         let event = audit_log.take_event().expect("failure audit recorded");
         assert_eq!(event.result, "failure");
         assert_eq!(event.fields["action_count"], "1");
+    }
+
+    #[test]
+    fn run_install_task_blocks_missing_prerequisites_before_write_coordination() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let blocked = blocked_prerequisite_decision();
+        let planner = Arc::new(RecordingInstallPlanner::with_decisions(
+            sample_plan(),
+            blocked.clone(),
+            blocked,
+        ));
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            planner,
+            committer.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("missing prerequisites must block install");
+
+        assert_eq!(
+            error
+                .events
+                .iter()
+                .map(|event| (event.phase.as_str(), event.error.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("install.plan.building", None),
+                ("install.failed", Some("install_failed:prerequisite")),
+            ]
+        );
+        assert!(committer.take_profiles().is_empty());
+        let audit = audit_log.take_event().expect("failure audit");
+        assert_eq!(audit.result, "failure");
+        assert_eq!(audit.fields["error_code"], "install_failed:prerequisite");
+    }
+
+    #[test]
+    fn run_install_task_rejects_prerequisite_drift_before_write_lock() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let write_lock = write_locks.lock_for(&GameId::mhw(), &ProfileId::new("default"));
+        let planner = Arc::new(
+            RecordingInstallPlanner::with_decisions(
+                sample_plan(),
+                warning_prerequisite_decision(),
+                blocked_prerequisite_decision(),
+            )
+            .assert_prerequisite_revalidation_outside_write_lock(write_lock),
+        );
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            planner,
+            committer.clone(),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            write_locks,
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("prerequisite drift must block install");
+
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_failed:prerequisite")
+        );
+        assert!(committer.take_profiles().is_empty());
     }
 
     fn sample_request() -> StartInstallTaskRequest {
@@ -2076,15 +2402,38 @@ mod tests {
 
     struct RecordingInstallPlanner {
         plan: InstallPlan,
+        preview_decision: GamePrerequisiteDecision,
+        revalidation_decision: GamePrerequisiteDecision,
         requests: Mutex<Vec<BuildImportedModInstallPlanRequest>>,
+        prerequisite_write_lock: Option<Arc<Mutex<()>>>,
     }
 
     impl RecordingInstallPlanner {
         fn new(plan: InstallPlan) -> Self {
+            let decision = ready_prerequisite_decision();
+            Self::with_decisions(plan, decision.clone(), decision)
+        }
+
+        fn with_decisions(
+            plan: InstallPlan,
+            preview_decision: GamePrerequisiteDecision,
+            revalidation_decision: GamePrerequisiteDecision,
+        ) -> Self {
             Self {
                 plan,
+                preview_decision,
+                revalidation_decision,
                 requests: Mutex::new(Vec::new()),
+                prerequisite_write_lock: None,
             }
+        }
+
+        fn assert_prerequisite_revalidation_outside_write_lock(
+            mut self,
+            write_lock: Arc<Mutex<()>>,
+        ) -> Self {
+            self.prerequisite_write_lock = Some(write_lock);
+            self
         }
 
         fn take_requests(&self) -> Vec<BuildImportedModInstallPlanRequest> {
@@ -2096,9 +2445,21 @@ mod tests {
         fn build_imported_mod_install_plan(
             &self,
             request: BuildImportedModInstallPlanRequest,
-        ) -> Result<InstallPlan, InstallPlanningError> {
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
             self.requests.lock().expect("requests").push(request);
-            Ok(self.plan.clone())
+            Ok(ImportedModInstallPreflight {
+                plan: self.plan.clone(),
+                prerequisite_decision: self.preview_decision.clone(),
+            })
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            if let Some(write_lock) = &self.prerequisite_write_lock {
+                let _guard = write_lock
+                    .try_lock()
+                    .expect("prerequisite revalidation must run outside the write lock");
+            }
+            self.revalidation_decision.clone()
         }
     }
 
@@ -2112,11 +2473,45 @@ mod tests {
         fn build_imported_mod_install_plan(
             &self,
             _request: BuildImportedModInstallPlanRequest,
-        ) -> Result<InstallPlan, InstallPlanningError> {
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
             self.task_manager
                 .cancel_task(&self.task_id)
                 .expect("task can be cancelled after planning");
-            Ok(self.plan.clone())
+            Ok(ImportedModInstallPreflight {
+                plan: self.plan.clone(),
+                prerequisite_decision: ready_prerequisite_decision(),
+            })
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            ready_prerequisite_decision()
+        }
+    }
+
+    fn ready_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Ready,
+            rules_version: Some(1),
+            codes: Vec::new(),
+        }
+    }
+
+    fn warning_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Warning,
+            rules_version: Some(1),
+            codes: vec![crate::GamePrerequisiteDecisionCode::SignatureUnverified],
+        }
+    }
+
+    fn blocked_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Blocked,
+            rules_version: Some(1),
+            codes: vec![crate::GamePrerequisiteDecisionCode::MissingRequiredFile],
         }
     }
 
@@ -2297,23 +2692,84 @@ mod tests {
         }
     }
 
-    struct CancellingInstallCommitter {
+    struct CommitCancellationProbe {
         task_manager: Arc<crate::TaskManager>,
         task_id: String,
+        error: Mutex<Option<TaskManagerError>>,
+    }
+
+    impl CommitCancellationProbe {
+        fn new(task_manager: Arc<crate::TaskManager>, task_id: String) -> Self {
+            Self {
+                task_manager,
+                task_id,
+                error: Mutex::new(None),
+            }
+        }
+
+        fn attempt(&self) {
+            let error = self
+                .task_manager
+                .cancel_task(&self.task_id)
+                .expect_err("commit barrier must reject cancellation");
+            *self.error.lock().expect("cancellation probe") = Some(error);
+        }
+
+        fn assert_rejected(&self) {
+            assert!(matches!(
+                self.error.lock().expect("cancellation probe").as_ref(),
+                Some(TaskManagerError::TaskCannotBeCancelled {
+                    status: TaskStatus::Running,
+                    ..
+                })
+            ));
+        }
+    }
+
+    struct CancellationProbingInstallCommitter {
+        cancellation: Arc<CommitCancellationProbe>,
         manifest: InstallManifest,
     }
 
-    impl InstallPlanCommitter for CancellingInstallCommitter {
+    impl InstallPlanCommitter for CancellationProbingInstallCommitter {
         fn commit_install_plan(
             &self,
             _request: ImportedModInstallCommitRequest,
         ) -> Result<InstallCommitResult, InstallCommitError> {
-            self.task_manager
-                .cancel_task(&self.task_id)
-                .expect("task can be cancelled during commit");
+            self.cancellation.attempt();
             Ok(InstallCommitResult {
                 manifest: self.manifest.clone(),
             })
+        }
+    }
+
+    struct CancellationProbingUninstaller {
+        cancellation: Arc<CommitCancellationProbe>,
+        result: UninstallModResult,
+    }
+
+    impl ModUninstaller for CancellationProbingUninstaller {
+        fn uninstall_mod(
+            &self,
+            _request: StartUninstallTaskRequest,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.cancellation.attempt();
+            Ok(self.result.clone())
+        }
+    }
+
+    struct CancellationProbingRecoveryActionExecutor {
+        cancellation: Arc<CommitCancellationProbe>,
+        result: InstallRecoveryActionResult,
+    }
+
+    impl InstallRecoveryActionExecutor for CancellationProbingRecoveryActionExecutor {
+        fn run_recovery_action(
+            &self,
+            _request: StartRecoveryActionTaskRequest,
+        ) -> Result<InstallRecoveryActionResult, InstallRecoveryActionError> {
+            self.cancellation.attempt();
+            Ok(self.result.clone())
         }
     }
 

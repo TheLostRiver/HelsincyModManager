@@ -4,6 +4,7 @@ mod external_import;
 #[cfg(test)]
 mod external_import_batch_tests;
 mod game_launch;
+mod game_prerequisites;
 mod game_setup;
 mod install;
 mod install_manifest_query;
@@ -52,6 +53,12 @@ pub use external_import::{
     MAX_EXTERNAL_IMPORT_RESULT_LIMIT,
 };
 pub use game_launch::{GameLaunchService, GameLaunchServiceError};
+pub use game_prerequisites::{
+    GamePrerequisiteDecision, GamePrerequisiteDecisionCode, GamePrerequisiteDecisionProvider,
+    GamePrerequisiteDecisionStatus, ImportedModInstallPreflight,
+    ImportedModInstallPreflightService, InitialRetargetInstallPreflight,
+    InitialRetargetInstallPreflightService,
+};
 pub use game_setup::{
     GameAutoDetection, GameAutoDetectionOutcome, GameCandidateScan, GameSetupCandidate,
     GameSetupService, GameSetupServiceError,

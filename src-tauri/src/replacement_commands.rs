@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hmm_app::{
-    AnalyzeImportedReplacementRequest, PlannedInitialRetargetInstall,
+    AnalyzeImportedReplacementRequest, InitialRetargetInstallPreflight,
     PreviewInitialRetargetInstallRequest, ReinstallTaskService, ReplacementServiceError,
     ReplacementWorkflowError, RetargetInstallTaskService, RetargetReinstallRequest,
     StartRetargetInstallTaskRequest, StartRetargetReinstallTaskRequest, TaskProgressEvent,
@@ -73,8 +73,8 @@ pub fn preview_initial_retarget_install(
 ) -> Result<InitialRetargetInstallPreviewDto, CommandErrorDto> {
     let request = preview_request_from_dto(request)?;
     state
-        .replacement_workflow
-        .preview_initial_install(request)
+        .initial_retarget_install_preflight
+        .preview(request)
         .map(Into::into)
         .map_err(replacement_workflow_error_to_command_error)
 }
@@ -521,8 +521,9 @@ impl From<ReplacementWarning> for ReplacementWarningDto {
     }
 }
 
-impl From<PlannedInitialRetargetInstall> for InitialRetargetInstallPreviewDto {
-    fn from(planned: PlannedInitialRetargetInstall) -> Self {
+impl From<InitialRetargetInstallPreflight> for InitialRetargetInstallPreviewDto {
+    fn from(preflight: InitialRetargetInstallPreflight) -> Self {
+        let planned = preflight.planned;
         Self {
             analysis: planned.analysis().clone().into(),
             target: planned.target().clone().into(),
@@ -547,6 +548,7 @@ impl From<PlannedInitialRetargetInstall> for InitialRetargetInstallPreviewDto {
                 .map(Into::into)
                 .collect(),
             install_plan: planned.install_plan().clone().into(),
+            prerequisite_decision: preflight.prerequisite_decision.into(),
         }
     }
 }

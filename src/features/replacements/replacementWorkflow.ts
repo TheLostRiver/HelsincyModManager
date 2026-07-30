@@ -161,6 +161,7 @@ type InitialRetargetInstallAvailability = {
   completedLocally: boolean;
   hasPreview: boolean;
   hasBlockingConflicts: boolean;
+  prerequisiteStatus: "ready" | "warning" | "blocked";
   taskActive: boolean;
   listenerReady: boolean;
 };
@@ -171,6 +172,7 @@ export function canStartInitialRetargetInstall(input: InitialRetargetInstallAvai
     !input.completedLocally &&
     input.hasPreview &&
     !input.hasBlockingConflicts &&
+    input.prerequisiteStatus !== "blocked" &&
     !input.taskActive &&
     input.listenerReady
   );

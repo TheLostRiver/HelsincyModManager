@@ -1,8 +1,8 @@
 use super::{retarget_reinstall_staging_root, HmmRuntime, RetargetStagingCleanup};
 use hmm_app::{
     BuildImportedModInstallPlanRequest, InstallManifestQueryRequest, InstallManifestStatus,
-    InstallRecoveryScanRequest, InstallRecoveryStatus, ReinstallPlanPreview,
-    ReinstallPreviewRequest, ReinstallPreviewStatus, ReinstallTargetCounts,
+    InstallRecoveryScanRequest, InstallRecoveryStatus, PreviewInitialRetargetInstallRequest,
+    ReinstallPlanPreview, ReinstallPreviewRequest, ReinstallPreviewStatus, ReinstallTargetCounts,
     RetargetReinstallRequest, StartImportModRevisionTaskRequest, StartImportModTaskRequest,
     StartInstallTaskRequest, StartReinstallTaskRequest, StartRetargetInstallTaskRequest,
     StartRetargetReinstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
@@ -279,6 +279,85 @@ fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot(
                 .next()
                 .is_none(),
         "successful commit must clean its temporary retarget staging"
+    );
+}
+
+#[test]
+fn headless_composition_blocks_initial_retarget_when_required_prerequisites_are_missing() {
+    let temp = tempfile::tempdir().expect("create blocked retarget temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let game_root = temp.path().join("game");
+    let archive_path = temp.path().join("armor-v1.zip");
+    prepare_game_root_without_prerequisites(&game_root);
+    let baseline = snapshot_file_tree(&game_root);
+    create_fixture_zip(&archive_path, &[(ARMOR_SOURCE_TARGET, ARMOR_FIXTURE_BYTES)]);
+
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+        .expect("compose headless state from temp AppData");
+    state
+        .game_setup
+        .save_game_directory(GameId::mhw(), game_root.clone())
+        .expect("save validated temp game directory");
+    let import_task = state
+        .mod_import_tasks
+        .start_import_mod_task(StartImportModTaskRequest {
+            archive_path: archive_path.clone(),
+        })
+        .expect("register armor fixture import");
+    state
+        .mod_import_task_runner
+        .run_prepare_task(&import_task.task_id, archive_path)
+        .expect("prepare armor fixture import");
+
+    let profile_id = ProfileId::new("default");
+    let mod_id = ModId::new(import_task.task_id);
+    let preview_request = PreviewInitialRetargetInstallRequest {
+        game_id: GameId::mhw(),
+        profile_id: profile_id.clone(),
+        mod_id: mod_id.clone(),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        layer: FileLayer::new("base", 0),
+    };
+    let preflight = state
+        .initial_retarget_install_preflight
+        .preview(preview_request.clone())
+        .expect("preview blocked retarget plan");
+    assert_eq!(
+        preflight.prerequisite_decision.status,
+        hmm_app::GamePrerequisiteDecisionStatus::Blocked
+    );
+    assert_eq!(
+        preflight.prerequisite_decision.codes,
+        vec![hmm_app::GamePrerequisiteDecisionCode::MissingRequiredFile]
+    );
+
+    let request = StartRetargetInstallTaskRequest {
+        game_id: preview_request.game_id,
+        profile_id: preview_request.profile_id,
+        mod_id: preview_request.mod_id,
+        target_id: preview_request.target_id,
+        layer: preview_request.layer,
+    };
+    let task = state
+        .retarget_install_tasks
+        .start_retarget_install_task(request.clone())
+        .expect("register blocked retarget task");
+    let error = state
+        .retarget_install_task_runner
+        .run_retarget_install_task(&task.task_id, request)
+        .expect_err("missing prerequisites must block retarget install");
+
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("install_retarget_failed:prerequisite")
+    );
+    assert_eq!(snapshot_file_tree(&game_root), baseline);
+    assert_no_retarget_staging(&app_data_dir);
+    assert!(
+        JsonInstallManifestRepository::new(app_data_dir.join("install").join("manifests"))
+            .load_manifest(&profile_id)
+            .expect("load blocked retarget manifest")
+            .is_none()
     );
 }
 
@@ -1432,6 +1511,30 @@ impl InstallManifestRepository for FailNextManifestSaveRepository {
 }
 
 fn prepare_game_root(game_root: &Path) {
+    prepare_game_root_without_prerequisites(game_root);
+    let plugin_root = game_root.join("nativePC/plugins");
+    fs::create_dir_all(&plugin_root).expect("create prerequisite plugin fixture");
+    for relative_path in [
+        "dinput8.dll",
+        "loader.dll",
+        "nativePC/plugins/MonsterLoader.dll",
+        "nativePC/plugins/QuestLoader.dll",
+        "nativePC/plugins/!CRCBypass.dll",
+    ] {
+        fs::write(
+            game_root.join(relative_path),
+            b"synthetic prerequisite fixture\n",
+        )
+        .expect("write synthetic prerequisite fixture");
+    }
+    fs::write(
+        game_root.join("loader-config.json"),
+        br#"{"enablePluginLoader":true}"#,
+    )
+    .expect("write synthetic prerequisite config");
+}
+
+fn prepare_game_root_without_prerequisites(game_root: &Path) {
     fs::create_dir_all(game_root.join("nativePC/lifecycle")).expect("create temp game root");
     fs::write(
         game_root.join("MonsterHunterWorld.exe"),

@@ -570,6 +570,44 @@ mod task_dto_tests {
 }
 
 #[cfg(test)]
+mod install_preflight_dto_tests {
+    use super::*;
+
+    #[test]
+    fn serializes_imported_mod_preflight_decision_without_diagnostic_details() {
+        let dto: ImportedModInstallPreflightDto = hmm_app::ImportedModInstallPreflight {
+            plan: hmm_core::InstallPlan::from_providers(Vec::new()),
+            prerequisite_decision: hmm_app::GamePrerequisiteDecision {
+                game_id: hmm_core::GameId::mhw(),
+                status: hmm_app::GamePrerequisiteDecisionStatus::Blocked,
+                rules_version: Some(7),
+                codes: vec![
+                    hmm_app::GamePrerequisiteDecisionCode::MissingRequiredFile,
+                    hmm_app::GamePrerequisiteDecisionCode::ConfigInvalidJson,
+                ],
+            },
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize imported Mod preflight");
+        let serialized = value.to_string();
+
+        assert_eq!(value["hasBlockingConflicts"], false);
+        assert_eq!(value["prerequisiteDecision"]["status"], "blocked");
+        assert_eq!(value["prerequisiteDecision"]["rulesVersion"], 7);
+        assert_eq!(
+            value["prerequisiteDecision"]["codes"],
+            serde_json::json!(["missing_required_file", "config_invalid_json"])
+        );
+        assert!(value.get("prerequisite_decision").is_none());
+        assert!(!serialized.contains("issuePath"));
+        assert!(!serialized.contains("message"));
+        assert!(!serialized.contains("loader-config.json"));
+        assert!(!serialized.contains("C:\\Users\\"));
+    }
+}
+
+#[cfg(test)]
 mod install_recovery_dto_tests {
     use super::*;
     use hmm_core::{ModId, ProfileId};

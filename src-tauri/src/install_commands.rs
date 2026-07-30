@@ -1,10 +1,11 @@
 use crate::dto::{
     CommandErrorDto, InstallManifestStatusRequestDto, InstallManifestStatusSummaryDto,
-    InstallPlanPreviewDto, InstallRecoveryActionKindDto, InstallRecoveryActionPreviewDto,
-    InstallRecoveryActionPreviewRequestDto, InstallRecoveryScanRequestDto,
-    InstallRecoverySummaryDto, PreviewImportedModInstallPlanRequestDto,
-    PreviewInstallPlanFileInputDto, PreviewInstallPlanRequestDto, StartInstallTaskRequestDto,
-    StartRecoveryActionTaskRequestDto, StartUninstallTaskRequestDto, TaskStartedDto,
+    ImportedModInstallPreflightDto, InstallPlanPreviewDto, InstallRecoveryActionKindDto,
+    InstallRecoveryActionPreviewDto, InstallRecoveryActionPreviewRequestDto,
+    InstallRecoveryScanRequestDto, InstallRecoverySummaryDto,
+    PreviewImportedModInstallPlanRequestDto, PreviewInstallPlanFileInputDto,
+    PreviewInstallPlanRequestDto, StartInstallTaskRequestDto, StartRecoveryActionTaskRequestDto,
+    StartUninstallTaskRequestDto, TaskStartedDto,
 };
 use crate::state::AppState;
 use crate::task_events::{emit_task_progress, TauriTaskProgressObserver};
@@ -44,14 +45,14 @@ pub fn preview_install_plan(
 pub fn preview_imported_mod_install_plan(
     request: PreviewImportedModInstallPlanRequestDto,
     state: State<'_, AppState>,
-) -> Result<InstallPlanPreviewDto, CommandErrorDto> {
+) -> Result<ImportedModInstallPreflightDto, CommandErrorDto> {
     let request = imported_mod_install_plan_request_from_dto(request)?;
-    let plan = state
-        .install_planning
-        .build_plan_from_imported_mod(request)
+    let preflight = state
+        .install_preflight
+        .preview(request)
         .map_err(install_planning_error_to_command_error)?;
 
-    Ok(plan.into())
+    Ok(preflight.into())
 }
 
 #[tauri::command]

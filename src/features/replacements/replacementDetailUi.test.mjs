@@ -49,6 +49,9 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(panel, /替换/);
   assert.match(panel, /新增/);
   assert.match(panel, /移除旧项/);
+  assert.match(panel, /previewState\.preview\.prerequisiteDecision\.status/);
+  assert.match(panel, /getPrerequisiteDecisionMessage/);
+  assert.match(panel, /getPrerequisiteDecisionCodeLabel/);
   assert.match(panel, /TASK_PROGRESS_EVENT_NAME/);
   assert.match(panel, /event\.payload\.taskId/);
   assert.match(panel, /refreshRetargetInstallState/);

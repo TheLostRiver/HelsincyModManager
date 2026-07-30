@@ -1509,7 +1509,7 @@ fn write_lifecycle_error<W: Write, E: Write>(
             true,
         ),
         SandboxLifecycleAutomationError::TaskFailed { .. } => (
-            CliErrorCategory::RollbackSucceeded,
+            CliErrorCategory::DataSafetyRisk,
             CliExitCode::ControlledFailure,
             false,
         ),
@@ -1958,6 +1958,34 @@ mod tests {
         assert_eq!(value["command"], INSTALL_RECOVERY_SCAN_COMMAND);
         assert_eq!(value["error"]["code"], "install_state_invalid");
         assert_eq!(value["error"]["category"], "data_safety_risk");
+        assert_eq!(value["error"]["retryable"], false);
+    }
+
+    #[test]
+    fn lifecycle_task_failure_does_not_claim_rollback_succeeded() {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let exit_code = write_lifecycle_error(
+            OutputFormat::Json,
+            INSTALL_REINSTALL_COMMAND,
+            SandboxLifecycleAutomationError::TaskFailed {
+                task_id: "install-opaque-task".to_owned(),
+                code: "install_reinstall_task_failed",
+            },
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(exit_code, CliExitCode::ControlledFailure.get());
+        assert!(stderr.is_empty());
+        let value: serde_json::Value =
+            serde_json::from_slice(&stdout).expect("machine error envelope");
+        assert_eq!(value["command"], INSTALL_REINSTALL_COMMAND);
+        assert_eq!(value["taskId"], "install-opaque-task");
+        assert_eq!(value["error"]["code"], "install_reinstall_task_failed");
+        assert_eq!(value["error"]["category"], "data_safety_risk");
+        assert_ne!(value["error"]["category"], "rollback_succeeded");
         assert_eq!(value["error"]["retryable"], false);
     }
 }

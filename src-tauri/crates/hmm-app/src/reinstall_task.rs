@@ -168,6 +168,8 @@ pub trait ReinstallTaskExecutor: Send + Sync {
         request: ReinstallPreviewRequest,
     ) -> Result<Self::Prepared, ReinstallTaskPrepareError>;
 
+    fn revalidate(&self, prepared: &Self::Prepared) -> Result<(), ReinstallCommitError>;
+
     fn commit(
         &self,
         prepared: Self::Prepared,
@@ -229,6 +231,18 @@ impl ReinstallTaskExecutor for ReinstallTaskExecutorService {
                 Err(ReinstallTaskPrepareError::Preflight(fallback))
             }
         }
+    }
+
+    fn revalidate(&self, prepared: &Self::Prepared) -> Result<(), ReinstallCommitError> {
+        let current_prerequisite_decision = self
+            .preview
+            .prerequisite_decision(&prepared.request.game_id);
+        if current_prerequisite_decision.is_blocked()
+            || current_prerequisite_decision != prepared.prerequisite_decision
+        {
+            return Err(ReinstallCommitError::PreviewStale);
+        }
+        Ok(())
     }
 
     fn commit(
@@ -417,6 +431,22 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             observer,
             running_event(task_id, PREFLIGHT_PROCESSING_PHASE),
         );
+        if let Err(error) = self.executor.revalidate(&prepared) {
+            if self.is_cancelled(task_id) {
+                return Ok(events);
+            }
+            let failure = commit_failure(&error);
+            return self.fail_with_audit(
+                task_id,
+                request,
+                audit_context,
+                events,
+                observer,
+                failure.phase,
+                failure.rollback_result,
+                failure.emit_rollback,
+            );
+        }
 
         let write_lock = self
             .write_locks
