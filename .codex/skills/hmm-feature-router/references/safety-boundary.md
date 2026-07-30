@@ -25,7 +25,15 @@
 真实写入必须遵循：
 
 ```text
-analyze -> build InstallPlan -> conflict/dependency checks -> backup -> commit -> manifest -> rollback/recover path
+analyze / preflight
+  -> InstallPlan
+  -> 持久化 Planned recovery intent
+  -> 读取 source/target 并建立 backup
+  -> 持久化 Committing rollback facts
+  -> commit 玩家文件
+  -> 原子保存最终 manifest
+success -> 标记 Completed 并清理 recovery
+failure -> rollback；rollback 失败则保留 RollbackRequired
 ```
 
 卸载必须基于 manifest，不能根据当前包内容猜测。

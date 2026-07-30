@@ -11,17 +11,19 @@
 ## 分层
 
 ```text
-React UI
-  -> 前端 typed API wrappers
-  -> Tauri commands / DTOs
-  -> hmm-app 用例
-  -> hmm-ports traits
-  -> hmm-core 领域模型
-  -> hmm-infra 真实 I/O
-  -> hmm-games-* 游戏专属 adapter
+React UI -> Tauri shell -> hmm-runtime <- CLI
+hmm-runtime -> hmm-app / hmm-infra / hmm-games-mhw / hmm-ports / hmm-core
+hmm-app -> hmm-ports -> hmm-core
+hmm-app -> hmm-core
+hmm-infra -> hmm-ports -> hmm-core
+hmm-infra -> hmm-core
+hmm-games-mhw -> hmm-ports -> hmm-core
+hmm-games-mhw -> hmm-core
 ```
 
-依赖应通过 traits 向内收束。UI 和 command 不应接触 infra 细节。Core 不应知道 Tauri、SQLite、真实文件系统 API、Steam 或具体 MHW 路径。
+箭头从依赖方指向被依赖方。`hmm-app` 通过 ports 编排用例，infra 和 game adapter 实现 ports，
+`hmm-runtime` 负责 GUI/CLI 共用 composition。UI 和 command 不接触 infra 细节；core 不知道 Tauri、
+SQLite、真实文件系统 API、Steam 或具体 MHW 路径。
 
 ## Rust Crate 职责
 
@@ -31,6 +33,7 @@ React UI
 - `hmm-app`：导入、分析、计划、安装、卸载、备份、启动、retarget 等用例编排。
 - `hmm-infra`：JSON/SQLite、真实文件系统、压缩包工具、hash、Steam discovery、平台 API。
 - `hmm-games-mhw`：Monster Hunter: World - Iceborne 规则、路径、catalog、资源编号解析。
+- `hmm-runtime`：为 Tauri 和 CLI 组合 app services、ports 实现、game adapter 和共享运行时状态。
 
 只有在真实 adapter 工作落地时，才创建未来游戏 crate（如 `hmm-games-rise`、`hmm-games-wilds` 或 common helper）。
 

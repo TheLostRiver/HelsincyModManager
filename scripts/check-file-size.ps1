@@ -18,8 +18,9 @@ if ($null -ne $policy.fileSize.PSObject.Properties["blockBytes"]) {
     $byteLimit = [long]$policy.fileSize.blockBytes
 }
 $maxLineLength = $null
-if ($null -ne $policy.fileSize.PSObject.Properties["maxLineLength"]) {
-    $maxLineLength = [int]$policy.fileSize.maxLineLength
+$maxLineLengthProperty = $policy.fileSize.PSObject.Properties["maxLineLength"]
+if ($null -ne $maxLineLengthProperty -and $null -ne $maxLineLengthProperty.Value) {
+    $maxLineLength = [int]$maxLineLengthProperty.Value
 }
 $maxLineLengthExcludePathPatterns = @()
 if ($null -ne $policy.fileSize.PSObject.Properties["maxLineLengthExcludePathPatterns"]) {
@@ -87,7 +88,11 @@ foreach ($file in $files) {
     $checkMaxLineLength = $null -ne $maxLineLength -and -not (
         Test-PolicyPathExcluded -Path $normalized -Regexes $maxLineLengthExcludePathRegexes
     )
-    if ($null -eq $limitProperty -and -not $checkMaxLineLength) {
+    if (
+        $null -eq $limitProperty -and
+        $null -eq $reviewLimitProperty -and
+        -not $checkMaxLineLength
+    ) {
         continue
     }
 
