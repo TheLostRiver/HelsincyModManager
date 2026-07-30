@@ -2,8 +2,8 @@
 
 创建时间：2026-06-27
 基于 HEAD：`e9e451e` (main)
-最近同步：2026-07-30，QG-01 已由 PR #215 合并；T13-00 已完成批量领域设计与规划契约，产品实现
-未开始；CLI-2A 是下一 ready task，尚未启动
+最近同步：2026-07-31，QG-01 已由 PR #215 合并；T13-00 已完成批量领域设计与规划契约，产品实现
+未开始；Slice A 已完成，Slice B 是下一 ready 交付单元
 
 ---
 
@@ -62,9 +62,8 @@
    PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2/3/4A/4B 已合并，PR #199 交付最后的
    Slice 4C；完整 T17 已具备分页结果、partial success、服务端重试和大批次门禁。
 5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：QG-01 CI 质量门禁已由 PR #215
-   合并；T13-00 已完成独立批量领域设计与规划契约，产品实现未开始；后续依次完成
-   CLI-2A/2B/2C 和 CORE-PREF-01，
-   最后按 T13-01 至 T13-08 推进；不能把 T17 import-only 编排当成批量安装实现。
+   合并；T13-00 已完成独立批量领域设计与规划契约，Slice A 已完成 CLI-2A/2B/2C 和
+   CORE-PREF-01；下一步按 T13-01 至 T13-08 推进，不能把 T17 import-only 编排当成批量安装实现。
 
 ---
 
@@ -96,8 +95,8 @@
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
   -> QG-01 CI 质量门禁 [completed, PR #215]
   -> T13-00 批量语义设计 [design-complete（产品实现未开始）]
-  -> Slice A：CLI-2A/2B/2C + CORE-PREF-01 [next ready，CLI-2A 为首个内部工作包]
-  -> Slice B：T13-01/02 + T13-05 install 子集
+  -> Slice A：CLI-2A/2B/2C + CORE-PREF-01 [completed]
+  -> Slice B：T13-01/02 + T13-05 install 子集 [next ready]
   -> Slice C：T13-03/04 + T13-05 其余 CLI 契约
   -> Slice D：T13-06/07/08 Tauri/前端 + Windows Gate C
 ```
@@ -368,14 +367,15 @@ JSON 做不好的需求:
 ### T10: 前置依赖检查
 
 **前置**: T3 + T4
-**状态**: 受限；只做 Gate A/Gate B 的 source/target/path-family/冲突阻断，通用依赖平台延后
+**状态**: 单项 lifecycle 已完成；MHW:I bundled rules、install/reinstall blocked/warning decision、
+锁内重验和 UI/CLI 投影已落地，更多依赖类型、自动修复与通用依赖平台延后
 **预估**: 中
 **独立文档**: 不需要
 
 概要:
-- [ ] 依赖规则 catalog（JSON/TOML 随 `hmm-games-mhw` 发布）
-- [ ] 安装前检查 + 阻断/警告
-- [ ] 前端展示依赖检查结果
+- [x] 依赖规则 catalog（JSON 随 `hmm-games-mhw` 发布）
+- [x] 安装前检查 + 阻断/警告
+- [x] 前端展示依赖检查结果
 
 ---
 
@@ -384,7 +384,7 @@ JSON 做不好的需求:
 **T13-00 前置**: QG-01 合并 + T6 + Gate A certified（已满足）
 **实现链前置**: T13-00 -> CLI-2A -> CLI-2B -> CLI-2C -> CORE-PREF-01；T13-01 至 T13-08
 继续按自主迭代路线图逐项解锁
-**状态**: T13-00 `design-complete（产品实现未开始）`；T13-01 至 T13-08 未实现
+**状态**: T13-00 `design-complete`，Slice A 前置已完成；T13-01 next ready，T13-02 至 T13-08 未实现
 **预估**: 大
 **独立文档**: **已创建** -> `docs/BATCH_MOD_LIFECYCLE_DESIGN.md`；任务边界见
 `docs/AUTONOMOUS_ITERATION_ROADMAP.md`
@@ -601,8 +601,8 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
   -> 已完成: QG-01 CI 质量门禁（PR #215）
   -> design-complete: T13-00 批量设计与契约同步（产品实现未开始）
-  -> next ready、尚未启动: Slice A（CLI-2A/2B/2C + CORE-PREF-01；CLI-2A 为首个内部工作包）
-  -> Slice B：T13-01/02 + T13-05 install 子集
+  -> completed: Slice A（CLI-2A/2B/2C + CORE-PREF-01）
+  -> next ready: Slice B（T13-01/02 + T13-05 install 子集）
   -> Slice C：T13-03/04 + T13-05 其余 CLI 契约
   -> Slice D：T13-06/07/08 Tauri/typed API、前端工作流与 disposable Windows Sandbox Gate C
   -> 装备数据治理、防具 catalog 扩容、独立武器重定向
@@ -625,7 +625,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
 | T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围未被当前复审选中 | |
-| T10 依赖检查 | P0/P1 支撑 | Gate A/B 最小 preflight 已完成；其余范围未被当前复审选中 | |
+| T10 依赖检查 | P0/P1 支撑 | 单项 install/reinstall decision 与锁内重验已完成；更多依赖类型和自动修复未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P0 | T13-00 design-complete（产品实现未开始）；T13-01 至 T13-08 未实现 | |

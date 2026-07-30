@@ -113,8 +113,9 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - Sandbox diagnostics 只读取固定 `logs/app|tasks|audit`，目录必须通过 canonical containment；
   machine projection 只包含 bounded platform summary、分类状态和计数，不返回日志正文、来源文件名、
   Audit fields、完整本机信息或 export path。
-- CLI-2B 的 Sandbox write capability 只在未来写命令显式申请时初始化；`runtime status` 和所有 CLI-1
-  只读命令不创建 marker。空根创建固定版本 marker，非空根必须已有完全匹配的 marker。
+- CLI-2B 的 Sandbox write capability 只在 CLI-2C lifecycle 写命令显式申请时初始化；
+  `runtime status` 和所有 CLI-1 只读命令不创建 marker。空根创建固定版本 marker，非空根必须已有
+  完全匹配的 marker。
 - marker 不是授权秘密。只有字段/构造器私有且不可序列化的进程内 capability 才能签发
   `SandboxWriteAdmission`；Production 没有构造路径。
 - capability 保留 no-follow 根句柄、canonical root 与目录身份，并逐项重验 app-data、game、save、
@@ -125,6 +126,12 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   结构化状态摘要，不包含路径，并在装配写 runtime 前和 game/profile 写锁内重建事实后各验证一次。
   manifest/recovery record 内容变化即使聚合计数相同也会使旧 token 失效；blocked preview 不签发
   token。
+- install/reinstall 的 token 还绑定 app-level prerequisite decision 的 status、stable codes 与
+  rules version。required missing、规则不可用/损坏或 decision 无法证明时 fail closed；
+  `signature_unverified` 只作为显式 warning。CLI/Tauri lifecycle projection 不返回 prerequisite
+  issue path、display message、loader config 正文或本地绝对路径。提交前最终 prerequisite
+  规则读取、配置解析和 hash 在获取 game/profile 写锁前完成；写锁内只验证已封存 decision/token
+  与受控写入事实，不重复长时间 prerequisite I/O。
 - 四条生命周期写命令继续复用既有 application runner、InstallPlan、backup、原子 manifest、
   rollback/recovery、Task/Audit Log 与共享写锁。CLI 不接受 target/source path、manifest、backup ref
   或 recovery ref，也不提供 `--force`。

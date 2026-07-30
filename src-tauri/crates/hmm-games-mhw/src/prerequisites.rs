@@ -10,13 +10,19 @@ pub fn inspect_mhw_prerequisites(
     probe: &dyn GameDirectoryProbe,
     rules: GamePrerequisiteRuleSet,
 ) -> GamePrerequisiteReport {
+    let rules_version = rules.version;
     let items = rules
         .prerequisites
         .into_iter()
         .map(|rule| inspect_rule(probe, rule))
         .collect::<Vec<_>>();
 
-    GamePrerequisiteReport::ready(GameId::mhw(), summarize_prerequisite_items(&items), items)
+    GamePrerequisiteReport::ready_with_rules_version(
+        GameId::mhw(),
+        Some(rules_version),
+        summarize_prerequisite_items(&items),
+        items,
+    )
 }
 
 fn inspect_rule(

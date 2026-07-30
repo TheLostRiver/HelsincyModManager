@@ -1,8 +1,10 @@
 use crate::mod_library::ModLibraryComposition;
 use hmm_app::{
     AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
-    CommitInstallPlanRequest, GameLaunchService, GameProfileWriteLockRegistry, GameSetupService,
-    ImportedModInstallCommitRequest, InitialRetargetInstallPlanner,
+    CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
+    GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
+    ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
+    InitialRetargetInstallPlanner, InitialRetargetInstallPreflightService,
     InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader, InstallCommitError,
     InstallCommitPhase, InstallCommitResult, InstallCommitService, InstallManifestQueryService,
     InstallPlanCommitter, InstallPlanningService, InstallRecoveryActionError,
@@ -132,6 +134,7 @@ pub struct HmmRuntime {
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
     pub task_log_writer: Arc<dyn TaskLogWriter>,
     pub install_planning: Arc<InstallPlanningService>,
+    pub install_preflight: Arc<ImportedModInstallPreflightService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     pub install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
@@ -146,6 +149,7 @@ pub struct HmmRuntime {
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
     pub replacement_workflow: Arc<ReplacementWorkflowService>,
+    pub initial_retarget_install_preflight: Arc<InitialRetargetInstallPreflightService>,
     pub retarget_install_task_runner: Arc<RetargetInstallTaskRunner>,
     pub retarget_install_tasks: Arc<RetargetInstallTaskService>,
     pub recovery_action_task_runner: Arc<RecoveryActionTaskRunner>,
@@ -273,6 +277,15 @@ impl HmmRuntime {
         ));
         let game_config_repository: Arc<dyn GameConfigRepository> =
             Arc::new(JsonGameConfigRepository::new(config_path));
+        let game_setup = Arc::new(GameSetupService::new(
+            clone_game_adapters(&game_adapters),
+            Arc::clone(&game_config_repository),
+            Arc::new(RealGameDirectoryProbeFactory),
+            Arc::new(SteamGameDiscoveryService::new(Arc::new(
+                PlatformSteamRootProvider,
+            ))),
+            Arc::new(SystemClock),
+        ));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
             TaskScopedModImportSandboxLocator::new_in_app_data(app_data_dir.clone()),
         );
@@ -500,6 +513,11 @@ impl HmmRuntime {
             Arc::clone(&install_file_scanner),
             clone_game_adapters(&game_adapters),
         ));
+        let prerequisites: Arc<dyn GamePrerequisiteDecisionProvider> = game_setup.clone();
+        let install_preflight = Arc::new(ImportedModInstallPreflightService::new(
+            Arc::clone(&install_planning),
+            Arc::clone(&prerequisites),
+        ));
         let install_manifest_query = Arc::new(InstallManifestQueryService::new(Arc::clone(
             &install_manifest_repository,
         )));
@@ -527,6 +545,11 @@ impl HmmRuntime {
             initial_retarget_install_status,
             Arc::new(SystemClock),
         ));
+        let initial_retarget_install_preflight =
+            Arc::new(InitialRetargetInstallPreflightService::new(
+                Arc::clone(&replacement_workflow),
+                Arc::clone(&prerequisites),
+            ));
         let install_recovery_action_previewer =
             Arc::new(ConfiguredInstallRecoveryActionPreviewer::new(
                 Arc::clone(&game_config_repository),
@@ -562,7 +585,7 @@ impl HmmRuntime {
             ));
         let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
-            install_planning.clone(),
+            install_preflight.clone(),
             Arc::clone(&install_committer),
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
@@ -572,6 +595,7 @@ impl HmmRuntime {
         let retarget_install_planner: Arc<dyn InitialRetargetInstallPlanner> =
             Arc::new(ConfiguredInitialRetargetInstallPlanner::new(
                 Arc::clone(&replacement_workflow),
+                Arc::clone(&prerequisites),
                 Arc::clone(&mod_import_sandbox_locator),
                 Arc::clone(&install_recovery_scanner),
                 app_data_dir.clone(),
@@ -605,6 +629,7 @@ impl HmmRuntime {
         ));
         let reinstall_executor = Arc::new(ConfiguredReinstallExecutor::new(
             Arc::clone(&game_config_repository),
+            Arc::clone(&prerequisites),
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
             install_planning.clone(),
@@ -631,15 +656,7 @@ impl HmmRuntime {
             .with_app_settings_repository(app_settings_repository),
         );
         let state = Self {
-            game_setup: Arc::new(GameSetupService::new(
-                game_adapters,
-                Arc::clone(&game_config_repository),
-                Arc::new(RealGameDirectoryProbeFactory),
-                Arc::new(SteamGameDiscoveryService::new(Arc::new(
-                    PlatformSteamRootProvider,
-                ))),
-                Arc::new(SystemClock),
-            )),
+            game_setup,
             game_launch: Arc::new(GameLaunchService::new(
                 vec![mhw_launcher],
                 Arc::clone(&game_config_repository),
@@ -655,6 +672,7 @@ impl HmmRuntime {
             support_diagnostics_export,
             task_log_writer,
             install_planning,
+            install_preflight,
             install_manifest_query,
             install_recovery_scanner,
             install_recovery_action_previewer,
@@ -665,6 +683,7 @@ impl HmmRuntime {
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             replacement_workflow,
+            initial_retarget_install_preflight,
             retarget_install_task_runner,
             retarget_install_tasks: Arc::new(RetargetInstallTaskService::new(Arc::clone(
                 &task_manager,
@@ -741,6 +760,30 @@ impl InstallWriteAdmission for ChainedInstallWriteAdmission {
     ) -> Result<(), InstallWriteAdmissionError> {
         self.first.ensure_write_allowed(game_id, profile_id)?;
         self.second.ensure_write_allowed(game_id, profile_id)
+    }
+
+    fn ensure_install_plan_allowed(
+        &self,
+        game_id: &GameId,
+        profile_id: &hmm_core::ProfileId,
+        mod_id: &hmm_core::ModId,
+        plan: &hmm_core::InstallPlan,
+        prerequisite_decision: &GamePrerequisiteDecision,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        self.first.ensure_install_plan_allowed(
+            game_id,
+            profile_id,
+            mod_id,
+            plan,
+            prerequisite_decision,
+        )?;
+        self.second.ensure_install_plan_allowed(
+            game_id,
+            profile_id,
+            mod_id,
+            plan,
+            prerequisite_decision,
+        )
     }
 }
 
@@ -825,6 +868,7 @@ impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
 
 pub struct ConfiguredReinstallExecutor {
     game_config_repository: Arc<dyn GameConfigRepository>,
+    prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
     catalog: Arc<dyn ModImportResultRepository>,
     planner: Arc<InstallPlanningService>,
     source: Arc<dyn ReinstallCandidateSourceReader>,
@@ -873,6 +917,7 @@ impl ConfiguredReinstallExecutor {
     #[allow(clippy::too_many_arguments)]
     fn new(
         game_config_repository: Arc<dyn GameConfigRepository>,
+        prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
         catalog: Arc<dyn ModImportResultRepository>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         planner: Arc<InstallPlanningService>,
@@ -886,6 +931,7 @@ impl ConfiguredReinstallExecutor {
         )));
         Self {
             game_config_repository,
+            prerequisites,
             catalog,
             planner,
             source,
@@ -922,7 +968,11 @@ impl ConfiguredReinstallExecutor {
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         let context = services
             .preview
-            .resolve_installed_replacement_context(&request.profile_id, &request.mod_id)
+            .resolve_installed_replacement_context(
+                &request.game_id,
+                &request.profile_id,
+                &request.mod_id,
+            )
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         let context = match context {
             InstalledReplacementReinstallResolution::Ready(context) => context,
@@ -1031,6 +1081,7 @@ impl ConfiguredReinstallExecutor {
             self.app_data_dir.join("install").join("backups"),
         ));
         let preview = Arc::new(ReinstallPreviewService::new(
+            Arc::clone(&self.prerequisites),
             Arc::clone(&self.catalog),
             self.planner.clone(),
             Arc::clone(&source),
@@ -1096,6 +1147,15 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
             source: Arc::clone(&self.source),
             staging_cleanup: RetargetStagingCleanup::default(),
         })
+    }
+
+    fn revalidate(&self, prepared: &Self::Prepared) -> Result<(), ReinstallCommitError> {
+        self.services_for_game_instance_with_source(
+            prepared.game_instance.clone(),
+            Arc::clone(&prepared.source),
+        )
+        .executor
+        .revalidate(&prepared.prepared)
     }
 
     fn commit(
@@ -1403,6 +1463,7 @@ struct ConfiguredInstallCommitter {
 
 struct ConfiguredInitialRetargetInstallPlanner {
     workflow: Arc<ReplacementWorkflowService>,
+    prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     app_data_dir: PathBuf,
@@ -1411,12 +1472,14 @@ struct ConfiguredInitialRetargetInstallPlanner {
 impl ConfiguredInitialRetargetInstallPlanner {
     fn new(
         workflow: Arc<ReplacementWorkflowService>,
+        prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
         app_data_dir: PathBuf,
     ) -> Self {
         Self {
             workflow,
+            prerequisites,
             sandbox_locator,
             install_recovery_scanner,
             app_data_dir,
@@ -1479,6 +1542,10 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
         } else {
             Err(ReplacementWorkflowError::InitialInstallBlocked { status })
         }
+    }
+
+    fn prerequisite_decision(&self, game_id: &GameId) -> hmm_app::GamePrerequisiteDecision {
+        self.prerequisites.prerequisite_decision(game_id)
     }
 
     fn discard_initial_retarget_install(&self, plan: &hmm_core::InstallPlan) {

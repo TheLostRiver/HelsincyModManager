@@ -303,6 +303,7 @@ CLI-0A/0B/1A/1B contract、只读 automation 与 CLI-2A/2B/2C 单项 lifecycle �
 
 ```powershell
 cargo test -p hmm-app game_setup --no-fail-fast
+cargo test -p hmm-app game_prerequisites --lib
 cargo test -p hmm-infra prerequisite --no-fail-fast
 cargo test -p hmm-infra contained_discovery --no-fail-fast
 cargo test -p hmm-runtime game_automation --no-fail-fast
@@ -319,6 +320,8 @@ cargo test -p hmm-app reinstall_task --lib
 cargo test -p hmm-cli --lib cancellation
 cargo test -p hmm-cli --test cli_contract
 cargo test -p hmm-cli --no-fail-fast
+cargo test -p hmm-tauri install_preflight_dto_tests --lib
+cargo test -p hmm-tauri reinstall_dto --lib
 cargo clippy -p hmm-app -p hmm-infra -p hmm-runtime -p hmm-cli -p hmm-tauri --all-targets -- -D warnings
 cargo run -p hmm-cli -- --format json runtime status
 ```
@@ -451,8 +454,17 @@ CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必
   只签发 5 分钟 path-free token，过期或计划/source/manifest/recovery 变化后旧 token fail closed。
 - install blocking plan 不签发 token；uninstall/recovery E2E 必须覆盖聚合计数不变但结构化
   manifest/recovery record 变化时旧 token 仍在 task/game write 前拒绝。
+- install/reinstall preview 必须投影同一个 `prerequisiteDecision`。required missing 与 rules
+  unavailable 为 `blocked` 且不签 token；`signature_unverified` 为显式 `warning` 且可继续。
+  decision token facts 必须绑定 status、stable codes 与 rules version。
+- 桌面 install/reinstall/initial-retarget runner 在获取 game/profile 写锁前完成最终 decision 重读；
+  blocked 或 preview 后漂移必须在 manifest/source/snapshot/commit/staging/game write 前拒绝，
+  并用测试证明 prerequisite provider 的规则读取、配置解析和 hash 不在写锁内发生。DTO 与 CLI
+  projection 不得包含 issue path、自由文本 message、配置正文或本地绝对路径。
 - apply 在 capability 装配前验证 token，并在共享 game/profile 写锁内重建业务事实、重验 token 和
   containment；写入继续复用 InstallPlan、backup、manifest、rollback/recovery 和 Audit。
+- uninstall/recovery 还必须覆盖 `prepare_*` 已验证 token 后、runner 获锁前的同数量结构化状态漂移；
+  锁内 state binding 重读应在 executor 前拒绝，并保持所有原目标和未确认目标不变。
 - 真实 `hmm` binary 跨独立进程完成 install -> uninstall exact baseline，以及
   v1 -> v2 true reinstall -> uninstall exact baseline；reinstall 覆盖 retained/replaced/added/stale。
 - manifest save failure 发出 rollback phase、恢复 v1 且 recovery scan 仍可解释；stale token 在

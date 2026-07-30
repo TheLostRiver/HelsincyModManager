@@ -3,10 +3,10 @@ use crate::{
     RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
 };
 use hmm_app::{
-    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason, InstallRecoveryActionKind,
-    InstallRecoveryActionPreview, InstallRecoveryStatus, InstallRecoverySummary,
-    InstallWriteAdmission, InstallWriteAdmissionError, ReinstallBlockingReason,
-    ReinstallPlanPreview, ReinstallPreviewStatus, StartInstallTaskRequest,
+    GamePrerequisiteDecision, InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
+    InstallRecoveryActionKind, InstallRecoveryActionPreview, InstallRecoveryStatus,
+    InstallRecoverySummary, InstallWriteAdmission, InstallWriteAdmissionError,
+    ReinstallBlockingReason, ReinstallPlanPreview, ReinstallPreviewStatus, StartInstallTaskRequest,
     StartRecoveryActionTaskRequest, StartReinstallTaskRequest, StartUninstallTaskRequest,
     TaskManager, TaskProgressEvent, TaskProgressObserver,
 };
@@ -122,13 +122,20 @@ impl SandboxLifecycleAutomation {
             ReadOnlyInstallAutomation::from_environment(environment)
                 .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?,
         );
-        let (game_id, profile_id, mod_id, plan) = read_only
+        let (game_id, profile_id, mod_id, plan, prerequisite_decision) = read_only
             .build_install_plan(game_id, profile_id, mod_id)
             .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?;
-        if plan.has_blocking_conflicts() {
+        if prerequisite_decision.is_blocked() || plan.has_blocking_conflicts() {
             return Err(SandboxLifecycleAutomationError::PlanBlocked);
         }
-        validate_install_plan_token(plan_token, &game_id, &profile_id, &mod_id, &plan)?;
+        validate_install_plan_token(
+            plan_token,
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )?;
 
         let capability = Arc::new(
             environment
@@ -143,7 +150,6 @@ impl SandboxLifecycleAutomation {
                 capability,
                 sandbox_root: sandbox_root.clone(),
                 game_config_repository,
-                read_only,
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
                 expected_mod_id: mod_id.clone(),
@@ -214,10 +220,12 @@ impl SandboxLifecycleAutomation {
                 capability,
                 sandbox_root: sandbox_root.clone(),
                 game_config_repository,
-                read_only,
+                state_reader: Arc::clone(&read_only),
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
                 expected_mod_id: mod_id.clone(),
+                expected_summary: summary,
+                expected_state_binding: state_binding,
                 plan_token: plan_token.to_owned(),
             });
         let runtime = HmmRuntime::builder(sandbox_root)
@@ -280,16 +288,18 @@ impl SandboxLifecycleAutomation {
         let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
             JsonGameConfigRepository::new(sandbox_root.join("config").join("games.json")),
         );
+        let action_kind = preview.action_kind;
         let write_admission: Arc<dyn InstallWriteAdmission> =
             Arc::new(SandboxRecoveryWriteAdmission {
                 capability,
                 sandbox_root: sandbox_root.clone(),
                 game_config_repository,
-                read_only,
+                state_reader: Arc::clone(&read_only),
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
                 expected_mod_id: mod_id.clone(),
-                expected_action: action,
+                expected_preview: preview,
+                expected_state_binding: state_binding,
                 plan_token: plan_token.to_owned(),
             });
         let runtime = HmmRuntime::builder(sandbox_root)
@@ -306,7 +316,7 @@ impl SandboxLifecycleAutomation {
                 game_id,
                 mod_id,
                 profile_id,
-                action_kind: preview.action_kind,
+                action_kind,
             }),
         })
     }
@@ -362,12 +372,12 @@ impl SandboxLifecycleAutomation {
                 capability,
                 sandbox_root: sandbox_root.clone(),
                 game_config_repository,
-                read_only,
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
                 expected_mod_id: mod_id.clone(),
                 expected_candidate_revision_id: candidate_revision_id.clone(),
                 expected_internal_plan_token: internal_plan_token.clone(),
+                expected_preview: preview,
                 plan_token: plan_token.to_owned(),
             });
         let runtime = HmmRuntime::builder(sandbox_root)
@@ -562,7 +572,6 @@ struct SandboxInstallWriteAdmission {
     capability: Arc<SandboxWriteCapability>,
     sandbox_root: PathBuf,
     game_config_repository: Arc<dyn GameConfigRepository>,
-    read_only: Arc<ReadOnlyInstallAutomation>,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
     expected_mod_id: ModId,
@@ -575,40 +584,41 @@ impl InstallWriteAdmission for SandboxInstallWriteAdmission {
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<(), InstallWriteAdmissionError> {
-        if game_id != &self.expected_game_id || profile_id != &self.expected_profile_id {
+        revalidate_sandbox_write_roots(
+            self.capability.as_ref(),
+            &self.sandbox_root,
+            self.game_config_repository.as_ref(),
+            &self.expected_game_id,
+            &self.expected_profile_id,
+            game_id,
+            profile_id,
+        )
+    }
+
+    fn ensure_install_plan_allowed(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+        plan: &InstallPlan,
+        prerequisite_decision: &GamePrerequisiteDecision,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        if mod_id != &self.expected_mod_id {
             return Err(InstallWriteAdmissionError::SafetyRejected);
         }
-        let game_instance = self
-            .game_config_repository
-            .load_game_instance(game_id)
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
-        let admission = self
-            .capability
-            .admit_roots(SandboxWriteRoots::new(
-                self.sandbox_root.clone(),
-                game_instance.root_dir,
-            ))
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        let (_, _, _, plan) = self
-            .read_only
-            .build_install_plan(
-                self.expected_game_id.as_str(),
-                self.expected_profile_id.as_str(),
-                self.expected_mod_id.as_str(),
-            )
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
+        if prerequisite_decision.is_blocked() || plan.has_blocking_conflicts() {
+            return Err(InstallWriteAdmissionError::SafetyRejected);
+        }
         validate_install_plan_token(
             &self.plan_token,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
-            &plan,
+            plan,
+            prerequisite_decision,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        admission
-            .revalidate()
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+        self.ensure_write_allowed(game_id, profile_id)
     }
 }
 
@@ -616,10 +626,12 @@ struct SandboxUninstallWriteAdmission {
     capability: Arc<SandboxWriteCapability>,
     sandbox_root: PathBuf,
     game_config_repository: Arc<dyn GameConfigRepository>,
-    read_only: Arc<ReadOnlyInstallAutomation>,
+    state_reader: Arc<ReadOnlyInstallAutomation>,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
     expected_mod_id: ModId,
+    expected_summary: InstallRecoverySummary,
+    expected_state_binding: String,
     plan_token: String,
 }
 
@@ -629,30 +641,7 @@ impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<(), InstallWriteAdmissionError> {
-        if game_id != &self.expected_game_id || profile_id != &self.expected_profile_id {
-            return Err(InstallWriteAdmissionError::SafetyRejected);
-        }
-        let game_instance = self
-            .game_config_repository
-            .load_game_instance(game_id)
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
-        let admission = self
-            .capability
-            .admit_roots(SandboxWriteRoots::new(
-                self.sandbox_root.clone(),
-                game_instance.root_dir,
-            ))
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        let (_, _, _, summary, state_binding) = self
-            .read_only
-            .build_uninstall_facts(
-                self.expected_game_id.as_str(),
-                self.expected_profile_id.as_str(),
-                self.expected_mod_id.as_str(),
-            )
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        if summary.status != InstallRecoveryStatus::Completed {
+        if self.expected_summary.status != InstallRecoveryStatus::Completed {
             return Err(InstallWriteAdmissionError::SafetyRejected);
         }
         validate_uninstall_plan_token(
@@ -660,13 +649,34 @@ impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
-            &summary,
-            &state_binding,
+            &self.expected_summary,
+            &self.expected_state_binding,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        admission
-            .revalidate()
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+        revalidate_sandbox_write_roots(
+            self.capability.as_ref(),
+            &self.sandbox_root,
+            self.game_config_repository.as_ref(),
+            &self.expected_game_id,
+            &self.expected_profile_id,
+            game_id,
+            profile_id,
+        )?;
+        self.ensure_lifecycle_state_unchanged()
+    }
+}
+
+impl SandboxUninstallWriteAdmission {
+    fn ensure_lifecycle_state_unchanged(&self) -> Result<(), InstallWriteAdmissionError> {
+        let current = self
+            .state_reader
+            .load_lifecycle_state_binding(&self.expected_profile_id, &self.expected_mod_id)
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
+        if current == self.expected_state_binding {
+            Ok(())
+        } else {
+            Err(InstallWriteAdmissionError::SafetyRejected)
+        }
     }
 }
 
@@ -674,12 +684,12 @@ struct SandboxReinstallWriteAdmission {
     capability: Arc<SandboxWriteCapability>,
     sandbox_root: PathBuf,
     game_config_repository: Arc<dyn GameConfigRepository>,
-    read_only: Arc<ReadOnlyInstallAutomation>,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
     expected_mod_id: ModId,
     expected_candidate_revision_id: ModRevisionId,
     expected_internal_plan_token: String,
+    expected_preview: ReinstallPlanPreview,
     plan_token: String,
 }
 
@@ -689,32 +699,9 @@ impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<(), InstallWriteAdmissionError> {
-        if game_id != &self.expected_game_id || profile_id != &self.expected_profile_id {
-            return Err(InstallWriteAdmissionError::SafetyRejected);
-        }
-        let game_instance = self
-            .game_config_repository
-            .load_game_instance(game_id)
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
-        let admission = self
-            .capability
-            .admit_roots(SandboxWriteRoots::new(
-                self.sandbox_root.clone(),
-                game_instance.root_dir,
-            ))
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        let (_, _, _, _, preview) = self
-            .read_only
-            .build_reinstall_facts(
-                self.expected_game_id.as_str(),
-                self.expected_profile_id.as_str(),
-                self.expected_mod_id.as_str(),
-                self.expected_candidate_revision_id.as_str(),
-            )
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        if preview.status != ReinstallPreviewStatus::Ready
-            || preview.plan_token.as_deref() != Some(self.expected_internal_plan_token.as_str())
+        if self.expected_preview.status != ReinstallPreviewStatus::Ready
+            || self.expected_preview.plan_token.as_deref()
+                != Some(self.expected_internal_plan_token.as_str())
         {
             return Err(InstallWriteAdmissionError::SafetyRejected);
         }
@@ -724,12 +711,18 @@ impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
             &self.expected_profile_id,
             &self.expected_mod_id,
             &self.expected_candidate_revision_id,
-            &preview,
+            &self.expected_preview,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        admission
-            .revalidate()
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+        revalidate_sandbox_write_roots(
+            self.capability.as_ref(),
+            &self.sandbox_root,
+            self.game_config_repository.as_ref(),
+            &self.expected_game_id,
+            &self.expected_profile_id,
+            game_id,
+            profile_id,
+        )
     }
 }
 
@@ -737,11 +730,12 @@ struct SandboxRecoveryWriteAdmission {
     capability: Arc<SandboxWriteCapability>,
     sandbox_root: PathBuf,
     game_config_repository: Arc<dyn GameConfigRepository>,
-    read_only: Arc<ReadOnlyInstallAutomation>,
+    state_reader: Arc<ReadOnlyInstallAutomation>,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
     expected_mod_id: ModId,
-    expected_action: ReadOnlyInstallRecoveryAction,
+    expected_preview: InstallRecoveryActionPreview,
+    expected_state_binding: String,
     plan_token: String,
 }
 
@@ -751,31 +745,7 @@ impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<(), InstallWriteAdmissionError> {
-        if game_id != &self.expected_game_id || profile_id != &self.expected_profile_id {
-            return Err(InstallWriteAdmissionError::SafetyRejected);
-        }
-        let game_instance = self
-            .game_config_repository
-            .load_game_instance(game_id)
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
-        let admission = self
-            .capability
-            .admit_roots(SandboxWriteRoots::new(
-                self.sandbox_root.clone(),
-                game_instance.root_dir,
-            ))
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        let (_, _, _, preview, state_binding) = self
-            .read_only
-            .build_recovery_preview_facts(
-                self.expected_game_id.as_str(),
-                self.expected_profile_id.as_str(),
-                self.expected_mod_id.as_str(),
-                self.expected_action,
-            )
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        if preview.availability != InstallRecoveryActionAvailability::Available {
+        if self.expected_preview.availability != InstallRecoveryActionAvailability::Available {
             return Err(InstallWriteAdmissionError::SafetyRejected);
         }
         validate_recovery_plan_token(
@@ -783,14 +753,62 @@ impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
-            &preview,
-            &state_binding,
+            &self.expected_preview,
+            &self.expected_state_binding,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        admission
-            .revalidate()
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+        revalidate_sandbox_write_roots(
+            self.capability.as_ref(),
+            &self.sandbox_root,
+            self.game_config_repository.as_ref(),
+            &self.expected_game_id,
+            &self.expected_profile_id,
+            game_id,
+            profile_id,
+        )?;
+        self.ensure_lifecycle_state_unchanged()
     }
+}
+
+impl SandboxRecoveryWriteAdmission {
+    fn ensure_lifecycle_state_unchanged(&self) -> Result<(), InstallWriteAdmissionError> {
+        let current = self
+            .state_reader
+            .load_lifecycle_state_binding(&self.expected_profile_id, &self.expected_mod_id)
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
+        if current == self.expected_state_binding {
+            Ok(())
+        } else {
+            Err(InstallWriteAdmissionError::SafetyRejected)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn revalidate_sandbox_write_roots(
+    capability: &SandboxWriteCapability,
+    sandbox_root: &std::path::Path,
+    game_config_repository: &dyn GameConfigRepository,
+    expected_game_id: &GameId,
+    expected_profile_id: &ProfileId,
+    game_id: &GameId,
+    profile_id: &ProfileId,
+) -> Result<(), InstallWriteAdmissionError> {
+    if game_id != expected_game_id || profile_id != expected_profile_id {
+        return Err(InstallWriteAdmissionError::SafetyRejected);
+    }
+    let game_instance = game_config_repository
+        .load_game_instance(game_id)
+        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+        .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
+    capability
+        .admit_roots(SandboxWriteRoots::new(
+            sandbox_root.to_path_buf(),
+            game_instance.root_dir,
+        ))
+        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+        .revalidate()
+        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
 }
 
 struct NoopLifecycleObserver;
@@ -818,6 +836,9 @@ struct InstallPlanTokenFacts<'a> {
     profile_id: &'a ProfileId,
     mod_id: &'a ModId,
     plan: &'a InstallPlan,
+    prerequisite_status: &'static str,
+    prerequisite_rules_version: Option<u32>,
+    prerequisite_codes: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -895,13 +916,23 @@ pub(crate) fn issue_install_plan_token(
     profile_id: &ProfileId,
     mod_id: &ModId,
     plan: &InstallPlan,
+    prerequisite_decision: &GamePrerequisiteDecision,
 ) -> Result<IssuedLifecyclePlanToken, SandboxLifecycleAutomationError> {
+    if plan.has_blocking_conflicts() || prerequisite_decision.is_blocked() {
+        return Err(SandboxLifecycleAutomationError::PlanBlocked);
+    }
     let now = now_unix_millis()?;
     let expires_at_unix_millis = now
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
         .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
-    let token =
-        build_install_plan_token(expires_at_unix_millis, game_id, profile_id, mod_id, plan)?;
+    let token = build_install_plan_token(
+        expires_at_unix_millis,
+        game_id,
+        profile_id,
+        mod_id,
+        plan,
+        prerequisite_decision,
+    )?;
     Ok(IssuedLifecyclePlanToken {
         token,
         expires_at_unix_millis,
@@ -989,13 +1020,20 @@ fn validate_install_plan_token(
     profile_id: &ProfileId,
     mod_id: &ModId,
     plan: &InstallPlan,
+    prerequisite_decision: &GamePrerequisiteDecision,
 ) -> Result<(), SandboxLifecycleAutomationError> {
     let expires_at_unix_millis = parse_token_expiry(token)?;
     if now_unix_millis()? >= expires_at_unix_millis {
         return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
     }
-    let expected =
-        build_install_plan_token(expires_at_unix_millis, game_id, profile_id, mod_id, plan)?;
+    let expected = build_install_plan_token(
+        expires_at_unix_millis,
+        game_id,
+        profile_id,
+        mod_id,
+        plan,
+        prerequisite_decision,
+    )?;
     if token == expected {
         Ok(())
     } else {
@@ -1090,6 +1128,7 @@ fn build_install_plan_token(
     profile_id: &ProfileId,
     mod_id: &ModId,
     plan: &InstallPlan,
+    prerequisite_decision: &GamePrerequisiteDecision,
 ) -> Result<String, SandboxLifecycleAutomationError> {
     build_lifecycle_plan_token(
         expires_at_unix_millis,
@@ -1101,6 +1140,13 @@ fn build_install_plan_token(
             profile_id,
             mod_id,
             plan,
+            prerequisite_status: prerequisite_decision.status.as_str(),
+            prerequisite_rules_version: prerequisite_decision.rules_version,
+            prerequisite_codes: prerequisite_decision
+                .codes
+                .iter()
+                .map(|code| code.as_str())
+                .collect(),
         },
     )
 }
@@ -1296,6 +1342,7 @@ fn reinstall_status_token_code(status: ReinstallPreviewStatus) -> &'static str {
 
 fn reinstall_block_reason_token_code(reason: ReinstallBlockingReason) -> &'static str {
     match reason {
+        ReinstallBlockingReason::PrerequisitesBlocked => "prerequisites_blocked",
         ReinstallBlockingReason::NotInstalled => "not_installed",
         ReinstallBlockingReason::CandidateNotFound => "candidate_not_found",
         ReinstallBlockingReason::CandidateNotReady => "candidate_not_ready",
@@ -1352,6 +1399,12 @@ fn now_unix_millis() -> Result<u128, SandboxLifecycleAutomationError> {
 mod tests {
     use super::*;
     use crate::{SANDBOX_MARKER_FILE_NAME, SANDBOX_MARKER_SCHEMA};
+    use hmm_core::{
+        InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
+        InstallTargetPath, InstalledFileSummary, PackageFileId,
+    };
+    use hmm_infra::{JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository};
+    use hmm_ports::{InstallManifestRepository, InstallRecoveryRecordRepository};
     use std::fs;
     use std::path::Path;
 
@@ -1441,6 +1494,184 @@ mod tests {
     }
 
     #[test]
+    fn install_rejects_package_plan_drift_before_any_game_write() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_install_fixture(sandbox.path());
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+        let preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .plan_for_profile("mhw", "default", "mod-a")
+            .expect("install preview");
+        let token = preview.plan_token.expect("sandbox plan token");
+        let automation = SandboxLifecycleAutomation::prepare_install(
+            &environment,
+            "mhw",
+            "default",
+            "mod-a",
+            &token,
+        )
+        .expect("prepare sandbox install");
+
+        fs::write(
+            sandbox
+                .path()
+                .join("mod-import/sandboxes/package-a/nativePC/models/extra.mod3"),
+            b"drift",
+        )
+        .expect("mutate package after confirmation");
+
+        let error = automation
+            .run_install()
+            .expect_err("changed plan must be rejected");
+
+        assert_eq!(error.code(), "install_task_failed");
+        assert!(error.task_id().is_some());
+        assert!(!game_root.join("nativePC/models/player.mod3").exists());
+        assert!(!game_root.join("nativePC/models/extra.mod3").exists());
+    }
+
+    #[test]
+    fn uninstall_rejects_manifest_drift_after_prepare_before_any_game_write() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_install_fixture(sandbox.path());
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+        let install_preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .plan_for_profile("mhw", "default", "mod-a")
+            .expect("install preview");
+        SandboxLifecycleAutomation::prepare_install(
+            &environment,
+            "mhw",
+            "default",
+            "mod-a",
+            install_preview
+                .plan_token
+                .as_deref()
+                .expect("install token"),
+        )
+        .expect("prepare install")
+        .run_install()
+        .expect("install fixture");
+
+        let uninstall_preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .uninstall_preview("mhw", "default", "mod-a")
+            .expect("uninstall preview");
+        let automation = SandboxLifecycleAutomation::prepare_uninstall(
+            &environment,
+            "mhw",
+            "default",
+            "mod-a",
+            uninstall_preview
+                .plan_token
+                .as_deref()
+                .expect("uninstall token"),
+        )
+        .expect("prepare uninstall");
+
+        let original_target = game_root.join("nativePC/models/player.mod3");
+        let unconfirmed_target = game_root.join("nativePC/models/unconfirmed.mod3");
+        fs::write(&unconfirmed_target, b"fixture").expect("write unconfirmed target");
+        let repository =
+            JsonInstallManifestRepository::new(sandbox.path().join("install/manifests"));
+        let mut changed_manifest = repository
+            .load_manifest(&ProfileId::new("default"))
+            .expect("load manifest")
+            .expect("installed manifest");
+        changed_manifest.entries[0].target_path =
+            InstallTargetPath::parse("nativePC/models/unconfirmed.mod3", ["nativePC"])
+                .expect("unconfirmed target path");
+        changed_manifest.entries[0].package_file_id =
+            PackageFileId::new("nativePC/models/unconfirmed.mod3");
+        repository
+            .save_manifest(&changed_manifest)
+            .expect("save changed manifest");
+
+        let error = automation
+            .run_uninstall()
+            .expect_err("changed manifest must be rejected");
+
+        assert_eq!(error.code(), "install_uninstall_task_failed");
+        assert!(fs::read(&original_target).is_ok());
+        assert_eq!(
+            fs::read(&unconfirmed_target).expect("unconfirmed target remains"),
+            b"fixture"
+        );
+        assert_eq!(
+            repository
+                .load_manifest(&ProfileId::new("default"))
+                .expect("reload manifest"),
+            Some(changed_manifest)
+        );
+    }
+
+    #[test]
+    fn recovery_rejects_record_drift_after_prepare_before_any_game_write() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_install_fixture(sandbox.path());
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+        let original_target = write_rollback_recovery_fixture(sandbox.path(), &game_root);
+        let preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .recovery_preview(
+                "mhw",
+                "default",
+                "mod-recovery",
+                ReadOnlyInstallRecoveryAction::RollbackInstall,
+            )
+            .expect("recovery preview");
+        let automation = SandboxLifecycleAutomation::prepare_recovery(
+            &environment,
+            "mhw",
+            "default",
+            "mod-recovery",
+            ReadOnlyInstallRecoveryAction::RollbackInstall,
+            preview.plan_token.as_deref().expect("recovery token"),
+        )
+        .expect("prepare recovery");
+
+        let unconfirmed_target = game_root.join("nativePC/models/unconfirmed-recovery.mod3");
+        fs::write(&unconfirmed_target, b"recovery-fixture").expect("write unconfirmed target");
+        let repository =
+            JsonInstallRecoveryRecordRepository::new(sandbox.path().join("install/recovery"));
+        let mut changed_record = repository
+            .load_record(&ProfileId::new("default"), &ModId::new("mod-recovery"))
+            .expect("load recovery record")
+            .expect("recovery record");
+        changed_record.entries[0].target_path =
+            InstallTargetPath::parse("nativePC/models/unconfirmed-recovery.mod3", ["nativePC"])
+                .expect("unconfirmed recovery target path");
+        changed_record.entries[0].package_file_id =
+            PackageFileId::new("nativePC/models/unconfirmed-recovery.mod3");
+        repository
+            .save_record(&changed_record)
+            .expect("save changed recovery record");
+
+        let error = automation
+            .run_recovery()
+            .expect_err("changed recovery state must be rejected");
+
+        assert_eq!(error.code(), "install_recovery_task_failed");
+        assert_eq!(
+            fs::read(&original_target).expect("original recovery target remains"),
+            b"recovery-fixture"
+        );
+        assert_eq!(
+            fs::read(&unconfirmed_target).expect("unconfirmed recovery target remains"),
+            b"recovery-fixture"
+        );
+        assert_eq!(
+            repository
+                .load_record(&ProfileId::new("default"), &ModId::new("mod-recovery"))
+                .expect("reload recovery record"),
+            Some(changed_record)
+        );
+    }
+
+    #[test]
     fn install_plan_token_rejects_wrong_profile_expiry_and_malformed_payload() {
         let sandbox = tempfile::tempdir().expect("sandbox");
         write_install_fixture(sandbox.path());
@@ -1448,11 +1679,17 @@ mod tests {
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
         let read_only =
             ReadOnlyInstallAutomation::from_environment(&environment).expect("automation");
-        let (game_id, profile_id, mod_id, plan) = read_only
+        let (game_id, profile_id, mod_id, plan, prerequisite_decision) = read_only
             .build_install_plan("mhw", "default", "mod-a")
             .expect("plan facts");
-        let issued =
-            issue_install_plan_token(&game_id, &profile_id, &mod_id, &plan).expect("token");
+        let issued = issue_install_plan_token(
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )
+        .expect("token");
 
         assert_eq!(
             validate_install_plan_token(
@@ -1461,17 +1698,57 @@ mod tests {
                 &ProfileId::new("other"),
                 &mod_id,
                 &plan,
+                &prerequisite_decision,
             ),
             Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
         );
-        let expired =
-            build_install_plan_token(1, &game_id, &profile_id, &mod_id, &plan).expect("expired");
+        let expired = build_install_plan_token(
+            1,
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )
+        .expect("expired");
         assert_eq!(
-            validate_install_plan_token(&expired, &game_id, &profile_id, &mod_id, &plan),
+            validate_install_plan_token(
+                &expired,
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            ),
             Err(SandboxLifecycleAutomationError::PlanTokenExpired)
         );
         assert_eq!(
-            validate_install_plan_token("not-a-token", &game_id, &profile_id, &mod_id, &plan),
+            validate_install_plan_token(
+                "not-a-token",
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            ),
+            Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+        );
+        let mut changed_prerequisite_decision = prerequisite_decision.clone();
+        changed_prerequisite_decision.rules_version = Some(
+            prerequisite_decision
+                .rules_version
+                .unwrap_or_default()
+                .saturating_add(1),
+        );
+        assert_eq!(
+            validate_install_plan_token(
+                &issued.token,
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &changed_prerequisite_decision,
+            ),
             Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
         );
         let serialized = serde_json::to_string(&issued.token).expect("serialize token");
@@ -1548,7 +1825,24 @@ mod tests {
         .expect("sandbox marker");
         let game_root = sandbox.join("fixtures/games/mhw-minimal");
         fs::create_dir_all(game_root.join("nativePC/models")).expect("game fixture");
+        fs::create_dir_all(game_root.join("nativePC/plugins"))
+            .expect("prerequisite fixture directory");
         fs::write(game_root.join("MonsterHunterWorld.exe"), b"fixture").expect("game executable");
+        for relative_path in [
+            "dinput8.dll",
+            "loader.dll",
+            "nativePC/plugins/MonsterLoader.dll",
+            "nativePC/plugins/QuestLoader.dll",
+            "nativePC/plugins/!CRCBypass.dll",
+        ] {
+            fs::write(game_root.join(relative_path), b"artificial-prerequisite")
+                .expect("write prerequisite fixture");
+        }
+        fs::write(
+            game_root.join("loader-config.json"),
+            br#"{"enablePluginLoader":true}"#,
+        )
+        .expect("write prerequisite config");
         let config_root = sandbox.join("config");
         fs::create_dir_all(&config_root).expect("config root");
         fs::write(
@@ -1586,5 +1880,32 @@ mod tests {
         fs::create_dir_all(&package_root).expect("package root");
         fs::write(package_root.join("player.mod3"), b"fixture").expect("package file");
         game_root
+    }
+
+    fn write_rollback_recovery_fixture(sandbox: &Path, game_root: &Path) -> PathBuf {
+        const CONTENT: &[u8] = b"recovery-fixture";
+        const SHA256: &str = "f1889dda90864358c71d55bdf593bf568d7bde025635c248182721d319a2aeaf";
+
+        let relative_target = "nativePC/models/recovery.mod3";
+        let target = game_root.join(relative_target);
+        fs::write(&target, CONTENT).expect("write recovery target");
+        JsonInstallRecoveryRecordRepository::new(sandbox.join("install/recovery"))
+            .save_record(&InstallRecoveryRecord {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-recovery"),
+                status: InstallRecoveryRecordStatus::RollbackRequired,
+                entries: vec![InstallRecoveryRecordEntry {
+                    target_path: InstallTargetPath::parse(relative_target, ["nativePC"])
+                        .expect("recovery target path"),
+                    package_file_id: PackageFileId::new(relative_target),
+                    backup_ref: None,
+                    installed_file: Some(InstalledFileSummary {
+                        size_bytes: CONTENT.len() as u64,
+                        sha256: SHA256.to_owned(),
+                    }),
+                }],
+            })
+            .expect("write recovery record");
+        target
     }
 }

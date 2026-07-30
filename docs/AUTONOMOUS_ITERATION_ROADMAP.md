@@ -123,9 +123,9 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01 已完成并合并，T13-00 已完成设计与规划契约。Slice A 是第一个 next ready 交付单元；其内部
-task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席
-流程完成独立全 diff 自审，但不能跳过 required CI terminal success。
+QG-01、T13-00 和 Slice A 已完成。Slice B 是 next ready 交付单元；其内部 task 按依赖顺序提交，
+但不为每个 task 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff
+自审，但不能跳过 required CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
@@ -138,7 +138,7 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 | Slice C | T13-03、T13-04、T13-05 的其余子集 | 批量卸载和真正重装通过 manifest/recovery 事实运行，CLI 覆盖 cancel、partial result 和 retry。 |
 | Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
 
-Slice A 的 CLI-2A/2B/2C 已完成，CORE-PREF-01 进行中。Slice B 必须从已合并的 Slice A 启动，不得把
+Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01 已完成。Slice B 必须从已合并的 Slice A 启动，不得把
 未合并切片分支作为下一切片的隐式基线。
 
 ### QG-01：补齐 CI 质量门禁
@@ -235,7 +235,7 @@ Slice A 的 CLI-2A/2B/2C 已完成，CORE-PREF-01 进行中。Slice B 必须从�
 
 ### CORE-PREF-01：单项安装前置检查一致化
 
-状态：`in_progress`，CLI-2C 依赖已满足。
+状态：`completed`，CLI-2C 依赖已满足。
 
 范围：
 
@@ -247,11 +247,12 @@ Slice A 的 CLI-2A/2B/2C 已完成，CORE-PREF-01 进行中。Slice B 必须从�
 完成定义：缺失必需前置在任何写入前阻断；warning 不被误当 success；规则不可用 fail closed 且不泄漏
 原始路径或配置。
 
-提交边界：证明性测试一个提交；只有测试暴露缺陷时再增加实现提交。
+交付结果：证明性 binary contract 暴露真实分叉后，已增加 app-level decision provider、install/
+reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；未复制 game adapter 规则。
 
 ### T13-01：Sealed BatchPlan 与预览
 
-状态：`blocked`，依赖 T13-00 和 CORE-PREF-01。
+状态：`ready`，T13-00、CLI-2A/2B/2C 和 CORE-PREF-01 依赖已满足。
 
 范围：
 
