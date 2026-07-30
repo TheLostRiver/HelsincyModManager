@@ -4,9 +4,10 @@
 `main@e9e451eb5923f20f6ef633286fa71c072578ccb4`，包含 CLI-0A 至 CLI-1B、PR #211 至 #214
 的工程治理，以及 QG-01/PR #215 合并后的 frontend tests/workspace clippy 统一门禁。
 
-本文件是一次证据快照，用于回答“当前已经具备什么、还缺什么、下一步先做什么”。持续变化的任务
-优先级、依赖和实施状态仍以 [任务总纲](../TODO.md) 与 [路线图](ROADMAP.md) 为准；功能设计和安全
-边界以对应专题文档、当前源码和测试为准。
+本文件是一次证据快照，用于回答“当前已经具备什么、还缺什么、下一步先做什么”。持续变化的活跃
+执行状态以 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md) 为唯一真源；[任务总纲](../TODO.md)
+与 [路线图](ROADMAP.md) 维护产品 backlog 和里程碑，只在纵向切片合并或里程碑变化时同步。功能设计
+和安全边界以对应专题文档、当前源码和测试为准。
 
 ## 状态口径
 
@@ -27,8 +28,8 @@
 已经形成可测试的后端链路。Gate A 和 Gate B 均为 `certified`。
 
 当前开发优先级已经调整为核心 Mod 生命周期的批量能力：T13-00 已完成批量语义和规划契约，产品
-实现未开始；CLI-2A 是 next ready。随后先完成 CLI Sandbox 自动化基础，再实现批量安装、批量卸载、
-批量真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
+实现未开始；Slice A 是 next ready，并从 CLI-2A 内部工作包开始。后续 Slice B-D 依次交付批量安装、
+批量卸载/真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
 Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺口；完整前置依赖平台、玩家存档恢复、
 日志全量保留策略和 Debug Log 也仍未完成。
 后端命令化已完成 CLI-1A 和 CLI-1B：`hmm-runtime` 已承载真实共享 composition，
@@ -44,7 +45,8 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 - PR #210 已合并并交付 CLI-0B/1A/1B；PR #211 至 #214 已完成 GOV-01 至 GOV-04。
 - QG-01 已由 PR #215 完成 CI、review、评论处理和合并；统一 frontend tests/workspace clippy
   门禁已经成为主干基线。
-- T13-00 已完成批量生命周期设计与规划契约，产品实现未开始；CLI-2A 是 next ready，尚未启动。
+- T13-00 已完成批量生命周期设计与规划契约，产品实现未开始；Slice A 是 next ready，将从
+  CLI-2A 内部工作包开始，尚未启动。
 
 ## 任务矩阵
 

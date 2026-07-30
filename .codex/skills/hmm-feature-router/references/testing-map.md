@@ -1,4 +1,4 @@
-# 验证命令速查
+# 风险分级验证
 
 用本文件选择验证命令。最终依据仍是 `docs/TESTING.md`。
 
@@ -11,7 +11,9 @@
 
 ## 常用命令
 
-统一验证：
+以下是按场景选择的命令，不是每次改动都要顺序执行的固定套餐。
+
+中高风险 PR candidate 的统一验证：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
@@ -26,14 +28,14 @@ cmd /c corepack pnpm run build
 cmd /c corepack pnpm run test
 ```
 
-Rust / Tauri 桥接：
+Rust / Tauri 全 workspace 候选验证：
 
 ```powershell
 cargo test --workspace
 cargo check --workspace
 ```
 
-Rust 核心逻辑：
+Rust 全 workspace 候选验证：
 
 ```powershell
 cargo test --workspace
@@ -46,19 +48,21 @@ cargo clippy --workspace --all-targets -- -D warnings
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
 ```
 
-文档/治理：
+文档/治理聚焦检查：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-whitespace.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-doc-links.ps1
 ```
 
 ## 按改动类型
 
-- 仅文档：whitespace、doc links；涉及治理文件时跑治理相关检查或统一验证。
-- 前端 UI：typecheck、lint、build；工作流改动补测试或 smoke。
-- Tauri command/DTO：Rust tests/check；如果 API wrapper 变化，补前端 typecheck。
-- Rust domain/app/infra/adapter：cargo test；共享行为变化时补 clippy。
+- 仅文档：whitespace、doc links；涉及治理文件时跑 policy/secret 等聚焦检查，并在首次 PR ready 前按
+  风险决定是否运行统一验证。
+- 前端 UI：选择 typecheck、lint、相关 test 或 smoke；bundling/asset/build config 变化时补 build。
+- Tauri command/DTO：运行 touched command/DTO 的 Rust contract tests；API wrapper 变化时补前端检查。
+- Rust domain/app/infra/adapter：运行 touched crate/module tests；共享行为或依赖边界变化时在候选阶段
+  由完整 verify 覆盖 workspace clippy。
 - 安装/卸载/回滚：用临时目录覆盖新增文件、覆盖备份、失败回滚、manifest 卸载、冲突。
 - 压缩包导入：人工最小包覆盖正常路径、路径穿越、绝对路径、大小写碰撞、伪装图片。
 - 存档备份：只用临时存档目录；测试 manifest 和保留策略。

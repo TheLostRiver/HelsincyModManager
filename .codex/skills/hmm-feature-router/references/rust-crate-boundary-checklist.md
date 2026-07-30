@@ -34,15 +34,17 @@
 
 ## Tasks 和 Concurrency
 
-- TaskManager、task events、cancellation、progress phases、locks、queues 和 database/write serialization changes 也满足 `hmm-task-and-concurrency`。
+- TaskManager、task events、cancellation、progress phases、locks、queues 和 database/write serialization
+  改动同时读取 `task-concurrency-checklist.md`。
 - 长时间 scan/hash/extract/analyze work 留在 game write locks 外。
 - 同 game instance writes 和同 profile enable/disable/install/uninstall paths 串行。
 - Progress 和 task logs 携带显式 task identity。
 
 ## 验证
 
-- Rust changes 已运行 `cargo test --workspace`。
-- Core/app/ports/infra/game changes 已运行 `cargo clippy --workspace --all-targets -- -D warnings`，或说明省略原因。
-- Tauri bridge changes 也已运行 `cargo check --workspace`。
+- 开发期间优先运行 touched crate/module 的聚焦 tests、check 或 clippy。
+- 跨 crate/public contract 变化在首次 PR ready 前按 router 风险分级运行完整 `verify.ps1`，由统一入口
+  覆盖 workspace test/check/clippy；不要在每个 commit 后手工重复同一全量命令。
+- 低风险 crate-local 改动若不运行完整入口，记录实际聚焦命令和省略原因；required CI 仍必须成功。
 - Task/concurrency changes 已按触及范围运行 task identity、phase codes、cancellation state、lock/queue ordering 或 database write serialization 聚焦检查。
 - 边界变化时已检查 architecture docs。

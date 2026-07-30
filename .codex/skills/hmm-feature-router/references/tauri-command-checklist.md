@@ -1,6 +1,6 @@
 # Tauri Command Checklist
 
-新增或修改 HMM Tauri commands、DTOs、task events、custom protocols 或 frontend typed APIs 时使用此 checklist。
+新增或修改 HMM Tauri commands、DTOs、task events、custom protocols 或 frontend typed APIs 时按需读取。
 
 ## 边界
 
@@ -52,5 +52,7 @@
 - 接受 paths 时，parser 拒绝 empty/relative/invalid inputs。
 - DTO serialization 或 source tests 覆盖 shape 和 command names。
 - Frontend tests 覆盖敏感流程的 wrapper command names 和 forbidden APIs。
-- Tauri/Rust bridge changes 至少运行 `cargo test --workspace` 和 `cargo check --workspace`；否则 final handoff 说明无法运行原因。
-- Contract、governance 或 `.codex/` changes 可行时运行项目 verification script，并指出预期需要 human review。
+- 开发期间运行 touched command/DTO/adapter 的聚焦 Rust 与 frontend contract tests。
+- Public bridge 或跨层行为在首次 PR ready 前按 router 风险分级运行完整 `verify.ps1`；review 小修不无条件
+  重复 workspace 全量命令。
+- Contract、governance 或 `.codex/` changes 明确 human review 影响，并按对应风险保留验证证据。
