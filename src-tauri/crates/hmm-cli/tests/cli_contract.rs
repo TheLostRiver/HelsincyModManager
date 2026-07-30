@@ -714,6 +714,41 @@ fn sandbox_install_plan_returns_safe_relative_targets_in_json() {
 }
 
 #[test]
+fn sandbox_install_plan_blocks_missing_required_prerequisites_without_token() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let before = tree_snapshot(sandbox.path());
+
+    let output = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+    let value: Value =
+        serde_json::from_str(&stdout_text(&output)).expect("blocked install plan json");
+    assert_eq!(
+        value["result"]["prerequisiteDecision"]["status"],
+        "blocked"
+    );
+    assert_eq!(
+        value["result"]["prerequisiteDecision"]["rulesVersion"],
+        1
+    );
+    assert!(value["result"]["prerequisiteDecision"]["codes"]
+        .as_array()
+        .expect("prerequisite decision codes")
+        .iter()
+        .any(|code| code == "missing_required_file"));
+    assert!(value["result"].get("planToken").is_none());
+    assert!(value["result"].get("expiresAtUnixMillis").is_none());
+    assert_eq!(tree_snapshot(sandbox.path()), before);
+}
+
+#[test]
 fn sandbox_install_status_has_stable_human_output() {
     let sandbox = tempfile::tempdir().expect("sandbox");
 
