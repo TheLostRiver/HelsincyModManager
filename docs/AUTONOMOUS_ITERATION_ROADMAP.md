@@ -1,8 +1,10 @@
 # Windows 自主迭代路线图
 
-本文档是 Helsincy Mod Manager 的无人值守任务队列。产品阶段见 [路线图](ROADMAP.md)，当前事实见
+本文档是 Helsincy Mod Manager 无人值守迭代的活跃执行队列，也是唯一按日常推进持续更新的任务状态
+真源。产品阶段见 [路线图](ROADMAP.md)，历史能力证据见
 [项目任务状态快照](PROJECT_TASK_STATUS.md)，可复制执行提示词见
-[Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。
+[Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。路线图和状态快照只在纵向切片合并或里程碑结论
+变化时同步，不随每个 commit、review 修复或 CI 轮次重复更新。
 
 更新时间：2026-07-30
 规划基线：`main@e9e451eb5923f20f6ef633286fa71c072578ccb4`，QG-01 已由 PR #215 合并
@@ -22,8 +24,8 @@
 | --- | --- |
 | `completed` | 已实现并有当前自动化证据 |
 | `certified` | 除实现外，已完成对应独立复审与受控 Windows 纵向验收 |
-| `implemented` | 当前独立分支已实现，但 task 仍需完成 CI、review 和合并门禁 |
-| `ready` | 前置已满足，可以作为下一个独立 task |
+| `implemented` | 当前切片分支已实现，但仍需完成 CI、review 和合并门禁 |
+| `ready` | 前置已满足，可以作为下一个纵向切片 |
 | `blocked` | 缺少明确依赖、外部环境或维护者决策 |
 | `conditional` | 只在出现复现缺陷或获得受控验收输入时启动 |
 | `out_of_scope` | 本轮不处理 |
@@ -72,11 +74,18 @@ sealed input
 
 ### Git、CI 与 review
 
-- 一个 task 一个独立 `hy/` 分支、worktree 和 PR。
-- 每个可独立验证步骤立即 commit；不把多个 task 攒成一个提交或一个 PR。
+- 一个可演示的纵向产品切片或一个 release blocker 使用一个独立 `hy/` 分支、worktree 和 PR。
+- 同一切片中的设计、领域/app、CLI/Tauri、前端、测试和文档按可独立 review 的 commit 拆分，但默认留在
+  同一 PR。task ID 是工作包边界，不再自动等于 PR 边界。
+- 文档同步、测试搬迁、dead-code 清理、文件拆分和内部前置默认并入相邻产品 PR。只有改动无关、
+  可独立回滚、安全风险明显扩大，或 diff 已无法连贯 review 时才拆 PR。
 - QG-01 合并后，`verify.ps1`、`verify.sh` 和 required CI 已统一包含前端 tests 与 workspace
   clippy。后续 PR 不再重复手工补跑这两项全量命令；聚焦验证仍按 touched boundary 执行。
-- 每次最后变更后运行聚焦验证、完整 `verify.ps1` 和 `hmm-review-gate` 本地自审。
+- 开发期间只运行 touched boundary 的聚焦验证。跨层/public contract、高风险写入、安全、并发或治理
+  切片在首次 PR ready 前运行一次完整 `verify.ps1` 和 `hmm-review-gate` 本地自审；低风险切片可只
+  保留聚焦本地证据，由 required CI 执行统一入口。
+- review 小修只重跑受影响的聚焦验证；只有安全/公共契约/治理边界扩大、依赖或基线变化，或旧的完整
+  验证证据已不再适用时，才重新运行本地完整 `verify.ps1`。
 - required CI 只有 terminal `success` 才算通过。`pending`、`failure`、`cancelled`、`timed_out`、
   `action_required`、`skipped` 或 `neutral` 都禁止合并。
 - 获取并处理全部 review thread/comment。真实 bug 必须修复并补测试；误报必须在 PR 留下源码、测试
@@ -88,25 +97,23 @@ sealed input
   影响；外部 review 因额度缺席时必须完整复审增量。`--admin` 只能在当前目标已获明确授权且合并
   提示词的全部条件满足时使用，绝不能绕过 CI、真实 finding 或未解决评论。
 
+### 记录与吞吐
+
+- 每个纵向切片只使用一个 PWF task。只在阶段转换、重要 finding、阻塞和恢复上下文时更新
+  `task_plan.md` / `findings.md`；日常命令与文件列表交给 hook 记录，不手工重复抄写。
+- 本文档维护活跃队列；`ROADMAP.md` 和 `PROJECT_TASK_STATUS.md` 只在切片合并或里程碑变化时同步。
+- 进度指标使用已关闭 release blocker、通过的端到端玩家工作流、切片周期和剩余风险。代码行数、
+  commit 数、PR 数和文档页数不作为产出目标。
+
 ## 依赖图
 
 ```mermaid
 flowchart TD
-  QG["QG-01 CI 质量门禁"] --> B0["T13-00 批量语义设计"]
-  B0 --> O["CLI-2A 流式 Observer"]
-  O --> S["CLI-2B Sandbox 写许可"]
-  S --> C["CLI-2C 单项生命周期 CLI E2E"]
-  C --> CORE["CORE-PREF-01 单项 Preflight 一致化"]
-  CORE --> B1["T13-01 Sealed BatchPlan"]
-  B1 --> BI["T13-02 批量安装"]
-  BI --> BU["T13-03 批量卸载"]
-  BU --> BR["T13-04 批量真正重装"]
-  BR --> BC["T13-05 CLI 批量契约"]
-  BR --> BT["T13-06 Tauri/Typed API"]
-  BT --> BF["T13-07 前端任务与结果页"]
-  BC --> BG["T13-08 Windows Sandbox Gate C"]
-  BF --> BG
-  BG --> CAT["CAT-01 装备数据治理"]
+  QG["QG-01 + T13-00 已完成基线"] --> A["Slice A Sandbox 单项生命周期 E2E"]
+  A --> B["Slice B Sealed 批量安装 + CLI 契约"]
+  B --> C["Slice C 批量卸载/真正重装 + CLI 契约"]
+  C --> D["Slice D Tauri/前端 + Windows Gate C"]
+  D --> CAT["CAT-01 装备数据治理"]
   CAT --> AR["AR6 防具 Catalog 扩容"]
   CAT --> WD["WR-01 武器重定向设计"]
   WD --> WC["WR-02 武器 Catalog/Parser"]
@@ -116,30 +123,22 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01 已完成并合并。T13-00 已完成设计与规划契约，产品实现未开始；CLI-2A 是第一个 next ready
-task，尚未启动。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
-跳过全部 CI terminal success。
+QG-01 已完成并合并，T13-00 已完成设计与规划契约。Slice A 是第一个 next ready 交付单元；其内部
+task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席
+流程完成独立全 diff 自审，但不能跳过 required CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
-推荐开启顺序如下。下一轮从包含 T13-00 的最新 `main` 启动 CLI-2A；不得把尚未合并的 task 分支
-作为下一 task 的隐式基线。
+推荐按以下四个纵向切片交付。每个切片默认一个 PR，内部 task 是 commit/work package：
 
-```text
-QG-01
-  -> T13-00
-  -> CLI-2A
-  -> CLI-2B
-  -> CLI-2C
-  -> CORE-PREF-01
-  -> T13-01
-  -> T13-02
-  -> T13-03
-  -> T13-04
-  -> T13-05 / T13-06
-  -> T13-07
-  -> T13-08
-```
+| 切片 | 内部工作包 | 可演示完成定义 |
+| --- | --- | --- |
+| Slice A | CLI-2A、CLI-2B、CLI-2C、CORE-PREF-01 | 在隔离 Sandbox 中通过 CLI 完成单项安装、卸载、真正重装和恢复 E2E，并统一 preflight。 |
+| Slice B | T13-01、T13-02、T13-05 的 install 子集 | sealed batch preview/start、批量安装、partial result、retry 和 CLI install contract E2E。 |
+| Slice C | T13-03、T13-04、T13-05 的其余子集 | 批量卸载和真正重装通过 manifest/recovery 事实运行，CLI 覆盖 cancel、partial result 和 retry。 |
+| Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
+
+下一轮从包含 T13-00 的最新 `main` 启动 Slice A。不得把未合并切片分支作为下一切片的隐式基线。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -184,7 +183,7 @@ QG-01
 
 ### CLI-2A：逐阶段任务 Observer 与 JSONL
 
-状态：`ready`，唯一 next ready task，尚未启动。
+状态：`ready`，Slice A 的首个内部工作包；不单独创建 PR。
 
 范围：
 
@@ -311,7 +310,8 @@ QG-01
 
 ### T13-05：CLI 批量契约
 
-状态：`blocked`，依赖 T13-04。
+状态：`blocked`。install contract 子集在 Slice B 依赖 T13-02，其余 uninstall/reinstall contract
+在 Slice C 依赖 T13-04。
 
 范围：
 
@@ -319,7 +319,8 @@ QG-01
 - JSON/JSONL 包含 batch task id、item status、唯一 terminal event 和 exit code `5` partial success。
 - 首版仅 Sandbox；Production 继续拒绝。
 
-完成定义：跨 Mod conflict、partial success、cancel、retry 和敏感 canary contract tests 通过。
+完成定义：Slice B 先交付批量安装的 conflict、partial success、cancel、retry 和敏感 canary
+contract tests；Slice C 再补齐批量卸载与真正重装，最终共同覆盖完整批量 CLI 契约。
 
 提交边界：CLI parser/schema 一个提交，runtime adapter/E2E 一个提交。
 
@@ -607,28 +608,29 @@ recovery 语义未改变：
 - Steam Cloud/OAuth/跨设备同步：`out_of_scope`。
 - 纯视觉美化、无行为证据的 UI 重构：`out_of_scope`。
 
-## 每个 Task 的完成定义
+## 每个纵向切片的完成定义
 
-每个任务只有同时满足以下条件才算完成：
+每个切片只有同时满足以下条件才算完成：
 
-1. 独立 branch/worktree/PR，提交按可验证步骤拆分。
-2. 当前 task 的专题设计、源码、contract、TODO/状态文档同步。
-3. 聚焦测试和完整 `verify.ps1` 实际通过；统一入口必须实际执行前端 tests 和 workspace clippy。
-4. 最后变更后完成 `hmm-review-gate` 本地自审。
+1. 一个独立 branch/worktree/PR；内部工作包按可 review 的步骤拆分 commit。
+2. 当前切片的专题设计、源码、contract、测试和必要文档同步；状态快照只在切片合并或里程碑变化时更新。
+3. touched boundary 的聚焦测试实际通过；跨层/public contract、高风险或治理切片在首次 PR ready 前还要
+   有一次完整 `verify.ps1` 证据。review 小修是否重跑完整验证按风险变化判断。
+4. PR 候选完成 `hmm-review-gate` findings-first 本地自审。
 5. 全部 required CI terminal success。
 6. 所有评论逐条处理；真实 bug 已修复，误报已有证据。
 7. CodeRabbit 缺席时已有独立全 diff 自审记录。
 8. 所有已确认的真实 bug、测试或契约缺口均已处理，且没有未处理 Critical/Important finding。
-9. 需要 disposable Windows 环境的 task 已完成真实安装态验收和 cleanup。
+9. 需要 disposable Windows 环境的切片已完成真实安装态验收和 cleanup。
 10. 普通合并优先；使用 `--admin` 时满足目标模式提示词的额外限制。
 
 ## 停止条件
 
-- 当前 task 需要维护者选择未定义的产品/安全/许可策略。
+- 当前切片需要维护者选择未定义的产品/安全/许可策略。
 - required CI 无法达到 success。
 - 缺少 disposable Windows 环境且该环境是完成定义。
 - 数据来源或分发权利未确认。
 - 发现会扩大到真实玩家数据、真实第三方 Mod 或未授权外部状态。
-- 路线图没有 `ready` task。
+- 路线图没有 `ready` 切片。
 
 停止时保留分支、PR、测试证据和 findings，汇报阻塞点；不要降低门禁或自拟范围外任务。

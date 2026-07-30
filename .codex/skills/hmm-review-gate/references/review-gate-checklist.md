@@ -23,12 +23,18 @@
 - Game-specific rules 留在 adapters。
 - Install/save/high-risk flows 不绕过 plan/manifest/backup/rollback/audit rules。
 
-## 边界 Skills
+## 边界路由
 
-- Frontend UI/state/CSS/API wrapper reviews 使用 `hmm-frontend-workflow`。
-- Tauri command/DTO/error/task event/custom protocol 或 contract reviews 使用 `hmm-tauri-command` 和 `docs/FRONTEND_BACKEND_CONTRACT.md`。
-- Rust crate placement/dependency/app/ports/infra/game adapter reviews 使用 `hmm-rust-crate-boundary`。
-- Task/cancellation/progress/queue/lock/database serialization reviews 使用 `hmm-task-and-concurrency`。
+- 先使用 `hmm-feature-router` 分类 touched boundaries，只读取匹配的 reference。
+- Frontend UI/state/CSS/API wrapper reviews 读取
+  `../../hmm-feature-router/references/frontend-workflow-checklist.md` 和相关源码。
+- Tauri command/DTO/error/task event/custom protocol 或 contract reviews 读取
+  `../../hmm-feature-router/references/tauri-command-checklist.md`
+  和 `docs/FRONTEND_BACKEND_CONTRACT.md`。
+- Rust crate placement/dependency/app/ports/infra/game adapter reviews 读取
+  `../../hmm-feature-router/references/rust-crate-boundary-checklist.md`。
+- Task/cancellation/progress/queue/lock/database serialization reviews 读取
+  `../../hmm-feature-router/references/task-concurrency-checklist.md`。
 - Install/save/file-write/audit/diagnostic/data-safety reviews 使用 `hmm-install-safety` 和 `docs/LOGGING.md`。
 
 ## Tests 和 Docs
@@ -53,7 +59,8 @@
 - 使用 `SKILL.md` 中的 review 报告模板或等价结构；无 findings 时也要列 checked scope、verification 和 residual risk。
 - File/line references 紧凑且可执行；没有稳定行号时写清模块、函数、命令或文档章节。
 - 误报、暂缓或接受风险必须写明理由、证据和风险边界。
-- 修复 finding 后已复审相关 diff；安全链路、公共契约或治理规则变更已重新完整自审。
+- 修复 finding 后已复审相关 diff；安全链路、公共契约或治理规则变更已重新完整自审并按风险决定
+  是否重跑完整本地验证。
 - Open questions 和 assumptions 明确。
 - Summary 和 verification evidence 简洁。
 - 不做没有证据支持的测试通过声明。

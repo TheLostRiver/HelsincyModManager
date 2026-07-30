@@ -96,9 +96,10 @@
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
   -> QG-01 CI 质量门禁 [completed, PR #215]
   -> T13-00 批量语义设计 [design-complete（产品实现未开始）]
-  -> CLI-2A/2B/2C Sandbox 自动化基础 [CLI-2A next ready，尚未启动]
-  -> CORE-PREF-01 单项 preflight 一致化
-  -> T13-01..08 批量安装/卸载/真正重装与 Gate C
+  -> Slice A：CLI-2A/2B/2C + CORE-PREF-01 [next ready，CLI-2A 为首个内部工作包]
+  -> Slice B：T13-01/02 + T13-05 install 子集
+  -> Slice C：T13-03/04 + T13-05 其余 CLI 契约
+  -> Slice D：T13-06/07/08 Tauri/前端 + Windows Gate C
 ```
 
 ---
@@ -600,12 +601,10 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
   -> 已完成: QG-01 CI 质量门禁（PR #215）
   -> design-complete: T13-00 批量设计与契约同步（产品实现未开始）
-  -> next ready、尚未启动: CLI-2A observer
-  -> CLI-2B/2C Sandbox 写许可和单项生命周期 E2E
-  -> CORE-PREF-01 单项 preflight 一致化
-  -> T13-01/02/03/04 BatchPlan、安装、卸载、真正重装
-  -> T13-05/06/07 CLI、Tauri/typed API、前端工作流
-  -> T13-08 disposable Windows Sandbox Gate C
+  -> next ready、尚未启动: Slice A（CLI-2A/2B/2C + CORE-PREF-01；CLI-2A 为首个内部工作包）
+  -> Slice B：T13-01/02 + T13-05 install 子集
+  -> Slice C：T13-03/04 + T13-05 其余 CLI 契约
+  -> Slice D：T13-06/07/08 Tauri/typed API、前端工作流与 disposable Windows Sandbox Gate C
   -> 装备数据治理、防具 catalog 扩容、独立武器重定向
   -> Windows 存档后台发布加固、日志治理和 Production CLI admission
 ```
