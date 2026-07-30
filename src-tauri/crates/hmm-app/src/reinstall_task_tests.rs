@@ -311,19 +311,18 @@ fn retarget_reinstall_uses_the_shared_runner_and_records_only_stable_target_iden
         .create_task(crate::TaskKind::Install)
         .expect("task can be created");
     let executor = FakeExecutor::success(Arc::clone(&task_manager), &task.task_id);
-    *executor.prepare_result.lock().expect("prepare result lock") =
-        Some(Ok(FakePrepared {
-            audit: ReinstallTaskAuditContext {
-                previous_revision_id: Some(ModRevisionId::new("installed-v1")),
-                candidate_revision_id: ModRevisionId::new("installed-v1"),
-                counts: ReinstallTargetCounts {
-                    retained: 0,
-                    replaced: 0,
-                    added: 1,
-                    stale: 1,
-                },
+    *executor.prepare_result.lock().expect("prepare result lock") = Some(Ok(FakePrepared {
+        audit: ReinstallTaskAuditContext {
+            previous_revision_id: Some(ModRevisionId::new("installed-v1")),
+            candidate_revision_id: ModRevisionId::new("installed-v1"),
+            counts: ReinstallTargetCounts {
+                retained: 0,
+                replaced: 0,
+                added: 1,
+                stale: 1,
             },
-        }));
+        },
+    }));
     let audit = Arc::new(RecordingAuditLog::default());
     let runner = ReinstallTaskRunner::new(
         Arc::clone(&task_manager),
@@ -967,6 +966,11 @@ struct BlockedWriteAdmission {
     error: crate::InstallWriteAdmissionError,
 }
 
+struct LockAssertingWriteAdmission {
+    write_lock: Arc<Mutex<()>>,
+    calls: Mutex<usize>,
+}
+
 impl crate::InstallWriteAdmission for BlockedWriteAdmission {
     fn ensure_write_allowed(
         &self,
@@ -974,6 +978,21 @@ impl crate::InstallWriteAdmission for BlockedWriteAdmission {
         _profile_id: &ProfileId,
     ) -> Result<(), crate::InstallWriteAdmissionError> {
         Err(self.error.clone())
+    }
+}
+
+impl crate::InstallWriteAdmission for LockAssertingWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        _game_id: &GameId,
+        _profile_id: &ProfileId,
+    ) -> Result<(), crate::InstallWriteAdmissionError> {
+        assert!(
+            self.write_lock.try_lock().is_err(),
+            "write admission must run while the game/profile lock is held"
+        );
+        *self.calls.lock().expect("admission call lock") += 1;
+        Err(crate::InstallWriteAdmissionError::SafetyRejected)
     }
 }
 
@@ -988,9 +1007,101 @@ fn unsafe_reinstall_recovery_gate_blocks_install_and_uninstall_before_writes() {
             crate::InstallWriteAdmissionError::RecoveryUnavailable,
             "recovery_unavailable",
         ),
+        (
+            crate::InstallWriteAdmissionError::SafetyRejected,
+            "write_safety_rejected",
+        ),
     ] {
         assert_write_admission_failure(error, suffix);
     }
+}
+
+#[test]
+fn recovery_and_reinstall_safety_admission_runs_under_lock_before_writes() {
+    let game_id = GameId::mhw();
+    let profile_id = ProfileId::new("default");
+
+    let recovery_task_manager = Arc::new(crate::TaskManager::new());
+    let recovery_task = recovery_task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("recovery task can be created");
+    let recovery_locks = Arc::new(crate::GameProfileWriteLockRegistry::default());
+    let recovery_gate = Arc::new(LockAssertingWriteAdmission {
+        write_lock: recovery_locks.lock_for(&game_id, &profile_id),
+        calls: Mutex::new(0),
+    });
+    let (recovery_entered_tx, recovery_entered_rx) = mpsc::channel();
+    let recovery_audit = Arc::new(RecordingAuditLog::default());
+    let recovery_runner = crate::RecoveryActionTaskRunner::with_write_coordination(
+        Arc::clone(&recovery_task_manager),
+        Arc::new(NotifyingRecoveryExecutor {
+            entered: Mutex::new(Some(recovery_entered_tx)),
+        }),
+        recovery_audit.clone(),
+        Arc::new(FixedClock),
+        recovery_locks,
+        recovery_gate.clone(),
+    );
+
+    let recovery_error = recovery_runner
+        .run_recovery_action_task(&recovery_task.task_id, recovery_request())
+        .expect_err("recovery safety admission is denied");
+    assert_eq!(
+        recovery_error
+            .events
+            .last()
+            .and_then(|event| event.error.as_deref()),
+        Some("install_recovery_failed:write_safety_rejected")
+    );
+    assert_eq!(*recovery_gate.calls.lock().expect("recovery calls"), 1);
+    assert!(matches!(
+        recovery_entered_rx.try_recv(),
+        Err(mpsc::TryRecvError::Empty)
+    ));
+    assert_eq!(
+        recovery_audit.take_one().fields["error_code"],
+        "install_recovery_failed:write_safety_rejected"
+    );
+
+    let reinstall_task_manager = Arc::new(crate::TaskManager::new());
+    let reinstall_task = reinstall_task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("reinstall task can be created");
+    let reinstall_executor = Arc::new(FakeExecutor::success(
+        Arc::clone(&reinstall_task_manager),
+        &reinstall_task.task_id,
+    ));
+    let reinstall_locks = Arc::new(crate::GameProfileWriteLockRegistry::default());
+    let reinstall_gate = Arc::new(LockAssertingWriteAdmission {
+        write_lock: reinstall_locks.lock_for(&game_id, &profile_id),
+        calls: Mutex::new(0),
+    });
+    let reinstall_audit = Arc::new(RecordingAuditLog::default());
+    let reinstall_runner = ReinstallTaskRunner::with_write_coordination(
+        reinstall_task_manager,
+        reinstall_executor.clone(),
+        reinstall_audit.clone(),
+        Arc::new(FixedClock),
+        reinstall_locks,
+        reinstall_gate.clone(),
+    );
+
+    let reinstall_error = reinstall_runner
+        .run_reinstall_task(&reinstall_task.task_id, sample_request())
+        .expect_err("reinstall safety admission is denied");
+    assert_eq!(
+        reinstall_error
+            .events
+            .last()
+            .and_then(|event| event.error.as_deref()),
+        Some("install_reinstall_failed:write_safety_rejected")
+    );
+    assert_eq!(*reinstall_gate.calls.lock().expect("reinstall calls"), 1);
+    assert_eq!(reinstall_executor.commit_count(), 0);
+    assert_eq!(
+        reinstall_audit.take_one().fields["error_code"],
+        "install_reinstall_failed:write_safety_rejected"
+    );
 }
 
 fn assert_write_admission_failure(error: crate::InstallWriteAdmissionError, suffix: &str) {

@@ -128,7 +128,7 @@ CLI-2B 已补齐 Sandbox 写许可基础：
 
 - `--data-dir` 是调用方声明的隔离 capability 根；只有显式 Sandbox 环境可以申请
   `SandboxWriteCapability`，Production 固定返回 `sandbox_write_production_forbidden`。
-- 申请发生在未来写命令运行期，`runtime status` 和 CLI-1 只读命令不会创建 marker。空根会通过
+- 申请只发生在 CLI-2C lifecycle 写命令运行期，`runtime status` 和 CLI-1 只读命令不会创建 marker。空根会通过
   no-follow 句柄创建固定 `.hmm-sandbox.json` v1 marker；非空根必须已包含完全匹配的 marker。
 - marker 不是 capability，也不是可持久化授权秘密。capability 本身构造器和字段私有、不可序列化，
   并保留打开的目录句柄、canonical root 与 volume/file identity 或 dev/inode identity。
@@ -137,8 +137,9 @@ CLI-2B 已补齐 Sandbox 写许可基础：
 - `SandboxWriteAdmission` 借用原 capability，写侧必须在进入安全写阶段前重新验证。Windows 的打开
   句柄直接阻止祖先 rename；允许 rename 的平台通过目录身份变化返回 `sandbox_root_replaced`。
 
-这只建立 CLI-2C 的必要门禁，不开放 parser 命令，也不替代 InstallPlan、backup、manifest、
-rollback/recovery、Audit Log 或 game/profile 写锁。
+CLI-2B 只建立 CLI-2C 的必要门禁。CLI-2C 已显式接入四条单项 lifecycle 命令，但 capability 仍不
+替代 InstallPlan、backup、manifest、rollback/recovery、Audit Log 或 game/profile 写锁，也不自动
+开放其他写命令。
 
 ### 应用层任务观察器
 
@@ -352,6 +353,25 @@ hmm install recovery preview --game mhw --profile <profile-id> --mod <mod-id> \
   --action rollback-install|reconcile-reinstall
 ```
 
+CLI-2C 当前只在 Sandbox 开放：
+
+```text
+hmm install apply --game mhw --profile <profile-id> --mod <mod-id> \
+  --plan-token <token> --commit --yes
+hmm install uninstall --game mhw --profile <profile-id> --mod <mod-id> \
+  --plan-token <token> --commit --yes
+hmm install reinstall --game mhw --profile <profile-id> --mod <mod-id> \
+  --candidate-revision <revision-id> --plan-token <token> --commit --yes
+hmm install recovery apply --game mhw --profile <profile-id> --mod <mod-id> \
+  --action rollback-install|reconcile-reinstall --plan-token <token> --commit --yes
+```
+
+省略任一确认参数时，四条命令只返回同源 preview。只有 ready/available preview 签发 5 分钟
+`hmm-lifecycle-plan-v1` opaque token；token 不包含路径、manifest、backup/recovery ref 或内部
+reinstall token。uninstall/recovery token 额外绑定 repository 读取出的完整结构化
+manifest/install-recovery/reinstall-recovery 状态摘要，因此内容变化即使聚合计数相同也会使旧 token
+失效。
+
 plan 当前使用后端固定 base layer，并只输出经 `InstallTargetPath` 校验的逻辑相对 target、priority 和
 聚合计数；不输出 package file id 或自由 layer 名。status 省略 `--game` 时只读 manifest，提供 game
 时使用 recovery-aware 状态。recovery scan 省略 `--mod` 时扫描受控 profile 状态，preview 只做聚合
@@ -374,6 +394,8 @@ fail closed，避免篡改状态或第三方文件名进入 CLI 输出。
 `uninstall` 只消费受控 manifest、`installed_file` 摘要和 backup 事实，不根据当前 Mod 包猜测。
 
 `reinstall` 复用真正重装的 retained/replaced/added/stale 计划、snapshot 和 recovery transaction。
+CLI layer 固定为 `base@0`，只接受 candidate revision ID；外层 lifecycle token 绑定同源 preview 和
+既有内部 reinstall token，但 machine output 不公开内部 token。
 
 `recovery scan/preview` 只返回状态、issue code 和聚合计数。`recovery apply` 只执行后端已经证明
 available 的受控动作，并在持锁区重新验证。
@@ -633,9 +655,9 @@ seal 和 start；preview token 与 plan token 只在内存传递，不作为参�
 脚本要判断具体原因时读取 `error.code`，不能依赖新增退出码。未执行写入的参数、
 前置条件或安全门禁拒绝使用 `3`，即使 error category 为 `data_safety_risk`；
 只有已经进入受控写入或恢复语义的 `rollback_failed` / `data_safety_risk` 才使用
-`4`，并且必须由 error category 和 Audit Log 明确标识。当前 CLI-1A/CLI-1B
-全部是只读命令，因此 sandbox containment、受控路径或持久化状态校验失败均属于
-退出码 `3`，不会伪装成已经开始执行的受控失败。
+`4`，并且必须由 error category 和 Audit Log 明确标识。CLI-1A/CLI-1B 只读命令以及 CLI-2C 在
+task/write 前发生的 token、containment、前置或 Production 拒绝都使用退出码 `3`，不会伪装成已经
+开始执行的受控失败。
 
 ## 自动化测试设计
 
@@ -758,9 +780,8 @@ fixture 必须：
 - 现有桌面 command contract、DTO 和 task phase 未变化。
 - 聚焦 check/test/clippy 通过，测试未访问真实游戏、Steam、存档、AppData 或 Scheduled Task。
 
-保留边界：
-
-- runner 仍在结束时返回事件集合；真正逐阶段流式 observer 在首个 CLI 长任务命令前补齐。
+后续 CLI-2A 已完成这里保留的边界：runner 会在阶段推进时实时调用 observer，同时继续返回事件集合
+兼容旧调用方。
 
 ### CLI-1A：只读游戏自动化入口
 
@@ -800,10 +821,9 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 
 - CLI-2A 已让 install/uninstall/reinstall/recovery runner 逐阶段调用 observer，并锁定 task id、
   sequence、phase、取消 ownership、唯一 terminal、Task Log 顺序和脱敏 JSONL；未新增写命令。
-- CLI-2B 已建立 Sandbox marker/capability、canonical containment、目录身份与写侧重验；尚未新增
-  CLI 写命令。
-- CLI-2C 接入人工 archive/T17 external import fixture、install/uninstall/reinstall/recovery apply，
-  并覆盖失败注入、取消、重启恢复和 sentinel containment。
+- CLI-2B 已建立 Sandbox marker/capability、canonical containment、目录身份与写侧重验。
+- CLI-2C 已接入 install/uninstall/reinstall/recovery apply，使用人工 repository/package fixture，
+  并覆盖独立进程 token、失败注入、取消、重启恢复和 sentinel containment。
 - backup create 和 diagnostics export 仍按独立安全切片开放，不能被生命周期写许可自动解锁。
 
 完成定义：

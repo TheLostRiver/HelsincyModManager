@@ -299,7 +299,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ### CLI/runtime contract
 
-CLI-0A/0B/1A/1B contract 与只读 game/install automation 的聚焦入口：
+CLI-0A/0B/1A/1B contract、只读 automation 与 CLI-2A/2B/2C 单项 lifecycle 的聚焦入口：
 
 ```powershell
 cargo test -p hmm-app game_setup --no-fail-fast
@@ -310,8 +310,14 @@ cargo test -p hmm-runtime install_automation --no-fail-fast
 cargo test -p hmm-runtime backup_automation --no-fail-fast
 cargo test -p hmm-runtime diagnostics_automation --no-fail-fast
 cargo test -p hmm-runtime sandbox_write --no-fail-fast
+cargo test -p hmm-runtime lifecycle_automation --lib
+cargo test -p hmm-runtime composition::core_mod_lifecycle_tests
 cargo test -p hmm-infra read_only_open --no-fail-fast
 cargo test -p hmm-infra read_only_mod_import_catalog --no-fail-fast
+cargo test -p hmm-app install_task --lib
+cargo test -p hmm-app reinstall_task --lib
+cargo test -p hmm-cli --lib cancellation
+cargo test -p hmm-cli --test cli_contract
 cargo test -p hmm-cli --no-fail-fast
 cargo clippy -p hmm-app -p hmm-infra -p hmm-runtime -p hmm-cli -p hmm-tauri --all-targets -- -D warnings
 cargo run -p hmm-cli -- --format json runtime status
@@ -327,9 +333,9 @@ CLI-0A contract 测试必须确认：
 - JSON/JSONL 每次输出完整合法 object，stdout 不混入日志，机器解析错误使用稳定脱敏 envelope。
 - CLI-0A 的 clap human/help/error 输出不含 ANSI；`--no-color` 不改变机器契约。
 - stdout/stderr 不回显 sandbox 绝对路径、用户名、Steam ID、真实 Mod/存档内容或内部错误文本。
-- 所有写命令仍在 parser 边界拒绝；`install apply/uninstall/reinstall/recovery apply`、
-  `backup create/restore/background enable|disable` 和 `diagnostics export` 不得因为相邻只读
-  命令树存在而变得可达。
+- CLI-2C 的 `install apply/uninstall/reinstall/recovery apply` 具有稳定 parser contract，但
+  Production 必须在 CLI policy 和 runtime 两层拒绝；`backup create/restore/background
+  enable|disable` 和 `diagnostics export` 仍在 parser 边界不可达。
 
 CLI-1A binary contract 使用测试进程创建的临时根：
 
@@ -438,6 +444,23 @@ CLI-2B Sandbox 写许可测试只使用测试进程创建的临时根，必须�
 - 正向、拒绝、marker 篡改、根替换和 link/junction fixture 都验证 Sandbox 外 sentinel bytes 不变。
 - 测试不得读取真实 Steam、AppData、游戏、存档、日志或 Scheduled Task；marker/capability 不得被
   表述为 Production admission，也不得自动解锁 backup create 或 diagnostics export。
+
+CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必须确认：
+
+- install/uninstall/reinstall/recovery apply 缺少 `--commit`、`--yes` 或 token 时不写；ready preview
+  只签发 5 分钟 path-free token，过期或计划/source/manifest/recovery 变化后旧 token fail closed。
+- install blocking plan 不签发 token；uninstall/recovery E2E 必须覆盖聚合计数不变但结构化
+  manifest/recovery record 变化时旧 token 仍在 task/game write 前拒绝。
+- apply 在 capability 装配前验证 token，并在共享 game/profile 写锁内重建业务事实、重验 token 和
+  containment；写入继续复用 InstallPlan、backup、manifest、rollback/recovery 和 Audit。
+- 真实 `hmm` binary 跨独立进程完成 install -> uninstall exact baseline，以及
+  v1 -> v2 true reinstall -> uninstall exact baseline；reinstall 覆盖 retained/replaced/added/stale。
+- manifest save failure 发出 rollback phase、恢复 v1 且 recovery scan 仍可解释；stale token 在
+  task/game write 前拒绝；所有成功和失败路径保持 Sandbox 外 sentinel 不变。
+- CLI JSONL 从 0 单调编号，每个已启动任务只有一个 terminal；Ctrl+C 首次协作式取消、确认后返回
+  130，第二次中断不伪造 cancelled，不可抢占 commit 仍以真实 terminal 为准。
+- Production 四条 lifecycle 写命令在 CLI policy 和 runtime 两层拒绝；测试不得读取或写入真实
+  Steam、游戏、存档、AppData、Scheduled Task 或第三方 Mod。
 
 CLI-0B shared composition 的聚焦入口：
 

@@ -41,7 +41,7 @@
 - 多 Steam 用户存档候选发现、显式选择、昵称/头像展示和隐私降级：`completed`。
 - 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
   support export：核心已完成，发布/保留治理仍有缺口。
-- CLI-0A/0B/1A/1B：`completed`，Production 写命令仍不可达。
+- CLI-0A/0B/1A/1B/2A/2B/2C：`completed`；Sandbox 单项 lifecycle 已闭环，Production 写命令仍不可达。
 - 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
   Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
 - QG-01：`completed`，PR #215 已把 frontend tests 与 workspace clippy 纳入本地和 CI 统一门禁。
@@ -138,7 +138,8 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 | Slice C | T13-03、T13-04、T13-05 的其余子集 | 批量卸载和真正重装通过 manifest/recovery 事实运行，CLI 覆盖 cancel、partial result 和 retry。 |
 | Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
 
-下一轮从包含 T13-00 的最新 `main` 启动 Slice A。不得把未合并切片分支作为下一切片的隐式基线。
+Slice A 的 CLI-2A/2B/2C 已完成，CORE-PREF-01 进行中。Slice B 必须从已合并的 Slice A 启动，不得把
+未合并切片分支作为下一切片的隐式基线。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -183,7 +184,7 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 
 ### CLI-2A：逐阶段任务 Observer 与 JSONL
 
-状态：`ready`，Slice A 的首个内部工作包；不单独创建 PR。
+状态：`completed`，作为 Slice A 内部工作包，不单独创建 PR。
 
 范围：
 
@@ -202,7 +203,7 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 
 ### CLI-2B：Sandbox 写许可与 containment
 
-状态：`blocked`，依赖 CLI-2A。
+状态：`completed`，CLI-2A 依赖已满足。
 
 范围：
 
@@ -218,7 +219,7 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 
 ### CLI-2C：单项生命周期 Sandbox CLI E2E
 
-状态：`blocked`，依赖 CLI-2B。
+状态：`completed`，CLI-2B 依赖已满足。
 
 范围：
 
@@ -234,7 +235,7 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 
 ### CORE-PREF-01：单项安装前置检查一致化
 
-状态：`blocked`，依赖 CLI-2C。
+状态：`in_progress`，CLI-2C 依赖已满足。
 
 范围：
 

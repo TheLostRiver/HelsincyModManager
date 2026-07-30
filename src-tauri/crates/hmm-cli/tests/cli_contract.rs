@@ -1,3 +1,16 @@
+use hmm_core::{
+    InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
+    InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId, PackageFileId,
+    PreviewImageRejectionReason, ProfileId,
+};
+use hmm_infra::{
+    JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
+    JsonModImportResultRepository,
+};
+use hmm_ports::{
+    InstallManifestRepository, InstallRecoveryRecordRepository, ModImportResultRepository,
+    StoredImportPreviewImage, StoredModPackageMetadata, StoredModRevision,
+};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
@@ -86,6 +99,14 @@ fn write_game_config(sandbox: &Path, game_root: &Path) {
     .expect("write game config");
 }
 
+fn write_sandbox_marker(sandbox: &Path) {
+    fs::write(
+        sandbox.join(hmm_runtime::SANDBOX_MARKER_FILE_NAME),
+        hmm_runtime::SANDBOX_MARKER_SCHEMA,
+    )
+    .expect("write sandbox marker");
+}
+
 fn write_mod_catalog_and_sandbox(sandbox: &Path) {
     let catalog_root = sandbox.join("mod-import");
     fs::create_dir_all(&catalog_root).expect("create catalog root");
@@ -109,6 +130,99 @@ fn write_mod_catalog_and_sandbox(sandbox: &Path) {
         .join("models");
     fs::create_dir_all(&package_root).expect("create package root");
     fs::write(package_root.join("player.mod3"), b"fixture").expect("write package fixture");
+}
+
+fn write_reinstall_v1_catalog_and_sandbox(sandbox: &Path) {
+    let catalog_root = sandbox.join("mod-import");
+    fs::create_dir_all(&catalog_root).expect("create reinstall catalog root");
+    fs::write(
+        catalog_root.join("results.json"),
+        r#"{
+  "version": 1,
+  "records": [{
+    "mod_id": "mod-a",
+    "task_id": "task-v1",
+    "package_id": "package-v1",
+    "display_name": "Reinstall Fixture Mod"
+  }]
+}"#,
+    )
+    .expect("write reinstall Mod catalog");
+    let package_root = catalog_root.join("sandboxes").join("package-v1");
+    let files: &[(&str, &[u8])] = &[
+        ("nativePC/models/retained.mod3", b"same"),
+        ("nativePC/models/replaced.mod3", b"revision-v1"),
+        ("nativePC/models/stale.mod3", b"revision-v1-stale"),
+    ];
+    for &(target, bytes) in files {
+        let path = package_root.join(target);
+        fs::create_dir_all(path.parent().expect("v1 package target parent"))
+            .expect("create v1 package parent");
+        fs::write(path, bytes).expect("write v1 package file");
+    }
+}
+
+fn append_reinstall_v2_revision(sandbox: &Path) {
+    let package_root = sandbox
+        .join("mod-import")
+        .join("sandboxes")
+        .join("package-v2");
+    let files: &[(&str, &[u8])] = &[
+        ("nativePC/models/retained.mod3", b"same"),
+        ("nativePC/models/replaced.mod3", b"revision-v2"),
+        ("nativePC/models/added.mod3", b"revision-v2-added"),
+    ];
+    for &(target, bytes) in files {
+        let path = package_root.join(target);
+        fs::create_dir_all(path.parent().expect("v2 package target parent"))
+            .expect("create v2 package parent");
+        fs::write(path, bytes).expect("write v2 package file");
+    }
+
+    JsonModImportResultRepository::new(sandbox.join("mod-import").join("results.json"))
+        .append_revision(&StoredModRevision {
+            revision_id: ModRevisionId::new("revision-v2"),
+            mod_id: ModId::new("mod-a"),
+            import_task_id: "task-v2".to_owned(),
+            package_id: "package-v2".to_owned(),
+            display_name: "Reinstall Fixture Mod v2".to_owned(),
+            metadata: StoredModPackageMetadata::default(),
+            preview_image: StoredImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            },
+        })
+        .expect("append v2 revision through catalog repository");
+}
+
+fn write_rollback_recovery_fixture(sandbox: &Path, game_root: &Path) -> PathBuf {
+    const CONTENT: &[u8] = b"recovery-fixture";
+    const SHA256: &str = "f1889dda90864358c71d55bdf593bf568d7bde025635c248182721d319a2aeaf";
+
+    let relative_target = "nativePC/models/recovery.mod3";
+    let target = game_root.join(relative_target);
+    fs::create_dir_all(target.parent().expect("recovery target parent"))
+        .expect("create recovery target parent");
+    fs::write(&target, CONTENT).expect("write recovery target");
+    let repository =
+        JsonInstallRecoveryRecordRepository::new(sandbox.join("install").join("recovery"));
+    repository
+        .save_record(&InstallRecoveryRecord {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-recovery"),
+            status: InstallRecoveryRecordStatus::RollbackRequired,
+            entries: vec![InstallRecoveryRecordEntry {
+                target_path: InstallTargetPath::parse(relative_target, ["nativePC"])
+                    .expect("recovery target path"),
+                package_file_id: PackageFileId::new(relative_target),
+                backup_ref: None,
+                installed_file: Some(InstalledFileSummary {
+                    size_bytes: CONTENT.len() as u64,
+                    sha256: SHA256.to_owned(),
+                }),
+            }],
+        })
+        .expect("write recovery record");
+    target
 }
 
 fn write_steam_fixture(sandbox: &Path) {
@@ -370,12 +484,12 @@ fn production_rejects_data_dir_without_echoing_it() {
 }
 
 #[test]
-fn unimplemented_business_commands_are_rejected_by_the_parser() {
-    let output = hmm(&["install", "apply"]);
+fn reinstall_command_is_reachable_and_requires_a_candidate_revision() {
+    let output = hmm(&["install", "reinstall", "--mod", "mod-a"]);
 
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(stdout_text(&output), "");
-    assert!(stderr_text(&output).contains("unrecognized subcommand 'apply'"));
+    assert!(stderr_text(&output).contains("--candidate-revision"));
 }
 
 #[test]
@@ -680,8 +794,257 @@ fn sandbox_recovery_preview_returns_blocked_aggregate_without_refs() {
         value["result"]["blockingReasons"][0]["code"],
         "rollback_state_missing"
     );
+    assert!(value["result"].get("planToken").is_none());
+    assert!(value["result"].get("expiresAtUnixMillis").is_none());
     assert!(value["result"].get("backupRef").is_none());
     assert!(value["result"].get("recoveryRef").is_none());
+}
+
+#[test]
+fn sandbox_recovery_apply_rolls_back_artificial_record_across_process_restarts() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("recovery baseline parents");
+    let game_baseline = tree_snapshot(&game_root);
+    write_game_config(sandbox.path(), &game_root);
+    let recovery_target = write_rollback_recovery_fixture(sandbox.path(), &game_root);
+    let recovery_state = tree_snapshot(sandbox.path());
+
+    for command in [
+        vec![
+            "recovery",
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+        ],
+        vec![
+            "recovery",
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+            "--commit",
+        ],
+        vec![
+            "recovery",
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+            "--yes",
+        ],
+    ] {
+        let preview = hmm_install_in_sandbox(sandbox.path(), "json", &command);
+        assert_eq!(preview.status.code(), Some(0), "{}", stderr_text(&preview));
+        let value: Value =
+            serde_json::from_str(&stdout_text(&preview)).expect("recovery apply preview");
+        assert_eq!(value["command"], "install.recovery.apply");
+        assert_eq!(value["result"]["availability"], "available");
+        assert_eq!(value["result"]["removeFileCount"], 1);
+        assert!(value["result"]["planToken"].as_str().is_some());
+        assert_eq!(tree_snapshot(sandbox.path()), recovery_state);
+    }
+
+    let missing_token = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "recovery",
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(missing_token.status.code(), Some(2));
+    let missing_token_value: Value =
+        serde_json::from_str(&stdout_text(&missing_token)).expect("missing recovery token");
+    assert_eq!(missing_token_value["error"]["code"], "plan_token_required");
+    assert_eq!(tree_snapshot(sandbox.path()), recovery_state);
+
+    let preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "recovery",
+            "preview",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+        ],
+    );
+    let preview_value: Value =
+        serde_json::from_str(&stdout_text(&preview)).expect("recovery preview token");
+    let stale_token = preview_value["result"]["planToken"]
+        .as_str()
+        .expect("recovery token")
+        .to_owned();
+    let recovery_repository =
+        JsonInstallRecoveryRecordRepository::new(sandbox.path().join("install/recovery"));
+    let original_recovery_record = recovery_repository
+        .load_record(&ProfileId::new("default"), &ModId::new("mod-recovery"))
+        .expect("load recovery record")
+        .expect("recovery record");
+    let mut changed_recovery_record = original_recovery_record.clone();
+    changed_recovery_record.entries[0].package_file_id =
+        PackageFileId::new("nativePC/models/same-count-change.mod3");
+    recovery_repository
+        .save_record(&changed_recovery_record)
+        .expect("save same-count recovery change");
+    let changed_recovery_state = tree_snapshot(sandbox.path());
+    let stale_apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "recovery",
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+            "--plan-token",
+            &stale_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(stale_apply.status.code(), Some(3));
+    let stale_apply_value: Value =
+        serde_json::from_str(&stdout_text(&stale_apply)).expect("stale recovery token rejection");
+    assert_eq!(stale_apply_value["error"]["code"], "plan_token_invalid");
+    assert_eq!(stale_apply_value["taskId"], Value::Null);
+    assert_eq!(tree_snapshot(sandbox.path()), changed_recovery_state);
+    assert_eq!(fs::read(&sentinel).expect("read sentinel"), b"outside");
+    recovery_repository
+        .save_record(&original_recovery_record)
+        .expect("restore recovery record");
+
+    let refreshed_preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "recovery",
+            "preview",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+        ],
+    );
+    let refreshed_preview_value: Value =
+        serde_json::from_str(&stdout_text(&refreshed_preview)).expect("refreshed recovery preview");
+    let token = refreshed_preview_value["result"]["planToken"]
+        .as_str()
+        .expect("refreshed recovery token")
+        .to_owned();
+    let apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "recovery",
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+            "--plan-token",
+            &token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(apply.status.code(), Some(0), "{}", stderr_text(&apply));
+    assert_eq!(stderr_text(&apply), "");
+    let output = stdout_text(&apply);
+    let events = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("recovery task event jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 4);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sequence"].as_u64().expect("sequence"))
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3]
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["phase"].as_str().expect("phase"))
+            .collect::<Vec<_>>(),
+        [
+            "install.recovery.queued",
+            "install.recovery.planning",
+            "install.recovery.processing",
+            "install.recovery.completed",
+        ]
+    );
+    for event in &events {
+        assert_eq!(event["command"], "install.recovery.apply");
+        assert!(!event.to_string().contains(&token));
+        assert!(!event
+            .to_string()
+            .contains(&sandbox.path().to_string_lossy().to_string()));
+        assert!(!event
+            .to_string()
+            .contains(&outside.path().to_string_lossy().to_string()));
+    }
+    assert!(!recovery_target.exists());
+    assert_eq!(tree_snapshot(&game_root), game_baseline);
+    let post_preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "recovery",
+            "preview",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-recovery",
+            "--action",
+            "rollback-install",
+        ],
+    );
+    let post_preview_value: Value =
+        serde_json::from_str(&stdout_text(&post_preview)).expect("post-recovery preview");
+    assert_eq!(post_preview_value["result"]["availability"], "blocked");
+    assert!(post_preview_value["result"].get("planToken").is_none());
+    let audit_text = fs::read_dir(sandbox.path().join("logs/audit"))
+        .expect("audit directory")
+        .map(|entry| fs::read_to_string(entry.expect("audit entry").path()).expect("audit log"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(audit_text.contains("\"operation\":\"rollback_install\""));
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
 }
 
 #[test]
@@ -766,18 +1129,1078 @@ fn sandbox_recovery_rejects_game_root_outside_fixtures_without_echoing_it() {
 }
 
 #[test]
-fn install_write_commands_remain_unreachable_at_parser_boundary() {
+fn sandbox_install_apply_requires_dual_confirmation_and_plan_token() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let before = tree_snapshot(sandbox.path());
+
     for command in [
-        vec!["install", "apply"],
-        vec!["install", "uninstall"],
-        vec!["install", "reinstall"],
-        vec!["install", "recovery", "apply"],
+        vec!["apply", "--profile", "default", "--mod", "mod-a"],
+        vec![
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--commit",
+        ],
+        vec!["apply", "--profile", "default", "--mod", "mod-a", "--yes"],
     ] {
-        let output = hmm(&command);
-        assert_eq!(output.status.code(), Some(2));
-        assert_eq!(stdout_text(&output), "");
-        assert!(stderr_text(&output).contains("unrecognized subcommand"));
+        let output = hmm_install_in_sandbox(sandbox.path(), "json", &command);
+        assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+        let value: Value = serde_json::from_str(&stdout_text(&output)).expect("dry-run apply json");
+        assert_eq!(value["command"], "install.apply");
+        assert_eq!(value["result"]["profileId"], "default");
+        assert!(value["result"]["planToken"].as_str().is_some());
+        assert!(value["result"]["expiresAtUnixMillis"].as_u64().is_some());
+        assert_eq!(tree_snapshot(sandbox.path()), before);
     }
+
+    let missing_token = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(missing_token.status.code(), Some(2));
+    let value: Value =
+        serde_json::from_str(&stdout_text(&missing_token)).expect("missing token json");
+    assert_eq!(value["error"]["code"], "plan_token_required");
+    assert_eq!(tree_snapshot(sandbox.path()), before);
+}
+
+#[test]
+fn sandbox_install_apply_binary_writes_only_fixture_tree_and_emits_jsonl() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("baseline target parents");
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let game_baseline = tree_snapshot(&game_root);
+
+    let plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+    assert_eq!(plan.status.code(), Some(0), "{}", stderr_text(&plan));
+    let plan_value: Value = serde_json::from_str(&stdout_text(&plan)).expect("install plan json");
+    let token = plan_value["result"]["planToken"]
+        .as_str()
+        .expect("sandbox plan token")
+        .to_owned();
+
+    let apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(apply.status.code(), Some(0), "{}", stderr_text(&apply));
+    assert_eq!(stderr_text(&apply), "");
+    let output = stdout_text(&apply);
+    let events = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("task event jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 4);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["sequence"].as_u64().expect("sequence"))
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3]
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["phase"].as_str().expect("phase"))
+            .collect::<Vec<_>>(),
+        [
+            "install.queued",
+            "install.plan.building",
+            "install.commit.processing",
+            "install.completed",
+        ]
+    );
+    for event in &events {
+        assert_eq!(event["command"], "install.apply");
+        assert!(!event.to_string().contains(&token));
+        assert!(!event
+            .to_string()
+            .contains(&sandbox.path().to_string_lossy().to_string()));
+        assert!(!event
+            .to_string()
+            .contains(&outside.path().to_string_lossy().to_string()));
+    }
+    assert_eq!(
+        fs::read(game_root.join("nativePC/models/player.mod3")).expect("installed fixture"),
+        b"fixture"
+    );
+    assert!(sandbox
+        .path()
+        .join("install/manifests/default.json")
+        .exists());
+
+    let installed_tree = tree_snapshot(sandbox.path());
+    for command in [
+        vec!["uninstall", "--profile", "default", "--mod", "mod-a"],
+        vec![
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--commit",
+        ],
+        vec![
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--yes",
+        ],
+    ] {
+        let preview = hmm_install_in_sandbox(sandbox.path(), "json", &command);
+        assert_eq!(preview.status.code(), Some(0), "{}", stderr_text(&preview));
+        let preview_value: Value =
+            serde_json::from_str(&stdout_text(&preview)).expect("uninstall preview json");
+        assert_eq!(preview_value["command"], "install.uninstall");
+        assert_eq!(preview_value["result"]["status"], "installed");
+        assert_eq!(preview_value["result"]["available"], true);
+        assert_eq!(preview_value["result"]["managedFileCount"], 1);
+        assert!(preview_value["result"]["planToken"].as_str().is_some());
+        assert_eq!(tree_snapshot(sandbox.path()), installed_tree);
+    }
+
+    let missing_uninstall_token = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(missing_uninstall_token.status.code(), Some(2));
+    let missing_uninstall_token_value: Value =
+        serde_json::from_str(&stdout_text(&missing_uninstall_token))
+            .expect("missing uninstall token json");
+    assert_eq!(
+        missing_uninstall_token_value["error"]["code"],
+        "plan_token_required"
+    );
+    assert_eq!(tree_snapshot(sandbox.path()), installed_tree);
+
+    let uninstall_preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["uninstall", "--profile", "default", "--mod", "mod-a"],
+    );
+    let uninstall_preview_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall_preview)).expect("uninstall preview json");
+    let stale_uninstall_token = uninstall_preview_value["result"]["planToken"]
+        .as_str()
+        .expect("uninstall token")
+        .to_owned();
+    let manifest_repository =
+        JsonInstallManifestRepository::new(sandbox.path().join("install/manifests"));
+    let original_manifest = manifest_repository
+        .load_manifest(&ProfileId::new("default"))
+        .expect("load install manifest")
+        .expect("installed manifest");
+    let mut changed_manifest = original_manifest.clone();
+    changed_manifest.entries[0].package_file_id =
+        PackageFileId::new("nativePC/models/same-count-change.mod3");
+    manifest_repository
+        .save_manifest(&changed_manifest)
+        .expect("save same-count manifest change");
+    let changed_manifest_state = tree_snapshot(sandbox.path());
+    let stale_uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &stale_uninstall_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(stale_uninstall.status.code(), Some(3));
+    let stale_uninstall_value: Value = serde_json::from_str(&stdout_text(&stale_uninstall))
+        .expect("stale uninstall token rejection");
+    assert_eq!(stale_uninstall_value["error"]["code"], "plan_token_invalid");
+    assert_eq!(stale_uninstall_value["taskId"], Value::Null);
+    assert_eq!(tree_snapshot(sandbox.path()), changed_manifest_state);
+    assert_eq!(fs::read(&sentinel).expect("read sentinel"), b"outside");
+    manifest_repository
+        .save_manifest(&original_manifest)
+        .expect("restore install manifest");
+
+    let refreshed_uninstall_preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["uninstall", "--profile", "default", "--mod", "mod-a"],
+    );
+    let refreshed_uninstall_preview_value: Value =
+        serde_json::from_str(&stdout_text(&refreshed_uninstall_preview))
+            .expect("refreshed uninstall preview");
+    let uninstall_token = refreshed_uninstall_preview_value["result"]["planToken"]
+        .as_str()
+        .expect("refreshed uninstall token")
+        .to_owned();
+    let uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &uninstall_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        uninstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall)
+    );
+    assert_eq!(stderr_text(&uninstall), "");
+    let uninstall_output = stdout_text(&uninstall);
+    let uninstall_events = uninstall_output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("uninstall task event jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(uninstall_events.len(), 3);
+    assert_eq!(
+        uninstall_events
+            .iter()
+            .map(|event| event["sequence"].as_u64().expect("sequence"))
+            .collect::<Vec<_>>(),
+        [0, 1, 2]
+    );
+    assert_eq!(
+        uninstall_events
+            .iter()
+            .map(|event| event["phase"].as_str().expect("phase"))
+            .collect::<Vec<_>>(),
+        [
+            "install.uninstall.queued",
+            "install.uninstall.processing",
+            "install.uninstall.completed",
+        ]
+    );
+    for event in &uninstall_events {
+        assert_eq!(event["command"], "install.uninstall");
+        assert!(!event.to_string().contains(&uninstall_token));
+        assert!(!event
+            .to_string()
+            .contains(&sandbox.path().to_string_lossy().to_string()));
+        assert!(!event
+            .to_string()
+            .contains(&outside.path().to_string_lossy().to_string()));
+    }
+
+    assert_eq!(tree_snapshot(&game_root), game_baseline);
+    let status = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "status",
+            "--game",
+            "mhw",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+        ],
+    );
+    assert_eq!(status.status.code(), Some(0), "{}", stderr_text(&status));
+    let status_value: Value =
+        serde_json::from_str(&stdout_text(&status)).expect("post-uninstall status json");
+    assert_eq!(
+        status_value["result"]["items"][0]["status"],
+        "not_installed"
+    );
+    let audit_text = fs::read_dir(sandbox.path().join("logs/audit"))
+        .expect("audit directory")
+        .map(|entry| fs::read_to_string(entry.expect("audit entry").path()).expect("audit log"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(audit_text.contains("\"operation\":\"commit_imported_mod\""));
+    assert!(audit_text.contains("\"operation\":\"uninstall_mod\""));
+    assert!(
+        sandbox
+            .path()
+            .join("logs/tasks")
+            .read_dir()
+            .expect("task logs")
+            .count()
+            >= 2
+    );
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn sandbox_reinstall_binary_replaces_revision_and_restores_exact_baseline() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    let models_root = game_root.join("nativePC/models");
+    fs::create_dir_all(&models_root).expect("create reinstall fixture parent");
+    fs::write(models_root.join("replaced.mod3"), b"game-replaced")
+        .expect("write replaced baseline");
+    fs::write(models_root.join("stale.mod3"), b"game-stale").expect("write stale baseline");
+    write_game_config(sandbox.path(), &game_root);
+    write_reinstall_v1_catalog_and_sandbox(sandbox.path());
+    let game_baseline = tree_snapshot(&game_root);
+
+    let install_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+    assert_eq!(
+        install_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&install_plan)
+    );
+    let install_plan_value: Value =
+        serde_json::from_str(&stdout_text(&install_plan)).expect("install plan json");
+    let install_token = install_plan_value["result"]["planToken"]
+        .as_str()
+        .expect("install token")
+        .to_owned();
+    let install = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &install_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(install.status.code(), Some(0), "{}", stderr_text(&install));
+    assert_eq!(
+        fs::read(models_root.join("replaced.mod3")).expect("installed v1 replacement"),
+        b"revision-v1"
+    );
+
+    let same_revision = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "package-v1",
+        ],
+    );
+    assert_eq!(
+        same_revision.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&same_revision)
+    );
+    let same_revision_value: Value =
+        serde_json::from_str(&stdout_text(&same_revision)).expect("same revision preview");
+    assert_eq!(same_revision_value["result"]["status"], "blocked");
+    assert!(same_revision_value["result"].get("planToken").is_none());
+    assert_eq!(
+        same_revision_value["result"]["blockingReasons"][0]["code"],
+        "candidate_already_installed"
+    );
+
+    append_reinstall_v2_revision(sandbox.path());
+    let before_reinstall = tree_snapshot(sandbox.path());
+    for command in [
+        vec![
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+        ],
+        vec![
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+            "--commit",
+        ],
+        vec![
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+            "--yes",
+        ],
+    ] {
+        let preview = hmm_install_in_sandbox(sandbox.path(), "json", &command);
+        assert_eq!(preview.status.code(), Some(0), "{}", stderr_text(&preview));
+        let preview_value: Value =
+            serde_json::from_str(&stdout_text(&preview)).expect("reinstall preview json");
+        assert_eq!(preview_value["command"], "install.reinstall");
+        assert_eq!(preview_value["result"]["status"], "ready");
+        assert_eq!(preview_value["result"]["installedRevisionId"], "package-v1");
+        assert_eq!(
+            preview_value["result"]["candidateRevisionId"],
+            "revision-v2"
+        );
+        assert_eq!(preview_value["result"]["retainedCount"], 1);
+        assert_eq!(preview_value["result"]["replacedCount"], 1);
+        assert_eq!(preview_value["result"]["addedCount"], 1);
+        assert_eq!(preview_value["result"]["staleCount"], 1);
+        assert!(preview_value["result"]["blockingReasons"]
+            .as_array()
+            .expect("blocking reasons")
+            .is_empty());
+        assert!(preview_value["result"]["planToken"].as_str().is_some());
+        assert!(preview_value["result"]["expiresAtUnixMillis"]
+            .as_u64()
+            .is_some());
+        assert_eq!(tree_snapshot(sandbox.path()), before_reinstall);
+    }
+
+    let missing_token = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(missing_token.status.code(), Some(2));
+    let missing_token_value: Value =
+        serde_json::from_str(&stdout_text(&missing_token)).expect("missing token json");
+    assert_eq!(missing_token_value["command"], "install.reinstall");
+    assert_eq!(missing_token_value["error"]["code"], "plan_token_required");
+    assert_eq!(tree_snapshot(sandbox.path()), before_reinstall);
+
+    let preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+        ],
+    );
+    let preview_value: Value =
+        serde_json::from_str(&stdout_text(&preview)).expect("reinstall token preview");
+    let reinstall_token = preview_value["result"]["planToken"]
+        .as_str()
+        .expect("reinstall token")
+        .to_owned();
+    let reinstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+            "--plan-token",
+            &reinstall_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        reinstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&reinstall)
+    );
+    assert_eq!(stderr_text(&reinstall), "");
+    let reinstall_events = stdout_text(&reinstall)
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("reinstall task event jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(reinstall_events.len(), 5);
+    assert_eq!(
+        reinstall_events
+            .iter()
+            .map(|event| event["sequence"].as_u64().expect("sequence"))
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3, 4]
+    );
+    assert_eq!(
+        reinstall_events
+            .iter()
+            .map(|event| event["phase"].as_str().expect("phase"))
+            .collect::<Vec<_>>(),
+        [
+            "install.reinstall.queued",
+            "install.reinstall.plan.building",
+            "install.reinstall.preflight.processing",
+            "install.reinstall.commit.processing",
+            "install.reinstall.completed",
+        ]
+    );
+    for event in &reinstall_events {
+        assert_eq!(event["command"], "install.reinstall");
+        assert!(!event.to_string().contains(&reinstall_token));
+        assert!(!event
+            .to_string()
+            .contains(&sandbox.path().to_string_lossy().to_string()));
+        assert!(!event
+            .to_string()
+            .contains(&outside.path().to_string_lossy().to_string()));
+    }
+
+    assert_eq!(
+        fs::read(models_root.join("retained.mod3")).expect("retained file"),
+        b"same"
+    );
+    assert_eq!(
+        fs::read(models_root.join("replaced.mod3")).expect("replaced file"),
+        b"revision-v2"
+    );
+    assert_eq!(
+        fs::read(models_root.join("added.mod3")).expect("added file"),
+        b"revision-v2-added"
+    );
+    assert_eq!(
+        fs::read(models_root.join("stale.mod3")).expect("restored stale baseline"),
+        b"game-stale"
+    );
+
+    let manifest =
+        JsonInstallManifestRepository::new(sandbox.path().join("install").join("manifests"))
+            .load_manifest(&ProfileId::new("default"))
+            .expect("load manifest")
+            .expect("manifest exists");
+    let mod_entries = manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id == ModId::new("mod-a"))
+        .collect::<Vec<_>>();
+    assert_eq!(mod_entries.len(), 3);
+    assert!(mod_entries
+        .iter()
+        .all(|entry| { entry.revision_id.as_ref() == Some(&ModRevisionId::new("revision-v2")) }));
+    assert!(!mod_entries
+        .iter()
+        .any(|entry| entry.target_path.as_str().ends_with("stale.mod3")));
+
+    let audit_text = fs::read_dir(sandbox.path().join("logs/audit"))
+        .expect("audit directory")
+        .map(|entry| fs::read_to_string(entry.expect("audit entry").path()).expect("audit log"))
+        .collect::<String>();
+    assert!(audit_text.contains("\"operation\":\"reinstall_mod\""));
+    assert!(!audit_text.contains(&reinstall_token));
+    assert!(
+        sandbox
+            .path()
+            .join("logs/tasks")
+            .read_dir()
+            .expect("task logs")
+            .count()
+            >= 2
+    );
+
+    let uninstall_preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["uninstall", "--profile", "default", "--mod", "mod-a"],
+    );
+    let uninstall_preview_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall_preview)).expect("uninstall preview");
+    let uninstall_token = uninstall_preview_value["result"]["planToken"]
+        .as_str()
+        .expect("uninstall token")
+        .to_owned();
+    let uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &uninstall_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        uninstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall)
+    );
+    assert_eq!(tree_snapshot(&game_root), game_baseline);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn sandbox_reinstall_rejects_stale_token_before_task_or_game_write() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("create game parent");
+    write_game_config(sandbox.path(), &game_root);
+    write_reinstall_v1_catalog_and_sandbox(sandbox.path());
+
+    let install_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+    let install_plan_value: Value =
+        serde_json::from_str(&stdout_text(&install_plan)).expect("install plan json");
+    let install_token = install_plan_value["result"]["planToken"]
+        .as_str()
+        .expect("install token")
+        .to_owned();
+    let install = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &install_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(install.status.code(), Some(0), "{}", stderr_text(&install));
+
+    append_reinstall_v2_revision(sandbox.path());
+    let preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+        ],
+    );
+    let preview_value: Value =
+        serde_json::from_str(&stdout_text(&preview)).expect("reinstall preview");
+    let token = preview_value["result"]["planToken"]
+        .as_str()
+        .expect("reinstall token")
+        .to_owned();
+
+    fs::write(
+        sandbox
+            .path()
+            .join("mod-import/sandboxes/package-v2/nativePC/models/replaced.mod3"),
+        b"revision-v2-mutated",
+    )
+    .expect("mutate candidate after preview");
+    let game_before = tree_snapshot(&game_root);
+    let sandbox_before = tree_snapshot(sandbox.path());
+    let apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+            "--plan-token",
+            &token,
+            "--commit",
+            "--yes",
+        ],
+    );
+
+    assert_eq!(apply.status.code(), Some(3));
+    assert_eq!(stderr_text(&apply), "");
+    let apply_value: Value =
+        serde_json::from_str(&stdout_text(&apply)).expect("stale token rejection");
+    assert_eq!(apply_value["command"], "install.reinstall");
+    assert_eq!(apply_value["error"]["code"], "plan_token_invalid");
+    assert!(apply_value["taskId"].is_null());
+    assert_eq!(tree_snapshot(&game_root), game_before);
+    assert_eq!(tree_snapshot(sandbox.path()), sandbox_before);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[cfg(windows)]
+#[test]
+#[allow(clippy::permissions_set_readonly_false)]
+fn sandbox_reinstall_manifest_save_failure_rolls_back_v1_in_real_binary() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("create game parent");
+    write_game_config(sandbox.path(), &game_root);
+    write_reinstall_v1_catalog_and_sandbox(sandbox.path());
+    let game_baseline = tree_snapshot(&game_root);
+
+    let install_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+    let install_plan_value: Value =
+        serde_json::from_str(&stdout_text(&install_plan)).expect("install plan json");
+    let install_token = install_plan_value["result"]["planToken"]
+        .as_str()
+        .expect("install token")
+        .to_owned();
+    let install = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &install_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(install.status.code(), Some(0), "{}", stderr_text(&install));
+    let installed_v1 = tree_snapshot(&game_root);
+
+    append_reinstall_v2_revision(sandbox.path());
+    let preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+        ],
+    );
+    let preview_value: Value =
+        serde_json::from_str(&stdout_text(&preview)).expect("reinstall preview");
+    let token = preview_value["result"]["planToken"]
+        .as_str()
+        .expect("reinstall token")
+        .to_owned();
+
+    let manifest_path = sandbox.path().join("install/manifests/default.json");
+    let mut permissions = fs::metadata(&manifest_path)
+        .expect("manifest metadata")
+        .permissions();
+    permissions.set_readonly(true);
+    fs::set_permissions(&manifest_path, permissions).expect("make manifest read-only");
+    let reinstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "reinstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--candidate-revision",
+            "revision-v2",
+            "--plan-token",
+            &token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    let mut permissions = fs::metadata(&manifest_path)
+        .expect("manifest remains")
+        .permissions();
+    permissions.set_readonly(false);
+    fs::set_permissions(&manifest_path, permissions).expect("restore manifest permissions");
+
+    assert_eq!(
+        reinstall.status.code(),
+        Some(4),
+        "{}",
+        stderr_text(&reinstall)
+    );
+    assert_eq!(stderr_text(&reinstall), "");
+    let events = stdout_text(&reinstall)
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("reinstall failure event"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event["phase"].as_str().expect("phase"))
+            .collect::<Vec<_>>(),
+        [
+            "install.reinstall.queued",
+            "install.reinstall.plan.building",
+            "install.reinstall.preflight.processing",
+            "install.reinstall.commit.processing",
+            "install.reinstall.rollback.processing",
+            "install.reinstall.failed",
+        ]
+    );
+    assert_eq!(
+        events.last().expect("failed terminal")["error"]["code"],
+        "install_reinstall_failed:manifest"
+    );
+    assert_eq!(tree_snapshot(&game_root), installed_v1);
+
+    let manifest =
+        JsonInstallManifestRepository::new(sandbox.path().join("install").join("manifests"))
+            .load_manifest(&ProfileId::new("default"))
+            .expect("load rolled-back manifest")
+            .expect("v1 manifest remains");
+    assert!(manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id == ModId::new("mod-a"))
+        .all(|entry| entry.revision_id.is_none()));
+
+    let recovery = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["recovery", "scan", "--profile", "default", "--mod", "mod-a"],
+    );
+    assert_eq!(
+        recovery.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&recovery)
+    );
+    let recovery_value: Value =
+        serde_json::from_str(&stdout_text(&recovery)).expect("recovery scan");
+    assert_eq!(recovery_value["result"]["items"][0]["status"], "installed");
+
+    let uninstall_preview = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["uninstall", "--profile", "default", "--mod", "mod-a"],
+    );
+    let uninstall_preview_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall_preview)).expect("uninstall preview");
+    let uninstall_token = uninstall_preview_value["result"]["planToken"]
+        .as_str()
+        .expect("uninstall token")
+        .to_owned();
+    let uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "uninstall",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            &uninstall_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        uninstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall)
+    );
+    assert_eq!(tree_snapshot(&game_root), game_baseline);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn production_install_apply_is_rejected_before_runtime_write_admission() {
+    let output = hmm(&[
+        "--format",
+        "json",
+        "--environment",
+        "production",
+        "install",
+        "apply",
+        "--mod",
+        "mod-a",
+        "--plan-token",
+        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--commit",
+        "--yes",
+    ]);
+
+    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(stderr_text(&output), "");
+    let value: Value =
+        serde_json::from_str(&stdout_text(&output)).expect("production rejection json");
+    assert_eq!(value["command"], "install.apply");
+    assert_eq!(value["error"]["code"], "production_write_command_forbidden");
+    assert_eq!(value["error"]["category"], "data_safety_risk");
+
+    let uninstall = hmm(&[
+        "--format",
+        "json",
+        "--environment",
+        "production",
+        "install",
+        "uninstall",
+        "--mod",
+        "mod-a",
+        "--plan-token",
+        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--commit",
+        "--yes",
+    ]);
+    assert_eq!(uninstall.status.code(), Some(3));
+    assert_eq!(stderr_text(&uninstall), "");
+    let uninstall_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall)).expect("production uninstall rejection");
+    assert_eq!(uninstall_value["command"], "install.uninstall");
+    assert_eq!(
+        uninstall_value["error"]["code"],
+        "production_write_command_forbidden"
+    );
+    assert_eq!(uninstall_value["error"]["category"], "data_safety_risk");
+
+    let reinstall = hmm(&[
+        "--format",
+        "json",
+        "--environment",
+        "production",
+        "install",
+        "reinstall",
+        "--mod",
+        "mod-a",
+        "--candidate-revision",
+        "revision-v2",
+        "--plan-token",
+        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--commit",
+        "--yes",
+    ]);
+    assert_eq!(reinstall.status.code(), Some(3));
+    assert_eq!(stderr_text(&reinstall), "");
+    let reinstall_value: Value =
+        serde_json::from_str(&stdout_text(&reinstall)).expect("production reinstall rejection");
+    assert_eq!(reinstall_value["command"], "install.reinstall");
+    assert_eq!(
+        reinstall_value["error"]["code"],
+        "production_write_command_forbidden"
+    );
+    assert_eq!(reinstall_value["error"]["category"], "data_safety_risk");
+
+    let recovery = hmm(&[
+        "--format",
+        "json",
+        "--environment",
+        "production",
+        "install",
+        "recovery",
+        "apply",
+        "--profile",
+        "default",
+        "--mod",
+        "mod-a",
+        "--action",
+        "rollback-install",
+        "--plan-token",
+        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "--commit",
+        "--yes",
+    ]);
+    assert_eq!(recovery.status.code(), Some(3));
+    assert_eq!(stderr_text(&recovery), "");
+    let recovery_value: Value =
+        serde_json::from_str(&stdout_text(&recovery)).expect("production recovery rejection");
+    assert_eq!(recovery_value["command"], "install.recovery.apply");
+    assert_eq!(
+        recovery_value["error"]["code"],
+        "production_write_command_forbidden"
+    );
+    assert_eq!(recovery_value["error"]["category"], "data_safety_risk");
 }
 
 #[test]

@@ -7,6 +7,7 @@ mod diagnostics_automation;
 mod external_import;
 mod game_automation;
 mod install_automation;
+mod lifecycle_automation;
 mod mod_library;
 mod sandbox_write;
 mod uninstall;
@@ -35,7 +36,12 @@ pub use install_automation::{
     InstallRecoveryBlockReasonSnapshot, InstallRecoveryIssueSnapshot, InstallRecoveryItemSnapshot,
     InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot, InstallStatusItemSnapshot,
     InstallStatusSnapshot, ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError,
-    ReadOnlyInstallRecoveryAction,
+    ReadOnlyInstallRecoveryAction, ReinstallBlockingReasonSnapshot, ReinstallPlanSnapshot,
+    UninstallPlanSnapshot,
+};
+pub use lifecycle_automation::{
+    LifecycleTaskCancellationHandle, LifecycleTaskOutcome, SandboxLifecycleAutomation,
+    SandboxLifecycleAutomationError,
 };
 pub use sandbox_write::{
     SandboxWriteAdmission, SandboxWriteCapability, SandboxWriteCapabilityError, SandboxWriteRoots,
