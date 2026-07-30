@@ -29,9 +29,11 @@
    `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
    T17 范围保持 Windows + MHW:I；Linux/Steam Deck 和更多游戏不进入本轮。T13 与 T17 继续正交，
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
-6. QG-01 已在当前独立 PR 补齐 CI 质量门禁；该 PR 合并后，当前 P0 转为 T13 sealed batch
-   语义，再推进 CLI 逐阶段 observer/Sandbox 写许可与单项生命周期 E2E，并依次实现批量安装、
-   批量卸载、批量真正重装、CLI/Tauri/前端契约和 disposable Windows Sandbox Gate C。
+6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。当前 P0 是 T13-00：批量 sealed batch
+   语义已在 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 冻结，正在完成契约、
+   验证与独立合并门禁；合并后推进 CLI-2A/2B/2C observer、Sandbox 写许可与单项生命周期 E2E，
+   再依次实现批量安装、批量卸载、批量真正重装、CLI/Tauri/前端契约和 disposable Windows
+   Sandbox Gate C。
 7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的
    MHW:I catalog/path parser/adapter、InstallPlan/manifest 集成和受控 UI。防具 AR1-AR5 已认证不等于
    完整防具数据或武器链路已完成。
@@ -108,7 +110,9 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固、T18
 Slice 1/2/3/4A/4B/4C 与 T17 Slice 1/2/3/4A/4B/4C 均已完成。批量破坏性操作仍属于 T13，必须另行
-评审；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
+评审；T13-00 设计见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)，其规划接口在
+T13-06 前不可调用。T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck
+或更多游戏。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 

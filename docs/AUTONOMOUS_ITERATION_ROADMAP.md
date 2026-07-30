@@ -5,7 +5,7 @@
 [Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。
 
 更新时间：2026-07-30
-规划基线：`main@62323f18dd66bea454ecc834bc2014c1b62396a2`，含当前 QG-01 PR 的治理变更
+规划基线：`main@e9e451eb5923f20f6ef633286fa71c072578ccb4`，QG-01 已由 PR #215 合并
 
 ## 固定范围
 
@@ -42,6 +42,7 @@
 - CLI-0A/0B/1A/1B：`completed`，Production 写命令仍不可达。
 - 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
   Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
+- QG-01：`completed`，PR #215 已把 frontend tests 与 workspace clippy 纳入本地和 CI 统一门禁。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -115,14 +116,14 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01 已在当前独立 PR 实现；只有该 PR 的 CI、review 和合并门禁全部完成后，T13-00 才成为
-第一个 ready 产品 task。如果外部 review 因额度缺席，按 CodeRabbit 缺席流程完成独立全 diff
-自审，但仍必须等待全部 CI 到 terminal success。
+QG-01 已完成并合并。T13-00 是当前独立 task；它完成本地验证、PR、全部 CI、review 和合并门禁后，
+CLI-2A 成为第一个 ready task。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff
+自审，但不能跳过全部 CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
-推荐开启顺序如下。当前完成 QG-01 的 CI/review/合并门禁后，从最新 `main` 启动 T13-00；不得把
-尚未合并的治理分支作为产品 task 的隐式基线。
+推荐开启顺序如下。当前完成 T13-00 的验证/PR/CI/review/合并门禁后，从最新 `main` 启动 CLI-2A；
+不得把尚未合并的 task 分支作为下一 task 的隐式基线。
 
 ```text
 QG-01
@@ -142,8 +143,7 @@ QG-01
 
 ### QG-01：补齐 CI 质量门禁
 
-状态：`implemented`，已在当前独立 PR 实现；通过完整增量自审、远端 CI、评论处理并合并后标记
-`completed`。
+状态：`completed`，PR #215 已通过完整增量自审、远端 CI、评论处理并合并。
 
 范围：
 
@@ -162,7 +162,10 @@ QG-01
 
 ### T13-00：冻结批量领域语义
 
-状态：QG-01 合并后的第一个 `ready` task；QG-01 未合并前保持 `blocked`。这是高风险设计 task。
+状态：`implemented`，当前独立 task；设计与安全语义已提交，契约/路线图正在同步，仍需完成验证、
+PR、CI、review 和合并门禁。这是高风险设计 task。
+
+独立文档：[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。
 
 设计必须决定：
 
@@ -181,7 +184,7 @@ QG-01
 
 ### CLI-2A：逐阶段任务 Observer 与 JSONL
 
-状态：`blocked`，依赖 T13-00 合并。
+状态：`blocked`，依赖 T13-00 合并；T13-00 完成后它是唯一 next ready task。
 
 范围：
 

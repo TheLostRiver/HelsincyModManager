@@ -1,8 +1,8 @@
 # 项目任务状态快照
 
 本文档记录 Helsincy Mod Manager 在 **2026-07-30** 的 Windows 项目任务全景，基准为
-`main@62323f18dd66bea454ecc834bc2014c1b62396a2` 与当前 QG-01 PR，包含 CLI-0A 至 CLI-1B、
-PR #211 至 #214 的工程治理，以及统一验证入口中的 frontend tests/workspace clippy 门禁。
+`main@e9e451eb5923f20f6ef633286fa71c072578ccb4`，包含 CLI-0A 至 CLI-1B、PR #211 至 #214
+的工程治理，以及 QG-01/PR #215 合并后的 frontend tests/workspace clippy 统一门禁。
 
 本文件是一次证据快照，用于回答“当前已经具备什么、还缺什么、下一步先做什么”。持续变化的任务
 优先级、依赖和实施状态仍以 [任务总纲](../TODO.md) 与 [路线图](ROADMAP.md) 为准；功能设计和安全
@@ -26,8 +26,9 @@ PR #211 至 #214 的工程治理，以及统一验证入口中的 frontend tests
 回滚/恢复、Armor Retarget、Mod 库分页、第三方管理器批量迁移，以及 App/Task/Audit 日志和诊断页
 已经形成可测试的后端链路。Gate A 和 Gate B 均为 `certified`。
 
-当前开发优先级已经调整为核心 Mod 生命周期的批量能力：先冻结批量语义和 CLI Sandbox 自动化基础，
-再实现批量安装、批量卸载、批量真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
+当前开发优先级已经调整为核心 Mod 生命周期的批量能力：T13-00 已冻结批量语义并正在完成独立
+合并门禁；随后先完成 CLI Sandbox 自动化基础，再实现批量安装、批量卸载、批量真正重装、
+Tauri/前端工作流与 Windows Sandbox 纵向验收。
 Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺口；完整前置依赖平台、玩家存档恢复、
 日志全量保留策略和 Debug Log 也仍未完成。
 后端命令化已完成 CLI-1A 和 CLI-1B：`hmm-runtime` 已承载真实共享 composition，
@@ -37,12 +38,14 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 
 快照时：
 
-- 规划基线为 `main@62323f1` 与当前 QG-01 PR；后续任务以最新 `main` 创建独立 branch/worktree。
+- 规划基线为 `main@e9e451e`；后续任务以最新 `main` 创建独立 branch/worktree。
 - PR #196 已合并；其 review 遗漏由 PR #197 补齐。
 - PR #199 已完成 T17 Slice 4C，T17 全部切片已交付。
 - PR #210 已合并并交付 CLI-0B/1A/1B；PR #211 至 #214 已完成 GOV-01 至 GOV-04。
-- QG-01 已在独立分支实现统一 frontend tests/workspace clippy 门禁，等待当前 PR 的 CI、review
-  和合并完成。
+- QG-01 已由 PR #215 完成 CI、review、评论处理和合并；统一 frontend tests/workspace clippy
+  门禁已经成为主干基线。
+- T13-00 已在独立任务中创建批量生命周期设计，当前仍需完成契约同步、完整验证、PR、CI、
+  review 和合并；合并后 CLI-2A 成为 next ready。
 
 ## 任务矩阵
 
@@ -61,7 +64,7 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T10 前置依赖检查 | 部分完成 | MHW:I bundled rules 与状态查询、Gate A/B preflight 已有；安装前完整阻断/警告和产品展示未完成 |
 | T11 Armor Retarget | Certified（流程）/ 数据待扩容 | AR1-AR5 流程已认证；bundled armor catalog 仍是最小 seed，武器重定向未实现 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
-| T13 批量操作 | P0 待实施 | 先冻结 sealed plan、失败/取消/重试语义，再实现批量安装、卸载和真正重装 |
+| T13 批量操作 | T13-00 implemented | sealed plan、失败/取消/重试与 preview/seal/start 语义已冻结；T13-01 至 T13-08 产品实现未开始 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
 | T15 Linux / Steam Deck | 本轮排除 | 不进入本轮任务、实现、验收或发布判断 |
 | T16 Rise / Wilds | 远期 | 每个游戏需要独立 adapter 与设计 |
@@ -98,7 +101,7 @@ T17 已实现第三方 Mod 管理器的批量迁移，包括只读来源扫描�
 安全物化、partial success、服务端重试和按 `taskId` 的进度/结果。它默认只把 Mod 导入 HMM，
 不会安装、启用或写游戏目录。
 
-T13 才是批量安装/卸载。T17 完成不代表 T13 已完成，也不能借 T17 的批处理编排绕过单项安装的
+T13 才是批量安装/卸载/真正重装。T17 完成不代表 T13 产品能力已完成，也不能借 T17 的批处理编排绕过单项安装的
 `InstallPlan`、manifest、backup、rollback、锁和审计语义。
 
 ## 装备重定向数据
@@ -334,8 +337,8 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 
 - `SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md` 仍写 P7.2b 未实现，与较新的自动化设计、
   `TODO.md`、源码和测试不一致。
-- QG-01 已在当前 PR 把 frontend tests 和 workspace clippy 纳入本地/CI 统一入口；该治理能力
-  只有在 PR 通过 CI/review 并合并后才成为后续产品 PR 的主干基线。
+- T13-00 目前只有设计和规划契约，不存在 batch Rust service、Tauri command、CLI parser 或前端
+  工作流；状态文档不能把规划接口描述为可调用能力。
 - Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
   bundle 中存在 sibling worker 就标记完成。
 - GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri
@@ -343,9 +346,9 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 
 ## 建议执行顺序
 
-1. 完成当前 QG-01 PR 的 CI、评论处理和合并门禁。
-2. 从最新 `main` 启动 T13-00，冻结批量 sealed plan、失败、取消、partial result 和 retry 语义。
-3. CLI-2A/2B/2C 完成逐阶段 observer、Sandbox 写许可和单项生命周期 binary E2E。
+1. 完成当前 T13-00 的契约同步、完整验证、自审、PR、CI、评论处理和合并门禁。
+2. 从最新 `main` 启动 CLI-2A，完成逐阶段 observer 和 JSONL 顺序/terminal/cancel 事实。
+3. CLI-2B/2C 完成 Sandbox 写许可和单项生命周期 binary E2E。
 4. CORE-PREF-01 证明并补齐单项安装前置检查的一致 decision。
 5. T13-01 至 T13-08 依次完成批量 plan、安装、卸载、真正重装、CLI/Tauri/前端和 Gate C。
 6. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
