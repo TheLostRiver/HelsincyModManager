@@ -80,7 +80,7 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - 新增 Tauri command 时必须确认调用边界和参数校验。
 - 新增文件写入逻辑时必须说明备份、回滚和失败恢复策略。
 
-## CLI 只读自动化边界
+## CLI 自动化边界
 
 - Production CLI 禁止 `--data-dir`。当前只开放 runtime status、game
   status/scan/validate/prerequisites、install plan/status/recovery scan/preview、
@@ -112,6 +112,13 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - Sandbox diagnostics 只读取固定 `logs/app|tasks|audit`，目录必须通过 canonical containment；
   machine projection 只包含 bounded platform summary、分类状态和计数，不返回日志正文、来源文件名、
   Audit fields、完整本机信息或 export path。
+- CLI-2B 的 Sandbox write capability 只在未来写命令显式申请时初始化；`runtime status` 和所有 CLI-1
+  只读命令不创建 marker。空根创建固定版本 marker，非空根必须已有完全匹配的 marker。
+- marker 不是授权秘密。只有字段/构造器私有且不可序列化的进程内 capability 才能签发
+  `SandboxWriteAdmission`；Production 没有构造路径。
+- capability 保留 no-follow 根句柄、canonical root 与目录身份，并逐项重验 app-data、game、save、
+  backup 根。symlink、junction、reparse point、marker 篡改、祖先替换或 Sandbox 外根全部 fail
+  closed。该 capability 不替代 InstallPlan、backup、manifest、rollback/recovery、Audit Log 或写锁。
 - 自动测试只使用 temp/fake/人工 fixture，不执行 Production game 命令或读取测试机真实 Steam、
   AppData、游戏、日志和存档，也不查询、注册、更新、启动或删除真实 Windows Scheduled Task。
 

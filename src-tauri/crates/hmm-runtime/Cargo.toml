@@ -8,6 +8,8 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+cap-fs-ext.workspace = true
+cap-std.workspace = true
 dirs.workspace = true
 hmm-app = { path = "../hmm-app" }
 hmm-core = { path = "../hmm-core" }
@@ -22,3 +24,6 @@ uuid.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 zip.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

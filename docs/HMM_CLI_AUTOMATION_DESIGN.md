@@ -90,9 +90,9 @@ save backup worker ---------/       |--> hmm-app -------> hmm-ports
 GUI-only 启动行为和对 runtime 的解引用；Tauri commands/DTO/event emit 仍留在桌面壳。
 `hmm-save-backup-worker` 直接构造 runtime，因此不初始化 WebView 或 Tauri state。
 
-`HmmRuntimeBuilder` 当前提供显式 app-data root 和受控 manifest repository 故障注入。Production、
-Sandbox、Test 的完整 capability/admission 模式仍是后续目标；不能把 builder 的路径参数当作 CLI
-Production 数据根覆盖能力。
+`HmmRuntimeBuilder` 当前提供显式 app-data root 和受控 manifest repository 故障注入。Sandbox
+进程内 write capability 已由 CLI-2B 落地；Production 跨进程 admission 与 Test fake capability
+模式仍是后续目标。不能把 builder 的路径参数当作 CLI Production 数据根覆盖能力。
 
 ### Runtime 模式
 
@@ -124,8 +124,21 @@ CLI-0A 固定了不访问文件系统的环境策略：
   `businessCommandsAvailable` 均固定为 `false`。CLI-1A 接入只读 game 命令后，
   `productionWritesAllowed` 仍为 `false`，`businessCommandsAvailable` 改为 `true`。
 
-marker、symlink/junction/reparse-point 检查、调用方临时根 containment 与写 permit 都属于 CLI-2
-之前必须补齐的能力，不能由当前绝对路径校验替代。
+CLI-2B 已补齐 Sandbox 写许可基础：
+
+- `--data-dir` 是调用方声明的隔离 capability 根；只有显式 Sandbox 环境可以申请
+  `SandboxWriteCapability`，Production 固定返回 `sandbox_write_production_forbidden`。
+- 申请发生在未来写命令运行期，`runtime status` 和 CLI-1 只读命令不会创建 marker。空根会通过
+  no-follow 句柄创建固定 `.hmm-sandbox.json` v1 marker；非空根必须已包含完全匹配的 marker。
+- marker 不是 capability，也不是可持久化授权秘密。capability 本身构造器和字段私有、不可序列化，
+  并保留打开的目录句柄、canonical root 与 volume/file identity 或 dev/inode identity。
+- `SandboxWriteRoots` 逐项校验本次操作实际使用的 app-data、game、save、backup 根；词法逃逸、
+  canonical 逃逸、symlink、junction、reparse point、marker 篡改与祖先替换全部 fail closed。
+- `SandboxWriteAdmission` 借用原 capability，写侧必须在进入安全写阶段前重新验证。Windows 的打开
+  句柄直接阻止祖先 rename；允许 rename 的平台通过目录身份变化返回 `sandbox_root_replaced`。
+
+这只建立 CLI-2C 的必要门禁，不开放 parser 命令，也不替代 InstallPlan、backup、manifest、
+rollback/recovery、Audit Log 或 game/profile 写锁。
 
 ### 应用层任务观察器
 
@@ -139,14 +152,16 @@ pub trait TaskProgressObserver: Send + Sync {
 }
 ```
 
-当前 Tauri adapter 已通过该 observer 完成领域事件到 Task Log、App Log 和 Tauri event 的转换，
-且 wire DTO 未变化。现有 runner 仍返回 `Vec<TaskProgressEvent>`，所以 CLI-0B 建立的是 transport
-接缝，不代表逐阶段流式执行已经完成。首个长任务 CLI 命令开放前仍必须满足：
+当前 install、uninstall、reinstall 和 recovery runner 已在任务推进时逐阶段调用 observer，同时继续
+返回 `Vec<TaskProgressEvent>` 兼容既有调用方。Tauri adapter 通过该 observer 完成领域事件到
+Task Log、App Log 和 Tauri event 的转换，wire DTO 未变化；CLI adapter 则将同一领域事件转换为
+`hmm.cli/v1` JSONL。
 
-- runner 在任务实际推进时调用 observer，而不是只在结束后返回事件集合。
 - `TaskManager` 仍拥有 task 状态迁移和取消事实。
 - Tauri observer 继续负责转换安全 DTO、写 Task Log、发送 `hmm://task-progress`。
-- CLI observer 负责写 JSONL stdout，并复用同一个 Task Log writer。
+- CLI observer 从 0 单调分配 `sequence`，先复用同一个 Task Log writer，再 flush JSONL stdout。
+- CLI observer 拒绝第二个 terminal 和 terminal 后事件；无效事件不消耗序号。
+- 取消 terminal 由发起取消的 transport 发送，runner 只停止后续安全阶段，不能再补第二个 cancelled。
 - 测试 observer 收集事件，用于顺序、terminal event 和脱敏断言。
 - Audit Log 仍由提交服务和高风险用例写入，不能由 CLI 文案代替。
 
@@ -596,6 +611,7 @@ seal 和 start；preview token 与 plan token 只在内存传递，不作为参�
 - 每个已启动任务恰好有一个 terminal event：`completed`、`failed` 或 `cancelled`。
 - `phase` 与应用层稳定 phase 一致。
 - `current`、`total`、`result` 和 `error` 仅在语义适用时出现，缺席时省略。
+- task event 的 `error` 仅允许 `{ "code": "<stable_code>" }`，且只出现在 `failed` 事件。
 - `message` 自由文本、原始 error 和 `result_ref` 不进入 JSONL。
 - Ctrl+C 请求协作式取消；CLI 等待任务到达 terminal state 后退出。再次中断可强制退出，但必须在
   stderr 提示“状态需通过 recovery/status 重新确认”，不能伪造 cancelled。
@@ -782,9 +798,10 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 
 ### CLI-2A/2B/2C：Observer、Sandbox 写许可与单项 E2E
 
-- CLI-2A 先让 runner 逐阶段调用 observer，锁定 task id、sequence、phase、取消和唯一 terminal
-  event；不新增写命令。
-- CLI-2B 再建立 Sandbox marker/capability、canonical containment 与写侧重验。
+- CLI-2A 已让 install/uninstall/reinstall/recovery runner 逐阶段调用 observer，并锁定 task id、
+  sequence、phase、取消 ownership、唯一 terminal、Task Log 顺序和脱敏 JSONL；未新增写命令。
+- CLI-2B 已建立 Sandbox marker/capability、canonical containment、目录身份与写侧重验；尚未新增
+  CLI 写命令。
 - CLI-2C 接入人工 archive/T17 external import fixture、install/uninstall/reinstall/recovery apply，
   并覆盖失败注入、取消、重启恢复和 sentinel containment。
 - backup create 和 diagnostics export 仍按独立安全切片开放，不能被生命周期写许可自动解锁。

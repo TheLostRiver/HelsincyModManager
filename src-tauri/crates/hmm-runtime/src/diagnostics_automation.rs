@@ -63,13 +63,12 @@ impl ReadOnlyDiagnosticsAutomation {
     pub fn from_environment(
         environment: &RuntimeEnvironment,
     ) -> Result<Self, ReadOnlyDiagnosticsAutomationError> {
-        let app_data_dir = match environment {
-            RuntimeEnvironment::Production => production_app_data_dir()
-                .ok_or(ReadOnlyDiagnosticsAutomationError::AppDataUnavailable)?,
-            RuntimeEnvironment::Sandbox { data_dir } => {
-                validate_sandbox_log_paths(data_dir)?;
-                data_dir.clone()
-            }
+        let app_data_dir = if let Some(data_dir) = environment.sandbox_data_dir() {
+            validate_sandbox_log_paths(data_dir)?;
+            data_dir.to_path_buf()
+        } else {
+            production_app_data_dir()
+                .ok_or(ReadOnlyDiagnosticsAutomationError::AppDataUnavailable)?
         };
         let text_log_reader = Arc::new(FileSystemTextLogReader::new(app_data_dir.clone()));
         let audit_log_reader = Arc::new(FileSystemAuditLogReader::new(app_data_dir));

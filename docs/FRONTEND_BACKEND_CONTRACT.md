@@ -579,7 +579,6 @@ TaskProgressEventDto
 | `install` | `install.reinstall.rollback.processing` | 同步失败后正在恢复 pre-reinstall revision |
 | `install` | `install.reinstall.completed` | candidate manifest entry set 已固化并完成受控收尾 |
 | `install` | `install.reinstall.failed` | 重装失败，或已越过 commit point 但仍需受控 reconciliation |
-| `install` | `install.reinstall.cancelled` | 任务在 queued/prepare 安全点取消；commit 开始后不抢占式中断 |
 | `install` | `install.recovery.queued` | 恢复动作任务已登记，等待后续执行 |
 | `install` | `install.recovery.planning` | 后端正在等待写锁并准备受控恢复动作 |
 | `install` | `install.recovery.processing` | 后端正在执行受写锁保护的恢复动作 |
@@ -605,6 +604,9 @@ TaskProgressEventDto
   专用终态；前端必须等待同一 task 的 `external_import.import.cancelled`。failed/cancelled 的聚合计数不能用于
   推断 partial success。
 - 取消使用 `cancel_task(taskId)`；当前实现支持取消 `queued` 和 `running` 任务。running prepare 不会强制杀线程；zip 解压、预览图候选扫描和预览图 processor 会在后端 cancellation token 检查点协作式停止。图片库单次解码/编码调用本身仍不是抢占式中断；install commit 已开始后不做抢占式中断，必须依赖 backup / rollback / manifest 链路保持可恢复状态。T17 scan 在目录/XML/hash 阶段可取消；Slice 3 import 在物化、sandbox 分析和 chunk 间安全点可取消，已成功项保留、未开始项以分页结果表达。写入 preview 或 batch terminal state 的短 SQLite 事务进入取消屏障后以后端终态为准。通用 `mod_import.cancelled` 事件可能先由 `cancel_task` 发出，runner 随后会发送带同一 `taskId` 的 `external_import.scan.cancelled` 或 `external_import.import.cancelled` 终态。
+- install/uninstall/reinstall/recovery/retarget 共用 `install.cancelled` 作为 transport 发出的取消 terminal。runner
+  在观察到 `TaskManager` 的取消事实后只停止后续安全阶段，不再发送第二个 cancelled；commit 取消屏障
+  生效后以后端完成或失败终态为准。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 

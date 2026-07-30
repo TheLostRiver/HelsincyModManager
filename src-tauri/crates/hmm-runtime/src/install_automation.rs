@@ -255,17 +255,17 @@ impl ReadOnlyInstallAutomation {
     pub fn from_environment(
         environment: &RuntimeEnvironment,
     ) -> Result<Self, ReadOnlyInstallAutomationError> {
-        let (app_data_dir, sandbox_fixture_root) = match environment {
-            RuntimeEnvironment::Production => (
-                production_app_data_dir()
-                    .ok_or(ReadOnlyInstallAutomationError::AppDataUnavailable)?,
-                None,
-            ),
-            RuntimeEnvironment::Sandbox { data_dir } => {
+        let (app_data_dir, sandbox_fixture_root) =
+            if let Some(data_dir) = environment.sandbox_data_dir() {
                 validate_sandbox_storage_paths(data_dir)?;
-                (data_dir.clone(), Some(data_dir.join("fixtures")))
-            }
-        };
+                (data_dir.to_path_buf(), Some(data_dir.join("fixtures")))
+            } else {
+                (
+                    production_app_data_dir()
+                        .ok_or(ReadOnlyInstallAutomationError::AppDataUnavailable)?,
+                    None,
+                )
+            };
 
         let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
             JsonGameConfigRepository::new(app_data_dir.join("config").join("games.json")),

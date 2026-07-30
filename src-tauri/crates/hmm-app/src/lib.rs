@@ -192,7 +192,8 @@ pub use support_diagnostics::{
     MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
 };
 pub use task_manager::{
-    TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot, TaskStatus,
+    TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskSnapshot,
+    TaskStatus,
 };
 
 pub fn app_name() -> &'static str {

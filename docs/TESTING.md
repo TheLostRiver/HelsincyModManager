@@ -309,6 +309,7 @@ cargo test -p hmm-runtime game_automation --no-fail-fast
 cargo test -p hmm-runtime install_automation --no-fail-fast
 cargo test -p hmm-runtime backup_automation --no-fail-fast
 cargo test -p hmm-runtime diagnostics_automation --no-fail-fast
+cargo test -p hmm-runtime sandbox_write --no-fail-fast
 cargo test -p hmm-infra read_only_open --no-fail-fast
 cargo test -p hmm-infra read_only_mod_import_catalog --no-fail-fast
 cargo test -p hmm-cli --no-fail-fast
@@ -423,6 +424,20 @@ CLI-1B backup/diagnostics 子切片使用以下人工树：
 - 普通自动化不得执行 Production backup/diagnostics 命令，不读取真实 AppData/日志/存档，也不得
   inspect/register/update/start/delete 真实 Windows Scheduled Task。Production 行为由依赖边界、
   Sandbox 等价 composition 和 disposable VM 人工 gate 分开验证。
+
+CLI-2B Sandbox 写许可测试只使用测试进程创建的临时根，必须确认：
+
+- `runtime status` 和 CLI-1 只读命令仍不创建 marker；只有显式申请 write capability 时，空根才创建
+  固定 `.hmm-sandbox.json` v1 marker。
+- 非空无 marker、marker schema/内容篡改、marker link、Sandbox 根 link/junction/reparse point 均
+  fail closed；Production 没有 capability 构造路径。
+- capability 保留 no-follow 根目录句柄、canonical root 和稳定目录身份。Windows 必须阻止存活期间
+  的祖先替换；允许 rename 的平台必须在重验时返回稳定 `sandbox_root_replaced`。
+- 本次操作使用的 app-data、game、save、backup 根逐项执行 lexical + canonical containment；
+  任一根在隔离范围外或经过 link/junction/reparse point 时整体拒绝。
+- 正向、拒绝、marker 篡改、根替换和 link/junction fixture 都验证 Sandbox 外 sentinel bytes 不变。
+- 测试不得读取真实 Steam、AppData、游戏、存档、日志或 Scheduled Task；marker/capability 不得被
+  表述为 Production admission，也不得自动解锁 backup create 或 diagnostics export。
 
 CLI-0B shared composition 的聚焦入口：
 

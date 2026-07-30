@@ -123,7 +123,7 @@ pub struct TaskEventEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<CliErrorEnvelope>,
+    pub error: Option<TaskEventError>,
 }
 
 impl TaskEventEnvelope {
@@ -148,6 +148,18 @@ impl TaskEventEnvelope {
             result: None,
             error: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskEventError {
+    pub code: String,
+}
+
+impl TaskEventError {
+    pub fn new(code: impl Into<String>) -> Self {
+        Self { code: code.into() }
     }
 }
 

@@ -10,9 +10,10 @@ use crate::{
     InstallCommitResult, InstallCommitService, InstallPlanningError, InstallPlanningService,
     InstallRecoveryActionError, InstallRecoveryActionKind, InstallRecoveryActionRequest,
     InstallRecoveryActionResult, InstallRecoveryActionService, TaskKind, TaskManager,
-    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus, UninstallModError,
-    UninstallModRequest, UninstallModResult, UninstallModService,
+    TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted, TaskStatus,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
 };
+use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
 const INSTALL_COMMIT_PROCESSING_PHASE: &str = "install.commit.processing";
@@ -375,11 +376,26 @@ impl InstallTaskRunner {
         task_id: &str,
         request: StartInstallTaskRequest,
     ) -> Result<Vec<TaskProgressEvent>, InstallTaskRunError> {
+        let observer = noop_task_progress_observer();
+        self.run_install_task_with_observer(task_id, request, &observer)
+    }
+
+    pub fn run_install_task_with_observer<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: StartInstallTaskRequest,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, InstallTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(InstallTaskRunError { events: Vec::new() });
         }
 
-        let mut events = vec![running_event(task_id, INSTALL_PLAN_BUILDING_PHASE)];
+        let mut events = Vec::new();
+        observe_task_progress(
+            &mut events,
+            observer,
+            running_event(task_id, INSTALL_PLAN_BUILDING_PHASE),
+        );
         let plan =
             match self
                 .planner
@@ -390,7 +406,9 @@ impl InstallTaskRunner {
                 }) {
                 Ok(plan) => plan,
                 Err(_) => {
-                    return Err(self.fail_with_audit(task_id, &request, events, "planning", 0))
+                    return Err(self.fail_with_audit(
+                        task_id, &request, events, observer, "planning", 0,
+                    ))
                 }
             };
         let action_count = plan.actions.len();
@@ -404,7 +422,14 @@ impl InstallTaskRunner {
             .lock_for(&request.game_id, &request.profile_id);
         let commit_result = {
             let _guard = write_lock.lock().map_err(|_| {
-                self.fail_with_audit(task_id, &request, events.clone(), "lock", action_count)
+                self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events.clone(),
+                    observer,
+                    "lock",
+                    action_count,
+                )
             })?;
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
@@ -414,7 +439,11 @@ impl InstallTaskRunner {
                 .ensure_write_allowed(&request.game_id, &request.profile_id)
             {
                 Ok(()) => {
-                    events.push(running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE));
+                    observe_task_progress(
+                        &mut events,
+                        observer,
+                        running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE),
+                    );
                     Ok(self
                         .committer
                         .commit_install_plan(ImportedModInstallCommitRequest {
@@ -434,6 +463,7 @@ impl InstallTaskRunner {
                     task_id,
                     &request,
                     events,
+                    observer,
                     error.failure_phase(),
                     action_count,
                 ))
@@ -443,34 +473,53 @@ impl InstallTaskRunner {
         match commit_result {
             Ok(_) => self.record_audit(task_id, &request, "success", action_count, None),
             Err(_) => {
-                return Err(self.fail_with_audit(task_id, &request, events, "commit", action_count))
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    "commit",
+                    action_count,
+                ))
             }
         }
 
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                events.push(TaskProgressEvent::new(
-                    task.task_id,
-                    task.kind,
-                    task.status,
-                    INSTALL_COMPLETED_PHASE,
-                ));
+                observe_task_progress(
+                    &mut events,
+                    observer,
+                    TaskProgressEvent::new(
+                        task.task_id,
+                        task.kind,
+                        task.status,
+                        INSTALL_COMPLETED_PHASE,
+                    ),
+                );
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
                 Ok(events)
             }
             Err(_) => {
-                Err(self.fail_with_audit(task_id, &request, events, "complete", action_count))
+                Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    "complete",
+                    action_count,
+                ))
             }
         }
     }
 
-    fn fail_with_audit(
+    fn fail_with_audit<O: TaskProgressObserver + ?Sized>(
         &self,
         task_id: &str,
         request: &StartInstallTaskRequest,
         mut events: Vec<TaskProgressEvent>,
+        observer: &O,
         phase: &str,
         action_count: usize,
     ) -> InstallTaskRunError {
@@ -485,7 +534,7 @@ impl InstallTaskRunner {
             return InstallTaskRunError { events };
         }
         let error_code = format!("{INSTALL_FAILED_ERROR}:{phase}");
-        events.push(failed_event(task_id, phase));
+        observe_task_progress(&mut events, observer, failed_event(task_id, phase));
         self.record_audit(task_id, request, "failure", action_count, Some(&error_code));
         InstallTaskRunError { events }
     }
@@ -580,17 +629,39 @@ impl UninstallTaskRunner {
         task_id: &str,
         request: StartUninstallTaskRequest,
     ) -> Result<Vec<TaskProgressEvent>, UninstallTaskRunError> {
+        let observer = noop_task_progress_observer();
+        self.run_uninstall_task_with_observer(task_id, request, &observer)
+    }
+
+    pub fn run_uninstall_task_with_observer<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: StartUninstallTaskRequest,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, UninstallTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(UninstallTaskRunError { events: Vec::new() });
         }
 
-        let mut events = vec![running_event(task_id, INSTALL_UNINSTALL_PROCESSING_PHASE)];
+        let mut events = Vec::new();
+        observe_task_progress(
+            &mut events,
+            observer,
+            running_event(task_id, INSTALL_UNINSTALL_PROCESSING_PHASE),
+        );
         let write_lock = self
             .write_locks
             .lock_for(&request.game_id, &request.profile_id);
         let uninstall_result = {
             let _guard = write_lock.lock().map_err(|_| {
-                self.fail_uninstall_with_audit(task_id, &request, events.clone(), "lock", None)
+                self.fail_uninstall_with_audit(
+                    task_id,
+                    &request,
+                    events.clone(),
+                    observer,
+                    "lock",
+                    None,
+                )
             })?;
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
@@ -610,6 +681,7 @@ impl UninstallTaskRunner {
                     task_id,
                     &request,
                     events,
+                    observer,
                     error.failure_phase(),
                     None,
                 ))
@@ -623,6 +695,7 @@ impl UninstallTaskRunner {
                     task_id,
                     &request,
                     events,
+                    observer,
                     "uninstall",
                     None,
                 ))
@@ -632,12 +705,16 @@ impl UninstallTaskRunner {
         self.record_uninstall_audit(task_id, &request, "success", Some(&result), None);
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                events.push(TaskProgressEvent::new(
-                    task.task_id,
-                    task.kind,
-                    task.status,
-                    INSTALL_UNINSTALL_COMPLETED_PHASE,
-                ));
+                observe_task_progress(
+                    &mut events,
+                    observer,
+                    TaskProgressEvent::new(
+                        task.task_id,
+                        task.kind,
+                        task.status,
+                        INSTALL_UNINSTALL_COMPLETED_PHASE,
+                    ),
+                );
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
@@ -647,17 +724,19 @@ impl UninstallTaskRunner {
                 task_id,
                 &request,
                 events,
+                observer,
                 "complete",
                 Some(&result),
             )),
         }
     }
 
-    fn fail_uninstall_with_audit(
+    fn fail_uninstall_with_audit<O: TaskProgressObserver + ?Sized>(
         &self,
         task_id: &str,
         request: &StartUninstallTaskRequest,
         mut events: Vec<TaskProgressEvent>,
+        observer: &O,
         phase: &str,
         result: Option<&UninstallModResult>,
     ) -> UninstallTaskRunError {
@@ -672,7 +751,7 @@ impl UninstallTaskRunner {
             return UninstallTaskRunError { events };
         }
         let error_code = format!("{INSTALL_UNINSTALL_FAILED_ERROR}:{phase}");
-        events.push(failed_uninstall_event(task_id, phase));
+        observe_task_progress(&mut events, observer, failed_uninstall_event(task_id, phase));
         self.record_uninstall_audit(task_id, request, "failure", result, Some(&error_code));
         UninstallTaskRunError { events }
     }
@@ -760,11 +839,26 @@ impl RecoveryActionTaskRunner {
         task_id: &str,
         request: StartRecoveryActionTaskRequest,
     ) -> Result<Vec<TaskProgressEvent>, RecoveryActionTaskRunError> {
+        let observer = noop_task_progress_observer();
+        self.run_recovery_action_task_with_observer(task_id, request, &observer)
+    }
+
+    pub fn run_recovery_action_task_with_observer<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: StartRecoveryActionTaskRequest,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, RecoveryActionTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(RecoveryActionTaskRunError { events: Vec::new() });
         }
 
-        let mut events = vec![running_event(task_id, INSTALL_RECOVERY_PLANNING_PHASE)];
+        let mut events = Vec::new();
+        observe_task_progress(
+            &mut events,
+            observer,
+            running_event(task_id, INSTALL_RECOVERY_PLANNING_PHASE),
+        );
         let write_lock = self
             .write_locks
             .lock_for(&request.game_id, &request.profile_id);
@@ -774,6 +868,7 @@ impl RecoveryActionTaskRunner {
                     task_id,
                     &request,
                     events.clone(),
+                    observer,
                     "lock",
                     None,
                 )
@@ -786,17 +881,26 @@ impl RecoveryActionTaskRunner {
 
         let result = match action_result {
             Ok(result) => {
-                events.push(running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE));
+                observe_task_progress(
+                    &mut events,
+                    observer,
+                    running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE),
+                );
                 result
             }
             Err(error) => {
                 if recovery_action_failed_phase(&error) == "processing" {
-                    events.push(running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE));
+                    observe_task_progress(
+                        &mut events,
+                        observer,
+                        running_event(task_id, INSTALL_RECOVERY_PROCESSING_PHASE),
+                    );
                 }
                 return Err(self.fail_recovery_action_with_audit(
                     task_id,
                     &request,
                     events,
+                    observer,
                     recovery_action_failed_phase(&error),
                     None,
                 ));
@@ -806,12 +910,16 @@ impl RecoveryActionTaskRunner {
         self.record_recovery_action_audit(task_id, &request, "success", Some(&result));
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                events.push(TaskProgressEvent::new(
-                    task.task_id,
-                    task.kind,
-                    task.status,
-                    INSTALL_RECOVERY_COMPLETED_PHASE,
-                ));
+                observe_task_progress(
+                    &mut events,
+                    observer,
+                    TaskProgressEvent::new(
+                        task.task_id,
+                        task.kind,
+                        task.status,
+                        INSTALL_RECOVERY_COMPLETED_PHASE,
+                    ),
+                );
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
@@ -821,17 +929,19 @@ impl RecoveryActionTaskRunner {
                 task_id,
                 &request,
                 events,
+                observer,
                 "complete",
                 Some(&result),
             )),
         }
     }
 
-    fn fail_recovery_action_with_audit(
+    fn fail_recovery_action_with_audit<O: TaskProgressObserver + ?Sized>(
         &self,
         task_id: &str,
         request: &StartRecoveryActionTaskRequest,
         mut events: Vec<TaskProgressEvent>,
+        observer: &O,
         phase: &str,
         result: Option<&InstallRecoveryActionResult>,
     ) -> RecoveryActionTaskRunError {
@@ -840,7 +950,11 @@ impl RecoveryActionTaskRunner {
         }
 
         let _ = self.task_manager.fail_task(task_id);
-        events.push(failed_recovery_action_event(task_id, phase));
+        observe_task_progress(
+            &mut events,
+            observer,
+            failed_recovery_action_event(task_id, phase),
+        );
         self.record_recovery_action_audit(task_id, request, "failure", result);
         RecoveryActionTaskRunError { events }
     }
@@ -1115,10 +1229,12 @@ mod tests {
             Arc::new(FixedClock),
         );
 
+        let install_observer = noop_task_progress_observer();
         let install_error = install_runner.fail_with_audit(
             &install_task.task_id,
             &sample_request(),
             Vec::new(),
+            &install_observer,
             "planning",
             0,
         );
@@ -1146,10 +1262,12 @@ mod tests {
             Arc::new(FixedClock),
         );
 
+        let uninstall_observer = noop_task_progress_observer();
         let uninstall_error = uninstall_runner.fail_uninstall_with_audit(
             &uninstall_task.task_id,
             &sample_uninstall_request(),
             Vec::new(),
+            &uninstall_observer,
             "uninstall",
             None,
         );
@@ -1222,6 +1340,66 @@ mod tests {
         assert!(!serialized.contains("nativePC/models/player.mod3"));
         assert!(!serialized.contains("C:/"));
         assert!(!serialized.contains('\\'));
+    }
+
+    #[test]
+    fn run_install_task_with_observer_streams_events_and_ignores_observer_failure() {
+        #[derive(Default)]
+        struct FailingObserver {
+            phases: Mutex<Vec<String>>,
+        }
+
+        impl TaskProgressObserver for FailingObserver {
+            type Error = &'static str;
+
+            fn observe(&self, event: &TaskProgressEvent) -> Result<(), Self::Error> {
+                self.phases
+                    .lock()
+                    .expect("observer lock")
+                    .push(event.phase.clone());
+                Err("fixture observer failure")
+            }
+        }
+
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("install task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            committer.clone(),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+        );
+        let observer = FailingObserver::default();
+
+        let events = runner
+            .run_install_task_with_observer(&task.task_id, sample_request(), &observer)
+            .expect("observer failure does not fail install");
+
+        let phases = observer.phases.lock().expect("observer lock").clone();
+        assert_eq!(
+            phases,
+            vec![
+                "install.plan.building",
+                "install.commit.processing",
+                "install.completed"
+            ]
+        );
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.phase.as_str())
+                .collect::<Vec<_>>(),
+            phases.iter().map(String::as_str).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+        assert_eq!(committer.take_profiles(), vec!["default".to_owned()]);
     }
 
     #[test]

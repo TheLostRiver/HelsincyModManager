@@ -7,7 +7,7 @@ use crate::dto::{
     StartRecoveryActionTaskRequestDto, StartUninstallTaskRequestDto, TaskStartedDto,
 };
 use crate::state::AppState;
-use crate::task_events::emit_task_progress;
+use crate::task_events::{emit_task_progress, TauriTaskProgressObserver};
 #[cfg(test)]
 use hmm_app::InstallRecoveryStatus;
 use hmm_app::{
@@ -194,14 +194,12 @@ fn spawn_recovery_action_runner(
     request: StartRecoveryActionTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let events = match runner.run_recovery_action_task(&task_id, request) {
-            Ok(events) => events,
-            Err(error) => error.events,
-        };
-
-        for event in events {
-            let _ = emit_task_progress(&app_handle, event);
-        }
+        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let _ = runner.run_recovery_action_task_with_observer(
+            &task_id,
+            request,
+            &observer,
+        );
     });
 }
 
@@ -212,14 +210,8 @@ fn spawn_uninstall_runner(
     request: StartUninstallTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let events = match runner.run_uninstall_task(&task_id, request) {
-            Ok(events) => events,
-            Err(error) => error.events,
-        };
-
-        for event in events {
-            let _ = emit_task_progress(&app_handle, event);
-        }
+        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let _ = runner.run_uninstall_task_with_observer(&task_id, request, &observer);
     });
 }
 
@@ -230,14 +222,8 @@ fn spawn_install_runner(
     request: StartInstallTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let events = match runner.run_install_task(&task_id, request) {
-            Ok(events) => events,
-            Err(error) => error.events,
-        };
-
-        for event in events {
-            let _ = emit_task_progress(&app_handle, event);
-        }
+        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let _ = runner.run_install_task_with_observer(&task_id, request, &observer);
     });
 }
 
