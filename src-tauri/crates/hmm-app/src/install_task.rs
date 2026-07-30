@@ -2,9 +2,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId};
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, ReinstallRecoveryTransactionRepository};
+use hmm_ports::{
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
+    ReinstallRecoveryTransactionRepository,
+};
 use thiserror::Error;
 
+use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 use crate::{
     BuildImportedModInstallPlanRequest, CommitInstallPlanRequest, InstallCommitError,
     InstallCommitResult, InstallCommitService, InstallPlanningError, InstallPlanningService,
@@ -13,7 +17,6 @@ use crate::{
     TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted, TaskStatus,
     UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
 };
-use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
 const INSTALL_COMMIT_PROCESSING_PHASE: &str = "install.commit.processing";
@@ -157,6 +160,8 @@ pub enum InstallWriteAdmissionError {
     RecoveryUnavailable,
     #[error("reinstall recovery is pending")]
     RecoveryPending,
+    #[error("write safety admission rejected the operation")]
+    SafetyRejected,
 }
 
 impl InstallWriteAdmissionError {
@@ -164,6 +169,7 @@ impl InstallWriteAdmissionError {
         match self {
             Self::RecoveryUnavailable => "recovery_unavailable",
             Self::RecoveryPending => "recovery_pending",
+            Self::SafetyRejected => "write_safety_rejected",
         }
     }
 }
@@ -176,7 +182,7 @@ pub trait InstallWriteAdmission: Send + Sync {
     ) -> Result<(), InstallWriteAdmissionError>;
 }
 
-struct AllowInstallWriteAdmission;
+pub(crate) struct AllowInstallWriteAdmission;
 
 impl InstallWriteAdmission for AllowInstallWriteAdmission {
     fn ensure_write_allowed(
@@ -254,6 +260,7 @@ pub struct RecoveryActionTaskRunner {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
+    write_admission: Arc<dyn InstallWriteAdmission>,
 }
 
 impl InstallTaskService {
@@ -406,9 +413,9 @@ impl InstallTaskRunner {
                 }) {
                 Ok(plan) => plan,
                 Err(_) => {
-                    return Err(self.fail_with_audit(
-                        task_id, &request, events, observer, "planning", 0,
-                    ))
+                    return Err(
+                        self.fail_with_audit(task_id, &request, events, observer, "planning", 0)
+                    )
                 }
             };
         let action_count = plan.actions.len();
@@ -501,16 +508,14 @@ impl InstallTaskRunner {
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
                 Ok(events)
             }
-            Err(_) => {
-                Err(self.fail_with_audit(
-                    task_id,
-                    &request,
-                    events,
-                    observer,
-                    "complete",
-                    action_count,
-                ))
-            }
+            Err(_) => Err(self.fail_with_audit(
+                task_id,
+                &request,
+                events,
+                observer,
+                "complete",
+                action_count,
+            )),
         }
     }
 
@@ -562,13 +567,16 @@ impl InstallTaskRunner {
         }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis,
-            category: "install".to_owned(),
-            operation: "commit_imported_mod".to_owned(),
-            result: result.to_owned(),
-            fields,
-        }, policy);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis,
+                category: "install".to_owned(),
+                operation: "commit_imported_mod".to_owned(),
+                result: result.to_owned(),
+                fields,
+            },
+            policy,
+        );
     }
 }
 
@@ -751,7 +759,11 @@ impl UninstallTaskRunner {
             return UninstallTaskRunError { events };
         }
         let error_code = format!("{INSTALL_UNINSTALL_FAILED_ERROR}:{phase}");
-        observe_task_progress(&mut events, observer, failed_uninstall_event(task_id, phase));
+        observe_task_progress(
+            &mut events,
+            observer,
+            failed_uninstall_event(task_id, phase),
+        );
         self.record_uninstall_audit(task_id, request, "failure", result, Some(&error_code));
         UninstallTaskRunError { events }
     }
@@ -792,13 +804,16 @@ impl UninstallTaskRunner {
         }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis,
-            category: "install".to_owned(),
-            operation: "uninstall_mod".to_owned(),
-            result: result.to_owned(),
-            fields,
-        }, policy);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis,
+                category: "install".to_owned(),
+                operation: "uninstall_mod".to_owned(),
+                result: result.to_owned(),
+                fields,
+            },
+            policy,
+        );
     }
 }
 
@@ -825,12 +840,32 @@ impl RecoveryActionTaskRunner {
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
     ) -> Self {
+        Self::with_write_coordination(
+            task_manager,
+            action_executor,
+            audit_log,
+            clock,
+            write_locks,
+            Arc::new(AllowInstallWriteAdmission),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_write_coordination(
+        task_manager: Arc<TaskManager>,
+        action_executor: Arc<dyn InstallRecoveryActionExecutor>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+        write_admission: Arc<dyn InstallWriteAdmission>,
+    ) -> Self {
         Self {
             task_manager,
             action_executor,
             audit_log,
             clock,
             write_locks,
+            write_admission,
         }
     }
 
@@ -876,6 +911,19 @@ impl RecoveryActionTaskRunner {
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 return Ok(events);
             }
+            if let Err(error) = self
+                .write_admission
+                .ensure_write_allowed(&request.game_id, &request.profile_id)
+            {
+                return Err(self.fail_recovery_action_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    error.failure_phase(),
+                    None,
+                ));
+            }
             self.action_executor.run_recovery_action(request.clone())
         };
 
@@ -907,7 +955,7 @@ impl RecoveryActionTaskRunner {
             }
         };
 
-        self.record_recovery_action_audit(task_id, &request, "success", Some(&result));
+        self.record_recovery_action_audit(task_id, &request, "success", Some(&result), None);
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
                 observe_task_progress(
@@ -950,12 +998,13 @@ impl RecoveryActionTaskRunner {
         }
 
         let _ = self.task_manager.fail_task(task_id);
+        let error_code = format!("{INSTALL_RECOVERY_FAILED_ERROR}:{phase}");
         observe_task_progress(
             &mut events,
             observer,
             failed_recovery_action_event(task_id, phase),
         );
-        self.record_recovery_action_audit(task_id, request, "failure", result);
+        self.record_recovery_action_audit(task_id, request, "failure", result, Some(&error_code));
         RecoveryActionTaskRunError { events }
     }
 
@@ -965,6 +1014,7 @@ impl RecoveryActionTaskRunner {
         request: &StartRecoveryActionTaskRequest,
         result: &str,
         action_result: Option<&InstallRecoveryActionResult>,
+        error_code: Option<&str>,
     ) {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let mut fields = BTreeMap::new();
@@ -996,15 +1046,21 @@ impl RecoveryActionTaskRunner {
                 .unwrap_or_default()
                 .to_string(),
         );
+        if let Some(error_code) = error_code {
+            fields.insert("error_code".to_owned(), error_code.to_owned());
+        }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis,
-            category: "install".to_owned(),
-            operation: recovery_action_operation(request.action_kind).to_owned(),
-            result: result.to_owned(),
-            fields,
-        }, policy);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis,
+                category: "install".to_owned(),
+                operation: recovery_action_operation(request.action_kind).to_owned(),
+                result: result.to_owned(),
+                fields,
+            },
+            policy,
+        );
     }
 }
 

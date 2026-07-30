@@ -84,9 +84,10 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 
 - Production CLI 禁止 `--data-dir`。当前只开放 runtime status、game
   status/scan/validate/prerequisites、install plan/status/recovery scan/preview、
-  backup list/background status 与 diagnostics snapshot 读取；install apply/uninstall/reinstall/
-  recovery apply、backup create/restore/background enable|disable 和 diagnostics export 继续在
-  parser 边界不可达。
+  backup list/background status 与 diagnostics snapshot 读取。install apply/uninstall/reinstall/
+  recovery apply 虽有稳定 parser contract，但会先在 CLI policy 层拒绝 Production，runtime
+  `SandboxLifecycleAutomation` 还会再次拒绝；backup create/restore/background enable|disable 和
+  diagnostics export 继续在 parser 边界不可达。
 - Sandbox game 命令只读取显式数据根下的 `config` 和 `fixtures`；保存游戏目录、Steam library 与
   discovery candidate 必须通过词法和 canonical containment。
 - `libraryfolders.vdf` 中声明的隔离根外 library 必须在读取 app manifest 前拒绝。
@@ -119,6 +120,17 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - capability 保留 no-follow 根句柄、canonical root 与目录身份，并逐项重验 app-data、game、save、
   backup 根。symlink、junction、reparse point、marker 篡改、祖先替换或 Sandbox 外根全部 fail
   closed。该 capability 不替代 InstallPlan、backup、manifest、rollback/recovery、Audit Log 或写锁。
+- CLI-2C 只为 ready 的 Sandbox install/uninstall/reinstall/recovery preview 签发 5 分钟 opaque
+  token。提交同时要求 `--commit --yes`；token 绑定 command、环境、受控 ID 和计划/manifest/recovery
+  结构化状态摘要，不包含路径，并在装配写 runtime 前和 game/profile 写锁内重建事实后各验证一次。
+  manifest/recovery record 内容变化即使聚合计数相同也会使旧 token 失效；blocked preview 不签发
+  token。
+- 四条生命周期写命令继续复用既有 application runner、InstallPlan、backup、原子 manifest、
+  rollback/recovery、Task/Audit Log 与共享写锁。CLI 不接受 target/source path、manifest、backup ref
+  或 recovery ref，也不提供 `--force`。
+- CLI 首次 Ctrl+C 通过 `TaskManager` 请求协作式取消；只有确认取消才发唯一 cancelled terminal 并
+  返回 130。第二次中断强制退出前提示通过 recovery/status 重验状态；commit barrier 生效后不伪造
+  cancelled。
 - 自动测试只使用 temp/fake/人工 fixture，不执行 Production game 命令或读取测试机真实 Steam、
   AppData、游戏、日志和存档，也不查询、注册、更新、启动或删除真实 Windows Scheduled Task。
 

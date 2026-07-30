@@ -1,20 +1,18 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use hmm_core::{
-    FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReplacementTargetId,
-};
+use hmm_core::{FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReplacementTargetId};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
 use crate::reinstall::{PreparedReinstall, ReinstallPreparation};
-use crate::{
-    GameProfileWriteLockRegistry, ReinstallCommitError, ReinstallCommitPhase,
-    ReinstallCommitResult, ReinstallCommitService, ReinstallPreviewError, ReinstallPreviewRequest,
-    ReinstallPreviewService, ReinstallTargetCounts, RetargetReinstallRequest, TaskKind,
-    TaskManager, TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted,
-    TaskStatus,
-};
 use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
+use crate::{
+    GameProfileWriteLockRegistry, InstallWriteAdmission, ReinstallCommitError,
+    ReinstallCommitPhase, ReinstallCommitResult, ReinstallCommitService, ReinstallPreviewError,
+    ReinstallPreviewRequest, ReinstallPreviewService, ReinstallTargetCounts,
+    RetargetReinstallRequest, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent,
+    TaskProgressObserver, TaskStarted, TaskStatus,
+};
 
 const PLAN_BUILDING_PHASE: &str = "install.reinstall.plan.building";
 const PREFLIGHT_PROCESSING_PHASE: &str = "install.reinstall.preflight.processing";
@@ -287,6 +285,7 @@ pub struct ReinstallTaskRunner<E: ReinstallTaskExecutor> {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
+    write_admission: Arc<dyn InstallWriteAdmission>,
 }
 
 impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
@@ -312,12 +311,32 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
     ) -> Self {
+        Self::with_write_coordination(
+            task_manager,
+            executor,
+            audit_log,
+            clock,
+            write_locks,
+            Arc::new(crate::install_task::AllowInstallWriteAdmission),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_write_coordination(
+        task_manager: Arc<TaskManager>,
+        executor: Arc<E>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_locks: Arc<GameProfileWriteLockRegistry>,
+        write_admission: Arc<dyn InstallWriteAdmission>,
+    ) -> Self {
         Self {
             task_manager,
             executor,
             audit_log,
             clock,
             write_locks,
+            write_admission,
         }
     }
 
@@ -337,7 +356,9 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
         let preview_request = request.preview_request();
-        self.run_task(task_id, &request, observer, || self.executor.prepare(preview_request))
+        self.run_task(task_id, &request, observer, || {
+            self.executor.prepare(preview_request)
+        })
     }
 
     fn run_task<R, F, O>(
@@ -419,6 +440,21 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             if self.is_cancelled(task_id) {
                 return Ok(events);
             }
+            if let Err(error) = self
+                .write_admission
+                .ensure_write_allowed(request.game_id(), request.profile_id())
+            {
+                return self.fail_with_audit(
+                    task_id,
+                    request,
+                    audit_context,
+                    events,
+                    observer,
+                    error.failure_phase(),
+                    "not_attempted",
+                    false,
+                );
+            }
             if self.task_manager.block_task_cancellation(task_id).is_err() {
                 if self.is_cancelled(task_id) {
                     return Ok(events);
@@ -465,12 +501,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 observe_task_progress(
                     &mut events,
                     observer,
-                    TaskProgressEvent::new(
-                        task.task_id,
-                        task.kind,
-                        task.status,
-                        COMPLETED_PHASE,
-                    ),
+                    TaskProgressEvent::new(task.task_id, task.kind, task.status, COMPLETED_PHASE),
                 );
                 self.record_audit(task_id, request, &audit_context, "success", None, None);
                 Ok(events)
@@ -546,10 +577,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
     ) {
         let mut fields = BTreeMap::new();
         fields.insert("task_id".to_owned(), task_id.to_owned());
-        fields.insert(
-            "game_id".to_owned(),
-            request.game_id().as_str().to_owned(),
-        );
+        fields.insert("game_id".to_owned(), request.game_id().as_str().to_owned());
         fields.insert(
             "profile_id".to_owned(),
             request.profile_id().as_str().to_owned(),
@@ -586,13 +614,16 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
-            category: "install".to_owned(),
-            operation: "reinstall_mod".to_owned(),
-            result: result.to_owned(),
-            fields,
-        }, policy);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
+                category: "install".to_owned(),
+                operation: "reinstall_mod".to_owned(),
+                result: result.to_owned(),
+                fields,
+            },
+            policy,
+        );
     }
 }
 

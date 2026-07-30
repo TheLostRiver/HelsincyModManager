@@ -16,12 +16,15 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+ctrlc.workspace = true
 hmm-runtime = { path = "../hmm-runtime" }
 hmm-ports = { path = "../hmm-ports" }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+hmm-core = { path = "../hmm-core" }
+hmm-infra = { path = "../hmm-infra" }
 rusqlite.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

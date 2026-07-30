@@ -122,6 +122,13 @@ root、VDF library、discovery candidate、install/backup state roots 和日志�
 canonical containment。Production 与 Sandbox 的所有只读命令都不创建 marker，也不签发写
 capability。
 
+CLI-2C 另外只在 Sandbox 开放 `hmm install apply|uninstall|reinstall` 与
+`hmm install recovery apply`。未携带完整 `--commit --yes` 时命令仍为 preview；提交时必须消费
+5 分钟 opaque lifecycle token。`SandboxLifecycleAutomation` 在构造写侧 runtime 前验证 token，
+runner 取得共享 game/profile 写锁后，再由 configured committer/admission 重建计划或
+manifest/recovery facts、重验 token 和 capability，之后才进入既有写入事务。Production 在 CLI
+policy 和 runtime composition 两层固定拒绝。
+
 CLI-2B 在 `hmm-runtime` 增加了 `SandboxWriteCapability`。只有显式 Sandbox 环境可以通过
 `RuntimeEnvironment::acquire_sandbox_write_capability` 申请；Production 没有 capability 构造路径。
 空 Sandbox 根会在申请时通过 no-follow 目录句柄创建固定 `.hmm-sandbox.json` v1 marker，非空根
@@ -130,7 +137,13 @@ CLI-2B 在 `hmm-runtime` 增加了 `SandboxWriteCapability`。只有显式 Sandb
 `SandboxWriteRoots` 对本次操作实际使用的 app-data、game、save、backup 根执行词法、canonical、
 symlink/junction/reparse-point containment，返回的 `SandboxWriteAdmission` 绑定原 capability
 生命周期。写侧可在安全阶段前重新调用 `revalidate`；Windows 通过打开句柄阻止祖先替换，其他平台
-在允许替换时通过目录身份变化 fail closed。该基础设施本身不开放 CLI 写命令。
+在允许替换时通过目录身份变化 fail closed。该能力只由明确接线的 Sandbox lifecycle composition
+消费，不自动开放备份、诊断或 Production 写入。
+
+CLI lifecycle adapter 复用 `TaskManager` 处理 Ctrl+C。首个 signal 可以在 runtime/task 建立前锁存，
+task 出现后请求协作式取消；确认取消时 observer 只发一个 `install.cancelled` terminal。第二个 signal
+允许以 130 强制退出，但明确提示调用 recovery/status 重新确认状态；不可抢占 commit 开始后，signal
+不能把成功或受控失败伪装成 cancelled。
 
 目标依赖方向：
 
@@ -144,9 +157,9 @@ backup worker --/       |--> hmm-app -------> hmm-ports
 ```
 
 `hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。Production 的 CLI
-写命令在跨进程 admission 完成前保持不可达。Sandbox marker、canonical containment 和进程内写许可
-已经落地，但具体写命令只有在复用完整 application service、InstallPlan、backup、manifest、
-rollback/recovery、Audit Log 和写锁后才能逐项开放。
+写命令在跨进程 admission 完成前保持不可达。Sandbox 单项 lifecycle 命令已经复用完整 application
+service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和写锁；其他写命令仍需按各自
+安全边界逐项开放。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 

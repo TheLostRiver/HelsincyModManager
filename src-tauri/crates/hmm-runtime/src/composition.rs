@@ -10,11 +10,11 @@ use hmm_app::{
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
-    InstallRecoverySummary, InstallTaskRunner, InstallTaskService,
-    InstalledReplacementReinstallResolution, LimitedPreviewImageProcessor,
-    ModDependencyGraphService, ModImportAnalysisService, ModImportPrepareService,
-    ModImportTaskRunner, ModImportTaskService, ModLibraryQueryService, ModLibraryService,
-    ModMetadataService, PlannedInitialRetargetInstall, PreparedReinstall,
+    InstallRecoverySummary, InstallTaskRunner, InstallTaskService, InstallWriteAdmission,
+    InstallWriteAdmissionError, InstalledReplacementReinstallResolution,
+    LimitedPreviewImageProcessor, ModDependencyGraphService, ModImportAnalysisService,
+    ModImportPrepareService, ModImportTaskRunner, ModImportTaskService, ModLibraryQueryService,
+    ModLibraryService, ModMetadataService, PlannedInitialRetargetInstall, PreparedReinstall,
     PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
@@ -84,6 +84,7 @@ use std::sync::{Arc, Mutex};
 pub struct HmmRuntimeBuilder {
     app_data_dir: PathBuf,
     install_manifest_repository: Option<Arc<dyn InstallManifestRepository>>,
+    sandbox_write_admission: Option<Arc<dyn InstallWriteAdmission>>,
 }
 
 impl HmmRuntimeBuilder {
@@ -91,6 +92,7 @@ impl HmmRuntimeBuilder {
         Self {
             app_data_dir,
             install_manifest_repository: None,
+            sandbox_write_admission: None,
         }
     }
 
@@ -100,6 +102,14 @@ impl HmmRuntimeBuilder {
         repository: Arc<dyn InstallManifestRepository>,
     ) -> Self {
         self.install_manifest_repository = Some(repository);
+        self
+    }
+
+    pub(crate) fn with_sandbox_write_admission(
+        mut self,
+        admission: Arc<dyn InstallWriteAdmission>,
+    ) -> Self {
+        self.sandbox_write_admission = Some(admission);
         self
     }
 
@@ -178,6 +188,7 @@ impl HmmRuntime {
         let HmmRuntimeBuilder {
             app_data_dir,
             install_manifest_repository,
+            sandbox_write_admission,
         } = builder;
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
@@ -539,9 +550,16 @@ impl HmmRuntime {
                 app_data_dir.clone(),
                 Arc::clone(&reinstall_recovery_repository),
             ));
-        let reinstall_write_admission = Arc::new(ReinstallRecoveryWriteAdmission::new(Arc::clone(
-            &reinstall_recovery_repository,
-        )));
+        let sandbox_write_admission: Arc<dyn InstallWriteAdmission> =
+            sandbox_write_admission.unwrap_or_else(|| Arc::new(AllowRuntimeWriteAdmission));
+        let reinstall_write_admission: Arc<dyn InstallWriteAdmission> = Arc::new(
+            ReinstallRecoveryWriteAdmission::new(Arc::clone(&reinstall_recovery_repository)),
+        );
+        let lifecycle_write_admission: Arc<dyn InstallWriteAdmission> =
+            Arc::new(ChainedInstallWriteAdmission::new(
+                reinstall_write_admission,
+                Arc::clone(&sandbox_write_admission),
+            ));
         let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             install_planning.clone(),
@@ -549,7 +567,7 @@ impl HmmRuntime {
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
-            reinstall_write_admission.clone(),
+            Arc::clone(&lifecycle_write_admission),
         ));
         let retarget_install_planner: Arc<dyn InitialRetargetInstallPlanner> =
             Arc::new(ConfiguredInitialRetargetInstallPlanner::new(
@@ -566,22 +584,24 @@ impl HmmRuntime {
                 Arc::clone(&audit_log_writer),
                 Arc::new(SystemClock),
                 Arc::clone(&install_write_locks),
-                reinstall_write_admission.clone(),
+                Arc::clone(&lifecycle_write_admission),
             ));
-        let recovery_action_task_runner = Arc::new(RecoveryActionTaskRunner::with_write_locks(
-            Arc::clone(&task_manager),
-            recovery_action_executor,
-            Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
-            Arc::clone(&install_write_locks),
-        ));
+        let recovery_action_task_runner =
+            Arc::new(RecoveryActionTaskRunner::with_write_coordination(
+                Arc::clone(&task_manager),
+                recovery_action_executor,
+                Arc::clone(&audit_log_writer),
+                Arc::new(SystemClock),
+                Arc::clone(&install_write_locks),
+                Arc::clone(&sandbox_write_admission),
+            ));
         let uninstall_task_runner = Arc::new(UninstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             mod_uninstaller,
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
-            reinstall_write_admission,
+            lifecycle_write_admission,
         ));
         let reinstall_executor = Arc::new(ConfiguredReinstallExecutor::new(
             Arc::clone(&game_config_repository),
@@ -593,12 +613,13 @@ impl HmmRuntime {
             Arc::clone(&replacement_workflow),
             app_data_dir.clone(),
         ));
-        let reinstall_task_runner = Arc::new(ReinstallTaskRunner::with_write_locks(
+        let reinstall_task_runner = Arc::new(ReinstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             Arc::clone(&reinstall_executor),
             Arc::clone(&audit_log_writer),
             Arc::new(SystemClock),
             install_write_locks,
+            sandbox_write_admission,
         ));
         let mod_import_task_runner = Arc::new(
             ModImportTaskRunner::new(
@@ -698,6 +719,40 @@ impl HmmRuntime {
                 .spawn(move || thumbnail_cache_scheduler.run_forever())
                 .map(|_| ())
         });
+    }
+}
+
+struct ChainedInstallWriteAdmission {
+    first: Arc<dyn InstallWriteAdmission>,
+    second: Arc<dyn InstallWriteAdmission>,
+}
+
+impl ChainedInstallWriteAdmission {
+    fn new(first: Arc<dyn InstallWriteAdmission>, second: Arc<dyn InstallWriteAdmission>) -> Self {
+        Self { first, second }
+    }
+}
+
+impl InstallWriteAdmission for ChainedInstallWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        game_id: &GameId,
+        profile_id: &hmm_core::ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        self.first.ensure_write_allowed(game_id, profile_id)?;
+        self.second.ensure_write_allowed(game_id, profile_id)
+    }
+}
+
+struct AllowRuntimeWriteAdmission;
+
+impl InstallWriteAdmission for AllowRuntimeWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        _game_id: &GameId,
+        _profile_id: &hmm_core::ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        Ok(())
     }
 }
 
