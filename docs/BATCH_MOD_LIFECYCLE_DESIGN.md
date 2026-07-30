@@ -60,7 +60,7 @@ T17 第三方管理器批量迁移已经具备 selection snapshot、partial resu
 | Batch request | 用户仍可编辑的有界批量意图，不具备写权限 |
 | Preview token | 绑定一次只读 preview snapshot 的短期 opaque 校验值 |
 | Sealed batch | 已规范化、不可修改并持久化的批量意图 |
-| Batch plan | 对 sealed batch 在某个受控状态快照上生成的只读计划 |
+| Batch plan | 对 normalized request 在某个受控状态快照上生成的只读计划；seal 后成为 sealed batch 的不可变计划 |
 | Batch digest | Batch plan 规范序列化后的确定性身份摘要 |
 | Plan token | 绑定 batch、digest、attempt、环境和有效期的 opaque 执行授权 |
 | Batch attempt | 对同一 sealed batch 的一次初始执行或服务端 retry |
@@ -82,8 +82,10 @@ T17 第三方管理器批量迁移已经具备 selection snapshot、partial resu
 8. `continue_on_item_failure` 不能越过 global blocker、recovery required 或不确定写入事实。
 9. 取消不能抢占 commit、rollback、manifest 收敛或 recovery；只在安全点生效。
 10. retry 的 item 集合由后端从 sealed batch 和已有 terminal results 计算，调用方不能提交任意 ID。
-11. result、event、log 和 DTO 不返回完整路径、backup/snapshot ref、manifest 正文、hash 列表或原始错误。
+11. 除 preview/seal 的直接 response 返回各自 opaque token 外，result、event、log 和其他 DTO 不返回
+    完整路径、token、digest、backup/snapshot ref、manifest 正文、hash 列表或原始错误。
 12. preview 完全只读，不写 game、manifest、backup、recovery、Audit 或 query projection。
+13. 同一 sealed batch attempt 只能获得一次执行 admission；重复 start/retry 不能创建第二个写任务。
 
 ## 领域模型
 
@@ -180,6 +182,16 @@ Preview 是纯只读步骤：
 4. 若 ready，返回绑定 digest、environment、schema 和短有效期的 opaque preview token。
 5. 不创建 batch journal、query projection、Audit 或任何 temp artifact。
 
+Preview 的稳定 `status` 只有：
+
+- `ready`：没有 global blocker；`stop_on_failure` 下还要求零 item blocker，
+  `continue_on_item_failure` 下要求至少一个 ready item。
+- `blocked`：存在 global blocker；或默认策略下存在任一 item blocker；或 continue 策略下没有 ready
+  item。
+
+只有 `ready` 返回 preview token；`blocked` 必须返回 `null`。Continue 下的 `ready` 可以同时携带
+`blockedItemCount > 0`，调用方必须展示并确认该部分结果，不能把 `ready` 解释为“全部 item 可执行”。
+
 用户确认后调用独立 seal 用例，并重新提交同一有界 request 与 preview token。Seal 用例重新读取当前
 facts、重建 digest 并验证 token；只有完全一致时，才在短事务中：
 
@@ -213,7 +225,6 @@ BatchPlan
 
 ```text
 BatchItemPlan
-  item_id
   ordinal
   input_snapshot
   source_revision_fact
@@ -228,7 +239,8 @@ BatchItemPlan
 ```
 
 `target_claims` 使用已验证的逻辑 `InstallTargetPath` 和 operation-specific write kind，只存在于领域/应用
-内部。公开 projection 只返回聚合数量和稳定 reason code。
+内部。公开 projection 只返回聚合数量和稳定 reason code。Preview plan 不含 `item_id`；seal 签发的
+`item_id` 保存在 batch journal 的 ordinal 映射中，不进入 canonical plan 或 digest。
 
 ## Digest 与 plan token
 
@@ -260,8 +272,9 @@ issued_at
 expires_at
 ```
 
-Token 使用后端保存的 opaque random record 或经过审计的 keyed token，不能把裸 digest 当授权。
-Production 和 Sandbox token 不能互用。
+Preview token 必须使用经过审计、无需持久化服务端记录的 keyed token，以保持 preview 纯只读。Plan
+token 可以使用相同机制，或随机 bearer value 加 seal 事务保存的单向 verifier 与元数据。两者都不能把
+裸 digest 当授权，后端不得持久化或记录原始 token。Production 和 Sandbox token 不能互用。
 
 Preview token 和 plan token 默认 30 分钟过期。Preview token 过期后必须重新执行纯只读 preview；
 plan token 过期只使该 execution plan 不可执行，不删除 sealed batch 或历史结果。Retry 会基于同一
@@ -345,7 +358,8 @@ T13-01 的首版 hard limits：
 这是默认策略：
 
 - Preview 中存在任何 global blocker 或 item blocker 时，整个 plan 为 blocked，任何写入前停止。
-- Apply 会在第一项写入前重新验证所有 batch-global facts 和全部 item 的可执行性。
+- Apply 会在第一项写入前重新验证所有 batch-global facts 和全部 item；默认策略要求全部 item
+  可执行，否则整批零写入。
 - 任一 item 在运行时 blocked、failed 或 recovery required 后，不再启动新 item。
 - 已成功 item 保留；尚未启动 item 记录为 `skipped`，reason 为 `stopped_after_item_failure`。
 - 不对已成功 item 做补偿性全局 rollback。
@@ -422,12 +436,17 @@ TaskManager 的 Cancelled 状态不能覆盖成功 manifest/Audit 事实。
 `recovery_required` 优先于其他汇总状态。Batch status 始终伴随各 item count，不能把 `cancelled` 或
 `completed_with_errors` 解释为“没有文件被修改”。
 
+汇总优先级固定为：存在未收敛 item 时 `recovery_required`；已接受取消且阻止完成时 `cancelled`；
+零写入的全局/默认预检阻断时 `blocked`；编排基础设施无法形成可信业务终态时 `failed`；否则按 item
+计数得到 `completed` 或 `completed_with_errors`。
+
 ## 执行顺序
 
 每个 attempt 按规范 `ordinal` 确定性执行：
 
 ```text
 validate token and sealed batch
+  -> CAS sealed attempt to one admitted task
   -> acquire batch journal intent
   -> revalidate all global facts before first write
   -> for item in canonical order
@@ -448,6 +467,9 @@ staging resource。不同 game/profile 的其他任务可以按现有资源预�
 
 如果另一受控任务在两个 item 之间改变状态，下一 item revalidation 必须返回 stale/blocked，而不是依赖
 旧 preview 继续写入。Batch 不承诺跨 item 隔离。
+
+同一 `batch_id + attempt_number` 的 `start` 使用 journal CAS 获得一次性 admission。网络重试或重复点击
+在任务已登记时幂等返回同一 `task_id`；任何路径都不能再次调用单项写事务。
 
 ## Plan stale 与 expected changes
 
@@ -481,14 +503,14 @@ BatchAttempt
   parent_attempt?
   eligible_item_ids[]       # 仅后端计算
   attempt_plan_digest
-  plan_token
+  plan_token_verifier?
 ```
 
 规则：
 
 1. 只选择最近 terminal result 中 `retryable = true` 的 item。
 2. `succeeded` 永不重放。
-3. 调用方只提交 `batch_id` 和必要的 optimistic revision，不提交 item IDs。
+3. 调用方只提交 `batch_id` 和最近已观察到的 `expected_attempt_number`，不提交 item IDs。
 4. Retry 继续使用原 exact revision、policy、binding 和 operation input。
 5. 如果用户希望换 revision、target 或 policy，必须创建新 batch。
 6. Retry 前重新生成计划和短期 token；过期或 stale 不自动写入。
@@ -496,6 +518,9 @@ BatchAttempt
 8. `skipped` 和 commit 前 `cancelled` 可以 retry，但仍要通过当前 preflight。
 
 如果 retry item set 为空，返回 `batch_retry_unavailable`，不创建空 task。
+
+Retry 用 batch journal CAS 验证 `expected_attempt_number` 仍是最近 terminal attempt，并原子创建下一
+attempt。两个并发 retry 最多一个成功；另一个返回 `batch_attempt_stale`，不得创建重复写任务。
 
 ## 取消
 
@@ -646,8 +671,8 @@ T13-06 前以下只是规划，不是可调用 command：
 preview_batch_mod_lifecycle(request)
 seal_batch_mod_lifecycle(request, previewToken)
 start_batch_mod_lifecycle(batchId, planToken)
-get_batch_mod_lifecycle_result(batchId, cursor?, limit?)
-retry_batch_mod_lifecycle(batchId)
+get_batch_mod_lifecycle_result(batchId, attemptNumber, cursor?, limit?)
+retry_batch_mod_lifecycle(batchId, expectedAttemptNumber)
 cancel_task(taskId)
 ```
 
@@ -668,6 +693,13 @@ fact 变化都返回 `batch_plan_stale`，不会持久化部分 snapshot。
 
 Result query 分页返回 itemId、ordinal、短 modId、status、reasonCode、retryable 和聚合计数。它不返回
 target path、hash、backup/ref、manifest、source/package 或原始 error。
+
+Result query 必须绑定确切 `attemptNumber`，cursor 也只在该 attempt 内有效。调用方不能在 retry 创建
+新 attempt 后继续复用旧 cursor 查询“最新结果”，避免跨 attempt 分页漂移。
+
+`retry_batch_mod_lifecycle` 必须接收 `expectedAttemptNumber`。Result summary 返回当前
+`attemptNumber`，供调用方做 optimistic retry；并发或重复 retry 由后端 CAS 拒绝，调用方不能用省略
+revision 的方式触发新 attempt。
 
 CLI-4 只能映射相同 app use case。Sandbox 写能力和单项 lifecycle CLI E2E 未通过前，batch parser
 保持不可达；Production 还必须等待独立跨进程 admission。
@@ -690,6 +722,7 @@ batch_journal_unavailable
 batch_write_admission_unavailable
 batch_evidence_unavailable
 batch_retry_unavailable
+batch_attempt_stale
 batch_result_unavailable
 batch_cancelled
 batch_internal_error
@@ -720,7 +753,9 @@ recovery_required
 - duplicate Mod、101 items、50,001 actions 和超过 16 MiB plan 整体拒绝且零写入。
 - Windows 大小写/分隔符等价 target 跨 item conflict 整体阻断。
 - preview 不写 game、manifest、backup、recovery、Audit、DB projection 或 temp artifact。
+- preview 的 `ready/blocked` 与 stop/continue item blocker 规则一致；blocked 不返回 token。
 - previewToken/planToken 过期、环境不匹配和 digest 不匹配 fail closed。
+- 原始 token 不持久化，只允许保存 verifier/metadata；同一 attempt 重复 start 幂等返回同一 task。
 
 ### T13-02 Batch install
 
@@ -751,6 +786,8 @@ recovery_required
 - queued、prepare、item 间、commit 中和 rollback/recovery 中取消。
 - Commit 中取消且 commit 成功时 item=succeeded，后项不启动。
 - Retry 只选择 retryable item；成功项和 recovery-required 项不重放。
+- Retry 必须匹配 expected attempt；两个并发 retry 最多创建一个新 attempt。
+- Result query/cursor 绑定确切 attempt，retry 后不会跨 attempt 漂移。
 - 改 revision/target/policy 不能通过 retry，必须新 batch。
 - 同 game/profile 写入严格串行；plan/scan 在写锁外；item 间释放写锁。
 - 不同 game/profile 在资源预算允许时可并行。
@@ -760,7 +797,7 @@ recovery_required
 
 - 除 preview/seal 对应的直接 response 返回各自 opaque token 外，result/progress/event/其他 DTO、
   CLI JSON/JSONL、Task/Audit/diagnostics 不含完整路径、Steam ID、token、digest、backup/snapshot
-  ref、manifest/source 正文、hash 列表或原始 error；token 不落盘、不写日志。
+  ref、manifest/source 正文、hash 列表或原始 error；原始 token 不落盘、不写日志。
 - Result pagination 默认 50、最大 100，非法 cursor/limit 整体拒绝。
 - Stable status/code serialization 有快照/contract tests。
 - Production CLI 写命令在 admission 前 parser 不可达。

@@ -315,7 +315,8 @@ T17 的 `external-import` 可以成为 CLI-2 sandbox 自动化入口，但语义
 - action/conflict/warning 聚合计数。
 - 稳定 target family 或逻辑相对路径。
 - prerequisite 状态和稳定 code。
-- 版本化、短期有效的 opaque `planToken` 或等价 plan digest。
+- 版本化、短期有效的 opaque `planToken`，或只用于 stale guard 的 plan digest。Digest 本身不是写入
+  授权，不能替代 admission。
 
 输出禁止包含 game root、source root、target absolute path、backup ref、manifest path、sandbox path
 或第三方内容。
@@ -397,7 +398,8 @@ CLI 自身不得新增“打印原始错误”“显示内部路径”“dump ma
 - 缺少任一参数时不写入，只返回计划或稳定拒绝 code。
 - 非交互环境不允许通过 stdin 隐式确认。
 - `--yes` 只确认本次已展示/已绑定的计划，不绕过冲突、前置、安全校验或锁。
-- plan/apply 之间必须使用后端生成的 opaque token 或等价 digest 防止 TOCTOU。
+- plan/apply 之间必须使用后端生成的 opaque token，或版本化 digest 作为 stale guard 防止 TOCTOU；
+  裸 digest 不是 capability，不能授权写入或替代 admission。
 - token 绑定 command、game、profile、mod/revision、计划摘要、环境和 schema version。
 - production token 不能在 sandbox 使用，反之亦然。
 - 写入开始前必须再次验证 token、配置和目标状态。
@@ -462,8 +464,11 @@ T13 至少需要：
   journal、projection、Audit、manifest、backup、recovery 或临时产物。
 - `seal` 重新读取当前事实并验证 request、preview token 和 digest；一致时才持久化不可变 sealed
   batch、签发 `batchId` 与短期 opaque plan token。
+- Preview 只使用 `ready/blocked`：默认策略要求零 item blocker；continue 策略允许存在 isolated
+  blocked item，但至少要有一个 ready item。Blocked preview 不签发 token。
 - `start` 只接受 `batchId + planToken`，不会让 CLI 提交 target path、manifest generation、
   backup ref、hash 或任意 item ID。
+- 同一 batch attempt 通过后端 CAS 只获得一次执行 admission；重复 start 不得重复写入。
 - 在一个一致的 profile/manifest 快照上计算跨 Mod target 冲突。
 - 同一 game/profile 的写入串行，不同 game/profile 是否并行由 task policy 决定。
 - 每个 Mod 仍经过 InstallPlan、backup、manifest、rollback/recovery。
@@ -474,8 +479,9 @@ T13 至少需要：
 - 取消停止启动新项；运行中项只在安全检查点取消并完成一致性收尾。
 - 单项结果区分 `succeeded`、`blocked`、`failed`、`recovery_required`、`cancelled` 和 `skipped`；
   `retryable` 是独立布尔事实。
-- 重试只接收 `batchId`，由后端从同一 sealed batch 和已有终态计算 retryable 项；已成功项和
-  recovery-required 项不重复提交。
+- 重试只接收 `batchId + expectedAttemptNumber`，不接收 item IDs；由后端从同一 sealed batch 和已有
+  终态计算 retryable 项。已成功项和 recovery-required 项不重复提交，并发 retry 最多一个创建下一
+  attempt。
 - Audit Log 既有 per-item 证据，也有不含路径/内容的 batch 聚合证据。
 
 批量安装、卸载和真正重装使用同一 `preview -> seal -> start -> result/retry` 协议，但 item 输入与
@@ -487,7 +493,8 @@ backup ownership 不明确或旧 manifest 缺少摘要都是 global blocker，�
 首版固定上限是每批 100 项、50,000 个 target action、16 MiB canonical plan；结果页默认 50、最大
 100，preview/plan token 默认 30 分钟。机器输出只公开短 ID、稳定 status/code、聚合计数和
 retryable，不返回路径、Steam ID、token/digest、backup/snapshot ref、manifest/source 正文、hash
-列表或原始错误。
+列表或原始错误。原始 token 只在单次 adapter 流程内存中消费，不持久化或记录。
+Result query/cursor 绑定确切 attempt；CLI 在 retry 后不得拿旧 cursor 查询隐式“最新结果”。
 
 CLI-4 依赖 T13-00、CLI-2A、CLI-2B、CLI-2C、CORE-PREF-01 以及 T13-01 至 T13-04 的领域/app
 实现和测试。CLI 只能映射同一 app use case，不能自行决定批量原子性、retryable 谓词或写入顺序。
