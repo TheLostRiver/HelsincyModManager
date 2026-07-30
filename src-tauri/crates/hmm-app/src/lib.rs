@@ -1,4 +1,5 @@
 mod app_settings;
+mod batch;
 mod category;
 mod external_import;
 #[cfg(test)]
@@ -37,6 +38,11 @@ mod support_diagnostics;
 mod task_manager;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
+pub use batch::{
+    BatchPlanPreview, BatchPlanPreviewError, BatchPlanSealError, BatchPlanSealResult,
+    BatchPlanService, BatchTokenCodec, BatchTokenError, BatchTokenKind, BatchTokenMaterial,
+    Sha256BatchTokenCodec,
+};
 pub use category::{CategoryService, CategoryWithCount};
 pub use external_import::{
     ExternalImportBatchError, ExternalImportBatchLaunch, ExternalImportBatchService,
