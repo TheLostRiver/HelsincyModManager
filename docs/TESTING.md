@@ -567,7 +567,7 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
 | T13-00 | policy、Markdown links、secret、whitespace、文件大小、`git diff --check`、完整 `verify.ps1` 与 findings-first 全 diff 自审 |
-| T13-01 | 规范 item 顺序与 deterministic digest；operation/policy/revision/binding/target/preflight 任一变化使 digest 变化；duplicate、101 items、50,001 actions、超过 16 MiB plan 整体拒绝；Windows 规范化后的跨 item target conflict；preview 零写入；stop/continue 的 ready/blocked 与 token 规则；preview/plan token 过期、环境或 digest 不匹配 fail closed；原始 token 不持久化 |
+| T13-01 | 规范 item 顺序与 deterministic digest；operation/policy/revision/binding/target/preflight 任一变化使 digest 变化；duplicate、101 items、50,001 actions、超过 16 MiB plan 整体拒绝；Windows 规范化后的跨 item target conflict；preview 零写入；stop/continue 的 ready/blocked 与 token 规则；preview/plan token 过期、环境或 digest 不匹配 fail closed；seal 重读事实时 request/token/fact 任一漂移均返回 `batch_plan_stale`，且不留下部分 snapshot、journal、attempt 或 projection；原始 token 不持久化 |
 | T13-02 | 批量 install 全成功、默认预检 blocker 整批零写入、首项成功后次项失败保留首项、continue 只越过 pre-write/rollback-succeeded failure；同一 attempt 重复 start 幂等返回同一 task；manifest save/rollback/journal/Audit before/after commit fault matrix；sandbox 外 sentinel 不变 |
 | T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing、backup unavailable 和 remove/restore overlap 阻断；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
 | T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |

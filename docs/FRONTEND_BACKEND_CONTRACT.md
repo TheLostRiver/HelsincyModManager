@@ -328,6 +328,14 @@ install.batch.<operation>.failed
 `<operation>` 只能是 `install`、`uninstall` 或 `reinstall`。每个 attempt 对外只有一个 taskId 和恰好
 一个 terminal event；progress 只提供聚合计数，大型 item 结果必须通过分页 query 读取。
 
+Batch phase 映射到共享 `TaskProgressEventDto` 时还必须满足：
+
+- `message` 只能是有界脱敏文案，前端不得按文案分支。
+- 当前共享 `error` 字段存在时只允许登记过的稳定 code，不得透传原始异常、路径或内部文本；若未来
+  改为结构化错误，也只允许白名单 `code` 和 `category`，不能携带原始异常。
+- `resultRef` 只能是公开的 opaque `batchId`，不能是路径、token、digest、cursor、manifest、
+  backup/snapshot ref 或内部 storage ref。
+
 规划中的 batch-level stable code 至少包括：
 
 ```text

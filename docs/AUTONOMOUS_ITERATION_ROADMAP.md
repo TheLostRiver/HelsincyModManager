@@ -116,14 +116,14 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01 已完成并合并。T13-00 是当前独立 task；它完成本地验证、PR、全部 CI、review 和合并门禁后，
-CLI-2A 成为第一个 ready task。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff
-自审，但不能跳过全部 CI terminal success。
+QG-01 已完成并合并。T13-00 已完成设计与规划契约，产品实现未开始；CLI-2A 是第一个 next ready
+task，尚未启动。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
+跳过全部 CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
-推荐开启顺序如下。当前完成 T13-00 的验证/PR/CI/review/合并门禁后，从最新 `main` 启动 CLI-2A；
-不得把尚未合并的 task 分支作为下一 task 的隐式基线。
+推荐开启顺序如下。下一轮从包含 T13-00 的最新 `main` 启动 CLI-2A；不得把尚未合并的 task 分支
+作为下一 task 的隐式基线。
 
 ```text
 QG-01
@@ -162,8 +162,8 @@ QG-01
 
 ### T13-00：冻结批量领域语义
 
-状态：`implemented`，当前独立 task；设计与安全语义已提交，契约/路线图正在同步，仍需完成验证、
-PR、CI、review 和合并门禁。这是高风险设计 task。
+状态：`design-complete（产品实现未开始）`；领域语义、安全约束、契约和路线图已冻结。这是高风险
+设计 task，后续产品实现仍须逐切片验证。
 
 独立文档：[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。
 
@@ -184,7 +184,7 @@ PR、CI、review 和合并门禁。这是高风险设计 task。
 
 ### CLI-2A：逐阶段任务 Observer 与 JSONL
 
-状态：`blocked`，依赖 T13-00 合并；T13-00 完成后它是唯一 next ready task。
+状态：`ready`，唯一 next ready task，尚未启动。
 
 范围：
 
