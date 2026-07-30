@@ -82,6 +82,7 @@ test("initial retarget install is enabled only for a safe preview and not-instal
     completedLocally: false,
     hasPreview: true,
     hasBlockingConflicts: false,
+    prerequisiteStatus: "ready",
     taskActive: false,
     listenerReady: true,
   };
@@ -99,6 +100,14 @@ test("initial retarget install is enabled only for a safe preview and not-instal
     assert.equal(canStartInitialRetargetInstall({ ...safe, installStatus }), false);
   }
   assert.equal(canStartInitialRetargetInstall({ ...safe, hasBlockingConflicts: true }), false);
+  assert.equal(
+    canStartInitialRetargetInstall({ ...safe, prerequisiteStatus: "blocked" }),
+    false,
+  );
+  assert.equal(
+    canStartInitialRetargetInstall({ ...safe, prerequisiteStatus: "warning" }),
+    true,
+  );
   assert.equal(canStartInitialRetargetInstall({ ...safe, listenerReady: false }), false);
   assert.equal(canStartInitialRetargetInstall({ ...safe, completedLocally: true }), false);
 });

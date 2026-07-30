@@ -3,6 +3,7 @@ use hmm_app::{
     ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallPlanPreview,
     ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
 };
+use crate::dto::GamePrerequisiteDecisionDto;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -103,6 +104,7 @@ impl From<ReinstallTargetCounts> for ReinstallTargetCountsDto {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReinstallBlockingReasonDto {
+    PrerequisitesBlocked,
     NotInstalled,
     CandidateNotFound,
     CandidateNotReady,
@@ -128,6 +130,7 @@ pub enum ReinstallBlockingReasonDto {
 impl From<ReinstallBlockingReason> for ReinstallBlockingReasonDto {
     fn from(reason: ReinstallBlockingReason) -> Self {
         match reason {
+            ReinstallBlockingReason::PrerequisitesBlocked => Self::PrerequisitesBlocked,
             ReinstallBlockingReason::NotInstalled => Self::NotInstalled,
             ReinstallBlockingReason::CandidateNotFound => Self::CandidateNotFound,
             ReinstallBlockingReason::CandidateNotReady => Self::CandidateNotReady,
@@ -171,6 +174,7 @@ impl From<ReinstallBlockingReasonSummary> for ReinstallBlockingReasonSummaryDto 
 )]
 pub enum ReinstallPlanPreviewDto {
     Ready {
+        prerequisite_decision: GamePrerequisiteDecisionDto,
         plan_token: String,
         installed_revision: ModRevisionSummaryDto,
         candidate_revision: ModRevisionSummaryDto,
@@ -178,6 +182,7 @@ pub enum ReinstallPlanPreviewDto {
         blocking_reasons: Vec<ReinstallBlockingReasonSummaryDto>,
     },
     Blocked {
+        prerequisite_decision: GamePrerequisiteDecisionDto,
         plan_token: (),
         installed_revision: Option<ModRevisionSummaryDto>,
         candidate_revision: Option<ModRevisionSummaryDto>,
@@ -198,6 +203,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
     type Error = ReinstallDtoInvariantError;
 
     fn try_from(preview: ReinstallPlanPreview) -> Result<Self, Self::Error> {
+        let prerequisite_decision = preview.prerequisite_decision.clone().into();
         match preview.status {
             ReinstallPreviewStatus::Ready => {
                 if !preview.blocking_reasons.is_empty() {
@@ -214,6 +220,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                     return Err(ReinstallDtoInvariantError::ReadyFieldsMissing);
                 }
                 Ok(Self::Ready {
+                    prerequisite_decision,
                     plan_token,
                     installed_revision: installed_revision.into(),
                     candidate_revision: candidate_revision.into(),
@@ -234,6 +241,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                     return Err(ReinstallDtoInvariantError::CandidateNotFoundHasCandidate);
                 }
                 Ok(Self::Blocked {
+                    prerequisite_decision,
                     plan_token: (),
                     installed_revision: preview.installed_revision.map(Into::into),
                     candidate_revision: preview.candidate_revision.map(Into::into),
@@ -321,10 +329,12 @@ impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
 mod tests {
     use super::*;
     use hmm_app::{
-        ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallPlanPreview,
-        ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+        GamePrerequisiteDecision, GamePrerequisiteDecisionCode,
+        GamePrerequisiteDecisionStatus, ReinstallBlockingReason,
+        ReinstallBlockingReasonSummary, ReinstallPlanPreview, ReinstallPreviewStatus,
+        ReinstallRevisionSummary, ReinstallTargetCounts,
     };
-    use hmm_core::ModRevisionId;
+    use hmm_core::{GameId, ModRevisionId};
     use serde_json::{json, Value};
 
     #[test]
@@ -421,6 +431,7 @@ mod tests {
     fn ready_preview_serializes_as_strict_discriminated_union() {
         let dto = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
             status: ReinstallPreviewStatus::Ready,
+            prerequisite_decision: warning_prerequisite_decision(),
             installed_revision: Some(revision("revision-v1")),
             candidate_revision: Some(revision("revision-v2")),
             counts: ReinstallTargetCounts {
@@ -449,6 +460,14 @@ mod tests {
         );
         assert!(value["planToken"].as_str().is_some());
         assert_eq!(value["blockingReasons"], json!([]));
+        assert_eq!(
+            value["prerequisiteDecision"],
+            json!({
+                "status": "warning",
+                "rulesVersion": 3,
+                "codes": ["signature_unverified"]
+            })
+        );
         assert_public_preview_is_sanitized(&value);
     }
 
@@ -456,6 +475,7 @@ mod tests {
     fn candidate_not_found_serializes_null_candidate_and_token() {
         let dto = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
             status: ReinstallPreviewStatus::Blocked,
+            prerequisite_decision: ready_prerequisite_decision(),
             installed_revision: None,
             candidate_revision: None,
             counts: ReinstallTargetCounts::default(),
@@ -486,6 +506,7 @@ mod tests {
     fn incomplete_ready_preview_is_rejected_before_serialization() {
         let result = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
             status: ReinstallPreviewStatus::Ready,
+            prerequisite_decision: ready_prerequisite_decision(),
             installed_revision: Some(revision("revision-v1")),
             candidate_revision: None,
             counts: ReinstallTargetCounts::default(),
@@ -511,6 +532,24 @@ mod tests {
     fn revision(revision_id: &str) -> ReinstallRevisionSummary {
         ReinstallRevisionSummary {
             revision_id: ModRevisionId::new(revision_id),
+        }
+    }
+
+    fn ready_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: GamePrerequisiteDecisionStatus::Ready,
+            rules_version: Some(3),
+            codes: Vec::new(),
+        }
+    }
+
+    fn warning_prerequisite_decision() -> GamePrerequisiteDecision {
+        GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: GamePrerequisiteDecisionStatus::Warning,
+            rules_version: Some(3),
+            codes: vec![GamePrerequisiteDecisionCode::SignatureUnverified],
         }
     }
 

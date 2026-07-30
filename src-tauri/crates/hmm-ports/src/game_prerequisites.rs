@@ -86,6 +86,7 @@ impl GamePrerequisiteItem {
 pub struct GamePrerequisiteReport {
     pub game_id: GameId,
     pub state: GamePrerequisiteReportState,
+    pub rules_version: Option<u32>,
     pub summary_status: Option<GamePrerequisiteSummaryStatus>,
     pub items: Vec<GamePrerequisiteItem>,
     pub error_code: Option<GameSetupErrorCode>,
@@ -97,6 +98,7 @@ impl GamePrerequisiteReport {
         Self {
             game_id,
             state: GamePrerequisiteReportState::NotConfigured,
+            rules_version: None,
             summary_status: None,
             items: Vec::new(),
             error_code: None,
@@ -112,6 +114,7 @@ impl GamePrerequisiteReport {
         Self {
             game_id,
             state: GamePrerequisiteReportState::GameDirectoryInvalid,
+            rules_version: None,
             summary_status: None,
             items: Vec::new(),
             error_code: Some(error_code),
@@ -124,9 +127,19 @@ impl GamePrerequisiteReport {
         summary_status: GamePrerequisiteSummaryStatus,
         items: Vec<GamePrerequisiteItem>,
     ) -> Self {
+        Self::ready_with_rules_version(game_id, None, summary_status, items)
+    }
+
+    pub fn ready_with_rules_version(
+        game_id: GameId,
+        rules_version: Option<u32>,
+        summary_status: GamePrerequisiteSummaryStatus,
+        items: Vec<GamePrerequisiteItem>,
+    ) -> Self {
         Self {
             game_id,
             state: GamePrerequisiteReportState::Ready,
+            rules_version,
             summary_status: Some(summary_status),
             items,
             error_code: None,

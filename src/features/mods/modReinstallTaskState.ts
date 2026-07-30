@@ -56,6 +56,7 @@ const reinstallTaskPhaseLabels: Record<ReinstallTaskPhase, string> = {
 };
 
 const reinstallBlockingReasonLabels: Record<ReinstallBlockingReason, string> = {
+  prerequisites_blocked: "游戏前置未就绪",
   not_installed: "当前 Mod 尚未安装",
   candidate_not_found: "候选版本不存在",
   candidate_not_ready: "候选版本尚未准备完成",
@@ -192,7 +193,10 @@ export function canConfirmReinstall(
   preview: ReinstallPlanPreview,
   task: ReinstallTaskState,
 ) {
-  return installStatus === "installed" && preview.status === "ready" && task.status === "idle";
+  return installStatus === "installed"
+    && preview.status === "ready"
+    && preview.prerequisiteDecision.status !== "blocked"
+    && task.status === "idle";
 }
 
 export function canPreviewReinstall(

@@ -1,4 +1,5 @@
 import type { GameId } from "../game-setup/gameSetupTypes";
+import type { GamePrerequisiteDecision } from "./modInstallPlanTypes";
 import type { ModRevisionSummary } from "./modLibraryTypes";
 
 export type ReinstallFileLayer = {
@@ -26,6 +27,7 @@ export type ReinstallTargetCounts = {
 };
 
 export type ReinstallBlockingReason =
+  | "prerequisites_blocked"
   | "not_installed"
   | "candidate_not_found"
   | "candidate_not_ready"
@@ -51,6 +53,7 @@ export type ReinstallBlockingReasonSummary = {
 export type ReinstallPlanPreview =
   | {
       status: "ready";
+      prerequisiteDecision: GamePrerequisiteDecision;
       planToken: string;
       installedRevision: ModRevisionSummary;
       candidateRevision: ModRevisionSummary;
@@ -59,6 +62,7 @@ export type ReinstallPlanPreview =
     }
   | {
       status: "blocked";
+      prerequisiteDecision: GamePrerequisiteDecision;
       planToken: null;
       installedRevision: ModRevisionSummary | null;
       candidateRevision: ModRevisionSummary | null;

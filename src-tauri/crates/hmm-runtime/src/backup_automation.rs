@@ -118,22 +118,22 @@ impl ReadOnlyBackupAutomation {
     pub fn from_environment(
         environment: &RuntimeEnvironment,
     ) -> Result<Self, ReadOnlyBackupAutomationError> {
-        let (app_data_dir, background_environment) = match environment {
-            RuntimeEnvironment::Production => (
-                production_app_data_dir()
-                    .ok_or(ReadOnlyBackupAutomationError::AppDataUnavailable)?,
-                BackgroundEnvironment::Production,
-            ),
-            RuntimeEnvironment::Sandbox { data_dir } => {
+        let (app_data_dir, background_environment) =
+            if let Some(data_dir) = environment.sandbox_data_dir() {
                 validate_sandbox_storage_paths(data_dir)?;
                 (
-                    data_dir.clone(),
+                    data_dir.to_path_buf(),
                     BackgroundEnvironment::Sandbox {
                         fixture_path: background_fixture_path(data_dir),
                     },
                 )
-            }
-        };
+            } else {
+                (
+                    production_app_data_dir()
+                        .ok_or(ReadOnlyBackupAutomationError::AppDataUnavailable)?,
+                    BackgroundEnvironment::Production,
+                )
+            };
         let connection = open_database_read_only(&app_data_dir.join("hmm.db"))
             .map_err(|_| ReadOnlyBackupAutomationError::DatabaseUnavailable)?;
         let connection = Arc::new(Mutex::new(connection));

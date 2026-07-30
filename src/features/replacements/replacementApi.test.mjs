@@ -82,6 +82,7 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
   assert.match(types, /export type ReplacementTarget/);
   assert.match(types, /export type ReplacementAnalysis/);
   assert.match(types, /export type InitialRetargetInstallPreview/);
+  assert.match(types, /prerequisiteDecision:\s*GamePrerequisiteDecision/);
   assert.match(types, /export type PreviewRetargetReinstallInput/);
   assert.match(types, /export type StartRetargetReinstallTaskInput/);
   assert.match(types, /export type CancelRetargetInstallTaskInput/);

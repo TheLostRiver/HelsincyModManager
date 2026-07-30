@@ -158,9 +158,26 @@ test("install plan types expose preview DTO without filesystem paths", () => {
   assert.match(source, /export type PreviewImportedModInstallPlanInput/);
   assert.match(source, /export type InstallPlanPreview/);
   assert.match(source, /hasBlockingConflicts:\s*boolean/);
+  assert.match(source, /prerequisiteDecision:\s*GamePrerequisiteDecision/);
+  assert.match(source, /status:\s*GamePrerequisiteDecisionStatus/);
+  assert.match(source, /rulesVersion:\s*number\s*\|\s*null/);
+  assert.match(source, /"missing_required_file"/);
+  assert.match(source, /"signature_unverified"/);
   assert.match(source, /targetPath:\s*string/);
   assert.match(source, /packageFileId:\s*string/);
   assert.doesNotMatch(source, /sandbox|cache|localPath|diskPath|archivePath|allowedTargetRoots/i);
+});
+
+test("install plan sheet renders backend prerequisite decision without rebuilding rules", () => {
+  const panel = readSource("src/features/mods/ModLifecycleFeedback.tsx");
+  const labels = readSource("src/features/mods/modPrerequisiteDecision.ts");
+
+  assert.match(panel, /plan\.prerequisiteDecision/);
+  assert.match(panel, /getPrerequisiteDecisionMessage/);
+  assert.match(panel, /getPrerequisiteDecisionCodeLabel/);
+  assert.match(labels, /missing_required_file:\s*"缺少必要前置文件"/);
+  assert.match(labels, /signature_unverified:\s*"前置文件签名无法验证"/);
+  assert.doesNotMatch(panel, /dinput8|loader-config|nativePC|issue\.path/);
 });
 
 test("mod library page renders a backend install plan preview workflow", () => {

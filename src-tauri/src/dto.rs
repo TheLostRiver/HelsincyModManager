@@ -1,11 +1,12 @@
 use hmm_app::{
     AppSettingsServiceError, CategoryWithCount, GameAutoDetection, GameAutoDetectionOutcome,
-    GameCandidateScan, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
-    InstallManifestStatusSummary, InstallRecoveryActionAvailability,
-    InstallRecoveryActionBlockReason, InstallRecoveryActionBlockReasonSummary,
-    InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
-    InstallRecoverySummary, ModDetail, ModImportTaskError, TaskKind, TaskManagerError,
-    TaskProgressEvent, TaskStarted, TaskStatus,
+    GameCandidateScan, GamePrerequisiteDecision, GamePrerequisiteDecisionCode,
+    GamePrerequisiteDecisionStatus, GameSetupCandidate, GameSetupServiceError,
+    ImportPreviewImage, ImportedModInstallPreflight, InstallManifestStatusSummary,
+    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
+    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionPreview, InstallRecoveryIssue,
+    InstallRecoveryIssueSummary, InstallRecoverySummary, ModDetail, ModImportTaskError, TaskKind,
+    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     BackupCadence, GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
@@ -187,6 +188,48 @@ pub struct InstallPlanPreviewDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportedModInstallPreflightDto {
+    #[serde(flatten)]
+    pub plan: InstallPlanPreviewDto,
+    pub prerequisite_decision: GamePrerequisiteDecisionDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GamePrerequisiteDecisionDto {
+    pub status: GamePrerequisiteDecisionStatusDto,
+    pub rules_version: Option<u32>,
+    pub codes: Vec<GamePrerequisiteDecisionCodeDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GamePrerequisiteDecisionStatusDto {
+    Ready,
+    Warning,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GamePrerequisiteDecisionCodeDto {
+    GameNotConfigured,
+    GameDirectoryInvalid,
+    RulesUnavailable,
+    RulesCorrupted,
+    StorageUnavailable,
+    StorageCorrupted,
+    UnsupportedGame,
+    MissingRequiredFile,
+    SignatureUnverified,
+    ConfigReadFailed,
+    ConfigInvalidJson,
+    ConfigFieldMismatch,
+    PrerequisiteDecisionInvalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallPlanActionDto {
     pub target_path: String,
     pub mod_id: String,
@@ -308,6 +351,55 @@ impl From<InstallPlan> for InstallPlanPreviewDto {
             actions: plan.actions.into_iter().map(Into::into).collect(),
             conflicts: plan.conflicts.into_iter().map(Into::into).collect(),
             has_blocking_conflicts,
+        }
+    }
+}
+
+impl From<ImportedModInstallPreflight> for ImportedModInstallPreflightDto {
+    fn from(preflight: ImportedModInstallPreflight) -> Self {
+        Self {
+            plan: preflight.plan.into(),
+            prerequisite_decision: preflight.prerequisite_decision.into(),
+        }
+    }
+}
+
+impl From<GamePrerequisiteDecision> for GamePrerequisiteDecisionDto {
+    fn from(decision: GamePrerequisiteDecision) -> Self {
+        Self {
+            status: decision.status.into(),
+            rules_version: decision.rules_version,
+            codes: decision.codes.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<GamePrerequisiteDecisionStatus> for GamePrerequisiteDecisionStatusDto {
+    fn from(status: GamePrerequisiteDecisionStatus) -> Self {
+        match status {
+            GamePrerequisiteDecisionStatus::Ready => Self::Ready,
+            GamePrerequisiteDecisionStatus::Warning => Self::Warning,
+            GamePrerequisiteDecisionStatus::Blocked => Self::Blocked,
+        }
+    }
+}
+
+impl From<GamePrerequisiteDecisionCode> for GamePrerequisiteDecisionCodeDto {
+    fn from(code: GamePrerequisiteDecisionCode) -> Self {
+        match code {
+            GamePrerequisiteDecisionCode::GameNotConfigured => Self::GameNotConfigured,
+            GamePrerequisiteDecisionCode::GameDirectoryInvalid => Self::GameDirectoryInvalid,
+            GamePrerequisiteDecisionCode::RulesUnavailable => Self::RulesUnavailable,
+            GamePrerequisiteDecisionCode::RulesCorrupted => Self::RulesCorrupted,
+            GamePrerequisiteDecisionCode::StorageUnavailable => Self::StorageUnavailable,
+            GamePrerequisiteDecisionCode::StorageCorrupted => Self::StorageCorrupted,
+            GamePrerequisiteDecisionCode::UnsupportedGame => Self::UnsupportedGame,
+            GamePrerequisiteDecisionCode::MissingRequiredFile => Self::MissingRequiredFile,
+            GamePrerequisiteDecisionCode::SignatureUnverified => Self::SignatureUnverified,
+            GamePrerequisiteDecisionCode::ConfigReadFailed => Self::ConfigReadFailed,
+            GamePrerequisiteDecisionCode::ConfigInvalidJson => Self::ConfigInvalidJson,
+            GamePrerequisiteDecisionCode::ConfigFieldMismatch => Self::ConfigFieldMismatch,
+            GamePrerequisiteDecisionCode::DecisionInvalid => Self::PrerequisiteDecisionInvalid,
         }
     }
 }

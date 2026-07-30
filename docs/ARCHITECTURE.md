@@ -80,9 +80,12 @@ configured executors、共享 repositories、`TaskManager` 与 game/profile 写�
 Tauri `AppState` 现在只是解析 app data、启动 GUI-only 缩略图维护并解引用到 `HmmRuntime` 的薄包装；
 固定 `--once` worker 直接构造 `HmmRuntime`，不再通过 Tauri state 获取后台备份服务。
 
-`TaskProgressObserver` 以 `hmm-app::TaskProgressEvent` 为输入。Tauri adapter 仍按原顺序转换安全 DTO、
-写 Task Log、记录 queued task 注册并发送 `hmm://task-progress`。现有 runner 暂时仍返回
-`Vec<TaskProgressEvent>`；逐阶段流式 observer 必须在首个 CLI 长任务命令开放前补齐。
+`TaskProgressObserver` 以 `hmm-app::TaskProgressEvent` 为输入。install、uninstall、reinstall 和
+recovery runner 会在阶段实际推进时调用 observer，同时继续返回 `Vec<TaskProgressEvent>` 兼容既有
+调用方。Tauri adapter 按原顺序转换安全 DTO、写 Task Log、记录 queued task 注册并发送
+`hmm://task-progress`；CLI adapter 从 0 分配单调 `sequence`，先写共享 Task Log，再 flush 脱敏
+JSONL。observer 失败不改变 task 状态、commit、rollback 或玩家文件事实。取消 terminal 由发起取消的
+transport 发送，runner 只停止后续安全阶段，避免重复 terminal。
 
 CLI-1A 在 `hmm-runtime` 中增加 `ReadOnlyGameAutomation`。它不构造会打开/迁移 SQLite 或执行恢复
 装配的完整 `HmmRuntime`，只装配 game config reader、MHW:I adapter、只读 prerequisite rules、
@@ -116,7 +119,40 @@ JSON/JSONL、stdout/stderr 和稳定退出码契约。Production 只读取系统
 discovery，并允许后台状态执行只读平台注册 inspect；Sandbox 只读取显式数据根下的受控
 config/state/logs 与 `<data-dir>/fixtures`，其中 Steam root 固定为 `fixtures/steam`。保存的 game
 root、VDF library、discovery candidate、install/backup state roots 和日志目录在读取前执行词法与
-canonical containment。两种环境都不创建 marker，也不签发写 capability。
+canonical containment。Production 与 Sandbox 的所有只读命令都不创建 marker，也不签发写
+capability。
+
+CLI-2C 另外只在 Sandbox 开放 `hmm install apply|uninstall|reinstall` 与
+`hmm install recovery apply`。未携带完整 `--commit --yes` 时命令仍为 preview；提交时必须消费
+5 分钟 opaque lifecycle token。`SandboxLifecycleAutomation` 在构造写侧 runtime 前验证 token，
+runner 取得共享 game/profile 写锁后，再由 configured committer/admission 重建计划或
+manifest/recovery facts、重验 token 和 capability，之后才进入既有写入事务。Production 在 CLI
+policy 和 runtime composition 两层固定拒绝。
+
+CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
+`ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和
+`ReadOnlyInstallAutomation` 复用 runtime 中同一个 provider。preview 和提交前最终重验都在写锁外
+读取规则、hash 和配置，返回 `ready | warning | blocked`、stable codes 与 rules version；runner
+在获取 game/profile 写锁前立即比较最终 decision 与 preview/token facts。取得写锁后只校验已封存的
+plan/token、identity、containment 和当前 manifest/目标状态，不再执行 prerequisite 规则读取或 hash。
+blocked 或任何 decision 漂移都在 commit、staging 和游戏目录写入前 fail closed。Tauri、CLI 和
+React 只投影该 decision，不重算 MHW:I 规则，也不返回 issue path、自由文本 message 或配置正文。
+
+CLI-2B 在 `hmm-runtime` 增加了 `SandboxWriteCapability`。只有显式 Sandbox 环境可以通过
+`RuntimeEnvironment::acquire_sandbox_write_capability` 申请；Production 没有 capability 构造路径。
+空 Sandbox 根会在申请时通过 no-follow 目录句柄创建固定 `.hmm-sandbox.json` v1 marker，非空根
+必须已经包含完全匹配的 marker。marker 不是授权秘密，不能替代 capability；真正的授权对象字段和
+构造器私有、不可序列化，并在存活期间保留打开的根目录句柄、canonical root 和目录身份。
+`SandboxWriteRoots` 对本次操作实际使用的 app-data、game、save、backup 根执行词法、canonical、
+symlink/junction/reparse-point containment，返回的 `SandboxWriteAdmission` 绑定原 capability
+生命周期。写侧可在安全阶段前重新调用 `revalidate`；Windows 通过打开句柄阻止祖先替换，其他平台
+在允许替换时通过目录身份变化 fail closed。该能力只由明确接线的 Sandbox lifecycle composition
+消费，不自动开放备份、诊断或 Production 写入。
+
+CLI lifecycle adapter 复用 `TaskManager` 处理 Ctrl+C。首个 signal 可以在 runtime/task 建立前锁存，
+task 出现后请求协作式取消；确认取消时 observer 只发一个 `install.cancelled` terminal。第二个 signal
+允许以 130 强制退出，但明确提示调用 recovery/status 重新确认状态；不可抢占 commit 开始后，signal
+不能把成功或受控失败伪装成 cancelled。
 
 目标依赖方向：
 
@@ -130,8 +166,9 @@ backup worker --/       |--> hmm-app -------> hmm-ports
 ```
 
 `hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。Production 的 CLI
-写命令在跨进程 admission 完成前保持不可达，Sandbox 写策略在 marker、canonical containment 和写许可
-落地前也只是一条策略声明。
+写命令在跨进程 admission 完成前保持不可达。Sandbox 单项 lifecycle 命令已经复用完整 application
+service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和写锁；其他写命令仍需按各自
+安全边界逐项开放。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 
@@ -293,7 +330,17 @@ DependencyRule
 - 文件 hash 匹配已知值
 - 安装清单中存在某个前置 Mod
 
-缺少必需前置时，安装应被阻止或给出明确警告，具体行为由严重级别决定。
+app 层把 adapter report 归一化为版本化 `GamePrerequisiteDecision`：
+
+- required missing、规则不可用/损坏、目录或存储不可用为 `blocked`，不得签发计划 token。
+- 签名未命中等可继续状态为 `warning`，允许执行但不能在 UI/CLI 中伪装成“预检通过”。
+- 只有规则验证完成且没有 issue 才是 `ready`。
+- install、true reinstall、retarget staging、Tauri 和 CLI 必须消费同一个 decision；runner 在获取
+  写锁前完成最终 provider 重验并比较 status、stable codes 与 rules version，任何漂移都要求重新
+  preview。规则读取、配置解析和文件 hash 不得在 game/profile 写锁内执行。
+
+详细诊断 report 可以返回受控相对 issue path；生命周期 decision 只返回聚合 status、stable codes
+和 rules version，不传播完整路径、display message 或配置正文。
 
 ### 替换目标映射
 

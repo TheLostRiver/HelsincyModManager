@@ -44,7 +44,9 @@ test("reinstall preview types form a strict ready or blocked discriminated union
   assert.match(source, /installedRevision:\s*ModRevisionSummary\s*\|\s*null/);
   assert.match(source, /candidateRevision:\s*ModRevisionSummary\s*\|\s*null/);
   assert.match(source, /"candidate_not_found"/);
+  assert.match(source, /"prerequisites_blocked"/);
   assert.match(source, /"preview_stale"/);
+  assert.match(source, /prerequisiteDecision:\s*GamePrerequisiteDecision/);
   assert.doesNotMatch(source, /planToken\?:|candidateRevision\?:|installedRevision\?:/);
 });
 
@@ -53,6 +55,9 @@ test("reinstall preview panel narrows ready state before confirming and renders 
 
   assert.match(source, /preview\.status\s*===\s*"ready"/);
   assert.match(source, /preview\.status\s*===\s*"blocked"/);
+  assert.match(source, /preview\.prerequisiteDecision\.status/);
+  assert.match(source, /getPrerequisiteDecisionMessage/);
+  assert.match(source, /getPrerequisiteDecisionCodeLabel/);
   assert.match(source, /retained/);
   assert.match(source, /replaced/);
   assert.match(source, /added/);

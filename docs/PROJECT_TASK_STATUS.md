@@ -27,26 +27,27 @@
 回滚/恢复、Armor Retarget、Mod 库分页、第三方管理器批量迁移，以及 App/Task/Audit 日志和诊断页
 已经形成可测试的后端链路。Gate A 和 Gate B 均为 `certified`。
 
-当前开发优先级已经调整为核心 Mod 生命周期的批量能力：T13-00 已完成批量语义和规划契约，产品
-实现未开始；Slice A 是 next ready，并从 CLI-2A 内部工作包开始。后续 Slice B-D 依次交付批量安装、
-批量卸载/真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
+当前开发优先级已经调整为核心 Mod 生命周期的批量能力：T13-00 已完成批量语义和规划契约，Slice A
+已交付 CLI-2A/2B/2C、Sandbox 单项生命周期 E2E 和 CORE-PREF-01。Slice B 是 next ready，后续
+Slice B-D 依次交付批量安装、批量卸载/真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
 Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺口；完整前置依赖平台、玩家存档恢复、
 日志全量保留策略和 Debug Log 也仍未完成。
-后端命令化已完成 CLI-1A 和 CLI-1B：`hmm-runtime` 已承载真实共享 composition，
+后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
-校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照。安装提交、
-卸载、重装、恢复执行、备份创建/恢复、后台启停、诊断导出和任何 Production 写入仍不可达。
+校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；仅 Sandbox
+开放单项安装、卸载、真正重装和恢复 apply。备份创建/恢复、后台启停、诊断导出和任何 Production
+写入仍不可达。
 
 快照时：
 
-- 规划基线为 `main@e9e451e`；后续任务以最新 `main` 创建独立 branch/worktree。
+- Slice A 基线为 `main@f60f29d`；后续任务以最新 `main` 创建独立 branch/worktree。
 - PR #196 已合并；其 review 遗漏由 PR #197 补齐。
 - PR #199 已完成 T17 Slice 4C，T17 全部切片已交付。
 - PR #210 已合并并交付 CLI-0B/1A/1B；PR #211 至 #214 已完成 GOV-01 至 GOV-04。
 - QG-01 已由 PR #215 完成 CI、review、评论处理和合并；统一 frontend tests/workspace clippy
   门禁已经成为主干基线。
-- T13-00 已完成批量生命周期设计与规划契约，产品实现未开始；Slice A 是 next ready，将从
-  CLI-2A 内部工作包开始，尚未启动。
+- T13-00 已完成批量生命周期设计与规划契约；Slice A 已完成，Slice B 从 T13-01 sealed batch
+  preview 开始。
 
 ## 任务矩阵
 
@@ -62,7 +63,7 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | Core Mod Lifecycle Gate A | Certified | 安装、卸载、真正重装、重启恢复、失败恢复和 exact baseline 已验收 |
 | T8 存档备份 | 部分完成 | 备份与后台核心已落地；玩家存档恢复、完整 retention、安装态验收和卸载清理未完成 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
-| T10 前置依赖检查 | 部分完成 | MHW:I bundled rules 与状态查询、Gate A/B preflight 已有；安装前完整阻断/警告和产品展示未完成 |
+| T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 Armor Retarget | Certified（流程）/ 数据待扩容 | AR1-AR5 流程已认证；bundled armor catalog 仍是最小 seed，武器重定向未实现 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
 | T13 批量操作 | T13-00 design-complete（产品实现未开始） | sealed plan、失败/取消/重试与 preview/seal/start 语义已冻结；T13-01 至 T13-08 产品实现未开始 |
@@ -73,7 +74,7 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T18 Mod 库分页 | 已完成 | 后端权威分页、projection、freshness gate 和 10,000 条性能门禁已落地 |
 | T19 生命周期产品化加固 | 已完成 | A1-L3：headless acceptance、日志/诊断与反馈 UI 均已交付 |
 | T20 浮层动画共享基元 | 待评审 | 下次新增浮层前或出现第三处重复实现时再启动 |
-| CLI 自动化入口 | CLI-1B 已实现 | 已有四个只读 game 命令、install plan/status/recovery scan/preview、backup list/background status 与 diagnostics snapshot；Sandbox containment/no-write、checkpointed sidecar-free SQLite/log readers 与脱敏 contract 已覆盖，写命令未接入 |
+| CLI 自动化入口 | CLI-2C 已实现 | 已有只读 game/install/backup/diagnostics 命令，以及仅 Sandbox 的单项 install/uninstall/reinstall/recovery apply；5 分钟 token、双确认、写锁内重验、取消、失败恢复与 Production 双层拒绝已覆盖 |
 | 工程治理 GOV-01 至 GOV-04 | 已完成 | DTO 测试外置、重装 lint 抑制清理、Tauri 契约防回归和治理检查加固已由 PR #211 至 #214 交付 |
 
 ### Gate A / Gate B
@@ -249,17 +250,19 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
 
 ## CLI 自动化
 
-### CLI-0A / CLI-0B / CLI-1A / CLI-1B 已实现
+### CLI-0A / CLI-0B / CLI-1A / CLI-1B / CLI-2A / CLI-2B / CLI-2C / CORE-PREF-01 已实现
 
 - workspace 已新增 `hmm-runtime` 与 `hmm-cli`，CLI dependency tree 不包含 Tauri。
 - `hmm runtime status` 支持 `human|json|jsonl`、Production/Sandbox 环境和稳定退出码。
 - CLI-0A human/help/error 输出统一无 ANSI，`--no-color` 保留为稳定全局参数。
 - Production 禁止 `--data-dir`，写命令策略固定为 `disabled`。
-- Sandbox 要求显式绝对数据根并拒绝 root、`.` 和 `..`；当前不创建目录或 marker，也不签发写许可。
+- Sandbox 要求显式绝对数据根并拒绝 root、`.` 和 `..`；只读命令不创建 marker，CLI-2C lifecycle
+  写命令才显式申请受控 write capability。
 - JSON/JSONL 使用 `hmm.cli/v1`；机器模式的 runtime/parse 错误使用稳定脱敏 envelope。
 - `HmmRuntime` 已装配真实 repositories/services、`TaskManager` 与 game/profile 写锁。
 - Tauri `AppState` 已变为 runtime 薄包装；固定 `--once` worker 直接构造 runtime。
-- `TaskProgressObserver` 已建立 transport-neutral 接缝，Tauri event/Task Log/queued App Log 保持原行为。
+- `TaskProgressObserver` 已逐阶段接入 install/uninstall/reinstall/recovery runner；Tauri event、
+  CLI JSONL、Task Log 与 queued App Log 共享 task id、phase 和顺序事实。
 - `hmm game status|scan|validate|prerequisites --game mhw` 已开放，支持 `human|json|jsonl`。
 - `ReadOnlyGameAutomation` 不构造完整 `HmmRuntime`，避免 SQLite migration、projection/recovery 等
   初始化写副作用。
@@ -280,20 +283,29 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
   App/Task/Audit 分类状态和计数，不返回日志正文、来源文件名、Audit fields 或 export path。
 - backup/diagnostics 三命令已有 human/json/jsonl、人工 SQLite/fake registry/fixed clock/log fixture、
   parser write gate、敏感 canary 与整树 no-write 测试。
-- install apply/uninstall/reinstall/recovery apply、backup create/restore/background enable|disable、
-  diagnostics export 等写命令尚未开放。
+- `hmm install apply|uninstall|reinstall` 与 `hmm install recovery apply` 已仅在 Sandbox 开放；
+  ready preview 签发 5 分钟 opaque token，提交要求 `--commit --yes`，锁内重建并重验计划、
+  capability 和 recovery facts；manifest/recovery 内容即使计数不变也会使旧 token 失效。
+- lifecycle 写入复用既有 application runner、InstallPlan、backup、manifest、rollback/recovery、
+  Task/Audit Log 和共享写锁；Ctrl+C 通过 TaskManager 协作式取消，第二次中断不伪造 cancelled。
+- install/reinstall preview 和桌面 runner 复用同一个 app-level prerequisite decision provider。
+  required missing、rules unavailable/corrupted 与无法证明的状态为 blocked 且不签 token；
+  `signature_unverified` 为显式 warning。token 与锁内重验绑定 status、stable codes 和 rules version。
+- CLI/Tauri/frontend 只投影 `prerequisiteDecision`，不返回 issue path、display message、配置正文
+  或本地绝对路径，也不复制 MHW:I adapter 规则。
+- Production 四条 lifecycle 写命令在 CLI policy/runtime 双层拒绝；backup create/restore/background
+  enable|disable 和 diagnostics export 仍未开放。
 
 ### 下一步
 
-CLI-1B 已完成。现有 runner 仍返回事件集合；首个 CLI-2 长任务 JSONL 命令开放前必须完成逐阶段
-observer，不能把当前 transport 接缝误报为实时流。Sandbox 写链路还必须新增 marker/capability、
-canonical containment、失败注入和完整安全链路，不得把 CLI-1B 只读结果当作后续写入授权。
+Slice A 已完成当前单项 Sandbox lifecycle 闭环与 CORE-PREF-01。下一步从已合并的 Slice A 启动
+T13-01 sealed BatchPlan/preview，再由 T13-02 和 CLI-4 install 子集完成 Slice B 批量安装。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
 
-Production 写命令仍依赖跨进程 admission；Sandbox 写命令仍依赖 marker、canonical containment、
-fake/temp fixture 与完整安全链路。两者都不能由当前 `sandbox_only` 策略字符串提前解锁。
+Production 写命令仍依赖跨进程 admission；当前 Sandbox lifecycle capability 不自动解锁 backup、
+background registration 或 diagnostics export。
 
 ## 验证证据
 
@@ -319,6 +331,18 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 - `cargo test -p hmm-cli --no-fail-fast`：6 个 unit 与 30 个 binary contract 通过。
 - 自动化只使用 temp SQLite、fake registry/fixed clock 和人工日志；未执行 Production
   backup/diagnostics 命令，未读取真实 AppData/日志/存档，也未查询或修改真实 Scheduled Task。
+
+CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
+
+- `cargo clippy -p hmm-app -p hmm-runtime -p hmm-cli --all-targets -- -D warnings`：通过。
+- `cargo test -p hmm-cli --test cli_contract`：36/36 通过；`cargo test -p hmm-cli --lib
+  cancellation`：5/5 通过。
+- `cargo test -p hmm-app install_task --lib`：32/32 通过；`cargo test -p hmm-app reinstall_task
+  --lib`：16/16 通过。
+- `cargo test -p hmm-runtime lifecycle_automation --lib`：3/3 通过；
+  `cargo test -p hmm-runtime composition::core_mod_lifecycle_tests`：9/9 通过。
+- E2E 只使用 TEMP/fake/artificial fixture，未读取或写入真实 Steam、游戏、存档、AppData、
+  Scheduled Task 或第三方 Mod。
 
 2026-07-30 在独立 clean Windows QG-01 worktree 对当前治理 diff 实际执行：
 
@@ -347,14 +371,12 @@ CLI-1B backup/diagnostics 子切片当前聚焦证据：
 
 ## 建议执行顺序
 
-1. 从包含 T13-00 的最新 `main` 启动 CLI-2A，完成逐阶段 observer 和 JSONL
-   顺序/terminal/cancel 事实。
-2. CLI-2B/2C 完成 Sandbox 写许可和单项生命周期 binary E2E。
-3. CORE-PREF-01 证明并补齐单项安装前置检查的一致 decision。
-4. T13-01 至 T13-08 依次完成批量 plan、安装、卸载、真正重装、CLI/Tauri/前端和 Gate C。
-5. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
-6. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
-7. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
-8. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
+1. 完成 Slice A 全量验证、findings-first review、PR、required CI 与 review 门禁。
+2. 从已合并 Slice A 启动 T13-01/T13-02 和 Slice B 批量安装。
+3. T13-01 至 T13-08 依次完成批量 plan、安装、卸载、真正重装、CLI/Tauri/前端和 Gate C。
+4. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
+5. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
+6. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
+7. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

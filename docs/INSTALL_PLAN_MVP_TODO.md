@@ -39,6 +39,9 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 前端 Mod 库消费 `get_mod_library()`；后端返回空数组时不再显示 mock 数据。
 - `InstallPlan` 领域模型、目标路径校验、冲突模型和只读计划预览。
 - 后端驱动的 `preview_imported_mod_install_plan`，从已导入 Mod 的受控 sandbox 和 game adapter 生成计划输入。
+- CORE-PREF-01 app-level prerequisite decision：install/true reinstall preview、桌面 runner 和
+  Sandbox CLI 复用同一个 provider；required missing/rules unavailable 为 blocked，未知签名为
+  warning，锁内重验绑定 status、stable codes 与 rules version。
 - 最小前端 typed API 和计划预览 UI。
 - 安装提交服务、JSON manifest 仓储、备份和失败回滚骨架。
 - JSON manifest 仓储可读取已有 profile manifest；安装提交会按目标路径合并 manifest 条目，保留未触达的旧条目，并在替换已有托管目标时保留旧 `backup_ref` 恢复语义。
@@ -64,7 +67,8 @@ MVP 的目标不是一次性完成所有安装管理能力，而是先形成一�
 - 恢复中心更丰富的 repair workflow；实施边界已细化到 [安装恢复受控动作实施计划](INSTALL_RECOVERY_CONTROLLED_ACTIONS_PLAN.md)，durable recovery record、安装 commit 写入、扫描消费、只读动作预览、后端受控回滚任务、恢复中心逐 Mod 写入型入口和任务 UI 编排均已落地。
 - ARMOR_RETARGET staging 接入 InstallPlan。
 - rich manifest 的 replacement binding snapshot、`game_id` / `game_instance_id` / 顶层 `mod_id` 语义、写侧状态机门禁和真实修复检测。
-- dependency/preflight 阻断。
+- 更多依赖类型、manifest-backed 前置 Mod、风险文件策略和自动修复；单项 MHW:I loader
+  dependency/preflight 阻断、warning 与 UI/CLI 展示已经落地。
 
 ## 已完成切片记录
 
@@ -986,6 +990,10 @@ Retarget 接入 InstallPlan 时，staging 是可丢弃的中间产物，不是�
 ### P2：Dependency / preflight
 
 目标：安装提交前检查必需前置、风险文件、loader 要求和 profile 冲突。
+
+当前状态：CORE-PREF-01 已完成 MHW:I loader 规则的单项 install/reinstall decision、锁内重验、
+Tauri/CLI/frontend 投影和脱敏回归。manifest-backed 前置 Mod、更多风险文件类型与自动修复仍属于
+后续扩展，不影响当前单项 lifecycle fail-closed 语义。
 
 范围：
 

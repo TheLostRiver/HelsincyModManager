@@ -3,7 +3,7 @@
 > 无人值守自主迭代的具体任务队列见 [自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
 > 本文件描述产品阶段，那份描述在没有人盯着时可以安全推进哪些工作。
 
-## 当前执行焦点（2026-07-30）
+## 当前执行焦点（2026-07-31）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -31,9 +31,9 @@
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
 6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。T13-00 已完成批量 sealed batch
    语义与规划契约，产品实现未开始；[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)
-   是后续实现的权威语义。Slice A 是 next ready，在同一纵向 PR 内依次完成 CLI-2A/2B/2C 与
-   CORE-PREF-01；随后 Slice B-D 交付批量安装、批量卸载/真正重装、CLI/Tauri/前端契约和 disposable
-   Windows Sandbox Gate C。
+   是后续实现的权威语义。Slice A 已完成 CLI-2A/2B/2C、Sandbox 单项生命周期 E2E 与
+   CORE-PREF-01 统一 prerequisite decision；Slice B 是 next ready，随后 Slice C-D 交付批量卸载/
+   真正重装、CLI/Tauri/前端契约和 disposable Windows Sandbox Gate C。
 7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的
    MHW:I catalog/path parser/adapter、InstallPlan/manifest 集成和受控 UI。防具 AR1-AR5 已认证不等于
    完整防具数据或武器链路已完成。
@@ -41,7 +41,8 @@
    验收、ownership-checked installer cleanup、玩家存档恢复和 retention/备份中心。账号昵称/头像和
    多候选显式选择已完成，不重新实现。
 9. 日志后续补 Task/Audit retention、总空间上限和 Debug Log。Production CLI 写入继续等待跨进程
-   admission；Sandbox CLI 可较早作为核心生命周期和批量能力的自动化入口。
+   admission；Sandbox CLI 已成为单项核心生命周期自动化入口，后续由 Slice B/C 增加真正的 batch
+   app/CLI contract。
 10. GOV-01 至 GOV-04 已由 PR #211 至 #214 完成；DTO 测试外置、重装 dead-code 抑制清理、
     Tauri command 契约覆盖和治理检查加固成为后续任务必须保持的工程基线。
 

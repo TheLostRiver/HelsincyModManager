@@ -378,6 +378,11 @@
   background: var(--color-warning-bg);
 }
 
+.replacement-panel__inline-state.is-warning {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
 .replacement-panel__inline-state.is-success,
 .replacement-panel__task-state.is-completed {
   color: var(--color-success-text);

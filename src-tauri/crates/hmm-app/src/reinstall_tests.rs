@@ -1,4 +1,8 @@
 use super::reinstall::*;
+use crate::{
+    GamePrerequisiteDecision, GamePrerequisiteDecisionCode, GamePrerequisiteDecisionProvider,
+    GamePrerequisiteDecisionStatus,
+};
 use anyhow::Result;
 use hmm_core::{
     FileLayer, InstallConflict, InstallFileProvider, InstallManifest, InstallManifestEntry,
@@ -23,6 +27,10 @@ fn preview_fixture_returns_expected_counts_without_mutation_or_sensitive_facts()
     let preview = fixture.preview(default_request()).expect("ready preview");
 
     assert_eq!(preview.status, ReinstallPreviewStatus::Ready);
+    assert_eq!(
+        preview.prerequisite_decision.status,
+        GamePrerequisiteDecisionStatus::Ready
+    );
     assert_eq!(preview.installed_revision, Some(revision_summary("v1")));
     assert_eq!(preview.candidate_revision, Some(revision_summary("v2")));
     assert_eq!(
@@ -46,6 +54,42 @@ fn preview_fixture_returns_expected_counts_without_mutation_or_sensitive_facts()
     ] {
         assert!(!public_debug.contains(secret));
     }
+    fixture.assert_zero_mutations();
+}
+
+#[test]
+fn preview_exposes_warning_and_blocks_missing_required_prerequisites_without_token() {
+    let fixture = Fixture::ready();
+    let ready_token = ready_token(&fixture, default_request());
+
+    fixture
+        .prerequisites
+        .set_decision(warning_prerequisite_decision());
+    let warning = fixture
+        .preview(default_request())
+        .expect("warning preview remains ready");
+    assert_eq!(warning.status, ReinstallPreviewStatus::Ready);
+    assert_eq!(
+        warning.prerequisite_decision,
+        warning_prerequisite_decision()
+    );
+    assert_ne!(
+        warning.plan_token.as_deref(),
+        Some(ready_token.as_str()),
+        "the internal reinstall token must bind prerequisite facts"
+    );
+
+    fixture
+        .prerequisites
+        .set_decision(blocked_prerequisite_decision());
+    let blocked = fixture
+        .preview(default_request())
+        .expect("blocked prerequisite preview");
+    assert_blocked(&blocked, ReinstallBlockingReason::PrerequisitesBlocked);
+    assert_eq!(
+        blocked.prerequisite_decision,
+        blocked_prerequisite_decision()
+    );
     fixture.assert_zero_mutations();
 }
 
@@ -506,6 +550,7 @@ fn revision_summary(revision_id: &str) -> ReinstallRevisionSummary {
 
 struct Fixture {
     service: ReinstallPreviewService,
+    prerequisites: Arc<FakePrerequisites>,
     catalog: Arc<FakeCatalog>,
     planner: Arc<FakePlanner>,
     source: Arc<FakeCandidateSource>,
@@ -517,6 +562,7 @@ struct Fixture {
 
 impl Fixture {
     fn ready() -> Self {
+        let prerequisites = Arc::new(FakePrerequisites::new(ready_prerequisite_decision()));
         let catalog = Arc::new(FakeCatalog::ready());
         let planner = Arc::new(FakePlanner::new(candidate_plan("v2")));
         let source = Arc::new(FakeCandidateSource::new([
@@ -541,6 +587,7 @@ impl Fixture {
         let manifests = Arc::new(FakeManifests::new(Some(installed_manifest())));
         let recovery = Arc::new(FakeRecoveryTransactions::default());
         let service = ReinstallPreviewService::new(
+            prerequisites.clone(),
             catalog.clone(),
             planner.clone(),
             source.clone(),
@@ -551,6 +598,7 @@ impl Fixture {
         );
         Self {
             service,
+            prerequisites,
             catalog,
             planner,
             source,
@@ -585,6 +633,58 @@ impl Fixture {
         assert_eq!(self.manifests.save_count(), 0);
         assert_eq!(self.recovery.save_count(), 0);
         assert_eq!(self.recovery.remove_count(), 0);
+    }
+}
+
+struct FakePrerequisites {
+    decision: Mutex<GamePrerequisiteDecision>,
+}
+
+impl FakePrerequisites {
+    fn new(decision: GamePrerequisiteDecision) -> Self {
+        Self {
+            decision: Mutex::new(decision),
+        }
+    }
+
+    fn set_decision(&self, decision: GamePrerequisiteDecision) {
+        *self.decision.lock().expect("prerequisite decision lock") = decision;
+    }
+}
+
+impl GamePrerequisiteDecisionProvider for FakePrerequisites {
+    fn prerequisite_decision(&self, _game_id: &hmm_core::GameId) -> GamePrerequisiteDecision {
+        self.decision
+            .lock()
+            .expect("prerequisite decision lock")
+            .clone()
+    }
+}
+
+fn ready_prerequisite_decision() -> GamePrerequisiteDecision {
+    GamePrerequisiteDecision {
+        game_id: hmm_core::GameId::mhw(),
+        status: GamePrerequisiteDecisionStatus::Ready,
+        rules_version: Some(1),
+        codes: Vec::new(),
+    }
+}
+
+fn warning_prerequisite_decision() -> GamePrerequisiteDecision {
+    GamePrerequisiteDecision {
+        game_id: hmm_core::GameId::mhw(),
+        status: GamePrerequisiteDecisionStatus::Warning,
+        rules_version: Some(1),
+        codes: vec![GamePrerequisiteDecisionCode::SignatureUnverified],
+    }
+}
+
+fn blocked_prerequisite_decision() -> GamePrerequisiteDecision {
+    GamePrerequisiteDecision {
+        game_id: hmm_core::GameId::mhw(),
+        status: GamePrerequisiteDecisionStatus::Blocked,
+        rules_version: Some(1),
+        codes: vec![GamePrerequisiteDecisionCode::MissingRequiredFile],
     }
 }
 
@@ -1205,6 +1305,10 @@ impl FakeManifests {
             fail_saves: Mutex::new(BTreeMap::new()),
             fail_loads: Mutex::new(BTreeSet::new()),
         }
+    }
+
+    fn load_count(&self) -> usize {
+        *self.loads.lock().expect("manifest loads lock")
     }
 
     fn set_manifest(&self, manifest: Option<InstallManifest>) {

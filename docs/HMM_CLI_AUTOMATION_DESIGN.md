@@ -90,9 +90,9 @@ save backup worker ---------/       |--> hmm-app -------> hmm-ports
 GUI-only 启动行为和对 runtime 的解引用；Tauri commands/DTO/event emit 仍留在桌面壳。
 `hmm-save-backup-worker` 直接构造 runtime，因此不初始化 WebView 或 Tauri state。
 
-`HmmRuntimeBuilder` 当前提供显式 app-data root 和受控 manifest repository 故障注入。Production、
-Sandbox、Test 的完整 capability/admission 模式仍是后续目标；不能把 builder 的路径参数当作 CLI
-Production 数据根覆盖能力。
+`HmmRuntimeBuilder` 当前提供显式 app-data root 和受控 manifest repository 故障注入。Sandbox
+进程内 write capability 已由 CLI-2B 落地；Production 跨进程 admission 与 Test fake capability
+模式仍是后续目标。不能把 builder 的路径参数当作 CLI Production 数据根覆盖能力。
 
 ### Runtime 模式
 
@@ -124,8 +124,22 @@ CLI-0A 固定了不访问文件系统的环境策略：
   `businessCommandsAvailable` 均固定为 `false`。CLI-1A 接入只读 game 命令后，
   `productionWritesAllowed` 仍为 `false`，`businessCommandsAvailable` 改为 `true`。
 
-marker、symlink/junction/reparse-point 检查、调用方临时根 containment 与写 permit 都属于 CLI-2
-之前必须补齐的能力，不能由当前绝对路径校验替代。
+CLI-2B 已补齐 Sandbox 写许可基础：
+
+- `--data-dir` 是调用方声明的隔离 capability 根；只有显式 Sandbox 环境可以申请
+  `SandboxWriteCapability`，Production 固定返回 `sandbox_write_production_forbidden`。
+- 申请只发生在 CLI-2C lifecycle 写命令运行期，`runtime status` 和 CLI-1 只读命令不会创建 marker。空根会通过
+  no-follow 句柄创建固定 `.hmm-sandbox.json` v1 marker；非空根必须已包含完全匹配的 marker。
+- marker 不是 capability，也不是可持久化授权秘密。capability 本身构造器和字段私有、不可序列化，
+  并保留打开的目录句柄、canonical root 与 volume/file identity 或 dev/inode identity。
+- `SandboxWriteRoots` 逐项校验本次操作实际使用的 app-data、game、save、backup 根；词法逃逸、
+  canonical 逃逸、symlink、junction、reparse point、marker 篡改与祖先替换全部 fail closed。
+- `SandboxWriteAdmission` 借用原 capability，写侧必须在进入安全写阶段前重新验证。Windows 的打开
+  句柄直接阻止祖先 rename；允许 rename 的平台通过目录身份变化返回 `sandbox_root_replaced`。
+
+CLI-2B 只建立 CLI-2C 的必要门禁。CLI-2C 已显式接入四条单项 lifecycle 命令，但 capability 仍不
+替代 InstallPlan、backup、manifest、rollback/recovery、Audit Log 或 game/profile 写锁，也不自动
+开放其他写命令。
 
 ### 应用层任务观察器
 
@@ -139,14 +153,16 @@ pub trait TaskProgressObserver: Send + Sync {
 }
 ```
 
-当前 Tauri adapter 已通过该 observer 完成领域事件到 Task Log、App Log 和 Tauri event 的转换，
-且 wire DTO 未变化。现有 runner 仍返回 `Vec<TaskProgressEvent>`，所以 CLI-0B 建立的是 transport
-接缝，不代表逐阶段流式执行已经完成。首个长任务 CLI 命令开放前仍必须满足：
+当前 install、uninstall、reinstall 和 recovery runner 已在任务推进时逐阶段调用 observer，同时继续
+返回 `Vec<TaskProgressEvent>` 兼容既有调用方。Tauri adapter 通过该 observer 完成领域事件到
+Task Log、App Log 和 Tauri event 的转换，wire DTO 未变化；CLI adapter 则将同一领域事件转换为
+`hmm.cli/v1` JSONL。
 
-- runner 在任务实际推进时调用 observer，而不是只在结束后返回事件集合。
 - `TaskManager` 仍拥有 task 状态迁移和取消事实。
 - Tauri observer 继续负责转换安全 DTO、写 Task Log、发送 `hmm://task-progress`。
-- CLI observer 负责写 JSONL stdout，并复用同一个 Task Log writer。
+- CLI observer 从 0 单调分配 `sequence`，先复用同一个 Task Log writer，再 flush JSONL stdout。
+- CLI observer 拒绝第二个 terminal 和 terminal 后事件；无效事件不消耗序号。
+- 取消 terminal 由发起取消的 transport 发送，runner 只停止后续安全阶段，不能再补第二个 cancelled。
 - 测试 observer 收集事件，用于顺序、terminal event 和脱敏断言。
 - Audit Log 仍由提交服务和高风险用例写入，不能由 CLI 文案代替。
 
@@ -273,8 +289,9 @@ hmm
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
 | CLI-4（Slice B/C） | `install batch`、`install uninstall-batch`、`install reinstall-batch` | Sandbox；Production 受 CLI-3 门禁 | 按 operation 增量开放：Slice B 交付批量安装，Slice C 再交付批量卸载与真正重装 |
 
-CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。所有写命令必须在持有写 admission 后重新
-读取配置、manifest/recovery、目标摘要、前置状态和计划事实。
+CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。生命周期写命令必须在获取 game/profile
+写锁前重新读取可能包含规则解析或 hash 的前置状态；取得写 admission 和写锁后，再对已封存 token、
+manifest/recovery、目标摘要和计划事实做有界重验。
 
 ## 命令语义
 
@@ -337,6 +354,25 @@ hmm install recovery preview --game mhw --profile <profile-id> --mod <mod-id> \
   --action rollback-install|reconcile-reinstall
 ```
 
+CLI-2C 当前只在 Sandbox 开放：
+
+```text
+hmm install apply --game mhw --profile <profile-id> --mod <mod-id> \
+  --plan-token <token> --commit --yes
+hmm install uninstall --game mhw --profile <profile-id> --mod <mod-id> \
+  --plan-token <token> --commit --yes
+hmm install reinstall --game mhw --profile <profile-id> --mod <mod-id> \
+  --candidate-revision <revision-id> --plan-token <token> --commit --yes
+hmm install recovery apply --game mhw --profile <profile-id> --mod <mod-id> \
+  --action rollback-install|reconcile-reinstall --plan-token <token> --commit --yes
+```
+
+省略任一确认参数时，四条命令只返回同源 preview。只有 ready/available preview 签发 5 分钟
+`hmm-lifecycle-plan-v1` opaque token；token 不包含路径、manifest、backup/recovery ref 或内部
+reinstall token。uninstall/recovery token 额外绑定 repository 读取出的完整结构化
+manifest/install-recovery/reinstall-recovery 状态摘要，因此内容变化即使聚合计数相同也会使旧 token
+失效。
+
 plan 当前使用后端固定 base layer，并只输出经 `InstallTargetPath` 校验的逻辑相对 target、priority 和
 聚合计数；不输出 package file id 或自由 layer 名。status 省略 `--game` 时只读 manifest，提供 game
 时使用 recovery-aware 状态。recovery scan 省略 `--mod` 时扫描受控 profile 状态，preview 只做聚合
@@ -346,11 +382,12 @@ fail closed，避免篡改状态或第三方文件名进入 CLI 输出。
 `install apply` 不是复制命令。它必须：
 
 1. 获取对应写 admission。
-2. 在锁内重新读取 game/profile、recovery、manifest、前置和候选 revision。
-3. 重建计划并校验 `planToken` 或等价计划事实。
-4. 执行 conflict/preflight、backup、commit、manifest、rollback/recovery。
-5. 写 Task Log 和 Audit Log。
-6. 只返回稳定任务结果和聚合摘要。
+2. 在锁外重新读取 prerequisite 规则、配置和文件 hash，并与 token 绑定的 decision 比较。
+3. 在锁内重新校验 game/profile、recovery、manifest、候选 revision 和受控目标摘要。
+4. 重建计划并校验 `planToken` 或等价计划事实。
+5. 执行 conflict/preflight、backup、commit、manifest、rollback/recovery。
+6. 写 Task Log 和 Audit Log。
+7. 只返回稳定任务结果和聚合摘要。
 
 计划过期、配置变化、目标摘要变化或前置状态变化时必须 fail closed，要求重新执行 `install plan`。
 
@@ -359,6 +396,8 @@ fail closed，避免篡改状态或第三方文件名进入 CLI 输出。
 `uninstall` 只消费受控 manifest、`installed_file` 摘要和 backup 事实，不根据当前 Mod 包猜测。
 
 `reinstall` 复用真正重装的 retained/replaced/added/stale 计划、snapshot 和 recovery transaction。
+CLI layer 固定为 `base@0`，只接受 candidate revision ID；外层 lifecycle token 绑定同源 preview 和
+既有内部 reinstall token，但 machine output 不公开内部 token。
 
 `recovery scan/preview` 只返回状态、issue code 和聚合计数。`recovery apply` 只执行后端已经证明
 available 的受控动作，并在持锁区重新验证。
@@ -596,6 +635,7 @@ seal 和 start；preview token 与 plan token 只在内存传递，不作为参�
 - 每个已启动任务恰好有一个 terminal event：`completed`、`failed` 或 `cancelled`。
 - `phase` 与应用层稳定 phase 一致。
 - `current`、`total`、`result` 和 `error` 仅在语义适用时出现，缺席时省略。
+- task event 的 `error` 仅允许 `{ "code": "<stable_code>" }`，且只出现在 `failed` 事件。
 - `message` 自由文本、原始 error 和 `result_ref` 不进入 JSONL。
 - Ctrl+C 请求协作式取消；CLI 等待任务到达 terminal state 后退出。再次中断可强制退出，但必须在
   stderr 提示“状态需通过 recovery/status 重新确认”，不能伪造 cancelled。
@@ -617,9 +657,13 @@ seal 和 start；preview token 与 plan token 只在内存传递，不作为参�
 脚本要判断具体原因时读取 `error.code`，不能依赖新增退出码。未执行写入的参数、
 前置条件或安全门禁拒绝使用 `3`，即使 error category 为 `data_safety_risk`；
 只有已经进入受控写入或恢复语义的 `rollback_failed` / `data_safety_risk` 才使用
-`4`，并且必须由 error category 和 Audit Log 明确标识。当前 CLI-1A/CLI-1B
-全部是只读命令，因此 sandbox containment、受控路径或持久化状态校验失败均属于
-退出码 `3`，不会伪装成已经开始执行的受控失败。
+`4`，并且必须由 error category 和 Audit Log 明确标识。CLI-1A/CLI-1B 只读命令以及 CLI-2C 在
+task/write 前发生的 token、containment、前置或 Production 拒绝都使用退出码 `3`，不会伪装成已经
+开始执行的受控失败。
+
+生命周期 facade 只持有稳定 task failure code 和 task id、无法证明底层回滚结果时，必须保守投影为
+`data_safety_risk`，不能声称 `rollback_succeeded`。机器消费者应结合 Task/Audit Log 或后续
+recovery/status 查询确认真实恢复状态。
 
 ## 自动化测试设计
 
@@ -742,9 +786,8 @@ fixture 必须：
 - 现有桌面 command contract、DTO 和 task phase 未变化。
 - 聚焦 check/test/clippy 通过，测试未访问真实游戏、Steam、存档、AppData 或 Scheduled Task。
 
-保留边界：
-
-- runner 仍在结束时返回事件集合；真正逐阶段流式 observer 在首个 CLI 长任务命令前补齐。
+后续 CLI-2A 已完成这里保留的边界：runner 会在阶段推进时实时调用 observer，同时继续返回事件集合
+兼容旧调用方。
 
 ### CLI-1A：只读游戏自动化入口
 
@@ -782,11 +825,11 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 
 ### CLI-2A/2B/2C：Observer、Sandbox 写许可与单项 E2E
 
-- CLI-2A 先让 runner 逐阶段调用 observer，锁定 task id、sequence、phase、取消和唯一 terminal
-  event；不新增写命令。
-- CLI-2B 再建立 Sandbox marker/capability、canonical containment 与写侧重验。
-- CLI-2C 接入人工 archive/T17 external import fixture、install/uninstall/reinstall/recovery apply，
-  并覆盖失败注入、取消、重启恢复和 sentinel containment。
+- CLI-2A 已让 install/uninstall/reinstall/recovery runner 逐阶段调用 observer，并锁定 task id、
+  sequence、phase、取消 ownership、唯一 terminal、Task Log 顺序和脱敏 JSONL；未新增写命令。
+- CLI-2B 已建立 Sandbox marker/capability、canonical containment、目录身份与写侧重验。
+- CLI-2C 已接入 install/uninstall/reinstall/recovery apply，使用人工 repository/package fixture，
+  并覆盖独立进程 token、失败注入、取消、重启恢复和 sentinel containment。
 - backup create 和 diagnostics export 仍按独立安全切片开放，不能被生命周期写许可自动解锁。
 
 完成定义：
@@ -794,6 +837,29 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - 完整 Gate A 类链路可由 `hmm` binary 在临时根端到端执行。
 - sandbox marker、路径 containment 和 production gate 均有负向测试。
 - 不读取真实 Steam、AppData、游戏或存档。
+
+### CORE-PREF-01：单项 lifecycle 前置 decision
+
+- `GamePrerequisiteDecisionProvider` 是 desktop、CLI、install 和 true reinstall 的 app-level
+  单一事实源；transport 不解析诊断 message、路径或 MHW:I 规则。
+- install/reinstall preview 都返回 `prerequisiteDecision { status, rulesVersion, codes }`。
+  required missing、rules unavailable/corrupted 和无法证明的状态为 `blocked`，不签 token；
+  `signature_unverified` 为显式 `warning`，允许继续但不能显示为 success。
+- install lifecycle token 直接绑定 decision facts；reinstall 内部 token 绑定 decision，外层
+  Sandbox token 绑定完整 preview/internal token。规则版本、codes 或 status 漂移都会使旧 token
+  失效。
+- 规则读取、hash、配置检查和最终 decision 重验都在 game/profile 写锁外；runner 在获取锁前立即将
+  最终 decision 与 preview/token facts 比较。锁内只校验已封存 token/plan、identity、containment
+  和当前 manifest/目标状态，blocked 或漂移在 staging、manifest、commit 和 game write 前 fail closed。
+- CLI/Tauri DTO 不返回 issue path、display message、配置正文、完整本地路径或第三方 Mod 内容。
+
+完成定义：
+
+- install/reinstall 的 required-missing blocked/no-token 与 unverified warning/token 由真实 binary
+  contract 固定。
+- 桌面 install/reinstall runner 的锁前 decision drift tests 证明 prerequisite provider 不在写锁内
+  调用，且发生漂移时 commit service 和文件写入未发生。
+- Tauri DTO、frontend typed contract 和 UI warning/blocked 状态消费同一 decision。
 
 ### CLI-3：跨进程 admission 与生产写入
 
@@ -853,8 +919,7 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 - 日志、诊断和机器输出都遵守统一脱敏白名单。
 - 测试只使用 temp/fake/人工 fixture，并验证 sandbox 外 sentinel 不变。
 
-CLI-0A、CLI-0B、CLI-1A 与 CLI-1B 已满足 contract/policy、共享 composition、transport observer
-接缝和只读 game/install/backup/diagnostics automation 条件。T13-00 合并后，Slice A 是下一个
-ready 交付单元，CLI-2A 是其首个内部工作包；任何 CLI-2 长任务写命令前，必须先完成 runner
-逐阶段 observer，再完成 Sandbox write marker/capability、canonical containment 与完整安全链路。
-Slice A 完成后进入 Slice B，不要为每个 Tauri command 添加 shell 包装。
+CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CORE-PREF-01 已形成 Slice A：共享
+composition、逐阶段 observer、Sandbox write capability、完整单项 lifecycle E2E 和统一 prerequisite
+decision 均已落地。Slice B 从已合并的 Slice A 启动 T13 sealed 批量安装，不要为每个 Tauri command
+添加 shell 包装，也不要让 CLI 循环调用单项命令伪装 batch。

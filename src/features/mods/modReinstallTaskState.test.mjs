@@ -39,6 +39,11 @@ const running = {
 
 const readyPreview = {
   status: "ready",
+  prerequisiteDecision: {
+    status: "ready",
+    rulesVersion: 1,
+    codes: [],
+  },
   planToken: "opaque-token",
   installedRevision: { revisionId: "revision-v1" },
   candidateRevision: { revisionId: "revision-v2" },
@@ -113,6 +118,36 @@ test("only installed plus ready preview and an inactive task can confirm", () =>
     canConfirmReinstall(
       "installed",
       { ...readyPreview, status: "blocked", planToken: null, candidateRevision: null },
+      { status: "idle" },
+    ),
+    false,
+  );
+  assert.equal(
+    canConfirmReinstall(
+      "installed",
+      {
+        ...readyPreview,
+        prerequisiteDecision: {
+          status: "warning",
+          rulesVersion: 1,
+          codes: ["signature_unverified"],
+        },
+      },
+      { status: "idle" },
+    ),
+    true,
+  );
+  assert.equal(
+    canConfirmReinstall(
+      "installed",
+      {
+        ...readyPreview,
+        prerequisiteDecision: {
+          status: "blocked",
+          rulesVersion: 1,
+          codes: ["missing_required_file"],
+        },
+      },
       { status: "idle" },
     ),
     false,

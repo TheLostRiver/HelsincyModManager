@@ -1,5 +1,32 @@
 use super::*;
-use crate::{ReinstallCommitPhase, ReinstallCommitService};
+use crate::{
+    ReinstallCommitError, ReinstallCommitPhase, ReinstallCommitService, ReinstallTaskExecutor,
+    ReinstallTaskExecutorService,
+};
+
+#[test]
+fn executor_revalidation_rejects_prerequisite_drift_before_commit_or_writes() {
+    let fixture = Fixture::ready();
+    let prepared = fixture.prepare(default_request());
+    let source_reads_before = fixture.source.read_count();
+    let manifest_loads_before = fixture.manifests.load_count();
+    let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+    let commit = Arc::new(commit_service(&fixture, snapshots.clone()));
+    let executor = ReinstallTaskExecutorService::new(Arc::new(fixture.service.clone()), commit);
+
+    fixture
+        .prerequisites
+        .set_decision(blocked_prerequisite_decision());
+    let result = ReinstallTaskExecutor::revalidate(&executor, &prepared);
+
+    assert_eq!(result, Err(ReinstallCommitError::PreviewStale));
+    assert_eq!(fixture.manifests.load_count(), manifest_loads_before);
+    assert_eq!(fixture.source.read_count(), source_reads_before);
+    assert!(fixture.game.mutations().is_empty());
+    assert_eq!(fixture.manifests.save_count(), 0);
+    assert_eq!(fixture.recovery.save_count(), 0);
+    assert_eq!(snapshots.remaining_count(), 0);
+}
 
 #[test]
 fn commit_happy_path_preserves_original_backup_and_replaces_only_requested_entry_set() {
@@ -74,7 +101,9 @@ fn commit_happy_path_preserves_original_backup_and_replaces_only_requested_entry
     assert_eq!(result.manifest.status, InstallManifestStatus::Completed);
     assert_eq!(result.manifest.replacement_bindings.len(), 1);
     assert_eq!(
-        result.manifest.replacement_bindings[0].binding_id().as_str(),
+        result.manifest.replacement_bindings[0]
+            .binding_id()
+            .as_str(),
         "binding-v2"
     );
     assert_eq!(
