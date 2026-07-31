@@ -1,8 +1,8 @@
 # 批量 Mod 生命周期领域设计
 
 > 状态：T13-00 设计冻结；T13-01 已实现 sealed BatchPlan/preview；T13-02 的 Windows/MHW:I
-> app runner、SQLite lifecycle journal、retry 和故障证据正在 `hy/t13-02-batch-install` 分支完成，
-> 尚未合并或暴露为 CLI/Tauri/UI 公共接口。
+> app runner、SQLite lifecycle journal、retry 和故障证据已实现，但尚未通过 CLI/Tauri/UI
+> 公共接口暴露。
 >
 > 日期：2026-07-30
 >

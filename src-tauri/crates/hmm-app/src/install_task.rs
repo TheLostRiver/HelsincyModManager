@@ -670,38 +670,20 @@ impl InstallTaskRunner {
         &self,
         task_id: &str,
         request: &StartInstallTaskRequest,
-        mut events: Vec<TaskProgressEvent>,
+        events: Vec<TaskProgressEvent>,
         observer: &O,
         phase: &str,
         action_count: usize,
     ) -> InstallTaskOrchestrationError {
-        if matches!(
-            self.task_manager.fail_task(task_id),
-            Err(TaskManagerError::TaskCannotTransition {
-                from: TaskStatus::Cancelled,
-                to: TaskStatus::Failed,
-                ..
-            })
-        ) {
-            return InstallTaskOrchestrationError {
-                events,
-                commit_error: None,
-            };
-        }
-        let error_code = format!("{INSTALL_FAILED_ERROR}:{phase}");
-        observe_task_progress(&mut events, observer, failed_event(task_id, phase));
-        self.record_audit(
+        self.fail_with_audit_details(
             task_id,
             request,
-            "failure",
-            action_count,
-            Some(&error_code),
-            None,
-        );
-        InstallTaskOrchestrationError {
             events,
-            commit_error: None,
-        }
+            observer,
+            phase,
+            action_count,
+            None,
+        )
     }
 
     fn fail_with_commit_error<O: TaskProgressObserver + ?Sized>(
