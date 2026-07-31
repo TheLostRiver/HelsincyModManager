@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 ctrlc.workspace = true
+hmm-core = { path = "../hmm-core" }
 hmm-runtime = { path = "../hmm-runtime" }
 hmm-ports = { path = "../hmm-ports" }
 serde.workspace = true

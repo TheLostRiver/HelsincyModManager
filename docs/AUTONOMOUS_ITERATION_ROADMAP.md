@@ -123,8 +123,8 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01 已落地，T13-02 在独立分支中
-完成核心 app/infra 实现与聚焦验证，尚未合并。内部 task 按依赖顺序提交，但不为每个 task
+QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01/T13-02 已落地，
+T13-05 的 install batch 子集已在独立分支中接入并通过聚焦验证，尚未合并。内部 task 按依赖顺序提交，但不为每个 task
 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
 跳过 required CI terminal success。
 
@@ -321,17 +321,20 @@ PR candidate 整理。
 
 ### T13-05：CLI 批量契约
 
-状态：`blocked`。install contract 子集在 Slice B 依赖 T13-02，其余 uninstall/reinstall contract
-在 Slice C 依赖 T13-04。
+状态：`in_progress`。install batch contract 子集已在 Slice B 接入；其余 uninstall/reinstall
+contract 在 Slice C 依赖 T13-03/T13-04。
 
 范围：
 
 - CLI 适配领域 batch service，不在 shell 中循环单项命令。
-- JSON/JSONL 包含 batch task id、item status、唯一 terminal event 和 exit code `5` partial success。
+- `hmm install batch plan|apply|result|retry` 使用 JSON/JSONL，包含 batch/task/item 状态和
+  exit code `5` partial success。
+- `plan` 返回脱敏 projection 与短期 opaque `previewToken`；apply 先做只读 stale 验证，再初始化
+  journal 并在 seal 时重验。
 - 首版仅 Sandbox；Production 继续拒绝。
 
-完成定义：Slice B 先交付批量安装的 conflict、partial success、cancel、retry 和敏感 canary
-contract tests；Slice C 再补齐批量卸载与真正重装，最终共同覆盖完整批量 CLI 契约。
+完成定义：Slice B 先交付批量安装的 conflict、partial success、stale preview、retry 和敏感
+canary contract tests；Slice C 再补齐批量卸载与真正重装，最终共同覆盖完整批量 CLI 契约。
 
 提交边界：CLI parser/schema 一个提交，runtime adapter/E2E 一个提交。
 
