@@ -133,6 +133,7 @@ pub struct HmmRuntime {
     pub audit_log_diagnostics_export: Arc<AuditLogDiagnosticsExportService>,
     pub support_diagnostics_export: Arc<SupportDiagnosticsExportService>,
     pub task_log_writer: Arc<dyn TaskLogWriter>,
+    pub(crate) audit_log_writer: Arc<dyn AuditLogWriter>,
     pub install_planning: Arc<InstallPlanningService>,
     pub install_preflight: Arc<ImportedModInstallPreflightService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
@@ -172,10 +173,6 @@ pub struct HmmRuntime {
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
     pub task_manager: Arc<TaskManager>,
-    #[expect(
-        dead_code,
-        reason = "keeps the shared SQLite connection alive for repositories"
-    )]
     db: Arc<Mutex<rusqlite::Connection>>,
 }
 
@@ -186,6 +183,14 @@ impl HmmRuntime {
 
     pub fn from_app_data_dir(app_data_dir: PathBuf) -> Result<Self, String> {
         Self::builder(app_data_dir).build()
+    }
+
+    pub(crate) fn database_handle(&self) -> Arc<Mutex<rusqlite::Connection>> {
+        Arc::clone(&self.db)
+    }
+
+    pub(crate) fn audit_log_writer(&self) -> Arc<dyn AuditLogWriter> {
+        Arc::clone(&self.audit_log_writer)
     }
 
     fn from_builder(builder: HmmRuntimeBuilder) -> Result<Self, String> {
@@ -671,6 +676,7 @@ impl HmmRuntime {
             audit_log_diagnostics_export,
             support_diagnostics_export,
             task_log_writer,
+            audit_log_writer: Arc::clone(&audit_log_writer),
             install_planning,
             install_preflight,
             install_manifest_query,

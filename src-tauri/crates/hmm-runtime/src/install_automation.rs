@@ -549,6 +549,55 @@ impl ReadOnlyInstallAutomation {
         ))
     }
 
+    pub(crate) fn build_install_plan_for_revision(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+        revision_id: &str,
+    ) -> Result<
+        (
+            GameId,
+            ProfileId,
+            ModId,
+            ModRevisionId,
+            hmm_core::InstallPlan,
+            GamePrerequisiteDecision,
+        ),
+        ReadOnlyInstallAutomationError,
+    > {
+        let game_id = parse_game_id(game_id)?;
+        let profile_id = ProfileId::new(parse_safe_id(
+            profile_id,
+            ReadOnlyInstallAutomationError::ProfileIdInvalid,
+        )?);
+        let mod_id = ModId::new(parse_safe_id(
+            mod_id,
+            ReadOnlyInstallAutomationError::ModIdInvalid,
+        )?);
+        let revision_id = ModRevisionId::new(parse_safe_id(
+            revision_id,
+            ReadOnlyInstallAutomationError::CandidateRevisionIdInvalid,
+        )?);
+        let preflight = self
+            .preflight
+            .preview_revision(
+                &game_id,
+                &mod_id,
+                &revision_id,
+                &FileLayer::new("base", 0),
+            )
+            .map_err(map_planning_error)?;
+        Ok((
+            game_id,
+            profile_id,
+            mod_id,
+            revision_id,
+            preflight.plan,
+            preflight.prerequisite_decision,
+        ))
+    }
+
     pub fn reinstall_preview(
         &self,
         game_id: &str,

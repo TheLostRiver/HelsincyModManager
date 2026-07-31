@@ -178,7 +178,7 @@ impl ImportedModInstallPreflightService {
         })
     }
 
-    pub(crate) fn preview_revision(
+    pub fn preview_revision(
         &self,
         game_id: &GameId,
         mod_id: &ModId,

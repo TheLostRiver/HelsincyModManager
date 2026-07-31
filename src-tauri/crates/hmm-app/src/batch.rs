@@ -359,29 +359,7 @@ impl BatchPlanService {
         request: BatchPlanRequest,
         preview_token: &str,
     ) -> Result<BatchPlanSealResult, BatchPlanSealError> {
-        let normalized = request
-            .normalize_with_max_items(self.resource_limits.max_items)
-            .map_err(map_plan_error_to_seal_error)?;
-        let plan = self.build_plan_for_seal_internal(&normalized)?;
-        let now = self
-            .clock
-            .now_unix_millis()
-            .map_err(|_| BatchPlanSealError::ClockUnavailable)?;
-        match self.token_codec.verify(
-            BatchTokenKind::Preview,
-            preview_token,
-            &plan.batch_digest,
-            &plan.environment_digest,
-            now,
-        ) {
-            Ok(()) => {}
-            Err(BatchTokenError::Expired) => return Err(BatchPlanSealError::Expired),
-            Err(BatchTokenError::Mismatch) => return Err(BatchPlanSealError::Stale),
-            Err(BatchTokenError::Invalid) => return Err(BatchPlanSealError::InvalidToken),
-        }
-        if !plan.is_ready() {
-            return Err(BatchPlanSealError::PlanBlocked);
-        }
+        let (normalized, plan, now) = self.validate_preview_internal(request, preview_token)?;
         let expires_at = now.saturating_add(DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS);
         let batch_id = BatchId::new(format!("batch-{}", Uuid::new_v4()));
         let sealed_batch = SealedBatch {
@@ -446,6 +424,50 @@ impl BatchPlanService {
             plan_token: plan_token.token,
             expires_at_unix_millis: expires_at,
         })
+    }
+
+    /// Re-read the plan facts and validate a preview token without writing a seal or
+    /// initializing any persistence-backed runtime. Callers that later perform a write
+    /// must still call [`Self::seal`] so the validation is repeated immediately before
+    /// persistence.
+    pub fn validate_preview(
+        &self,
+        request: BatchPlanRequest,
+        preview_token: &str,
+    ) -> Result<BatchPlan, BatchPlanSealError> {
+        self.validate_preview_internal(request, preview_token)
+            .map(|(_, plan, _)| plan)
+    }
+
+    fn validate_preview_internal(
+        &self,
+        request: BatchPlanRequest,
+        preview_token: &str,
+    ) -> Result<(NormalizedBatchPlanRequest, BatchPlan, u128), BatchPlanSealError> {
+        let normalized = request
+            .normalize_with_max_items(self.resource_limits.max_items)
+            .map_err(map_plan_error_to_seal_error)?;
+        let plan = self.build_plan_for_seal_internal(&normalized)?;
+        let now = self
+            .clock
+            .now_unix_millis()
+            .map_err(|_| BatchPlanSealError::ClockUnavailable)?;
+        match self.token_codec.verify(
+            BatchTokenKind::Preview,
+            preview_token,
+            &plan.batch_digest,
+            &plan.environment_digest,
+            now,
+        ) {
+            Ok(()) => {}
+            Err(BatchTokenError::Expired) => return Err(BatchPlanSealError::Expired),
+            Err(BatchTokenError::Mismatch) => return Err(BatchPlanSealError::Stale),
+            Err(BatchTokenError::Invalid) => return Err(BatchPlanSealError::InvalidToken),
+        }
+        if !plan.is_ready() {
+            return Err(BatchPlanSealError::PlanBlocked);
+        }
+        Ok((normalized, plan, now))
     }
 
     fn build_plan(
