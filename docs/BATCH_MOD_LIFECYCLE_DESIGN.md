@@ -1,6 +1,8 @@
 # 批量 Mod 生命周期领域设计
 
-> 状态：T13-00 设计冻结；产品代码尚未实现
+> 状态：T13-00 设计冻结；T13-01 已实现 sealed BatchPlan/preview；T13-02 的 Windows/MHW:I
+> app runner、SQLite lifecycle journal、retry 和故障证据正在 `hy/t13-02-batch-install` 分支完成，
+> 尚未合并或暴露为 CLI/Tauri/UI 公共接口。
 >
 > 日期：2026-07-30
 >
@@ -29,6 +31,12 @@ T17 第三方管理器批量迁移已经具备 selection snapshot、partial resu
 
 本文冻结 T13-00 的领域语义。后续 T13-01 至 T13-08 必须实现并验证本文，不能在 transport 或 UI
 层重新解释。
+
+当前 T13-02 实现复用既有单项 InstallTaskRunner 的 plan、backup、manifest、rollback/recovery
+链路；batch 层只负责确定性 ordinal 调度、SQLite intent/result、attempt CAS、聚合 Audit 和取消
+屏障。`Interrupted` 表示单项事务可能已提交但 batch journal 未确认终态，证据健康必须降级且不得
+直接 retry。replacement snapshot 在 materialize workflow 接入前显式返回
+`batch_retarget_install_unsupported`。
 
 ## 目标
 
@@ -266,11 +274,18 @@ BatchItemPlan
 batch_id
 batch_digest
 attempt_number
+ordered_attempt_item_ids
 environment
 schema_version
 issued_at
 expires_at
 ```
+
+`ordered_attempt_item_ids` 是 repository 从 sealed batch 与上一合法终态派生的确切执行集合；
+attempt 0 必须包含全部 sealed items，retry attempt 必须精确等于上一 attempt 中
+`retryable = true` 的有序 item 集合。Apply token 不能只绑定 batch digest，否则被污染的 attempt
+selection 可能借合法 token 重放成功项。`schema_version` 同时进入 canonical batch digest，token
+envelope 还必须签入 `issued_at` 与 `expires_at`。
 
 Preview token 必须使用经过审计、无需持久化服务端记录的 keyed token，以保持 preview 纯只读。Plan
 token 可以使用相同机制，或随机 bearer value 加 seal 事务保存的单向 verifier 与元数据。两者都不能把
@@ -420,6 +435,8 @@ Continue 是失败策略，不是安全 override。
 - commit 或 rollback 未收敛：item 是 `recovery_required`。
 - 当前 item 收尾后不再启动新 item。
 
+TaskManager 在 commit cancellation barrier 内收到的父 batch 取消请求保存为 deferred
+cancellation。只有当前 item terminal journal 已持久化并解除父 barrier 后才应用该请求，因此
 TaskManager 的 Cancelled 状态不能覆盖成功 manifest/Audit 事实。
 
 ### Batch terminal status
@@ -560,7 +577,8 @@ Batch journal 只记录编排，不取代 manifest/recovery：
 
 启动恢复流程：
 
-1. 把遗留 `running` attempt 标记为 `interrupted`。
+1. 对遗留非终态 `queued/running/stopping` attempt 停止自动续写；`running/stopping` 标记为
+   `interrupted`，`queued` 只有在能证明未进入单项执行时才可安全取消或重新签发。
 2. 只对当时的 running item 读取 operation-specific manifest/recovery 事实。
 3. 如果 completed manifest 和 cleanup 都能精确证明，收敛为 `succeeded`。
 4. 如果存在 `committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required` 或
