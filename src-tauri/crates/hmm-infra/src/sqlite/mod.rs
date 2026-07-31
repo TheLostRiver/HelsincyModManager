@@ -1,3 +1,4 @@
+mod batch_lifecycle_repository;
 mod category_repository;
 mod external_import_batch_repository;
 mod migrations;
@@ -8,6 +9,7 @@ mod save_backup_background_settings_repository;
 mod save_backup_repository;
 mod save_backup_scheduler_repository;
 
+pub use batch_lifecycle_repository::SqliteBatchLifecycleRepository;
 pub use category_repository::SqliteCategoryRepository;
 pub use external_import_batch_repository::SqliteExternalImportBatchRepository;
 pub use mod_library_projection_repository::SqliteModLibraryProjectionRepository;
