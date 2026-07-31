@@ -1627,14 +1627,24 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
         let (source_files, staging_root): (Arc<dyn InstallSourceFileReader>, Option<PathBuf>) =
             match request.plan.replacement_bindings.as_slice() {
                 [] => {
-                    let analysis = self
-                        .mod_import_result_repository
-                        .get_analysis(request.mod_id.as_str())
-                        .map_err(|_| source_error())?
-                        .ok_or_else(source_error)?;
+                    let package_id = match request.revision_id.as_ref() {
+                        Some(revision_id) => self
+                            .mod_import_result_repository
+                            .get_revision(revision_id)
+                            .map_err(|_| source_error())?
+                            .filter(|revision| revision.mod_id == request.mod_id)
+                            .map(|revision| revision.package_id)
+                            .ok_or_else(source_error)?,
+                        None => self
+                            .mod_import_result_repository
+                            .get_analysis(request.mod_id.as_str())
+                            .map_err(|_| source_error())?
+                            .map(|analysis| analysis.package_id)
+                            .ok_or_else(source_error)?,
+                    };
                     let source_root = self
                         .mod_import_sandbox_locator
-                        .sandbox_root_for_package(&analysis.package_id)
+                        .sandbox_root_for_package(&package_id)
                         .map_err(|_| source_error())?;
                     (
                         Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
@@ -1668,10 +1678,16 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             )),
         );
 
-        let result = service.commit_plan(CommitInstallPlanRequest {
+        let commit_request = CommitInstallPlanRequest {
             profile_id: request.profile_id,
             plan: request.plan,
-        });
+        };
+        let result = match request.revision_id {
+            Some(revision_id) => {
+                service.commit_plan_for_revision(commit_request, request.mod_id, revision_id)
+            }
+            None => service.commit_plan(commit_request),
+        };
         if let Some(staging_root) = staging_root {
             if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
                 record_runtime_warning(

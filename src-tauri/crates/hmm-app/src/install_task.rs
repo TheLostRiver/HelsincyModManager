@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId};
+use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId};
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
     ReinstallRecoveryTransactionRepository,
@@ -75,6 +75,12 @@ pub struct InstallTaskRunError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InstallTaskOrchestrationError {
+    pub events: Vec<TaskProgressEvent>,
+    pub commit_error: Option<InstallCommitError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UninstallTaskRunError {
     pub events: Vec<TaskProgressEvent>,
 }
@@ -87,6 +93,7 @@ pub struct RecoveryActionTaskRunError {
 pub struct ImportedModInstallCommitRequest {
     pub game_id: GameId,
     pub mod_id: ModId,
+    pub revision_id: Option<ModRevisionId>,
     pub profile_id: ProfileId,
     pub plan: InstallPlan,
 }
@@ -95,6 +102,14 @@ pub trait ImportedModInstallPlanner: Send + Sync {
     fn build_imported_mod_install_plan(
         &self,
         request: BuildImportedModInstallPlanRequest,
+    ) -> Result<ImportedModInstallPreflight, InstallPlanningError>;
+
+    fn build_imported_mod_revision_install_plan(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        revision_id: &ModRevisionId,
+        layer: &FileLayer,
     ) -> Result<ImportedModInstallPreflight, InstallPlanningError>;
 
     fn prerequisite_decision(&self, game_id: &GameId) -> GamePrerequisiteDecision;
@@ -106,6 +121,16 @@ impl ImportedModInstallPlanner for ImportedModInstallPreflightService {
         request: BuildImportedModInstallPlanRequest,
     ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
         self.preview(request)
+    }
+
+    fn build_imported_mod_revision_install_plan(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        revision_id: &ModRevisionId,
+        layer: &FileLayer,
+    ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+        self.preview_revision(game_id, mod_id, revision_id, layer)
     }
 
     fn prerequisite_decision(&self, game_id: &GameId) -> GamePrerequisiteDecision {
@@ -125,10 +150,16 @@ impl InstallPlanCommitter for InstallCommitService {
         &self,
         request: ImportedModInstallCommitRequest,
     ) -> Result<InstallCommitResult, InstallCommitError> {
-        self.commit_plan(CommitInstallPlanRequest {
+        let commit_request = CommitInstallPlanRequest {
             profile_id: request.profile_id,
             plan: request.plan,
-        })
+        };
+        match request.revision_id {
+            Some(revision_id) => {
+                self.commit_plan_for_revision(commit_request, request.mod_id, revision_id)
+            }
+            None => self.commit_plan(commit_request),
+        }
     }
 }
 
@@ -411,8 +442,52 @@ impl InstallTaskRunner {
         request: StartInstallTaskRequest,
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, InstallTaskRunError> {
+        self.run_install_task_for_orchestration_with_observer(task_id, request, observer)
+            .map_err(|error| InstallTaskRunError {
+                events: error.events,
+            })
+    }
+
+    pub(crate) fn run_install_task_for_orchestration_with_observer<
+        O: TaskProgressObserver + ?Sized,
+    >(
+        &self,
+        task_id: &str,
+        request: StartInstallTaskRequest,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, InstallTaskOrchestrationError> {
+        self.run_install_task_for_orchestration_with_revision(task_id, request, None, observer)
+    }
+
+    pub(crate) fn run_install_revision_task_for_orchestration_with_observer<
+        O: TaskProgressObserver + ?Sized,
+    >(
+        &self,
+        task_id: &str,
+        request: StartInstallTaskRequest,
+        revision_id: ModRevisionId,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, InstallTaskOrchestrationError> {
+        self.run_install_task_for_orchestration_with_revision(
+            task_id,
+            request,
+            Some(revision_id),
+            observer,
+        )
+    }
+
+    fn run_install_task_for_orchestration_with_revision<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: StartInstallTaskRequest,
+        revision_id: Option<ModRevisionId>,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, InstallTaskOrchestrationError> {
         if self.task_manager.start_task(task_id).is_err() {
-            return Err(InstallTaskRunError { events: Vec::new() });
+            return Err(InstallTaskOrchestrationError {
+                events: Vec::new(),
+                commit_error: None,
+            });
         }
 
         let mut events = Vec::new();
@@ -421,21 +496,28 @@ impl InstallTaskRunner {
             observer,
             running_event(task_id, INSTALL_PLAN_BUILDING_PHASE),
         );
-        let preflight =
-            match self
-                .planner
-                .build_imported_mod_install_plan(BuildImportedModInstallPlanRequest {
-                    game_id: request.game_id.clone(),
-                    mod_id: request.mod_id.clone(),
-                    layer: request.layer.clone(),
-                }) {
-                Ok(preflight) => preflight,
-                Err(_) => {
-                    return Err(
-                        self.fail_with_audit(task_id, &request, events, observer, "planning", 0)
-                    )
-                }
-            };
+        let preflight = match revision_id.as_ref() {
+            Some(revision_id) => self.planner.build_imported_mod_revision_install_plan(
+                &request.game_id,
+                &request.mod_id,
+                revision_id,
+                &request.layer,
+            ),
+            None => {
+                self.planner
+                    .build_imported_mod_install_plan(BuildImportedModInstallPlanRequest {
+                        game_id: request.game_id.clone(),
+                        mod_id: request.mod_id.clone(),
+                        layer: request.layer.clone(),
+                    })
+            }
+        };
+        let preflight = match preflight {
+            Ok(preflight) => preflight,
+            Err(_) => {
+                return Err(self.fail_with_audit(task_id, &request, events, observer, "planning", 0))
+            }
+        };
         let action_count = preflight.plan.actions.len();
         if preflight.prerequisite_decision.is_blocked() {
             return Err(self.fail_with_audit(
@@ -497,6 +579,11 @@ impl InstallTaskRunner {
                 &current_prerequisite_decision,
             ) {
                 Ok(()) => {
+                    observe_task_progress(
+                        &mut events,
+                        observer,
+                        running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE),
+                    );
                     if self.task_manager.block_task_cancellation(task_id).is_err() {
                         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                             return Ok(events);
@@ -510,16 +597,12 @@ impl InstallTaskRunner {
                             action_count,
                         ));
                     }
-                    observe_task_progress(
-                        &mut events,
-                        observer,
-                        running_event(task_id, INSTALL_COMMIT_PROCESSING_PHASE),
-                    );
                     Ok(self
                         .committer
                         .commit_install_plan(ImportedModInstallCommitRequest {
                             game_id: request.game_id.clone(),
                             mod_id: request.mod_id.clone(),
+                            revision_id: revision_id.clone(),
                             profile_id: request.profile_id.clone(),
                             plan,
                         }))
@@ -541,32 +624,32 @@ impl InstallTaskRunner {
             }
         };
 
-        match commit_result {
-            Ok(_) => self.record_audit(task_id, &request, "success", action_count, None),
-            Err(_) => {
-                return Err(self.fail_with_audit(
+        let audit_ok = match commit_result {
+            Ok(_) => self.record_audit(task_id, &request, "success", action_count, None, None),
+            Err(error) => {
+                return Err(self.fail_with_commit_error(
                     task_id,
                     &request,
                     events,
                     observer,
-                    "commit",
                     action_count,
+                    error,
                 ))
             }
-        }
+        };
 
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                observe_task_progress(
-                    &mut events,
-                    observer,
-                    TaskProgressEvent::new(
-                        task.task_id,
-                        task.kind,
-                        task.status,
-                        INSTALL_COMPLETED_PHASE,
-                    ),
+                let mut event = TaskProgressEvent::new(
+                    task.task_id,
+                    task.kind,
+                    task.status,
+                    INSTALL_COMPLETED_PHASE,
                 );
+                if !audit_ok {
+                    event.error = Some("install_audit_unavailable".to_owned());
+                }
+                observe_task_progress(&mut events, observer, event);
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
@@ -591,7 +674,7 @@ impl InstallTaskRunner {
         observer: &O,
         phase: &str,
         action_count: usize,
-    ) -> InstallTaskRunError {
+    ) -> InstallTaskOrchestrationError {
         if matches!(
             self.task_manager.fail_task(task_id),
             Err(TaskManagerError::TaskCannotTransition {
@@ -600,12 +683,95 @@ impl InstallTaskRunner {
                 ..
             })
         ) {
-            return InstallTaskRunError { events };
+            return InstallTaskOrchestrationError {
+                events,
+                commit_error: None,
+            };
         }
         let error_code = format!("{INSTALL_FAILED_ERROR}:{phase}");
         observe_task_progress(&mut events, observer, failed_event(task_id, phase));
-        self.record_audit(task_id, request, "failure", action_count, Some(&error_code));
-        InstallTaskRunError { events }
+        self.record_audit(
+            task_id,
+            request,
+            "failure",
+            action_count,
+            Some(&error_code),
+            None,
+        );
+        InstallTaskOrchestrationError {
+            events,
+            commit_error: None,
+        }
+    }
+
+    fn fail_with_commit_error<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: &StartInstallTaskRequest,
+        events: Vec<TaskProgressEvent>,
+        observer: &O,
+        action_count: usize,
+        commit_error: InstallCommitError,
+    ) -> InstallTaskOrchestrationError {
+        let rollback_result = match &commit_error {
+            InstallCommitError::RollbackSucceeded { .. } => "rollback_succeeded",
+            InstallCommitError::RollbackFailed { .. } => "rollback_failed",
+            InstallCommitError::PlanHasBlockingConflicts
+            | InstallCommitError::PlanHasInvalidReplacementBindings
+            | InstallCommitError::PlanHasInvalidRevisionIdentity
+            | InstallCommitError::Failed { .. } => "not_attempted",
+        };
+        let mut error = self.fail_with_audit_details(
+            task_id,
+            request,
+            events,
+            observer,
+            "commit",
+            action_count,
+            Some(rollback_result),
+        );
+        error.commit_error = Some(commit_error);
+        error
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fail_with_audit_details<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: &StartInstallTaskRequest,
+        mut events: Vec<TaskProgressEvent>,
+        observer: &O,
+        phase: &str,
+        action_count: usize,
+        rollback_result: Option<&str>,
+    ) -> InstallTaskOrchestrationError {
+        if matches!(
+            self.task_manager.fail_task(task_id),
+            Err(TaskManagerError::TaskCannotTransition {
+                from: TaskStatus::Cancelled,
+                to: TaskStatus::Failed,
+                ..
+            })
+        ) {
+            return InstallTaskOrchestrationError {
+                events,
+                commit_error: None,
+            };
+        }
+        let error_code = format!("{INSTALL_FAILED_ERROR}:{phase}");
+        observe_task_progress(&mut events, observer, failed_event(task_id, phase));
+        self.record_audit(
+            task_id,
+            request,
+            "failure",
+            action_count,
+            Some(&error_code),
+            rollback_result,
+        );
+        InstallTaskOrchestrationError {
+            events,
+            commit_error: None,
+        }
     }
 
     fn record_audit(
@@ -615,7 +781,8 @@ impl InstallTaskRunner {
         result: &str,
         action_count: usize,
         error_code: Option<&str>,
-    ) {
+        rollback_result: Option<&str>,
+    ) -> bool {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let mut fields = BTreeMap::new();
         fields.insert("task_id".to_owned(), task_id.to_owned());
@@ -629,18 +796,23 @@ impl InstallTaskRunner {
         if let Some(error_code) = error_code {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
+        if let Some(rollback_result) = rollback_result {
+            fields.insert("rollback_result".to_owned(), rollback_result.to_owned());
+        }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(
-            AuditLogEvent {
-                timestamp_unix_millis,
-                category: "install".to_owned(),
-                operation: "commit_imported_mod".to_owned(),
-                result: result.to_owned(),
-                fields,
-            },
-            policy,
-        );
+        self.audit_log
+            .record_with_policy(
+                AuditLogEvent {
+                    timestamp_unix_millis,
+                    category: "install".to_owned(),
+                    operation: "commit_imported_mod".to_owned(),
+                    result: result.to_owned(),
+                    fields,
+                },
+                policy,
+            )
+            .is_ok()
     }
 }
 
@@ -1481,6 +1653,42 @@ mod tests {
     }
 
     #[test]
+    fn successful_install_keeps_file_fact_and_reports_audit_degradation() {
+        struct FailingAuditLogWriter;
+
+        impl AuditLogWriter for FailingAuditLogWriter {
+            fn record(&self, _event: AuditLogEvent) -> anyhow::Result<()> {
+                anyhow::bail!("audit unavailable")
+            }
+        }
+
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            Arc::new(RecordingInstallCommitter::new(sample_manifest())),
+            Arc::new(FailingAuditLogWriter),
+            Arc::new(FixedClock),
+        );
+
+        let events = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect("audit failure cannot rewrite a committed install as a failure");
+
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+        assert_eq!(
+            events.last().and_then(|event| event.error.as_deref()),
+            Some("install_audit_unavailable")
+        );
+    }
+
+    #[test]
     fn run_install_task_passes_current_plan_to_admission_before_commit() {
         struct RejectingPlanAdmission {
             expected_plan: InstallPlan,
@@ -2184,6 +2392,35 @@ mod tests {
         let event = audit_log.take_event().expect("failure audit recorded");
         assert_eq!(event.result, "failure");
         assert_eq!(event.fields["action_count"], "1");
+        assert_eq!(event.fields["rollback_result"], "not_attempted");
+    }
+
+    #[test]
+    fn run_install_task_audits_rollback_failure_without_internal_error_text() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = InstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            Arc::new(RollbackFailedInstallCommitter),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("rollback failure must fail the task");
+
+        let event = audit_log.take_event().expect("failure audit recorded");
+        assert_eq!(event.result, "failure");
+        assert_eq!(event.fields["error_code"], "install_failed:commit");
+        assert_eq!(event.fields["rollback_result"], "rollback_failed");
+        let serialized = serde_json::to_string(&event).expect("serialize audit event");
+        assert!(!serialized.contains("nativePC"));
+        assert!(!serialized.contains("rollback fixture unavailable"));
     }
 
     #[test]
@@ -2453,6 +2690,19 @@ mod tests {
             })
         }
 
+        fn build_imported_mod_revision_install_plan(
+            &self,
+            _game_id: &GameId,
+            _mod_id: &ModId,
+            _revision_id: &ModRevisionId,
+            _layer: &FileLayer,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            Ok(ImportedModInstallPreflight {
+                plan: self.plan.clone(),
+                prerequisite_decision: self.preview_decision.clone(),
+            })
+        }
+
         fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
             if let Some(write_lock) = &self.prerequisite_write_lock {
                 let _guard = write_lock
@@ -2477,6 +2727,22 @@ mod tests {
             self.task_manager
                 .cancel_task(&self.task_id)
                 .expect("task can be cancelled after planning");
+            Ok(ImportedModInstallPreflight {
+                plan: self.plan.clone(),
+                prerequisite_decision: ready_prerequisite_decision(),
+            })
+        }
+
+        fn build_imported_mod_revision_install_plan(
+            &self,
+            _game_id: &GameId,
+            _mod_id: &ModId,
+            _revision_id: &ModRevisionId,
+            _layer: &FileLayer,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            self.task_manager
+                .cancel_task(&self.task_id)
+                .expect("task can be cancelled after revision planning");
             Ok(ImportedModInstallPreflight {
                 plan: self.plan.clone(),
                 prerequisite_decision: ready_prerequisite_decision(),
@@ -2688,6 +2954,19 @@ mod tests {
         ) -> Result<InstallCommitResult, InstallCommitError> {
             Err(InstallCommitError::Failed {
                 phase: crate::InstallCommitPhase::Write,
+            })
+        }
+    }
+
+    struct RollbackFailedInstallCommitter;
+
+    impl InstallPlanCommitter for RollbackFailedInstallCommitter {
+        fn commit_install_plan(
+            &self,
+            _request: ImportedModInstallCommitRequest,
+        ) -> Result<InstallCommitResult, InstallCommitError> {
+            Err(InstallCommitError::RollbackFailed {
+                failed_phase: crate::InstallCommitPhase::Write,
             })
         }
     }

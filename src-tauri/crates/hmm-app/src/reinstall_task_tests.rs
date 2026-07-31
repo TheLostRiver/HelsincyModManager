@@ -944,6 +944,20 @@ impl crate::ImportedModInstallPlanner for NotifyingInstallPlanner {
         })
     }
 
+    fn build_imported_mod_revision_install_plan(
+        &self,
+        _game_id: &GameId,
+        _mod_id: &ModId,
+        _revision_id: &hmm_core::ModRevisionId,
+        _layer: &FileLayer,
+    ) -> Result<crate::ImportedModInstallPreflight, crate::InstallPlanningError> {
+        self.build_imported_mod_install_plan(crate::BuildImportedModInstallPlanRequest {
+            game_id: GameId::mhw(),
+            mod_id: ModId::new("mod-a"),
+            layer: FileLayer::new("base", 0),
+        })
+    }
+
     fn prerequisite_decision(&self, _game_id: &GameId) -> crate::GamePrerequisiteDecision {
         ready_prerequisite_decision()
     }

@@ -14,10 +14,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-#[path = "install_rollback_tests.rs"]
-mod install_rollback_tests;
 #[path = "install_replacement_tests.rs"]
 mod install_replacement_tests;
+#[path = "install_rollback_tests.rs"]
+mod install_rollback_tests;
 use install_replacement_tests::replacement_snapshot;
 #[path = "install_uninstall_tests.rs"]
 mod install_uninstall_tests;
@@ -220,6 +220,49 @@ fn build_plan_from_imported_revision_uses_requested_package_not_display_projecti
 }
 
 #[test]
+fn build_plan_from_imported_revision_id_uses_sealed_revision_after_display_changes() {
+    let repository = Arc::new(FakeModImportResultRepository::new(vec![
+        stored_analysis("mod-a", "display-package-v2"),
+        stored_analysis("mod-a", "sealed-package-v1"),
+    ]));
+    let scanner = Arc::new(FakeInstallFileScanner {
+        files: vec![ModPackageInstallFile {
+            package_file_id: "nativePC/models/player.mod3".to_owned(),
+            target_path: "nativePC/models/player.mod3".to_owned(),
+        }],
+        seen_requests: Mutex::new(Vec::new()),
+    });
+    let service = InstallPlanningService::with_imported_mod_sources(
+        repository,
+        Arc::new(FakeSandboxLocator {
+            root: PathBuf::from("controlled-sandbox/sealed-package-v1"),
+        }),
+        scanner.clone(),
+        vec![Arc::new(FakeGameAdapter {
+            game_id: GameId::mhw(),
+            allowed_roots: vec!["nativePC".to_owned()],
+        })],
+    );
+
+    service
+        .build_plan_from_imported_revision_id(
+            &GameId::mhw(),
+            &ModId::new("mod-a"),
+            &hmm_core::ModRevisionId::new("sealed-package-v1"),
+            &FileLayer::new("base", 0),
+        )
+        .expect("sealed revision should remain independently addressable");
+
+    assert_eq!(
+        scanner.seen_requests.lock().expect("requests").as_slice(),
+        &[(
+            "sealed-package-v1".to_owned(),
+            PathBuf::from("controlled-sandbox/sealed-package-v1")
+        )]
+    );
+}
+
+#[test]
 fn build_plan_from_imported_mod_ignores_files_outside_adapter_roots() {
     let repository = Arc::new(FakeModImportResultRepository::new(vec![stored_analysis(
         "mod-a",
@@ -335,6 +378,191 @@ fn commit_plan_writes_new_files_and_persists_manifest() {
         "d556e02a85803b1d71c94a462432da55b16b443f7579c8bfdc4a44a4c7d6a17a"
     );
     assert_eq!(result.manifest, manifest);
+}
+
+#[test]
+fn commit_plan_for_revision_persists_exact_revision_in_schema_v2_manifest() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target,
+        FileLayer::new("base", 0),
+    )]);
+    let manifests = Arc::new(RecordingInstallManifestRepository::default());
+    let service = InstallCommitService::new(
+        Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"sealed revision bytes".as_slice(),
+        )])),
+        Arc::new(RecordingInstallGameFileSystem::default()),
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+    );
+
+    service
+        .commit_plan_for_revision(
+            CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            },
+            ModId::new("mod-a"),
+            hmm_core::ModRevisionId::new("revision-v1"),
+        )
+        .expect("revisioned commit should succeed");
+
+    let manifest = manifests.take_manifest().expect("manifest should be saved");
+    assert_eq!(
+        manifest.schema_version,
+        hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2
+    );
+    assert_eq!(manifest.entries.len(), 1);
+    assert_eq!(
+        manifest.entries[0].revision_id,
+        Some(hmm_core::ModRevisionId::new("revision-v1"))
+    );
+    manifest.validate().expect("revisioned manifest is valid");
+}
+
+#[test]
+fn commit_plan_for_revision_preserves_other_mod_legacy_entries_in_schema_v2_manifest() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let legacy_target = InstallTargetPath::parse("nativePC/models/legacy.mod3", ["nativePC"])
+        .expect("valid legacy target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target,
+        FileLayer::new("base", 0),
+    )]);
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: legacy_target,
+            mod_id: ModId::new("legacy-mod"),
+            revision_id: None,
+            package_file_id: PackageFileId::new("nativePC/models/legacy.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: None,
+        }],
+    );
+    existing_manifest
+        .validate()
+        .expect("legacy manifest fixture is valid");
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = InstallCommitService::new(
+        Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"sealed revision bytes".as_slice(),
+        )])),
+        Arc::new(RecordingInstallGameFileSystem::default()),
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+    );
+
+    service
+        .commit_plan_for_revision(
+            CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            },
+            ModId::new("mod-a"),
+            ModRevisionId::new("revision-v1"),
+        )
+        .expect("revisioned commit should coexist with another Mod's legacy entry");
+
+    let manifest = manifests.take_manifest().expect("manifest should be saved");
+    assert_eq!(
+        manifest.schema_version,
+        hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2
+    );
+    assert_eq!(manifest.entries.len(), 2);
+    assert!(manifest
+        .entries
+        .iter()
+        .any(|entry| { entry.mod_id == ModId::new("legacy-mod") && entry.revision_id.is_none() }));
+    assert!(manifest.entries.iter().any(|entry| {
+        entry.mod_id == ModId::new("mod-a")
+            && entry.revision_id == Some(ModRevisionId::new("revision-v1"))
+    }));
+    manifest
+        .validate()
+        .expect("mixed per-Mod legacy and revisioned manifest is valid");
+}
+
+#[test]
+fn commit_plan_for_revision_rejects_legacy_manifest_before_writes() {
+    assert_revisioned_commit_rejects_existing_manifest(None);
+}
+
+#[test]
+fn commit_plan_for_revision_rejects_different_manifest_revision_before_writes() {
+    assert_revisioned_commit_rejects_existing_manifest(Some("revision-v2"));
+}
+
+fn assert_revisioned_commit_rejects_existing_manifest(existing_revision: Option<&str>) {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target.clone(),
+        FileLayer::new("base", 0),
+    )]);
+    let mut existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: target,
+            mod_id: ModId::new("mod-a"),
+            revision_id: existing_revision.map(hmm_core::ModRevisionId::new),
+            package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: None,
+        }],
+    );
+    if existing_revision.is_some() {
+        existing_manifest.schema_version = hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+    }
+    existing_manifest
+        .validate()
+        .expect("existing manifest fixture is valid");
+
+    let game_files = Arc::new(RecordingInstallGameFileSystem::default());
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let recovery = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        Arc::new(RecordingInstallSourceFileReader::new([(
+            "nativePC/models/player.mod3",
+            b"sealed revision bytes".as_slice(),
+        )])),
+        game_files.clone(),
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+        recovery.clone(),
+    );
+
+    assert_eq!(
+        service.commit_plan_for_revision(
+            CommitInstallPlanRequest {
+                profile_id: ProfileId::new("default"),
+                plan,
+            },
+            ModId::new("mod-a"),
+            hmm_core::ModRevisionId::new("revision-v1"),
+        ),
+        Err(InstallCommitError::PlanHasInvalidRevisionIdentity)
+    );
+    assert_eq!(game_files.file_bytes("nativePC/models/player.mod3"), None);
+    assert_eq!(manifests.save_attempts(), 0);
+    assert!(recovery.saved_records().is_empty());
 }
 
 #[test]
@@ -1702,7 +1930,7 @@ impl ModImportResultRepository for FakeModImportResultRepository {
     }
 
     fn list_analysis(&self) -> anyhow::Result<Vec<StoredModImportAnalysis>> {
-        unreachable!("install planning should look up the requested mod directly")
+        Ok(self.records.clone())
     }
 
     fn get_analysis(&self, mod_id: &str) -> anyhow::Result<Option<StoredModImportAnalysis>> {
