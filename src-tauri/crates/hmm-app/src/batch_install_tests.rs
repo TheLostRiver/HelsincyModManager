@@ -19,11 +19,13 @@ use std::sync::Mutex;
 #[derive(Default)]
 struct FakeRepository {
     batch: Mutex<Option<SealedBatch>>,
-    attempt: Mutex<Option<hmm_core::BatchAttempt>>,
-    results: Mutex<Vec<BatchItemResult>>,
+    attempts: Mutex<HashMap<u32, hmm_core::BatchAttempt>>,
+    results: Mutex<HashMap<u32, Vec<BatchItemResult>>>,
     admission_task_ids: Mutex<Vec<String>>,
     fail_admission: AtomicBool,
     fail_record_item_result: AtomicBool,
+    fail_record_item_result_on_call: AtomicUsize,
+    record_item_result_calls: AtomicUsize,
     fail_finish_attempt: AtomicBool,
     finish_attempt_failures_remaining: AtomicUsize,
 }
@@ -31,7 +33,10 @@ struct FakeRepository {
 impl BatchSealRepository for FakeRepository {
     fn seal_batch(&self, request: BatchSealRequest<'_>) -> anyhow::Result<()> {
         *self.batch.lock().expect("batch") = Some(request.sealed_batch.clone());
-        *self.attempt.lock().expect("attempt") = Some(request.initial_attempt.clone());
+        self.attempts
+            .lock()
+            .expect("attempts")
+            .insert(request.initial_attempt.attempt_number, request.initial_attempt.clone());
         Ok(())
     }
 }
@@ -44,9 +49,14 @@ impl BatchLifecycleRepository for FakeRepository {
     fn load_attempt(
         &self,
         _batch_id: &BatchId,
-        _attempt_number: u32,
+        attempt_number: u32,
     ) -> anyhow::Result<Option<hmm_core::BatchAttempt>> {
-        Ok(self.attempt.lock().expect("attempt").clone())
+        Ok(self
+            .attempts
+            .lock()
+            .expect("attempts")
+            .get(&attempt_number)
+            .cloned())
     }
 
     fn admit_attempt(
@@ -60,8 +70,10 @@ impl BatchLifecycleRepository for FakeRepository {
         if self.fail_admission.load(Ordering::Relaxed) {
             anyhow::bail!("injected admission failure");
         }
-        let mut attempt = self.attempt.lock().expect("attempt");
-        let current = attempt.as_mut().expect("attempt");
+        let mut attempts = self.attempts.lock().expect("attempts");
+        let current = attempts
+            .get_mut(&request.attempt_number)
+            .expect("attempt");
         if current.plan_token_verifier != request.presented_plan_token_verifier {
             return Ok(BatchAttemptAdmission::Rejected);
         }
@@ -76,11 +88,11 @@ impl BatchLifecycleRepository for FakeRepository {
     fn mark_attempt_running(
         &self,
         _batch_id: &BatchId,
-        _attempt_number: u32,
+        attempt_number: u32,
         now: u128,
     ) -> anyhow::Result<hmm_core::BatchAttempt> {
-        let mut attempt = self.attempt.lock().expect("attempt");
-        let current = attempt.as_mut().expect("attempt");
+        let mut attempts = self.attempts.lock().expect("attempts");
+        let current = attempts.get_mut(&attempt_number).expect("attempt");
         current.status = BatchAttemptStatus::Running;
         current.started_at_unix_millis = Some(now);
         Ok(current.clone())
@@ -96,25 +108,45 @@ impl BatchLifecycleRepository for FakeRepository {
     }
 
     fn record_item_result(&self, result: &BatchItemResult) -> anyhow::Result<()> {
-        if self.fail_record_item_result.load(Ordering::Relaxed) {
+        let call_number = self
+            .record_item_result_calls
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        if self.fail_record_item_result.load(Ordering::Relaxed)
+            || self
+                .fail_record_item_result_on_call
+                .load(Ordering::Relaxed)
+                == call_number
+        {
             anyhow::bail!("injected item result failure");
         }
-        self.results.lock().expect("results").push(result.clone());
+        self.results
+            .lock()
+            .expect("results")
+            .entry(result.attempt_number)
+            .or_default()
+            .push(result.clone());
         Ok(())
     }
 
     fn list_item_results(
         &self,
         _batch_id: &BatchId,
-        _attempt_number: u32,
+        attempt_number: u32,
     ) -> anyhow::Result<Vec<BatchItemResult>> {
-        Ok(self.results.lock().expect("results").clone())
+        Ok(self
+            .results
+            .lock()
+            .expect("results")
+            .get(&attempt_number)
+            .cloned()
+            .unwrap_or_default())
     }
 
     fn finish_attempt(
         &self,
         _batch_id: &BatchId,
-        _attempt_number: u32,
+        attempt_number: u32,
         status: BatchAttemptStatus,
         degraded: bool,
         completed: u128,
@@ -129,8 +161,8 @@ impl BatchLifecycleRepository for FakeRepository {
         {
             anyhow::bail!("injected finish attempt failure");
         }
-        let mut attempt = self.attempt.lock().expect("attempt");
-        let current = attempt.as_mut().expect("attempt");
+        let mut attempts = self.attempts.lock().expect("attempts");
+        let current = attempts.get_mut(&attempt_number).expect("attempt");
         current.status = status;
         current.evidence_health_degraded = degraded;
         current.completed_at_unix_millis = Some(completed);
@@ -141,14 +173,17 @@ impl BatchLifecycleRepository for FakeRepository {
         &self,
         request: BatchRetryAttemptRequest<'_>,
     ) -> anyhow::Result<BatchRetryAttemptCreation> {
-        let mut attempt = self.attempt.lock().expect("attempt");
-        let current = attempt.as_ref().expect("attempt");
-        if current.attempt_number != request.expected_attempt_number
-            || !current.status.is_terminal()
-        {
+        let mut attempts = self.attempts.lock().expect("attempts");
+        let Some(current) = attempts.get(&request.expected_attempt_number) else {
+            return Ok(BatchRetryAttemptCreation::Stale);
+        };
+        if !current.status.is_terminal() {
             return Ok(BatchRetryAttemptCreation::Stale);
         }
-        *attempt = Some(request.retry_attempt.clone());
+        attempts.insert(
+            request.retry_attempt.attempt_number,
+            request.retry_attempt.clone(),
+        );
         Ok(BatchRetryAttemptCreation::Created(
             request.retry_attempt.clone(),
         ))
@@ -1529,7 +1564,10 @@ fn item_result_journal_failure_interrupts_and_stops_later_items() {
         .expect("attempt exists");
     assert_eq!(attempt.status, BatchAttemptStatus::Interrupted);
     assert!(attempt.evidence_health_degraded);
-    assert!(repository.results.lock().expect("results").is_empty());
+    assert!(repository
+        .list_item_results(&batch.batch_id, 0)
+        .expect("results")
+        .is_empty());
     assert_eq!(executor.executions.lock().expect("executions").len(), 1);
     assert_eq!(
         audit.policies.lock().expect("audit policies").as_slice(),
@@ -1547,6 +1585,65 @@ fn item_result_journal_failure_interrupts_and_stops_later_items() {
         )
         .retry(&batch.batch_id, 0),
         Err(BatchInstallRetryError::RetryUnavailable)
+    );
+}
+
+#[test]
+fn journal_failure_after_an_item_started_is_interrupted() {
+    let (batch, attempt, token) = batch();
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    repository
+        .fail_record_item_result_on_call
+        .store(2, Ordering::Relaxed);
+    let audit = Arc::new(RecordingAuditLogWriter::default());
+    let runner = BatchInstallTaskRunner::new(
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        Arc::new(FakeExecutor {
+            executions: Mutex::new(vec![
+                BatchInstallItemExecution::Succeeded {
+                    evidence_health_degraded: false,
+                },
+                BatchInstallItemExecution::Succeeded {
+                    evidence_health_degraded: false,
+                },
+            ]),
+        }),
+        Arc::new(StaticFacts(facts_from_batch(&batch))),
+        audit.clone(),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    assert_eq!(
+        runner.run(&batch.batch_id, &token),
+        Err(BatchInstallRunError::JournalUnavailable)
+    );
+    let attempt = repository
+        .load_attempt(&batch.batch_id, 0)
+        .expect("attempt")
+        .expect("attempt exists");
+    assert_eq!(attempt.status, BatchAttemptStatus::Interrupted);
+    assert!(attempt.evidence_health_degraded);
+    let results = repository
+        .list_item_results(&batch.batch_id, 0)
+        .expect("results");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, BatchItemStatus::Succeeded);
+    let events = audit.take_events();
+    assert_eq!(events.last().map(|event| event.result.as_str()), Some("interrupted"));
+    assert_eq!(
+        events
+            .last()
+            .and_then(|event| event.fields.get("succeeded_count"))
+            .map(String::as_str),
+        Some("1")
     );
 }
 

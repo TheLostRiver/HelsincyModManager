@@ -384,9 +384,13 @@ impl BatchInstallTaskRunner {
         let mut stop_after_item = false;
         let mut pre_write_blocked = false;
         let mut any_item_started = false;
+        let facts_snapshot = self
+            .facts_provider
+            .read_batch_plan_facts(&batch.request)
+            .ok();
         let stop_policy_blocker =
             if batch.plan.execution_policy == BatchExecutionPolicy::StopOnFailure {
-                self.find_stop_policy_blocker(&batch, &attempt)
+                self.find_stop_policy_blocker(&batch, &attempt, facts_snapshot.as_ref())
             } else {
                 None
             };
@@ -403,10 +407,13 @@ impl BatchInstallTaskRunner {
             {
                 let result = skipped_result(batch_id, admitted_attempt.attempt_number, item);
                 self.repository.record_item_result(&result).map_err(|_| {
-                    self.fail_for_journal_error(
-                        batch_id,
+                    self.journal_error(
+                        &batch,
                         admitted_attempt.attempt_number,
                         &task_id,
+                        selected_item_count,
+                        &results,
+                        any_item_started,
                         now,
                     )
                 })?;
@@ -427,10 +434,13 @@ impl BatchInstallTaskRunner {
                         .mark_item_running(batch_id, admitted_attempt.attempt_number, &item.item_id)
                         .and_then(|_| self.repository.record_item_result(&result))
                         .map_err(|_| {
-                            self.fail_for_journal_error(
-                                batch_id,
+                            self.journal_error(
+                                &batch,
                                 admitted_attempt.attempt_number,
                                 &task_id,
+                                selected_item_count,
+                                &results,
+                                any_item_started,
                                 now,
                             )
                         })?;
@@ -438,10 +448,13 @@ impl BatchInstallTaskRunner {
                 } else {
                     let result = skipped_result(batch_id, admitted_attempt.attempt_number, item);
                     self.repository.record_item_result(&result).map_err(|_| {
-                        self.fail_for_journal_error(
-                            batch_id,
+                        self.journal_error(
+                            &batch,
                             admitted_attempt.attempt_number,
                             &task_id,
+                            selected_item_count,
+                            &results,
+                            any_item_started,
                             now,
                         )
                     })?;
@@ -471,10 +484,13 @@ impl BatchInstallTaskRunner {
                     .mark_item_running(batch_id, admitted_attempt.attempt_number, &item.item_id)
                     .and_then(|_| self.repository.record_item_result(&result))
                     .map_err(|_| {
-                        self.fail_for_journal_error(
-                            batch_id,
+                        self.journal_error(
+                            &batch,
                             admitted_attempt.attempt_number,
                             &task_id,
+                            selected_item_count,
+                            &results,
+                            any_item_started,
                             now,
                         )
                     })?;
@@ -485,7 +501,7 @@ impl BatchInstallTaskRunner {
                 continue;
             }
 
-            let facts_check = self.check_item_facts(&batch, plan_item);
+            let facts_check = self.check_item_facts(&batch, plan_item, facts_snapshot.as_ref());
             if !matches!(facts_check, BatchItemFactsCheck::Current) {
                 let facts_unavailable = matches!(facts_check, BatchItemFactsCheck::Unavailable);
                 let result = terminal_result(
@@ -507,10 +523,13 @@ impl BatchInstallTaskRunner {
                     .mark_item_running(batch_id, admitted_attempt.attempt_number, &item.item_id)
                     .and_then(|_| self.repository.record_item_result(&result))
                     .map_err(|_| {
-                        self.fail_for_journal_error(
-                            batch_id,
+                        self.journal_error(
+                            &batch,
                             admitted_attempt.attempt_number,
                             &task_id,
+                            selected_item_count,
+                            &results,
+                            any_item_started,
                             now,
                         )
                     })?;
@@ -524,10 +543,13 @@ impl BatchInstallTaskRunner {
             self.repository
                 .mark_item_running(batch_id, admitted_attempt.attempt_number, &item.item_id)
                 .map_err(|_| {
-                    self.fail_for_journal_error(
-                        batch_id,
+                    self.journal_error(
+                        &batch,
                         admitted_attempt.attempt_number,
                         &task_id,
+                        selected_item_count,
+                        &results,
+                        any_item_started,
                         now,
                     )
                 })?;
@@ -604,10 +626,13 @@ impl BatchInstallTaskRunner {
                     true
                 }
                 Err(_) => {
-                    return Err(self.fail_for_journal_error(
-                        batch_id,
+                    return Err(self.journal_error(
+                        &batch,
                         admitted_attempt.attempt_number,
                         &task_id,
+                        selected_item_count,
+                        &results,
+                        any_item_started,
                         now,
                     ))
                 }
@@ -694,11 +719,12 @@ impl BatchInstallTaskRunner {
         &self,
         batch: &SealedBatch,
         plan_item: &hmm_core::BatchItemPlan,
+        facts: Option<&hmm_core::BatchPlanFacts>,
     ) -> BatchItemFactsCheck {
-        let Ok(facts) = self.facts_provider.read_batch_plan_facts(&batch.request) else {
+        let Some(facts) = facts else {
             return BatchItemFactsCheck::Unavailable;
         };
-        if batch_item_facts_are_current(batch, plan_item, &facts) {
+        if batch_item_facts_are_current(batch, plan_item, facts) {
             BatchItemFactsCheck::Current
         } else {
             BatchItemFactsCheck::Stale
@@ -709,16 +735,14 @@ impl BatchInstallTaskRunner {
         &self,
         batch: &SealedBatch,
         attempt: &hmm_core::BatchAttempt,
+        facts: Option<&hmm_core::BatchPlanFacts>,
     ) -> Option<(hmm_core::BatchItemId, String)> {
-        let facts = match self.facts_provider.read_batch_plan_facts(&batch.request) {
-            Ok(facts) => facts,
-            Err(_) => {
-                return attempt
-                    .item_ids
-                    .first()
-                    .cloned()
-                    .map(|item_id| (item_id, "batch_facts_unavailable".to_owned()))
-            }
+        let Some(facts) = facts else {
+            return attempt
+                .item_ids
+                .first()
+                .cloned()
+                .map(|item_id| (item_id, "batch_facts_unavailable".to_owned()));
         };
         for item in &batch.items {
             if !attempt.item_ids.contains(&item.item_id) {
@@ -742,11 +766,41 @@ impl BatchInstallTaskRunner {
                         .unwrap_or_else(|| "batch_item_blocked".to_owned()),
                 ));
             }
-            if !batch_item_facts_are_current(batch, plan_item, &facts) {
+            if !batch_item_facts_are_current(batch, plan_item, facts) {
                 return Some((item.item_id.clone(), "batch_item_plan_stale".to_owned()));
             }
         }
         None
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn journal_error(
+        &self,
+        batch: &SealedBatch,
+        attempt_number: u32,
+        task_id: &str,
+        selected_item_count: usize,
+        results: &[BatchItemResult],
+        any_item_started: bool,
+        fallback_unix_millis: u128,
+    ) -> BatchInstallRunError {
+        if any_item_started {
+            self.interrupt_for_journal_error(
+                batch,
+                attempt_number,
+                task_id,
+                selected_item_count,
+                results,
+                fallback_unix_millis,
+            )
+        } else {
+            self.fail_for_journal_error(
+                &batch.batch_id,
+                attempt_number,
+                task_id,
+                fallback_unix_millis,
+            )
+        }
     }
 
     fn fail_for_journal_error(

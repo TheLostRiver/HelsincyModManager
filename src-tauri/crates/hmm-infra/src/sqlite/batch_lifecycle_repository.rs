@@ -447,6 +447,10 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
             ),
             "batch attempt cannot become terminal from its current state"
         );
+        ensure!(
+            attempt.status != BatchAttemptStatus::Queued || status == BatchAttemptStatus::Failed,
+            "queued batch attempt can only become failed before it starts"
+        );
         let results = list_item_results_from_transaction(&transaction, batch_id, attempt_number)?;
         let batch = load_batch_from_transaction(&transaction, batch_id)?
             .ok_or_else(|| anyhow!("sealed batch is unavailable"))?;
@@ -865,7 +869,8 @@ fn validate_terminal_item_result(result: &BatchItemResult) -> Result<()> {
         BatchItemStatus::Succeeded => result.reason_code.is_none() && !result.retryable,
         BatchItemStatus::Blocked | BatchItemStatus::Failed => valid_reason,
         BatchItemStatus::RecoveryRequired => valid_reason && !result.retryable,
-        BatchItemStatus::Cancelled | BatchItemStatus::Skipped => valid_reason && result.retryable,
+        BatchItemStatus::Cancelled => valid_reason && result.retryable,
+        BatchItemStatus::Skipped => valid_reason,
     };
     ensure!(valid, "batch item result status fields are inconsistent");
     Ok(())
@@ -1021,35 +1026,15 @@ mod tests {
 
     fn repository() -> SqliteBatchLifecycleRepository {
         let mut connection = Connection::open_in_memory().expect("database");
-        rusqlite_migration::Migrations::new(vec![
-            rusqlite_migration::M::up(include_str!("migrations/001_metadata_categories.sql")),
-            rusqlite_migration::M::up(include_str!("migrations/002_profiles.sql")),
-            rusqlite_migration::M::up(include_str!("migrations/003_profile_save_settings.sql")),
-            rusqlite_migration::M::up(include_str!("migrations/004_save_backups.sql")),
-            rusqlite_migration::M::up(include_str!(
-                "migrations/005_save_backup_directory_snapshot.sql"
-            )),
-            rusqlite_migration::M::up(include_str!(
-                "migrations/006_save_backup_scheduler_state.sql"
-            )),
-            rusqlite_migration::M::up(include_str!(
-                "migrations/007_save_backup_worker_heartbeat.sql"
-            )),
-            rusqlite_migration::M::up(include_str!(
-                "migrations/008_save_backup_background_settings.sql"
-            )),
-            rusqlite_migration::M::up(include_str!("migrations/009_mod_library_projection.sql")),
-            rusqlite_migration::M::up(include_str!("migrations/010_external_import_preview.sql")),
-            rusqlite_migration::M::up(include_str!("migrations/011_batch_lifecycle.sql")),
-        ])
-        .to_latest(&mut connection)
-        .expect("schema");
+        super::super::migrations::migrations()
+            .to_latest(&mut connection)
+            .expect("schema");
         SqliteBatchLifecycleRepository::new(Arc::new(Mutex::new(connection)))
     }
 
     fn sealed_batch() -> (SealedBatch, BatchAttempt) {
         let request = BatchPlanRequest {
-            schema_version: 1,
+            schema_version: hmm_core::BATCH_PLAN_SCHEMA_VERSION,
             operation: BatchOperation::Install,
             game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
@@ -1240,6 +1225,58 @@ mod tests {
                 })
                 .expect("wrong verifier decision"),
             BatchAttemptAdmission::Rejected
+        );
+    }
+
+    #[test]
+    fn queued_attempt_cannot_finish_as_cancelled_before_running() {
+        let repository = repository();
+        let (batch, attempt) = sealed_batch();
+        repository
+            .seal_batch(BatchSealRequest {
+                sealed_batch: &batch,
+                initial_attempt: &attempt,
+            })
+            .expect("seal");
+        repository
+            .admit_attempt(BatchAttemptAdmissionRequest {
+                batch_id: &batch.batch_id,
+                attempt_number: 0,
+                task_id: "task-a",
+                presented_plan_token_verifier: "verifier",
+                now_unix_millis: 2,
+            })
+            .expect("admit");
+
+        assert!(repository
+            .finish_attempt(
+                &batch.batch_id,
+                0,
+                BatchAttemptStatus::Cancelled,
+                true,
+                3,
+            )
+            .is_err());
+        assert_eq!(
+            repository
+                .load_attempt(&batch.batch_id, 0)
+                .expect("load")
+                .expect("attempt")
+                .status,
+            BatchAttemptStatus::Queued
+        );
+        assert_eq!(
+            repository
+                .finish_attempt(
+                    &batch.batch_id,
+                    0,
+                    BatchAttemptStatus::Failed,
+                    true,
+                    3,
+                )
+                .expect("failed pre-start attempt")
+                .status,
+            BatchAttemptStatus::Failed
         );
     }
 
@@ -1463,7 +1500,7 @@ mod tests {
     }
 
     #[test]
-    fn non_skipped_terminal_result_requires_running_intent_and_valid_fields() {
+    fn terminal_result_requires_running_intent_except_skipped_and_valid_fields() {
         let repository = repository();
         let (batch, attempt) = sealed_batch();
         repository
@@ -1483,7 +1520,7 @@ mod tests {
                 false,
             ))
             .is_err());
-        assert!(repository
+        repository
             .record_item_result(&item_result(
                 &batch,
                 1,
@@ -1491,7 +1528,7 @@ mod tests {
                 Some("batch_stopped"),
                 false,
             ))
-            .is_err());
+            .expect("skipped result does not require a running intent");
 
         repository
             .mark_item_running(&batch.batch_id, 0, &batch.items[0].item_id)
