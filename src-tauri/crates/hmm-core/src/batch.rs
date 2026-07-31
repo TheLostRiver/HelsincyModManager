@@ -237,6 +237,24 @@ pub struct NormalizedBatchPlanRequest {
     pub items: Vec<BatchItemInput>,
 }
 
+impl NormalizedBatchPlanRequest {
+    pub fn validate_integrity(&self, max_items: usize) -> Result<(), BatchPlanError> {
+        let normalized = BatchPlanRequest {
+            schema_version: self.schema_version,
+            operation: self.operation,
+            game_id: self.game_id.clone(),
+            profile_id: self.profile_id.clone(),
+            execution_policy: self.execution_policy,
+            items: self.items.clone(),
+        }
+        .normalize_with_max_items(max_items)?;
+        if normalized != *self {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BatchTargetWriteKind {
@@ -416,6 +434,103 @@ impl BatchPlan {
 
     pub fn is_ready(&self) -> bool {
         self.status() == BatchPlanStatus::Ready
+    }
+
+    pub fn validate_integrity(&self) -> Result<(), BatchPlanError> {
+        if self.plan_schema_version != BATCH_PLAN_SCHEMA_VERSION
+            || self.resource_limits.version != BATCH_RESOURCE_LIMITS_VERSION
+        {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+
+        let normalized = NormalizedBatchPlanRequest {
+            schema_version: self.plan_schema_version,
+            operation: self.operation,
+            game_id: self.game_id.clone(),
+            profile_id: self.profile_id.clone(),
+            execution_policy: self.execution_policy,
+            items: self
+                .items
+                .iter()
+                .map(|item| item.input_snapshot.clone())
+                .collect(),
+        };
+        normalized.validate_integrity(self.resource_limits.max_items)?;
+
+        let mut target_owners = BTreeMap::<String, BTreeSet<ModId>>::new();
+        let mut target_claims = Vec::new();
+        let mut target_action_count = 0usize;
+        let mut warning_counts = BTreeMap::<String, usize>::new();
+        for (expected_ordinal, item) in self.items.iter().enumerate() {
+            if item.ordinal != expected_ordinal {
+                return Err(BatchPlanError::FactsMismatch);
+            }
+
+            let mut sorted_claims = item.target_claims.clone();
+            sorted_claims.sort_by(|left, right| {
+                left.windows_key()
+                    .cmp(&right.windows_key())
+                    .then_with(|| left.kind.as_str().cmp(right.kind.as_str()))
+            });
+            let mut blocking_reasons = item.blocking_reasons.clone();
+            deduplicate_strings(&mut blocking_reasons);
+            let mut warning_codes = item.warning_codes.clone();
+            deduplicate_strings(&mut warning_codes);
+            if sorted_claims != item.target_claims
+                || blocking_reasons != item.blocking_reasons
+                || warning_codes != item.warning_codes
+            {
+                return Err(BatchPlanError::FactsMismatch);
+            }
+
+            target_action_count = target_action_count.saturating_add(item.action_summary.actions);
+            for claim in &item.target_claims {
+                target_owners
+                    .entry(claim.windows_key())
+                    .or_default()
+                    .insert(item.input_snapshot.mod_id().clone());
+                target_claims.push(claim.clone());
+            }
+            for code in &item.warning_codes {
+                *warning_counts.entry(code.clone()).or_default() += 1;
+            }
+        }
+
+        let conflict_count = target_owners
+            .values()
+            .filter(|owners| owners.len() > 1)
+            .count();
+        let expected_global_blocking_reasons = if conflict_count == 0 {
+            Vec::new()
+        } else {
+            vec![BatchReasonSummary {
+                code: "batch_global_target_conflict".to_owned(),
+                count: conflict_count,
+            }]
+        };
+        let expected_warning_codes = warning_counts
+            .into_iter()
+            .map(|(code, count)| BatchReasonSummary { code, count })
+            .collect::<Vec<_>>();
+        if self.global_blocking_reasons != expected_global_blocking_reasons
+            || self.warning_codes != expected_warning_codes
+            || self.global_target_claims_digest != digest_target_claims(&target_claims)
+            || self.resource_usage.item_count != self.items.len()
+            || self.resource_usage.target_action_count != target_action_count
+            || self.resource_usage.item_count > self.resource_limits.max_items
+            || target_action_count > self.resource_limits.max_target_actions
+        {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+
+        let canonical = canonical_bytes(self);
+        if canonical.len() != self.resource_usage.canonical_bytes
+            || canonical.len() > self.resource_limits.max_canonical_bytes
+            || self.batch_digest != sha256_digest(&canonical)
+        {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+        Ok(())
     }
 }
 
@@ -657,6 +772,7 @@ pub fn build_batch_plan(
     }
     plan.resource_usage.canonical_bytes = canonical.len();
     plan.batch_digest = sha256_digest(&canonical);
+    plan.validate_integrity()?;
     Ok(plan)
 }
 
@@ -801,6 +917,154 @@ fn deduplicate_strings(values: &mut Vec<String>) {
     values.dedup();
 }
 
+macro_rules! batch_string_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn new(value: impl Into<String>) -> Self {
+                Self(value.into())
+            }
+
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+    };
+}
+
+batch_string_id!(BatchId);
+batch_string_id!(BatchItemId);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedBatchItem {
+    pub item_id: BatchItemId,
+    pub ordinal: usize,
+    pub mod_id: ModId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedBatch {
+    pub batch_id: BatchId,
+    pub request: NormalizedBatchPlanRequest,
+    pub plan: BatchPlan,
+    pub items: Vec<SealedBatchItem>,
+    pub created_at_unix_millis: u128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchAttemptStatus {
+    Sealed,
+    Queued,
+    Running,
+    Stopping,
+    Completed,
+    CompletedWithErrors,
+    Blocked,
+    Cancelled,
+    RecoveryRequired,
+    /// A single-item transaction may have committed, but the batch journal could not persist
+    /// the corresponding terminal fact. Recovery must reconcile manifest/recovery evidence
+    /// before any retry is allowed.
+    Interrupted,
+    Failed,
+}
+
+impl BatchAttemptStatus {
+    pub const fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Completed
+                | Self::CompletedWithErrors
+                | Self::Blocked
+                | Self::Cancelled
+                | Self::RecoveryRequired
+                | Self::Interrupted
+                | Self::Failed
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BatchAttempt {
+    pub batch_id: BatchId,
+    pub attempt_number: u32,
+    /// The server-derived subset of sealed item IDs that this attempt may execute. Attempt 0
+    /// contains every sealed item; retry attempts contain only prior retryable items.
+    pub item_ids: Vec<BatchItemId>,
+    pub status: BatchAttemptStatus,
+    pub task_id: Option<String>,
+    pub plan_token_verifier: String,
+    pub expires_at_unix_millis: u128,
+    pub started_at_unix_millis: Option<u128>,
+    pub completed_at_unix_millis: Option<u128>,
+    pub evidence_health_degraded: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchItemStatus {
+    Running,
+    Succeeded,
+    Blocked,
+    Failed,
+    RecoveryRequired,
+    Cancelled,
+    Skipped,
+}
+
+impl BatchItemStatus {
+    pub const fn is_terminal(self) -> bool {
+        !matches!(self, Self::Running)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BatchItemResult {
+    pub batch_id: BatchId,
+    pub attempt_number: u32,
+    pub item_id: BatchItemId,
+    pub ordinal: usize,
+    pub mod_id: ModId,
+    pub status: BatchItemStatus,
+    pub reason_code: Option<String>,
+    pub retryable: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BatchResultSummary {
+    pub item_count: usize,
+    pub succeeded_count: usize,
+    pub blocked_count: usize,
+    pub failed_count: usize,
+    pub cancelled_count: usize,
+    pub skipped_count: usize,
+    pub recovery_required_count: usize,
+}
+
+impl BatchResultSummary {
+    pub fn from_item_results(item_count: usize, results: &[BatchItemResult]) -> Self {
+        let mut summary = Self {
+            item_count,
+            ..Self::default()
+        };
+        for result in results {
+            match result.status {
+                BatchItemStatus::Running => {}
+                BatchItemStatus::Succeeded => summary.succeeded_count += 1,
+                BatchItemStatus::Blocked => summary.blocked_count += 1,
+                BatchItemStatus::Failed => summary.failed_count += 1,
+                BatchItemStatus::RecoveryRequired => summary.recovery_required_count += 1,
+                BatchItemStatus::Cancelled => summary.cancelled_count += 1,
+                BatchItemStatus::Skipped => summary.skipped_count += 1,
+            }
+        }
+        summary
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -918,6 +1182,64 @@ mod tests {
         .expect("plan");
         assert_eq!(first.batch_digest, second.batch_digest);
         assert_eq!(first.items[0].input_snapshot.mod_id(), &ModId::new("mod-a"));
+    }
+
+    #[test]
+    fn plan_integrity_rejects_canonical_or_resource_mutation() {
+        let normalized = request(
+            BatchOperation::Install,
+            vec![
+                install_item("mod-b", "rev-b"),
+                install_item("mod-a", "rev-a"),
+            ],
+        )
+        .normalize()
+        .expect("valid request");
+        let plan = build_batch_plan(
+            normalized,
+            BatchPlanFacts {
+                environment_digest: "env".to_owned(),
+                prerequisite_rules_version: Some(1),
+                items: vec![
+                    facts_with_revision("mod-a", "rev-a", "nativepc/a"),
+                    facts_with_revision("mod-b", "rev-b", "nativepc/b"),
+                ],
+            },
+            BatchResourceLimits::default(),
+        )
+        .expect("plan");
+        plan.validate_integrity().expect("valid plan");
+
+        let mut changed_revision = plan.clone();
+        let BatchItemInput::Install(input) = &mut changed_revision.items[0].input_snapshot else {
+            panic!("install input");
+        };
+        input.revision_id = ModRevisionId::new("replacement-revision");
+        assert_eq!(
+            changed_revision.validate_integrity(),
+            Err(BatchPlanError::FactsMismatch)
+        );
+
+        let mut changed_usage = plan.clone();
+        changed_usage.resource_usage.canonical_bytes += 1;
+        assert_eq!(
+            changed_usage.validate_integrity(),
+            Err(BatchPlanError::FactsMismatch)
+        );
+
+        let mut changed_version = plan.clone();
+        changed_version.resource_limits.version += 1;
+        assert_eq!(
+            changed_version.validate_integrity(),
+            Err(BatchPlanError::FactsMismatch)
+        );
+
+        let mut changed_digest = plan;
+        changed_digest.batch_digest = "sha256:tampered".to_owned();
+        assert_eq!(
+            changed_digest.validate_integrity(),
+            Err(BatchPlanError::FactsMismatch)
+        );
     }
 
     #[test]

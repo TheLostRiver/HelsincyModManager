@@ -261,6 +261,12 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 
 当前已落地的最小 Audit Log 能力：
 - 安装、卸载和后端受控回滚/重装收敛任务会写入最小安装审计事件。普通安装和卸载失败事件在既有短 id/计数字段外只增加与 task event 一致的稳定 `error_code`，不会记录原始 repository 或文件系统错误。
+- T13-02 批量安装的 batch-level Audit 只使用设计白名单字段：短 `task_id`/`batch_id`、`execution_policy`、
+  `attempt_number`、item/result 聚合计数和稳定 `error_code`；不记录 plan token、digest、路径或
+  item target 列表。每个 item 继续复用已有单项安装 Audit。
+- 若 batch Audit 已写入而 journal 终结失败，runner 会追加 `result=interrupted`、
+  `error_code=batch_journal_interrupted` 的纠正事件；对应 attempt 标记 evidence degraded 并禁止
+  retry，不把已提交的玩家文件伪造成失败或回滚。
 - `rollback_install` 与 `reconcile_reinstall` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数；`reconcile_reinstall` 的计数既可表示 post-commit cleanup，也可表示受控恢复到 pre-reinstall 状态的 remove/restore/snapshot cleanup 数量。事件不记录完整本地路径、backup/snapshot ref 或 root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - `reinstall_mod` 事件只允许 `task_id`、`game_id`、`profile_id`、`mod_id`、`previous_revision_id`、`candidate_revision_id`、四类 target 聚合计数，以及失败时的稳定 `error_code` / `rollback_result`。ARMOR 同 revision target switch 在这份既有白名单上唯一新增可选 `target_id`；不记录 target 列表、binding、staging、plan token、完整路径、backup/snapshot ref、manifest/source 正文、hash 列表或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。

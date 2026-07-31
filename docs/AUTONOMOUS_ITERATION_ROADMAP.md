@@ -123,9 +123,10 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01、T13-00 和 Slice A 已完成。Slice B 是 next ready 交付单元；其内部 task 按依赖顺序提交，
-但不为每个 task 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff
-自审，但不能跳过 required CI terminal success。
+QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01 已落地，T13-02 在独立分支中
+完成核心 app/infra 实现与聚焦验证，尚未合并。内部 task 按依赖顺序提交，但不为每个 task
+重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
+跳过 required CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
@@ -252,7 +253,7 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 
 ### T13-01：Sealed BatchPlan 与预览
 
-状态：`ready`，T13-00、CLI-2A/2B/2C 和 CORE-PREF-01 依赖已满足。
+状态：`completed`，T13-00、CLI-2A/2B/2C 和 CORE-PREF-01 依赖已满足。
 
 范围：
 
@@ -267,7 +268,8 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 
 ### T13-02：批量安装
 
-状态：`blocked`，依赖 T13-01。
+状态：`in_progress`，T13-01 已完成；当前分支已通过完整本地验证，正在进行最终全 diff 自审与
+PR candidate 整理。
 
 范围：
 
@@ -275,9 +277,16 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 - 同一 game/profile 写入串行；项目间释放不需要的资源。
 - 默认首个失败停止；已成功项保留；结果明确 success/blocked/failed/cancelled/retryable。
 - batch 与 per-item Audit 只记录短 ID、计数和稳定 code。
+- batch journal 持久化 sealed/attempt/item intent 与终态；journal 终结不确定时使用
+  `interrupted`，证据降级且禁止 retry。
+- exact revision 同时约束 planner、source sandbox、commit 校验和 schema v2 manifest；replacement
+  snapshot 在 materialize workflow 接入前显式阻断。
 
-完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败和重试均有 temp/fake
-测试；外部 sentinel 不变。
+完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败、journal
+故障、exact revision fail-closed 和重试均有 temp/fake 测试；外部 sentinel 不变。当前实现已完成
+核心代码、聚焦测试与完整 `verify.ps1`，待全 diff review、CI 和 PR review。启动级遗留
+非终态 `queued/running/stopping` attempt 收敛必须在 T13-05 install CLI 子集公开 start/query
+前完成或由公开入口 fail closed 阻断；进程重启不得自动继续破坏性写入。
 
 提交边界：runner/state machine 一个提交，audit/result repository 一个提交，failure/cancel tests 一个提交。
 

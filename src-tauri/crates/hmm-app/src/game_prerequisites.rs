@@ -3,7 +3,7 @@ use crate::{
     InstallPlanningError, InstallPlanningService, PlannedInitialRetargetInstall,
     PreviewInitialRetargetInstallRequest, ReplacementWorkflowError, ReplacementWorkflowService,
 };
-use hmm_core::{GameId, GameSetupErrorCode, InstallPlan};
+use hmm_core::{FileLayer, GameId, GameSetupErrorCode, InstallPlan, ModId, ModRevisionId};
 use hmm_ports::{
     GamePrerequisiteIssueCode, GamePrerequisiteReport, GamePrerequisiteReportState,
     GamePrerequisiteSummaryStatus,
@@ -171,6 +171,27 @@ impl ImportedModInstallPreflightService {
     ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
         let prerequisite_decision = self.prerequisites.prerequisite_decision(&request.game_id);
         let plan = self.planning.build_plan_from_imported_mod(request)?;
+
+        Ok(ImportedModInstallPreflight {
+            plan,
+            prerequisite_decision,
+        })
+    }
+
+    pub(crate) fn preview_revision(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        revision_id: &ModRevisionId,
+        layer: &FileLayer,
+    ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+        let prerequisite_decision = self.prerequisites.prerequisite_decision(game_id);
+        let plan = self.planning.build_plan_from_imported_revision_id(
+            game_id,
+            mod_id,
+            revision_id,
+            layer,
+        )?;
 
         Ok(ImportedModInstallPreflight {
             plan,
