@@ -1,5 +1,6 @@
 mod app_settings;
 mod batch;
+mod batch_install;
 mod category;
 mod external_import;
 #[cfg(test)]
@@ -39,9 +40,15 @@ mod task_manager;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use batch::{
-    BatchPlanPreview, BatchPlanPreviewError, BatchPlanSealError, BatchPlanSealResult,
-    BatchPlanService, BatchTokenCodec, BatchTokenError, BatchTokenKind, BatchTokenMaterial,
-    Sha256BatchTokenCodec,
+    execution_token_digest, BatchPlanPreview, BatchPlanPreviewError, BatchPlanSealError,
+    BatchPlanSealResult, BatchPlanService, BatchTokenCodec, BatchTokenError, BatchTokenKind,
+    BatchTokenMaterial, Sha256BatchTokenCodec,
+};
+pub use batch_install::{
+    BatchInstallItemExecution, BatchInstallItemExecutor, BatchInstallItemRequest,
+    BatchInstallRetryError, BatchInstallRetryResult, BatchInstallRetryService,
+    BatchInstallRunError, BatchInstallRunResult, BatchInstallTaskRunner,
+    InstallTaskBatchItemExecutor,
 };
 pub use category::{CategoryService, CategoryWithCount};
 pub use external_import::{

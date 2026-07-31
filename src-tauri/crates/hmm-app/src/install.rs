@@ -1,8 +1,8 @@
 use hmm_core::{
     FileLayer, GameId, InstallAction, InstallFileProvider, InstallManifest, InstallManifestEntry,
     InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
-    InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, PackageFileId,
-    ProfileId, ReplacementBindingSnapshot,
+    InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, ModRevisionId,
+    PackageFileId, ProfileId, ReplacementBindingSnapshot, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 use hmm_ports::{
     GameAdapter, InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -10,7 +10,7 @@ use hmm_ports::{
     ModImportSandboxLocator, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -78,6 +78,8 @@ pub enum InstallCommitError {
     PlanHasBlockingConflicts,
     #[error("install plan replacement bindings are invalid")]
     PlanHasInvalidReplacementBindings,
+    #[error("install plan does not match the expected Mod revision identity")]
+    PlanHasInvalidRevisionIdentity,
     #[error("install commit failed during {phase:?}")]
     Failed { phase: InstallCommitPhase },
     #[error("install commit failed during {failed_phase:?}; rollback succeeded")]
@@ -230,16 +232,49 @@ impl InstallCommitService {
         &self,
         request: CommitInstallPlanRequest,
     ) -> Result<InstallCommitResult, InstallCommitError> {
+        self.commit_plan_with_revision(request, None)
+    }
+
+    pub fn commit_plan_for_revision(
+        &self,
+        request: CommitInstallPlanRequest,
+        mod_id: ModId,
+        revision_id: ModRevisionId,
+    ) -> Result<InstallCommitResult, InstallCommitError> {
+        self.commit_plan_with_revision(request, Some((mod_id, revision_id)))
+    }
+
+    fn commit_plan_with_revision(
+        &self,
+        request: CommitInstallPlanRequest,
+        expected_revision: Option<(ModId, ModRevisionId)>,
+    ) -> Result<InstallCommitResult, InstallCommitError> {
         let CommitInstallPlanRequest { profile_id, plan } = request;
 
         if plan.has_blocking_conflicts() {
             return Err(InstallCommitError::PlanHasBlockingConflicts);
         }
+        let expected_revision_id = expected_revision
+            .as_ref()
+            .map(|(_, revision_id)| revision_id);
         if plan
-            .validate_replacement_bindings_for_profile_and_revision(&profile_id, None)
+            .validate_replacement_bindings_for_profile_and_revision(
+                &profile_id,
+                expected_revision_id,
+            )
             .is_err()
         {
             return Err(InstallCommitError::PlanHasInvalidReplacementBindings);
+        }
+        if let Some((expected_mod_id, _)) = &expected_revision {
+            if plan.actions.is_empty()
+                || plan
+                    .actions
+                    .iter()
+                    .any(|action| action.provider.mod_id != *expected_mod_id)
+            {
+                return Err(InstallCommitError::PlanHasInvalidRevisionIdentity);
+            }
         }
 
         let plan_hash = install_plan_hash(&plan);
@@ -250,6 +285,20 @@ impl InstallCommitService {
             .map_err(|_| InstallCommitError::Failed {
                 phase: InstallCommitPhase::ManifestRead,
             })?;
+        if let Some((expected_mod_id, expected_revision_id)) = &expected_revision {
+            let existing_revisions = existing_manifest
+                .as_ref()
+                .into_iter()
+                .flat_map(|manifest| &manifest.entries)
+                .filter(|entry| entry.mod_id == *expected_mod_id)
+                .map(|entry| entry.revision_id.as_ref())
+                .collect::<std::collections::BTreeSet<_>>();
+            if !existing_revisions.is_empty()
+                && existing_revisions != BTreeSet::from([Some(expected_revision_id)])
+            {
+                return Err(InstallCommitError::PlanHasInvalidRevisionIdentity);
+            }
+        }
         let existing_backup_refs = manifest_backup_refs_by_target(existing_manifest.as_ref());
         let mut recovery_records = self
             .start_recovery_records(&profile_id, &plan.actions, &existing_backup_refs)
@@ -319,7 +368,7 @@ impl InstallCommitService {
             let entry = InstallManifestEntry {
                 target_path: action.target_path.clone(),
                 mod_id: action.provider.mod_id.clone(),
-                revision_id: None,
+                revision_id: expected_revision_id.cloned(),
                 package_file_id: action.provider.package_file_id.clone(),
                 layer: action.provider.layer.clone(),
                 backup_ref: manifest_backup_ref,
@@ -934,7 +983,13 @@ fn merge_install_manifest(
     if let Some(manifest_id) = manifest_id {
         manifest.manifest_id = manifest_id;
     }
-    if let Some(schema_version) = schema_version {
+    if manifest
+        .entries
+        .iter()
+        .any(|entry| entry.revision_id.is_some())
+    {
+        manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+    } else if let Some(schema_version) = schema_version {
         manifest.schema_version = schema_version;
     }
     manifest.schema_migration = schema_migration;
@@ -979,10 +1034,7 @@ fn install_plan_hash(plan: &InstallPlan) -> String {
     format!("sha256:{}", digest_to_hex(&digest))
 }
 
-fn hash_replacement_snapshots(
-    hasher: &mut Sha256,
-    snapshots: &[ReplacementBindingSnapshot],
-) {
+fn hash_replacement_snapshots(hasher: &mut Sha256, snapshots: &[ReplacementBindingSnapshot]) {
     let mut snapshots = snapshots.iter().collect::<Vec<_>>();
     snapshots.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
     hasher.update((snapshots.len() as u64).to_be_bytes());
@@ -999,12 +1051,7 @@ fn hash_replacement_snapshots(
         }
         update_hash_str(hasher, snapshot.binding().source_id().as_str());
         update_hash_str(hasher, snapshot.binding().target_id().as_str());
-        hasher.update(
-            snapshot
-                .binding()
-                .created_at_unix_millis()
-                .to_be_bytes(),
-        );
+        hasher.update(snapshot.binding().created_at_unix_millis().to_be_bytes());
         update_hash_str(hasher, snapshot.source_internal_id());
         update_hash_str(hasher, snapshot.target_internal_id());
         update_hash_str(hasher, snapshot.source_path_family());
@@ -1139,6 +1186,28 @@ impl InstallPlanningService {
             layer,
             sandbox_root,
         )
+    }
+
+    pub(crate) fn build_plan_from_imported_revision_id(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        revision_id: &ModRevisionId,
+        layer: &FileLayer,
+    ) -> Result<InstallPlan, InstallPlanningError> {
+        let sources = self
+            .imported_mod_sources
+            .as_ref()
+            .ok_or(InstallPlanningError::ImportedModSourcesUnavailable)?;
+        let revision = sources
+            .result_repository
+            .get_revision(revision_id)
+            .map_err(|_| InstallPlanningError::ImportedModAnalysisUnavailable)?
+            .filter(|revision| revision.mod_id == *mod_id)
+            .ok_or_else(|| InstallPlanningError::ImportedModNotFound {
+                mod_id: mod_id.clone(),
+            })?;
+        self.build_plan_from_imported_revision(game_id, mod_id, &revision.package_id, layer)
     }
 
     fn build_plan_from_imported_package(

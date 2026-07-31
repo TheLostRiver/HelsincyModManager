@@ -184,6 +184,7 @@ impl RetargetInstallTaskRunner {
                 .commit_install_plan(ImportedModInstallCommitRequest {
                     game_id: request.game_id.clone(),
                     mod_id: request.mod_id.clone(),
+                    revision_id: None,
                     profile_id: request.profile_id.clone(),
                     plan,
                 })
