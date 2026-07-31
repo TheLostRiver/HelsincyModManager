@@ -1,3 +1,4 @@
+use hmac::{Hmac, Mac};
 use hmm_core::{
     build_batch_plan, BatchPlan, BatchPlanError, BatchPlanRequest, BatchResourceLimits,
     NormalizedBatchPlanRequest, DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS,
@@ -160,10 +161,12 @@ pub struct Sha256BatchTokenCodec {
 }
 
 impl Sha256BatchTokenCodec {
-    pub fn new(secret: impl AsRef<[u8]>) -> Self {
-        Self {
-            secret: Arc::new(secret.as_ref().to_vec()),
-        }
+    pub fn new(secret: impl AsRef<[u8]>) -> anyhow::Result<Self> {
+        let secret = secret.as_ref();
+        anyhow::ensure!(!secret.is_empty(), "batch token secret is empty");
+        Ok(Self {
+            secret: Arc::new(secret.to_vec()),
+        })
     }
 }
 
@@ -211,12 +214,12 @@ impl BatchTokenCodec for Sha256BatchTokenCodec {
         let expires_at = parts[2]
             .parse::<u128>()
             .map_err(|_| BatchTokenError::Invalid)?;
-        if now_unix_millis >= expires_at {
-            return Err(BatchTokenError::Expired);
-        }
         let expected = sign_token(&self.secret, kind, digest, environment_digest, expires_at);
         if !constant_time_eq(parts[3].as_bytes(), expected.as_bytes()) {
             return Err(BatchTokenError::Mismatch);
+        }
+        if now_unix_millis >= expires_at {
+            return Err(BatchTokenError::Expired);
         }
         Ok(())
     }
@@ -229,18 +232,6 @@ fn sign_token(
     environment_digest: &str,
     expires_at_unix_millis: u128,
 ) -> String {
-    let mut key = [0u8; 64];
-    if secret.len() > key.len() {
-        key[..32].copy_from_slice(&Sha256::digest(secret));
-    } else {
-        key[..secret.len()].copy_from_slice(secret);
-    }
-    let mut inner_pad = [0x36u8; 64];
-    let mut outer_pad = [0x5cu8; 64];
-    for index in 0..64 {
-        inner_pad[index] ^= key[index];
-        outer_pad[index] ^= key[index];
-    }
     let message = format!(
         "hmm-batch-token-v1\0{}\0{}\0{}\0{}",
         kind.as_str(),
@@ -248,14 +239,10 @@ fn sign_token(
         environment_digest,
         expires_at_unix_millis
     );
-    let mut inner = Sha256::new();
-    inner.update(inner_pad);
-    inner.update(message.as_bytes());
-    let inner_digest = inner.finalize();
-    let mut outer = Sha256::new();
-    outer.update(outer_pad);
-    outer.update(inner_digest);
-    sha256_hex(&outer.finalize())
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret)
+        .expect("token codec validates that the secret is non-empty");
+    mac.update(message.as_bytes());
+    sha256_hex(&mac.finalize().into_bytes())
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -312,7 +299,7 @@ impl BatchPlanService {
         request: BatchPlanRequest,
     ) -> Result<BatchPlanPreview, BatchPlanPreviewError> {
         let normalized = request
-            .normalize()
+            .normalize_with_max_items(self.resource_limits.max_items)
             .map_err(map_plan_error_to_preview_error)?;
         let plan = self.build_plan(&normalized)?;
         if !plan.is_ready() {
@@ -349,11 +336,10 @@ impl BatchPlanService {
         request: BatchPlanRequest,
         preview_token: &str,
     ) -> Result<BatchPlanSealResult, BatchPlanSealError> {
-        let normalized = request.normalize().map_err(map_plan_error_to_seal_error)?;
+        let normalized = request
+            .normalize_with_max_items(self.resource_limits.max_items)
+            .map_err(map_plan_error_to_seal_error)?;
         let plan = self.build_plan_for_seal_internal(&normalized)?;
-        if !plan.is_ready() {
-            return Err(BatchPlanSealError::PlanBlocked);
-        }
         let now = self
             .clock
             .now_unix_millis()
@@ -369,6 +355,9 @@ impl BatchPlanService {
             Err(BatchTokenError::Expired) => return Err(BatchPlanSealError::Expired),
             Err(BatchTokenError::Mismatch) => return Err(BatchPlanSealError::Stale),
             Err(BatchTokenError::Invalid) => return Err(BatchPlanSealError::InvalidToken),
+        }
+        if !plan.is_ready() {
+            return Err(BatchPlanSealError::PlanBlocked);
         }
         let expires_at = now.saturating_add(DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS);
         let plan_token = self
@@ -576,8 +565,13 @@ mod tests {
             facts,
             seal,
             Arc::new(FixedClock(clock)),
-            Arc::new(Sha256BatchTokenCodec::new("test-secret")),
+            Arc::new(Sha256BatchTokenCodec::new("test-secret").expect("secret")),
         )
+    }
+
+    #[test]
+    fn token_codec_rejects_empty_secrets() {
+        assert!(Sha256BatchTokenCodec::new([]).is_err());
     }
 
     #[test]
@@ -594,6 +588,61 @@ mod tests {
     }
 
     #[test]
+    fn blocked_preview_does_not_issue_token_or_write() {
+        let mut blocked_facts = facts();
+        blocked_facts.items[0]
+            .blocking_reasons
+            .push("source_revision_changed".to_owned());
+        let facts = Arc::new(FakeFacts {
+            facts: Mutex::new(blocked_facts),
+            reads: Mutex::new(0),
+        });
+        let seal = Arc::new(FakeSeal::default());
+        let service = service(Arc::clone(&facts), Arc::clone(&seal), 100);
+        let preview = service.preview(request()).expect("preview");
+        assert_eq!(preview.plan.status(), hmm_core::BatchPlanStatus::Blocked);
+        assert!(preview.preview_token.is_none());
+        assert_eq!(*seal.calls.lock().expect("calls"), 0);
+    }
+
+    #[test]
+    fn valid_token_cannot_seal_a_blocked_plan() {
+        let mut blocked_facts = facts();
+        blocked_facts.items[0]
+            .blocking_reasons
+            .push("source_revision_changed".to_owned());
+        let normalized = request().normalize().expect("request");
+        let plan = hmm_core::build_batch_plan(
+            normalized,
+            blocked_facts.clone(),
+            BatchResourceLimits::default(),
+        )
+        .expect("plan");
+        let codec = Sha256BatchTokenCodec::new("test-secret").expect("secret");
+        let token = codec
+            .issue(
+                BatchTokenKind::Preview,
+                &plan.batch_digest,
+                &plan.environment_digest,
+                100,
+                200,
+            )
+            .expect("token")
+            .token;
+        let facts = Arc::new(FakeFacts {
+            facts: Mutex::new(blocked_facts),
+            reads: Mutex::new(0),
+        });
+        let seal = Arc::new(FakeSeal::default());
+        let service = service(Arc::clone(&facts), Arc::clone(&seal), 100);
+        assert_eq!(
+            service.seal(request(), &token),
+            Err(BatchPlanSealError::PlanBlocked)
+        );
+        assert_eq!(*seal.calls.lock().expect("calls"), 0);
+    }
+
+    #[test]
     fn seal_re_reads_facts_and_rejects_drift_without_repository_write() {
         let facts = Arc::new(FakeFacts {
             facts: Mutex::new(facts()),
@@ -604,6 +653,27 @@ mod tests {
         let preview = service.preview(request()).expect("preview");
         facts.facts.lock().expect("facts").environment_digest = "env-b".to_owned();
         let result = service.seal(request(), preview.preview_token.as_deref().expect("token"));
+        assert_eq!(result, Err(BatchPlanSealError::Stale));
+        assert_eq!(*seal.calls.lock().expect("calls"), 0);
+    }
+
+    #[test]
+    fn seal_rejects_request_drift_without_repository_write() {
+        let facts = Arc::new(FakeFacts {
+            facts: Mutex::new(facts()),
+            reads: Mutex::new(0),
+        });
+        let seal = Arc::new(FakeSeal::default());
+        let service = service(Arc::clone(&facts), Arc::clone(&seal), 100);
+        let preview = service.preview(request()).expect("preview");
+        let mut changed_request = request();
+        if let BatchItemInput::Install(input) = &mut changed_request.items[0] {
+            input.revision_id = ModRevisionId::new("revision-b");
+        }
+        let result = service.seal(
+            changed_request,
+            preview.preview_token.as_deref().expect("token"),
+        );
         assert_eq!(result, Err(BatchPlanSealError::Stale));
         assert_eq!(*seal.calls.lock().expect("calls"), 0);
     }
@@ -643,6 +713,24 @@ mod tests {
         let result =
             expired_service.seal(request(), preview.preview_token.as_deref().expect("token"));
         assert_eq!(result, Err(BatchPlanSealError::Expired));
+        assert_eq!(*seal.calls.lock().expect("calls"), 0);
+    }
+
+    #[test]
+    fn tampered_expiry_is_not_reported_as_expired() {
+        let facts = Arc::new(FakeFacts {
+            facts: Mutex::new(facts()),
+            reads: Mutex::new(0),
+        });
+        let seal = Arc::new(FakeSeal::default());
+        let service = service(Arc::clone(&facts), Arc::clone(&seal), 100);
+        let preview = service.preview(request()).expect("preview");
+        let token = preview.preview_token.expect("token");
+        let mut parts = token.split('.').map(str::to_owned).collect::<Vec<_>>();
+        parts[2] = "0".to_owned();
+        let tampered = parts.join(".");
+        let result = service.seal(request(), &tampered);
+        assert_eq!(result, Err(BatchPlanSealError::Stale));
         assert_eq!(*seal.calls.lock().expect("calls"), 0);
     }
 
