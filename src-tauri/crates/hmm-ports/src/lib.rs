@@ -1,5 +1,6 @@
 mod app_settings;
 mod audit;
+mod batch;
 mod cancellation;
 mod category;
 mod diagnostics_environment;
@@ -30,6 +31,7 @@ pub type PortResult<T> = anyhow::Result<T>;
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
 };
+pub use batch::{BatchPlanFactsProvider, BatchSealRepository, BatchSealRequest};
 pub use audit::{
     AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
 };
