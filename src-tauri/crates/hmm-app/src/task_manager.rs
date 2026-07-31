@@ -132,6 +132,7 @@ pub struct TaskManager {
     lifecycle: Mutex<()>,
     tasks: Mutex<HashMap<String, TaskSnapshot>>,
     cancellation_barriers: Mutex<HashSet<String>>,
+    deferred_cancellations: Mutex<HashSet<String>>,
 }
 
 impl TaskManager {
@@ -178,6 +179,59 @@ impl TaskManager {
     }
 
     pub fn block_task_cancellation(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
+        self.block_tasks_cancellation(&[task_id])
+            .map(|mut tasks| tasks.remove(0))
+    }
+
+    /// Enters the cancellation barrier for all supplied running tasks while holding one
+    /// lifecycle lock. Batch item commit uses this to protect the outer task and its hidden child
+    /// task from a cancellation race between the two state transitions.
+    pub fn block_tasks_cancellation(
+        &self,
+        task_ids: &[&str],
+    ) -> Result<Vec<TaskSnapshot>, TaskManagerError> {
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut cancellation_barriers = self
+            .cancellation_barriers
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut snapshots = Vec::with_capacity(task_ids.len());
+        for task_id in task_ids {
+            let task = tasks
+                .get(*task_id)
+                .ok_or_else(|| TaskManagerError::TaskNotFound((*task_id).to_owned()))?;
+            if task.status != TaskStatus::Running {
+                return Err(TaskManagerError::TaskCannotTransition {
+                    task_id: task.task_id.clone(),
+                    from: task.status,
+                    to: TaskStatus::Running,
+                });
+            }
+            snapshots.push(task.clone());
+        }
+
+        for task in &snapshots {
+            cancellation_barriers.insert(task.task_id.clone());
+        }
+        Ok(snapshots)
+    }
+
+    /// Re-opens cancellation between batch items. The operation is deliberately idempotent so a
+    /// terminal child task cannot turn a successfully persisted item into a runner failure.
+    pub fn unblock_task_cancellation(
+        &self,
+        task_id: &str,
+    ) -> Result<TaskSnapshot, TaskManagerError> {
         let _lifecycle = self
             .lifecycle
             .lock()
@@ -193,16 +247,7 @@ impl TaskManager {
         let task = tasks
             .get(task_id)
             .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
-
-        if task.status != TaskStatus::Running {
-            return Err(TaskManagerError::TaskCannotTransition {
-                task_id: task.task_id.clone(),
-                from: task.status,
-                to: TaskStatus::Running,
-            });
-        }
-
-        cancellation_barriers.insert(task.task_id.clone());
+        cancellation_barriers.remove(task_id);
         Ok(task.clone())
     }
 
@@ -219,13 +264,22 @@ impl TaskManager {
             .cancellation_barriers
             .lock()
             .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut deferred_cancellations = self
+            .deferred_cancellations
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
         let task = tasks
             .get_mut(task_id)
             .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
 
-        if !matches!(task.status, TaskStatus::Queued | TaskStatus::Running)
-            || cancellation_barriers.contains(task_id)
-        {
+        if !matches!(task.status, TaskStatus::Queued | TaskStatus::Running) {
+            return Err(TaskManagerError::TaskCannotBeCancelled {
+                task_id: task.task_id.clone(),
+                status: task.status,
+            });
+        }
+        if cancellation_barriers.contains(task_id) {
+            deferred_cancellations.insert(task_id.to_owned());
             return Err(TaskManagerError::TaskCannotBeCancelled {
                 task_id: task.task_id.clone(),
                 status: task.status,
@@ -233,8 +287,46 @@ impl TaskManager {
         }
 
         task.status = TaskStatus::Cancelled;
+        deferred_cancellations.remove(task_id);
 
         Ok(task.clone())
+    }
+
+    /// Applies a cancellation request that arrived while a commit barrier was active. Batch
+    /// runners call this only after the current item result is durable and the outer barrier has
+    /// reopened, so a committed item remains successful and only later items are stopped.
+    pub fn apply_deferred_cancellation(
+        &self,
+        task_id: &str,
+    ) -> Result<Option<TaskSnapshot>, TaskManagerError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let cancellation_barriers = self
+            .cancellation_barriers
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut deferred_cancellations = self
+            .deferred_cancellations
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let task = tasks
+            .get_mut(task_id)
+            .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
+        if !deferred_cancellations.contains(task_id) || cancellation_barriers.contains(task_id) {
+            return Ok(None);
+        }
+        deferred_cancellations.remove(task_id);
+        if !matches!(task.status, TaskStatus::Queued | TaskStatus::Running) {
+            return Ok(None);
+        }
+        task.status = TaskStatus::Cancelled;
+        Ok(Some(task.clone()))
     }
 
     fn transition_task(
@@ -255,6 +347,10 @@ impl TaskManager {
             .cancellation_barriers
             .lock()
             .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        let mut deferred_cancellations = self
+            .deferred_cancellations
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
         let task = tasks
             .get_mut(task_id)
             .ok_or_else(|| TaskManagerError::TaskNotFound(task_id.to_owned()))?;
@@ -270,6 +366,7 @@ impl TaskManager {
         task.status = to;
         if matches!(to, TaskStatus::Completed | TaskStatus::Failed) {
             cancellation_barriers.remove(task_id);
+            deferred_cancellations.remove(task_id);
         }
 
         Ok(task.clone())
@@ -474,6 +571,79 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn cancellation_barrier_can_be_reopened_between_items() {
+        let manager = TaskManager::new();
+        let task = manager
+            .create_task(TaskKind::Install)
+            .expect("task can be created");
+        manager.start_task(&task.task_id).expect("task can start");
+        manager
+            .block_task_cancellation(&task.task_id)
+            .expect("task can enter barrier");
+        manager
+            .unblock_task_cancellation(&task.task_id)
+            .expect("task can leave barrier");
+        let cancelled = manager
+            .cancel_task(&task.task_id)
+            .expect("cancel is accepted after item convergence");
+        assert_eq!(cancelled.status, TaskStatus::Cancelled);
+    }
+
+    #[test]
+    fn deferred_cancellation_applies_after_commit_barrier_reopens() {
+        let manager = TaskManager::new();
+        let task = manager
+            .create_task(TaskKind::Install)
+            .expect("task can be created");
+        manager.start_task(&task.task_id).expect("task can start");
+        manager
+            .block_task_cancellation(&task.task_id)
+            .expect("task can enter barrier");
+
+        assert!(manager.cancel_task(&task.task_id).is_err());
+        assert_eq!(
+            manager
+                .apply_deferred_cancellation(&task.task_id)
+                .expect("deferred check"),
+            None
+        );
+        manager
+            .unblock_task_cancellation(&task.task_id)
+            .expect("task can leave barrier");
+        let cancelled = manager
+            .apply_deferred_cancellation(&task.task_id)
+            .expect("deferred cancellation can apply")
+            .expect("cancellation was pending");
+
+        assert_eq!(cancelled.status, TaskStatus::Cancelled);
+        assert_eq!(
+            manager.task_status(&task.task_id),
+            Some(TaskStatus::Cancelled)
+        );
+    }
+
+    #[test]
+    fn paired_cancellation_barrier_is_atomic_for_batch_commit() {
+        let manager = TaskManager::new();
+        let outer = manager.create_task(TaskKind::Install).expect("outer task");
+        let child = manager.create_task(TaskKind::Install).expect("child task");
+        manager.start_task(&outer.task_id).expect("outer starts");
+        manager.start_task(&child.task_id).expect("child starts");
+        manager
+            .block_tasks_cancellation(&[&outer.task_id, &child.task_id])
+            .expect("both tasks enter barrier");
+        assert!(manager.cancel_task(&outer.task_id).is_err());
+        assert!(manager.cancel_task(&child.task_id).is_err());
+        manager
+            .unblock_task_cancellation(&outer.task_id)
+            .expect("outer reopens");
+        manager
+            .unblock_task_cancellation(&child.task_id)
+            .expect("child reopens");
+        assert!(manager.cancel_task(&outer.task_id).is_ok());
     }
 
     #[test]

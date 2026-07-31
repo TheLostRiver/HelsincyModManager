@@ -81,6 +81,7 @@ pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry
 pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;
 pub use save_directory_scanner::SteamUserdataSaveDirectoryScanner;
+pub use sqlite::SqliteBatchLifecycleRepository;
 pub use sqlite::SqliteCategoryRepository;
 pub use sqlite::SqliteExternalImportBatchRepository;
 pub use sqlite::SqliteProfileRepository;

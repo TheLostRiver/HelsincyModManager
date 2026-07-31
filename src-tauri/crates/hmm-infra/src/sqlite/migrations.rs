@@ -20,6 +20,7 @@ pub(crate) fn migrations() -> Migrations<'static> {
         )),
         M::up(include_str!("migrations/009_mod_library_projection.sql")),
         M::up(include_str!("migrations/010_external_import_preview.sql")),
+        M::up(include_str!("migrations/011_batch_lifecycle.sql")),
     ])
 }
 

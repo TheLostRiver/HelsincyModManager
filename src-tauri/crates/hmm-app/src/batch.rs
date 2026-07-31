@@ -1,12 +1,14 @@
 use hmac::{Hmac, Mac};
 use hmm_core::{
-    build_batch_plan, BatchPlan, BatchPlanError, BatchPlanRequest, BatchResourceLimits,
-    NormalizedBatchPlanRequest, DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS,
+    build_batch_plan, BatchAttempt, BatchAttemptStatus, BatchId, BatchItemId, BatchPlan,
+    BatchPlanError, BatchPlanRequest, BatchResourceLimits, NormalizedBatchPlanRequest, SealedBatch,
+    SealedBatchItem, DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS,
 };
 use hmm_ports::{AppClock, BatchPlanFactsProvider, BatchSealRepository, BatchSealRequest};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchPlanPreview {
@@ -176,20 +178,26 @@ impl BatchTokenCodec for Sha256BatchTokenCodec {
         kind: BatchTokenKind,
         digest: &str,
         environment_digest: &str,
-        _issued_at_unix_millis: u128,
+        issued_at_unix_millis: u128,
         expires_at_unix_millis: u128,
     ) -> anyhow::Result<BatchTokenMaterial> {
         anyhow::ensure!(!self.secret.is_empty(), "batch token secret is empty");
+        anyhow::ensure!(
+            issued_at_unix_millis < expires_at_unix_millis,
+            "batch token validity window is empty"
+        );
         let signature = sign_token(
             &self.secret,
             kind,
             digest,
             environment_digest,
+            issued_at_unix_millis,
             expires_at_unix_millis,
         );
         let token = format!(
-            "hmm-batch-v1.{}.{}.{}",
+            "hmm-batch-v2.{}.{}.{}.{}",
             kind.as_str(),
+            issued_at_unix_millis,
             expires_at_unix_millis,
             signature
         );
@@ -208,15 +216,28 @@ impl BatchTokenCodec for Sha256BatchTokenCodec {
         now_unix_millis: u128,
     ) -> Result<(), BatchTokenError> {
         let parts = token.split('.').collect::<Vec<_>>();
-        if parts.len() != 4 || parts[0] != "hmm-batch-v1" || parts[1] != kind.as_str() {
+        if parts.len() != 5 || parts[0] != "hmm-batch-v2" || parts[1] != kind.as_str() {
             return Err(BatchTokenError::Invalid);
         }
-        let expires_at = parts[2]
+        let issued_at = parts[2]
             .parse::<u128>()
             .map_err(|_| BatchTokenError::Invalid)?;
-        let expected = sign_token(&self.secret, kind, digest, environment_digest, expires_at);
-        if !constant_time_eq(parts[3].as_bytes(), expected.as_bytes()) {
+        let expires_at = parts[3]
+            .parse::<u128>()
+            .map_err(|_| BatchTokenError::Invalid)?;
+        let expected = sign_token(
+            &self.secret,
+            kind,
+            digest,
+            environment_digest,
+            issued_at,
+            expires_at,
+        );
+        if !constant_time_eq(parts[4].as_bytes(), expected.as_bytes()) {
             return Err(BatchTokenError::Mismatch);
+        }
+        if issued_at >= expires_at || now_unix_millis < issued_at {
+            return Err(BatchTokenError::Invalid);
         }
         if now_unix_millis >= expires_at {
             return Err(BatchTokenError::Expired);
@@ -230,13 +251,15 @@ fn sign_token(
     kind: BatchTokenKind,
     digest: &str,
     environment_digest: &str,
+    issued_at_unix_millis: u128,
     expires_at_unix_millis: u128,
 ) -> String {
     let message = format!(
-        "hmm-batch-token-v1\0{}\0{}\0{}\0{}",
+        "hmm-batch-token-v2\0{}\0{}\0{}\0{}\0{}",
         kind.as_str(),
         digest,
         environment_digest,
+        issued_at_unix_millis,
         expires_at_unix_millis
     );
     let mut mac = Hmac::<Sha256>::new_from_slice(secret)
@@ -360,27 +383,63 @@ impl BatchPlanService {
             return Err(BatchPlanSealError::PlanBlocked);
         }
         let expires_at = now.saturating_add(DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS);
+        let batch_id = BatchId::new(format!("batch-{}", Uuid::new_v4()));
+        let sealed_batch = SealedBatch {
+            batch_id: batch_id.clone(),
+            request: normalized,
+            plan: plan.clone(),
+            items: plan
+                .items
+                .iter()
+                .map(|item| SealedBatchItem {
+                    item_id: BatchItemId::new(format!("batch-item-{}", Uuid::new_v4())),
+                    ordinal: item.ordinal,
+                    mod_id: item.input_snapshot.mod_id().clone(),
+                })
+                .collect(),
+            created_at_unix_millis: now,
+        };
+        let attempt_item_ids = sealed_batch
+            .items
+            .iter()
+            .map(|item| item.item_id.clone())
+            .collect::<Vec<_>>();
         let plan_token = self
             .token_codec
             .issue(
                 BatchTokenKind::Plan,
-                &plan.batch_digest,
+                &execution_token_digest(
+                    &batch_id,
+                    0,
+                    &attempt_item_ids,
+                    &plan.batch_digest,
+                    &plan.environment_digest,
+                ),
                 &plan.environment_digest,
                 now,
                 expires_at,
             )
             .map_err(|_| BatchPlanSealError::TokenIssueFailed)?;
-        let batch_id = self
-            .seal_repository
+        let initial_attempt = BatchAttempt {
+            batch_id: batch_id.clone(),
+            attempt_number: 0,
+            item_ids: attempt_item_ids,
+            status: BatchAttemptStatus::Sealed,
+            task_id: None,
+            plan_token_verifier: plan_token.verifier,
+            expires_at_unix_millis: expires_at,
+            started_at_unix_millis: None,
+            completed_at_unix_millis: None,
+            evidence_health_degraded: false,
+        };
+        self.seal_repository
             .seal_batch(BatchSealRequest {
-                request: &normalized,
-                plan: &plan,
-                plan_token_verifier: &plan_token.verifier,
-                expires_at_unix_millis: expires_at,
+                sealed_batch: &sealed_batch,
+                initial_attempt: &initial_attempt,
             })
             .map_err(|_| BatchPlanSealError::SealFailed)?;
         Ok(BatchPlanSealResult {
-            batch_id,
+            batch_id: batch_id.as_str().to_owned(),
             status: "sealed",
             operation: plan.operation,
             execution_policy: plan.execution_policy,
@@ -412,6 +471,34 @@ impl BatchPlanService {
             }
         })
     }
+}
+
+/// Apply tokens use the same keyed codec as preview tokens, but sign a distinct digest that
+/// includes the immutable batch, attempt, and server-derived item selection. The raw token remains
+/// an opaque bearer value.
+pub fn execution_token_digest(
+    batch_id: &BatchId,
+    attempt_number: u32,
+    item_ids: &[BatchItemId],
+    batch_digest: &str,
+    environment_digest: &str,
+) -> String {
+    let mut canonical = Vec::new();
+    append_execution_token_component(&mut canonical, b"hmm-batch-plan-token-v2");
+    append_execution_token_component(&mut canonical, batch_id.as_str().as_bytes());
+    append_execution_token_component(&mut canonical, &attempt_number.to_be_bytes());
+    canonical.extend_from_slice(&(item_ids.len() as u64).to_be_bytes());
+    for item_id in item_ids {
+        append_execution_token_component(&mut canonical, item_id.as_str().as_bytes());
+    }
+    append_execution_token_component(&mut canonical, batch_digest.as_bytes());
+    append_execution_token_component(&mut canonical, environment_digest.as_bytes());
+    sha256_hex(&canonical)
+}
+
+fn append_execution_token_component(output: &mut Vec<u8>, value: &[u8]) {
+    output.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    output.extend_from_slice(value);
 }
 
 fn map_plan_error_to_preview_error(error: BatchPlanError) -> BatchPlanPreviewError {
@@ -497,12 +584,17 @@ mod tests {
     #[derive(Default)]
     struct FakeSeal {
         calls: Mutex<usize>,
+        sealed: Mutex<Option<(SealedBatch, BatchAttempt)>>,
     }
 
     impl BatchSealRepository for FakeSeal {
-        fn seal_batch(&self, _request: BatchSealRequest<'_>) -> anyhow::Result<String> {
+        fn seal_batch(&self, request: BatchSealRequest<'_>) -> anyhow::Result<()> {
             *self.calls.lock().expect("calls") += 1;
-            Ok("batch-1".to_owned())
+            *self.sealed.lock().expect("sealed") = Some((
+                request.sealed_batch.clone(),
+                request.initial_attempt.clone(),
+            ));
+            Ok(())
         }
     }
 
@@ -572,6 +664,32 @@ mod tests {
     #[test]
     fn token_codec_rejects_empty_secrets() {
         assert!(Sha256BatchTokenCodec::new([]).is_err());
+    }
+
+    #[test]
+    fn token_codec_binds_the_issued_at_timestamp() {
+        let codec = Sha256BatchTokenCodec::new("test-secret").expect("codec");
+        let token = codec
+            .issue(BatchTokenKind::Preview, "digest", "environment", 100, 200)
+            .expect("token")
+            .token;
+        assert_eq!(
+            codec.verify(BatchTokenKind::Preview, &token, "digest", "environment", 99,),
+            Err(BatchTokenError::Invalid)
+        );
+
+        let mut parts = token.split('.').map(str::to_owned).collect::<Vec<_>>();
+        parts[2] = "99".to_owned();
+        assert_eq!(
+            codec.verify(
+                BatchTokenKind::Preview,
+                &parts.join("."),
+                "digest",
+                "environment",
+                100,
+            ),
+            Err(BatchTokenError::Mismatch)
+        );
     }
 
     #[test]
@@ -690,10 +808,59 @@ mod tests {
         let sealed = service
             .seal(request(), preview.preview_token.as_deref().expect("token"))
             .expect("seal");
-        assert_eq!(sealed.batch_id, "batch-1");
+        assert!(sealed.batch_id.starts_with("batch-"));
         assert_eq!(sealed.status, "sealed");
         assert_eq!(*seal.calls.lock().expect("calls"), 1);
         assert!(!sealed.plan_token.contains(&preview.plan.batch_digest));
+        let (sealed_batch, initial_attempt) = seal
+            .sealed
+            .lock()
+            .expect("sealed")
+            .clone()
+            .expect("sealed batch");
+        assert_eq!(sealed.batch_id, sealed_batch.batch_id.as_str());
+        assert_eq!(
+            initial_attempt.item_ids,
+            sealed_batch
+                .items
+                .iter()
+                .map(|item| item.item_id.clone())
+                .collect::<Vec<_>>()
+        );
+        let codec = Sha256BatchTokenCodec::new("test-secret").expect("codec");
+        assert!(codec
+            .verify(
+                BatchTokenKind::Plan,
+                &sealed.plan_token,
+                &execution_token_digest(
+                    &sealed_batch.batch_id,
+                    initial_attempt.attempt_number,
+                    &initial_attempt.item_ids,
+                    &sealed_batch.plan.batch_digest,
+                    &sealed_batch.plan.environment_digest,
+                ),
+                &sealed_batch.plan.environment_digest,
+                100,
+            )
+            .is_ok());
+        let mut different_selection = initial_attempt.item_ids.clone();
+        different_selection[0] = BatchItemId::new("different-item");
+        assert_eq!(
+            codec.verify(
+                BatchTokenKind::Plan,
+                &sealed.plan_token,
+                &execution_token_digest(
+                    &sealed_batch.batch_id,
+                    initial_attempt.attempt_number,
+                    &different_selection,
+                    &sealed_batch.plan.batch_digest,
+                    &sealed_batch.plan.environment_digest,
+                ),
+                &sealed_batch.plan.environment_digest,
+                100,
+            ),
+            Err(BatchTokenError::Mismatch)
+        );
     }
 
     #[test]
@@ -727,7 +894,7 @@ mod tests {
         let preview = service.preview(request()).expect("preview");
         let token = preview.preview_token.expect("token");
         let mut parts = token.split('.').map(str::to_owned).collect::<Vec<_>>();
-        parts[2] = "0".to_owned();
+        parts[3] = "0".to_owned();
         let tampered = parts.join(".");
         let result = service.seal(request(), &tampered);
         assert_eq!(result, Err(BatchPlanSealError::Stale));
