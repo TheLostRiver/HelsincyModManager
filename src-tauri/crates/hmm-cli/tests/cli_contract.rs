@@ -1578,6 +1578,353 @@ fn sandbox_install_apply_binary_writes_only_fixture_tree_and_emits_jsonl() {
 }
 
 #[test]
+fn sandbox_install_batch_plan_returns_preview_token_without_sensitive_fields() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let before = tree_snapshot(sandbox.path());
+
+    let output = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+    assert_eq!(stderr_text(&output), "");
+    let stdout = stdout_text(&output);
+    assert!(!stdout.contains(&sandbox.path().to_string_lossy().to_string()));
+    let value: Value = serde_json::from_str(&stdout).expect("batch plan json");
+    assert_eq!(value["schemaVersion"], "hmm.cli/v1");
+    assert_eq!(value["command"], "install.batch.plan");
+    assert_eq!(value["result"]["plan"]["operation"], "install");
+    assert_eq!(value["result"]["plan"]["gameId"], "mhw");
+    assert_eq!(value["result"]["plan"]["profileId"], "default");
+    assert_eq!(
+        value["result"]["plan"]["items"][0]["revisionId"],
+        "package-a"
+    );
+    assert_eq!(
+        value["result"]["plan"]["items"][0]["modId"],
+        "mod-a"
+    );
+    assert!(value["result"]["plan"].get("environmentDigest").is_none());
+    assert!(value["result"]["plan"].get("batchDigest").is_none());
+    assert!(value["result"]["plan"]["items"][0]
+        .get("factDigest")
+        .is_none());
+    assert!(value["result"]["plan"]["items"][0]
+        .get("singlePlanDigest")
+        .is_none());
+    assert!(value["result"]["plan"]["items"][0]
+        .get("targetClaims")
+        .is_none());
+    assert!(value["result"]["previewToken"].as_str().is_some());
+    assert!(value["result"]["expiresAtUnixMillis"].as_u64().is_some());
+    assert_eq!(tree_snapshot(sandbox.path()), before);
+}
+
+#[test]
+fn sandbox_install_batch_apply_requires_commit_yes_and_preview_token() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let before = tree_snapshot(sandbox.path());
+
+    for command in [
+        vec![
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+        ],
+        vec![
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--commit",
+        ],
+        vec![
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--yes",
+        ],
+    ] {
+        let output = hmm_install_in_sandbox(sandbox.path(), "json", &command);
+        assert_eq!(output.status.code(), Some(2), "{}", stderr_text(&output));
+        assert_eq!(stderr_text(&output), "");
+        let value: Value =
+            serde_json::from_str(&stdout_text(&output)).expect("batch confirmation json");
+        assert_eq!(value["command"], "install.batch.apply");
+        assert_eq!(value["error"]["code"], "batch_commit_required");
+        assert_eq!(tree_snapshot(sandbox.path()), before);
+    }
+
+    let plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+        ],
+    );
+    let plan_value: Value =
+        serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
+    let missing_token = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(missing_token.status.code(), Some(2));
+    let missing_token_value: Value =
+        serde_json::from_str(&stdout_text(&missing_token)).expect("missing batch token json");
+    assert_eq!(
+        missing_token_value["error"]["code"],
+        "batch_preview_token_required"
+    );
+    assert!(plan_value["result"]["previewToken"].as_str().is_some());
+    assert_eq!(tree_snapshot(sandbox.path()), before);
+}
+
+#[test]
+fn production_install_batch_apply_is_rejected_before_runtime_write_admission() {
+    let output = hmm(&[
+        "--format",
+        "json",
+        "--environment",
+        "production",
+        "install",
+        "batch",
+        "apply",
+        "--item",
+        "mod-a:package-a",
+        "--preview-token",
+        "opaque-preview-token",
+        "--commit",
+        "--yes",
+    ]);
+
+    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(stderr_text(&output), "");
+    let stdout = stdout_text(&output);
+    assert!(!stdout.contains("opaque-preview-token"));
+    let value: Value = serde_json::from_str(&stdout).expect("production batch rejection json");
+    assert_eq!(value["command"], "install.batch.apply");
+    assert_eq!(
+        value["error"]["code"],
+        "sandbox_batch_production_forbidden"
+    );
+    assert_eq!(value["error"]["category"], "data_safety_risk");
+}
+
+#[test]
+fn sandbox_install_batch_apply_result_and_completed_retry_are_stable_across_processes() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("create target parent");
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let game_before = tree_snapshot(&game_root);
+
+    let plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+        ],
+    );
+    assert_eq!(plan.status.code(), Some(0), "{}", stderr_text(&plan));
+    let plan_value: Value =
+        serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
+    let preview_token = plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("batch preview token")
+        .to_owned();
+
+    let apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--preview-token",
+            &preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(apply.status.code(), Some(0), "{}", stderr_text(&apply));
+    assert_eq!(stderr_text(&apply), "");
+    let apply_stdout = stdout_text(&apply);
+    assert_eq!(apply_stdout.lines().count(), 1);
+    assert!(!apply_stdout.contains(&sandbox.path().to_string_lossy().to_string()));
+    assert!(!apply_stdout.contains("package-a"));
+    let apply_value: Value =
+        serde_json::from_str(apply_stdout.trim()).expect("batch apply jsonl");
+    assert_eq!(apply_value["command"], "install.batch.apply");
+    assert_eq!(apply_value["result"]["status"], "completed");
+    assert_eq!(apply_value["result"]["summary"]["succeeded_count"], 1);
+    let batch_id = apply_value["result"]["batchId"]
+        .as_str()
+        .expect("batch id")
+        .to_owned();
+    assert!(apply_value["result"]["taskId"].as_str().is_some());
+    assert_ne!(tree_snapshot(&game_root), game_before);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+
+    let result = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "batch",
+            "result",
+            "--batch-id",
+            &batch_id,
+            "--attempt",
+            "0",
+        ],
+    );
+    assert_eq!(result.status.code(), Some(0), "{}", stderr_text(&result));
+    assert_eq!(stderr_text(&result), "");
+    let result_stdout = stdout_text(&result);
+    assert_eq!(result_stdout.lines().count(), 1);
+    assert!(!result_stdout.contains(&sandbox.path().to_string_lossy().to_string()));
+    assert!(!result_stdout.contains("package-a"));
+    let result_value: Value =
+        serde_json::from_str(result_stdout.trim()).expect("batch result jsonl");
+    assert_eq!(result_value["command"], "install.batch.result");
+    assert_eq!(result_value["result"]["batchId"], batch_id);
+    assert_eq!(result_value["result"]["status"], "completed");
+    assert_eq!(result_value["result"]["items"][0]["status"], "succeeded");
+    let game_after_result = tree_snapshot(&game_root);
+
+    let retry = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "retry",
+            "--batch-id",
+            &batch_id,
+            "--attempt",
+            "0",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(retry.status.code(), Some(3));
+    assert_eq!(stderr_text(&retry), "");
+    let retry_value: Value =
+        serde_json::from_str(&stdout_text(&retry)).expect("completed retry rejection json");
+    assert_eq!(retry_value["command"], "install.batch.retry");
+    assert_eq!(retry_value["error"]["code"], "batch_retry_unavailable");
+    assert_eq!(tree_snapshot(&game_root), game_after_result);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn sandbox_install_batch_apply_rejects_stale_preview_before_sealing_or_writing() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+
+    let plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+        ],
+    );
+    let plan_value: Value =
+        serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
+    let preview_token = plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("batch preview token")
+        .to_owned();
+
+    fs::remove_file(game_root.join("dinput8.dll")).expect("mutate prerequisites after preview");
+    let before_apply = tree_snapshot(sandbox.path());
+
+    let apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--preview-token",
+            &preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(apply.status.code(), Some(3));
+    assert_eq!(stderr_text(&apply), "");
+    let value: Value = serde_json::from_str(&stdout_text(&apply)).expect("stale batch json");
+    assert_eq!(value["command"], "install.batch.apply");
+    assert_eq!(value["error"]["code"], "batch_plan_stale");
+    assert_eq!(tree_snapshot(sandbox.path()), before_apply);
+}
+
+#[test]
 fn sandbox_reinstall_binary_replaces_revision_and_restores_exact_baseline() {
     let sandbox = tempfile::tempdir().expect("sandbox");
     let outside = tempfile::tempdir().expect("outside");

@@ -129,6 +129,14 @@ runner 取得共享 game/profile 写锁后，再由 configured committer/admissi
 manifest/recovery facts、重验 token 和 capability，之后才进入既有写入事务。Production 在 CLI
 policy 和 runtime composition 两层固定拒绝。
 
+CLI-4 Slice B 在 Sandbox 增加 `hmm install batch plan|apply|result|retry`。批量 plan 使用
+`BatchPlanService` 生成脱敏 projection 和短期 opaque `previewToken`；apply 先通过不初始化
+`HmmRuntime` 的只读 facts service 验证 preview，验证通过后才创建 SQLite batch journal，并在
+`seal` 阶段再次读取 facts、验证 token 后持久化 sealed batch。批量 runner 复用
+`InstallPlan`、backup、manifest、rollback/recovery、Task/Audit Log 和 game/profile 写锁；
+Production 在 CLI policy 和 runtime composition 两层继续 fail closed。批量卸载、真正重装、
+Tauri command 与前端工作流仍按 T13-03 至 T13-07 的依赖开放。
+
 CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
 `ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和
 `ReadOnlyInstallAutomation` 复用 runtime 中同一个 provider。preview 和提交前最终重验都在写锁外

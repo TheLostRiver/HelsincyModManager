@@ -5,6 +5,7 @@ mod task_events;
 use cancellation::{CliCancellationCoordinator, NoopCliTaskProgressObserver};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hmm_runtime::{
+    BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchInstallAutomation,
     BackupBackgroundStatusSnapshot, BackupListSnapshot, DiagnosticsSnapshot,
     GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot, GameValidationSnapshot,
     InstallPlanSnapshot, InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot,
@@ -15,6 +16,10 @@ use hmm_runtime::{
     ReinstallPlanSnapshot, RuntimeEnvironment, RuntimeEnvironmentError, RuntimeEnvironmentKind,
     SandboxLifecycleAutomation, SandboxLifecycleAutomationError, TaskProgressEvent,
     TaskProgressObserver, UninstallPlanSnapshot,
+};
+use hmm_core::{
+    BatchExecutionPolicy, BatchItemInput, BatchPlanRequest, BatchPlanStatus, FileLayer, GameId,
+    ModId, ModRevisionId, ProfileId, BATCH_PLAN_SCHEMA_VERSION,
 };
 use serde::Serialize;
 use std::ffi::{OsStr, OsString};
@@ -41,6 +46,10 @@ const INSTALL_STATUS_COMMAND: &str = "install.status";
 const INSTALL_RECOVERY_SCAN_COMMAND: &str = "install.recovery.scan";
 const INSTALL_RECOVERY_PREVIEW_COMMAND: &str = "install.recovery.preview";
 const INSTALL_RECOVERY_APPLY_COMMAND: &str = "install.recovery.apply";
+const INSTALL_BATCH_PLAN_COMMAND: &str = "install.batch.plan";
+const INSTALL_BATCH_APPLY_COMMAND: &str = "install.batch.apply";
+const INSTALL_BATCH_RESULT_COMMAND: &str = "install.batch.result";
+const INSTALL_BATCH_RETRY_COMMAND: &str = "install.batch.retry";
 const BACKUP_LIST_COMMAND: &str = "backup.list";
 const BACKUP_BACKGROUND_STATUS_COMMAND: &str = "backup.background.status";
 const DIAGNOSTICS_SNAPSHOT_COMMAND: &str = "diagnostics.snapshot";
@@ -140,6 +149,10 @@ enum GameCommand {
 enum InstallCommand {
     Plan(InstallPlanOptions),
     Apply(InstallApplyOptions),
+    Batch {
+        #[command(subcommand)]
+        command: InstallBatchCommand,
+    },
     Uninstall(InstallUninstallOptions),
     Reinstall(InstallReinstallOptions),
     Status(InstallStatusOptions),
@@ -147,6 +160,14 @@ enum InstallCommand {
         #[command(subcommand)]
         command: InstallRecoveryCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum InstallBatchCommand {
+    Plan(InstallBatchPlanOptions),
+    Apply(InstallBatchApplyOptions),
+    Result(InstallBatchResultOptions),
+    Retry(InstallBatchRetryOptions),
 }
 
 #[derive(Debug, Subcommand)]
@@ -191,6 +212,78 @@ struct InstallPlanOptions {
 
     #[arg(long = "mod")]
     mod_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum BatchExecutionPolicyOption {
+    StopOnFailure,
+    ContinueOnItemFailure,
+}
+
+impl From<BatchExecutionPolicyOption> for BatchExecutionPolicy {
+    fn from(value: BatchExecutionPolicyOption) -> Self {
+        match value {
+            BatchExecutionPolicyOption::StopOnFailure => Self::StopOnFailure,
+            BatchExecutionPolicyOption::ContinueOnItemFailure => Self::ContinueOnItemFailure,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+struct InstallBatchPlanOptions {
+    #[arg(long, default_value = "mhw")]
+    game: String,
+
+    #[arg(long, default_value = "default")]
+    profile: String,
+
+    #[arg(long = "item", value_name = "MOD:REVISION", required = true)]
+    items: Vec<String>,
+
+    #[arg(long, value_enum, default_value_t = BatchExecutionPolicyOption::StopOnFailure)]
+    policy: BatchExecutionPolicyOption,
+}
+
+#[derive(Debug, Args)]
+struct InstallBatchApplyOptions {
+    #[arg(long, default_value = "mhw")]
+    game: String,
+
+    #[arg(long, default_value = "default")]
+    profile: String,
+
+    #[arg(long = "item", value_name = "MOD:REVISION", required = true)]
+    items: Vec<String>,
+
+    #[arg(long, value_enum, default_value_t = BatchExecutionPolicyOption::StopOnFailure)]
+    policy: BatchExecutionPolicyOption,
+
+    #[arg(long)]
+    preview_token: Option<String>,
+
+    #[command(flatten)]
+    lifecycle: LifecycleCommitOptions,
+}
+
+#[derive(Debug, Args)]
+struct InstallBatchResultOptions {
+    #[arg(long)]
+    batch_id: String,
+
+    #[arg(long, default_value_t = 0)]
+    attempt: u32,
+}
+
+#[derive(Debug, Args)]
+struct InstallBatchRetryOptions {
+    #[arg(long)]
+    batch_id: String,
+
+    #[arg(long, default_value_t = 0)]
+    attempt: u32,
+
+    #[command(flatten)]
+    lifecycle: LifecycleCommitOptions,
 }
 
 #[derive(Debug, Args)]
@@ -369,6 +462,8 @@ enum GameCommandResult {
 #[serde(untagged)]
 enum InstallCommandResult {
     Plan(InstallPlanSnapshot),
+    BatchPlan(BatchPlanResult),
+    BatchAttempt(BatchAttemptSnapshot),
     Uninstall(UninstallPlanSnapshot),
     Reinstall(ReinstallPlanSnapshot),
     Status(InstallStatusSnapshot),
@@ -381,6 +476,56 @@ enum InstallCommandResult {
 struct LifecycleApplyResult {
     status: &'static str,
     event_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchApplyResult {
+    batch_id: String,
+    attempt: u32,
+    task_id: String,
+    status: hmm_core::BatchAttemptStatus,
+    summary: hmm_core::BatchResultSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchPlanResult {
+    plan: BatchPlanSnapshot,
+    preview_token: Option<String>,
+    expires_at_unix_millis: Option<u128>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchPlanSnapshot {
+    plan_schema_version: u32,
+    operation: hmm_core::BatchOperation,
+    game_id: GameId,
+    profile_id: ProfileId,
+    execution_policy: BatchExecutionPolicy,
+    status: BatchPlanStatus,
+    item_count: usize,
+    ready_item_count: usize,
+    blocked_item_count: usize,
+    action_count: usize,
+    global_blocking_reasons: Vec<hmm_core::BatchReasonSummary>,
+    warning_codes: Vec<hmm_core::BatchReasonSummary>,
+    items: Vec<BatchPlanItemSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchPlanItemSnapshot {
+    ordinal: usize,
+    mod_id: ModId,
+    revision_id: Option<ModRevisionId>,
+    status: BatchPlanStatus,
+    action_summary: hmm_core::BatchActionSummary,
+    target_count: usize,
+    prerequisite: hmm_core::BatchPreflightDecision,
+    blocking_reasons: Vec<String>,
+    warning_codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -629,6 +774,18 @@ fn run_install_command<W: Write + Send, E: Write>(
     let command_id = match &command {
         InstallCommand::Plan(_) => INSTALL_PLAN_COMMAND,
         InstallCommand::Apply(_) => INSTALL_APPLY_COMMAND,
+        InstallCommand::Batch {
+            command: InstallBatchCommand::Plan(_),
+        } => INSTALL_BATCH_PLAN_COMMAND,
+        InstallCommand::Batch {
+            command: InstallBatchCommand::Apply(_),
+        } => INSTALL_BATCH_APPLY_COMMAND,
+        InstallCommand::Batch {
+            command: InstallBatchCommand::Result(_),
+        } => INSTALL_BATCH_RESULT_COMMAND,
+        InstallCommand::Batch {
+            command: InstallBatchCommand::Retry(_),
+        } => INSTALL_BATCH_RETRY_COMMAND,
         InstallCommand::Uninstall(_) => INSTALL_UNINSTALL_COMMAND,
         InstallCommand::Reinstall(_) => INSTALL_REINSTALL_COMMAND,
         InstallCommand::Status(_) => INSTALL_STATUS_COMMAND,
@@ -651,6 +808,15 @@ fn run_install_command<W: Write + Send, E: Write>(
     let command = match command {
         InstallCommand::Apply(options) => {
             return run_install_apply(format, &environment, options, stdout, stderr);
+        }
+        InstallCommand::Batch { command } => {
+            return run_install_batch_command(
+                format,
+                &environment,
+                command,
+                stdout,
+                stderr,
+            );
         }
         InstallCommand::Uninstall(options) => {
             return run_install_uninstall(format, &environment, options, stdout, stderr);
@@ -675,6 +841,9 @@ fn run_install_command<W: Write + Send, E: Write>(
         InstallCommand::Plan(options) => automation
             .plan_for_profile(&options.game, &options.profile, &options.mod_id)
             .map(InstallCommandResult::Plan),
+        InstallCommand::Batch { .. } => {
+            unreachable!("install batch is handled before read-only paths")
+        }
         InstallCommand::Apply(_) => unreachable!("install apply is handled before read-only paths"),
         InstallCommand::Uninstall(_) => {
             unreachable!("install uninstall is handled before read-only paths")
@@ -712,6 +881,316 @@ fn run_install_command<W: Write + Send, E: Write>(
     };
 
     write_install_result(format, command_id, result, stdout, stderr)
+}
+
+fn run_install_batch_command<W: Write + Send, E: Write>(
+    format: OutputFormat,
+    environment: &RuntimeEnvironment,
+    command: InstallBatchCommand,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32 {
+    match command {
+        InstallBatchCommand::Plan(options) => {
+            let request = match batch_plan_request(
+                &options.game,
+                &options.profile,
+                &options.items,
+                options.policy,
+            ) {
+                Ok(request) => request,
+                Err(code) => {
+                    return write_batch_error(
+                        format,
+                        INSTALL_BATCH_PLAN_COMMAND,
+                        code,
+                        stdout,
+                        stderr,
+                    );
+                }
+            };
+            match SandboxBatchInstallAutomation::preview(environment, request) {
+                Ok(preview) => write_install_result(
+                    format,
+                    INSTALL_BATCH_PLAN_COMMAND,
+                    InstallCommandResult::BatchPlan(BatchPlanResult {
+                        plan: project_batch_plan(&preview.plan),
+                        preview_token: preview.preview_token,
+                        expires_at_unix_millis: preview.expires_at_unix_millis,
+                    }),
+                    stdout,
+                    stderr,
+                ),
+                Err(error) => write_batch_automation_error(
+                    format,
+                    INSTALL_BATCH_PLAN_COMMAND,
+                    error,
+                    stdout,
+                    stderr,
+                ),
+            }
+        }
+        InstallBatchCommand::Apply(options) => {
+            if !options.lifecycle.commit || !options.lifecycle.yes {
+                return write_batch_error(
+                    format,
+                    INSTALL_BATCH_APPLY_COMMAND,
+                    "batch_commit_required",
+                    stdout,
+                    stderr,
+                );
+            }
+            let Some(preview_token) = options.preview_token.as_deref() else {
+                return write_batch_error(
+                    format,
+                    INSTALL_BATCH_APPLY_COMMAND,
+                    "batch_preview_token_required",
+                    stdout,
+                    stderr,
+                );
+            };
+            let request = match batch_plan_request(
+                &options.game,
+                &options.profile,
+                &options.items,
+                options.policy,
+            ) {
+                Ok(request) => request,
+                Err(code) => {
+                    return write_batch_error(
+                        format,
+                        INSTALL_BATCH_APPLY_COMMAND,
+                        code,
+                        stdout,
+                        stderr,
+                    );
+                }
+            };
+            match SandboxBatchInstallAutomation::apply(environment, request, preview_token) {
+                Ok((_sealed, run)) => {
+                    let result = BatchApplyResult {
+                        batch_id: run.batch_id.as_str().to_owned(),
+                        attempt: run.attempt_number,
+                        task_id: run.task_id,
+                        status: run.status,
+                        summary: run.summary,
+                    };
+                    let exit_code = batch_exit_code(result.status);
+                    let write_result = match format {
+                        OutputFormat::Human => write_human_batch_apply_result(stdout, &result),
+                        OutputFormat::Json | OutputFormat::Jsonl => write_json_line(
+                            stdout,
+                            &CommandEnvelope::success(INSTALL_BATCH_APPLY_COMMAND, result),
+                        ),
+                    };
+                    if write_result.is_ok() {
+                        exit_code
+                    } else {
+                        let _ = writeln!(stderr, "cli_output_failed");
+                        CliExitCode::RuntimeUnavailable.get()
+                    }
+                }
+                Err(error) => write_batch_automation_error(
+                    format,
+                    INSTALL_BATCH_APPLY_COMMAND,
+                    error,
+                    stdout,
+                    stderr,
+                ),
+            }
+        }
+        InstallBatchCommand::Result(options) => {
+            match SandboxBatchInstallAutomation::result(
+                environment,
+                &options.batch_id,
+                options.attempt,
+            ) {
+                Ok(snapshot) => write_install_result(
+                    format,
+                    INSTALL_BATCH_RESULT_COMMAND,
+                    InstallCommandResult::BatchAttempt(snapshot),
+                    stdout,
+                    stderr,
+                ),
+                Err(error) => write_batch_automation_error(
+                    format,
+                    INSTALL_BATCH_RESULT_COMMAND,
+                    error,
+                    stdout,
+                    stderr,
+                ),
+            }
+        }
+        InstallBatchCommand::Retry(options) => {
+            if !options.lifecycle.commit || !options.lifecycle.yes {
+                return write_batch_error(
+                    format,
+                    INSTALL_BATCH_RETRY_COMMAND,
+                    "batch_commit_required",
+                    stdout,
+                    stderr,
+                );
+            }
+            match SandboxBatchInstallAutomation::retry(
+                environment,
+                &options.batch_id,
+                options.attempt,
+            ) {
+                Ok((_retry, run)) => {
+                    let result = BatchApplyResult {
+                        batch_id: run.batch_id.as_str().to_owned(),
+                        attempt: run.attempt_number,
+                        task_id: run.task_id,
+                        status: run.status,
+                        summary: run.summary,
+                    };
+                    let exit_code = batch_exit_code(result.status);
+                    let write_result = match format {
+                        OutputFormat::Human => write_human_batch_apply_result(stdout, &result),
+                        OutputFormat::Json | OutputFormat::Jsonl => write_json_line(
+                            stdout,
+                            &CommandEnvelope::success(INSTALL_BATCH_RETRY_COMMAND, result),
+                        ),
+                    };
+                    if write_result.is_ok() {
+                        exit_code
+                    } else {
+                        let _ = writeln!(stderr, "cli_output_failed");
+                        CliExitCode::RuntimeUnavailable.get()
+                    }
+                }
+                Err(error) => write_batch_automation_error(
+                    format,
+                    INSTALL_BATCH_RETRY_COMMAND,
+                    error,
+                    stdout,
+                    stderr,
+                ),
+            }
+        }
+    }
+}
+
+fn project_batch_plan(plan: &hmm_core::BatchPlan) -> BatchPlanSnapshot {
+    let ready_item_count = plan.items.iter().filter(|item| item.is_ready()).count();
+    let blocked_item_count = plan.items.len().saturating_sub(ready_item_count);
+    let action_count = plan
+        .items
+        .iter()
+        .map(|item| item.action_summary.actions)
+        .sum();
+    let items = plan
+        .items
+        .iter()
+        .map(|item| {
+            let revision_id = match &item.input_snapshot {
+                BatchItemInput::Install(input) => Some(input.revision_id.clone()),
+                BatchItemInput::Uninstall(input) => {
+                    Some(input.expected_installed_revision_id.clone())
+                }
+                BatchItemInput::Reinstall(input) => Some(input.candidate_revision_id.clone()),
+            };
+            BatchPlanItemSnapshot {
+                ordinal: item.ordinal,
+                mod_id: item.input_snapshot.mod_id().clone(),
+                revision_id,
+                status: if item.is_ready() {
+                    BatchPlanStatus::Ready
+                } else {
+                    BatchPlanStatus::Blocked
+                },
+                action_summary: item.action_summary.clone(),
+                target_count: item.target_claims.len(),
+                prerequisite: item.prerequisite.clone(),
+                blocking_reasons: item.blocking_reasons.clone(),
+                warning_codes: item.warning_codes.clone(),
+            }
+        })
+        .collect();
+
+    BatchPlanSnapshot {
+        plan_schema_version: plan.plan_schema_version,
+        operation: plan.operation,
+        game_id: plan.game_id.clone(),
+        profile_id: plan.profile_id.clone(),
+        execution_policy: plan.execution_policy,
+        status: plan.status(),
+        item_count: plan.items.len(),
+        ready_item_count,
+        blocked_item_count,
+        action_count,
+        global_blocking_reasons: plan.global_blocking_reasons.clone(),
+        warning_codes: plan.warning_codes.clone(),
+        items,
+    }
+}
+
+fn batch_plan_request(
+    game: &str,
+    profile: &str,
+    items: &[String],
+    policy: BatchExecutionPolicyOption,
+) -> Result<BatchPlanRequest, &'static str> {
+    let game_id = GameId::parse(game).map_err(|_| "batch_game_invalid")?;
+    let profile_id = parse_batch_id_component(profile).map(ProfileId::new)?;
+    if items.is_empty() {
+        return Err("batch_items_required");
+    }
+    let items = items
+        .iter()
+        .map(|item| {
+            let (mod_id, revision_id) = item
+                .split_once(':')
+                .ok_or("batch_item_invalid")?;
+            let mod_id = parse_batch_id_component(mod_id).map(ModId::new)?;
+            let revision_id = parse_batch_id_component(revision_id).map(ModRevisionId::new)?;
+            Ok(BatchItemInput::Install(
+                hmm_core::InstallBatchItemInput {
+                    mod_id,
+                    revision_id,
+                    layer: FileLayer::new("base", 0),
+                    replacement_binding_snapshot: None,
+                },
+            ))
+        })
+        .collect::<Result<Vec<_>, &'static str>>()?;
+    Ok(BatchPlanRequest {
+        schema_version: BATCH_PLAN_SCHEMA_VERSION,
+        operation: hmm_core::BatchOperation::Install,
+        game_id,
+        profile_id,
+        execution_policy: policy.into(),
+        items,
+    })
+}
+
+fn parse_batch_id_component(value: &str) -> Result<String, &'static str> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err("batch_item_invalid");
+    }
+    Ok(value.to_owned())
+}
+
+fn batch_exit_code(status: hmm_core::BatchAttemptStatus) -> i32 {
+    match status {
+        hmm_core::BatchAttemptStatus::Completed => CliExitCode::Success.get(),
+        hmm_core::BatchAttemptStatus::CompletedWithErrors => CliExitCode::PartialSuccess.get(),
+        hmm_core::BatchAttemptStatus::Cancelled => CliExitCode::Cancelled.get(),
+        hmm_core::BatchAttemptStatus::Blocked
+        | hmm_core::BatchAttemptStatus::RecoveryRequired
+        | hmm_core::BatchAttemptStatus::Interrupted
+        | hmm_core::BatchAttemptStatus::Failed
+        | hmm_core::BatchAttemptStatus::Sealed
+        | hmm_core::BatchAttemptStatus::Queued
+        | hmm_core::BatchAttemptStatus::Running
+        | hmm_core::BatchAttemptStatus::Stopping => CliExitCode::ControlledFailure.get(),
+    }
 }
 
 fn run_install_apply<W: Write + Send, E: Write>(
@@ -1597,6 +2076,88 @@ fn write_diagnostics_error<W: Write, E: Write>(
     )
 }
 
+fn write_batch_error<W: Write, E: Write>(
+    format: OutputFormat,
+    command: &'static str,
+    code: &'static str,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32 {
+    let (category, exit_code) = match code {
+        "batch_item_invalid"
+        | "batch_items_required"
+        | "batch_game_invalid"
+        | "batch_commit_required"
+        | "batch_preview_token_required" => {
+            (CliErrorCategory::UserActionRequired, CliExitCode::Usage)
+        }
+        _ => (CliErrorCategory::UserActionRequired, CliExitCode::Rejected),
+    };
+    write_command_error(
+        format,
+        command,
+        CliErrorEnvelope::new(code, category, false),
+        exit_code,
+        stdout,
+        stderr,
+    )
+}
+
+fn write_batch_automation_error<W: Write, E: Write>(
+    format: OutputFormat,
+    command: &'static str,
+    error: SandboxBatchAutomationError,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32 {
+    let code = error.code();
+    let (category, exit_code, retryable) = match code {
+        "sandbox_batch_production_forbidden"
+        | "batch_write_admission_unavailable"
+        | "batch_runtime_unavailable" => (
+            CliErrorCategory::DataSafetyRisk,
+            CliExitCode::Rejected,
+            false,
+        ),
+        "batch_input_invalid"
+        | "batch_duplicate_item"
+        | "batch_plan_blocked"
+        | "batch_token_invalid"
+        | "batch_plan_stale"
+        | "batch_plan_expired"
+        | "batch_retry_unavailable"
+        | "batch_attempt_stale"
+        | "batch_id_invalid" => (
+            CliErrorCategory::UserActionRequired,
+            CliExitCode::Rejected,
+            false,
+        ),
+        "batch_unavailable"
+        | "batch_journal_unavailable"
+        | "batch_result_unavailable"
+        | "batch_task_unavailable"
+        | "batch_evidence_unavailable"
+        | "batch_internal_error" => (
+            CliErrorCategory::Recoverable,
+            CliExitCode::RuntimeUnavailable,
+            true,
+        ),
+        _ => (
+            CliErrorCategory::DataSafetyRisk,
+            CliExitCode::ControlledFailure,
+            false,
+        ),
+    };
+    write_command_error(
+        format,
+        command,
+        CliErrorEnvelope::new(code, category, retryable),
+        exit_code,
+        stdout,
+        stderr,
+    )
+}
+
 fn write_command_error<W: Write, E: Write>(
     format: OutputFormat,
     command: &'static str,
@@ -1718,6 +2279,25 @@ fn write_human_install_result<W: Write>(
             write_human_value(writer, "plan expires at", &snapshot.expires_at_unix_millis)?;
             Ok(())
         }
+        InstallCommandResult::BatchPlan(plan) => {
+            write_human_value(writer, "game", &plan.plan.game_id)?;
+            write_human_value(writer, "profile", &plan.plan.profile_id)?;
+            write_human_value(writer, "operation", &plan.plan.operation)?;
+            write_human_value(writer, "status", &plan.plan.status)?;
+            writeln!(writer, "items: {}", plan.plan.item_count)?;
+            writeln!(writer, "actions: {}", plan.plan.action_count)?;
+            write_human_value(writer, "preview token", &plan.preview_token)?;
+            write_human_value(writer, "preview expires at", &plan.expires_at_unix_millis)
+        }
+        InstallCommandResult::BatchAttempt(snapshot) => {
+            write_human_value(writer, "batch", &snapshot.batch_id)?;
+            writeln!(writer, "attempt: {}", snapshot.attempt_number)?;
+            write_human_value(writer, "status", &snapshot.status)?;
+            write_human_value(writer, "task", &snapshot.task_id)?;
+            write_human_value(writer, "evidence degraded", &snapshot.evidence_health_degraded)?;
+            writeln!(writer, "items: {}", snapshot.items.len())?;
+            write_human_value(writer, "summary", &snapshot.summary)
+        }
         InstallCommandResult::Uninstall(snapshot) => {
             write_human_value(writer, "game", &snapshot.game_id)?;
             write_human_value(writer, "profile", &snapshot.profile_id)?;
@@ -1812,6 +2392,17 @@ fn write_human_install_result<W: Write>(
             Ok(())
         }
     }
+}
+
+fn write_human_batch_apply_result<W: Write>(
+    writer: &mut W,
+    result: &BatchApplyResult,
+) -> io::Result<()> {
+    write_human_value(writer, "batch", &result.batch_id)?;
+    writeln!(writer, "attempt: {}", result.attempt)?;
+    write_human_value(writer, "task", &result.task_id)?;
+    write_human_value(writer, "status", &result.status)?;
+    write_human_value(writer, "summary", &result.summary)
 }
 
 fn write_human_backup_result<W: Write>(
@@ -1987,5 +2578,13 @@ mod tests {
         assert_eq!(value["error"]["category"], "data_safety_risk");
         assert_ne!(value["error"]["category"], "rollback_succeeded");
         assert_eq!(value["error"]["retryable"], false);
+    }
+
+    #[test]
+    fn completed_with_errors_uses_partial_success_exit_code() {
+        assert_eq!(
+            batch_exit_code(hmm_core::BatchAttemptStatus::CompletedWithErrors),
+            CliExitCode::PartialSuccess.get()
+        );
     }
 }
