@@ -187,13 +187,20 @@ pub struct BatchPlanRequest {
 
 impl BatchPlanRequest {
     pub fn normalize(self) -> Result<NormalizedBatchPlanRequest, BatchPlanError> {
+        self.normalize_with_max_items(DEFAULT_BATCH_MAX_ITEMS)
+    }
+
+    pub fn normalize_with_max_items(
+        self,
+        max_items: usize,
+    ) -> Result<NormalizedBatchPlanRequest, BatchPlanError> {
         if self.schema_version != BATCH_PLAN_SCHEMA_VERSION
             || self.items.is_empty()
             || self.profile_id.as_str().trim().is_empty()
         {
             return Err(BatchPlanError::InvalidInput);
         }
-        if self.items.len() > DEFAULT_BATCH_MAX_ITEMS {
+        if self.items.len() > max_items {
             return Err(BatchPlanError::ResourceLimitExceeded {
                 resource: BatchResource::Items,
             });
@@ -747,27 +754,25 @@ fn append_revision_mismatch_reason(
     input: &BatchItemInput,
     fact: &BatchItemFacts,
 ) {
-    let matches = match input {
+    match input {
         BatchItemInput::Install(input) => {
-            fact.source_revision_id.as_ref() == Some(&input.revision_id)
+            if fact.source_revision_id.as_ref() != Some(&input.revision_id) {
+                blocking_reasons.push("source_revision_changed".to_owned());
+            }
         }
         BatchItemInput::Uninstall(input) => {
-            fact.installed_revision_id.as_ref() == Some(&input.expected_installed_revision_id)
+            if fact.installed_revision_id.as_ref() != Some(&input.expected_installed_revision_id) {
+                blocking_reasons.push("manifest_changed".to_owned());
+            }
         }
         BatchItemInput::Reinstall(input) => {
-            fact.source_revision_id.as_ref() == Some(&input.candidate_revision_id)
-                && fact.installed_revision_id.as_ref() == Some(&input.installed_revision_id)
-        }
-    };
-    if !matches {
-        blocking_reasons.push(
-            match input {
-                BatchItemInput::Install(_) => "source_revision_changed",
-                BatchItemInput::Uninstall(_) => "manifest_changed",
-                BatchItemInput::Reinstall(_) => "source_revision_changed",
+            if fact.source_revision_id.as_ref() != Some(&input.candidate_revision_id) {
+                blocking_reasons.push("source_revision_changed".to_owned());
             }
-            .to_owned(),
-        );
+            if fact.installed_revision_id.as_ref() != Some(&input.installed_revision_id) {
+                blocking_reasons.push("manifest_changed".to_owned());
+            }
+        }
     }
 }
 
@@ -818,6 +823,28 @@ mod tests {
             layer: FileLayer::new("default", 10),
             replacement_binding_snapshot: None,
         })
+    }
+
+    fn binding_snapshot(mod_id: &str) -> ReplacementBindingSnapshot {
+        ReplacementBindingSnapshot::new(
+            crate::ReplacementBinding::new(
+                crate::ReplacementBindingId::parse("binding-a").expect("binding id"),
+                ModId::new(mod_id),
+                ProfileId::new("default"),
+                crate::ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
+                    .expect("source id"),
+                crate::ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+                42,
+            )
+            .expect("binding"),
+            Some(ModRevisionId::new("revision-a")),
+            "pl121_0000",
+            "pl129_0000",
+            "pl/f_equip",
+            "pl/f_equip",
+            crate::ReplacementTargetKind::parse("armor").expect("replacement kind"),
+        )
+        .expect("replacement snapshot")
     }
 
     fn facts(mod_id: &str, target: &str) -> BatchItemFacts {
@@ -918,6 +945,100 @@ mod tests {
     }
 
     #[test]
+    fn normalization_honors_configured_item_limit() {
+        let request = request(
+            BatchOperation::Install,
+            vec![install_item("a", "a"), install_item("b", "b")],
+        );
+        assert!(matches!(
+            request.clone().normalize_with_max_items(1),
+            Err(BatchPlanError::ResourceLimitExceeded {
+                resource: BatchResource::Items
+            })
+        ));
+        assert_eq!(
+            request
+                .normalize_with_max_items(2)
+                .expect("request")
+                .items
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn digest_changes_when_operation_policy_revision_binding_target_or_preflight_changes() {
+        let baseline_request = request(BatchOperation::Install, vec![install_item("a", "a")]);
+        let baseline_facts = BatchPlanFacts {
+            environment_digest: "env".to_owned(),
+            prerequisite_rules_version: Some(1),
+            items: vec![facts_with_revision("a", "a", "nativepc/a")],
+        };
+        let build = |request: BatchPlanRequest, facts: BatchPlanFacts| {
+            build_batch_plan(
+                request.normalize().expect("request"),
+                facts,
+                BatchResourceLimits::default(),
+            )
+            .expect("plan")
+            .batch_digest
+        };
+        let baseline = build(baseline_request.clone(), baseline_facts.clone());
+
+        let mut policy_request = baseline_request.clone();
+        policy_request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+        assert_ne!(baseline, build(policy_request, baseline_facts.clone()));
+
+        let revision_request = request(BatchOperation::Install, vec![install_item("a", "a-v2")]);
+        assert_ne!(baseline, build(revision_request, baseline_facts.clone()));
+
+        let mut binding_request = baseline_request.clone();
+        if let BatchItemInput::Install(input) = &mut binding_request.items[0] {
+            input.replacement_binding_snapshot = Some(binding_snapshot("a"));
+        }
+        assert_ne!(baseline, build(binding_request, baseline_facts.clone()));
+
+        let mut target_facts = baseline_facts.clone();
+        target_facts.items[0].target_claims[0].target_path =
+            InstallTargetPath::parse("nativepc/other", ["nativepc"]).expect("target");
+        assert_ne!(baseline, build(baseline_request.clone(), target_facts));
+
+        let mut preflight_facts = baseline_facts.clone();
+        preflight_facts.items[0].prerequisite = BatchPreflightDecision {
+            status: BatchPreflightStatus::Warning,
+            rules_version: Some(1),
+            codes: vec!["loader_unverified".to_owned()],
+        };
+        assert_ne!(baseline, build(baseline_request.clone(), preflight_facts));
+
+        let operation_request = BatchPlanRequest {
+            schema_version: BATCH_PLAN_SCHEMA_VERSION,
+            operation: BatchOperation::Uninstall,
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            execution_policy: BatchExecutionPolicy::StopOnFailure,
+            items: vec![BatchItemInput::Uninstall(UninstallBatchItemInput {
+                mod_id: ModId::new("a"),
+                expected_installed_revision_id: ModRevisionId::new("installed-a"),
+            })],
+        };
+        let mut operation_facts = facts_with_revision("a", "a", "nativepc/a");
+        operation_facts.source_revision_id = None;
+        operation_facts.installed_revision_id = Some(ModRevisionId::new("installed-a"));
+        assert_ne!(
+            baseline,
+            build(
+                operation_request,
+                BatchPlanFacts {
+                    environment_digest: "env".to_owned(),
+                    prerequisite_rules_version: Some(1),
+                    items: vec![operation_facts],
+                }
+            )
+        );
+    }
+
+    #[test]
     fn target_action_and_canonical_byte_limits_are_rejected() {
         let normalized = request(BatchOperation::Install, vec![install_item("a", "a")])
             .normalize()
@@ -1011,5 +1132,41 @@ mod tests {
         .expect("plan");
         assert_eq!(plan.status(), BatchPlanStatus::Ready);
         assert_eq!(plan.items.iter().filter(|item| item.is_ready()).count(), 1);
+    }
+
+    #[test]
+    fn reinstall_drift_reports_manifest_and_source_reasons_separately() {
+        let normalized = BatchPlanRequest {
+            schema_version: BATCH_PLAN_SCHEMA_VERSION,
+            operation: BatchOperation::Reinstall,
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            execution_policy: BatchExecutionPolicy::StopOnFailure,
+            items: vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                mod_id: ModId::new("a"),
+                installed_revision_id: ModRevisionId::new("installed-a"),
+                candidate_revision_id: ModRevisionId::new("candidate-a"),
+                layer: FileLayer::new("default", 10),
+                replacement_binding_snapshot: None,
+            })],
+        }
+        .normalize()
+        .expect("request");
+        let mut facts = facts_with_revision("a", "candidate-a", "nativepc/a");
+        facts.installed_revision_id = Some(ModRevisionId::new("installed-b"));
+        let plan = build_batch_plan(
+            normalized,
+            BatchPlanFacts {
+                environment_digest: "env".to_owned(),
+                prerequisite_rules_version: Some(1),
+                items: vec![facts],
+            },
+            BatchResourceLimits::default(),
+        )
+        .expect("plan");
+        assert_eq!(
+            plan.items[0].blocking_reasons,
+            vec!["manifest_changed".to_owned()]
+        );
     }
 }
