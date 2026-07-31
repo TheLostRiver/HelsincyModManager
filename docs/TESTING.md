@@ -611,8 +611,9 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 ### T13 批量生命周期分阶段矩阵
 
 T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只交付
-设计与规划契约，当前不存在可调用的 batch Rust service、Tauri command、CLI parser 或前端工作流；
-不得把下面的未来测试名称、command 或场景写成已经通过。
+设计与规划契约；T13-01 已交付 `hmm-core` 批量计划模型、`hmm-ports` 事实/封存端口和
+`hmm-app` 只读 preview/seal service，但尚未提供 Tauri command、CLI parser、批量 runner
+或前端工作流。不得把下面尚未实现的测试名称、command 或场景写成已经通过。
 
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
