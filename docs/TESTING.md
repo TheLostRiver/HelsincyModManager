@@ -612,8 +612,9 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 
 T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只交付
 设计与规划契约；T13-01/T13-02 已交付 `hmm-core` 批量计划模型、`hmm-ports` 事实/封存端口、
-`hmm-app` service、批量 runner、journal 和 retry；T13-05 当前已接入 Sandbox install batch
-CLI。批量卸载/真正重装、Tauri command 和前端工作流仍未实现。不得把下面尚未实现的测试名称、
+`hmm-app` service、批量 runner、journal 和 retry；T13-03 已交付 app 层批量卸载 facts/executor 与
+锁内 manifest snapshot revalidation；T13-05 当前只接入 Sandbox install batch CLI。批量真正重装、
+uninstall/reinstall CLI、Tauri command 和前端工作流仍未实现。不得把下面尚未实现的测试名称、
 command 或场景写成已经通过。
 
 | Task | 实现后必须覆盖的自动化 |
@@ -621,7 +622,7 @@ command 或场景写成已经通过。
 | T13-00 | policy、Markdown links、secret、whitespace、文件大小、`git diff --check`、完整 `verify.ps1` 与 findings-first 全 diff 自审 |
 | T13-01 | 规范 item 顺序与 deterministic digest；operation/policy/revision/binding/target/preflight 任一变化使 digest 变化；duplicate、101 items、50,001 actions、超过 16 MiB plan 整体拒绝；Windows 规范化后的跨 item target conflict；preview 零写入；stop/continue 的 ready/blocked 与 token 规则；preview/plan token 过期、环境或 digest 不匹配 fail closed；seal 重读事实时 request/token/fact 任一漂移均返回 `batch_plan_stale`，且不留下部分 snapshot、journal、attempt 或 projection；原始 token 不持久化 |
 | T13-02 | 批量 install 全成功、默认预检 blocker 整批零写入、首项成功后次项失败保留首项、continue 只越过 pre-write/rollback-succeeded failure；同一 attempt 重复 start 幂等返回同一 task；manifest save/rollback/journal/Audit before/after commit fault matrix；sandbox 外 sentinel 不变 |
-| T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing、backup unavailable 和 remove/restore overlap 阻断；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
+| T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing/read failure、backup unavailable、invalid manifest 和 remove/restore overlap 阻断；同 revision binding/entry 漂移在写锁内拒绝；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
 | T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |
 | T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
 | T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、分页和 typed API wrapper；T13-06 前 contract test 应证明 command 未注册 |
@@ -637,6 +638,23 @@ cargo test -p hmm-runtime
 cargo test -p hmm-app --lib
 cargo test -p hmm-infra batch_lifecycle_repository --lib
 ```
+
+T13-03 app 层批量卸载聚焦入口：
+
+```powershell
+cargo test -p hmm-core batch --lib
+cargo test -p hmm-app batch_uninstall --lib --no-fail-fast
+cargo test -p hmm-app install_uninstall --lib --no-fail-fast
+cargo test -p hmm-app install_task --lib --no-fail-fast
+cargo test -p hmm-app batch_install --lib --no-fail-fast
+cargo test -p hmm-runtime uninstall --no-fail-fast
+```
+
+这些测试只使用 fake/temp/人工 manifest 与字节，覆盖 provider 零写入、exact revision、Mod 级 manifest
+snapshot digest、同 revision replacement binding 漂移、target/backup/manifest read failure、共享 ownership、
+未知 sentinel、玩家修改文件、partial result、retry/recovery 分类、Audit degradation 和 commit cancellation
+barrier；不读取真实游戏、Steam、存档或第三方 Mod。runtime/CLI batch uninstall E2E 属于后续 T13-05，
+不能由上述 app 测试替代。
 
 这些测试必须覆盖 `plan -> apply -> result/retry` 的跨进程 journal 路径、Production 写入拒绝、
 脱敏 projection、`--commit --yes --preview-token` 门禁、partial exit code `5`，以及 stale

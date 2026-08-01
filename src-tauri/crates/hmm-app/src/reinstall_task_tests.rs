@@ -1008,6 +1008,23 @@ impl crate::ModUninstaller for NotifyingUninstaller {
             restored_file_count: 0,
         })
     }
+
+    fn uninstall_mod_for_revision(
+        &self,
+        request: crate::StartUninstallTaskRequest,
+        _expected_installed_revision_id: ModRevisionId,
+    ) -> Result<crate::UninstallModResult, crate::UninstallModError> {
+        self.uninstall_mod(request)
+    }
+
+    fn uninstall_mod_for_revision_and_manifest(
+        &self,
+        request: crate::StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+        _expected_manifest_digest: &str,
+    ) -> Result<crate::UninstallModResult, crate::UninstallModError> {
+        self.uninstall_mod_for_revision(request, expected_installed_revision_id)
+    }
 }
 
 struct NotifyingRecoveryExecutor {

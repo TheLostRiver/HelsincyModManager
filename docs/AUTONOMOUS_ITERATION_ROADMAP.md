@@ -293,13 +293,16 @@ admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定
 
 ### T13-03：批量卸载
 
-状态：`ready`，T13-02 与 Slice B 已完成；本轮 PR 收尾后不自动开工。
+状态：`implemented`。app/core 工作包已在 Slice C 分支完成，等待与 T13-04、T13-05 剩余 contract
+共同进入 Slice C PR；尚未开放 runtime/CLI、Tauri 或前端入口。
 
 范围：
 
 - 只消费 manifest/recovery facts；未知文件和玩家修改文件 fail closed。
 - 预检跨 Mod 共享目标、backup ownership 和旧 manifest 摘要。
 - 每项独立 rollback/recovery；默认首个失败停止。
+- 锁外重验完整 item facts，锁内重验 exact revision 与 Mod 级 manifest snapshot digest；同 revision
+  replacement binding/target 漂移零写入拒绝。
 
 完成定义：未知文件保留，已成功卸载项不被伪回滚，失败项仍可由 recovery 扫描识别。
 
@@ -307,7 +310,7 @@ admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定
 
 ### T13-04：批量真正重装
 
-状态：`blocked`，依赖 T13-03。
+状态：`ready`，T13-03 app/core 工作包已完成。
 
 范围：
 

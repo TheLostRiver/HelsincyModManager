@@ -167,6 +167,7 @@ impl BatchPlanFactsProvider for SandboxBatchFactsProvider {
         Ok(BatchPlanFacts {
             environment_digest,
             prerequisite_rules_version,
+            global_blocking_reasons: Vec::new(),
             items,
         })
     }
