@@ -24,6 +24,7 @@ struct FakeRepository {
     admission_task_ids: Mutex<Vec<String>>,
     fail_admission: AtomicBool,
     scope_active_admission: AtomicBool,
+    fail_discard_retry: AtomicBool,
     fail_record_item_result: AtomicBool,
     fail_record_item_result_on_call: AtomicUsize,
     record_item_result_calls: AtomicUsize,
@@ -125,6 +126,9 @@ impl BatchLifecycleRepository for FakeRepository {
         attempt_number: u32,
         presented_plan_token_verifier: &str,
     ) -> anyhow::Result<bool> {
+        if self.fail_discard_retry.load(Ordering::Relaxed) {
+            anyhow::bail!("injected retry discard failure");
+        }
         if attempt_number == 0 {
             return Ok(false);
         }
@@ -827,6 +831,71 @@ fn batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
         .token;
     attempt.plan_token_verifier = sha256_hex(token.as_bytes());
     (sealed, attempt, token)
+}
+
+fn sealed_retry_attempt(
+    batch: &SealedBatch,
+    initial_attempt: &hmm_core::BatchAttempt,
+    task_id: Option<&str>,
+) -> (hmm_core::BatchAttempt, String) {
+    let mut attempt = hmm_core::BatchAttempt {
+        batch_id: batch.batch_id.clone(),
+        attempt_number: 1,
+        item_ids: initial_attempt.item_ids.clone(),
+        status: BatchAttemptStatus::Sealed,
+        task_id: task_id.map(str::to_owned),
+        plan_token_verifier: String::new(),
+        expires_at_unix_millis: 100,
+        started_at_unix_millis: None,
+        completed_at_unix_millis: None,
+        evidence_health_degraded: false,
+    };
+    let token = crate::Sha256BatchTokenCodec::new("secret")
+        .expect("codec")
+        .issue(
+            crate::BatchTokenKind::Plan,
+            &execution_token_digest(
+                &batch.batch_id,
+                attempt.attempt_number,
+                &attempt.item_ids,
+                &batch.plan.batch_digest,
+                &batch.plan.environment_digest,
+            ),
+            &batch.plan.environment_digest,
+            1,
+            100,
+        )
+        .expect("retry token")
+        .token;
+    attempt.plan_token_verifier = sha256_hex(token.as_bytes());
+    (attempt, token)
+}
+
+fn active_scope_retry_fixture(
+    task_id: Option<&str>,
+    fail_discard: bool,
+) -> (SealedBatch, Arc<FakeRepository>, String) {
+    let (batch, initial_attempt, _) = batch();
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &initial_attempt,
+        })
+        .expect("seal");
+    let (retry_attempt, retry_token) = sealed_retry_attempt(&batch, &initial_attempt, task_id);
+    repository
+        .attempts
+        .lock()
+        .expect("attempts")
+        .insert(1, retry_attempt);
+    repository
+        .scope_active_admission
+        .store(true, Ordering::Relaxed);
+    repository
+        .fail_discard_retry
+        .store(fail_discard, Ordering::Relaxed);
+    (batch, repository, retry_token)
 }
 
 fn facts_from_batch(batch: &SealedBatch) -> hmm_core::BatchPlanFacts {
@@ -1851,50 +1920,7 @@ fn active_scope_admission_fails_the_temporary_task_without_starting_the_attempt(
 
 #[test]
 fn active_scope_admission_discards_an_unadmitted_retry_attempt() {
-    let (batch, initial_attempt, _) = batch();
-    let repository = Arc::new(FakeRepository::default());
-    repository
-        .seal_batch(BatchSealRequest {
-            sealed_batch: &batch,
-            initial_attempt: &initial_attempt,
-        })
-        .expect("seal");
-    let retry_item_ids = initial_attempt.item_ids.clone();
-    let codec = crate::Sha256BatchTokenCodec::new("secret").expect("codec");
-    let retry_token = codec
-        .issue(
-            crate::BatchTokenKind::Plan,
-            &execution_token_digest(
-                &batch.batch_id,
-                1,
-                &retry_item_ids,
-                &batch.plan.batch_digest,
-                &batch.plan.environment_digest,
-            ),
-            &batch.plan.environment_digest,
-            1,
-            100,
-        )
-        .expect("retry token")
-        .token;
-    repository.attempts.lock().expect("attempts").insert(
-        1,
-        hmm_core::BatchAttempt {
-            batch_id: batch.batch_id.clone(),
-            attempt_number: 1,
-            item_ids: retry_item_ids,
-            status: BatchAttemptStatus::Sealed,
-            task_id: None,
-            plan_token_verifier: sha256_hex(retry_token.as_bytes()),
-            expires_at_unix_millis: 100,
-            started_at_unix_millis: None,
-            completed_at_unix_millis: None,
-            evidence_health_degraded: false,
-        },
-    );
-    repository
-        .scope_active_admission
-        .store(true, Ordering::Relaxed);
+    let (batch, repository, retry_token) = active_scope_retry_fixture(None, false);
     let runner = BatchInstallTaskRunner::new(
         Arc::new(TaskManager::new()),
         repository.clone(),
@@ -1904,7 +1930,7 @@ fn active_scope_admission_discards_an_unadmitted_retry_attempt() {
         Arc::new(StaticFacts(facts_from_batch(&batch))),
         Arc::new(RecordingAuditLogWriter::default()),
         Arc::new(FixedClock),
-        Arc::new(codec),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
     );
 
     assert_eq!(
@@ -1919,6 +1945,45 @@ fn active_scope_admission_discards_an_unadmitted_retry_attempt() {
         .load_attempt(&batch.batch_id, 0)
         .expect("load initial attempt")
         .is_some());
+}
+
+#[test]
+fn active_scope_admission_audits_cleanup_failures_and_preserves_retry() {
+    for (existing_task_id, fail_discard, expected_error_code) in [
+        (
+            Some("existing-task"),
+            false,
+            "batch_retry_cleanup_ineligible",
+        ),
+        (None, true, "batch_retry_cleanup_failed"),
+    ] {
+        let (batch, repository, retry_token) =
+            active_scope_retry_fixture(existing_task_id, fail_discard);
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let runner = BatchInstallTaskRunner::new(
+            Arc::new(TaskManager::new()),
+            repository.clone(),
+            Arc::new(FakeExecutor {
+                executions: Mutex::new(Vec::new()),
+            }),
+            Arc::new(StaticFacts(facts_from_batch(&batch))),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+            Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+        );
+
+        assert_eq!(
+            runner.run_attempt(&batch.batch_id, 1, &retry_token),
+            Err(BatchInstallRunError::JournalUnavailable)
+        );
+        assert!(repository
+            .load_attempt(&batch.batch_id, 1)
+            .expect("load preserved retry")
+            .is_some());
+        let events = audit_log.take_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].fields["error_code"], expected_error_code);
+    }
 }
 
 #[test]

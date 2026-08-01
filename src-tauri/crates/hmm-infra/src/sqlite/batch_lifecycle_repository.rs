@@ -1677,6 +1677,78 @@ mod tests {
         assert!(!repository
             .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "wrong-verifier")
             .expect("wrong verifier discard"));
+        {
+            let connection = repository.lock_db().expect("database");
+            let result = BatchItemResult {
+                batch_id: batch.batch_id.clone(),
+                attempt_number: 1,
+                item_id: item.item_id.clone(),
+                ordinal: item.ordinal,
+                mod_id: item.mod_id.clone(),
+                status: BatchItemStatus::Skipped,
+                reason_code: Some("cleanup_guard_fixture".to_owned()),
+                retryable: true,
+            };
+            let changed = connection
+                .execute(
+                    "INSERT INTO hmm_batch_lifecycle_item_results
+                        (batch_id, attempt_number, item_id, ordinal, result_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        batch.batch_id.as_str(),
+                        1_i64,
+                        item.item_id.as_str(),
+                        i64::try_from(item.ordinal).expect("ordinal"),
+                        serialize(&result, "cleanup guard item result").expect("result json"),
+                    ],
+                )
+                .expect("insert cleanup guard item result");
+            assert_eq!(changed, 1, "cleanup fixture must insert one item result");
+        }
+        assert!(!repository
+            .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "retry-verifier")
+            .expect("item result guard discard"));
+        {
+            let connection = repository.lock_db().expect("database");
+            let changed = connection
+                .execute(
+                    "DELETE FROM hmm_batch_lifecycle_item_results
+                     WHERE batch_id = ?1 AND attempt_number = ?2",
+                    rusqlite::params![batch.batch_id.as_str(), 1_i64],
+                )
+                .expect("remove cleanup guard item result");
+            assert_eq!(changed, 1, "cleanup fixture must remove one item result");
+            let mut newer_retry = retry.clone();
+            newer_retry.attempt_number = 2;
+            let changed = connection
+                .execute(
+                    "INSERT INTO hmm_batch_lifecycle_attempts
+                        (batch_id, attempt_number, attempt_json)
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![
+                        batch.batch_id.as_str(),
+                        2_i64,
+                        serialize(&newer_retry, "newer cleanup guard attempt")
+                            .expect("attempt json"),
+                    ],
+                )
+                .expect("insert newer cleanup guard attempt");
+            assert_eq!(changed, 1, "cleanup fixture must insert one newer attempt");
+        }
+        assert!(!repository
+            .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "retry-verifier")
+            .expect("latest attempt guard discard"));
+        {
+            let connection = repository.lock_db().expect("database");
+            let changed = connection
+                .execute(
+                    "DELETE FROM hmm_batch_lifecycle_attempts
+                     WHERE batch_id = ?1 AND attempt_number = ?2",
+                    rusqlite::params![batch.batch_id.as_str(), 2_i64],
+                )
+                .expect("remove newer cleanup guard attempt");
+            assert_eq!(changed, 1, "cleanup fixture must remove one newer attempt");
+        }
         assert!(repository
             .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "retry-verifier")
             .expect("discard unadmitted retry"));
