@@ -138,6 +138,71 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
         Ok(attempt)
     }
 
+    fn find_active_attempt_for_scope(
+        &self,
+        game_id: &hmm_core::GameId,
+        profile_id: &hmm_core::ProfileId,
+    ) -> Result<Option<BatchAttempt>> {
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin active batch attempt read transaction")?;
+        let rows = {
+            let mut statement = transaction
+                .prepare(
+                    "SELECT attempts.batch_id, attempts.attempt_number,
+                            attempts.attempt_json, batches.sealed_json
+                     FROM hmm_batch_lifecycle_attempts AS attempts
+                     INNER JOIN hmm_batch_lifecycle_batches AS batches
+                         ON batches.batch_id = attempts.batch_id
+                     ORDER BY attempts.batch_id ASC, attempts.attempt_number ASC",
+                )
+                .context("failed to prepare active batch attempt query")?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })
+                .context("failed to query active batch attempts")?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .context("failed to read active batch attempt rows")?
+        };
+
+        let mut active = None;
+        for (batch_id, attempt_number, attempt_json, sealed_json) in rows {
+            let attempt_number =
+                u32::try_from(attempt_number).context("batch attempt number is invalid")?;
+            let batch_id = BatchId::new(batch_id);
+            let attempt: BatchAttempt = deserialize(&attempt_json, "batch attempt")?;
+            let batch: SealedBatch = deserialize(&sealed_json, "sealed batch")?;
+            validate_sealed_batch(&batch)?;
+            ensure!(
+                batch.batch_id == batch_id,
+                "sealed batch row identity mismatch"
+            );
+            validate_attempt_identity(&attempt, &batch_id, attempt_number)?;
+            if matches!(
+                attempt.status,
+                BatchAttemptStatus::Queued
+                    | BatchAttemptStatus::Running
+                    | BatchAttemptStatus::Stopping
+            ) && batch.plan.game_id == *game_id
+                && batch.plan.profile_id == *profile_id
+            {
+                active = Some(attempt);
+                break;
+            }
+        }
+        transaction
+            .commit()
+            .context("failed to finish active batch attempt read transaction")?;
+        Ok(active)
+    }
+
     fn admit_attempt(
         &self,
         request: BatchAttemptAdmissionRequest<'_>,
@@ -1225,6 +1290,46 @@ mod tests {
                 })
                 .expect("wrong verifier decision"),
             BatchAttemptAdmission::Rejected
+        );
+    }
+
+    #[test]
+    fn active_attempt_query_is_scoped_and_excludes_sealed_attempts() {
+        let repository = repository();
+        let (batch, attempt) = sealed_batch();
+        repository
+            .seal_batch(BatchSealRequest {
+                sealed_batch: &batch,
+                initial_attempt: &attempt,
+            })
+            .expect("seal");
+
+        assert_eq!(
+            repository
+                .find_active_attempt_for_scope(&GameId::mhw(), &ProfileId::new("default"))
+                .expect("sealed query"),
+            None
+        );
+        repository
+            .admit_attempt(BatchAttemptAdmissionRequest {
+                batch_id: &batch.batch_id,
+                attempt_number: 0,
+                task_id: "task-a",
+                presented_plan_token_verifier: "verifier",
+                now_unix_millis: 2,
+            })
+            .expect("admit");
+
+        let active = repository
+            .find_active_attempt_for_scope(&GameId::mhw(), &ProfileId::new("default"))
+            .expect("active query")
+            .expect("active attempt");
+        assert_eq!(active.status, BatchAttemptStatus::Queued);
+        assert_eq!(
+            repository
+                .find_active_attempt_for_scope(&GameId::mhw(), &ProfileId::new("other"))
+                .expect("other scope query"),
+            None
         );
     }
 

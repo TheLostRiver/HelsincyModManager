@@ -22,10 +22,24 @@ use hmm_ports::{BatchLifecycleRepository, BatchPlanFactsProvider, BatchSealRepos
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::fmt;
+use std::fmt::Write as _;
+use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-const BATCH_TOKEN_SECRET_PREFIX: &str = "hmm-sandbox-batch-token-v2";
+// This deterministic Sandbox tag binds previews to a fixture root and detects stale input. It is
+// not an authentication secret. Production batch writes remain unavailable until they can use a
+// per-installation secret and cross-process admission.
+const BATCH_TOKEN_TAG_PREFIX: &str = "hmm-sandbox-batch-token-v2";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SandboxBatchAutomationErrorClass {
+    DataSafetyRisk,
+    UserActionRequired,
+    Recoverable,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxBatchAutomationError {
@@ -37,13 +51,54 @@ impl SandboxBatchAutomationError {
         self.code
     }
 
+    pub fn class(&self) -> SandboxBatchAutomationErrorClass {
+        match self.code {
+            "sandbox_batch_production_forbidden"
+            | "batch_write_admission_unavailable"
+            | "batch_runtime_unavailable"
+            | "batch_attempt_reconciliation_required"
+            | "batch_operation_mismatch"
+            | "batch_admission_rejected" => SandboxBatchAutomationErrorClass::DataSafetyRisk,
+            "batch_input_invalid"
+            | "batch_duplicate_item"
+            | "batch_resource_limit_exceeded"
+            | "batch_plan_blocked"
+            | "batch_token_invalid"
+            | "batch_plan_stale"
+            | "batch_plan_expired"
+            | "batch_retry_unavailable"
+            | "batch_attempt_stale"
+            | "batch_id_invalid" => SandboxBatchAutomationErrorClass::UserActionRequired,
+            "sandbox_data_dir_required"
+            | "batch_token_unavailable"
+            | "batch_unavailable"
+            | "batch_journal_unavailable"
+            | "batch_result_unavailable"
+            | "batch_task_unavailable"
+            | "batch_evidence_unavailable"
+            | "batch_internal_error" => SandboxBatchAutomationErrorClass::Recoverable,
+            _ => SandboxBatchAutomationErrorClass::DataSafetyRisk,
+        }
+    }
+
+    pub fn retryable(&self) -> bool {
+        matches!(self.class(), SandboxBatchAutomationErrorClass::Recoverable)
+    }
+
     const fn new(code: &'static str) -> Self {
         Self { code }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+impl fmt::Display for SandboxBatchAutomationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code)
+    }
+}
+
+impl std::error::Error for SandboxBatchAutomationError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchAttemptSnapshot {
     pub batch_id: String,
     pub attempt_number: u32,
@@ -214,13 +269,12 @@ fn project_prerequisite(decision: &hmm_app::GamePrerequisiteDecision) -> BatchPr
 fn digest_json<T: Serialize>(value: &T) -> String {
     let bytes = serde_json::to_vec(value).expect("batch digest input is serializable");
     let digest = Sha256::digest(bytes);
-    format!(
-        "sha256:{}",
-        digest
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    )
+    let mut value = String::with_capacity("sha256:".len() + digest.len() * 2);
+    value.push_str("sha256:");
+    for byte in digest {
+        write!(&mut value, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    value
 }
 
 struct ReadOnlyBatchSealRepository;
@@ -369,6 +423,7 @@ impl SandboxBatchInstallAutomation {
         build_read_only_plan_service(environment)?
             .validate_preview(request.clone(), preview_token)
             .map_err(map_seal_error)?;
+        ensure_scope_reconciled(environment, &request.game_id, &request.profile_id)?;
         let context = build_write_context(environment)?;
         let sealed = context
             .plan_service
@@ -393,8 +448,9 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         attempt_number: u32,
     ) -> Result<(BatchInstallRetryResult, BatchInstallRunResult), SandboxBatchAutomationError> {
-        let context = build_write_context(environment)?;
         let batch_id = parse_batch_id(batch_id)?;
+        ensure_batch_reconciled(environment, &batch_id, "batch_unavailable")?;
+        let context = build_write_context(environment)?;
         let retry = context
             .retry
             .retry(&batch_id, attempt_number)
@@ -417,20 +473,9 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         attempt_number: u32,
     ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
-        ensure_sandbox(environment)?;
-        let root = environment
-            .sandbox_data_dir()
-            .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?;
-        let connection = open_database_read_only(&root.join("hmm.db"))
-            .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
-        let repository: Arc<dyn BatchLifecycleRepository> = Arc::new(
-            SqliteBatchLifecycleRepository::new(Arc::new(Mutex::new(connection))),
-        );
         let batch_id = parse_batch_id(batch_id)?;
-        let batch = repository
-            .load_batch(&batch_id)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+        let (repository, batch) =
+            ensure_batch_reconciled(environment, &batch_id, "batch_result_unavailable")?;
         let attempt = repository
             .load_attempt(&batch_id, attempt_number)
             .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
@@ -529,8 +574,8 @@ fn batch_token_codec(
     let root = environment
         .sandbox_data_dir()
         .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?;
-    let secret = format!("{BATCH_TOKEN_SECRET_PREFIX}\0{}", root.display());
-    let codec = Sha256BatchTokenCodec::new(secret)
+    let sandbox_tag = format!("{BATCH_TOKEN_TAG_PREFIX}\0{}", root.display());
+    let codec = Sha256BatchTokenCodec::new(sandbox_tag)
         .map_err(|_| SandboxBatchAutomationError::new("batch_token_unavailable"))?;
     Ok(Arc::new(codec))
 }
@@ -556,6 +601,74 @@ fn parse_batch_id(value: &str) -> Result<BatchId, SandboxBatchAutomationError> {
         return Err(SandboxBatchAutomationError::new("batch_id_invalid"));
     }
     Ok(BatchId::new(value))
+}
+
+type ReadOnlyBatchRepository = Arc<dyn BatchLifecycleRepository>;
+
+fn open_batch_repository_read_only(
+    environment: &RuntimeEnvironment,
+    missing_is_empty: bool,
+    unavailable_code: &'static str,
+) -> Result<Option<ReadOnlyBatchRepository>, SandboxBatchAutomationError> {
+    ensure_sandbox(environment)?;
+    let root = environment
+        .sandbox_data_dir()
+        .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?;
+    let database_path = root.join("hmm.db");
+    match fs::symlink_metadata(&database_path) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(_) => return Err(SandboxBatchAutomationError::new(unavailable_code)),
+        Err(error) if error.kind() == ErrorKind::NotFound && missing_is_empty => return Ok(None),
+        Err(_) => return Err(SandboxBatchAutomationError::new(unavailable_code)),
+    }
+    let connection = open_database_read_only(&database_path)
+        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+    Ok(Some(Arc::new(SqliteBatchLifecycleRepository::new(Arc::new(
+        Mutex::new(connection),
+    )))))
+}
+
+fn ensure_scope_reconciled(
+    environment: &RuntimeEnvironment,
+    game_id: &hmm_core::GameId,
+    profile_id: &hmm_core::ProfileId,
+) -> Result<(), SandboxBatchAutomationError> {
+    let Some(repository) =
+        open_batch_repository_read_only(environment, true, "batch_journal_unavailable")?
+    else {
+        return Ok(());
+    };
+    let active = repository
+        .find_active_attempt_for_scope(game_id, profile_id)
+        .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?;
+    if active.is_some() {
+        return Err(SandboxBatchAutomationError::new(
+            "batch_attempt_reconciliation_required",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_batch_reconciled(
+    environment: &RuntimeEnvironment,
+    batch_id: &BatchId,
+    unavailable_code: &'static str,
+) -> Result<(ReadOnlyBatchRepository, SealedBatch), SandboxBatchAutomationError> {
+    let repository = open_batch_repository_read_only(environment, false, unavailable_code)?
+        .ok_or_else(|| SandboxBatchAutomationError::new(unavailable_code))?;
+    let batch = repository
+        .load_batch(batch_id)
+        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?
+        .ok_or_else(|| SandboxBatchAutomationError::new(unavailable_code))?;
+    let active = repository
+        .find_active_attempt_for_scope(&batch.plan.game_id, &batch.plan.profile_id)
+        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+    if active.is_some() {
+        return Err(SandboxBatchAutomationError::new(
+            "batch_attempt_reconciliation_required",
+        ));
+    }
+    Ok((repository, batch))
 }
 
 fn snapshot(
@@ -605,4 +718,53 @@ fn map_retry_error(error: BatchInstallRetryError) -> SandboxBatchAutomationError
         BatchInstallRetryError::JournalUnavailable => "batch_journal_unavailable",
     };
     SandboxBatchAutomationError::new(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_automation_errors_have_stable_display_and_classification() {
+        let cases = [
+            (
+                "sandbox_batch_production_forbidden",
+                SandboxBatchAutomationErrorClass::DataSafetyRisk,
+                false,
+            ),
+            (
+                "batch_attempt_reconciliation_required",
+                SandboxBatchAutomationErrorClass::DataSafetyRisk,
+                false,
+            ),
+            (
+                "batch_token_invalid",
+                SandboxBatchAutomationErrorClass::UserActionRequired,
+                false,
+            ),
+            (
+                "batch_resource_limit_exceeded",
+                SandboxBatchAutomationErrorClass::UserActionRequired,
+                false,
+            ),
+            (
+                "batch_id_invalid",
+                SandboxBatchAutomationErrorClass::UserActionRequired,
+                false,
+            ),
+            (
+                "batch_result_unavailable",
+                SandboxBatchAutomationErrorClass::Recoverable,
+                true,
+            ),
+        ];
+        for (code, class, retryable) in cases {
+            let error = SandboxBatchAutomationError::new(code);
+            assert_eq!(error.to_string(), code);
+            assert_eq!(error.class(), class);
+            assert_eq!(error.retryable(), retryable);
+            fn assert_error<E: std::error::Error>() {}
+            assert_error::<SandboxBatchAutomationError>();
+        }
+    }
 }

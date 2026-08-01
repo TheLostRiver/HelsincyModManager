@@ -59,6 +59,38 @@ impl BatchLifecycleRepository for FakeRepository {
             .cloned())
     }
 
+    fn find_active_attempt_for_scope(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> anyhow::Result<Option<hmm_core::BatchAttempt>> {
+        let in_scope = self
+            .batch
+            .lock()
+            .expect("batch")
+            .as_ref()
+            .is_some_and(|batch| {
+                batch.plan.game_id == *game_id && batch.plan.profile_id == *profile_id
+            });
+        if !in_scope {
+            return Ok(None);
+        }
+        Ok(self
+            .attempts
+            .lock()
+            .expect("attempts")
+            .values()
+            .find(|attempt| {
+                matches!(
+                    attempt.status,
+                    BatchAttemptStatus::Queued
+                        | BatchAttemptStatus::Running
+                        | BatchAttemptStatus::Stopping
+                )
+            })
+            .cloned())
+    }
+
     fn admit_attempt(
         &self,
         request: BatchAttemptAdmissionRequest<'_>,
