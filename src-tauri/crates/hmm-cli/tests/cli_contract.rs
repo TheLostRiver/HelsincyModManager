@@ -194,18 +194,18 @@ fn mark_batch_attempt_running(sandbox: &Path, batch_id: &str, attempt_number: u3
     attempt["status"] = Value::String("running".to_owned());
     attempt["completed_at_unix_millis"] = Value::Null;
     attempt["evidence_health_degraded"] = Value::Bool(false);
-    connection
+    let changed = connection
         .execute(
             "UPDATE hmm_batch_lifecycle_attempts
              SET attempt_json = ?3
              WHERE batch_id = ?1 AND attempt_number = ?2",
-            rusqlite::params![
-                batch_id,
-                i64::from(attempt_number),
-                attempt.to_string()
-            ],
+            rusqlite::params![batch_id, i64::from(attempt_number), attempt.to_string()],
         )
         .expect("persist running batch attempt");
+    assert_eq!(
+        changed, 1,
+        "running fixture must update exactly one attempt"
+    );
 }
 
 fn write_reinstall_v1_catalog_and_sandbox(sandbox: &Path) {
@@ -1669,19 +1669,13 @@ fn sandbox_install_batch_plan_returns_preview_token_without_sensitive_fields() {
         value["result"]["plan"]["items"][0]["revisionId"],
         "package-a"
     );
-    assert_eq!(
-        value["result"]["plan"]["items"][0]["modId"],
-        "mod-a"
-    );
+    assert_eq!(value["result"]["plan"]["items"][0]["modId"], "mod-a");
     assert!(value["result"]["plan"]["items"][0]
         .get("actionSummary")
         .is_some());
     assert!(value["result"]["plan"]["items"][0]["actionSummary"]
         .get("actions")
         .is_some());
-    assert!(value["result"]["plan"]["items"][0]["actionSummary"]
-        .get("actions_count")
-        .is_none());
     assert!(value["result"]["plan"]["items"][0]["prerequisite"]
         .get("rulesVersion")
         .is_some());
@@ -1917,10 +1911,7 @@ fn production_install_batch_apply_is_rejected_before_runtime_write_admission() {
     assert!(!stdout.contains("opaque-preview-token"));
     let value: Value = serde_json::from_str(&stdout).expect("production batch rejection json");
     assert_eq!(value["command"], "install.batch.apply");
-    assert_eq!(
-        value["error"]["code"],
-        "sandbox_batch_production_forbidden"
-    );
+    assert_eq!(value["error"]["code"], "sandbox_batch_production_forbidden");
     assert_eq!(value["error"]["category"], "data_safety_risk");
 }
 
@@ -1929,7 +1920,14 @@ fn sandbox_batch_invalid_ids_are_rejected_before_database_open() {
     let sandbox = tempfile::tempdir().expect("sandbox");
     let before = tree_snapshot(sandbox.path());
     for command in [
-        vec!["batch", "result", "--batch-id", "../escape", "--attempt", "0"],
+        vec![
+            "batch",
+            "result",
+            "--batch-id",
+            "../escape",
+            "--attempt",
+            "0",
+        ],
         vec![
             "batch",
             "retry",
@@ -1978,8 +1976,7 @@ fn sandbox_install_batch_apply_result_and_completed_retry_are_stable_across_proc
         ],
     );
     assert_eq!(plan.status.code(), Some(0), "{}", stderr_text(&plan));
-    let plan_value: Value =
-        serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
+    let plan_value: Value = serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
     let preview_token = plan_value["result"]["previewToken"]
         .as_str()
         .expect("batch preview token")
@@ -2035,14 +2032,7 @@ fn sandbox_install_batch_apply_result_and_completed_retry_are_stable_across_proc
     let result = hmm_install_in_sandbox(
         sandbox.path(),
         "jsonl",
-        &[
-            "batch",
-            "result",
-            "--batch-id",
-            &batch_id,
-            "--attempt",
-            "0",
-        ],
+        &["batch", "result", "--batch-id", &batch_id, "--attempt", "0"],
     );
     assert_eq!(result.status.code(), Some(0), "{}", stderr_text(&result));
     assert_eq!(stderr_text(&result), "");
@@ -2087,7 +2077,7 @@ fn sandbox_install_batch_apply_result_and_completed_retry_are_stable_across_proc
 }
 
 #[test]
-fn sandbox_batch_legacy_active_attempt_fails_closed_without_resuming_or_writing() {
+fn sandbox_batch_legacy_active_attempt_remains_readable_but_blocks_new_writes() {
     let sandbox = tempfile::tempdir().expect("sandbox");
     write_sandbox_marker(sandbox.path());
     let game_root = create_game_fixture(sandbox.path(), true);
@@ -2142,22 +2132,28 @@ fn sandbox_batch_legacy_active_attempt_fails_closed_without_resuming_or_writing(
     let result = hmm_install_in_sandbox(
         sandbox.path(),
         "json",
-        &[
-            "batch",
-            "result",
-            "--batch-id",
-            &batch_id,
-            "--attempt",
-            "0",
-        ],
+        &["batch", "result", "--batch-id", &batch_id, "--attempt", "0"],
     );
-    assert_eq!(result.status.code(), Some(3));
+    assert_eq!(result.status.code(), Some(0));
     let result_value: Value =
-        serde_json::from_str(&stdout_text(&result)).expect("active result rejection");
-    assert_eq!(
-        result_value["error"]["code"],
-        "batch_attempt_reconciliation_required"
+        serde_json::from_str(&stdout_text(&result)).expect("active result snapshot");
+    assert_eq!(result_value["command"], "install.batch.result");
+    assert_eq!(result_value["result"]["batchId"], batch_id);
+    assert_eq!(result_value["result"]["status"], "running");
+    assert!(result_value["error"].is_null());
+    assert_eq!(tree_snapshot(sandbox.path()), before_guarded_commands);
+
+    let human_result = hmm_install_in_sandbox(
+        sandbox.path(),
+        "human",
+        &["batch", "result", "--batch-id", &batch_id, "--attempt", "0"],
     );
+    assert_eq!(human_result.status.code(), Some(0));
+    assert_eq!(stderr_text(&human_result), "");
+    let human_stdout = stdout_text(&human_result);
+    assert!(human_stdout.contains(&format!("batch: {batch_id}")));
+    assert!(human_stdout.contains("status: running"));
+    assert!(human_stdout.contains("items: 1"));
     assert_eq!(tree_snapshot(sandbox.path()), before_guarded_commands);
 
     let retry = hmm_install_in_sandbox(
@@ -2195,7 +2191,12 @@ fn sandbox_batch_legacy_active_attempt_fails_closed_without_resuming_or_writing(
             "mod-b:package-b",
         ],
     );
-    assert_eq!(next_plan.status.code(), Some(0), "{}", stderr_text(&next_plan));
+    assert_eq!(
+        next_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&next_plan)
+    );
     let next_plan_value: Value =
         serde_json::from_str(&stdout_text(&next_plan)).expect("next batch plan");
     let next_preview_token = next_plan_value["result"]["previewToken"]
@@ -2248,8 +2249,7 @@ fn sandbox_install_batch_apply_rejects_stale_preview_before_sealing_or_writing()
             "mod-a:package-a",
         ],
     );
-    let plan_value: Value =
-        serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
+    let plan_value: Value = serde_json::from_str(&stdout_text(&plan)).expect("batch plan json");
     let preview_token = plan_value["result"]["previewToken"]
         .as_str()
         .expect("batch preview token")

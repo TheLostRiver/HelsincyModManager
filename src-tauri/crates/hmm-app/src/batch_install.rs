@@ -80,6 +80,8 @@ pub enum BatchInstallRunError {
     OperationMismatch,
     #[error("batch start admission was rejected")]
     AdmissionRejected,
+    #[error("batch scope has an active attempt that requires reconciliation")]
+    ScopeReconciliationRequired,
     #[error("batch journal is unavailable")]
     JournalUnavailable,
     #[error("batch task is unavailable")]
@@ -357,6 +359,22 @@ impl BatchInstallTaskRunner {
                         &results,
                     ),
                 });
+            }
+            BatchAttemptAdmission::ScopeActive => {
+                let cleanup = if attempt.attempt_number == 0 {
+                    Ok(true)
+                } else {
+                    self.repository.discard_unadmitted_retry_attempt(
+                        batch_id,
+                        attempt.attempt_number,
+                        &presented_verifier,
+                    )
+                };
+                let _ = self.task_manager.fail_task(&task_id);
+                if !matches!(cleanup, Ok(true)) {
+                    return Err(BatchInstallRunError::JournalUnavailable);
+                }
+                return Err(BatchInstallRunError::ScopeReconciliationRequired);
             }
             BatchAttemptAdmission::Rejected => {
                 let _ = self.task_manager.fail_task(&task_id);

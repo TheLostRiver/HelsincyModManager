@@ -570,9 +570,15 @@ retry --batch-id <id> --attempt <n>
 当前 `result` 返回完整 bounded snapshot，不接受 cursor/limit。
 JSONL `apply`/`retry` 先输出一个 parent batch terminal event，再输出 command result；两行共用同一
 `taskId`，不会伪造每个 item 的 child task event。
-如果发现同一 game/profile 存在 `queued`、`running` 或 `stopping` 的遗留 attempt，`apply`、`result`
-和 `retry` 都返回 `batch_attempt_reconciliation_required` 并保持 fail closed；当前不会自动续跑或
-把遗留 attempt 标记为终态。
+`apply`/`retry` 保留只读 scope 预检，用于在创建新副作用前尽早拒绝遗留 active attempt；最终准入
+由 SQLite `BEGIN IMMEDIATE` 短事务完成。事务在同一连接内验证目标 batch/attempt/token，检查同一
+game/profile 的 `queued`、`running` 或 `stopping` attempt，再原子完成 sealed -> queued，因此两个
+独立进程竞争同一 scope 时最多一个成功。最终 retry admission 竞争失败时，只回收仍 sealed、没有
+item result 且 token verifier 匹配的未执行 retry attempt；清理无法证明时保持 fail closed。
+`result` 不做 scope-wide reconciliation，只读取调用方明确指定的 batch/attempt，所以即使 sibling
+batch 留有 active attempt，已存在结果仍可安全查询和诊断。当前不会自动续跑或把遗留 attempt 标记为
+终态。上述原子 admission 只属于 Sandbox batch journal，不会解除 Production CLI-3 对通用
+game/profile 跨进程 admission 的依赖。
 
 ## 输出协议
 

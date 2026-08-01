@@ -299,11 +299,13 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
   或本地绝对路径，也不复制 MHW:I adapter 规则。
 - `hmm install batch plan|apply|result|retry` 已在 Sandbox 接入 T13-02 app service；plan 返回脱敏
   projection 和短期 opaque `previewToken`，apply 需要 `--commit --yes --preview-token`，并在构造
-  runtime/journal 前先做只读 stale 验证，seal 时再重验。result/retry 通过 SQLite journal 跨进程
-  查询和重试，partial result 使用退出码 `5`。当前 result 返回完整 bounded snapshot，尚未实现
-  cursor/limit；JSONL apply/retry 先输出 parent terminal event，再输出 command result，两者共用
-  同一 taskId。若同一 game/profile 存在遗留 `queued/running/stopping` attempt，公开入口返回
-  `batch_attempt_reconciliation_required`，不自动续跑。
+  runtime/journal 前先做只读 stale 验证，seal 时再重验。apply/retry 的最终 admission 在 SQLite
+  `BEGIN IMMEDIATE` 短事务中按 game/profile 检查 active attempt 并原子进入 queued，两个独立连接
+  竞争时最多一个成功；retry 竞争失败只安全回收未执行的 sealed retry attempt。result 只读取指定
+  batch/attempt，不被 sibling active attempt 阻断。partial result 使用退出码 `5`；当前 result 返回
+  完整 bounded snapshot，尚未实现 cursor/limit。JSONL apply/retry 先输出 parent terminal event，
+  再输出 command result，两者共用同一 taskId。遗留 `queued/running/stopping` attempt 继续阻断新
+  写入并返回 `batch_attempt_reconciliation_required`，不会自动续跑或收敛。
 - Production 四条 lifecycle 写命令和 batch 写命令在 CLI policy/runtime 双层拒绝；backup create/restore/background
   enable|disable 和 diagnostics export 仍未开放。
 
@@ -365,7 +367,7 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 - `cargo test -p hmm-app reinstall_task --lib -- --nocapture`：16/16 通过。
 - `cargo test -p hmm-app install_tests --lib -- --nocapture`：82/82 通过。
 - `cargo test -p hmm-core batch --lib -- --nocapture`：9/9 通过。
-- `cargo test -p hmm-infra batch_lifecycle_repository --lib -- --nocapture`：13/13 通过。
+- `cargo test -p hmm-infra batch_lifecycle_repository --lib -- --nocapture`：14/14 通过。
 - `git diff --check`、文件大小、secret、禁入文件和文档链接门禁：通过。
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：第二轮完整通过；
   包含 policy、hygiene、frontend typecheck/lint/404 tests/build、Rust workspace
@@ -376,9 +378,10 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 
 - `cargo test -p hmm-cli --test cli_contract batch -- --nocapture`：10/10 通过，覆盖 Production
   写入拒绝、plan 脱敏 projection、`--commit --yes`/preview token 门禁、非法 ID 零副作用、
-  active attempt fail-closed、跨进程 apply/result/retry、JSONL parent terminal event 和 stale preview。
+  active result 安全可读、写入口 fail closed、跨连接原子 admission、跨进程 apply/result/retry、
+  JSONL parent terminal event 和 stale preview。
 - `cargo test -p hmm-cli --lib`：22/22 通过，包含 partial success 退出码 `5`。
-- `cargo test -p hmm-app --lib`：381/381 通过；`cargo test -p hmm-runtime --lib`：61/61 通过。
+- `cargo test -p hmm-app --lib`：383/383 通过；`cargo test -p hmm-runtime --lib`：61/61 通过。
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：本轮完整通过；
   包含 policy、hygiene、frontend typecheck/lint/404 tests/build、Rust workspace tests/check/clippy。
 - stale preview 在构造 `HmmRuntime` 前由只读 facts service 验证；失败时沙盒目录快照不变，不创建
@@ -405,9 +408,9 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 - T13-05 当前只在未合并分支提供 Sandbox install batch CLI；批量卸载/真正重装、Tauri command
   和前端工作流仍未接入，不能把 install 子集描述为完整 T13 产品能力。
 - T13-02 当前不自动收敛启动级遗留非终态 `queued/running/stopping` attempt；T13-05 install CLI
-  子集已在 apply/result/retry/new apply 入口增加只读 scope 门禁并显式返回
-  `batch_attempt_reconciliation_required`，保持 fail closed。后续若要支持 reconciliation，必须
-  单独设计安全终态、证据和恢复验收。
+  子集在 apply/retry/new apply 保留只读预检，并以 SQLite 原子 scope admission 最终阻断并发新写入。
+  result 只读取指定 batch/attempt，保留遗留状态的安全诊断能力。后续若要自动 reconciliation，必须
+  单独设计安全终态、证据和恢复验收；Sandbox batch admission 也不等于 Production 通用写 admission。
 - Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
   bundle 中存在 sibling worker 就标记完成。
 - GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri

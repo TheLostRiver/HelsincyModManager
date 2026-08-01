@@ -37,6 +37,7 @@ pub struct BatchAttemptAdmissionRequest<'a> {
 pub enum BatchAttemptAdmission {
     Admitted(BatchAttempt),
     AlreadyAdmitted(BatchAttempt),
+    ScopeActive,
     Rejected,
 }
 
@@ -71,10 +72,22 @@ pub trait BatchLifecycleRepository: BatchSealRepository {
     ) -> Result<Option<BatchAttempt>>;
 
     /// Performs the once-only sealed -> queued compare-and-swap and binds the admitted task id.
+    /// Implementations must atomically reject admission while another queued/running/stopping
+    /// attempt exists for the same game/profile scope.
     fn admit_attempt(
         &self,
         request: BatchAttemptAdmissionRequest<'_>,
     ) -> Result<BatchAttemptAdmission>;
+
+    /// Removes a retry attempt that remained sealed because final scope admission lost a race.
+    /// The attempt must still be the latest attempt, have no task or item results, and match the
+    /// presented token verifier. Attempt 0 is never removed through this recovery path.
+    fn discard_unadmitted_retry_attempt(
+        &self,
+        batch_id: &BatchId,
+        attempt_number: u32,
+        presented_plan_token_verifier: &str,
+    ) -> Result<bool>;
 
     fn mark_attempt_running(
         &self,
