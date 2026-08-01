@@ -226,6 +226,7 @@ pub enum ReadOnlyInstallAutomationError {
     UnsupportedGame,
     ProfileIdInvalid,
     ModIdInvalid,
+    SourceRevisionIdInvalid,
     CandidateRevisionIdInvalid,
     SandboxStoragePathRejected,
     ConfiguredGamePathRejected,
@@ -251,6 +252,7 @@ impl ReadOnlyInstallAutomationError {
             Self::UnsupportedGame => "unsupported_game",
             Self::ProfileIdInvalid => "profile_id_invalid",
             Self::ModIdInvalid => "mod_id_invalid",
+            Self::SourceRevisionIdInvalid => "source_revision_id_invalid",
             Self::CandidateRevisionIdInvalid => "candidate_revision_id_invalid",
             Self::SandboxStoragePathRejected => "sandbox_storage_path_rejected",
             Self::ConfiguredGamePathRejected => "configured_game_path_rejected",
@@ -537,13 +539,62 @@ impl ReadOnlyInstallAutomation {
             .preview(BuildImportedModInstallPlanRequest {
                 game_id: game_id.clone(),
                 mod_id: mod_id.clone(),
-                layer: FileLayer::new("base", 0),
+                layer: base_file_layer(),
             })
             .map_err(map_planning_error)?;
         Ok((
             game_id,
             profile_id,
             mod_id,
+            preflight.plan,
+            preflight.prerequisite_decision,
+        ))
+    }
+
+    pub(crate) fn build_install_plan_for_revision(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        mod_id: &str,
+        revision_id: &str,
+    ) -> Result<
+        (
+            GameId,
+            ProfileId,
+            ModId,
+            ModRevisionId,
+            hmm_core::InstallPlan,
+            GamePrerequisiteDecision,
+        ),
+        ReadOnlyInstallAutomationError,
+    > {
+        let game_id = parse_game_id(game_id)?;
+        let profile_id = ProfileId::new(parse_safe_id(
+            profile_id,
+            ReadOnlyInstallAutomationError::ProfileIdInvalid,
+        )?);
+        let mod_id = ModId::new(parse_safe_id(
+            mod_id,
+            ReadOnlyInstallAutomationError::ModIdInvalid,
+        )?);
+        let revision_id = ModRevisionId::new(parse_safe_id(
+            revision_id,
+            ReadOnlyInstallAutomationError::SourceRevisionIdInvalid,
+        )?);
+        let preflight = self
+            .preflight
+            .preview_revision(
+                &game_id,
+                &mod_id,
+                &revision_id,
+                &base_file_layer(),
+            )
+            .map_err(map_planning_error)?;
+        Ok((
+            game_id,
+            profile_id,
+            mod_id,
+            revision_id,
             preflight.plan,
             preflight.prerequisite_decision,
         ))
@@ -652,7 +703,7 @@ impl ReadOnlyInstallAutomation {
                 profile_id: profile_id.clone(),
                 mod_id: mod_id.clone(),
                 candidate_revision_id: candidate_revision_id.clone(),
-                layer: FileLayer::new("base", 0),
+                layer: base_file_layer(),
             })
             .map_err(map_reinstall_preview_error)?;
         Ok((game_id, profile_id, mod_id, candidate_revision_id, preview))
@@ -1067,6 +1118,10 @@ fn validate_sandbox_storage_paths(data_dir: &Path) -> Result<(), ReadOnlyInstall
     Ok(())
 }
 
+fn base_file_layer() -> FileLayer {
+    FileLayer::new("base", 0)
+}
+
 fn parse_game_id(value: &str) -> Result<GameId, ReadOnlyInstallAutomationError> {
     GameId::parse(value).map_err(|_| ReadOnlyInstallAutomationError::UnsupportedGame)
 }
@@ -1324,7 +1379,7 @@ mod tests {
                     mod_id: ModId::new(mod_id),
                     revision_id: None,
                     package_file_id: PackageFileId::new("fixture-file"),
-                    layer: FileLayer::new("base", 0),
+                    layer: base_file_layer(),
                     backup_ref: None,
                     installed_file: None,
                 }],

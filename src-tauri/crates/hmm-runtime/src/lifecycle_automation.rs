@@ -785,7 +785,7 @@ impl SandboxRecoveryWriteAdmission {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn revalidate_sandbox_write_roots(
+pub(crate) fn revalidate_sandbox_write_roots(
     capability: &SandboxWriteCapability,
     sandbox_root: &std::path::Path,
     game_config_repository: &dyn GameConfigRepository,
