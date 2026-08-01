@@ -19,6 +19,14 @@ impl ReinstallTaskPrepared for FakePrepared {
     fn audit_context(&self) -> ReinstallTaskAuditContext {
         self.audit.clone()
     }
+
+    fn plan_token(&self) -> &str {
+        "prepared-plan-token"
+    }
+
+    fn batch_plan_digest(&self) -> String {
+        "prepared-batch-plan-digest".to_owned()
+    }
 }
 
 struct FakeExecutor {
@@ -575,6 +583,198 @@ fn post_commit_failure_keeps_distinct_error_and_audit_rollback_result() {
     );
     assert_eq!(event.fields["rollback_result"], "not_attempted_post_commit");
     assert_sanitized_audit(&event);
+}
+
+#[test]
+fn batch_orchestration_digest_mismatch_is_stale_and_never_commits() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("task can be created");
+    let executor = Arc::new(FakeExecutor::success(
+        Arc::clone(&task_manager),
+        &task.task_id,
+    ));
+    let runner = ReinstallTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::clone(&executor),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock),
+    );
+
+    let error = runner
+        .run_reinstall_task_for_orchestration_with_observer(
+            &task.task_id,
+            sample_request(),
+            "different-sealed-digest",
+            &crate::task_manager::noop_task_progress_observer(),
+        )
+        .expect_err("digest drift must fail closed");
+
+    assert_eq!(error.commit_error, Some(ReinstallCommitError::PreviewStale));
+    assert!(!error.committed);
+    assert_eq!(executor.commit_count(), 0);
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("install_reinstall_failed:preflight")
+    );
+}
+
+#[test]
+fn batch_orchestration_preserves_committed_post_commit_outcomes() {
+    for commit_error in [
+        ReinstallCommitError::PostCommit,
+        ReinstallCommitError::CleanupPending,
+    ] {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let executor = FakeExecutor::success(Arc::clone(&task_manager), &task.task_id);
+        *executor.commit_result.lock().expect("commit result lock") =
+            Some(Err(commit_error.clone()));
+        let executor = Arc::new(executor);
+        let runner = ReinstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::clone(&executor),
+            Arc::new(RecordingAuditLog::default()),
+            Arc::new(FixedClock),
+        );
+
+        let error = runner
+            .run_reinstall_task_for_orchestration_with_observer(
+                &task.task_id,
+                sample_request(),
+                "prepared-batch-plan-digest",
+                &crate::task_manager::noop_task_progress_observer(),
+            )
+            .expect_err("post-commit evidence failure remains explicit");
+
+        assert_eq!(error.commit_error, Some(commit_error));
+        assert!(error.committed);
+        assert_eq!(executor.commit_count(), 1);
+    }
+}
+
+#[test]
+fn batch_parent_enters_cancellation_barrier_when_reinstall_commit_starts() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let parent = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("parent task");
+    task_manager
+        .start_task(&parent.task_id)
+        .expect("parent starts");
+    let child = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("child task");
+    let executor = Arc::new(FakeExecutor::success(
+        Arc::clone(&task_manager),
+        &child.task_id,
+    ));
+    let runner = ReinstallTaskRunner::new(
+        Arc::clone(&task_manager),
+        executor,
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock),
+    );
+    let observer = crate::batch_install::ParentTaskObserver::new(
+        Arc::clone(&task_manager),
+        parent.task_id.clone(),
+        child.task_id.clone(),
+    );
+
+    runner
+        .run_reinstall_task_for_orchestration_with_observer(
+            &child.task_id,
+            sample_request(),
+            "prepared-batch-plan-digest",
+            &observer,
+        )
+        .expect("child reinstall succeeds");
+
+    assert!(matches!(
+        task_manager.cancel_task(&parent.task_id),
+        Err(crate::TaskManagerError::TaskCannotBeCancelled {
+            status: crate::TaskStatus::Running,
+            ..
+        })
+    ));
+    task_manager
+        .unblock_task_cancellation(&parent.task_id)
+        .expect("batch runner reopens cancellation between items");
+    task_manager
+        .apply_deferred_cancellation(&parent.task_id)
+        .expect("deferred cancellation applies")
+        .expect("parent cancellation was deferred");
+}
+
+struct CancelParentAfterPreflight {
+    inner: crate::batch_install::ParentTaskObserver,
+    task_manager: Arc<crate::TaskManager>,
+    parent_task_id: String,
+}
+
+impl crate::TaskProgressObserver for CancelParentAfterPreflight {
+    type Error = ();
+
+    fn observe(&self, event: &crate::TaskProgressEvent) -> Result<(), Self::Error> {
+        self.inner.observe(event)?;
+        if event.phase == PREFLIGHT_PROCESSING_PHASE {
+            self.task_manager
+                .cancel_task(&self.parent_task_id)
+                .expect("parent cancellation is accepted before commit");
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn accepted_parent_cancellation_before_reinstall_commit_prevents_commit() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let parent = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("parent task");
+    task_manager
+        .start_task(&parent.task_id)
+        .expect("parent starts");
+    let child = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("child task");
+    let executor = Arc::new(FakeExecutor::success(
+        Arc::clone(&task_manager),
+        &child.task_id,
+    ));
+    let runner = ReinstallTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::clone(&executor),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock),
+    );
+    let observer = CancelParentAfterPreflight {
+        inner: crate::batch_install::ParentTaskObserver::new(
+            Arc::clone(&task_manager),
+            parent.task_id.clone(),
+            child.task_id.clone(),
+        ),
+        task_manager: Arc::clone(&task_manager),
+        parent_task_id: parent.task_id,
+    };
+
+    runner
+        .run_reinstall_task_for_orchestration_with_observer(
+            &child.task_id,
+            sample_request(),
+            "prepared-batch-plan-digest",
+            &observer,
+        )
+        .expect("accepted cancellation stops before commit without a task failure");
+
+    assert_eq!(executor.commit_count(), 0);
+    assert_eq!(
+        task_manager.task_status(&child.task_id),
+        Some(crate::TaskStatus::Cancelled)
+    );
 }
 
 #[test]
