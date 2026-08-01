@@ -340,6 +340,8 @@ pub struct BatchItemFacts {
 pub struct BatchPlanFacts {
     pub environment_digest: String,
     pub prerequisite_rules_version: Option<u32>,
+    #[serde(default)]
+    pub global_blocking_reasons: Vec<BatchReasonSummary>,
     pub items: Vec<BatchItemFacts>,
 }
 
@@ -500,19 +502,34 @@ impl BatchPlan {
             .values()
             .filter(|owners| owners.len() > 1)
             .count();
-        let expected_global_blocking_reasons = if conflict_count == 0 {
-            Vec::new()
-        } else {
-            vec![BatchReasonSummary {
-                code: "batch_global_target_conflict".to_owned(),
-                count: conflict_count,
-            }]
-        };
+        let mut global_reason_counts = BTreeMap::<String, usize>::new();
+        for reason in &self.global_blocking_reasons {
+            if reason.code.trim().is_empty()
+                || reason.count == 0
+                || global_reason_counts
+                    .insert(reason.code.clone(), reason.count)
+                    .is_some()
+            {
+                return Err(BatchPlanError::FactsMismatch);
+            }
+        }
+        if conflict_count == 0 {
+            if global_reason_counts.contains_key("batch_global_target_conflict") {
+                return Err(BatchPlanError::FactsMismatch);
+            }
+        } else if global_reason_counts.get("batch_global_target_conflict") != Some(&conflict_count)
+        {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+        let normalized_global_blocking_reasons = global_reason_counts
+            .into_iter()
+            .map(|(code, count)| BatchReasonSummary { code, count })
+            .collect::<Vec<_>>();
         let expected_warning_codes = warning_counts
             .into_iter()
             .map(|(code, count)| BatchReasonSummary { code, count })
             .collect::<Vec<_>>();
-        if self.global_blocking_reasons != expected_global_blocking_reasons
+        if self.global_blocking_reasons != normalized_global_blocking_reasons
             || self.warning_codes != expected_warning_codes
             || self.global_target_claims_digest != digest_target_claims(&target_claims)
             || self.resource_usage.item_count != self.items.len()
@@ -575,6 +592,8 @@ struct CanonicalBatchPlan<'a> {
     prerequisite_rules_version: Option<u32>,
     resource_limits_version: u32,
     global_target_claims_digest: &'a str,
+    #[serde(skip_serializing_if = "<[BatchReasonSummary]>::is_empty")]
+    global_blocking_reasons: &'a [BatchReasonSummary],
     items: Vec<CanonicalBatchItem<'a>>,
 }
 
@@ -668,6 +687,17 @@ pub fn build_batch_plan(
         .into_iter()
         .map(|fact| (fact.mod_id.clone(), fact))
         .collect::<BTreeMap<_, _>>();
+    let mut global_reason_counts = BTreeMap::<String, usize>::new();
+    for reason in &facts.global_blocking_reasons {
+        if reason.code.trim().is_empty()
+            || reason.count == 0
+            || global_reason_counts
+                .insert(reason.code.clone(), reason.count)
+                .is_some()
+        {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+    }
     let mut items = Vec::with_capacity(request.items.len());
     let mut target_owners: BTreeMap<String, BTreeSet<ModId>> = BTreeMap::new();
     let mut target_claims = Vec::new();
@@ -726,13 +756,13 @@ pub fn build_batch_plan(
         .values()
         .filter(|owners| owners.len() > 1)
         .count();
-    let mut global_blocking_reasons = Vec::new();
     if conflict_count > 0 {
-        global_blocking_reasons.push(BatchReasonSummary {
-            code: "batch_global_target_conflict".to_owned(),
-            count: conflict_count,
-        });
+        global_reason_counts.insert("batch_global_target_conflict".to_owned(), conflict_count);
     }
+    let global_blocking_reasons = global_reason_counts
+        .into_iter()
+        .map(|(code, count)| BatchReasonSummary { code, count })
+        .collect();
     let global_target_claims_digest = digest_target_claims(&target_claims);
     let mut warning_counts = BTreeMap::<String, usize>::new();
     for item in &items {
@@ -787,6 +817,7 @@ fn canonical_bytes(plan: &BatchPlan) -> Vec<u8> {
         prerequisite_rules_version: plan.prerequisite_rules_version,
         resource_limits_version: plan.resource_limits.version,
         global_target_claims_digest: &plan.global_target_claims_digest,
+        global_blocking_reasons: &plan.global_blocking_reasons,
         items: plan.items.iter().map(canonical_item).collect::<Vec<_>>(),
     })
     .expect("batch canonical plan contains only serializable validated values")
@@ -1165,6 +1196,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: vec![facts("mod-a", "nativepc/a"), facts("mod-b", "nativepc/b")],
             },
             BatchResourceLimits::default(),
@@ -1175,6 +1207,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: vec![facts("mod-b", "nativepc/b"), facts("mod-a", "nativepc/a")],
             },
             BatchResourceLimits::default(),
@@ -1200,6 +1233,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: vec![
                     facts_with_revision("mod-a", "rev-a", "nativepc/a"),
                     facts_with_revision("mod-b", "rev-b", "nativepc/b"),
@@ -1294,6 +1328,7 @@ mod tests {
         let baseline_facts = BatchPlanFacts {
             environment_digest: "env".to_owned(),
             prerequisite_rules_version: Some(1),
+            global_blocking_reasons: Vec::new(),
             items: vec![facts_with_revision("a", "a", "nativepc/a")],
         };
         let build = |request: BatchPlanRequest, facts: BatchPlanFacts| {
@@ -1354,6 +1389,7 @@ mod tests {
                 BatchPlanFacts {
                     environment_digest: "env".to_owned(),
                     prerequisite_rules_version: Some(1),
+                    global_blocking_reasons: Vec::new(),
                     items: vec![operation_facts],
                 }
             )
@@ -1373,6 +1409,7 @@ mod tests {
                 BatchPlanFacts {
                     environment_digest: "env".to_owned(),
                     prerequisite_rules_version: Some(1),
+                    global_blocking_reasons: Vec::new(),
                     items: vec![over_action_limit],
                 },
                 BatchResourceLimits::default(),
@@ -1388,6 +1425,7 @@ mod tests {
                 BatchPlanFacts {
                     environment_digest: "env".to_owned(),
                     prerequisite_rules_version: Some(1),
+                    global_blocking_reasons: Vec::new(),
                     items: vec![facts_with_revision("a", "a", "nativepc/a")],
                 },
                 BatchResourceLimits {
@@ -1414,6 +1452,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: vec![
                     facts("a", "nativepc/Foo\\Bar"),
                     facts("b", "nativepc/foo/bar"),
@@ -1447,6 +1486,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: vec![blocked, facts_with_revision("b", "b", "nativepc/b")],
             },
             BatchResourceLimits::default(),
@@ -1454,6 +1494,44 @@ mod tests {
         .expect("plan");
         assert_eq!(plan.status(), BatchPlanStatus::Ready);
         assert_eq!(plan.items.iter().filter(|item| item.is_ready()).count(), 1);
+    }
+
+    #[test]
+    fn facts_provider_global_blocker_cannot_be_bypassed_by_continue_policy() {
+        let mut normalized = request(
+            BatchOperation::Install,
+            vec![install_item("a", "a"), install_item("b", "b")],
+        )
+        .normalize()
+        .expect("request");
+        normalized.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+        let plan = build_batch_plan(
+            normalized,
+            BatchPlanFacts {
+                environment_digest: "env".to_owned(),
+                prerequisite_rules_version: Some(1),
+                global_blocking_reasons: vec![BatchReasonSummary {
+                    code: "batch_global_backup_conflict".to_owned(),
+                    count: 1,
+                }],
+                items: vec![
+                    facts_with_revision("a", "a", "nativepc/a"),
+                    facts_with_revision("b", "b", "nativepc/b"),
+                ],
+            },
+            BatchResourceLimits::default(),
+        )
+        .expect("plan");
+
+        assert_eq!(plan.status(), BatchPlanStatus::Blocked);
+        assert_eq!(
+            plan.global_blocking_reasons,
+            vec![BatchReasonSummary {
+                code: "batch_global_backup_conflict".to_owned(),
+                count: 1,
+            }]
+        );
+        assert!(plan.validate_integrity().is_ok());
     }
 
     #[test]
@@ -1481,6 +1559,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: vec![facts],
             },
             BatchResourceLimits::default(),

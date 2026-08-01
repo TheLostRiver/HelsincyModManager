@@ -1,6 +1,7 @@
 mod app_settings;
 mod batch;
 mod batch_install;
+mod batch_uninstall;
 mod category;
 mod external_import;
 #[cfg(test)]
@@ -50,6 +51,7 @@ pub use batch_install::{
     BatchInstallRunError, BatchInstallRunResult, BatchInstallTaskRunner,
     InstallTaskBatchItemExecutor,
 };
+pub use batch_uninstall::{BatchUninstallPlanFactsProvider, UninstallTaskBatchItemExecutor};
 pub use category::{CategoryService, CategoryWithCount};
 pub use external_import::{
     ExternalImportBatchError, ExternalImportBatchLaunch, ExternalImportBatchService,

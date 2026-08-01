@@ -19,7 +19,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use thiserror::Error;
 
-const BATCH_ITEM_COMMIT_PHASE: &str = "install.commit.processing";
+const INSTALL_ITEM_COMMIT_PHASE: &str = "install.commit.processing";
+const UNINSTALL_ITEM_COMMIT_PHASE: &str = "install.uninstall.processing";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchInstallItemRequest {
@@ -56,6 +57,7 @@ pub trait BatchInstallItemExecutor: Send + Sync {
 enum BatchItemFactsCheck {
     Current,
     Stale,
+    GlobalBlocked(String),
     Unavailable,
 }
 
@@ -138,6 +140,7 @@ pub struct BatchInstallRetryService {
     repository: Arc<dyn BatchLifecycleRepository>,
     clock: Arc<dyn AppClock>,
     token_codec: Arc<dyn BatchTokenCodec>,
+    expected_operation: BatchOperation,
 }
 
 impl BatchInstallRetryService {
@@ -146,10 +149,20 @@ impl BatchInstallRetryService {
         clock: Arc<dyn AppClock>,
         token_codec: Arc<dyn BatchTokenCodec>,
     ) -> Self {
+        Self::for_operation(BatchOperation::Install, repository, clock, token_codec)
+    }
+
+    pub fn for_operation(
+        expected_operation: BatchOperation,
+        repository: Arc<dyn BatchLifecycleRepository>,
+        clock: Arc<dyn AppClock>,
+        token_codec: Arc<dyn BatchTokenCodec>,
+    ) -> Self {
         Self {
             repository,
             clock,
             token_codec,
+            expected_operation,
         }
     }
 
@@ -163,7 +176,7 @@ impl BatchInstallRetryService {
             .load_batch(batch_id)
             .map_err(|_| BatchInstallRetryError::BatchUnavailable)?
             .ok_or(BatchInstallRetryError::BatchUnavailable)?;
-        if batch.plan.operation != BatchOperation::Install {
+        if batch.plan.operation != self.expected_operation {
             return Err(BatchInstallRetryError::RetryUnavailable);
         }
         let previous = self
@@ -263,10 +276,34 @@ pub struct BatchInstallTaskRunner {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     token_codec: Arc<dyn BatchTokenCodec>,
+    expected_operation: BatchOperation,
 }
 
 impl BatchInstallTaskRunner {
     pub fn new(
+        task_manager: Arc<TaskManager>,
+        repository: Arc<dyn BatchLifecycleRepository>,
+        executor: Arc<dyn BatchInstallItemExecutor>,
+        facts_provider: Arc<dyn BatchPlanFactsProvider>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        token_codec: Arc<dyn BatchTokenCodec>,
+    ) -> Self {
+        Self::for_operation(
+            BatchOperation::Install,
+            task_manager,
+            repository,
+            executor,
+            facts_provider,
+            audit_log,
+            clock,
+            token_codec,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn for_operation(
+        expected_operation: BatchOperation,
         task_manager: Arc<TaskManager>,
         repository: Arc<dyn BatchLifecycleRepository>,
         executor: Arc<dyn BatchInstallItemExecutor>,
@@ -283,6 +320,7 @@ impl BatchInstallTaskRunner {
             audit_log,
             clock,
             token_codec,
+            expected_operation,
         }
     }
 
@@ -305,7 +343,7 @@ impl BatchInstallTaskRunner {
             .load_batch(batch_id)
             .map_err(|_| BatchInstallRunError::BatchUnavailable)?
             .ok_or(BatchInstallRunError::BatchUnavailable)?;
-        if batch.plan.operation != BatchOperation::Install {
+        if batch.plan.operation != self.expected_operation {
             return Err(BatchInstallRunError::OperationMismatch);
         }
         let attempt = self
@@ -438,12 +476,18 @@ impl BatchInstallTaskRunner {
             .facts_provider
             .read_batch_plan_facts(&batch.request)
             .ok();
-        let stop_policy_blocker =
+        let initial_plan_blocker = if admitted_attempt.attempt_number == 0 {
+            self.find_initial_plan_blocker(&batch, &attempt, facts_snapshot.as_ref())
+        } else {
+            None
+        };
+        let preflight_blocker = initial_plan_blocker.or_else(|| {
             if batch.plan.execution_policy == BatchExecutionPolicy::StopOnFailure {
                 self.find_stop_policy_blocker(&batch, &attempt, facts_snapshot.as_ref())
             } else {
                 None
-            };
+            }
+        });
         for item in &batch.items {
             if !attempt
                 .item_ids
@@ -470,7 +514,7 @@ impl BatchInstallTaskRunner {
                 results.push(result);
                 continue;
             }
-            if let Some((blocked_item_id, reason_code)) = &stop_policy_blocker {
+            if let Some((blocked_item_id, reason_code)) = &preflight_blocker {
                 let result = if item.item_id == *blocked_item_id {
                     let result = terminal_result(
                         batch_id,
@@ -551,22 +595,26 @@ impl BatchInstallTaskRunner {
                 continue;
             }
 
-            let facts_check = self.check_item_facts(&batch, plan_item, facts_snapshot.as_ref());
+            let facts_check = self.check_item_facts(&batch, plan_item);
             if !matches!(facts_check, BatchItemFactsCheck::Current) {
                 let facts_unavailable = matches!(facts_check, BatchItemFactsCheck::Unavailable);
+                let global_blocker = match &facts_check {
+                    BatchItemFactsCheck::GlobalBlocked(reason_code) => Some(reason_code.clone()),
+                    _ => None,
+                };
                 let result = terminal_result(
                     batch_id,
                     admitted_attempt.attempt_number,
                     item,
                     BatchItemStatus::Blocked,
-                    Some(
+                    Some(global_blocker.unwrap_or_else(|| {
                         if facts_unavailable {
                             "batch_facts_unavailable"
                         } else {
                             "batch_item_plan_stale"
                         }
-                        .to_owned(),
-                    ),
+                        .to_owned()
+                    })),
                     false,
                 );
                 self.repository
@@ -586,6 +634,7 @@ impl BatchInstallTaskRunner {
                 results.push(result);
                 pre_write_blocked |= !any_item_started;
                 stop_after_item = facts_unavailable
+                    || matches!(facts_check, BatchItemFactsCheck::GlobalBlocked(_))
                     || batch.plan.execution_policy == BatchExecutionPolicy::StopOnFailure;
                 continue;
             }
@@ -769,15 +818,38 @@ impl BatchInstallTaskRunner {
         &self,
         batch: &SealedBatch,
         plan_item: &hmm_core::BatchItemPlan,
-        facts: Option<&hmm_core::BatchPlanFacts>,
     ) -> BatchItemFactsCheck {
-        let Some(facts) = facts else {
-            return BatchItemFactsCheck::Unavailable;
+        let facts = match self.facts_provider.read_batch_plan_facts(&batch.request) {
+            Ok(facts) => facts,
+            Err(_) => return BatchItemFactsCheck::Unavailable,
         };
-        if batch_item_facts_are_current(batch, plan_item, facts) {
+        if let Some(reason_code) = first_global_blocker(&facts) {
+            return BatchItemFactsCheck::GlobalBlocked(reason_code);
+        }
+        if batch_item_facts_are_current(batch, plan_item, &facts) {
             BatchItemFactsCheck::Current
         } else {
             BatchItemFactsCheck::Stale
+        }
+    }
+
+    fn find_initial_plan_blocker(
+        &self,
+        batch: &SealedBatch,
+        attempt: &hmm_core::BatchAttempt,
+        facts: Option<&hmm_core::BatchPlanFacts>,
+    ) -> Option<(hmm_core::BatchItemId, String)> {
+        let item_id = attempt.item_ids.first()?.clone();
+        let Some(facts) = facts else {
+            return Some((item_id, "batch_facts_unavailable".to_owned()));
+        };
+        if let Some(reason_code) = first_global_blocker(facts) {
+            return Some((item_id, reason_code));
+        }
+        if batch_plan_facts_are_current(batch, facts) {
+            None
+        } else {
+            Some((item_id, "batch_plan_stale".to_owned()))
         }
     }
 
@@ -794,6 +866,13 @@ impl BatchInstallTaskRunner {
                 .cloned()
                 .map(|item_id| (item_id, "batch_facts_unavailable".to_owned()));
         };
+        if let Some(reason_code) = first_global_blocker(facts) {
+            return attempt
+                .item_ids
+                .first()
+                .cloned()
+                .map(|item_id| (item_id, reason_code));
+        }
         for item in &batch.items {
             if !attempt.item_ids.contains(&item.item_id) {
                 continue;
@@ -1043,6 +1122,28 @@ fn batch_item_facts_are_current(
         && fact.single_plan_digest == plan_item.single_plan_digest
         && fact.prerequisite == plan_item.prerequisite
         && fact.target_claims == plan_item.target_claims
+        && fact.action_summary == plan_item.action_summary
+        && fact.blocking_reasons == plan_item.blocking_reasons
+        && fact.warning_codes == plan_item.warning_codes
+}
+
+fn batch_plan_facts_are_current(batch: &SealedBatch, facts: &hmm_core::BatchPlanFacts) -> bool {
+    facts.environment_digest == batch.plan.environment_digest
+        && facts.prerequisite_rules_version == batch.plan.prerequisite_rules_version
+        && facts.global_blocking_reasons == batch.plan.global_blocking_reasons
+        && facts.items.len() == batch.plan.items.len()
+        && batch
+            .plan
+            .items
+            .iter()
+            .all(|item| batch_item_facts_are_current(batch, item, facts))
+}
+
+fn first_global_blocker(facts: &hmm_core::BatchPlanFacts) -> Option<String> {
+    facts
+        .global_blocking_reasons
+        .first()
+        .map(|reason| reason.code.clone())
 }
 
 fn short_audit_id(value: &str) -> String {
@@ -1293,16 +1394,30 @@ fn classify_install_task_failure(
     }
 }
 
-fn events_contain_audit_degradation(events: &[crate::TaskProgressEvent]) -> bool {
+pub(crate) fn events_contain_audit_degradation(events: &[crate::TaskProgressEvent]) -> bool {
     events
         .iter()
         .any(|event| event.error.as_deref() == Some("install_audit_unavailable"))
 }
 
-struct ParentTaskObserver {
+pub(crate) struct ParentTaskObserver {
     task_manager: Arc<TaskManager>,
     parent_task_id: String,
     child_task_id: String,
+}
+
+impl ParentTaskObserver {
+    pub(crate) fn new(
+        task_manager: Arc<TaskManager>,
+        parent_task_id: String,
+        child_task_id: String,
+    ) -> Self {
+        Self {
+            task_manager,
+            parent_task_id,
+            child_task_id,
+        }
+    }
 }
 
 impl TaskProgressObserver for ParentTaskObserver {
@@ -1312,11 +1427,13 @@ impl TaskProgressObserver for ParentTaskObserver {
         if self.task_manager.task_status(&self.parent_task_id) == Some(TaskStatus::Cancelled) {
             let _ = self.task_manager.cancel_task(&self.child_task_id);
         }
-        if event.phase == BATCH_ITEM_COMMIT_PHASE
-            && self
-                .task_manager
-                .block_tasks_cancellation(&[&self.parent_task_id, &self.child_task_id])
-                .is_err()
+        if matches!(
+            event.phase.as_str(),
+            INSTALL_ITEM_COMMIT_PHASE | UNINSTALL_ITEM_COMMIT_PHASE
+        ) && self
+            .task_manager
+            .block_tasks_cancellation(&[&self.parent_task_id, &self.child_task_id])
+            .is_err()
         {
             let _ = self.task_manager.cancel_task(&self.child_task_id);
         }

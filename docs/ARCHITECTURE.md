@@ -140,7 +140,17 @@ game/profile 的 `queued/running/stopping` attempt，并原子完成 sealed -> q
 且 verifier 匹配的未执行新 attempt。`result` 不执行 scope reconciliation，只读取调用方明确指定的
 batch/attempt，使遗留 active attempt 的诊断结果保持可读。该原子性只覆盖 Sandbox batch journal，
 不等于 Production 通用写 admission；Production 在 CLI policy 和 runtime composition 两层继续
-fail closed。批量卸载、真正重装、Tauri command 与前端工作流仍按 T13-03 至 T13-07 的依赖开放。
+fail closed。
+
+T13-03 已在 `hmm-app` 完成批量卸载 facts provider 与 item executor，但尚未接入 runtime/CLI、Tauri
+或前端。provider 只消费 manifest、installed summary、backup 与 install/reinstall recovery，不读取
+package/source；共享 target、backup ownership 和 profile 级 recovery 形成不可被 continue 越过的
+global blocker。执行仍逐项进入既有 `UninstallTaskRunner` 和同 game/profile 写锁；锁外重验 item facts，
+锁内再比较 exact revision 与不落明文的 Mod 级 manifest snapshot digest，后者覆盖 entry set、backup、
+installed summary 和 replacement binding，防止同 revision target switch 穿过 TOCTOU 窗口。
+`install.uninstall.processing` 只在取得写锁并通过 write admission 后发出，batch 父/子 task 此时原子进入
+取消屏障。真正重装、批量 uninstall/reinstall CLI contract、Tauri command 与前端工作流仍按 T13-04
+至 T13-07 的依赖开放。
 
 CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
 `ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和
