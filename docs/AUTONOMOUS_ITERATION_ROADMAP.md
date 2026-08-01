@@ -123,10 +123,10 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01/T13-02 已落地，
-T13-05 的 install batch 子集已在 PR #222 中接入并通过本地验证，正在完成 review 修复与远端门禁。内部 task 按依赖顺序提交，但不为每个 task
-重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
-跳过 required CI terminal success。
+QG-01、T13-00、Slice A 和 Slice B 已完成。PR #222 交付 T13-05 的 install batch 子集；完整
+T13-05 仍需 Slice C 的批量卸载/真正重装 contract。内部 task 按依赖顺序提交，但不为每个 task
+重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，且不能跳过
+required CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
@@ -139,8 +139,8 @@ T13-05 的 install batch 子集已在 PR #222 中接入并通过本地验证，�
 | Slice C | T13-03、T13-04、T13-05 的其余子集 | 批量卸载和真正重装通过 manifest/recovery 事实运行，CLI 覆盖 cancel、partial result 和 retry。 |
 | Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
 
-Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01 已完成。Slice B 必须从已合并的 Slice A 启动，不得把
-未合并切片分支作为下一切片的隐式基线。
+Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI 均已完成。Slice C
+必须从合并后的 Slice B 主干启动，不得把未合并切片分支作为隐式基线。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -268,8 +268,8 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 
 ### T13-02：批量安装
 
-状态：`completed`，T13-01 已完成；批量安装 runner、SQLite journal、retry、failure/cancel 证据
-和入口 fail-closed 规则已落地。当前分支只是在为 T13-05 install CLI 子集补齐公开契约与 review 修复。
+状态：`completed`，T13-01 已完成；批量安装 runner、SQLite journal、retry、failure/cancel 证据、
+入口 fail-closed 规则与 T13-05 install CLI 公开契约均已落地。
 
 范围：
 
@@ -284,7 +284,7 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 
 完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败、journal
 故障、exact revision fail-closed 和重试均有 temp/fake 测试；外部 sentinel 不变。当前实现已完成
-核心代码、聚焦测试与完整 `verify.ps1`，待全 diff review、CI 和 PR review。启动级遗留
+核心代码、聚焦测试、完整 `verify.ps1`、全 diff review 和远端门禁。启动级遗留
 非终态 `queued/running/stopping` attempt 已由写入口 fail closed 阻断；Sandbox batch 最终
 admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定 attempt 的只读 result 仍保持
 诊断可用。进程重启不得自动继续破坏性写入，后续如要提供 reconciliation 必须单独设计和验收。
@@ -293,7 +293,7 @@ admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定
 
 ### T13-03：批量卸载
 
-状态：`blocked`，依赖 T13-02。
+状态：`ready`，T13-02 与 Slice B 已完成；本轮 PR 收尾后不自动开工。
 
 范围：
 
