@@ -650,8 +650,10 @@ preview 在构造写 runtime 前失败且不创建 `hmm.db` 的零副作用行�
   创建下一 attempt。
 - 同一 game/profile 写入严格串行；plan/scan 在写锁外；item 间释放写锁。不同 game/profile 的
   并行仍受资源预算和现有 coordination 控制。
-- 一个 batch task 恰好一个 terminal event；结果按 `ordinal` 分页，默认 50、最大 100，不能依赖
-  progress event 携带 item 明细；result query/cursor 绑定确切 attempt，retry 不能让旧分页漂移。
+- 一个 batch task 恰好一个 terminal event，不能依赖 progress event 携带 item 明细。当前 T13-05
+  Slice B 受每批最多 100 项约束，`result` 返回完整 bounded snapshot；后续 T13-06/T13-07 分页按
+  `ordinal` 默认 50、最大 100。无论是否分页，result query/cursor 都绑定确切 attempt，retry 不能
+  让旧结果或分页漂移。
 - `plan` 的直接 response 可以返回 opaque `previewToken`；除此之外，result/progress/event/其他
   DTO、CLI stdout/JSON/JSONL、Task/Audit/diagnostics 不含完整路径、Windows 用户名、Steam ID、
   token/digest、target/hash 列表、backup/snapshot ref、manifest/source 正文或原始 error。原始

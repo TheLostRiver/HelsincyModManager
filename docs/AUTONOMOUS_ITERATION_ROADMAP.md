@@ -124,7 +124,7 @@ flowchart TD
 ```
 
 QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01/T13-02 已落地，
-T13-05 的 install batch 子集已在独立分支中接入并通过聚焦验证，尚未合并。内部 task 按依赖顺序提交，但不为每个 task
+T13-05 的 install batch 子集已在 PR #222 中接入并通过本地验证，正在完成 review 修复与远端门禁。内部 task 按依赖顺序提交，但不为每个 task
 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
 跳过 required CI terminal success。
 
@@ -268,8 +268,8 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 
 ### T13-02：批量安装
 
-状态：`in_progress`，T13-01 已完成；当前分支已通过完整本地验证，正在进行最终全 diff 自审与
-PR candidate 整理。
+状态：`completed`，T13-01 已完成；批量安装 runner、SQLite journal、retry、failure/cancel 证据
+和入口 fail-closed 规则已落地。当前分支只是在为 T13-05 install CLI 子集补齐公开契约与 review 修复。
 
 范围：
 
@@ -285,8 +285,8 @@ PR candidate 整理。
 完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败、journal
 故障、exact revision fail-closed 和重试均有 temp/fake 测试；外部 sentinel 不变。当前实现已完成
 核心代码、聚焦测试与完整 `verify.ps1`，待全 diff review、CI 和 PR review。启动级遗留
-非终态 `queued/running/stopping` attempt 收敛必须在 T13-05 install CLI 子集公开 start/query
-前完成或由公开入口 fail closed 阻断；进程重启不得自动继续破坏性写入。
+非终态 `queued/running/stopping` attempt 已由公开入口 fail closed 阻断；进程重启不得自动继续
+破坏性写入，后续如要提供 reconciliation 必须单独设计和验收。
 
 提交边界：runner/state machine 一个提交，audit/result repository 一个提交，failure/cancel tests 一个提交。
 
