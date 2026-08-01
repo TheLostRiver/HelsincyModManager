@@ -537,13 +537,15 @@ manifest/recovery；真正重装同时绑定 installed/candidate revision、laye
 retained/replaced/added/stale 与 durable transaction。跨 item 最终 target/remove/restore 重叠、
 backup ownership 不明确或旧 manifest 缺少摘要都是 global blocker，不能由执行顺序或 continue 策略绕过。
 
-首版固定上限是每批 100 项、50,000 个 target action、16 MiB canonical plan；结果页默认 50、最大
-100，preview token 默认 30 分钟。机器输出只公开短 ID、稳定 status/code、聚合计数和
+首版固定上限是每批 100 项、50,000 个 target action、16 MiB canonical plan；当前 result 返回完整
+bounded snapshot，尚未实现 cursor/limit 分页参数；preview token 默认 30 分钟。机器输出只公开短 ID、稳定 status/code、聚合计数和
 retryable，不返回路径、Steam ID、digest、backup/snapshot ref、manifest/source 正文、hash
 列表或原始错误。`plan` 的直接响应可以返回短期 opaque `previewToken`，供用户确认后作为
 `apply --preview-token` 输入；该 token 不写入 journal、Task Log、Audit Log 或其他持久化状态。
+Sandbox batch token 是可伪造的 stale/plan tag，不是认证凭据；Production 开放前必须接入
+per-installation secret 和跨进程 admission。
 `seal` 返回的 plan token 只在 adapter 内存中传递，不作为 CLI 参数或机器输出暴露。
-Result query/cursor 绑定确切 attempt；CLI 在 retry 后不得拿旧 cursor 查询隐式“最新结果”。
+Result 查询绑定确切 attempt；CLI 在 retry 后必须使用新 attempt，不能查询隐式“最新结果”。
 
 CLI-4 的共同基线是 T13-00、CLI-2A、CLI-2B、CLI-2C 和 CORE-PREF-01。当前已开放
 `install batch plan/apply/result/retry` 的 Sandbox install 子集；批量卸载与真正重装分别等待
@@ -556,16 +558,21 @@ T13-03 和 T13-04，并在 Slice C 补齐剩余 CLI contract。CLI 只能映射�
 ```text
 plan
 apply
-result --batch <id> --attempt <n> [--cursor <cursor>] [--limit <n>]
-retry --batch <id> --expected-attempt <n>
+result --batch-id <id> --attempt <n>
+retry --batch-id <id> --attempt <n>
 ```
 
 `plan` 只执行 preview 并返回脱敏摘要及短期 opaque `previewToken`。`apply` 要求
 `--commit --yes --preview-token <token>`，在构造写上下文前先以只读 facts 验证 token；验证通过后
 才初始化 Sandbox journal，并在真正 `seal` 时再次重读 facts 和验证 token，防止 stale preview
 留下数据库副作用或跨越 TOCTOU。`result` 必须查询显式 attempt，不能使用隐式 latest。`retry`
-成功后返回新 task identity 和 attempt number；调用方必须使用该 attempt number 重新执行 `result`，
-不能复用旧 attempt 的 cursor。
+成功后返回新 task identity 和 attempt number；调用方必须使用该 attempt number 重新执行 `result`。
+当前 `result` 返回完整 bounded snapshot，不接受 cursor/limit。
+JSONL `apply`/`retry` 先输出一个 parent batch terminal event，再输出 command result；两行共用同一
+`taskId`，不会伪造每个 item 的 child task event。
+如果发现同一 game/profile 存在 `queued`、`running` 或 `stopping` 的遗留 attempt，`apply`、`result`
+和 `retry` 都返回 `batch_attempt_reconciliation_required` 并保持 fail closed；当前不会自动续跑或
+把遗留 attempt 标记为终态。
 
 ## 输出协议
 

@@ -5,7 +5,8 @@ mod task_events;
 use cancellation::{CliCancellationCoordinator, NoopCliTaskProgressObserver};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hmm_runtime::{
-    BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchInstallAutomation,
+    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, SandboxBatchAutomationError,
+    SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation,
     BackupBackgroundStatusSnapshot, BackupListSnapshot, DiagnosticsSnapshot,
     GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot, GameValidationSnapshot,
     InstallPlanSnapshot, InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot,
@@ -230,7 +231,7 @@ impl From<BatchExecutionPolicyOption> for BatchExecutionPolicy {
 }
 
 #[derive(Debug, Args)]
-struct InstallBatchPlanOptions {
+struct InstallBatchRequestOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
@@ -245,24 +246,21 @@ struct InstallBatchPlanOptions {
 }
 
 #[derive(Debug, Args)]
+struct InstallBatchPlanOptions {
+    #[command(flatten)]
+    request: InstallBatchRequestOptions,
+}
+
+#[derive(Debug, Args)]
 struct InstallBatchApplyOptions {
-    #[arg(long, default_value = "mhw")]
-    game: String,
-
-    #[arg(long, default_value = "default")]
-    profile: String,
-
-    #[arg(long = "item", value_name = "MOD:REVISION", required = true)]
-    items: Vec<String>,
-
-    #[arg(long, value_enum, default_value_t = BatchExecutionPolicyOption::StopOnFailure)]
-    policy: BatchExecutionPolicyOption,
+    #[command(flatten)]
+    request: InstallBatchRequestOptions,
 
     #[arg(long)]
     preview_token: Option<String>,
 
     #[command(flatten)]
-    lifecycle: LifecycleCommitOptions,
+    lifecycle: BatchCommitOptions,
 }
 
 #[derive(Debug, Args)]
@@ -270,7 +268,7 @@ struct InstallBatchResultOptions {
     #[arg(long)]
     batch_id: String,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, required = true)]
     attempt: u32,
 }
 
@@ -279,11 +277,20 @@ struct InstallBatchRetryOptions {
     #[arg(long)]
     batch_id: String,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, required = true)]
     attempt: u32,
 
     #[command(flatten)]
-    lifecycle: LifecycleCommitOptions,
+    lifecycle: BatchCommitOptions,
+}
+
+#[derive(Debug, Args)]
+struct BatchCommitOptions {
+    #[arg(long)]
+    commit: bool,
+
+    #[arg(long)]
+    yes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -463,7 +470,7 @@ enum GameCommandResult {
 enum InstallCommandResult {
     Plan(InstallPlanSnapshot),
     BatchPlan(BatchPlanResult),
-    BatchAttempt(BatchAttemptSnapshot),
+    BatchAttempt(BatchAttemptResult),
     Uninstall(UninstallPlanSnapshot),
     Reinstall(ReinstallPlanSnapshot),
     Status(InstallStatusSnapshot),
@@ -485,7 +492,69 @@ struct BatchApplyResult {
     attempt: u32,
     task_id: String,
     status: hmm_core::BatchAttemptStatus,
-    summary: hmm_core::BatchResultSummary,
+    summary: BatchResultSummarySnapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchAttemptResult {
+    batch_id: String,
+    attempt_number: u32,
+    status: hmm_core::BatchAttemptStatus,
+    task_id: Option<String>,
+    evidence_health_degraded: bool,
+    summary: BatchResultSummarySnapshot,
+    items: Vec<BatchItemResultSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchResultSummarySnapshot {
+    item_count: usize,
+    succeeded_count: usize,
+    blocked_count: usize,
+    failed_count: usize,
+    cancelled_count: usize,
+    skipped_count: usize,
+    recovery_required_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchItemResultSnapshot {
+    batch_id: String,
+    attempt_number: u32,
+    item_id: String,
+    ordinal: usize,
+    mod_id: String,
+    status: hmm_core::BatchItemStatus,
+    reason_code: Option<String>,
+    retryable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchActionSummarySnapshot {
+    actions: usize,
+    retained: usize,
+    replaced: usize,
+    added: usize,
+    stale: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchPreflightDecisionSnapshot {
+    status: hmm_core::BatchPreflightStatus,
+    rules_version: Option<u32>,
+    codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchReasonSummarySnapshot {
+    code: String,
+    count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -509,8 +578,8 @@ struct BatchPlanSnapshot {
     ready_item_count: usize,
     blocked_item_count: usize,
     action_count: usize,
-    global_blocking_reasons: Vec<hmm_core::BatchReasonSummary>,
-    warning_codes: Vec<hmm_core::BatchReasonSummary>,
+    global_blocking_reasons: Vec<BatchReasonSummarySnapshot>,
+    warning_codes: Vec<BatchReasonSummarySnapshot>,
     items: Vec<BatchPlanItemSnapshot>,
 }
 
@@ -521,9 +590,9 @@ struct BatchPlanItemSnapshot {
     mod_id: ModId,
     revision_id: Option<ModRevisionId>,
     status: BatchPlanStatus,
-    action_summary: hmm_core::BatchActionSummary,
+    action_summary: BatchActionSummarySnapshot,
     target_count: usize,
-    prerequisite: hmm_core::BatchPreflightDecision,
+    prerequisite: BatchPreflightDecisionSnapshot,
     blocking_reasons: Vec<String>,
     warning_codes: Vec<String>,
 }
@@ -892,12 +961,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
 ) -> i32 {
     match command {
         InstallBatchCommand::Plan(options) => {
-            let request = match batch_plan_request(
-                &options.game,
-                &options.profile,
-                &options.items,
-                options.policy,
-            ) {
+            let request = match batch_plan_request(&options.request) {
                 Ok(request) => request,
                 Err(code) => {
                     return write_batch_error(
@@ -949,12 +1013,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     stderr,
                 );
             };
-            let request = match batch_plan_request(
-                &options.game,
-                &options.profile,
-                &options.items,
-                options.policy,
-            ) {
+            let request = match batch_plan_request(&options.request) {
                 Ok(request) => request,
                 Err(code) => {
                     return write_batch_error(
@@ -973,22 +1032,15 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                         attempt: run.attempt_number,
                         task_id: run.task_id,
                         status: run.status,
-                        summary: run.summary,
+                        summary: project_batch_summary(&run.summary),
                     };
-                    let exit_code = batch_exit_code(result.status);
-                    let write_result = match format {
-                        OutputFormat::Human => write_human_batch_apply_result(stdout, &result),
-                        OutputFormat::Json | OutputFormat::Jsonl => write_json_line(
-                            stdout,
-                            &CommandEnvelope::success(INSTALL_BATCH_APPLY_COMMAND, result),
-                        ),
-                    };
-                    if write_result.is_ok() {
-                        exit_code
-                    } else {
-                        let _ = writeln!(stderr, "cli_output_failed");
-                        CliExitCode::RuntimeUnavailable.get()
-                    }
+                    write_batch_run_result(
+                        format,
+                        INSTALL_BATCH_APPLY_COMMAND,
+                        result,
+                        stdout,
+                        stderr,
+                    )
                 }
                 Err(error) => write_batch_automation_error(
                     format,
@@ -1008,7 +1060,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                 Ok(snapshot) => write_install_result(
                     format,
                     INSTALL_BATCH_RESULT_COMMAND,
-                    InstallCommandResult::BatchAttempt(snapshot),
+                    InstallCommandResult::BatchAttempt(project_batch_attempt(snapshot)),
                     stdout,
                     stderr,
                 ),
@@ -1042,22 +1094,15 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                         attempt: run.attempt_number,
                         task_id: run.task_id,
                         status: run.status,
-                        summary: run.summary,
+                        summary: project_batch_summary(&run.summary),
                     };
-                    let exit_code = batch_exit_code(result.status);
-                    let write_result = match format {
-                        OutputFormat::Human => write_human_batch_apply_result(stdout, &result),
-                        OutputFormat::Json | OutputFormat::Jsonl => write_json_line(
-                            stdout,
-                            &CommandEnvelope::success(INSTALL_BATCH_RETRY_COMMAND, result),
-                        ),
-                    };
-                    if write_result.is_ok() {
-                        exit_code
-                    } else {
-                        let _ = writeln!(stderr, "cli_output_failed");
-                        CliExitCode::RuntimeUnavailable.get()
-                    }
+                    write_batch_run_result(
+                        format,
+                        INSTALL_BATCH_RETRY_COMMAND,
+                        result,
+                        stdout,
+                        stderr,
+                    )
                 }
                 Err(error) => write_batch_automation_error(
                     format,
@@ -1099,9 +1144,9 @@ fn project_batch_plan(plan: &hmm_core::BatchPlan) -> BatchPlanSnapshot {
                 } else {
                     BatchPlanStatus::Blocked
                 },
-                action_summary: item.action_summary.clone(),
+                action_summary: project_batch_action_summary(&item.action_summary),
                 target_count: item.target_claims.len(),
-                prerequisite: item.prerequisite.clone(),
+                prerequisite: project_batch_prerequisite(&item.prerequisite),
                 blocking_reasons: item.blocking_reasons.clone(),
                 warning_codes: item.warning_codes.clone(),
             }
@@ -1119,31 +1164,113 @@ fn project_batch_plan(plan: &hmm_core::BatchPlan) -> BatchPlanSnapshot {
         ready_item_count,
         blocked_item_count,
         action_count,
-        global_blocking_reasons: plan.global_blocking_reasons.clone(),
-        warning_codes: plan.warning_codes.clone(),
+        global_blocking_reasons: plan
+            .global_blocking_reasons
+            .iter()
+            .map(project_batch_reason)
+            .collect(),
+        warning_codes: plan
+            .warning_codes
+            .iter()
+            .map(project_batch_reason)
+            .collect(),
         items,
     }
 }
 
+fn project_batch_attempt(snapshot: RuntimeBatchAttemptSnapshot) -> BatchAttemptResult {
+    BatchAttemptResult {
+        batch_id: snapshot.batch_id,
+        attempt_number: snapshot.attempt_number,
+        status: snapshot.status,
+        task_id: snapshot.task_id,
+        evidence_health_degraded: snapshot.evidence_health_degraded,
+        summary: project_batch_summary(&snapshot.summary),
+        items: snapshot
+            .items
+            .iter()
+            .map(project_batch_item_result)
+            .collect(),
+    }
+}
+
+fn project_batch_summary(
+    summary: &hmm_core::BatchResultSummary,
+) -> BatchResultSummarySnapshot {
+    BatchResultSummarySnapshot {
+        item_count: summary.item_count,
+        succeeded_count: summary.succeeded_count,
+        blocked_count: summary.blocked_count,
+        failed_count: summary.failed_count,
+        cancelled_count: summary.cancelled_count,
+        skipped_count: summary.skipped_count,
+        recovery_required_count: summary.recovery_required_count,
+    }
+}
+
+fn project_batch_item_result(result: &hmm_core::BatchItemResult) -> BatchItemResultSnapshot {
+    BatchItemResultSnapshot {
+        batch_id: result.batch_id.as_str().to_owned(),
+        attempt_number: result.attempt_number,
+        item_id: result.item_id.as_str().to_owned(),
+        ordinal: result.ordinal,
+        mod_id: result.mod_id.as_str().to_owned(),
+        status: result.status,
+        reason_code: result.reason_code.clone(),
+        retryable: result.retryable,
+    }
+}
+
+fn project_batch_action_summary(
+    summary: &hmm_core::BatchActionSummary,
+) -> BatchActionSummarySnapshot {
+    BatchActionSummarySnapshot {
+        actions: summary.actions,
+        retained: summary.retained,
+        replaced: summary.replaced,
+        added: summary.added,
+        stale: summary.stale,
+    }
+}
+
+fn project_batch_prerequisite(
+    decision: &hmm_core::BatchPreflightDecision,
+) -> BatchPreflightDecisionSnapshot {
+    BatchPreflightDecisionSnapshot {
+        status: decision.status,
+        rules_version: decision.rules_version,
+        codes: decision.codes.clone(),
+    }
+}
+
+fn project_batch_reason(reason: &hmm_core::BatchReasonSummary) -> BatchReasonSummarySnapshot {
+    BatchReasonSummarySnapshot {
+        code: reason.code.clone(),
+        count: reason.count,
+    }
+}
+
 fn batch_plan_request(
-    game: &str,
-    profile: &str,
-    items: &[String],
-    policy: BatchExecutionPolicyOption,
+    options: &InstallBatchRequestOptions,
 ) -> Result<BatchPlanRequest, &'static str> {
-    let game_id = GameId::parse(game).map_err(|_| "batch_game_invalid")?;
-    let profile_id = parse_batch_id_component(profile).map(ProfileId::new)?;
-    if items.is_empty() {
+    let game_id = GameId::parse(&options.game).map_err(|_| "batch_game_invalid")?;
+    let profile_id =
+        parse_batch_id_component(&options.profile, "batch_profile_invalid").map(ProfileId::new)?;
+    if options.items.is_empty() {
         return Err("batch_items_required");
     }
-    let items = items
+    let items = options
+        .items
         .iter()
         .map(|item| {
             let (mod_id, revision_id) = item
                 .split_once(':')
                 .ok_or("batch_item_invalid")?;
-            let mod_id = parse_batch_id_component(mod_id).map(ModId::new)?;
-            let revision_id = parse_batch_id_component(revision_id).map(ModRevisionId::new)?;
+            let mod_id =
+                parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
+            let revision_id =
+                parse_batch_id_component(revision_id, "batch_item_invalid")
+                    .map(ModRevisionId::new)?;
             Ok(BatchItemInput::Install(
                 hmm_core::InstallBatchItemInput {
                     mod_id,
@@ -1159,12 +1286,15 @@ fn batch_plan_request(
         operation: hmm_core::BatchOperation::Install,
         game_id,
         profile_id,
-        execution_policy: policy.into(),
+        execution_policy: options.policy.into(),
         items,
     })
 }
 
-fn parse_batch_id_component(value: &str) -> Result<String, &'static str> {
+fn parse_batch_id_component(
+    value: &str,
+    invalid_code: &'static str,
+) -> Result<String, &'static str> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > 128
@@ -1172,7 +1302,7 @@ fn parse_batch_id_component(value: &str) -> Result<String, &'static str> {
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
     {
-        return Err("batch_item_invalid");
+        return Err(invalid_code);
     }
     Ok(value.to_owned())
 }
@@ -1911,6 +2041,7 @@ fn write_install_error<W: Write, E: Write>(
         ReadOnlyInstallAutomationError::UnsupportedGame
         | ReadOnlyInstallAutomationError::ProfileIdInvalid
         | ReadOnlyInstallAutomationError::ModIdInvalid
+        | ReadOnlyInstallAutomationError::SourceRevisionIdInvalid
         | ReadOnlyInstallAutomationError::CandidateRevisionIdInvalid => (
             CliErrorCategory::UserActionRequired,
             CliExitCode::Usage,
@@ -2087,6 +2218,7 @@ fn write_batch_error<W: Write, E: Write>(
         "batch_item_invalid"
         | "batch_items_required"
         | "batch_game_invalid"
+        | "batch_profile_invalid"
         | "batch_commit_required"
         | "batch_preview_token_required" => {
             (CliErrorCategory::UserActionRequired, CliExitCode::Usage)
@@ -2111,47 +2243,24 @@ fn write_batch_automation_error<W: Write, E: Write>(
     stderr: &mut E,
 ) -> i32 {
     let code = error.code();
-    let (category, exit_code, retryable) = match code {
-        "sandbox_batch_production_forbidden"
-        | "batch_write_admission_unavailable"
-        | "batch_runtime_unavailable" => (
+    let (category, exit_code) = match error.class() {
+        SandboxBatchAutomationErrorClass::DataSafetyRisk => (
             CliErrorCategory::DataSafetyRisk,
             CliExitCode::Rejected,
-            false,
         ),
-        "batch_input_invalid"
-        | "batch_duplicate_item"
-        | "batch_plan_blocked"
-        | "batch_token_invalid"
-        | "batch_plan_stale"
-        | "batch_plan_expired"
-        | "batch_retry_unavailable"
-        | "batch_attempt_stale"
-        | "batch_id_invalid" => (
+        SandboxBatchAutomationErrorClass::UserActionRequired => (
             CliErrorCategory::UserActionRequired,
             CliExitCode::Rejected,
-            false,
         ),
-        "batch_unavailable"
-        | "batch_journal_unavailable"
-        | "batch_result_unavailable"
-        | "batch_task_unavailable"
-        | "batch_evidence_unavailable"
-        | "batch_internal_error" => (
+        SandboxBatchAutomationErrorClass::Recoverable => (
             CliErrorCategory::Recoverable,
             CliExitCode::RuntimeUnavailable,
-            true,
-        ),
-        _ => (
-            CliErrorCategory::DataSafetyRisk,
-            CliExitCode::ControlledFailure,
-            false,
         ),
     };
     write_command_error(
         format,
         command,
-        CliErrorEnvelope::new(code, category, retryable),
+        CliErrorEnvelope::new(code, category, error.retryable()),
         exit_code,
         stdout,
         stderr,
@@ -2285,7 +2394,12 @@ fn write_human_install_result<W: Write>(
             write_human_value(writer, "operation", &plan.plan.operation)?;
             write_human_value(writer, "status", &plan.plan.status)?;
             writeln!(writer, "items: {}", plan.plan.item_count)?;
+            writeln!(writer, "ready items: {}", plan.plan.ready_item_count)?;
+            writeln!(writer, "blocked items: {}", plan.plan.blocked_item_count)?;
             writeln!(writer, "actions: {}", plan.plan.action_count)?;
+            for reason in &plan.plan.global_blocking_reasons {
+                writeln!(writer, "blocking reason {}: {}", reason.code, reason.count)?;
+            }
             write_human_value(writer, "preview token", &plan.preview_token)?;
             write_human_value(writer, "preview expires at", &plan.expires_at_unix_millis)
         }
@@ -2295,8 +2409,7 @@ fn write_human_install_result<W: Write>(
             write_human_value(writer, "status", &snapshot.status)?;
             write_human_value(writer, "task", &snapshot.task_id)?;
             write_human_value(writer, "evidence degraded", &snapshot.evidence_health_degraded)?;
-            writeln!(writer, "items: {}", snapshot.items.len())?;
-            write_human_value(writer, "summary", &snapshot.summary)
+            write_human_batch_summary(writer, &snapshot.summary)
         }
         InstallCommandResult::Uninstall(snapshot) => {
             write_human_value(writer, "game", &snapshot.game_id)?;
@@ -2402,7 +2515,135 @@ fn write_human_batch_apply_result<W: Write>(
     writeln!(writer, "attempt: {}", result.attempt)?;
     write_human_value(writer, "task", &result.task_id)?;
     write_human_value(writer, "status", &result.status)?;
-    write_human_value(writer, "summary", &result.summary)
+    write_human_batch_summary(writer, &result.summary)
+}
+
+fn write_human_batch_summary<W: Write>(
+    writer: &mut W,
+    summary: &BatchResultSummarySnapshot,
+) -> io::Result<()> {
+    writeln!(writer, "items: {}", summary.item_count)?;
+    writeln!(writer, "succeeded: {}", summary.succeeded_count)?;
+    writeln!(writer, "failed: {}", summary.failed_count)?;
+    writeln!(writer, "blocked: {}", summary.blocked_count)?;
+    writeln!(writer, "cancelled: {}", summary.cancelled_count)?;
+    writeln!(writer, "skipped: {}", summary.skipped_count)?;
+    writeln!(
+        writer,
+        "recovery required: {}",
+        summary.recovery_required_count
+    )
+}
+
+fn write_batch_run_result<W: Write, E: Write>(
+    format: OutputFormat,
+    command: &'static str,
+    result: BatchApplyResult,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32 {
+    let exit_code = batch_exit_code(result.status);
+    let write_result = match format {
+        OutputFormat::Human => write_human_batch_apply_result(stdout, &result),
+        OutputFormat::Json => {
+            let mut envelope = CommandEnvelope::success(command, result.clone());
+            envelope.task_id = Some(result.task_id.clone());
+            write_json_line(stdout, &envelope)
+        }
+        OutputFormat::Jsonl => {
+            let event = batch_terminal_event(command, &result);
+            let mut envelope = CommandEnvelope::success(command, result.clone());
+            envelope.task_id = Some(result.task_id.clone());
+            write_json_line(stdout, &event)
+                .and_then(|_| write_json_line(stdout, &envelope))
+        }
+    };
+    if write_result.is_ok() {
+        exit_code
+    } else {
+        let _ = writeln!(stderr, "cli_output_failed");
+        CliExitCode::RuntimeUnavailable.get()
+    }
+}
+
+fn batch_terminal_event(
+    command: &'static str,
+    result: &BatchApplyResult,
+) -> TaskEventEnvelope {
+    let (event_type, status, phase, error_code) = match result.status {
+        hmm_core::BatchAttemptStatus::Completed => (
+            TaskEventType::Completed,
+            CliTaskStatus::Completed,
+            "install.batch.install.completed",
+            None,
+        ),
+        hmm_core::BatchAttemptStatus::CompletedWithErrors => (
+            TaskEventType::Completed,
+            CliTaskStatus::Completed,
+            "install.batch.install.completed_with_errors",
+            None,
+        ),
+        hmm_core::BatchAttemptStatus::Cancelled => (
+            TaskEventType::Cancelled,
+            CliTaskStatus::Cancelled,
+            "install.batch.install.cancelled",
+            None,
+        ),
+        hmm_core::BatchAttemptStatus::Blocked => (
+            TaskEventType::Failed,
+            CliTaskStatus::Failed,
+            "install.batch.install.failed",
+            Some("batch_plan_blocked"),
+        ),
+        hmm_core::BatchAttemptStatus::RecoveryRequired => (
+            TaskEventType::Failed,
+            CliTaskStatus::Failed,
+            "install.batch.install.recovery_required",
+            Some("batch_recovery_required"),
+        ),
+        hmm_core::BatchAttemptStatus::Interrupted => (
+            TaskEventType::Failed,
+            CliTaskStatus::Failed,
+            "install.batch.install.failed",
+            Some("batch_interrupted"),
+        ),
+        hmm_core::BatchAttemptStatus::Failed => (
+            TaskEventType::Failed,
+            CliTaskStatus::Failed,
+            "install.batch.install.failed",
+            Some("batch_failed"),
+        ),
+        hmm_core::BatchAttemptStatus::Sealed
+        | hmm_core::BatchAttemptStatus::Queued
+        | hmm_core::BatchAttemptStatus::Running
+        | hmm_core::BatchAttemptStatus::Stopping => (
+            TaskEventType::Failed,
+            CliTaskStatus::Failed,
+            "install.batch.install.failed",
+            Some("batch_attempt_reconciliation_required"),
+        ),
+    };
+    let mut event = TaskEventEnvelope::new(
+        event_type,
+        command,
+        0,
+        result.task_id.clone(),
+        status,
+        phase,
+    );
+    event.current = u64::try_from(result.summary.item_count).ok();
+    event.total = event.current;
+    event.result = serde_json::to_value(serde_json::json!({
+        "batchId": result.batch_id,
+        "attempt": result.attempt,
+        "status": result.status,
+        "summary": result.summary,
+    }))
+    .ok();
+    if let Some(error_code) = error_code {
+        event.error = Some(TaskEventError::new(error_code));
+    }
+    event
 }
 
 fn write_human_backup_result<W: Write>(
@@ -2585,6 +2826,72 @@ mod tests {
         assert_eq!(
             batch_exit_code(hmm_core::BatchAttemptStatus::CompletedWithErrors),
             CliExitCode::PartialSuccess.get()
+        );
+    }
+
+    #[test]
+    fn batch_human_summary_uses_scalar_counts() {
+        let mut output = Vec::new();
+        write_human_batch_summary(
+            &mut output,
+            &BatchResultSummarySnapshot {
+                item_count: 7,
+                succeeded_count: 1,
+                blocked_count: 2,
+                failed_count: 3,
+                cancelled_count: 4,
+                skipped_count: 5,
+                recovery_required_count: 6,
+            },
+        )
+        .expect("human batch summary");
+        let output = String::from_utf8(output).expect("utf8");
+        for expected in [
+            "items: 7",
+            "succeeded: 1",
+            "blocked: 2",
+            "failed: 3",
+            "cancelled: 4",
+            "skipped: 5",
+            "recovery required: 6",
+        ] {
+            assert!(output.contains(expected), "{output}");
+        }
+        assert!(!output.contains('{'));
+    }
+
+    #[test]
+    fn batch_attempt_human_summary_prints_item_count_once() {
+        let mut output = Vec::new();
+        write_human_install_result(
+            &mut output,
+            &InstallCommandResult::BatchAttempt(BatchAttemptResult {
+                batch_id: "batch-a".to_owned(),
+                attempt_number: 0,
+                status: hmm_core::BatchAttemptStatus::Completed,
+                task_id: Some("task-a".to_owned()),
+                evidence_health_degraded: false,
+                summary: BatchResultSummarySnapshot {
+                    item_count: 1,
+                    succeeded_count: 1,
+                    blocked_count: 0,
+                    failed_count: 0,
+                    cancelled_count: 0,
+                    skipped_count: 0,
+                    recovery_required_count: 0,
+                },
+                items: Vec::new(),
+            }),
+        )
+        .expect("human batch attempt");
+        let output = String::from_utf8(output).expect("utf8");
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| line.starts_with("items:"))
+                .count(),
+            1,
+            "{output}"
         );
     }
 }
