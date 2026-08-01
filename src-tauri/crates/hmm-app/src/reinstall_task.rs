@@ -71,7 +71,6 @@ trait ReinstallTaskRequestContext {
     fn profile_id(&self) -> &ProfileId;
     fn mod_id(&self) -> &ModId;
     fn target_id(&self) -> Option<&ReplacementTargetId>;
-    fn plan_token(&self) -> &str;
 }
 
 impl ReinstallTaskRequestContext for StartReinstallTaskRequest {
@@ -89,10 +88,6 @@ impl ReinstallTaskRequestContext for StartReinstallTaskRequest {
 
     fn target_id(&self) -> Option<&ReplacementTargetId> {
         None
-    }
-
-    fn plan_token(&self) -> &str {
-        &self.plan_token
     }
 }
 
@@ -112,10 +107,6 @@ impl ReinstallTaskRequestContext for StartRetargetReinstallTaskRequest {
     fn target_id(&self) -> Option<&ReplacementTargetId> {
         Some(&self.target_id)
     }
-
-    fn plan_token(&self) -> &str {
-        &self.plan_token
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +118,8 @@ pub struct ReinstallTaskAuditContext {
 
 pub trait ReinstallTaskPrepared: Send {
     fn audit_context(&self) -> ReinstallTaskAuditContext;
+    fn plan_token(&self) -> &str;
+    fn batch_plan_digest(&self) -> String;
 }
 
 impl ReinstallTaskPrepared for PreparedReinstall {
@@ -136,6 +129,14 @@ impl ReinstallTaskPrepared for PreparedReinstall {
             candidate_revision_id: self.candidate.revision_id.clone(),
             counts: self.counts,
         }
+    }
+
+    fn plan_token(&self) -> &str {
+        PreparedReinstall::plan_token(self)
+    }
+
+    fn batch_plan_digest(&self) -> String {
+        PreparedReinstall::batch_plan_digest(self)
     }
 }
 
@@ -293,6 +294,13 @@ pub struct ReinstallTaskRunError {
     pub events: Vec<TaskProgressEvent>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReinstallTaskOrchestrationError {
+    pub events: Vec<TaskProgressEvent>,
+    pub commit_error: Option<ReinstallCommitError>,
+    pub committed: bool,
+}
+
 pub struct ReinstallTaskRunner<E: ReinstallTaskExecutor> {
     task_manager: Arc<TaskManager>,
     executor: Arc<E>,
@@ -370,28 +378,60 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
         let preview_request = request.preview_request();
-        self.run_task(task_id, &request, observer, || {
-            self.executor.prepare(preview_request)
-        })
+        let expected_plan_token = request.plan_token.clone();
+        self.run_task(
+            task_id,
+            &request,
+            observer,
+            || self.executor.prepare(preview_request),
+            |_| Ok(expected_plan_token),
+        )
+        .map_err(public_run_error)
     }
 
-    fn run_task<R, F, O>(
+    pub(crate) fn run_reinstall_task_for_orchestration_with_observer<
+        O: TaskProgressObserver + ?Sized,
+    >(
+        &self,
+        task_id: &str,
+        request: StartReinstallTaskRequest,
+        expected_batch_plan_digest: &str,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
+        let preview_request = request.preview_request();
+        let expected_batch_plan_digest = expected_batch_plan_digest.to_owned();
+        self.run_task(
+            task_id,
+            &request,
+            observer,
+            || self.executor.prepare(preview_request),
+            |prepared| orchestration_plan_token(prepared, &expected_batch_plan_digest),
+        )
+    }
+
+    fn run_task<R, F, P, O>(
         &self,
         task_id: &str,
         request: &R,
         observer: &O,
         prepare: F,
-    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError>
+        expected_plan_token: P,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError>
     where
         R: ReinstallTaskRequestContext,
         F: FnOnce() -> Result<E::Prepared, ReinstallTaskPrepareError>,
+        P: FnOnce(&E::Prepared) -> Result<String, ReinstallCommitError>,
         O: TaskProgressObserver + ?Sized,
     {
         if self.task_manager.start_task(task_id).is_err() {
             return if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 Ok(Vec::new())
             } else {
-                Err(ReinstallTaskRunError { events: Vec::new() })
+                Err(ReinstallTaskOrchestrationError {
+                    events: Vec::new(),
+                    commit_error: None,
+                    committed: false,
+                })
             };
         }
 
@@ -426,6 +466,19 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         if self.is_cancelled(task_id) {
             return Ok(events);
         }
+        let expected_plan_token = match expected_plan_token(&prepared) {
+            Ok(token) => token,
+            Err(error) => {
+                return self.fail_with_commit_error(
+                    task_id,
+                    request,
+                    audit_context,
+                    events,
+                    observer,
+                    error,
+                );
+            }
+        };
         observe_task_progress(
             &mut events,
             observer,
@@ -435,16 +488,13 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             if self.is_cancelled(task_id) {
                 return Ok(events);
             }
-            let failure = commit_failure(&error);
-            return self.fail_with_audit(
+            return self.fail_with_commit_error(
                 task_id,
                 request,
                 audit_context,
                 events,
                 observer,
-                failure.phase,
-                failure.rollback_result,
-                failure.emit_rollback,
+                error,
             );
         }
 
@@ -485,18 +535,18 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                     false,
                 );
             }
+            observe_task_progress(
+                &mut events,
+                observer,
+                running_event(task_id, COMMIT_PROCESSING_PHASE),
+            );
             if self.task_manager.block_task_cancellation(task_id).is_err() {
                 if self.is_cancelled(task_id) {
                     return Ok(events);
                 }
                 None
             } else {
-                observe_task_progress(
-                    &mut events,
-                    observer,
-                    running_event(task_id, COMMIT_PROCESSING_PHASE),
-                );
-                Some(self.executor.commit(prepared, request.plan_token()))
+                Some(self.executor.commit(prepared, &expected_plan_token))
             }
         };
 
@@ -513,30 +563,29 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             );
         };
         if let Err(error) = commit_result {
-            let failure = commit_failure(&error);
-            return self.fail_with_audit(
+            return self.fail_with_commit_error(
                 task_id,
                 request,
                 audit_context,
                 events,
                 observer,
-                failure.phase,
-                failure.rollback_result,
-                failure.emit_rollback,
+                error,
             );
         }
 
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                observe_task_progress(
-                    &mut events,
-                    observer,
-                    TaskProgressEvent::new(task.task_id, task.kind, task.status, COMPLETED_PHASE),
-                );
-                self.record_audit(task_id, request, &audit_context, "success", None, None);
+                let audit_ok =
+                    self.record_audit(task_id, request, &audit_context, "success", None, None);
+                let mut event =
+                    TaskProgressEvent::new(task.task_id, task.kind, task.status, COMPLETED_PHASE);
+                if !audit_ok {
+                    event.error = Some("install_audit_unavailable".to_owned());
+                }
+                observe_task_progress(&mut events, observer, event);
                 Ok(events)
             }
-            Err(_) => self.fail_with_audit(
+            Err(_) => self.fail_after_commit(
                 task_id,
                 request,
                 audit_context,
@@ -544,7 +593,6 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 observer,
                 "complete",
                 "not_attempted_post_commit",
-                false,
             ),
         }
     }
@@ -559,12 +607,93 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         task_id: &str,
         request: &R,
         context: ReinstallTaskAuditContext,
+        events: Vec<TaskProgressEvent>,
+        observer: &O,
+        phase: &str,
+        rollback_result: &str,
+        emit_rollback: bool,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
+        self.fail_with_audit_details(
+            task_id,
+            request,
+            context,
+            events,
+            observer,
+            phase,
+            rollback_result,
+            emit_rollback,
+            None,
+            false,
+        )
+    }
+
+    fn fail_with_commit_error<R: ReinstallTaskRequestContext, O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: &R,
+        context: ReinstallTaskAuditContext,
+        events: Vec<TaskProgressEvent>,
+        observer: &O,
+        error: ReinstallCommitError,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
+        let failure = commit_failure(&error);
+        let committed = matches!(
+            error,
+            ReinstallCommitError::PostCommit | ReinstallCommitError::CleanupPending
+        );
+        self.fail_with_audit_details(
+            task_id,
+            request,
+            context,
+            events,
+            observer,
+            failure.phase,
+            failure.rollback_result,
+            failure.emit_rollback,
+            Some(error),
+            committed,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fail_after_commit<R: ReinstallTaskRequestContext, O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: &R,
+        context: ReinstallTaskAuditContext,
+        events: Vec<TaskProgressEvent>,
+        observer: &O,
+        phase: &str,
+        rollback_result: &str,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
+        self.fail_with_audit_details(
+            task_id,
+            request,
+            context,
+            events,
+            observer,
+            phase,
+            rollback_result,
+            false,
+            None,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fail_with_audit_details<R: ReinstallTaskRequestContext, O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: &R,
+        context: ReinstallTaskAuditContext,
         mut events: Vec<TaskProgressEvent>,
         observer: &O,
         phase: &str,
         rollback_result: &str,
         emit_rollback: bool,
-    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
+        commit_error: Option<ReinstallCommitError>,
+        committed: bool,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
         match self.task_manager.fail_task(task_id) {
             Ok(_) => {}
             Err(TaskManagerError::TaskCannotTransition {
@@ -585,7 +714,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         }
         let error_code = format!("{FAILED_ERROR_PREFIX}:{phase}");
         observe_task_progress(&mut events, observer, failed_event(task_id, &error_code));
-        self.record_audit(
+        let _ = self.record_audit(
             task_id,
             request,
             &context,
@@ -593,7 +722,11 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             Some(&error_code),
             Some(rollback_result),
         );
-        Err(ReinstallTaskRunError { events })
+        Err(ReinstallTaskOrchestrationError {
+            events,
+            commit_error,
+            committed,
+        })
     }
 
     fn record_audit<R: ReinstallTaskRequestContext>(
@@ -604,7 +737,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         result: &str,
         error_code: Option<&str>,
         rollback_result: Option<&str>,
-    ) {
+    ) -> bool {
         let mut fields = BTreeMap::new();
         fields.insert("task_id".to_owned(), task_id.to_owned());
         fields.insert("game_id".to_owned(), request.game_id().as_str().to_owned());
@@ -644,16 +777,18 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(
-            AuditLogEvent {
-                timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
-                category: "install".to_owned(),
-                operation: "reinstall_mod".to_owned(),
-                result: result.to_owned(),
-                fields,
-            },
-            policy,
-        );
+        self.audit_log
+            .record_with_policy(
+                AuditLogEvent {
+                    timestamp_unix_millis: self.clock.now_unix_millis().unwrap_or_default(),
+                    category: "install".to_owned(),
+                    operation: "reinstall_mod".to_owned(),
+                    result: result.to_owned(),
+                    fields,
+                },
+                policy,
+            )
+            .is_ok()
     }
 }
 
@@ -674,10 +809,52 @@ impl<E: RetargetReinstallTaskExecutor> ReinstallTaskRunner<E> {
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskRunError> {
         let preview_request = request.preview_request();
-        self.run_task(task_id, &request, observer, || {
-            self.executor.prepare_retarget_reinstall(preview_request)
-        })
+        let expected_plan_token = request.plan_token.clone();
+        self.run_task(
+            task_id,
+            &request,
+            observer,
+            || self.executor.prepare_retarget_reinstall(preview_request),
+            |_| Ok(expected_plan_token),
+        )
+        .map_err(public_run_error)
     }
+
+    pub(crate) fn run_retarget_reinstall_task_for_orchestration_with_observer<
+        O: TaskProgressObserver + ?Sized,
+    >(
+        &self,
+        task_id: &str,
+        request: StartRetargetReinstallTaskRequest,
+        expected_batch_plan_digest: &str,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
+        let preview_request = request.preview_request();
+        let expected_batch_plan_digest = expected_batch_plan_digest.to_owned();
+        self.run_task(
+            task_id,
+            &request,
+            observer,
+            || self.executor.prepare_retarget_reinstall(preview_request),
+            |prepared| orchestration_plan_token(prepared, &expected_batch_plan_digest),
+        )
+    }
+}
+
+fn public_run_error(error: ReinstallTaskOrchestrationError) -> ReinstallTaskRunError {
+    ReinstallTaskRunError {
+        events: error.events,
+    }
+}
+
+fn orchestration_plan_token<P: ReinstallTaskPrepared>(
+    prepared: &P,
+    expected_batch_plan_digest: &str,
+) -> Result<String, ReinstallCommitError> {
+    if prepared.batch_plan_digest() != expected_batch_plan_digest {
+        return Err(ReinstallCommitError::PreviewStale);
+    }
+    Ok(prepared.plan_token().to_owned())
 }
 
 struct CommitFailure {

@@ -149,8 +149,16 @@ global blocker。执行仍逐项进入既有 `UninstallTaskRunner` 和同 game/p
 锁内再比较 exact revision 与不落明文的 Mod 级 manifest snapshot digest，后者覆盖 entry set、backup、
 installed summary 和 replacement binding，防止同 revision target switch 穿过 TOCTOU 窗口。
 `install.uninstall.processing` 只在取得写锁并通过 write admission 后发出，batch 父/子 task 此时原子进入
-取消屏障。真正重装、批量 uninstall/reinstall CLI contract、Tauri command 与前端工作流仍按 T13-04
-至 T13-07 的依赖开放。
+取消屏障。
+
+T13-04 已在 `hmm-app` 完成批量真正重装 facts provider 与 item executor，但尚未接入 runtime/CLI、
+Tauri 或前端。跨 revision item 从既有真正重装 preparation 投影 retained/replaced/added/stale、target、
+backup、binding 和 prerequisite 事实；封存的是当前 Mod 的稳定摘要，执行前重新 prepare 并比较摘要，
+实际 commit 仍消费当次完整 token 并走原有 durable transaction。非重叠前项改变 profile manifest 不会
+误判后项 stale；same-revision binding 只分派到既有 retarget runner。rollback succeeded、recovery
+required、post-commit/cleanup 和 Audit degradation 依据结构化单项结果分类，不解析展示文本。
+runtime 纯只读 retarget facts 装配和批量 uninstall/reinstall CLI contract 仍由 T13-05 完成；Tauri
+command 与前端工作流继续按 T13-06/T13-07 的依赖开放。
 
 CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
 `ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和

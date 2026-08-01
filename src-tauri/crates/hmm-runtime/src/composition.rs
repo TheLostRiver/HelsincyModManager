@@ -870,6 +870,14 @@ impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
     fn audit_context(&self) -> ReinstallTaskAuditContext {
         self.prepared.audit_context()
     }
+
+    fn plan_token(&self) -> &str {
+        self.prepared.plan_token()
+    }
+
+    fn batch_plan_digest(&self) -> String {
+        self.prepared.batch_plan_digest()
+    }
 }
 
 pub struct ConfiguredReinstallExecutor {

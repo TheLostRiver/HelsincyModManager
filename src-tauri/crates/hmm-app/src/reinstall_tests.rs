@@ -5,11 +5,12 @@ use crate::{
 };
 use anyhow::Result;
 use hmm_core::{
-    FileLayer, InstallConflict, InstallFileProvider, InstallManifest, InstallManifestEntry,
-    InstallManifestStatus, InstallPlan, InstallTargetPath, InstalledFileSummary, ModId,
-    ModRevisionId, PackageFileId, ProfileId, ReinstallRecoveryTransaction,
-    ReinstallRecoveryTransactionStatus, ReplacementBinding, ReplacementBindingId,
-    ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
+    BatchTargetWriteKind, FileLayer, InstallConflict, InstallFileProvider, InstallManifest,
+    InstallManifestEntry, InstallManifestStatus, InstallPlan, InstallTargetPath,
+    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId, ReinstallBatchItemInput,
+    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus, ReplacementBinding,
+    ReplacementBindingId, ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId,
+    ReplacementTargetKind,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -454,9 +455,7 @@ fn plan_token_changes_with_manifest_candidate_source_layer_target_and_backup_fac
     candidate_changed
         .catalog
         .set_revision(candidate_revision("v3", "mod-a"));
-    candidate_changed
-        .planner
-        .set_plan(candidate_plan("v3"));
+    candidate_changed.planner.set_plan(candidate_plan("v3"));
     let mut candidate_request = default_request();
     candidate_request.candidate_revision_id = ModRevisionId::new("v3");
     assert_ne!(
@@ -488,14 +487,16 @@ fn plan_token_changes_with_manifest_candidate_source_layer_target_and_backup_fac
     assert_ne!(base_token, ready_token(&backup_changed, default_request()));
 
     let manifest_binding_changed = Fixture::ready();
-    manifest_binding_changed.manifests.update_manifest(|manifest| {
-        manifest.replacement_bindings = vec![replacement_snapshot(
-            "binding-v1-changed",
-            "mhw:armor:guardian-alpha",
-            "pl121_0000",
-            None,
-        )];
-    });
+    manifest_binding_changed
+        .manifests
+        .update_manifest(|manifest| {
+            manifest.replacement_bindings = vec![replacement_snapshot(
+                "binding-v1-changed",
+                "mhw:armor:guardian-alpha",
+                "pl121_0000",
+                None,
+            )];
+        });
     assert_ne!(
         base_token,
         ready_token(&manifest_binding_changed, default_request())
@@ -515,6 +516,151 @@ fn plan_token_changes_with_manifest_candidate_source_layer_target_and_backup_fac
         base_token,
         ready_token(&candidate_binding_changed, default_request())
     );
+}
+
+#[test]
+fn batch_plan_digest_ignores_unrelated_manifest_entries_and_tracks_mod_facts() {
+    let base = Fixture::ready();
+    let base_digest = base.prepare(default_request()).batch_plan_digest();
+
+    let unrelated_manifest = Fixture::ready();
+    unrelated_manifest.manifests.update_manifest(|manifest| {
+        manifest.entries.push(manifest_entry(
+            "content/mod-b.bin",
+            "mod-b",
+            "mod-b-provider",
+            None,
+            b"unrelated",
+        ));
+    });
+    assert_eq!(
+        base_digest,
+        unrelated_manifest
+            .prepare(default_request())
+            .batch_plan_digest(),
+        "another Mod's manifest entry is an expected between-item batch change"
+    );
+
+    let source_changed = Fixture::ready();
+    source_changed
+        .source
+        .set("added-v2", b"candidate-added-changed");
+    assert_ne!(
+        base_digest,
+        source_changed
+            .prepare(default_request())
+            .batch_plan_digest()
+    );
+
+    let target_changed = Fixture::ready();
+    target_changed
+        .game
+        .set_fixture("content/added-v2.bin", b"unmanaged-pre-state");
+    assert_ne!(
+        base_digest,
+        target_changed
+            .prepare(default_request())
+            .batch_plan_digest()
+    );
+
+    let backup_changed = Fixture::ready();
+    backup_changed
+        .backups
+        .set_fixture("original-overwritten", b"different-original-backup");
+    assert_ne!(
+        base_digest,
+        backup_changed
+            .prepare(default_request())
+            .batch_plan_digest()
+    );
+
+    let binding_changed = Fixture::ready();
+    binding_changed.planner.set_plan(
+        candidate_plan("v2")
+            .with_replacement_bindings(vec![replacement_snapshot(
+                "binding-v2-changed",
+                "mhw:armor:alatreon-alpha",
+                "pl127_0000",
+                Some("v2"),
+            )])
+            .expect("changed candidate binding"),
+    );
+    assert_ne!(
+        base_digest,
+        binding_changed
+            .prepare(default_request())
+            .batch_plan_digest()
+    );
+
+    let prerequisite_changed = Fixture::ready();
+    prerequisite_changed
+        .prerequisites
+        .set_decision(warning_prerequisite_decision());
+    assert_ne!(
+        base_digest,
+        prerequisite_changed
+            .prepare(default_request())
+            .batch_plan_digest()
+    );
+}
+
+#[test]
+fn same_revision_retarget_batch_facts_match_single_item_preparation() {
+    let fixture = Fixture::ready();
+    let binding = replacement_snapshot(
+        "binding-v1",
+        "mhw:armor:fatalis-alpha",
+        "pl129_0000",
+        Some("v1"),
+    );
+    let mut request = default_request();
+    request.candidate_revision_id = ModRevisionId::new("v1");
+    let prepared = match fixture
+        .service
+        .prepare_replacement_target_switch(
+            request,
+            candidate_plan_with_binding("v1", binding.clone()),
+        )
+        .expect("target switch preparation")
+    {
+        ReinstallPreparation::Ready(prepared) => *prepared,
+        ReinstallPreparation::Blocked(preview) => {
+            panic!("unexpected blocked target switch: {preview:?}")
+        }
+    };
+    let facts = prepared.batch_item_facts(&ReinstallBatchItemInput {
+        mod_id: ModId::new("mod-a"),
+        installed_revision_id: ModRevisionId::new("v1"),
+        candidate_revision_id: ModRevisionId::new("v1"),
+        layer: FileLayer::new("base", 0),
+        replacement_binding_snapshot: Some(binding),
+    });
+
+    assert_eq!(facts.installed_revision_id, Some(ModRevisionId::new("v1")));
+    assert_eq!(facts.source_revision_id, Some(ModRevisionId::new("v1")));
+    assert_eq!(facts.action_summary.actions, 5);
+    assert_eq!(facts.action_summary.retained, 1);
+    assert_eq!(facts.action_summary.replaced, 2);
+    assert_eq!(facts.action_summary.added, 1);
+    assert_eq!(facts.action_summary.stale, 1);
+    assert!(facts.blocking_reasons.is_empty());
+
+    let claims = facts
+        .target_claims
+        .iter()
+        .map(|claim| (claim.target_path.as_str(), claim.kind))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        claims,
+        BTreeMap::from([
+            ("content/added-v2.bin", BatchTargetWriteKind::Install),
+            ("content/overwritten.bin", BatchTargetWriteKind::Install),
+            ("content/replaced.bin", BatchTargetWriteKind::Install),
+            ("content/retained.bin", BatchTargetWriteKind::Install),
+            ("content/stale.bin", BatchTargetWriteKind::Remove),
+        ])
+    );
+    fixture.assert_zero_mutations();
 }
 
 fn assert_blocked(preview: &ReinstallPlanPreview, reason: ReinstallBlockingReason) {
@@ -774,8 +920,7 @@ fn replacement_snapshot(
             ReplacementBindingId::parse(binding_id).expect("binding id"),
             ModId::new("mod-a"),
             ProfileId::new("default"),
-            ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
-                .expect("source id"),
+            ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
             ReplacementTargetId::parse(target_id).expect("target id"),
             42,
         )

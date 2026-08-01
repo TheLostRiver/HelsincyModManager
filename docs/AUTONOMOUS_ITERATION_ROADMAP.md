@@ -310,16 +310,20 @@ admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定
 
 ### T13-04：批量真正重装
 
-状态：`ready`，T13-03 app/core 工作包已完成。
+状态：`implemented`。app/core 工作包已在 Slice C 分支完成，等待与 T13-05 的 runtime/CLI 剩余
+contract 共同进入 Slice C PR；尚未开放 runtime/CLI、Tauri 或前端入口。
 
 范围：
 
 - 每项复用真正重装 retained/replaced/added/stale 和 durable transaction。
 - revision/binding lineage、plan token 和候选状态在写锁内重验。
 - 支持 Armor target switch，但不增加独立 retarget 写入旁路。
+- item seal 使用 Mod 级稳定摘要，执行前重新 prepare；commit 继续使用当次完整 token 做锁内全事实重验。
+- 结构化区分 rollback succeeded、recovery required 和 committed evidence degraded，不从错误文本猜测。
 
 完成定义：多 Mod mixed result、重启恢复、同 revision target switch、stale plan、失败收敛和幂等 retry
-均有测试。
+由 app 层聚焦测试与既有 durable reinstall fault matrix 覆盖；Slice C 对外完成仍需 T13-05 的
+runtime 纯只读 retarget facts 装配、Sandbox CLI contract 和跨进程 E2E。
 
 提交边界：batch reinstall plan 一个提交，runner/recovery 一个提交，retarget regression 一个提交。
 

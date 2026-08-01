@@ -21,6 +21,7 @@ use thiserror::Error;
 
 const INSTALL_ITEM_COMMIT_PHASE: &str = "install.commit.processing";
 const UNINSTALL_ITEM_COMMIT_PHASE: &str = "install.uninstall.processing";
+const REINSTALL_ITEM_COMMIT_PHASE: &str = "install.reinstall.commit.processing";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchInstallItemRequest {
@@ -1429,7 +1430,7 @@ impl TaskProgressObserver for ParentTaskObserver {
         }
         if matches!(
             event.phase.as_str(),
-            INSTALL_ITEM_COMMIT_PHASE | UNINSTALL_ITEM_COMMIT_PHASE
+            INSTALL_ITEM_COMMIT_PHASE | UNINSTALL_ITEM_COMMIT_PHASE | REINSTALL_ITEM_COMMIT_PHASE
         ) && self
             .task_manager
             .block_tasks_cancellation(&[&self.parent_task_id, &self.child_task_id])

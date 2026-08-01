@@ -1,6 +1,7 @@
 mod app_settings;
 mod batch;
 mod batch_install;
+mod batch_reinstall;
 mod batch_uninstall;
 mod category;
 mod external_import;
@@ -50,6 +51,10 @@ pub use batch_install::{
     BatchInstallRetryError, BatchInstallRetryResult, BatchInstallRetryService,
     BatchInstallRunError, BatchInstallRunResult, BatchInstallTaskRunner,
     InstallTaskBatchItemExecutor,
+};
+pub use batch_reinstall::{
+    BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest, BatchReinstallPlanFactsProvider,
+    ReinstallPreviewBatchItemFactsReader, ReinstallTaskBatchItemExecutor,
 };
 pub use batch_uninstall::{BatchUninstallPlanFactsProvider, UninstallTaskBatchItemExecutor};
 pub use category::{CategoryService, CategoryWithCount};

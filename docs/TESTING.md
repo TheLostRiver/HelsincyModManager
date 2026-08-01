@@ -613,8 +613,9 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只交付
 设计与规划契约；T13-01/T13-02 已交付 `hmm-core` 批量计划模型、`hmm-ports` 事实/封存端口、
 `hmm-app` service、批量 runner、journal 和 retry；T13-03 已交付 app 层批量卸载 facts/executor 与
-锁内 manifest snapshot revalidation；T13-05 当前只接入 Sandbox install batch CLI。批量真正重装、
-uninstall/reinstall CLI、Tauri command 和前端工作流仍未实现。不得把下面尚未实现的测试名称、
+锁内 manifest snapshot revalidation；T13-04 已交付 app 层批量真正重装 facts/executor、Mod 级稳定
+摘要与结构化 recovery/committed 分类；T13-05 当前只接入 Sandbox install batch CLI。runtime 纯只读
+retarget facts、uninstall/reinstall CLI、Tauri command 和前端工作流仍未实现。不得把下面尚未实现的
 command 或场景写成已经通过。
 
 | Task | 实现后必须覆盖的自动化 |
@@ -655,6 +656,23 @@ snapshot digest、同 revision replacement binding 漂移、target/backup/manife
 未知 sentinel、玩家修改文件、partial result、retry/recovery 分类、Audit degradation 和 commit cancellation
 barrier；不读取真实游戏、Steam、存档或第三方 Mod。runtime/CLI batch uninstall E2E 属于后续 T13-05，
 不能由上述 app 测试替代。
+
+T13-04 app 层批量真正重装聚焦入口：
+
+```powershell
+cargo test -p hmm-app reinstall --lib --no-fail-fast
+cargo test -p hmm-app reinstall_task --lib --no-fail-fast
+cargo test -p hmm-app batch_reinstall --lib --no-fail-fast
+cargo test -p hmm-app batch_install --lib --no-fail-fast
+cargo check -p hmm-runtime
+```
+
+这些测试使用 fake/temp/人工 manifest、source、target、backup 和 binding，覆盖真实单项 preparation 的
+retained/replaced/added/stale 投影、无关 Mod manifest 变化不误判 stale、candidate/source/target/
+original backup/binding/prerequisite 漂移、same-revision retarget 分派、完整 token 的锁内复用、mixed
+result、retry selection、rollback/recovery 分类、commit 取消屏障和 commit 后证据降级。既有 durable
+reinstall fault matrix 继续覆盖 manifest failure 回滚旧 revision、rollback/repair required 与重启恢复。
+runtime/CLI batch reinstall E2E 仍属于 T13-05，不能由这些 app 测试替代。
 
 这些测试必须覆盖 `plan -> apply -> result/retry` 的跨进程 journal 路径、Production 写入拒绝、
 脱敏 projection、`--commit --yes --preview-token` 门禁、partial exit code `5`，以及 stale

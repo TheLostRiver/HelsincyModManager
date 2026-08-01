@@ -4,7 +4,7 @@ use hmm_core::{
     BatchResourceLimits, BatchTargetClaim, BatchTargetWriteKind, FileLayer, GameId,
     InstallBatchItemInput, InstallFileProvider, InstallManifest, InstallPlan,
     InstallRecoveryRecord, InstallRecoveryRecordStatus, InstallTargetPath, ModId, ModRevisionId,
-    PackageFileId, ProfileId, SealedBatch,
+    PackageFileId, ProfileId, ReinstallBatchItemInput, SealedBatch,
 };
 use hmm_ports::{
     BatchAttemptAdmission, BatchPlanFactsProvider, BatchRetryAttemptCreation,
@@ -873,6 +873,34 @@ fn uninstall_batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
         for claim in &mut plan_item.target_claims {
             claim.kind = BatchTargetWriteKind::Remove;
         }
+    }
+    (batch, attempt, token)
+}
+
+fn reinstall_batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
+    let (mut batch, attempt, token) = batch();
+    batch.request.operation = BatchOperation::Reinstall;
+    batch.plan.operation = BatchOperation::Reinstall;
+    for (request_input, plan_item) in batch
+        .request
+        .items
+        .iter_mut()
+        .zip(batch.plan.items.iter_mut())
+    {
+        let mod_id = request_input.mod_id().clone();
+        let installed_revision_id = ModRevisionId::new(format!("{}-v1", mod_id.as_str()));
+        let candidate_revision_id = ModRevisionId::new(format!("{}-v2", mod_id.as_str()));
+        let input = BatchItemInput::Reinstall(ReinstallBatchItemInput {
+            mod_id,
+            installed_revision_id: installed_revision_id.clone(),
+            candidate_revision_id: candidate_revision_id.clone(),
+            layer: FileLayer::new("default", 1),
+            replacement_binding_snapshot: None,
+        });
+        *request_input = input.clone();
+        plan_item.input_snapshot = input;
+        plan_item.source_revision_id = Some(candidate_revision_id);
+        plan_item.installed_revision_id = Some(installed_revision_id);
     }
     (batch, attempt, token)
 }
@@ -2282,6 +2310,61 @@ fn explicit_uninstall_runner_and_retry_route_the_same_control_plane() {
     .retry(&batch.batch_id, 0)
     .expect("retry");
     assert_eq!(retry.attempt_number, 1);
+}
+
+#[test]
+fn explicit_reinstall_runner_preserves_mixed_results_and_retries_only_failed_item() {
+    let (mut batch, attempt, token) = reinstall_batch();
+    batch.request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    batch.plan.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let runner = BatchInstallTaskRunner::for_operation(
+        BatchOperation::Reinstall,
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        Arc::new(FakeExecutor {
+            executions: Mutex::new(vec![
+                BatchInstallItemExecution::Succeeded {
+                    evidence_health_degraded: false,
+                },
+                BatchInstallItemExecution::Failed {
+                    reason_code: "reinstall_rollback_succeeded".to_owned(),
+                    retryable: true,
+                    evidence_health_degraded: false,
+                },
+            ]),
+        }),
+        Arc::new(StaticFacts(facts_from_batch(&batch))),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+    assert_eq!(result.status, BatchAttemptStatus::CompletedWithErrors);
+    assert_eq!(result.summary.succeeded_count, 1);
+    assert_eq!(result.summary.failed_count, 1);
+
+    let retry = BatchInstallRetryService::for_operation(
+        BatchOperation::Reinstall,
+        repository.clone(),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    )
+    .retry(&batch.batch_id, 0)
+    .expect("retry");
+    let retry_attempt = repository
+        .load_attempt(&batch.batch_id, retry.attempt_number)
+        .expect("retry attempt")
+        .expect("retry attempt exists");
+    assert_eq!(retry_attempt.item_ids, vec![batch.items[1].item_id.clone()]);
+    assert!(!retry_attempt.item_ids.contains(&batch.items[0].item_id));
 }
 
 #[test]
