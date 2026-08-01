@@ -635,11 +635,16 @@ cargo test -p hmm-cli --test cli_contract batch -- --nocapture
 cargo test -p hmm-cli --lib
 cargo test -p hmm-runtime
 cargo test -p hmm-app --lib
+cargo test -p hmm-infra batch_lifecycle_repository --lib
 ```
 
 这些测试必须覆盖 `plan -> apply -> result/retry` 的跨进程 journal 路径、Production 写入拒绝、
 脱敏 projection、`--commit --yes --preview-token` 门禁、partial exit code `5`，以及 stale
-preview 在构造写 runtime 前失败且不创建 `hmm.db` 的零副作用行为。
+preview 在构造写 runtime 前失败且不创建 `hmm.db` 的零副作用行为。还必须覆盖两个独立 SQLite
+连接竞争同一 game/profile admission 时最多一个 sealed attempt 原子进入 queued；同 scope sibling
+active attempt 不阻断指定 batch/attempt 的只读 result；retry 创建新 attempt 后若最终 admission
+竞争失败，只安全回收仍 sealed、没有 item result 且 verifier 匹配的未执行 attempt，无法证明时
+fail closed。该测试只证明 Sandbox batch journal 的 admission，不代表 Production 通用写 admission。
 
 所有实现切片还必须覆盖以下横向不变量：
 

@@ -474,8 +474,13 @@ impl SandboxBatchInstallAutomation {
         attempt_number: u32,
     ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
-        let (repository, batch) =
-            ensure_batch_reconciled(environment, &batch_id, "batch_result_unavailable")?;
+        let repository =
+            open_batch_repository_read_only(environment, false, "batch_result_unavailable")?
+                .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+        let batch = repository
+            .load_batch(&batch_id)
+            .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
+            .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
         let attempt = repository
             .load_attempt(&batch_id, attempt_number)
             .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
@@ -623,9 +628,9 @@ fn open_batch_repository_read_only(
     }
     let connection = open_database_read_only(&database_path)
         .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
-    Ok(Some(Arc::new(SqliteBatchLifecycleRepository::new(Arc::new(
-        Mutex::new(connection),
-    )))))
+    Ok(Some(Arc::new(SqliteBatchLifecycleRepository::new(
+        Arc::new(Mutex::new(connection)),
+    ))))
 }
 
 fn ensure_scope_reconciled(
@@ -702,6 +707,9 @@ fn map_run_error(error: BatchInstallRunError) -> SandboxBatchAutomationError {
         BatchInstallRunError::PlanBlocked => "batch_plan_blocked",
         BatchInstallRunError::OperationMismatch => "batch_operation_mismatch",
         BatchInstallRunError::AdmissionRejected => "batch_admission_rejected",
+        BatchInstallRunError::ScopeReconciliationRequired => {
+            "batch_attempt_reconciliation_required"
+        }
         BatchInstallRunError::JournalUnavailable => "batch_journal_unavailable",
         BatchInstallRunError::TaskUnavailable => "batch_task_unavailable",
     };

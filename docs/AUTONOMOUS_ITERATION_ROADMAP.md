@@ -285,8 +285,9 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败、journal
 故障、exact revision fail-closed 和重试均有 temp/fake 测试；外部 sentinel 不变。当前实现已完成
 核心代码、聚焦测试与完整 `verify.ps1`，待全 diff review、CI 和 PR review。启动级遗留
-非终态 `queued/running/stopping` attempt 已由公开入口 fail closed 阻断；进程重启不得自动继续
-破坏性写入，后续如要提供 reconciliation 必须单独设计和验收。
+非终态 `queued/running/stopping` attempt 已由写入口 fail closed 阻断；Sandbox batch 最终
+admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定 attempt 的只读 result 仍保持
+诊断可用。进程重启不得自动继续破坏性写入，后续如要提供 reconciliation 必须单独设计和验收。
 
 提交边界：runner/state machine 一个提交，audit/result repository 一个提交，failure/cancel tests 一个提交。
 
@@ -331,6 +332,8 @@ contract 在 Slice C 依赖 T13-03/T13-04。
   exit code `5` partial success。
 - `plan` 返回脱敏 projection 与短期 opaque `previewToken`；apply 先做只读 stale 验证，再初始化
   journal 并在 seal 时重验。
+- apply/retry 的最终 scope admission 由 SQLite 短写事务原子完成；result 只读指定 attempt，retry
+  admission 竞争失败时安全回收未执行的 sealed retry attempt。
 - 首版仅 Sandbox；Production 继续拒绝。
 
 完成定义：Slice B 先交付批量安装的 conflict、partial success、stale preview、retry 和敏感

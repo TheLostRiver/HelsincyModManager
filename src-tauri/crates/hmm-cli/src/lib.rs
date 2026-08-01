@@ -4,10 +4,13 @@ mod task_events;
 
 use cancellation::{CliCancellationCoordinator, NoopCliTaskProgressObserver};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use hmm_core::{
+    BatchExecutionPolicy, BatchItemInput, BatchPlanRequest, BatchPlanStatus, FileLayer, GameId,
+    ModId, ModRevisionId, ProfileId, BATCH_PLAN_SCHEMA_VERSION,
+};
 use hmm_runtime::{
-    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, SandboxBatchAutomationError,
-    SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation,
-    BackupBackgroundStatusSnapshot, BackupListSnapshot, DiagnosticsSnapshot,
+    BackupBackgroundStatusSnapshot, BackupListSnapshot,
+    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, DiagnosticsSnapshot,
     GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot, GameValidationSnapshot,
     InstallPlanSnapshot, InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot,
     InstallStatusSnapshot, LifecycleTaskOutcome, ReadOnlyBackupAutomation,
@@ -15,12 +18,9 @@ use hmm_runtime::{
     ReadOnlyDiagnosticsAutomationError, ReadOnlyGameAutomation, ReadOnlyGameAutomationError,
     ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError, ReadOnlyInstallRecoveryAction,
     ReinstallPlanSnapshot, RuntimeEnvironment, RuntimeEnvironmentError, RuntimeEnvironmentKind,
+    SandboxBatchAutomationError, SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation,
     SandboxLifecycleAutomation, SandboxLifecycleAutomationError, TaskProgressEvent,
     TaskProgressObserver, UninstallPlanSnapshot,
-};
-use hmm_core::{
-    BatchExecutionPolicy, BatchItemInput, BatchPlanRequest, BatchPlanStatus, FileLayer, GameId,
-    ModId, ModRevisionId, ProfileId, BATCH_PLAN_SCHEMA_VERSION,
 };
 use serde::Serialize;
 use std::ffi::{OsStr, OsString};
@@ -260,7 +260,7 @@ struct InstallBatchApplyOptions {
     preview_token: Option<String>,
 
     #[command(flatten)]
-    lifecycle: BatchCommitOptions,
+    commit: BatchCommitOptions,
 }
 
 #[derive(Debug, Args)]
@@ -281,7 +281,7 @@ struct InstallBatchRetryOptions {
     attempt: u32,
 
     #[command(flatten)]
-    lifecycle: BatchCommitOptions,
+    commit: BatchCommitOptions,
 }
 
 #[derive(Debug, Args)]
@@ -879,13 +879,7 @@ fn run_install_command<W: Write + Send, E: Write>(
             return run_install_apply(format, &environment, options, stdout, stderr);
         }
         InstallCommand::Batch { command } => {
-            return run_install_batch_command(
-                format,
-                &environment,
-                command,
-                stdout,
-                stderr,
-            );
+            return run_install_batch_command(format, &environment, command, stdout, stderr);
         }
         InstallCommand::Uninstall(options) => {
             return run_install_uninstall(format, &environment, options, stdout, stderr);
@@ -995,7 +989,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
             }
         }
         InstallBatchCommand::Apply(options) => {
-            if !options.lifecycle.commit || !options.lifecycle.yes {
+            if !options.commit.commit || !options.commit.yes {
                 return write_batch_error(
                     format,
                     INSTALL_BATCH_APPLY_COMMAND,
@@ -1027,13 +1021,13 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
             };
             match SandboxBatchInstallAutomation::apply(environment, request, preview_token) {
                 Ok((_sealed, run)) => {
-                    let result = BatchApplyResult {
-                        batch_id: run.batch_id.as_str().to_owned(),
-                        attempt: run.attempt_number,
-                        task_id: run.task_id,
-                        status: run.status,
-                        summary: project_batch_summary(&run.summary),
-                    };
+                    let result = project_batch_run(
+                        &run.batch_id,
+                        run.attempt_number,
+                        run.task_id,
+                        run.status,
+                        &run.summary,
+                    );
                     write_batch_run_result(
                         format,
                         INSTALL_BATCH_APPLY_COMMAND,
@@ -1074,7 +1068,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
             }
         }
         InstallBatchCommand::Retry(options) => {
-            if !options.lifecycle.commit || !options.lifecycle.yes {
+            if !options.commit.commit || !options.commit.yes {
                 return write_batch_error(
                     format,
                     INSTALL_BATCH_RETRY_COMMAND,
@@ -1089,13 +1083,13 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                 options.attempt,
             ) {
                 Ok((_retry, run)) => {
-                    let result = BatchApplyResult {
-                        batch_id: run.batch_id.as_str().to_owned(),
-                        attempt: run.attempt_number,
-                        task_id: run.task_id,
-                        status: run.status,
-                        summary: project_batch_summary(&run.summary),
-                    };
+                    let result = project_batch_run(
+                        &run.batch_id,
+                        run.attempt_number,
+                        run.task_id,
+                        run.status,
+                        &run.summary,
+                    );
                     write_batch_run_result(
                         format,
                         INSTALL_BATCH_RETRY_COMMAND,
@@ -1194,9 +1188,23 @@ fn project_batch_attempt(snapshot: RuntimeBatchAttemptSnapshot) -> BatchAttemptR
     }
 }
 
-fn project_batch_summary(
+fn project_batch_run(
+    batch_id: &hmm_core::BatchId,
+    attempt: u32,
+    task_id: String,
+    status: hmm_core::BatchAttemptStatus,
     summary: &hmm_core::BatchResultSummary,
-) -> BatchResultSummarySnapshot {
+) -> BatchApplyResult {
+    BatchApplyResult {
+        batch_id: batch_id.as_str().to_owned(),
+        attempt,
+        task_id,
+        status,
+        summary: project_batch_summary(summary),
+    }
+}
+
+fn project_batch_summary(summary: &hmm_core::BatchResultSummary) -> BatchResultSummarySnapshot {
     BatchResultSummarySnapshot {
         item_count: summary.item_count,
         succeeded_count: summary.succeeded_count,
@@ -1263,22 +1271,17 @@ fn batch_plan_request(
         .items
         .iter()
         .map(|item| {
-            let (mod_id, revision_id) = item
-                .split_once(':')
-                .ok_or("batch_item_invalid")?;
-            let mod_id =
-                parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
-            let revision_id =
-                parse_batch_id_component(revision_id, "batch_item_invalid")
-                    .map(ModRevisionId::new)?;
-            Ok(BatchItemInput::Install(
-                hmm_core::InstallBatchItemInput {
-                    mod_id,
-                    revision_id,
-                    layer: FileLayer::new("base", 0),
-                    replacement_binding_snapshot: None,
-                },
-            ))
+            let (mod_id, revision_id) = item.split_once(':').ok_or("batch_item_invalid")?;
+            let mod_id = parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
+            let revision_id = parse_batch_id_component(revision_id, "batch_item_invalid")
+                .map(ModRevisionId::new)?;
+            Ok(BatchItemInput::Install(hmm_core::InstallBatchItemInput {
+                mod_id,
+                revision_id,
+                // Batch CLI fixtures intentionally expose only the fixed Sandbox base layer.
+                layer: FileLayer::new("base", 0),
+                replacement_binding_snapshot: None,
+            }))
         })
         .collect::<Result<Vec<_>, &'static str>>()?;
     Ok(BatchPlanRequest {
@@ -2244,14 +2247,12 @@ fn write_batch_automation_error<W: Write, E: Write>(
 ) -> i32 {
     let code = error.code();
     let (category, exit_code) = match error.class() {
-        SandboxBatchAutomationErrorClass::DataSafetyRisk => (
-            CliErrorCategory::DataSafetyRisk,
-            CliExitCode::Rejected,
-        ),
-        SandboxBatchAutomationErrorClass::UserActionRequired => (
-            CliErrorCategory::UserActionRequired,
-            CliExitCode::Rejected,
-        ),
+        SandboxBatchAutomationErrorClass::DataSafetyRisk => {
+            (CliErrorCategory::DataSafetyRisk, CliExitCode::Rejected)
+        }
+        SandboxBatchAutomationErrorClass::UserActionRequired => {
+            (CliErrorCategory::UserActionRequired, CliExitCode::Rejected)
+        }
         SandboxBatchAutomationErrorClass::Recoverable => (
             CliErrorCategory::Recoverable,
             CliExitCode::RuntimeUnavailable,
@@ -2408,7 +2409,11 @@ fn write_human_install_result<W: Write>(
             writeln!(writer, "attempt: {}", snapshot.attempt_number)?;
             write_human_value(writer, "status", &snapshot.status)?;
             write_human_value(writer, "task", &snapshot.task_id)?;
-            write_human_value(writer, "evidence degraded", &snapshot.evidence_health_degraded)?;
+            write_human_value(
+                writer,
+                "evidence degraded",
+                &snapshot.evidence_health_degraded,
+            )?;
             write_human_batch_summary(writer, &snapshot.summary)
         }
         InstallCommandResult::Uninstall(snapshot) => {
@@ -2554,8 +2559,7 @@ fn write_batch_run_result<W: Write, E: Write>(
             let event = batch_terminal_event(command, &result);
             let mut envelope = CommandEnvelope::success(command, result.clone());
             envelope.task_id = Some(result.task_id.clone());
-            write_json_line(stdout, &event)
-                .and_then(|_| write_json_line(stdout, &envelope))
+            write_json_line(stdout, &event).and_then(|_| write_json_line(stdout, &envelope))
         }
     };
     if write_result.is_ok() {
@@ -2566,10 +2570,7 @@ fn write_batch_run_result<W: Write, E: Write>(
     }
 }
 
-fn batch_terminal_event(
-    command: &'static str,
-    result: &BatchApplyResult,
-) -> TaskEventEnvelope {
+fn batch_terminal_event(command: &'static str, result: &BatchApplyResult) -> TaskEventEnvelope {
     let (event_type, status, phase, error_code) = match result.status {
         hmm_core::BatchAttemptStatus::Completed => (
             TaskEventType::Completed,
@@ -2633,13 +2634,12 @@ fn batch_terminal_event(
     );
     event.current = u64::try_from(result.summary.item_count).ok();
     event.total = event.current;
-    event.result = serde_json::to_value(serde_json::json!({
+    event.result = Some(serde_json::json!({
         "batchId": result.batch_id,
         "attempt": result.attempt,
         "status": result.status,
         "summary": result.summary,
-    }))
-    .ok();
+    }));
     if let Some(error_code) = error_code {
         event.error = Some(TaskEventError::new(error_code));
     }

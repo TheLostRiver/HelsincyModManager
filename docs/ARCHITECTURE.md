@@ -134,8 +134,13 @@ CLI-4 Slice B 在 Sandbox 增加 `hmm install batch plan|apply|result|retry`。�
 `HmmRuntime` 的只读 facts service 验证 preview，验证通过后才创建 SQLite batch journal，并在
 `seal` 阶段再次读取 facts、验证 token 后持久化 sealed batch。批量 runner 复用
 `InstallPlan`、backup、manifest、rollback/recovery、Task/Audit Log 和 game/profile 写锁；
-Production 在 CLI policy 和 runtime composition 两层继续 fail closed。批量卸载、真正重装、
-Tauri command 与前端工作流仍按 T13-03 至 T13-07 的依赖开放。
+start/retry 的最终 admission 在 SQLite `BEGIN IMMEDIATE` 短事务内验证 batch/attempt/token，检查同一
+game/profile 的 `queued/running/stopping` attempt，并原子完成 sealed -> queued。两个独立进程因此
+最多一个能取得同 scope 的 batch admission；retry 在竞争失败时只回收仍 sealed、没有 item result
+且 verifier 匹配的未执行新 attempt。`result` 不执行 scope reconciliation，只读取调用方明确指定的
+batch/attempt，使遗留 active attempt 的诊断结果保持可读。该原子性只覆盖 Sandbox batch journal，
+不等于 Production 通用写 admission；Production 在 CLI policy 和 runtime composition 两层继续
+fail closed。批量卸载、真正重装、Tauri command 与前端工作流仍按 T13-03 至 T13-07 的依赖开放。
 
 CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
 `ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和
