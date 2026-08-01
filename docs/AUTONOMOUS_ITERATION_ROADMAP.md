@@ -123,10 +123,10 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01 已落地，T13-02 在独立分支中
-完成核心 app/infra 实现与聚焦验证，尚未合并。内部 task 按依赖顺序提交，但不为每个 task
-重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，但不能
-跳过 required CI terminal success。
+QG-01、T13-00、Slice A 和 Slice B 已完成。PR #222 交付 T13-05 的 install batch 子集；完整
+T13-05 仍需 Slice C 的批量卸载/真正重装 contract。内部 task 按依赖顺序提交，但不为每个 task
+重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，且不能跳过
+required CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
@@ -139,8 +139,8 @@ QG-01、T13-00 和 Slice A 已完成。Slice B 当前正在交付；T13-01 已�
 | Slice C | T13-03、T13-04、T13-05 的其余子集 | 批量卸载和真正重装通过 manifest/recovery 事实运行，CLI 覆盖 cancel、partial result 和 retry。 |
 | Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
 
-Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01 已完成。Slice B 必须从已合并的 Slice A 启动，不得把
-未合并切片分支作为下一切片的隐式基线。
+Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI 均已完成。Slice C
+必须从合并后的 Slice B 主干启动，不得把未合并切片分支作为隐式基线。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -268,8 +268,8 @@ reinstall preview 与锁内重验、CLI/Tauri/frontend 投影和脱敏测试；�
 
 ### T13-02：批量安装
 
-状态：`in_progress`，T13-01 已完成；当前分支已通过完整本地验证，正在进行最终全 diff 自审与
-PR candidate 整理。
+状态：`completed`，T13-01 已完成；批量安装 runner、SQLite journal、retry、failure/cancel 证据、
+入口 fail-closed 规则与 T13-05 install CLI 公开契约均已落地。
 
 范围：
 
@@ -284,15 +284,16 @@ PR candidate 整理。
 
 完成定义：成功、首项失败、中途失败、取消、Audit writer 失败、manifest save 失败、journal
 故障、exact revision fail-closed 和重试均有 temp/fake 测试；外部 sentinel 不变。当前实现已完成
-核心代码、聚焦测试与完整 `verify.ps1`，待全 diff review、CI 和 PR review。启动级遗留
-非终态 `queued/running/stopping` attempt 收敛必须在 T13-05 install CLI 子集公开 start/query
-前完成或由公开入口 fail closed 阻断；进程重启不得自动继续破坏性写入。
+核心代码、聚焦测试、完整 `verify.ps1`、全 diff review 和远端门禁。启动级遗留
+非终态 `queued/running/stopping` attempt 已由写入口 fail closed 阻断；Sandbox batch 最终
+admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定 attempt 的只读 result 仍保持
+诊断可用。进程重启不得自动继续破坏性写入，后续如要提供 reconciliation 必须单独设计和验收。
 
 提交边界：runner/state machine 一个提交，audit/result repository 一个提交，failure/cancel tests 一个提交。
 
 ### T13-03：批量卸载
 
-状态：`blocked`，依赖 T13-02。
+状态：`ready`，T13-02 与 Slice B 已完成；本轮 PR 收尾后不自动开工。
 
 范围：
 
@@ -321,17 +322,22 @@ PR candidate 整理。
 
 ### T13-05：CLI 批量契约
 
-状态：`blocked`。install contract 子集在 Slice B 依赖 T13-02，其余 uninstall/reinstall contract
-在 Slice C 依赖 T13-04。
+状态：`in_progress`。install batch contract 子集已在 Slice B 接入；其余 uninstall/reinstall
+contract 在 Slice C 依赖 T13-03/T13-04。
 
 范围：
 
 - CLI 适配领域 batch service，不在 shell 中循环单项命令。
-- JSON/JSONL 包含 batch task id、item status、唯一 terminal event 和 exit code `5` partial success。
+- `hmm install batch plan|apply|result|retry` 使用 JSON/JSONL，包含 batch/task/item 状态和
+  exit code `5` partial success。
+- `plan` 返回脱敏 projection 与短期 opaque `previewToken`；apply 先做只读 stale 验证，再初始化
+  journal 并在 seal 时重验。
+- apply/retry 的最终 scope admission 由 SQLite 短写事务原子完成；result 只读指定 attempt，retry
+  admission 竞争失败时安全回收未执行的 sealed retry attempt。
 - 首版仅 Sandbox；Production 继续拒绝。
 
-完成定义：Slice B 先交付批量安装的 conflict、partial success、cancel、retry 和敏感 canary
-contract tests；Slice C 再补齐批量卸载与真正重装，最终共同覆盖完整批量 CLI 契约。
+完成定义：Slice B 先交付批量安装的 conflict、partial success、stale preview、retry 和敏感
+canary contract tests；Slice C 再补齐批量卸载与真正重装，最终共同覆盖完整批量 CLI 契约。
 
 提交边界：CLI parser/schema 一个提交，runtime adapter/E2E 一个提交。
 

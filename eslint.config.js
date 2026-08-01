@@ -33,6 +33,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: [".claude", ".vite", "dist", "src-tauri/target", "target"],
+    ignores: [".claude", ".vite", ".worktrees", "dist", "src-tauri/target", "target"],
   },
 );

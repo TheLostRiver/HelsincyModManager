@@ -7,7 +7,7 @@ use hmm_ports::{
     BatchAttemptAdmission, BatchAttemptAdmissionRequest, BatchLifecycleRepository,
     BatchRetryAttemptCreation, BatchRetryAttemptRequest, BatchSealRequest,
 };
-use rusqlite::{Connection, OptionalExtension, Transaction};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -138,13 +138,30 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
         Ok(attempt)
     }
 
+    fn find_active_attempt_for_scope(
+        &self,
+        game_id: &hmm_core::GameId,
+        profile_id: &hmm_core::ProfileId,
+    ) -> Result<Option<BatchAttempt>> {
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin active batch attempt read transaction")?;
+        let active =
+            find_active_attempt_for_scope_in_transaction(&transaction, game_id, profile_id)?;
+        transaction
+            .commit()
+            .context("failed to finish active batch attempt read transaction")?;
+        Ok(active)
+    }
+
     fn admit_attempt(
         &self,
         request: BatchAttemptAdmissionRequest<'_>,
     ) -> Result<BatchAttemptAdmission> {
-        let conn = self.lock_db()?;
+        let mut conn = self.lock_db()?;
         let transaction = conn
-            .unchecked_transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("failed to begin batch admission transaction")?;
         let Some(mut attempt) =
             load_attempt_from_transaction(&transaction, request.batch_id, request.attempt_number)?
@@ -168,6 +185,18 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
         if request.now_unix_millis >= attempt.expires_at_unix_millis {
             return Ok(BatchAttemptAdmission::Rejected);
         }
+        if find_active_attempt_for_scope_in_transaction(
+            &transaction,
+            &batch.plan.game_id,
+            &batch.plan.profile_id,
+        )?
+        .is_some()
+        {
+            transaction
+                .commit()
+                .context("failed to finish rejected scope admission")?;
+            return Ok(BatchAttemptAdmission::ScopeActive);
+        }
 
         attempt.status = BatchAttemptStatus::Queued;
         attempt.task_id = Some(request.task_id.to_owned());
@@ -176,6 +205,70 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
             .commit()
             .context("failed to commit batch admission")?;
         Ok(BatchAttemptAdmission::Admitted(attempt))
+    }
+
+    fn discard_unadmitted_retry_attempt(
+        &self,
+        batch_id: &BatchId,
+        attempt_number: u32,
+        presented_plan_token_verifier: &str,
+    ) -> Result<bool> {
+        if attempt_number == 0 {
+            return Ok(false);
+        }
+        let mut conn = self.lock_db()?;
+        let transaction = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .context("failed to begin retry attempt discard transaction")?;
+        let Some(attempt) = load_attempt_from_transaction(&transaction, batch_id, attempt_number)?
+        else {
+            return Ok(false);
+        };
+        let batch = load_batch_from_transaction(&transaction, batch_id)?
+            .ok_or_else(|| anyhow!("sealed batch is unavailable"))?;
+        validate_attempt_selection_chain(&transaction, &batch, &attempt)?;
+        if attempt.status != BatchAttemptStatus::Sealed
+            || attempt.task_id.is_some()
+            || attempt.plan_token_verifier != presented_plan_token_verifier
+        {
+            return Ok(false);
+        }
+        let latest: Option<i64> = transaction
+            .query_row(
+                "SELECT MAX(attempt_number)
+                 FROM hmm_batch_lifecycle_attempts
+                 WHERE batch_id = ?1",
+                rusqlite::params![batch_id.as_str()],
+                |row| row.get(0),
+            )
+            .context("failed to read latest batch attempt before discard")?;
+        if latest != Some(i64::from(attempt_number)) {
+            return Ok(false);
+        }
+        let item_result_count: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM hmm_batch_lifecycle_item_results
+                 WHERE batch_id = ?1 AND attempt_number = ?2",
+                rusqlite::params![batch_id.as_str(), i64::from(attempt_number)],
+                |row| row.get(0),
+            )
+            .context("failed to count retry item results before discard")?;
+        if item_result_count != 0 {
+            return Ok(false);
+        }
+        let changed = transaction
+            .execute(
+                "DELETE FROM hmm_batch_lifecycle_attempts
+                 WHERE batch_id = ?1 AND attempt_number = ?2",
+                rusqlite::params![batch_id.as_str(), i64::from(attempt_number)],
+            )
+            .context("failed to discard unadmitted retry attempt")?;
+        ensure!(changed == 1, "retry attempt disappeared during discard");
+        transaction
+            .commit()
+            .context("failed to commit retry attempt discard")?;
+        Ok(true)
     }
 
     fn mark_attempt_running(
@@ -487,9 +580,9 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
                 && !retry_attempt.item_ids.is_empty(),
             "batch retry attempt is invalid"
         );
-        let conn = self.lock_db()?;
+        let mut conn = self.lock_db()?;
         let transaction = conn
-            .unchecked_transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("failed to begin batch retry transaction")?;
         let latest: Option<i64> = transaction
             .query_row(
@@ -575,6 +668,60 @@ impl BatchLifecycleRepository for SqliteBatchLifecycleRepository {
             .context("failed to commit batch retry attempt")?;
         Ok(BatchRetryAttemptCreation::Created(retry_attempt.clone()))
     }
+}
+
+fn find_active_attempt_for_scope_in_transaction(
+    transaction: &Transaction<'_>,
+    game_id: &hmm_core::GameId,
+    profile_id: &hmm_core::ProfileId,
+) -> Result<Option<BatchAttempt>> {
+    let rows = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT attempts.batch_id, attempts.attempt_number,
+                        attempts.attempt_json, batches.sealed_json
+                 FROM hmm_batch_lifecycle_attempts AS attempts
+                 INNER JOIN hmm_batch_lifecycle_batches AS batches
+                     ON batches.batch_id = attempts.batch_id
+                 ORDER BY attempts.batch_id ASC, attempts.attempt_number ASC",
+            )
+            .context("failed to prepare active batch attempt query")?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .context("failed to query active batch attempts")?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("failed to read active batch attempt rows")?
+    };
+
+    for (batch_id, attempt_number, attempt_json, sealed_json) in rows {
+        let attempt_number =
+            u32::try_from(attempt_number).context("batch attempt number is invalid")?;
+        let batch_id = BatchId::new(batch_id);
+        let attempt: BatchAttempt = deserialize(&attempt_json, "batch attempt")?;
+        let batch: SealedBatch = deserialize(&sealed_json, "sealed batch")?;
+        validate_sealed_batch(&batch)?;
+        ensure!(
+            batch.batch_id == batch_id,
+            "sealed batch row identity mismatch"
+        );
+        validate_attempt_identity(&attempt, &batch_id, attempt_number)?;
+        if matches!(
+            attempt.status,
+            BatchAttemptStatus::Queued | BatchAttemptStatus::Running | BatchAttemptStatus::Stopping
+        ) && batch.plan.game_id == *game_id
+            && batch.plan.profile_id == *profile_id
+        {
+            return Ok(Some(attempt));
+        }
+    }
+    Ok(None)
 }
 
 fn update_attempt(transaction: &Transaction<'_>, attempt: &BatchAttempt) -> Result<()> {
@@ -1023,6 +1170,8 @@ mod tests {
     };
     use hmm_ports::{BatchRetryAttemptCreation, BatchRetryAttemptRequest, BatchSealRepository};
     use rusqlite::Connection;
+    use std::sync::Barrier;
+    use std::thread;
 
     fn repository() -> SqliteBatchLifecycleRepository {
         let mut connection = Connection::open_in_memory().expect("database");
@@ -1229,6 +1378,155 @@ mod tests {
     }
 
     #[test]
+    fn active_attempt_query_is_scoped_and_excludes_sealed_attempts() {
+        let repository = repository();
+        let (batch, attempt) = sealed_batch();
+        repository
+            .seal_batch(BatchSealRequest {
+                sealed_batch: &batch,
+                initial_attempt: &attempt,
+            })
+            .expect("seal");
+
+        assert_eq!(
+            repository
+                .find_active_attempt_for_scope(&GameId::mhw(), &ProfileId::new("default"))
+                .expect("sealed query"),
+            None
+        );
+        repository
+            .admit_attempt(BatchAttemptAdmissionRequest {
+                batch_id: &batch.batch_id,
+                attempt_number: 0,
+                task_id: "task-a",
+                presented_plan_token_verifier: "verifier",
+                now_unix_millis: 2,
+            })
+            .expect("admit");
+
+        let active = repository
+            .find_active_attempt_for_scope(&GameId::mhw(), &ProfileId::new("default"))
+            .expect("active query")
+            .expect("active attempt");
+        assert_eq!(active.status, BatchAttemptStatus::Queued);
+        assert_eq!(
+            repository
+                .find_active_attempt_for_scope(&GameId::mhw(), &ProfileId::new("other"))
+                .expect("other scope query"),
+            None
+        );
+    }
+
+    #[test]
+    fn scope_admission_is_atomic_across_database_connections() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let database_path = temp.path().join("atomic-admission.db");
+        let setup = SqliteBatchLifecycleRepository::new(Arc::new(Mutex::new(
+            super::super::open_database(&database_path).expect("setup database"),
+        )));
+        let (batch_a, attempt_a) = sealed_batch();
+        let (mut batch_b, mut attempt_b) = sealed_batch();
+        batch_b.batch_id = BatchId::new("batch-second");
+        attempt_b.batch_id = batch_b.batch_id.clone();
+        for (batch, attempt) in [(&batch_a, &attempt_a), (&batch_b, &attempt_b)] {
+            setup
+                .seal_batch(BatchSealRequest {
+                    sealed_batch: batch,
+                    initial_attempt: attempt,
+                })
+                .expect("seal competing batch");
+        }
+        drop(setup);
+
+        let repository_a = SqliteBatchLifecycleRepository::new(Arc::new(Mutex::new(
+            super::super::open_database(&database_path).expect("first admission connection"),
+        )));
+        let repository_b = SqliteBatchLifecycleRepository::new(Arc::new(Mutex::new(
+            super::super::open_database(&database_path).expect("second admission connection"),
+        )));
+        let barrier = Arc::new(Barrier::new(2));
+        let first_barrier = Arc::clone(&barrier);
+        let first_batch_id = batch_a.batch_id.clone();
+        let first = thread::spawn(move || {
+            first_barrier.wait();
+            repository_a
+                .admit_attempt(BatchAttemptAdmissionRequest {
+                    batch_id: &first_batch_id,
+                    attempt_number: 0,
+                    task_id: "task-first",
+                    presented_plan_token_verifier: "verifier",
+                    now_unix_millis: 2,
+                })
+                .expect("first admission")
+        });
+        let second_barrier = Arc::clone(&barrier);
+        let second_batch_id = batch_b.batch_id.clone();
+        let second = thread::spawn(move || {
+            second_barrier.wait();
+            repository_b
+                .admit_attempt(BatchAttemptAdmissionRequest {
+                    batch_id: &second_batch_id,
+                    attempt_number: 0,
+                    task_id: "task-second",
+                    presented_plan_token_verifier: "verifier",
+                    now_unix_millis: 2,
+                })
+                .expect("second admission")
+        });
+        let decisions = [
+            first.join().expect("first thread"),
+            second.join().expect("second thread"),
+        ];
+        assert_eq!(
+            decisions
+                .iter()
+                .filter(|decision| matches!(decision, BatchAttemptAdmission::Admitted(_)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            decisions
+                .iter()
+                .filter(|decision| matches!(decision, BatchAttemptAdmission::ScopeActive))
+                .count(),
+            1
+        );
+
+        let repository = SqliteBatchLifecycleRepository::new(Arc::new(Mutex::new(
+            super::super::open_database(&database_path).expect("verification connection"),
+        )));
+        let attempt_a = repository
+            .load_attempt(&batch_a.batch_id, 0)
+            .expect("load first")
+            .expect("first attempt");
+        let attempt_b = repository
+            .load_attempt(&batch_b.batch_id, 0)
+            .expect("load second")
+            .expect("second attempt");
+        let (active_batch_id, sealed_batch_id) = if attempt_a.status == BatchAttemptStatus::Queued {
+            (&batch_a.batch_id, &batch_b.batch_id)
+        } else {
+            assert_eq!(attempt_b.status, BatchAttemptStatus::Queued);
+            (&batch_b.batch_id, &batch_a.batch_id)
+        };
+        repository
+            .finish_attempt(active_batch_id, 0, BatchAttemptStatus::Failed, true, 3)
+            .expect("release active scope");
+        assert!(matches!(
+            repository
+                .admit_attempt(BatchAttemptAdmissionRequest {
+                    batch_id: sealed_batch_id,
+                    attempt_number: 0,
+                    task_id: "task-after-release",
+                    presented_plan_token_verifier: "verifier",
+                    now_unix_millis: 4,
+                })
+                .expect("admit after release"),
+            BatchAttemptAdmission::Admitted(_)
+        ));
+    }
+
+    #[test]
     fn queued_attempt_cannot_finish_as_cancelled_before_running() {
         let repository = repository();
         let (batch, attempt) = sealed_batch();
@@ -1249,13 +1547,7 @@ mod tests {
             .expect("admit");
 
         assert!(repository
-            .finish_attempt(
-                &batch.batch_id,
-                0,
-                BatchAttemptStatus::Cancelled,
-                true,
-                3,
-            )
+            .finish_attempt(&batch.batch_id, 0, BatchAttemptStatus::Cancelled, true, 3,)
             .is_err());
         assert_eq!(
             repository
@@ -1267,13 +1559,7 @@ mod tests {
         );
         assert_eq!(
             repository
-                .finish_attempt(
-                    &batch.batch_id,
-                    0,
-                    BatchAttemptStatus::Failed,
-                    true,
-                    3,
-                )
+                .finish_attempt(&batch.batch_id, 0, BatchAttemptStatus::Failed, true, 3,)
                 .expect("failed pre-start attempt")
                 .status,
             BatchAttemptStatus::Failed
@@ -1387,6 +1673,98 @@ mod tests {
                 })
                 .expect("repeat retry"),
             BatchRetryAttemptCreation::Stale
+        ));
+        assert!(!repository
+            .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "wrong-verifier")
+            .expect("wrong verifier discard"));
+        {
+            let connection = repository.lock_db().expect("database");
+            let result = BatchItemResult {
+                batch_id: batch.batch_id.clone(),
+                attempt_number: 1,
+                item_id: item.item_id.clone(),
+                ordinal: item.ordinal,
+                mod_id: item.mod_id.clone(),
+                status: BatchItemStatus::Skipped,
+                reason_code: Some("cleanup_guard_fixture".to_owned()),
+                retryable: true,
+            };
+            let changed = connection
+                .execute(
+                    "INSERT INTO hmm_batch_lifecycle_item_results
+                        (batch_id, attempt_number, item_id, ordinal, result_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        batch.batch_id.as_str(),
+                        1_i64,
+                        item.item_id.as_str(),
+                        i64::try_from(item.ordinal).expect("ordinal"),
+                        serialize(&result, "cleanup guard item result").expect("result json"),
+                    ],
+                )
+                .expect("insert cleanup guard item result");
+            assert_eq!(changed, 1, "cleanup fixture must insert one item result");
+        }
+        assert!(!repository
+            .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "retry-verifier")
+            .expect("item result guard discard"));
+        {
+            let connection = repository.lock_db().expect("database");
+            let changed = connection
+                .execute(
+                    "DELETE FROM hmm_batch_lifecycle_item_results
+                     WHERE batch_id = ?1 AND attempt_number = ?2",
+                    rusqlite::params![batch.batch_id.as_str(), 1_i64],
+                )
+                .expect("remove cleanup guard item result");
+            assert_eq!(changed, 1, "cleanup fixture must remove one item result");
+            let mut newer_retry = retry.clone();
+            newer_retry.attempt_number = 2;
+            let changed = connection
+                .execute(
+                    "INSERT INTO hmm_batch_lifecycle_attempts
+                        (batch_id, attempt_number, attempt_json)
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![
+                        batch.batch_id.as_str(),
+                        2_i64,
+                        serialize(&newer_retry, "newer cleanup guard attempt")
+                            .expect("attempt json"),
+                    ],
+                )
+                .expect("insert newer cleanup guard attempt");
+            assert_eq!(changed, 1, "cleanup fixture must insert one newer attempt");
+        }
+        assert!(!repository
+            .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "retry-verifier")
+            .expect("latest attempt guard discard"));
+        {
+            let connection = repository.lock_db().expect("database");
+            let changed = connection
+                .execute(
+                    "DELETE FROM hmm_batch_lifecycle_attempts
+                     WHERE batch_id = ?1 AND attempt_number = ?2",
+                    rusqlite::params![batch.batch_id.as_str(), 2_i64],
+                )
+                .expect("remove newer cleanup guard attempt");
+            assert_eq!(changed, 1, "cleanup fixture must remove one newer attempt");
+        }
+        assert!(repository
+            .discard_unadmitted_retry_attempt(&batch.batch_id, 1, "retry-verifier")
+            .expect("discard unadmitted retry"));
+        assert!(repository
+            .load_attempt(&batch.batch_id, 1)
+            .expect("load discarded retry")
+            .is_none());
+        assert!(matches!(
+            repository
+                .create_retry_attempt(BatchRetryAttemptRequest {
+                    batch_id: &batch.batch_id,
+                    expected_attempt_number: 0,
+                    retry_attempt: &retry,
+                })
+                .expect("recreate retry after discard"),
+            BatchRetryAttemptCreation::Created(_)
         ));
         repository
             .admit_attempt(BatchAttemptAdmissionRequest {

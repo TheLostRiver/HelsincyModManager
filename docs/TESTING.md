@@ -611,9 +611,10 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 ### T13 批量生命周期分阶段矩阵
 
 T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只交付
-设计与规划契约；T13-01 已交付 `hmm-core` 批量计划模型、`hmm-ports` 事实/封存端口和
-`hmm-app` 只读 preview/seal service，但尚未提供 Tauri command、CLI parser、批量 runner
-或前端工作流。不得把下面尚未实现的测试名称、command 或场景写成已经通过。
+设计与规划契约；T13-01/T13-02 已交付 `hmm-core` 批量计划模型、`hmm-ports` 事实/封存端口、
+`hmm-app` service、批量 runner、journal 和 retry；T13-05 当前已接入 Sandbox install batch
+CLI。批量卸载/真正重装、Tauri command 和前端工作流仍未实现。不得把下面尚未实现的测试名称、
+command 或场景写成已经通过。
 
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
@@ -622,10 +623,28 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
 | T13-02 | 批量 install 全成功、默认预检 blocker 整批零写入、首项成功后次项失败保留首项、continue 只越过 pre-write/rollback-succeeded failure；同一 attempt 重复 start 幂等返回同一 task；manifest save/rollback/journal/Audit before/after commit fault matrix；sandbox 外 sentinel 不变 |
 | T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing、backup unavailable 和 remove/restore overlap 阻断；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
 | T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |
-| T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment 和机器输出脱敏；CLI 不循环调用单项 command |
+| T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
 | T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、分页和 typed API wrapper；T13-06 前 contract test 应证明 command 未注册 |
 | T13-07 | 多选、preview、确认、progress、取消、分页 result、partial success 和 retry UI；监听严格按 taskId；选择变化使旧 preview/token 失效；前端不计算 target/retryable/文件规则 |
 | T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> restart -> recovery 检查 -> batch uninstall -> exact baseline，并清理受控产物 |
+
+T13-05 install batch Slice B 当前聚焦入口：
+
+```powershell
+cargo test -p hmm-cli --test cli_contract batch -- --nocapture
+cargo test -p hmm-cli --lib
+cargo test -p hmm-runtime
+cargo test -p hmm-app --lib
+cargo test -p hmm-infra batch_lifecycle_repository --lib
+```
+
+这些测试必须覆盖 `plan -> apply -> result/retry` 的跨进程 journal 路径、Production 写入拒绝、
+脱敏 projection、`--commit --yes --preview-token` 门禁、partial exit code `5`，以及 stale
+preview 在构造写 runtime 前失败且不创建 `hmm.db` 的零副作用行为。还必须覆盖两个独立 SQLite
+连接竞争同一 game/profile admission 时最多一个 sealed attempt 原子进入 queued；同 scope sibling
+active attempt 不阻断指定 batch/attempt 的只读 result；retry 创建新 attempt 后若最终 admission
+竞争失败，只安全回收仍 sealed、没有 item result 且 verifier 匹配的未执行 attempt，无法证明时
+fail closed。该测试只证明 Sandbox batch journal 的 admission，不代表 Production 通用写 admission。
 
 所有实现切片还必须覆盖以下横向不变量：
 
@@ -636,12 +655,14 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
   创建下一 attempt。
 - 同一 game/profile 写入严格串行；plan/scan 在写锁外；item 间释放写锁。不同 game/profile 的
   并行仍受资源预算和现有 coordination 控制。
-- 一个 batch task 恰好一个 terminal event；结果按 `ordinal` 分页，默认 50、最大 100，不能依赖
-  progress event 携带 item 明细；result query/cursor 绑定确切 attempt，retry 不能让旧分页漂移。
-- 除 preview/seal 的直接 response 分别返回 opaque token 外，result/progress/event/其他 DTO、
-  CLI stdout/JSON/JSONL、Task/Audit/diagnostics 不含完整路径、Windows 用户名、Steam ID、
-  token/digest、target/hash 列表、backup/snapshot ref、manifest/source 正文或原始 error；
-  原始 token 不持久化、不写日志，只允许保存单向 verifier/metadata。
+- 一个 batch task 恰好一个 terminal event，不能依赖 progress event 携带 item 明细。当前 T13-05
+  Slice B 受每批最多 100 项约束，`result` 返回完整 bounded snapshot；后续 T13-06/T13-07 分页按
+  `ordinal` 默认 50、最大 100。无论是否分页，result query/cursor 都绑定确切 attempt，retry 不能
+  让旧结果或分页漂移。
+- `plan` 的直接 response 可以返回 opaque `previewToken`；除此之外，result/progress/event/其他
+  DTO、CLI stdout/JSON/JSONL、Task/Audit/diagnostics 不含完整路径、Windows 用户名、Steam ID、
+  token/digest、target/hash 列表、backup/snapshot ref、manifest/source 正文或原始 error。原始
+  preview/plan token 不持久化、不写日志，只允许保存单向 verifier/metadata。
 - 所有测试只用 temp/fake/人工 fixture；不得读取真实 MHW:I、真实 Steam userdata、玩家存档或第三方
   Mod 包，也不得在普通 CI 操作真实 Windows Scheduled Task。
 

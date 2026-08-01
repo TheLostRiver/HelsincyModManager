@@ -1,7 +1,7 @@
 # 项目任务状态快照
 
-本文档记录 Helsincy Mod Manager 在 **2026-07-31** 的 Windows 项目任务全景，基准为
-`origin/main@d69294e`；当前 T13-02 仍在未合并分支 `hy/t13-02-batch-install` 上迭代。此前包含
+本文档记录 Helsincy Mod Manager 在 **2026-08-01** 的 Windows 项目任务全景，基准包含
+PR #222 交付的 Slice B install batch CLI 子集。此前包含
 CLI-0A 至 CLI-1B、PR #211 至 #214 的工程治理，以及 QG-01/PR #215 合并后的 frontend
 tests/workspace clippy 统一门禁。
 
@@ -30,8 +30,9 @@ tests/workspace clippy 统一门禁。
 
 当前开发优先级已经调整为核心 Mod 生命周期的批量能力：T13-00 已完成批量语义和规划契约，T13-01
 sealed BatchPlan/preview 已落地；Slice A 已交付 CLI-2A/2B/2C、Sandbox 单项生命周期 E2E 和
-CORE-PREF-01。T13-02 正在当前分支完成 batch runner、SQLite journal、retry 和 failure/cancel
-证据；合并后再进入批量卸载/真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
+CORE-PREF-01。T13-02 的 batch runner、SQLite journal、retry、failure/cancel 证据与入口
+fail-closed 规则已落地；PR #222 已交付 Sandbox `install batch plan/apply/result/retry`。后续切片再进入
+批量卸载/真正重装、Tauri/前端工作流与 Windows Sandbox 纵向验收。
 Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺口；完整前置依赖平台、玩家存档恢复、
 日志全量保留策略和 Debug Log 也仍未完成。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
@@ -50,6 +51,8 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
   门禁已经成为主干基线。
 - T13-00 已完成批量生命周期设计与规划契约；Slice A 已完成，Slice B 从 T13-01 sealed batch
   preview 开始。
+- PR #222 已完成 T13-05 install batch CLI 子集，Slice B 交付闭环完成；完整 T13-05 仍需 Slice C
+  的批量卸载/真正重装 contract。
 
 ## 任务矩阵
 
@@ -68,7 +71,7 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 Armor Retarget | Certified（流程）/ 数据待扩容 | AR1-AR5 流程已认证；bundled armor catalog 仍是最小 seed，武器重定向未实现 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
-| T13 批量操作 | T13-01 已完成 / T13-02 进行中 | sealed plan/preview 已落地；T13-02 当前完成 app runner、SQLite journal、retry、取消与故障证据，CLI/Tauri/UI 仍按 T13-05 至 T13-07 的边界未接入 |
+| T13 批量操作 | Slice B 已完成 / 完整 T13-05 进行中 | sealed plan/preview、batch runner、SQLite journal、retry、取消、故障证据与 Sandbox `install batch plan/apply/result/retry` 已落地；批量卸载/真正重装、Tauri/UI 仍待 T13-03 至 T13-07 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
 | T15 Linux / Steam Deck | 本轮排除 | 不进入本轮任务、实现、验收或发布判断 |
 | T16 Rise / Wilds | 远期 | 每个游戏需要独立 adapter 与设计 |
@@ -295,14 +298,23 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
   `signature_unverified` 为显式 warning。token 与锁内重验绑定 status、stable codes 和 rules version。
 - CLI/Tauri/frontend 只投影 `prerequisiteDecision`，不返回 issue path、display message、配置正文
   或本地绝对路径，也不复制 MHW:I adapter 规则。
-- Production 四条 lifecycle 写命令在 CLI policy/runtime 双层拒绝；backup create/restore/background
+- `hmm install batch plan|apply|result|retry` 已在 Sandbox 接入 T13-02 app service；plan 返回脱敏
+  projection 和短期 opaque `previewToken`，apply 需要 `--commit --yes --preview-token`，并在构造
+  runtime/journal 前先做只读 stale 验证，seal 时再重验。apply/retry 的最终 admission 在 SQLite
+  `BEGIN IMMEDIATE` 短事务中按 game/profile 检查 active attempt 并原子进入 queued，两个独立连接
+  竞争时最多一个成功；retry 竞争失败只安全回收未执行的 sealed retry attempt。result 只读取指定
+  batch/attempt，不被 sibling active attempt 阻断。partial result 使用退出码 `5`；当前 result 返回
+  完整 bounded snapshot，尚未实现 cursor/limit。JSONL apply/retry 先输出 parent terminal event，
+  再输出 command result，两者共用同一 taskId。遗留 `queued/running/stopping` attempt 继续阻断新
+  写入并返回 `batch_attempt_reconciliation_required`，不会自动续跑或收敛。
+- Production 四条 lifecycle 写命令和 batch 写命令在 CLI policy/runtime 双层拒绝；backup create/restore/background
   enable|disable 和 diagnostics export 仍未开放。
 
 ### 下一步
 
-Slice A 已完成当前单项 Sandbox lifecycle 闭环与 CORE-PREF-01，T13-01 sealed BatchPlan/preview
-已落地。T13-02 已通过完整本地验证，当前完成 findings-first review、拆分提交和 PR 门禁，再由 CLI-4
-install 子集接入 Slice B；未完成 required CI 和 review 前不合并。
+Slice A 已完成当前单项 Sandbox lifecycle 闭环与 CORE-PREF-01；PR #222 已把 T13-01/T13-02 与
+T13-05 install batch 子集收敛为 Slice B。下一纵向切片是 T13-03/T13-04 与 T13-05 其余 contract，
+但本轮 PR 收尾后不自动开工。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
@@ -350,18 +362,31 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 ### T13-02 批量安装当前聚焦证据
 
 - `cargo check -p hmm-app -p hmm-infra -p hmm-runtime`：通过。
-- `cargo test -p hmm-app batch_install --lib -- --nocapture`：25/25 通过。
+- `cargo test -p hmm-app batch_install --lib -- --nocapture`：26/26 通过。
 - `cargo test -p hmm-app task_manager --lib -- --nocapture`：15/15 通过。
 - `cargo test -p hmm-app install_task --lib -- --nocapture`：37/37 通过。
 - `cargo test -p hmm-app reinstall_task --lib -- --nocapture`：16/16 通过。
 - `cargo test -p hmm-app install_tests --lib -- --nocapture`：82/82 通过。
 - `cargo test -p hmm-core batch --lib -- --nocapture`：9/9 通过。
-- `cargo test -p hmm-infra batch_lifecycle --lib -- --nocapture`：10/10 通过。
+- `cargo test -p hmm-infra batch_lifecycle_repository --lib -- --nocapture`：14/14 通过。
 - `git diff --check`、文件大小、secret、禁入文件和文档链接门禁：通过。
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：第二轮完整通过；
   包含 policy、hygiene、frontend typecheck/lint/404 tests/build、Rust workspace
   tests/check/clippy。
 - 测试只使用 fake/temp/人工 fixture，未读取真实游戏、Steam、AppData、存档或第三方 Mod。
+
+### T13-05 install batch CLI 当前聚焦证据
+
+- `cargo test -p hmm-cli --test cli_contract batch -- --nocapture`：10/10 通过，覆盖 Production
+  写入拒绝、plan 脱敏 projection、`--commit --yes`/preview token 门禁、非法 ID 零副作用、
+  active result 安全可读、写入口 fail closed、跨连接原子 admission、跨进程 apply/result/retry、
+  JSONL parent terminal event 和 stale preview。
+- `cargo test -p hmm-cli --lib`：22/22 通过，包含 partial success 退出码 `5`。
+- `cargo test -p hmm-app --lib`：384/384 通过；`cargo test -p hmm-runtime --lib`：61/61 通过。
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：本轮完整通过；
+  包含 policy、hygiene、frontend typecheck/lint/404 tests/build、Rust workspace tests/check/clippy。
+- stale preview 在构造 `HmmRuntime` 前由只读 facts service 验证；失败时沙盒目录快照不变，不创建
+  `hmm.db`、journal 或 projection。上述测试均只使用 temp/fake/人工 fixture。
 
 2026-07-30 在独立 clean Windows QG-01 worktree 对当前治理 diff 实际执行：
 
@@ -381,11 +406,12 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 
 - `SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md` 仍写 P7.2b 未实现，与较新的自动化设计、
   `TODO.md`、源码和测试不一致。
-- T13-02 当前只在未合并分支提供 app/infra batch runner 和 journal；尚未接入 HmmRuntime、
-  Tauri command、CLI parser 或前端工作流，不能把内部实现描述为外部可调用能力。
-- T13-02 尚未接入启动级遗留非终态 `queued/running/stopping` attempt 收敛；当前持久化状态会
-  阻止重复 admission 和自动续写，但 T13-05 install CLI 子集公开 start/query 前仍必须补受控
-  reconciliation，或由公开入口对遗留 attempt fail closed。
+- T13-05 当前只提供 Sandbox install batch CLI 子集；批量卸载/真正重装、Tauri command
+  和前端工作流仍未接入，不能把 install 子集描述为完整 T13 产品能力。
+- T13-02 当前不自动收敛启动级遗留非终态 `queued/running/stopping` attempt；T13-05 install CLI
+  子集在 apply/retry/new apply 保留只读预检，并以 SQLite 原子 scope admission 最终阻断并发新写入。
+  result 只读取指定 batch/attempt，保留遗留状态的安全诊断能力。后续若要自动 reconciliation，必须
+  单独设计安全终态、证据和恢复验收；Sandbox batch admission 也不等于 Production 通用写 admission。
 - Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
   bundle 中存在 sibling worker 就标记完成。
 - GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri
@@ -393,14 +419,13 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 
 ## 建议执行顺序
 
-1. 完成 T13-02 的全 diff review、拆分提交、PR、required CI、review 和合并门禁。
-2. 完成 T13-05 install CLI 子集，并在公开 start/query 前关闭遗留非终态 attempt
-   reconciliation 门禁。
-3. 完成 T13-03 批量卸载、T13-04 批量真正重装，再补齐 T13-05 其余 CLI contract。
-4. 完成 T13-06/T13-07 Tauri 与前端工作流以及 T13-08 Gate C。
-5. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
-6. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
-7. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
-8. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
+1. 保持遗留非终态 `queued/running/stopping` attempt 的 fail-closed 门禁；如需自动 reconciliation，
+  先单独完成安全设计和验收。
+2. 完成 T13-03 批量卸载、T13-04 批量真正重装，再补齐 T13-05 其余 CLI contract。
+3. 完成 T13-06/T13-07 Tauri 与前端工作流以及 T13-08 Gate C。
+4. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
+5. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
+6. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
+7. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

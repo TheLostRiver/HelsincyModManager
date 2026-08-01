@@ -2,6 +2,7 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
 mod backup_automation;
+mod batch_automation;
 mod composition;
 mod diagnostics_automation;
 mod external_import;
@@ -15,6 +16,10 @@ mod uninstall;
 pub use backup_automation::{
     BackupBackgroundStatusSnapshot, BackupListItemSnapshot, BackupListSnapshot,
     ReadOnlyBackupAutomation, ReadOnlyBackupAutomationError,
+};
+pub use batch_automation::{
+    BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchAutomationErrorClass,
+    SandboxBatchInstallAutomation,
 };
 pub use composition::{
     ConfiguredInstallRecoveryActionPreviewer, ConfiguredInstallRecoveryScanner,
