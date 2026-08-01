@@ -88,6 +88,28 @@ pub enum BatchInstallRunError {
     TaskUnavailable,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct BatchAuditOutcome {
+    status: BatchAttemptStatus,
+    error_code: Option<&'static str>,
+}
+
+impl BatchAuditOutcome {
+    fn from_status(status: BatchAttemptStatus) -> Self {
+        Self {
+            status,
+            error_code: None,
+        }
+    }
+
+    fn failure(error_code: &'static str) -> Self {
+        Self {
+            status: BatchAttemptStatus::Failed,
+            error_code: Some(error_code),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchInstallRetryResult {
     pub batch_id: BatchId,
@@ -371,10 +393,20 @@ impl BatchInstallTaskRunner {
                     )
                 };
                 let _ = self.task_manager.fail_task(&task_id);
-                if !matches!(cleanup, Ok(true)) {
-                    return Err(BatchInstallRunError::JournalUnavailable);
-                }
-                return Err(BatchInstallRunError::ScopeReconciliationRequired);
+                let cleanup_error_code = match cleanup {
+                    Ok(true) => return Err(BatchInstallRunError::ScopeReconciliationRequired),
+                    Ok(false) => "batch_retry_cleanup_ineligible",
+                    Err(_) => "batch_retry_cleanup_failed",
+                };
+                let _ = self.record_batch_admission_failure_audit(
+                    &task_id,
+                    &batch,
+                    attempt.attempt_number,
+                    attempt.item_ids.len(),
+                    cleanup_error_code,
+                    now,
+                );
+                return Err(BatchInstallRunError::JournalUnavailable);
             }
             BatchAttemptAdmission::Rejected => {
                 let _ = self.task_manager.fail_task(&task_id);
@@ -880,12 +912,50 @@ impl BatchInstallTaskRunner {
         BatchInstallRunError::JournalUnavailable
     }
 
+    fn record_batch_admission_failure_audit(
+        &self,
+        task_id: &str,
+        batch: &SealedBatch,
+        attempt_number: u32,
+        item_count: usize,
+        error_code: &'static str,
+        timestamp_unix_millis: u128,
+    ) -> bool {
+        self.record_batch_audit_with_error(
+            task_id,
+            batch,
+            attempt_number,
+            BatchAuditOutcome::failure(error_code),
+            &BatchResultSummary::from_item_results(item_count, &[]),
+            timestamp_unix_millis,
+        )
+    }
+
     fn record_batch_audit(
         &self,
         task_id: &str,
         batch: &SealedBatch,
         attempt_number: u32,
         status: BatchAttemptStatus,
+        summary: &BatchResultSummary,
+        timestamp_unix_millis: u128,
+    ) -> bool {
+        self.record_batch_audit_with_error(
+            task_id,
+            batch,
+            attempt_number,
+            BatchAuditOutcome::from_status(status),
+            summary,
+            timestamp_unix_millis,
+        )
+    }
+
+    fn record_batch_audit_with_error(
+        &self,
+        task_id: &str,
+        batch: &SealedBatch,
+        attempt_number: u32,
+        outcome: BatchAuditOutcome,
         summary: &BatchResultSummary,
         timestamp_unix_millis: u128,
     ) -> bool {
@@ -922,22 +992,26 @@ impl BatchInstallTaskRunner {
             "recovery_required_count".to_owned(),
             summary.recovery_required_count.to_string(),
         );
-        if let Some(error_code) = batch_status_error_code(status) {
+        if let Some(error_code) = outcome
+            .error_code
+            .or_else(|| batch_status_error_code(outcome.status))
+        {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
 
-        let policy = if summary.succeeded_count > 0 || status == BatchAttemptStatus::Interrupted {
-            AuditWriteFailurePolicy::ReportAfterCommit
-        } else {
-            AuditWriteFailurePolicy::BestEffort
-        };
+        let policy =
+            if summary.succeeded_count > 0 || outcome.status == BatchAttemptStatus::Interrupted {
+                AuditWriteFailurePolicy::ReportAfterCommit
+            } else {
+                AuditWriteFailurePolicy::BestEffort
+            };
         self.audit_log
             .record_with_policy(
                 AuditLogEvent {
                     timestamp_unix_millis,
                     category: "install".to_owned(),
                     operation: format!("batch_{}", batch.plan.operation.as_str()),
-                    result: batch_status_result(status).to_owned(),
+                    result: batch_status_result(outcome.status).to_owned(),
                     fields,
                 },
                 policy,

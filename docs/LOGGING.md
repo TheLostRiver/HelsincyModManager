@@ -263,7 +263,9 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 - 安装、卸载和后端受控回滚/重装收敛任务会写入最小安装审计事件。普通安装和卸载失败事件在既有短 id/计数字段外只增加与 task event 一致的稳定 `error_code`，不会记录原始 repository 或文件系统错误。
 - T13-02 批量安装的 batch-level Audit 只使用设计白名单字段：短 `task_id`/`batch_id`、`execution_policy`、
   `attempt_number`、item/result 聚合计数和稳定 `error_code`；不记录 plan token、digest、路径或
-  item target 列表。每个 item 继续复用已有单项安装 Audit。
+  item target 列表。每个 item 继续复用已有单项安装 Audit。若 retry 在 scope admission 竞争失败后
+  无法安全回收未执行 attempt，失败事件只以 `batch_retry_cleanup_ineligible` 或
+  `batch_retry_cleanup_failed` 区分 guard 拒绝与 repository 故障，不记录原始数据库错误。
 - 若 batch Audit 已写入而 journal 终结失败，runner 会追加 `result=interrupted`、
   `error_code=batch_journal_interrupted` 的纠正事件；对应 attempt 标记 evidence degraded 并禁止
   retry，不把已提交的玩家文件伪造成失败或回滚。
