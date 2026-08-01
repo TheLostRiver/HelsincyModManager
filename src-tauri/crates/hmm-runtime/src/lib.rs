@@ -18,7 +18,8 @@ pub use backup_automation::{
     ReadOnlyBackupAutomation, ReadOnlyBackupAutomationError,
 };
 pub use batch_automation::{
-    BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchInstallAutomation,
+    BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchAutomationErrorClass,
+    SandboxBatchInstallAutomation,
 };
 pub use composition::{
     ConfiguredInstallRecoveryActionPreviewer, ConfiguredInstallRecoveryScanner,

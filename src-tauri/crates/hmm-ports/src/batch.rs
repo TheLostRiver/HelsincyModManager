@@ -1,6 +1,7 @@
 use anyhow::Result;
 use hmm_core::{
-    BatchAttempt, BatchAttemptStatus, BatchId, BatchItemId, BatchItemResult, SealedBatch,
+    BatchAttempt, BatchAttemptStatus, BatchId, BatchItemId, BatchItemResult, GameId, ProfileId,
+    SealedBatch,
 };
 use hmm_core::{BatchPlanFacts, NormalizedBatchPlanRequest};
 
@@ -59,6 +60,15 @@ pub trait BatchLifecycleRepository: BatchSealRepository {
 
     fn load_attempt(&self, batch_id: &BatchId, attempt_number: u32)
         -> Result<Option<BatchAttempt>>;
+
+    /// Finds a durable execution attempt that cannot be resumed safely after process loss.
+    ///
+    /// `Sealed` is intentionally excluded because no execution admission has occurred yet.
+    fn find_active_attempt_for_scope(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<Option<BatchAttempt>>;
 
     /// Performs the once-only sealed -> queued compare-and-swap and binds the admitted task id.
     fn admit_attempt(
