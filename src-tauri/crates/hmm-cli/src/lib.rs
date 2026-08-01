@@ -5,8 +5,9 @@ mod task_events;
 use cancellation::{CliCancellationCoordinator, NoopCliTaskProgressObserver};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hmm_core::{
-    BatchExecutionPolicy, BatchItemInput, BatchPlanRequest, BatchPlanStatus, FileLayer, GameId,
-    ModId, ModRevisionId, ProfileId, BATCH_PLAN_SCHEMA_VERSION,
+    BatchExecutionPolicy, BatchItemInput, BatchOperation, BatchPlanRequest, BatchPlanStatus,
+    FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReinstallBatchItemInput,
+    ReplacementTargetId, UninstallBatchItemInput, BATCH_PLAN_SCHEMA_VERSION,
 };
 use hmm_runtime::{
     BackupBackgroundStatusSnapshot, BackupListSnapshot,
@@ -19,10 +20,11 @@ use hmm_runtime::{
     ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError, ReadOnlyInstallRecoveryAction,
     ReinstallPlanSnapshot, RuntimeEnvironment, RuntimeEnvironmentError, RuntimeEnvironmentKind,
     SandboxBatchAutomationError, SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation,
-    SandboxLifecycleAutomation, SandboxLifecycleAutomationError, TaskProgressEvent,
-    TaskProgressObserver, UninstallPlanSnapshot,
+    SandboxBatchPlanRequest, SandboxLifecycleAutomation, SandboxLifecycleAutomationError,
+    TaskProgressEvent, TaskProgressObserver, UninstallPlanSnapshot,
 };
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -230,16 +232,39 @@ impl From<BatchExecutionPolicyOption> for BatchExecutionPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum BatchOperationOption {
+    Install,
+    Uninstall,
+    Reinstall,
+}
+
+impl From<BatchOperationOption> for BatchOperation {
+    fn from(value: BatchOperationOption) -> Self {
+        match value {
+            BatchOperationOption::Install => Self::Install,
+            BatchOperationOption::Uninstall => Self::Uninstall,
+            BatchOperationOption::Reinstall => Self::Reinstall,
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 struct InstallBatchRequestOptions {
+    #[arg(long, value_enum, default_value_t = BatchOperationOption::Install)]
+    operation: BatchOperationOption,
+
     #[arg(long, default_value = "mhw")]
     game: String,
 
     #[arg(long, default_value = "default")]
     profile: String,
 
-    #[arg(long = "item", value_name = "MOD:REVISION", required = true)]
+    #[arg(long = "item", value_name = "OPERATION_SPECIFIC_ITEM", required = true)]
     items: Vec<String>,
+
+    #[arg(long = "replacement-target", value_name = "MOD=TARGET_ID")]
+    replacement_targets: Vec<String>,
 
     #[arg(long, value_enum, default_value_t = BatchExecutionPolicyOption::StopOnFailure)]
     policy: BatchExecutionPolicyOption,
@@ -489,6 +514,7 @@ struct LifecycleApplyResult {
 #[serde(rename_all = "camelCase")]
 struct BatchApplyResult {
     batch_id: String,
+    operation: BatchOperation,
     attempt: u32,
     task_id: String,
     status: hmm_core::BatchAttemptStatus,
@@ -499,6 +525,7 @@ struct BatchApplyResult {
 #[serde(rename_all = "camelCase")]
 struct BatchAttemptResult {
     batch_id: String,
+    operation: BatchOperation,
     attempt_number: u32,
     status: hmm_core::BatchAttemptStatus,
     task_id: Option<String>,
@@ -967,7 +994,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     );
                 }
             };
-            match SandboxBatchInstallAutomation::preview(environment, request) {
+            match SandboxBatchInstallAutomation::preview_request(environment, request) {
                 Ok(preview) => write_install_result(
                     format,
                     INSTALL_BATCH_PLAN_COMMAND,
@@ -1019,10 +1046,12 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     );
                 }
             };
-            match SandboxBatchInstallAutomation::apply(environment, request, preview_token) {
-                Ok((_sealed, run)) => {
+            match SandboxBatchInstallAutomation::apply_request(environment, request, preview_token)
+            {
+                Ok((operation, _sealed, run)) => {
                     let result = project_batch_run(
                         &run.batch_id,
+                        operation,
                         run.attempt_number,
                         run.task_id,
                         run.status,
@@ -1077,14 +1106,15 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     stderr,
                 );
             }
-            match SandboxBatchInstallAutomation::retry(
+            match SandboxBatchInstallAutomation::retry_with_operation(
                 environment,
                 &options.batch_id,
                 options.attempt,
             ) {
-                Ok((_retry, run)) => {
+                Ok((operation, _retry, run)) => {
                     let result = project_batch_run(
                         &run.batch_id,
+                        operation,
                         run.attempt_number,
                         run.task_id,
                         run.status,
@@ -1175,6 +1205,7 @@ fn project_batch_plan(plan: &hmm_core::BatchPlan) -> BatchPlanSnapshot {
 fn project_batch_attempt(snapshot: RuntimeBatchAttemptSnapshot) -> BatchAttemptResult {
     BatchAttemptResult {
         batch_id: snapshot.batch_id,
+        operation: snapshot.operation,
         attempt_number: snapshot.attempt_number,
         status: snapshot.status,
         task_id: snapshot.task_id,
@@ -1190,6 +1221,7 @@ fn project_batch_attempt(snapshot: RuntimeBatchAttemptSnapshot) -> BatchAttemptR
 
 fn project_batch_run(
     batch_id: &hmm_core::BatchId,
+    operation: BatchOperation,
     attempt: u32,
     task_id: String,
     status: hmm_core::BatchAttemptStatus,
@@ -1197,6 +1229,7 @@ fn project_batch_run(
 ) -> BatchApplyResult {
     BatchApplyResult {
         batch_id: batch_id.as_str().to_owned(),
+        operation,
         attempt,
         task_id,
         status,
@@ -1260,38 +1293,124 @@ fn project_batch_reason(reason: &hmm_core::BatchReasonSummary) -> BatchReasonSum
 
 fn batch_plan_request(
     options: &InstallBatchRequestOptions,
-) -> Result<BatchPlanRequest, &'static str> {
+) -> Result<SandboxBatchPlanRequest, &'static str> {
     let game_id = GameId::parse(&options.game).map_err(|_| "batch_game_invalid")?;
     let profile_id =
         parse_batch_id_component(&options.profile, "batch_profile_invalid").map(ProfileId::new)?;
     if options.items.is_empty() {
         return Err("batch_items_required");
     }
+    let operation = BatchOperation::from(options.operation);
+    let mut replacement_targets = BTreeMap::new();
+    for selection in &options.replacement_targets {
+        let (mod_id, target_id) = selection.split_once('=').ok_or("batch_item_invalid")?;
+        let mod_id = parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
+        let target_id = parse_batch_target_id(target_id)?;
+        if replacement_targets.insert(mod_id, target_id).is_some() {
+            return Err("batch_item_invalid");
+        }
+    }
+    if operation != BatchOperation::Reinstall && !replacement_targets.is_empty() {
+        return Err("batch_item_invalid");
+    }
     let items = options
         .items
         .iter()
         .map(|item| {
-            let (mod_id, revision_id) = item.split_once(':').ok_or("batch_item_invalid")?;
-            let mod_id = parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
-            let revision_id = parse_batch_id_component(revision_id, "batch_item_invalid")
-                .map(ModRevisionId::new)?;
-            Ok(BatchItemInput::Install(hmm_core::InstallBatchItemInput {
-                mod_id,
-                revision_id,
-                // Batch CLI fixtures intentionally expose only the fixed Sandbox base layer.
-                layer: FileLayer::new("base", 0),
-                replacement_binding_snapshot: None,
-            }))
+            let fields = item.split(':').collect::<Vec<_>>();
+            match (operation, fields.as_slice()) {
+                (BatchOperation::Install, [mod_id, revision_id]) => {
+                    let mod_id =
+                        parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
+                    let revision_id = parse_batch_id_component(revision_id, "batch_item_invalid")
+                        .map(ModRevisionId::new)?;
+                    Ok(BatchItemInput::Install(hmm_core::InstallBatchItemInput {
+                        mod_id,
+                        revision_id,
+                        // Batch CLI fixtures intentionally expose only the fixed Sandbox base layer.
+                        layer: FileLayer::new("base", 0),
+                        replacement_binding_snapshot: None,
+                    }))
+                }
+                (BatchOperation::Uninstall, [mod_id, revision_id]) => {
+                    let mod_id =
+                        parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
+                    let expected_installed_revision_id =
+                        parse_batch_id_component(revision_id, "batch_item_invalid")
+                            .map(ModRevisionId::new)?;
+                    Ok(BatchItemInput::Uninstall(UninstallBatchItemInput {
+                        mod_id,
+                        expected_installed_revision_id,
+                    }))
+                }
+                (
+                    BatchOperation::Reinstall,
+                    [mod_id, installed_revision_id, candidate_revision_id],
+                ) => {
+                    let mod_id =
+                        parse_batch_id_component(mod_id, "batch_item_invalid").map(ModId::new)?;
+                    let installed_revision_id =
+                        parse_batch_id_component(installed_revision_id, "batch_item_invalid")
+                            .map(ModRevisionId::new)?;
+                    let candidate_revision_id =
+                        parse_batch_id_component(candidate_revision_id, "batch_item_invalid")
+                            .map(ModRevisionId::new)?;
+                    Ok(BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                        mod_id,
+                        installed_revision_id,
+                        candidate_revision_id,
+                        layer: FileLayer::new("base", 0),
+                        replacement_binding_snapshot: None,
+                    }))
+                }
+                _ => Err("batch_item_invalid"),
+            }
         })
         .collect::<Result<Vec<_>, &'static str>>()?;
-    Ok(BatchPlanRequest {
-        schema_version: BATCH_PLAN_SCHEMA_VERSION,
-        operation: hmm_core::BatchOperation::Install,
-        game_id,
-        profile_id,
-        execution_policy: options.policy.into(),
-        items,
+    if operation == BatchOperation::Reinstall {
+        let mut item_mod_ids = BTreeMap::new();
+        for item in &items {
+            let BatchItemInput::Reinstall(input) = item else {
+                return Err("batch_item_invalid");
+            };
+            let has_target = replacement_targets.contains_key(&input.mod_id);
+            let same_revision = input.installed_revision_id == input.candidate_revision_id;
+            if has_target != same_revision {
+                return Err("batch_item_invalid");
+            }
+            item_mod_ids.insert(input.mod_id.clone(), ());
+        }
+        if replacement_targets
+            .keys()
+            .any(|mod_id| !item_mod_ids.contains_key(mod_id))
+        {
+            return Err("batch_item_invalid");
+        }
+    }
+    Ok(SandboxBatchPlanRequest {
+        plan: BatchPlanRequest {
+            schema_version: BATCH_PLAN_SCHEMA_VERSION,
+            operation,
+            game_id,
+            profile_id,
+            execution_policy: options.policy.into(),
+            items,
+        },
+        replacement_targets,
     })
+}
+
+fn parse_batch_target_id(value: &str) -> Result<ReplacementTargetId, &'static str> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 256
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, ':' | '-' | '_' | '.')
+        })
+    {
+        return Err("batch_item_invalid");
+    }
+    ReplacementTargetId::parse(value).map_err(|_| "batch_item_invalid")
 }
 
 fn parse_batch_id_component(
@@ -2406,6 +2525,7 @@ fn write_human_install_result<W: Write>(
         }
         InstallCommandResult::BatchAttempt(snapshot) => {
             write_human_value(writer, "batch", &snapshot.batch_id)?;
+            write_human_value(writer, "operation", &snapshot.operation)?;
             writeln!(writer, "attempt: {}", snapshot.attempt_number)?;
             write_human_value(writer, "status", &snapshot.status)?;
             write_human_value(writer, "task", &snapshot.task_id)?;
@@ -2517,6 +2637,7 @@ fn write_human_batch_apply_result<W: Write>(
     result: &BatchApplyResult,
 ) -> io::Result<()> {
     write_human_value(writer, "batch", &result.batch_id)?;
+    write_human_value(writer, "operation", &result.operation)?;
     writeln!(writer, "attempt: {}", result.attempt)?;
     write_human_value(writer, "task", &result.task_id)?;
     write_human_value(writer, "status", &result.status)?;
@@ -2571,47 +2692,48 @@ fn write_batch_run_result<W: Write, E: Write>(
 }
 
 fn batch_terminal_event(command: &'static str, result: &BatchApplyResult) -> TaskEventEnvelope {
-    let (event_type, status, phase, error_code) = match result.status {
+    let operation = result.operation.as_str();
+    let (event_type, status, phase_suffix, error_code) = match result.status {
         hmm_core::BatchAttemptStatus::Completed => (
             TaskEventType::Completed,
             CliTaskStatus::Completed,
-            "install.batch.install.completed",
+            "completed",
             None,
         ),
         hmm_core::BatchAttemptStatus::CompletedWithErrors => (
             TaskEventType::Completed,
             CliTaskStatus::Completed,
-            "install.batch.install.completed_with_errors",
+            "completed_with_errors",
             None,
         ),
         hmm_core::BatchAttemptStatus::Cancelled => (
             TaskEventType::Cancelled,
             CliTaskStatus::Cancelled,
-            "install.batch.install.cancelled",
+            "cancelled",
             None,
         ),
         hmm_core::BatchAttemptStatus::Blocked => (
             TaskEventType::Failed,
             CliTaskStatus::Failed,
-            "install.batch.install.failed",
+            "failed",
             Some("batch_plan_blocked"),
         ),
         hmm_core::BatchAttemptStatus::RecoveryRequired => (
             TaskEventType::Failed,
             CliTaskStatus::Failed,
-            "install.batch.install.recovery_required",
+            "recovery_required",
             Some("batch_recovery_required"),
         ),
         hmm_core::BatchAttemptStatus::Interrupted => (
             TaskEventType::Failed,
             CliTaskStatus::Failed,
-            "install.batch.install.failed",
+            "failed",
             Some("batch_interrupted"),
         ),
         hmm_core::BatchAttemptStatus::Failed => (
             TaskEventType::Failed,
             CliTaskStatus::Failed,
-            "install.batch.install.failed",
+            "failed",
             Some("batch_failed"),
         ),
         hmm_core::BatchAttemptStatus::Sealed
@@ -2620,10 +2742,11 @@ fn batch_terminal_event(command: &'static str, result: &BatchApplyResult) -> Tas
         | hmm_core::BatchAttemptStatus::Stopping => (
             TaskEventType::Failed,
             CliTaskStatus::Failed,
-            "install.batch.install.failed",
+            "failed",
             Some("batch_attempt_reconciliation_required"),
         ),
     };
+    let phase = format!("install.batch.{operation}.{phase_suffix}");
     let mut event = TaskEventEnvelope::new(
         event_type,
         command,
@@ -2867,6 +2990,7 @@ mod tests {
             &mut output,
             &InstallCommandResult::BatchAttempt(BatchAttemptResult {
                 batch_id: "batch-a".to_owned(),
+                operation: BatchOperation::Install,
                 attempt_number: 0,
                 status: hmm_core::BatchAttemptStatus::Completed,
                 task_id: Some("task-a".to_owned()),
@@ -2892,6 +3016,165 @@ mod tests {
                 .count(),
             1,
             "{output}"
+        );
+    }
+
+    fn batch_request_options(
+        operation: BatchOperationOption,
+        items: &[&str],
+        replacement_targets: &[&str],
+    ) -> InstallBatchRequestOptions {
+        InstallBatchRequestOptions {
+            operation,
+            game: "mhw".to_owned(),
+            profile: "default".to_owned(),
+            items: items.iter().map(|item| (*item).to_owned()).collect(),
+            replacement_targets: replacement_targets
+                .iter()
+                .map(|target| (*target).to_owned())
+                .collect(),
+            policy: BatchExecutionPolicyOption::StopOnFailure,
+        }
+    }
+
+    #[test]
+    fn batch_request_parser_builds_operation_specific_item_union() {
+        let install = batch_plan_request(&batch_request_options(
+            BatchOperationOption::Install,
+            &["mod-a:revision-a"],
+            &[],
+        ))
+        .expect("install request");
+        assert_eq!(install.plan.operation, BatchOperation::Install);
+        assert!(matches!(install.plan.items[0], BatchItemInput::Install(_)));
+
+        let uninstall = batch_plan_request(&batch_request_options(
+            BatchOperationOption::Uninstall,
+            &["mod-a:revision-a"],
+            &[],
+        ))
+        .expect("uninstall request");
+        assert_eq!(uninstall.plan.operation, BatchOperation::Uninstall);
+        assert!(matches!(
+            uninstall.plan.items[0],
+            BatchItemInput::Uninstall(_)
+        ));
+
+        let reinstall = batch_plan_request(&batch_request_options(
+            BatchOperationOption::Reinstall,
+            &["mod-a:revision-a:revision-b"],
+            &[],
+        ))
+        .expect("reinstall request");
+        assert_eq!(reinstall.plan.operation, BatchOperation::Reinstall);
+        assert!(matches!(
+            reinstall.plan.items[0],
+            BatchItemInput::Reinstall(_)
+        ));
+    }
+
+    #[test]
+    fn clap_accepts_reinstall_operation_and_separate_replacement_target() {
+        let cli = Cli::try_parse_from([
+            "hmm",
+            "install",
+            "batch",
+            "plan",
+            "--operation",
+            "reinstall",
+            "--item",
+            "mod-a:revision-a:revision-a",
+            "--replacement-target",
+            "mod-a=mhw:armor:fatalis-beta",
+        ])
+        .expect("batch reinstall parser");
+        let Commands::Install {
+            command:
+                InstallCommand::Batch {
+                    command: InstallBatchCommand::Plan(options),
+                },
+        } = cli.command
+        else {
+            panic!("expected batch plan command");
+        };
+        assert_eq!(options.request.operation, BatchOperationOption::Reinstall);
+        assert_eq!(
+            options.request.replacement_targets,
+            ["mod-a=mhw:armor:fatalis-beta"]
+        );
+    }
+
+    #[test]
+    fn same_revision_reinstall_requires_only_a_stable_target_identity() {
+        let request = batch_plan_request(&batch_request_options(
+            BatchOperationOption::Reinstall,
+            &["mod-a:revision-a:revision-a"],
+            &["mod-a=mhw:armor:fatalis-beta"],
+        ))
+        .expect("same revision retarget request");
+        assert_eq!(
+            request
+                .replacement_targets
+                .get(&ModId::new("mod-a"))
+                .map(ReplacementTargetId::as_str),
+            Some("mhw:armor:fatalis-beta")
+        );
+        let BatchItemInput::Reinstall(input) = &request.plan.items[0] else {
+            panic!("expected reinstall item");
+        };
+        assert!(input.replacement_binding_snapshot.is_none());
+
+        assert_eq!(
+            batch_plan_request(&batch_request_options(
+                BatchOperationOption::Reinstall,
+                &["mod-a:revision-a:revision-a"],
+                &[],
+            )),
+            Err("batch_item_invalid")
+        );
+        assert_eq!(
+            batch_plan_request(&batch_request_options(
+                BatchOperationOption::Reinstall,
+                &["mod-a:revision-a:revision-a"],
+                &[r"mod-a=C:\private\target"],
+            )),
+            Err("batch_item_invalid")
+        );
+        assert_eq!(
+            batch_plan_request(&batch_request_options(
+                BatchOperationOption::Reinstall,
+                &["mod-a:revision-a:revision-b"],
+                &["mod-a=mhw:armor:fatalis-beta"],
+            )),
+            Err("batch_item_invalid")
+        );
+    }
+
+    #[test]
+    fn batch_terminal_phase_uses_the_authoritative_operation() {
+        let result = BatchApplyResult {
+            batch_id: "batch-a".to_owned(),
+            operation: BatchOperation::Uninstall,
+            attempt: 0,
+            task_id: "task-a".to_owned(),
+            status: hmm_core::BatchAttemptStatus::CompletedWithErrors,
+            summary: BatchResultSummarySnapshot {
+                item_count: 1,
+                succeeded_count: 0,
+                blocked_count: 0,
+                failed_count: 1,
+                cancelled_count: 0,
+                skipped_count: 0,
+                recovery_required_count: 0,
+            },
+        };
+
+        let value =
+            serde_json::to_value(batch_terminal_event(INSTALL_BATCH_APPLY_COMMAND, &result))
+                .expect("terminal event");
+        assert_eq!(
+            value["phase"],
+            "install.batch.uninstall.completed_with_errors"
         );
     }
 }

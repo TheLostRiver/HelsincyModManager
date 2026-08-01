@@ -11,9 +11,9 @@ use hmm_app::{
 };
 use hmm_core::{
     BatchActionSummary, BatchAttempt, BatchAttemptStatus, BatchId, BatchItemFacts, BatchItemInput,
-    BatchItemResult, BatchPlanFacts, BatchPlanRequest, BatchPreflightDecision,
-    BatchPreflightStatus, BatchTargetClaim, BatchTargetWriteKind, InstallPlan,
-    NormalizedBatchPlanRequest, SealedBatch,
+    BatchItemResult, BatchOperation, BatchPlanFacts, BatchPlanRequest, BatchPreflightDecision,
+    BatchPreflightStatus, BatchTargetClaim, BatchTargetWriteKind, InstallPlan, ModId,
+    NormalizedBatchPlanRequest, ReplacementTargetId, SealedBatch,
 };
 use hmm_infra::{
     open_database_read_only, JsonGameConfigRepository, SqliteBatchLifecycleRepository, SystemClock,
@@ -101,12 +101,28 @@ impl std::error::Error for SandboxBatchAutomationError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchAttemptSnapshot {
     pub batch_id: String,
+    pub operation: BatchOperation,
     pub attempt_number: u32,
     pub status: BatchAttemptStatus,
     pub task_id: Option<String>,
     pub evidence_health_degraded: bool,
     pub summary: hmm_core::BatchResultSummary,
     pub items: Vec<BatchItemResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxBatchPlanRequest {
+    pub plan: BatchPlanRequest,
+    pub replacement_targets: BTreeMap<ModId, ReplacementTargetId>,
+}
+
+impl From<BatchPlanRequest> for SandboxBatchPlanRequest {
+    fn from(plan: BatchPlanRequest) -> Self {
+        Self {
+            plan,
+            replacement_targets: BTreeMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -404,6 +420,16 @@ struct WriteContext {
 pub struct SandboxBatchInstallAutomation;
 
 impl SandboxBatchInstallAutomation {
+    pub fn preview_request(
+        environment: &RuntimeEnvironment,
+        request: SandboxBatchPlanRequest,
+    ) -> Result<BatchPlanPreview, SandboxBatchAutomationError> {
+        if !request.replacement_targets.is_empty() {
+            return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+        }
+        Self::preview(environment, request.plan)
+    }
+
     pub fn preview(
         environment: &RuntimeEnvironment,
         request: BatchPlanRequest,
@@ -444,11 +470,43 @@ impl SandboxBatchInstallAutomation {
         Ok((sealed, run))
     }
 
+    pub fn apply_request(
+        environment: &RuntimeEnvironment,
+        request: SandboxBatchPlanRequest,
+        preview_token: &str,
+    ) -> Result<
+        (BatchOperation, BatchPlanSealResult, BatchInstallRunResult),
+        SandboxBatchAutomationError,
+    > {
+        if !request.replacement_targets.is_empty() {
+            return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+        }
+        let operation = request.plan.operation;
+        Self::apply(environment, request.plan, preview_token)
+            .map(|(sealed, run)| (operation, sealed, run))
+    }
+
     pub fn retry(
         environment: &RuntimeEnvironment,
         batch_id: &str,
         attempt_number: u32,
     ) -> Result<(BatchInstallRetryResult, BatchInstallRunResult), SandboxBatchAutomationError> {
+        Self::retry_with_operation(environment, batch_id, attempt_number)
+            .map(|(_, retry, run)| (retry, run))
+    }
+
+    pub fn retry_with_operation(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+    ) -> Result<
+        (
+            BatchOperation,
+            BatchInstallRetryResult,
+            BatchInstallRunResult,
+        ),
+        SandboxBatchAutomationError,
+    > {
         let batch_id = parse_batch_id(batch_id)?;
         ensure_batch_reconciled(environment, &batch_id, "batch_unavailable")?;
         let context = build_write_context(environment)?;
@@ -461,12 +519,13 @@ impl SandboxBatchInstallAutomation {
             .load_batch(&batch_id)
             .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
             .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+        let operation = batch.plan.operation;
         context.admission.register_batch(&batch);
         let run = context
             .runner
             .run_attempt(&batch_id, retry.attempt_number, &retry.plan_token)
             .map_err(map_run_error)?;
-        Ok((retry, run))
+        Ok((operation, retry, run))
     }
 
     pub fn result(
@@ -684,6 +743,7 @@ fn snapshot(
 ) -> BatchAttemptSnapshot {
     BatchAttemptSnapshot {
         batch_id: batch.batch_id.as_str().to_owned(),
+        operation: batch.plan.operation,
         attempt_number: attempt.attempt_number,
         status: attempt.status,
         task_id: attempt.task_id,

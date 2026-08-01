@@ -19,7 +19,7 @@ pub use backup_automation::{
 };
 pub use batch_automation::{
     BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchAutomationErrorClass,
-    SandboxBatchInstallAutomation,
+    SandboxBatchInstallAutomation, SandboxBatchPlanRequest,
 };
 pub use composition::{
     ConfiguredInstallRecoveryActionPreviewer, ConfiguredInstallRecoveryScanner,
