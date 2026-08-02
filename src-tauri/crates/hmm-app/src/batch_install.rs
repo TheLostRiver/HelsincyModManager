@@ -1129,15 +1129,18 @@ fn batch_item_facts_are_current(
 }
 
 fn batch_plan_facts_are_current(batch: &SealedBatch, facts: &hmm_core::BatchPlanFacts) -> bool {
-    facts.environment_digest == batch.plan.environment_digest
-        && facts.prerequisite_rules_version == batch.plan.prerequisite_rules_version
-        && facts.global_blocking_reasons == batch.plan.global_blocking_reasons
-        && facts.items.len() == batch.plan.items.len()
-        && batch
-            .plan
-            .items
-            .iter()
-            .all(|item| batch_item_facts_are_current(batch, item, facts))
+    let Ok(current_plan) = hmm_core::build_batch_plan(
+        batch.request.clone(),
+        facts.clone(),
+        batch.plan.resource_limits.clone(),
+    ) else {
+        return false;
+    };
+    current_plan.environment_digest == batch.plan.environment_digest
+        && current_plan.prerequisite_rules_version == batch.plan.prerequisite_rules_version
+        && current_plan.global_blocking_reasons == batch.plan.global_blocking_reasons
+        && current_plan.warning_codes == batch.plan.warning_codes
+        && current_plan.items == batch.plan.items
 }
 
 fn first_global_blocker(facts: &hmm_core::BatchPlanFacts) -> Option<String> {

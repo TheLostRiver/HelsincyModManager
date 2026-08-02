@@ -1120,6 +1120,27 @@ mod tests {
         })
     }
 
+    #[test]
+    fn same_revision_reinstall_binding_round_trips_through_tagged_batch_json() {
+        let request = request(
+            BatchOperation::Reinstall,
+            vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                mod_id: ModId::new("mod-a"),
+                installed_revision_id: ModRevisionId::new("revision-a"),
+                candidate_revision_id: ModRevisionId::new("revision-a"),
+                layer: FileLayer::new("default", 10),
+                replacement_binding_snapshot: Some(binding_snapshot("mod-a")),
+            })],
+        );
+
+        let json = serde_json::to_string(&request).expect("serialize batch request");
+        let restored: BatchPlanRequest =
+            serde_json::from_str(&json).expect("deserialize batch request");
+
+        assert_eq!(restored, request);
+        assert!(json.contains("\"created_at_unix_millis\":42"));
+    }
+
     fn binding_snapshot(mod_id: &str) -> ReplacementBindingSnapshot {
         ReplacementBindingSnapshot::new(
             crate::ReplacementBinding::new(

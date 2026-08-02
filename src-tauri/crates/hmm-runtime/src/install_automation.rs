@@ -1,22 +1,29 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
 use crate::{production_app_data_dir, RuntimeEnvironment};
 use hmm_app::{
-    BuildImportedModInstallPlanRequest, GamePrerequisiteDecision, GamePrerequisiteDecisionProvider,
-    GameSetupService, ImportedModInstallPreflightService, InstallManifestQueryRequest,
-    InstallManifestQueryService, InstallManifestStatus, InstallPlanningError,
-    InstallPlanningService, InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
-    InstallRecoveryActionKind, InstallRecoveryActionPreview, InstallRecoveryActionPreviewRequest,
-    InstallRecoveryActionPreviewService, InstallRecoveryIssue, InstallRecoveryScanRequest,
-    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
-    ReinstallBlockingReason, ReinstallCandidateSourceReader, ReinstallPlanPreview,
-    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
-    ReinstallPreviewStatus,
+    BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest, BatchReinstallPlanFactsProvider,
+    BatchUninstallPlanFactsProvider, BuildImportedModInstallPlanRequest, GamePrerequisiteDecision,
+    GamePrerequisiteDecisionProvider, GameSetupService, ImportedModInstallPreflightService,
+    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
+    InstallManifestQueryRequest, InstallManifestQueryService, InstallManifestStatus,
+    InstallPlanningError, InstallPlanningService, InstallRecoveryActionAvailability,
+    InstallRecoveryActionBlockReason, InstallRecoveryActionKind, InstallRecoveryActionPreview,
+    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
+    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
+    InstallRecoverySummary, InstalledReplacementReinstallResolution,
+    PreviewRetargetReinstallRequest, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
+    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreparation,
+    ReinstallPreviewBatchItemFactsReader, ReinstallPreviewError, ReinstallPreviewRequest,
+    ReinstallPreviewService, ReinstallPreviewStatus, ReinstallRevisionSummary,
+    ReinstallTargetCounts, ReplacementWorkflowService,
 };
 use hmm_core::{
-    FileLayer, GameId, GameInstance, InstallManifest, InstallRecoveryRecord, InstallTargetPath,
-    ModId, ModRevisionId, PackageFileId, ProfileId, ReinstallRecoveryTransaction,
+    BatchItemFacts, BatchPlanFacts, FileLayer, GameId, GameInstance, InstallManifest,
+    InstallRecoveryRecord, InstallTargetPath, ModId, ModRevisionId, NormalizedBatchPlanRequest,
+    PackageFileId, ProfileId, ReinstallBatchItemInput, ReinstallRecoveryTransaction,
+    ReplacementBindingSnapshot, ReplacementTargetId,
 };
-use hmm_games_mhw::MonsterHunterWorldAdapter;
+use hmm_games_mhw::{MhwArmorCatalog, MhwArmorReplacementAdapter, MonsterHunterWorldAdapter};
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonGameConfigRepository, JsonInstallManifestRepository,
@@ -27,10 +34,11 @@ use hmm_infra::{
     TaskScopedModImportSandboxLocator,
 };
 use hmm_ports::{
-    GameAdapter, GameConfigRepository, GamePrerequisiteRuleRepository, InstallManifestRepository,
-    InstallRecoveryRecordRepository, InstallSourceFileReader, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFileScanner, ReinstallRecoveryTransactionRepository,
-    ReinstallSnapshotStore, StoredModRevision,
+    BatchPlanFactsProvider, GameAdapter, GameConfigRepository, GamePrerequisiteRuleRepository,
+    InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanner,
+    ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore, ReplacementAdapter,
+    ReplacementCatalogProvider, StoredModRevision,
 };
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -300,6 +308,7 @@ pub struct ReadOnlyInstallAutomation {
     install_recovery_repository: Arc<dyn InstallRecoveryRecordRepository>,
     manifest_query: InstallManifestQueryService,
     reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+    replacement_workflow: Arc<ReplacementWorkflowService>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -360,6 +369,123 @@ impl ReinstallCandidateSourceReader for ReadOnlyReinstallCandidateSourceReader {
     }
 }
 
+struct ReadOnlyInitialRetargetInstallStatusReader;
+
+impl InitialRetargetInstallStatusReader for ReadOnlyInitialRetargetInstallStatusReader {
+    fn recovery_status(
+        &self,
+        _game_id: &GameId,
+        _profile_id: &ProfileId,
+        _mod_id: &ModId,
+    ) -> Result<InstallRecoveryStatus, InitialRetargetInstallStatusError> {
+        Err(InitialRetargetInstallStatusError::Unavailable)
+    }
+}
+
+struct ReadOnlyBatchReinstallItemFactsReader {
+    preview: Arc<ReinstallPreviewService>,
+    replacement_workflow: Arc<ReplacementWorkflowService>,
+}
+
+impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
+    fn read_item_facts(
+        &self,
+        request: &BatchReinstallItemFactsRequest,
+    ) -> anyhow::Result<BatchItemFacts> {
+        if request.input.installed_revision_id != request.input.candidate_revision_id {
+            return ReinstallPreviewBatchItemFactsReader::new(Arc::clone(&self.preview))
+                .read_item_facts(request);
+        }
+        let expected_binding = request
+            .input
+            .replacement_binding_snapshot
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("same-revision replacement binding is missing"))?;
+        let context = self.preview.resolve_installed_replacement_context(
+            &request.game_id,
+            &request.profile_id,
+            &request.input.mod_id,
+        )?;
+        let context = match context {
+            InstalledReplacementReinstallResolution::Ready(context)
+                if context.installed_revision_id == request.input.installed_revision_id =>
+            {
+                context
+            }
+            InstalledReplacementReinstallResolution::Ready(_) => {
+                return ReinstallPreviewBatchItemFactsReader::facts_from_preparation(
+                    request,
+                    ReinstallPreparation::Blocked(blocked_reinstall_preview(
+                        &self.preview,
+                        request,
+                        ReinstallBlockingReason::InstalledRevisionUnknown,
+                    )),
+                );
+            }
+            InstalledReplacementReinstallResolution::Blocked(preview) => {
+                return ReinstallPreviewBatchItemFactsReader::facts_from_preparation(
+                    request,
+                    ReinstallPreparation::Blocked(preview),
+                );
+            }
+        };
+        let planned = match self.replacement_workflow.preview_reinstall_target(
+            PreviewRetargetReinstallRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                mod_id: request.input.mod_id.clone(),
+                installed_revision_id: context.installed_revision_id.clone(),
+                installed_binding: context.installed_binding,
+                target_id: expected_binding.binding().target_id().clone(),
+                layer: request.input.layer.clone(),
+            },
+        ) {
+            Ok(planned) => planned,
+            Err(_) => {
+                return ReinstallPreviewBatchItemFactsReader::facts_from_preparation(
+                    request,
+                    ReinstallPreparation::Blocked(blocked_reinstall_preview(
+                        &self.preview,
+                        request,
+                        ReinstallBlockingReason::CandidateNotReady,
+                    )),
+                );
+            }
+        };
+        let preparation = self.preview.prepare_replacement_target_switch(
+            ReinstallPreviewRequest {
+                game_id: request.game_id.clone(),
+                profile_id: request.profile_id.clone(),
+                mod_id: request.input.mod_id.clone(),
+                candidate_revision_id: context.installed_revision_id,
+                layer: request.input.layer.clone(),
+            },
+            planned.install_plan().clone(),
+        )?;
+        ReinstallPreviewBatchItemFactsReader::facts_from_preparation(request, preparation)
+    }
+}
+
+fn blocked_reinstall_preview(
+    preview: &ReinstallPreviewService,
+    request: &BatchReinstallItemFactsRequest,
+    reason: ReinstallBlockingReason,
+) -> ReinstallPlanPreview {
+    ReinstallPlanPreview {
+        status: ReinstallPreviewStatus::Blocked,
+        prerequisite_decision: preview.prerequisite_decision(&request.game_id),
+        installed_revision: Some(ReinstallRevisionSummary {
+            revision_id: request.input.installed_revision_id.clone(),
+        }),
+        candidate_revision: Some(ReinstallRevisionSummary {
+            revision_id: request.input.candidate_revision_id.clone(),
+        }),
+        counts: ReinstallTargetCounts::default(),
+        blocking_reasons: vec![ReinstallBlockingReasonSummary { reason, count: 1 }],
+        plan_token: None,
+    }
+}
+
 impl ReadOnlyInstallAutomation {
     pub fn from_environment(
         environment: &RuntimeEnvironment,
@@ -399,7 +525,7 @@ impl ReadOnlyInstallAutomation {
         let planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&catalog),
             Arc::clone(&sandbox_locator),
-            file_scanner,
+            Arc::clone(&file_scanner),
             game_adapters.clone(),
         ));
         let game_setup = Arc::new(GameSetupService::new(
@@ -427,6 +553,19 @@ impl ReadOnlyInstallAutomation {
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
             ));
+        let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
+            vec![Arc::new(MhwArmorReplacementAdapter)];
+        let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
+            vec![Arc::new(MhwArmorCatalog)];
+        let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
+            replacement_adapters,
+            replacement_catalogs,
+            Arc::clone(&catalog),
+            Arc::clone(&sandbox_locator),
+            file_scanner,
+            Arc::new(ReadOnlyInitialRetargetInstallStatusReader),
+            Arc::new(SystemClock),
+        ));
 
         Ok(Self {
             app_data_dir,
@@ -441,6 +580,7 @@ impl ReadOnlyInstallAutomation {
             install_recovery_repository,
             manifest_query,
             reinstall_recovery_repository,
+            replacement_workflow,
         })
     }
 
@@ -583,12 +723,7 @@ impl ReadOnlyInstallAutomation {
         )?);
         let preflight = self
             .preflight
-            .preview_revision(
-                &game_id,
-                &mod_id,
-                &revision_id,
-                &base_file_layer(),
-            )
+            .preview_revision(&game_id, &mod_id, &revision_id, &base_file_layer())
             .map_err(map_planning_error)?;
         Ok((
             game_id,
@@ -707,6 +842,101 @@ impl ReadOnlyInstallAutomation {
             })
             .map_err(map_reinstall_preview_error)?;
         Ok((game_id, profile_id, mod_id, candidate_revision_id, preview))
+    }
+
+    pub(crate) fn resolve_batch_replacement_binding(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        input: &ReinstallBatchItemInput,
+        target_id: &ReplacementTargetId,
+    ) -> anyhow::Result<ReplacementBindingSnapshot> {
+        anyhow::ensure!(
+            input.installed_revision_id == input.candidate_revision_id
+                && input.replacement_binding_snapshot.is_none(),
+            "replacement target is only valid for unresolved same-revision reinstall"
+        );
+        let preview = self.reinstall_preview_service(game_id)?;
+        let context =
+            preview.resolve_installed_replacement_context(game_id, profile_id, &input.mod_id)?;
+        let InstalledReplacementReinstallResolution::Ready(context) = context else {
+            anyhow::bail!("installed replacement context is unavailable");
+        };
+        anyhow::ensure!(
+            context.installed_revision_id == input.installed_revision_id,
+            "installed replacement revision changed"
+        );
+        let planned = self.replacement_workflow.preview_reinstall_target(
+            PreviewRetargetReinstallRequest {
+                game_id: game_id.clone(),
+                profile_id: profile_id.clone(),
+                mod_id: input.mod_id.clone(),
+                installed_revision_id: context.installed_revision_id,
+                installed_binding: context.installed_binding,
+                target_id: target_id.clone(),
+                layer: input.layer.clone(),
+            },
+        )?;
+        let [binding] = planned.install_plan().replacement_bindings.as_slice() else {
+            anyhow::bail!("replacement plan has an invalid binding snapshot");
+        };
+        anyhow::ensure!(
+            binding.mod_id() == &input.mod_id
+                && binding.profile_id() == profile_id
+                && binding.revision_id() == Some(&input.installed_revision_id)
+                && binding.binding().target_id() == target_id,
+            "replacement binding does not match the requested identity"
+        );
+        Ok(binding.clone())
+    }
+
+    pub(crate) fn read_batch_uninstall_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        environment_digest: String,
+    ) -> anyhow::Result<BatchPlanFacts> {
+        let game_instance = self.load_admitted_game_instance(&request.game_id)?;
+        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
+            self.app_data_dir.join("install").join("backups"),
+        ));
+        let snapshot_store: Arc<dyn ReinstallSnapshotStore> = backup_store.clone();
+        let recovery_scan = InstallRecoveryScanService::new_with_recovery_records(
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            backup_store,
+            Arc::clone(&self.manifest_repository),
+            Arc::clone(&self.install_recovery_repository),
+        )
+        .with_reinstall_recovery_transactions(
+            Arc::clone(&self.reinstall_recovery_repository),
+            snapshot_store,
+        );
+        BatchUninstallPlanFactsProvider::new(
+            Arc::clone(&self.manifest_repository),
+            recovery_scan,
+            environment_digest,
+        )
+        .read_batch_plan_facts(request)
+    }
+
+    pub(crate) fn read_batch_reinstall_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        environment_digest: String,
+    ) -> anyhow::Result<BatchPlanFacts> {
+        let preview = self.reinstall_preview_service(&request.game_id)?;
+        let item_facts: Arc<dyn BatchReinstallItemFactsReader> =
+            Arc::new(ReadOnlyBatchReinstallItemFactsReader {
+                preview,
+                replacement_workflow: Arc::clone(&self.replacement_workflow),
+            });
+        BatchReinstallPlanFactsProvider::new(
+            item_facts,
+            Arc::clone(&self.manifest_repository),
+            Arc::clone(&self.install_recovery_repository),
+            Arc::clone(&self.reinstall_recovery_repository),
+            environment_digest,
+        )
+        .read_batch_plan_facts(request)
     }
 
     pub fn uninstall_preview(
@@ -1056,6 +1286,30 @@ impl ReadOnlyInstallAutomation {
             return Err(ReadOnlyInstallAutomationError::InstallStateInvalid);
         }
         Ok(summaries)
+    }
+
+    fn reinstall_preview_service(
+        &self,
+        game_id: &GameId,
+    ) -> Result<Arc<ReinstallPreviewService>, ReadOnlyInstallAutomationError> {
+        let game_instance = self.load_admitted_game_instance(game_id)?;
+        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
+            self.app_data_dir.join("install").join("backups"),
+        ));
+        let source: Arc<dyn ReinstallCandidateSourceReader> =
+            Arc::new(ReadOnlyReinstallCandidateSourceReader {
+                sandbox_locator: Arc::clone(&self.sandbox_locator),
+            });
+        Ok(Arc::new(ReinstallPreviewService::new(
+            Arc::clone(&self.prerequisites),
+            Arc::clone(&self.catalog),
+            self.planning.clone(),
+            source,
+            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
+            backup_store,
+            Arc::clone(&self.manifest_repository),
+            Arc::clone(&self.reinstall_recovery_repository),
+        )))
     }
 
     fn load_admitted_game_instance(

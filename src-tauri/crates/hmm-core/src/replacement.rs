@@ -1,5 +1,5 @@
 use crate::{GameId, ModId, ModRevisionId, ProfileId, RetargetPlan};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -280,6 +280,7 @@ pub struct ReplacementBinding {
     profile_id: ProfileId,
     source_id: ReplacementSourceId,
     target_id: ReplacementTargetId,
+    #[serde(serialize_with = "serialize_unix_millis")]
     created_at_unix_millis: u128,
 }
 
@@ -290,7 +291,7 @@ struct ReplacementBindingWire {
     profile_id: ProfileId,
     source_id: ReplacementSourceId,
     target_id: ReplacementTargetId,
-    created_at_unix_millis: u128,
+    created_at_unix_millis: u64,
 }
 
 impl ReplacementBinding {
@@ -354,9 +355,18 @@ impl TryFrom<ReplacementBindingWire> for ReplacementBinding {
             wire.profile_id,
             wire.source_id,
             wire.target_id,
-            wire.created_at_unix_millis,
+            u128::from(wire.created_at_unix_millis),
         )
     }
+}
+
+fn serialize_unix_millis<S>(value: &u128, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let value = u64::try_from(*value)
+        .map_err(|_| serde::ser::Error::custom("Unix millisecond timestamp exceeds u64"))?;
+    serializer.serialize_u64(value)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

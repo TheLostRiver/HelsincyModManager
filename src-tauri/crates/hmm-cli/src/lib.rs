@@ -1080,10 +1080,10 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                 &options.batch_id,
                 options.attempt,
             ) {
-                Ok(snapshot) => write_install_result(
+                Ok(snapshot) => write_batch_attempt_result(
                     format,
                     INSTALL_BATCH_RESULT_COMMAND,
-                    InstallCommandResult::BatchAttempt(project_batch_attempt(snapshot)),
+                    project_batch_attempt(snapshot),
                     stdout,
                     stderr,
                 ),
@@ -1442,6 +1442,35 @@ fn batch_exit_code(status: hmm_core::BatchAttemptStatus) -> i32 {
         | hmm_core::BatchAttemptStatus::Queued
         | hmm_core::BatchAttemptStatus::Running
         | hmm_core::BatchAttemptStatus::Stopping => CliExitCode::ControlledFailure.get(),
+    }
+}
+
+fn batch_result_exit_code(status: hmm_core::BatchAttemptStatus) -> i32 {
+    match status {
+        hmm_core::BatchAttemptStatus::CompletedWithErrors => CliExitCode::PartialSuccess.get(),
+        _ => CliExitCode::Success.get(),
+    }
+}
+
+fn write_batch_attempt_result<W: Write, E: Write>(
+    format: OutputFormat,
+    command: &'static str,
+    result: BatchAttemptResult,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> i32 {
+    let status = result.status;
+    let write_exit_code = write_install_result(
+        format,
+        command,
+        InstallCommandResult::BatchAttempt(result),
+        stdout,
+        stderr,
+    );
+    if write_exit_code == CliExitCode::Success.get() {
+        batch_result_exit_code(status)
+    } else {
+        write_exit_code
     }
 }
 
@@ -2949,6 +2978,52 @@ mod tests {
         assert_eq!(
             batch_exit_code(hmm_core::BatchAttemptStatus::CompletedWithErrors),
             CliExitCode::PartialSuccess.get()
+        );
+    }
+
+    #[test]
+    fn batch_attempt_result_uses_authoritative_status_exit_code() {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let result = BatchAttemptResult {
+            batch_id: "batch-a".to_owned(),
+            operation: BatchOperation::Uninstall,
+            attempt_number: 0,
+            status: hmm_core::BatchAttemptStatus::CompletedWithErrors,
+            task_id: Some("task-a".to_owned()),
+            evidence_health_degraded: false,
+            summary: BatchResultSummarySnapshot {
+                item_count: 2,
+                succeeded_count: 1,
+                blocked_count: 1,
+                failed_count: 0,
+                cancelled_count: 0,
+                skipped_count: 0,
+                recovery_required_count: 0,
+            },
+            items: Vec::new(),
+        };
+
+        assert_eq!(
+            write_batch_attempt_result(
+                OutputFormat::Json,
+                INSTALL_BATCH_RESULT_COMMAND,
+                result,
+                &mut stdout,
+                &mut stderr,
+            ),
+            CliExitCode::PartialSuccess.get()
+        );
+        assert!(stderr.is_empty());
+        let value: serde_json::Value = serde_json::from_slice(&stdout).expect("batch result json");
+        assert_eq!(value["result"]["status"], "completed_with_errors");
+    }
+
+    #[test]
+    fn batch_running_attempt_result_remains_a_successful_query() {
+        assert_eq!(
+            batch_result_exit_code(hmm_core::BatchAttemptStatus::Running),
+            CliExitCode::Success.get()
         );
     }
 

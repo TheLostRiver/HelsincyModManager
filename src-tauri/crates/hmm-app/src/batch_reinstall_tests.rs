@@ -6,9 +6,9 @@ use crate::{
 use hmm_core::{
     BatchExecutionPolicy, BatchId, BatchItemId, BatchItemPlan, BatchPlan, BatchResourceLimits,
     BatchResourceUsage, BatchTargetClaim, BatchTargetWriteKind, FileLayer, InstallManifest,
-    InstallTargetPath, ModId, ModRevisionId, ReplacementBinding, ReplacementBindingId,
-    ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
-    SealedBatchItem,
+    InstallRecoveryRecord, InstallRecoveryRecordStatus, InstallTargetPath, ModId, ModRevisionId,
+    ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot, ReplacementSourceId,
+    ReplacementTargetId, ReplacementTargetKind, SealedBatchItem,
 };
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 use std::collections::BTreeMap;
@@ -55,6 +55,7 @@ impl BatchReinstallItemFactsReader for StaticFactsReader {
 
 struct ReadOnlyState {
     manifest: Mutex<Option<InstallManifest>>,
+    install_recovery: Mutex<Vec<InstallRecoveryRecord>>,
 }
 
 impl InstallManifestRepository for ReadOnlyState {
@@ -63,6 +64,41 @@ impl InstallManifestRepository for ReadOnlyState {
     }
 
     fn save_manifest(&self, _manifest: &InstallManifest) -> anyhow::Result<()> {
+        panic!("batch reinstall facts must remain read-only")
+    }
+}
+
+impl InstallRecoveryRecordRepository for ReadOnlyState {
+    fn load_record(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> anyhow::Result<Option<InstallRecoveryRecord>> {
+        Ok(self
+            .install_recovery
+            .lock()
+            .expect("install recovery")
+            .iter()
+            .find(|record| &record.profile_id == profile_id && &record.mod_id == mod_id)
+            .cloned())
+    }
+
+    fn list_records(&self, profile_id: &ProfileId) -> anyhow::Result<Vec<InstallRecoveryRecord>> {
+        Ok(self
+            .install_recovery
+            .lock()
+            .expect("install recovery")
+            .iter()
+            .filter(|record| &record.profile_id == profile_id)
+            .cloned()
+            .collect())
+    }
+
+    fn save_record(&self, _record: &InstallRecoveryRecord) -> anyhow::Result<()> {
+        panic!("batch reinstall facts must remain read-only")
+    }
+
+    fn remove_record(&self, _profile_id: &ProfileId, _mod_id: &ModId) -> anyhow::Result<()> {
         panic!("batch reinstall facts must remain read-only")
     }
 }
@@ -102,15 +138,22 @@ fn facts_provider_is_read_only_and_rejects_mixed_prerequisite_rules_versions() {
             ProfileId::new("default"),
             Vec::new(),
         ))),
+        install_recovery: Mutex::new(Vec::new()),
     });
     let reader = Arc::new(StaticFactsReader {
         rules_versions: BTreeMap::from([("mod-a".to_owned(), None), ("mod-b".to_owned(), Some(2))]),
         reads: AtomicUsize::new(0),
     });
     let manifests: Arc<dyn InstallManifestRepository> = state.clone();
+    let install_recovery: Arc<dyn InstallRecoveryRecordRepository> = state.clone();
     let recovery: Arc<dyn ReinstallRecoveryTransactionRepository> = state;
-    let provider =
-        BatchReinstallPlanFactsProvider::new(reader.clone(), manifests, recovery, "sandbox-env");
+    let provider = BatchReinstallPlanFactsProvider::new(
+        reader.clone(),
+        manifests,
+        install_recovery,
+        recovery,
+        "sandbox-env",
+    );
 
     let error = provider
         .read_batch_plan_facts(&normalized_request(vec![
@@ -129,14 +172,17 @@ fn facts_provider_reports_profile_manifest_as_a_global_blocker() {
     unsafe_manifest.status = hmm_core::InstallManifestStatus::Committing;
     let state = Arc::new(ReadOnlyState {
         manifest: Mutex::new(Some(unsafe_manifest)),
+        install_recovery: Mutex::new(Vec::new()),
     });
     let reader = Arc::new(StaticFactsReader {
         rules_versions: BTreeMap::from([("mod-a".to_owned(), Some(1))]),
         reads: AtomicUsize::new(0),
     });
     let manifests: Arc<dyn InstallManifestRepository> = state.clone();
+    let install_recovery: Arc<dyn InstallRecoveryRecordRepository> = state.clone();
     let recovery: Arc<dyn ReinstallRecoveryTransactionRepository> = state;
-    let provider = BatchReinstallPlanFactsProvider::new(reader, manifests, recovery, "env");
+    let provider =
+        BatchReinstallPlanFactsProvider::new(reader, manifests, install_recovery, recovery, "env");
 
     let facts = provider
         .read_batch_plan_facts(&normalized_request(vec![reinstall_input(
@@ -151,6 +197,98 @@ fn facts_provider_reports_profile_manifest_as_a_global_blocker() {
             count: 1,
         }]
     );
+}
+
+#[test]
+fn facts_provider_blocks_only_unsettled_install_recovery_records() {
+    let profile_id = ProfileId::new("default");
+    let records = [
+        InstallRecoveryRecordStatus::Planned,
+        InstallRecoveryRecordStatus::Committing,
+        InstallRecoveryRecordStatus::Completed,
+        InstallRecoveryRecordStatus::RollbackRequired,
+        InstallRecoveryRecordStatus::RolledBack,
+        InstallRecoveryRecordStatus::RepairRequired,
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, status)| InstallRecoveryRecord {
+        profile_id: profile_id.clone(),
+        mod_id: ModId::new(format!("recovery-{index}")),
+        status,
+        entries: Vec::new(),
+    })
+    .collect();
+    let state = Arc::new(ReadOnlyState {
+        manifest: Mutex::new(Some(InstallManifest::completed(profile_id, Vec::new()))),
+        install_recovery: Mutex::new(records),
+    });
+    let reader = Arc::new(StaticFactsReader {
+        rules_versions: BTreeMap::from([("mod-a".to_owned(), Some(1))]),
+        reads: AtomicUsize::new(0),
+    });
+    let manifests: Arc<dyn InstallManifestRepository> = state.clone();
+    let install_recovery: Arc<dyn InstallRecoveryRecordRepository> = state.clone();
+    let recovery: Arc<dyn ReinstallRecoveryTransactionRepository> = state;
+    let provider =
+        BatchReinstallPlanFactsProvider::new(reader, manifests, install_recovery, recovery, "env");
+
+    let facts = provider
+        .read_batch_plan_facts(&normalized_request(vec![reinstall_input(
+            "mod-a", "v1", "v2", None,
+        )]))
+        .expect("read-only facts");
+
+    assert_eq!(
+        facts.global_blocking_reasons,
+        vec![BatchReasonSummary {
+            code: "batch_global_recovery_active".to_owned(),
+            count: 3,
+        }]
+    );
+}
+
+#[test]
+fn preparation_projection_reuses_blocked_reinstall_facts_contract() {
+    let request = BatchReinstallItemFactsRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("default"),
+        input: reinstall_input("mod-a", "v1", "v2", None),
+    };
+    let preview = ReinstallPlanPreview {
+        status: crate::ReinstallPreviewStatus::Blocked,
+        prerequisite_decision: crate::GamePrerequisiteDecision {
+            game_id: GameId::mhw(),
+            status: crate::GamePrerequisiteDecisionStatus::Ready,
+            rules_version: Some(1),
+            codes: Vec::new(),
+        },
+        installed_revision: Some(crate::ReinstallRevisionSummary {
+            revision_id: ModRevisionId::new("v1"),
+        }),
+        candidate_revision: Some(crate::ReinstallRevisionSummary {
+            revision_id: ModRevisionId::new("v2"),
+        }),
+        counts: crate::ReinstallTargetCounts::default(),
+        blocking_reasons: vec![crate::ReinstallBlockingReasonSummary {
+            reason: crate::ReinstallBlockingReason::TargetChanged,
+            count: 1,
+        }],
+        plan_token: None,
+    };
+
+    let facts = ReinstallPreviewBatchItemFactsReader::facts_from_preparation(
+        &request,
+        ReinstallPreparation::Blocked(preview),
+    )
+    .expect("blocked facts");
+
+    assert_eq!(facts.mod_id, ModId::new("mod-a"));
+    assert_eq!(facts.installed_revision_id, Some(ModRevisionId::new("v1")));
+    assert_eq!(facts.source_revision_id, Some(ModRevisionId::new("v2")));
+    assert_eq!(facts.blocking_reasons, vec!["installed_target_changed"]);
+    assert!(facts.target_claims.is_empty());
+    assert!(!facts.single_plan_digest.is_empty());
 }
 
 #[derive(Clone)]

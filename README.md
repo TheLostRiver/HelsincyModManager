@@ -117,6 +117,11 @@ manifest/recovery 状态和 containment。安装与重装
 preview 只返回 `prerequisiteDecision` 的 status、stable codes 和 rules version；required missing
 或 rules unavailable 阻断且不签 token，未知签名以 warning 显式继续。
 
+CLI-4 Slice B/C 另外在 Sandbox 开放 `install batch plan|apply|result|retry`，通过批次级
+`--operation install|uninstall|reinstall` 复用同一 sealed batch service。Preview 严格只读；apply
+要求 `--commit --yes --preview-token`，每项继续走既有 InstallPlan/manifest/backup/rollback/recovery、
+Task/Audit 和 game/profile 写锁。Production 在 CLI policy 与 runtime composition 两层继续拒绝写入。
+
 backup 查询只读取已 checkpoint 且不存在 `hmm.db-wal`/`hmm.db-shm`
 sidecar 的 SQLite；发现任一 sidecar 时以 `backup_database_unavailable` fail closed，不执行
 checkpoint、修复、创建或修改。为满足 immutable snapshot 的一致性前提，backup 查询应在桌面端

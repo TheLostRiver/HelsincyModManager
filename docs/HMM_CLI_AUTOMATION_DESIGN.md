@@ -1,8 +1,8 @@
 # HMM CLI 与自动化测试设计
 
-> 状态：设计已确认；CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CLI-4 install batch Slice B 已实现
+> 状态：设计已确认；CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CLI-4 Slice B/C 已实现
 >
-> 日期：2026-07-31
+> 日期：2026-08-02
 >
 > 范围：后端能力命令化、CLI 契约、自动化测试入口与生产写入安全门禁
 
@@ -31,8 +31,8 @@ CLI 不是第二套后端，也不是对 Tauri command 的脚本封装。它必�
   `install batch plan/apply/result/retry`。
 - T17 已实现第三方管理器批量导入，但默认只导入 HMM，不安装到游戏目录。
 - T13-00 已冻结批量安装、卸载和真正重装的领域语义；T13-01/T13-02 已提供批量安装
-  BatchPlan、journal、runner 和 retry；CLI-4 install batch Slice B 已接入 Sandbox。
-  批量卸载、真正重装和 Tauri/前端 adapter 仍未实现，不能由 CLI 循环单项命令来冒充。
+  BatchPlan、journal、runner 和 retry；CLI-4 Slice B/C 已把 install、uninstall、reinstall 接入
+  Sandbox。Tauri/前端 adapter 仍未实现，不能由 CLI 循环单项命令来冒充。
 
 项目整体能力与缺口见 [项目任务状态快照](PROJECT_TASK_STATUS.md)。
 
@@ -289,7 +289,7 @@ hmm
 | CLI-2 后续切片 | `backup create`、`diagnostics export` | 仅 Sandbox | 写入隔离 app data/backup 根；需各自独立安全评审 |
 | CLI-3 | CLI-2 写命令 | Production | 仅在对应跨进程 admission 和写侧重验完成后开放 |
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
-| CLI-4（Slice B/C） | `install batch`、`install uninstall-batch`、`install reinstall-batch` | Sandbox；Production 受 CLI-3 门禁 | 按 operation 增量开放：Slice B 交付批量安装，Slice C 再交付批量卸载与真正重装 |
+| CLI-4（Slice B/C） | `install batch --operation install\|uninstall\|reinstall` | Sandbox；Production 受 CLI-3 门禁 | 三种 operation 共用 plan/apply/result/retry 与 batch service |
 
 CLI-1 的只读结果不得被外部脚本当作后续写入的永久授权。生命周期写命令必须在获取 game/profile
 写锁前重新读取可能包含规则解析或 hash 的前置状态；取得写 admission 和写锁后，再对已封存 token、
@@ -489,8 +489,8 @@ Production 写命令开放前，必须有两个独立进程竞争同一 scope �
 
 ## 批量安装/卸载/真正重装
 
-本节服从 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只冻结语义；
-当前仅 `install batch` 的 Sandbox Slice B 可调用；批量卸载和真正重装仍不可调用。
+本节服从 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 冻结语义；
+T13-05 已在 Sandbox 开放 `install batch` 的 install、uninstall 和 reinstall 三种 operation。
 
 ### 不允许的实现
 
@@ -545,15 +545,17 @@ retryable，不返回路径、Steam ID、digest、backup/snapshot ref、manifest
 Sandbox batch token 是可伪造的 stale/plan tag，不是认证凭据；Production 开放前必须接入
 per-installation secret 和跨进程 admission。
 `seal` 返回的 plan token 只在 adapter 内存中传递，不作为 CLI 参数或机器输出暴露。
-Result 查询绑定确切 attempt；CLI 在 retry 后必须使用新 attempt，不能查询隐式“最新结果”。
+Result 查询绑定确切 attempt；CLI 在 retry 后必须使用新 attempt，不能查询隐式“最新结果”。成功读取
+result 时，只有权威状态 `completed_with_errors` 返回 partial exit code `5`；包括 legacy `running`
+在内的其他可读状态返回 `0`。这不改变 apply/retry 对 blocked、cancelled、failed 等执行结果的原有
+退出码映射。
 
-CLI-4 的共同基线是 T13-00、CLI-2A、CLI-2B、CLI-2C 和 CORE-PREF-01。当前已开放
-`install batch plan/apply/result/retry` 的 Sandbox install 子集；批量卸载与真正重装分别等待
-T13-03 和 T13-04，并在 Slice C 补齐剩余 CLI contract。CLI 只能映射同一 app use case，
-不能自行决定批量原子性、retryable 谓词或写入顺序。Production 继续额外等待 CLI-3
-跨进程 admission。
+CLI-4 的共同基线是 T13-00、CLI-2A、CLI-2B、CLI-2C 和 CORE-PREF-01。Sandbox 的
+`install batch plan/apply/result/retry` 已通过批次级 `--operation` 支持 install、uninstall 和
+reinstall。CLI 只映射同一 app use case，不能自行决定批量原子性、retryable 谓词或写入顺序。
+Production 继续等待 CLI-3 跨进程 admission。
 
-三种 operation root 都暴露同一组子命令，分别固定映射 `install`、`uninstall` 和 `reinstall`：
+同一 `install batch` 命令组通过批次级 `--operation install|uninstall|reinstall` 暴露同一组子命令：
 
 ```text
 plan
@@ -940,5 +942,6 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 
 CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CORE-PREF-01 已形成 Slice A：共享
 composition、逐阶段 observer、Sandbox write capability、完整单项 lifecycle E2E 和统一 prerequisite
-decision 均已落地。Slice B 从已合并的 Slice A 启动 T13 sealed 批量安装，不要为每个 Tauri command
-添加 shell 包装，也不要让 CLI 循环调用单项命令伪装 batch。
+decision 均已落地。Slice B/C 已完成 T13 sealed 批量 install/uninstall/reinstall 的 Sandbox CLI
+契约；下一步由 T13-06/T13-07 接入窄 Tauri command、typed API 和前端工作流，不要增加 shell
+循环单项命令的旁路。
