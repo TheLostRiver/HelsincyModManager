@@ -72,7 +72,7 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 Armor Retarget | Certified（流程）/ 数据待扩容 | AR1-AR5 流程已认证；bundled armor catalog 仍是最小 seed，武器重定向未实现 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
-| T13 批量操作 | Slice C 已完成 / T13-06 已完成 / Slice D 待 T13-07 | sealed plan/preview、batch runner、SQLite journal、retry、取消、故障证据与 Sandbox install/uninstall/reinstall `install batch plan/apply/result/retry` 已落地；5 个窄 Tauri command（preview/seal/start/get_result/retry）、camelCase DTO、typed API 与同步 terminal event 已落地；UI 与 Windows Gate C 仍待 T13-07/T13-08 |
+| T13 批量操作 | Slice C 已完成 / T13-06 已完成 / T13-07 已实现（待人工视觉验收）/ T13-08 待人工 | sealed plan/preview、batch runner、SQLite journal、retry、取消、故障证据与 Sandbox install/uninstall/reinstall `install batch plan/apply/result/retry` 已落地；5 个窄 Tauri command、camelCase DTO、typed API 与同步 terminal event 已落地；批量 UI（跨页选择、策略选择、预览/确认/结果/retry 面板、manifest installedRevisionId 配套）已落地；4 viewport 视觉 smoke 与 Windows Gate C 待人工验收（T13-07/T13-08） |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
 | T15 Linux / Steam Deck | 本轮排除 | 不进入本轮任务、实现、验收或发布判断 |
 | T16 Rise / Wilds | 远期 | 每个游戏需要独立 adapter 与设计 |
@@ -315,8 +315,10 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
 
 Slice A 已完成当前单项 Sandbox lifecycle 闭环与 CORE-PREF-01；PR #222 已把 T13-01/T13-02 与
 T13-05 install batch 子集收敛为 Slice B；Slice C 已完成 T13-03/T13-04 与 T13-05 其余 contract；
-T13-06 已完成 Tauri command 与 typed API。下一纵向切片是 T13-07（批量操作 UI）与 T13-08
-（disposable Windows Sandbox Gate C，需要维护者人工验收）。
+T13-06 已完成 Tauri command 与 typed API；T13-07 已完成批量操作 UI（代码与行为测试）。
+剩余人工验收：T13-07 的 4 viewport 视觉 smoke，以及 T13-08 的 disposable Windows Sandbox
+Gate C（batch install -> restart -> batch true reinstall -> restart -> recovery 检查 ->
+batch uninstall -> exact baseline）。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
