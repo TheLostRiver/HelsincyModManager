@@ -510,6 +510,64 @@ impl SandboxBatchInstallAutomation {
             .map(|(sealed, run)| (operation, sealed, run))
     }
 
+    /// Seals a previously previewed request without starting execution. This is the Tauri
+    /// counterpart of the CLI `apply` path: it revalidates the preview token and current facts,
+    /// persists the sealed batch journal (attempt 0) and returns the opaque `planToken`.
+    pub fn seal_request(
+        environment: &RuntimeEnvironment,
+        request: SandboxBatchPlanRequest,
+        preview_token: &str,
+    ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
+        let request = resolve_batch_plan_request(environment, request, "batch_plan_stale")?;
+        let operation = request.operation;
+        build_read_only_plan_service(environment)?
+            .validate_preview(request.clone(), preview_token)
+            .map_err(map_seal_error)?;
+        ensure_scope_reconciled(environment, &request.game_id, &request.profile_id)?;
+        let context = build_write_context(environment, request.operation)?;
+        let sealed = context
+            .plan_service
+            .seal(request, preview_token)
+            .map_err(map_seal_error)?;
+        Ok((operation, sealed))
+    }
+
+    /// Starts the sealed attempt 0 of a batch identified by `batch_id`, consuming the opaque
+    /// `planToken` returned by `seal_request`. Admission is the same CAS used by `apply`; a
+    /// repeated start for an already-admitted attempt returns the same task id.
+    pub fn start_request(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        plan_token: &str,
+    ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
+        let batch_id = parse_batch_id(batch_id)?;
+        let operation = {
+            let repository =
+                open_batch_repository_read_only(environment, false, "batch_unavailable")?
+                    .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+            let batch = repository
+                .load_batch(&batch_id)
+                .map_err(|_| SandboxBatchAutomationError::new("batch_unavailable"))?
+                .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+            batch.plan.operation
+        };
+        let context = build_write_context(environment, operation)?;
+        let batch = context
+            .repository
+            .load_batch(&batch_id)
+            .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
+            .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+        if batch.plan.operation != operation {
+            return Err(SandboxBatchAutomationError::new("batch_operation_mismatch"));
+        }
+        context.admission.register_batch(&batch);
+        let run = context
+            .runner
+            .run_attempt(&batch_id, 0, plan_token)
+            .map_err(map_run_error)?;
+        Ok((operation, run))
+    }
+
     pub fn retry(
         environment: &RuntimeEnvironment,
         batch_id: &str,
@@ -896,6 +954,12 @@ fn map_retry_error(error: BatchInstallRetryError) -> SandboxBatchAutomationError
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lifecycle_automation::write_install_fixture;
+    use hmm_core::{
+        BatchAttemptStatus, BatchExecutionPolicy, BatchItemInput, BatchPlanRequest, FileLayer,
+        GameId, InstallBatchItemInput, ModId, ModRevisionId, ProfileId, BATCH_PLAN_SCHEMA_VERSION,
+    };
+    use std::collections::BTreeMap;
 
     #[test]
     fn batch_automation_errors_have_stable_display_and_classification() {
@@ -939,5 +1003,151 @@ mod tests {
             fn assert_error<E: std::error::Error>() {}
             assert_error::<SandboxBatchAutomationError>();
         }
+    }
+
+    fn batch_install_request() -> SandboxBatchPlanRequest {
+        SandboxBatchPlanRequest {
+            plan: BatchPlanRequest {
+                schema_version: BATCH_PLAN_SCHEMA_VERSION,
+                operation: BatchOperation::Install,
+                game_id: GameId::mhw(),
+                profile_id: ProfileId::new("default"),
+                execution_policy: BatchExecutionPolicy::StopOnFailure,
+                items: vec![BatchItemInput::Install(InstallBatchItemInput {
+                    mod_id: ModId::new("mod-a"),
+                    revision_id: ModRevisionId::new("package-a"),
+                    layer: FileLayer::new("base", 0),
+                    replacement_binding_snapshot: None,
+                })],
+            },
+            replacement_targets: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn seal_then_start_runs_attempt_and_repeated_start_is_idempotent() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_install_fixture(sandbox.path());
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+
+        let preview =
+            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+                .expect("sandbox preview");
+        assert_eq!(preview.plan.status(), hmm_core::BatchPlanStatus::Ready);
+        let preview_token = preview.preview_token.expect("ready preview token");
+
+        let (operation, sealed) = SandboxBatchInstallAutomation::seal_request(
+            &environment,
+            batch_install_request(),
+            &preview_token,
+        )
+        .expect("sandbox seal");
+        assert_eq!(operation, BatchOperation::Install);
+        assert_eq!(sealed.status, "sealed");
+        assert!(!sealed.plan_token.is_empty());
+        assert!(sealed.expires_at_unix_millis > 0);
+
+        let (operation, run) = SandboxBatchInstallAutomation::start_request(
+            &environment,
+            &sealed.batch_id,
+            &sealed.plan_token,
+        )
+        .expect("sandbox start");
+        assert_eq!(operation, BatchOperation::Install);
+        assert_eq!(run.status, BatchAttemptStatus::Completed);
+        assert!(run.task_id.starts_with("install-"));
+        assert_eq!(
+            fs::read(game_root.join("nativePC/models/player.mod3")).expect("installed target"),
+            b"fixture"
+        );
+
+        let snapshot = SandboxBatchInstallAutomation::result(
+            &environment,
+            &sealed.batch_id,
+            run.attempt_number,
+        )
+        .expect("attempt result");
+        assert_eq!(snapshot.status, BatchAttemptStatus::Completed);
+        assert_eq!(snapshot.task_id.as_deref(), Some(run.task_id.as_str()));
+        assert_eq!(snapshot.summary.succeeded_count, 1);
+        assert_eq!(snapshot.items.len(), 1);
+        assert_eq!(
+            snapshot.items[0].status,
+            hmm_core::BatchItemStatus::Succeeded
+        );
+
+        let (_, repeated) = SandboxBatchInstallAutomation::start_request(
+            &environment,
+            &sealed.batch_id,
+            &sealed.plan_token,
+        )
+        .expect("repeated start is idempotent");
+        assert_eq!(repeated.task_id, run.task_id);
+        assert_eq!(repeated.status, BatchAttemptStatus::Completed);
+    }
+
+    #[test]
+    fn start_rejects_invalid_plan_token_before_any_game_write() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_install_fixture(sandbox.path());
+        let game_before = fs::read(game_root.join("nativePC/models/player.mod3")).ok();
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+
+        let preview = SandboxBatchInstallAutomation::preview_request(
+            &environment,
+            batch_install_request(),
+        )
+        .expect("sandbox preview");
+        let preview_token = preview.preview_token.expect("ready preview token");
+        let (_, sealed) = SandboxBatchInstallAutomation::seal_request(
+            &environment,
+            batch_install_request(),
+            &preview_token,
+        )
+        .expect("sandbox seal");
+
+        let error = SandboxBatchInstallAutomation::start_request(
+            &environment,
+            &sealed.batch_id,
+            "forged-plan-token",
+        )
+        .expect_err("forged plan token must be rejected");
+        assert_eq!(error.code(), "batch_token_invalid");
+
+        let snapshot = SandboxBatchInstallAutomation::result(
+            &environment,
+            &sealed.batch_id,
+            0,
+        )
+        .expect("attempt remains readable");
+        assert_eq!(snapshot.status, BatchAttemptStatus::Sealed);
+        assert_eq!(snapshot.task_id, None);
+        assert_eq!(
+            fs::read(game_root.join("nativePC/models/player.mod3")).ok(),
+            game_before,
+            "no game file may be written before token validation"
+        );
+    }
+
+    #[test]
+    fn production_environment_rejects_batch_preview_and_seal() {
+        let environment =
+            RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
+                .expect("production environment");
+
+        let preview_error =
+            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+                .expect_err("production preview must be rejected");
+        assert_eq!(preview_error.code(), "sandbox_batch_production_forbidden");
+
+        let seal_error = SandboxBatchInstallAutomation::seal_request(
+            &environment,
+            batch_install_request(),
+            "forged-preview-token",
+        )
+        .expect_err("production seal must be rejected");
+        assert_eq!(seal_error.code(), "sandbox_batch_production_forbidden");
     }
 }
