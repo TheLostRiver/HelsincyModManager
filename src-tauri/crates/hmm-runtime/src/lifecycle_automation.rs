@@ -22,6 +22,76 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const LIFECYCLE_PLAN_TOKEN_PREFIX: &str = "hmm-lifecycle-plan-v1:";
 const LIFECYCLE_PLAN_TOKEN_PAYLOAD_HEX_LENGTH: usize = 80;
+
+#[cfg(test)]
+use std::{fs, path::Path};
+
+#[cfg(test)]
+/// Builds a disposable Sandbox fixture with one configured game and one importable Mod
+/// (`mod-a` / `package-a`), including prerequisite files so install preflight passes.
+pub(crate) fn write_install_fixture(sandbox: &Path) -> PathBuf {
+    fs::write(
+        sandbox.join(crate::SANDBOX_MARKER_FILE_NAME),
+        crate::SANDBOX_MARKER_SCHEMA,
+    )
+    .expect("sandbox marker");
+    let game_root = sandbox.join("fixtures/games/mhw-minimal");
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("game fixture");
+    fs::create_dir_all(game_root.join("nativePC/plugins")).expect("prerequisite fixture directory");
+    fs::write(game_root.join("MonsterHunterWorld.exe"), b"fixture").expect("game executable");
+    for relative_path in [
+        "dinput8.dll",
+        "loader.dll",
+        "nativePC/plugins/MonsterLoader.dll",
+        "nativePC/plugins/QuestLoader.dll",
+        "nativePC/plugins/!CRCBypass.dll",
+    ] {
+        fs::write(game_root.join(relative_path), b"artificial-prerequisite")
+            .expect("write prerequisite fixture");
+    }
+    fs::write(
+        game_root.join("loader-config.json"),
+        br#"{"enablePluginLoader":true}"#,
+    )
+    .expect("write prerequisite config");
+    let config_root = sandbox.join("config");
+    fs::create_dir_all(&config_root).expect("config root");
+    fs::write(
+        config_root.join("games.json"),
+        serde_json::json!({
+            "version": 1,
+            "games": [{
+                "id": "mhw-default",
+                "game_id": "mhw",
+                "display_name": "MHW fixture",
+                "root_dir": game_root,
+                "status": "configured",
+                "configured_at_unix_millis": 42
+            }]
+        })
+        .to_string(),
+    )
+    .expect("game config");
+    let catalog_root = sandbox.join("mod-import");
+    fs::create_dir_all(&catalog_root).expect("catalog root");
+    fs::write(
+        catalog_root.join("results.json"),
+        r#"{
+  "version": 1,
+  "records": [{
+    "mod_id": "mod-a",
+    "task_id": "task-a",
+    "package_id": "package-a",
+    "display_name": "Fixture Mod"
+  }]
+}"#,
+    )
+    .expect("Mod catalog");
+    let package_root = catalog_root.join("sandboxes/package-a/nativePC/models");
+    fs::create_dir_all(&package_root).expect("package root");
+    fs::write(package_root.join("player.mod3"), b"fixture").expect("package file");
+    game_root
+}
 const LIFECYCLE_PLAN_TOKEN_TTL_MILLIS: u128 = 5 * 60 * 1000;
 const INSTALL_APPLY_COMMAND: &str = "install.apply";
 const INSTALL_UNINSTALL_COMMAND: &str = "install.uninstall";
@@ -1398,7 +1468,6 @@ fn now_unix_millis() -> Result<u128, SandboxLifecycleAutomationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SANDBOX_MARKER_FILE_NAME, SANDBOX_MARKER_SCHEMA};
     use hmm_core::{
         InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
         InstallTargetPath, InstalledFileSummary, PackageFileId,
@@ -1815,71 +1884,6 @@ mod tests {
             Err(error) => error,
         };
         assert_eq!(error, SandboxLifecycleAutomationError::ProductionForbidden);
-    }
-
-    fn write_install_fixture(sandbox: &Path) -> PathBuf {
-        fs::write(
-            sandbox.join(SANDBOX_MARKER_FILE_NAME),
-            SANDBOX_MARKER_SCHEMA,
-        )
-        .expect("sandbox marker");
-        let game_root = sandbox.join("fixtures/games/mhw-minimal");
-        fs::create_dir_all(game_root.join("nativePC/models")).expect("game fixture");
-        fs::create_dir_all(game_root.join("nativePC/plugins"))
-            .expect("prerequisite fixture directory");
-        fs::write(game_root.join("MonsterHunterWorld.exe"), b"fixture").expect("game executable");
-        for relative_path in [
-            "dinput8.dll",
-            "loader.dll",
-            "nativePC/plugins/MonsterLoader.dll",
-            "nativePC/plugins/QuestLoader.dll",
-            "nativePC/plugins/!CRCBypass.dll",
-        ] {
-            fs::write(game_root.join(relative_path), b"artificial-prerequisite")
-                .expect("write prerequisite fixture");
-        }
-        fs::write(
-            game_root.join("loader-config.json"),
-            br#"{"enablePluginLoader":true}"#,
-        )
-        .expect("write prerequisite config");
-        let config_root = sandbox.join("config");
-        fs::create_dir_all(&config_root).expect("config root");
-        fs::write(
-            config_root.join("games.json"),
-            serde_json::json!({
-                "version": 1,
-                "games": [{
-                    "id": "mhw-default",
-                    "game_id": "mhw",
-                    "display_name": "MHW fixture",
-                    "root_dir": game_root,
-                    "status": "configured",
-                    "configured_at_unix_millis": 42
-                }]
-            })
-            .to_string(),
-        )
-        .expect("game config");
-        let catalog_root = sandbox.join("mod-import");
-        fs::create_dir_all(&catalog_root).expect("catalog root");
-        fs::write(
-            catalog_root.join("results.json"),
-            r#"{
-  "version": 1,
-  "records": [{
-    "mod_id": "mod-a",
-    "task_id": "task-a",
-    "package_id": "package-a",
-    "display_name": "Fixture Mod"
-  }]
-}"#,
-        )
-        .expect("Mod catalog");
-        let package_root = catalog_root.join("sandboxes/package-a/nativePC/models");
-        fs::create_dir_all(&package_root).expect("package root");
-        fs::write(package_root.join("player.mod3"), b"fixture").expect("package file");
-        game_root
     }
 
     fn write_rollback_recovery_fixture(sandbox: &Path, game_root: &Path) -> PathBuf {
