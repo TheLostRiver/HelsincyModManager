@@ -45,12 +45,9 @@ export function getCompactActionDisabledReason({
     return "请先选择一个 MOD";
   }
   if (selectedCount > 1) {
-    /*
-     * 这是当前实现的限制，不是产品规则：批量安装/卸载属于尚未开工的 T13。
-     * 文案要说清"暂未开放"并给出脱困方式，否则用户用"选择本页"选中整页后，
-     * 会看到一排全灰的按钮和一句听起来像永久规则的提示。
-     */
-    return "批量操作暂未开放，请只选择一个 MOD";
+    // T13-07: multi-selection drives the batch mod lifecycle flow. Per-operation feasibility
+    // is decided below by the batch canXxxSelection facts; items without an applicable state
+    // are excluded inside the batch preview with stable reasons.
   }
   if (installTaskActive) {
     return "请等待当前安装任务完成";

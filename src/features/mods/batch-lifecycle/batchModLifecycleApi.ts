@@ -7,7 +7,7 @@ import {
   type BatchModLifecycleResultPageDto,
   type BatchModLifecycleSealDto,
   type BatchModLifecycleStartedDto,
-} from "./batchModLifecycleTypes";
+} from "./batchModLifecycleTypes.ts";
 
 export function previewBatchModLifecycle(
   request: BatchModLifecycleRequestDto,

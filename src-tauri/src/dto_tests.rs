@@ -620,6 +620,7 @@ mod install_recovery_dto_tests {
             status: InstallManifestStatus::RollbackRequired,
             managed_file_count: 1,
             backup_count: 0,
+            installed_revision_id: None,
         }
         .into();
 

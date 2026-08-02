@@ -1,5 +1,6 @@
 use hmm_core::{
-    InstallManifest, InstallManifestStatusConsumption, ModId, ProfileId, ReplacementTargetId,
+    InstallManifest, InstallManifestStatusConsumption, ModId, ModRevisionId, ProfileId,
+    ReplacementTargetId,
 };
 use hmm_ports::InstallManifestRepository;
 use std::sync::Arc;
@@ -43,6 +44,9 @@ pub struct InstallManifestStatusSummary {
     pub status: InstallManifestStatus,
     pub managed_file_count: usize,
     pub backup_count: usize,
+    /// The exact installed revision when the manifest records revisioned facts (schema v2);
+    /// `None` for legacy manifests, not-installed mods and recovery-derived summaries.
+    pub installed_revision_id: Option<ModRevisionId>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -123,20 +127,35 @@ fn summary_for_mod(
     mod_id: &ModId,
     manifest: Option<&InstallManifest>,
 ) -> InstallManifestStatusSummary {
-    let (managed_file_count, backup_count) = manifest
+    let (managed_file_count, backup_count, installed_revision_id) = manifest
         .map(|manifest| {
-            manifest
+            let entries = manifest
                 .entries
                 .iter()
                 .filter(|entry| entry.mod_id == *mod_id)
-                .fold((0_usize, 0_usize), |(managed, backups), entry| {
-                    (
-                        managed + 1,
-                        backups + usize::from(entry.backup_ref.is_some()),
-                    )
-                })
+                .collect::<Vec<_>>();
+            // The write path enforces a single revision per Mod (MultipleRevisionSet), but
+            // stay defensive: only report a revision when every entry agrees on it.
+            let mut revision = None;
+            let mut revision_consistent = true;
+            for entry in &entries {
+                match (&revision, &entry.revision_id) {
+                    (None, Some(candidate)) => revision = Some(candidate.clone()),
+                    (Some(expected), Some(candidate)) if expected == candidate => {}
+                    (Some(_), Some(_)) => {
+                        revision_consistent = false;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            (
+                entries.len(),
+                entries.iter().filter(|entry| entry.backup_ref.is_some()).count(),
+                revision_consistent.then_some(revision).flatten(),
+            )
         })
-        .unwrap_or((0, 0));
+        .unwrap_or((0, 0, None));
 
     let status = if managed_file_count == 0 {
         InstallManifestStatus::NotInstalled
@@ -160,6 +179,7 @@ fn summary_for_mod(
         status,
         managed_file_count,
         backup_count,
+        installed_revision_id,
     }
 }
 
@@ -212,8 +232,43 @@ mod tests {
         assert_eq!(summaries[0].status, InstallManifestStatus::NotInstalled);
         assert_eq!(summaries[0].managed_file_count, 0);
         assert_eq!(summaries[0].backup_count, 0);
+        assert_eq!(summaries[0].installed_revision_id, None);
         assert_eq!(summaries[1].mod_id.as_str(), "mod-b");
         assert_eq!(summaries[1].status, InstallManifestStatus::NotInstalled);
+        assert_eq!(summaries[1].installed_revision_id, None);
+    }
+
+    #[test]
+    fn query_returns_installed_revision_id_from_revisioned_entries() {
+        let manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![
+                manifest_entry("mod-a", "nativePC/a.mod3", None),
+                manifest_entry("mod-b", "nativePC/b.mod3", None),
+            ],
+        );
+        let mut manifest = manifest;
+        for entry in &mut manifest.entries {
+            if entry.mod_id.as_str() == "mod-a" {
+                entry.revision_id = Some(ModRevisionId::new("revision-v2"));
+            }
+        }
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        let summaries = service
+            .query_statuses(InstallManifestQueryRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: vec![ModId::new("mod-a"), ModId::new("mod-b")],
+            })
+            .expect("manifest query should succeed");
+
+        assert_eq!(
+            summaries[0].installed_revision_id.as_ref().map(ModRevisionId::as_str),
+            Some("revision-v2")
+        );
+        assert_eq!(summaries[1].installed_revision_id, None);
     }
 
     #[test]
@@ -245,6 +300,7 @@ mod tests {
                 status: InstallManifestStatus::Installed,
                 managed_file_count: 2,
                 backup_count: 1,
+                installed_revision_id: None,
             }]
         );
     }

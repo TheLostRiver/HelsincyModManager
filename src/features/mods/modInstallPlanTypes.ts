@@ -53,6 +53,8 @@ export type InstallManifestStatusSummary = {
   status: InstallManifestStatus;
   managedFileCount: number;
   backupCount: number;
+  /** Exact installed revision from revisioned manifest facts; null for legacy/not-installed. */
+  installedRevisionId: string | null;
 };
 
 export type InstallRecoveryStatus =
