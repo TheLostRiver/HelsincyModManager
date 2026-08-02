@@ -365,7 +365,7 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 ### T13-07：批量操作 UI
 
-状态：`ready`，依赖 T13-06 已满足。
+状态：`implemented`（代码与行为测试完成；4 viewport 视觉 smoke 待人工验收）。
 
 范围：
 
