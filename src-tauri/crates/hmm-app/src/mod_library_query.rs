@@ -323,6 +323,9 @@ fn projection_page_item_to_app(
                 status,
                 managed_file_count,
                 backup_count,
+                // The library projection does not carry revisioned manifest facts; batch
+                // flows read revisions through `get_install_manifest_status` instead.
+                installed_revision_id: None,
             })
         }
         None if page_item.status.is_none() => None,

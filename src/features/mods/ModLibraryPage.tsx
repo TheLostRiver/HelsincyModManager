@@ -11,6 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
+import { useBatchModLifecycleWorkflow } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
 import {
   InstallPlanDetailSheet,
   ManagedInstallTaskFeedback,
@@ -29,6 +30,12 @@ import {
 } from "./ModLibraryQueryFeedback";
 import { ModPosterCard } from "./ModPosterCard";
 import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
+import { BatchModLifecyclePreviewPanel } from "./batch-lifecycle/BatchModLifecyclePreviewPanel.tsx";
+import {
+  BatchModLifecycleResultPanel,
+  BatchModLifecycleRunningPanel,
+} from "./batch-lifecycle/BatchModLifecycleResultPanel.tsx";
+import { DEFAULT_BATCH_EXECUTION_POLICY } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
 import {
   getInstallManifestStatus,
   previewInstallPlanForImportedMod,
@@ -53,7 +60,7 @@ import {
 } from "./modLifecycleFeedbackState";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
-import { queryModLibrary } from "./modLibraryApi";
+import { getModRevisions, queryModLibrary } from "./modLibraryApi";
 import { listCategories, type CategoryItem } from "./modCategoryApi";
 import {
   allLibraryFilter,
@@ -364,6 +371,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     profileContext,
     loadPage: loadModLibraryPage,
   });
+  const batchWorkflow = useBatchModLifecycleWorkflow({
+    gameId: profileContext === null ? null : DEFAULT_INSTALL_GAME_ID,
+    profileId: profileContext?.profileId ?? null,
+    loadManifestStatuses: (modIds) =>
+      profileContext === null
+        ? Promise.reject(new Error("profile context required"))
+        : getInstallManifestStatus({
+            gameId: DEFAULT_INSTALL_GAME_ID,
+            profileId: profileContext.profileId,
+            modIds,
+          }),
+    loadRevisions: (modId) => getModRevisions({ modId }),
+  });
   const libraryPage = libraryQuery.page;
   const renderedPage = libraryPage?.page ?? null;
   const libraryItems = useMemo(() => libraryPage?.items ?? [], [libraryPage]);
@@ -395,15 +415,29 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const [selectedId] = Array.from(selectedIds);
     return libraryItems.find((item) => item.id === selectedId) ?? null;
   }, [libraryItems, selectedIds]);
+  const selectedLibraryItems = useMemo(
+    () => libraryItems.filter((item) => selectedIds.has(item.id)),
+    [libraryItems, selectedIds],
+  );
+  const batchSelectionHas = (predicate: (item: ModLibraryItem) => boolean) =>
+    selectedIds.size > 0
+    && (selectedLibraryItems.length === 0 || selectedLibraryItems.some(predicate));
   const managedInstallTaskActive = installTaskState.status === "starting" || installTaskState.status === "running";
   const canUninstallSelected =
-    activeProfile.status === "ready" && selectedItem?.installSummary?.status === "installed";
+    activeProfile.status === "ready"
+    && (selectedIds.size === 1
+      ? selectedItem?.installSummary?.status === "installed"
+      : batchSelectionHas((item) => item.installSummary?.status === "installed"));
   const canReinstallSelected =
-    activeProfile.status === "ready" && selectedItem?.installSummary?.status === "installed";
+    activeProfile.status === "ready"
+    && (selectedIds.size === 1
+      ? selectedItem?.installSummary?.status === "installed"
+      : batchSelectionHas((item) => item.installSummary?.status === "installed"));
   const canInstallSelected =
-    selectedItem !== null &&
-    activeProfile.status === "ready" &&
-    selectedItem.installSummary?.status === "not_installed";
+    activeProfile.status === "ready"
+    && (selectedIds.size === 1
+      ? selectedItem !== null && selectedItem.installSummary?.status === "not_installed"
+      : batchSelectionHas((item) => item.installSummary?.status === "not_installed"));
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
     setViewMode,
@@ -546,7 +580,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [renderedPage, resetContentScroll]);
 
   useEffect(() => {
-    setSelectedIds(new Set());
     setContextMenuState(null);
   }, [libraryPage]);
 
@@ -555,6 +588,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       setContextMenuState(null);
     }
   }, [libraryQueryBusy]);
+
+  // Selection changes invalidate any in-flight batch preview; the next action starts fresh.
+  useEffect(() => {
+    batchWorkflow.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds]);
 
   useEffect(() => {
     if (!isManagedInstallTaskTerminal(installTaskState)) {
@@ -729,12 +768,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const handlePageChange = (nextPage: number) => {
     libraryQuery.setPage(nextPage);
-    resetPageInteraction();
+    resetContentScroll();
   };
 
   const handlePageSizeChange = (nextPageSize: Parameters<typeof libraryQuery.setPageSize>[0]) => {
     libraryQuery.setPageSize(nextPageSize);
-    resetPageInteraction();
+    resetContentScroll();
   };
 
   const resetSearchAndFilter = () => {
@@ -770,17 +809,28 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     if (libraryQueryBusy) {
       return;
     }
-    setSelectedIds(new Set(libraryItems.map((item) => item.id)));
+    // Cross-page accumulation: keep selections from other pages and add the current page.
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of libraryItems) {
+        next.add(item.id);
+      }
+      return next;
+    });
   };
 
   const invertSelection = () => {
     if (libraryQueryBusy) {
       return;
     }
+    // Cross-page accumulation: only flip membership of the current page; other pages keep
+    // their previous selection state.
     setSelectedIds((prev) => {
-      const next = new Set<string>();
+      const next = new Set(prev);
       for (const item of libraryItems) {
-        if (!prev.has(item.id)) {
+        if (next.has(item.id)) {
+          next.delete(item.id);
+        } else {
           next.add(item.id);
         }
       }
@@ -1060,10 +1110,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         void refreshModLibrary().catch(() => undefined);
         break;
       case "preview-plan":
-        previewSelectedInstallPlan();
+        if (selectedIds.size === 1) {
+          previewSelectedInstallPlan();
+        } else {
+          void batchWorkflow.prepare("install", Array.from(selectedIds));
+        }
         break;
       case "install":
-        startSelectedInstallTask();
+        if (selectedIds.size === 1) {
+          startSelectedInstallTask();
+        } else {
+          void batchWorkflow.prepare("install", Array.from(selectedIds));
+        }
         break;
       case "reinstall":
         if (libraryQueryBusy) {
@@ -1072,10 +1130,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         setUninstallConfirmation(null);
         installPlanPreviewGenerationRef.current += 1;
         setInstallPlanDetailState({ status: "idle" });
-        openReinstall();
+        if (selectedIds.size === 1) {
+          openReinstall();
+        } else {
+          void batchWorkflow.prepare("reinstall", Array.from(selectedIds));
+        }
         break;
       case "uninstall":
-        promptSelectedUninstallTask();
+        if (selectedIds.size === 1) {
+          promptSelectedUninstallTask();
+        } else {
+          void batchWorkflow.prepare("uninstall", Array.from(selectedIds));
+        }
         break;
       default:
         onAction?.(actionId);
@@ -1199,6 +1265,42 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         toast={lifecycleToast}
         onDismissToast={() => setLifecycleToast(null)}
       />
+
+      {(batchWorkflow.state.status === "resolving"
+        || batchWorkflow.state.status === "preview-loading"
+        || batchWorkflow.state.status === "preview-ready"
+        || batchWorkflow.state.status === "preview-error"
+        || batchWorkflow.state.status === "confirming") && (
+        <BatchModLifecyclePreviewPanel
+          workflowState={batchWorkflow.state}
+          resolution={batchWorkflow.resolution}
+          policy={
+            batchWorkflow.state.status === "resolving"
+              ? DEFAULT_BATCH_EXECUTION_POLICY
+              : batchWorkflow.state.policy
+          }
+          onPolicyChange={batchWorkflow.setPolicy}
+          onConfirm={() => void batchWorkflow.confirmAndStart()}
+          onClose={batchWorkflow.reset}
+        />
+      )}
+
+      {batchWorkflow.state.status === "result" && (
+        <BatchModLifecycleResultPanel
+          workflowState={batchWorkflow.state}
+          onRetry={() => void batchWorkflow.retry()}
+          onLoadMore={() => void batchWorkflow.loadMoreResult()}
+          onClose={batchWorkflow.reset}
+        />
+      )}
+
+      {(batchWorkflow.state.status === "starting"
+        || batchWorkflow.state.status === "result-error") && (
+        <BatchModLifecycleRunningPanel
+          workflowState={batchWorkflow.state}
+          onClose={batchWorkflow.reset}
+        />
+      )}
 
       <ReinstallPlanPreviewPanel
         state={reinstallWorkflow.dialogState}

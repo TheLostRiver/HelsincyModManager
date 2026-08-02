@@ -282,6 +282,7 @@ mod tests {
                     status: InstallManifestStatus::Installed,
                     managed_file_count: 2,
                     backup_count: 1,
+                    installed_revision_id: None,
                 }),
             }],
             page: 1,

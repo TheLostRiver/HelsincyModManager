@@ -186,6 +186,7 @@ impl ModLibraryStatusProvider for FakeStatusProvider {
                     self.statuses.get(mod_id.as_str()) == Some(&InstallManifestStatus::Installed),
                 ),
                 backup_count: 0,
+                installed_revision_id: None,
             })
             .collect())
     }
