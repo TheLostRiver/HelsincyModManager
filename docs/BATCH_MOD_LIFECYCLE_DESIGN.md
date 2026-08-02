@@ -717,7 +717,7 @@ Task observer/result channel 失败同样不能伪造 rollback；当前 item 收
 
 ## Planned transport contract
 
-T13-06 前以下只是规划，不是可调用 command：
+T13-06 已将下列 command 接入 Tauri（仅 Sandbox 模式可用，`HMM_SANDBOX_DATA_DIR`）：
 
 ```text
 preview_batch_mod_lifecycle(request)
@@ -727,6 +727,10 @@ get_batch_mod_lifecycle_result(batchId, attemptNumber, cursor?, limit?)
 retry_batch_mod_lifecycle(batchId, expectedAttemptNumber)
 cancel_task(taskId)
 ```
+
+seal/start 由 hmm-runtime 的 `seal_request`/`start_request` 提供：seal 只持久化 attempt 0 并返回
+planToken，start 消费 batchId+planToken 执行批次；CLI `apply` 仍为 seal+run 一体化路径。start/retry
+当前同步执行并在完成时发出唯一 terminal event；运行中取消与中间 progress 留给 T13-07。
 
 Preview request 只包含 `schemaVersion`、operation、gameId、profileId、executionPolicy 和有界 item
 inputs。首版 `schemaVersion` 必须是整数 `1`；它由调用方显式提交，后端只接受已登记版本，并把同一值
