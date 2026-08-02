@@ -1,3 +1,4 @@
+use crate::install::install_manifest_status_code;
 use crate::{
     GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, InstallPlanningError,
     InstallPlanningService,
@@ -1056,7 +1057,7 @@ fn canonical_plan_token(
         hash_field(&mut hasher, code.as_str());
     }
     hash_u64(&mut hasher, manifest.schema_version.into());
-    hash_field(&mut hasher, manifest_status_code(manifest));
+    hash_field(&mut hasher, install_manifest_status_code(manifest.status));
 
     let mut entries = manifest.entries.iter().collect::<Vec<_>>();
     entries.sort_by(|left, right| {
@@ -1142,20 +1143,6 @@ fn hash_replacement_snapshots(hasher: &mut Sha256, snapshots: &[ReplacementBindi
         hash_field(hasher, snapshot.source_path_family());
         hash_field(hasher, snapshot.target_path_family());
         hash_field(hasher, snapshot.retarget_kind().as_str());
-    }
-}
-
-pub(crate) fn manifest_status_code(manifest: &InstallManifest) -> &'static str {
-    use hmm_core::InstallManifestStatus::{
-        Committing, Completed, Planned, RepairRequired, RollbackRequired, RolledBack,
-    };
-    match manifest.status {
-        Planned => "planned",
-        Committing => "committing",
-        Completed => "completed",
-        RollbackRequired => "rollback_required",
-        RolledBack => "rolled_back",
-        RepairRequired => "repair_required",
     }
 }
 

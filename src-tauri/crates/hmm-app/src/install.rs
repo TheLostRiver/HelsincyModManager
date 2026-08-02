@@ -1071,7 +1071,7 @@ pub(crate) fn uninstall_manifest_snapshot_digest(
     hasher.update(b"hmm-uninstall-manifest-snapshot-v1");
     update_hash_str(&mut hasher, manifest.profile_id.as_str());
     hasher.update(manifest.schema_version.to_be_bytes());
-    update_hash_str(&mut hasher, uninstall_manifest_status_code(manifest.status));
+    update_hash_str(&mut hasher, install_manifest_status_code(manifest.status));
     update_hash_str(&mut hasher, mod_id.as_str());
     hasher.update((entries.len() as u64).to_be_bytes());
     for entry in entries {
@@ -1105,7 +1105,7 @@ pub(crate) fn uninstall_manifest_snapshot_digest(
     format!("sha256:{}", digest_to_hex(&hasher.finalize()))
 }
 
-fn uninstall_manifest_status_code(status: InstallManifestStatus) -> &'static str {
+pub(crate) fn install_manifest_status_code(status: InstallManifestStatus) -> &'static str {
     match status {
         InstallManifestStatus::Planned => "planned",
         InstallManifestStatus::Committing => "committing",

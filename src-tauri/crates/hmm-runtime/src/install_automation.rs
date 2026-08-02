@@ -814,24 +814,7 @@ impl ReadOnlyInstallAutomation {
             candidate_revision_id,
             ReadOnlyInstallAutomationError::CandidateRevisionIdInvalid,
         )?);
-        let game_instance = self.load_admitted_game_instance(&game_id)?;
-        let backup_store = Arc::new(FileSystemInstallBackupStore::new(
-            self.app_data_dir.join("install").join("backups"),
-        ));
-        let source: Arc<dyn ReinstallCandidateSourceReader> =
-            Arc::new(ReadOnlyReinstallCandidateSourceReader {
-                sandbox_locator: Arc::clone(&self.sandbox_locator),
-            });
-        let service = ReinstallPreviewService::new(
-            Arc::clone(&self.prerequisites),
-            Arc::clone(&self.catalog),
-            self.planning.clone(),
-            source,
-            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
-            backup_store,
-            Arc::clone(&self.manifest_repository),
-            Arc::clone(&self.reinstall_recovery_repository),
-        );
+        let service = self.reinstall_preview_service(&game_id)?;
         let preview = service
             .preview(ReinstallPreviewRequest {
                 game_id: game_id.clone(),

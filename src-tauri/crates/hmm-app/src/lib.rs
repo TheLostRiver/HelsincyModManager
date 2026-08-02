@@ -182,8 +182,8 @@ pub use replacement::{
     RetargetReinstallRequest,
 };
 pub use replacement_task::{
-    InitialRetargetInstallPlanner, RetargetInstallTaskRunError, RetargetInstallTaskRunner,
-    RetargetInstallTaskService, StartRetargetInstallTaskRequest,
+    InitialRetargetInstallPlan, InitialRetargetInstallPlanner, RetargetInstallTaskRunError,
+    RetargetInstallTaskRunner, RetargetInstallTaskService, StartRetargetInstallTaskRequest,
 };
 pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,

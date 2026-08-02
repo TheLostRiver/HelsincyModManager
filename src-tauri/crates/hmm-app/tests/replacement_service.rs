@@ -402,8 +402,8 @@ fn workflow_resolves_display_revision_and_previews_revision_owned_retarget_plan(
     );
     assert_eq!(
         preview.install_plan().replacement_bindings[0].revision_id(),
-        None,
-        "initial install entries are not revision-owned; AR5 true reinstall adds revision facts"
+        Some(preview.revision_id()),
+        "initial retarget entries stay bound to the resolved imported revision"
     );
 }
 

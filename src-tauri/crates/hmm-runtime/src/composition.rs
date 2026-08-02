@@ -4,11 +4,12 @@ use hmm_app::{
     CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
     GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
     ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
-    InitialRetargetInstallPlanner, InitialRetargetInstallPreflightService,
-    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader, InstallCommitError,
-    InstallCommitPhase, InstallCommitResult, InstallCommitService, InstallManifestQueryService,
-    InstallPlanCommitter, InstallPlanningService, InstallRecoveryActionError,
-    InstallRecoveryActionExecutor, InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
+    InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
+    InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
+    InstallCommitResult, InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
+    InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
@@ -1521,7 +1522,7 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
     fn build_initial_retarget_install_plan(
         &self,
         request: StartRetargetInstallTaskRequest,
-    ) -> Result<hmm_core::InstallPlan, ReplacementWorkflowError> {
+    ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError> {
         let planned =
             self.workflow
                 .preview_initial_install(PreviewInitialRetargetInstallRequest {
@@ -1532,8 +1533,11 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
                     layer: request.layer,
                 })?;
         let materializer = self.materializer_for(&planned)?;
-        self.workflow
-            .materialize_initial_install(&materializer, planned)
+        let revision_id = planned.revision_id().clone();
+        let plan = self
+            .workflow
+            .materialize_initial_install(&materializer, planned)?;
+        Ok(InitialRetargetInstallPlan { plan, revision_id })
     }
 
     fn revalidate_initial_install(

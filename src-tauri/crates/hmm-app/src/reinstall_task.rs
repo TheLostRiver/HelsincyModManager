@@ -21,6 +21,8 @@ const ROLLBACK_PROCESSING_PHASE: &str = "install.reinstall.rollback.processing";
 const COMPLETED_PHASE: &str = "install.reinstall.completed";
 const FAILED_PHASE: &str = "install.reinstall.failed";
 const FAILED_ERROR_PREFIX: &str = "install_reinstall_failed";
+const PREFLIGHT_FAILURE_PHASE: &str = "preflight";
+pub(crate) const REINSTALL_PREFLIGHT_FAILURE_CODE: &str = "install_reinstall_failed:preflight";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartReinstallTaskRequest {
@@ -712,7 +714,11 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
                 running_event(task_id, ROLLBACK_PROCESSING_PHASE),
             );
         }
-        let error_code = format!("{FAILED_ERROR_PREFIX}:{phase}");
+        let error_code = if phase == PREFLIGHT_FAILURE_PHASE {
+            REINSTALL_PREFLIGHT_FAILURE_CODE.to_owned()
+        } else {
+            format!("{FAILED_ERROR_PREFIX}:{phase}")
+        };
         observe_task_progress(&mut events, observer, failed_event(task_id, &error_code));
         let _ = self.record_audit(
             task_id,
@@ -866,7 +872,7 @@ struct CommitFailure {
 fn commit_failure(error: &ReinstallCommitError) -> CommitFailure {
     match error {
         ReinstallCommitError::PreviewStale => CommitFailure {
-            phase: "preflight",
+            phase: PREFLIGHT_FAILURE_PHASE,
             rollback_result: "not_attempted",
             emit_rollback: false,
         },

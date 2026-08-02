@@ -13,6 +13,7 @@ pub const DEFAULT_BATCH_MAX_ITEMS: usize = 100;
 pub const DEFAULT_BATCH_MAX_TARGET_ACTIONS: usize = 50_000;
 pub const DEFAULT_BATCH_MAX_CANONICAL_BYTES: usize = 16 * 1024 * 1024;
 pub const DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS: u128 = 30 * 60 * 1000;
+const GLOBAL_TARGET_CONFLICT_REASON_CODE: &str = "batch_global_target_conflict";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -502,33 +503,18 @@ impl BatchPlan {
             .values()
             .filter(|owners| owners.len() > 1)
             .count();
-        let mut global_reason_counts = BTreeMap::<String, usize>::new();
-        for reason in &self.global_blocking_reasons {
-            if reason.code.trim().is_empty()
-                || reason.count == 0
-                || global_reason_counts
-                    .insert(reason.code.clone(), reason.count)
-                    .is_some()
-            {
-                return Err(BatchPlanError::FactsMismatch);
-            }
-        }
+        let global_reason_counts = normalize_reason_counts(&self.global_blocking_reasons)?;
         if conflict_count == 0 {
-            if global_reason_counts.contains_key("batch_global_target_conflict") {
+            if global_reason_counts.contains_key(GLOBAL_TARGET_CONFLICT_REASON_CODE) {
                 return Err(BatchPlanError::FactsMismatch);
             }
-        } else if global_reason_counts.get("batch_global_target_conflict") != Some(&conflict_count)
+        } else if global_reason_counts.get(GLOBAL_TARGET_CONFLICT_REASON_CODE)
+            != Some(&conflict_count)
         {
             return Err(BatchPlanError::FactsMismatch);
         }
-        let normalized_global_blocking_reasons = global_reason_counts
-            .into_iter()
-            .map(|(code, count)| BatchReasonSummary { code, count })
-            .collect::<Vec<_>>();
-        let expected_warning_codes = warning_counts
-            .into_iter()
-            .map(|(code, count)| BatchReasonSummary { code, count })
-            .collect::<Vec<_>>();
+        let normalized_global_blocking_reasons = reason_summaries(global_reason_counts);
+        let expected_warning_codes = reason_summaries(warning_counts);
         if self.global_blocking_reasons != normalized_global_blocking_reasons
             || self.warning_codes != expected_warning_codes
             || self.global_target_claims_digest != digest_target_claims(&target_claims)
@@ -687,16 +673,9 @@ pub fn build_batch_plan(
         .into_iter()
         .map(|fact| (fact.mod_id.clone(), fact))
         .collect::<BTreeMap<_, _>>();
-    let mut global_reason_counts = BTreeMap::<String, usize>::new();
-    for reason in &facts.global_blocking_reasons {
-        if reason.code.trim().is_empty()
-            || reason.count == 0
-            || global_reason_counts
-                .insert(reason.code.clone(), reason.count)
-                .is_some()
-        {
-            return Err(BatchPlanError::FactsMismatch);
-        }
+    let mut global_reason_counts = normalize_reason_counts(&facts.global_blocking_reasons)?;
+    if global_reason_counts.contains_key(GLOBAL_TARGET_CONFLICT_REASON_CODE) {
+        return Err(BatchPlanError::FactsMismatch);
     }
     let mut items = Vec::with_capacity(request.items.len());
     let mut target_owners: BTreeMap<String, BTreeSet<ModId>> = BTreeMap::new();
@@ -757,12 +736,12 @@ pub fn build_batch_plan(
         .filter(|owners| owners.len() > 1)
         .count();
     if conflict_count > 0 {
-        global_reason_counts.insert("batch_global_target_conflict".to_owned(), conflict_count);
+        global_reason_counts.insert(
+            GLOBAL_TARGET_CONFLICT_REASON_CODE.to_owned(),
+            conflict_count,
+        );
     }
-    let global_blocking_reasons = global_reason_counts
-        .into_iter()
-        .map(|(code, count)| BatchReasonSummary { code, count })
-        .collect();
+    let global_blocking_reasons = reason_summaries(global_reason_counts);
     let global_target_claims_digest = digest_target_claims(&target_claims);
     let mut warning_counts = BTreeMap::<String, usize>::new();
     for item in &items {
@@ -770,10 +749,7 @@ pub fn build_batch_plan(
             *warning_counts.entry(code.clone()).or_default() += 1;
         }
     }
-    let warning_codes = warning_counts
-        .into_iter()
-        .map(|(code, count)| BatchReasonSummary { code, count })
-        .collect::<Vec<_>>();
+    let warning_codes = reason_summaries(warning_counts);
     let mut plan = BatchPlan {
         plan_schema_version: BATCH_PLAN_SCHEMA_VERSION,
         operation: request.operation,
@@ -946,6 +922,28 @@ fn sha256_digest(bytes: &[u8]) -> String {
 fn deduplicate_strings(values: &mut Vec<String>) {
     values.sort();
     values.dedup();
+}
+
+fn normalize_reason_counts(
+    reasons: &[BatchReasonSummary],
+) -> Result<BTreeMap<String, usize>, BatchPlanError> {
+    let mut counts = BTreeMap::new();
+    for reason in reasons {
+        if reason.code.trim().is_empty()
+            || reason.count == 0
+            || counts.insert(reason.code.clone(), reason.count).is_some()
+        {
+            return Err(BatchPlanError::FactsMismatch);
+        }
+    }
+    Ok(counts)
+}
+
+fn reason_summaries(counts: BTreeMap<String, usize>) -> Vec<BatchReasonSummary> {
+    counts
+        .into_iter()
+        .map(|(code, count)| BatchReasonSummary { code, count })
+        .collect()
 }
 
 macro_rules! batch_string_id {
@@ -1486,6 +1484,36 @@ mod tests {
         assert_eq!(
             plan.global_blocking_reasons[0].code,
             "batch_global_target_conflict"
+        );
+    }
+
+    #[test]
+    fn facts_provider_cannot_supply_core_target_conflict_reason() {
+        let normalized = request(
+            BatchOperation::Install,
+            vec![install_item("a", "a"), install_item("b", "b")],
+        )
+        .normalize()
+        .expect("request");
+
+        assert_eq!(
+            build_batch_plan(
+                normalized,
+                BatchPlanFacts {
+                    environment_digest: "env".to_owned(),
+                    prerequisite_rules_version: Some(1),
+                    global_blocking_reasons: vec![BatchReasonSummary {
+                        code: GLOBAL_TARGET_CONFLICT_REASON_CODE.to_owned(),
+                        count: 99,
+                    }],
+                    items: vec![
+                        facts("a", "nativepc/Foo\\Bar"),
+                        facts("b", "nativepc/foo/bar"),
+                    ],
+                },
+                BatchResourceLimits::default(),
+            ),
+            Err(BatchPlanError::FactsMismatch)
         );
     }
 

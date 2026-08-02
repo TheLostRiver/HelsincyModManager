@@ -541,6 +541,18 @@ fn batch_plan_digest_ignores_unrelated_manifest_entries_and_tracks_mod_facts() {
         "another Mod's manifest entry is an expected between-item batch change"
     );
 
+    let owned_manifest = Fixture::ready();
+    owned_manifest.manifests.update_manifest(|manifest| {
+        manifest.entries[0].package_file_id = PackageFileId::new("retained-old-provider");
+    });
+    assert_ne!(
+        base_digest,
+        owned_manifest
+            .prepare(default_request())
+            .batch_plan_digest(),
+        "the reinstalled Mod's own manifest entry is part of the scoped identity"
+    );
+
     let source_changed = Fixture::ready();
     source_changed
         .source
@@ -633,7 +645,7 @@ fn same_revision_retarget_batch_facts_match_single_item_preparation() {
         installed_revision_id: ModRevisionId::new("v1"),
         candidate_revision_id: ModRevisionId::new("v1"),
         layer: FileLayer::new("base", 0),
-        replacement_binding_snapshot: Some(binding),
+        replacement_binding_snapshot: Some(binding.clone()),
     });
 
     assert_eq!(facts.installed_revision_id, Some(ModRevisionId::new("v1")));
@@ -659,6 +671,35 @@ fn same_revision_retarget_batch_facts_match_single_item_preparation() {
             ("content/retained.bin", BatchTargetWriteKind::Install),
             ("content/stale.bin", BatchTargetWriteKind::Remove),
         ])
+    );
+
+    let drifted = prepared.batch_item_facts(&ReinstallBatchItemInput {
+        mod_id: ModId::new("mod-a"),
+        installed_revision_id: ModRevisionId::new("v1"),
+        candidate_revision_id: ModRevisionId::new("v1"),
+        layer: FileLayer::new("base", 0),
+        replacement_binding_snapshot: Some(replacement_snapshot(
+            "binding-v1-drifted",
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+            Some("v1"),
+        )),
+    });
+    assert_eq!(
+        drifted.blocking_reasons,
+        vec!["replacement_binding_changed".to_owned()]
+    );
+
+    let missing = prepared.batch_item_facts(&ReinstallBatchItemInput {
+        mod_id: ModId::new("mod-a"),
+        installed_revision_id: ModRevisionId::new("v1"),
+        candidate_revision_id: ModRevisionId::new("v1"),
+        layer: FileLayer::new("base", 0),
+        replacement_binding_snapshot: None,
+    });
+    assert_eq!(
+        missing.blocking_reasons,
+        vec!["replacement_binding_changed".to_owned()]
     );
     fixture.assert_zero_mutations();
 }

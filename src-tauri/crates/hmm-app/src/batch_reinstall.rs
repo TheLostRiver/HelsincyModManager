@@ -1,6 +1,6 @@
 use crate::batch_install::{events_contain_audit_degradation, ParentTaskObserver};
-use crate::reinstall::manifest_status_code;
-use crate::reinstall_task::ReinstallTaskOrchestrationError;
+use crate::install::install_manifest_status_code;
+use crate::reinstall_task::{ReinstallTaskOrchestrationError, REINSTALL_PREFLIGHT_FAILURE_CODE};
 use crate::{
     PreparedReinstall, ReinstallBlockingReason, ReinstallPlanPreview, ReinstallPreparation,
     ReinstallPreviewRequest, ReinstallPreviewService, ReinstallTaskExecutor, ReinstallTaskRunner,
@@ -189,7 +189,7 @@ impl PreparedReinstall {
             "manifest": {
                 "profileId": self.old_manifest.profile_id.as_str(),
                 "schemaVersion": self.old_manifest.schema_version,
-                "status": manifest_status_code(&self.old_manifest),
+                "status": install_manifest_status_code(self.old_manifest.status),
                 "entries": manifest_entries,
                 "bindings": installed_bindings,
             },
@@ -304,6 +304,19 @@ impl BatchReinstallPlanFactsProvider {
     }
 }
 
+pub(crate) fn install_recovery_status_blocks_batch_reinstall(
+    status: InstallRecoveryRecordStatus,
+) -> bool {
+    match status {
+        InstallRecoveryRecordStatus::Planned
+        | InstallRecoveryRecordStatus::Completed
+        | InstallRecoveryRecordStatus::RolledBack => false,
+        InstallRecoveryRecordStatus::Committing
+        | InstallRecoveryRecordStatus::RollbackRequired
+        | InstallRecoveryRecordStatus::RepairRequired => true,
+    }
+}
+
 impl BatchPlanFactsProvider for BatchReinstallPlanFactsProvider {
     fn read_batch_plan_facts(
         &self,
@@ -323,14 +336,7 @@ impl BatchPlanFactsProvider for BatchReinstallPlanFactsProvider {
             .install_recovery
             .list_records(&request.profile_id)?
             .into_iter()
-            .filter(|record| {
-                matches!(
-                    record.status,
-                    InstallRecoveryRecordStatus::Committing
-                        | InstallRecoveryRecordStatus::RollbackRequired
-                        | InstallRecoveryRecordStatus::RepairRequired
-                )
-            })
+            .filter(|record| install_recovery_status_blocks_batch_reinstall(record.status))
             .count();
         let active_reinstall_recovery = self.recovery.list_transactions(&request.profile_id)?;
         let mut global_reasons = BTreeMap::<String, usize>::new();
@@ -528,10 +534,12 @@ fn classify_reinstall_task_failure(
         Some(crate::ReinstallCommitError::PreviewStale) => BatchInstallItemExecution::Blocked {
             reason_code: "reinstall_plan_stale".to_owned(),
         },
-        Some(crate::ReinstallCommitError::RolledBack { .. }) => BatchInstallItemExecution::Failed {
+        Some(crate::ReinstallCommitError::RolledBack {
+            cleanup_pending, ..
+        }) => BatchInstallItemExecution::Failed {
             reason_code: "reinstall_rollback_succeeded".to_owned(),
             retryable: true,
-            evidence_health_degraded: false,
+            evidence_health_degraded: *cleanup_pending,
         },
         Some(
             crate::ReinstallCommitError::RollbackRequired { .. }
@@ -567,7 +575,7 @@ fn classify_reinstall_task_failure(
                 .rev()
                 .find_map(|event| event.error.as_deref())
                 .unwrap_or("install_reinstall_failed:unavailable");
-            if reason.ends_with(":preflight") {
+            if reason == REINSTALL_PREFLIGHT_FAILURE_CODE {
                 BatchInstallItemExecution::Blocked {
                     reason_code: "reinstall_plan_stale".to_owned(),
                 }

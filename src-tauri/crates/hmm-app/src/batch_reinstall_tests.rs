@@ -202,23 +202,28 @@ fn facts_provider_reports_profile_manifest_as_a_global_blocker() {
 #[test]
 fn facts_provider_blocks_only_unsettled_install_recovery_records() {
     let profile_id = ProfileId::new("default");
-    let records = [
+    let statuses = [
         InstallRecoveryRecordStatus::Planned,
         InstallRecoveryRecordStatus::Committing,
         InstallRecoveryRecordStatus::Completed,
         InstallRecoveryRecordStatus::RollbackRequired,
         InstallRecoveryRecordStatus::RolledBack,
         InstallRecoveryRecordStatus::RepairRequired,
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, status)| InstallRecoveryRecord {
-        profile_id: profile_id.clone(),
-        mod_id: ModId::new(format!("recovery-{index}")),
-        status,
-        entries: Vec::new(),
-    })
-    .collect();
+    ];
+    let expected_blocking_count = statuses
+        .iter()
+        .filter(|status| install_recovery_status_blocks_batch_reinstall(**status))
+        .count();
+    let records = statuses
+        .into_iter()
+        .enumerate()
+        .map(|(index, status)| InstallRecoveryRecord {
+            profile_id: profile_id.clone(),
+            mod_id: ModId::new(format!("recovery-{index}")),
+            status,
+            entries: Vec::new(),
+        })
+        .collect();
     let state = Arc::new(ReadOnlyState {
         manifest: Mutex::new(Some(InstallManifest::completed(profile_id, Vec::new()))),
         install_recovery: Mutex::new(records),
@@ -243,7 +248,7 @@ fn facts_provider_blocks_only_unsettled_install_recovery_records() {
         facts.global_blocking_reasons,
         vec![BatchReasonSummary {
             code: "batch_global_recovery_active".to_owned(),
-            count: 3,
+            count: expected_blocking_count,
         }]
     );
 }
@@ -469,6 +474,29 @@ fn item_executor_routes_cross_revision_and_same_revision_retarget() {
 }
 
 #[test]
+fn same_revision_without_binding_is_blocked_before_any_task_runs() {
+    let fixture = executor_fixture("sealed-digest", Ok(commit_success()), false);
+
+    let result = fixture.executor.execute(item_request(
+        &fixture.task_manager,
+        reinstall_input("mod-a", "v1", "v1", None),
+        "sealed-digest",
+    ));
+
+    assert_eq!(
+        result,
+        BatchInstallItemExecution::Blocked {
+            reason_code: "batch_retarget_binding_required".to_owned(),
+        }
+    );
+    assert_eq!(fixture.inner.commit_count.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        fixture.inner.retarget_prepare_count.load(Ordering::Relaxed),
+        0
+    );
+}
+
+#[test]
 fn stale_scoped_digest_blocks_before_commit() {
     let fixture = executor_fixture("current-digest", Ok(commit_success()), false);
 
@@ -507,6 +535,27 @@ fn structured_commit_outcomes_drive_retry_recovery_and_committed_success() {
             reason_code: "reinstall_rollback_succeeded".to_owned(),
             retryable: true,
             evidence_health_degraded: false,
+        }
+    );
+
+    let rolled_back_with_cleanup = executor_fixture(
+        "sealed",
+        Err(ReinstallCommitError::RolledBack {
+            failed_phase: ReinstallCommitPhase::Manifest,
+            cleanup_pending: true,
+        }),
+        false,
+    );
+    assert_eq!(
+        rolled_back_with_cleanup.executor.execute(item_request(
+            &rolled_back_with_cleanup.task_manager,
+            reinstall_input("mod-a", "v1", "v2", None),
+            "sealed",
+        )),
+        BatchInstallItemExecution::Failed {
+            reason_code: "reinstall_rollback_succeeded".to_owned(),
+            retryable: true,
+            evidence_health_degraded: true,
         }
     );
 
