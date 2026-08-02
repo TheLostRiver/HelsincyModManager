@@ -6,7 +6,8 @@ import {
   getBatchErrorLabel,
   getBatchItemStatusLabel,
   getBatchOperationLabel,
-} from "./batchModLifecycleCopy";
+  getBatchReasonCodeLabel,
+} from "./batchModLifecycleCopy.ts";
 import type { BatchModLifecycleWorkflowState } from "./batchModLifecycleWorkflow";
 import "./BatchModLifecyclePanel.css";
 
@@ -50,7 +51,10 @@ export function BatchModLifecycleResultPanel({
   }
   const { result, operation, batchId } = workflowState;
   const summary = result.summary;
-  const hasRetryableItems = result.items.some((item) => item.retryable);
+  const retryAvailableByStatus =
+    result.status === "completed_with_errors"
+    || result.status === "failed"
+    || result.status === "recovery_required";
   const tone = statusTone(result.status);
   const canLoadMore = result.nextCursor !== null;
 
@@ -107,7 +111,9 @@ export function BatchModLifecycleResultPanel({
               </span>
               <span className="batch-panel__item-mod">{item.modId}</span>
               {item.reasonCode !== null && (
-                <span className="batch-panel__item-reason">{item.reasonCode}</span>
+                <span className="batch-panel__item-reason">
+                  {getBatchReasonCodeLabel(item.reasonCode)}
+                </span>
               )}
               {item.retryable && (
                 <span className="batch-panel__item-retryable">可重试</span>
@@ -125,7 +131,7 @@ export function BatchModLifecycleResultPanel({
               加载更多
             </button>
           )}
-          {hasRetryableItems && (
+          {retryAvailableByStatus && (
             <button type="button" className="batch-panel__confirm" onClick={onRetry}>
               <RefreshCw size={16} aria-hidden="true" />
               重试失败项
@@ -146,10 +152,13 @@ export function BatchModLifecycleRunningPanel({
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const starting = workflowState.status === "starting";
   useModalFocusTrap({
     active: true,
     containerRef: panelRef,
-    closeOnEscape: true,
+    // A started batch cannot be cancelled through this panel; keep the modal pinned while
+    // the synchronous start is in flight so the attempt identity is not lost.
+    closeOnEscape: !starting,
     onRequestClose: onClose,
   });
 
@@ -175,6 +184,7 @@ export function BatchModLifecycleRunningPanel({
             type="button"
             className="batch-panel__close"
             aria-label="关闭"
+            disabled={starting}
             onClick={onClose}
           >
             <X size={16} aria-hidden="true" />

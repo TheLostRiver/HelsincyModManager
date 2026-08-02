@@ -80,10 +80,33 @@ export function getBatchExcludedReasonLabel(reason: string): string {
   }
 }
 
+export function getBatchReasonCodeLabel(code: string): string {
+  switch (code) {
+    case "stopped_after_item_failure":
+      return "因前一项失败而停止";
+    case "cancelled_before_start":
+      return "开始前已取消";
+    case "batch_item_plan_stale":
+      return "单项计划已过期";
+    case "source_revision_changed":
+      return "来源版本已变化";
+    case "manifest_changed":
+      return "安装清单已变化";
+    case "target_changed":
+      return "目标文件已变化";
+    case "rollback_succeeded":
+      return "已回滚";
+    case "recovery_required":
+      return "需要恢复";
+    default:
+      return code;
+  }
+}
+
 export function getBatchErrorLabel(code: string): string {
   switch (code) {
     case "batch_no_applicable_items":
-      return "选中的 Mod 均不适用于该操作";
+      return "选中的 Mod 均不适用于该操作，或无法读取版本信息";
     case "batch_facts_unavailable":
       return "无法读取安装状态或版本信息";
     case "batch_input_invalid":

@@ -39,12 +39,15 @@ test("batch result panel gates retry and pagination on backend facts", () => {
     "src/features/mods/batch-lifecycle/BatchModLifecycleResultPanel.tsx",
   );
 
-  assert.match(source, /hasRetryableItems = result\.items\.some\(\(item\) => item\.retryable\)/);
-  assert.match(source, /hasRetryableItems &&/);
+  assert.match(source, /retryAvailableByStatus =/);
+  assert.match(source, /result\.status === "completed_with_errors"/);
+  assert.match(source, /result\.status === "failed"/);
+  assert.match(source, /retryAvailableByStatus &&/);
   assert.match(source, /重试失败项/);
   assert.match(source, /canLoadMore = result\.nextCursor !== null/);
   assert.match(source, /加载更多/);
   assert.match(source, /getBatchItemStatusLabel\(item\.status\)/);
+  assert.match(source, /getBatchReasonCodeLabel\(item\.reasonCode\)/);
   assert.match(source, /evidenceHealthDegraded/);
   assert.doesNotMatch(source, /nativePC|targetPath|installPath|cachePath|sandboxPath|convertFileSrc/i);
 });

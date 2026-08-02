@@ -10,6 +10,7 @@ import type {
   BatchModLifecycleExecutionPolicy,
   BatchModLifecycleRequestDto,
 } from "./batchModLifecycleTypes.ts";
+import { BATCH_MOD_LIFECYCLE_MAX_ITEMS } from "./batchModLifecycleTypes.ts";
 import {
   buildBatchModLifecycleRequest,
   type BatchModLifecycleItemResolution,
@@ -142,6 +143,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
           status: "preview-error",
           errorCode: commandErrorCode(error),
           policy,
+          operation: operationOfRequest(request),
         });
       }
     },
@@ -193,6 +195,16 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
             status: "preview-error",
             errorCode: "batch_no_applicable_items",
             policy: DEFAULT_BATCH_EXECUTION_POLICY,
+            operation,
+          });
+          return;
+        }
+        if (resolution.items.length > BATCH_MOD_LIFECYCLE_MAX_ITEMS) {
+          updateState({
+            status: "preview-error",
+            errorCode: "batch_resource_limit_exceeded",
+            policy: DEFAULT_BATCH_EXECUTION_POLICY,
+            operation,
           });
           return;
         }
@@ -207,6 +219,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
             status: "preview-error",
             errorCode: "batch_facts_unavailable",
             policy: DEFAULT_BATCH_EXECUTION_POLICY,
+            operation,
           });
         }
       }
@@ -224,7 +237,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       const operation =
         current.status === "preview-ready"
           ? operationOfRequest(current.request)
-          : "install";
+          : current.operation;
       const request = requestFor(operation, policy);
       if (request === null) {
         return;
@@ -255,6 +268,11 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       if (generation !== generationRef.current) {
         return;
       }
+      // Seal persists attempt 0; record it so a start failure keeps a recoverable identity.
+      activeAttemptRef.current = {
+        batchId: sealed.batchId,
+        attemptNumber: 0,
+      };
       updateState({
         status: "starting",
         request: current.request,
@@ -321,12 +339,17 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     }
   }, [loadResultPage, updateState]);
 
+  const loadMorePendingRef = useRef(false);
   const loadMoreResult = useCallback(async () => {
     const active = activeAttemptRef.current;
     const current = stateRef.current;
     if (active === null || current.status !== "result" || current.result.nextCursor === null) {
       return;
     }
+    if (loadMorePendingRef.current) {
+      return;
+    }
+    loadMorePendingRef.current = true;
     const generation = generationRef.current;
     try {
       const page = await getBatchModLifecycleResult({
@@ -357,6 +380,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
           attemptNumber: active.attemptNumber,
         });
       }
+    } finally {
+      loadMorePendingRef.current = false;
     }
   }, [updateState]);
 
