@@ -299,6 +299,27 @@ mod tests {
     }
 
     #[test]
+    fn request_rejects_unknown_fields_directly_on_item_variants() {
+        let error = serde_json::from_value::<BatchModLifecycleRequestDto>(json!({
+            "schemaVersion": 1,
+            "operation": "install",
+            "gameId": "mhw",
+            "profileId": "default",
+            "executionPolicy": "stop_on_failure",
+            "items": [{
+                "operation": "install",
+                "modId": "mod-a",
+                "revisionId": "rev-1",
+                "layer": { "name": "base", "priority": 0 },
+                "planToken": "forged"
+            }]
+        }))
+        .expect_err("unknown item field is rejected");
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn request_rejects_unknown_operation_values() {
         let error = serde_json::from_value::<BatchModLifecycleRequestDto>(json!({
             "schemaVersion": 1,

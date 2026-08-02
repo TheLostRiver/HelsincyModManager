@@ -48,7 +48,8 @@ export type BatchModLifecycleRequestDto = {
   profileId: string;
   executionPolicy: BatchModLifecycleExecutionPolicy;
   items: BatchModLifecycleItemInputDto[];
-  replacementTargets: BatchModLifecycleReplacementTargetDto[];
+  /** Same-revision reinstall target switches; omitted for install/uninstall. */
+  replacementTargets?: BatchModLifecycleReplacementTargetDto[];
 };
 
 export type BatchModLifecyclePreviewStatus = "ready" | "blocked";

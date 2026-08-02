@@ -64,8 +64,10 @@ export function retryBatchModLifecycle(input: {
   });
 }
 
-/** Cancellation reuses the controlled `cancel_task` command; batch tasks are only cancellable
- *  while their attempt is queued or running. */
+/** Cancellation reuses the controlled `cancel_task` command. T13-06 batch `start`/`retry`
+ *  execute synchronously and return terminal tasks, so `cancel_task` is not supported for
+ *  batch tasks and returns `task_cannot_be_cancelled`; running cancellation arrives with the
+ *  T13-07 asynchronous execution model. */
 export function cancelBatchModLifecycleTask(input: {
   taskId: string;
 }): Promise<TaskStartedDto> {
