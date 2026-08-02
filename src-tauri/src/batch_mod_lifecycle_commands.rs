@@ -224,6 +224,9 @@ fn file_layer(layer: BatchModLifecycleLayerDto) -> Result<FileLayer, CommandErro
 }
 
 fn parse_opaque_id(value: &str) -> Result<String, CommandErrorDto> {
+    // Explicit transport contract shared with the CLI batch parser
+    // (`parse_batch_id_component`): controlled ids are ASCII alphanumeric plus `-`/`_`. The
+    // backend accepts nothing broader; non-ASCII ids and path-like values are rejected here.
     let trimmed = value.trim();
     if trimmed.is_empty()
         || trimmed.len() > BATCH_OPAQUE_ID_MAX_LENGTH
@@ -362,6 +365,11 @@ fn batch_terminal_event(
 
 fn batch_terminal_mapping(status: hmm_core::BatchAttemptStatus) -> (TaskStatus, &'static str) {
     use hmm_core::BatchAttemptStatus;
+    // The current execution model is synchronous: `start`/`retry` return only after the attempt
+    // is terminal, so the non-terminal arms below are defensive and unreachable today. They map
+    // to `failed` so an unexpected non-terminal result can never be presented as success; when
+    // T13-07 introduces asynchronous execution, queued/running attempts must emit their own
+    // progress events instead of a terminal mapping.
     match status {
         BatchAttemptStatus::Completed => (TaskStatus::Completed, "completed"),
         BatchAttemptStatus::CompletedWithErrors => (TaskStatus::Completed, "completed_with_errors"),

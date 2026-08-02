@@ -557,6 +557,9 @@ impl SandboxBatchInstallAutomation {
             .load_batch(&batch_id)
             .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
             .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+        if batch.plan.operation != operation {
+            return Err(SandboxBatchAutomationError::new("batch_operation_mismatch"));
+        }
         context.admission.register_batch(&batch);
         let run = context
             .runner
