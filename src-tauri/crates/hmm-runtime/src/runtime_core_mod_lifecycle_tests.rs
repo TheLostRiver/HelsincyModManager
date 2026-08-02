@@ -269,7 +269,11 @@ fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot(
     );
     assert_eq!(snapshot.source_internal_id(), "pl121_0000");
     assert_eq!(snapshot.target_internal_id(), "pl129_0000");
-    assert_eq!(snapshot.revision_id(), None);
+    let manifest_revision = manifest.entries[0]
+        .revision_id
+        .clone()
+        .expect("retarget manifest records imported revision");
+    assert_eq!(snapshot.revision_id(), Some(&manifest_revision));
 
     let staging_parent = app_data_dir.join("install").join("retarget-staging");
     assert!(

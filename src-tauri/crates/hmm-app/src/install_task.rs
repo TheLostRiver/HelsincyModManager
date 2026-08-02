@@ -1039,10 +1039,10 @@ impl UninstallTaskRunner {
             }
         };
 
-        let audit_ok =
-            self.record_uninstall_audit(task_id, &request, "success", Some(&result), None);
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
+                let audit_ok =
+                    self.record_uninstall_audit(task_id, &request, "success", Some(&result), None);
                 let mut event = TaskProgressEvent::new(
                     task.task_id,
                     task.kind,
@@ -1982,6 +1982,89 @@ mod tests {
         assert!(!serialized.contains("nativePC/models/player.mod3"));
         assert!(!serialized.contains("C:/"));
         assert!(!serialized.contains('\\'));
+    }
+
+    #[test]
+    fn uninstall_terminal_transition_failure_records_only_failure_audit() {
+        struct TerminalTransitionFailingUninstaller {
+            task_manager: Arc<crate::TaskManager>,
+            task_id: String,
+            result: UninstallModResult,
+        }
+
+        impl ModUninstaller for TerminalTransitionFailingUninstaller {
+            fn uninstall_mod(
+                &self,
+                _request: StartUninstallTaskRequest,
+            ) -> Result<UninstallModResult, UninstallModError> {
+                self.task_manager
+                    .fail_task(&self.task_id)
+                    .expect("injected terminal transition");
+                Ok(self.result.clone())
+            }
+
+            fn uninstall_mod_for_revision(
+                &self,
+                request: StartUninstallTaskRequest,
+                _expected_installed_revision_id: ModRevisionId,
+            ) -> Result<UninstallModResult, UninstallModError> {
+                self.uninstall_mod(request)
+            }
+
+            fn uninstall_mod_for_revision_and_manifest(
+                &self,
+                request: StartUninstallTaskRequest,
+                _expected_installed_revision_id: ModRevisionId,
+                _expected_manifest_digest: &str,
+            ) -> Result<UninstallModResult, UninstallModError> {
+                self.uninstall_mod(request)
+            }
+        }
+
+        #[derive(Default)]
+        struct CollectingAuditLogWriter {
+            events: Mutex<Vec<AuditLogEvent>>,
+        }
+
+        impl AuditLogWriter for CollectingAuditLogWriter {
+            fn record(&self, event: AuditLogEvent) -> anyhow::Result<()> {
+                self.events.lock().expect("events").push(event);
+                Ok(())
+            }
+        }
+
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let audit_log = Arc::new(CollectingAuditLogWriter::default());
+        let runner = UninstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(TerminalTransitionFailingUninstaller {
+                task_manager: Arc::clone(&task_manager),
+                task_id: task.task_id.clone(),
+                result: UninstallModResult {
+                    manifest: sample_manifest(),
+                    removed_file_count: 1,
+                    restored_file_count: 0,
+                },
+            }),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        runner
+            .run_uninstall_task(&task.task_id, sample_uninstall_request())
+            .expect_err("completion transition must fail");
+
+        let events = std::mem::take(&mut *audit_log.events.lock().expect("events"));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].operation, "uninstall_mod");
+        assert_eq!(events[0].result, "failure");
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Failed)
+        );
     }
 
     #[test]

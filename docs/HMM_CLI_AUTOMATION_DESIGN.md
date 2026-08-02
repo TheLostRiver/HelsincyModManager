@@ -249,16 +249,6 @@ hmm
       apply
       result
       retry
-    uninstall-batch
-      plan
-      apply
-      result
-      retry
-    reinstall-batch
-      plan
-      apply
-      result
-      retry
   backup
     list
     create
@@ -546,9 +536,9 @@ Sandbox batch token 是可伪造的 stale/plan tag，不是认证凭据；Produc
 per-installation secret 和跨进程 admission。
 `seal` 返回的 plan token 只在 adapter 内存中传递，不作为 CLI 参数或机器输出暴露。
 Result 查询绑定确切 attempt；CLI 在 retry 后必须使用新 attempt，不能查询隐式“最新结果”。成功读取
-result 时，只有权威状态 `completed_with_errors` 返回 partial exit code `5`；包括 legacy `running`
-在内的其他可读状态返回 `0`。这不改变 apply/retry 对 blocked、cancelled、failed 等执行结果的原有
-退出码映射。
+result 时，非终态 `sealed/queued/running/stopping` 返回 `0`；terminal 状态与 apply/retry 使用同一退出码
+映射，其中 `completed_with_errors` 返回 partial exit code `5`，blocked/failed/recovery required 等不会
+伪装成成功查询。
 
 CLI-4 的共同基线是 T13-00、CLI-2A、CLI-2B、CLI-2C 和 CORE-PREF-01。Sandbox 的
 `install batch plan/apply/result/retry` 已通过批次级 `--operation` 支持 install、uninstall 和

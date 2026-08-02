@@ -293,9 +293,22 @@ fn prepare_initial_armor_retarget_fixture(sandbox: &Path, game_root: &Path) {
 }"#,
     )
     .expect("write armor Mod catalog");
+    JsonModImportResultRepository::new(catalog_root.join("results.json"))
+        .append_revision(&StoredModRevision {
+            revision_id: ModRevisionId::new("revision-armor"),
+            mod_id: ModId::new("mod-a"),
+            import_task_id: "task-armor-revision".to_owned(),
+            package_id: "package-armor-revision".to_owned(),
+            display_name: "Armor Fixture Mod".to_owned(),
+            metadata: StoredModPackageMetadata::default(),
+            preview_image: StoredImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            },
+        })
+        .expect("append armor revision through catalog repository");
     let source = catalog_root
         .join("sandboxes")
-        .join("package-armor")
+        .join("package-armor-revision")
         .join(ARMOR_SOURCE_TARGET);
     fs::create_dir_all(source.parent().expect("armor source parent"))
         .expect("create armor source parent");
@@ -2808,7 +2821,7 @@ fn sandbox_batch_same_revision_armor_switch_preview_is_read_only_and_uninstalls_
         .iter()
         .find(|entry| entry.mod_id == ModId::new("mod-a"))
         .and_then(|entry| entry.revision_id.clone())
-        .unwrap_or_else(|| ModRevisionId::new("package-armor"));
+        .expect("initial armor manifest records the installed revision");
     let item = format!("mod-a:{0}:{0}", installed_revision.as_str());
     let replacement_target = "mod-a=mhw:armor:fatalis-beta";
     let before_preview = tree_snapshot(sandbox.path());

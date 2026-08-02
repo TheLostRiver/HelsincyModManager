@@ -146,8 +146,9 @@ fail closed。
 Slice C 的 runtime 按 sealed operation 路由 facts provider、item executor、runner 和 retry，不让 CLI
 循环单项 command。跨 revision reinstall 与 uninstall 复用 T13-03/T13-04 的 app executor；
 same-revision Armor target switch 的 preview 使用纯只读 facts，不 materialize staging，也不创建
-SQLite、journal、Audit 或 projection。`result` 成功读取 terminal partial 时返回 exit `5`；遗留 active
-attempt 仍可只读查询并返回 exit `0`，但继续阻断同 scope 新写入。
+SQLite、journal、Audit 或 projection。`result` 成功读取 terminal partial 时返回 exit `5`，其他 terminal
+状态复用 apply/retry 的稳定退出码；遗留 active attempt 仍可只读查询并返回 exit `0`，但继续阻断同
+scope 新写入。
 
 T13-03 已在 `hmm-app` 完成批量卸载 facts provider 与 item executor，并由 T13-05 接入 Sandbox
 runtime/CLI；Tauri 和前端仍未接入。provider 只消费 manifest、installed summary、backup 与

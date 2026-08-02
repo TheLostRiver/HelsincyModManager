@@ -1447,8 +1447,11 @@ fn batch_exit_code(status: hmm_core::BatchAttemptStatus) -> i32 {
 
 fn batch_result_exit_code(status: hmm_core::BatchAttemptStatus) -> i32 {
     match status {
-        hmm_core::BatchAttemptStatus::CompletedWithErrors => CliExitCode::PartialSuccess.get(),
-        _ => CliExitCode::Success.get(),
+        hmm_core::BatchAttemptStatus::Sealed
+        | hmm_core::BatchAttemptStatus::Queued
+        | hmm_core::BatchAttemptStatus::Running
+        | hmm_core::BatchAttemptStatus::Stopping => CliExitCode::Success.get(),
+        terminal => batch_exit_code(terminal),
     }
 }
 
@@ -3020,11 +3023,30 @@ mod tests {
     }
 
     #[test]
-    fn batch_running_attempt_result_remains_a_successful_query() {
-        assert_eq!(
-            batch_result_exit_code(hmm_core::BatchAttemptStatus::Running),
-            CliExitCode::Success.get()
-        );
+    fn batch_non_terminal_attempt_results_remain_successful_queries() {
+        for status in [
+            hmm_core::BatchAttemptStatus::Sealed,
+            hmm_core::BatchAttemptStatus::Queued,
+            hmm_core::BatchAttemptStatus::Running,
+            hmm_core::BatchAttemptStatus::Stopping,
+        ] {
+            assert_eq!(batch_result_exit_code(status), CliExitCode::Success.get());
+        }
+    }
+
+    #[test]
+    fn batch_terminal_attempt_results_preserve_apply_exit_codes() {
+        for status in [
+            hmm_core::BatchAttemptStatus::Completed,
+            hmm_core::BatchAttemptStatus::CompletedWithErrors,
+            hmm_core::BatchAttemptStatus::Blocked,
+            hmm_core::BatchAttemptStatus::Cancelled,
+            hmm_core::BatchAttemptStatus::RecoveryRequired,
+            hmm_core::BatchAttemptStatus::Interrupted,
+            hmm_core::BatchAttemptStatus::Failed,
+        ] {
+            assert_eq!(batch_result_exit_code(status), batch_exit_code(status));
+        }
     }
 
     #[test]

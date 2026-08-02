@@ -2,7 +2,7 @@ use crate::batch_install::{
     events_contain_audit_degradation, BatchInstallItemExecution, BatchInstallItemExecutor,
     BatchInstallItemRequest, ParentTaskObserver,
 };
-use crate::install::uninstall_manifest_snapshot_digest;
+use crate::install::{install_manifest_status_code, uninstall_manifest_snapshot_digest};
 use crate::{
     InstallRecoveryIssue, InstallRecoveryScanRequest, InstallRecoveryScanService,
     InstallRecoveryStatus, InstallRecoverySummary, StartUninstallTaskRequest, TaskKind,
@@ -11,8 +11,8 @@ use crate::{
 use hmm_core::{
     BatchActionSummary, BatchItemFacts, BatchItemInput, BatchPlanFacts, BatchPreflightDecision,
     BatchPreflightStatus, BatchReasonSummary, BatchTargetClaim, BatchTargetWriteKind,
-    InstallManifest, InstallManifestEntry, InstallManifestStatus, InstallManifestStatusConsumption,
-    ModId, ModRevisionId, NormalizedBatchPlanRequest, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
+    InstallManifest, InstallManifestEntry, InstallManifestStatusConsumption, ModId, ModRevisionId,
+    NormalizedBatchPlanRequest, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 use hmm_ports::{BatchPlanFactsProvider, InstallManifestRepository};
 use sha2::{Digest, Sha256};
@@ -181,7 +181,7 @@ impl BatchPlanFactsProvider for BatchUninstallPlanFactsProvider {
                 manifest.as_ref().map(|manifest| manifest.schema_version),
                 &entries,
             );
-            let target_claims = entries
+            let mut target_claims = entries
                 .iter()
                 .map(|entry| BatchTargetClaim {
                     target_path: entry.target_path.clone(),
@@ -192,6 +192,11 @@ impl BatchPlanFactsProvider for BatchUninstallPlanFactsProvider {
                     },
                 })
                 .collect::<Vec<_>>();
+            target_claims.sort_by(|left, right| {
+                left.windows_key()
+                    .cmp(&right.windows_key())
+                    .then_with(|| left.kind.as_str().cmp(right.kind.as_str()))
+            });
             let single_plan_digest = manifest
                 .as_ref()
                 .map(|manifest| uninstall_manifest_snapshot_digest(manifest, &input.mod_id))
@@ -261,7 +266,7 @@ impl BatchInstallItemExecutor for UninstallTaskBatchItemExecutor {
             Some(item) => item,
             _ => {
                 return BatchInstallItemExecution::Blocked {
-                    reason_code: "batch_operation_not_uninstall".to_owned(),
+                    reason_code: "batch_item_not_planned".to_owned(),
                 };
             }
         };
@@ -506,7 +511,7 @@ fn uninstall_fact_digest(
         .unwrap_or_default();
     let canonical = serde_json::json!({
         "manifestSchemaVersion": manifest.map(|manifest| manifest.schema_version),
-        "manifestStatus": manifest.map(|manifest| manifest_status_code(manifest.status)),
+        "manifestStatus": manifest.map(|manifest| install_manifest_status_code(manifest.status)),
         "manifestSnapshotDigest": manifest_snapshot_digest,
         "entries": canonical_entries,
         "recoveryStatus": summary.map(|summary| recovery_status_code(summary.status)),
@@ -514,17 +519,6 @@ fn uninstall_fact_digest(
         "blockingReasons": blocking_reasons,
     });
     Ok(sha256_digest(&serde_json::to_vec(&canonical)?))
-}
-
-fn manifest_status_code(status: InstallManifestStatus) -> &'static str {
-    match status {
-        InstallManifestStatus::Planned => "planned",
-        InstallManifestStatus::Committing => "committing",
-        InstallManifestStatus::Completed => "completed",
-        InstallManifestStatus::RollbackRequired => "rollback_required",
-        InstallManifestStatus::RolledBack => "rolled_back",
-        InstallManifestStatus::RepairRequired => "repair_required",
-    }
 }
 
 fn recovery_status_code(status: InstallRecoveryStatus) -> &'static str {

@@ -385,6 +385,30 @@ fn ready_facts_distinguish_remove_and_restore_without_package_reads() {
 }
 
 #[test]
+fn facts_emit_target_claims_in_windows_canonical_order() {
+    let state = Arc::new(FakeUninstallState::default());
+    state.set_manifest(manifest(vec![
+        entry("a", Some("rev-a"), "nativePC/Z.bin", b"z", None),
+        entry("a", Some("rev-a"), "nativePC/a.bin", b"a", None),
+    ]));
+    state.add_file("nativePC/Z.bin", b"z");
+    state.add_file("nativePC/a.bin", b"a");
+
+    let facts = provider(state)
+        .read_batch_plan_facts(&request(&[("a", "rev-a")]))
+        .expect("facts");
+
+    assert_eq!(
+        facts.items[0]
+            .target_claims
+            .iter()
+            .map(|claim| claim.windows_key())
+            .collect::<Vec<_>>(),
+        vec!["nativepc/a.bin", "nativepc/z.bin"]
+    );
+}
+
+#[test]
 fn target_and_backup_failures_are_stable_item_blockers() {
     let state = Arc::new(FakeUninstallState::default());
     state.set_manifest(manifest(vec![
@@ -849,6 +873,31 @@ fn started_parent(task_manager: &TaskManager) -> String {
         .start_task(&task.task_id)
         .expect("start parent");
     task.task_id
+}
+
+#[test]
+fn executor_distinguishes_missing_plan_item_from_operation_mismatch() {
+    let result = crate::UninstallModResult {
+        manifest: manifest(Vec::new()),
+        removed_file_count: 0,
+        restored_file_count: 0,
+    };
+    let (executor, task_manager, uninstaller) = executor(Ok(result), false);
+    let parent = started_parent(&task_manager);
+    let mut request = execution_request(parent);
+    request.item.ordinal = 1;
+
+    assert_eq!(
+        executor.execute(request),
+        BatchInstallItemExecution::Blocked {
+            reason_code: "batch_item_not_planned".to_owned(),
+        }
+    );
+    assert!(uninstaller
+        .expected_revisions
+        .lock()
+        .expect("expected revisions")
+        .is_empty());
 }
 
 #[test]

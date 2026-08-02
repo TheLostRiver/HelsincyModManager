@@ -139,8 +139,9 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   uninstall 和 reinstall。Preview 在构造写 runtime 前只读校验，same-revision retarget 不创建 staging、
   DB、journal、Audit 或 projection；apply 才能在 capability、token、SQLite scope admission 和共享
   game/profile 写锁全部通过后复用单项事务。Production 在 CLI policy 与 runtime composition 两层拒绝。
-- Batch result 只读取显式 batch/attempt。`completed_with_errors` 查询返回 partial exit `5`；遗留 active
-  attempt 查询返回 `0` 以保留诊断能力，但 apply/retry/new apply 仍对同 scope fail closed。
+- Batch result 只读取显式 batch/attempt。非终态查询返回 `0` 以保留诊断能力；terminal 状态复用
+  apply/retry 的稳定退出码，其中 `completed_with_errors` 返回 partial exit `5`。遗留 active attempt
+  继续使 apply/retry/new apply 对同 scope fail closed。
 - CLI 首次 Ctrl+C 通过 `TaskManager` 请求协作式取消；只有确认取消才发唯一 cancelled terminal 并
   返回 130。第二次中断强制退出前提示通过 recovery/status 重验状态；commit barrier 生效后不伪造
   cancelled。
