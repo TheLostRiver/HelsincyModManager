@@ -1,10 +1,12 @@
 # 批量 Mod 生命周期领域设计
 
 > 状态：T13-00 设计冻结；T13-01 已实现 sealed BatchPlan/preview；T13-02 的 Windows/MHW:I
-> app runner、SQLite lifecycle journal、retry 和故障证据已实现，但尚未通过 CLI/Tauri/UI
-> 公共接口暴露。
+> app runner、SQLite lifecycle journal、retry 和故障证据已实现；T13-03 的 app 层批量卸载
+> facts/executor 与锁内 manifest snapshot revalidation 已实现；T13-04 的 app 层批量真正重装
+> facts/executor、Mod 级稳定摘要与结构化 recovery 分类已实现；T13-05 已通过 Sandbox runtime/CLI
+> 暴露三种 operation。Tauri、typed API、UI 与 Production CLI 写入仍未开放。
 >
-> 日期：2026-07-30
+> 日期：2026-08-02
 >
 > 范围：Windows + MHW:I 的批量安装、批量卸载和批量真正重装
 
@@ -37,6 +39,24 @@ T17 第三方管理器批量迁移已经具备 selection snapshot、partial resu
 屏障。`Interrupted` 表示单项事务可能已提交但 batch journal 未确认终态，证据健康必须降级且不得
 直接 retry。replacement snapshot 在 materialize workflow 接入前显式返回
 `batch_retarget_install_unsupported`。
+
+当前 T13-03 实现复用同一 batch runner/retry 控制面和单项 `UninstallTaskRunner`。卸载 facts 只来自
+manifest、installed summary、backup 和 recovery；item 间只比较当前 Mod facts，同时每次检查新的
+global blocker。封存计划只保存 opaque Mod 级 manifest snapshot digest，不保存 entry、backup ref 或
+binding 正文；单项 runner 在取得 game/profile 写锁后重算 digest 并与 exact installed revision 一起
+校验，从而拒绝同 revision replacement target/binding 的锁等待期漂移。processing event 与父/子 task
+取消屏障均从真实 write-locked commit 开始，不覆盖等待锁阶段。
+
+当前 T13-04 实现逐项复用既有 `ReinstallPreviewService`、`ReinstallTaskRunner` 和 durable reinstall
+transaction。Sealed item 保存当前 Mod 作用域的稳定摘要，而不是绑定整个 profile manifest 的完整
+preview token；每项执行前重新 prepare，先比较 Mod 摘要，再把当次完整 token 交回单项 commit 做锁内
+manifest、candidate、source、target、backup 和 recovery 重验。这样前项对不重叠 Mod 的合法 manifest
+更新不会误判后项 stale，同时没有削弱单项写锁内校验。same-revision replacement target switch 只分派
+到既有 retarget runner，不在通用 batch 模块解析 MHW:I 路径。`PostCommit`、cleanup 或 Audit 失败保留
+已提交事实并标记 evidence degraded；rollback succeeded 可重试，rollback/repair required 停止后项。
+T13-05 已装配 runtime 的纯只读 retarget facts 和公开 Sandbox CLI contract；preview 不 materialize
+staging、不创建 SQLite/journal/Audit/projection，实际 apply 仍复用既有 retarget runner 和 durable
+transaction。
 
 ## 目标
 

@@ -129,7 +129,8 @@ runner 取得共享 game/profile 写锁后，再由 configured committer/admissi
 manifest/recovery facts、重验 token 和 capability，之后才进入既有写入事务。Production 在 CLI
 policy 和 runtime composition 两层固定拒绝。
 
-CLI-4 Slice B 在 Sandbox 增加 `hmm install batch plan|apply|result|retry`。批量 plan 使用
+CLI-4 Slice B/C 在 Sandbox 增加 `hmm install batch plan|apply|result|retry`，并通过批次级 operation
+统一支持 install、uninstall 和 reinstall。批量 plan 使用
 `BatchPlanService` 生成脱敏 projection 和短期 opaque `previewToken`；apply 先通过不初始化
 `HmmRuntime` 的只读 facts service 验证 preview，验证通过后才创建 SQLite batch journal，并在
 `seal` 阶段再次读取 facts、验证 token 后持久化 sealed batch。批量 runner 复用
@@ -140,7 +141,34 @@ game/profile 的 `queued/running/stopping` attempt，并原子完成 sealed -> q
 且 verifier 匹配的未执行新 attempt。`result` 不执行 scope reconciliation，只读取调用方明确指定的
 batch/attempt，使遗留 active attempt 的诊断结果保持可读。该原子性只覆盖 Sandbox batch journal，
 不等于 Production 通用写 admission；Production 在 CLI policy 和 runtime composition 两层继续
-fail closed。批量卸载、真正重装、Tauri command 与前端工作流仍按 T13-03 至 T13-07 的依赖开放。
+fail closed。
+
+Slice C 的 runtime 按 sealed operation 路由 facts provider、item executor、runner 和 retry，不让 CLI
+循环单项 command。跨 revision reinstall 与 uninstall 复用 T13-03/T13-04 的 app executor；
+same-revision Armor target switch 的 preview 使用纯只读 facts，不 materialize staging，也不创建
+SQLite、journal、Audit 或 projection。`result` 成功读取 terminal partial 时返回 exit `5`，其他 terminal
+状态复用 apply/retry 的稳定退出码；遗留 active attempt 仍可只读查询并返回 exit `0`，但继续阻断同
+scope 新写入。
+
+T13-03 已在 `hmm-app` 完成批量卸载 facts provider 与 item executor，并由 T13-05 接入 Sandbox
+runtime/CLI；Tauri 和前端仍未接入。provider 只消费 manifest、installed summary、backup 与
+install/reinstall recovery，不读取
+package/source；共享 target、backup ownership 和 profile 级 recovery 形成不可被 continue 越过的
+global blocker。执行仍逐项进入既有 `UninstallTaskRunner` 和同 game/profile 写锁；锁外重验 item facts，
+锁内再比较 exact revision 与不落明文的 Mod 级 manifest snapshot digest，后者覆盖 entry set、backup、
+installed summary 和 replacement binding，防止同 revision target switch 穿过 TOCTOU 窗口。
+`install.uninstall.processing` 只在取得写锁并通过 write admission 后发出，batch 父/子 task 此时原子进入
+取消屏障。
+
+T13-04 已在 `hmm-app` 完成批量真正重装 facts provider 与 item executor，并由 T13-05 接入 Sandbox
+runtime/CLI；Tauri 和前端仍未接入。跨 revision item 从既有真正重装 preparation 投影
+retained/replaced/added/stale、target、
+backup、binding 和 prerequisite 事实；封存的是当前 Mod 的稳定摘要，执行前重新 prepare 并比较摘要，
+实际 commit 仍消费当次完整 token 并走原有 durable transaction。非重叠前项改变 profile manifest 不会
+误判后项 stale；same-revision binding 只分派到既有 retarget runner。rollback succeeded、recovery
+required、post-commit/cleanup 和 Audit degradation 依据结构化单项结果分类，不解析展示文本。
+runtime 纯只读 retarget facts 装配和批量 uninstall/reinstall CLI contract 已由 T13-05 完成；Tauri
+command 与前端工作流继续按 T13-06/T13-07 的依赖开放。
 
 CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
 `ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和

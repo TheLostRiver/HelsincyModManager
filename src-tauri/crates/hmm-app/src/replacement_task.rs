@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ProfileId, ReplacementTargetId};
+use hmm_core::{
+    FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId, ReplacementTargetId,
+};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
 use crate::{
@@ -25,11 +27,17 @@ pub struct StartRetargetInstallTaskRequest {
     pub layer: FileLayer,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitialRetargetInstallPlan {
+    pub plan: InstallPlan,
+    pub revision_id: ModRevisionId,
+}
+
 pub trait InitialRetargetInstallPlanner: Send + Sync {
     fn build_initial_retarget_install_plan(
         &self,
         request: StartRetargetInstallTaskRequest,
-    ) -> Result<InstallPlan, ReplacementWorkflowError>;
+    ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError>;
 
     fn revalidate_initial_install(
         &self,
@@ -114,13 +122,15 @@ impl RetargetInstallTaskRunner {
         if prerequisite_decision.is_blocked() {
             return Err(self.fail(task_id, &request, events, "prerequisite", 0));
         }
-        let plan = match self
+        let planned = match self
             .planner
             .build_initial_retarget_install_plan(request.clone())
         {
-            Ok(plan) => plan,
+            Ok(planned) => planned,
             Err(_) => return Err(self.fail(task_id, &request, events, "planning", 0)),
         };
+        let revision_id = planned.revision_id;
+        let plan = planned.plan;
         let action_count = plan.actions.len();
         let cleanup_plan = plan.clone();
 
@@ -184,7 +194,7 @@ impl RetargetInstallTaskRunner {
                 .commit_install_plan(ImportedModInstallCommitRequest {
                     game_id: request.game_id.clone(),
                     mod_id: request.mod_id.clone(),
-                    revision_id: None,
+                    revision_id: Some(revision_id),
                     profile_id: request.profile_id.clone(),
                     plan,
                 })
@@ -319,18 +329,21 @@ mod tests {
         fn build_initial_retarget_install_plan(
             &self,
             request: StartRetargetInstallTaskRequest,
-        ) -> Result<InstallPlan, ReplacementWorkflowError> {
+        ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError> {
             *self.build_count.lock().expect("build count") += 1;
-            Ok(InstallPlan::from_providers([InstallFileProvider::new(
-                request.mod_id,
-                PackageFileId::new("body"),
-                InstallTargetPath::parse(
-                    "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3",
-                    ["nativePC"],
-                )
-                .expect("target path"),
-                request.layer,
-            )]))
+            Ok(InitialRetargetInstallPlan {
+                plan: InstallPlan::from_providers([InstallFileProvider::new(
+                    request.mod_id,
+                    PackageFileId::new("body"),
+                    InstallTargetPath::parse(
+                        "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3",
+                        ["nativePC"],
+                    )
+                    .expect("target path"),
+                    request.layer,
+                )]),
+                revision_id: ModRevisionId::new("revision-a"),
+            })
         }
 
         fn revalidate_initial_install(
@@ -362,6 +375,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingCommitter {
         commit_count: Mutex<usize>,
+        revisions: Mutex<Vec<Option<ModRevisionId>>>,
     }
 
     impl InstallPlanCommitter for RecordingCommitter {
@@ -370,6 +384,10 @@ mod tests {
             request: ImportedModInstallCommitRequest,
         ) -> Result<InstallCommitResult, InstallCommitError> {
             *self.commit_count.lock().expect("commit count") += 1;
+            self.revisions
+                .lock()
+                .expect("committed revisions")
+                .push(request.revision_id);
             Ok(InstallCommitResult {
                 manifest: InstallManifest::completed(request.profile_id, Vec::new()),
             })
@@ -486,6 +504,10 @@ mod tests {
 
         assert!(*planner.revalidated.lock().expect("revalidated"));
         assert_eq!(*committer.commit_count.lock().expect("commit count"), 1);
+        assert_eq!(
+            *committer.revisions.lock().expect("committed revisions"),
+            vec![Some(ModRevisionId::new("revision-a"))]
+        );
         assert_eq!(events[0].phase, PLAN_BUILDING_PHASE);
         assert_eq!(events[1].phase, COMMIT_PROCESSING_PHASE);
         assert_eq!(events[2].phase, COMPLETED_PHASE);

@@ -83,6 +83,8 @@ pub(crate) struct InstallTaskOrchestrationError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UninstallTaskRunError {
     pub events: Vec<TaskProgressEvent>,
+    pub(crate) uninstall_error: Option<UninstallModError>,
+    pub(crate) committed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,6 +170,19 @@ pub trait ModUninstaller: Send + Sync {
         &self,
         request: StartUninstallTaskRequest,
     ) -> Result<UninstallModResult, UninstallModError>;
+
+    fn uninstall_mod_for_revision(
+        &self,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+    ) -> Result<UninstallModResult, UninstallModError>;
+
+    fn uninstall_mod_for_revision_and_manifest(
+        &self,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+        expected_manifest_digest: &str,
+    ) -> Result<UninstallModResult, UninstallModError>;
 }
 
 impl ModUninstaller for UninstallModService {
@@ -181,6 +196,38 @@ impl ModUninstaller for UninstallModService {
                 profile_id: request.profile_id,
                 mod_id: request.mod_id,
             },
+        )
+    }
+
+    fn uninstall_mod_for_revision(
+        &self,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        UninstallModService::uninstall_mod_for_revision(
+            self,
+            UninstallModRequest {
+                profile_id: request.profile_id,
+                mod_id: request.mod_id,
+            },
+            expected_installed_revision_id,
+        )
+    }
+
+    fn uninstall_mod_for_revision_and_manifest(
+        &self,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+        expected_manifest_digest: &str,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        UninstallModService::uninstall_mod_for_revision_and_manifest(
+            self,
+            UninstallModRequest {
+                profile_id: request.profile_id,
+                mod_id: request.mod_id,
+            },
+            expected_installed_revision_id,
+            expected_manifest_digest,
         )
     }
 }
@@ -865,16 +912,45 @@ impl UninstallTaskRunner {
         request: StartUninstallTaskRequest,
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, UninstallTaskRunError> {
+        self.run_uninstall_task_internal(task_id, request, None, None, observer)
+    }
+
+    pub(crate) fn run_uninstall_revision_task_for_orchestration_with_observer<
+        O: TaskProgressObserver + ?Sized,
+    >(
+        &self,
+        task_id: &str,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+        expected_manifest_digest: String,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, UninstallTaskRunError> {
+        self.run_uninstall_task_internal(
+            task_id,
+            request,
+            Some(expected_installed_revision_id),
+            Some(expected_manifest_digest),
+            observer,
+        )
+    }
+
+    fn run_uninstall_task_internal<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: Option<ModRevisionId>,
+        expected_manifest_digest: Option<String>,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, UninstallTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
-            return Err(UninstallTaskRunError { events: Vec::new() });
+            return Err(UninstallTaskRunError {
+                events: Vec::new(),
+                uninstall_error: None,
+                committed: false,
+            });
         }
 
         let mut events = Vec::new();
-        observe_task_progress(
-            &mut events,
-            observer,
-            running_event(task_id, INSTALL_UNINSTALL_PROCESSING_PHASE),
-        );
         let write_lock = self
             .write_locks
             .lock_for(&request.game_id, &request.profile_id);
@@ -887,6 +963,7 @@ impl UninstallTaskRunner {
                     observer,
                     "lock",
                     None,
+                    None,
                 )
             })?;
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
@@ -897,15 +974,37 @@ impl UninstallTaskRunner {
                 .ensure_write_allowed(&request.game_id, &request.profile_id)
             {
                 Ok(()) => {
+                    observe_task_progress(
+                        &mut events,
+                        observer,
+                        running_event(task_id, INSTALL_UNINSTALL_PROCESSING_PHASE),
+                    );
                     if self.task_manager.block_task_cancellation(task_id).is_err() {
                         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                             return Ok(events);
                         }
                         return Err(self.fail_uninstall_with_audit(
-                            task_id, &request, events, observer, "lock", None,
+                            task_id, &request, events, observer, "lock", None, None,
                         ));
                     }
-                    Ok(self.uninstaller.uninstall_mod(request.clone()))
+                    Ok(
+                        match (
+                            expected_installed_revision_id.clone(),
+                            expected_manifest_digest.as_deref(),
+                        ) {
+                            (Some(revision_id), Some(manifest_digest)) => {
+                                self.uninstaller.uninstall_mod_for_revision_and_manifest(
+                                    request.clone(),
+                                    revision_id,
+                                    manifest_digest,
+                                )
+                            }
+                            (Some(revision_id), None) => self
+                                .uninstaller
+                                .uninstall_mod_for_revision(request.clone(), revision_id),
+                            (None, _) => self.uninstaller.uninstall_mod(request.clone()),
+                        },
+                    )
                 }
                 Err(error) => Err(error),
             }
@@ -920,13 +1019,14 @@ impl UninstallTaskRunner {
                     observer,
                     error.failure_phase(),
                     None,
+                    None,
                 ))
             }
         };
 
         let result = match uninstall_result {
             Ok(result) => result,
-            Err(_) => {
+            Err(error) => {
                 return Err(self.fail_uninstall_with_audit(
                     task_id,
                     &request,
@@ -934,23 +1034,25 @@ impl UninstallTaskRunner {
                     observer,
                     "uninstall",
                     None,
+                    Some(error),
                 ))
             }
         };
 
-        self.record_uninstall_audit(task_id, &request, "success", Some(&result), None);
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                observe_task_progress(
-                    &mut events,
-                    observer,
-                    TaskProgressEvent::new(
-                        task.task_id,
-                        task.kind,
-                        task.status,
-                        INSTALL_UNINSTALL_COMPLETED_PHASE,
-                    ),
+                let audit_ok =
+                    self.record_uninstall_audit(task_id, &request, "success", Some(&result), None);
+                let mut event = TaskProgressEvent::new(
+                    task.task_id,
+                    task.kind,
+                    task.status,
+                    INSTALL_UNINSTALL_COMPLETED_PHASE,
                 );
+                if !audit_ok {
+                    event.error = Some("install_audit_unavailable".to_owned());
+                }
+                observe_task_progress(&mut events, observer, event);
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
@@ -963,10 +1065,12 @@ impl UninstallTaskRunner {
                 observer,
                 "complete",
                 Some(&result),
+                None,
             )),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fail_uninstall_with_audit<O: TaskProgressObserver + ?Sized>(
         &self,
         task_id: &str,
@@ -975,6 +1079,7 @@ impl UninstallTaskRunner {
         observer: &O,
         phase: &str,
         result: Option<&UninstallModResult>,
+        uninstall_error: Option<UninstallModError>,
     ) -> UninstallTaskRunError {
         if matches!(
             self.task_manager.fail_task(task_id),
@@ -984,7 +1089,11 @@ impl UninstallTaskRunner {
                 ..
             })
         ) {
-            return UninstallTaskRunError { events };
+            return UninstallTaskRunError {
+                events,
+                uninstall_error,
+                committed: result.is_some(),
+            };
         }
         let error_code = format!("{INSTALL_UNINSTALL_FAILED_ERROR}:{phase}");
         observe_task_progress(
@@ -993,7 +1102,11 @@ impl UninstallTaskRunner {
             failed_uninstall_event(task_id, phase),
         );
         self.record_uninstall_audit(task_id, request, "failure", result, Some(&error_code));
-        UninstallTaskRunError { events }
+        UninstallTaskRunError {
+            events,
+            uninstall_error,
+            committed: result.is_some(),
+        }
     }
 
     fn record_uninstall_audit(
@@ -1003,7 +1116,7 @@ impl UninstallTaskRunner {
         result: &str,
         uninstall_result: Option<&UninstallModResult>,
         error_code: Option<&str>,
-    ) {
+    ) -> bool {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let mut fields = BTreeMap::new();
         fields.insert("task_id".to_owned(), task_id.to_owned());
@@ -1032,16 +1145,18 @@ impl UninstallTaskRunner {
         }
 
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(
-            AuditLogEvent {
-                timestamp_unix_millis,
-                category: "install".to_owned(),
-                operation: "uninstall_mod".to_owned(),
-                result: result.to_owned(),
-                fields,
-            },
-            policy,
-        );
+        self.audit_log
+            .record_with_policy(
+                AuditLogEvent {
+                    timestamp_unix_millis,
+                    category: "install".to_owned(),
+                    operation: "uninstall_mod".to_owned(),
+                    result: result.to_owned(),
+                    fields,
+                },
+                policy,
+            )
+            .is_ok()
     }
 }
 
@@ -1562,6 +1677,7 @@ mod tests {
             &uninstall_observer,
             "uninstall",
             None,
+            None,
         );
         assert!(uninstall_error.events.is_empty());
         assert!(uninstall_audit.take_event().is_none());
@@ -1866,6 +1982,164 @@ mod tests {
         assert!(!serialized.contains("nativePC/models/player.mod3"));
         assert!(!serialized.contains("C:/"));
         assert!(!serialized.contains('\\'));
+    }
+
+    #[test]
+    fn uninstall_terminal_transition_failure_records_only_failure_audit() {
+        struct TerminalTransitionFailingUninstaller {
+            task_manager: Arc<crate::TaskManager>,
+            task_id: String,
+            result: UninstallModResult,
+        }
+
+        impl ModUninstaller for TerminalTransitionFailingUninstaller {
+            fn uninstall_mod(
+                &self,
+                _request: StartUninstallTaskRequest,
+            ) -> Result<UninstallModResult, UninstallModError> {
+                self.task_manager
+                    .fail_task(&self.task_id)
+                    .expect("injected terminal transition");
+                Ok(self.result.clone())
+            }
+
+            fn uninstall_mod_for_revision(
+                &self,
+                request: StartUninstallTaskRequest,
+                _expected_installed_revision_id: ModRevisionId,
+            ) -> Result<UninstallModResult, UninstallModError> {
+                self.uninstall_mod(request)
+            }
+
+            fn uninstall_mod_for_revision_and_manifest(
+                &self,
+                request: StartUninstallTaskRequest,
+                _expected_installed_revision_id: ModRevisionId,
+                _expected_manifest_digest: &str,
+            ) -> Result<UninstallModResult, UninstallModError> {
+                self.uninstall_mod(request)
+            }
+        }
+
+        #[derive(Default)]
+        struct CollectingAuditLogWriter {
+            events: Mutex<Vec<AuditLogEvent>>,
+        }
+
+        impl AuditLogWriter for CollectingAuditLogWriter {
+            fn record(&self, event: AuditLogEvent) -> anyhow::Result<()> {
+                self.events.lock().expect("events").push(event);
+                Ok(())
+            }
+        }
+
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let audit_log = Arc::new(CollectingAuditLogWriter::default());
+        let runner = UninstallTaskRunner::new(
+            Arc::clone(&task_manager),
+            Arc::new(TerminalTransitionFailingUninstaller {
+                task_manager: Arc::clone(&task_manager),
+                task_id: task.task_id.clone(),
+                result: UninstallModResult {
+                    manifest: sample_manifest(),
+                    removed_file_count: 1,
+                    restored_file_count: 0,
+                },
+            }),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+        );
+
+        runner
+            .run_uninstall_task(&task.task_id, sample_uninstall_request())
+            .expect_err("completion transition must fail");
+
+        let events = std::mem::take(&mut *audit_log.events.lock().expect("events"));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].operation, "uninstall_mod");
+        assert_eq!(events[0].result, "failure");
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Failed)
+        );
+    }
+
+    #[test]
+    fn uninstall_processing_is_emitted_only_after_write_admission() {
+        struct RecordingObserver {
+            phases: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl TaskProgressObserver for RecordingObserver {
+            type Error = ();
+
+            fn observe(&self, event: &TaskProgressEvent) -> Result<(), Self::Error> {
+                self.phases
+                    .lock()
+                    .expect("phases")
+                    .push(event.phase.clone());
+                Ok(())
+            }
+        }
+
+        struct AdmissionBeforeProcessing {
+            phases: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl InstallWriteAdmission for AdmissionBeforeProcessing {
+            fn ensure_write_allowed(
+                &self,
+                _game_id: &GameId,
+                _profile_id: &ProfileId,
+            ) -> Result<(), InstallWriteAdmissionError> {
+                assert!(
+                    self.phases.lock().expect("phases").is_empty(),
+                    "processing must describe the write-locked commit, not lock waiting"
+                );
+                Ok(())
+            }
+        }
+
+        let phases = Arc::new(Mutex::new(Vec::new()));
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let runner = UninstallTaskRunner::with_write_coordination(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingUninstaller::new(UninstallModResult {
+                manifest: sample_manifest(),
+                removed_file_count: 1,
+                restored_file_count: 0,
+            })),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            Arc::new(AdmissionBeforeProcessing {
+                phases: Arc::clone(&phases),
+            }),
+        );
+
+        runner
+            .run_uninstall_task_with_observer(
+                &task.task_id,
+                sample_uninstall_request(),
+                &RecordingObserver {
+                    phases: Arc::clone(&phases),
+                },
+            )
+            .expect("uninstall succeeds");
+
+        assert_eq!(
+            *phases.lock().expect("phases"),
+            vec![
+                "install.uninstall.processing".to_owned(),
+                "install.uninstall.completed".to_owned()
+            ]
+        );
     }
 
     #[test]
@@ -2848,6 +3122,23 @@ mod tests {
             self.requests.lock().expect("requests").push(request);
             Ok(self.result.clone())
         }
+
+        fn uninstall_mod_for_revision(
+            &self,
+            request: StartUninstallTaskRequest,
+            _expected_installed_revision_id: ModRevisionId,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.uninstall_mod(request)
+        }
+
+        fn uninstall_mod_for_revision_and_manifest(
+            &self,
+            request: StartUninstallTaskRequest,
+            expected_installed_revision_id: ModRevisionId,
+            _expected_manifest_digest: &str,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.uninstall_mod_for_revision(request, expected_installed_revision_id)
+        }
     }
 
     struct NotifyingUninstaller {
@@ -2864,6 +3155,23 @@ mod tests {
                 started.send(()).expect("uninstall start can be signalled");
             }
             Ok(self.result.clone())
+        }
+
+        fn uninstall_mod_for_revision(
+            &self,
+            request: StartUninstallTaskRequest,
+            _expected_installed_revision_id: ModRevisionId,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.uninstall_mod(request)
+        }
+
+        fn uninstall_mod_for_revision_and_manifest(
+            &self,
+            request: StartUninstallTaskRequest,
+            expected_installed_revision_id: ModRevisionId,
+            _expected_manifest_digest: &str,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.uninstall_mod_for_revision(request, expected_installed_revision_id)
         }
     }
 
@@ -3016,6 +3324,23 @@ mod tests {
         ) -> Result<UninstallModResult, UninstallModError> {
             self.cancellation.attempt();
             Ok(self.result.clone())
+        }
+
+        fn uninstall_mod_for_revision(
+            &self,
+            request: StartUninstallTaskRequest,
+            _expected_installed_revision_id: ModRevisionId,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.uninstall_mod(request)
+        }
+
+        fn uninstall_mod_for_revision_and_manifest(
+            &self,
+            request: StartUninstallTaskRequest,
+            expected_installed_revision_id: ModRevisionId,
+            _expected_manifest_digest: &str,
+        ) -> Result<UninstallModResult, UninstallModError> {
+            self.uninstall_mod_for_revision(request, expected_installed_revision_id)
         }
     }
 

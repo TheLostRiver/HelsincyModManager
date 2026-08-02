@@ -4,7 +4,7 @@ use hmm_core::{
     BatchResourceLimits, BatchTargetClaim, BatchTargetWriteKind, FileLayer, GameId,
     InstallBatchItemInput, InstallFileProvider, InstallManifest, InstallPlan,
     InstallRecoveryRecord, InstallRecoveryRecordStatus, InstallTargetPath, ModId, ModRevisionId,
-    PackageFileId, ProfileId, SealedBatch,
+    PackageFileId, ProfileId, ReinstallBatchItemInput, SealedBatch,
 };
 use hmm_ports::{
     BatchAttemptAdmission, BatchPlanFactsProvider, BatchRetryAttemptCreation,
@@ -338,6 +338,23 @@ impl BatchPlanFactsProvider for StaticFacts {
         _request: &hmm_core::NormalizedBatchPlanRequest,
     ) -> anyhow::Result<hmm_core::BatchPlanFacts> {
         Ok(self.0.clone())
+    }
+}
+
+struct SequenceFacts {
+    facts: Mutex<Vec<hmm_core::BatchPlanFacts>>,
+}
+
+impl BatchPlanFactsProvider for SequenceFacts {
+    fn read_batch_plan_facts(
+        &self,
+        _request: &hmm_core::NormalizedBatchPlanRequest,
+    ) -> anyhow::Result<hmm_core::BatchPlanFacts> {
+        let mut facts = self.facts.lock().expect("facts");
+        if facts.is_empty() {
+            anyhow::bail!("unexpected extra facts read");
+        }
+        Ok(facts.remove(0))
     }
 }
 
@@ -833,6 +850,61 @@ fn batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
     (sealed, attempt, token)
 }
 
+fn uninstall_batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
+    let (mut batch, attempt, token) = batch();
+    batch.request.operation = BatchOperation::Uninstall;
+    batch.plan.operation = BatchOperation::Uninstall;
+    for (request_input, plan_item) in batch
+        .request
+        .items
+        .iter_mut()
+        .zip(batch.plan.items.iter_mut())
+    {
+        let mod_id = request_input.mod_id().clone();
+        let revision_id = ModRevisionId::new(mod_id.as_str());
+        let input = BatchItemInput::Uninstall(hmm_core::UninstallBatchItemInput {
+            mod_id,
+            expected_installed_revision_id: revision_id.clone(),
+        });
+        *request_input = input.clone();
+        plan_item.input_snapshot = input;
+        plan_item.source_revision_id = None;
+        plan_item.installed_revision_id = Some(revision_id);
+        for claim in &mut plan_item.target_claims {
+            claim.kind = BatchTargetWriteKind::Remove;
+        }
+    }
+    (batch, attempt, token)
+}
+
+fn reinstall_batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
+    let (mut batch, attempt, token) = batch();
+    batch.request.operation = BatchOperation::Reinstall;
+    batch.plan.operation = BatchOperation::Reinstall;
+    for (request_input, plan_item) in batch
+        .request
+        .items
+        .iter_mut()
+        .zip(batch.plan.items.iter_mut())
+    {
+        let mod_id = request_input.mod_id().clone();
+        let installed_revision_id = ModRevisionId::new(format!("{}-v1", mod_id.as_str()));
+        let candidate_revision_id = ModRevisionId::new(format!("{}-v2", mod_id.as_str()));
+        let input = BatchItemInput::Reinstall(ReinstallBatchItemInput {
+            mod_id,
+            installed_revision_id: installed_revision_id.clone(),
+            candidate_revision_id: candidate_revision_id.clone(),
+            layer: FileLayer::new("default", 1),
+            replacement_binding_snapshot: None,
+        });
+        *request_input = input.clone();
+        plan_item.input_snapshot = input;
+        plan_item.source_revision_id = Some(candidate_revision_id);
+        plan_item.installed_revision_id = Some(installed_revision_id);
+    }
+    (batch, attempt, token)
+}
+
 fn sealed_retry_attempt(
     batch: &SealedBatch,
     initial_attempt: &hmm_core::BatchAttempt,
@@ -902,6 +974,7 @@ fn facts_from_batch(batch: &SealedBatch) -> hmm_core::BatchPlanFacts {
     hmm_core::BatchPlanFacts {
         environment_digest: batch.plan.environment_digest.clone(),
         prerequisite_rules_version: batch.plan.prerequisite_rules_version,
+        global_blocking_reasons: batch.plan.global_blocking_reasons.clone(),
         items: batch
             .plan
             .items
@@ -1252,6 +1325,61 @@ fn continue_policy_runs_later_item_after_retryable_failure() {
     assert_eq!(result.summary.failed_count, 1);
     assert_eq!(result.summary.succeeded_count, 1);
     assert_eq!(result.summary.skipped_count, 0);
+}
+
+#[test]
+fn continue_policy_runs_ready_item_after_derived_revision_blocker() {
+    let (mut batch, attempt, token) = batch();
+    batch.request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    batch.plan.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    let BatchItemInput::Install(request_input) = &mut batch.request.items[0] else {
+        panic!("install input");
+    };
+    request_input.revision_id = ModRevisionId::new("unexpected-revision");
+    batch.plan.items[0].input_snapshot = batch.request.items[0].clone();
+    batch.plan.items[0]
+        .blocking_reasons
+        .push("source_revision_changed".to_owned());
+    let mut raw_facts = facts_from_batch(&batch);
+    raw_facts.items[0].blocking_reasons.clear();
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let executor = Arc::new(FakeExecutor {
+        executions: Mutex::new(vec![BatchInstallItemExecution::Succeeded {
+            evidence_health_degraded: false,
+        }]),
+    });
+    let runner = BatchInstallTaskRunner::new(
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        executor.clone(),
+        Arc::new(StaticFacts(raw_facts)),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+
+    assert_eq!(result.status, BatchAttemptStatus::CompletedWithErrors);
+    assert_eq!(result.summary.blocked_count, 1);
+    assert_eq!(result.summary.succeeded_count, 1);
+    assert_eq!(result.summary.skipped_count, 0);
+    assert!(executor.executions.lock().expect("executions").is_empty());
+    let results = repository
+        .list_item_results(&batch.batch_id, 0)
+        .expect("results");
+    assert_eq!(results[0].status, BatchItemStatus::Blocked);
+    assert_eq!(
+        results[0].reason_code.as_deref(),
+        Some("source_revision_changed")
+    );
+    assert_eq!(results[1].status, BatchItemStatus::Succeeded);
 }
 
 #[test]
@@ -2196,4 +2324,198 @@ fn replacement_snapshot_is_blocked_before_plain_install_execution() {
         .create_task(TaskKind::Install)
         .expect("next task");
     assert_eq!(next_task.task_id.rsplit('-').next(), Some("1"));
+}
+
+#[test]
+fn explicit_uninstall_runner_and_retry_route_the_same_control_plane() {
+    let (batch, attempt, token) = uninstall_batch();
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let runner = BatchInstallTaskRunner::for_operation(
+        BatchOperation::Uninstall,
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        Arc::new(FakeExecutor {
+            executions: Mutex::new(vec![BatchInstallItemExecution::Failed {
+                reason_code: "uninstall_rollback_succeeded".to_owned(),
+                retryable: true,
+                evidence_health_degraded: false,
+            }]),
+        }),
+        Arc::new(StaticFacts(facts_from_batch(&batch))),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+    assert_eq!(result.status, BatchAttemptStatus::CompletedWithErrors);
+
+    let retry = BatchInstallRetryService::for_operation(
+        BatchOperation::Uninstall,
+        repository,
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    )
+    .retry(&batch.batch_id, 0)
+    .expect("retry");
+    assert_eq!(retry.attempt_number, 1);
+}
+
+#[test]
+fn explicit_reinstall_runner_preserves_mixed_results_and_retries_only_failed_item() {
+    let (mut batch, attempt, token) = reinstall_batch();
+    batch.request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    batch.plan.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let runner = BatchInstallTaskRunner::for_operation(
+        BatchOperation::Reinstall,
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        Arc::new(FakeExecutor {
+            executions: Mutex::new(vec![
+                BatchInstallItemExecution::Succeeded {
+                    evidence_health_degraded: false,
+                },
+                BatchInstallItemExecution::Failed {
+                    reason_code: "reinstall_rollback_succeeded".to_owned(),
+                    retryable: true,
+                    evidence_health_degraded: false,
+                },
+            ]),
+        }),
+        Arc::new(StaticFacts(facts_from_batch(&batch))),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+    assert_eq!(result.status, BatchAttemptStatus::CompletedWithErrors);
+    assert_eq!(result.summary.succeeded_count, 1);
+    assert_eq!(result.summary.failed_count, 1);
+
+    let retry = BatchInstallRetryService::for_operation(
+        BatchOperation::Reinstall,
+        repository.clone(),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    )
+    .retry(&batch.batch_id, 0)
+    .expect("retry");
+    let retry_attempt = repository
+        .load_attempt(&batch.batch_id, retry.attempt_number)
+        .expect("retry attempt")
+        .expect("retry attempt exists");
+    assert_eq!(retry_attempt.item_ids, vec![batch.items[1].item_id.clone()]);
+    assert!(!retry_attempt.item_ids.contains(&batch.items[0].item_id));
+}
+
+#[test]
+fn later_item_revalidation_ignores_expected_prior_item_drift() {
+    let (batch, attempt, token) = batch();
+    let initial = facts_from_batch(&batch);
+    let first_item = initial.clone();
+    let mut after_first_success = initial.clone();
+    after_first_success.items[0].fact_digest = "prior-item-committed".to_owned();
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let executor = Arc::new(FakeExecutor {
+        executions: Mutex::new(vec![
+            BatchInstallItemExecution::Succeeded {
+                evidence_health_degraded: false,
+            },
+            BatchInstallItemExecution::Succeeded {
+                evidence_health_degraded: false,
+            },
+        ]),
+    });
+    let runner = BatchInstallTaskRunner::new(
+        Arc::new(TaskManager::new()),
+        repository,
+        executor.clone(),
+        Arc::new(SequenceFacts {
+            facts: Mutex::new(vec![initial, first_item, after_first_success]),
+        }),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+
+    assert_eq!(result.status, BatchAttemptStatus::Completed);
+    assert!(executor.executions.lock().expect("executions").is_empty());
+}
+
+#[test]
+fn new_global_blocker_stops_continue_policy_between_items() {
+    let (mut batch, attempt, token) = batch();
+    batch.request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    batch.plan.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    let initial = facts_from_batch(&batch);
+    let first_item = initial.clone();
+    let mut globally_blocked = initial.clone();
+    globally_blocked.global_blocking_reasons = vec![hmm_core::BatchReasonSummary {
+        code: "batch_global_backup_conflict".to_owned(),
+        count: 1,
+    }];
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let executor = Arc::new(FakeExecutor {
+        executions: Mutex::new(vec![
+            BatchInstallItemExecution::Succeeded {
+                evidence_health_degraded: false,
+            },
+            BatchInstallItemExecution::Succeeded {
+                evidence_health_degraded: false,
+            },
+        ]),
+    });
+    let runner = BatchInstallTaskRunner::new(
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        executor.clone(),
+        Arc::new(SequenceFacts {
+            facts: Mutex::new(vec![initial, first_item, globally_blocked]),
+        }),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+
+    assert_eq!(result.status, BatchAttemptStatus::CompletedWithErrors);
+    assert_eq!(result.summary.succeeded_count, 1);
+    assert_eq!(result.summary.blocked_count, 1);
+    assert_eq!(executor.executions.lock().expect("executions").len(), 1);
+    let results = repository
+        .list_item_results(&batch.batch_id, 0)
+        .expect("results");
+    assert_eq!(
+        results[1].reason_code.as_deref(),
+        Some("batch_global_backup_conflict")
+    );
 }

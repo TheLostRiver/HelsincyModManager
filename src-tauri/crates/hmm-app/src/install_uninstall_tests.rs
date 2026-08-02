@@ -43,6 +43,124 @@ fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
 }
 
 #[test]
+fn revision_bound_uninstall_rejects_manifest_drift_before_writing() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let mut existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: target,
+            mod_id: ModId::new("mod-a"),
+            revision_id: Some(ModRevisionId::new("revision-b")),
+            package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: Some(installed_file_summary(b"new model")),
+        }],
+    );
+    existing_manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+        "nativePC/models/player.mod3",
+        b"new model".as_slice(),
+    )]));
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = UninstallModService::new(
+        game_files.clone(),
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+    );
+
+    let error = service
+        .uninstall_mod_for_revision(
+            UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            },
+            ModRevisionId::new("revision-a"),
+        )
+        .expect_err("revision drift must fail closed");
+
+    assert_eq!(error, UninstallModError::InstalledRevisionMismatch);
+    assert_eq!(
+        game_files
+            .file_bytes("nativePC/models/player.mod3")
+            .as_deref(),
+        Some(b"new model".as_slice())
+    );
+    assert!(manifests.take_manifest().is_none());
+}
+
+#[test]
+fn manifest_bound_uninstall_rejects_same_revision_binding_drift_before_writing() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let mut expected_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: target,
+            mod_id: ModId::new("mod-a"),
+            revision_id: Some(ModRevisionId::new("revision-a")),
+            package_file_id: PackageFileId::new("nativePC/models/player.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: Some(installed_file_summary(b"new model")),
+        }],
+    );
+    expected_manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
+    expected_manifest.replacement_bindings = vec![replacement_snapshot(
+        "mod-a",
+        "default",
+        "binding-a",
+        "mhw:armor:fatalis-alpha",
+        Some("revision-a"),
+    )];
+    let expected_digest =
+        uninstall_manifest_snapshot_digest(&expected_manifest, &ModId::new("mod-a"));
+    let mut drifted_manifest = expected_manifest;
+    drifted_manifest.replacement_bindings = vec![replacement_snapshot(
+        "mod-a",
+        "default",
+        "binding-b",
+        "mhw:armor:fatalis-beta",
+        Some("revision-a"),
+    )];
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+        "nativePC/models/player.mod3",
+        b"new model".as_slice(),
+    )]));
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(drifted_manifest),
+    );
+    let service = UninstallModService::new(
+        game_files.clone(),
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+    );
+
+    let error = service
+        .uninstall_mod_for_revision_and_manifest(
+            UninstallModRequest {
+                profile_id: ProfileId::new("default"),
+                mod_id: ModId::new("mod-a"),
+            },
+            ModRevisionId::new("revision-a"),
+            &expected_digest,
+        )
+        .expect_err("same-revision binding drift must fail closed");
+
+    assert_eq!(error, UninstallModError::ManifestStateMismatch);
+    assert_eq!(
+        game_files
+            .file_bytes("nativePC/models/player.mod3")
+            .as_deref(),
+        Some(b"new model".as_slice())
+    );
+    assert!(manifests.take_manifest().is_none());
+}
+
+#[test]
 fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matches() {
     let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
         .expect("valid target");
@@ -99,8 +217,8 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
 fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
     let remove_target = InstallTargetPath::parse("nativePC/models/remove.mod3", ["nativePC"])
         .expect("valid target");
-    let keep_target = InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
-        .expect("valid target");
+    let keep_target =
+        InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"]).expect("valid target");
     let mut existing_manifest = InstallManifest::completed_with_metadata(
         ProfileId::new("default"),
         vec![
@@ -153,10 +271,7 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
     assert_eq!(manifest.schema_version, 7);
     assert_eq!(manifest.schema_migration.as_deref(), Some("v1-to-v7"));
     assert_eq!(manifest.backend.as_deref(), Some("install_plan"));
-    assert_eq!(
-        manifest.created_at.as_deref(),
-        Some("2026-06-29T00:00:00Z")
-    );
+    assert_eq!(manifest.created_at.as_deref(), Some("2026-06-29T00:00:00Z"));
     assert_eq!(manifest.status, InstallManifestStatus::Completed);
     assert!(manifest.completed_at.is_some());
     assert_ne!(
@@ -172,8 +287,8 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
 fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries() {
     let remove_target = InstallTargetPath::parse("nativePC/models/remove.mod3", ["nativePC"])
         .expect("valid target");
-    let keep_target = InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"])
-        .expect("valid target");
+    let keep_target =
+        InstallTargetPath::parse("nativePC/models/keep.mod3", ["nativePC"]).expect("valid target");
     let mut existing_manifest = InstallManifest::completed_with_metadata(
         ProfileId::new("default"),
         vec![

@@ -6,8 +6,8 @@
 [Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。路线图和状态快照只在纵向切片合并或里程碑结论
 变化时同步，不随每个 commit、review 修复或 CI 轮次重复更新。
 
-更新时间：2026-07-30
-规划基线：`main@e9e451eb5923f20f6ef633286fa71c072578ccb4`，QG-01 已由 PR #215 合并
+更新时间：2026-08-02
+规划基线：`main@44a5ff7`，Slice B 已由 PR #222 合并
 
 ## 固定范围
 
@@ -123,10 +123,10 @@ flowchart TD
   WU --> SAVE
 ```
 
-QG-01、T13-00、Slice A 和 Slice B 已完成。PR #222 交付 T13-05 的 install batch 子集；完整
-T13-05 仍需 Slice C 的批量卸载/真正重装 contract。内部 task 按依赖顺序提交，但不为每个 task
-重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit 缺席流程完成独立全 diff 自审，且不能跳过
-required CI terminal success。
+QG-01、T13-00、Slice A、Slice B 和 Slice C 已完成；T13-05 的 Sandbox CLI 已统一覆盖批量安装、
+卸载和真正重装。下一纵向切片是 Slice D 的 Tauri/typed API、前端工作流与 Windows Gate C。内部
+task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit
+缺席流程完成独立全 diff 自审，且不能跳过 required CI terminal success。
 
 ## P0 核心生命周期与批量能力
 
@@ -139,8 +139,9 @@ required CI terminal success。
 | Slice C | T13-03、T13-04、T13-05 的其余子集 | 批量卸载和真正重装通过 manifest/recovery 事实运行，CLI 覆盖 cancel、partial result 和 retry。 |
 | Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
 
-Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI 均已完成。Slice C
-必须从合并后的 Slice B 主干启动，不得把未合并切片分支作为隐式基线。
+Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI、Slice C 的
+uninstall/reinstall runtime/CLI contract 均已完成。Slice D 必须从合并后的 Slice C 主干启动，不得
+把未合并切片分支作为隐式基线。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -293,13 +294,16 @@ admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定
 
 ### T13-03：批量卸载
 
-状态：`ready`，T13-02 与 Slice B 已完成；本轮 PR 收尾后不自动开工。
+状态：`completed`。app/core facts/executor 与 T13-05 Sandbox runtime/CLI contract 已落地；Tauri 与
+前端入口属于 T13-06/T13-07。
 
 范围：
 
 - 只消费 manifest/recovery facts；未知文件和玩家修改文件 fail closed。
 - 预检跨 Mod 共享目标、backup ownership 和旧 manifest 摘要。
 - 每项独立 rollback/recovery；默认首个失败停止。
+- 锁外重验完整 item facts，锁内重验 exact revision 与 Mod 级 manifest snapshot digest；同 revision
+  replacement binding/target 漂移零写入拒绝。
 
 完成定义：未知文件保留，已成功卸载项不被伪回滚，失败项仍可由 recovery 扫描识别。
 
@@ -307,23 +311,27 @@ admission 已在 SQLite 短写事务中按 game/profile 跨进程串行，指定
 
 ### T13-04：批量真正重装
 
-状态：`blocked`，依赖 T13-03。
+状态：`completed`。app/core facts/executor 与 T13-05 Sandbox runtime/CLI contract 已落地；Tauri 与
+前端入口属于 T13-06/T13-07。
 
 范围：
 
 - 每项复用真正重装 retained/replaced/added/stale 和 durable transaction。
 - revision/binding lineage、plan token 和候选状态在写锁内重验。
 - 支持 Armor target switch，但不增加独立 retarget 写入旁路。
+- item seal 使用 Mod 级稳定摘要，执行前重新 prepare；commit 继续使用当次完整 token 做锁内全事实重验。
+- 结构化区分 rollback succeeded、recovery required 和 committed evidence degraded，不从错误文本猜测。
 
 完成定义：多 Mod mixed result、重启恢复、同 revision target switch、stale plan、失败收敛和幂等 retry
-均有测试。
+由 app 层聚焦测试、既有 durable reinstall fault matrix，以及 T13-05 的纯只读 retarget facts、
+Sandbox CLI 跨进程 E2E 共同覆盖。
 
 提交边界：batch reinstall plan 一个提交，runner/recovery 一个提交，retarget regression 一个提交。
 
 ### T13-05：CLI 批量契约
 
-状态：`in_progress`。install batch contract 子集已在 Slice B 接入；其余 uninstall/reinstall
-contract 在 Slice C 依赖 T13-03/T13-04。
+状态：`completed`。Slice B 的 install 与 Slice C 的 uninstall/reinstall 已统一接入 Sandbox
+`install batch plan|apply|result|retry`；Production 继续拒绝。
 
 范围：
 
@@ -336,14 +344,14 @@ contract 在 Slice C 依赖 T13-03/T13-04。
   admission 竞争失败时安全回收未执行的 sealed retry attempt。
 - 首版仅 Sandbox；Production 继续拒绝。
 
-完成定义：Slice B 先交付批量安装的 conflict、partial success、stale preview、retry 和敏感
-canary contract tests；Slice C 再补齐批量卸载与真正重装，最终共同覆盖完整批量 CLI 契约。
+完成定义：Slice B/C 已覆盖批量安装、卸载和真正重装的 conflict、partial success、stale preview、
+retry、same-revision Armor switch、legacy result 可读性和敏感 canary contract tests。
 
 提交边界：CLI parser/schema 一个提交，runtime adapter/E2E 一个提交。
 
 ### T13-06：Tauri command 与 typed API
 
-状态：`blocked`，依赖 T13-04。
+状态：`ready`，依赖 T13-05 已满足。
 
 范围：
 

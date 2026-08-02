@@ -2,6 +2,7 @@ use hmm_app::{
     ModUninstaller, StartUninstallTaskRequest, UninstallModError, UninstallModRequest,
     UninstallModResult, UninstallModService,
 };
+use hmm_core::ModRevisionId;
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem, JsonInstallManifestRepository,
 };
@@ -31,19 +32,17 @@ impl ConfiguredModUninstaller {
             app_data_dir,
         }
     }
-}
 
-impl ModUninstaller for ConfiguredModUninstaller {
-    fn uninstall_mod(
+    fn service_for_request(
         &self,
-        request: StartUninstallTaskRequest,
-    ) -> Result<UninstallModResult, UninstallModError> {
+        request: &StartUninstallTaskRequest,
+    ) -> Result<UninstallModService, UninstallModError> {
         let game_instance = self
             .game_config_repository
             .load_game_instance(&request.game_id)
             .map_err(|_| UninstallModError::GameInstanceUnavailable)?
             .ok_or(UninstallModError::GameInstanceUnavailable)?;
-        let service = UninstallModService::new(
+        Ok(UninstallModService::new(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
                 self.app_data_dir.join("install").join("backups"),
@@ -51,11 +50,52 @@ impl ModUninstaller for ConfiguredModUninstaller {
             Arc::new(JsonInstallManifestRepository::new(
                 self.app_data_dir.join("install").join("manifests"),
             )),
-        );
+        ))
+    }
+}
+
+impl ModUninstaller for ConfiguredModUninstaller {
+    fn uninstall_mod(
+        &self,
+        request: StartUninstallTaskRequest,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        let service = self.service_for_request(&request)?;
 
         service.uninstall_mod(UninstallModRequest {
             profile_id: request.profile_id,
             mod_id: request.mod_id,
         })
+    }
+
+    fn uninstall_mod_for_revision(
+        &self,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        let service = self.service_for_request(&request)?;
+        service.uninstall_mod_for_revision(
+            UninstallModRequest {
+                profile_id: request.profile_id,
+                mod_id: request.mod_id,
+            },
+            expected_installed_revision_id,
+        )
+    }
+
+    fn uninstall_mod_for_revision_and_manifest(
+        &self,
+        request: StartUninstallTaskRequest,
+        expected_installed_revision_id: ModRevisionId,
+        expected_manifest_digest: &str,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        let service = self.service_for_request(&request)?;
+        service.uninstall_mod_for_revision_and_manifest(
+            UninstallModRequest {
+                profile_id: request.profile_id,
+                mod_id: request.mod_id,
+            },
+            expected_installed_revision_id,
+            expected_manifest_digest,
+        )
     }
 }
