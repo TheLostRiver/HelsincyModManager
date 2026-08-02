@@ -30,6 +30,12 @@ import {
 } from "./ModLibraryQueryFeedback";
 import { ModPosterCard } from "./ModPosterCard";
 import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
+import { BatchModLifecyclePreviewPanel } from "./batch-lifecycle/BatchModLifecyclePreviewPanel.tsx";
+import {
+  BatchModLifecycleResultPanel,
+  BatchModLifecycleRunningPanel,
+} from "./batch-lifecycle/BatchModLifecycleResultPanel.tsx";
+import { DEFAULT_BATCH_EXECUTION_POLICY } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
 import {
   getInstallManifestStatus,
   previewInstallPlanForImportedMod,
@@ -1259,6 +1265,41 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         toast={lifecycleToast}
         onDismissToast={() => setLifecycleToast(null)}
       />
+
+      {(batchWorkflow.state.status === "resolving"
+        || batchWorkflow.state.status === "preview-loading"
+        || batchWorkflow.state.status === "preview-ready"
+        || batchWorkflow.state.status === "preview-error") && (
+        <BatchModLifecyclePreviewPanel
+          workflowState={batchWorkflow.state}
+          resolution={batchWorkflow.resolution}
+          policy={
+            batchWorkflow.state.status === "resolving"
+              ? DEFAULT_BATCH_EXECUTION_POLICY
+              : batchWorkflow.state.policy
+          }
+          onPolicyChange={batchWorkflow.setPolicy}
+          onConfirm={() => void batchWorkflow.confirmAndStart()}
+          onClose={batchWorkflow.reset}
+        />
+      )}
+
+      {batchWorkflow.state.status === "result" && (
+        <BatchModLifecycleResultPanel
+          workflowState={batchWorkflow.state}
+          onRetry={() => void batchWorkflow.retry()}
+          onLoadMore={() => void batchWorkflow.loadMoreResult()}
+          onClose={batchWorkflow.reset}
+        />
+      )}
+
+      {(batchWorkflow.state.status === "starting"
+        || batchWorkflow.state.status === "result-error") && (
+        <BatchModLifecycleRunningPanel
+          workflowState={batchWorkflow.state}
+          onClose={batchWorkflow.reset}
+        />
+      )}
 
       <ReinstallPlanPreviewPanel
         state={reinstallWorkflow.dialogState}
