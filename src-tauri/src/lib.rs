@@ -1,5 +1,7 @@
 mod app_log;
 mod background_worker;
+mod batch_mod_lifecycle_commands;
+mod batch_mod_lifecycle_dto;
 mod category_commands;
 mod diagnostics_dto;
 mod dto;
@@ -87,6 +89,10 @@ use window_lifecycle_commands::{
 };
 
 pub use background_worker::BackgroundWorkerEntryError;
+use batch_mod_lifecycle_commands::{
+    get_batch_mod_lifecycle_result, preview_batch_mod_lifecycle, retry_batch_mod_lifecycle,
+    seal_batch_mod_lifecycle, start_batch_mod_lifecycle,
+};
 
 #[tauri::command]
 fn app_health(health: State<'_, hmm_infra::AppLogHealth>) -> &'static str {
@@ -119,6 +125,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_health,
+            preview_batch_mod_lifecycle,
+            seal_batch_mod_lifecycle,
+            start_batch_mod_lifecycle,
+            get_batch_mod_lifecycle_result,
+            retry_batch_mod_lifecycle,
             launch_game,
             get_game_prerequisite_status,
             get_game_setup_status,

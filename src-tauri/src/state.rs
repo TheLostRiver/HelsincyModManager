@@ -1,9 +1,15 @@
-use hmm_runtime::HmmRuntime;
+use crate::app_log;
+use hmm_runtime::{HmmRuntime, RuntimeEnvironment};
 use std::ops::Deref;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 pub(crate) use hmm_runtime::{ConfiguredReinstallExecutor, ConfiguredRetargetReinstallError};
+
+/// Environment variable that points the GUI at a disposable Sandbox data root. Batch mod
+/// lifecycle commands are only available when this is set to a valid absolute directory;
+/// Production writes remain rejected by the runtime's own sandbox gate.
+pub(crate) const HMM_SANDBOX_DATA_DIR_ENV: &str = "HMM_SANDBOX_DATA_DIR";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AppStateStartup {
@@ -14,6 +20,14 @@ enum AppStateStartup {
 
 pub struct AppState {
     runtime: HmmRuntime,
+    batch_sandbox: Option<BatchSandboxHandle>,
+}
+
+/// Shared handle for the batch mod lifecycle automation. It only carries the validated Sandbox
+/// `RuntimeEnvironment`; the automation itself is stateless and builds short-lived write
+/// contexts per command.
+pub(crate) struct BatchSandboxHandle {
+    environment: RuntimeEnvironment,
 }
 
 impl AppState {
@@ -38,11 +52,42 @@ impl AppState {
         app_data_dir: PathBuf,
         startup: AppStateStartup,
     ) -> Result<Self, String> {
+        let batch_sandbox = resolve_batch_sandbox_handle();
         let state = Self {
             runtime: HmmRuntime::from_app_data_dir(app_data_dir)?,
+            batch_sandbox,
         };
         run_state_startup(startup, &state);
         Ok(state)
+    }
+
+    /// Returns the validated Sandbox environment used by batch mod lifecycle commands, or
+    /// `None` when the GUI is not running against a Sandbox data root.
+    pub fn batch_sandbox_environment(&self) -> Option<&RuntimeEnvironment> {
+        self.batch_sandbox
+            .as_ref()
+            .map(|handle| &handle.environment)
+    }
+}
+
+fn resolve_batch_sandbox_handle() -> Option<BatchSandboxHandle> {
+    let Ok(value) = std::env::var(HMM_SANDBOX_DATA_DIR_ENV) else {
+        return None;
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match RuntimeEnvironment::sandbox(PathBuf::from(trimmed)) {
+        Ok(environment) => Some(BatchSandboxHandle { environment }),
+        Err(error) => {
+            app_log::record_warning(
+                error.code(),
+                "batch_sandbox_environment",
+                "batch_sandbox_environment_invalid",
+            );
+            None
+        }
     }
 }
 
