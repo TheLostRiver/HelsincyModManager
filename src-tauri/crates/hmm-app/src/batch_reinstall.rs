@@ -10,11 +10,13 @@ use crate::{
 use hmm_core::{
     BatchActionSummary, BatchItemFacts, BatchItemInput, BatchOperation, BatchPlanFacts,
     BatchPreflightDecision, BatchPreflightStatus, BatchReasonSummary, BatchTargetClaim,
-    BatchTargetWriteKind, GameId, InstallManifestStatusConsumption, NormalizedBatchPlanRequest,
-    ProfileId, ReinstallBatchItemInput, ReinstallTargetClass, ReplacementBindingSnapshot,
+    BatchTargetWriteKind, GameId, InstallManifestStatusConsumption, InstallRecoveryRecordStatus,
+    NormalizedBatchPlanRequest, ProfileId, ReinstallBatchItemInput, ReinstallTargetClass,
+    ReplacementBindingSnapshot,
 };
 use hmm_ports::{
-    BatchPlanFactsProvider, InstallManifestRepository, ReinstallRecoveryTransactionRepository,
+    BatchPlanFactsProvider, InstallManifestRepository, InstallRecoveryRecordRepository,
+    ReinstallRecoveryTransactionRepository,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -49,6 +51,16 @@ impl ReinstallPreviewBatchItemFactsReader {
     pub fn new(preview: Arc<ReinstallPreviewService>) -> Self {
         Self { preview }
     }
+
+    pub fn facts_from_preparation(
+        request: &BatchReinstallItemFactsRequest,
+        preparation: ReinstallPreparation,
+    ) -> anyhow::Result<BatchItemFacts> {
+        Ok(match preparation {
+            ReinstallPreparation::Ready(prepared) => prepared.batch_item_facts(&request.input),
+            ReinstallPreparation::Blocked(preview) => blocked_item_facts(&request.input, &preview)?,
+        })
+    }
 }
 
 impl BatchReinstallItemFactsReader for ReinstallPreviewBatchItemFactsReader {
@@ -67,10 +79,7 @@ impl BatchReinstallItemFactsReader for ReinstallPreviewBatchItemFactsReader {
             candidate_revision_id: request.input.candidate_revision_id.clone(),
             layer: request.input.layer.clone(),
         })?;
-        Ok(match preparation {
-            ReinstallPreparation::Ready(prepared) => prepared.batch_item_facts(&request.input),
-            ReinstallPreparation::Blocked(preview) => blocked_item_facts(&request.input, &preview)?,
-        })
+        Self::facts_from_preparation(request, preparation)
     }
 }
 
@@ -272,6 +281,7 @@ impl PreparedReinstall {
 pub struct BatchReinstallPlanFactsProvider {
     item_facts: Arc<dyn BatchReinstallItemFactsReader>,
     manifests: Arc<dyn InstallManifestRepository>,
+    install_recovery: Arc<dyn InstallRecoveryRecordRepository>,
     recovery: Arc<dyn ReinstallRecoveryTransactionRepository>,
     environment_digest: String,
 }
@@ -280,12 +290,14 @@ impl BatchReinstallPlanFactsProvider {
     pub fn new(
         item_facts: Arc<dyn BatchReinstallItemFactsReader>,
         manifests: Arc<dyn InstallManifestRepository>,
+        install_recovery: Arc<dyn InstallRecoveryRecordRepository>,
         recovery: Arc<dyn ReinstallRecoveryTransactionRepository>,
         environment_digest: impl Into<String>,
     ) -> Self {
         Self {
             item_facts,
             manifests,
+            install_recovery,
             recovery,
             environment_digest: environment_digest.into(),
         }
@@ -307,7 +319,20 @@ impl BatchPlanFactsProvider for BatchReinstallPlanFactsProvider {
         );
 
         let manifest = self.manifests.load_manifest(&request.profile_id)?;
-        let active_recovery = self.recovery.list_transactions(&request.profile_id)?;
+        let active_install_recovery_count = self
+            .install_recovery
+            .list_records(&request.profile_id)?
+            .into_iter()
+            .filter(|record| {
+                matches!(
+                    record.status,
+                    InstallRecoveryRecordStatus::Committing
+                        | InstallRecoveryRecordStatus::RollbackRequired
+                        | InstallRecoveryRecordStatus::RepairRequired
+                )
+            })
+            .count();
+        let active_reinstall_recovery = self.recovery.list_transactions(&request.profile_id)?;
         let mut global_reasons = BTreeMap::<String, usize>::new();
         if manifest.as_ref().is_some_and(|manifest| {
             manifest.profile_id != request.profile_id || manifest.validate().is_err()
@@ -319,10 +344,11 @@ impl BatchPlanFactsProvider for BatchReinstallPlanFactsProvider {
         }) {
             global_reasons.insert("batch_global_manifest_unsafe".to_owned(), 1);
         }
-        if !active_recovery.is_empty() {
+        let active_recovery_count = active_install_recovery_count + active_reinstall_recovery.len();
+        if active_recovery_count > 0 {
             global_reasons.insert(
                 "batch_global_recovery_active".to_owned(),
-                active_recovery.len(),
+                active_recovery_count,
             );
         }
 

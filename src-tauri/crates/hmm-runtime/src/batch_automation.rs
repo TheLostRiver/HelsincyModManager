@@ -7,7 +7,7 @@ use hmm_app::{
     BatchInstallRetryService, BatchInstallRunError, BatchInstallRunResult, BatchInstallTaskRunner,
     BatchPlanPreview, BatchPlanPreviewError, BatchPlanSealError, BatchPlanSealResult,
     BatchPlanService, BatchTokenCodec, InstallTaskBatchItemExecutor, InstallWriteAdmission,
-    Sha256BatchTokenCodec,
+    ReinstallTaskBatchItemExecutor, Sha256BatchTokenCodec, UninstallTaskBatchItemExecutor,
 };
 use hmm_core::{
     BatchActionSummary, BatchAttempt, BatchAttemptStatus, BatchId, BatchItemFacts, BatchItemInput,
@@ -140,53 +140,81 @@ impl BatchPlanFactsProvider for SandboxBatchFactsProvider {
         &self,
         request: &NormalizedBatchPlanRequest,
     ) -> anyhow::Result<BatchPlanFacts> {
-        if request.operation != hmm_core::BatchOperation::Install {
-            anyhow::bail!("batch operation is not install");
-        }
-
         let read_only = ReadOnlyInstallAutomation::from_environment(&self.environment)
             .map_err(|error| anyhow::anyhow!(error.code()))?;
-        let mut items = Vec::with_capacity(request.items.len());
-        for item in &request.items {
-            let BatchItemInput::Install(input) = item else {
-                anyhow::bail!("batch operation is not install");
-            };
-            let (_, _, mod_id, revision_id, plan, prerequisite) = read_only
-                .build_install_plan_for_revision(
-                    request.game_id.as_str(),
-                    request.profile_id.as_str(),
-                    input.mod_id.as_str(),
-                    input.revision_id.as_str(),
-                )
-                .map_err(|error| anyhow::anyhow!(error.code()))?;
-            items.push(facts_for_install(
-                &mod_id,
-                &revision_id,
-                &plan,
-                &prerequisite,
-            ));
+        match request.operation {
+            BatchOperation::Install => facts_for_install_batch(&read_only, request),
+            BatchOperation::Uninstall => read_only.read_batch_uninstall_facts(
+                request,
+                operation_environment_digest(&self.environment, request),
+            ),
+            BatchOperation::Reinstall => read_only.read_batch_reinstall_facts(
+                request,
+                operation_environment_digest(&self.environment, request),
+            ),
         }
-
-        let environment_digest = digest_json(&(
-            "hmm-batch-environment-v1",
-            request.game_id.as_str(),
-            request.profile_id.as_str(),
-            items
-                .iter()
-                .map(|item| &item.fact_digest)
-                .collect::<Vec<_>>(),
-        ));
-        let prerequisite_rules_version = items
-            .iter()
-            .find_map(|item| item.prerequisite.rules_version);
-
-        Ok(BatchPlanFacts {
-            environment_digest,
-            prerequisite_rules_version,
-            global_blocking_reasons: Vec::new(),
-            items,
-        })
     }
+}
+
+fn facts_for_install_batch(
+    read_only: &ReadOnlyInstallAutomation,
+    request: &NormalizedBatchPlanRequest,
+) -> anyhow::Result<BatchPlanFacts> {
+    let mut items = Vec::with_capacity(request.items.len());
+    for item in &request.items {
+        let BatchItemInput::Install(input) = item else {
+            anyhow::bail!("batch operation is not install");
+        };
+        let (_, _, mod_id, revision_id, plan, prerequisite) = read_only
+            .build_install_plan_for_revision(
+                request.game_id.as_str(),
+                request.profile_id.as_str(),
+                input.mod_id.as_str(),
+                input.revision_id.as_str(),
+            )
+            .map_err(|error| anyhow::anyhow!(error.code()))?;
+        items.push(facts_for_install(
+            &mod_id,
+            &revision_id,
+            &plan,
+            &prerequisite,
+        ));
+    }
+
+    let environment_digest = digest_json(&(
+        "hmm-batch-environment-v1",
+        request.game_id.as_str(),
+        request.profile_id.as_str(),
+        items
+            .iter()
+            .map(|item| &item.fact_digest)
+            .collect::<Vec<_>>(),
+    ));
+    let prerequisite_rules_version = items
+        .iter()
+        .find_map(|item| item.prerequisite.rules_version);
+
+    Ok(BatchPlanFacts {
+        environment_digest,
+        prerequisite_rules_version,
+        global_blocking_reasons: Vec::new(),
+        items,
+    })
+}
+
+fn operation_environment_digest(
+    environment: &RuntimeEnvironment,
+    request: &NormalizedBatchPlanRequest,
+) -> String {
+    digest_json(&(
+        "hmm-batch-environment-v2",
+        environment
+            .sandbox_data_dir()
+            .map(|path| path.to_string_lossy().into_owned()),
+        request.operation,
+        request.game_id.as_str(),
+        request.profile_id.as_str(),
+    ))
 }
 
 fn facts_for_install(
@@ -424,10 +452,8 @@ impl SandboxBatchInstallAutomation {
         environment: &RuntimeEnvironment,
         request: SandboxBatchPlanRequest,
     ) -> Result<BatchPlanPreview, SandboxBatchAutomationError> {
-        if !request.replacement_targets.is_empty() {
-            return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
-        }
-        Self::preview(environment, request.plan)
+        let request = resolve_batch_plan_request(environment, request, "batch_input_invalid")?;
+        Self::preview(environment, request)
     }
 
     pub fn preview(
@@ -451,7 +477,7 @@ impl SandboxBatchInstallAutomation {
             .validate_preview(request.clone(), preview_token)
             .map_err(map_seal_error)?;
         ensure_scope_reconciled(environment, &request.game_id, &request.profile_id)?;
-        let context = build_write_context(environment)?;
+        let context = build_write_context(environment, request.operation)?;
         let sealed = context
             .plan_service
             .seal(request, preview_token)
@@ -478,11 +504,9 @@ impl SandboxBatchInstallAutomation {
         (BatchOperation, BatchPlanSealResult, BatchInstallRunResult),
         SandboxBatchAutomationError,
     > {
-        if !request.replacement_targets.is_empty() {
-            return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
-        }
-        let operation = request.plan.operation;
-        Self::apply(environment, request.plan, preview_token)
+        let request = resolve_batch_plan_request(environment, request, "batch_plan_stale")?;
+        let operation = request.operation;
+        Self::apply(environment, request, preview_token)
             .map(|(sealed, run)| (operation, sealed, run))
     }
 
@@ -508,8 +532,10 @@ impl SandboxBatchInstallAutomation {
         SandboxBatchAutomationError,
     > {
         let batch_id = parse_batch_id(batch_id)?;
-        ensure_batch_reconciled(environment, &batch_id, "batch_unavailable")?;
-        let context = build_write_context(environment)?;
+        let (_, reconciled_batch) =
+            ensure_batch_reconciled(environment, &batch_id, "batch_unavailable")?;
+        let operation = reconciled_batch.plan.operation;
+        let context = build_write_context(environment, operation)?;
         let retry = context
             .retry
             .retry(&batch_id, attempt_number)
@@ -519,7 +545,9 @@ impl SandboxBatchInstallAutomation {
             .load_batch(&batch_id)
             .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
             .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
-        let operation = batch.plan.operation;
+        if batch.plan.operation != operation {
+            return Err(SandboxBatchAutomationError::new("batch_operation_mismatch"));
+        }
         context.admission.register_batch(&batch);
         let run = context
             .runner
@@ -552,6 +580,66 @@ impl SandboxBatchInstallAutomation {
     }
 }
 
+fn resolve_batch_plan_request(
+    environment: &RuntimeEnvironment,
+    request: SandboxBatchPlanRequest,
+    unavailable_code: &'static str,
+) -> Result<BatchPlanRequest, SandboxBatchAutomationError> {
+    ensure_sandbox(environment)?;
+    let SandboxBatchPlanRequest {
+        mut plan,
+        mut replacement_targets,
+    } = request;
+    if plan.operation != BatchOperation::Reinstall && !replacement_targets.is_empty() {
+        return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+    }
+
+    let requires_resolution = plan.items.iter().any(|item| {
+        matches!(
+            item,
+            BatchItemInput::Reinstall(input)
+                if input.installed_revision_id == input.candidate_revision_id
+        )
+    });
+    let read_only = requires_resolution
+        .then(|| ReadOnlyInstallAutomation::from_environment(environment))
+        .transpose()
+        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+
+    for item in &mut plan.items {
+        let BatchItemInput::Reinstall(input) = item else {
+            continue;
+        };
+        if input.installed_revision_id == input.candidate_revision_id {
+            if input.replacement_binding_snapshot.is_some() {
+                return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+            }
+            let target_id = replacement_targets
+                .remove(&input.mod_id)
+                .ok_or_else(|| SandboxBatchAutomationError::new("batch_input_invalid"))?;
+            let binding = read_only
+                .as_ref()
+                .expect("same-revision reinstall initialized read-only automation")
+                .resolve_batch_replacement_binding(
+                    &plan.game_id,
+                    &plan.profile_id,
+                    input,
+                    &target_id,
+                )
+                .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+            input.replacement_binding_snapshot = Some(binding);
+        } else if input.replacement_binding_snapshot.is_some()
+            || replacement_targets.contains_key(&input.mod_id)
+        {
+            return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+        }
+    }
+    if !replacement_targets.is_empty() {
+        return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+    }
+    Ok(plan)
+}
+
 fn build_read_only_plan_service(
     environment: &RuntimeEnvironment,
 ) -> Result<BatchPlanService, SandboxBatchAutomationError> {
@@ -570,6 +658,7 @@ fn build_read_only_plan_service(
 
 fn build_write_context(
     environment: &RuntimeEnvironment,
+    operation: BatchOperation,
 ) -> Result<WriteContext, SandboxBatchAutomationError> {
     ensure_sandbox(environment)?;
     let sandbox_root = environment
@@ -609,11 +698,22 @@ fn build_write_context(
         Arc::new(SystemClock),
         Arc::clone(&token_codec),
     );
-    let executor: Arc<dyn BatchInstallItemExecutor> = Arc::new(InstallTaskBatchItemExecutor::new(
-        Arc::clone(&runtime.install_task_runner),
-        Arc::clone(&runtime.task_manager),
-    ));
-    let runner = BatchInstallTaskRunner::new(
+    let executor: Arc<dyn BatchInstallItemExecutor> = match operation {
+        BatchOperation::Install => Arc::new(InstallTaskBatchItemExecutor::new(
+            Arc::clone(&runtime.install_task_runner),
+            Arc::clone(&runtime.task_manager),
+        )),
+        BatchOperation::Uninstall => Arc::new(UninstallTaskBatchItemExecutor::new(
+            Arc::clone(&runtime.uninstall_task_runner),
+            Arc::clone(&runtime.task_manager),
+        )),
+        BatchOperation::Reinstall => Arc::new(ReinstallTaskBatchItemExecutor::new(
+            Arc::clone(&runtime.reinstall_task_runner),
+            Arc::clone(&runtime.task_manager),
+        )),
+    };
+    let runner = BatchInstallTaskRunner::for_operation(
+        operation,
         Arc::clone(&runtime.task_manager),
         Arc::clone(&repository),
         executor,
@@ -622,8 +722,12 @@ fn build_write_context(
         Arc::new(SystemClock),
         Arc::clone(&token_codec),
     );
-    let retry =
-        BatchInstallRetryService::new(Arc::clone(&repository), Arc::new(SystemClock), token_codec);
+    let retry = BatchInstallRetryService::for_operation(
+        operation,
+        Arc::clone(&repository),
+        Arc::new(SystemClock),
+        token_codec,
+    );
     Ok(WriteContext {
         repository,
         plan_service,

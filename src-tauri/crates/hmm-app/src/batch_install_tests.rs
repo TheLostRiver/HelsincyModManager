@@ -1328,6 +1328,61 @@ fn continue_policy_runs_later_item_after_retryable_failure() {
 }
 
 #[test]
+fn continue_policy_runs_ready_item_after_derived_revision_blocker() {
+    let (mut batch, attempt, token) = batch();
+    batch.request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    batch.plan.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;
+    let BatchItemInput::Install(request_input) = &mut batch.request.items[0] else {
+        panic!("install input");
+    };
+    request_input.revision_id = ModRevisionId::new("unexpected-revision");
+    batch.plan.items[0].input_snapshot = batch.request.items[0].clone();
+    batch.plan.items[0]
+        .blocking_reasons
+        .push("source_revision_changed".to_owned());
+    let mut raw_facts = facts_from_batch(&batch);
+    raw_facts.items[0].blocking_reasons.clear();
+    let repository = Arc::new(FakeRepository::default());
+    repository
+        .seal_batch(BatchSealRequest {
+            sealed_batch: &batch,
+            initial_attempt: &attempt,
+        })
+        .expect("seal");
+    let executor = Arc::new(FakeExecutor {
+        executions: Mutex::new(vec![BatchInstallItemExecution::Succeeded {
+            evidence_health_degraded: false,
+        }]),
+    });
+    let runner = BatchInstallTaskRunner::new(
+        Arc::new(TaskManager::new()),
+        repository.clone(),
+        executor.clone(),
+        Arc::new(StaticFacts(raw_facts)),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::Sha256BatchTokenCodec::new("secret").expect("codec")),
+    );
+
+    let result = runner.run(&batch.batch_id, &token).expect("run");
+
+    assert_eq!(result.status, BatchAttemptStatus::CompletedWithErrors);
+    assert_eq!(result.summary.blocked_count, 1);
+    assert_eq!(result.summary.succeeded_count, 1);
+    assert_eq!(result.summary.skipped_count, 0);
+    assert!(executor.executions.lock().expect("executions").is_empty());
+    let results = repository
+        .list_item_results(&batch.batch_id, 0)
+        .expect("results");
+    assert_eq!(results[0].status, BatchItemStatus::Blocked);
+    assert_eq!(
+        results[0].reason_code.as_deref(),
+        Some("source_revision_changed")
+    );
+    assert_eq!(results[1].status, BatchItemStatus::Succeeded);
+}
+
+#[test]
 fn recovery_required_stops_continue_policy_and_cannot_be_retried() {
     let (mut batch, attempt, token) = batch();
     batch.request.execution_policy = BatchExecutionPolicy::ContinueOnItemFailure;

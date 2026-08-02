@@ -1,7 +1,8 @@
+use hmm_app::{StartRetargetInstallTaskRequest, TaskKind};
 use hmm_core::{
-    InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
-    InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId, PackageFileId,
-    PreviewImageRejectionReason, ProfileId,
+    FileLayer, GameId, InstallRecoveryRecord, InstallRecoveryRecordEntry,
+    InstallRecoveryRecordStatus, InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId,
+    PackageFileId, PreviewImageRejectionReason, ProfileId, ReplacementTargetId,
 };
 use hmm_infra::{
     JsonInstallManifestRepository, JsonInstallRecoveryRecordRepository,
@@ -16,6 +17,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+const ARMOR_SOURCE_TARGET: &str = "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3";
+const ARMOR_ALPHA_TARGET: &str = "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3";
+const ARMOR_BETA_TARGET: &str = "nativePC/pl/f_equip/pl129_0010/arm/mod/f_body.mod3";
+const ARMOR_FIXTURE_BYTES: &[u8] = b"synthetic armor fixture";
+const ARMOR_BETA_BASELINE_BYTES: &[u8] = b"synthetic beta baseline";
 
 fn hmm(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_hmm"))
@@ -268,6 +275,66 @@ fn append_reinstall_v2_revision(sandbox: &Path) {
             },
         })
         .expect("append v2 revision through catalog repository");
+}
+
+fn prepare_initial_armor_retarget_fixture(sandbox: &Path, game_root: &Path) {
+    let catalog_root = sandbox.join("mod-import");
+    fs::create_dir_all(&catalog_root).expect("create armor catalog root");
+    fs::write(
+        catalog_root.join("results.json"),
+        r#"{
+  "version": 1,
+  "records": [{
+    "mod_id": "mod-a",
+    "task_id": "task-armor",
+    "package_id": "package-armor",
+    "display_name": "Armor Fixture Mod"
+  }]
+}"#,
+    )
+    .expect("write armor Mod catalog");
+    let source = catalog_root
+        .join("sandboxes")
+        .join("package-armor")
+        .join(ARMOR_SOURCE_TARGET);
+    fs::create_dir_all(source.parent().expect("armor source parent"))
+        .expect("create armor source parent");
+    fs::write(source, ARMOR_FIXTURE_BYTES).expect("write armor source fixture");
+
+    let beta = game_root.join(ARMOR_BETA_TARGET);
+    fs::create_dir_all(beta.parent().expect("beta target parent"))
+        .expect("create beta target parent");
+    fs::write(beta, ARMOR_BETA_BASELINE_BYTES).expect("write beta baseline");
+
+    let runtime = hmm_runtime::HmmRuntime::from_app_data_dir(sandbox.to_path_buf())
+        .expect("compose temporary armor fixture runtime");
+    let request = StartRetargetInstallTaskRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("default"),
+        mod_id: ModId::new("mod-a"),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+            .expect("initial armor target"),
+        layer: FileLayer::new("base", 0),
+    };
+    let task = runtime
+        .retarget_install_tasks
+        .start_retarget_install_task(request.clone())
+        .expect("register initial armor retarget task");
+    assert_eq!(task.kind, TaskKind::Install);
+    runtime
+        .retarget_install_task_runner
+        .run_retarget_install_task(&task.task_id, request)
+        .expect("install initial armor retarget fixture");
+    drop(runtime);
+
+    assert_eq!(
+        fs::read(game_root.join(ARMOR_ALPHA_TARGET)).expect("installed alpha armor"),
+        ARMOR_FIXTURE_BYTES
+    );
+    assert_eq!(
+        fs::read(game_root.join(ARMOR_BETA_TARGET)).expect("untouched beta baseline"),
+        ARMOR_BETA_BASELINE_BYTES
+    );
 }
 
 fn write_rollback_recovery_fixture(sandbox: &Path, game_root: &Path) -> PathBuf {
@@ -1128,7 +1195,13 @@ fn sandbox_recovery_apply_rolls_back_artificial_record_across_process_restarts()
             "--yes",
         ],
     );
-    assert_eq!(apply.status.code(), Some(0), "{}", stderr_text(&apply));
+    assert_eq!(
+        apply.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        stdout_text(&apply),
+        stderr_text(&apply)
+    );
     assert_eq!(stderr_text(&apply), "");
     let output = stdout_text(&apply);
     let events = output
@@ -1351,7 +1424,13 @@ fn sandbox_install_apply_binary_writes_only_fixture_tree_and_emits_jsonl() {
         "json",
         &["plan", "--profile", "default", "--mod", "mod-a"],
     );
-    assert_eq!(plan.status.code(), Some(0), "{}", stderr_text(&plan));
+    assert_eq!(
+        plan.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        stdout_text(&plan),
+        stderr_text(&plan)
+    );
     let plan_value: Value = serde_json::from_str(&stdout_text(&plan)).expect("install plan json");
     let token = plan_value["result"]["planToken"]
         .as_str()
@@ -2074,6 +2153,818 @@ fn sandbox_install_batch_apply_result_and_completed_retry_are_stable_across_proc
     assert_eq!(retry_value["error"]["code"], "batch_retry_unavailable");
     assert_eq!(tree_snapshot(&game_root), game_after_result);
     assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn sandbox_batch_uninstall_continue_policy_reports_partial_result_and_rejects_retry() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    fs::create_dir_all(game_root.join("nativePC/models")).expect("create target parent");
+    write_game_config(sandbox.path(), &game_root);
+    write_mod_catalog_and_sandbox(sandbox.path());
+    append_batch_mod_b(sandbox.path());
+
+    let install_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--item",
+            "mod-b:package-b",
+        ],
+    );
+    assert_eq!(
+        install_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&install_plan)
+    );
+    let install_plan_value: Value =
+        serde_json::from_str(&stdout_text(&install_plan)).expect("batch install plan json");
+    let install_preview_token = install_plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("batch install preview token");
+    let install = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "apply",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-a",
+            "--item",
+            "mod-b:package-b",
+            "--preview-token",
+            install_preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(install.status.code(), Some(0), "{}", stderr_text(&install));
+    let mod_a_target = game_root.join("nativePC/models/player.mod3");
+    let mod_b_target = game_root.join("nativePC/models/player-b.mod3");
+    assert_eq!(
+        fs::read(&mod_a_target).expect("installed Mod A"),
+        b"fixture"
+    );
+    assert_eq!(
+        fs::read(&mod_b_target).expect("installed Mod B"),
+        b"fixture-b"
+    );
+
+    let uninstall_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--policy",
+            "continue-on-item-failure",
+            "--item",
+            "mod-a:wrong-revision",
+            "--item",
+            "mod-b:package-b",
+        ],
+    );
+    assert_eq!(
+        uninstall_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall_plan)
+    );
+    let uninstall_plan_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall_plan)).expect("partial uninstall plan json");
+    assert_eq!(uninstall_plan_value["result"]["plan"]["status"], "ready");
+    assert_eq!(
+        uninstall_plan_value["result"]["plan"]["executionPolicy"],
+        "continue_on_item_failure"
+    );
+    assert_eq!(uninstall_plan_value["result"]["plan"]["readyItemCount"], 1);
+    assert_eq!(
+        uninstall_plan_value["result"]["plan"]["blockedItemCount"],
+        1
+    );
+    assert_eq!(
+        uninstall_plan_value["result"]["plan"]["items"][0]["status"],
+        "blocked"
+    );
+    assert_eq!(
+        uninstall_plan_value["result"]["plan"]["items"][1]["status"],
+        "ready"
+    );
+    let uninstall_preview_token = uninstall_plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("partial uninstall preview token");
+
+    let uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--policy",
+            "continue-on-item-failure",
+            "--item",
+            "mod-a:wrong-revision",
+            "--item",
+            "mod-b:package-b",
+            "--preview-token",
+            uninstall_preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    let uninstall_stdout = stdout_text(&uninstall);
+    assert_eq!(
+        uninstall.status.code(),
+        Some(5),
+        "stdout: {uninstall_stdout}\nstderr: {}",
+        stderr_text(&uninstall)
+    );
+    assert_eq!(stderr_text(&uninstall), "");
+    let uninstall_values = uninstall_stdout
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("partial uninstall jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(uninstall_values.len(), 2);
+    assert_eq!(
+        uninstall_values[0]["phase"],
+        "install.batch.uninstall.completed_with_errors"
+    );
+    assert_eq!(
+        uninstall_values[1]["result"]["status"],
+        "completed_with_errors"
+    );
+    assert_eq!(
+        uninstall_values[1]["result"]["summary"]["succeededCount"],
+        1
+    );
+    assert_eq!(uninstall_values[1]["result"]["summary"]["blockedCount"], 1);
+    let batch_id = uninstall_values[1]["result"]["batchId"]
+        .as_str()
+        .expect("partial uninstall batch id");
+    assert_eq!(
+        fs::read(&mod_a_target).expect("blocked Mod A remains"),
+        b"fixture"
+    );
+    assert!(
+        !mod_b_target.exists(),
+        "successful Mod B uninstall removes target"
+    );
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+
+    let result = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["batch", "result", "--batch-id", batch_id, "--attempt", "0"],
+    );
+    assert_eq!(result.status.code(), Some(5), "{}", stderr_text(&result));
+    let result_value: Value =
+        serde_json::from_str(&stdout_text(&result)).expect("partial uninstall result json");
+    assert_eq!(result_value["result"]["status"], "completed_with_errors");
+    assert_eq!(result_value["result"]["items"][0]["modId"], "mod-a");
+    assert_eq!(result_value["result"]["items"][0]["status"], "blocked");
+    assert_eq!(result_value["result"]["items"][0]["retryable"], false);
+    assert_eq!(result_value["result"]["items"][1]["modId"], "mod-b");
+    assert_eq!(result_value["result"]["items"][1]["status"], "succeeded");
+    assert_eq!(result_value["result"]["items"][1]["retryable"], false);
+    let game_after_result = tree_snapshot(&game_root);
+    let install_after_result = tree_snapshot(&sandbox.path().join("install"));
+
+    let retry = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "retry",
+            "--batch-id",
+            batch_id,
+            "--attempt",
+            "0",
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(retry.status.code(), Some(3));
+    let retry_value: Value =
+        serde_json::from_str(&stdout_text(&retry)).expect("partial retry rejection json");
+    assert_eq!(retry_value["error"]["code"], "batch_retry_unavailable");
+    assert_eq!(tree_snapshot(&game_root), game_after_result);
+    assert_eq!(
+        tree_snapshot(&sandbox.path().join("install")),
+        install_after_result
+    );
+    let connection =
+        rusqlite::Connection::open(sandbox.path().join("hmm.db")).expect("open batch database");
+    let attempt_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM hmm_batch_lifecycle_attempts WHERE batch_id = ?1",
+            rusqlite::params![batch_id],
+            |row| row.get(0),
+        )
+        .expect("count batch attempts");
+    let result_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM hmm_batch_lifecycle_item_results WHERE batch_id = ?1",
+            rusqlite::params![batch_id],
+            |row| row.get(0),
+        )
+        .expect("count batch item results");
+    assert_eq!(attempt_count, 1);
+    assert_eq!(result_count, 2);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn sandbox_batch_reinstall_plan_blocks_active_install_recovery_without_side_effects() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    write_game_config(sandbox.path(), &game_root);
+    write_reinstall_v1_catalog_and_sandbox(sandbox.path());
+
+    let install_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+    assert_eq!(
+        install_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&install_plan)
+    );
+    let install_plan_value: Value =
+        serde_json::from_str(&stdout_text(&install_plan)).expect("install plan json");
+    let install_token = install_plan_value["result"]["planToken"]
+        .as_str()
+        .expect("install token");
+    let install = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            install_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(install.status.code(), Some(0), "{}", stderr_text(&install));
+
+    append_reinstall_v2_revision(sandbox.path());
+    write_rollback_recovery_fixture(sandbox.path(), &game_root);
+    let before_plan = tree_snapshot(sandbox.path());
+    let plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--operation",
+            "reinstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-v1:revision-v2",
+        ],
+    );
+
+    assert_eq!(plan.status.code(), Some(0), "{}", stderr_text(&plan));
+    let value: Value =
+        serde_json::from_str(&stdout_text(&plan)).expect("blocked batch reinstall plan json");
+    assert_eq!(value["result"]["plan"]["status"], "blocked");
+    assert_eq!(
+        value["result"]["plan"]["globalBlockingReasons"],
+        serde_json::json!([{
+            "code": "batch_global_recovery_active",
+            "count": 1
+        }])
+    );
+    assert!(value["result"]["previewToken"].is_null());
+    assert!(value["result"]["expiresAtUnixMillis"].is_null());
+    assert_eq!(tree_snapshot(sandbox.path()), before_plan);
+}
+
+#[test]
+fn sandbox_batch_reinstall_then_uninstall_restores_exact_baseline_across_processes() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    let outside = tempfile::tempdir().expect("outside");
+    let sentinel = outside.path().join("sentinel.bin");
+    fs::write(&sentinel, b"outside").expect("write sentinel");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    let models_root = game_root.join("nativePC/models");
+    fs::create_dir_all(&models_root).expect("create reinstall fixture parent");
+    fs::write(models_root.join("replaced.mod3"), b"game-replaced")
+        .expect("write replaced baseline");
+    fs::write(models_root.join("stale.mod3"), b"game-stale").expect("write stale baseline");
+    write_game_config(sandbox.path(), &game_root);
+    write_reinstall_v1_catalog_and_sandbox(sandbox.path());
+    let game_baseline = tree_snapshot(&game_root);
+
+    let install_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--profile", "default", "--mod", "mod-a"],
+    );
+    assert_eq!(
+        install_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&install_plan)
+    );
+    let install_plan_value: Value =
+        serde_json::from_str(&stdout_text(&install_plan)).expect("install plan json");
+    let install_token = install_plan_value["result"]["planToken"]
+        .as_str()
+        .expect("install token");
+    let install = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "apply",
+            "--profile",
+            "default",
+            "--mod",
+            "mod-a",
+            "--plan-token",
+            install_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(install.status.code(), Some(0), "{}", stderr_text(&install));
+
+    append_reinstall_v2_revision(sandbox.path());
+    let before_reinstall_plan = tree_snapshot(sandbox.path());
+    let reinstall_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--operation",
+            "reinstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-v1:revision-v2",
+        ],
+    );
+    assert_eq!(
+        reinstall_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&reinstall_plan)
+    );
+    let reinstall_plan_value: Value =
+        serde_json::from_str(&stdout_text(&reinstall_plan)).expect("batch reinstall plan json");
+    assert_eq!(
+        reinstall_plan_value["result"]["plan"]["operation"],
+        "reinstall"
+    );
+    assert_eq!(reinstall_plan_value["result"]["plan"]["status"], "ready");
+    assert_eq!(
+        reinstall_plan_value["result"]["plan"]["items"][0]["actionSummary"]["retained"],
+        1
+    );
+    assert_eq!(
+        reinstall_plan_value["result"]["plan"]["items"][0]["actionSummary"]["replaced"],
+        1
+    );
+    assert_eq!(
+        reinstall_plan_value["result"]["plan"]["items"][0]["actionSummary"]["added"],
+        1
+    );
+    assert_eq!(
+        reinstall_plan_value["result"]["plan"]["items"][0]["actionSummary"]["stale"],
+        1
+    );
+    let reinstall_preview_token = reinstall_plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("batch reinstall preview token");
+    assert_eq!(tree_snapshot(sandbox.path()), before_reinstall_plan);
+
+    let candidate_replaced = sandbox
+        .path()
+        .join("mod-import/sandboxes/package-v2/nativePC/models/replaced.mod3");
+    fs::write(&candidate_replaced, b"revision-v2-drift").expect("drift candidate after preview");
+    let before_stale_reinstall = tree_snapshot(sandbox.path());
+    let stale_reinstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "reinstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-v1:revision-v2",
+            "--preview-token",
+            reinstall_preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(stale_reinstall.status.code(), Some(3));
+    let stale_reinstall_value: Value =
+        serde_json::from_str(&stdout_text(&stale_reinstall)).expect("stale batch reinstall json");
+    assert_eq!(stale_reinstall_value["error"]["code"], "batch_plan_stale");
+    assert_eq!(tree_snapshot(sandbox.path()), before_stale_reinstall);
+    fs::write(&candidate_replaced, b"revision-v2").expect("restore candidate after stale check");
+
+    let reinstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "reinstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:package-v1:revision-v2",
+            "--preview-token",
+            reinstall_preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        reinstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&reinstall)
+    );
+    let reinstall_stdout = stdout_text(&reinstall);
+    assert!(!reinstall_stdout.contains(&sandbox.path().to_string_lossy().to_string()));
+    assert!(!reinstall_stdout.contains(&outside.path().to_string_lossy().to_string()));
+    let reinstall_values = reinstall_stdout
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("batch reinstall jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(reinstall_values.len(), 2);
+    assert_eq!(
+        reinstall_values[0]["phase"],
+        "install.batch.reinstall.completed"
+    );
+    assert_eq!(reinstall_values[1]["result"]["operation"], "reinstall");
+    assert_eq!(
+        reinstall_values[1]["result"]["summary"]["succeededCount"],
+        1
+    );
+    let reinstall_batch_id = reinstall_values[1]["result"]["batchId"]
+        .as_str()
+        .expect("reinstall batch id");
+    assert_eq!(
+        fs::read(models_root.join("replaced.mod3")).expect("reinstalled v2 file"),
+        b"revision-v2"
+    );
+    assert_eq!(
+        fs::read(models_root.join("stale.mod3")).expect("restored stale baseline"),
+        b"game-stale"
+    );
+
+    let reinstall_result = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "result",
+            "--batch-id",
+            reinstall_batch_id,
+            "--attempt",
+            "0",
+        ],
+    );
+    assert_eq!(reinstall_result.status.code(), Some(0));
+    let reinstall_result_value: Value =
+        serde_json::from_str(&stdout_text(&reinstall_result)).expect("batch reinstall result");
+    assert_eq!(reinstall_result_value["result"]["operation"], "reinstall");
+    assert_eq!(
+        reinstall_result_value["result"]["items"][0]["status"],
+        "succeeded"
+    );
+
+    let uninstall_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:revision-v2",
+        ],
+    );
+    assert_eq!(
+        uninstall_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall_plan)
+    );
+    let uninstall_plan_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall_plan)).expect("batch uninstall plan json");
+    assert_eq!(
+        uninstall_plan_value["result"]["plan"]["operation"],
+        "uninstall"
+    );
+    assert_eq!(uninstall_plan_value["result"]["plan"]["status"], "ready");
+    let uninstall_preview_token = uninstall_plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("batch uninstall preview token");
+
+    let installed_added = models_root.join("added.mod3");
+    fs::write(&installed_added, b"installed-target-drift").expect("drift target after preview");
+    let before_stale_uninstall = tree_snapshot(sandbox.path());
+    let stale_uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:revision-v2",
+            "--preview-token",
+            uninstall_preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(stale_uninstall.status.code(), Some(3));
+    let stale_uninstall_value: Value =
+        serde_json::from_str(&stdout_text(&stale_uninstall)).expect("stale batch uninstall json");
+    assert_eq!(stale_uninstall_value["error"]["code"], "batch_plan_stale");
+    assert_eq!(tree_snapshot(sandbox.path()), before_stale_uninstall);
+    fs::write(&installed_added, b"revision-v2-added").expect("restore target after stale check");
+
+    let uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--item",
+            "mod-a:revision-v2",
+            "--preview-token",
+            uninstall_preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        uninstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall)
+    );
+    let uninstall_values = stdout_text(&uninstall)
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("batch uninstall jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(uninstall_values.len(), 2);
+    assert_eq!(
+        uninstall_values[0]["phase"],
+        "install.batch.uninstall.completed"
+    );
+    assert_eq!(uninstall_values[1]["result"]["operation"], "uninstall");
+    assert_eq!(
+        uninstall_values[1]["result"]["summary"]["succeededCount"],
+        1
+    );
+    assert_eq!(tree_snapshot(&game_root), game_baseline);
+    assert_eq!(fs::read(&sentinel).expect("sentinel remains"), b"outside");
+}
+
+#[test]
+fn sandbox_batch_same_revision_armor_switch_preview_is_read_only_and_uninstalls_to_baseline() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    write_sandbox_marker(sandbox.path());
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_unverified_prerequisite_fixture(&game_root);
+    write_game_config(sandbox.path(), &game_root);
+    fs::create_dir_all(
+        game_root
+            .join(ARMOR_ALPHA_TARGET)
+            .parent()
+            .expect("alpha target parent"),
+    )
+    .expect("create alpha target parent");
+    let beta = game_root.join(ARMOR_BETA_TARGET);
+    fs::create_dir_all(beta.parent().expect("beta target parent"))
+        .expect("create beta target parent");
+    fs::write(&beta, ARMOR_BETA_BASELINE_BYTES).expect("write beta baseline");
+    let game_baseline = tree_snapshot(&game_root);
+    prepare_initial_armor_retarget_fixture(sandbox.path(), &game_root);
+
+    let installed_manifest =
+        JsonInstallManifestRepository::new(sandbox.path().join("install").join("manifests"))
+            .load_manifest(&ProfileId::new("default"))
+            .expect("load initial armor manifest")
+            .expect("initial armor manifest exists");
+    let installed_revision = installed_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.mod_id == ModId::new("mod-a"))
+        .and_then(|entry| entry.revision_id.clone())
+        .unwrap_or_else(|| ModRevisionId::new("package-armor"));
+    let item = format!("mod-a:{0}:{0}", installed_revision.as_str());
+    let replacement_target = "mod-a=mhw:armor:fatalis-beta";
+    let before_preview = tree_snapshot(sandbox.path());
+
+    let plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--operation",
+            "reinstall",
+            "--profile",
+            "default",
+            "--item",
+            &item,
+            "--replacement-target",
+            replacement_target,
+        ],
+    );
+    assert_eq!(
+        plan.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        stdout_text(&plan),
+        stderr_text(&plan)
+    );
+    assert_eq!(stderr_text(&plan), "");
+    let plan_stdout = stdout_text(&plan);
+    assert!(!plan_stdout.contains(&sandbox.path().to_string_lossy().to_string()));
+    assert!(!plan_stdout.contains("pl121_0000"));
+    assert!(!plan_stdout.contains("pl129_0010"));
+    let plan_value: Value =
+        serde_json::from_str(&plan_stdout).expect("same-revision batch plan json");
+    assert_eq!(plan_value["result"]["plan"]["operation"], "reinstall");
+    assert_eq!(plan_value["result"]["plan"]["status"], "ready");
+    assert_eq!(
+        plan_value["result"]["plan"]["items"][0]["actionSummary"]["added"],
+        1
+    );
+    assert_eq!(
+        plan_value["result"]["plan"]["items"][0]["actionSummary"]["stale"],
+        1
+    );
+    let preview_token = plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("same-revision preview token");
+    assert_eq!(
+        tree_snapshot(sandbox.path()),
+        before_preview,
+        "same-revision preview must not create staging, SQLite, logs, or projections"
+    );
+
+    let apply = hmm_install_in_sandbox(
+        sandbox.path(),
+        "jsonl",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "reinstall",
+            "--profile",
+            "default",
+            "--item",
+            &item,
+            "--replacement-target",
+            replacement_target,
+            "--preview-token",
+            preview_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        apply.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        stdout_text(&apply),
+        stderr_text(&apply)
+    );
+    let apply_values = stdout_text(&apply)
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("same-revision apply jsonl"))
+        .collect::<Vec<_>>();
+    assert_eq!(apply_values.len(), 2);
+    assert_eq!(
+        apply_values[0]["phase"],
+        "install.batch.reinstall.completed"
+    );
+    assert_eq!(apply_values[1]["result"]["operation"], "reinstall");
+    assert!(!game_root.join(ARMOR_ALPHA_TARGET).exists());
+    assert_eq!(
+        fs::read(game_root.join(ARMOR_BETA_TARGET)).expect("switched beta armor"),
+        ARMOR_FIXTURE_BYTES
+    );
+    let staging_parent = sandbox.path().join("install").join("retarget-staging");
+    assert!(
+        !staging_parent.exists()
+            || fs::read_dir(&staging_parent)
+                .expect("read staging parent")
+                .next()
+                .is_none(),
+        "successful same-revision batch apply must clean staging"
+    );
+
+    let uninstall_item = format!("mod-a:{}", installed_revision.as_str());
+    let uninstall_plan = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "plan",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--item",
+            &uninstall_item,
+        ],
+    );
+    assert_eq!(
+        uninstall_plan.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall_plan)
+    );
+    let uninstall_plan_value: Value =
+        serde_json::from_str(&stdout_text(&uninstall_plan)).expect("armor batch uninstall plan");
+    let uninstall_token = uninstall_plan_value["result"]["previewToken"]
+        .as_str()
+        .expect("armor uninstall token");
+    let uninstall = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &[
+            "batch",
+            "apply",
+            "--operation",
+            "uninstall",
+            "--profile",
+            "default",
+            "--item",
+            &uninstall_item,
+            "--preview-token",
+            uninstall_token,
+            "--commit",
+            "--yes",
+        ],
+    );
+    assert_eq!(
+        uninstall.status.code(),
+        Some(0),
+        "{}",
+        stderr_text(&uninstall)
+    );
+    assert_eq!(tree_snapshot(&game_root), game_baseline);
 }
 
 #[test]

@@ -261,7 +261,8 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 
 当前已落地的最小 Audit Log 能力：
 - 安装、卸载和后端受控回滚/重装收敛任务会写入最小安装审计事件。普通安装和卸载失败事件在既有短 id/计数字段外只增加与 task event 一致的稳定 `error_code`，不会记录原始 repository 或文件系统错误。
-- T13-02 批量安装、T13-03 app 层批量卸载和 T13-04 app 层批量真正重装的 batch-level Audit 只使用设计白名单字段：短
+- T13-02 批量安装、T13-03 批量卸载和 T13-04 批量真正重装的 batch-level Audit 只使用设计白名单字段；
+  T13-05 Sandbox runtime/CLI 复用同一 writer 和脱敏投影，不建立第二套审计格式。字段仅包含短
   `task_id`/`batch_id`、稳定 `operation`、`execution_policy`、`attempt_number`、item/result 聚合计数和
   稳定 `error_code`；不记录 plan token、digest、路径或 item target 列表。每个 item 继续复用已有单项
   安装/卸载/真正重装 Audit。真正重装 post-commit、cleanup 或 Audit 故障保留 committed item 事实并
