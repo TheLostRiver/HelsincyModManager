@@ -383,6 +383,7 @@ fn recovery_summary_to_manifest_status_summary(
         status: hmm_app::InstallManifestStatus::from_recovery_status(summary.status),
         managed_file_count: summary.managed_file_count,
         backup_count: summary.backup_count,
+        installed_revision_id: None,
     }
 }
 

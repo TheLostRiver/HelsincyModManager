@@ -262,6 +262,9 @@ pub struct InstallManifestStatusSummaryDto {
     pub status: InstallManifestStatusDto,
     pub managed_file_count: usize,
     pub backup_count: usize,
+    /// Exact installed revision from revisioned manifest facts (schema v2); `null` for
+    /// legacy manifests, not-installed mods and recovery-derived summaries.
+    pub installed_revision_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -446,6 +449,9 @@ impl From<InstallManifestStatusSummary> for InstallManifestStatusSummaryDto {
             status: summary.status.into(),
             managed_file_count: summary.managed_file_count,
             backup_count: summary.backup_count,
+            installed_revision_id: summary
+                .installed_revision_id
+                .map(|revision| revision.as_str().to_owned()),
         }
     }
 }
