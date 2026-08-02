@@ -34,7 +34,12 @@ export type BatchModLifecycleWorkflowState =
       preview: BatchModLifecyclePreviewDto;
       policy: BatchModLifecycleExecutionPolicy;
     }
-  | { status: "preview-error"; errorCode: string; policy: BatchModLifecycleExecutionPolicy }
+  | {
+      status: "preview-error";
+      errorCode: string;
+      policy: BatchModLifecycleExecutionPolicy;
+      operation: BatchModLifecycleOperation;
+    }
   | { status: "confirming"; request: BatchModLifecycleRequestDto; preview: BatchModLifecyclePreviewDto; policy: BatchModLifecycleExecutionPolicy }
   | {
       status: "starting";
@@ -52,6 +57,11 @@ export type BatchModLifecycleWorkflowState =
       result: BatchModLifecycleResultPageDto;
     }
   | { status: "result-error"; errorCode: string; batchId: string | null; attemptNumber: number | null };
+
+export type BatchModLifecyclePreviewError = Extract<
+  BatchModLifecycleWorkflowState,
+  { status: "preview-error" }
+>;
 
 export type BatchModLifecycleItemResolution = {
   items: BatchModLifecycleItemInputDto[];

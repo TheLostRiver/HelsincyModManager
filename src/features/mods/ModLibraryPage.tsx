@@ -1269,7 +1269,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       {(batchWorkflow.state.status === "resolving"
         || batchWorkflow.state.status === "preview-loading"
         || batchWorkflow.state.status === "preview-ready"
-        || batchWorkflow.state.status === "preview-error") && (
+        || batchWorkflow.state.status === "preview-error"
+        || batchWorkflow.state.status === "confirming") && (
         <BatchModLifecyclePreviewPanel
           workflowState={batchWorkflow.state}
           resolution={batchWorkflow.resolution}

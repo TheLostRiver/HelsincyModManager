@@ -24,8 +24,11 @@ export type BatchModLifecyclePreviewPanelProps = {
 };
 
 function operationOf(state: BatchModLifecycleWorkflowState): "install" | "uninstall" | "reinstall" {
-  if (state.status === "preview-ready") {
+  if (state.status === "preview-ready" || state.status === "confirming") {
     return state.request.operation as "install" | "uninstall" | "reinstall";
+  }
+  if (state.status === "preview-error") {
+    return state.operation;
   }
   return "install";
 }
@@ -74,7 +77,9 @@ export function BatchModLifecyclePreviewPanel({
   });
   const operation = operationOf(workflowState);
   const loading =
-    workflowState.status === "resolving" || workflowState.status === "preview-loading";
+    workflowState.status === "resolving"
+    || workflowState.status === "preview-loading"
+    || workflowState.status === "confirming";
   const preview = workflowState.status === "preview-ready" ? workflowState.preview : null;
   const errorCode =
     workflowState.status === "preview-error" ? workflowState.errorCode : null;
