@@ -49,10 +49,13 @@ test("ModLibraryPage groups controls while keeping selection and action counts p
     /<CompactActionPanel[\s\S]*?profileReady=\{activeProfile\.status === "ready" && activeProfileId !== null\}/,
   );
   assert.match(source, /<CompactActionPanel[\s\S]*?onAction={handleAction}/);
-  assert.match(source, /const selectAll = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?setSelectedIds\(new Set\(libraryItems\.map\(\(item\) => item\.id\)\)\);/);
+  assert.match(
+    source,
+    /const selectAll = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?setSelectedIds\(\(prev\) => \{\s*const next = new Set\(prev\);/,
+  );
   assert.match(source, /const invertSelection = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?for \(const item of libraryItems\)/);
-  assert.match(source, /const handlePageChange = \(nextPage: number\) => \{[\s\S]*?resetPageInteraction\(\);/);
-  assert.match(source, /const handlePageSizeChange = \(nextPageSize:[\s\S]*?resetPageInteraction\(\);/);
+  assert.match(source, /const handlePageChange = \(nextPage: number\) => \{[\s\S]*?resetContentScroll\(\);/);
+  assert.match(source, /const handlePageSizeChange = \(nextPageSize:[\s\S]*?resetContentScroll\(\);/);
 
   const toolbarIndex = source.indexOf("mod-library__toolbar-slot");
   const actionsIndex = source.indexOf("mod-library__actions-slot");
@@ -80,10 +83,10 @@ test("query refresh fails closed for stale page interactions and clears landed-p
   assert.match(page, /const promptSelectedUninstallTask = \(\) => \{\s*if \(\s*libraryQueryBusy \|\|/);
   assert.match(page, /case "reinstall":\s*if \(libraryQueryBusy\) \{\s*break;/);
   assert.match(page, /const handleContextMenuAction = \(actionId: string, modId: string\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
-  assert.match(
-    page,
-    /useEffect\(\(\) => \{\s*setSelectedIds\(new Set\(\)\);\s*setContextMenuState\(null\);\s*\}, \[libraryPage\]\);/,
-  );
+  // Cross-page selection: the library-page effect no longer clears selections; refresh and
+  // query/filter changes own that responsibility (refreshModLibrary + resetPageInteraction).
+  assert.match(page, /useEffect\(\(\) => \{\s*setContextMenuState\(null\);\s*\}, \[libraryPage\]\);/);
+  assert.match(page, /const refreshModLibrary = useCallback\(async \(\) => \{[\s\S]*?setSelectedIds\(new Set\(\)\);/);
   assert.equal(
     panel.match(/<ModLibraryControlTooltip key=\{action\.id\} content=\{disabledReason\}>/g)?.length,
     2,
