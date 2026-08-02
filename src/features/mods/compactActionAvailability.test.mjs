@@ -19,9 +19,15 @@ test("compact lifecycle actions explain selection, task, profile, and durable-st
     getCompactActionDisabledReason({ ...readyAction, selectedCount: 0 }),
     "请先选择一个 MOD",
   );
+  // T13-07: multi-selection no longer blocks lifecycle actions; feasibility falls through
+  // to the per-operation canXxxSelection facts (batch preview filters inapplicable items).
   assert.equal(
     getCompactActionDisabledReason({ ...readyAction, selectedCount: 2 }),
-    "批量操作暂未开放，请只选择一个 MOD",
+    undefined,
+  );
+  assert.equal(
+    getCompactActionDisabledReason({ ...readyAction, selectedCount: 2, canInstallSelection: false }),
+    "仅未安装且状态安全的 MOD 可安装",
   );
   assert.equal(
     getCompactActionDisabledReason({ ...readyAction, installTaskActive: true }),
