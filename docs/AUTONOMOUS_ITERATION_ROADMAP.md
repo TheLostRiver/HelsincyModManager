@@ -351,7 +351,7 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 ### T13-06：Tauri command 与 typed API
 
-状态：`ready`，依赖 T13-05 已满足。
+状态：`completed`。
 
 范围：
 
@@ -365,7 +365,7 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 ### T13-07：批量操作 UI
 
-状态：`blocked`，依赖 T13-06。
+状态：`ready`，依赖 T13-06 已满足。
 
 范围：
 

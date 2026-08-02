@@ -214,9 +214,9 @@ batch/result 事实或伪造导入失败。
 
 ### T13 批量生命周期规划契约
 
-本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的未来 transport 形状，
-用于约束 T13-01 至 T13-08。**T13-00 没有实现下列 command、DTO、AppState service 或 typed API；
-T13-06 完成前前端不得调用、注册 wrapper 或以 mock 假装它们可用：**
+本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的 transport 形状，用于约束
+T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service 和 typed API；T13-07 前端
+工作流可调用它们，但生产 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
 
 ```text
 preview_batch_mod_lifecycle
@@ -227,46 +227,50 @@ retry_batch_mod_lifecycle
 ```
 
 取消继续复用受控 `cancel_task(taskId)`，但只有 `start`/`retry` 返回真实 `TaskStartedDto` 后才有可取消
-task。前端不能在本地循环调用单项 install/uninstall/reinstall command 来构造批次。
+task；当前 T13-06 的 start/retry 同步执行完整批次，返回的 task 已是终态（取消返回
+`task_cannot_be_cancelled`），运行中取消与中间 progress 事件留给 T13-07 的异步化配套。
+前端不能在本地循环调用单项 install/uninstall/reinstall command 来构造批次。
 
-规划中的 preview/seal request 使用同一完整输入：
+preview/seal request 使用同一完整输入；`items` 元素是带 `operation` tag 的 discriminated union：
 
 ```text
 BatchModLifecycleRequestDto
-  schemaVersion
+  schemaVersion             必须为整数 1
   operation                install | uninstall | reinstall
   gameId
   profileId
   executionPolicy          stop_on_failure | continue_on_item_failure
-  items[]
+  items[]                  每个元素必须携带与 request.operation 一致的 operation tag
+  replacementTargets[]     （可选，仅 reinstall）same-revision target switch 的 modId -> targetId
 
-InstallBatchItemDto
+InstallBatchItemDto（operation: "install"）
   modId
   revisionId
-  layer
-  replacementBindingSnapshot?
+  layer                     { name, priority }
 
-UninstallBatchItemDto
+UninstallBatchItemDto（operation: "uninstall"）
   modId
   expectedInstalledRevisionId
 
-ReinstallBatchItemDto
+ReinstallBatchItemDto（operation: "reinstall"）
   modId
   installedRevisionId
   candidateRevisionId
   layer
-  replacementBindingSnapshot?
 ```
 
-输入不包含路径、package file id、manifest generation、backup/snapshot ref、hash、digest、item ID 或
-plan token。一个 request 只允许一种 operation、一个 game/profile，最多 100 项；同一 `modId` 重复时
-整体拒绝。后端按稳定 item key 规范排序，前端选择顺序不定义执行顺序。
+输入不包含路径、package file id、manifest generation、backup/snapshot ref、hash、digest、item ID、
+plan token 或 replacement binding 快照。same-revision reinstall（`installedRevisionId ==
+candidateRevisionId`）通过 `replacementTargets` 表达目标选择，binding 由后端在 seal 时从受控
+`targetId` 解析；前端不得构造或回传 `replacementBindingSnapshot`。一个 request 只允许一种
+operation、一个 game/profile，最多 100 项；同一 `modId` 重复时整体拒绝。后端按稳定 item key 规范
+排序，前端选择顺序不定义执行顺序。
 
-| command | 输入 | 规划返回 |
+| command | 输入 | 返回 |
 | --- | --- | --- |
 | `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
 | `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAt` 和 opaque `planToken` |
-| `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }` |
+| `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }`；同步执行 attempt 0 后在返回前发出唯一 terminal event |
 | `get_batch_mod_lifecycle_result` | `batchId`、`attemptNumber`、可选 `cursor`、可选 `limit` | `BatchModLifecycleResultPageDto`；cursor 只属于该 attempt |
 | `retry_batch_mod_lifecycle` | `batchId`、`expectedAttemptNumber` | `{ task: TaskStartedDto, batchId, attemptNumber }`；retry item set 完全由后端从 sealed batch 和已有终态计算 |
 
@@ -274,6 +278,15 @@ plan token。一个 request 只允许一种 operation、一个 game/profile，�
 artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
 `batch_plan_stale`，不持久化部分 snapshot。`start` 只消费 `batchId + planToken`，token 默认 30 分钟
 过期；digest 是内部确定性身份，不是公开写权限，也不得进入 DTO、日志或诊断。
+
+`start`/`retry` 当前为同步执行模型：command 在完成完整批次后才返回，返回的 `task` 已是终态，
+并恰好发出一个 terminal event（`install.batch.<operation>.<terminal>`）。`task.kind` 统一为
+`install`；`task.status` 与 phase 的映射为：`completed`/`completed_with_errors` -> `completed`
+（phase 分别为 `.completed` / `.completed_with_errors`），`cancelled` -> `cancelled`，
+`blocked`/`recovery_required`/`interrupted`/`failed` -> `failed`（phase 分别为 `.failed` /
+`.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。queued/planning/
+preflight/processing/stopping 等中间 phase 与运行中取消由 T13-07 的异步化配套引入，在此之前
+`cancel_task` 对 batch task 返回 `task_cannot_be_cancelled`。
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
@@ -288,8 +301,8 @@ Preview `status` 只有 `ready` 和 `blocked`。默认 `stop_on_failure` 只有�
 集合或 backup ownership 冲突是 `batch_global_target_conflict`，`continue_on_item_failure` 不能绕过。
 
 Result page 默认 `limit = 50`、最大 `100`；cursor 是后端解释的 opaque 分页值，前端只复用
-`nextCursor`。非法 cursor/limit 整体拒绝。页面按 `ordinal` 稳定排序，批量摘要必须伴随各 item count；
-summary 还返回当前 `attemptNumber`；返回 item 仅包含：
+`nextCursor`。非法 cursor/limit 整体拒绝（`batch_input_invalid`）。页面按 `ordinal` 稳定排序，
+summary 携带 `itemCount` 与各状态计数；页面还返回当前 `attemptNumber`；返回 item 仅包含：
 
 ```text
 itemId
@@ -298,8 +311,10 @@ modId
 status
 reasonCode?
 retryable
-actionSummary
 ```
+
+（规划草案中的 item `actionSummary` 未落地：CLI 与 journal 均不持久化 per-item action summary，
+T13-06 契约以实际实现为准。）
 
 单项终态稳定值为 `succeeded`、`blocked`、`failed`、`recovery_required`、`cancelled`、`skipped`。
 Batch 终态稳定值为 `completed`、`completed_with_errors`、`blocked`、`cancelled`、
@@ -310,7 +325,7 @@ terminal `expectedAttemptNumber`，并发 retry 最多一个创建下一 attempt
 `batch_attempt_stale`。Result query 和 cursor 必须绑定确切 attempt；新 attempt 不改变旧 attempt 的
 分页身份。
 
-未来 batch task phase family 固定为：
+batch task phase family 已注册为：
 
 ```text
 install.batch.<operation>.queued
@@ -325,8 +340,10 @@ install.batch.<operation>.recovery_required
 install.batch.<operation>.failed
 ```
 
-`<operation>` 只能是 `install`、`uninstall` 或 `reinstall`。每个 attempt 对外只有一个 taskId 和恰好
-一个 terminal event；progress 只提供聚合计数，大型 item 结果必须通过分页 query 读取。
+`<operation>` 只能是 `install`、`uninstall` 或 `reinstall`。T13-06 当前只发出 terminal 子集
+（`.completed` / `.completed_with_errors` / `.cancelled` / `.recovery_required` / `.failed`）。
+每个 attempt 对外只有一个 taskId 和恰好一个 terminal event；progress 只提供聚合计数，大型 item
+结果必须通过分页 query 读取。
 
 Batch phase 映射到共享 `TaskProgressEventDto` 时还必须满足：
 
@@ -362,6 +379,13 @@ Item reason 优先复用既有单项 code；批量调度新增
 `stopped_after_item_failure`、`cancelled_before_start`、`batch_item_plan_stale`、
 `source_revision_changed`、`manifest_changed`、`target_changed`、`rollback_succeeded` 和
 `recovery_required`。前端按稳定 code 映射本地化文案，不能根据 message 分支。
+
+Tauri 侧 batch command 只在 Sandbox 模式可用：GUI 启动时读取 `HMM_SANDBOX_DATA_DIR` 环境变量，
+指向一个绝对路径的 disposable Sandbox 数据根；未设置、为空或非法时 batch command 返回稳定错误
+`sandbox_batch_production_forbidden`（message 为固定脱敏文案），不开放 Production 写入。该目录的
+语义与 CLI `--sandbox-data-dir` 一致（游戏配置、mod 目录、manifest 与 batch journal 全部位于
+Sandbox 根内）。错误映射：`SandboxBatchAutomationError` 的稳定 `code` 原样透传为
+`CommandErrorDto.code`，`message` 为按 code 映射的固定脱敏文案，禁止透传原始异常或路径。
 
 除 preview/seal 对应的直接 response 返回各自 opaque token 外，result、progress/event、其他 DTO、
 CLI stdout/JSON/JSONL、Task/Audit Log 和诊断都不得公开完整路径、Windows 用户名、Steam ID、
