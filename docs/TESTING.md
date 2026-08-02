@@ -617,8 +617,9 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
 摘要与结构化 recovery/committed 分类；T13-05 已把 install/uninstall/reinstall 接入 Sandbox
 runtime/CLI，并为 same-revision retarget 提供纯只读 preview facts；T13-06 已落地 5 个窄 Tauri
 command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与同步 terminal event（仅 Sandbox
-模式可用）。前端工作流（T13-07）和 disposable Windows Gate C（T13-08）仍未实现。不得把后续
-场景写成已经通过。
+模式可用）；T13-07 已落地批量 workflow（跨页选择、策略选择、preview/seal/start/result/retry
+状态机）、预览/结果 UI 与行为测试。disposable Windows Gate C（T13-08）仍未实现，4 个 viewport
+视觉 smoke 待人工验收。不得把后续场景写成已经通过。
 
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
@@ -629,7 +630,7 @@ command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与�
 | T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |
 | T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
 | T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、按 attemptNumber 绑定的分页（默认 50、最大 100）和 typed API wrapper；seal→start→result 端到端、重复 start 幂等、Production 拒绝；tauriContractCoverage 证明所有注册 command 已在契约文档登记 |
-| T13-07 | 多选、preview、确认、progress、取消、分页 result、partial success 和 retry UI；监听严格按 taskId；选择变化使旧 preview/token 失效；前端不计算 target/retryable/文件规则 |
+| T13-07 | 跨页多选累积（翻页保留、搜索/筛选/刷新清空）、批量 preview/确认（策略显式单选、blocked 项确认）、start 进度、分页 result、partial success 和 retry UI；选择变化使旧 batch plan 失效；manifest installedRevisionId 数据源；前端不计算 target/retryable/文件规则；1440x900/1366x768/1280x800/480x800 视觉 smoke（人工） |
 | T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> restart -> recovery 检查 -> batch uninstall -> exact baseline，并清理受控产物 |
 
 T13-05 Slice B/C 当前聚焦入口：
@@ -652,6 +653,16 @@ cargo test -p hmm-tauri --lib batch_mod_lifecycle
 cargo test -p hmm-runtime batch --no-fail-fast
 cmd /c corepack pnpm run test
 cmd /c corepack pnpm run typecheck
+```
+
+T13-07 批量 UI/workflow 聚焦入口：
+
+```powershell
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cargo test -p hmm-app install_manifest_query --lib
+cargo test -p hmm-tauri --lib install_manifest
 ```
 
 T13-03 app 层批量卸载聚焦入口：
