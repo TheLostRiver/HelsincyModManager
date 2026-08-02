@@ -612,31 +612,71 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 
 T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。T13-00 只交付
 设计与规划契约；T13-01/T13-02 已交付 `hmm-core` 批量计划模型、`hmm-ports` 事实/封存端口、
-`hmm-app` service、批量 runner、journal 和 retry；T13-05 当前已接入 Sandbox install batch
-CLI。批量卸载/真正重装、Tauri command 和前端工作流仍未实现。不得把下面尚未实现的测试名称、
-command 或场景写成已经通过。
+`hmm-app` service、批量 runner、journal 和 retry；T13-03 已交付批量卸载 facts/executor 与
+锁内 manifest snapshot revalidation；T13-04 已交付 app 层批量真正重装 facts/executor、Mod 级稳定
+摘要与结构化 recovery/committed 分类；T13-05 已把 install/uninstall/reinstall 接入 Sandbox
+runtime/CLI，并为 same-revision retarget 提供纯只读 preview facts。Tauri command、前端工作流和
+disposable Windows Gate C 仍未实现。不得把这些后续 command 或场景写成已经通过。
 
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
 | T13-00 | policy、Markdown links、secret、whitespace、文件大小、`git diff --check`、完整 `verify.ps1` 与 findings-first 全 diff 自审 |
 | T13-01 | 规范 item 顺序与 deterministic digest；operation/policy/revision/binding/target/preflight 任一变化使 digest 变化；duplicate、101 items、50,001 actions、超过 16 MiB plan 整体拒绝；Windows 规范化后的跨 item target conflict；preview 零写入；stop/continue 的 ready/blocked 与 token 规则；preview/plan token 过期、环境或 digest 不匹配 fail closed；seal 重读事实时 request/token/fact 任一漂移均返回 `batch_plan_stale`，且不留下部分 snapshot、journal、attempt 或 projection；原始 token 不持久化 |
 | T13-02 | 批量 install 全成功、默认预检 blocker 整批零写入、首项成功后次项失败保留首项、continue 只越过 pre-write/rollback-succeeded failure；同一 attempt 重复 start 幂等返回同一 task；manifest save/rollback/journal/Audit before/after commit fault matrix；sandbox 外 sentinel 不变 |
-| T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing、backup unavailable 和 remove/restore overlap 阻断；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
+| T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing/read failure、backup unavailable、invalid manifest 和 remove/restore overlap 阻断；同 revision binding/entry 漂移在写锁内拒绝；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
 | T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |
 | T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
 | T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、分页和 typed API wrapper；T13-06 前 contract test 应证明 command 未注册 |
 | T13-07 | 多选、preview、确认、progress、取消、分页 result、partial success 和 retry UI；监听严格按 taskId；选择变化使旧 preview/token 失效；前端不计算 target/retryable/文件规则 |
 | T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> restart -> recovery 检查 -> batch uninstall -> exact baseline，并清理受控产物 |
 
-T13-05 install batch Slice B 当前聚焦入口：
+T13-05 Slice B/C 当前聚焦入口：
 
 ```powershell
 cargo test -p hmm-cli --test cli_contract batch -- --nocapture
-cargo test -p hmm-cli --lib
-cargo test -p hmm-runtime
-cargo test -p hmm-app --lib
+cargo test -p hmm-cli --lib --no-fail-fast
+cargo test -p hmm-runtime batch --no-fail-fast
+cargo test -p hmm-core batch --lib
+cargo test -p hmm-app batch_install --lib --no-fail-fast
+cargo test -p hmm-app batch_uninstall --lib --no-fail-fast
+cargo test -p hmm-app batch_reinstall --lib --no-fail-fast
 cargo test -p hmm-infra batch_lifecycle_repository --lib
 ```
+
+T13-03 app 层批量卸载聚焦入口：
+
+```powershell
+cargo test -p hmm-core batch --lib
+cargo test -p hmm-app batch_uninstall --lib --no-fail-fast
+cargo test -p hmm-app install_uninstall --lib --no-fail-fast
+cargo test -p hmm-app install_task --lib --no-fail-fast
+cargo test -p hmm-app batch_install --lib --no-fail-fast
+cargo test -p hmm-runtime uninstall --no-fail-fast
+```
+
+这些测试只使用 fake/temp/人工 manifest 与字节，覆盖 provider 零写入、exact revision、Mod 级 manifest
+snapshot digest、同 revision replacement binding 漂移、target/backup/manifest read failure、共享 ownership、
+未知 sentinel、玩家修改文件、partial result、retry/recovery 分类、Audit degradation 和 commit cancellation
+barrier；不读取真实游戏、Steam、存档或第三方 Mod。runtime/CLI batch uninstall E2E 已由 T13-05
+跨进程 contract 覆盖，但不能替代上述 app-level 故障矩阵。
+
+T13-04 app 层批量真正重装聚焦入口：
+
+```powershell
+cargo test -p hmm-app reinstall --lib --no-fail-fast
+cargo test -p hmm-app reinstall_task --lib --no-fail-fast
+cargo test -p hmm-app batch_reinstall --lib --no-fail-fast
+cargo test -p hmm-app batch_install --lib --no-fail-fast
+cargo check -p hmm-runtime
+```
+
+这些测试使用 fake/temp/人工 manifest、source、target、backup 和 binding，覆盖真实单项 preparation 的
+retained/replaced/added/stale 投影、无关 Mod manifest 变化不误判 stale、candidate/source/target/
+original backup/binding/prerequisite 漂移、same-revision retarget 分派、完整 token 的锁内复用、mixed
+result、retry selection、rollback/recovery 分类、commit 取消屏障和 commit 后证据降级。既有 durable
+reinstall fault matrix 继续覆盖 manifest failure 回滚旧 revision、rollback/repair required 与重启恢复。
+runtime/CLI batch reinstall 与 same-revision Armor switch E2E 已由 T13-05 跨进程 contract 覆盖，
+但不能替代这些 app-level 故障矩阵。
 
 这些测试必须覆盖 `plan -> apply -> result/retry` 的跨进程 journal 路径、Production 写入拒绝、
 脱敏 projection、`--commit --yes --preview-token` 门禁、partial exit code `5`，以及 stale
@@ -656,7 +696,7 @@ fail closed。该测试只证明 Sandbox batch journal 的 admission，不代表
 - 同一 game/profile 写入严格串行；plan/scan 在写锁外；item 间释放写锁。不同 game/profile 的
   并行仍受资源预算和现有 coordination 控制。
 - 一个 batch task 恰好一个 terminal event，不能依赖 progress event 携带 item 明细。当前 T13-05
-  Slice B 受每批最多 100 项约束，`result` 返回完整 bounded snapshot；后续 T13-06/T13-07 分页按
+  Slice B/C 受每批最多 100 项约束，`result` 返回完整 bounded snapshot；后续 T13-06/T13-07 分页按
   `ordinal` 默认 50、最大 100。无论是否分页，result query/cursor 都绑定确切 attempt，retry 不能
   让旧结果或分页漂移。
 - `plan` 的直接 response 可以返回 opaque `previewToken`；除此之外，result/progress/event/其他

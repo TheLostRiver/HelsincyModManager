@@ -1,9 +1,9 @@
 # HelsincyModManager 后续任务总纲
 
 创建时间：2026-06-27
-基于 HEAD：`e9e451e` (main)
-最近同步：2026-07-31，QG-01 已由 PR #215 合并；T13-00 已完成批量领域设计与规划契约，产品实现
-未开始；Slice A 已完成，Slice B 是下一 ready 交付单元
+基于 HEAD：`44a5ff7` (main)
+最近同步：2026-08-02，QG-01 已由 PR #215 合并；T13 Slice A/B/C 已完成单项与批量
+install/uninstall/reinstall 的 Sandbox CLI 自动化，Slice D 是下一 ready 交付单元
 
 ---
 
@@ -96,9 +96,9 @@
   -> QG-01 CI 质量门禁 [completed, PR #215]
   -> T13-00 批量语义设计 [design-complete（产品实现未开始）]
   -> Slice A：CLI-2A/2B/2C + CORE-PREF-01 [completed]
-  -> Slice B：T13-01/02 + T13-05 install 子集 [next ready]
-  -> Slice C：T13-03/04 + T13-05 其余 CLI 契约
-  -> Slice D：T13-06/07/08 Tauri/前端 + Windows Gate C
+  -> Slice B：T13-01/02 + T13-05 install 子集 [completed, PR #222]
+  -> Slice C：T13-03/04 + T13-05 其余 CLI 契约 [completed]
+  -> Slice D：T13-06/07/08 Tauri/前端 + Windows Gate C [next ready]
 ```
 
 ---
@@ -384,7 +384,7 @@ JSON 做不好的需求:
 **T13-00 前置**: QG-01 合并 + T6 + Gate A certified（已满足）
 **实现链前置**: T13-00 -> CLI-2A -> CLI-2B -> CLI-2C -> CORE-PREF-01；T13-01 至 T13-08
 继续按自主迭代路线图逐项解锁
-**状态**: T13-00 `design-complete`，Slice A 前置已完成；T13-01 next ready，T13-02 至 T13-08 未实现
+**状态**: T13-00 至 T13-05 已完成；T13-06 next ready，T13-07/T13-08 依赖 Slice D 前项
 **预估**: 大
 **独立文档**: **已创建** -> `docs/BATCH_MOD_LIFECYCLE_DESIGN.md`；任务边界见
 `docs/AUTONOMOUS_ITERATION_ROADMAP.md`
@@ -392,11 +392,11 @@ JSON 做不好的需求:
 概要:
 - [x] T13-00：sealed input、跨 Mod conflict、失败/取消/partial/retry 领域语义（设计与规划契约完成；
   产品实现未开始）
-- [ ] T13-01：服务端 `BatchPlan`、digest、资源预算与只读预览
-- [ ] T13-02：批量安装，每个 Mod 独立事务，默认首次失败停止
-- [ ] T13-03：manifest/recovery 驱动的批量卸载
-- [ ] T13-04：复用真正重装事务的批量重装与 Armor target switch
-- [ ] T13-05：CLI Sandbox 批量 JSON/JSONL contract
+- [x] T13-01：服务端 `BatchPlan`、digest、资源预算与只读预览
+- [x] T13-02：批量安装，每个 Mod 独立事务，默认首次失败停止
+- [x] T13-03：manifest/recovery 驱动的批量卸载
+- [x] T13-04：复用真正重装事务的批量重装与 Armor target switch
+- [x] T13-05：CLI Sandbox 批量 JSON/JSONL contract
 - [ ] T13-06：窄 Tauri commands、DTO 和 feature-local typed API
 - [ ] T13-07：前端多选、预览、确认、进度、结果和 retry
 - [ ] T13-08：disposable Windows Sandbox Gate C 纵向验收
@@ -602,9 +602,9 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: QG-01 CI 质量门禁（PR #215）
   -> design-complete: T13-00 批量设计与契约同步（产品实现未开始）
   -> completed: Slice A（CLI-2A/2B/2C + CORE-PREF-01）
-  -> next ready: Slice B（T13-01/02 + T13-05 install 子集）
-  -> Slice C：T13-03/04 + T13-05 其余 CLI 契约
-  -> Slice D：T13-06/07/08 Tauri/typed API、前端工作流与 disposable Windows Sandbox Gate C
+  -> completed: Slice B（T13-01/02 + T13-05 install 子集，PR #222）
+  -> completed: Slice C（T13-03/04 + T13-05 其余 CLI 契约）
+  -> next ready: Slice D（T13-06/07/08 Tauri/typed API、前端工作流与 disposable Windows Sandbox Gate C）
   -> 装备数据治理、防具 catalog 扩容、独立武器重定向
   -> Windows 存档后台发布加固、日志治理和 Production CLI admission
 ```
@@ -628,7 +628,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T10 依赖检查 | P0/P1 支撑 | 单项 install/reinstall decision 与锁内重验已完成；更多依赖类型和自动修复未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
-| T13 批量操作 | P0 | T13-00 design-complete（产品实现未开始）；T13-01 至 T13-08 未实现 | |
+| T13 批量操作 | P0 | T13-00 至 T13-05 已完成；T13-06 至 T13-08 待 Slice D | #222（Slice B） |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；4C 由 PR #199 交付） | #194（Slice 2）/ #195（Slice 3）/ #196（Slice 4A）/ #197（4A review 补救）/ #198（Slice 4B）/ #199（Slice 4C） |
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |

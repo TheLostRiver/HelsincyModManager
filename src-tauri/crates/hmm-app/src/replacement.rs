@@ -407,7 +407,11 @@ impl ReplacementWorkflowService {
             .map_err(ReplacementWorkflowError::Analysis)?;
         let install_plan = self
             .replacement
-            .build_retarget_install_plan(&retarget_plan, request.layer.clone(), None)
+            .build_retarget_install_plan(
+                &retarget_plan,
+                request.layer.clone(),
+                Some(resolved.revision_id.clone()),
+            )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
 
         Ok(PlannedInitialRetargetInstall {
@@ -433,7 +437,7 @@ impl ReplacementWorkflowService {
                 MaterializeRetargetRequest {
                     plan: planned.retarget_plan,
                     layer: planned.layer,
-                    revision_id: None,
+                    revision_id: Some(planned.revision_id),
                 },
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;

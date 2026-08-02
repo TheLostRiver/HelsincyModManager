@@ -1210,6 +1210,7 @@ mod tests {
             BatchPlanFacts {
                 environment_digest: "env".to_owned(),
                 prerequisite_rules_version: Some(1),
+                global_blocking_reasons: Vec::new(),
                 items: [
                     ("mod-a", "revision-a", "fact-a", "plan-a", "nativepc/a"),
                     ("mod-b", "revision-b", "fact-b", "plan-b", "nativepc/b"),

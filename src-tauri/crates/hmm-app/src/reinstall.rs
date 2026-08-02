@@ -1,3 +1,4 @@
+use crate::install::install_manifest_status_code;
 use crate::{
     GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, InstallPlanningError,
     InstallPlanningService,
@@ -572,9 +573,10 @@ impl ReinstallPreviewService {
                 Some(&candidate_revision_id),
             )
             .is_err()
-            || plan.replacement_bindings.iter().any(|snapshot| {
-                snapshot.mod_id() != &request.mod_id
-            })
+            || plan
+                .replacement_bindings
+                .iter()
+                .any(|snapshot| snapshot.mod_id() != &request.mod_id)
         {
             return Ok(blocked(
                 installed_summary,
@@ -913,6 +915,12 @@ pub struct PreparedReinstall {
     pub(crate) plan_hash: String,
 }
 
+impl PreparedReinstall {
+    pub fn plan_token(&self) -> &str {
+        &self.plan_token
+    }
+}
+
 pub enum ReinstallPreparation {
     Ready(Box<PreparedReinstall>),
     Blocked(ReinstallPlanPreview),
@@ -1049,7 +1057,7 @@ fn canonical_plan_token(
         hash_field(&mut hasher, code.as_str());
     }
     hash_u64(&mut hasher, manifest.schema_version.into());
-    hash_field(&mut hasher, manifest_status_code(manifest));
+    hash_field(&mut hasher, install_manifest_status_code(manifest.status));
 
     let mut entries = manifest.entries.iter().collect::<Vec<_>>();
     entries.sort_by(|left, right| {
@@ -1118,10 +1126,7 @@ fn canonical_plan_token(
     format!("reinstall-preview-v1:{:x}", hasher.finalize())
 }
 
-fn hash_replacement_snapshots(
-    hasher: &mut Sha256,
-    snapshots: &[ReplacementBindingSnapshot],
-) {
+fn hash_replacement_snapshots(hasher: &mut Sha256, snapshots: &[ReplacementBindingSnapshot]) {
     let mut snapshots = snapshots.iter().collect::<Vec<_>>();
     snapshots.sort_by(|left, right| left.binding_id().cmp(right.binding_id()));
     hash_u64(hasher, snapshots.len() as u64);
@@ -1129,10 +1134,7 @@ fn hash_replacement_snapshots(
         hash_field(hasher, snapshot.binding_id().as_str());
         hash_field(hasher, snapshot.mod_id().as_str());
         hash_field(hasher, snapshot.profile_id().as_str());
-        hash_optional(
-            hasher,
-            snapshot.revision_id().map(ModRevisionId::as_str),
-        );
+        hash_optional(hasher, snapshot.revision_id().map(ModRevisionId::as_str));
         hash_field(hasher, snapshot.binding().source_id().as_str());
         hash_field(hasher, snapshot.binding().target_id().as_str());
         hash_u128(hasher, snapshot.binding().created_at_unix_millis());
@@ -1141,20 +1143,6 @@ fn hash_replacement_snapshots(
         hash_field(hasher, snapshot.source_path_family());
         hash_field(hasher, snapshot.target_path_family());
         hash_field(hasher, snapshot.retarget_kind().as_str());
-    }
-}
-
-fn manifest_status_code(manifest: &InstallManifest) -> &'static str {
-    use hmm_core::InstallManifestStatus::{
-        Committing, Completed, Planned, RepairRequired, RollbackRequired, RolledBack,
-    };
-    match manifest.status {
-        Planned => "planned",
-        Committing => "committing",
-        Completed => "completed",
-        RollbackRequired => "rollback_required",
-        RolledBack => "rolled_back",
-        RepairRequired => "repair_required",
     }
 }
 

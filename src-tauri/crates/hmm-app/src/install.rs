@@ -1,8 +1,9 @@
 use hmm_core::{
     FileLayer, GameId, InstallAction, InstallFileProvider, InstallManifest, InstallManifestEntry,
-    InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry, InstallRecoveryRecordStatus,
-    InstallTargetPath, InstallTargetPathError, InstalledFileSummary, ModId, ModRevisionId,
-    PackageFileId, ProfileId, ReplacementBindingSnapshot, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
+    InstallManifestStatus, InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry,
+    InstallRecoveryRecordStatus, InstallTargetPath, InstallTargetPathError, InstalledFileSummary,
+    ModId, ModRevisionId, PackageFileId, ProfileId, ReplacementBindingSnapshot,
+    INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 use hmm_ports::{
     GameAdapter, InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -96,6 +97,10 @@ pub enum UninstallModError {
     ManifestUnavailable,
     #[error("mod is not installed in this profile")]
     ModNotInstalled,
+    #[error("installed Mod revision does not match the expected revision")]
+    InstalledRevisionMismatch,
+    #[error("install manifest state does not match the expected uninstall snapshot")]
+    ManifestStateMismatch,
     #[error("installed file summary is required for safe uninstall")]
     MissingInstalledFileSummary,
     #[error("installed target state does not match manifest")]
@@ -737,11 +742,48 @@ impl UninstallModService {
         &self,
         request: UninstallModRequest,
     ) -> Result<UninstallModResult, UninstallModError> {
+        self.uninstall_mod_internal(request, None, None)
+    }
+
+    pub fn uninstall_mod_for_revision(
+        &self,
+        request: UninstallModRequest,
+        expected_installed_revision_id: ModRevisionId,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        self.uninstall_mod_internal(request, Some(&expected_installed_revision_id), None)
+    }
+
+    pub fn uninstall_mod_for_revision_and_manifest(
+        &self,
+        request: UninstallModRequest,
+        expected_installed_revision_id: ModRevisionId,
+        expected_manifest_digest: &str,
+    ) -> Result<UninstallModResult, UninstallModError> {
+        self.uninstall_mod_internal(
+            request,
+            Some(&expected_installed_revision_id),
+            Some(expected_manifest_digest),
+        )
+    }
+
+    fn uninstall_mod_internal(
+        &self,
+        request: UninstallModRequest,
+        expected_installed_revision_id: Option<&ModRevisionId>,
+        expected_manifest_digest: Option<&str>,
+    ) -> Result<UninstallModResult, UninstallModError> {
         let manifest = self
             .manifest_repository
             .load_manifest(&request.profile_id)
             .map_err(|_| UninstallModError::ManifestUnavailable)?
             .ok_or(UninstallModError::ModNotInstalled)?;
+        if expected_manifest_digest.is_some_and(|expected| {
+            manifest.profile_id != request.profile_id
+                || manifest.validate().is_err()
+                || uninstall_manifest_snapshot_digest(&manifest, &request.mod_id) != expected
+        }) {
+            return Err(UninstallModError::ManifestStateMismatch);
+        }
         let InstallManifest {
             manifest_id,
             schema_version,
@@ -764,6 +806,15 @@ impl UninstallModService {
 
         if uninstall_entries.is_empty() {
             return Err(UninstallModError::ModNotInstalled);
+        }
+        if let Some(expected_revision_id) = expected_installed_revision_id {
+            if schema_version != INSTALL_MANIFEST_SCHEMA_VERSION_V2
+                || uninstall_entries
+                    .iter()
+                    .any(|entry| entry.revision_id.as_ref() != Some(expected_revision_id))
+            {
+                return Err(UninstallModError::InstalledRevisionMismatch);
+            }
         }
 
         let mut prepared_changes = Vec::with_capacity(uninstall_entries.len());
@@ -996,6 +1047,83 @@ fn merge_install_manifest(
     manifest.status = status;
     manifest.replacement_bindings = replacement_bindings;
     manifest
+}
+
+pub(crate) fn uninstall_manifest_snapshot_digest(
+    manifest: &InstallManifest,
+    mod_id: &ModId,
+) -> String {
+    let mut entries = manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.mod_id == *mod_id)
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        left.target_path
+            .as_str()
+            .cmp(right.target_path.as_str())
+            .then_with(|| left.package_file_id.cmp(&right.package_file_id))
+            .then_with(|| left.layer.priority.cmp(&right.layer.priority))
+            .then_with(|| left.layer.name.cmp(&right.layer.name))
+    });
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"hmm-uninstall-manifest-snapshot-v1");
+    update_hash_str(&mut hasher, manifest.profile_id.as_str());
+    hasher.update(manifest.schema_version.to_be_bytes());
+    update_hash_str(&mut hasher, install_manifest_status_code(manifest.status));
+    update_hash_str(&mut hasher, mod_id.as_str());
+    hasher.update((entries.len() as u64).to_be_bytes());
+    for entry in entries {
+        update_hash_str(&mut hasher, entry.target_path.as_str());
+        update_hash_str(&mut hasher, entry.mod_id.as_str());
+        update_optional_hash_str(
+            &mut hasher,
+            entry.revision_id.as_ref().map(ModRevisionId::as_str),
+        );
+        update_hash_str(&mut hasher, entry.package_file_id.as_str());
+        update_hash_str(&mut hasher, &entry.layer.name);
+        hasher.update(entry.layer.priority.to_be_bytes());
+        update_optional_hash_str(&mut hasher, entry.backup_ref.as_deref());
+        match &entry.installed_file {
+            Some(summary) => {
+                hasher.update([1]);
+                hasher.update(summary.size_bytes.to_be_bytes());
+                update_hash_str(&mut hasher, &summary.sha256);
+            }
+            None => hasher.update([0]),
+        }
+    }
+    let bindings = manifest
+        .replacement_bindings
+        .iter()
+        .filter(|snapshot| snapshot.mod_id() == mod_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    hash_replacement_snapshots(&mut hasher, &bindings);
+
+    format!("sha256:{}", digest_to_hex(&hasher.finalize()))
+}
+
+pub(crate) fn install_manifest_status_code(status: InstallManifestStatus) -> &'static str {
+    match status {
+        InstallManifestStatus::Planned => "planned",
+        InstallManifestStatus::Committing => "committing",
+        InstallManifestStatus::Completed => "completed",
+        InstallManifestStatus::RollbackRequired => "rollback_required",
+        InstallManifestStatus::RolledBack => "rolled_back",
+        InstallManifestStatus::RepairRequired => "repair_required",
+    }
+}
+
+fn update_optional_hash_str(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            hasher.update([1]);
+            update_hash_str(hasher, value);
+        }
+        None => hasher.update([0]),
+    }
 }
 
 fn install_plan_hash(plan: &InstallPlan) -> String {

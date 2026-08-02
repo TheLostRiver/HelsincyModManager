@@ -648,6 +648,7 @@ mod tests {
         BatchPlanFacts {
             environment_digest: "env-a".to_owned(),
             prerequisite_rules_version: Some(1),
+            global_blocking_reasons: Vec::new(),
             items: vec![BatchItemFacts {
                 mod_id: ModId::new("mod-a"),
                 source_revision_id: Some(ModRevisionId::new("revision-a")),

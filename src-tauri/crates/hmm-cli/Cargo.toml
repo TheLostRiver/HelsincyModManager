@@ -24,6 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+hmm-app = { path = "../hmm-app" }
 hmm-infra = { path = "../hmm-infra" }
 rusqlite.workspace = true
 serde_json.workspace = true
