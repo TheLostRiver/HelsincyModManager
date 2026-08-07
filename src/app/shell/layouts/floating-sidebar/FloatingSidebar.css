@@ -36,10 +36,15 @@
 }
 
 .floating-sidebar__brand {
-  color: var(--color-surface);
-  font-weight: 800;
-  background: var(--color-accent);
-  box-shadow: var(--shadow-control);
+  background: transparent;
+}
+
+.floating-sidebar__brand-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
 }
 
 .floating-sidebar__nav {
