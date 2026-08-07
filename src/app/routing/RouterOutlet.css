@@ -30,7 +30,12 @@
 }
 
 .route-transition__layer.is-active {
-  z-index: 0;
+  /*
+   * 稳定态不能使用数字 z-index：grid item 的非 auto z-index 会创建层叠上下文，
+   * 将路由内的 fixed dialog / popover 困在全局吸顶状态栏之下。只有双层路由
+   * 切换期间的 exiting layer 需要显式排序。
+   */
+  z-index: auto;
 }
 
 @keyframes route-layer-enter {

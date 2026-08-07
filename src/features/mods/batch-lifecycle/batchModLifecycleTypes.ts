@@ -41,6 +41,19 @@ export type BatchModLifecycleReplacementTargetDto = {
   targetId: string;
 };
 
+export type BatchModLifecycleReplacementTargetOption = {
+  id: string;
+  displayName: string;
+  secondaryName?: string;
+};
+
+export type BatchModLifecycleReplacementTargetFacts = {
+  modId: string;
+  retargetable: boolean;
+  installedTargetId: string | null;
+  targets: BatchModLifecycleReplacementTargetOption[];
+};
+
 export type BatchModLifecycleRequestDto = {
   schemaVersion: number;
   operation: BatchModLifecycleOperation;
