@@ -10,12 +10,21 @@ use hmm_ports::{
 use std::sync::Arc;
 
 mod armor_retarget;
+mod equipment_catalog_candidate;
 mod prerequisites;
 mod save_directory;
 
 pub use armor_retarget::{
     normalize_armor_display_text, normalize_armor_search_text, ArmorPathError, ArmorResourcePath,
     MhwArmorCatalog, MhwArmorReplacementAdapter,
+};
+pub use equipment_catalog_candidate::{
+    generate_mhw_equipment_stable_id, validate_mhw_equipment_candidate_catalog,
+    validate_mhw_equipment_candidate_catalog_for_bundling, EquipmentCandidateBundleBlocker,
+    EquipmentCandidateBundlingError, EquipmentCandidateCatalogError,
+    EquipmentCandidateIdentityError, EquipmentCandidateTargetKind,
+    EquipmentCandidateValidationIssue, EquipmentCandidateValidationReport,
+    MHW_EQUIPMENT_CANDIDATE_JSON_SCHEMA, MHW_EQUIPMENT_CANDIDATE_SCHEMA_VERSION,
 };
 pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
 
