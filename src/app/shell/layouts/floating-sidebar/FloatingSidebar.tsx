@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { AppBrandMark } from "../../../branding/AppBrandMark";
 import { useAppRoute } from "../../../routing/useAppRoute";
 import { navItems, type NavItem } from "../../navigation/navItems";
 import { FloatingSidebarModeButton } from "../../sidebar-mode-control/SidebarModeControl";
@@ -10,8 +11,8 @@ export function FloatingSidebar() {
 
   return (
     <aside className="floating-sidebar" aria-label="主导航">
-      <div className="floating-sidebar__brand" aria-label="Helsincy">
-        H
+      <div className="floating-sidebar__brand" aria-label="Helsincy Mod Manager">
+        <AppBrandMark className="floating-sidebar__brand-mark" />
       </div>
 
       <nav className="floating-sidebar__nav">

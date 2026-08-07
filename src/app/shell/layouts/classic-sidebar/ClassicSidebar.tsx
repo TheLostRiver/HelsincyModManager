@@ -1,3 +1,4 @@
+import { AppBrandMark } from "../../../branding/AppBrandMark";
 import { useAppRoute } from "../../../routing/useAppRoute";
 import type { NavigationStateItem } from "../../../routing/routeTypes";
 import { navItems, type NavItem } from "../../navigation/navItems";
@@ -10,8 +11,11 @@ export function ClassicSidebar() {
   return (
     <aside className="sidebar" aria-label="主导航">
       <div className="brand-block">
-        <h1>Helsincy</h1>
-        <p>Mod Manager</p>
+        <AppBrandMark className="brand-block__mark" />
+        <div className="brand-block__copy">
+          <h1>Helsincy</h1>
+          <p>Mod Manager</p>
+        </div>
       </div>
 
       <nav className="nav-list">
