@@ -153,6 +153,29 @@ test("request building keeps stable schema, policy and controlled ids", () => {
   assert.equal(batchModLifecycleRequestExceedsLimit(request), false);
 });
 
+test("request building carries only explicit replacement target selections", () => {
+  const request = buildBatchModLifecycleRequest({
+    operation: "reinstall",
+    gameId: "mhw",
+    profileId: "default",
+    policy: "stop_on_failure",
+    items: [
+      {
+        operation: "reinstall",
+        modId: "armor-mod",
+        installedRevisionId: "rev-1",
+        candidateRevisionId: "rev-1",
+        layer: { name: "base", priority: 0 },
+      },
+    ],
+    replacementTargets: [{ modId: "armor-mod", targetId: "mhw:armor:fatalis-beta" }],
+  });
+
+  assert.deepEqual(request.replacementTargets, [
+    { modId: "armor-mod", targetId: "mhw:armor:fatalis-beta" },
+  ]);
+});
+
 test("request limit guards the documented batch maximum", () => {
   const request = buildBatchModLifecycleRequest({
     operation: "install",
