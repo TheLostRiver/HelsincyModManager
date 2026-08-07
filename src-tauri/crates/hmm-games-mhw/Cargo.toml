@@ -11,5 +11,6 @@ hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10.9"
 thiserror.workspace = true
 unicode-normalization.workspace = true
