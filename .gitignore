@@ -56,5 +56,8 @@ lcov.info
 # Local agent worktrees
 .worktrees/
 
+# Codex desktop session metadata
+.reasonix/
+
 # Subagent execution ledger
 .superpowers/
