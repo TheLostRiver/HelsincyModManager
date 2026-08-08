@@ -1,9 +1,12 @@
 {
   "build": {
-    "beforeDevCommand": "corepack pnpm run prepare:save-backup-worker-sidecar:dev && corepack pnpm dev",
-    "beforeBuildCommand": "corepack pnpm build && corepack pnpm run prepare:save-backup-worker-sidecar"
+    "beforeDevCommand": "corepack pnpm run prepare:windows-sidecars:dev && corepack pnpm dev",
+    "beforeBuildCommand": "corepack pnpm build && corepack pnpm run prepare:windows-sidecars"
   },
   "bundle": {
-    "externalBin": ["binaries/hmm-save-backup-worker"]
+    "externalBin": [
+      "binaries/hmm-save-backup-worker",
+      "binaries/hmm-save-backup-installer-cleanup"
+    ]
   }
 }

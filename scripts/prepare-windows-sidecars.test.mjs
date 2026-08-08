@@ -1,18 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  WINDOWS_SIDECAR_BINARIES,
   assertSidecarBuildOutput,
   buildProfile,
   capturedCommandFailure,
   hostTripleFromRustc,
   resolveTargetTriple,
   sidecarFileName,
+  sidecarFileNames,
   targetDirectoryFromCargoMetadata,
-  workerBuildTauriConfig,
-} from "./prepare-save-backup-worker-sidecar.mjs";
+  windowsSidecarBuildTauriConfig,
+} from "./prepare-windows-sidecars.mjs";
+
+const worker = "hmm-save-backup-worker";
+const installerCleanup = "hmm-save-backup-installer-cleanup";
+
+test("uses a fixed Windows sidecar allowlist", () => {
+  assert.deepEqual(WINDOWS_SIDECAR_BINARIES, [worker, installerCleanup]);
+  assert.throws(
+    () => sidecarFileName("arbitrary-helper", "x86_64-pc-windows-msvc"),
+    /unsupported Windows sidecar binary/,
+  );
+  assert.throws(
+    () =>
+      sidecarFileNames(
+        [worker, worker],
+        "x86_64-pc-windows-msvc",
+      ),
+    /duplicate Windows sidecar binary/,
+  );
+});
 
 test("parses rustc host triple", () => {
   assert.equal(
@@ -25,14 +47,26 @@ test("parses rustc host triple", () => {
   );
 });
 
-test("uses Tauri target-triple sidecar naming", () => {
-  assert.equal(
-    sidecarFileName("x86_64-pc-windows-msvc"),
-    "hmm-save-backup-worker-x86_64-pc-windows-msvc.exe",
+test("uses Tauri target-triple names for both sidecars", () => {
+  assert.deepEqual(
+    sidecarFileNames(
+      WINDOWS_SIDECAR_BINARIES,
+      "x86_64-pc-windows-msvc",
+    ),
+    [
+      `${worker}-x86_64-pc-windows-msvc.exe`,
+      `${installerCleanup}-x86_64-pc-windows-msvc.exe`,
+    ],
   );
-  assert.equal(
-    sidecarFileName("x86_64-unknown-linux-gnu"),
-    "hmm-save-backup-worker-x86_64-unknown-linux-gnu",
+  assert.deepEqual(
+    sidecarFileNames(
+      WINDOWS_SIDECAR_BINARIES,
+      "x86_64-unknown-linux-gnu",
+    ),
+    [
+      `${worker}-x86_64-unknown-linux-gnu`,
+      `${installerCleanup}-x86_64-unknown-linux-gnu`,
+    ],
   );
 });
 
@@ -45,6 +79,10 @@ test("uses cargo metadata target directory and explicit profiles", () => {
   assert.equal(buildProfile(["--debug"]), "debug");
   assert.throws(
     () => buildProfile(["--unknown"]),
+    /unknown sidecar argument/,
+  );
+  assert.throws(
+    () => buildProfile([worker]),
     /unknown sidecar argument/,
   );
   assert.throws(
@@ -62,12 +100,13 @@ test("reports missing sidecar output with a stable error", () => {
     () =>
       assertSidecarBuildOutput(
         path.join(process.cwd(), "missing-sidecar-output"),
+        worker,
       ),
-    /worker sidecar build output is missing/,
+    /Windows sidecar build output is missing: hmm-save-backup-worker/,
   );
   assert.throws(
-    () => assertSidecarBuildOutput(process.cwd()),
-    /worker sidecar build output is missing/,
+    () => assertSidecarBuildOutput(process.cwd(), installerCleanup),
+    /Windows sidecar build output is missing: hmm-save-backup-installer-cleanup/,
   );
 });
 
@@ -82,7 +121,10 @@ test("bounds captured command stderr diagnostics", () => {
 
 test("rejects unsafe or conflicting target triple input", () => {
   for (const target of ["", "../windows", "x86_64/windows", "x86_64\\windows"]) {
-    assert.throws(() => sidecarFileName(target), /invalid Rust target triple/);
+    assert.throws(
+      () => sidecarFileName(worker, target),
+      /invalid Rust target triple/,
+    );
   }
   assert.throws(
     () =>
@@ -110,8 +152,8 @@ test("resolves an explicit target before the host target", () => {
   );
 });
 
-test("disables external binaries only for the worker cargo build", () => {
-  assert.deepEqual(JSON.parse(workerBuildTauriConfig(undefined)), {
+test("disables external binaries only for the inner Cargo build", () => {
+  assert.deepEqual(JSON.parse(windowsSidecarBuildTauriConfig(undefined)), {
     bundle: { externalBin: [] },
   });
 
@@ -119,26 +161,55 @@ test("disables external binaries only for the worker cargo build", () => {
     build: { devUrl: "http://localhost:1420" },
     bundle: {
       active: true,
-      externalBin: ["binaries/hmm-save-backup-worker"],
+      externalBin: [
+        "binaries/hmm-save-backup-worker",
+        "binaries/hmm-save-backup-installer-cleanup",
+      ],
     },
   });
-  assert.deepEqual(JSON.parse(workerBuildTauriConfig(existingConfig)), {
+  assert.deepEqual(JSON.parse(windowsSidecarBuildTauriConfig(existingConfig)), {
     build: { devUrl: "http://localhost:1420" },
     bundle: { active: true, externalBin: [] },
   });
 });
 
-test("rejects invalid worker cargo build Tauri configuration", () => {
+test("keeps the Windows bundle and prepare commands on the fixed inventory", () => {
+  const packageJson = JSON.parse(
+    readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+  );
+  assert.equal(
+    packageJson.scripts["prepare:windows-sidecars"],
+    "node scripts/prepare-windows-sidecars.mjs",
+  );
+  assert.equal(
+    packageJson.scripts["prepare:windows-sidecars:dev"],
+    "node scripts/prepare-windows-sidecars.mjs --debug",
+  );
+  assert.equal(packageJson.scripts["prepare:save-backup-worker-sidecar"], undefined);
+
+  const windowsConfig = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "src-tauri", "tauri.windows.conf.json"),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(windowsConfig.bundle.externalBin, [
+    "binaries/hmm-save-backup-worker",
+    "binaries/hmm-save-backup-installer-cleanup",
+  ]);
+});
+
+test("rejects invalid inner Cargo build Tauri configuration", () => {
   assert.throws(
-    () => workerBuildTauriConfig("{invalid"),
+    () => windowsSidecarBuildTauriConfig("{invalid"),
     /TAURI_CONFIG must be valid JSON/,
   );
   assert.throws(
-    () => workerBuildTauriConfig("[]"),
+    () => windowsSidecarBuildTauriConfig("[]"),
     /TAURI_CONFIG must be a JSON object/,
   );
   assert.throws(
-    () => workerBuildTauriConfig('{"bundle":[]}'),
+    () => windowsSidecarBuildTauriConfig('{"bundle":[]}'),
     /TAURI_CONFIG bundle must be a JSON object/,
   );
 });

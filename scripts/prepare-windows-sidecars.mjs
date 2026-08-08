@@ -1,9 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, statSync } from "node:fs";
+import { copyFileSync, lstatSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+export const WINDOWS_SIDECAR_BINARIES = Object.freeze([
+  "hmm-save-backup-worker",
+  "hmm-save-backup-installer-cleanup",
+]);
 
 export function hostTripleFromRustc(output) {
   const match = /^host:\s+([^\s]+)$/m.exec(output);
@@ -39,17 +44,40 @@ export function buildProfile(args) {
   throw new Error("unknown sidecar argument");
 }
 
-export function sidecarFileName(targetTriple) {
+function assertSupportedBinaryName(binaryName) {
+  if (!WINDOWS_SIDECAR_BINARIES.includes(binaryName)) {
+    throw new Error("unsupported Windows sidecar binary");
+  }
+}
+
+function assertTargetTriple(targetTriple) {
   if (!/^[A-Za-z0-9_.-]+$/.test(targetTriple)) {
     throw new Error("invalid Rust target triple");
   }
+}
+
+export function sidecarFileName(binaryName, targetTriple) {
+  assertSupportedBinaryName(binaryName);
+  assertTargetTriple(targetTriple);
   const extension = targetTriple.includes("windows") ? ".exe" : "";
-  return `hmm-save-backup-worker-${targetTriple}${extension}`;
+  return `${binaryName}-${targetTriple}${extension}`;
+}
+
+export function sidecarFileNames(binaryNames, targetTriple) {
+  const seen = new Set();
+  return binaryNames.map((binaryName) => {
+    assertSupportedBinaryName(binaryName);
+    if (seen.has(binaryName)) {
+      throw new Error("duplicate Windows sidecar binary");
+    }
+    seen.add(binaryName);
+    return sidecarFileName(binaryName, targetTriple);
+  });
 }
 
 export function resolveTargetTriple(explicitTarget, hostTarget, tauriArch) {
   const target = explicitTarget ?? hostTarget;
-  sidecarFileName(target);
+  assertTargetTriple(target);
   if (tauriArch && !target.startsWith(`${tauriArch}-`)) {
     throw new Error("sidecar target does not match TAURI_ENV_ARCH");
   }
@@ -60,7 +88,7 @@ function isJsonObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function workerBuildTauriConfig(existingConfig) {
+export function windowsSidecarBuildTauriConfig(existingConfig) {
   let config = {};
   if (existingConfig !== undefined) {
     try {
@@ -122,18 +150,31 @@ export function capturedCommandFailure(command, status, stderr) {
   return new Error(`${command} exited with ${status}${suffix}`);
 }
 
-export function assertSidecarBuildOutput(source) {
+export function assertSidecarBuildOutput(source, binaryName) {
+  assertSupportedBinaryName(binaryName);
   try {
-    if (statSync(source).isFile()) {
+    if (lstatSync(source).isFile()) {
       return;
     }
   } catch {
     // Normalize missing and unreadable build outputs to one stable build error.
   }
-  throw new Error("worker sidecar build output is missing");
+  throw new Error(`Windows sidecar build output is missing: ${binaryName}`);
 }
 
-export function prepareSidecar(args = []) {
+function sidecarDestination(destinationDirectory, binaryName, targetTriple) {
+  const resolvedDirectory = path.resolve(destinationDirectory);
+  const destination = path.resolve(
+    resolvedDirectory,
+    sidecarFileName(binaryName, targetTriple),
+  );
+  if (path.dirname(destination) !== resolvedDirectory) {
+    throw new Error("Windows sidecar destination escaped the binaries directory");
+  }
+  return destination;
+}
+
+export function prepareSidecars(args = []) {
   const profile = buildProfile(args);
   const hostTarget = hostTripleFromRustc(capture("rustc", ["-vV"]));
   const explicitTarget =
@@ -143,22 +184,18 @@ export function prepareSidecar(args = []) {
     hostTarget,
     process.env.TAURI_ENV_ARCH,
   );
-  const cargoArgs = [
-    "build",
-    "-p",
-    "hmm-tauri",
-    "--bin",
-    "hmm-save-backup-worker",
-    "--target",
-    targetTriple,
-  ];
+  const cargoArgs = ["build", "-p", "hmm-tauri"];
+  for (const binaryName of WINDOWS_SIDECAR_BINARIES) {
+    cargoArgs.push("--bin", binaryName);
+  }
+  cargoArgs.push("--target", targetTriple);
   if (profile === "release") {
     cargoArgs.push("--release");
   }
   run("cargo", cargoArgs, {
     env: {
       ...process.env,
-      TAURI_CONFIG: workerBuildTauriConfig(process.env.TAURI_CONFIG),
+      TAURI_CONFIG: windowsSidecarBuildTauriConfig(process.env.TAURI_CONFIG),
     },
   });
 
@@ -166,25 +203,27 @@ export function prepareSidecar(args = []) {
     capture("cargo", ["metadata", "--format-version", "1", "--no-deps"]),
   );
   const extension = targetTriple.includes("windows") ? ".exe" : "";
-  const source = path.join(
-    targetDirectory,
-    targetTriple,
-    profile,
-    `hmm-save-backup-worker${extension}`,
-  );
-  assertSidecarBuildOutput(source);
-
   const destinationDirectory = path.join(repoRoot, "src-tauri", "binaries");
   mkdirSync(destinationDirectory, { recursive: true });
-  copyFileSync(
-    source,
-    path.join(destinationDirectory, sidecarFileName(targetTriple)),
-  );
+
+  for (const binaryName of WINDOWS_SIDECAR_BINARIES) {
+    const source = path.join(
+      targetDirectory,
+      targetTriple,
+      profile,
+      `${binaryName}${extension}`,
+    );
+    assertSidecarBuildOutput(source, binaryName);
+    copyFileSync(
+      source,
+      sidecarDestination(destinationDirectory, binaryName, targetTriple),
+    );
+  }
 }
 
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
-  prepareSidecar(process.argv.slice(2));
+  prepareSidecars(process.argv.slice(2));
 }
