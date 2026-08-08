@@ -24,7 +24,12 @@
 - 临时 save/backup fixture，不使用真实游戏目录、Steam userdata 或玩家存档。
 - 可运行本仓库测试 harness 的源码与 Rust 工具链。
 
-当前 P7.2a 交付未在开发者日常账户执行本 smoke，因此尚不构成 Windows runtime acceptance。
+P7.2a 安装态 runtime acceptance 已于 2026-08-07 在一次性 Windows Sandbox 完成。验收覆盖安装目录
+sibling worker、真实 user Scheduled Task 的 register/exact read-back、幂等 register、Task Scheduler
+人工 Run、新鲜 heartbeat、幂等 unregister 和最终 missing inspect。首次生命周期 harness 的控制台
+stdin 未能接收 acknowledgement，因此最后的 unregister leg 使用同一 disposable 环境中的
+ownership-checked cleanup smoke 完成，并在 Task Scheduler UI 刷新后只读确认无残留任务；该偏差须保留在
+结果记录中，不得伪装成原 harness 完全无偏差通过。
 
 ## 停止条件
 
@@ -52,7 +57,7 @@ $env:HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE = "1"
 $env:HMM_WINDOWS_SMOKE_WORKER_PATH = (Resolve-Path -LiteralPath $workerCandidate).Path
 $env:HMM_WINDOWS_SMOKE_WAIT_FOR_TRIGGER = "1"
 try {
-    cargo test -p hmm-infra windows_scheduled_task_registry_smoke -- --ignored --nocapture
+    cargo test -p hmm-infra save_backup_background_registry::tests::windows_scheduled_task_registry_smoke -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'scheduled task lifecycle smoke failed' }
 } finally {
     Remove-Item Env:\HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE -ErrorAction SilentlyContinue
@@ -76,18 +81,20 @@ $databaseCandidate = (Read-Host 'Absolute SQLite path in disposable smoke AppDat
 if (-not (Test-Path -LiteralPath $databaseCandidate -PathType Leaf)) { throw 'disposable smoke database is missing' }
 $env:HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE = "1"
 $env:HMM_WINDOWS_SMOKE_DATABASE_PATH = (Resolve-Path -LiteralPath $databaseCandidate).Path
-$env:HMM_WINDOWS_SMOKE_PROFILE_ID = 'scheduled-task-smoke'
+$env:HMM_WINDOWS_SMOKE_PROFILE_NAME = 'scheduled-task-smoke'
 try {
-    cargo test -p hmm-infra --test save_backup_scheduler_repository windows_smoke_probe_sees_fresh_worker_heartbeat -- --ignored --exact --nocapture
+    cargo test -p hmm-infra --test save_backup_scheduler_repository windows_smoke_probe_sees_fresh_worker_heartbeat_by_profile_name -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'worker heartbeat smoke probe failed' }
 } finally {
     Remove-Item Env:\HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE -ErrorAction SilentlyContinue
     Remove-Item Env:\HMM_WINDOWS_SMOKE_DATABASE_PATH -ErrorAction SilentlyContinue
-    Remove-Item Env:\HMM_WINDOWS_SMOKE_PROFILE_ID -ErrorAction SilentlyContinue
+    Remove-Item Env:\HMM_WINDOWS_SMOKE_PROFILE_NAME -ErrorAction SilentlyContinue
 }
 ```
 
-probe 只确认 heartbeat 新鲜，不输出数据库路径、Profile 路径或玩家数据。
+GUI 创建的 Profile 使用随机内部 ID，因此 probe 通过唯一的 synthetic Profile 名称在数据库内
+只读解析 ID；名称不唯一时 fail closed。probe 只确认 heartbeat 新鲜，不输出数据库路径、内部
+Profile ID、Profile 路径或玩家数据。
 
 ### 4. 完成 Cleanup
 
@@ -102,7 +109,7 @@ if (-not (Test-Path -LiteralPath $workerCandidate -PathType Leaf)) { throw 'inst
 $env:HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE = "1"
 $env:HMM_WINDOWS_SMOKE_WORKER_PATH = (Resolve-Path -LiteralPath $workerCandidate).Path
 try {
-    cargo test -p hmm-infra windows_scheduled_task_registry_cleanup_smoke -- --ignored --nocapture
+    cargo test -p hmm-infra save_backup_background_registry::tests::windows_scheduled_task_registry_cleanup_smoke -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'scheduled task cleanup smoke failed' }
 } finally {
     Remove-Item Env:\HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE -ErrorAction SilentlyContinue
@@ -123,3 +130,16 @@ unregister idempotent -> inspect missing
 ```
 
 记录只包含通过/失败状态、应用版本、Windows 版本和 CPU 架构。不要记录 task name、SID、worker 路径、task XML、原始 PowerShell 输出、Profile 路径、数据库路径或截图。
+
+### 2026-08-07 acceptance record
+
+- 状态：`PASS`（安装态 runtime acceptance）。
+- 应用：`0.1.0-alpha.0`；Windows 10 Enterprise `10.0.19041` build `19041`；架构 `AMD64`。
+- 受控链路：`inspect missing -> register -> exact read-back -> idempotent register -> manual Run
+  -> fresh heartbeat -> unregister -> idempotent unregister -> inspect missing`。
+- 有效 worker 运行还完成了一个 synthetic automatic backup；safe evidence 仅保留在仓库外的
+  `hmm-save-02-evidence/logs/{app,tasks,audit}` 目录。
+- 清理：synthetic Profile 在 Sandbox 关闭前删除；Task Scheduler UI 刷新后无 owned task；宿主机
+  `hmm-save-02-fixtures` 已移入回收站。原始 task XML、SID、完整路径和 PowerShell transcript 未保留。
+- 偏差：Terminal A 未响应 stdin acknowledgement，故 cleanup harness 承担最终 unregister 与
+  幂等清理；cleanup harness 和最终 UI 检查均通过。

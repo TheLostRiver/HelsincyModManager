@@ -21,7 +21,13 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 - 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
 - `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
 
-这些能力完成的是应用级启停、状态展示和 fail-closed 退出保护，不等于 Windows 安装态 runtime acceptance。安装态 sibling worker、真实 Scheduled Task 触发、fresh heartbeat 和 cleanup 的人工 smoke 尚未在一次性账户/VM 完成；P7.2c NSIS/WiX owned-task 自动卸载 cleanup 也仍是独立 release packaging gate。所有后续工作继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
+P7.2a 安装态 runtime acceptance 已于 2026-08-07 在一次性 Windows Sandbox 完成：安装目录 sibling
+worker、真实 user Scheduled Task 的 exact/幂等注册、Task Scheduler 人工 Run、fresh heartbeat、一次
+synthetic automatic backup 与 ownership-checked 幂等 cleanup 均有证据。Terminal A 的 stdin
+acknowledgement 未生效，最终 unregister leg 使用 dedicated cleanup smoke 完成并经 UI 确认无残留；
+该偏差保留在 smoke 记录中。此 gate 证明安装态执行链，不替代长期 cadence/升级 soak，也不代表
+P7.2c NSIS/WiX owned-task 自动卸载 cleanup 已完成。所有后续工作继续复用
+`SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
 
 ### P7.2c 卸载 cleanup 规划状态
 
@@ -489,7 +495,8 @@ MVP 平台。推荐：
 
 - 已实现 Windows 用户级 Scheduled Task inspect/register/update/unregister 和 ownership/read-back 保护。
 - 已实现独立 worker heartbeat、45 分钟 TTL 和 exact registration + fresh heartbeat 的 `protected` 派生。
-- 已实现 Windows worker sidecar 准备与打包配置；安装态人工 smoke 尚未完成，不构成 Windows runtime acceptance。
+- 已实现 Windows worker sidecar 准备与打包配置；2026-08-07 安装态人工 smoke 已完成并记录为
+  SAVE-02 `certified`。
 
 ### 切片 4b：P7.2b 主客户端状态与提示
 
@@ -497,7 +504,8 @@ MVP 平台。推荐：
 - 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
 - 已实现 5 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生。
 - 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
-- 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 和 P7.2c installer cleanup 仍未完成。
+- 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 已完成，P7.2c installer cleanup
+  仍未完成。
 
 ### 切片 5：跨平台扩展
 
@@ -517,4 +525,6 @@ MVP 平台。推荐：
 - 所有高风险路径都有临时目录或 fake 依赖测试覆盖。
 - 文档、契约、测试说明和日志说明同步更新。
 
-P7.2b 已满足应用级启停、状态 UI、退出保护和自动化门禁，但没有执行真实安装态 Scheduled Task，因此不能仅凭本切片勾选“主客户端退出后仍会按计划备份”。
+P7.2b 已满足应用级启停、状态 UI、退出保护和自动化门禁；SAVE-02 又完成了真实安装态 Scheduled Task
+的人工触发、fresh heartbeat、实际 synthetic backup 与 cleanup。两者共同证明安装态后台执行链，
+但 SAVE-02 没有做长时间 cadence/升级 soak，P7.2c installer cleanup 也仍是独立发布 gate。

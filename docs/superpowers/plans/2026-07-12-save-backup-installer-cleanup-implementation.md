@@ -3,10 +3,9 @@
 > **执行说明：** 本计划当前只定义后续工作，不代表 helper、NSIS hook、WiX custom action 或
 > runtime gate 已实现。执行时按 Task 顺序小步提交；每个 RED 必须先观察预期失败，再写 GREEN。
 
-> **优先级暂停（2026-07-12）：** 本计划资产保留，但实现已由
-> [核心 Mod 生命周期优先级计划](../../CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 暂停。下一项工作不是本
-> 计划 Task 1。只有 Gate B 通过、进入 Windows beta packaging 前重新评审后，才能恢复执行；
-> Critical/Important 安全问题或明确发布硬门禁除外。
+> **执行状态（2026-08-07）：** Gate B、LOG-03 与 SAVE-02 均已完成；自主迭代路线图已将本计划对应的
+> SAVE-03 标为下一 `ready` 纵向切片。实现仍须严格按 Task 顺序和 disposable VM gate 推进，不能因
+> SAVE-02 通过而跳过 foreign/running/unknown fail-closed 门禁。
 
 **目标：** 为 NSIS/WiX 真正产品卸载提供同一个无参数 cleanup helper，只清理当前用户的 HMM
 owned Scheduled Task，保留 foreign task，阻断正在运行或无法确认的 cleanup，并完成两个
@@ -15,10 +14,9 @@ installer 的独立 disposable VM gate。
 **设计规格：**
 [Windows 安装器 Owned Task 卸载清理设计](../specs/2026-07-12-save-backup-installer-cleanup-design.md)
 
-**历史依赖说明：** P7.2a registry/runner/sidecar 与 P7.2b 用户流程已经存在；P7.2a 安装态
-runtime acceptance 尚未完成。P7.2a runtime acceptance 与 P7.2c cleanup acceptance 是两个独立
-gate，不能互相替代。两者在验收依赖上彼此独立，但当前执行顺序仍由上方优先级暂停说明约束；
-恢复 P7.2c 后仍须分别记录两个 gate。
+**依赖说明：** P7.2a registry/runner/sidecar、P7.2b 用户流程与 P7.2a 安装态 runtime acceptance
+均已完成。P7.2a runtime acceptance 与 P7.2c cleanup acceptance 是两个独立 gate，不能互相替代；
+本计划完成后仍须分别保留两个 gate 的证据。
 
 ## 执行护栏
 
