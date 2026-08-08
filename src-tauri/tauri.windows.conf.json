@@ -13,6 +13,7 @@
         "installerHooks": "windows/nsis-installer-hooks.nsh"
       },
       "wix": {
+        "template": "windows/wix/main.wxs",
         "fragmentPaths": ["windows/wix/installer-cleanup.wxs"]
       }
     }
