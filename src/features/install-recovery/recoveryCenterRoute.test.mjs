@@ -254,8 +254,28 @@ test("Recovery Center exposes support diagnostics export without path or raw log
   assert.match(types, /fileName:\s*string/);
   assert.match(types, /sizeBytes:\s*number/);
   assert.match(types, /appLogLineCount:\s*number/);
+  assert.match(types, /debugLogLineCount:\s*number/);
   assert.match(types, /taskLogLineCount:\s*number/);
   assert.match(types, /auditEventCount:\s*number/);
+  for (const field of [
+    "debugLogStatus",
+    "taskLogStatus",
+    "auditLogStatus",
+    "logStorageStatus",
+    "debugLogEventRejectedCount",
+    "debugLogWriteFailureCount",
+    "debugLogRetentionFailureCount",
+    "taskLogWriteFailureCount",
+    "taskLogRetentionFailureCount",
+    "auditWriteFailureCount",
+    "auditWriteFailureAfterCommitCount",
+    "auditLogRetentionFailureCount",
+    "logStorageFailureCount",
+    "logStorageUnsatisfiedCount",
+    "logStorageSettingsFailureCount",
+  ]) {
+    assert.match(types, new RegExp(`${field}:\\s*(?:string|number)`));
+  }
 
   assert.match(hook, /exportSupportDiagnostics/);
   assert.match(hook, /status:\s*"confirming"/);
