@@ -647,8 +647,9 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
-LOG-03 与 SAVE-02 均已完成；下一无人值守 `ready` 项是 SAVE-03 installer ownership cleanup。
-AR6/WR-02B 继续等待可再分发的审计数据，CLI-3A 继续依赖 SAVE-03。
+LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，当前停在 disposable
+Windows VM runtime gate；在该人工 gate 完成前不推进 SAVE-04 或 CLI-3A。AR6/WR-02B 继续等待
+可再分发的审计数据。
 
 ## P3 Production CLI 写能力
 
