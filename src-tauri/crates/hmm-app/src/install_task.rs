@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use hmm_core::{FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId};
+use hmm_core::{
+    FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId, ReplacementBindingSnapshot,
+};
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
     ReinstallRecoveryTransactionRepository,
@@ -10,13 +12,13 @@ use thiserror::Error;
 
 use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 use crate::{
-    BuildImportedModInstallPlanRequest, CommitInstallPlanRequest, GamePrerequisiteDecision,
-    ImportedModInstallPreflight, ImportedModInstallPreflightService, InstallCommitError,
-    InstallCommitResult, InstallCommitService, InstallPlanningError, InstallRecoveryActionError,
-    InstallRecoveryActionKind, InstallRecoveryActionRequest, InstallRecoveryActionResult,
-    InstallRecoveryActionService, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent,
-    TaskProgressObserver, TaskStarted, TaskStatus, UninstallModError, UninstallModRequest,
-    UninstallModResult, UninstallModService,
+    is_identity_replacement_binding, BuildImportedModInstallPlanRequest, CommitInstallPlanRequest,
+    GamePrerequisiteDecision, ImportedModInstallPreflight, ImportedModInstallPreflightService,
+    InstallCommitError, InstallCommitResult, InstallCommitService, InstallPlanningError,
+    InstallRecoveryActionError, InstallRecoveryActionKind, InstallRecoveryActionRequest,
+    InstallRecoveryActionResult, InstallRecoveryActionService, TaskKind, TaskManager,
+    TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted, TaskStatus,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
 };
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
@@ -503,7 +505,9 @@ impl InstallTaskRunner {
         request: StartInstallTaskRequest,
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, InstallTaskOrchestrationError> {
-        self.run_install_task_for_orchestration_with_revision(task_id, request, None, observer)
+        self.run_install_task_for_orchestration_with_revision(
+            task_id, request, None, None, observer,
+        )
     }
 
     pub(crate) fn run_install_revision_task_for_orchestration_with_observer<
@@ -513,12 +517,14 @@ impl InstallTaskRunner {
         task_id: &str,
         request: StartInstallTaskRequest,
         revision_id: ModRevisionId,
+        replacement_binding_snapshot: Option<ReplacementBindingSnapshot>,
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, InstallTaskOrchestrationError> {
         self.run_install_task_for_orchestration_with_revision(
             task_id,
             request,
             Some(revision_id),
+            replacement_binding_snapshot,
             observer,
         )
     }
@@ -528,6 +534,7 @@ impl InstallTaskRunner {
         task_id: &str,
         request: StartInstallTaskRequest,
         revision_id: Option<ModRevisionId>,
+        replacement_binding_snapshot: Option<ReplacementBindingSnapshot>,
         observer: &O,
     ) -> Result<Vec<TaskProgressEvent>, InstallTaskOrchestrationError> {
         if self.task_manager.start_task(task_id).is_err() {
@@ -577,7 +584,36 @@ impl InstallTaskRunner {
             ));
         }
         let prerequisite_decision = preflight.prerequisite_decision;
-        let plan = preflight.plan;
+        let mut plan = preflight.plan;
+        if let Some(binding) = replacement_binding_snapshot {
+            let binding_is_valid = revision_id.as_ref() == binding.revision_id()
+                && binding.mod_id() == &request.mod_id
+                && binding.profile_id() == &request.profile_id
+                && is_identity_replacement_binding(&binding);
+            if !binding_is_valid {
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    "planning",
+                    action_count,
+                ));
+            }
+            plan = match plan.with_replacement_bindings(vec![binding]) {
+                Ok(plan) => plan,
+                Err(_) => {
+                    return Err(self.fail_with_audit(
+                        task_id,
+                        &request,
+                        events,
+                        observer,
+                        "planning",
+                        action_count,
+                    ))
+                }
+            };
+        }
         let action_count = plan.actions.len();
 
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {

@@ -174,9 +174,10 @@ pub use reinstall_task::{
     StartRetargetReinstallTaskRequest,
 };
 pub use replacement::{
-    AnalyzeImportedReplacementRequest, InitialRetargetInstallStatusError,
-    InitialRetargetInstallStatusReader, MaterializeRetargetRequest, MaterializedRetarget,
-    PlannedInitialRetargetInstall, PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
+    is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
+    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
+    MaterializeRetargetRequest, MaterializedRetarget, PlannedInitialRetargetInstall,
+    PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
     ReplacementWorkflowError, ReplacementWorkflowService, RetargetMaterializeError,
     RetargetReinstallRequest,

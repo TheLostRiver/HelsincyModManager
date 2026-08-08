@@ -1,7 +1,7 @@
 use crate::mod_library::ModLibraryComposition;
 use hmm_app::{
-    AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
-    CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
+    is_identity_replacement_binding, AppSettingsService, AuditLogDiagnosticsExportService,
+    CategoryService, CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
     GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
     ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
@@ -186,7 +186,10 @@ impl HmmRuntime {
         Self::builder(app_data_dir).build()
     }
 
-    pub(crate) fn database_handle(&self) -> Arc<Mutex<rusqlite::Connection>> {
+    /// Returns the process-local database handle for consumers that must observe the same
+    /// SQLite WAL connection as the GUI. Callers still go through repositories; this only
+    /// avoids opening an immutable snapshot while the GUI owns an active WAL.
+    pub fn database_handle(&self) -> Arc<Mutex<rusqlite::Connection>> {
         Arc::clone(&self.db)
     }
 
@@ -1642,32 +1645,35 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
         let source_error = || InstallCommitError::Failed {
             phase: InstallCommitPhase::SourceRead,
         };
+        let imported_source_files = || {
+            let package_id = match request.revision_id.as_ref() {
+                Some(revision_id) => self
+                    .mod_import_result_repository
+                    .get_revision(revision_id)
+                    .map_err(|_| source_error())?
+                    .filter(|revision| revision.mod_id == request.mod_id)
+                    .map(|revision| revision.package_id)
+                    .ok_or_else(source_error)?,
+                None => self
+                    .mod_import_result_repository
+                    .get_analysis(request.mod_id.as_str())
+                    .map_err(|_| source_error())?
+                    .map(|analysis| analysis.package_id)
+                    .ok_or_else(source_error)?,
+            };
+            let source_root = self
+                .mod_import_sandbox_locator
+                .sandbox_root_for_package(&package_id)
+                .map_err(|_| source_error())?;
+            Ok::<Arc<dyn InstallSourceFileReader>, InstallCommitError>(Arc::new(
+                FileSystemInstallSourceFileReader::new(source_root),
+            ))
+        };
         let (source_files, staging_root): (Arc<dyn InstallSourceFileReader>, Option<PathBuf>) =
             match request.plan.replacement_bindings.as_slice() {
-                [] => {
-                    let package_id = match request.revision_id.as_ref() {
-                        Some(revision_id) => self
-                            .mod_import_result_repository
-                            .get_revision(revision_id)
-                            .map_err(|_| source_error())?
-                            .filter(|revision| revision.mod_id == request.mod_id)
-                            .map(|revision| revision.package_id)
-                            .ok_or_else(source_error)?,
-                        None => self
-                            .mod_import_result_repository
-                            .get_analysis(request.mod_id.as_str())
-                            .map_err(|_| source_error())?
-                            .map(|analysis| analysis.package_id)
-                            .ok_or_else(source_error)?,
-                    };
-                    let source_root = self
-                        .mod_import_sandbox_locator
-                        .sandbox_root_for_package(&package_id)
-                        .map_err(|_| source_error())?;
-                    (
-                        Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
-                        None,
-                    )
+                [] => (imported_source_files()?, None),
+                [snapshot] if is_identity_replacement_binding(snapshot) => {
+                    (imported_source_files()?, None)
                 }
                 [snapshot] => {
                     let staging_root =

@@ -47,9 +47,17 @@ pub fn seal_batch_mod_lifecycle(
         .batch_sandbox_environment()
         .ok_or_else(batch_sandbox_unavailable_error)?;
     let request = parse_batch_plan_request(request)?;
-    let (_operation, sealed) =
-        SandboxBatchInstallAutomation::seal_request(environment, request, &preview_token)
-            .map_err(batch_automation_error)?;
+    let sealed = match state.batch_sandbox_database() {
+        Some(database) => SandboxBatchInstallAutomation::seal_request_with_database(
+            environment,
+            request,
+            &preview_token,
+            database,
+        ),
+        None => SandboxBatchInstallAutomation::seal_request(environment, request, &preview_token),
+    }
+    .map_err(batch_automation_error)?
+    .1;
     let expires_at_unix_millis =
         u64::try_from(sealed.expires_at_unix_millis).map_err(|_| batch_internal_error())?;
     Ok(BatchModLifecycleSealDto {
@@ -73,8 +81,15 @@ pub async fn start_batch_mod_lifecycle(
         .batch_sandbox_environment()
         .ok_or_else(batch_sandbox_unavailable_error)?
         .clone();
-    let (operation, run) = tauri::async_runtime::spawn_blocking(move || {
-        SandboxBatchInstallAutomation::start_request(&environment, &batch_id, &plan_token)
+    let database = state.batch_sandbox_database();
+    let (operation, run) = tauri::async_runtime::spawn_blocking(move || match database {
+        Some(database) => SandboxBatchInstallAutomation::start_request_with_database(
+            &environment,
+            &batch_id,
+            &plan_token,
+            database,
+        ),
+        None => SandboxBatchInstallAutomation::start_request(&environment, &batch_id, &plan_token),
     })
     .await
     .map_err(|_| batch_internal_error())?
@@ -96,8 +111,16 @@ pub fn get_batch_mod_lifecycle_result(
         .ok_or_else(batch_sandbox_unavailable_error)?;
     let offset = parse_result_cursor(cursor)?;
     let limit = parse_result_limit(limit)?;
-    let snapshot = SandboxBatchInstallAutomation::result(environment, &batch_id, attempt_number)
-        .map_err(batch_automation_error)?;
+    let snapshot = match state.batch_sandbox_database() {
+        Some(database) => SandboxBatchInstallAutomation::result_with_database(
+            environment,
+            &batch_id,
+            attempt_number,
+            database,
+        ),
+        None => SandboxBatchInstallAutomation::result(environment, &batch_id, attempt_number),
+    }
+    .map_err(batch_automation_error)?;
     Ok(project_result_page(snapshot, offset, limit))
 }
 
@@ -112,12 +135,19 @@ pub async fn retry_batch_mod_lifecycle(
         .batch_sandbox_environment()
         .ok_or_else(batch_sandbox_unavailable_error)?
         .clone();
-    let (operation, _retry, run) = tauri::async_runtime::spawn_blocking(move || {
-        SandboxBatchInstallAutomation::retry_with_operation(
+    let database = state.batch_sandbox_database();
+    let (operation, _retry, run) = tauri::async_runtime::spawn_blocking(move || match database {
+        Some(database) => SandboxBatchInstallAutomation::retry_with_operation_with_database(
             &environment,
             &batch_id,
             expected_attempt_number,
-        )
+            database,
+        ),
+        None => SandboxBatchInstallAutomation::retry_with_operation(
+            &environment,
+            &batch_id,
+            expected_attempt_number,
+        ),
     })
     .await
     .map_err(|_| batch_internal_error())?

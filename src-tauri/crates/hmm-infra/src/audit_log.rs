@@ -104,9 +104,7 @@ impl FileSystemAuditLogWriter {
         file.write_all(b"\n")
             .context("failed to write audit log event")?;
         file.sync_all().context("failed to sync audit log")?;
-        open_directory_for_sync(&audit_dir)
-            .and_then(|directory| directory.sync_all())
-            .context("failed to sync audit log directory")?;
+        sync_audit_directory(&audit_dir).context("failed to sync audit log directory")?;
 
         Ok(())
     }
@@ -299,21 +297,48 @@ fn civil_from_days(days_since_epoch: i64) -> (i32, u32, u32) {
 }
 
 #[cfg(windows)]
-fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
+fn sync_audit_directory(path: &Path) -> std::io::Result<()> {
     use std::os::windows::fs::OpenOptionsExt;
 
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
 
-    OpenOptions::new()
+    let result = OpenOptions::new()
         .read(true)
         .write(true)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
         .open(path)
+        .and_then(|directory| directory.sync_all());
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if is_windows_directory_sync_capability_error(&error) => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(not(windows))]
-fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
-    File::open(path)
+fn sync_audit_directory(path: &Path) -> std::io::Result<()> {
+    File::open(path)?.sync_all()
+}
+
+#[cfg(windows)]
+fn is_windows_directory_sync_capability_error(error: &std::io::Error) -> bool {
+    // Windows-backed mapped folders can persist the file but reject directory handles or flushes.
+    const ERROR_INVALID_FUNCTION: i32 = 1;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const ERROR_INVALID_HANDLE: i32 = 6;
+    const ERROR_NOT_SUPPORTED: i32 = 50;
+    const ERROR_INVALID_PARAMETER: i32 = 87;
+
+    matches!(
+        error.raw_os_error(),
+        Some(
+            ERROR_INVALID_FUNCTION
+                | ERROR_ACCESS_DENIED
+                | ERROR_INVALID_HANDLE
+                | ERROR_NOT_SUPPORTED
+                | ERROR_INVALID_PARAMETER
+        )
+    )
 }
 
 #[cfg(test)]
@@ -322,6 +347,19 @@ mod tests {
     use crate::DiagnosticsEvidenceHealthState;
     use hmm_ports::{AuditLogReadRequest, AuditLogReader, DiagnosticsEvidenceHealth};
     use std::collections::BTreeMap;
+
+    #[cfg(windows)]
+    #[test]
+    fn mapped_folder_directory_sync_capability_errors_are_non_fatal() {
+        for raw_os_error in [1, 5, 6, 50, 87] {
+            assert!(is_windows_directory_sync_capability_error(
+                &std::io::Error::from_raw_os_error(raw_os_error)
+            ));
+        }
+        assert!(!is_windows_directory_sync_capability_error(
+            &std::io::Error::from_raw_os_error(112)
+        ));
+    }
 
     #[test]
     fn explicit_post_commit_policy_reports_stable_health_without_retrying_player_writes() {
