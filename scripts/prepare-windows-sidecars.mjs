@@ -184,7 +184,7 @@ export function prepareSidecars(args = []) {
     hostTarget,
     process.env.TAURI_ENV_ARCH,
   );
-  const cargoArgs = ["build", "-p", "hmm-tauri"];
+  const cargoArgs = ["build", "-p", "hmm-save-backup-sidecars"];
   for (const binaryName of WINDOWS_SIDECAR_BINARIES) {
     cargoArgs.push("--bin", binaryName);
   }
