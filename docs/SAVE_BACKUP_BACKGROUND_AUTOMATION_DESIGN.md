@@ -26,14 +26,15 @@ worker、真实 user Scheduled Task 的 exact/幂等注册、Task Scheduler 人�
 synthetic automatic backup 与 ownership-checked 幂等 cleanup 均有证据。Terminal A 的 stdin
 acknowledgement 未生效，最终 unregister leg 使用 dedicated cleanup smoke 完成并经 UI 确认无残留；
 该偏差保留在 smoke 记录中。此 gate 证明安装态执行链，不替代长期 cadence/升级 soak，也不代表
-P7.2c NSIS/WiX owned-task 自动卸载 cleanup 已完成。所有后续工作继续复用
+P7.2c disposable VM runtime gate 已完成。所有后续工作继续复用
 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
 
-### P7.2c 卸载 cleanup 规划状态
+### P7.2c 卸载 cleanup 实施状态
 
 P7.2c 已完成 [设计规格](superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md) 与
-[实施计划](superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md)，但尚未实现
-helper、NSIS hook、WiX custom action 或 disposable VM gate。规划固定以下边界：
+[实施计划](superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md)。helper、双
+Windows sidecar、NSIS hook、WiX custom action 和 fake/static/build gate 已完成；disposable VM
+runtime gate 仍待人工执行。实现固定以下边界：
 
 - 安装器调用独立、无参数的 installer cleanup helper；不调用 Settings `disable()`，也不扩展
   worker 固定 `--once` CLI。
@@ -47,8 +48,8 @@ helper、NSIS hook、WiX custom action 或 disposable VM gate。规划固定以�
 - NSIS 与 WiX 的 static/build/runtime gate 分别记录；自动化只使用 fake runner 和静态检查，真实
   task 验收只在一次性 Windows 账户或 VM 执行。
 
-在 helper、两个 installer 接入和 disposable VM 矩阵全部完成前，不得把 P7.2c 标为实现完成，
-也不得用该规划替代 P7.2a 安装态 worker/heartbeat runtime acceptance。
+在 disposable VM 矩阵完成前，不得把 P7.2c 标为 runtime acceptance 完成，也不得用该实现替代
+P7.2a 安装态 worker/heartbeat runtime acceptance。
 
 ## 背景
 

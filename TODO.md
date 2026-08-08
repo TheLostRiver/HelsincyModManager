@@ -351,7 +351,8 @@ JSON 做不好的需求:
 - [x] P7.2a Windows 安装态 runtime acceptance（2026-08-07 disposable Sandbox；人工 Run、fresh heartbeat、幂等 cleanup；Terminal A stdin 偏差已记录）
 - [x] P7.2b Settings 全局后台保障开关、Profile 只读状态、5 分钟 `starting` / 45 分钟 `protected` 健康派生与统一退出保护
 - [x] P7.2c NSIS/WiX owned Scheduled Task 卸载 cleanup 设计规格与实施计划（本项仅代表 docs 完成）
-- [ ] P7.2c helper、NSIS PREUNINSTALL、WiX custom action 与 disposable VM gate（SAVE-02 已解除环境前置；不得删除 foreign task）
+- [x] P7.2c helper、双 Windows sidecar、NSIS PREUNINSTALL、WiX custom action 与 fake/static/build gate（不得删除 foreign task）
+- [ ] P7.2c disposable VM runtime gate（覆盖 upgrade/repair/modify、interactive/silent uninstall、running/foreign/owned task；未完成前不标记 runtime acceptance）
 - [x] 保留策略（数量）
 - [ ] 保留策略（时间/空间，暂停）
 - [x] 备份目录可选择（未手动选择时使用默认 app data）

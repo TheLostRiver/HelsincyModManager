@@ -3,7 +3,7 @@
 > 无人值守自主迭代的具体任务队列见 [自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
 > 本文件描述产品阶段，那份描述在没有人盯着时可以安全推进哪些工作。
 
-## 当前执行焦点（2026-08-07）
+## 当前执行焦点（2026-08-08）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -45,7 +45,9 @@
    完整武器 catalog 仍等待明确可再分发的审计数据；LOG-01 Task/Audit retention、LOG-02 日志总空间
    上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
-   2026-08-07 标记为 `certified`；下一无人值守 `ready` 切片为 SAVE-03 installer ownership cleanup。
+    2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 的 helper、双 Windows
+    sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static gate 已完成；当前停在
+    disposable Windows VM runtime gate，未安装或运行真实 installer。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。

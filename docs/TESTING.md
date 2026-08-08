@@ -1153,6 +1153,28 @@ node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
 
 真实 Windows 验收只允许人工在一次性本地账户或 VM 按 [Windows 存档后台任务人工 Smoke](testing/windows-save-backup-scheduled-task-smoke.md) 执行。只有安装态 sibling worker、任务真实触发、fresh heartbeat 和最终 cleanup 全部通过，才能记录 Windows runtime acceptance；不得在开发者日常账户为了完成 checklist 运行 ignored smoke。
 
+P7.2c installer ownership cleanup 至少运行以下聚焦检查：
+
+```powershell
+node --test scripts/windows-installer-cleanup-config.test.mjs scripts/prepare-windows-sidecars.test.mjs
+cargo test -p hmm-infra save_backup_installer_cleanup
+cargo test -p hmm-infra save_backup_background_registry::tests
+cargo test -p hmm-tauri installer_cleanup
+```
+
+Windows packaging build gate 只生成并检查 artifact，不安装或运行 installer：
+
+```powershell
+corepack pnpm tauri build --bundles nsis --debug
+corepack pnpm tauri build --bundles msi --debug --config tauri.msi-build-test.conf.json
+```
+
+MSI 版本覆盖文件仅用于本地验证，不能提交；使用 WiX `dark.exe` 反编译确认最终 MSI 同时包含
+`RunInstallerCleanup`、cleanup helper `FileKey`、`Before="RemoveFiles"` 和
+`REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`。只有一次性 Windows 账户或 disposable VM
+完成 interactive/silent uninstall、upgrade/repair/modify、foreign/running/owned task 矩阵后，
+才能记录 P7.2c runtime acceptance；普通自动化不得创建、运行或删除真实 Scheduled Task。
+
 P7.2b 全局用户意图、Settings/Profile 边界和统一退出保护至少运行：
 
 ```powershell
