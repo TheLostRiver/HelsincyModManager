@@ -15,9 +15,11 @@ use std::sync::Arc;
 pub struct DiagnosticsSnapshot {
     pub platform_status: String,
     pub app_log_status: String,
+    pub debug_log_status: String,
     pub task_log_status: String,
     pub audit_log_status: String,
     pub app_log_line_count: usize,
+    pub debug_log_line_count: usize,
     pub task_log_line_count: usize,
     pub audit_event_count: usize,
     pub platform: Option<DiagnosticsPlatformSnapshot>,
@@ -93,9 +95,11 @@ impl ReadOnlyDiagnosticsAutomation {
         DiagnosticsSnapshot {
             platform_status: snapshot.platform_status,
             app_log_status: snapshot.app_log_status,
+            debug_log_status: snapshot.debug_log_status,
             task_log_status: snapshot.task_log_status,
             audit_log_status: snapshot.audit_log_status,
             app_log_line_count: snapshot.app_log_lines.len(),
+            debug_log_line_count: snapshot.debug_log_lines.len(),
             task_log_line_count: snapshot.task_log_lines.len(),
             audit_event_count: snapshot.audit_events.len(),
             platform: snapshot
@@ -117,6 +121,7 @@ fn validate_sandbox_log_paths(data_dir: &Path) -> Result<(), ReadOnlyDiagnostics
     let managed_paths = [
         data_dir.join("logs"),
         data_dir.join("logs").join("app"),
+        data_dir.join("logs").join("debug"),
         data_dir.join("logs").join("tasks"),
         data_dir.join("logs").join("audit"),
     ];
@@ -145,9 +150,11 @@ mod tests {
     fn snapshot_returns_only_bounded_platform_status_and_counts_without_writing() {
         let temp = tempfile::tempdir().expect("temp dir");
         let app_logs = temp.path().join("logs").join("app");
+        let debug_logs = temp.path().join("logs").join("debug");
         let task_logs = temp.path().join("logs").join("tasks");
         let audit_logs = temp.path().join("logs").join("audit");
         fs::create_dir_all(&app_logs).expect("create app logs");
+        fs::create_dir_all(&debug_logs).expect("create debug logs");
         fs::create_dir_all(&task_logs).expect("create task logs");
         fs::create_dir_all(&audit_logs).expect("create audit logs");
         fs::write(
@@ -155,6 +162,11 @@ mod tests {
             "safe app line\nC:/Users/Player/raw_path\n",
         )
         .expect("write app log fixture");
+        fs::write(
+            debug_logs.join("debug-1970-01-01.log"),
+            "safe debug line\nC:/Users/Player/raw_path\n",
+        )
+        .expect("write debug log fixture");
         fs::write(
             task_logs.join("task-fixture-1.log"),
             "safe task line\ntoken=private\n",
@@ -183,16 +195,19 @@ mod tests {
         let snapshot = automation.snapshot();
 
         assert_eq!(snapshot.app_log_line_count, 1);
+        assert_eq!(snapshot.debug_log_line_count, 1);
         assert_eq!(snapshot.task_log_line_count, 1);
         assert_eq!(snapshot.audit_event_count, 1);
         let serialized = serde_json::to_string(&snapshot).expect("serialize snapshot");
         for forbidden in [
             "safe app line",
+            "safe debug line",
             "safe task line",
             "C:/Users/Player",
             "raw_path",
             "token=private",
             "app-1970-01-01.log",
+            "debug-1970-01-01.log",
             "task-fixture-1.log",
             "create_backup",
             "file_count",

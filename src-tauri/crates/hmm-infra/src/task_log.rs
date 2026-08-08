@@ -1,7 +1,8 @@
+use crate::managed_log::{open_append_regular_file, open_or_create_log_directory};
 use anyhow::{Context, Result};
+use cap_std::fs::Dir;
 use hmm_ports::{DiagnosticsEvidenceHealth, TaskLogRecord, TaskLogWriter};
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -10,6 +11,7 @@ pub struct FileSystemTaskLogWriter {
     root: PathBuf,
     health: Arc<dyn DiagnosticsEvidenceHealth>,
     started_at: Mutex<HashMap<String, u128>>,
+    directory: Mutex<Option<Dir>>,
 }
 
 impl FileSystemTaskLogWriter {
@@ -18,6 +20,7 @@ impl FileSystemTaskLogWriter {
             root,
             health,
             started_at: Mutex::new(HashMap::new()),
+            directory: Mutex::new(None),
         }
     }
 
@@ -43,44 +46,33 @@ impl FileSystemTaskLogWriter {
         }
         drop(starts);
 
-        let dir = prepare_task_log_directory(&self.root)?;
-        let path = dir.join(format!("task-{}.log", record.task_id));
-        if path
-            .symlink_metadata()
-            .is_ok_and(|metadata| metadata.file_type().is_symlink())
-        {
-            anyhow::bail!("task log path is a symlink");
-        }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .context("failed to open task log")?;
+        let directory = self.task_log_directory()?;
+        let file_name = format!("task-{}.log", record.task_id);
+        let mut file = open_append_regular_file(&directory, file_name.as_ref(), "task log")?;
         serde_json::to_writer(&mut file, &SerializableTaskLogRecord::from(record))
             .context("failed to serialize task log")?;
         file.write_all(b"\n")
             .and_then(|_| file.sync_data())
             .context("failed to write task log")
     }
-}
 
-fn prepare_task_log_directory(root: &std::path::Path) -> Result<PathBuf> {
-    let logs = root.join("logs");
-    reject_symlink_if_present(&logs)?;
-    fs::create_dir_all(&logs).context("failed to prepare logs directory")?;
-    let tasks = logs.join("tasks");
-    reject_symlink_if_present(&tasks)?;
-    fs::create_dir_all(&tasks).context("failed to prepare task log directory")?;
-    Ok(tasks)
-}
-
-fn reject_symlink_if_present(path: &std::path::Path) -> Result<()> {
-    match path.symlink_metadata() {
-        Ok(metadata) if metadata.file_type().is_symlink() => anyhow::bail!("task log directory is a symlink"),
-        Ok(metadata) if !metadata.is_dir() => anyhow::bail!("task log directory is not a directory"),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error).context("failed to inspect task log directory"),
+    fn task_log_directory(&self) -> Result<Dir> {
+        let mut directory = self
+            .directory
+            .lock()
+            .map_err(|_| anyhow::anyhow!("task log directory state unavailable"))?;
+        if directory.is_none() {
+            *directory = Some(open_or_create_log_directory(
+                &self.root,
+                "tasks",
+                "task log directory",
+            )?);
+        }
+        directory
+            .as_ref()
+            .context("task log directory unavailable")?
+            .try_clone()
+            .context("failed to clone task log directory handle")
     }
 }
 
@@ -160,6 +152,8 @@ mod tests {
     use super::*;
     use crate::DiagnosticsEvidenceHealthState;
     use hmm_ports::DiagnosticsEvidenceHealth;
+    use std::fs;
+    use std::path::Path;
 
     fn event(task_id: &str, status: &str, timestamp: u128) -> TaskLogRecord {
         TaskLogRecord {
@@ -207,5 +201,54 @@ mod tests {
         assert!(writer.record(event("bad/path", "running", 100)).is_err());
         assert_eq!(health.snapshot().task_log_status, "task_log_write_failed");
         assert!(!temp.path().join("logs/tasks").exists());
+    }
+
+    #[cfg(unix)]
+    fn create_directory_link(link: &Path, target: &Path) {
+        std::os::unix::fs::symlink(target, link).expect("create directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn create_directory_link(link: &Path, target: &Path) {
+        let output = std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                link.to_str().expect("junction path"),
+                target.to_str().expect("junction target"),
+            ])
+            .output()
+            .expect("create directory junction");
+        assert!(output.status.success(), "mklink failed");
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_file(link).expect("remove directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_dir(link).expect("remove directory junction");
+    }
+
+    #[test]
+    fn linked_task_log_directory_is_rejected_without_writing_outside() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside dir");
+        fs::create_dir_all(temp.path().join("logs")).expect("create logs dir");
+        let link = temp.path().join("logs").join("tasks");
+        create_directory_link(&link, outside.path());
+        let health = Arc::new(DiagnosticsEvidenceHealthState::default());
+        let writer = FileSystemTaskLogWriter::new(temp.path().to_path_buf(), health.clone());
+
+        assert!(writer.record(event("install-1", "running", 100)).is_err());
+        assert_eq!(health.snapshot().task_log_status, "task_log_write_failed");
+        assert!(fs::read_dir(outside.path())
+            .expect("read outside dir")
+            .next()
+            .is_none());
+        remove_directory_link(&link);
     }
 }

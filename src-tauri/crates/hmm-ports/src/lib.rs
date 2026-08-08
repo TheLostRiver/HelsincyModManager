@@ -5,6 +5,7 @@ mod cancellation;
 mod category;
 mod diagnostics_environment;
 mod diagnostics_health;
+mod debug_log;
 mod external_import;
 mod game_launch;
 mod game_prerequisites;
@@ -30,6 +31,7 @@ pub type PortResult<T> = anyhow::Result<T>;
 
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
+    MIN_LOG_STORAGE_MAX_BYTES,
 };
 pub use audit::{
     AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
@@ -43,6 +45,7 @@ pub use cancellation::{CancellationToken, NeverCancelled};
 pub use category::CategoryRepository;
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
+pub use debug_log::{DebugLogControl, NoopDebugLogControl};
 pub use external_import::{
     ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
     ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,

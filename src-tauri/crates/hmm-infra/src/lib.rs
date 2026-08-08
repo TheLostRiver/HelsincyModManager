@@ -4,6 +4,7 @@ mod audit_log;
 mod controlled_fs;
 mod diagnostics_environment;
 mod diagnostics_health;
+mod debug_log;
 mod external_import_materializer;
 mod external_import_scanner;
 mod external_import_source_registry;
@@ -13,6 +14,9 @@ mod game_discovery;
 mod game_launcher;
 mod game_running_detector;
 mod install_commit;
+mod log_retention;
+mod log_storage_budget;
+mod managed_log;
 mod mod_import;
 mod mod_import_install_files;
 #[cfg(test)]
@@ -46,6 +50,7 @@ pub use app_settings_repository::JsonAppSettingsRepository;
 pub use audit_log::{FileSystemAuditLogReader, FileSystemAuditLogWriter};
 pub use diagnostics_environment::SystemDiagnosticsEnvironmentProvider;
 pub use diagnostics_health::DiagnosticsEvidenceHealthState;
+pub use debug_log::{DebugLogController, DebugLogEvent, DebugLogWriteOutcome};
 pub use external_import_materializer::HuntingBoxDirectoryMaterializer;
 pub use external_import_scanner::HuntingBoxDirectoryScanner;
 pub use external_import_source_registry::{
@@ -60,6 +65,14 @@ pub use install_commit::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository,
+};
+pub use log_retention::{
+    FileSystemLogRetention, LogRetentionReport, DEFAULT_AUDIT_LOG_RETENTION_DAYS,
+    DEFAULT_DEBUG_LOG_RETENTION_DAYS, DEFAULT_TASK_LOG_RETENTION_DAYS,
+};
+pub use log_storage_budget::{
+    FileSystemLogStorageBudget, LogStorageBudgetOutcome, LogStorageBudgetReport,
+    DEFAULT_LOG_STORAGE_MAX_BYTES, LOG_STORAGE_AUDIT_RESERVE_BYTES, MIN_AUDIT_LOG_RETENTION_DAYS,
 };
 pub use mod_import::{
     FileSystemDiagnosticPackageExporter, SandboxModPackageMetadataAnalyzer,

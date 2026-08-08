@@ -3,6 +3,7 @@ use anyhow::Result;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextLogKind {
     App,
+    Debug,
     Task,
 }
 

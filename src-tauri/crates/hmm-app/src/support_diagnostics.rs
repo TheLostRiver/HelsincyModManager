@@ -14,11 +14,21 @@ struct HealthyEvidence;
 impl DiagnosticsEvidenceHealth for HealthyEvidence {
     fn snapshot(&self) -> DiagnosticsEvidenceHealthSnapshot {
         DiagnosticsEvidenceHealthSnapshot {
+            debug_log_status: "ok".to_owned(),
             task_log_status: "ok".to_owned(),
             audit_log_status: "ok".to_owned(),
+            log_storage_status: "ok".to_owned(),
+            debug_log_event_rejected_count: 0,
+            debug_log_write_failure_count: 0,
+            debug_log_retention_failure_count: 0,
             task_log_write_failure_count: 0,
+            task_log_retention_failure_count: 0,
             audit_write_failure_count: 0,
             audit_write_failure_after_commit_count: 0,
+            audit_log_retention_failure_count: 0,
+            log_storage_failure_count: 0,
+            log_storage_unsatisfied_count: 0,
+            log_storage_settings_failure_count: 0,
         }
     }
     fn record_task_log_write_failure(&self, _status: &'static str) {}
@@ -27,6 +37,7 @@ impl DiagnosticsEvidenceHealth for HealthyEvidence {
 
 const SUPPORT_DIAGNOSTICS_ENTRY_NAME: &str = "support-diagnostics.json";
 const APP_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "app-log-diagnostics.json";
+const DEBUG_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "debug-log-diagnostics.json";
 const TASK_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "task-log-diagnostics.json";
 const SUPPORT_AUDIT_LOG_DIAGNOSTICS_ENTRY_NAME: &str = "audit-log-diagnostics.json";
 pub const MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES: usize = 200;
@@ -39,6 +50,7 @@ pub struct SupportDiagnosticsExport {
     pub file_name: String,
     pub size_bytes: u64,
     pub app_log_line_count: usize,
+    pub debug_log_line_count: usize,
     pub task_log_line_count: usize,
     pub audit_event_count: usize,
     pub evidence_health: DiagnosticsEvidenceHealthSnapshot,
@@ -49,9 +61,11 @@ pub struct DiagnosticsPageSnapshot {
     pub platform_summary: Option<DiagnosticsEnvironmentSummary>,
     pub platform_status: String,
     pub app_log_status: String,
+    pub debug_log_status: String,
     pub task_log_status: String,
     pub audit_log_status: String,
     pub app_log_lines: Vec<TextLogLine>,
+    pub debug_log_lines: Vec<TextLogLine>,
     pub task_log_lines: Vec<TextLogLine>,
     pub audit_events: Vec<AuditLogEvent>,
     pub evidence_health: DiagnosticsEvidenceHealthSnapshot,
@@ -158,6 +172,7 @@ impl SupportDiagnosticsExportService {
                             0,
                             0,
                             0,
+                            0,
                         ));
                 return Err(support_diagnostics_unavailable());
             }
@@ -179,7 +194,30 @@ impl SupportDiagnosticsExportService {
                             0,
                             0,
                             0,
+                            0,
                         ));
+                return Err(support_diagnostics_unavailable());
+            }
+        };
+        let debug_log_lines = match self
+            .text_log_reader
+            .read_recent_sanitized(TextLogReadRequest {
+                kind: TextLogKind::Debug,
+                max_lines: MAX_SUPPORT_DIAGNOSTIC_TEXT_LOG_LINES,
+            }) {
+            Ok(lines) => lines,
+            Err(_) => {
+                let _ = self.audit_log_writer.record(
+                    support_diagnostics_export_failure_audit_event(
+                        export_timestamp,
+                        &file_name,
+                        "debug_log_read_failed",
+                        app_log_lines.len(),
+                        0,
+                        0,
+                        0,
+                    ),
+                );
                 return Err(support_diagnostics_unavailable());
             }
         };
@@ -198,6 +236,7 @@ impl SupportDiagnosticsExportService {
                             &file_name,
                             "task_log_read_failed",
                             app_log_lines.len(),
+                            debug_log_lines.len(),
                             0,
                             0,
                         ));
@@ -218,6 +257,7 @@ impl SupportDiagnosticsExportService {
                             &file_name,
                             "audit_log_read_failed",
                             app_log_lines.len(),
+                            debug_log_lines.len(),
                             task_log_lines.len(),
                             0,
                         ));
@@ -230,6 +270,7 @@ impl SupportDiagnosticsExportService {
             export_timestamp,
             &platform_summary,
             app_log_lines.len(),
+            debug_log_lines.len(),
             task_log_lines.len(),
             audit_events.len(),
             &evidence_health,
@@ -237,6 +278,9 @@ impl SupportDiagnosticsExportService {
         .map_err(|_| support_diagnostics_unavailable())?;
         let app_log_payload =
             serde_json::to_vec(&text_log_diagnostics_payload("app_log", &app_log_lines))
+                .map_err(|_| support_diagnostics_unavailable())?;
+        let debug_log_payload =
+            serde_json::to_vec(&text_log_diagnostics_payload("debug_log", &debug_log_lines))
                 .map_err(|_| support_diagnostics_unavailable())?;
         let task_log_payload =
             serde_json::to_vec(&text_log_diagnostics_payload("task_log", &task_log_lines))
@@ -252,6 +296,10 @@ impl SupportDiagnosticsExportService {
             DiagnosticPackageEntry {
                 name: APP_LOG_DIAGNOSTICS_ENTRY_NAME,
                 bytes: &app_log_payload,
+            },
+            DiagnosticPackageEntry {
+                name: DEBUG_LOG_DIAGNOSTICS_ENTRY_NAME,
+                bytes: &debug_log_payload,
             },
             DiagnosticPackageEntry {
                 name: TASK_LOG_DIAGNOSTICS_ENTRY_NAME,
@@ -277,6 +325,7 @@ impl SupportDiagnosticsExportService {
                             &file_name,
                             "diagnostic_package_export_failed",
                             app_log_lines.len(),
+                            debug_log_lines.len(),
                             task_log_lines.len(),
                             audit_events.len(),
                         ));
@@ -289,6 +338,7 @@ impl SupportDiagnosticsExportService {
                 export_timestamp,
                 &export,
                 app_log_lines.len(),
+                debug_log_lines.len(),
                 task_log_lines.len(),
                 audit_events.len(),
             ))
@@ -299,6 +349,7 @@ impl SupportDiagnosticsExportService {
             file_name: export.file_name,
             size_bytes: export.size_bytes,
             app_log_line_count: app_log_lines.len(),
+            debug_log_line_count: debug_log_lines.len(),
             task_log_line_count: task_log_lines.len(),
             audit_event_count: audit_events.len(),
             evidence_health,
@@ -327,6 +378,11 @@ fn read_page_snapshot(
     };
     let (app_log_lines, app_log_status) =
         read_text_log_snapshot(text_log_reader, TextLogKind::App, "app_log_read_failed");
+    let (debug_log_lines, debug_log_status) = read_text_log_snapshot(
+        text_log_reader,
+        TextLogKind::Debug,
+        "debug_log_read_failed",
+    );
     let (task_log_lines, task_log_status) =
         read_text_log_snapshot(text_log_reader, TextLogKind::Task, "task_log_read_failed");
     let (audit_events, audit_log_status) =
@@ -341,9 +397,11 @@ fn read_page_snapshot(
         platform_summary,
         platform_status,
         app_log_status,
+        debug_log_status,
         task_log_status,
         audit_log_status,
         app_log_lines,
+        debug_log_lines,
         task_log_lines,
         audit_events,
         evidence_health: evidence_health.snapshot(),
@@ -372,6 +430,7 @@ fn support_diagnostics_payload(
     generated_at_unix_millis: u128,
     platform_summary: &DiagnosticsEnvironmentSummary,
     app_log_line_count: usize,
+    debug_log_line_count: usize,
     task_log_line_count: usize,
     audit_event_count: usize,
     evidence_health: &DiagnosticsEvidenceHealthSnapshot,
@@ -380,11 +439,21 @@ fn support_diagnostics_payload(
         "generatedAtUnixMillis": generated_at_unix_millis,
         "platformSummary": platform_summary,
         "evidenceHealth": {
+            "debugLogStatus": evidence_health.debug_log_status,
             "taskLogStatus": evidence_health.task_log_status,
             "auditLogStatus": evidence_health.audit_log_status,
+            "logStorageStatus": evidence_health.log_storage_status,
+            "debugLogEventRejectedCount": evidence_health.debug_log_event_rejected_count,
+            "debugLogWriteFailureCount": evidence_health.debug_log_write_failure_count,
+            "debugLogRetentionFailureCount": evidence_health.debug_log_retention_failure_count,
             "taskLogWriteFailureCount": evidence_health.task_log_write_failure_count,
+            "taskLogRetentionFailureCount": evidence_health.task_log_retention_failure_count,
             "auditWriteFailureCount": evidence_health.audit_write_failure_count,
             "auditWriteFailureAfterCommitCount": evidence_health.audit_write_failure_after_commit_count,
+            "auditLogRetentionFailureCount": evidence_health.audit_log_retention_failure_count,
+            "logStorageFailureCount": evidence_health.log_storage_failure_count,
+            "logStorageUnsatisfiedCount": evidence_health.log_storage_unsatisfied_count,
+            "logStorageSettingsFailureCount": evidence_health.log_storage_settings_failure_count,
         },
         "exportCategories": [
             {
@@ -395,6 +464,11 @@ fn support_diagnostics_payload(
                 "category": "app_log",
                 "status": "included",
                 "lineCount": app_log_line_count,
+            },
+            {
+                "category": "debug_log",
+                "status": "included",
+                "lineCount": debug_log_line_count,
             },
             {
                 "category": "task_log",
@@ -437,11 +511,13 @@ fn support_diagnostics_export_success_audit_event(
     timestamp_unix_millis: u128,
     export: &hmm_ports::DiagnosticPackageExportResult,
     app_log_line_count: usize,
+    debug_log_line_count: usize,
     task_log_line_count: usize,
     audit_event_count: usize,
 ) -> AuditLogEvent {
     let mut fields = support_diagnostics_audit_fields(
         app_log_line_count,
+        debug_log_line_count,
         task_log_line_count,
         audit_event_count,
     );
@@ -463,11 +539,13 @@ fn support_diagnostics_export_failure_audit_event(
     file_name: &str,
     error_code: &str,
     app_log_line_count: usize,
+    debug_log_line_count: usize,
     task_log_line_count: usize,
     audit_event_count: usize,
 ) -> AuditLogEvent {
     let mut fields = support_diagnostics_audit_fields(
         app_log_line_count,
+        debug_log_line_count,
         task_log_line_count,
         audit_event_count,
     );
@@ -485,6 +563,7 @@ fn support_diagnostics_export_failure_audit_event(
 
 fn support_diagnostics_audit_fields(
     app_log_line_count: usize,
+    debug_log_line_count: usize,
     task_log_line_count: usize,
     audit_event_count: usize,
 ) -> BTreeMap<String, String> {
@@ -492,6 +571,10 @@ fn support_diagnostics_audit_fields(
         (
             "app_log_line_count".to_owned(),
             app_log_line_count.to_string(),
+        ),
+        (
+            "debug_log_line_count".to_owned(),
+            debug_log_line_count.to_string(),
         ),
         (
             "task_log_line_count".to_owned(),
@@ -541,6 +624,7 @@ mod tests {
         assert_eq!(export.export_id, "support-diagnostics-42.zip");
         assert_eq!(export.size_bytes, 4096);
         assert_eq!(export.app_log_line_count, 1);
+        assert_eq!(export.debug_log_line_count, 1);
         assert_eq!(export.task_log_line_count, 1);
         assert_eq!(export.audit_event_count, 1);
 
@@ -551,6 +635,7 @@ mod tests {
             vec![
                 "support-diagnostics.json",
                 "app-log-diagnostics.json",
+                "debug-log-diagnostics.json",
                 "task-log-diagnostics.json",
                 "audit-log-diagnostics.json",
             ]
@@ -559,7 +644,14 @@ mod tests {
         assert!(payload.contains("\"platformSummary\""));
         assert!(payload.contains("\"appVersion\":\"0.1.0-alpha.0\""));
         assert!(payload.contains("\"gameAdapterIds\":[\"mhw\"]"));
+        assert!(payload.contains("\"taskLogRetentionFailureCount\":0"));
+        assert!(payload.contains("\"auditLogRetentionFailureCount\":0"));
+        assert!(payload.contains("\"logStorageStatus\":\"ok\""));
+        assert!(payload.contains("\"logStorageFailureCount\":0"));
+        assert!(payload.contains("\"debugLogStatus\":\"ok\""));
+        assert!(payload.contains("\"debugLogWriteFailureCount\":0"));
         assert!(payload.contains("\"app log ready\""));
+        assert!(payload.contains("\"debug runtime ready\""));
         assert!(payload.contains("\"task completed\""));
         assert!(payload.contains("\"export_preview_image_diagnostics\""));
         assert!(!payload.contains("C:/"));
@@ -575,6 +667,7 @@ mod tests {
         assert_eq!(event.fields["file_name"], "support-diagnostics-42.zip");
         assert_eq!(event.fields["size_bytes"], "4096");
         assert_eq!(event.fields["app_log_line_count"], "1");
+        assert_eq!(event.fields["debug_log_line_count"], "1");
         assert_eq!(event.fields["task_log_line_count"], "1");
         assert_eq!(event.fields["audit_event_count"], "1");
     }
@@ -597,6 +690,8 @@ mod tests {
         assert_eq!(snapshot.platform_status, "ok");
         assert_eq!(snapshot.app_log_status, "ok");
         assert_eq!(snapshot.app_log_lines.len(), 1);
+        assert_eq!(snapshot.debug_log_status, "ok");
+        assert_eq!(snapshot.debug_log_lines.len(), 1);
         assert_eq!(snapshot.task_log_status, "task_log_read_failed");
         assert!(snapshot.task_log_lines.is_empty());
         assert_eq!(snapshot.audit_log_status, "ok");
@@ -628,6 +723,7 @@ mod tests {
         assert_support_failure_audit_event_sanitized(
             audit_log.take_event().expect("failure audit event"),
             "environment_summary_failed",
+            0,
             0,
             0,
             0,
@@ -664,6 +760,38 @@ mod tests {
             0,
             0,
             0,
+            0,
+        );
+    }
+
+    #[test]
+    fn export_service_records_failure_when_debug_log_read_fails() {
+        let exporter = Arc::new(RecordingDiagnosticPackageExporter::default());
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let service = SupportDiagnosticsExportService::new(
+            Arc::new(FailingTextLogReader {
+                failing_kind: TextLogKind::Debug,
+            }),
+            Arc::new(StaticAuditLogReader),
+            Arc::new(StaticDiagnosticsEnvironmentProvider),
+            exporter.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock { unix_millis: 42 }),
+        );
+
+        let error = service
+            .export_support_diagnostics()
+            .expect_err("debug log read fails");
+
+        assert_eq!(error.to_string(), "support diagnostics unavailable");
+        assert!(exporter.take_request().is_none());
+        assert_support_failure_audit_event_sanitized(
+            audit_log.take_event().expect("failure audit event"),
+            "debug_log_read_failed",
+            1,
+            0,
+            0,
+            0,
         );
     }
 
@@ -694,6 +822,7 @@ mod tests {
         assert_support_failure_audit_event_sanitized(
             audit_log.take_event().expect("failure audit event"),
             "task_log_read_failed",
+            1,
             1,
             0,
             0,
@@ -727,6 +856,7 @@ mod tests {
             "audit_log_read_failed",
             1,
             1,
+            1,
             0,
         );
     }
@@ -754,6 +884,7 @@ mod tests {
             1,
             1,
             1,
+            1,
         );
     }
 
@@ -761,6 +892,7 @@ mod tests {
         event: AuditLogEvent,
         error_code: &str,
         app_log_line_count: usize,
+        debug_log_line_count: usize,
         task_log_line_count: usize,
         audit_event_count: usize,
     ) {
@@ -772,6 +904,10 @@ mod tests {
         assert_eq!(
             event.fields["app_log_line_count"],
             app_log_line_count.to_string()
+        );
+        assert_eq!(
+            event.fields["debug_log_line_count"],
+            debug_log_line_count.to_string()
         );
         assert_eq!(
             event.fields["task_log_line_count"],
@@ -797,6 +933,10 @@ mod tests {
                 TextLogKind::App => vec![TextLogLine {
                     source: "app-1970-01-01.log".to_owned(),
                     line: "app log ready".to_owned(),
+                }],
+                TextLogKind::Debug => vec![TextLogLine {
+                    source: "debug-1970-01-01.log".to_owned(),
+                    line: "debug runtime ready".to_owned(),
                 }],
                 TextLogKind::Task => vec![TextLogLine {
                     source: "task-mod-import-42.log".to_owned(),

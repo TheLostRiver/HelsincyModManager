@@ -221,7 +221,7 @@ fn remove_open_directory_contents(directory: &Dir, label: &str) -> Result<()> {
     Ok(())
 }
 
-fn is_not_found(error: &anyhow::Error) -> bool {
+pub(crate) fn is_not_found(error: &anyhow::Error) -> bool {
     error
         .chain()
         .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
