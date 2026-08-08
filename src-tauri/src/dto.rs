@@ -1,12 +1,12 @@
 use hmm_app::{
     AppSettingsServiceError, CategoryWithCount, GameAutoDetection, GameAutoDetectionOutcome,
     GameCandidateScan, GamePrerequisiteDecision, GamePrerequisiteDecisionCode,
-    GamePrerequisiteDecisionStatus, GameSetupCandidate, GameSetupServiceError,
-    ImportPreviewImage, ImportedModInstallPreflight, InstallManifestStatusSummary,
-    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
-    InstallRecoveryActionBlockReasonSummary, InstallRecoveryActionPreview, InstallRecoveryIssue,
-    InstallRecoveryIssueSummary, InstallRecoverySummary, ModDetail, ModImportTaskError, TaskKind,
-    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
+    GamePrerequisiteDecisionStatus, GameSetupCandidate, GameSetupServiceError, ImportPreviewImage,
+    ImportedModInstallPreflight, InstallManifestStatusSummary, InstallRecoveryActionAvailability,
+    InstallRecoveryActionBlockReason, InstallRecoveryActionBlockReasonSummary,
+    InstallRecoveryActionPreview, InstallRecoveryIssue, InstallRecoveryIssueSummary,
+    InstallRecoverySummary, ModDetail, ModImportTaskError, TaskKind, TaskManagerError,
+    TaskProgressEvent, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     BackupCadence, GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus,
@@ -18,10 +18,10 @@ use hmm_core::{
 use hmm_ports::{AppSettings, GameCandidateSource};
 use serde::{Deserialize, Serialize};
 
+pub use crate::mod_library_dto::ModLibraryItemDto;
 pub use crate::reinstall_dto::{
     InstallManifestStatusDto, InstallRecoveryActionKindDto, InstallRecoveryStatusDto,
 };
-pub use crate::mod_library_dto::ModLibraryItemDto;
 pub use crate::replacement_dto::{
     AnalyzeImportedModReplacementRequestDto, InitialRetargetInstallPreviewDto,
     ListReplacementTargetsRequestDto, PreviewInitialRetargetInstallRequestDto,
@@ -82,6 +82,7 @@ impl CommandErrorDto {
             AppSettingsServiceError::InvalidThumbnailCacheMaxAgeDays => {
                 "thumbnail_cache_max_age_days_invalid"
             }
+            AppSettingsServiceError::InvalidLogStorageMaxBytes => "log_storage_max_bytes_invalid",
             AppSettingsServiceError::SettingsUnavailable => "app_settings_unavailable",
         };
 
@@ -97,6 +98,18 @@ impl CommandErrorDto {
 pub struct AppSettingsDto {
     pub thumbnail_cache_max_bytes: Option<u64>,
     pub thumbnail_cache_max_age_days: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogStorageSettingsDto {
+    pub max_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugLogSettingsDto {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -342,6 +355,22 @@ impl From<AppSettings> for AppSettingsDto {
         Self {
             thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
             thumbnail_cache_max_age_days: settings.thumbnail_cache_max_age_days,
+        }
+    }
+}
+
+impl From<AppSettings> for LogStorageSettingsDto {
+    fn from(settings: AppSettings) -> Self {
+        Self {
+            max_bytes: settings.log_storage_max_bytes,
+        }
+    }
+}
+
+impl From<AppSettings> for DebugLogSettingsDto {
+    fn from(settings: AppSettings) -> Self {
+        Self {
+            enabled: settings.debug_log_enabled,
         }
     }
 }
@@ -978,13 +1007,24 @@ pub struct SupportDiagnosticsExportDto {
     pub file_name: String,
     pub size_bytes: u64,
     pub app_log_line_count: usize,
+    pub debug_log_line_count: usize,
     pub task_log_line_count: usize,
     pub audit_event_count: usize,
+    pub debug_log_status: String,
     pub task_log_status: String,
     pub audit_log_status: String,
+    pub log_storage_status: String,
+    pub debug_log_event_rejected_count: u64,
+    pub debug_log_write_failure_count: u64,
+    pub debug_log_retention_failure_count: u64,
     pub task_log_write_failure_count: u64,
+    pub task_log_retention_failure_count: u64,
     pub audit_write_failure_count: u64,
     pub audit_write_failure_after_commit_count: u64,
+    pub audit_log_retention_failure_count: u64,
+    pub log_storage_failure_count: u64,
+    pub log_storage_unsatisfied_count: u64,
+    pub log_storage_settings_failure_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1213,15 +1253,34 @@ impl From<hmm_app::SupportDiagnosticsExport> for SupportDiagnosticsExportDto {
             file_name: export.file_name,
             size_bytes: export.size_bytes,
             app_log_line_count: export.app_log_line_count,
+            debug_log_line_count: export.debug_log_line_count,
             task_log_line_count: export.task_log_line_count,
             audit_event_count: export.audit_event_count,
+            debug_log_status: export.evidence_health.debug_log_status,
             task_log_status: export.evidence_health.task_log_status,
             audit_log_status: export.evidence_health.audit_log_status,
+            log_storage_status: export.evidence_health.log_storage_status,
+            debug_log_event_rejected_count: export.evidence_health.debug_log_event_rejected_count,
+            debug_log_write_failure_count: export.evidence_health.debug_log_write_failure_count,
+            debug_log_retention_failure_count: export
+                .evidence_health
+                .debug_log_retention_failure_count,
             task_log_write_failure_count: export.evidence_health.task_log_write_failure_count,
+            task_log_retention_failure_count: export
+                .evidence_health
+                .task_log_retention_failure_count,
             audit_write_failure_count: export.evidence_health.audit_write_failure_count,
             audit_write_failure_after_commit_count: export
                 .evidence_health
                 .audit_write_failure_after_commit_count,
+            audit_log_retention_failure_count: export
+                .evidence_health
+                .audit_log_retention_failure_count,
+            log_storage_failure_count: export.evidence_health.log_storage_failure_count,
+            log_storage_unsatisfied_count: export.evidence_health.log_storage_unsatisfied_count,
+            log_storage_settings_failure_count: export
+                .evidence_health
+                .log_storage_settings_failure_count,
         }
     }
 }
