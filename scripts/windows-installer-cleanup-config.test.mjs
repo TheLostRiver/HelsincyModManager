@@ -72,9 +72,22 @@ test("skips upgrade cleanup and fails closed for every nonzero helper code", () 
 
 test("points WiX at the controlled cleanup fragment", () => {
   const config = readJson(windowsConfigPath);
+  assert.equal(config.bundle.windows.wix.template, "windows/wix/main.wxs");
   assert.deepEqual(config.bundle.windows.wix.fragmentPaths, [
     "windows/wix/installer-cleanup.wxs",
   ]);
+});
+
+test("references the cleanup action from the locked WiX template", () => {
+  const templatePath = path.join(
+    repoRoot,
+    "src-tauri",
+    "windows",
+    "wix",
+    "main.wxs",
+  );
+  const template = readFileSync(templatePath, "utf8");
+  assert.match(template, /<CustomActionRef Id="RunInstallerCleanup"\s*\/>/);
 });
 
 test("runs the installed cleanup helper in user context before RemoveFiles", () => {
