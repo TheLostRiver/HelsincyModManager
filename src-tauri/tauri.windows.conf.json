@@ -7,6 +7,11 @@
     "externalBin": [
       "binaries/hmm-save-backup-worker",
       "binaries/hmm-save-backup-installer-cleanup"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/nsis-installer-hooks.nsh"
+      }
+    }
   }
 }
