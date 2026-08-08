@@ -77,11 +77,11 @@ pub use windows::WindowsScheduledTaskRegistry;
 pub fn cleanup_owned_save_backup_task_for_installer() -> InstallerCleanupOutcome {
     #[cfg(windows)]
     {
-        return registry::ScheduledTaskRegistry::with_worker_path(
+        registry::ScheduledTaskRegistry::with_worker_path(
             powershell::PowerShellScheduledTaskCommandRunner,
             None,
         )
-        .cleanup_for_installer();
+        .cleanup_for_installer()
     }
 
     #[cfg(not(windows))]
