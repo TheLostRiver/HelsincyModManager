@@ -331,6 +331,57 @@
     0 0 0 3px var(--color-accent-alpha-12);
 }
 
+.debug-log-settings-panel {
+  display: grid;
+  min-width: 0;
+}
+
+.debug-log-settings-panel__toggle {
+  border-bottom: 0;
+}
+
+.debug-log-settings-panel__status {
+  margin: -2px 20px 12px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.debug-log-settings-panel__error {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.debug-log-settings-panel__error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.debug-log-settings-panel__error button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.debug-log-settings-panel__spinner {
+  color: var(--color-accent);
+  animation: debug-log-settings-spin 0.9s linear infinite;
+}
+
+@keyframes debug-log-settings-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Background Protection ─── */
 
 .background-protection-panel {

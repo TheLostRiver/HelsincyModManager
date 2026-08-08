@@ -3,6 +3,7 @@ mod background_worker;
 mod batch_mod_lifecycle_commands;
 mod batch_mod_lifecycle_dto;
 mod category_commands;
+mod debug_log_commands;
 mod diagnostics_dto;
 mod dto;
 mod external_import_commands;
@@ -11,6 +12,7 @@ mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
 mod install_commands;
+mod log_storage_commands;
 mod mod_import_commands;
 mod mod_library_commands;
 mod mod_library_dto;
@@ -36,6 +38,7 @@ use category_commands::{
     create_category, delete_category, get_mod_categories, list_categories, set_mod_categories,
     update_category,
 };
+use debug_log_commands::{get_debug_log_settings, set_debug_log_settings};
 use external_import_commands::{
     create_external_import_selection, get_external_import_batch_result,
     get_external_import_preview, retry_external_import_batch,
@@ -52,6 +55,7 @@ use install_commands::{
     preview_recovery_action, scan_install_recovery, start_install_task, start_recovery_action_task,
     start_uninstall_task,
 };
+use log_storage_commands::{get_log_storage_settings, set_log_storage_settings};
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
     get_diagnostics_page_snapshot, get_mod_dependency_graph, get_mod_detail,
@@ -181,6 +185,10 @@ pub fn run() {
             maintain_thumbnail_cache,
             get_thumbnail_cache_settings,
             set_thumbnail_cache_settings,
+            get_log_storage_settings,
+            set_log_storage_settings,
+            get_debug_log_settings,
+            set_debug_log_settings,
             update_mod_metadata,
             delete_mod_metadata,
             create_category,

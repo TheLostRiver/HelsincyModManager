@@ -8,14 +8,14 @@ import {
   type WindowClosePreference,
 } from "../../app/window-lifecycle/windowClosePreference";
 import { BackgroundProtectionPanel } from "./BackgroundProtectionPanel";
+import { DebugLogSettingsPanel } from "./DebugLogSettingsPanel";
 
 type ToggleSettingId =
   | "compactPanels"
   | "reduceMotion"
   | "previewAfterImport"
   | "confirmBeforeConflict"
-  | "backupReminder"
-  | "diagnosticDetails";
+  | "backupReminder";
 
 type SettingsState = Record<ToggleSettingId, boolean> & {
   startPage: "dashboard" | "mods" | "last";
@@ -68,7 +68,6 @@ const initialSettings: SettingsState = {
   previewAfterImport: true,
   confirmBeforeConflict: true,
   backupReminder: true,
-  diagnosticDetails: false,
   startPage: "dashboard",
   backupCadence: "manual",
   dailyBackupHour: 3,
@@ -321,12 +320,7 @@ export function SettingsPage() {
           description="诊断包导出需要后端脱敏能力，本页不会生成或写入任何日志文件。"
           icon={Database}
         >
-          <ToggleRow
-            title="详细诊断模式"
-            description="预留给未来任务日志筛选和诊断摘要，不包含真实路径或第三方 Mod 内容。"
-            checked={settings.diagnosticDetails}
-            onChange={() => updateToggle("diagnosticDetails")}
-          />
+          <DebugLogSettingsPanel />
           <div className="settings-callout" role="note">
             <Bell size={16} strokeWidth={2.1} />
             <span>正式导出前必须经过统一脱敏，并由用户主动触发。</span>

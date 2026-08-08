@@ -51,25 +51,28 @@ use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(target_os = "windows")]
 use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
-    emit_safe_app_log, AppLogEvent, DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter,
-    FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
-    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader,
+    emit_safe_app_log, AppLogEvent, DebugLogController, DebugLogEvent,
+    DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
+    FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
+    FileSystemInstallSourceFileReader, FileSystemLogRetention, FileSystemLogStorageBudget,
     FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter, FileSystemTaskLogWriter,
     FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
-    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformSteamRootProvider,
+    RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
     SqliteSaveBackupSchedulerStateRepository, SteamCommunityProfileClient,
     SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
     SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer, DEFAULT_LOG_STORAGE_MAX_BYTES,
 };
 use hmm_ports::{
-    AppClock, AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
+    AppClock, AppSettingsRepository, AuditLogEvent, AuditLogReader, AuditLogWriter,
+    AuditWriteFailurePolicy, DebugLogControl, DiagnosticPackageExporter,
     DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
     GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
@@ -78,9 +81,9 @@ use hmm_ports::{
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
     SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TaskLogWriter,
-    TextLogReader, ThumbnailCacheMaintenance,
+    TextLogReader, ThumbnailCacheMaintenance, MIN_LOG_STORAGE_MAX_BYTES,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -162,6 +165,7 @@ pub struct HmmRuntime {
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub external_import: crate::external_import::ExternalImportComposition,
     pub app_settings: Arc<AppSettingsService>,
+    pub debug_log: Arc<DebugLogController>,
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
     pub profiles: Arc<ProfileService>,
@@ -315,6 +319,39 @@ impl HmmRuntime {
             ));
         let evidence_health: Arc<dyn DiagnosticsEvidenceHealth> =
             Arc::new(DiagnosticsEvidenceHealthState::default());
+        let app_settings_repository: Arc<dyn AppSettingsRepository> =
+            Arc::new(JsonAppSettingsRepository::new(settings_path));
+        let (log_storage_max_bytes, log_storage_settings_degraded, debug_log_enabled) =
+            resolve_log_settings(app_settings_repository.as_ref(), evidence_health.as_ref());
+        let debug_log = Arc::new(DebugLogController::new(
+            app_data_dir.clone(),
+            debug_log_enabled,
+            Arc::clone(&evidence_health),
+        ));
+        let log_retention =
+            FileSystemLogRetention::new(app_data_dir.clone(), Arc::clone(&evidence_health));
+        let log_storage_budget =
+            FileSystemLogStorageBudget::new(app_data_dir.clone(), Arc::clone(&evidence_health));
+        let log_storage_maintenance = match SystemClock.now_unix_millis() {
+            Ok(timestamp_unix_millis) => {
+                log_retention.run_at(timestamp_unix_millis);
+                Some((
+                    timestamp_unix_millis,
+                    log_storage_budget.run_at(
+                        timestamp_unix_millis,
+                        log_storage_max_bytes,
+                        log_storage_settings_degraded,
+                    ),
+                ))
+            }
+            Err(_) => {
+                evidence_health.record_debug_log_retention_failure();
+                evidence_health.record_task_log_retention_failure();
+                evidence_health.record_audit_log_retention_failure();
+                evidence_health.record_log_storage_budget_failure();
+                None
+            }
+        };
         let task_log_writer: Arc<dyn TaskLogWriter> = Arc::new(FileSystemTaskLogWriter::new(
             app_data_dir.clone(),
             Arc::clone(&evidence_health),
@@ -325,6 +362,14 @@ impl HmmRuntime {
         ));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
+        if let Some((timestamp_unix_millis, report)) = log_storage_maintenance {
+            record_log_storage_budget_maintenance(
+                audit_log_writer.as_ref(),
+                timestamp_unix_millis,
+                report,
+                log_storage_settings_degraded,
+            );
+        }
         let save_backup_background_clock: Arc<dyn AppClock> = Arc::new(SystemClock);
         let save_backup_background_registry: Arc<dyn SaveBackupBackgroundRegistry> = {
             #[cfg(target_os = "windows")]
@@ -351,8 +396,6 @@ impl HmmRuntime {
             Arc::clone(&audit_log_writer),
             Arc::clone(&save_backup_background_clock),
         ));
-        let app_settings_repository: Arc<dyn AppSettingsRepository> =
-            Arc::new(JsonAppSettingsRepository::new(settings_path));
         let install_manifest_repository = mod_library_composition.install_manifest_repository(
             install_manifest_repository_for(&app_data_dir, install_manifest_repository),
         );
@@ -360,9 +403,17 @@ impl HmmRuntime {
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
             ));
-        let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
-            &app_settings_repository,
-        )));
+        let debug_log_control: Arc<dyn DebugLogControl> = debug_log.clone();
+        let app_settings = Arc::new(AppSettingsService::new_with_debug_log_control(
+            Arc::clone(&app_settings_repository),
+            debug_log_control,
+        ));
+        let _ = debug_log.record(
+            DebugLogEvent::new("runtime.initialized")
+                .with_component("runtime")
+                .with_operation("composition")
+                .with_result("success"),
+        );
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
@@ -708,6 +759,7 @@ impl HmmRuntime {
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             external_import,
             app_settings,
+            debug_log,
             mod_metadata: Arc::new(ModMetadataService::new(
                 mod_metadata_repository,
                 Arc::new(SystemClock),
@@ -807,6 +859,86 @@ impl InstallWriteAdmission for AllowRuntimeWriteAdmission {
     ) -> Result<(), InstallWriteAdmissionError> {
         Ok(())
     }
+}
+
+fn resolve_log_settings(
+    repository: &dyn AppSettingsRepository,
+    health: &dyn DiagnosticsEvidenceHealth,
+) -> (u64, bool, bool) {
+    match repository.load_settings() {
+        Ok(settings) => {
+            let (max_bytes, degraded) = match settings.log_storage_max_bytes {
+                None => (DEFAULT_LOG_STORAGE_MAX_BYTES, false),
+                Some(max_bytes) if max_bytes >= MIN_LOG_STORAGE_MAX_BYTES => (max_bytes, false),
+                Some(_) => {
+                    health.record_log_storage_settings_failure();
+                    (DEFAULT_LOG_STORAGE_MAX_BYTES, true)
+                }
+            };
+            (max_bytes, degraded, settings.debug_log_enabled)
+        }
+        Err(_) => {
+            health.record_log_storage_settings_failure();
+            (DEFAULT_LOG_STORAGE_MAX_BYTES, true, false)
+        }
+    }
+}
+
+fn record_log_storage_budget_maintenance(
+    audit_log_writer: &dyn AuditLogWriter,
+    timestamp_unix_millis: u128,
+    report: LogStorageBudgetReport,
+    settings_degraded: bool,
+) {
+    let should_record = settings_degraded
+        || report.deleted_file_count > 0
+        || matches!(
+            report.outcome,
+            LogStorageBudgetOutcome::Unsatisfied | LogStorageBudgetOutcome::Failed
+        );
+    if !should_record {
+        return;
+    }
+
+    let result = match report.outcome {
+        LogStorageBudgetOutcome::Failed => "failed",
+        _ if settings_degraded => "degraded",
+        LogStorageBudgetOutcome::Unsatisfied => "degraded",
+        LogStorageBudgetOutcome::WithinBudget | LogStorageBudgetOutcome::ReducedToBudget => {
+            "success"
+        }
+    };
+    let fields = BTreeMap::from([
+        ("outcome".to_owned(), report.outcome.code().to_owned()),
+        ("max_bytes".to_owned(), report.max_bytes.to_string()),
+        (
+            "owned_bytes_after".to_owned(),
+            report.owned_bytes_after.to_string(),
+        ),
+        (
+            "deleted_file_count".to_owned(),
+            report.deleted_file_count.to_string(),
+        ),
+        ("deleted_bytes".to_owned(), report.deleted_bytes.to_string()),
+        (
+            "failed_category_count".to_owned(),
+            report.failed_category_count.to_string(),
+        ),
+        (
+            "settings_status".to_owned(),
+            if settings_degraded { "degraded" } else { "ok" }.to_owned(),
+        ),
+    ]);
+    let _ = audit_log_writer.record_with_policy(
+        AuditLogEvent {
+            timestamp_unix_millis,
+            category: "log_storage".to_owned(),
+            operation: "log_storage_budget_maintenance".to_owned(),
+            result: result.to_owned(),
+            fields,
+        },
+        AuditWriteFailurePolicy::BestEffort,
+    );
 }
 
 fn install_manifest_repository_for(
@@ -1789,12 +1921,13 @@ mod tests {
     use super::*;
     use hmm_core::{GameDirectoryStatus, GameId, GameInstance, ModId, ProfileId};
     use hmm_ports::{
-        GameConfigRepositoryError, GameConfigRepositoryResult,
+        DebugLogControl, GameConfigRepositoryError, GameConfigRepositoryResult,
         SaveBackupBackgroundSettingsRepository,
     };
+    use std::fs::{self, File, FileTimes};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Barrier};
-    use std::time::{Duration, Instant};
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::time::{Duration, Instant, SystemTime};
 
     fn recovery_summary(
         mod_id: &str,
@@ -1808,6 +1941,28 @@ mod tests {
             backup_count: 0,
             issue_count: 0,
             issues: Vec::new(),
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturingAuditLogWriter {
+        policy: Mutex<Option<AuditWriteFailurePolicy>>,
+        event: Mutex<Option<AuditLogEvent>>,
+    }
+
+    impl AuditLogWriter for CapturingAuditLogWriter {
+        fn record(&self, _event: AuditLogEvent) -> anyhow::Result<()> {
+            panic!("maintenance audit must select an explicit failure policy")
+        }
+
+        fn record_with_policy(
+            &self,
+            event: AuditLogEvent,
+            policy: AuditWriteFailurePolicy,
+        ) -> anyhow::Result<()> {
+            *self.policy.lock().expect("audit policy lock") = Some(policy);
+            *self.event.lock().expect("audit event lock") = Some(event);
+            Ok(())
         }
     }
 
@@ -1943,6 +2098,213 @@ mod tests {
         start_best_effort_background_task("thumbnail-cache-maintenance", || -> Result<(), &str> {
             Err("spawn failed")
         });
+    }
+
+    #[test]
+    fn shared_runtime_composition_applies_task_and_audit_retention_on_startup() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let task_dir = app_data_dir.join("logs").join("tasks");
+        let audit_dir = app_data_dir.join("logs").join("audit");
+        fs::create_dir_all(&task_dir).expect("create task log directory");
+        fs::create_dir_all(&audit_dir).expect("create audit log directory");
+        let expired_task = task_dir.join("task-install-expired.log");
+        let unknown_task = task_dir.join("notes.txt");
+        let expired_audit = audit_dir.join("audit-1970-01-01.log");
+        fs::write(&expired_task, "expired\n").expect("write expired task log");
+        fs::write(&unknown_task, "unmanaged\n").expect("write unmanaged task file");
+        fs::write(&expired_audit, "expired\n").expect("write expired audit log");
+        File::options()
+            .write(true)
+            .open(&expired_task)
+            .expect("open expired task log")
+            .set_times(FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+            .expect("age expired task log");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("shared runtime composition succeeds");
+
+        assert!(!expired_task.exists());
+        assert!(!expired_audit.exists());
+        assert!(unknown_task.exists());
+        let health = state
+            .support_diagnostics_export
+            .read_page_snapshot()
+            .evidence_health;
+        assert_eq!(health.task_log_status, "ok");
+        assert_eq!(health.audit_log_status, "ok");
+        assert_eq!(health.task_log_retention_failure_count, 0);
+        assert_eq!(health.audit_log_retention_failure_count, 0);
+    }
+
+    #[test]
+    fn shared_runtime_initializes_debug_log_from_persisted_settings() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{"version":1,"debugLogEnabled":true}"#,
+        )
+        .expect("write enabled debug settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+            .expect("shared runtime composition succeeds");
+
+        assert!(state.debug_log.is_enabled());
+        let debug_log = app_data_dir.join("logs").join("debug");
+        assert!(debug_log.is_dir());
+        assert_eq!(
+            fs::read_dir(debug_log)
+                .expect("read debug log directory")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn shared_runtime_defaults_debug_log_to_disabled_when_settings_are_corrupt() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(config_dir.join("settings.json"), b"{not-json").expect("write corrupt settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+            .expect("corrupt settings should fail closed");
+
+        assert!(!state.debug_log.is_enabled());
+        assert!(!app_data_dir.join("logs").join("debug").exists());
+    }
+
+    #[test]
+    fn shared_runtime_applies_custom_log_budget_and_records_one_maintenance_audit() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        let task_dir = app_data_dir.join("logs").join("tasks");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::create_dir_all(&task_dir).expect("create task log directory");
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+                "version": 1,
+                "logStorageMaxBytes": 1048576
+            }"#,
+        )
+        .expect("write log storage settings");
+        let oversized_task = task_dir.join("task-install-budget.log");
+        fs::write(&oversized_task, vec![b'x'; 1_100_000]).expect("write oversized task log");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("shared runtime composition succeeds");
+
+        assert!(!oversized_task.exists());
+        let snapshot = state.support_diagnostics_export.read_page_snapshot();
+        let maintenance_events = snapshot
+            .audit_events
+            .iter()
+            .filter(|event| event.operation == "log_storage_budget_maintenance")
+            .collect::<Vec<_>>();
+        assert_eq!(maintenance_events.len(), 1);
+        assert_eq!(maintenance_events[0].result, "success");
+        assert_eq!(maintenance_events[0].fields["outcome"], "reduced_to_budget");
+        assert_eq!(maintenance_events[0].fields["deleted_file_count"], "1");
+        assert_eq!(snapshot.evidence_health.log_storage_status, "ok");
+    }
+
+    #[test]
+    fn log_storage_maintenance_audit_is_not_classified_as_a_player_commit() {
+        let writer = CapturingAuditLogWriter::default();
+        record_log_storage_budget_maintenance(
+            &writer,
+            1,
+            LogStorageBudgetReport {
+                outcome: LogStorageBudgetOutcome::ReducedToBudget,
+                max_bytes: 1024 * 1024,
+                cleanup_target_bytes: 1024 * 1024 - 16 * 1024,
+                owned_bytes_before: 1024 * 1024 + 1,
+                owned_bytes_after: 512 * 1024,
+                deleted_file_count: 1,
+                deleted_bytes: 512 * 1024 + 1,
+                failed_category_count: 0,
+            },
+            false,
+        );
+
+        assert_eq!(
+            *writer.policy.lock().expect("audit policy lock"),
+            Some(AuditWriteFailurePolicy::BestEffort)
+        );
+        assert_eq!(
+            writer
+                .event
+                .lock()
+                .expect("audit event lock")
+                .as_ref()
+                .expect("maintenance audit event")
+                .result,
+            "success"
+        );
+    }
+
+    #[test]
+    fn invalid_persisted_log_budget_falls_back_and_degrades_health_without_failing_startup() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+                "version": 1,
+                "logStorageMaxBytes": 1024
+            }"#,
+        )
+        .expect("write invalid log storage settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("runtime falls back to the default log budget");
+
+        let snapshot = state.support_diagnostics_export.read_page_snapshot();
+        assert_eq!(
+            snapshot.evidence_health.log_storage_status,
+            "log_storage_settings_unavailable"
+        );
+        assert_eq!(
+            snapshot.evidence_health.log_storage_settings_failure_count,
+            1
+        );
+        let maintenance = snapshot
+            .audit_events
+            .iter()
+            .find(|event| event.operation == "log_storage_budget_maintenance")
+            .expect("settings degradation is audited once");
+        assert_eq!(maintenance.result, "degraded");
+        assert_eq!(maintenance.fields["settings_status"], "degraded");
+    }
+
+    #[test]
+    fn corrupted_log_settings_fall_back_without_blocking_runtime_composition() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(config_dir.join("settings.json"), "{not json").expect("write corrupted settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("runtime falls back when settings are unavailable");
+        let health = state
+            .support_diagnostics_export
+            .read_page_snapshot()
+            .evidence_health;
+
+        assert_eq!(
+            health.log_storage_status,
+            "log_storage_settings_unavailable"
+        );
+        assert_eq!(health.log_storage_settings_failure_count, 1);
     }
 
     #[test]

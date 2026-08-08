@@ -77,7 +77,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 导出审计日志诊断包：`export_audit_log_diagnostics`
 - 导出完整支持诊断包：`export_support_diagnostics`
 - 手动后端维护：`maintain_thumbnail_cache`
-- 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`
+- 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`、`get_log_storage_settings`、`set_log_storage_settings`、`get_debug_log_settings`、`set_debug_log_settings`
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
@@ -87,13 +87,27 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 ## 应用健康与 App Log
 
 L3 新增无参数 `get_diagnostics_page_snapshot`。后端固定每类最多返回 100 条已校验内容，返回平台安全摘要、
-App/Task 安全日志行、已校验 Audit 事件及稳定健康状态。契约不接受或返回日志路径、任意文件名、原始错误；
+App/Debug/Task 安全日志行、已校验 Audit 事件及稳定健康状态。契约不接受或返回日志路径、任意文件名、原始错误；
 单类读取失败只以稳定 `*_read_failed` 状态降级。前端只允许复制事件中已校验的 `error_code` / `task_id`。
 
-`evidenceHealth` 是写入链路的聚合健康对象：`taskLogStatus` / `auditLogStatus` 是稳定状态码；
+`evidenceHealth` 是写入链路的聚合健康对象：`debugLogStatus` / `taskLogStatus` / `auditLogStatus` /
+`logStorageStatus` 是稳定状态码；`debugLogEventRejectedCount` / `debugLogWriteFailureCount` /
+`debugLogRetentionFailureCount` 分别累计 Debug 事件拒绝、写入失败和保留清理失败；
 `taskLogWriteFailureCount` / `auditWriteFailureCount` 分别累计 Task/Audit 写入失败；
+`taskLogRetentionFailureCount` / `auditLogRetentionFailureCount` 分别累计 Task/Audit 保留清理失败；
 `auditWriteFailureAfterCommitCount` 累计玩家文件与 manifest 已提交后发生的审计写入失败。此时
 `auditLogStatus` 为 `audit_write_failed_after_commit`，页面必须显示诊断退化，但不得为补写审计再次改动玩家文件。
+`logStorageFailureCount`、`logStorageUnsatisfiedCount` 和 `logStorageSettingsFailureCount` 分别累计预算维护失败、
+受保护文件导致无法收敛和 settings 读取/校验失败；`logStorageStatus` 稳定值为
+`ok | log_storage_settings_unavailable | log_storage_budget_unsatisfied | log_storage_budget_failed`，严重度按该顺序递增。
+Task 状态为 `ok | task_log_retention_failed | task_log_write_failed`；Audit 状态为
+`ok | audit_log_retention_failed | audit_write_failed | audit_write_failed_after_commit`。write 与
+post-commit failure 的严重度高于 retention failure，后续清理失败不能覆盖或降低更严重状态。
+
+Debug 设置 DTO 固定为 `{ enabled: boolean }`。`get_debug_log_settings` 无参数；
+`set_debug_log_settings` 只接受顶层 `enabled`，不接受路径、文件名、类别、过滤器或自由文本。
+设置持久化成功后立即更新当前进程的共享开关，保存失败保持旧状态。前端设置页必须提供
+loading/saving/error/retry 状态，并且不能把该持久化开关混入仅当前会话有效的预览设置 dirty state。
 
 `app_health()` 不接收参数，只返回下面的稳定字符串之一：
 
@@ -112,8 +126,9 @@ manifest、backup、rollback、recovery 或 Task Log 的事实来源；退化不
 仅代表最近一次事件，也不能据此推断安装或恢复状态。
 
 L1 App Log 只消费后端专用安全事件 envelope。任务注册只记录 `taskId/kind/status/phase` 的 queued 摘要；
-游戏发现只记录 `gameId/outcome/candidateCount` 或稳定错误码。Task Log、Audit 写入失败显式策略和日志 UI
-仍属于后续切片，不由该 command 暴露。
+游戏发现只记录 `gameId/outcome/candidateCount` 或稳定错误码。Task/Audit writer、reader、写入失败策略与
+retention 健康现由 `get_diagnostics_page_snapshot` 的 `evidenceHealth` 投影；`app_health` 仍只表示 App Log，
+不得混入 Task/Audit 状态或据此推断玩家文件事实。
 
 ## DTO 边界
 
@@ -1441,6 +1456,10 @@ export_support_diagnostics()
 maintain_thumbnail_cache()
 get_thumbnail_cache_settings()
 set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays })
+get_log_storage_settings()
+set_log_storage_settings({ maxBytes })
+get_debug_log_settings()
+set_debug_log_settings({ enabled })
 ```
 
 边界：
@@ -1456,10 +1475,12 @@ set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays 
 - `get_preview_image_diagnostics()` 基于已持久化导入结果返回预览图处理摘要：`totalImportedMods`、`thumbnailCount`、`fallbackCount`、按 `reason` 聚合的 `fallbackReasons`，以及用于导出前确认的 `exportCategories`。当前 `exportCategories` 声明预览图聚合摘要可纳入诊断包，并明确排除缩略图文件、`thumbnailUrl` 资源引用和原始第三方 Mod 包内容。该命令不创建长任务、不发送 progress event、不读取或导出第三方图片内容、不返回 `thumbnailUrl`、缓存路径、sandbox 路径或本地路径。
 - `export_preview_image_diagnostics()` 基于同一份已脱敏摘要写入受控诊断 zip。该命令不接受输出路径参数；后端固定写入 app data 下的 `logs/diagnostics/`，返回 `exportId`、`fileName`、`sizeBytes` 和本次导出的 `diagnostics` 摘要。当前 zip 只包含 `preview-image-diagnostics.json`，不包含缩略图文件、`thumbnailUrl`、`contentHash`、sandbox/cache/local 路径、README 全文、原始第三方 Mod 包内容或原始日志。导出成功后后端会写入最小 Audit Log 事件；若诊断 zip 写入失败，会先写入只含稳定错误分类和聚合计数的失败审计事件；若审计写入失败，命令不返回成功。该命令不创建长任务、不发送 progress event；更通用的日志/audit 诊断包导出仍需后续治理能力补齐。
 - `export_audit_log_diagnostics()` 导出已脱敏审计日志诊断包。该命令不接受输出路径、日志路径或事件数量参数；后端固定读取 app data 下已校验的最近审计事件，单次最多 200 条，并固定写入 app data 下的 `logs/diagnostics/`。返回 DTO 只包含 `exportId`、`fileName`、`sizeBytes` 和 `auditEventCount`，不返回审计事件正文、审计日志路径、本地路径、原始错误文本、第三方 Mod 内容、缩略图 URL 或缓存/sandbox 路径。该命令不创建长任务、不发送 progress event；当前只覆盖 Audit Log 子集。
-- `export_support_diagnostics()` 导出完整支持诊断包。该命令不接受输出路径、日志路径、类别选择、行数或事件数量参数；后端固定从 app data 下读取已校验 App Log / Task Log 文本行、已校验 Audit Log 事件和平台摘要，并固定写入 app data 下的 `logs/diagnostics/`。返回 DTO 只包含 `exportId`、`fileName`、`sizeBytes`、三类计数，以及稳定、无路径的 `taskLogStatus`、`auditLogStatus`、`taskLogWriteFailureCount`、`auditWriteFailureCount`、`auditWriteFailureAfterCommitCount`。状态码当前为 `ok`、`task_log_write_failed`、`audit_write_failed` 或 `audit_write_failed_after_commit`；命令不返回日志正文、审计事件正文、诊断包路径、本地路径、原始错误文本、第三方 Mod 内容、缩略图 URL、`contentHash` 或缓存/sandbox 路径。该命令不创建长任务、不发送 progress event；用户可见入口仍应在前端展示类别确认，而不是展示敏感原文。
+- `export_support_diagnostics()` 导出完整支持诊断包。该命令不接受输出路径、日志路径、类别选择、行数或事件数量参数；后端固定从 app data 下读取已校验 App Log / Debug Log / Task Log 文本行、已校验 Audit Log 事件和平台摘要，并固定写入 app data 下的 `logs/diagnostics/`。返回 DTO 只包含 `exportId`、`fileName`、`sizeBytes`、四类计数，以及稳定、无路径的 `debugLogStatus`、`taskLogStatus`、`auditLogStatus`、`logStorageStatus`、`debugLogEventRejectedCount`、`debugLogWriteFailureCount`、`debugLogRetentionFailureCount`、`taskLogWriteFailureCount`、`taskLogRetentionFailureCount`、`auditWriteFailureCount`、`auditWriteFailureAfterCommitCount`、`auditLogRetentionFailureCount`、`logStorageFailureCount`、`logStorageUnsatisfiedCount`、`logStorageSettingsFailureCount`。Debug、Task、Audit 和日志空间状态只使用本节登记的稳定 code；命令不返回日志正文、审计事件正文、诊断包路径、本地路径、原始错误文本、第三方 Mod 内容、缩略图 URL、`contentHash` 或缓存/sandbox 路径。该命令不创建长任务、不发送 progress event；用户可见入口仍应在前端展示类别确认，而不是展示敏感原文。
 - `maintain_thumbnail_cache()` 手动触发后端缩略图缓存维护，复用当前导入结果引用保留、settings 空间上限 / LRU 清理和可选按时间保留逻辑。该命令不创建长任务、不发送 progress event、不返回清理报告或真实缓存路径；清理失败按 best-effort 处理，不改变导入、安装、卸载或回滚事实。
 - `get_thumbnail_cache_settings()` 读取当前受控后端设置并返回 `AppSettingsDto`。该命令不接受参数、不写入 settings 文件、不触发缓存维护，也不返回 settings 文件路径、缓存路径、sandbox 路径或任意文件系统路径。
 - `set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays })` 写入受控后端设置并返回当前设置 DTO。`thumbnailCacheMaxBytes` 可为正整数或 `null`，`null` 表示回退默认空间上限；`0` 会返回稳定错误码 `thumbnail_cache_max_bytes_invalid`。`thumbnailCacheMaxAgeDays` 可为正整数天数或 `null`，`null` 表示不启用按时间保留延迟、沿用当前未引用缩略图维护语义；`0` 会返回稳定错误码 `thumbnail_cache_max_age_days_invalid`。该命令不接收或返回 settings 文件路径、缓存路径、sandbox 路径或任意文件系统路径。
+- `get_log_storage_settings()` 读取当前日志总空间预算并返回窄 `LogStorageSettingsDto { maxBytes }`。`maxBytes` 为正整数或 `null`；`null` 表示使用后端默认 128 MiB。该命令不接受参数、不写 settings、不执行预算维护，也不返回日志目录、文件名、清理候选或任意文件系统路径。
+- `set_log_storage_settings({ maxBytes })` 只更新日志总空间预算并返回当前 `LogStorageSettingsDto`。`maxBytes` 为不小于 1 MiB 的整数或 `null`；`null` 表示回退默认 128 MiB，小于 1 MiB 返回稳定错误码 `log_storage_max_bytes_invalid`，settings 读取或保存失败返回 `app_settings_unavailable`。该命令不会立即删除日志，不接受类别、文件名、路径或清理优先级参数；启动维护仍由共享 runtime 按后端固定策略执行。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
@@ -1612,17 +1633,28 @@ type SupportDiagnosticsExportDto = {
   fileName: string;
   sizeBytes: number;
   appLogLineCount: number;
+  debugLogLineCount: number;
   taskLogLineCount: number;
   auditEventCount: number;
-  taskLogStatus: "ok" | "task_log_write_failed";
-  auditLogStatus: "ok" | "audit_write_failed" | "audit_write_failed_after_commit";
+  debugLogStatus: "ok" | "debug_log_retention_failed" | "debug_log_event_rejected" | "debug_log_write_failed";
+  taskLogStatus: "ok" | "task_log_retention_failed" | "task_log_write_failed";
+  auditLogStatus: "ok" | "audit_log_retention_failed" | "audit_write_failed" | "audit_write_failed_after_commit";
+  logStorageStatus: "ok" | "log_storage_settings_unavailable" | "log_storage_budget_unsatisfied" | "log_storage_budget_failed";
+  debugLogEventRejectedCount: number;
+  debugLogWriteFailureCount: number;
+  debugLogRetentionFailureCount: number;
   taskLogWriteFailureCount: number;
+  taskLogRetentionFailureCount: number;
   auditWriteFailureCount: number;
   auditWriteFailureAfterCommitCount: number;
+  auditLogRetentionFailureCount: number;
+  logStorageFailureCount: number;
+  logStorageUnsatisfiedCount: number;
+  logStorageSettingsFailureCount: number;
 };
 ```
 
-`fileName` 只是文件名，不是完整本地路径；前端不能传入或拼接导出路径。当前导出包可包含已脱敏平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和最多 200 条已校验 Audit Log 事件，但命令 DTO 本身不返回日志正文、事件正文、诊断包路径、本地路径、原始 Mod 包内容、缩略图 URL、`contentHash`、缓存/sandbox 路径、原始日志或未脱敏错误文本。
+`fileName` 只是文件名，不是完整本地路径；前端不能传入或拼接导出路径。当前导出包可包含已脱敏平台摘要、已校验 App/Debug/Task Log 文本行和最多 200 条已校验 Audit Log 事件，但命令 DTO 本身不返回日志正文、事件正文、诊断包路径、本地路径、原始 Mod 包内容、缩略图 URL、`contentHash`、缓存/sandbox 路径、原始日志或未脱敏错误文本。
 
 ### 7. 分类与 Mod 展示元数据
 
