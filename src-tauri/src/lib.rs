@@ -12,6 +12,7 @@ mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
 mod install_commands;
+mod installer_cleanup;
 mod log_storage_commands;
 mod mod_import_commands;
 mod mod_library_commands;
@@ -105,6 +106,10 @@ fn app_health(health: State<'_, hmm_infra::AppLogHealth>) -> &'static str {
 
 pub fn run_save_backup_worker_once_from_env() -> Result<(), BackgroundWorkerEntryError> {
     background_worker::run_save_backup_worker_once_from_env()
+}
+
+pub fn run_installer_cleanup_from_env() -> i32 {
+    installer_cleanup::run_installer_cleanup_from_env()
 }
 
 pub fn run() {

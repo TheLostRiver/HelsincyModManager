@@ -89,7 +89,10 @@ pub use preview_image::{
 };
 pub use reinstall::JsonReinstallRecoveryTransactionRepository;
 pub use save_backup::FileSystemSaveBackupWriter;
-pub use save_backup_background_registry::UnsupportedSaveBackupBackgroundRegistry;
+pub use save_backup_background_registry::{
+    cleanup_owned_save_backup_task_for_installer, InstallerCleanupOutcome,
+    UnsupportedSaveBackupBackgroundRegistry,
+};
 #[cfg(windows)]
 pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
 pub use save_directory_pending_store::InMemoryPendingSaveDirectoryCandidateStore;

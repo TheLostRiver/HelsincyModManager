@@ -144,6 +144,19 @@ fn build_command_with_runtime(
                 .env("HMM_TASK_NAME", task_name)
                 .env("HMM_OWNER_MARKER", owner_marker);
         }
+        ScheduledTaskCommand::InstallerCleanup {
+            task_name,
+            owner_marker,
+        } => {
+            command
+                .env("HMM_OPERATION", "installer_cleanup")
+                .env(
+                    "HMM_SCHEDULED_TASKS_MODULE",
+                    &runtime.scheduled_tasks_module,
+                )
+                .env("HMM_TASK_NAME", task_name)
+                .env("HMM_OWNER_MARKER", owner_marker);
+        }
     }
 
     command.stdout(Stdio::piped()).stderr(Stdio::null());
@@ -186,6 +199,8 @@ pub(super) fn parse_script_output(
         ("permission_required", None, None) => Ok(ScheduledTaskCommandOutcome::PermissionRequired),
         ("module_unavailable", None, None) => Ok(ScheduledTaskCommandOutcome::ModuleUnavailable),
         ("ownership_conflict", None, None) => Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
+        ("task_busy", None, None) => Ok(ScheduledTaskCommandOutcome::TaskBusy),
+        ("state_unverified", None, None) => Ok(ScheduledTaskCommandOutcome::StateUnverified),
         ("operation_failed", None, None) => Err(SaveBackupBackgroundRegistryError::OperationFailed),
         _ => Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput),
     }

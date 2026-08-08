@@ -49,6 +49,27 @@ pub(super) struct ScheduledTaskReadback {
     pub run_only_if_network_available: bool,
     pub execution_time_limit: String,
     pub enabled: bool,
+    pub state: ScheduledTaskState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(super) enum ScheduledTaskState {
+    Unknown,
+    Disabled,
+    Queued,
+    Ready,
+    Running,
+}
+
+impl ScheduledTaskState {
+    pub(super) fn is_busy(self) -> bool {
+        matches!(self, Self::Running | Self::Queued)
+    }
+
+    pub(super) fn is_quiescent(self) -> bool {
+        matches!(self, Self::Ready | Self::Disabled)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

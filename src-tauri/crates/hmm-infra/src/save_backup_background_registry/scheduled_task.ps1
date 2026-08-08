@@ -105,6 +105,7 @@ try {
             runOnlyIfNetworkAvailable = [bool]$task.Settings.RunOnlyIfNetworkAvailable
             executionTimeLimit = [string]$task.Settings.ExecutionTimeLimit
             enabled = [string]$task.State -ne "Disabled"
+            state = [string]$task.State
         }}
     }
 
@@ -145,6 +146,22 @@ try {
         $current = Get-TaskOrStatus $taskName
         if ([string]$current.Description -ne $ownerMarker) {
             Write-Result @{ status = "ownership_conflict" }
+        }
+        Unregister-ScheduledTask -InputObject $current -Confirm:$false -ErrorAction Stop
+        Write-Result @{ status = "completed" }
+    }
+
+    if ($operation -eq "installer_cleanup") {
+        $current = Get-TaskOrStatus $taskName
+        if ([string]$current.Description -ne $ownerMarker) {
+            Write-Result @{ status = "ownership_conflict" }
+        }
+        $state = [string]$current.State
+        if ($state -eq "Running" -or $state -eq "Queued") {
+            Write-Result @{ status = "task_busy" }
+        }
+        if ($state -ne "Ready" -and $state -ne "Disabled") {
+            Write-Result @{ status = "state_unverified" }
         }
         Unregister-ScheduledTask -InputObject $current -Confirm:$false -ErrorAction Stop
         Write-Result @{ status = "completed" }
