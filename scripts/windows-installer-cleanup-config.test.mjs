@@ -15,6 +15,13 @@ const hookPath = path.join(
   "windows",
   "nsis-installer-hooks.nsh",
 );
+const wixFragmentPath = path.join(
+  repoRoot,
+  "src-tauri",
+  "windows",
+  "wix",
+  "installer-cleanup.wxs",
+);
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
@@ -61,4 +68,27 @@ test("skips upgrade cleanup and fails closed for every nonzero helper code", () 
   assert.match(hook, /SetErrorLevel\s+\$0/);
   assert.match(hook, /Quit/);
   assert.match(hook, /MessageBox/);
+});
+
+test("points WiX at the controlled cleanup fragment", () => {
+  const config = readJson(windowsConfigPath);
+  assert.deepEqual(config.bundle.windows.wix.fragmentPaths, [
+    "windows/wix/installer-cleanup.wxs",
+  ]);
+});
+
+test("runs the installed cleanup helper in user context before RemoveFiles", () => {
+  const fragment = readFileSync(wixFragmentPath, "utf8");
+  assert.match(
+    fragment,
+    /<CustomAction\s+Id="RunInstallerCleanup"\s+FileKey="Bin_hmm_save_backup_installer_cleanup\.exe"\s+ExeCommand=""\s+Execute="immediate"\s+Impersonate="yes"\s+Return="check"\s*\/>/,
+  );
+  assert.match(
+    fragment,
+    /<Custom\s+Action="RunInstallerCleanup"\s+Before="RemoveFiles">\s*REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE\s*<\/Custom>/,
+  );
+  assert.doesNotMatch(
+    fragment,
+    /schtasks|Stop-ScheduledTask|PowerShell|task.?name|SID|owner.?marker|<Task/i,
+  );
 });

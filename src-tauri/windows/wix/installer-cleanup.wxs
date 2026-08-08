@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <CustomAction
+      Id="RunInstallerCleanup"
+      FileKey="Bin_hmm_save_backup_installer_cleanup.exe"
+      ExeCommand=""
+      Execute="immediate"
+      Impersonate="yes"
+      Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="RunInstallerCleanup" Before="RemoveFiles">
+        REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE
+      </Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>
