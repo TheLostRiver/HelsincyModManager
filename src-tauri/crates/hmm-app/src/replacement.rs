@@ -11,6 +11,7 @@ use hmm_ports::{
     ReplacementCatalogProvider, RetargetPlanRequest, RetargetStagingError, RetargetStagingFile,
     RetargetStagingMaterializer,
 };
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -366,6 +367,58 @@ impl ReplacementWorkflowService {
             .map(|resolved| resolved.analysis)
     }
 
+    pub fn preview_canonical_source_install_plan(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+        revision_id: &ModRevisionId,
+        layer: &FileLayer,
+    ) -> Result<Option<InstallPlan>, ReplacementWorkflowError> {
+        let resolved = self.resolve_imported_revision(game_id, mod_id, revision_id)?;
+        let Some(source) = resolved.analysis.single_source().cloned() else {
+            return Ok(None);
+        };
+        let catalog = self
+            .catalog_for(game_id)?
+            .replacement_catalog()
+            .map_err(map_catalog_error)?;
+        let mut matching_targets = catalog.targets().iter().filter(|target| {
+            target.target_type() == source.source_type()
+                && target.internal_id() == source.internal_id()
+                && target
+                    .metadata()
+                    .get("path_family")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(source.path_family())
+        });
+        let (Some(target), None) = (matching_targets.next(), matching_targets.next()) else {
+            return Ok(None);
+        };
+        let binding = ReplacementBinding::new(
+            canonical_source_binding_id(game_id, profile_id, mod_id, source.id(), target.id())?,
+            mod_id.clone(),
+            profile_id.clone(),
+            source.id().clone(),
+            target.id().clone(),
+            0,
+        )
+        .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+        let retarget_plan = self
+            .replacement
+            .build_retarget_plan(RetargetPlanRequest {
+                game_id: game_id.clone(),
+                binding,
+                assets: resolved.assets,
+            })
+            .map_err(ReplacementWorkflowError::Analysis)?;
+        let install_plan = self
+            .replacement
+            .build_retarget_install_plan(&retarget_plan, layer.clone(), Some(revision_id.clone()))
+            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        Ok(Some(install_plan))
+    }
+
     pub fn preview_initial_install(
         &self,
         request: PreviewInitialRetargetInstallRequest,
@@ -644,4 +697,38 @@ fn map_catalog_error(error: ReplacementCatalogError) -> ReplacementWorkflowError
             ReplacementWorkflowError::CatalogUnavailable
         }
     }
+}
+
+pub fn is_identity_replacement_binding(snapshot: &ReplacementBindingSnapshot) -> bool {
+    snapshot.binding().created_at_unix_millis() == 0
+        && snapshot.source_internal_id() == snapshot.target_internal_id()
+        && snapshot.source_path_family() == snapshot.target_path_family()
+}
+
+fn canonical_source_binding_id(
+    game_id: &GameId,
+    profile_id: &ProfileId,
+    mod_id: &ModId,
+    source_id: &hmm_core::ReplacementSourceId,
+    target_id: &ReplacementTargetId,
+) -> Result<ReplacementBindingId, ReplacementWorkflowError> {
+    let mut hasher = Sha256::new();
+    for value in [
+        "hmm-canonical-source-binding-v1",
+        game_id.as_str(),
+        profile_id.as_str(),
+        mod_id.as_str(),
+        source_id.as_str(),
+        target_id.as_str(),
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    ReplacementBindingId::parse(format!("binding-{}", Uuid::from_bytes(bytes)))
+        .map_err(|_| ReplacementWorkflowError::BindingUnavailable)
 }

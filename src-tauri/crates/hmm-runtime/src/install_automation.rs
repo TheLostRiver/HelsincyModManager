@@ -1,21 +1,22 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
 use crate::{production_app_data_dir, RuntimeEnvironment};
 use hmm_app::{
-    BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest, BatchReinstallPlanFactsProvider,
-    BatchUninstallPlanFactsProvider, BuildImportedModInstallPlanRequest, GamePrerequisiteDecision,
-    GamePrerequisiteDecisionProvider, GameSetupService, ImportedModInstallPreflightService,
-    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    InstallManifestQueryRequest, InstallManifestQueryService, InstallManifestStatus,
-    InstallPlanningError, InstallPlanningService, InstallRecoveryActionAvailability,
-    InstallRecoveryActionBlockReason, InstallRecoveryActionKind, InstallRecoveryActionPreview,
-    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
-    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
-    InstallRecoverySummary, InstalledReplacementReinstallResolution,
-    PreviewRetargetReinstallRequest, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
-    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreparation,
-    ReinstallPreviewBatchItemFactsReader, ReinstallPreviewError, ReinstallPreviewRequest,
-    ReinstallPreviewService, ReinstallPreviewStatus, ReinstallRevisionSummary,
-    ReinstallTargetCounts, ReplacementWorkflowService,
+    is_identity_replacement_binding, BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest,
+    BatchReinstallPlanFactsProvider, BatchUninstallPlanFactsProvider,
+    BuildImportedModInstallPlanRequest, GamePrerequisiteDecision, GamePrerequisiteDecisionProvider,
+    GameSetupService, ImportedModInstallPreflightService, InitialRetargetInstallStatusError,
+    InitialRetargetInstallStatusReader, InstallManifestQueryRequest, InstallManifestQueryService,
+    InstallManifestStatus, InstallPlanningError, InstallPlanningService,
+    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason, InstallRecoveryActionKind,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewRequest,
+    InstallRecoveryActionPreviewService, InstallRecoveryIssue, InstallRecoveryScanRequest,
+    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
+    InstalledReplacementReinstallResolution, PreviewRetargetReinstallRequest,
+    ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallCandidateSourceReader,
+    ReinstallPlanPreview, ReinstallPreparation, ReinstallPreviewBatchItemFactsReader,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+    ReplacementWorkflowService,
 };
 use hmm_core::{
     BatchItemFacts, BatchPlanFacts, FileLayer, GameId, GameInstance, InstallManifest,
@@ -697,6 +698,7 @@ impl ReadOnlyInstallAutomation {
         profile_id: &str,
         mod_id: &str,
         revision_id: &str,
+        layer: &FileLayer,
     ) -> Result<
         (
             GameId,
@@ -723,14 +725,42 @@ impl ReadOnlyInstallAutomation {
         )?);
         let preflight = self
             .preflight
-            .preview_revision(&game_id, &mod_id, &revision_id, &base_file_layer())
+            .preview_revision(&game_id, &mod_id, &revision_id, layer)
             .map_err(map_planning_error)?;
+        let mut plan = preflight.plan;
+        if !plan.replacement_bindings.is_empty() {
+            return Err(ReadOnlyInstallAutomationError::InstallPlanInvalid);
+        }
+        if let Ok(Some(canonical_plan)) = self
+            .replacement_workflow
+            .preview_canonical_source_install_plan(
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &revision_id,
+                layer,
+            )
+        {
+            if let [binding] = canonical_plan.replacement_bindings.as_slice() {
+                if canonical_plan.actions == plan.actions
+                    && canonical_plan.conflicts == plan.conflicts
+                    && is_identity_replacement_binding(binding)
+                    && binding.mod_id() == &mod_id
+                    && binding.profile_id() == &profile_id
+                    && binding.revision_id() == Some(&revision_id)
+                {
+                    plan = plan
+                        .with_replacement_bindings(vec![binding.clone()])
+                        .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
+                }
+            }
+        }
         Ok((
             game_id,
             profile_id,
             mod_id,
             revision_id,
-            preflight.plan,
+            plan,
             preflight.prerequisite_decision,
         ))
     }
