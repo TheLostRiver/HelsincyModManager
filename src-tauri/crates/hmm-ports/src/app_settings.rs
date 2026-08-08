@@ -1,9 +1,13 @@
 use thiserror::Error;
 
+pub const MIN_LOG_STORAGE_MAX_BYTES: u64 = 1024 * 1024;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AppSettings {
     pub thumbnail_cache_max_bytes: Option<u64>,
     pub thumbnail_cache_max_age_days: Option<u32>,
+    pub log_storage_max_bytes: Option<u64>,
+    pub debug_log_enabled: bool,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

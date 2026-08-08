@@ -1,10 +1,15 @@
+use crate::controlled_fs::ensure_regular_file_metadata;
+use crate::managed_log::{
+    dated_log_day_from_file_name, open_append_regular_file, open_existing_log_directory,
+    open_or_create_log_directory, open_read_log_file,
+};
 use anyhow::{Context, Result};
+use cap_std::fs::Dir;
 use hmm_ports::{
     AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
     DiagnosticsEvidenceHealth,
 };
 use std::collections::VecDeque;
-use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -15,6 +20,7 @@ const MILLIS_PER_DAY: u128 = 86_400_000;
 pub struct FileSystemAuditLogWriter {
     app_data_root: PathBuf,
     write_lock: Mutex<()>,
+    audit_dir: Mutex<Option<Dir>>,
     health: Option<Arc<dyn DiagnosticsEvidenceHealth>>,
 }
 
@@ -33,6 +39,7 @@ impl FileSystemAuditLogWriter {
         Self {
             app_data_root,
             write_lock: Mutex::new(()),
+            audit_dir: Mutex::new(None),
             health: None,
         }
     }
@@ -41,18 +48,28 @@ impl FileSystemAuditLogWriter {
         Self {
             app_data_root,
             write_lock: Mutex::new(()),
+            audit_dir: Mutex::new(None),
             health: Some(health),
         }
     }
 
-    fn audit_dir(&self) -> PathBuf {
-        self.app_data_root.join("logs").join(AUDIT_LOG_DIR)
-    }
-
-    fn audit_path_for_event(&self, event: &AuditLogEvent) -> Result<PathBuf> {
-        Ok(self
-            .audit_dir()
-            .join(audit_log_file_name(event.timestamp_unix_millis)?))
+    fn audit_log_directory(&self) -> Result<Dir> {
+        let mut directory = self
+            .audit_dir
+            .lock()
+            .map_err(|_| anyhow::anyhow!("audit log directory state unavailable"))?;
+        if directory.is_none() {
+            *directory = Some(open_or_create_log_directory(
+                &self.app_data_root,
+                AUDIT_LOG_DIR,
+                "audit log directory",
+            )?);
+        }
+        directory
+            .as_ref()
+            .context("audit log directory unavailable")?
+            .try_clone()
+            .context("failed to clone audit log directory handle")
     }
 }
 
@@ -89,14 +106,9 @@ impl FileSystemAuditLogWriter {
             .write_lock
             .lock()
             .map_err(|_| anyhow::anyhow!("audit log write lock poisoned"))?;
-        let audit_dir = self.audit_dir();
-        fs::create_dir_all(&audit_dir).context("failed to create audit log directory")?;
-        let audit_path = self.audit_path_for_event(&event)?;
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&audit_path)
-            .context("failed to open audit log")?;
+        let audit_dir = self.audit_log_directory()?;
+        let file_name = audit_log_file_name(event.timestamp_unix_millis)?;
+        let mut file = open_append_regular_file(&audit_dir, file_name.as_ref(), "audit log")?;
         let serialized =
             serde_json::to_string(&event).context("failed to serialize audit log event")?;
         file.write_all(serialized.as_bytes())
@@ -104,7 +116,7 @@ impl FileSystemAuditLogWriter {
         file.write_all(b"\n")
             .context("failed to write audit log event")?;
         file.sync_all().context("failed to sync audit log")?;
-        sync_audit_directory(&audit_dir).context("failed to sync audit log directory")?;
+        sync_directory(&audit_dir).context("failed to sync audit log directory")?;
 
         Ok(())
     }
@@ -130,36 +142,36 @@ fn read_recent_sanitized(
         return Ok(Vec::new());
     }
 
-    let audit_dir = app_data_root.join("logs").join(AUDIT_LOG_DIR);
-    let directory_entries = match fs::read_dir(&audit_dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error).context("failed to read audit log directory"),
+    let Some(audit_dir) =
+        open_existing_log_directory(app_data_root, AUDIT_LOG_DIR, "audit log directory")?
+    else {
+        return Ok(Vec::new());
     };
-    let mut audit_paths = Vec::new();
-    for entry in directory_entries {
+    let mut audit_files = Vec::new();
+    for entry in audit_dir
+        .entries()
+        .context("failed to read audit log directory")?
+    {
         let entry = entry.context("failed to read audit log directory entry")?;
-        if !entry
-            .file_type()
-            .context("failed to inspect audit log entry")?
-            .is_file()
-        {
+        let file_name = entry.file_name();
+        let metadata = audit_dir
+            .symlink_metadata(&file_name)
+            .context("failed to inspect audit log entry")?;
+        if ensure_regular_file_metadata(&metadata, "audit log entry").is_err() {
             continue;
         }
-
-        let file_name = entry.file_name();
         let Some(file_name) = file_name.to_str() else {
             continue;
         };
         if is_audit_log_file_name(file_name) {
-            audit_paths.push(entry.path());
+            audit_files.push((file_name.to_owned(), entry.file_name()));
         }
     }
-    audit_paths.sort();
+    audit_files.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut events = VecDeque::new();
-    for audit_path in audit_paths {
-        let file = File::open(&audit_path).context("failed to open audit log")?;
+    for (_, file_name) in audit_files {
+        let file = open_read_log_file(&audit_dir, &file_name, "audit log")?;
         for line in BufReader::new(file).lines() {
             let line = line.context("failed to read audit log event")?;
             if line.trim().is_empty() {
@@ -183,15 +195,11 @@ fn read_recent_sanitized(
 }
 
 fn is_audit_log_file_name(file_name: &str) -> bool {
-    let bytes = file_name.as_bytes();
-    bytes.len() == "audit-1970-01-01.log".len()
-        && file_name.starts_with("audit-")
-        && file_name.ends_with(".log")
-        && bytes[6..10].iter().all(u8::is_ascii_digit)
-        && bytes[10] == b'-'
-        && bytes[11..13].iter().all(u8::is_ascii_digit)
-        && bytes[13] == b'-'
-        && bytes[14..16].iter().all(u8::is_ascii_digit)
+    audit_log_day_from_file_name(file_name).is_some()
+}
+
+pub(crate) fn audit_log_day_from_file_name(file_name: &str) -> Option<i64> {
+    dated_log_day_from_file_name(file_name, "audit-")
 }
 
 fn validate_audit_event(event: &AuditLogEvent) -> Result<()> {
@@ -297,18 +305,11 @@ fn civil_from_days(days_since_epoch: i64) -> (i32, u32, u32) {
 }
 
 #[cfg(windows)]
-fn sync_audit_directory(path: &Path) -> std::io::Result<()> {
-    use std::os::windows::fs::OpenOptionsExt;
-
-    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
-
-    let result = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(path)
-        .and_then(|directory| directory.sync_all());
-    match result {
+fn sync_directory(directory: &Dir) -> std::io::Result<()> {
+    match directory
+        .try_clone()
+        .and_then(|directory| directory.into_std_file().sync_all())
+    {
         Ok(()) => Ok(()),
         Err(error) if is_windows_directory_sync_capability_error(&error) => Ok(()),
         Err(error) => Err(error),
@@ -316,8 +317,10 @@ fn sync_audit_directory(path: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(windows))]
-fn sync_audit_directory(path: &Path) -> std::io::Result<()> {
-    File::open(path)?.sync_all()
+fn sync_directory(directory: &Dir) -> std::io::Result<()> {
+    directory
+        .try_clone()
+        .and_then(|directory| directory.into_std_file().sync_all())
 }
 
 #[cfg(windows)]
@@ -347,6 +350,37 @@ mod tests {
     use crate::DiagnosticsEvidenceHealthState;
     use hmm_ports::{AuditLogReadRequest, AuditLogReader, DiagnosticsEvidenceHealth};
     use std::collections::BTreeMap;
+    use std::fs::{self, OpenOptions};
+
+    #[cfg(unix)]
+    fn create_directory_link(link: &Path, target: &Path) {
+        std::os::unix::fs::symlink(target, link).expect("create directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn create_directory_link(link: &Path, target: &Path) {
+        let output = std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                link.to_str().expect("junction path"),
+                target.to_str().expect("junction target"),
+            ])
+            .output()
+            .expect("create directory junction");
+        assert!(output.status.success(), "mklink failed");
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_file(link).expect("remove directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_dir(link).expect("remove directory junction");
+    }
 
     #[cfg(windows)]
     #[test]
@@ -383,6 +417,38 @@ mod tests {
         assert_eq!(snapshot.audit_write_failure_count, 1);
         assert_eq!(snapshot.audit_write_failure_after_commit_count, 1);
         assert!(!temp.path().join("logs/audit").exists());
+    }
+
+    #[test]
+    fn linked_audit_directory_is_rejected_for_writes_and_reads() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside dir");
+        fs::create_dir_all(temp.path().join("logs")).expect("create logs dir");
+        let audit_link = temp.path().join("logs").join(AUDIT_LOG_DIR);
+        create_directory_link(&audit_link, outside.path());
+        let outside_log = outside.path().join("audit-1970-01-01.log");
+        fs::write(&outside_log, "outside\n").expect("write outside sentinel");
+        let health = Arc::new(DiagnosticsEvidenceHealthState::default());
+        let writer =
+            FileSystemAuditLogWriter::with_health(temp.path().to_path_buf(), health.clone());
+        let event = AuditLogEvent {
+            timestamp_unix_millis: 42,
+            category: "install".to_owned(),
+            operation: "install_mod".to_owned(),
+            result: "success".to_owned(),
+            fields: BTreeMap::new(),
+        };
+
+        assert!(writer.record(event).is_err());
+        assert_eq!(
+            health.snapshot().audit_log_status,
+            "audit_write_failed_after_commit"
+        );
+        assert!(writer
+            .read_recent_sanitized(AuditLogReadRequest { max_events: 10 })
+            .is_err());
+        assert_eq!(fs::read_to_string(&outside_log).unwrap(), "outside\n");
+        remove_directory_link(&audit_link);
     }
 
     #[test]
@@ -467,6 +533,30 @@ mod tests {
             audit_log_file_name(1_704_067_200_000).expect("2024 leap year date"),
             "audit-2024-01-01.log"
         );
+    }
+
+    #[test]
+    fn audit_log_file_name_parser_rejects_dates_the_writer_cannot_own() {
+        assert_eq!(
+            audit_log_day_from_file_name("audit-1970-01-01.log"),
+            Some(0)
+        );
+        assert_eq!(
+            audit_log_day_from_file_name("audit-2024-02-29.log"),
+            Some(19_782)
+        );
+        for invalid in [
+            "audit-1969-12-31.log",
+            "audit-2023-02-29.log",
+            "audit-2024-13-01.log",
+            "audit-2024-00-01.log",
+            "audit-2024-01-00.log",
+            "audit-2024-01-32.log",
+            "audit-2024-1-01.log",
+            "notes.log",
+        ] {
+            assert_eq!(audit_log_day_from_file_name(invalid), None, "{invalid}");
+        }
     }
 
     #[test]

@@ -1,8 +1,9 @@
+use crate::controlled_fs::ensure_regular_file_metadata;
+use crate::managed_log::{open_existing_log_directory, open_read_log_file};
 use anyhow::{Context, Result};
 use hmm_ports::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
-use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct FileSystemTextLogReader {
     app_data_root: PathBuf,
@@ -13,10 +14,11 @@ impl FileSystemTextLogReader {
         Self { app_data_root }
     }
 
-    fn log_dir(&self, kind: TextLogKind) -> PathBuf {
+    fn log_category(kind: TextLogKind) -> &'static str {
         match kind {
-            TextLogKind::App => self.app_data_root.join("logs").join("app"),
-            TextLogKind::Task => self.app_data_root.join("logs").join("tasks"),
+            TextLogKind::App => "app",
+            TextLogKind::Debug => "debug",
+            TextLogKind::Task => "tasks",
         }
     }
 }
@@ -27,37 +29,41 @@ impl TextLogReader for FileSystemTextLogReader {
             return Ok(Vec::new());
         }
 
-        let log_dir = self.log_dir(request.kind);
-        let directory_entries = match fs::read_dir(&log_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error).context("failed to read text log directory"),
+        let Some(log_dir) = open_existing_log_directory(
+            &self.app_data_root,
+            Self::log_category(request.kind),
+            "text log directory",
+        )?
+        else {
+            return Ok(Vec::new());
         };
 
         let mut log_files = Vec::new();
-        for entry in directory_entries {
+        for entry in log_dir
+            .entries()
+            .context("failed to read text log directory")?
+        {
             let entry = entry.context("failed to read text log directory entry")?;
-            if !entry
-                .file_type()
-                .context("failed to inspect text log entry")?
-                .is_file()
-            {
+            let file_name = entry.file_name();
+            let metadata = log_dir
+                .symlink_metadata(&file_name)
+                .context("failed to inspect text log entry")?;
+            if ensure_regular_file_metadata(&metadata, "text log entry").is_err() {
                 continue;
             }
-
-            let file_name = entry.file_name();
             let Some(file_name) = file_name.to_str() else {
                 continue;
             };
             if is_text_log_file_name(request.kind, file_name) {
-                log_files.push((file_name.to_owned(), entry.path()));
+                log_files.push((file_name.to_owned(), entry.file_name()));
             }
         }
         log_files.sort_by(|left, right| left.0.cmp(&right.0));
 
         let mut lines = Vec::new();
-        for (source, log_path) in log_files {
-            read_sanitized_lines_from_file(&source, &log_path, request.max_lines, &mut lines)?;
+        for (source, file_name) in log_files {
+            let file = open_read_log_file(&log_dir, &file_name, "text log")?;
+            read_sanitized_lines_from_file(&source, file, request.max_lines, &mut lines)?;
         }
 
         Ok(lines)
@@ -66,11 +72,10 @@ impl TextLogReader for FileSystemTextLogReader {
 
 fn read_sanitized_lines_from_file(
     source: &str,
-    log_path: &Path,
+    file: cap_std::fs::File,
     max_lines: usize,
     lines: &mut Vec<TextLogLine>,
 ) -> Result<()> {
-    let file = File::open(log_path).context("failed to open text log")?;
     for line in BufReader::new(file).lines() {
         let Ok(line) = line else {
             continue;
@@ -93,6 +98,7 @@ fn read_sanitized_lines_from_file(
 fn is_text_log_file_name(kind: TextLogKind, file_name: &str) -> bool {
     match kind {
         TextLogKind::App => is_calendar_log_file_name(file_name, "app-"),
+        TextLogKind::Debug => is_calendar_log_file_name(file_name, "debug-"),
         TextLogKind::Task => is_task_log_file_name(file_name),
     }
 }
@@ -161,6 +167,37 @@ fn is_safe_log_line(line: &str) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::Path;
+
+    #[cfg(unix)]
+    fn create_directory_link(link: &Path, target: &Path) {
+        std::os::unix::fs::symlink(target, link).expect("create directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn create_directory_link(link: &Path, target: &Path) {
+        let output = std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                link.to_str().expect("junction path"),
+                target.to_str().expect("junction target"),
+            ])
+            .output()
+            .expect("create directory junction");
+        assert!(output.status.success(), "mklink failed");
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_file(link).expect("remove directory symlink");
+    }
+
+    #[cfg(windows)]
+    fn remove_directory_link(link: &Path) {
+        fs::remove_dir(link).expect("remove directory junction");
+    }
 
     #[test]
     fn text_log_reader_returns_recent_sanitized_app_and_task_lines() {
@@ -234,6 +271,34 @@ mod tests {
     }
 
     #[test]
+    fn text_log_reader_returns_recent_sanitized_debug_lines() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let debug_log_dir = temp.path().join("logs").join("debug");
+        fs::create_dir_all(&debug_log_dir).expect("create debug log dir");
+        fs::write(
+            debug_log_dir.join("debug-1970-01-01.log"),
+            [
+                r#"{"event":"runtime.initialized","result":"success"}"#,
+                r#"{"raw_path":"C:/Users/Player/mod.zip"}"#,
+            ]
+            .join("\n"),
+        )
+        .expect("write debug log");
+
+        let lines = FileSystemTextLogReader::new(temp.path().to_path_buf())
+            .read_recent_sanitized(TextLogReadRequest {
+                kind: TextLogKind::Debug,
+                max_lines: 10,
+            })
+            .expect("read sanitized debug lines");
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].source, "debug-1970-01-01.log");
+        assert!(lines[0].line.contains("runtime.initialized"));
+        assert!(!serde_json::to_string(&lines).unwrap().contains("C:/Users/Player"));
+    }
+
+    #[test]
     fn text_log_reader_skips_invalid_utf8_lines() {
         let temp = tempfile::tempdir().expect("temp dir");
         let app_log_dir = temp.path().join("logs").join("app");
@@ -256,5 +321,32 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].line, "application started");
         assert_eq!(lines[1].line, "application recovered");
+    }
+
+    #[test]
+    fn linked_text_log_directory_is_rejected_without_reading_outside() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside dir");
+        fs::create_dir_all(temp.path().join("logs")).expect("create logs dir");
+        let task_link = temp.path().join("logs").join("tasks");
+        create_directory_link(&task_link, outside.path());
+        fs::write(
+            outside.path().join("task-install-outside.log"),
+            "outside task line\n",
+        )
+        .expect("write outside task log");
+        let reader = FileSystemTextLogReader::new(temp.path().to_path_buf());
+
+        assert!(reader
+            .read_recent_sanitized(TextLogReadRequest {
+                kind: TextLogKind::Task,
+                max_lines: 10,
+            })
+            .is_err());
+        assert_eq!(
+            fs::read_to_string(outside.path().join("task-install-outside.log")).unwrap(),
+            "outside task line\n"
+        );
+        remove_directory_link(&task_link);
     }
 }
