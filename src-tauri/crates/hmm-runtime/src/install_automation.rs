@@ -1,5 +1,5 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
-use crate::{production_app_data_dir, RuntimeEnvironment};
+use crate::{production_app_data_dir, RuntimeEnvironment, RuntimeEnvironmentKind};
 use hmm_app::{
     is_identity_replacement_binding, BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest,
     BatchReinstallPlanFactsProvider, BatchUninstallPlanFactsProvider,
@@ -24,7 +24,7 @@ use hmm_core::{
     PackageFileId, ProfileId, ReinstallBatchItemInput, ReinstallRecoveryTransaction,
     ReplacementBindingSnapshot, ReplacementTargetId,
 };
-use hmm_games_mhw::{MhwArmorCatalog, MhwArmorReplacementAdapter, MonsterHunterWorldAdapter};
+use hmm_games_mhw::{MhwReplacementAdapter, MhwReplacementCatalog, MonsterHunterWorldAdapter};
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonGameConfigRepository, JsonInstallManifestRepository,
@@ -37,9 +37,9 @@ use hmm_infra::{
 use hmm_ports::{
     BatchPlanFactsProvider, GameAdapter, GameConfigRepository, GamePrerequisiteRuleRepository,
     InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanner,
-    ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore, ReplacementAdapter,
-    ReplacementCatalogProvider, StoredModRevision,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
+    ModPackageInstallFileScanner, ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
+    ReplacementAdapter, ReplacementCatalogProvider, StoredModRevision,
 };
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -514,6 +514,8 @@ impl ReadOnlyInstallAutomation {
             Arc::new(ContainedReadOnlyModImportSandboxLocator::new(&app_data_dir));
         let file_scanner: Arc<dyn ModPackageInstallFileScanner> =
             Arc::new(SandboxModPackageInstallFileScanner);
+        let file_reader: Arc<dyn ModPackageInstallFileReader> =
+            Arc::new(SandboxModPackageInstallFileScanner);
         let prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(ReadOnlyJsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -554,16 +556,26 @@ impl ReadOnlyInstallAutomation {
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
             ));
+        let developer_weapon_seed = environment.kind() == RuntimeEnvironmentKind::Sandbox;
         let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
-            vec![Arc::new(MhwArmorReplacementAdapter)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementAdapter::with_developer_weapon_seed()
+            } else {
+                MhwReplacementAdapter::production()
+            })];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
-            vec![Arc::new(MhwArmorCatalog)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementCatalog::with_developer_weapon_seed()
+            } else {
+                MhwReplacementCatalog::production()
+            })];
         let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
             replacement_adapters,
             replacement_catalogs,
             Arc::clone(&catalog),
             Arc::clone(&sandbox_locator),
             file_scanner,
+            file_reader,
             Arc::new(ReadOnlyInitialRetargetInstallStatusReader),
             Arc::new(SystemClock),
         ));

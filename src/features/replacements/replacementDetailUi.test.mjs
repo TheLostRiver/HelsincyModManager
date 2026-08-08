@@ -61,7 +61,14 @@ test("Mod detail unified panel owns the replacement target tab", () => {
     /completionReloadPendingRef\.current = false;[\s\S]*setRefreshState\(\{ status: "ready" \}\);[\s\S]*setTrackedTaskState\(\{ status: "idle" \}\)/,
   );
   assert.match(panel, /重试刷新/);
-  assert.doesNotMatch(panel, /packageId:|sourceId:|bindingId:|sandbox|staging|gameRoot|archivePath/i);
+  assert.match(panel, /weapon_partial_part_set/);
+  assert.match(panel, /target\.catalogScope === "developer_sandbox"/);
+  assert.doesNotMatch(panel, /source\.pathFamily/);
+  assert.doesNotMatch(panel, /action\.sourceRelativePath|action\.targetRelativePath/);
+  assert.doesNotMatch(
+    panel,
+    /packageId:|sourceId:|bindingId:|sandboxPath|stagingPath|gameRoot|archivePath/i,
+  );
 });
 
 test("MOD file edit context action opens the existing detail panel on replacement tab", () => {

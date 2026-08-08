@@ -28,7 +28,11 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
 
   const list = exportedFunction(api, "listReplacementTargets");
   assert.match(list, /invoke<ReplacementTarget\[\]>\("list_replacement_targets"/);
-  assert.deepEqual(inlineRequestEntries(list), ["gameId: input.gameId", "query: input.query"]);
+  assert.deepEqual(inlineRequestEntries(list), [
+    "gameId: input.gameId",
+    "modId: input.modId",
+    "query: input.query",
+  ]);
 
   const analyze = exportedFunction(api, "analyzeImportedModReplacement");
   assert.match(analyze, /invoke<ReplacementAnalysis>\("analyze_imported_mod_replacement"/);
@@ -80,9 +84,16 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
     ],
   );
   assert.match(types, /export type ReplacementTarget/);
+  assert.match(types, /catalogScope:\s*"production" \| "developer_sandbox"/);
+  assert.doesNotMatch(types, /metadata:\s*Record<string, unknown>/);
+  assert.match(types, /weapon_partial_part_set/);
   assert.match(types, /export type ReplacementAnalysis/);
   assert.match(types, /export type InitialRetargetInstallPreview/);
   assert.match(types, /prerequisiteDecision:\s*GamePrerequisiteDecision/);
+  assert.doesNotMatch(
+    types,
+    /pathFamily|sourceRelativePath|targetRelativePath|sourcePathFamily|targetPathFamily/,
+  );
   assert.match(types, /export type PreviewRetargetReinstallInput/);
   assert.match(types, /export type StartRetargetReinstallTaskInput/);
   assert.match(types, /export type CancelRetargetInstallTaskInput/);

@@ -1,5 +1,7 @@
 use anyhow::Result;
-use hmm_core::{ExternalImportProvenance, ModId, ModRevisionId, PreviewImageRejectionReason};
+use hmm_core::{
+    ExternalImportProvenance, ModId, ModRevisionId, PackageFileId, PreviewImageRejectionReason,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
@@ -86,6 +88,17 @@ pub trait ModPackageInstallFileScanner: Send + Sync {
         &self,
         request: ModPackageInstallFileScanRequest<'_>,
     ) -> Result<Vec<ModPackageInstallFile>>;
+}
+
+pub struct ModPackageInstallFileReadRequest<'a> {
+    pub package_id: &'a str,
+    pub sandbox_root: &'a Path,
+    pub package_file_id: &'a PackageFileId,
+    pub max_bytes: u64,
+}
+
+pub trait ModPackageInstallFileReader: Send + Sync {
+    fn read_install_file(&self, request: ModPackageInstallFileReadRequest<'_>) -> Result<Vec<u8>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

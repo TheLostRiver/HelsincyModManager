@@ -1,4 +1,7 @@
 use crate::mod_library::ModLibraryComposition;
+use crate::{
+    RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
+};
 use hmm_app::{
     is_identity_replacement_binding, AppSettingsService, AuditLogDiagnosticsExportService,
     CategoryService, CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
@@ -39,8 +42,8 @@ use hmm_app::{
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
-    MhwArmorCatalog, MhwArmorReplacementAdapter, MonsterHunterWorldAdapter,
-    MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
+    MhwReplacementAdapter, MhwReplacementCatalog, MhwWeaponMrl3TexturePathTransformer,
+    MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
@@ -72,12 +75,13 @@ use hmm_infra::{
 };
 use hmm_ports::{
     AppClock, AppSettingsRepository, AuditLogEvent, AuditLogReader, AuditLogWriter,
-    AuditWriteFailurePolicy, DebugLogControl, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
-    GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
-    InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFileScanner, ProfileRepository,
-    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    AuditWriteFailurePolicy, ContentTransformer, ContentTransformerRegistry, DebugLogControl,
+    DiagnosticPackageExporter, DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth,
+    GameAdapter, GameConfigRepository, GameLauncher, GamePrerequisiteRuleRepository,
+    GameRunningDetector, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
+    ModPackageInstallFileScanner, ProfileRepository, ProfileSaveDirectoryValidator,
+    ProfileSaveSettingsRepository,
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
     SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TaskLogWriter,
@@ -91,6 +95,7 @@ pub struct HmmRuntimeBuilder {
     app_data_dir: PathBuf,
     install_manifest_repository: Option<Arc<dyn InstallManifestRepository>>,
     sandbox_write_admission: Option<Arc<dyn InstallWriteAdmission>>,
+    sandbox_environment: Option<RuntimeEnvironment>,
 }
 
 impl HmmRuntimeBuilder {
@@ -99,6 +104,7 @@ impl HmmRuntimeBuilder {
             app_data_dir,
             install_manifest_repository: None,
             sandbox_write_admission: None,
+            sandbox_environment: None,
         }
     }
 
@@ -117,6 +123,17 @@ impl HmmRuntimeBuilder {
     ) -> Self {
         self.sandbox_write_admission = Some(admission);
         self
+    }
+
+    pub fn with_sandbox_environment(
+        mut self,
+        environment: RuntimeEnvironment,
+    ) -> Result<Self, String> {
+        if environment.kind() != RuntimeEnvironmentKind::Sandbox {
+            return Err("developer weapon seed requires a Sandbox environment".to_owned());
+        }
+        self.sandbox_environment = Some(environment);
+        Ok(self)
     }
 
     pub fn build(self) -> Result<HmmRuntime, String> {
@@ -206,6 +223,7 @@ impl HmmRuntime {
             app_data_dir,
             install_manifest_repository,
             sandbox_write_admission,
+            sandbox_environment,
         } = builder;
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
@@ -567,6 +585,8 @@ impl HmmRuntime {
             ));
         let install_file_scanner: Arc<dyn ModPackageInstallFileScanner> =
             Arc::new(SandboxModPackageInstallFileScanner);
+        let install_file_reader: Arc<dyn ModPackageInstallFileReader> =
+            Arc::new(SandboxModPackageInstallFileScanner);
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
@@ -592,19 +612,35 @@ impl HmmRuntime {
         ));
         let initial_retarget_install_status: Arc<dyn InitialRetargetInstallStatusReader> =
             install_recovery_scanner.clone();
+        let developer_weapon_seed = sandbox_environment.is_some();
         let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
-            vec![Arc::new(MhwArmorReplacementAdapter)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementAdapter::with_developer_weapon_seed()
+            } else {
+                MhwReplacementAdapter::production()
+            })];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
-            vec![Arc::new(MhwArmorCatalog)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementCatalog::with_developer_weapon_seed()
+            } else {
+                MhwReplacementCatalog::production()
+            })];
         let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
             replacement_adapters,
             replacement_catalogs,
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
             install_file_scanner,
+            install_file_reader,
             initial_retarget_install_status,
             Arc::new(SystemClock),
         ));
+        let content_transformers = Arc::new(
+            ContentTransformerRegistry::new(vec![
+                Arc::new(MhwWeaponMrl3TexturePathTransformer) as Arc<dyn ContentTransformer>
+            ])
+            .map_err(|_| "content transformer registry is invalid".to_owned())?,
+        );
         let initial_retarget_install_preflight =
             Arc::new(InitialRetargetInstallPreflightService::new(
                 Arc::clone(&replacement_workflow),
@@ -634,7 +670,15 @@ impl HmmRuntime {
                 Arc::clone(&reinstall_recovery_repository),
             ));
         let sandbox_write_admission: Arc<dyn InstallWriteAdmission> =
-            sandbox_write_admission.unwrap_or_else(|| Arc::new(AllowRuntimeWriteAdmission));
+            match (sandbox_write_admission, sandbox_environment) {
+                (Some(admission), _) => admission,
+                (None, Some(environment)) => Arc::new(SandboxRuntimeWriteAdmission::new(
+                    environment,
+                    app_data_dir.clone(),
+                    Arc::clone(&game_config_repository),
+                )),
+                (None, None) => Arc::new(AllowRuntimeWriteAdmission),
+            };
         let reinstall_write_admission: Arc<dyn InstallWriteAdmission> = Arc::new(
             ReinstallRecoveryWriteAdmission::new(Arc::clone(&reinstall_recovery_repository)),
         );
@@ -658,6 +702,7 @@ impl HmmRuntime {
                 Arc::clone(&prerequisites),
                 Arc::clone(&mod_import_sandbox_locator),
                 Arc::clone(&install_recovery_scanner),
+                Arc::clone(&content_transformers),
                 app_data_dir.clone(),
             ));
         let retarget_install_task_runner =
@@ -696,6 +741,7 @@ impl HmmRuntime {
             Arc::clone(&install_manifest_repository),
             Arc::clone(&reinstall_recovery_repository),
             Arc::clone(&replacement_workflow),
+            content_transformers,
             app_data_dir.clone(),
         ));
         let reinstall_task_runner = Arc::new(ReinstallTaskRunner::with_write_coordination(
@@ -858,6 +904,62 @@ impl InstallWriteAdmission for AllowRuntimeWriteAdmission {
         _profile_id: &hmm_core::ProfileId,
     ) -> Result<(), InstallWriteAdmissionError> {
         Ok(())
+    }
+}
+
+struct SandboxRuntimeWriteAdmission {
+    environment: RuntimeEnvironment,
+    app_data_dir: PathBuf,
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    capability: Mutex<Option<SandboxWriteCapability>>,
+}
+
+impl SandboxRuntimeWriteAdmission {
+    fn new(
+        environment: RuntimeEnvironment,
+        app_data_dir: PathBuf,
+        game_config_repository: Arc<dyn GameConfigRepository>,
+    ) -> Self {
+        Self {
+            environment,
+            app_data_dir,
+            game_config_repository,
+            capability: Mutex::new(None),
+        }
+    }
+}
+
+impl InstallWriteAdmission for SandboxRuntimeWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        game_id: &GameId,
+        _profile_id: &hmm_core::ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(game_id)
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
+        let mut capability = self
+            .capability
+            .lock()
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
+        if capability.is_none() {
+            *capability = Some(
+                SandboxWriteCapability::acquire(&self.environment)
+                    .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?,
+            );
+        }
+        capability
+            .as_ref()
+            .ok_or(InstallWriteAdmissionError::SafetyRejected)?
+            .admit_roots(SandboxWriteRoots::new(
+                self.app_data_dir.clone(),
+                game_instance.root_dir,
+            ))
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+            .revalidate()
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
     }
 }
 
@@ -1026,6 +1128,7 @@ pub struct ConfiguredReinstallExecutor {
     manifest_repository: Arc<dyn InstallManifestRepository>,
     recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
     replacement_workflow: Arc<ReplacementWorkflowService>,
+    content_transformers: Arc<ContentTransformerRegistry>,
     app_data_dir: PathBuf,
 }
 
@@ -1074,6 +1177,7 @@ impl ConfiguredReinstallExecutor {
         manifest_repository: Arc<dyn InstallManifestRepository>,
         recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
         replacement_workflow: Arc<ReplacementWorkflowService>,
+        content_transformers: Arc<ContentTransformerRegistry>,
         app_data_dir: PathBuf,
     ) -> Self {
         let source = Arc::new(ConfiguredReinstallCandidateSourceReader::new(Arc::clone(
@@ -1089,6 +1193,7 @@ impl ConfiguredReinstallExecutor {
             manifest_repository,
             recovery_repository,
             replacement_workflow,
+            content_transformers,
             app_data_dir,
         }
     }
@@ -1156,9 +1261,10 @@ impl ConfiguredReinstallExecutor {
                 )
             })?;
         let staging_root = retarget_reinstall_staging_root(&self.app_data_dir);
-        let materializer = FileSystemRetargetStagingMaterializer::new(
+        let materializer = FileSystemRetargetStagingMaterializer::new_with_registry(
             staging_root.clone(),
             Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            Arc::clone(&self.content_transformers),
         );
         let plan = self
             .replacement_workflow
@@ -1286,6 +1392,7 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
             previous_revision_id: None,
             candidate_revision_id: request.candidate_revision_id.clone(),
             counts: ReinstallTargetCounts::default(),
+            adapter_facts: None,
         };
         let services = self
             .services_for(&request.game_id)
@@ -1341,6 +1448,7 @@ impl RetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
             previous_revision_id: None,
             candidate_revision_id: hmm_core::ModRevisionId::new("unresolved"),
             counts: ReinstallTargetCounts::default(),
+            adapter_facts: None,
         };
         let prepared = match ConfiguredReinstallExecutor::prepare_retarget_reinstall(self, request)
         {
@@ -1386,6 +1494,7 @@ impl RetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
                         })
                         .unwrap_or(fallback.candidate_revision_id),
                     counts: preview.counts,
+                    adapter_facts: None,
                 },
             )),
         }
@@ -1616,6 +1725,7 @@ struct ConfiguredInitialRetargetInstallPlanner {
     prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+    content_transformers: Arc<ContentTransformerRegistry>,
     app_data_dir: PathBuf,
 }
 
@@ -1625,6 +1735,7 @@ impl ConfiguredInitialRetargetInstallPlanner {
         prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+        content_transformers: Arc<ContentTransformerRegistry>,
         app_data_dir: PathBuf,
     ) -> Self {
         Self {
@@ -1632,6 +1743,7 @@ impl ConfiguredInitialRetargetInstallPlanner {
             prerequisites,
             sandbox_locator,
             install_recovery_scanner,
+            content_transformers,
             app_data_dir,
         }
     }
@@ -1646,9 +1758,10 @@ impl ConfiguredInitialRetargetInstallPlanner {
             .map_err(|_| ReplacementWorkflowError::SandboxUnavailable)?;
         let staging_root = retarget_staging_root(&self.app_data_dir, planned.binding_id())
             .ok_or(ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(FileSystemRetargetStagingMaterializer::new(
+        Ok(FileSystemRetargetStagingMaterializer::new_with_registry(
             staging_root,
             Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            Arc::clone(&self.content_transformers),
         ))
     }
 }
@@ -2045,6 +2158,75 @@ mod tests {
             status: GameDirectoryStatus::Configured,
             configured_at_unix_millis,
         }
+    }
+
+    #[test]
+    fn sandbox_runtime_write_admission_accepts_only_roots_inside_the_capability() {
+        let sandbox = tempfile::tempdir().expect("temporary sandbox root");
+        let app_data_dir = sandbox.path().join("app-data");
+        let game_dir = sandbox.path().join("game");
+        std::fs::write(
+            sandbox.path().join(crate::SANDBOX_MARKER_FILE_NAME),
+            crate::SANDBOX_MARKER_SCHEMA,
+        )
+        .expect("write artificial sandbox marker");
+        std::fs::create_dir_all(&app_data_dir).expect("create app data root");
+        std::fs::create_dir_all(&game_dir).expect("create game root");
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("sandbox environment");
+        let admission = SandboxRuntimeWriteAdmission::new(
+            environment,
+            app_data_dir,
+            Arc::new(StaticGameConfigRepository {
+                instance: Some(GameInstance {
+                    id: "mhw-sandbox".to_owned(),
+                    game_id: GameId::mhw(),
+                    display_name: "Artificial MHW".to_owned(),
+                    root_dir: game_dir,
+                    status: GameDirectoryStatus::Configured,
+                    configured_at_unix_millis: 1,
+                }),
+            }),
+        );
+
+        admission
+            .ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default"))
+            .expect("sandbox roots are admitted");
+        assert!(sandbox
+            .path()
+            .join(crate::SANDBOX_MARKER_FILE_NAME)
+            .is_file());
+
+        let outside = tempfile::tempdir().expect("outside game root");
+        let rejected = SandboxRuntimeWriteAdmission::new(
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("sandbox environment"),
+            sandbox.path().join("app-data"),
+            Arc::new(StaticGameConfigRepository {
+                instance: Some(GameInstance {
+                    id: "mhw-outside".to_owned(),
+                    game_id: GameId::mhw(),
+                    display_name: "Artificial MHW".to_owned(),
+                    root_dir: outside.path().to_path_buf(),
+                    status: GameDirectoryStatus::Configured,
+                    configured_at_unix_millis: 1,
+                }),
+            }),
+        );
+        assert_eq!(
+            rejected.ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default")),
+            Err(InstallWriteAdmissionError::SafetyRejected)
+        );
+    }
+
+    #[test]
+    fn developer_weapon_seed_builder_requires_a_sandbox_environment() {
+        let production = RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
+            .expect("production environment");
+        assert!(
+            HmmRuntime::builder(std::env::temp_dir().join("hmm-production-builder"))
+                .with_sandbox_environment(production)
+                .is_err()
+        );
     }
 
     struct TestGameAdapter {

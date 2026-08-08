@@ -1,8 +1,9 @@
 use super::*;
 use crate::{ReinstallCommitError, ReinstallCommitResult, ReinstallTargetCounts};
 use hmm_core::{
-    FileLayer, GameId, InstallManifest, InstallManifestEntry, InstallTargetPath,
-    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+    ContentTransformerIdentity, FileLayer, GameId, InstallManifest, InstallManifestEntry,
+    InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+    ReplacementAdapterFacts,
 };
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
 use std::collections::BTreeSet;
@@ -346,6 +347,7 @@ fn retarget_reinstall_uses_the_shared_runner_and_records_only_stable_target_iden
                 added: 1,
                 stale: 1,
             },
+            adapter_facts: None,
         },
     }));
     let audit = Arc::new(RecordingAuditLog::default());
@@ -374,6 +376,48 @@ fn retarget_reinstall_uses_the_shared_runner_and_records_only_stable_target_iden
     assert_eq!(event.fields["previous_revision_id"], "installed-v1");
     assert_eq!(event.fields["candidate_revision_id"], "installed-v1");
     assert_eq!(event.fields["target_id"], "mhw:armor:fatalis-alpha");
+    assert_sanitized_audit(&event);
+}
+
+#[test]
+fn reinstall_audit_projects_transformer_identity_without_digest_or_path_facts() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::Install)
+        .expect("task can be created");
+    let executor = FakeExecutor::success(Arc::clone(&task_manager), &task.task_id);
+    *executor.prepare_result.lock().expect("prepare result lock") = Some(Ok(FakePrepared {
+        audit: ReinstallTaskAuditContext {
+            adapter_facts: Some(Box::new(
+                crate::ReplacementAdapterAuditFacts::from_adapter_facts(&transformer_facts())
+                    .expect("audit projection"),
+            )),
+            ..audit_context()
+        },
+    }));
+    let audit = Arc::new(RecordingAuditLog::default());
+    let runner = ReinstallTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::new(executor),
+        audit.clone(),
+        Arc::new(FixedClock),
+    );
+
+    runner
+        .run_reinstall_task(&task.task_id, sample_request())
+        .expect("reinstall succeeds");
+
+    let event = audit.take_one();
+    assert_eq!(event.fields["adapter_id"], "mhw.weapon");
+    assert_eq!(event.fields["strategy_id"], "mrl3-texture-path");
+    assert_eq!(
+        event.fields["transformer_id"],
+        "mhw.weapon.mrl3-texture-path.v1"
+    );
+    assert_eq!(event.fields["transformer_version"], "1");
+    assert_eq!(event.fields["part_count"], "1");
+    assert_eq!(event.fields["file_count"], "2");
+    assert!(!event.fields.values().any(|value| value.len() == 64));
     assert_sanitized_audit(&event);
 }
 
@@ -1548,7 +1592,30 @@ fn audit_context() -> ReinstallTaskAuditContext {
             added: 1,
             stale: 1,
         },
+        adapter_facts: None,
     }
+}
+
+fn transformer_facts() -> ReplacementAdapterFacts {
+    ReplacementAdapterFacts::new(
+        1,
+        "mhw.weapon",
+        "mrl3-texture-path",
+        1,
+        "a".repeat(64),
+        "b".repeat(64),
+        "c".repeat(64),
+    )
+    .expect("adapter facts")
+    .with_transformers(
+        vec![
+            ContentTransformerIdentity::new("mhw.weapon.mrl3-texture-path.v1", 1)
+                .expect("transformer identity"),
+        ],
+        1,
+        2,
+    )
+    .expect("transformer facts")
 }
 
 fn sensitive_manifest() -> InstallManifest {
