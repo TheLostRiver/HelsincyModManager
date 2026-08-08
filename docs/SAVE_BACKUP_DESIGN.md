@@ -8,7 +8,8 @@
 
 - 在不触碰真实游戏目录安装链路的前提下，为玩家存档提供可审计、可校验、可清理的备份能力。
 - 未手动选择备份目录时，仍允许使用安全默认目录备份，并在 UI 中明确展示当前备份位置。
-- 每个 game/profile 有独立备份文件夹，备份文件名稳定、可排序、可读，不使用随意随机名。
+- 每个 game/profile 有独立备份文件夹，备份文件名稳定、可排序、可读，不使用随意随机名；恢复前安全备份
+  必须放在该 profile 下单独的 `pre-restore/` 子目录，不能与普通手动/自动备份混放。
 - 备份结果必须写入 manifest 和历史记录，后续恢复只能基于这些事实重新校验。
 - 后端负责目录解析、复制/打包、校验、保留策略和审计；前端只展示状态并提交短 id / 用户确认。
 
@@ -388,10 +389,23 @@ save_backup_retention_failed
 - 用户二次确认。
 - 恢复前读取 manifest 并校验 archive hash。
 - 解包到临时目录后校验每个文件 hash/size。
-- 恢复前为当前存档目录创建 pre-restore 备份。
+- 恢复前为当前存档目录创建 pre-restore 备份；默认开启，且必须先成功落盘再允许覆盖。
 - 恢复写入使用同一 profile 的存档写锁。
 - 失败时尽量回滚到 pre-restore 备份。
 - 写 Audit Log。
+
+恢复 UX 与安全默认：
+
+- 点击 Profile 中的“恢复存档”后，必须打开统一的悬浮/Modal 确认层，明确显示来源备份摘要、目标
+  Profile、恢复前自动备份开关和不可逆风险；不能使用卡片内联展开替代确认层。
+- `pre_restore_backup_enabled` 持久化在现有 Profile 存档设置中，默认值为 `true`。用户关闭后，
+  确认层必须显示高风险警告并要求再次确认；关闭不应被静默继承到其他 Profile。
+- 预恢复备份目录为：
+  `<backup-root>/HelsincyModManager/saves/<gameId>/profile-<profileId>/pre-restore/`。
+  文件名使用 `<UTC>_<gameId>_profile-<profileId>_pre-restore.zip` 及同名 manifest，允许序号后缀，
+  不使用 Profile 显示名、Steam ID 或完整本地路径。
+- 备份、恢复和最终结果都要通过 task progress、持久成功/失败通知与 Audit Log 呈现；备份失败时
+  fail closed，不开始恢复。
 
 没有这些基础前，不允许启用“恢复”按钮。
 
@@ -454,7 +468,8 @@ save_backup_retention_failed
 
 - 增加 `preview_restore_save_backup`。
 - 增加 `start_restore_save_backup_task`。
-- 恢复前二次确认和 pre-restore 备份。
+- 统一悬浮确认层，默认开启恢复前 pre-restore 备份；关闭开关时显示风险并要求额外确认。
+- pre-restore 备份写入独立目录，成功后才允许恢复；失败时 fail closed 并保留可审计结果。
 - 恢复完成后刷新历史和审计。
 
 ### 切片 6：独立备份中心页面
