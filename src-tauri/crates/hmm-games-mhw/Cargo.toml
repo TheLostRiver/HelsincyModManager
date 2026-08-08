@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+crc32fast = "1.5.0"
 hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
 serde.workspace = true

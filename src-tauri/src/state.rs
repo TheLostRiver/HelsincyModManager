@@ -55,7 +55,11 @@ impl AppState {
         startup: AppStateStartup,
     ) -> Result<Self, String> {
         let sandbox_environment = resolve_sandbox_environment();
-        let runtime = HmmRuntime::from_app_data_dir(app_data_dir.clone())?;
+        let mut runtime_builder = HmmRuntime::builder(app_data_dir.clone());
+        if let Some(environment) = sandbox_environment.clone() {
+            runtime_builder = runtime_builder.with_sandbox_environment(environment)?;
+        }
+        let runtime = runtime_builder.build()?;
         let batch_sandbox = sandbox_environment.map(|environment| BatchSandboxHandle {
             in_process_database: environment
                 .sandbox_data_dir()
@@ -80,7 +84,8 @@ impl AppState {
     }
 
     /// Returns the GUI-owned database connection only when the batch root is the same app-data
-    /// root. A differently configured batch root keeps the immutable snapshot fail-closed path.
+    /// root. A differently configured batch root must keep the existing fail-closed snapshot
+    /// behavior instead of accidentally journaling into the GUI database.
     pub fn batch_sandbox_database(&self) -> Option<Arc<Mutex<rusqlite::Connection>>> {
         self.batch_sandbox
             .as_ref()

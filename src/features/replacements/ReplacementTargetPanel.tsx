@@ -87,6 +87,7 @@ const warningLabels: Record<ReplacementWarning, string> = {
   multiple_sources: "检测到多个源槽位，当前版本不会自动拆分",
   unsupported_source: "包内包含当前版本不支持的源槽位",
   source_matches_target: "源槽位与目标槽位相同",
+  weapon_partial_part_set: "武器包只包含部分可选部件，将仅处理已检测到的完整文件对",
 };
 
 function replacementErrorMessage(error: unknown, fallback: string) {
@@ -103,6 +104,12 @@ function replacementErrorMessage(error: unknown, fallback: string) {
       return "该 Mod 不是当前可自动处理的单源外观包";
     case "replacement_target_catalog_unavailable":
       return "替换目标目录暂不可用";
+    case "weapon_developer_seed_unavailable":
+      return "武器替换仅在受控开发 Sandbox 中可用";
+    case "weapon_source_content_unavailable":
+      return "无法读取受控武器资源，请重新导入该 Mod";
+    case "weapon_cross_family_target":
+      return "所选目标与武器类型不兼容";
     case "replacement_target_not_found":
       return "所选替换目标已不存在";
     case "replacement_install_state_unavailable":
@@ -230,7 +237,7 @@ export function ReplacementTargetPanel({
 
     void Promise.all([
       analyzeImportedModReplacement({ gameId, profileId, modId }),
-      listReplacementTargets({ gameId }),
+      listReplacementTargets({ gameId, modId }),
     ])
       .then(([analysis, targets]) => {
         if (!cancelled) {
@@ -567,7 +574,6 @@ export function ReplacementTargetPanel({
               <div key={source.id}>
                 <dt>{source.sourceType}</dt>
                 <dd>{source.internalId}</dd>
-                <dd>{source.pathFamily}</dd>
               </div>
             ))}
           </dl>
@@ -640,7 +646,10 @@ export function ReplacementTargetPanel({
                       </span>
                     ) : null}
                   </span>
-                  <code>{target.internalId}</code>
+                  <span className="replacement-panel__target-facts">
+                    <code>{target.internalId}</code>
+                    {target.catalogScope === "developer_sandbox" ? <small>人工目录</small> : null}
+                  </span>
                 </label>
               );
             })}
@@ -675,13 +684,20 @@ export function ReplacementTargetPanel({
               </div>
               {previewState.mode === "initial" ? (
                 <>
-                  <ul className="replacement-panel__action-list">
-                    {previewState.preview.actions.map((action) => (
-                      <li key={`${action.sourceRelativePath}:${action.targetRelativePath}`}>
-                        <code>{action.targetRelativePath}</code>
-                      </li>
-                    ))}
-                  </ul>
+                  <dl className="replacement-panel__preview-facts">
+                    <div>
+                      <dt>资源类型</dt>
+                      <dd>{previewState.preview.target.targetType}</dd>
+                    </div>
+                    <div>
+                      <dt>目标编号</dt>
+                      <dd>{previewState.preview.target.internalId}</dd>
+                    </div>
+                    <div>
+                      <dt>写入动作</dt>
+                      <dd>{previewState.preview.actions.length}</dd>
+                    </div>
+                  </dl>
                   {previewState.preview.installPlan.hasBlockingConflicts ? (
                     <div className="replacement-panel__inline-state is-error">
                       <ShieldAlert size={17} aria-hidden="true" />

@@ -1,8 +1,9 @@
 use crate::{
-    GameId, InstallTargetPath, PackageFileId, ReplacementBinding, ReplacementSourceId,
-    ReplacementTargetKind,
+    ContentTransformInvocation, GameId, InstallTargetPath, PackageFileId, ReplacementAdapterFacts,
+    ReplacementBinding, ReplacementSourceId, ReplacementTargetKind,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
@@ -48,6 +49,10 @@ pub enum RetargetError {
     DuplicateRetargetPackageFile { package_file_id: String },
     #[error("retarget plan contains a duplicate target path: {target_path}")]
     DuplicateRetargetTargetPath { target_path: String },
+    #[error("retarget plan transform facts are missing")]
+    MissingTransformFacts,
+    #[error("retarget plan transform facts do not match its actions")]
+    TransformFactsMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -123,6 +128,7 @@ pub enum ReplacementWarning {
     MultipleSources,
     UnsupportedSource,
     SourceMatchesTarget,
+    WeaponPartialPartSet,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -202,6 +208,8 @@ pub struct RetargetAction {
     target_internal_id: String,
     source_path_family: String,
     target_path_family: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_transform: Option<ContentTransformInvocation>,
 }
 
 impl RetargetAction {
@@ -245,7 +253,13 @@ impl RetargetAction {
             target_internal_id,
             source_path_family,
             target_path_family,
+            content_transform: None,
         })
+    }
+
+    pub fn with_content_transform(mut self, invocation: ContentTransformInvocation) -> Self {
+        self.content_transform = Some(invocation);
+        self
     }
 
     pub fn package_file_id(&self) -> &PackageFileId {
@@ -279,6 +293,10 @@ impl RetargetAction {
     pub fn target_path_family(&self) -> &str {
         &self.target_path_family
     }
+
+    pub fn content_transform(&self) -> Option<&ContentTransformInvocation> {
+        self.content_transform.as_ref()
+    }
 }
 
 fn required_action_field(value: String, error: RetargetError) -> Result<String, RetargetError> {
@@ -295,6 +313,8 @@ pub struct RetargetPlan {
     source: ReplacementSource,
     actions: Vec<RetargetAction>,
     warnings: Vec<ReplacementWarning>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    adapter_facts: Option<ReplacementAdapterFacts>,
 }
 
 impl RetargetPlan {
@@ -347,7 +367,98 @@ impl RetargetPlan {
             source,
             actions,
             warnings,
+            adapter_facts: None,
         })
+    }
+
+    pub fn with_adapter_facts(
+        mut self,
+        adapter_facts: ReplacementAdapterFacts,
+    ) -> Result<Self, RetargetError> {
+        self.adapter_facts = Some(adapter_facts);
+        self.validate_transform_facts()?;
+        Ok(self)
+    }
+
+    pub fn validate_transform_facts(&self) -> Result<(), RetargetError> {
+        let has_transforms = self
+            .actions
+            .iter()
+            .any(|action| action.content_transform().is_some());
+        let Some(adapter_facts) = &self.adapter_facts else {
+            return if has_transforms {
+                Err(RetargetError::MissingTransformFacts)
+            } else {
+                Ok(())
+            };
+        };
+        if adapter_facts.transform_set_sha256() != self.content_transform_set_sha256() {
+            return Err(RetargetError::TransformFactsMismatch);
+        }
+        if has_transforms
+            && (adapter_facts.transformer_identities()
+                != self.content_transformer_identities().as_slice()
+                || adapter_facts.file_count() != self.actions.len() as u32
+                || adapter_facts.part_count() == 0)
+        {
+            return Err(RetargetError::TransformFactsMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn content_transformer_identities(&self) -> Vec<crate::ContentTransformerIdentity> {
+        self.actions
+            .iter()
+            .filter_map(|action| action.content_transform())
+            .map(|invocation| invocation.transformer_identity())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    pub fn content_transform_set_sha256(&self) -> String {
+        let mut transformed_actions = self
+            .actions
+            .iter()
+            .filter_map(|action| {
+                action
+                    .content_transform()
+                    .map(|invocation| (action, invocation))
+            })
+            .collect::<Vec<_>>();
+        transformed_actions.sort_by(|(left, _), (right, _)| {
+            left.package_file_id()
+                .cmp(right.package_file_id())
+                .then_with(|| {
+                    left.target_relative_path()
+                        .cmp(right.target_relative_path())
+                })
+        });
+
+        let mut hasher = Sha256::new();
+        hash_transform_field(&mut hasher, "hmm-content-transform-set-v1");
+        hasher.update((transformed_actions.len() as u64).to_be_bytes());
+        for (action, invocation) in transformed_actions {
+            hash_transform_field(&mut hasher, action.package_file_id().as_str());
+            hash_transform_field(&mut hasher, action.target_relative_path().as_str());
+            hasher.update(invocation.schema_version().to_be_bytes());
+            hash_transform_field(&mut hasher, invocation.transformer_id());
+            hasher.update(invocation.transformer_version().to_be_bytes());
+            hash_transform_field(&mut hasher, invocation.source_content_sha256());
+            hash_transform_field(&mut hasher, invocation.output_content_sha256());
+            hash_transform_field(&mut hasher, invocation.canonical_mapping_sha256());
+            hasher.update((invocation.dependencies().len() as u64).to_be_bytes());
+            for (package_file_id, digest) in invocation.dependencies() {
+                hash_transform_field(&mut hasher, package_file_id.as_str());
+                hash_transform_field(&mut hasher, digest);
+            }
+            hasher.update((invocation.parameters().len() as u64).to_be_bytes());
+            for (key, value) in invocation.parameters() {
+                hash_transform_field(&mut hasher, key);
+                hash_transform_field(&mut hasher, value);
+            }
+        }
+        format!("{:x}", hasher.finalize())
     }
 
     pub fn binding(&self) -> &ReplacementBinding {
@@ -365,4 +476,13 @@ impl RetargetPlan {
     pub fn warnings(&self) -> &[ReplacementWarning] {
         &self.warnings
     }
+
+    pub fn adapter_facts(&self) -> Option<&ReplacementAdapterFacts> {
+        self.adapter_facts.as_ref()
+    }
+}
+
+fn hash_transform_field(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value.as_bytes());
 }

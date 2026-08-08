@@ -1185,6 +1185,27 @@ fn hash_replacement_snapshots(hasher: &mut Sha256, snapshots: &[ReplacementBindi
         update_hash_str(hasher, snapshot.source_path_family());
         update_hash_str(hasher, snapshot.target_path_family());
         update_hash_str(hasher, snapshot.retarget_kind().as_str());
+        match snapshot.adapter_facts() {
+            Some(facts) => {
+                hasher.update([1]);
+                hasher.update(b"hmm-replacement-adapter-facts-v1");
+                hasher.update(facts.schema_version().to_be_bytes());
+                update_hash_str(hasher, facts.adapter_id());
+                update_hash_str(hasher, facts.strategy_id());
+                hasher.update(facts.strategy_version().to_be_bytes());
+                update_hash_str(hasher, facts.source_closure_sha256());
+                update_hash_str(hasher, facts.part_set_sha256());
+                update_hash_str(hasher, facts.transform_set_sha256());
+                hasher.update(facts.part_count().to_be_bytes());
+                hasher.update(facts.file_count().to_be_bytes());
+                hasher.update((facts.transformer_identities().len() as u64).to_be_bytes());
+                for identity in facts.transformer_identities() {
+                    update_hash_str(hasher, identity.transformer_id());
+                    hasher.update(identity.transformer_version().to_be_bytes());
+                }
+            }
+            None => hasher.update([0]),
+        }
     }
 }
 

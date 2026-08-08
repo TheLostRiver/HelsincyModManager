@@ -20,6 +20,7 @@ export function listReplacementTargets(
   return invoke<ReplacementTarget[]>("list_replacement_targets", {
     request: {
       gameId: input.gameId,
+      modId: input.modId,
       query: input.query,
     },
   });

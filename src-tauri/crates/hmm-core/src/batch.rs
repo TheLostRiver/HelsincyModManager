@@ -639,6 +639,8 @@ struct CanonicalBinding<'a> {
     source_path_family: &'a str,
     target_path_family: &'a str,
     retarget_kind: &'a crate::ReplacementTargetKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    adapter_facts: Option<&'a crate::ReplacementAdapterFacts>,
 }
 
 #[derive(Serialize)]
@@ -869,6 +871,7 @@ fn canonical_binding(binding: &ReplacementBindingSnapshot) -> CanonicalBinding<'
         source_path_family: binding.source_path_family(),
         target_path_family: binding.target_path_family(),
         retarget_kind: binding.retarget_kind(),
+        adapter_facts: binding.adapter_facts(),
     }
 }
 
@@ -1159,6 +1162,105 @@ mod tests {
             crate::ReplacementTargetKind::parse("armor").expect("replacement kind"),
         )
         .expect("replacement snapshot")
+    }
+
+    #[test]
+    fn batch_digest_tracks_optional_replacement_adapter_facts() {
+        let base_binding = binding_snapshot("mod-a");
+        let adapter_facts = crate::ReplacementAdapterFacts::new(
+            1,
+            "mhw.weapon",
+            "mrl3-texture-path",
+            1,
+            "a".repeat(64),
+            "b".repeat(64),
+            "c".repeat(64),
+        )
+        .expect("adapter facts")
+        .with_transformers(
+            vec![
+                crate::ContentTransformerIdentity::new("mhw.weapon.mrl3-texture-path.v1", 1)
+                    .expect("transformer identity"),
+            ],
+            1,
+            2,
+        )
+        .expect("transformer facts");
+        let adapter_binding = base_binding
+            .clone()
+            .with_adapter_facts(adapter_facts.clone());
+        let changed_transformer_binding = base_binding.clone().with_adapter_facts(
+            adapter_facts
+                .with_transformers(
+                    vec![crate::ContentTransformerIdentity::new(
+                        "mhw.weapon.mrl3-texture-path.v1",
+                        2,
+                    )
+                    .expect("changed transformer identity")],
+                    1,
+                    2,
+                )
+                .expect("changed transformer facts"),
+        );
+        let build = |binding| {
+            build_batch_plan(
+                request(
+                    BatchOperation::Reinstall,
+                    vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                        mod_id: ModId::new("mod-a"),
+                        installed_revision_id: ModRevisionId::new("revision-a"),
+                        candidate_revision_id: ModRevisionId::new("revision-a"),
+                        layer: FileLayer::new("default", 10),
+                        replacement_binding_snapshot: Some(binding),
+                    })],
+                )
+                .normalize()
+                .expect("normalized request"),
+                BatchPlanFacts {
+                    environment_digest: "env".to_owned(),
+                    prerequisite_rules_version: Some(1),
+                    global_blocking_reasons: Vec::new(),
+                    items: vec![BatchItemFacts {
+                        mod_id: ModId::new("mod-a"),
+                        source_revision_id: Some(ModRevisionId::new("revision-a")),
+                        installed_revision_id: Some(ModRevisionId::new("revision-a")),
+                        fact_digest: "fact-mod-a".to_owned(),
+                        single_plan_digest: "plan-mod-a".to_owned(),
+                        target_claims: vec![BatchTargetClaim {
+                            target_path: InstallTargetPath::parse(
+                                "nativepc/weapon.bin",
+                                ["nativepc"],
+                            )
+                            .expect("target"),
+                            kind: BatchTargetWriteKind::Install,
+                        }],
+                        action_summary: BatchActionSummary {
+                            actions: 1,
+                            ..Default::default()
+                        },
+                        prerequisite: BatchPreflightDecision {
+                            status: BatchPreflightStatus::Ready,
+                            rules_version: Some(1),
+                            codes: Vec::new(),
+                        },
+                        blocking_reasons: Vec::new(),
+                        warning_codes: Vec::new(),
+                    }],
+                },
+                BatchResourceLimits::default(),
+            )
+            .expect("batch plan")
+        };
+
+        let base = build(base_binding);
+        let with_adapter_facts = build(adapter_binding);
+        let with_changed_transformer = build(changed_transformer_binding);
+
+        assert_ne!(base.batch_digest, with_adapter_facts.batch_digest);
+        assert_ne!(
+            with_adapter_facts.batch_digest,
+            with_changed_transformer.batch_digest
+        );
     }
 
     fn facts(mod_id: &str, target: &str) -> BatchItemFacts {

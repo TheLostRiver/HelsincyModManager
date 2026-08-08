@@ -6,6 +6,9 @@ use hmm_core::{
 };
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
+use crate::replacement_audit::{
+    append_adapter_audit_fields, unique_adapter_audit_facts, ReplacementAdapterAuditFacts,
+};
 use crate::{
     GamePrerequisiteDecision, GameProfileWriteLockRegistry, ImportedModInstallCommitRequest,
     InstallPlanCommitter, InstallWriteAdmission, ReplacementWorkflowError, TaskKind, TaskManager,
@@ -120,18 +123,19 @@ impl RetargetInstallTaskRunner {
         let mut events = vec![running_event(task_id, PLAN_BUILDING_PHASE)];
         let prerequisite_decision = self.planner.prerequisite_decision(&request.game_id);
         if prerequisite_decision.is_blocked() {
-            return Err(self.fail(task_id, &request, events, "prerequisite", 0));
+            return Err(self.fail(task_id, &request, events, "prerequisite", 0, None));
         }
         let planned = match self
             .planner
             .build_initial_retarget_install_plan(request.clone())
         {
             Ok(planned) => planned,
-            Err(_) => return Err(self.fail(task_id, &request, events, "planning", 0)),
+            Err(_) => return Err(self.fail(task_id, &request, events, "planning", 0, None)),
         };
         let revision_id = planned.revision_id;
         let plan = planned.plan;
         let action_count = plan.actions.len();
+        let adapter_facts = unique_adapter_audit_facts(&plan.replacement_bindings);
         let cleanup_plan = plan.clone();
 
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
@@ -148,7 +152,14 @@ impl RetargetInstallTaskRunner {
             || current_prerequisite_decision != prerequisite_decision
         {
             self.planner.discard_initial_retarget_install(&plan);
-            return Err(self.fail(task_id, &request, events, "prerequisite", action_count));
+            return Err(self.fail(
+                task_id,
+                &request,
+                events,
+                "prerequisite",
+                action_count,
+                adapter_facts.as_deref(),
+            ));
         }
 
         let write_lock = self
@@ -157,7 +168,14 @@ impl RetargetInstallTaskRunner {
         let commit_result = {
             let _guard = write_lock.lock().map_err(|_| {
                 self.planner.discard_initial_retarget_install(&plan);
-                self.fail(task_id, &request, events.clone(), "lock", action_count)
+                self.fail(
+                    task_id,
+                    &request,
+                    events.clone(),
+                    "lock",
+                    action_count,
+                    adapter_facts.as_deref(),
+                )
             })?;
             if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                 self.planner.discard_initial_retarget_install(&plan);
@@ -173,20 +191,35 @@ impl RetargetInstallTaskRunner {
                         events.clone(),
                         error.failure_phase(),
                         action_count,
+                        adapter_facts.as_deref(),
                     )
                 })?;
             self.planner
                 .revalidate_initial_install(&request)
                 .map_err(|_| {
                     self.planner.discard_initial_retarget_install(&plan);
-                    self.fail(task_id, &request, events.clone(), "state", action_count)
+                    self.fail(
+                        task_id,
+                        &request,
+                        events.clone(),
+                        "state",
+                        action_count,
+                        adapter_facts.as_deref(),
+                    )
                 })?;
             if self.task_manager.block_task_cancellation(task_id).is_err() {
                 self.planner.discard_initial_retarget_install(&plan);
                 if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                     return Ok(events);
                 }
-                return Err(self.fail(task_id, &request, events, "lock", action_count));
+                return Err(self.fail(
+                    task_id,
+                    &request,
+                    events,
+                    "lock",
+                    action_count,
+                    adapter_facts.as_deref(),
+                ));
             }
 
             events.push(running_event(task_id, COMMIT_PROCESSING_PHASE));
@@ -202,9 +235,23 @@ impl RetargetInstallTaskRunner {
 
         self.planner.discard_initial_retarget_install(&cleanup_plan);
         if commit_result.is_err() {
-            return Err(self.fail(task_id, &request, events, "commit", action_count));
+            return Err(self.fail(
+                task_id,
+                &request,
+                events,
+                "commit",
+                action_count,
+                adapter_facts.as_deref(),
+            ));
         }
-        self.record_audit(task_id, &request, "success", action_count, None);
+        self.record_audit(
+            task_id,
+            &request,
+            "success",
+            action_count,
+            None,
+            adapter_facts.as_deref(),
+        );
 
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
@@ -219,7 +266,14 @@ impl RetargetInstallTaskRunner {
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
                 Ok(events)
             }
-            Err(_) => Err(self.fail(task_id, &request, events, "complete", action_count)),
+            Err(_) => Err(self.fail(
+                task_id,
+                &request,
+                events,
+                "complete",
+                action_count,
+                adapter_facts.as_deref(),
+            )),
         }
     }
 
@@ -230,6 +284,7 @@ impl RetargetInstallTaskRunner {
         mut events: Vec<TaskProgressEvent>,
         phase: &str,
         action_count: usize,
+        adapter_facts: Option<&ReplacementAdapterAuditFacts>,
     ) -> RetargetInstallTaskRunError {
         if matches!(
             self.task_manager.fail_task(task_id),
@@ -243,7 +298,14 @@ impl RetargetInstallTaskRunner {
         }
         let error_code = format!("{FAILED_ERROR}:{phase}");
         events.push(failed_event(task_id, phase));
-        self.record_audit(task_id, request, "failure", action_count, Some(&error_code));
+        self.record_audit(
+            task_id,
+            request,
+            "failure",
+            action_count,
+            Some(&error_code),
+            adapter_facts,
+        );
         RetargetInstallTaskRunError { events }
     }
 
@@ -254,6 +316,7 @@ impl RetargetInstallTaskRunner {
         result: &str,
         action_count: usize,
         error_code: Option<&str>,
+        adapter_facts: Option<&ReplacementAdapterAuditFacts>,
     ) {
         let mut fields = BTreeMap::from([
             ("task_id".to_owned(), task_id.to_owned()),
@@ -272,6 +335,7 @@ impl RetargetInstallTaskRunner {
         if let Some(error_code) = error_code {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
+        append_adapter_audit_fields(&mut fields, adapter_facts);
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
         let _ = self.audit_log.record_with_policy(
             AuditLogEvent {
@@ -311,7 +375,10 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    use hmm_core::{InstallFileProvider, InstallManifest, InstallTargetPath, PackageFileId};
+    use hmm_core::{
+        ContentTransformerIdentity, InstallFileProvider, InstallManifest, InstallTargetPath,
+        PackageFileId, ReplacementAdapterFacts,
+    };
 
     use crate::{InstallCommitError, InstallCommitResult, InstallWriteAdmissionError};
 
@@ -514,6 +581,69 @@ mod tests {
         let audit = audit.events.lock().expect("audit events");
         assert_eq!(audit[0].operation, "commit_retargeted_mod");
         assert_eq!(audit[0].fields["target_id"], "mhw:armor:fatalis-alpha");
+    }
+
+    #[test]
+    fn retarget_install_audit_projects_only_stable_transformer_facts() {
+        let task_manager = Arc::new(TaskManager::new());
+        let planner = Arc::new(RecordingPlanner {
+            revalidate_result: Ok(()),
+            preview_decision: ready_prerequisite_decision(),
+            revalidation_decision: ready_prerequisite_decision(),
+            build_count: Mutex::new(0),
+            revalidated: Mutex::new(false),
+            discard_count: Mutex::new(0),
+            prerequisite_write_lock: None,
+        });
+        let audit = Arc::new(RecordingAudit::default());
+        let runner = runner(
+            task_manager,
+            planner,
+            Arc::new(RecordingCommitter::default()),
+            Arc::clone(&audit),
+        );
+        let facts = ReplacementAdapterFacts::new(
+            1,
+            "mhw.weapon",
+            "mrl3-texture-path",
+            1,
+            "a".repeat(64),
+            "b".repeat(64),
+            "c".repeat(64),
+        )
+        .expect("adapter facts")
+        .with_transformers(
+            vec![
+                ContentTransformerIdentity::new("mhw.weapon.mrl3-texture-path.v1", 1)
+                    .expect("transformer identity"),
+            ],
+            1,
+            2,
+        )
+        .expect("transformer facts");
+
+        let audit_facts =
+            ReplacementAdapterAuditFacts::from_adapter_facts(&facts).expect("audit projection");
+        runner.record_audit(
+            "install-1",
+            &request(),
+            "success",
+            2,
+            None,
+            Some(&audit_facts),
+        );
+
+        let event = &audit.events.lock().expect("audit events")[0];
+        assert_eq!(event.fields["adapter_id"], "mhw.weapon");
+        assert_eq!(event.fields["strategy_id"], "mrl3-texture-path");
+        assert_eq!(
+            event.fields["transformer_id"],
+            "mhw.weapon.mrl3-texture-path.v1"
+        );
+        assert_eq!(event.fields["transformer_version"], "1");
+        assert_eq!(event.fields["part_count"], "1");
+        assert_eq!(event.fields["file_count"], "2");
+        assert!(!event.fields.values().any(|value| value.len() == 64));
     }
 
     #[test]

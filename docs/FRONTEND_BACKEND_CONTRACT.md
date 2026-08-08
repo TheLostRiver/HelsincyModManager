@@ -478,7 +478,7 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 
 如果服务需要内部可变状态，优先让服务内部用清晰的锁或队列表达，而不是在 command 中临时拼装全局状态。
 
-## ARMOR_RETARGET AR4/AR5 契约
+## Equipment Replacement AR4/AR5/WR-04 契约
 
 AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件修改”只负责用
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
@@ -488,7 +488,7 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
-| `list_replacement_targets` | `gameId`、可选 `query` | catalog target 列表 |
+| `list_replacement_targets` | `gameId`、`modId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
@@ -498,8 +498,13 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
 `sourceId`、`bindingId`、`internalId` 或最终 target path。前四个 AR4 command 从当前 display revision
 重建包事实，重新扫描并分析唯一受支持 source，按 `targetId` 查询 catalog，生成 binding、
-`RetargetPlan`、staging 和 `InstallPlan`。两个 AR5 target-switch command 的 revision 来源见下文，
-不得复用 display revision。`internalId` 与最终相对路径只能作为后端返回的只读预览信息。
+`RetargetPlan`、staging 和 `InstallPlan`。WR-04 Weapon preview 会由受限 content reader 从同一受控
+revision sandbox 读取 MOD3/MRL3 bytes 并生成 sealed transform invocation；前端不接触 bytes、digest、
+transformer 参数或路径。两个 AR5/WR-04 target-switch command 的 revision 来源见下文，不得复用
+display revision。target DTO 只返回展示名、alias、稳定 id/internal id、target type 与 `catalogScope`，
+不返回原始 catalog metadata。source/action DTO 只投影稳定 type/id/internal id、support 与动作事实，
+不返回 source/target relative path 或 path-family；UI preview 只显示 resource type、internal id、动作数、
+冲突与 prerequisite。
 
 `preview_initial_retarget_install` 与 `start_retarget_install_task` 只允许目标 Mod 在当前 profile 的恢复
 状态严格为 `not_installed`。`installed`、`committed_cleanup_pending`、`cleanup_pending`、
@@ -535,6 +540,14 @@ binding identity、revision、internal id、相对/绝对路径、staging 或 ma
 - `replacement_install_state_unavailable`
 - `replacement_initial_install_blocked`
 - `replacement_preview_unavailable`
+- `weapon_developer_seed_unavailable`
+- `weapon_source_content_unavailable`
+- `weapon_cross_family_target`
+
+完整 Weapon catalog 仍受 WR-02B provenance/licensing 门禁。`catalogScope=developer_sandbox` 的人工
+weapon target 只有在 GUI runtime 从显式 `HMM_SANDBOX_DATA_DIR` 构造有效 Sandbox environment 时才会
+注册；同一 environment 同时启用生命周期 root admission。Production composition 保持 Armor-only，
+不能仅通过前端输入或普通 feature flag 打开人工 weapon target 或 Production 写入。
 
 `start_retarget_install_task` 继续使用 `TaskKind::Install`、`hmm://task-progress` 和既有
 game/profile 写锁。新增 phase 为 `install.retarget.queued`、`install.retarget.plan.building`、
@@ -773,7 +786,7 @@ type GamePrerequisiteDecisionDto = {
 首批 command：
 
 ```text
-list_replacement_targets({ gameId, query? })
+list_replacement_targets({ gameId, modId, query? })
 analyze_imported_mod_replacement({ gameId, profileId?, modId })
 preview_initial_retarget_install({ gameId, profileId, modId, targetId, layerName, layerPriority })
 start_retarget_install_task({ gameId, profileId, modId, targetId, layerName, layerPriority })
@@ -788,7 +801,8 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
 - 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
   不接受 cache、sandbox 或 staging path，也不隐式升级。
 - MHW adapter 负责 slot 解析、catalog 归一化和路径级 plan。
-- 返回 preview 时可展示最终相对路径摘要，但前端不能自行生成路径。
+- 返回 preview 时前端只展示稳定类型、internal id、动作数、冲突和 prerequisite；不显示或自行生成
+  source/target relative path 与 path-family。
 - initial preview/start 只允许 recovery status 严格为 `not_installed`；retarget reinstall preview/start 只允许
   `installed`，并复用真正重装的 plan token、锁、backup、manifest、rollback/recovery 与 task phases。
 - initial preview 顶层返回与普通 install/reinstall 同源的 `prerequisiteDecision`，nested

@@ -81,11 +81,11 @@ pub use mod_import::{
     ModImportCatalogUpsert, ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
     ModImportExternalDisplayNameAdmission, ModImportPackagePrepareReaderRequest,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileScanRequest,
-    ModPackageInstallFileScanner, ModPackageMetadata, ModPackageMetadataAnalyzer,
-    PreparedModPackage, StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
-    StoredModOriginProvenance, StoredModPackageMetadata, StoredModRevision,
-    MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
+    ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
+    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
 pub use mod_library_projection::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
@@ -110,8 +110,9 @@ pub use profile::{
 pub use reinstall::{ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore};
 pub use replacement::{
     ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
-    ReplacementAnalysisRequest, ReplacementAsset, ReplacementCatalogError,
-    ReplacementCatalogProvider, ReplacementCatalogResult, RetargetPlanRequest,
+    ReplacementAnalysisRequest, ReplacementAsset, ReplacementAssetContentReader,
+    ReplacementCatalogError, ReplacementCatalogProvider, ReplacementCatalogResult,
+    RetargetPlanRequest,
 };
 pub use save_backup::{
     SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
@@ -124,7 +125,12 @@ pub use save_directory::{
     PendingSaveDirectoryDiscovery, ScannedSaveDirectoryCandidate, SteamAccountProfileClient,
     SteamUserdataScanRequest, SteamUserdataScanner,
 };
-pub use staging::{RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer};
+pub use staging::{
+    ContentTransformDispatchError, ContentTransformOutput, ContentTransformRequest,
+    ContentTransformer, ContentTransformerError, ContentTransformerRegistry,
+    ContentTransformerRegistryError, RetargetStagingError, RetargetStagingFile,
+    RetargetStagingMaterializer,
+};
 pub use task_log::{TaskLogRecord, TaskLogWriter};
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
 

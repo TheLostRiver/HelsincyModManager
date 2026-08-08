@@ -2,14 +2,14 @@ use hmm_core::{
     FileLayer, GameId, InstallFileProvider, InstallPlan, InstallPlanValidationError, ModId,
     ModRevisionId, PackageFileId, ProfileId, ReplacementAnalysis, ReplacementBinding,
     ReplacementBindingId, ReplacementBindingSnapshot, ReplacementTarget, ReplacementTargetId,
-    RetargetPlan,
+    RetargetError, RetargetPlan,
 };
 use hmm_ports::{
-    AppClock, ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanRequest,
-    ModPackageInstallFileScanner, ReplacementAdapter, ReplacementAdapterError,
-    ReplacementAnalysisRequest, ReplacementAsset, ReplacementCatalogError,
-    ReplacementCatalogProvider, RetargetPlanRequest, RetargetStagingError, RetargetStagingFile,
-    RetargetStagingMaterializer,
+    AppClock, ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ReplacementAdapter, ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
+    ReplacementAssetContentReader, ReplacementCatalogError, ReplacementCatalogProvider,
+    RetargetPlanRequest, RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
 };
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -29,6 +29,8 @@ pub enum ReplacementServiceError {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RetargetMaterializeError {
+    #[error("retarget plan transform facts are invalid")]
+    InvalidRetargetPlan(#[from] RetargetError),
     #[error("retarget install plan is invalid")]
     InvalidInstallPlan(#[from] InstallPlanValidationError),
     #[error("retarget staging failed")]
@@ -194,6 +196,7 @@ impl PlannedInitialRetargetInstall {
 struct ResolvedImportedReplacement {
     package_id: String,
     revision_id: ModRevisionId,
+    sandbox_root: PathBuf,
     assets: Vec<ReplacementAsset>,
     analysis: ReplacementAnalysis,
 }
@@ -204,6 +207,7 @@ pub struct ReplacementWorkflowService {
     result_repository: Arc<dyn ModImportResultRepository>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     file_scanner: Arc<dyn ModPackageInstallFileScanner>,
+    file_reader: Arc<dyn ModPackageInstallFileReader>,
     install_status: Arc<dyn InitialRetargetInstallStatusReader>,
     clock: Arc<dyn AppClock>,
 }
@@ -262,6 +266,17 @@ impl ReplacementService {
         adapter.build_retarget_plan(request).map_err(Into::into)
     }
 
+    pub fn build_retarget_plan_with_content(
+        &self,
+        request: RetargetPlanRequest,
+        content_reader: &dyn ReplacementAssetContentReader,
+    ) -> Result<RetargetPlan, ReplacementServiceError> {
+        let adapter = self.adapter_for(&request.game_id)?;
+        adapter
+            .build_retarget_plan_with_content(request, content_reader)
+            .map_err(Into::into)
+    }
+
     pub fn materialize_retarget(
         &self,
         staging: &dyn RetargetStagingMaterializer,
@@ -272,10 +287,14 @@ impl ReplacementService {
             .actions()
             .iter()
             .map(|action| {
-                RetargetStagingFile::new(
+                let file = RetargetStagingFile::new(
                     action.package_file_id().clone(),
                     action.target_relative_path().clone(),
-                )
+                );
+                match action.content_transform() {
+                    Some(invocation) => file.with_content_transform(invocation.clone()),
+                    None => file,
+                }
             })
             .collect::<Vec<_>>();
         let install_plan =
@@ -295,6 +314,7 @@ impl ReplacementService {
         layer: FileLayer,
         revision_id: Option<ModRevisionId>,
     ) -> Result<InstallPlan, RetargetMaterializeError> {
+        plan.validate_transform_facts()?;
         let snapshot = ReplacementBindingSnapshot::from_retarget_plan(plan, revision_id);
         let providers = plan.actions().iter().map(|action| {
             InstallFileProvider::new(
@@ -327,6 +347,7 @@ impl ReplacementWorkflowService {
         result_repository: Arc<dyn ModImportResultRepository>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         file_scanner: Arc<dyn ModPackageInstallFileScanner>,
+        file_reader: Arc<dyn ModPackageInstallFileReader>,
         install_status: Arc<dyn InitialRetargetInstallStatusReader>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
@@ -336,6 +357,7 @@ impl ReplacementWorkflowService {
             result_repository,
             sandbox_locator,
             file_scanner,
+            file_reader,
             install_status,
             clock,
         }
@@ -357,6 +379,31 @@ impl ReplacementWorkflowService {
                 .map(|catalog| catalog.targets().to_vec())
                 .map_err(map_catalog_error),
         }
+    }
+
+    pub fn list_compatible_targets(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        query: Option<&str>,
+    ) -> Result<Vec<ReplacementTarget>, ReplacementWorkflowError> {
+        let resolved = self.resolve_imported_replacement(game_id, mod_id)?;
+        let source = resolved
+            .analysis
+            .single_source()
+            .ok_or(ReplacementWorkflowError::SourceNotRetargetable)?;
+        let targets = self.list_targets(game_id, query)?;
+        Ok(targets
+            .into_iter()
+            .filter(|target| {
+                target.target_type() == source.source_type()
+                    && target
+                        .metadata()
+                        .get("path_family")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(source.path_family())
+            })
+            .collect())
     }
 
     pub fn analyze_imported_mod(
@@ -404,13 +451,21 @@ impl ReplacementWorkflowService {
             0,
         )
         .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+        let content_reader = ImportedReplacementContentReader {
+            reader: self.file_reader.as_ref(),
+            package_id: &resolved.package_id,
+            sandbox_root: &resolved.sandbox_root,
+        };
         let retarget_plan = self
             .replacement
-            .build_retarget_plan(RetargetPlanRequest {
-                game_id: game_id.clone(),
-                binding,
-                assets: resolved.assets,
-            })
+            .build_retarget_plan_with_content(
+                RetargetPlanRequest {
+                    game_id: game_id.clone(),
+                    binding,
+                    assets: resolved.assets,
+                },
+                &content_reader,
+            )
             .map_err(ReplacementWorkflowError::Analysis)?;
         let install_plan = self
             .replacement
@@ -450,13 +505,21 @@ impl ReplacementWorkflowService {
                 .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?,
         )
         .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+        let content_reader = ImportedReplacementContentReader {
+            reader: self.file_reader.as_ref(),
+            package_id: &resolved.package_id,
+            sandbox_root: &resolved.sandbox_root,
+        };
         let retarget_plan = self
             .replacement
-            .build_retarget_plan(RetargetPlanRequest {
-                game_id: request.game_id,
-                binding,
-                assets: resolved.assets,
-            })
+            .build_retarget_plan_with_content(
+                RetargetPlanRequest {
+                    game_id: request.game_id,
+                    binding,
+                    assets: resolved.assets,
+                },
+                &content_reader,
+            )
             .map_err(ReplacementWorkflowError::Analysis)?;
         let install_plan = self
             .replacement
@@ -542,13 +605,21 @@ impl ReplacementWorkflowService {
             installed.binding().created_at_unix_millis(),
         )
         .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+        let content_reader = ImportedReplacementContentReader {
+            reader: self.file_reader.as_ref(),
+            package_id: &resolved.package_id,
+            sandbox_root: &resolved.sandbox_root,
+        };
         let retarget_plan = self
             .replacement
-            .build_retarget_plan(RetargetPlanRequest {
-                game_id: request.game_id,
-                binding,
-                assets: resolved.assets,
-            })
+            .build_retarget_plan_with_content(
+                RetargetPlanRequest {
+                    game_id: request.game_id,
+                    binding,
+                    assets: resolved.assets,
+                },
+                &content_reader,
+            )
             .map_err(ReplacementWorkflowError::Analysis)?;
         let install_plan = self
             .replacement
@@ -618,7 +689,7 @@ impl ReplacementWorkflowService {
             .sandbox_locator
             .sandbox_root_for_package(&revision.package_id)
             .map_err(|_| ReplacementWorkflowError::SandboxUnavailable)?;
-        let assets = self.scan_assets(&revision.package_id, sandbox_root)?;
+        let assets = self.scan_assets(&revision.package_id, &sandbox_root)?;
         let analysis = self
             .replacement
             .analyze(ReplacementAnalysisRequest {
@@ -630,6 +701,7 @@ impl ReplacementWorkflowService {
         Ok(ResolvedImportedReplacement {
             package_id: revision.package_id,
             revision_id: revision.revision_id,
+            sandbox_root,
             assets,
             analysis,
         })
@@ -638,12 +710,12 @@ impl ReplacementWorkflowService {
     fn scan_assets(
         &self,
         package_id: &str,
-        sandbox_root: PathBuf,
+        sandbox_root: &std::path::Path,
     ) -> Result<Vec<ReplacementAsset>, ReplacementWorkflowError> {
         self.file_scanner
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id,
-                sandbox_root: &sandbox_root,
+                sandbox_root,
             })
             .map_err(|_| ReplacementWorkflowError::PackageFilesUnavailable)
             .map(|files| {
@@ -685,6 +757,29 @@ impl ReplacementWorkflowService {
             .find(|catalog| catalog.game_id() == *game_id)
             .cloned()
             .ok_or(ReplacementWorkflowError::UnsupportedGame)
+    }
+}
+
+struct ImportedReplacementContentReader<'a> {
+    reader: &'a dyn ModPackageInstallFileReader,
+    package_id: &'a str,
+    sandbox_root: &'a std::path::Path,
+}
+
+impl ReplacementAssetContentReader for ImportedReplacementContentReader<'_> {
+    fn read_asset_content(
+        &self,
+        package_file_id: &PackageFileId,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, ReplacementAdapterError> {
+        self.reader
+            .read_install_file(ModPackageInstallFileReadRequest {
+                package_id: self.package_id,
+                sandbox_root: self.sandbox_root,
+                package_file_id,
+                max_bytes,
+            })
+            .map_err(|_| ReplacementAdapterError::SourceContentUnavailable)
     }
 }
 

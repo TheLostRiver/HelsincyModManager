@@ -77,9 +77,11 @@ pub use reinstall::{
     ReinstallTargetClass, ReinstallTargetClassification, ReinstallTargetState,
 };
 pub use replacement::{
-    LocalizedText, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-    ReplacementCatalog, ReplacementCatalogVersion, ReplacementError, ReplacementSourceId,
-    ReplacementTarget, ReplacementTargetId, ReplacementTargetKind,
+    ContentTransformInvocation, ContentTransformerIdentity, LocalizedText, ReplacementAdapterFacts,
+    ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot, ReplacementCatalog,
+    ReplacementCatalogVersion, ReplacementError, ReplacementSourceId, ReplacementTarget,
+    ReplacementTargetId, ReplacementTargetKind, CONTENT_TRANSFORM_INVOCATION_SCHEMA_VERSION,
+    REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
 };
 pub use retarget::{
     ReplacementAnalysis, ReplacementSource, ReplacementWarning, RetargetAction, RetargetError,

@@ -97,9 +97,21 @@ pub enum ReplacementAdapterError {
     TargetCatalogMissing { target_id: ReplacementTargetId },
     #[error("retarget plan is invalid")]
     InvalidRetargetPlan,
+    #[error("replacement source content is unavailable")]
+    SourceContentUnavailable,
+    #[error("replacement analysis was rejected: {code}")]
+    AnalysisRejected { code: &'static str },
 }
 
 pub type ReplacementAdapterResult<T> = Result<T, ReplacementAdapterError>;
+
+pub trait ReplacementAssetContentReader: Send + Sync {
+    fn read_asset_content(
+        &self,
+        package_file_id: &PackageFileId,
+        max_bytes: u64,
+    ) -> ReplacementAdapterResult<Vec<u8>>;
+}
 
 pub trait ReplacementAdapter: Send + Sync {
     fn game_id(&self) -> GameId;
@@ -113,4 +125,12 @@ pub trait ReplacementAdapter: Send + Sync {
         &self,
         request: RetargetPlanRequest,
     ) -> ReplacementAdapterResult<RetargetPlan>;
+
+    fn build_retarget_plan_with_content(
+        &self,
+        request: RetargetPlanRequest,
+        _content_reader: &dyn ReplacementAssetContentReader,
+    ) -> ReplacementAdapterResult<RetargetPlan> {
+        self.build_retarget_plan(request)
+    }
 }

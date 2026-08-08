@@ -6,8 +6,11 @@ use crate::install_commit::{
 use anyhow::{Context, Result};
 use hmm_core::{InstallPlan, InstallTargetPath, PackageFileId};
 use hmm_ports::{
-    InstallSourceFileReader, RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
+    ContentTransformDispatchError, ContentTransformRequest, ContentTransformerRegistry,
+    InstallSourceFileReader, RetargetStagingError, RetargetStagingFile,
+    RetargetStagingMaterializer,
 };
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fs;
@@ -17,6 +20,7 @@ use std::sync::Arc;
 pub struct FileSystemRetargetStagingMaterializer {
     staging_root: PathBuf,
     source_files: Arc<dyn InstallSourceFileReader>,
+    transformers: Arc<ContentTransformerRegistry>,
 }
 
 impl FileSystemRetargetStagingMaterializer {
@@ -24,6 +28,19 @@ impl FileSystemRetargetStagingMaterializer {
         Self {
             staging_root,
             source_files,
+            transformers: Arc::new(ContentTransformerRegistry::empty()),
+        }
+    }
+
+    pub fn new_with_registry(
+        staging_root: PathBuf,
+        source_files: Arc<dyn InstallSourceFileReader>,
+        transformers: Arc<ContentTransformerRegistry>,
+    ) -> Self {
+        Self {
+            staging_root,
+            source_files,
+            transformers,
         }
     }
 
@@ -48,10 +65,11 @@ impl FileSystemRetargetStagingMaterializer {
         files: &[RetargetStagingFile],
     ) -> Result<(), RetargetStagingError> {
         for file in files {
-            let bytes = self
+            let source_bytes = self
                 .source_files
                 .read_source_file(file.package_file_id())
                 .map_err(|_| RetargetStagingError::SourceUnavailable)?;
+            let bytes = self.materialize_content(file, source_bytes)?;
             let target = contained_path(pending_root, file.target_path().as_str())
                 .map_err(|_| RetargetStagingError::UnsafeTarget)?;
             let parent = target.parent().ok_or(RetargetStagingError::UnsafeTarget)?;
@@ -67,6 +85,56 @@ impl FileSystemRetargetStagingMaterializer {
         Ok(())
     }
 
+    fn materialize_content(
+        &self,
+        file: &RetargetStagingFile,
+        source_bytes: Vec<u8>,
+    ) -> Result<Vec<u8>, RetargetStagingError> {
+        let Some(invocation) = file.content_transform() else {
+            return Ok(source_bytes);
+        };
+        if sha256_hex(&source_bytes) != invocation.source_content_sha256() {
+            return Err(RetargetStagingError::SourceDigestMismatch);
+        }
+
+        let mut dependencies = BTreeMap::new();
+        for (package_file_id, expected_sha256) in invocation.dependencies() {
+            let bytes = self
+                .source_files
+                .read_source_file(package_file_id)
+                .map_err(|_| RetargetStagingError::SourceUnavailable)?;
+            if sha256_hex(&bytes) != *expected_sha256 {
+                return Err(RetargetStagingError::SourceDigestMismatch);
+            }
+            dependencies.insert(package_file_id.clone(), bytes);
+        }
+
+        let output = self
+            .transformers
+            .transform(ContentTransformRequest::new(
+                invocation,
+                file.package_file_id(),
+                &source_bytes,
+                &dependencies,
+            ))
+            .map_err(|error| match error {
+                ContentTransformDispatchError::TransformerUnavailable => {
+                    RetargetStagingError::TransformerUnavailable
+                }
+                ContentTransformDispatchError::TransformFailed(error) => {
+                    RetargetStagingError::TransformFailed {
+                        code: error.code().to_owned(),
+                    }
+                }
+            })?;
+        if output.canonical_mapping_sha256() != invocation.canonical_mapping_sha256()
+            || sha256_hex(output.bytes()) != invocation.output_content_sha256()
+        {
+            return Err(RetargetStagingError::TransformOutputInvalid);
+        }
+        Ok(output.into_bytes())
+    }
+
     fn cleanup_pending(
         pending_root: &Path,
         original: RetargetStagingError,
@@ -77,6 +145,10 @@ impl FileSystemRetargetStagingMaterializer {
             Err(_) => RetargetStagingError::CleanupFailed,
         }
     }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 impl RetargetStagingMaterializer for FileSystemRetargetStagingMaterializer {

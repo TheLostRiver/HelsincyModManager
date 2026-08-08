@@ -1590,6 +1590,7 @@ dependencies = [
 name = "hmm-games-mhw"
 version = "0.1.0-alpha.0"
 dependencies = [
+ "crc32fast",
  "hmm-core",
  "hmm-ports",
  "serde",

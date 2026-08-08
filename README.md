@@ -46,6 +46,8 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [存档目录自动发现实现计划](docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md)
 - [MHW:I 外观套装重定向设计](docs/ARMOR_RETARGET_DESIGN.md)
 - [MHW:I 外观套装重定向实现计划](docs/ARMOR_RETARGET_IMPLEMENTATION.md)
+- [MHW:I 武器重定向设计](docs/WEAPON_RETARGET_DESIGN.md)
+- [装备 Catalog 候选数据治理](docs/EQUIPMENT_CATALOG_GOVERNANCE.md)
 - [Mod 预览图安全处理设计](docs/MOD_PREVIEW_IMAGE_PIPELINE_DESIGN.md)
 - [Mod 预览图安全处理实现计划](docs/MOD_PREVIEW_IMAGE_IMPLEMENTATION_PLAN.md)
 - [前端外观系统设计](docs/APPEARANCE_SYSTEM.md)
