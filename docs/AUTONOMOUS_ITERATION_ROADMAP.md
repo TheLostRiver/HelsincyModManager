@@ -589,15 +589,16 @@ build `19041`，`AMD64`；未使用真实游戏、Steam userdata 或玩家存档
 
 ### SAVE-03：Installer ownership cleanup
 
-状态：`ready`，SAVE-02 disposable 环境与安装态证据已可复用。
+状态：`implemented`，build/static gate 已通过；disposable Windows VM runtime gate 待人工执行。
 
-- 实现 ownership-checked cleanup helper、NSIS `PREUNINSTALL` 和 WiX custom action。
-- foreign task 保留；running/unknown owned task fail closed。
-- disposable VM 覆盖 install/run/uninstall/reinstall 和最终 cleanup。
+- [x] 实现 ownership-checked cleanup helper、双 Windows sidecar、NSIS `PREUNINSTALL` 和 WiX custom action。
+- [x] foreign task 保留；running/unknown owned task fail closed，并有 fake/static 测试覆盖。
+- [x] NSIS/WiX debug artifact 已生成并检查 payload/sequence；未安装或运行 artifact。
+- [ ] disposable VM 覆盖 install/run/uninstall/reinstall 和最终 cleanup；完成后才可标记 runtime acceptance。
 
 ### SAVE-04：玩家存档恢复
 
-状态：`blocked`，依赖 SAVE-03。
+状态：`blocked`，等待 SAVE-03 disposable VM runtime gate。
 
 - 独立设计 preview、manifest/hash 校验、统一悬浮确认、restore 前安全备份和 rollback/recovery。
 - restore 前安全备份默认开启并持久化为 Profile 级开关；必须写入独立 `pre-restore/` 目录并使用清晰的

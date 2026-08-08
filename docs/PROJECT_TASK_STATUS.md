@@ -228,19 +228,23 @@ P7.2a 已于 2026-08-07 在一次性 Windows Sandbox 完成完整安装态链路
 `19041`，架构 `AMD64`；未使用真实游戏、Steam userdata 或玩家存档。
 
 ignored smoke 和 fake runner 自动化仍不能单独代替安装态验收；本次 `certified` 结论来自上述真实
-disposable Windows 链路，不开放 Production CLI 写入，也不代表 P7.2c installer cleanup 已完成。
+disposable Windows 链路，不开放 Production CLI 写入，也不代表 P7.2c disposable VM runtime gate
+已经完成。
 
-### 仅设计完成
+### 实现完成，runtime gate 待人工
 
-P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以下内容尚未实现：
+P7.2c 的实现和 build/static gate 已完成：
 
-- 独立 cleanup helper。
-- NSIS `PREUNINSTALL` 接入。
-- WiX custom action。
-- disposable VM 安装/运行/卸载矩阵。
+- 独立、无参数、ownership-checked cleanup helper 与双 Windows sidecar。
+- NSIS `PREUNINSTALL` 接入及非零 helper exit code 的 fail-closed 处理。
+- WiX `CustomActionRef`、pre-`RemoveFiles` custom action 和最终 MSI 反编译证据。
+- helper/registry、sidecar、NSIS/WiX 静态测试和 debug artifact 构建。
+
+仍待一次性 Windows 账户或 disposable VM 执行安装、升级/repair/modify、interactive/silent 卸载，
+以及 owned/foreign/running task 矩阵；在该 gate 完成前不宣称 P7.2c runtime acceptance。
 
 卸载规则必须保留 foreign task；owned task 若处于 running/unknown 状态必须 fail closed。
-SAVE-02 已解除环境前置，SAVE-03 现在是下一 `ready` 纵向切片。
+SAVE-02 已解除环境前置，SAVE-03 已进入 `ready-for-human` runtime gate。
 
 ## 日志、审计与诊断
 
