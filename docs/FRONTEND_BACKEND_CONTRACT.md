@@ -231,7 +231,7 @@ batch/result 事实或伪造导入失败。
 
 本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的 transport 形状，用于约束
 T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service 和 typed API；T13-07 前端
-工作流可调用它们，但生产 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
+工作流已接入它们，但当前 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
 
 ```text
 preview_batch_mod_lifecycle
@@ -242,8 +242,9 @@ retry_batch_mod_lifecycle
 ```
 
 取消继续复用受控 `cancel_task(taskId)`，但只有 `start`/`retry` 返回真实 `TaskStartedDto` 后才有可取消
-task；当前 T13-06 的 start/retry 同步执行完整批次，返回的 task 已是终态（取消返回
-`task_cannot_be_cancelled`），运行中取消与中间 progress 事件留给 T13-07 的异步化配套。
+task；当前 start/retry 同步执行完整批次，返回的 task 已是终态（取消返回
+`task_cannot_be_cancelled`）。运行中取消与中间 progress 事件不属于当前已认证契约；如需开放，必须
+作为独立异步化任务设计和验证。
 前端不能在本地循环调用单项 install/uninstall/reinstall command 来构造批次。
 
 preview/seal request 使用同一完整输入；`items` 元素是带 `operation` tag 的 discriminated union：
@@ -299,9 +300,9 @@ artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任
 `install`；`task.status` 与 phase 的映射为：`completed`/`completed_with_errors` -> `completed`
 （phase 分别为 `.completed` / `.completed_with_errors`），`cancelled` -> `cancelled`，
 `blocked`/`recovery_required`/`interrupted`/`failed` -> `failed`（phase 分别为 `.failed` /
-`.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。queued/planning/
-preflight/processing/stopping 等中间 phase 与运行中取消由 T13-07 的异步化配套引入，在此之前
-`cancel_task` 对 batch task 返回 `task_cannot_be_cancelled`。
+`.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。当前契约不发出 queued/
+planning/preflight/processing/stopping 等中间 phase，`cancel_task` 对 batch task 返回
+`task_cannot_be_cancelled`；未来异步化不得在未更新本契约与 Gate 证据时静默改变这些语义。
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。

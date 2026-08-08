@@ -32,7 +32,7 @@ CLI 不是第二套后端，也不是对 Tauri command 的脚本封装。它必�
 - T17 已实现第三方管理器批量导入，但默认只导入 HMM，不安装到游戏目录。
 - T13-00 已冻结批量安装、卸载和真正重装的领域语义；T13-01/T13-02 已提供批量安装
   BatchPlan、journal、runner 和 retry；CLI-4 Slice B/C 已把 install、uninstall、reinstall 接入
-  Sandbox。Tauri/前端 adapter 仍未实现，不能由 CLI 循环单项命令来冒充。
+  Sandbox。T13-06/T13-07 已实现窄 Tauri/typed API 与前端 adapter，仍不能由 CLI 循环单项命令来冒充。
 
 项目整体能力与缺口见 [项目任务状态快照](PROJECT_TASK_STATUS.md)。
 
@@ -933,5 +933,5 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CORE-PREF-01 已形成 Slice A：共享
 composition、逐阶段 observer、Sandbox write capability、完整单项 lifecycle E2E 和统一 prerequisite
 decision 均已落地。Slice B/C 已完成 T13 sealed 批量 install/uninstall/reinstall 的 Sandbox CLI
-契约；下一步由 T13-06/T13-07 接入窄 Tauri command、typed API 和前端工作流，不要增加 shell
-循环单项命令的旁路。
+契约；T13-06/T13-07 已接入窄 Tauri command、typed API 和前端工作流，T13-08 Gate C 已认证。
+后续仍不得增加 shell 循环单项命令的旁路，也不得据此开放 Production 写入。
