@@ -102,9 +102,9 @@ Push-Location $repoRoot
 try {
     if ($env:OS -eq "Windows_NT") {
         Assert-CommandAvailable -Name "node"
-        Write-Host "Preparing the Windows development sidecar..."
+        Write-Host "Preparing the Windows development sidecars..."
         $sidecar = Invoke-NativeCapture -FilePath "node" -Arguments @(
-            "scripts/prepare-save-backup-worker-sidecar.mjs",
+            "scripts/prepare-windows-sidecars.mjs",
             "--debug"
         )
         if ($sidecar.ExitCode -ne 0) {
