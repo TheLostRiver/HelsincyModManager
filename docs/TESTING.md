@@ -1153,7 +1153,9 @@ node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
 
 真实 Windows 验收只允许人工在一次性本地账户或 VM 按 [Windows 存档后台任务人工 Smoke](testing/windows-save-backup-scheduled-task-smoke.md) 执行。只有安装态 sibling worker、任务真实触发、fresh heartbeat 和最终 cleanup 全部通过，才能记录 Windows runtime acceptance；不得在开发者日常账户为了完成 checklist 运行 ignored smoke。
 
-P7.2c installer ownership cleanup 至少运行以下聚焦检查：
+P7.2c installer ownership cleanup 至少运行以下聚焦检查；真实安装器验收按
+[Windows 存档后台任务安装器清理人工 Smoke](testing/windows-save-backup-installer-cleanup-smoke.md)
+执行：
 
 ```powershell
 node --test scripts/windows-installer-cleanup-config.test.mjs scripts/prepare-windows-sidecars.test.mjs
