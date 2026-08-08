@@ -1,7 +1,8 @@
 # 项目任务状态快照
 
-本文档记录 Helsincy Mod Manager 在 **2026-08-02** 的 Windows 项目任务全景，基准包含
-Slice B/C 交付的 install/uninstall/reinstall batch Sandbox CLI。此前包含
+本文档记录 Helsincy Mod Manager 在 **2026-08-07** 的 Windows 项目任务全景，基准包含
+Slice A-D 交付并由 Gate C 认证的 batch Sandbox 玩家路径，以及 WR-04 Gate D 认证的人工 Weapon
+install/target switch/uninstall 玩家路径。此前包含
 CLI-0A 至 CLI-1B、PR #211 至 #214 的工程治理，以及 QG-01/PR #215 合并后的 frontend
 tests/workspace clippy 统一门禁。
 
@@ -26,16 +27,18 @@ tests/workspace clippy 统一门禁。
 
 项目已经越过单纯脚手架阶段。Mod 导入、安装计划、安装、卸载、真正重装、manifest、备份、
 回滚/恢复、Armor Retarget、Mod 库分页、第三方管理器批量迁移，以及 App/Task/Audit 日志和诊断页
-已经形成可测试的后端链路。Gate A 和 Gate B 均为 `certified`。
+已经形成可测试的后端链路。Gate A、Gate B、Gate C 和 Gate D 均为 `certified`。
 
-当前开发优先级已经调整为核心 Mod 生命周期的批量能力：T13-00 已完成批量语义和规划契约，T13-01
-sealed BatchPlan/preview 已落地；Slice A 已交付 CLI-2A/2B/2C、Sandbox 单项生命周期 E2E 和
-CORE-PREF-01。T13-02 的 batch runner、SQLite journal、retry、failure/cancel 证据与入口
-fail-closed 规则已落地；PR #222 交付 install batch 子集，Slice C 已把批量卸载、真正重装和
-same-revision Armor switch 接入同一 Sandbox `install batch plan/apply/result/retry`。后续切片进入
-Tauri/前端工作流与 Windows Sandbox 纵向验收。
-Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺口；完整前置依赖平台、玩家存档恢复、
-日志全量保留策略和 Debug Log 也仍未完成。
+核心 Mod 生命周期的批量能力已完成：T13-00 至 T13-06 的 sealed plan、runner、journal、CLI、窄
+Tauri/typed API 已落地；T13-07 批量 UI 与 4 viewport smoke 已完成；T13-08 已在 disposable Windows
+Sandbox 完成主链和受控 partial failure -> retry 补充链，Gate C 为 `certified`。CAT-01 装备数据治理、
+WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer、WR-03B
+staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均已完成；Gate D 于
+2026-08-06 标记为 `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log
+均已完成；AR6/WR-02B 仍等待具有明确再分发权的审计数据。完整 catalog 未到位前只允许人工最小 developer/Sandbox seed；Sandbox
+认证不开放 Production 写入。
+Windows 后台存档保障的 SAVE-02 安装态验收已完成；installer ownership cleanup、完整前置依赖平台、
+玩家存档恢复与 Production CLI admission 仍未完成。当前下一无人值守 ready 项是 SAVE-03。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
 校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；仅 Sandbox
@@ -52,8 +55,10 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
   门禁已经成为主干基线。
 - T13-00 已完成批量生命周期设计与规划契约；Slice A 已完成，Slice B 从 T13-01 sealed batch
   preview 开始。
-- PR #222 已完成 T13-05 install batch CLI 子集，Slice B 交付闭环完成；Slice C 已补齐批量卸载、
-  真正重装与 same-revision Armor switch contract。下一 ready 单元是 Slice D。
+- PR #222 已完成 T13-05 install batch CLI 子集，Slice B/C 已补齐批量卸载、真正重装与
+  same-revision Armor switch contract；T13-07 由 PR #225 合并，Slice D/Gate C 已认证。CAT-01 和
+  WR-01/WR-02A/WR-03A/WR-03B/WR-04 已完成，Gate D 已认证；LOG-01、LOG-02 与 LOG-03 已完成；
+  AR6/WR-02B 仍等待已授权数据。
 
 ## 任务矩阵
 
@@ -67,12 +72,12 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T6 Profile 管理 | 已完成 | CRUD、活跃 Profile、生命周期与存档设置接入已落地 |
 | T7 一键启动 | 已完成 | `GameLauncher` port、MHW:I Steam 启动和 UI 入口已落地 |
 | Core Mod Lifecycle Gate A | Certified | 安装、卸载、真正重装、重启恢复、失败恢复和 exact baseline 已验收 |
-| T8 存档备份 | 部分完成 | 备份与后台核心已落地；玩家存档恢复、完整 retention、安装态验收和卸载清理未完成 |
+| T8 存档备份 | 部分完成 / SAVE-02 Certified | 备份与后台核心及安装态验收已完成；installer cleanup、玩家存档恢复和完整 retention 未完成 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
-| T11 Armor Retarget | Certified（流程）/ 数据待扩容 | AR1-AR5 流程已认证；bundled armor catalog 仍是最小 seed，武器重定向未实现 |
+| T11 装备 Retarget | Armor / Weapon 流程均 Certified | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01、WR-02A、WR-03A、WR-03B 已完成；完整 bundled armor/weapon catalog 仍受 AR6/WR-02B 数据门禁 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
-| T13 批量操作 | Slice C 已完成 / T13-06 已完成 / T13-07 已实现（待人工视觉验收）/ T13-08 待人工 | sealed plan/preview、batch runner、SQLite journal、retry、取消、故障证据与 Sandbox install/uninstall/reinstall `install batch plan/apply/result/retry` 已落地；5 个窄 Tauri command、camelCase DTO、typed API 与同步 terminal event 已落地；批量 UI（跨页选择、策略选择、预览/确认/结果/retry 面板、manifest installedRevisionId 配套）已落地；4 viewport 视觉 smoke 与 Windows Gate C 待人工验收（T13-07/T13-08） |
+| T13 批量操作 | Certified（Gate C） | sealed plan/preview、batch runner、SQLite journal、retry、故障证据、Sandbox CLI、5 个窄 Tauri command、typed API 与批量 UI 均已落地；4 viewport smoke、主链、受控 partial/retry、重启/recovery、批量卸载与 exact baseline 已验收 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
 | T15 Linux / Steam Deck | 本轮排除 | 不进入本轮任务、实现、验收或发布判断 |
 | T16 Rise / Wilds | 远期 | 每个游戏需要独立 adapter 与设计 |
@@ -82,14 +87,20 @@ Windows 后台存档保障的真实安装态验收和卸载清理仍是发布缺
 | T20 浮层动画共享基元 | 待评审 | 下次新增浮层前或出现第三处重复实现时再启动 |
 | CLI 自动化入口 | CLI-2C 已实现 | 已有只读 game/install/backup/diagnostics 命令，以及仅 Sandbox 的单项 install/uninstall/reinstall/recovery apply；5 分钟 token、双确认、写锁内重验、取消、失败恢复与 Production 双层拒绝已覆盖 |
 | 工程治理 GOV-01 至 GOV-04 | 已完成 | DTO 测试外置、重装 lint 抑制清理、Tauri 契约防回归和治理检查加固已由 PR #211 至 #214 交付 |
+| LOG-01 Task/Audit retention | 已完成 | Task 30 天、Audit 90 天；共享 runtime composition、capability-relative no-follow 清理、稳定 health code/count 与 temp-root junction 负测已落地 |
+| LOG-02 日志总空间上限 | 已完成 | 128 MiB 默认/1 MiB 下限、Debug/Task -> App -> 30 天外 Audit 优先级、16 KiB Audit reserve、稳定 health/count 与 no-follow 复验已落地 |
+| LOG-03 Debug Log | 已完成 | 默认关闭、持久化开关、受控 schema、7 天 retention、诊断 reader/export、runtime 重启与 no-follow 负测已落地 |
 
-### Gate A / Gate B
+### Gate A / Gate B / Gate C / Gate D
 
 Gate A 已覆盖认证导入记录到 `InstallPlan`、安装、重启、manifest 驱动卸载、真正重装、
 失败恢复和 baseline 闭环。Gate B 已覆盖 Armor source 分析、目标选择、首次安装、同 revision
-目标切换、两次重启状态恢复和 manifest 卸载。
+目标切换、两次重启状态恢复和 manifest 卸载。Gate C 已覆盖批量安装/卸载/真正重装、Armor target
+switch、partial result/retry、重启持久化、recovery 归零和 exact baseline。Gate D 已覆盖人工 Weapon
+source 分析、initial install、same-revision `one001 -> one002` true reinstall、两次 GUI 重启、当前 target
+持久化、manifest 卸载、recovery 归零和 10 文件/316 bytes exact baseline。
 
-二者的共同安全边界保持不变：
+三者的共同安全边界保持不变：
 
 ```text
 analyze
@@ -124,6 +135,8 @@ Armor Retarget 的流程认证与 catalog 完整度是两个状态：
   48 个名称，必须建模为稳定 target + aliases，而不是重复安装目标。
 - 武器目标属于独立的 MHW:I weapon catalog/path parser/adapter。不能塞进
   `MhwArmorReplacementAdapter`，也不能让前端解析 `nativePC/wp`。
+- WR-04 已认证人工 developer/Sandbox weapon seed 的 Tauri/UI 与完整生命周期；这不等于完整 production
+  weapon catalog 已获许可或开放，WR-02B 仍保持 `blocked-external-data`。
 
 两份候选数据都不是运行时信任源。接入前必须完成 schema、路径安全、大小写碰撞、重复项、stable
 ID、alias/localization、dummy 条目、版本和可分发权利审计，再生成 versioned bundled artifact。
@@ -195,9 +208,9 @@ userdata/<account_id_32>/582010/remote
   45 分钟内的新鲜 heartbeat。
 - ownership conflict、permission、drift、stale/future heartbeat 和 unsupported 平台的稳定错误。
 
-### 缺真实环境验收
+### 安装态验收已完成
 
-P7.2a 仍缺一次性 Windows 账户或 disposable VM 中的完整安装态链路：
+P7.2a 已于 2026-08-07 在一次性 Windows Sandbox 完成完整安装态链路：
 
 ```text
 安装产物中的 sibling worker
@@ -207,8 +220,15 @@ P7.2a 仍缺一次性 Windows 账户或 disposable VM 中的完整安装态链�
   -> 幂等 unregister / cleanup
 ```
 
-现有 ignored smoke 和 fake runner 自动化不能代替这项验收。在该 gate 完成前，不能宣称“退出 GUI
-后的 Windows 后台保护”已经达到发布验收状态。
+安装 bundle 中存在主程序 sibling worker；真实 user Scheduled Task 的 initial missing、register exact、
+幂等 register、人工 Run、新鲜 heartbeat 和幂等 cleanup 均有证据。有效 worker 运行还完成了一个
+1 文件 synthetic automatic backup。Terminal A 未接收 stdin acknowledgement，最终 unregister leg
+使用 dedicated ownership-checked cleanup smoke 完成；Task Scheduler UI 刷新确认无残留。Sandbox 已
+销毁，宿主 synthetic fixture 已移入回收站。验收应用为 `0.1.0-alpha.0`，Windows 10 Enterprise build
+`19041`，架构 `AMD64`；未使用真实游戏、Steam userdata 或玩家存档。
+
+ignored smoke 和 fake runner 自动化仍不能单独代替安装态验收；本次 `certified` 结论来自上述真实
+disposable Windows 链路，不开放 Production CLI 写入，也不代表 P7.2c installer cleanup 已完成。
 
 ### 仅设计完成
 
@@ -220,6 +240,7 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
 - disposable VM 安装/运行/卸载矩阵。
 
 卸载规则必须保留 foreign task；owned task 若处于 running/unknown 状态必须 fail closed。
+SAVE-02 已解除环境前置，SAVE-03 现在是下一 `ready` 纵向切片。
 
 ## 日志、审计与诊断
 
@@ -230,9 +251,10 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
 | App Log | 已实现 | 安全 JSONL、UTC 日轮转、14 天 retention、白名单字段和 health code |
 | Task Log | 已实现 | 每个 task 独立 JSONL，与 progress 共用 taskId/kind/status/phase/current/total |
 | Audit Log | 已实现 | 高风险操作、后台注册/worker/退出 override 和诊断导出均有最小审计 |
-| Debug Log | 未实现 | 7 天 retention 目前只是设计要求 |
-| `/diagnostics` 页面 | 已实现 | App/Task/Audit 分类读取，单类失败不阻断其他安全类别 |
-| support diagnostics export | 已实现 | 平台摘要和固定上限 App/Task/Audit 数据，用户主动导出、默认脱敏 |
+| Debug Log | 已实现 | 默认关闭；显式开启后写受控 JSONL，7 天 UTC retention，并纳入 diagnostics 与总空间预算 |
+| 日志总空间预算 | 已实现 | 可配置 128 MiB 默认预算；按 Debug/Task、App、30 天外 Audit 收敛并投影稳定健康状态 |
+| `/diagnostics` 页面 | 已实现 | App/Debug/Task/Audit 分类读取，单类失败不阻断其他安全类别 |
+| support diagnostics export | 已实现 | 平台摘要和固定上限 App/Debug/Task/Audit 数据，用户主动导出、默认脱敏 |
 
 ### 已落实的安全边界
 
@@ -244,15 +266,8 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
 - 诊断快照中单类读取失败只返回稳定状态；完整导出若任何必需类别失败则整体失败，并 best-effort
   写最小失败审计。
 
-### 未完成
-
-- Task Log 30 天 retention。
-- Audit Log 90 天 retention。
-- Debug Log writer、reader、开关和 7 天 retention。
-- 可配置的日志总空间上限与按优先级清理。
-
-`docs/LOGGING.md` 中的 14/30/90/7 天是目标默认值，不能把尚未落地的 Task/Audit/Debug retention
-当作产品完成。
+Debug 设置只暴露 `{ enabled }`；禁用时不创建目录，损坏 settings 默认关闭。事件拒绝、写入失败和
+retention 失败通过独立稳定 health/count 投影，不会改变安装或恢复事实。
 
 ## CLI 自动化
 
@@ -313,12 +328,14 @@ P7.2c 已有 ownership-checked installer cleanup 规格和实施计划，但以�
 
 ### 下一步
 
-Slice A 已完成当前单项 Sandbox lifecycle 闭环与 CORE-PREF-01；PR #222 已把 T13-01/T13-02 与
-T13-05 install batch 子集收敛为 Slice B；Slice C 已完成 T13-03/T13-04 与 T13-05 其余 contract；
-T13-06 已完成 Tauri command 与 typed API；T13-07 已完成批量操作 UI（代码与行为测试）。
-剩余人工验收：T13-07 的 4 viewport 视觉 smoke，以及 T13-08 的 disposable Windows Sandbox
-Gate C（batch install -> restart -> batch true reinstall -> restart -> recovery 检查 ->
-batch uninstall -> exact baseline）。
+T13 Slice A-D 已完成并通过 Gate C。CAT-01 已交付装备候选输入 schema、validator、stable ID、
+alias/localization、dummy/隐藏条目策略、版本与 provenance/licensing 门禁。WR-01 已完成设计；WR-02A
+已交付 14-family/part registry、严格 path/source closure parser 和纯内存 catalog-source validator。
+WR-03A 已交付人工 MOD3/MRL3 有界 preflight、pair compatibility、纯 transformer 与脱敏 digest/error
+projection。WR-03B 已交付 versioned registry、transform-aware staging、InstallPlan/manifest/recovery/
+Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 因缺少明确可再分发的审计数据而 blocked；
+WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02
+与 LOG-03 已完成；当前下一无人值守 `ready` 纵向切片是 SAVE-03 installer ownership cleanup。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
@@ -395,6 +412,41 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 - stale preview 在构造 `HmmRuntime` 前由只读 facts service 验证；失败时沙盒目录快照不变，不创建
   `hmm.db`、journal 或 projection。上述测试均只使用 temp/fake/人工 fixture。
 
+### T13-07 / T13-08 最终验收证据
+
+- 最终 artifact SHA-256：
+  `08EF5FF15DAFDC00790C0975FAA160C792AF487D47C186271E93D09D84AB8C8D`。
+- T13-07 在 `1440x900`、`1366x768`、`1280x800`、`480x800` 实际窗口尺寸完成 preview/result smoke；
+  480x800 stacking、浅色主题面板和批量终态后列表自动刷新问题均已修复复验。
+- Gate C 主链完成 batch install、GUI restart、Alpha v2 true reinstall、Armor target switch、再次 restart、
+  recovery 归零、batch uninstall 和 9 文件/212 字节 exact baseline。
+- 受控 partial/retry batch `batch-94eedbc4-3006-4f76-aa39-b0d1bae71650` 的 attempt 0 task
+  `install-1785897638158-0` 为 0 成功/1 失败/2 跳过，Alpha=`install_commit_failed`，Armor/Beta=
+  `batch_stopped`，三项均 retryable；attempt 1 task `install-1785897713997-0` 为 3 成功。
+- 最终卸载 batch `batch-aab2d50e-7412-4694-9a7f-5433eed50b89`、task
+  `install-1785897949309-0` 为 3 成功；manifest entries/bindings 与安装状态投影均为空，Recovery Center
+  全部归零，backup/recovery 标准目录为空且无 staging。补充 baseline 为 10 文件/243 字节，路径、
+  大小和 SHA-256 差异均为 0；所有 attempt `evidence_health_degraded=false`。
+- 两条验收链均只使用 disposable Windows Sandbox、人工 fixture 与宿主映射临时根，没有读取真实游戏、
+  存档或第三方 Mod。
+
+### WR-04 / Gate D 最终验收证据
+
+- 最终 `hmm-tauri.exe` 为 24,209,408 bytes，SHA-256
+  `156C42118C6620D803C1611397C55C1847AB782BB6505CD713C56A17398EA2AF`；完整 `verify.ps1` 通过，
+  Tauri 188 passed / 1 ignored，workspace tests/check/clippy 与前端 typecheck/lint/test/build 均通过。
+- 人工 archive SHA-256 为 `85CA8FB179CCAAA8B3E22D13DE8E3F2D46E0135A09CA8C5F258230AE31D4DACF`；
+  initial install task `install-1785952182807-1` 为 `install.retarget.completed`，target switch task
+  `install-1785953522595-0` 为 `install.reinstall.completed`，uninstall task `install-1785955067791-0`
+  为 `install.uninstall.completed`，三条 Audit Log 均为 success。
+- `one001 -> one002` switch 为真正重装：added 2、stale 2、retained 0、replaced 0；两次 GUI 重启后
+  installed target 均从持久化 manifest/binding 正确恢复。最终 manifest `entries=[]`、
+  `replacement_bindings=[]`，Recovery Center、backup、recovery、reinstall-recovery、retarget-staging 均为 0。
+- 最终 game tree 为 10 文件/316 bytes，missing 0、extra 0、size/hash mismatch 0；未读取真实游戏、
+  存档、AppData 或第三方 Mod。仓库外证据 bundle 名为 `hmm-wr04-gated-20260805-2315`。
+- light 主题已覆盖 1440x900/1366x768/1280x800/480x800，dark 覆盖 1280x800/480x800，system
+  覆盖 1366x768；replacement modal 的层级、滚动、warning、按钮与路径脱敏通过。
+
 2026-07-30 在独立 clean Windows QG-01 worktree 对当前治理 diff 实际执行：
 
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：通过；包含 policy/docs、
@@ -413,14 +465,17 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 
 - `SAVE_BACKUP_BACKGROUND_SCHEDULER_CORE_PLAN.md` 仍写 P7.2b 未实现，与较新的自动化设计、
   `TODO.md`、源码和测试不一致。
-- T13-05 已提供 Sandbox install/uninstall/reinstall batch CLI；Tauri command、前端工作流和 Gate C
-  仍未接入，不能把后端自动化契约描述为完整玩家产品能力。
 - T13-02 当前不自动收敛启动级遗留非终态 `queued/running/stopping` attempt；T13-05 CLI
   在 apply/retry/new apply 保留只读预检，并以 SQLite 原子 scope admission 最终阻断并发新写入。
   result 只读取指定 batch/attempt，保留遗留状态的安全诊断能力。后续若要自动 reconciliation，必须
   单独设计安全终态、证据和恢复验收；Sandbox batch admission 也不等于 Production 通用写 admission。
-- Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；installer cleanup 也不能只凭
-  bundle 中存在 sibling worker 就标记完成。
+- Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；SAVE-02 已用 disposable Windows
+  安装态链路补齐该证据，但 installer cleanup 仍不能只凭 bundle 中存在 sibling worker 就标记完成。
+- Profile 删除的破坏性确认目前在卡片内联展开，而非共享悬浮确认层；这是非阻断 UX 债务。后续
+  SAVE-04 存档恢复必须使用统一 Modal，并默认先创建独立 `pre-restore/` 安全备份，成功后才覆盖。
+- WR-04 仍有不阻断 Gate D 的 UI/诊断缺陷：顶栏目录状态陈旧、无元数据 Mod 名称回退为
+  `mod-import-*`、空 NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 仅投影为通用失败、
+  主题入口不在设置页，以及宽度不超过 1360px 时 `.window-tools` 被隐藏导致主题菜单不可达。
 - GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri
   command 契约回归门禁。
 
@@ -428,10 +483,11 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 
 1. 保持遗留非终态 `queued/running/stopping` attempt 的 fail-closed 门禁；如需自动 reconciliation，
   先单独完成安全设计和验收。
-2. 完成 T13-07 前端工作流以及 T13-08 Gate C；Gate C 前不抢跑新的高风险写入链路。
-3. 完成装备数据治理、防具 catalog 扩容和独立武器重定向链路。
+2. 保持 CAT-01 provenance/licensing 门禁；未达到 `bundled_eligible` 且未经人审的数据不得提交为 catalog。
+3. WR-04 Gate D 已认证；完整 catalog 未到位前继续只使用人工最小 seed，AR6/WR-02B 在获得明确可再分发的审计数据后恢复。
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
-5. 完成 Windows 多账号备份回归、安装态 Scheduled Task 验收、installer cleanup 和存档恢复。
-6. 补齐 Task/Audit retention、日志空间上限和 Debug Log，再评审 Production CLI 跨进程写入。
+5. LOG-01、LOG-02、LOG-03 与 SAVE-02 已完成；下一纵向切片实现 SAVE-03 installer ownership cleanup。
+6. SAVE-04 存档恢复按独立设计推进：统一悬浮确认、默认开启且独立存放的恢复前安全备份、失败
+  fail closed、持久通知与 Audit/rollback/recovery；完成后再推进 retention/备份中心和 Production CLI。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

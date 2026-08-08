@@ -618,8 +618,8 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
 runtime/CLI，并为 same-revision retarget 提供纯只读 preview facts；T13-06 已落地 5 个窄 Tauri
 command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与同步 terminal event（仅 Sandbox
 模式可用）；T13-07 已落地批量 workflow（跨页选择、策略选择、preview/seal/start/result/retry
-状态机）、预览/结果 UI 与行为测试。disposable Windows Gate C（T13-08）仍未实现，4 个 viewport
-视觉 smoke 待人工验收。不得把后续场景写成已经通过。
+状态机）、预览/结果 UI、行为测试与 4 viewport smoke。T13-08 disposable Windows Gate C 已于
+2026-08-05 通过主链和受控 partial failure -> retry 补充链，并标记为 `certified`。
 
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
@@ -631,7 +631,7 @@ command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与�
 | T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
 | T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、按 attemptNumber 绑定的分页（默认 50、最大 100）和 typed API wrapper；seal→start→result 端到端、重复 start 幂等、Production 拒绝；tauriContractCoverage 证明所有注册 command 已在契约文档登记 |
 | T13-07 | 跨页多选累积（翻页保留、搜索/筛选/刷新清空）、批量 preview/确认（策略显式单选、blocked 项确认）、start 进度、分页 result、partial success 和 retry UI；选择变化使旧 batch plan 失效；manifest installedRevisionId 数据源；前端不计算 target/retryable/文件规则；1440x900/1366x768/1280x800/480x800 视觉 smoke（人工） |
-| T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> restart -> recovery 检查 -> batch uninstall -> exact baseline，并清理受控产物 |
+| T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> 受控 partial failure -> retry retryable 项 -> restart -> recovery 检查 -> batch uninstall -> exact baseline；核对 task/Audit/journal、manifest/binding、backup/recovery/staging 清理与 evidence health |
 
 T13-05 Slice B/C 当前聚焦入口：
 
@@ -664,6 +664,24 @@ cmd /c corepack pnpm run lint
 cargo test -p hmm-app install_manifest_query --lib
 cargo test -p hmm-tauri --lib install_manifest
 ```
+
+T13-07/T13-08 最终验收证据：
+
+- release artifact SHA-256：
+  `08EF5FF15DAFDC00790C0975FAA160C792AF487D47C186271E93D09D84AB8C8D`。
+- `1440x900`、`1366x768`、`1280x800`、`480x800` 实际窗口 smoke 全部复验；没有路径泄漏，已发现的
+  480x800 stacking、浅色面板和终态刷新缺陷在最终 artifact 修复后重新通过。
+- Gate C 主链完成 install/restart/Alpha v2 true reinstall/Armor target switch/restart/recovery/uninstall，
+  最终 9 文件/212 字节 baseline 的路径、大小和 SHA-256 全部一致。
+- 受控 partial/retry batch `batch-94eedbc4-3006-4f76-aa39-b0d1bae71650`：attempt 0 task
+  `install-1785897638158-0` 为 `completed_with_errors`（0/1/2，三项 retryable）；attempt 1 task
+  `install-1785897713997-0` 为 3 成功。卸载 batch `batch-aab2d50e-7412-4694-9a7f-5433eed50b89`、task
+  `install-1785897949309-0` 为 3 成功。
+- 补充场景最终 manifest entries/bindings 与 profile status 投影为空，Recovery Center 归零，backup/
+  recovery 标准目录为空且无 staging；10 文件/243 字节 baseline 精确一致，三个 attempt 的 evidence
+  health 均未降级。
+- 全部验收只使用人工 fixture 和 disposable Sandbox；不得用这些步骤替代真实玩家数据保护边界，也不
+  因 Gate C 通过而开放 Production 写命令。
 
 T13-03 app 层批量卸载聚焦入口：
 
@@ -821,6 +839,127 @@ cargo test -p hmm-games-mhw --test armor_catalog
 这些测试分别锁定 stable target/binding/source/catalog identity 与 serde 不变量、catalog list/find/search
 trait contract、`mhw-armor-v1` seed、MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和
 Fatalis/Alatreon 精确隔离。
+
+### CAT-01 装备 Catalog 候选数据治理
+
+CAT-01 只校验人工 JSON 字符串和 schema 常量，不读取真实候选 catalog、第三方 Mod、游戏目录或
+玩家数据：
+
+```powershell
+cargo test -p hmm-games-mhw --test equipment_catalog_candidate --no-fail-fast
+cargo clippy -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+测试锁定 candidate schema version、完整 SHA-256 stable ID、legacy ID 兼容字段、locale/alias 归一化、
+active/hidden/dummy、provenance/licensing 与显式 bundling gate；负测覆盖绝对路径、`..`、大小写碰撞、
+重复 stable ID、重复展示名、错误 path family、缺失许可审核事实和报告不回显候选值。CAT-01 只验证
+`nativePC/wp/<family>/...` 的安全路径与 family 一致性；14 类 family、part/parser 与 transformer
+契约已由 WR-01 设计冻结，运行时实现已从 WR-02A 开始。
+
+### WR-01 / WR-02A 武器 Family、Parser 与人工最小 Catalog
+
+WR-01 是文档设计，聚焦检查为 Markdown link/whitespace。WR-02A 已实现，固定聚焦入口为：
+
+```powershell
+cargo test -p hmm-games-mhw --test weapon_retarget --no-fail-fast
+cargo clippy -p hmm-core -p hmm-ports -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+测试只使用人工 family/main/part 路径和人工最小 catalog。覆盖 14 类普通/`bs_` main id、六类已知
+副件映射、stable ID、alias、legacy id、unknown family/part、missing MOD3/MRL3 pair、大小写碰撞、
+多 source、混合 family 和混合 install payload。完整 603-target catalog 不得从来源未明私有数据生成。
+
+2026-08-05 候选验证：WR-02A 固定入口 15/15；当时 `cargo test -p hmm-games-mhw --no-fail-fast`
+共 63 个 unit/integration test 与 doc-tests 全部通过；上述三 crate all-targets clippy 通过。WR-02A
+交付范围没有 bundled weapon data、文件系统 I/O、binary transformer、staging 或真实游戏写入。
+
+### WR-03A 武器 Binary Parser 与 Transformer
+
+WR-03A 只使用完全人工构造的内存 bytes，固定入口为：
+
+```powershell
+cargo test -p hmm-games-mhw --test weapon_binary --no-fail-fast
+cargo test -p hmm-games-mhw --no-fail-fast
+cargo clippy -p hmm-core -p hmm-ports -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+测试覆盖 MOD3/MRL3 magic/version/count/offset/bounds、texture/material/resource table、JAMCRC material
+pair compatibility、unsafe/absolute/traversal/control reference、精确 source/target root、六类副件 normal
+到 `bs_` mapping、ambiguous tail、255-byte 容量、跨 family、opaque timestamp、changed-range
+postcondition、确定性 source/output/mapping digest 和错误/`Debug` 脱敏。2026-08-05 候选验证：固定入口
+9/9；`hmm-games-mhw` 共 72 项及 doc-tests 全过；上述三 crate all-targets clippy 通过。
+
+### WR-03B Transformer Staging / InstallPlan / Manifest
+
+WR-03B 只使用人工 bytes、fake services 与 temp roots，固定聚焦入口为：
+
+```powershell
+cargo test -p hmm-core -p hmm-ports -p hmm-infra -p hmm-games-mhw -p hmm-app -p hmm-runtime
+cargo clippy -p hmm-core -p hmm-ports -p hmm-infra -p hmm-games-mhw -p hmm-app -p hmm-runtime --all-targets -- -D warnings
+cargo test -p hmm-runtime --test weapon_transform_lifecycle --no-fail-fast
+```
+
+测试覆盖 invocation/adapter facts 的 schema、上限与旧 JSON 缺省兼容，registry duplicate/unknown/stale
+fail-closed，source/dependency/output/mapping digest 漂移，`.partial` 清理，大小写碰撞、target escape 和
+symlink/junction containment。plan hash、reinstall token、batch digest、manifest/recovery 与 Audit
+projection 都有直接断言；Audit 不得包含 digest、invocation 参数、texture path 或本地路径。
+
+temp-root lifecycle 使用人工 MOD3/MRL3 bytes 证明 install -> JSON manifest restart -> same-revision target
+switch -> JSON manifest restart -> manifest uninstall -> byte-for-byte baseline；既有事务测试继续覆盖 commit
+failure/rollback success 和 rollback failure/recovery-required。2026-08-05 候选聚焦验证中，`hmm-app`
+431 项、`hmm-infra` 308 项（另 3 项环境型 ignored）、`hmm-runtime` 66 项与 weapon lifecycle 1 项通过，
+受影响六 crate 的 tests/doc-tests 和 all-targets clippy 全部通过。自动测试不得读取游戏原始 binary、
+真实 Mod、真实游戏目录、AppData 或玩家数据。
+
+### WR-04 Weapon Tauri / UI / Windows Gate D
+
+WR-04 继续只使用人工 MOD3/MRL3 bytes、fake services、temp roots 和 disposable Windows Sandbox。
+Production composition 必须保持 Armor-only；只有显式 `HMM_SANDBOX_DATA_DIR` 环境可以同时启用人工
+Weapon seed 与 lifecycle root admission。固定聚焦入口为：
+
+```powershell
+cargo test -p hmm-games-mhw -p hmm-app -p hmm-runtime -p hmm-tauri
+cargo test -p hmm-games-mhw developer_router_builds_content_sealed_weapon_plan_from_artificial_bytes
+cargo test -p hmm-runtime composition::tests
+cargo clippy -p hmm-core -p hmm-ports -p hmm-infra -p hmm-games-mhw -p hmm-app -p hmm-runtime -p hmm-tauri --all-targets -- -D warnings
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+```
+
+契约测试必须断言 `list_replacement_targets({ gameId, modId, query? })`、camelCase DTO、稳定错误码、
+`catalogScope = production | developer_sandbox`，并拒绝 relative path、path-family、staging、digest 和
+transform invocation 泄漏。人工 Weapon 正向测试应证明 2 个动作中恰有 1 个 sealed transform；Production
+同类 source 返回 `weapon_developer_seed_unavailable`。Sandbox capability 正负测试还应覆盖合法 marker
+与 app/game containment 放行、Sandbox 外 game root 拒绝、link/reparse/marker 篡改 fail closed，以及
+Production environment 无法启用 developer seed。
+
+Gate D 必须从最终 Tauri artifact 和全新的 disposable Sandbox root 开始。先记录人工 game fixture 的
+相对路径集合、文件大小和 SHA-256，再通过 GUI 导入人工 Weapon fixture，完成 initial target install ->
+关闭并重启 GUI -> same-revision true reinstall `one001 -> one002` target switch -> 关闭并重启 GUI ->
+manifest uninstall。每一步记录 UI analysis/preview/result、task id、installed target、manifest/recovery 与
+脱敏日志；最终断言 manifest 和 recovery 为空，backup/staging 无残留，game fixture 的路径集合、大小和
+SHA-256 与初始 baseline 完全一致。不得使用真实游戏、存档、AppData 或第三方 Mod。
+
+视觉 smoke 在 replacement analysis、preview、running/result、warning/error 等实际状态下检查
+`1440x900`、`1366x768`、`1280x800`、`480x800`，并覆盖 light/dark/system。重点确认 modal 高于全局
+“当前游戏”顶栏，窄屏可以滚动到全部内容和操作按钮，文本不截断、不重叠，不显示 package/game/
+staging 路径或 path-family。只有 automated checks、视觉 smoke 和上述 exact-baseline 生命周期全部通过，
+WR-04 才可标记 `certified`。
+
+2026-08-06 Gate D 已按上述门禁标记为 `certified`：最终 artifact SHA-256 为
+`156c42118c6620d803c1611397c55c1847ab782bb6505cd713c56a17398ea2af`，完整 `verify.ps1` 退出码 0，
+Tauri 188 passed / 1 ignored。Sandbox task 为 initial install `install-1785952182807-1`、target switch
+`install-1785953522595-0`、uninstall `install-1785955067791-0`；对应 Audit Log 均为 success。最终
+manifest entries/bindings 与 recovery/staging 为空，10 文件/316 bytes 的路径、大小和 SHA-256 baseline
+差异均为 0。light 覆盖四个固定 viewport，dark 覆盖 1280x800/480x800，system 覆盖 1366x768。
+
+本次认证保留以下非阻断残余风险：全局顶栏目录状态陈旧、无元数据 Mod 的技术型 fallback 名称、空
+NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口，
+以及 `max-width: 1360px` 下 `.window-tools` 被隐藏导致窄屏主题菜单不可达。后续相关修复应补聚焦 UI/
+contract 测试；这些缺陷不改变本次已验证的 replacement modal 层级、滚动、路径脱敏和生命周期结果。
 
 ### ARMOR_RETARGET AR2
 
@@ -1116,6 +1255,77 @@ JSONL reader 兼容、UTC 日轮转、14 天保留、初始化/运行时写入�
 祖先目录替换或链接无法把写入/删除引向根外、外部 sentinel 保持不变，以及 Unix `logs`/`logs/app`
 目录 `0700`、日文件 `0600`。测试只使用临时 app data、fixed clock 和人工敏感字符串；sidecar、日志和
 诊断包均为 ignored 生成物，不能提交。
+
+LOG-01 Task/Audit retention 聚焦验证：
+
+```powershell
+cargo test -p hmm-infra log_retention
+cargo test -p hmm-infra task_log
+cargo test -p hmm-infra audit_log
+cargo test -p hmm-infra text_log
+cargo test -p hmm-infra diagnostics_health
+cargo test -p hmm-runtime retention --no-fail-fast
+cargo test -p hmm-app support_diagnostics --no-fail-fast
+cargo test -p hmm-tauri diagnostics --lib --no-fail-fast
+node --test src/features/diagnostics/diagnosticsPage.test.mjs
+cargo clippy -p hmm-ports -p hmm-infra -p hmm-app -p hmm-runtime -p hmm-tauri --all-targets -- -D warnings
+```
+
+必须覆盖含当天在内的 Task 30 天 mtime 边界、Audit 90 天合法 UTC 文件名边界、未知/非法/non-regular
+entry 保留、Task/Audit 类别独立失败、稳定 retention health code/count、write/post-commit 严重度优先级，
+以及 Windows junction / Unix symlink 下根外 sentinel 不读、不写、不删。共享 composition 测试必须证明
+完整 runtime 启动执行一次清理；只读 automation 保持无清理副作用。DTO、support diagnostics JSON 与
+前端类型必须包含 retention 状态/计数且不新增路径或原始错误字段。所有文件系统用例只使用 temp/fake/
+人工日志，不读取或清理真实 AppData、游戏目录、存档、Steam 或第三方 Mod。
+
+LOG-02 日志总空间预算聚焦验证：
+
+```powershell
+cargo test -p hmm-infra log_storage_budget -- --nocapture
+cargo test -p hmm-infra managed_log -- --nocapture
+cargo test -p hmm-infra app_settings_repository -- --nocapture
+cargo test -p hmm-app app_settings -- --nocapture
+cargo test -p hmm-app support_diagnostics -- --nocapture
+cargo test -p hmm-runtime shared_runtime_ -- --nocapture
+cargo test -p hmm-runtime invalid_persisted_log_budget -- --nocapture
+cargo test -p hmm-runtime corrupted_log_settings -- --nocapture
+cargo test -p hmm-tauri dto_tests -- --nocapture
+cargo test -p hmm-tauri diagnostics -- --nocapture
+node --test src/features/diagnostics/diagnosticsPage.test.mjs
+```
+
+必须覆盖默认 128 MiB、显式最小 1 MiB、旧 schema 缺失字段兼容和损坏/非法 settings 回退；清理顺序
+必须证明 Debug/Task 同层按最旧、再 App、最后仅删除 30 天硬下限之外的 Audit。当前 UTC 日 App/Debug、
+最近 30 天 Audit、未知/非法/non-regular/link/junction/reparse entry 必须保留。用例还必须覆盖 16 KiB
+维护 Audit reserve、受保护或超大文件导致的 `unsatisfied`、类别独立失败、目录漂移和文件替换复验，
+以及维护 Audit 至多写一条且不会递归触发第二次清理。
+
+settings command/DTO 测试必须证明 Tauri 只接受和返回 `{ maxBytes }`，使用 camelCase，非法值返回稳定
+`log_storage_max_bytes_invalid`，不暴露日志路径、文件名或删除参数。diagnostics Rust/TypeScript 契约
+必须覆盖 `logStorageStatus` 与三类计数。所有测试只使用 temp/fake/人工日志；不得读取或清理真实
+AppData、游戏、Steam、存档、Scheduled Task 或第三方 Mod。
+
+LOG-03 Debug Log 聚焦验证：
+
+```powershell
+cargo test -p hmm-infra debug_log --lib
+cargo test -p hmm-infra log_retention --lib
+cargo test -p hmm-app app_settings --lib
+cargo test -p hmm-app support_diagnostics --lib
+cargo test -p hmm-runtime composition --lib
+cargo test -p hmm-runtime diagnostics_automation --lib
+cargo test -p hmm-tauri dto --lib
+node --test src/features/settings/debugLogSettings.test.mjs src/features/diagnostics/diagnosticsPage.test.mjs
+cmd /c corepack pnpm run typecheck
+```
+
+必须覆盖默认关闭、旧 settings 缺字段兼容、显式开启持久化、损坏 settings fail-closed、保存失败不改变
+进程内开关，以及禁用时不创建 `logs/debug`。writer 只接受固定 schema 与稳定 code/ID/数值字段；路径型、
+自由文本、credential、manifest/hash/Mod/save 内容必须拒绝且累计稳定 health。7 日 UTC retention 必须保留
+边界日、非法日期、未知/non-regular/link/junction/reparse entry；Debug 类别失败不得阻断 Task/Audit。
+diagnostics page/export、CLI snapshot、Tauri DTO 和 TypeScript 类型必须包含 Debug status/count/line count，
+但不得返回日志目录、任意文件名参数、原始错误或正文到只读 CLI。所有文件系统用例只使用 temp/fake/人工
+日志，不访问真实 AppData、游戏目录、Steam、存档或第三方 Mod。
 
 ## 游戏适配器
 

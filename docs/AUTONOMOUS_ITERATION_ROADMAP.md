@@ -6,8 +6,8 @@
 [Codex 目标模式提示词](CODEX_GOAL_MODE_PROMPTS.md)。路线图和状态快照只在纵向切片合并或里程碑结论
 变化时同步，不随每个 commit、review 修复或 CI 轮次重复更新。
 
-更新时间：2026-08-02
-规划基线：`main@44a5ff7`，Slice B 已由 PR #222 合并
+更新时间：2026-08-07
+规划基线：`main@5897fbc`；Gate C、WR-04 Gate D 与 SAVE-02 安装态后台保护均已完成受控验收
 
 ## 固定范围
 
@@ -40,11 +40,17 @@
 - T17 狩技来源批量迁移 Slice 1-4C：`completed`，保持 import-only。
 - 多 Steam 用户存档候选发现、显式选择、昵称/头像展示和隐私降级：`completed`。
 - 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
-  support export：核心已完成，发布/保留治理仍有缺口。
+  support export：核心已完成；SAVE-02 安装态 runtime acceptance 已 `certified`，installer cleanup、
+  玩家存档恢复和 retention/备份中心仍有缺口。
 - CLI-0A/0B/1A/1B/2A/2B/2C：`completed`；Sandbox 单项 lifecycle 已闭环，Production 写命令仍不可达。
 - 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
   Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
 - QG-01：`completed`，PR #215 已把 frontend tests 与 workspace clippy 纳入本地和 CI 统一门禁。
+- T13 Slice A-D：T13-07 为 `completed`；T13-08 Windows Sandbox Gate C 为 `certified`。
+- CAT-01、WR-01、WR-02A、WR-03A、WR-03B 与 WR-04 已完成；WR-04 Windows Gate D 为
+  `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；
+  SAVE-02 安装态后台保护验收已 `certified`。production catalog 仍受 WR-02B 许可门禁约束，下一
+  `ready` 纵向切片为 SAVE-03。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -116,16 +122,23 @@ flowchart TD
   D --> CAT["CAT-01 装备数据治理"]
   CAT --> AR["AR6 防具 Catalog 扩容"]
   CAT --> WD["WR-01 武器重定向设计"]
-  WD --> WC["WR-02 武器 Catalog/Parser"]
-  WC --> WI["WR-03 武器安装集成"]
-  WI --> WU["WR-04 武器 UI/验收"]
+  CAT --> WCB["WR-02B 完整武器 Catalog"]
+  WD --> WCA["WR-02A Family/Parser"]
+  WCA --> WTA["WR-03A Binary Transformer"]
+  WTA --> WTB["WR-03B 武器安装集成"]
+  WTB --> WU["WR-04 武器 UI/验收"]
+  WCB -. production catalog gate .-> WU
   AR --> SAVE["SAVE/LOG 发布加固"]
   WU --> SAVE
 ```
 
-QG-01、T13-00、Slice A、Slice B 和 Slice C 已完成；T13-05 的 Sandbox CLI 已统一覆盖批量安装、
-卸载和真正重装。下一纵向切片是 Slice D 的 Tauri/typed API、前端工作流与 Windows Gate C。内部
-task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 review 因额度缺席时仍按 CodeRabbit
+QG-01、T13-00 和 Slice A-D 已完成；T13-05 的 Sandbox CLI、T13-06 的窄 Tauri/typed API、T13-07
+批量 UI 与 T13-08 Windows Gate C 已形成完整 Sandbox 玩家路径。CAT-01 装备数据治理、WR-01 武器
+设计、WR-02A 纯解析、WR-03A 纯 binary transformer、WR-03B 安装事实链和 WR-04 受控 UI/Gate D
+均已完成；LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log 与 SAVE-02
+安装态后台保护验收也已完成。AR6 与 WR-02B 等待已授权审计数据，当前下一纵向切片是 SAVE-03。Production weapon
+catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人工 seed。外部 review
+因额度缺席时仍按 CodeRabbit
 缺席流程完成独立全 diff 自审，且不能跳过 required CI terminal success。
 
 ## P0 核心生命周期与批量能力
@@ -140,8 +153,10 @@ task 按依赖顺序提交，但不为每个 task 重复创建 PR。外部 revie
 | Slice D | T13-06、T13-07、T13-08 | Tauri/typed API、前端批量工作流和 disposable Windows Sandbox Gate C 形成完整玩家路径。 |
 
 Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI、Slice C 的
-uninstall/reinstall runtime/CLI contract 均已完成。Slice D 必须从合并后的 Slice C 主干启动，不得
-把未合并切片分支作为隐式基线。
+uninstall/reinstall runtime/CLI contract、Slice D 的 Tauri/UI/Gate C、CAT-01 数据治理和 WR-04
+Tauri/UI/Gate D、LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log 与 SAVE-02
+安装态后台保护验收均已完成。Sandbox 写能力不因此扩张为 Production 写能力；下一任务进入 SAVE-03
+installer ownership cleanup，AR6/WR-02B 在授权数据到位后恢复。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -164,8 +179,8 @@ uninstall/reinstall runtime/CLI contract 均已完成。Slice D 必须从合并�
 
 ### T13-00：冻结批量领域语义
 
-状态：`design-complete（产品实现未开始）`；领域语义、安全约束、契约和路线图已冻结。这是高风险
-设计 task，后续产品实现仍须逐切片验证。
+状态：`design-complete`；领域语义、安全约束、契约和路线图已冻结，后续 T13-01 至 T13-08 已按该
+设计完成并通过 Gate C。这仍是高风险设计基线，后续变更须重新按切片验证。
 
 独立文档：[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)。
 
@@ -365,7 +380,7 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 ### T13-07：批量操作 UI
 
-状态：`implemented`（代码与行为测试完成；4 viewport 视觉 smoke 待人工验收）。
+状态：`completed`。代码、行为测试和 4 viewport 视觉 smoke 均已完成。
 
 范围：
 
@@ -377,11 +392,14 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 完成定义：前端行为测试、typecheck/lint/build 和 `1440x900`、`1366x768`、`1280x800`、`480x800`
 受控 smoke；无重叠、截断或路径泄漏。
 
+完成证据：4 个视口均按实际窗口尺寸复验；480x800 暴露的浮层 stacking、浅色主题面板和批量终态后
+列表刷新问题已修复并重新验收。预览/结果的按钮、警告、滚动区域和路径脱敏均符合完成定义。
+
 提交边界：state/workflow 一个提交，UI 一个提交，行为/视觉回归一个提交。
 
 ### T13-08：Windows Sandbox Gate C
 
-状态：`blocked`，依赖 T13-05 和 T13-07。
+状态：`certified`（2026-08-05）。T13-05/T13-07 依赖已满足。
 
 使用全新 disposable Windows Sandbox 和人工 fixture 验收：
 
@@ -399,6 +417,15 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 完成定义：source/旧 target/staging/recovery 无残留，manifest/backup/Audit/taskId 一致，外部 sentinel
 未变化。Gate C 只有完整自动化、独立 review、CI 与该纵向验收全部通过后才能标记 `certified`。
 
+认证证据：最终 release artifact SHA-256 为
+`08EF5FF15DAFDC00790C0975FAA160C792AF487D47C186271E93D09D84AB8C8D`。主链完成 batch install ->
+GUI restart -> Alpha v2 true reinstall + Armor target switch -> restart -> recovery 归零 -> batch uninstall ->
+9 文件/212 字节 exact baseline。补充受控文件锁场景中，batch
+`batch-94eedbc4-3006-4f76-aa39-b0d1bae71650` attempt 0 为 0 成功/1 失败/2 跳过且全部 retryable，attempt 1
+为 3 成功；随后 batch `batch-aab2d50e-7412-4694-9a7f-5433eed50b89` 卸载 3 成功。最终 manifest 与
+replacement bindings 为空、Recovery Center 归零、backup/recovery 标准目录为空、无 staging 残留，
+10 文件/243 字节补充 baseline 的路径、大小和 SHA-256 全部一致，所有 attempt evidence health 正常。
+
 ## P1 装备重定向
 
 候选数据审计已确认：
@@ -410,7 +437,7 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 ### CAT-01：装备数据治理
 
-状态：`blocked`，依赖 T13-08。
+状态：`completed`，2026-08-05 完成 schema/validator、聚焦验证、完整验证和 findings-first 自审。
 
 - 定义候选输入 schema、validator、stable ID 生成、alias/localization、dummy/隐藏条目策略和版本。
 - 明确数据 provenance/licensing；未确认可分发权利时不得把候选数据提交为 bundled catalog。
@@ -418,9 +445,16 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 提交边界：schema/validator 一个提交；经过审计的生成 artifact 另一个提交。
 
+完成证据：`hmm-games-mhw` 已提供 candidate v1 JSON Schema、严格 typed/semantic validator、完整
+SHA-256 stable ID、locale/alias、active/hidden/dummy、legacy ID 和 provenance/licensing 门禁，以及
+只读 developer example。13 个纯人工 JSON 测试覆盖绝对/drive/UNC、`..`、大小写碰撞、重复 ID、
+重复展示名、错误 path family、许可审核事实和报告脱敏；完整 `scripts/verify.ps1` 终态通过。未提交
+272/3125 条来源未明候选数据，也未生成 bundled artifact。正式契约见
+[装备 Catalog 候选数据治理](EQUIPMENT_CATALOG_GOVERNANCE.md)。
+
 ### AR6：防具 Catalog 扩容
 
-状态：`blocked`，依赖 CAT-01。
+状态：`blocked`，CAT-01 已完成；当前等待具有明确再分发权和完整审核事实的 armor 候选输入。
 
 - 把最小 seed 扩展为经过审计、版本化的防具 catalog。
 - 保持 `mhw-games-mhw` 中的 Unicode、alias、monster/rank/variant 和 `pl/f_equip` 规则。
@@ -430,38 +464,76 @@ retry、same-revision Armor switch、legacy result 可读性和敏感 canary con
 
 ### WR-01：武器重定向设计
 
-状态：`blocked`，依赖 CAT-01。
+状态：`design-complete`，2026-08-05 完成设计、安全矩阵和 WR-02 至 WR-04 分阶段计划。
 
 - 独立定义 weapon target kind、14 类 family、stable identity、alias 与 source/target path schema。
 - 明确多名称同一路径是 alias/display variant，不生成重复安装目标。
 - 不复用或扩张 `MhwArmorReplacementAdapter`；武器 parser/adapter 留在 `hmm-games-mhw`。
 - 决定哪些资源只需路径重定向，哪些需要二进制 transformer；未证明安全的类别 fail closed。
 
-完成定义：设计、安全测试矩阵和分阶段实现计划评审完成。
+完成证据：14 类 family、普通/`bs_` main id、主/副件配对、stable identity/alias、同 family 约束、
+MOD3 path-only 条件、MRL3 transformer-required 契约、未知资源 fail-closed、manifest/recovery facts 和
+Windows Gate 矩阵已写入 [MHW:I 武器重定向设计](WEAPON_RETARGET_DESIGN.md)。未提交私有 catalog，
+未实现真实文件写入。
 
 ### WR-02：武器 Catalog、Parser 与 RetargetPlan
 
-状态：`blocked`，依赖 WR-01。
+状态：WR-02A `completed`；WR-02B `blocked-external-data`，等待满足 CAT-01 的可再分发审计输入。
 
-- 生成 versioned weapon catalog；结构化解析 `nativePC/wp/<family>/<internal-id>`。
+- WR-02A 使用人工最小 catalog 实现 14-family registry、source closure、结构化 parser 和分析。
+- WR-02B 只从 `bundled_eligible` 候选生成完整 versioned weapon catalog。
 - 只替换经过 parser 识别的 target 段，不做整路径字符串替换。
-- 覆盖 14 类、603 个唯一路径、alias、unknown family、多 source 和碰撞测试。
+- WR-02A 覆盖 14 类、alias、unknown family/part、多 source 和碰撞；603 唯一路径覆盖留给 WR-02B。
+
+WR-02A 完成证据：14-family/六类副件、普通与 `bs_` main/part、严格 resource/model path、完整 pair
+source closure、stable ID、alias/legacy resolver 和 fail-closed 错误已由人工 fixture 覆盖；15 项聚焦
+测试、`hmm-games-mhw` crate 全测与三 crate clippy 通过。没有 production provider、bundled weapon
+catalog、binary transformer、staging 或真实文件写入，也尚未实现 `RetargetPlan`。
 
 ### WR-03：武器 staging、InstallPlan 与 manifest
 
-状态：`blocked`，依赖 WR-02。
+状态：WR-03A/WR-03B `completed`。WR-02B 的外部数据阻塞没有阻止使用人工 binary/catalog fixture
+完成通用安装事实链。
 
-- 原始输入只读，materialize 只写 staging。
-- 最终 target 进入 InstallPlan/conflict、binding snapshot、manifest、backup、rollback/recovery。
+- WR-03A 使用人工 MOD3/MRL3 bytes 实现有界 preflight、pair compatibility 和纯 transformer。
+- WR-03B 保持原始输入只读，materialize 只写 staging。
+- WR-03B 把最终 target 接入 InstallPlan/conflict、binding snapshot、manifest、backup、rollback/recovery。
 - 首次安装、真正重装 target switch 和卸载复用 Gate A/T13 单项事务。
+
+WR-03A 完成证据：完全人工 bytes 覆盖受支持 header/version/count/offset/bounds、精确 JAMCRC material
+pair、路径安全、六类副件 mapping、changed-range postcondition、确定性 digest 和脱敏错误；固定入口
+9/9、`hmm-games-mhw` 72 项及 doc-tests、三 crate all-targets clippy 通过。没有 staging、
+InstallPlan/manifest、runtime registry、production catalog 或真实文件写入。
+
+WR-03B 完成证据：versioned invocation/registry、source/dependency/output/mapping digest 重验、sibling
+`.partial` 原子发布、plan/reinstall/batch/manifest/recovery/Audit facts 已落地；temp-root 使用人工
+MOD3/MRL3 bytes 完成 install -> restart -> same-revision target switch -> restart -> uninstall -> exact
+baseline。受影响六 crate tests/doc-tests、all-targets clippy 与独立 lifecycle integration test 通过；
+未读取真实游戏、存档、AppData 或第三方 Mod。
 
 ### WR-04：武器 Tauri/UI 与 Windows 验收
 
-状态：`blocked`，依赖 WR-03。
+状态：`certified`（2026-08-06），仅认证人工 developer/Sandbox seed；production catalog 仍受 WR-02B
+许可门禁约束。
 
 - 窄 Tauri DTO、feature-local typed API、Mod 详情目标选择/预览/确认。
 - 后端提供 category/capability/catalog；前端不解析 `nativePC/wp`。
 - 使用人工最小 fixture 完成安装 -> 重启 -> target switch -> 重启 -> manifest 卸载 -> baseline。
+
+完成证据：最终 `hmm-tauri.exe` SHA-256 为
+`156c42118c6620d803c1611397c55c1847ab782bb6505cd713c56a17398ea2af`；完整 `verify.ps1` 通过，
+Tauri 为 188 passed / 1 ignored。Gate D 在全新 disposable Windows Sandbox 中使用人工 archive
+`85ca8fb179ccaaa8b3e22d13de8e3f2d46e0135a09ca8c5f258230ae31d4dacf`，完成 initial install
+`install-1785952182807-1`、`one001 -> one002` true reinstall `install-1785953522595-0`、重启持久化与
+manifest uninstall `install-1785955067791-0`。最终 manifest entries/bindings、Recovery Center、backup、
+recovery、reinstall-recovery 和 retarget-staging 均为空；游戏文件为 10 文件/316 bytes，路径、大小和
+SHA-256 与 baseline 完全一致。light 覆盖 1440x900/1366x768/1280x800/480x800，dark 覆盖
+1280x800/480x800，system 覆盖 1366x768；replacement modal 的层级、滚动、warning、按钮和路径脱敏通过。
+
+不阻断本次 replacement 主链的已知问题：顶栏目录状态可能陈旧；无元数据导入名回退为技术型
+`mod-import-*`；空 NexusMods ID 显示 `null`；`weapon_binary_pair_incompatible` 仅显示通用失败提示；
+主题入口不在设置页，且 `AppFrame.css` 在宽度不超过 1360px 时隐藏 `.window-tools`，使窄屏无法打开
+主题菜单。这些问题必须保留在后续 UI/诊断债务中，不得被 Gate D `certified` 隐去。
 
 ## P1 条件任务：狩技来源导入
 
@@ -499,14 +571,25 @@ T17 Slice 1-4C 已 `completed`，不重新创建同名开发任务。
 
 ### SAVE-02：安装态后台保护验收
 
-状态：`blocked`，需要 disposable Windows VM/一次性账户。
+状态：`certified`（2026-08-07）。
 
 验收 sibling worker -> user Scheduled Task -> trigger -> fresh heartbeat -> idempotent cleanup。不得在日常
 Windows 账户中为完成 checklist 注册真实任务。
 
+完成证据：一次性 Windows Sandbox 中的安装 bundle 包含主程序 sibling worker；生命周期 smoke 完成
+initial missing、register exact read-back 与幂等 register，Task Scheduler 人工 Run 返回成功；打开全局
+后台保护后，唯一 synthetic Profile 的只读 probe 看到新鲜 heartbeat，并实际完成一个 1 文件 synthetic
+automatic backup。Terminal A 未接收 stdin acknowledgement，因此最终 unregister/idempotent unregister/
+missing inspect 使用 dedicated ownership-checked cleanup smoke 完成；Task Scheduler UI 刷新确认无残留。
+Sandbox 随后销毁，宿主 synthetic fixture 已移入回收站。应用 `0.1.0-alpha.0`，Windows 10 Enterprise
+build `19041`，`AMD64`；未使用真实游戏、Steam userdata 或玩家存档。
+
+不阻断 SAVE-02 的视觉 follow-up：删除 synthetic Profile 的破坏性确认在卡片内联展开，而非共享悬浮
+确认层。该问题不得被 `certified` 隐去；SAVE-04 恢复确认必须使用统一 Modal。
+
 ### SAVE-03：Installer ownership cleanup
 
-状态：`blocked`，依赖 SAVE-02 环境可用。
+状态：`ready`，SAVE-02 disposable 环境与安装态证据已可复用。
 
 - 实现 ownership-checked cleanup helper、NSIS `PREUNINSTALL` 和 WiX custom action。
 - foreign task 保留；running/unknown owned task fail closed。
@@ -516,7 +599,10 @@ Windows 账户中为完成 checklist 注册真实任务。
 
 状态：`blocked`，依赖 SAVE-03。
 
-- 独立设计 preview、manifest/hash 校验、二次确认、restore 前安全备份和 rollback/recovery。
+- 独立设计 preview、manifest/hash 校验、统一悬浮确认、restore 前安全备份和 rollback/recovery。
+- restore 前安全备份默认开启并持久化为 Profile 级开关；必须写入独立 `pre-restore/` 目录并使用清晰的
+  Profile/UTC/purpose 命名，成功后才允许覆盖。用户关闭时显示高风险警告并要求额外确认。
+- 备份与恢复均提供任务进度、持久成功/失败通知和 Audit Log；pre-restore 备份失败时 fail closed。
 - source/target containment、账号/Profile 一致性和游戏运行状态必须 fail closed。
 - 不复用 Mod 安装恢复中心来冒充存档恢复。
 
@@ -531,31 +617,43 @@ Windows 账户中为完成 checklist 注册真实任务。
 
 ### LOG-01：Task/Audit retention
 
-状态：`blocked`，在核心批量 Gate C 后执行。
+状态：`completed`。完整写侧 runtime 启动时通过共享 composition 执行 Task 30 天、Audit 90 天清理；
+Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 
 - Task Log 30 天、Audit Log 90 天；使用 capability-relative handle 和 fail-closed containment。
 - 删除失败只影响 evidence health，不篡改玩家文件事实。
 - CLI/Tauri/worker 使用相同策略和稳定健康码。
+- 未知文件、非法日期、link/reparse entry 保留；Task/Audit 类别独立失败，write/post-commit health
+  严重度不会被 retention 降级覆盖。
 
 ### LOG-02：总空间上限
 
-状态：`blocked`，依赖 LOG-01。
+状态：`completed`。完整写侧 runtime 启动时读取 schema v1 可选 `logStorageMaxBytes`，缺失时使用
+128 MiB，显式配置不得低于 1 MiB；Tauri 通过窄 settings command 读写，写设置不立即清理。
 
-- 可配置总空间上限；优先清理最旧 Debug/Task，再按策略处理 App/Audit。
-- Audit 最低保留边界明确；清理写最小审计但避免递归日志风暴。
+- 只统计固定 App/Task/Audit/Debug owned 普通文件；未知、非法日期、non-regular、link/reparse 保留。
+- 优先清理最旧 Debug/Task，再处理 App，最后只处理 30 天硬下限之外的 Audit；当前日 App/Debug 保留。
+- 为单条维护 Audit 预留 16 KiB；无法收敛时返回稳定 health/count，不突破保护边界。
+- 删除使用 capability-relative no-follow 与扫描/打开后/删除前三次指纹复验；维护 Audit 至多一条且不递归。
 
 ### LOG-03：Debug Log
 
-状态：`blocked`，依赖 LOG-02。
+状态：`completed`，2026-08-07 完成默认关闭的持久化开关、受控 writer/reader、7 日 UTC retention、
+诊断页面/export、Tauri/typed API、runtime 重启持久化和 no-follow/category-isolation 负测。
 
-- 用户主动开启、默认关闭、7 天 retention，仍经过统一脱敏。
-- 不提供 raw path/error/manifest dump，不把 Debug Log 当作绕过安全 schema 的后门。
+- 用户主动开启、默认关闭；旧/损坏 settings fail closed，保存成功后立即更新共享原子开关。
+- 只接受稳定 code、受控 ID 与数值字段，不提供 raw path/error/manifest/hash dump 或 Mod/save 内容。
+- 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
+- Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
+
+LOG-03 与 SAVE-02 均已完成；下一无人值守 `ready` 项是 SAVE-03 installer ownership cleanup。
+AR6/WR-02B 继续等待可再分发的审计数据，CLI-3A 继续依赖 SAVE-03。
 
 ## P3 Production CLI 写能力
 
 ### CLI-3A：跨进程 admission
 
-状态：`blocked`，依赖 T13-08、SAVE-03 和 LOG-01。
+状态：`blocked`，T13-08 与 LOG-01 已满足，仍依赖 SAVE-03。
 
 - 定义 `game-profile-write`、`save-profile-write`、`background-registration-write` scopes。
 - GUI、CLI、worker 使用相同 admission；锁内重验，固定获取顺序。

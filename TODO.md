@@ -1,9 +1,10 @@
 # HelsincyModManager 后续任务总纲
 
 创建时间：2026-06-27
-基于 HEAD：`44a5ff7` (main)
-最近同步：2026-08-02，QG-01 已由 PR #215 合并；T13 Slice A/B/C 已完成单项与批量
-install/uninstall/reinstall 的 Sandbox CLI 自动化，Slice D 是下一 ready 交付单元
+基于 HEAD：`09ceef6` (`hy/post-gate-logical-commits`)
+最近同步：2026-08-07，T13 Slice A-D 与 WR-04 已完成；Gate C、Gate D 均为 `certified`；LOG-01
+Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；SAVE-02 安装态后台保护验收已
+`certified`；AR6/WR-02B 继续等待已授权数据，下一无人值守 `ready` 单元为 SAVE-03 installer ownership cleanup
 
 ---
 
@@ -62,8 +63,10 @@ install/uninstall/reinstall 的 Sandbox CLI 自动化，Slice D 是下一 ready 
    PR #192 完成最后的 Slice 4C rebase 合并。T17 Slice 1/2/3/4A/4B 已合并，PR #199 交付最后的
    Slice 4C；完整 T17 已具备分页结果、partial success、服务端重试和大批次门禁。
 5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：QG-01 CI 质量门禁已由 PR #215
-   合并；T13-00 已完成独立批量领域设计与规划契约，Slice A 已完成 CLI-2A/2B/2C 和
-   CORE-PREF-01；下一步按 T13-01 至 T13-08 推进，不能把 T17 import-only 编排当成批量安装实现。
+   合并；T13-00 至 T13-08 已按独立批量领域设计完成，Gate C 于 2026-08-05 认证。CAT-01 数据治理、
+   WR-01 武器设计、WR-02A 纯解析、WR-03A binary transformer、WR-03B staging/manifest 与 WR-04
+   受控 Tauri/UI/Gate D 随后完成，Gate D 于 2026-08-06 认证；LOG-01、LOG-02 与 LOG-03 已完成，
+   下一步进入 SAVE-03，仍不能把 T17 import-only 编排当成批量安装实现。
 
 ---
 
@@ -94,11 +97,20 @@ install/uninstall/reinstall 的 Sandbox CLI 自动化，Slice D 是下一 ready 
   -> T17 Slice 4B selection/decision/start/progress [completed, PR #198]
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
   -> QG-01 CI 质量门禁 [completed, PR #215]
-  -> T13-00 批量语义设计 [design-complete（产品实现未开始）]
+  -> T13-00 批量语义设计 [design-complete；后续实现已认证]
   -> Slice A：CLI-2A/2B/2C + CORE-PREF-01 [completed]
   -> Slice B：T13-01/02 + T13-05 install 子集 [completed, PR #222]
   -> Slice C：T13-03/04 + T13-05 其余 CLI 契约 [completed]
-  -> Slice D：T13-06/07/08 Tauri/前端 + Windows Gate C [next ready]
+  -> Slice D：T13-06/07/08 Tauri/前端 + Windows Gate C [certified]
+  -> CAT-01 装备数据治理 [completed]
+  -> WR-01 武器重定向设计 [design-complete]
+  -> WR-02A 武器 family/parser + 人工最小 catalog [completed]
+  -> WR-03A 人工 MOD3/MRL3 binary parser + 纯 transformer [completed]
+  -> WR-03B 武器 staging/InstallPlan/manifest [completed]
+  -> WR-04 武器 Tauri/UI/Gate D [certified；仅人工 developer/Sandbox seed]
+  -> LOG-01 Task/Audit retention [completed]
+  -> LOG-02 日志总空间上限 [completed]
+  -> LOG-03 Debug Log [completed]
 ```
 
 ---
@@ -323,8 +335,8 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 已完成部分保留；P7.2a 安装态 acceptance、P7.2c 实现、retention 扩展和备份中心在 T19
-完成后仍按各自发布门禁评审，当前未恢复
+**状态**: 已完成部分保留；P7.2a 安装态 acceptance 已 `certified`，P7.2c installer cleanup、
+玩家存档恢复、retention 扩展和备份中心仍按各自发布门禁推进
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`、`docs/superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md`、`docs/superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md`
 
@@ -336,14 +348,17 @@ JSON 做不好的需求:
 - [x] 自动备份游戏运行保护（运行中或状态未知时延后，不获取 lease、不启动备份任务）
 - [x] P7.1 headless worker 基础（固定 `--once` 入口、共享 scheduler/备份链路、heartbeat 与 fallback registry；当前仍为 `tray_only`）
 - [x] P7.2a Windows 平台核心（用户级 Scheduled Task 注册/更新/移除、read-back、独立 heartbeat、双条件 `protected` 派生和 sidecar；自动化仅使用 fake/临时依赖）
-- [ ] P7.2a Windows 安装态 runtime acceptance（暂停；T19 完成后仍按发布风险另行评审）
+- [x] P7.2a Windows 安装态 runtime acceptance（2026-08-07 disposable Sandbox；人工 Run、fresh heartbeat、幂等 cleanup；Terminal A stdin 偏差已记录）
 - [x] P7.2b Settings 全局后台保障开关、Profile 只读状态、5 分钟 `starting` / 45 分钟 `protected` 健康派生与统一退出保护
 - [x] P7.2c NSIS/WiX owned Scheduled Task 卸载 cleanup 设计规格与实施计划（本项仅代表 docs 完成）
-- [ ] P7.2c helper、NSIS PREUNINSTALL、WiX custom action 与 disposable VM gate（已规划、暂停；不得删除 foreign task）
+- [ ] P7.2c helper、NSIS PREUNINSTALL、WiX custom action 与 disposable VM gate（SAVE-02 已解除环境前置；不得删除 foreign task）
 - [x] 保留策略（数量）
 - [ ] 保留策略（时间/空间，暂停）
 - [x] 备份目录可选择（未手动选择时使用默认 app data）
 - [ ] 前端 `features/backups/` 页面（暂停）
+- [ ] SAVE-04 玩家存档恢复：统一悬浮确认；默认开启 Profile 级恢复前安全备份，写入独立
+  `pre-restore/` 目录并在成功后才允许覆盖；关闭开关时显示高风险警告并额外确认；失败 fail closed，
+  任务进度、持久通知、Audit 与 rollback/recovery 事实完整
 
 ---
 
@@ -384,22 +399,22 @@ JSON 做不好的需求:
 **T13-00 前置**: QG-01 合并 + T6 + Gate A certified（已满足）
 **实现链前置**: T13-00 -> CLI-2A -> CLI-2B -> CLI-2C -> CORE-PREF-01；T13-01 至 T13-08
 继续按自主迭代路线图逐项解锁
-**状态**: T13-00 至 T13-05 已完成；T13-06 next ready，T13-07/T13-08 依赖 Slice D 前项
+**状态**: T13-00 至 T13-07 已完成；T13-08 Gate C 已 certified
 **预估**: 大
 **独立文档**: **已创建** -> `docs/BATCH_MOD_LIFECYCLE_DESIGN.md`；任务边界见
 `docs/AUTONOMOUS_ITERATION_ROADMAP.md`
 
 概要:
-- [x] T13-00：sealed input、跨 Mod conflict、失败/取消/partial/retry 领域语义（设计与规划契约完成；
-  产品实现未开始）
+- [x] T13-00：sealed input、跨 Mod conflict、失败/取消/partial/retry 领域语义（设计与规划契约完成，
+  后续实现已由 Gate C 验证）
 - [x] T13-01：服务端 `BatchPlan`、digest、资源预算与只读预览
 - [x] T13-02：批量安装，每个 Mod 独立事务，默认首次失败停止
 - [x] T13-03：manifest/recovery 驱动的批量卸载
 - [x] T13-04：复用真正重装事务的批量重装与 Armor target switch
 - [x] T13-05：CLI Sandbox 批量 JSON/JSONL contract
-- [ ] T13-06：窄 Tauri commands、DTO 和 feature-local typed API
-- [ ] T13-07：前端多选、预览、确认、进度、结果和 retry
-- [ ] T13-08：disposable Windows Sandbox Gate C 纵向验收
+- [x] T13-06：窄 Tauri commands、DTO 和 feature-local typed API
+- [x] T13-07：前端多选、预览、确认、进度、结果、retry 与 4 viewport smoke
+- [x] T13-08：disposable Windows Sandbox Gate C 主链、受控 partial/retry 与 exact baseline
 
 硬边界:
 
@@ -600,13 +615,23 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: T17 Slice 4C（result/retry/performance/hardening，PR #199）
   -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
   -> 已完成: QG-01 CI 质量门禁（PR #215）
-  -> design-complete: T13-00 批量设计与契约同步（产品实现未开始）
+  -> design-complete: T13-00 批量设计与契约同步（后续实现已认证）
   -> completed: Slice A（CLI-2A/2B/2C + CORE-PREF-01）
   -> completed: Slice B（T13-01/02 + T13-05 install 子集，PR #222）
   -> completed: Slice C（T13-03/04 + T13-05 其余 CLI 契约）
-  -> next ready: Slice D（T13-06/07/08 Tauri/typed API、前端工作流与 disposable Windows Sandbox Gate C）
-  -> 装备数据治理、防具 catalog 扩容、独立武器重定向
-  -> Windows 存档后台发布加固、日志治理和 Production CLI admission
+  -> certified: Slice D（T13-06/07/08 Tauri/typed API、前端工作流与 disposable Windows Sandbox Gate C）
+  -> completed: CAT-01 装备数据治理
+  -> design-complete: WR-01 武器重定向设计
+  -> completed: WR-02A 武器 family/parser + 人工最小 catalog
+  -> completed: WR-03A 人工 MOD3/MRL3 binary parser + 纯 transformer
+  -> completed: WR-03B 武器 staging/InstallPlan/manifest
+  -> certified: WR-04 武器 Tauri/UI/Gate D（仅人工 developer/Sandbox seed）
+  -> completed: LOG-01 Task/Audit retention
+  -> completed: LOG-02 日志总空间上限
+  -> completed: LOG-03 Debug Log（默认关闭、持久化开关、7 日 retention、诊断/export、runtime 重启和 no-follow 负测）
+  -> certified: SAVE-02 disposable VM 安装态人工验收（2026-08-07）；ready: SAVE-03 installer ownership cleanup；AR6/WR-02B 等待授权数据；CLI-3A 依赖 SAVE-03
+  -> blocked-external-data: 防具/完整武器 catalog 扩容
+  -> Windows 存档后台发布加固、后续日志治理和 Production CLI admission
 ```
 
 ---
@@ -623,16 +648,27 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
-| T8 存档备份 | P2 | 已完成部分保留，未完成部分暂停 | |
+| T8 存档备份 | P2 | 部分完成；SAVE-02 安装态后台保护已 certified，SAVE-03/04/05 待推进 | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围未被当前复审选中 | |
 | T10 依赖检查 | P0/P1 支撑 | 单项 install/reinstall decision 与锁内重验已完成；更多依赖类型和自动修复未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
-| T13 批量操作 | P0 | T13-00 至 T13-05 已完成；T13-06 至 T13-08 待 Slice D | #222（Slice B） |
+| T13 批量操作 | P0 | T13-00 至 T13-07 已完成；T13-08 Gate C 已 certified | #222（Slice B）/ #225（T13-07） |
 | T14 任务队列 UI | P3 | 暂停 | |
 | T17 第三方管理器批量迁移 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；4C 由 PR #199 交付） | #194（Slice 2）/ #195（Slice 3）/ #196（Slice 4A）/ #197（4A review 补救）/ #198（Slice 4B）/ #199（Slice 4C） |
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
-| T20 浮层动画收敛到共享基元 | P3 | 待评审（下次新增浮层前处理，或出现第三处重复实现时立即处理） | |
+| T20 浮层动画收敛到共享基元 | P3 | 待评审（下次新增浮层前处理，或出现第三处重复实现时立即处理；Profile 删除确认 inline 问题已记录） | |
 | QG-01 CI 质量门禁 | P0 治理 | 已完成 | #215 |
 | GOV-01 至 GOV-04 工程治理 | P3 治理 | 已完成 | #211 / #212 / #213 / #214 |
+| CAT-01 装备数据治理 | P1 | 已完成；完整 catalog 仍需许可审核 | |
+| AR6 防具 Catalog 扩容 | P1 | blocked-external-data | |
+| WR-01 武器重定向设计 | P1 | design-complete | |
+| WR-02A 武器 family/parser | P1 | completed | |
+| WR-02B 完整武器 Catalog | P1 | blocked-external-data | |
+| WR-03A 武器 binary parser/transformer | P1 | completed | |
+| WR-03B 武器 staging/InstallPlan/manifest | P1 | completed | |
+| WR-04 武器 Tauri/UI/Gate D | P1 | certified（仅人工 developer/Sandbox seed；production catalog 受 WR-02B 门禁） | |
+| LOG-01 Task/Audit retention | P2 | completed | |
+| LOG-02 日志总空间上限 | P2 | completed | |
+| LOG-03 Debug Log | P2 | 已完成 | 默认关闭、持久化开关、受控 writer/reader、7 天 retention、诊断/export 和安全负测 |
