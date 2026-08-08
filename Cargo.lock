@@ -1667,6 +1667,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hmm-save-backup-sidecars"
+version = "0.1.0-alpha.0"
+dependencies = [
+ "hmm-tauri",
+]
+
+[[package]]
 name = "hmm-tauri"
 version = "0.1.0-alpha.0"
 dependencies = [

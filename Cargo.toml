@@ -8,6 +8,7 @@ members = [
     "src-tauri/crates/hmm-games-mhw",
     "src-tauri/crates/hmm-runtime",
     "src-tauri/crates/hmm-cli",
+    "src-tauri/crates/hmm-save-backup-sidecars",
 ]
 resolver = "2"
 
