@@ -66,7 +66,8 @@ test("skips upgrade cleanup and fails closed for every nonzero helper code", () 
   assert.match(hook, /\$0\s*=\s*0/);
   assert.match(hook, /\$\{Silent\}/);
   assert.match(hook, /SetErrorLevel\s+\$0/);
-  assert.match(hook, /Quit/);
+  assert.match(hook, /Abort/);
+  assert.doesNotMatch(hook, /Quit/);
   assert.match(hook, /MessageBox/);
 });
 
