@@ -85,7 +85,10 @@ impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
                     Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
                 }
             },
-            ScheduledTaskCommandOutcome::Identity(_) | ScheduledTaskCommandOutcome::Completed => {
+            ScheduledTaskCommandOutcome::Identity(_)
+            | ScheduledTaskCommandOutcome::Completed
+            | ScheduledTaskCommandOutcome::PostDeleteOwned
+            | ScheduledTaskCommandOutcome::PostDeleteForeign => {
                 Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput)
             }
             ScheduledTaskCommandOutcome::TaskBusy
@@ -134,6 +137,8 @@ impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
             }
             ScheduledTaskCommandOutcome::Identity(_)
             | ScheduledTaskCommandOutcome::Completed
+            | ScheduledTaskCommandOutcome::PostDeleteOwned
+            | ScheduledTaskCommandOutcome::PostDeleteForeign
             | ScheduledTaskCommandOutcome::OwnershipConflict
             | ScheduledTaskCommandOutcome::TaskBusy
             | ScheduledTaskCommandOutcome::StateUnverified => {
@@ -156,91 +161,30 @@ impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
         };
         let owner_marker = TASK_OWNER_MARKER.to_owned();
 
-        let before = match self.runner.run(ScheduledTaskCommand::Inspect {
-            task_name: task_name.clone(),
-            owner_marker: owner_marker.clone(),
-        }) {
-            Ok(outcome) => outcome,
-            Err(_) => return InstallerCleanupOutcome::OwnershipUnverified,
-        };
-        match &before {
-            ScheduledTaskCommandOutcome::Missing => {
-                return InstallerCleanupOutcome::AlreadyAbsent;
-            }
-            ScheduledTaskCommandOutcome::PermissionRequired
-            | ScheduledTaskCommandOutcome::OwnershipConflict
-            | ScheduledTaskCommandOutcome::Identity(_)
-            | ScheduledTaskCommandOutcome::Completed
-            | ScheduledTaskCommandOutcome::TaskBusy
-            | ScheduledTaskCommandOutcome::StateUnverified => {
-                return InstallerCleanupOutcome::OwnershipUnverified;
-            }
-            ScheduledTaskCommandOutcome::ModuleUnavailable => {
-                return InstallerCleanupOutcome::PlatformUnavailable;
-            }
-            ScheduledTaskCommandOutcome::Found(actual) => {
-                if actual.owner_marker != TASK_OWNER_MARKER {
-                    return InstallerCleanupOutcome::ForeignPreserved;
-                }
-                if actual.state.is_busy() {
-                    return InstallerCleanupOutcome::OwnedTaskRunning;
-                }
-                if !actual.state.is_quiescent() {
-                    return InstallerCleanupOutcome::OwnershipUnverified;
-                }
-            }
-        }
-
-        let mutation = self.runner.run(ScheduledTaskCommand::InstallerCleanup {
-            task_name: task_name.clone(),
-            owner_marker,
-        });
-        match mutation {
-            Ok(ScheduledTaskCommandOutcome::Completed) => {}
-            Ok(ScheduledTaskCommandOutcome::Missing) => {
-                return InstallerCleanupOutcome::AlreadyAbsent;
-            }
-            Ok(ScheduledTaskCommandOutcome::OwnershipConflict) => {
-                return InstallerCleanupOutcome::ForeignPreserved;
-            }
-            Ok(ScheduledTaskCommandOutcome::TaskBusy) => {
-                return InstallerCleanupOutcome::OwnedTaskRunning;
-            }
-            Ok(ScheduledTaskCommandOutcome::ModuleUnavailable) => {
-                return InstallerCleanupOutcome::PlatformUnavailable;
-            }
-            Ok(ScheduledTaskCommandOutcome::PermissionRequired) => {
-                return InstallerCleanupOutcome::OwnershipUnverified;
-            }
-            Ok(ScheduledTaskCommandOutcome::StateUnverified) => {
-                return InstallerCleanupOutcome::OwnershipUnverified;
-            }
-            Ok(ScheduledTaskCommandOutcome::Identity(_))
-            | Ok(ScheduledTaskCommandOutcome::Found(_))
-            | Err(_) => return InstallerCleanupOutcome::RemovalUnverified,
-        }
-
-        match self.runner.run(ScheduledTaskCommand::Inspect {
+        match self.runner.run(ScheduledTaskCommand::InstallerCleanup {
             task_name,
-            owner_marker: TASK_OWNER_MARKER.to_owned(),
+            owner_marker,
         }) {
-            Ok(ScheduledTaskCommandOutcome::Missing) => InstallerCleanupOutcome::Removed,
-            Ok(ScheduledTaskCommandOutcome::Found(actual))
-                if actual.owner_marker != TASK_OWNER_MARKER =>
-            {
-                InstallerCleanupOutcome::OwnershipUnverified
+            Ok(ScheduledTaskCommandOutcome::Completed) => InstallerCleanupOutcome::Removed,
+            Ok(ScheduledTaskCommandOutcome::Missing) => InstallerCleanupOutcome::AlreadyAbsent,
+            Ok(ScheduledTaskCommandOutcome::OwnershipConflict) => {
+                InstallerCleanupOutcome::ForeignPreserved
             }
-            Ok(ScheduledTaskCommandOutcome::Found(_)) => InstallerCleanupOutcome::RemovalUnverified,
+            Ok(ScheduledTaskCommandOutcome::TaskBusy) => InstallerCleanupOutcome::OwnedTaskRunning,
             Ok(ScheduledTaskCommandOutcome::ModuleUnavailable) => {
                 InstallerCleanupOutcome::PlatformUnavailable
             }
             Ok(ScheduledTaskCommandOutcome::PermissionRequired)
-            | Ok(ScheduledTaskCommandOutcome::OwnershipConflict)
-            | Ok(ScheduledTaskCommandOutcome::Identity(_))
-            | Ok(ScheduledTaskCommandOutcome::Completed)
-            | Ok(ScheduledTaskCommandOutcome::TaskBusy)
             | Ok(ScheduledTaskCommandOutcome::StateUnverified)
-            | Err(_) => InstallerCleanupOutcome::OwnershipUnverified,
+            | Ok(ScheduledTaskCommandOutcome::PostDeleteForeign) => {
+                InstallerCleanupOutcome::OwnershipUnverified
+            }
+            Ok(ScheduledTaskCommandOutcome::PostDeleteOwned) => {
+                InstallerCleanupOutcome::RemovalUnverified
+            }
+            Ok(ScheduledTaskCommandOutcome::Identity(_))
+            | Ok(ScheduledTaskCommandOutcome::Found(_))
+            | Err(_) => InstallerCleanupOutcome::RemovalUnverified,
         }
     }
 }
@@ -313,6 +257,8 @@ impl<R: ScheduledTaskCommandRunner> SaveBackupBackgroundRegistry for ScheduledTa
             }
             ScheduledTaskCommandOutcome::Identity(_)
             | ScheduledTaskCommandOutcome::Completed
+            | ScheduledTaskCommandOutcome::PostDeleteOwned
+            | ScheduledTaskCommandOutcome::PostDeleteForeign
             | ScheduledTaskCommandOutcome::TaskBusy
             | ScheduledTaskCommandOutcome::StateUnverified => {
                 return Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput);

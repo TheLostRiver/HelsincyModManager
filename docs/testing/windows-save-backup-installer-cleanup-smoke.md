@@ -51,11 +51,16 @@
 - case：上表稳定标识
 - result：`continued`、`blocked` 或 `skipped`
 - helper exit code 与稳定 reason
+- 卸载总耗时；超过 20 秒时单独记录为性能异常，但不得因此放宽 fail-closed 结果
 - 卸载前后安装目录中 sibling 数量
 - task 状态的聚合结论：`absent`、`owned-preserved`、`foreign-preserved` 或 `unknown`
 - 时间戳、截图路径和脱敏日志路径
 
 不要记录原始任务详情、用户目录、完整安装路径、PowerShell/XML 或存档内容。
+
+`owned drift` 应只修改非 ownership 属性，并在卸载前确认 marker 仍匹配且状态为 `Ready/Disabled`。
+如果仍返回 `ownership_unverified`，先确认 task、worker 和安装目录均被保留，再停止该 artifact 的后续矩阵；
+不得通过重复卸载、手工删除 task 或扩大 timeout 把失败改记为通过。
 
 ## 完成条件
 

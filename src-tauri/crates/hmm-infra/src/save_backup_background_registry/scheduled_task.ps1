@@ -53,6 +53,36 @@ function Resolve-Sid([string]$Identity) {
     ).Value
 }
 
+function Assert-InstallerCleanupTaskIsQuiescent($Task, [string]$OwnerMarker) {
+    if ([string]$Task.Description -ne $OwnerMarker) {
+        Write-Result @{ status = "ownership_conflict" }
+    }
+    $state = [string]$Task.State
+    if ($state -eq "Running" -or $state -eq "Queued") {
+        Write-Result @{ status = "task_busy" }
+    }
+    if ($state -ne "Ready" -and $state -ne "Disabled") {
+        Write-Result @{ status = "state_unverified" }
+    }
+}
+
+function Write-InstallerCleanupPostDeleteStatus([string]$TaskName, [string]$OwnerMarker) {
+    try {
+        $remaining = Get-ScheduledTask -TaskPath "\" -TaskName $TaskName -ErrorAction Stop
+    } catch {
+        $category = [string]$_.CategoryInfo.Category
+        $errorId = [string]$_.FullyQualifiedErrorId
+        if ($category -eq "ObjectNotFound" -and $errorId.StartsWith("CmdletizationQuery_NotFound")) {
+            Write-Result @{ status = "completed" }
+        }
+        Write-OperationFailure $_
+    }
+    if ([string]$remaining.Description -eq $OwnerMarker) {
+        Write-Result @{ status = "post_delete_owned" }
+    }
+    Write-Result @{ status = "post_delete_foreign" }
+}
+
 try {
     $operation = $env:HMM_OPERATION
     if ($operation -eq "identity") {
@@ -153,18 +183,11 @@ try {
 
     if ($operation -eq "installer_cleanup") {
         $current = Get-TaskOrStatus $taskName
-        if ([string]$current.Description -ne $ownerMarker) {
-            Write-Result @{ status = "ownership_conflict" }
-        }
-        $state = [string]$current.State
-        if ($state -eq "Running" -or $state -eq "Queued") {
-            Write-Result @{ status = "task_busy" }
-        }
-        if ($state -ne "Ready" -and $state -ne "Disabled") {
-            Write-Result @{ status = "state_unverified" }
-        }
+        Assert-InstallerCleanupTaskIsQuiescent $current $ownerMarker
+        $current = Get-TaskOrStatus $taskName
+        Assert-InstallerCleanupTaskIsQuiescent $current $ownerMarker
         Unregister-ScheduledTask -InputObject $current -Confirm:$false -ErrorAction Stop
-        Write-Result @{ status = "completed" }
+        Write-InstallerCleanupPostDeleteStatus $taskName $ownerMarker
     }
 
     Write-Result @{ status = "operation_failed" }
