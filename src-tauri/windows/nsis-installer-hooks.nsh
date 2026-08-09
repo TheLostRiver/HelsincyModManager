@@ -32,12 +32,12 @@
 
   ${If} ${Silent}
     SetErrorLevel $0
-    Quit
+    Abort
   ${EndIf}
 
   MessageBox MB_ICONSTOP|MB_OK "Uninstall cancelled: backup protection cleanup returned $0 ($1)."
   SetErrorLevel $0
-  Quit
+  Abort
 
   nsis_cleanup_hook_done:
 !macroend
