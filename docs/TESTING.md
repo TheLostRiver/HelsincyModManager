@@ -1164,6 +1164,10 @@ cargo test -p hmm-infra save_backup_background_registry::tests
 cargo test -p hmm-tauri installer_cleanup
 ```
 
+聚焦测试必须锁定 helper 只执行 `Identity -> InstallerCleanup` 两次受控进程调用；单个 cleanup
+PowerShell 操作内部必须在删除前两次复核 owner/state，并在删除后 read-back。foreign 与 busy 分支必须在
+`Unregister-ScheduledTask` 前返回，post-delete owned/foreign 分别映射为 removal/ownership unverified。
+
 Windows sidecar 准备脚本必须仅对 `windows-msvc` 目标追加静态 CRT 构建标志，并在复制 bundle 输入前
 拒绝仍导入 `VCRUNTIME140`、`MSVCP140` 或 UCRT runtime API 的产物。disposable VM 不预装 Visual C++
 Redistributable；安装器 helper/worker 不能把该运行库作为隐性前提。

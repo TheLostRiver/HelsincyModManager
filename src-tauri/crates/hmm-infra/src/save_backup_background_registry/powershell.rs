@@ -196,6 +196,8 @@ pub(super) fn parse_script_output(
         ("not_found", None, None) => Ok(ScheduledTaskCommandOutcome::Missing),
         ("found", None, Some(task)) => Ok(ScheduledTaskCommandOutcome::Found(Box::new(task))),
         ("completed", None, None) => Ok(ScheduledTaskCommandOutcome::Completed),
+        ("post_delete_owned", None, None) => Ok(ScheduledTaskCommandOutcome::PostDeleteOwned),
+        ("post_delete_foreign", None, None) => Ok(ScheduledTaskCommandOutcome::PostDeleteForeign),
         ("permission_required", None, None) => Ok(ScheduledTaskCommandOutcome::PermissionRequired),
         ("module_unavailable", None, None) => Ok(ScheduledTaskCommandOutcome::ModuleUnavailable),
         ("ownership_conflict", None, None) => Ok(ScheduledTaskCommandOutcome::OwnershipConflict),

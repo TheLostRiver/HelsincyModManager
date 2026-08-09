@@ -40,6 +40,9 @@ runtime gate 仍待人工执行。实现固定以下边界：
   worker 固定 `--once` CLI。
 - helper 直接复用 infra 的 current-user identity、固定 ownership marker、受控 unregister 和
   post-delete read-back；不读取 AppData、SQLite、Audit Log、Profile/save/backup/game 路径或网络。
+- helper 在 Rust 中派生当前用户 task identity 后，只启动一个 cleanup PowerShell 进程；该进程内依次
+  执行两次 ownership/state 复核、一次 owned unregister 和 post-delete missing read-back，避免为每个
+  阶段重复导入 ScheduledTasks 模块造成超时抖动。
 - missing、owned exact 和 owned drift 允许幂等清理；foreign task 必须保留并允许产品卸载继续。
 - owned task running/queued，或 identity、ownership、state、delete/read-back 无法确认时，真正
   卸载 fail closed；不得强杀正在备份的 worker。
@@ -50,6 +53,12 @@ runtime gate 仍待人工执行。实现固定以下边界：
 
 在 disposable VM 矩阵完成前，不得把 P7.2c 标为 runtime acceptance 完成，也不得用该实现替代
 P7.2a 安装态 worker/heartbeat runtime acceptance。
+
+2026-08-09 的首轮 NSIS runtime 矩阵中，`missing` 和 `owned exact` 的 interactive/silent 变体通过；
+`owned drift` 首次交互卸载在 owner marker 与 `Ready` 状态仍可确认时返回 `21/ownership_unverified`。
+失败路径正确保留 task、worker 和安装目录，但暴露了四次独立 PowerShell/ScheduledTasks 启动造成的
+延迟与 timeout 抖动。实现已收敛为上述两进程结构，新的 installer artifact 与 disposable Sandbox
+重验完成前，runtime gate 继续保持未完成。
 
 ## 背景
 

@@ -62,16 +62,6 @@ pub(super) enum ScheduledTaskState {
     Running,
 }
 
-impl ScheduledTaskState {
-    pub(super) fn is_busy(self) -> bool {
-        matches!(self, Self::Running | Self::Queued)
-    }
-
-    pub(super) fn is_quiescent(self) -> bool {
-        matches!(self, Self::Ready | Self::Disabled)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ScheduledTaskSpecMatch {
     Exact,

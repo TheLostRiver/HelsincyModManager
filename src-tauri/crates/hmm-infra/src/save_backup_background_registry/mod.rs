@@ -56,6 +56,8 @@ enum ScheduledTaskCommandOutcome {
     Missing,
     Found(Box<ScheduledTaskReadback>),
     Completed,
+    PostDeleteOwned,
+    PostDeleteForeign,
     PermissionRequired,
     ModuleUnavailable,
     OwnershipConflict,

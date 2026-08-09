@@ -46,8 +46,10 @@
    上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
     2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 的 helper、双 Windows
-    sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static gate 已完成；当前停在
-    disposable Windows VM runtime gate，未安装或运行真实 installer。
+    sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static gate 已完成。disposable Windows
+    VM runtime gate 已开始：NSIS `missing` 与 `owned exact` 的 interactive/silent 变体通过；首次
+    `owned drift` 交互卸载以 `21/ownership_unverified` fail closed，并正确保留 task、worker 和安装目录。
+    helper 已收敛 ScheduledTasks 往返，等待新 artifact 与全新 Sandbox 重验；runtime gate 仍未完成。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。
