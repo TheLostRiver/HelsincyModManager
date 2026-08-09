@@ -42,6 +42,12 @@
 `foreign` case 必须证明产品仍可卸载但第三方任务未被删除；`running/queued` case 必须证明 worker
 没有被强杀。
 
+NSIS 计时和机器结果必须直接运行安装目录中的 uninstaller，并附带 Tauri 维护流程使用的
+`_?=<安装目录>` 参数，例如 `uninstall.exe /S _?=C:\...\Helsincy Mod Manager`。只运行裸
+`uninstall.exe` 会经过 self-extractor wrapper；wrapper 可能对外返回 `0`，即使内部 cleanup 已以
+`20/21/22/23/64` 阻断。interactive 仍以 GUI 固定 reason 为准，silent 以 direct-uninstaller exit code
+加安装目录/task read-back 为准；报告中不要记录完整路径。
+
 ## 记录格式
 
 每个 case 记录以下脱敏字段：
