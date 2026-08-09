@@ -6,11 +6,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   WINDOWS_SIDECAR_BINARIES,
+  assertNoDynamicMsvcCrtImports,
   assertSidecarBuildOutput,
   buildProfile,
   capturedCommandFailure,
   hostTripleFromRustc,
   resolveTargetTriple,
+  sidecarRustFlags,
   sidecarFileName,
   sidecarFileNames,
   targetDirectoryFromCargoMetadata,
@@ -67,6 +69,51 @@ test("uses Tauri target-triple names for both sidecars", () => {
       `${worker}-x86_64-unknown-linux-gnu`,
       `${installerCleanup}-x86_64-unknown-linux-gnu`,
     ],
+  );
+});
+
+test("statically links the CRT for MSVC Windows sidecars", () => {
+  assert.equal(
+    sidecarRustFlags("x86_64-pc-windows-msvc", undefined),
+    "-Ctarget-feature=+crt-static",
+  );
+  assert.equal(
+    sidecarRustFlags("x86_64-pc-windows-msvc", "-Dwarnings"),
+    "-Dwarnings -Ctarget-feature=+crt-static",
+  );
+  assert.equal(
+    sidecarRustFlags("x86_64-pc-windows-gnu", "-Dwarnings"),
+    "-Dwarnings",
+  );
+  assert.equal(
+    sidecarRustFlags("x86_64-unknown-linux-gnu", undefined),
+    undefined,
+  );
+});
+
+test("rejects dynamic MSVC CRT imports before copying sidecars", () => {
+  assert.doesNotThrow(() =>
+    assertNoDynamicMsvcCrtImports(
+      Buffer.from("static fixture"),
+      installerCleanup,
+      "x86_64-pc-windows-msvc",
+    ),
+  );
+  assert.throws(
+    () =>
+      assertNoDynamicMsvcCrtImports(
+        Buffer.from("fixture VCRUNTIME140.dll import"),
+        installerCleanup,
+        "x86_64-pc-windows-msvc",
+      ),
+    /Windows sidecar requires dynamic MSVC CRT: hmm-save-backup-installer-cleanup/,
+  );
+  assert.doesNotThrow(() =>
+    assertNoDynamicMsvcCrtImports(
+      Buffer.from("fixture VCRUNTIME140.dll import"),
+      worker,
+      "x86_64-pc-windows-gnu",
+    ),
   );
 });
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, lstatSync, mkdirSync } from "node:fs";
+import { copyFileSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -84,6 +84,17 @@ export function resolveTargetTriple(explicitTarget, hostTarget, tauriArch) {
   return target;
 }
 
+export function sidecarRustFlags(targetTriple, existingRustFlags) {
+  if (!targetTriple.endsWith("windows-msvc")) {
+    return existingRustFlags;
+  }
+
+  const staticCrtFlag = "-Ctarget-feature=+crt-static";
+  return existingRustFlags
+    ? `${existingRustFlags} ${staticCrtFlag}`
+    : staticCrtFlag;
+}
+
 function isJsonObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -162,6 +173,28 @@ export function assertSidecarBuildOutput(source, binaryName) {
   throw new Error(`Windows sidecar build output is missing: ${binaryName}`);
 }
 
+export function assertNoDynamicMsvcCrtImports(
+  binaryContents,
+  binaryName,
+  targetTriple,
+) {
+  assertSupportedBinaryName(binaryName);
+  if (!targetTriple.endsWith("windows-msvc")) {
+    return;
+  }
+
+  const imports = Buffer.from(binaryContents).toString("ascii").toUpperCase();
+  const dynamicCrtImports = [
+    "VCRUNTIME140.DLL",
+    "VCRUNTIME140_1.DLL",
+    "MSVCP140.DLL",
+    "API-MS-WIN-CRT-RUNTIME-L1-1-0.DLL",
+  ];
+  if (dynamicCrtImports.some((dependency) => imports.includes(dependency))) {
+    throw new Error(`Windows sidecar requires dynamic MSVC CRT: ${binaryName}`);
+  }
+}
+
 function sidecarDestination(destinationDirectory, binaryName, targetTriple) {
   const resolvedDirectory = path.resolve(destinationDirectory);
   const destination = path.resolve(
@@ -192,11 +225,16 @@ export function prepareSidecars(args = []) {
   if (profile === "release") {
     cargoArgs.push("--release");
   }
+  const cargoEnvironment = {
+    ...process.env,
+    TAURI_CONFIG: windowsSidecarBuildTauriConfig(process.env.TAURI_CONFIG),
+  };
+  const rustFlags = sidecarRustFlags(targetTriple, process.env.RUSTFLAGS);
+  if (rustFlags) {
+    cargoEnvironment.RUSTFLAGS = rustFlags;
+  }
   run("cargo", cargoArgs, {
-    env: {
-      ...process.env,
-      TAURI_CONFIG: windowsSidecarBuildTauriConfig(process.env.TAURI_CONFIG),
-    },
+    env: cargoEnvironment,
   });
 
   const targetDirectory = targetDirectoryFromCargoMetadata(
@@ -214,6 +252,11 @@ export function prepareSidecars(args = []) {
       `${binaryName}${extension}`,
     );
     assertSidecarBuildOutput(source, binaryName);
+    assertNoDynamicMsvcCrtImports(
+      readFileSync(source),
+      binaryName,
+      targetTriple,
+    );
     copyFileSync(
       source,
       sidecarDestination(destinationDirectory, binaryName, targetTriple),

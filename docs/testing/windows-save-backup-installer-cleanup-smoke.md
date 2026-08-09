@@ -7,6 +7,8 @@
 ## 安全边界
 
 - 构建产物从只读映射目录提供；证据写入单独的可写映射目录。
+- Sandbox 不预装 Visual C++ Redistributable；两个 Windows sidecar 必须静态链接 MSVC CRT，构建准备
+  脚本必须在打包前拒绝仍包含动态 CRT 导入的产物。
 - 只使用人工构造的 profile、save、backup 和 task fixture。
 - 不执行 `schtasks`、`Stop-ScheduledTask` 或任何强制终止 worker 的操作。
 - 不把任务名、SID、完整本地路径、XML、PowerShell、原始 stdout/stderr 或存档内容写入报告。
@@ -17,7 +19,8 @@
 
 1. 启动全新的 VM/账户，确认没有 HMM 安装、HMM Scheduled Task 或旧证据。
 2. 安装一个 NSIS 或 WiX 包，确认安装目录同时存在 GUI、`hmm-save-backup-worker.exe` 和
-   `hmm-save-backup-installer-cleanup.exe`。
+   `hmm-save-backup-installer-cleanup.exe`，且启动 helper 时不会出现缺少 `VCRUNTIME140.dll` 等
+   平台运行库错误。
 3. 启动 HMM，创建人工 profile 和最小 synthetic save fixture；启用后台保护并等待状态稳定。
 4. 关闭 HMM 后，在任务计划程序中只查看该任务的状态，不复制任务名、SID 或 XML 到证据。
 5. 每个 case 开始前重新启动 HMM 并确认当前安装器/版本和 evidence root。
