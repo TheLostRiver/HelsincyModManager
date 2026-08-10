@@ -22,13 +22,21 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /status === "unsupported_platform"/);
   assert.match(source, /onChange/);
   assert.match(source, /disabled=\{busy/);
+  assert.match(source, /peekBackgroundProtectionControlStatus/);
+  assert.match(source, /retainedPanelState/);
+  assert.match(source, /getBackgroundProtectionControlStatus\(\{ force: true \}\)/);
+  assert.match(source, /background-protection-panel__switch-control/);
+  assert.match(source, /正在启用后台保护/);
+  assert.match(source, /后台保护已启用/);
+  assert.doesNotMatch(source, /<label className="setting-row background-protection-panel__toggle">/);
   assert.match(source, /getBackgroundProtectionControlStatus\(/);
   assert.match(source, /enableBackgroundProtection/);
   assert.match(source, /disableBackgroundProtection/);
   assert.match(source, /重试启用/);
   assert.match(source, /重试停用/);
   assert.match(source, /停用保护/);
-  assert.match(source, /checked=\{unsupported \? false/);
+  assert.match(source, /const switchChecked = unsupported/);
+  assert.match(source, /checked=\{switchChecked\}/);
   assert.match(source, /changeProtection\(state\.control\.desiredEnabled\)/);
   assert.match(source, /点击“重新检查”确认是否已保护/);
   assert.doesNotMatch(source, /完成后会自动变为已保护/);
@@ -109,7 +117,8 @@ test("settings hosts the persisted panel outside session preview state", () => {
   assert.doesNotMatch(page.slice(0, page.indexOf("export function SettingsPage")), /BackgroundProtectionControlDto/);
 
   assert.match(css, /\.background-protection-panel\s*\{[\s\S]*?min-height:/);
-  assert.match(css, /\.background-protection-panel__toggle:has\(input:disabled\)/);
+  assert.match(css, /\.background-protection-panel__switch-control\s*\{/);
+  assert.match(css, /\.background-protection-panel__operation\.is-visible/);
   assert.match(css, /\.background-protection-panel__action:focus-visible/);
   assert.match(css, /@media \(max-width: 600px\)[\s\S]*?\.background-protection-panel__summary/);
   assert.match(

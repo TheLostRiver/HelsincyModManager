@@ -501,23 +501,72 @@
 .background-protection-panel__toggle {
   min-height: 72px;
   border-bottom: none;
+  cursor: default;
 }
 
-.background-protection-panel__toggle:has(input:disabled) {
-  cursor: not-allowed;
+.background-protection-panel__toggle::before {
+  height: 0 !important;
 }
 
-.background-protection-panel__toggle:has(input:disabled):hover {
+.background-protection-panel__toggle:hover {
   background: transparent;
 }
 
-.background-protection-panel__toggle:has(input:disabled)::before {
-  height: 0;
+.background-protection-panel__toggle:hover .setting-switch {
+  box-shadow: none;
+}
+
+.background-protection-panel__switch-control {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.background-protection-panel__switch-control:hover .setting-switch {
+  box-shadow: 0 0 0 3px var(--color-accent-alpha-12);
+}
+
+.background-protection-panel__switch-control:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.background-protection-panel__switch-control.is-disabled {
+  cursor: not-allowed;
+}
+
+.background-protection-panel__switch-control.is-disabled:hover .setting-switch {
+  box-shadow: none;
 }
 
 .background-protection-panel__toggle input:disabled + .setting-switch {
   box-shadow: none;
   opacity: 0.5;
+}
+
+.background-protection-panel__operation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 20px;
+  color: transparent;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.background-protection-panel__operation.is-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-alpha-08);
+  opacity: 1;
 }
 
 .background-protection-panel__feedback {
