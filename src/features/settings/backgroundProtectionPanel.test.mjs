@@ -24,6 +24,7 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /disabled=\{busy/);
   assert.match(source, /peekBackgroundProtectionControlStatus/);
   assert.match(source, /retainedPanelState/);
+  assert.match(source, /retainedPanelState\.control !== cachedControl/);
   assert.match(source, /getBackgroundProtectionControlStatus\(\{ force: true \}\)/);
   assert.match(source, /background-protection-panel__switch-control/);
   assert.match(source, /正在启用后台保护/);
@@ -118,6 +119,8 @@ test("settings hosts the persisted panel outside session preview state", () => {
 
   assert.match(css, /\.background-protection-panel\s*\{[\s\S]*?min-height:/);
   assert.match(css, /\.background-protection-panel__switch-control\s*\{/);
+  assert.match(css, /\.background-protection-panel__toggle:focus-within\s*\{[\s\S]*?outline:\s*none;/);
+  assert.match(css, /\.background-protection-panel__switch-control:hover input:checked \+ \.setting-switch/);
   assert.match(css, /\.background-protection-panel__operation\.is-visible/);
   assert.match(css, /\.background-protection-panel__action:focus-visible/);
   assert.match(css, /@media \(max-width: 600px\)[\s\S]*?\.background-protection-panel__summary/);
