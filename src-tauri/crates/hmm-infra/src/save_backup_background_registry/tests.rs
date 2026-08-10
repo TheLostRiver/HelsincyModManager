@@ -465,8 +465,6 @@ fn register_creates_missing_task_then_requires_exact_readback() {
     let fixture = RegistryFixture::new();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
-        Ok(ScheduledTaskCommandOutcome::Missing),
-        Ok(ScheduledTaskCommandOutcome::Completed),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
@@ -481,15 +479,13 @@ fn register_creates_missing_task_then_requires_exact_readback() {
         runner.commands().as_slice(),
         [
             ScheduledTaskCommand::Identity,
-            ScheduledTaskCommand::Inspect { .. },
-            ScheduledTaskCommand::Register(_),
-            ScheduledTaskCommand::Inspect { .. }
+            ScheduledTaskCommand::Register(_)
         ]
     ));
 }
 
 #[test]
-fn exact_registration_is_a_noop() {
+fn exact_registration_is_reconciled_in_one_command() {
     let fixture = RegistryFixture::new();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
@@ -503,21 +499,58 @@ fn exact_registration_is_a_noop() {
         registry.register().expect("register"),
         SaveBackupBackgroundRegistrationStatus::Registered
     );
-    assert!(!runner
-        .commands()
-        .iter()
-        .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
+    assert!(matches!(
+        runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_)
+        ]
+    ));
+}
+
+#[test]
+fn current_user_identity_is_cached_across_registry_operations() {
+    let fixture = RegistryFixture::new();
+    let runner = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback,
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Completed),
+    ]);
+    let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
+
+    assert_eq!(
+        registry.inspect().expect("inspect"),
+        SaveBackupBackgroundRegistrationStatus::Registered
+    );
+    assert_eq!(
+        registry.register().expect("register"),
+        SaveBackupBackgroundRegistrationStatus::Registered
+    );
+    assert_eq!(
+        registry.unregister().expect("unregister"),
+        SaveBackupBackgroundRegistrationStatus::NotRegistered
+    );
+    assert!(matches!(
+        runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Inspect { .. },
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Unregister { .. }
+        ]
+    ));
 }
 
 #[test]
 fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutation() {
     let fixture = RegistryFixture::new();
-    let mut drift = fixture.exact_readback.clone();
-    drift.action_arguments = "--once --profile default".to_owned();
     let repair = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
-        Ok(ScheduledTaskCommandOutcome::Completed),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
@@ -532,18 +565,16 @@ fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutatio
         .iter()
         .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
 
-    let mut foreign = fixture.exact_readback;
-    foreign.owner_marker = "another.application/task/v1".to_owned();
     let conflict = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(foreign))),
+        Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
     ]);
     let registry = ScheduledTaskRegistry::new(conflict.clone(), fixture.worker_path);
     assert_eq!(
         registry.register().expect_err("foreign owner blocked"),
         SaveBackupBackgroundRegistryError::TaskOwnershipConflict
     );
-    assert!(!conflict
+    assert!(conflict
         .commands()
         .iter()
         .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
@@ -556,8 +587,6 @@ fn register_reports_post_write_drift_instead_of_claiming_success() {
     drift.enabled = false;
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Missing),
-        Ok(ScheduledTaskCommandOutcome::Completed),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
     ]);
     let registry = ScheduledTaskRegistry::new(runner, fixture.worker_path);
@@ -637,13 +666,12 @@ fn register_maps_write_permission_and_module_outcomes_without_readback() {
         let fixture = RegistryFixture::new();
         let runner = FakeRunner::with_outcomes(vec![
             Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-            Ok(ScheduledTaskCommandOutcome::Missing),
             Ok(outcome),
         ]);
         let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
         assert_eq!(registry.register().expect("register status"), expected);
-        assert_eq!(runner.commands().len(), 3);
+        assert_eq!(runner.commands().len(), 2);
     }
 }
 
@@ -703,11 +731,7 @@ fn unregister_is_idempotent_rechecks_and_does_not_require_worker_file() {
     let fixture = RegistryFixture::new_without_worker_file();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
-            fixture.exact_readback,
-        ))),
         Ok(ScheduledTaskCommandOutcome::Completed),
-        Ok(ScheduledTaskCommandOutcome::Missing),
     ]);
     let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
@@ -719,9 +743,7 @@ fn unregister_is_idempotent_rechecks_and_does_not_require_worker_file() {
         runner.commands().as_slice(),
         [
             ScheduledTaskCommand::Identity,
-            ScheduledTaskCommand::Inspect { .. },
-            ScheduledTaskCommand::Unregister { .. },
-            ScheduledTaskCommand::Inspect { .. }
+            ScheduledTaskCommand::Unregister { .. }
         ]
     ));
 }
@@ -738,16 +760,17 @@ fn unregister_missing_task_is_a_noop_and_foreign_task_is_blocked() {
         registry.unregister().expect("missing unregister"),
         SaveBackupBackgroundRegistrationStatus::NotRegistered
     );
-    assert!(!missing
-        .commands()
-        .iter()
-        .any(|command| matches!(command, ScheduledTaskCommand::Unregister { .. })));
+    assert!(matches!(
+        missing.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Unregister { .. }
+        ]
+    ));
 
-    let mut foreign = fixture.exact_readback;
-    foreign.owner_marker = "another.application/task/v1".to_owned();
     let conflict = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(foreign))),
+        Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
     ]);
     let registry = ScheduledTaskRegistry::new(conflict.clone(), fixture.worker_path);
     assert_eq!(
@@ -756,10 +779,13 @@ fn unregister_missing_task_is_a_noop_and_foreign_task_is_blocked() {
             .expect_err("foreign unregister blocked"),
         SaveBackupBackgroundRegistryError::TaskOwnershipConflict
     );
-    assert!(!conflict
-        .commands()
-        .iter()
-        .any(|command| matches!(command, ScheduledTaskCommand::Unregister { .. })));
+    assert!(matches!(
+        conflict.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Unregister { .. }
+        ]
+    ));
 }
 
 #[test]
@@ -767,13 +793,7 @@ fn unregister_requires_missing_post_delete_readback() {
     let fixture = RegistryFixture::new_without_worker_file();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
-            fixture.exact_readback.clone(),
-        ))),
-        Ok(ScheduledTaskCommandOutcome::Completed),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
-            fixture.exact_readback,
-        ))),
+        Ok(ScheduledTaskCommandOutcome::PostDeleteOwned),
     ]);
     let registry = ScheduledTaskRegistry::new(runner, fixture.worker_path);
 

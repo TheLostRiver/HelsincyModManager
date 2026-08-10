@@ -244,7 +244,7 @@ fn enable_persists_intent_before_register_and_returns_starting() {
             last_worker_heartbeat_at: Some(1_100_000),
             updated_at: 1_100_000,
         },
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
         Vec::new(),
     );
@@ -261,12 +261,7 @@ fn enable_persists_intent_before_register_and_returns_starting() {
     assert_eq!(result.last_error_code, None);
     assert_eq!(
         harness.calls(),
-        vec![
-            "settings.begin_enable",
-            "registry.register",
-            "registry.inspect",
-            "audit.record",
-        ]
+        vec!["settings.begin_enable", "registry.register", "audit.record",]
     );
     assert_eq!(
         harness.settings.state(),
@@ -286,7 +281,7 @@ fn disable_confirms_task_missing_before_persisting_disabled() {
     let harness = OperationHarness::new(
         now,
         enabled_settings(1_000_000, Some(1_100_000)),
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Vec::new(),
         Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
     );
@@ -307,7 +302,6 @@ fn disable_confirms_task_missing_before_persisting_disabled() {
         harness.calls(),
         vec![
             "registry.unregister",
-            "registry.inspect",
             "settings.finish_disable",
             "audit.record",
         ]
@@ -334,10 +328,7 @@ fn enable_waits_for_in_flight_disable_transition() {
     let now = 2_000_000;
     let shared_calls = Arc::new(Mutex::new(Vec::new()));
     let registry = Arc::new(FakeRegistry::with_shared_calls(
-        vec![
-            Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered),
-            Ok(SaveBackupBackgroundRegistrationStatus::Registered),
-        ],
+        Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
         vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
         Arc::clone(&shared_calls),
@@ -410,12 +401,10 @@ fn enable_waits_for_in_flight_disable_transition() {
         shared_calls.lock().expect("shared calls lock").as_slice(),
         [
             "registry.unregister",
-            "registry.inspect",
             "settings.finish_disable",
             "audit.record",
             "settings.begin_enable",
             "registry.register",
-            "registry.inspect",
             "audit.record",
         ]
     );
@@ -450,9 +439,9 @@ fn lifecycle_failures_preserve_recoverable_global_intent() {
     let disable = OperationHarness::new(
         now,
         enabled_settings(1_000_000, Some(1_100_000)),
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
         Vec::new(),
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Vec::new(),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
     );
     let still_enabled = disable
         .service
@@ -470,7 +459,7 @@ fn lifecycle_failures_preserve_recoverable_global_intent() {
     assert!(disable.settings.state().desired_enabled);
     assert_eq!(
         disable.calls(),
-        vec!["registry.unregister", "registry.inspect", "audit.record",]
+        vec!["registry.unregister", "audit.record",]
     );
 }
 
@@ -569,7 +558,7 @@ fn lifecycle_dependency_failures_do_not_claim_success() {
 
     let calls = Arc::new(Mutex::new(Vec::new()));
     let registry = Arc::new(FakeRegistry::with_shared_calls(
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+        Vec::new(),
         Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
         Arc::clone(&calls),
@@ -598,7 +587,6 @@ fn lifecycle_dependency_failures_do_not_claim_success() {
         calls.lock().expect("shared calls lock").as_slice(),
         [
             "registry.unregister",
-            "registry.inspect",
             "settings.finish_disable",
             "audit.record",
         ]
@@ -640,7 +628,7 @@ fn lifecycle_clock_and_audit_failures_preserve_observable_state() {
 
     let calls = Arc::new(Mutex::new(Vec::new()));
     let registry = Arc::new(FakeRegistry::with_shared_calls(
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
         Vec::new(),
         Arc::clone(&calls),
@@ -665,12 +653,7 @@ fn lifecycle_clock_and_audit_failures_preserve_observable_state() {
     assert!(settings.state().desired_enabled);
     assert_eq!(
         calls.lock().expect("shared calls lock").as_slice(),
-        [
-            "settings.begin_enable",
-            "registry.register",
-            "registry.inspect",
-            "audit.record",
-        ]
+        ["settings.begin_enable", "registry.register", "audit.record",]
     );
 }
 
@@ -940,12 +923,9 @@ fn status_maps_repository_and_clock_failures_to_stable_service_errors() {
 }
 
 #[test]
-fn register_and_unregister_require_expected_operation_and_readback() {
+fn register_and_unregister_require_verified_postconditions() {
     let registry = Arc::new(FakeRegistry::new(
-        vec![
-            Ok(SaveBackupBackgroundRegistrationStatus::Registered),
-            Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered),
-        ],
+        Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
         vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
     ));
@@ -971,17 +951,14 @@ fn register_and_unregister_require_expected_operation_and_readback() {
             error_code: None,
         }
     );
-    assert_eq!(
-        registry.calls(),
-        vec!["register", "inspect", "unregister", "inspect"]
-    );
+    assert_eq!(registry.calls(), vec!["register", "unregister"]);
     let events = audit.events();
     assert_eq!(events.len(), 2);
     assert!(events.iter().all(|event| event.result == "success"));
 }
 
 #[test]
-fn register_preserves_stable_operation_and_readback_failures() {
+fn register_preserves_stable_postcondition_failures() {
     let cases = [
         (
             SaveBackupBackgroundRegistrationStatus::ConfigurationDrift,
@@ -1011,38 +988,42 @@ fn register_preserves_stable_operation_and_readback_failures() {
         assert_eq!(operation.status, status);
         assert_eq!(operation.error_code.as_deref(), Some(expected_code));
         assert_eq!(operation_registry.calls(), vec!["register"]);
-
-        let readback_registry = Arc::new(FakeRegistry::new(
-            vec![Ok(status)],
-            vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
-            Vec::new(),
-        ));
-        let readback = service_with(
-            readback_registry.clone(),
-            None,
-            Arc::new(RecordingAuditLog::default()),
-            Arc::new(FixedClock::new(3_000_000)),
-        )
-        .register()
-        .expect("readback result");
-        assert_eq!(readback.status, status);
-        assert_eq!(readback.error_code.as_deref(), Some(expected_code));
-        assert_eq!(readback_registry.calls(), vec!["register", "inspect"]);
     }
 }
 
 #[test]
-fn unregister_readback_mismatch_is_always_generic_failure() {
-    for readback in [
-        SaveBackupBackgroundRegistrationStatus::Registered,
-        SaveBackupBackgroundRegistrationStatus::ConfigurationDrift,
-        SaveBackupBackgroundRegistrationStatus::PermissionRequired,
-        SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform,
+fn unregister_maps_each_non_absent_postcondition_to_a_stable_failure() {
+    for (postcondition, expected_status, expected_code) in [
+        (
+            SaveBackupBackgroundRegistrationStatus::Registered,
+            SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+            "save_backup_background_registration_failed",
+        ),
+        (
+            SaveBackupBackgroundRegistrationStatus::ConfigurationDrift,
+            SaveBackupBackgroundRegistrationStatus::ConfigurationDrift,
+            "save_backup_background_configuration_drift",
+        ),
+        (
+            SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+            SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+            "save_backup_background_registration_failed",
+        ),
+        (
+            SaveBackupBackgroundRegistrationStatus::PermissionRequired,
+            SaveBackupBackgroundRegistrationStatus::PermissionRequired,
+            "save_backup_background_permission_required",
+        ),
+        (
+            SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform,
+            SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform,
+            "save_backup_background_unsupported_platform",
+        ),
     ] {
         let registry = Arc::new(FakeRegistry::new(
-            vec![Ok(readback)],
             Vec::new(),
-            vec![Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)],
+            Vec::new(),
+            vec![Ok(postcondition)],
         ));
         let result = service_with(
             registry,
@@ -1053,14 +1034,8 @@ fn unregister_readback_mismatch_is_always_generic_failure() {
         .unregister()
         .expect("unregister result");
 
-        assert_eq!(
-            result.status,
-            SaveBackupBackgroundRegistrationStatus::RegistrationFailed
-        );
-        assert_eq!(
-            result.error_code.as_deref(),
-            Some("save_backup_background_registration_failed")
-        );
+        assert_eq!(result.status, expected_status);
+        assert_eq!(result.error_code.as_deref(), Some(expected_code));
     }
 }
 
@@ -1107,7 +1082,7 @@ fn lifecycle_typed_errors_keep_codes_and_audit_only_whitelisted_fields() {
 }
 
 #[test]
-fn clock_failure_prevents_registry_change_and_audit_failure_requires_reinspection() {
+fn clock_failure_prevents_registry_change_and_audit_failure_does_not_reinspect() {
     let registry = Arc::new(FakeRegistry::new(
         Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
@@ -1126,7 +1101,7 @@ fn clock_failure_prevents_registry_change_and_audit_failure_requires_reinspectio
     assert!(registry.calls().is_empty());
 
     let registry = Arc::new(FakeRegistry::new(
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
         vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
         Vec::new(),
     ));
@@ -1139,7 +1114,7 @@ fn clock_failure_prevents_registry_change_and_audit_failure_requires_reinspectio
     let error = service.register().expect_err("audit failure");
     assert_eq!(error, SaveBackupBackgroundServiceError::AuditUnavailable);
     assert_eq!(error.code(), "save_backup_background_audit_unavailable");
-    assert_eq!(registry.calls(), vec!["register", "inspect"]);
+    assert_eq!(registry.calls(), vec!["register"]);
 }
 
 struct ControlHarness {
