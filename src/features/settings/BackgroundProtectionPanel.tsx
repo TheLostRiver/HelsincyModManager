@@ -37,8 +37,15 @@ type BusyAction = "refresh" | "enable" | "disable" | null;
 let retainedPanelState: BackgroundProtectionPanelState | null = null;
 
 function initialPanelState(): BackgroundProtectionPanelState {
-  if (retainedPanelState) return retainedPanelState;
   const cachedControl = peekBackgroundProtectionControlStatus();
+  if (
+    cachedControl &&
+    retainedPanelState?.status === "ready" &&
+    retainedPanelState.control !== cachedControl
+  ) {
+    return { status: "ready", control: cachedControl, actionErrorCode: null };
+  }
+  if (retainedPanelState) return retainedPanelState;
   return cachedControl
     ? { status: "ready", control: cachedControl, actionErrorCode: null }
     : { status: "loading" };
