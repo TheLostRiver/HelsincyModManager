@@ -410,10 +410,9 @@ impl SaveBackupBackgroundService {
 
         match operation_result {
             Err(error) => registry_error_result(error),
-            Ok(status) if status == operation.expected_status() => match self.registry.inspect() {
-                Err(error) => registry_error_result(error),
-                Ok(readback) => registration_readback_result(operation, readback),
-            },
+            Ok(status) if status == operation.expected_status() => {
+                registration_result(status, None)
+            }
             Ok(status) => registration_operation_failure(operation, status),
         }
     }
@@ -575,32 +574,6 @@ fn registration_operation_failure(
     }
     let (_, code) = registration_failure(status);
     registration_result(status, Some(code))
-}
-
-fn registration_readback_result(
-    operation: RegistrationOperation,
-    status: SaveBackupBackgroundRegistrationStatus,
-) -> SaveBackupBackgroundRegistrationResult {
-    match operation {
-        RegistrationOperation::Register => {
-            if status == SaveBackupBackgroundRegistrationStatus::Registered {
-                registration_result(status, None)
-            } else {
-                let (_, code) = registration_failure(status);
-                registration_result(status, Some(code))
-            }
-        }
-        RegistrationOperation::Unregister => {
-            if status == SaveBackupBackgroundRegistrationStatus::NotRegistered {
-                registration_result(status, None)
-            } else {
-                registration_result(
-                    SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
-                    Some("save_backup_background_registration_failed"),
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

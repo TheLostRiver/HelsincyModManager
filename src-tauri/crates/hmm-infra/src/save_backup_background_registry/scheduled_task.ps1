@@ -53,6 +53,42 @@ function Resolve-Sid([string]$Identity) {
     ).Value
 }
 
+function Write-TaskFoundResult($Task) {
+    $actions = @($Task.Actions)
+    $triggers = @($Task.Triggers)
+    $logon = @($triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskLogonTrigger" })
+    $time = @($triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskTimeTrigger" })
+    $action = if ($actions.Count -eq 1) { $actions[0] } else { $null }
+    Write-Result @{ status = "found"; task = @{
+        taskPath = [string]$Task.TaskPath
+        ownerMarker = [string]$Task.Description
+        userSid = Resolve-Sid ([string]$Task.Principal.UserId)
+        actionCount = $actions.Count
+        actionExecute = if ($null -eq $action) { "" } else { [string]$action.Execute }
+        actionArguments = if ($null -eq $action) { "" } else { [string]$action.Arguments }
+        actionWorkingDirectory = if ($null -eq $action) { "" } else { [string]$action.WorkingDirectory }
+        logonTriggerCount = $logon.Count
+        timeTriggerCount = $time.Count
+        logonTriggerUserSid = if ($logon.Count -eq 1) { Resolve-Sid ([string]$logon[0].UserId) } else { "" }
+        logonTriggerEnabled = if ($logon.Count -eq 1) { [bool]$logon[0].Enabled } else { $false }
+        timeTriggerEnabled = if ($time.Count -eq 1) { [bool]$time[0].Enabled } else { $false }
+        logonDelay = if ($logon.Count -eq 1) { [string]$logon[0].Delay } else { "" }
+        periodicInterval = if ($time.Count -eq 1) { [string]$time[0].Repetition.Interval } else { "" }
+        periodicDuration = if ($time.Count -eq 1) { [string]$time[0].Repetition.Duration } else { "" }
+        logonType = [string]$Task.Principal.LogonType
+        runLevel = [string]$Task.Principal.RunLevel
+        multipleInstances = [string]$Task.Settings.MultipleInstances
+        startWhenAvailable = [bool]$Task.Settings.StartWhenAvailable
+        allowStartOnBatteries = -not [bool]$Task.Settings.DisallowStartIfOnBatteries
+        dontStopOnBatteries = -not [bool]$Task.Settings.StopIfGoingOnBatteries
+        wakeToRun = [bool]$Task.Settings.WakeToRun
+        runOnlyIfNetworkAvailable = [bool]$Task.Settings.RunOnlyIfNetworkAvailable
+        executionTimeLimit = [string]$Task.Settings.ExecutionTimeLimit
+        enabled = [string]$Task.State -ne "Disabled"
+        state = [string]$Task.State
+    }}
+}
+
 function Assert-InstallerCleanupTaskIsQuiescent($Task, [string]$OwnerMarker) {
     if ([string]$Task.Description -ne $OwnerMarker) {
         Write-Result @{ status = "ownership_conflict" }
@@ -104,39 +140,7 @@ try {
 
     if ($operation -eq "inspect") {
         $task = Get-TaskOrStatus $taskName
-        $actions = @($task.Actions)
-        $triggers = @($task.Triggers)
-        $logon = @($triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskLogonTrigger" })
-        $time = @($triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskTimeTrigger" })
-        $action = if ($actions.Count -eq 1) { $actions[0] } else { $null }
-        Write-Result @{ status = "found"; task = @{
-            taskPath = [string]$task.TaskPath
-            ownerMarker = [string]$task.Description
-            userSid = Resolve-Sid ([string]$task.Principal.UserId)
-            actionCount = $actions.Count
-            actionExecute = if ($null -eq $action) { "" } else { [string]$action.Execute }
-            actionArguments = if ($null -eq $action) { "" } else { [string]$action.Arguments }
-            actionWorkingDirectory = if ($null -eq $action) { "" } else { [string]$action.WorkingDirectory }
-            logonTriggerCount = $logon.Count
-            timeTriggerCount = $time.Count
-            logonTriggerUserSid = if ($logon.Count -eq 1) { Resolve-Sid ([string]$logon[0].UserId) } else { "" }
-            logonTriggerEnabled = if ($logon.Count -eq 1) { [bool]$logon[0].Enabled } else { $false }
-            timeTriggerEnabled = if ($time.Count -eq 1) { [bool]$time[0].Enabled } else { $false }
-            logonDelay = if ($logon.Count -eq 1) { [string]$logon[0].Delay } else { "" }
-            periodicInterval = if ($time.Count -eq 1) { [string]$time[0].Repetition.Interval } else { "" }
-            periodicDuration = if ($time.Count -eq 1) { [string]$time[0].Repetition.Duration } else { "" }
-            logonType = [string]$task.Principal.LogonType
-            runLevel = [string]$task.Principal.RunLevel
-            multipleInstances = [string]$task.Settings.MultipleInstances
-            startWhenAvailable = [bool]$task.Settings.StartWhenAvailable
-            allowStartOnBatteries = -not [bool]$task.Settings.DisallowStartIfOnBatteries
-            dontStopOnBatteries = -not [bool]$task.Settings.StopIfGoingOnBatteries
-            wakeToRun = [bool]$task.Settings.WakeToRun
-            runOnlyIfNetworkAvailable = [bool]$task.Settings.RunOnlyIfNetworkAvailable
-            executionTimeLimit = [string]$task.Settings.ExecutionTimeLimit
-            enabled = [string]$task.State -ne "Disabled"
-            state = [string]$task.State
-        }}
+        Write-TaskFoundResult $task
     }
 
     if ($operation -eq "register") {
@@ -169,7 +173,7 @@ try {
             $updated = Set-ScheduledTask -TaskPath "\" -TaskName $taskName -Action $action -Trigger @($logon, $periodic) -Settings $settings -Principal $principal
             Enable-ScheduledTask -InputObject $updated | Out-Null
         }
-        Write-Result @{ status = "completed" }
+        Write-TaskFoundResult (Get-TaskOrStatus $taskName)
     }
 
     if ($operation -eq "unregister") {
@@ -178,7 +182,7 @@ try {
             Write-Result @{ status = "ownership_conflict" }
         }
         Unregister-ScheduledTask -InputObject $current -Confirm:$false -ErrorAction Stop
-        Write-Result @{ status = "completed" }
+        Write-InstallerCleanupPostDeleteStatus $taskName $ownerMarker
     }
 
     if ($operation -eq "installer_cleanup") {

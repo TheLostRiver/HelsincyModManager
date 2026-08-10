@@ -63,10 +63,12 @@ pub trait SaveBackupBackgroundRegistry: Send + Sync {
     fn inspect(&self)
         -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
 
+    /// Returns `Registered` only after the written registration was read back and verified.
     fn register(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
 
+    /// Returns `NotRegistered` only after absence was read back and verified.
     fn unregister(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
