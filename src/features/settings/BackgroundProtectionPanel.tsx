@@ -12,6 +12,7 @@ import {
   disableBackgroundProtection,
   enableBackgroundProtection,
   getBackgroundProtectionControlStatus,
+  peekBackgroundProtectionControlStatus,
 } from "./backgroundProtectionApi";
 import {
   getBackgroundProtectionCopy,
@@ -20,6 +21,7 @@ import {
   type BackgroundProtectionControlDto,
   type BackgroundProtectionTone,
 } from "./backgroundProtectionTypes";
+import { useFeedback } from "../../shared/feedback";
 
 type BackgroundProtectionPanelState =
   | { status: "loading" }
@@ -32,8 +34,19 @@ type BackgroundProtectionPanelState =
 
 type BusyAction = "refresh" | "enable" | "disable" | null;
 
+let retainedPanelState: BackgroundProtectionPanelState | null = null;
+
+function initialPanelState(): BackgroundProtectionPanelState {
+  if (retainedPanelState) return retainedPanelState;
+  const cachedControl = peekBackgroundProtectionControlStatus();
+  return cachedControl
+    ? { status: "ready", control: cachedControl, actionErrorCode: null }
+    : { status: "loading" };
+}
+
 export function BackgroundProtectionPanel() {
-  const [state, setState] = useState<BackgroundProtectionPanelState>({ status: "loading" });
+  const { pushToast } = useFeedback();
+  const [state, setState] = useState<BackgroundProtectionPanelState>(initialPanelState);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const mountedRef = useRef(false);
   const busyRef = useRef(false);
@@ -41,17 +54,34 @@ export function BackgroundProtectionPanel() {
 
   useEffect(() => {
     mountedRef.current = true;
+    if (retainedPanelState) {
+      return () => {
+        mountedRef.current = false;
+        requestGenerationRef.current += 1;
+      };
+    }
     const generation = ++requestGenerationRef.current;
 
     void getBackgroundProtectionControlStatus()
       .then((control) => {
         if (mountedRef.current && generation === requestGenerationRef.current) {
-          setState({ status: "ready", control, actionErrorCode: null });
+          const nextState: BackgroundProtectionPanelState = {
+            status: "ready",
+            control,
+            actionErrorCode: null,
+          };
+          retainedPanelState = nextState;
+          setState(nextState);
         }
       })
       .catch((error: unknown) => {
         if (mountedRef.current && generation === requestGenerationRef.current) {
-          setState({ status: "error", errorCode: getBackgroundProtectionErrorCode(error) });
+          const nextState: BackgroundProtectionPanelState = {
+            status: "error",
+            errorCode: getBackgroundProtectionErrorCode(error),
+          };
+          retainedPanelState = nextState;
+          setState(nextState);
         }
       });
 
@@ -76,6 +106,14 @@ export function BackgroundProtectionPanel() {
   const visibleErrorMessage = visibleErrorCode
     ? getBackgroundProtectionErrorMessage(visibleErrorCode)
     : null;
+  const switchChecked = unsupported
+    ? false
+    : busyAction === "enable"
+      ? true
+      : busyAction === "disable"
+        ? false
+        : (control?.desiredEnabled ?? false);
+  const switchDisabled = busy || state.status !== "ready" || unsupported;
 
   const beginOperation = (action: Exclude<BusyAction, null>) => {
     if (busyRef.current) return null;
@@ -95,13 +133,35 @@ export function BackgroundProtectionPanel() {
     if (generation === null) return;
 
     try {
-      const nextControl = await getBackgroundProtectionControlStatus();
+      const nextControl = await getBackgroundProtectionControlStatus({ force: true });
       if (mountedRef.current && generation === requestGenerationRef.current) {
-        setState({ status: "ready", control: nextControl, actionErrorCode: null });
+        const nextState: BackgroundProtectionPanelState = {
+          status: "ready",
+          control: nextControl,
+          actionErrorCode: null,
+        };
+        retainedPanelState = nextState;
+        setState(nextState);
+        const refreshedCopy = getBackgroundProtectionCopy(nextControl.status);
+        pushToast({
+          eventKey: "background-protection-refreshed",
+          title: "后台保护状态已更新",
+          message: refreshedCopy.description,
+          tone: refreshedCopy.tone === "danger" ? "warning" : refreshedCopy.tone,
+        });
       }
     } catch (error) {
       if (mountedRef.current && generation === requestGenerationRef.current) {
-        setState({ status: "error", errorCode: getBackgroundProtectionErrorCode(error) });
+        const errorCode = getBackgroundProtectionErrorCode(error);
+        const nextState: BackgroundProtectionPanelState = { status: "error", errorCode };
+        retainedPanelState = nextState;
+        setState(nextState);
+        pushToast({
+          eventKey: "background-protection-refresh-failed",
+          title: "后台保护状态检查失败",
+          message: getBackgroundProtectionErrorMessage(errorCode),
+          tone: "danger",
+        });
       }
     } finally {
       finishOperation(generation);
@@ -116,20 +176,55 @@ export function BackgroundProtectionPanel() {
     try {
       const nextControl = await operation();
       if (mountedRef.current && generation === requestGenerationRef.current) {
-        setState({ status: "ready", control: nextControl, actionErrorCode: null });
+        const nextState: BackgroundProtectionPanelState = {
+          status: "ready",
+          control: nextControl,
+          actionErrorCode: null,
+        };
+        retainedPanelState = nextState;
+        setState(nextState);
+        pushToast({
+          eventKey: desiredEnabled
+            ? "background-protection-enabled"
+            : "background-protection-disabled",
+          title: desiredEnabled ? "后台保护已启用" : "后台保护已关闭",
+          message: desiredEnabled
+            ? "系统任务已更新，正在等待首次后台运行验证。"
+            : "退出 HMM 后不再由系统任务检查自动备份。",
+          tone: desiredEnabled ? "success" : "neutral",
+        });
       }
     } catch (error) {
       const actionErrorCode = getBackgroundProtectionErrorCode(error);
       if (mountedRef.current && generation === requestGenerationRef.current) {
         try {
-          const reconciled = await getBackgroundProtectionControlStatus();
+          const reconciled = await getBackgroundProtectionControlStatus({ force: true });
           if (mountedRef.current && generation === requestGenerationRef.current) {
-            setState({ status: "ready", control: reconciled, actionErrorCode });
+            const nextState: BackgroundProtectionPanelState = {
+              status: "ready",
+              control: reconciled,
+              actionErrorCode,
+            };
+            retainedPanelState = nextState;
+            setState(nextState);
           }
         } catch {
           if (mountedRef.current && generation === requestGenerationRef.current) {
-            setState({ status: "error", errorCode: actionErrorCode });
+            const nextState: BackgroundProtectionPanelState = {
+              status: "error",
+              errorCode: actionErrorCode,
+            };
+            retainedPanelState = nextState;
+            setState(nextState);
           }
+        }
+        if (mountedRef.current && generation === requestGenerationRef.current) {
+          pushToast({
+            eventKey: "background-protection-change-failed",
+            title: desiredEnabled ? "后台保护启用失败" : "后台保护关闭失败",
+            message: getBackgroundProtectionErrorMessage(actionErrorCode),
+            tone: "danger",
+          });
         }
       }
     } finally {
@@ -175,22 +270,50 @@ export function BackgroundProtectionPanel() {
         </button>
       </div>
 
-      <label className="setting-row background-protection-panel__toggle">
+      <div className="setting-row background-protection-panel__toggle">
         <span className="setting-row__copy">
           <strong>退出后继续保护自动备份</strong>
           <span id="background-protection-toggle-description">
             由系统后台任务定期唤醒现有备份流程，不改变每个 Profile 的备份计划。
           </span>
         </span>
-        <input
-          type="checkbox"
-          checked={unsupported ? false : (control?.desiredEnabled ?? false)}
-          disabled={busy || state.status !== "ready" || unsupported}
-          aria-describedby="background-protection-toggle-description"
-          onChange={(event) => void changeProtection(event.currentTarget.checked)}
-        />
-        <span className="setting-switch" aria-hidden="true" />
-      </label>
+        <label
+          className={`background-protection-panel__switch-control${switchDisabled ? " is-disabled" : ""}`}
+          title={switchDisabled ? undefined : switchChecked ? "关闭后台保护" : "开启后台保护"}
+        >
+          <input
+            type="checkbox"
+            checked={switchChecked}
+            disabled={switchDisabled}
+            aria-label="退出后继续保护自动备份"
+            aria-describedby="background-protection-toggle-description background-protection-operation-status"
+            onChange={(event) => void changeProtection(event.currentTarget.checked)}
+          />
+          <span className="setting-switch" aria-hidden="true" />
+        </label>
+      </div>
+
+      <div
+        id="background-protection-operation-status"
+        className={`background-protection-panel__operation${busy ? " is-visible" : ""}`}
+        role="status"
+        aria-live="polite"
+      >
+        {busy ? (
+          <>
+            <LoaderCircle className="background-protection-spinner" size={15} aria-hidden="true" />
+            <span>
+              {busyAction === "refresh"
+                ? "正在检查系统任务状态，请稍候…"
+                : busyAction === "enable"
+                  ? "正在启用后台保护，请勿关闭 HMM…"
+                  : "正在关闭后台保护，请勿关闭 HMM…"}
+            </span>
+          </>
+        ) : (
+          <span>操作就绪</span>
+        )}
+      </div>
 
       <div className="background-protection-panel__feedback">
         <div className="background-protection-panel__message">
