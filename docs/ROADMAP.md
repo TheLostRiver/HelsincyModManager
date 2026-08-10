@@ -49,7 +49,10 @@
     sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static gate 已完成。disposable Windows
     VM runtime gate 已开始：NSIS `missing` 与 `owned exact` 的 interactive/silent 变体通过；首次
     `owned drift` 交互卸载以 `21/ownership_unverified` fail closed，并正确保留 task、worker 和安装目录。
-    helper 已收敛 ScheduledTasks 往返，等待新 artifact 与全新 Sandbox 重验；runtime gate 仍未完成。
+    helper 已收敛 ScheduledTasks 往返。验收同时暴露 Settings 后台保护整行误触、无操作反馈、页面返回
+    自动重检和应用内 mutation 重复 inspect 的延迟问题；现已收窄开关触发范围、增加进度/结果反馈、
+    复用会话状态，并将 register/unregister 收敛为单进程 mutation + 最终读回。等待新 artifact 与全新
+    Sandbox 重验真实交互和耗时；runtime gate 仍未完成。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。

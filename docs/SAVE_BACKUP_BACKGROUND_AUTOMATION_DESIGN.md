@@ -17,6 +17,7 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 
 - 全局 SQLite 设置持久化 `desired_enabled`、`enabled_at`、`last_worker_heartbeat_at` 和更新时间；worker 在禁用时立即 no-op，不枚举 Profile、不触发备份、不写 heartbeat。
 - Settings 是唯一的全局启停入口；Profile 只读展示当前 profile 的备份节奏和全局后台保护状态，不提供第二个开关。
+- Settings 只允许直接点击开关控件启停，说明行本身不触发状态变化；检查、启用和停用期间必须显示动态进度与完成/失败反馈。当前应用会话保留最近一次控制状态，离开再返回 Settings 不自动执行平台检查，只有用户点击“重新检查”才强制刷新。
 - 启用成功先进入 `starting`。当前启用周期在 5 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。
 - 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
 - `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
@@ -43,6 +44,9 @@ runtime gate 仍待人工执行。实现固定以下边界：
 - helper 在 Rust 中派生当前用户 task identity 后，只启动一个 cleanup PowerShell 进程；该进程内依次
   执行两次 ownership/state 复核、一次 owned unregister 和 post-delete missing read-back，避免为每个
   阶段重复导入 ScheduledTasks 模块造成超时抖动。
+- 应用内 registry 在进程生命周期缓存已验证的当前用户 SID；普通 register/update 在一个 PowerShell
+  进程内完成 ownership 检查、写入和 exact read-back，unregister 在一个进程内完成 ownership 检查、
+  删除和 missing read-back。port 的成功返回已经代表最终后置条件，app service 不再追加重复 inspect。
 - missing、owned exact 和 owned drift 允许幂等清理；foreign task 必须保留并允许产品卸载继续。
 - owned task running/queued，或 identity、ownership、state、delete/read-back 无法确认时，真正
   卸载 fail closed；不得强杀正在备份的 worker。
