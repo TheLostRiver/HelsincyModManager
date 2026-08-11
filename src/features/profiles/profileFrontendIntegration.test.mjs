@@ -66,6 +66,17 @@ test("profile page exposes save settings workspace panels without shell coupling
   assert.match(css, /@media\s*\(max-width:\s*860px\)/);
 });
 
+test("activating a profile also selects it before refreshing its settings", () => {
+  const source = readSource("src/features/profiles/ProfilePage.tsx");
+  const activationHandler =
+    source.match(/const handleActivateProfile = async \(profileId: string\) => \{[\s\S]*?^ {2}\};/m)?.[0] ?? "";
+
+  assert.match(
+    activationHandler,
+    /await setActiveProfile\(profileId\);[\s\S]*?setSelectedProfileId\(profileId\);[\s\S]*?refreshProfiles\(\);/,
+  );
+});
+
 test("profile create and edit forms use a floating dialog instead of inline list replacement", () => {
   const listSource = readSource("src/features/profiles/ProfileListPanel.tsx");
   const css = readSource("src/features/profiles/ProfilePage.css");

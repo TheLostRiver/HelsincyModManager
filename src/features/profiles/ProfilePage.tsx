@@ -642,6 +642,7 @@ export function ProfilePage() {
     }
     try {
       await setActiveProfile(profileId);
+      setSelectedProfileId(profileId);
       refreshProfiles();
     } finally {
       setBusyProfileId(null);
