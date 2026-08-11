@@ -1,4 +1,5 @@
 import {
+  CheckCircle2,
   CircleAlert,
   LoaderCircle,
   Power,
@@ -18,6 +19,8 @@ import {
   getBackgroundProtectionCopy,
   getBackgroundProtectionErrorCode,
   getBackgroundProtectionErrorMessage,
+  formatBackgroundProtectionDuration,
+  hasBackgroundProtectionConverged,
   type BackgroundProtectionControlDto,
   type BackgroundProtectionTone,
 } from "./backgroundProtectionTypes";
@@ -33,6 +36,25 @@ type BackgroundProtectionPanelState =
   | { status: "error"; errorCode: string };
 
 type BusyAction = "refresh" | "enable" | "disable" | null;
+type ActiveBusyAction = Exclude<BusyAction, null>;
+type OperationOutcome = "success" | "reconciled" | "failed";
+type RefreshSource = "manual" | "automatic";
+
+type OperationToken = {
+  action: ActiveBusyAction;
+  generation: number;
+  startedAt: number;
+};
+
+type CompletedOperation = {
+  action: ActiveBusyAction;
+  elapsedMs: number;
+  outcome: OperationOutcome;
+};
+
+const OPERATION_TIMER_INTERVAL_MS = 100;
+// The cumulative verification points are roughly 1, 5, 10, and 16 minutes after enable.
+const STARTING_AUTO_REFRESH_DELAYS_MS = [60_000, 4 * 60_000, 5 * 60_000, 6 * 60_000] as const;
 
 let retainedPanelState: BackgroundProtectionPanelState | null = null;
 
@@ -55,9 +77,16 @@ export function BackgroundProtectionPanel() {
   const { pushToast } = useFeedback();
   const [state, setState] = useState<BackgroundProtectionPanelState>(initialPanelState);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const [operationElapsedMs, setOperationElapsedMs] = useState(0);
+  const [lastOperation, setLastOperation] = useState<CompletedOperation | null>(null);
+  const [autoVerificationActive, setAutoVerificationActive] = useState(false);
   const mountedRef = useRef(false);
   const busyRef = useRef(false);
   const requestGenerationRef = useRef(0);
+  const activeOperationRef = useRef<OperationToken | null>(null);
+  const autoRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRefreshIndexRef = useRef(0);
+  const autoVerificationArmedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -65,6 +94,7 @@ export function BackgroundProtectionPanel() {
       return () => {
         mountedRef.current = false;
         requestGenerationRef.current += 1;
+        if (autoRefreshTimerRef.current) clearTimeout(autoRefreshTimerRef.current);
       };
     }
     const generation = ++requestGenerationRef.current;
@@ -95,8 +125,23 @@ export function BackgroundProtectionPanel() {
     return () => {
       mountedRef.current = false;
       requestGenerationRef.current += 1;
+      if (autoRefreshTimerRef.current) clearTimeout(autoRefreshTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!busyAction) return;
+
+    const updateElapsed = () => {
+      const activeOperation = activeOperationRef.current;
+      if (activeOperation && mountedRef.current) {
+        setOperationElapsedMs(performance.now() - activeOperation.startedAt);
+      }
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, OPERATION_TIMER_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [busyAction]);
 
   const busy = busyAction !== null;
   const control = state.status === "ready" ? state.control : null;
@@ -122,26 +167,85 @@ export function BackgroundProtectionPanel() {
         : (control?.desiredEnabled ?? false);
   const switchDisabled = busy || state.status !== "ready" || unsupported;
 
-  const beginOperation = (action: Exclude<BusyAction, null>) => {
+  const beginOperation = (action: ActiveBusyAction): OperationToken | null => {
     if (busyRef.current) return null;
     busyRef.current = true;
+    const operation: OperationToken = {
+      action,
+      generation: ++requestGenerationRef.current,
+      startedAt: performance.now(),
+    };
+    activeOperationRef.current = operation;
+    setOperationElapsedMs(0);
+    setLastOperation(null);
     setBusyAction(action);
-    return ++requestGenerationRef.current;
+    return operation;
   };
 
-  const finishOperation = (generation: number) => {
-    if (generation !== requestGenerationRef.current) return;
+  const finishOperation = (operation: OperationToken, outcome: OperationOutcome) => {
+    if (operation.generation !== requestGenerationRef.current) return;
+    const elapsedMs = performance.now() - operation.startedAt;
     busyRef.current = false;
-    if (mountedRef.current) setBusyAction(null);
+    activeOperationRef.current = null;
+    if (mountedRef.current) {
+      setOperationElapsedMs(elapsedMs);
+      setLastOperation({ action: operation.action, elapsedMs, outcome });
+      setBusyAction(null);
+    }
   };
 
-  const refreshStatus = async () => {
-    const generation = beginOperation("refresh");
-    if (generation === null) return;
+  const cancelStartingAutoRefresh = () => {
+    autoVerificationArmedRef.current = false;
+    autoRefreshIndexRef.current = 0;
+    if (autoRefreshTimerRef.current) {
+      clearTimeout(autoRefreshTimerRef.current);
+      autoRefreshTimerRef.current = null;
+    }
+    if (mountedRef.current) setAutoVerificationActive(false);
+  };
+
+  const scheduleStartingAutoRefresh = () => {
+    if (!autoVerificationArmedRef.current || autoRefreshTimerRef.current) return;
+    const delay = STARTING_AUTO_REFRESH_DELAYS_MS[autoRefreshIndexRef.current];
+    if (delay === undefined) {
+      cancelStartingAutoRefresh();
+      return;
+    }
+
+    autoRefreshTimerRef.current = setTimeout(() => {
+      autoRefreshTimerRef.current = null;
+      autoRefreshIndexRef.current += 1;
+      if (!mountedRef.current || !autoVerificationArmedRef.current) return;
+      if (busyRef.current) {
+        autoRefreshIndexRef.current -= 1;
+        autoRefreshTimerRef.current = setTimeout(() => {
+          autoRefreshTimerRef.current = null;
+          scheduleStartingAutoRefresh();
+        }, 2_000);
+        return;
+      }
+      void refreshStatus("automatic");
+    }, delay);
+  };
+
+  const armStartingAutoRefresh = (control: BackgroundProtectionControlDto) => {
+    if (control.status !== "starting" || !control.desiredEnabled) {
+      cancelStartingAutoRefresh();
+      return;
+    }
+    autoVerificationArmedRef.current = true;
+    if (mountedRef.current) setAutoVerificationActive(true);
+    scheduleStartingAutoRefresh();
+  };
+
+  const refreshStatus = async (source: RefreshSource = "manual") => {
+    const operation = beginOperation("refresh");
+    if (operation === null) return;
+    let outcome: OperationOutcome = "failed";
 
     try {
       const nextControl = await getBackgroundProtectionControlStatus({ force: true });
-      if (mountedRef.current && generation === requestGenerationRef.current) {
+      if (mountedRef.current && operation.generation === requestGenerationRef.current) {
         const nextState: BackgroundProtectionPanelState = {
           status: "ready",
           control: nextControl,
@@ -149,16 +253,27 @@ export function BackgroundProtectionPanel() {
         };
         retainedPanelState = nextState;
         setState(nextState);
+        outcome = "success";
+        if (source === "automatic" && autoVerificationArmedRef.current) {
+          if (nextControl.status === "starting") scheduleStartingAutoRefresh();
+          else cancelStartingAutoRefresh();
+        }
         const refreshedCopy = getBackgroundProtectionCopy(nextControl.status);
-        pushToast({
-          eventKey: "background-protection-refreshed",
-          title: "后台保护状态已更新",
-          message: refreshedCopy.description,
-          tone: refreshedCopy.tone === "danger" ? "warning" : refreshedCopy.tone,
-        });
+        if (source === "manual" || nextControl.status !== "starting") {
+          pushToast({
+            eventKey:
+              source === "automatic"
+                ? "background-protection-auto-refreshed"
+                : "background-protection-refreshed",
+            title:
+              source === "automatic" ? "后台保护自动验证已完成" : "后台保护状态已更新",
+            message: `${refreshedCopy.description}，本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
+            tone: refreshedCopy.tone === "danger" ? "warning" : refreshedCopy.tone,
+          });
+        }
       }
     } catch (error) {
-      if (mountedRef.current && generation === requestGenerationRef.current) {
+      if (mountedRef.current && operation.generation === requestGenerationRef.current) {
         const errorCode = getBackgroundProtectionErrorCode(error);
         const nextState: BackgroundProtectionPanelState = { status: "error", errorCode };
         retainedPanelState = nextState;
@@ -166,23 +281,27 @@ export function BackgroundProtectionPanel() {
         pushToast({
           eventKey: "background-protection-refresh-failed",
           title: "后台保护状态检查失败",
-          message: getBackgroundProtectionErrorMessage(errorCode),
+          message: `${getBackgroundProtectionErrorMessage(errorCode)} 本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
           tone: "danger",
         });
+        if (source === "automatic" && autoVerificationArmedRef.current) {
+          scheduleStartingAutoRefresh();
+        }
       }
     } finally {
-      finishOperation(generation);
+      finishOperation(operation, outcome);
     }
   };
 
   const changeProtection = async (desiredEnabled: boolean) => {
-    const generation = beginOperation(desiredEnabled ? "enable" : "disable");
-    if (generation === null) return;
+    const operationToken = beginOperation(desiredEnabled ? "enable" : "disable");
+    if (operationToken === null) return;
+    let outcome: OperationOutcome = "failed";
 
     const operation = desiredEnabled ? enableBackgroundProtection : disableBackgroundProtection;
     try {
       const nextControl = await operation();
-      if (mountedRef.current && generation === requestGenerationRef.current) {
+      if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
         const nextState: BackgroundProtectionPanelState = {
           status: "ready",
           control: nextControl,
@@ -190,33 +309,49 @@ export function BackgroundProtectionPanel() {
         };
         retainedPanelState = nextState;
         setState(nextState);
+        outcome = "success";
+        if (desiredEnabled) armStartingAutoRefresh(nextControl);
+        else cancelStartingAutoRefresh();
         pushToast({
           eventKey: desiredEnabled
             ? "background-protection-enabled"
             : "background-protection-disabled",
           title: desiredEnabled ? "后台保护已启用" : "后台保护已关闭",
           message: desiredEnabled
-            ? "系统任务已更新，正在等待首次后台运行验证。"
-            : "退出 HMM 后不再由系统任务检查自动备份。",
+            ? `系统任务已更新，正在等待首次后台运行验证；无需再次点击检查。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`
+            : `退出 HMM 后不再由系统任务检查自动备份。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
           tone: desiredEnabled ? "success" : "neutral",
         });
       }
     } catch (error) {
       const actionErrorCode = getBackgroundProtectionErrorCode(error);
-      if (mountedRef.current && generation === requestGenerationRef.current) {
+      if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
+        let reconciledControl: BackgroundProtectionControlDto | null = null;
         try {
-          const reconciled = await getBackgroundProtectionControlStatus({ force: true });
-          if (mountedRef.current && generation === requestGenerationRef.current) {
+          reconciledControl = await getBackgroundProtectionControlStatus({ force: true });
+          if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
+            const converged = hasBackgroundProtectionConverged(reconciledControl, desiredEnabled);
             const nextState: BackgroundProtectionPanelState = {
               status: "ready",
-              control: reconciled,
-              actionErrorCode,
+              control: reconciledControl,
+              actionErrorCode: converged ? null : actionErrorCode,
             };
             retainedPanelState = nextState;
             setState(nextState);
+            if (converged) {
+              outcome = "reconciled";
+              if (desiredEnabled) armStartingAutoRefresh(reconciledControl);
+              else cancelStartingAutoRefresh();
+              pushToast({
+                eventKey: "background-protection-change-reconciled",
+                title: desiredEnabled ? "后台保护已启用" : "后台保护已关闭",
+                message: `操作确认曾短暂中断，但系统状态已自动重新读取，无需再次检查。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
+                tone: "warning",
+              });
+            }
           }
         } catch {
-          if (mountedRef.current && generation === requestGenerationRef.current) {
+          if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
             const nextState: BackgroundProtectionPanelState = {
               status: "error",
               errorCode: actionErrorCode,
@@ -225,17 +360,21 @@ export function BackgroundProtectionPanel() {
             setState(nextState);
           }
         }
-        if (mountedRef.current && generation === requestGenerationRef.current) {
+        if (
+          mountedRef.current &&
+          operationToken.generation === requestGenerationRef.current &&
+          outcome === "failed"
+        ) {
           pushToast({
             eventKey: "background-protection-change-failed",
             title: desiredEnabled ? "后台保护启用失败" : "后台保护关闭失败",
-            message: getBackgroundProtectionErrorMessage(actionErrorCode),
+            message: `${getBackgroundProtectionErrorMessage(actionErrorCode)} 耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
             tone: "danger",
           });
         }
       }
     } finally {
-      finishOperation(generation);
+      finishOperation(operationToken, outcome);
     }
   };
 
@@ -243,6 +382,7 @@ export function BackgroundProtectionPanel() {
     state.status === "ready"
       ? getBackgroundProtectionCopy(state.control.status)
       : summaryForTransientState(state.status);
+  const operationVisible = busy || lastOperation !== null;
 
   return (
     <div
@@ -266,7 +406,7 @@ export function BackgroundProtectionPanel() {
           type="button"
           className="background-protection-panel__refresh"
           disabled={busy || state.status === "loading"}
-          onClick={() => void refreshStatus()}
+          onClick={() => void refreshStatus("manual")}
         >
           {busyAction === "refresh" ? (
             <LoaderCircle className="background-protection-spinner" size={14} aria-hidden="true" />
@@ -302,7 +442,7 @@ export function BackgroundProtectionPanel() {
 
       <div
         id="background-protection-operation-status"
-        className={`background-protection-panel__operation${busy ? " is-visible" : ""}`}
+        className={`background-protection-panel__operation${operationVisible ? " is-visible" : ""}${busy ? " is-busy" : lastOperation ? ` is-${lastOperation.outcome}` : ""}`}
         role="status"
         aria-live="polite"
       >
@@ -316,6 +456,21 @@ export function BackgroundProtectionPanel() {
                   ? "正在启用后台保护，请勿关闭 HMM…"
                   : "正在关闭后台保护，请勿关闭 HMM…"}
             </span>
+            <span className="background-protection-panel__timer" aria-hidden="true">
+              {formatBackgroundProtectionDuration(operationElapsedMs)}
+            </span>
+          </>
+        ) : lastOperation ? (
+          <>
+            {lastOperation.outcome === "failed" ? (
+              <ShieldAlert size={15} aria-hidden="true" />
+            ) : (
+              <CheckCircle2 size={15} aria-hidden="true" />
+            )}
+            <span>{completedOperationLabel(lastOperation)}</span>
+            <span className="background-protection-panel__timer">
+              耗时 {formatBackgroundProtectionDuration(lastOperation.elapsedMs)}
+            </span>
           </>
         ) : (
           <span>操作就绪</span>
@@ -326,7 +481,9 @@ export function BackgroundProtectionPanel() {
         <div className="background-protection-panel__message">
           {showStartingHint ? (
             <p className="background-protection-panel__hint">
-              首次后台运行完成后，请点击“重新检查”确认是否已保护；在此之前完全退出仍可能失去即时提醒。
+              {autoVerificationActive
+                ? "首次后台运行完成后，HMM 会在当前页面自动复查，无需重复点击；在此之前完全退出仍可能失去即时提醒。"
+                : "后台任务正在等待首次运行验证；需要立即确认时可重新检查，在此之前完全退出仍可能失去即时提醒。"}
             </p>
           ) : null}
 
@@ -379,6 +536,22 @@ export function BackgroundProtectionPanel() {
       </div>
     </div>
   );
+}
+
+function completedOperationLabel(operation: CompletedOperation): string {
+  if (operation.outcome === "reconciled") return "系统状态已自动重新同步";
+  if (operation.outcome === "failed") {
+    return operation.action === "refresh"
+      ? "后台保护检查未完成"
+      : operation.action === "enable"
+        ? "后台保护启用未完成"
+        : "后台保护关闭未完成";
+  }
+  return operation.action === "refresh"
+    ? "后台保护检查完成"
+    : operation.action === "enable"
+      ? "后台保护启用完成"
+      : "后台保护关闭完成";
 }
 
 function summaryForTransientState(status: "loading" | "error") {

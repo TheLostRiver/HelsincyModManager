@@ -17,8 +17,9 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 
 - 全局 SQLite 设置持久化 `desired_enabled`、`enabled_at`、`last_worker_heartbeat_at` 和更新时间；worker 在禁用时立即 no-op，不枚举 Profile、不触发备份、不写 heartbeat。
 - Settings 是唯一的全局启停入口；Profile 只读展示当前 profile 的备份节奏和全局后台保护状态，不提供第二个开关。
-- Settings 只允许直接点击开关控件启停，说明行本身不触发状态变化；检查、启用和停用期间必须显示动态进度与完成/失败反馈。当前应用会话保留最近一次控制状态，离开再返回 Settings 不自动执行平台检查，只有用户点击“重新检查”才强制刷新。
-- 启用成功先进入 `starting`。当前启用周期在 5 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。
+- Settings 只允许直接点击开关控件启停，说明行本身不触发状态变化；检查、启用和停用期间必须显示可见的旋转/不定进度、实时耗时与完成/失败耗时。当前应用会话保留最近一次控制状态，离开再返回 Settings 不自动执行平台检查；用户点击“重新检查”可以随时强制刷新。
+- 启用成功先进入 `starting`。当前启用周期在 20 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。启停 command 的确认若短暂失败，前端必须以一次权威状态重读判断是否已经收敛，已收敛时清除旧操作错误，不要求用户再次手动检查。
+- 启用后只在当前仍挂载的 Settings 页面按约 1、5、10、16 分钟节点自动复查 `starting`；临时读取失败继续使用剩余节点。离开页面会取消这些复查，返回页面仍只展示会话缓存，不自动触发平台查询。
 - 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
 - `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
 
@@ -331,6 +332,16 @@ unsupported_platform
 - 最近 worker heartbeat 时间。
 - 最近失败原因。
 - “重新检查”按钮。
+- 检查、启用和停用过程的动态反馈与实时耗时，以及完成后的本次耗时。
+
+启停请求返回错误时，UI 不能直接把一次 transport/确认失败等同于最终系统状态。前端应立即强制读取一次
+权威 control status：若启用已收敛为 `starting`/`protected`，或停用已收敛为 `not_enabled`，则清除旧操作错误并
+告知用户状态已自动重新同步；只有未收敛时才保留稳定错误提示。`starting` 仍不代表已保护，前端不得提前显示
+`protected`。
+
+启用后，当前 Settings 页面可以在启动宽限内做有限的自动复查，使首次 heartbeat 到达后无需用户再次点击。
+自动复查必须在页面卸载时取消，重新进入 Settings 不自动查询；这样既避免页面切换触发十几秒平台检查，也避免
+长期轮询 Scheduled Task。
 
 当用户启用自动备份但未启用后台保障时，应显示明确提示：
 
@@ -517,6 +528,7 @@ MVP 平台。推荐：
 - 已实现全局 SQLite 用户意图、启用时间和独立 worker heartbeat。
 - 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
 - 已实现 20 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生；启动宽限覆盖首次 15 分钟计划任务周期及调度抖动。
+- 已实现启停结果的权威重读收敛、动态进度、实时/完成耗时，以及仅限当前 Settings 页面生命周期的有限自动复查；页面返回不会自动执行平台查询。
 - 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
 - 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 已完成，P7.2c installer cleanup
   仍未完成。

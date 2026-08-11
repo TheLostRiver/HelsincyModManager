@@ -29,6 +29,13 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /background-protection-panel__switch-control/);
   assert.match(source, /正在启用后台保护/);
   assert.match(source, /后台保护已启用/);
+  assert.match(source, /STARTING_AUTO_REFRESH_DELAYS_MS/);
+  assert.match(source, /source === "automatic" && autoVerificationArmedRef\.current/);
+  assert.match(source, /performance\.now\(\)/);
+  assert.match(source, /formatBackgroundProtectionDuration/);
+  assert.match(source, /hasBackgroundProtectionConverged/);
+  assert.match(source, /系统状态已自动重新同步/);
+  assert.match(source, /HMM 会在当前页面自动复查/);
   assert.doesNotMatch(source, /<label className="setting-row background-protection-panel__toggle">/);
   assert.match(source, /getBackgroundProtectionControlStatus\(/);
   assert.match(source, /enableBackgroundProtection/);
@@ -39,7 +46,7 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /const switchChecked = unsupported/);
   assert.match(source, /checked=\{switchChecked\}/);
   assert.match(source, /changeProtection\(state\.control\.desiredEnabled\)/);
-  assert.match(source, /点击“重新检查”确认是否已保护/);
+  assert.doesNotMatch(source, /请点击“重新检查”确认是否已保护/);
   assert.doesNotMatch(source, /完成后会自动变为已保护/);
   assert.doesNotMatch(source, /error\.message|taskName|taskXml|workerPath|PowerShell|sid|leaseOwner/i);
 });
@@ -98,6 +105,66 @@ test("background protection errors map to fixed local copy", async () => {
   assert.doesNotMatch(unknown, /C:\/Users|Alice|save/);
 });
 
+test("background protection operation helpers keep convergence and timing explicit", async () => {
+  const module = await import("./backgroundProtectionTypes.ts");
+
+  assert.equal(
+    module.hasBackgroundProtectionConverged(
+      {
+        desiredEnabled: true,
+        status: "starting",
+        enabledAt: 1,
+        lastHeartbeatAt: null,
+        lastErrorCode: null,
+      },
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    module.hasBackgroundProtectionConverged(
+      {
+        desiredEnabled: true,
+        status: "protected",
+        enabledAt: 1,
+        lastHeartbeatAt: 2,
+        lastErrorCode: null,
+      },
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    module.hasBackgroundProtectionConverged(
+      {
+        desiredEnabled: true,
+        status: "registration_failed",
+        enabledAt: 1,
+        lastHeartbeatAt: null,
+        lastErrorCode: "save_backup_background_registration_failed",
+      },
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    module.hasBackgroundProtectionConverged(
+      {
+        desiredEnabled: false,
+        status: "not_enabled",
+        enabledAt: null,
+        lastHeartbeatAt: null,
+        lastErrorCode: null,
+      },
+      false,
+    ),
+    true,
+  );
+  assert.equal(module.formatBackgroundProtectionDuration(0), "不足 0.1 秒");
+  assert.equal(module.formatBackgroundProtectionDuration(Number.NaN), "不足 0.1 秒");
+  assert.equal(module.formatBackgroundProtectionDuration(1_234), "1.2 秒");
+});
+
 test("settings hosts the persisted panel outside session preview state", () => {
   const page = readProjectFile(SETTINGS_PAGE_PATH);
   const css = readProjectFile(SETTINGS_CSS_PATH);
@@ -122,6 +189,9 @@ test("settings hosts the persisted panel outside session preview state", () => {
   assert.match(css, /\.background-protection-panel__toggle:focus-within\s*\{[\s\S]*?outline:\s*none;/);
   assert.match(css, /\.background-protection-panel__switch-control:hover input:checked \+ \.setting-switch/);
   assert.match(css, /\.background-protection-panel__operation\.is-visible/);
+  assert.match(css, /\.background-protection-panel__operation\.is-busy::after/);
+  assert.match(css, /@keyframes background-protection-progress/);
+  assert.match(css, /\.background-protection-panel__timer/);
   assert.match(css, /\.background-protection-panel__action:focus-visible/);
   assert.match(css, /@media \(max-width: 600px\)[\s\S]*?\.background-protection-panel__summary/);
   assert.match(
