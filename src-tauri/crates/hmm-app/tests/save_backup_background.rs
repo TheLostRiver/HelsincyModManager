@@ -22,6 +22,9 @@ use std::time::Duration;
 #[test]
 fn exact_registration_waits_for_current_enable_heartbeat() {
     let enabled_at = 1_000_000;
+    const {
+        assert!(SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS > 15 * 60_000);
+    }
     let harness = ControlHarness::with_global_settings(
         enabled_at + SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
         SaveBackupBackgroundSettings {
