@@ -311,7 +311,7 @@ unsupported_platform
 - `protected`：后台保护已启用、Scheduled Task read-back 完全匹配，且 worker heartbeat 位于 `[now - 45m, now]`。
 - `tray_only`：主客户端托盘常驻可执行自动备份，但真正退出后不受保护。
 - `not_enabled`：用户未启用后台保障。
-- `starting`：任务已完成注册 read-back，但当前启用周期仍在 5 分钟启动宽限内，尚无有效 worker heartbeat；不能提前声称已保护。
+- `starting`：任务已完成注册 read-back，但当前启用周期仍在 20 分钟启动宽限内，尚无有效 worker heartbeat；该窗口覆盖首次 15 分钟周期和调度抖动，且不能提前声称已保护。
 - `registration_failed`：计划任务或自启动注册失败。
 - `worker_unhealthy`：已注册但最近没有心跳或连续失败。
 - `permission_required`：当前环境需要额外权限或系统设置。
@@ -516,7 +516,7 @@ MVP 平台。推荐：
 
 - 已实现全局 SQLite 用户意图、启用时间和独立 worker heartbeat。
 - 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
-- 已实现 5 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生。
+- 已实现 20 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生；启动宽限覆盖首次 15 分钟计划任务周期及调度抖动。
 - 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
 - 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 已完成，P7.2c installer cleanup
   仍未完成。

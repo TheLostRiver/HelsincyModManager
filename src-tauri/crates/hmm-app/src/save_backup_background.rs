@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
 
 pub const SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS: u128 = 45 * 60_000;
-pub const SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS: u128 = 5 * 60_000;
+// The Windows task's first periodic run can arrive after its 15-minute interval.
+pub const SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS: u128 = 20 * 60_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupBackgroundStatus {
