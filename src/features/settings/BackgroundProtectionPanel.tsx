@@ -28,16 +28,12 @@ import {
   type BackgroundProtectionControlDto,
   type BackgroundProtectionTone,
 } from "./backgroundProtectionTypes";
+import {
+  preserveBackgroundProtectionStateAfterRefreshFailure,
+  readyBackgroundProtectionPanelState,
+  type BackgroundProtectionPanelState,
+} from "./backgroundProtectionPanelState";
 import { useFeedback } from "../../shared/feedback";
-
-type BackgroundProtectionPanelState =
-  | { status: "loading" }
-  | {
-      status: "ready";
-      control: BackgroundProtectionControlDto;
-      actionErrorCode: string | null;
-    }
-  | { status: "error"; errorCode: string };
 
 type BusyAction = "refresh" | "enable" | "disable" | null;
 type ActiveBusyAction = Exclude<BusyAction, null>;
@@ -67,12 +63,20 @@ function initialPanelState(): BackgroundProtectionPanelState {
     retainedPanelState?.status === "ready" &&
     retainedPanelState.control !== cachedControl
   ) {
-    return { status: "ready", control: cachedControl, actionErrorCode: null };
+    return readyBackgroundProtectionPanelState(cachedControl);
   }
   if (retainedPanelState) return retainedPanelState;
   return cachedControl
-    ? { status: "ready", control: cachedControl, actionErrorCode: null }
+    ? readyBackgroundProtectionPanelState(cachedControl)
     : { status: "loading" };
+}
+
+function latestKnownPanelState(
+  fallback: BackgroundProtectionPanelState,
+): BackgroundProtectionPanelState {
+  if (retainedPanelState?.status === "ready") return retainedPanelState;
+  const cachedControl = peekBackgroundProtectionControlStatus();
+  return cachedControl ? readyBackgroundProtectionPanelState(cachedControl) : fallback;
 }
 
 export function BackgroundProtectionPanel() {
@@ -115,21 +119,17 @@ export function BackgroundProtectionPanel() {
     void getBackgroundProtectionControlStatus()
       .then((control) => {
         if (mountedRef.current && generation === requestGenerationRef.current) {
-          const nextState: BackgroundProtectionPanelState = {
-            status: "ready",
-            control,
-            actionErrorCode: null,
-          };
+          const nextState = readyBackgroundProtectionPanelState(control);
           retainedPanelState = nextState;
           setState(nextState);
         }
       })
       .catch((error: unknown) => {
         if (mountedRef.current && generation === requestGenerationRef.current) {
-          const nextState: BackgroundProtectionPanelState = {
-            status: "error",
-            errorCode: getBackgroundProtectionErrorCode(error),
-          };
+          const nextState = preserveBackgroundProtectionStateAfterRefreshFailure(
+            latestKnownPanelState({ status: "loading" }),
+            getBackgroundProtectionErrorCode(error),
+          );
           retainedPanelState = nextState;
           setState(nextState);
         }
@@ -164,6 +164,7 @@ export function BackgroundProtectionPanel() {
       : state.status === "ready"
         ? state.actionErrorCode ?? state.control.lastErrorCode
         : null;
+  const refreshWarningCode = state.status === "ready" ? state.refreshWarningCode : null;
   const visibleErrorMessage = visibleErrorCode
     ? getBackgroundProtectionErrorMessage(visibleErrorCode)
     : null;
@@ -226,11 +227,7 @@ export function BackgroundProtectionPanel() {
     try {
       const nextControl = await getBackgroundProtectionControlStatus({ force: true });
       if (mountedRef.current && operation.generation === requestGenerationRef.current) {
-        const nextState: BackgroundProtectionPanelState = {
-          status: "ready",
-          control: nextControl,
-          actionErrorCode: null,
-        };
+        const nextState = readyBackgroundProtectionPanelState(nextControl);
         retainedPanelState = nextState;
         setState(nextState);
         refreshedControl = nextControl;
@@ -259,14 +256,21 @@ export function BackgroundProtectionPanel() {
     } catch (error) {
       if (mountedRef.current && operation.generation === requestGenerationRef.current) {
         const errorCode = getBackgroundProtectionErrorCode(error);
-        const nextState: BackgroundProtectionPanelState = { status: "error", errorCode };
+        const knownState = latestKnownPanelState(state);
+        const preservedAuthoritativeState = knownState.status === "ready";
+        const nextState = preserveBackgroundProtectionStateAfterRefreshFailure(
+          knownState,
+          errorCode,
+        );
         retainedPanelState = nextState;
         setState(nextState);
         pushToast({
           eventKey: "background-protection-refresh-failed",
           title: "后台保护状态检查失败",
-          message: `${getBackgroundProtectionErrorMessage(errorCode)} 本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
-          tone: "danger",
+          message: preservedAuthoritativeState
+            ? `${source === "automatic" ? "自动复查未完成，后续复查仍会继续" : "本次检查未完成，仍显示最近一次成功确认的状态；可稍后重试"}。耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`
+            : `${getBackgroundProtectionErrorMessage(errorCode)} 本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
+          tone: preservedAuthoritativeState ? "warning" : "danger",
         });
       }
     } finally {
@@ -292,11 +296,7 @@ export function BackgroundProtectionPanel() {
     try {
       const nextControl = await operation();
       if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
-        const nextState: BackgroundProtectionPanelState = {
-          status: "ready",
-          control: nextControl,
-          actionErrorCode: null,
-        };
+        const nextState = readyBackgroundProtectionPanelState(nextControl);
         retainedPanelState = nextState;
         setState(nextState);
         outcome = "success";
@@ -323,11 +323,10 @@ export function BackgroundProtectionPanel() {
           reconciledControl = await getBackgroundProtectionControlStatus({ force: true });
           if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
             const converged = hasBackgroundProtectionConverged(reconciledControl, desiredEnabled);
-            const nextState: BackgroundProtectionPanelState = {
-              status: "ready",
-              control: reconciledControl,
-              actionErrorCode: converged ? null : actionErrorCode,
-            };
+            const nextState = readyBackgroundProtectionPanelState(
+              reconciledControl,
+              converged ? null : actionErrorCode,
+            );
             retainedPanelState = nextState;
             setState(nextState);
             if (converged) {
@@ -344,10 +343,10 @@ export function BackgroundProtectionPanel() {
           }
         } catch {
           if (mountedRef.current && operationToken.generation === requestGenerationRef.current) {
-            const nextState: BackgroundProtectionPanelState = {
-              status: "error",
-              errorCode: actionErrorCode,
-            };
+            const nextState = preserveBackgroundProtectionStateAfterRefreshFailure(
+              latestKnownPanelState(state),
+              actionErrorCode,
+            );
             retainedPanelState = nextState;
             setState(nextState);
           }
@@ -483,6 +482,15 @@ export function BackgroundProtectionPanel() {
             <div className="background-protection-panel__error" role="alert">
               <ShieldAlert size={16} aria-hidden="true" />
               <span>{visibleErrorMessage}</span>
+            </div>
+          ) : null}
+
+          {refreshWarningCode ? (
+            <div className="background-protection-panel__warning" role="status">
+              <CircleAlert size={16} aria-hidden="true" />
+              <span>
+                本次检查未完成，当前仍显示最近一次成功确认的状态；可稍后重新检查，正在验证时的自动复查不受影响。
+              </span>
             </div>
           ) : null}
         </div>
