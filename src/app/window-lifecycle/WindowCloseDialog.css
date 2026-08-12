@@ -5,8 +5,18 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--color-bg) 58%, transparent);
-  backdrop-filter: blur(8px);
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  transition: opacity var(--window-close-transition-duration, 200ms) ease-out;
+}
+
+.window-close-overlay.is-opening,
+.window-close-overlay.is-closing {
+  opacity: 0;
+}
+
+.window-close-overlay.is-closing {
+  pointer-events: none;
 }
 
 .window-close-dialog {
@@ -18,13 +28,26 @@
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--color-text);
-  background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
+  background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
   border-top-color: var(--color-border);
   border-radius: 28px;
   box-shadow: var(--shadow-panel);
   outline: none;
-  backdrop-filter: blur(28px) saturate(180%);
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--window-close-transition-duration, 200ms) ease-out,
+    transform var(--window-close-transition-duration, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.window-close-overlay.is-opening .window-close-dialog {
+  opacity: 0;
+  transform: translateY(10px) scale(0.975);
+}
+
+.window-close-overlay.is-closing .window-close-dialog {
+  opacity: 0;
+  transform: translateY(6px) scale(0.985);
 }
 
 .window-close-dialog.is-unsafe {
@@ -59,6 +82,7 @@
 }
 
 .window-close-dialog__close:focus-visible,
+.window-close-option.is-default:focus,
 .window-close-option:focus-visible,
 .window-close-dialog__cancel:focus-visible,
 .window-close-dialog__remember:focus-within .window-close-dialog__checkbox {
@@ -355,6 +379,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .window-close-overlay {
+    transition-timing-function: linear;
+  }
+
+  .window-close-dialog,
+  .window-close-overlay.is-opening .window-close-dialog,
+  .window-close-overlay.is-closing .window-close-dialog {
+    transform: none;
+    transition-timing-function: linear;
+  }
+
   .window-close-dialog__close,
   .window-close-option,
   .window-close-option::after,

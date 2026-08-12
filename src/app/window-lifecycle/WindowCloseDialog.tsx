@@ -1,5 +1,5 @@
 import { Check, LoaderCircle, Minimize2, Power, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { AppExitGuardReason } from "./windowLifecycleApi";
 import type { WindowClosePreference } from "./windowClosePreference";
 import "./WindowCloseDialog.css";
@@ -16,8 +16,11 @@ type WindowCloseDialogProps = {
 };
 
 type ExecutingAction = "tray" | "exit" | null;
+type DialogPhase = "closed" | "opening" | "open" | "closing";
 
 const EXECUTION_FEEDBACK_DELAY_MS = 360;
+const DIALOG_TRANSITION_MS = 200;
+const REDUCED_MOTION_TRANSITION_MS = 140;
 const UNSAFE_EXIT_REASON_MESSAGES: Record<AppExitGuardReason, string> = {
   background_starting:
     "后台任务已注册，但尚未完成首次运行验证。Windows 仍会在约 1 分钟后尝试运行；若失败，应用退出后无法立即提醒你。",
@@ -44,29 +47,107 @@ function getFocusableDialogElements(container: HTMLElement): HTMLElement[] {
 }
 
 export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: WindowCloseDialogProps) {
+  const [renderedMode, setRenderedMode] = useState<WindowCloseDialogMode | null>(mode);
+  const [phase, setPhase] = useState<DialogPhase>(mode ? "opening" : "closed");
   const [remember, setRemember] = useState(false);
   const [executing, setExecuting] = useState<ExecutingAction>(null);
   const [successText, setSuccessText] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const trayButtonRef = useRef<HTMLButtonElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
     if (!mode) return;
+
+    setRenderedMode(mode);
+    setPhase("opening");
     setRemember(false);
     setExecuting(null);
     setSuccessText(null);
-    const focusTimer = window.setTimeout(() => {
-      if (mode.kind === "unsafe") trayButtonRef.current?.focus();
-      else dialogRef.current?.focus();
-    }, 0);
-    return () => window.clearTimeout(focusTimer);
+    let openFrame = 0;
+    const openingFrame = window.requestAnimationFrame(() => {
+      openFrame = window.requestAnimationFrame(() => setPhase("open"));
+    });
+    const focusTimer = window.setTimeout(() => trayButtonRef.current?.focus(), 0);
+    return () => {
+      window.cancelAnimationFrame(openingFrame);
+      window.cancelAnimationFrame(openFrame);
+      window.clearTimeout(focusTimer);
+    };
   }, [mode]);
 
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    },
+    [],
+  );
+
+  const requestCancel = useCallback(() => {
+    if (executing || phase === "closing") return;
+    setPhase("closing");
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setRenderedMode(null);
+      setPhase("closed");
+      onCancel();
+    }, getDialogTransitionMillis());
+  }, [executing, onCancel, phase]);
+
+  const execute = useCallback(
+    async (action: "tray" | "exit") => {
+      if (!renderedMode || phase === "closing") return;
+      setExecuting(action);
+      setSuccessText(action === "tray" ? "已收起至系统托盘" : "正在退出应用");
+      try {
+        await new Promise((resolve) => window.setTimeout(resolve, EXECUTION_FEEDBACK_DELAY_MS));
+        await onConfirm(action, renderedMode.kind === "normal" ? remember : false);
+        if (action === "tray") {
+          setRenderedMode(null);
+          setPhase("closed");
+        }
+      } catch {
+        setExecuting(null);
+        setSuccessText(null);
+      }
+    },
+    [onConfirm, phase, remember, renderedMode],
+  );
+
   useEffect(() => {
-    if (!mode) return;
+    if (!renderedMode) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !executing) {
-        onCancel();
+      if (event.key === "Escape" && !executing && phase !== "closing") {
+        event.preventDefault();
+        requestCancel();
+        return;
+      }
+
+      if (
+        event.key === "Enter" &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.repeat &&
+        !event.isComposing &&
+        !executing &&
+        phase !== "closing"
+      ) {
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLButtonElement && dialogRef.current?.contains(activeElement)) {
+          const focusedAction = activeElement.dataset.closeAction;
+          if (focusedAction !== "tray" && focusedAction !== "exit") return;
+          event.preventDefault();
+          void execute(focusedAction);
+          return;
+        }
+        event.preventDefault();
+        void execute("tray");
         return;
       }
 
@@ -100,31 +181,27 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [executing, mode, onCancel]);
+  }, [execute, executing, phase, renderedMode, requestCancel]);
 
-  if (!mode) return null;
+  if (!renderedMode) return null;
 
-  const execute = async (action: "tray" | "exit") => {
-    setExecuting(action);
-    setSuccessText(action === "tray" ? "已收起至系统托盘" : "正在退出应用");
-    try {
-      await new Promise((resolve) => window.setTimeout(resolve, EXECUTION_FEEDBACK_DELAY_MS));
-      await onConfirm(action, mode.kind === "normal" ? remember : false);
-    } catch {
-      setExecuting(null);
-      setSuccessText(null);
-    }
-  };
+  const transitionStyle = {
+    "--window-close-transition-duration": `${getDialogTransitionMillis()}ms`,
+  } as CSSProperties;
+  const interactionsDisabled = Boolean(executing) || phase === "closing";
 
   return (
     <div
-      className="window-close-overlay"
-      onMouseDown={(event) => event.target === event.currentTarget && !executing && onCancel()}
+      className={`window-close-overlay is-${phase}`}
+      style={transitionStyle}
+      onMouseDown={(event) =>
+        event.target === event.currentTarget && !interactionsDisabled && requestCancel()
+      }
     >
       <div
         ref={dialogRef}
-        className={`window-close-dialog is-${mode.kind}`}
-        role={mode.kind === "unsafe" ? "alertdialog" : "dialog"}
+        className={`window-close-dialog is-${renderedMode.kind}`}
+        role={renderedMode.kind === "unsafe" ? "alertdialog" : "dialog"}
         aria-modal="true"
         aria-labelledby="window-close-title"
         aria-describedby="window-close-description"
@@ -133,18 +210,20 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
         <button
           className="window-close-dialog__close"
           type="button"
-          onClick={onCancel}
-          disabled={Boolean(executing)}
+          onClick={requestCancel}
+          disabled={interactionsDisabled}
           aria-label="取消关闭"
         >
           <X size={15} strokeWidth={2.2} />
         </button>
 
         <header className="window-close-dialog__header">
-          <h2 id="window-close-title">{mode.kind === "unsafe" ? "后台保护尚未就绪" : "准备退出 Helsincy？"}</h2>
+          <h2 id="window-close-title">
+            {renderedMode.kind === "unsafe" ? "后台保护尚未就绪" : "准备退出 Helsincy？"}
+          </h2>
           <p id="window-close-description">
-            {mode.kind === "unsafe"
-              ? UNSAFE_EXIT_REASON_MESSAGES[mode.reason]
+            {renderedMode.kind === "unsafe"
+              ? UNSAFE_EXIT_REASON_MESSAGES[renderedMode.reason]
               : "请选择关闭主窗口时的操作。你也可以在设置里随时改回每次询问。"}
           </p>
         </header>
@@ -154,18 +233,20 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
         <div className="window-close-dialog__options">
           <button
             ref={trayButtonRef}
-            className="window-close-option is-tray"
+            className="window-close-option is-tray is-default"
             type="button"
+            data-default-action="true"
+            data-close-action="tray"
             onClick={() => void execute("tray")}
-            disabled={Boolean(executing)}
+            disabled={interactionsDisabled}
           >
             <span className="window-close-option__icon" aria-hidden="true">
               <Minimize2 size={24} strokeWidth={2.15} />
             </span>
             <span className="window-close-option__copy">
-              <strong>{mode.kind === "unsafe" ? "留在托盘" : "收起至系统托盘"}</strong>
+              <strong>{renderedMode.kind === "unsafe" ? "留在托盘" : "收起至系统托盘"}</strong>
               <span>
-                {mode.kind === "unsafe"
+                {renderedMode.kind === "unsafe"
                   ? "保留客户端运行，让自动备份继续在本次会话内检查。"
                   : "应用将在后台持续运行，自动备份仍会在客户端运行期间检查。"}
               </span>
@@ -176,16 +257,17 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
           <button
             className="window-close-option is-exit"
             type="button"
+            data-close-action="exit"
             onClick={() => void execute("exit")}
-            disabled={Boolean(executing)}
+            disabled={interactionsDisabled}
           >
             <span className="window-close-option__icon" aria-hidden="true">
               <Power size={24} strokeWidth={2.15} />
             </span>
             <span className="window-close-option__copy">
-              <strong>{mode.kind === "unsafe" ? "仍然退出" : "完全退出应用程序"}</strong>
+              <strong>{renderedMode.kind === "unsafe" ? "仍然退出" : "完全退出应用程序"}</strong>
               <span>
-                {mode.kind === "unsafe"
+                {renderedMode.kind === "unsafe"
                   ? "忽略本次后台保护警告并完全退出。此确认只对本次有效。"
                   : "关闭主客户端。若后台保护尚未就绪，退出前会再次向你确认。"}
               </span>
@@ -194,14 +276,14 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
           </button>
         </div>
 
-        <footer className={`window-close-dialog__footer is-${mode.kind}`}>
-          {mode.kind === "normal" ? (
+        <footer className={`window-close-dialog__footer is-${renderedMode.kind}`}>
+          {renderedMode.kind === "normal" ? (
             <label className="window-close-dialog__remember">
               <input
                 type="checkbox"
                 checked={remember}
                 onChange={(event) => setRemember(event.target.checked)}
-                disabled={Boolean(executing)}
+                disabled={interactionsDisabled}
               />
               <span className="window-close-dialog__checkbox" aria-hidden="true">
                 <Check size={12} strokeWidth={2.6} />
@@ -213,10 +295,10 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
           <button
             className="window-close-dialog__cancel"
             type="button"
-            onClick={onCancel}
-            disabled={Boolean(executing)}
+            onClick={requestCancel}
+            disabled={interactionsDisabled}
           >
-            {mode.kind === "unsafe" ? "取消退出" : "暂不退出"}
+            {renderedMode.kind === "unsafe" ? "取消退出" : "暂不退出"}
           </button>
         </footer>
 
@@ -231,4 +313,14 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
       </div>
     </div>
   );
+}
+
+function getDialogTransitionMillis() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return DIALOG_TRANSITION_MS;
+  }
+
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? REDUCED_MOTION_TRANSITION_MS
+    : DIALOG_TRANSITION_MS;
 }

@@ -57,11 +57,14 @@ test("a guarded exit race restores the preference written by the normal dialog",
   assert.match(host, /if \(reason[\s\S]*?saveWindowClosePreference\(undefined, previousPreference\)/);
 });
 
-test("window close dialog traps keyboard focus and clears deferred focus", () => {
+test("window close dialog traps focus and submits the safe tray action with Enter", () => {
   const source = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.tsx");
 
   assert.match(source, /FOCUSABLE_SELECTOR/);
   assert.match(source, /getFocusableDialogElements/);
+  assert.match(source, /event\.key === "Enter"/);
+  assert.match(source, /event\.preventDefault\(\);[\s\S]*?void execute\("tray"\)/);
+  assert.match(source, /phase !== "closing"/);
   assert.match(source, /event\.key !== "Tab"/);
   assert.match(source, /event\.shiftKey/);
   assert.match(source, /firstFocusable/);
@@ -69,24 +72,31 @@ test("window close dialog traps keyboard focus and clears deferred focus", () =>
   assert.match(source, /clearTimeout\(focusTimer\)/);
 });
 
-test("unsafe dialog defaults focus to tray and cannot persist an exit preference", () => {
+test("normal and unsafe dialogs default focus to tray and unsafe cannot persist a preference", () => {
   const source = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.tsx");
 
-  assert.match(source, /mode\.kind === "unsafe"/);
-  assert.match(source, /role=\{mode\.kind === "unsafe" \? "alertdialog" : "dialog"\}/);
+  assert.match(source, /renderedMode\.kind === "unsafe"/);
+  assert.match(source, /role=\{renderedMode\.kind === "unsafe" \? "alertdialog" : "dialog"\}/);
   assert.match(source, /trayButtonRef/);
-  assert.match(source, /mode\.kind === "unsafe"[\s\S]*?trayButtonRef\.current\?\.focus\(\)/);
-  assert.match(source, /mode\.kind === "normal"[\s\S]*?window-close-dialog__remember/);
-  assert.match(source, /mode\.kind === "normal" \? remember : false/);
+  assert.match(source, /setTimeout\(\(\) => trayButtonRef\.current\?\.focus\(\), 0\)/);
+  assert.match(source, /renderedMode\.kind === "normal"[\s\S]*?window-close-dialog__remember/);
+  assert.match(source, /renderedMode\.kind === "normal" \? remember : false/);
   assert.match(source, /仍然退出/);
   assert.match(source, /约 1 分钟/);
+  assert.match(source, /activeElement instanceof HTMLButtonElement/);
+  assert.match(source, /activeElement\.dataset\.closeAction/);
+  assert.match(source, /void execute\(focusedAction\)/);
+  assert.doesNotMatch(source, /activeElement\.click\(\)/);
+  assert.match(source, /data-default-action="true"/);
+  assert.match(source, /data-close-action="tray"/);
+  assert.match(source, /data-close-action="exit"/);
 });
 
 test("window close dialog follows semantic light and dark theme tokens", () => {
   const css = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.css");
 
   assert.match(css, /\.window-close-dialog\s*\{[\s\S]*?color:\s*var\(--color-text\);/);
-  assert.match(css, /background:\s*color-mix\(in srgb, var\(--color-surface-raised\)/);
+  assert.match(css, /background:\s*var\(--color-surface\);/);
   assert.match(css, /border:\s*1px solid var\(--color-border-muted\);/);
   assert.match(css, /\.window-close-option__copy strong\s*\{[\s\S]*?var\(--color-text\)/);
   assert.match(css, /\.window-close-dialog__success\s*\{[\s\S]*?var\(--color-surface-raised\)/);
@@ -94,6 +104,34 @@ test("window close dialog follows semantic light and dark theme tokens", () => {
   assert.doesNotMatch(css, /background:\s*#090d16/);
   assert.doesNotMatch(css, /color:\s*#f8fafc/);
   assert.doesNotMatch(css, /color:\s*#f1f5f9/);
+  assert.doesNotMatch(css, /backdrop-filter/);
+});
+
+test("window close dialog keeps closing content mounted for the CSS transition", () => {
+  const source = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.tsx");
+  const css = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.css");
+
+  assert.match(source, /type DialogPhase = "closed" \| "opening" \| "open" \| "closing"/);
+  assert.match(source, /setPhase\("closing"\)/);
+  assert.match(source, /const requestCancel = useCallback/);
+  assert.match(source, /setTimeout\(\(\) => \{[\s\S]*?setRenderedMode\(null\)[\s\S]*?onCancel\(\)[\s\S]*?getDialogTransitionMillis\(\)/);
+  assert.match(source, /closeTimerRef/);
+  assert.match(source, /requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) => setPhase\("open"\)\)/);
+  assert.match(source, /cancelAnimationFrame\(openingFrame\)/);
+  assert.match(source, /--window-close-transition-duration/);
+  assert.match(css, /\.window-close-overlay\.is-opening/);
+  assert.match(css, /\.window-close-overlay\.is-closing/);
+  assert.match(css, /var\(--window-close-transition-duration, 200ms\)/);
+  assert.match(css, /\.window-close-option\.is-default:focus/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+});
+
+test("effective color scheme is synchronized to the native Tauri title bar", () => {
+  const source = readProjectFile("src/app/appearance/ColorSchemeProvider.tsx");
+
+  assert.match(source, /isTauri\(\)/);
+  assert.match(source, /getCurrentWindow\(\)\.setTheme\(effective\)/);
+  assert.match(readProjectFile("src-tauri/capabilities/default.json"), /core:window:allow-set-theme/);
 });
 
 test("settings window preference write reports storage failures before changing UI state", () => {
