@@ -7,10 +7,18 @@
   padding: 24px;
   opacity: 1;
   background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  transition: none;
+}
+
+.window-close-overlay.is-opening {
+  opacity: 0;
+}
+
+.window-close-overlay.is-open,
+.window-close-overlay.is-closing {
   transition: opacity var(--window-close-transition-duration, 200ms) ease-out;
 }
 
-.window-close-overlay.is-opening,
 .window-close-overlay.is-closing {
   opacity: 0;
 }
@@ -34,7 +42,13 @@
   border-radius: 28px;
   box-shadow: var(--shadow-panel);
   outline: none;
-  transform: translateY(0) scale(1);
+  transform: none;
+  transition: none;
+}
+
+.window-close-overlay.is-opening .window-close-dialog,
+.window-close-overlay.is-open .window-close-dialog,
+.window-close-overlay.is-closing .window-close-dialog {
   transition:
     opacity var(--window-close-transition-duration, 200ms) ease-out,
     transform var(--window-close-transition-duration, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
@@ -43,6 +57,11 @@
 .window-close-overlay.is-opening .window-close-dialog {
   opacity: 0;
   transform: translateY(10px) scale(0.975);
+}
+
+.window-close-overlay.is-open .window-close-dialog {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .window-close-overlay.is-closing .window-close-dialog {
@@ -160,29 +179,11 @@
     transform 0.18s ease;
 }
 
-.window-close-option::after {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    110deg,
-    color-mix(in srgb, var(--color-accent) 7%, transparent),
-    transparent 42%
-  );
-  opacity: 0;
-  transition: opacity 0.22s ease;
-  content: "";
-}
-
 .window-close-option:hover:not(:disabled) {
   background: var(--color-surface);
   border-color: var(--color-border);
   box-shadow: var(--shadow-soft);
   transform: translateY(-2px);
-}
-
-.window-close-option:hover:not(:disabled)::after {
-  opacity: 1;
 }
 
 .window-close-option__icon {
@@ -392,7 +393,6 @@
 
   .window-close-dialog__close,
   .window-close-option,
-  .window-close-option::after,
   .window-close-dialog__checkbox,
   .window-close-dialog__cancel {
     transition-duration: 0.01ms !important;

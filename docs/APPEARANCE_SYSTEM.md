@@ -157,7 +157,7 @@ Shell 变体只消费统一的导航定义和全局状态，不直接实现 Mod 
 
 必须尊重系统级 `prefers-reduced-motion`。当系统要求减少动效时，应用不应强行播放复杂动画。
 
-全屏遮罩与模态弹层在 Windows WebView2 中应避免叠加多层 `backdrop-filter`。嵌套 blur/saturate 容易触发 GPU 分块合成瑕疵；优先使用单层纯色半透明遮罩、不透明语义表面和短时 opacity/transform 过渡。减少动效模式下可保留短时淡入淡出，但应取消明显位移和缩放。
+全屏遮罩与模态弹层在 Windows WebView2 中应避免叠加多层 `backdrop-filter`。嵌套 blur/saturate 容易触发 GPU 分块合成瑕疵；优先使用单层纯色半透明遮罩、不透明语义表面和短时 opacity/transform 过渡。动画结束后应移除稳定态的 identity transform、opacity transition 和不可见的全尺寸渐变装饰层，让 WebView2 释放临时合成层，避免深色表面残留矩形纹理分块。减少动效模式下可保留短时淡入淡出，但应取消明显位移和缩放。
 
 ## 推荐目录结构
 
