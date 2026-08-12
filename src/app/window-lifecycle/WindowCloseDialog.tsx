@@ -16,7 +16,7 @@ type WindowCloseDialogProps = {
 };
 
 type ExecutingAction = "tray" | "exit" | null;
-type DialogPhase = "closed" | "opening" | "open" | "closing";
+type DialogPhase = "closed" | "opening" | "open" | "settled" | "closing";
 
 const EXECUTION_FEEDBACK_DELAY_MS = 360;
 const DIALOG_TRANSITION_MS = 200;
@@ -55,11 +55,16 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
   const dialogRef = useRef<HTMLDivElement>(null);
   const trayButtonRef = useRef<HTMLButtonElement>(null);
   const closeTimerRef = useRef<number | null>(null);
+  const settleTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (closeTimerRef.current !== null) {
       window.clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
+    }
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
     }
     if (!mode) return;
 
@@ -70,25 +75,40 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
     setSuccessText(null);
     let openFrame = 0;
     const openingFrame = window.requestAnimationFrame(() => {
-      openFrame = window.requestAnimationFrame(() => setPhase("open"));
+      openFrame = window.requestAnimationFrame(() => {
+        setPhase("open");
+        settleTimerRef.current = window.setTimeout(() => {
+          settleTimerRef.current = null;
+          setPhase((currentPhase) => (currentPhase === "open" ? "settled" : currentPhase));
+        }, getDialogTransitionMillis());
+      });
     });
     const focusTimer = window.setTimeout(() => trayButtonRef.current?.focus(), 0);
     return () => {
       window.cancelAnimationFrame(openingFrame);
       window.cancelAnimationFrame(openFrame);
       window.clearTimeout(focusTimer);
+      if (settleTimerRef.current !== null) {
+        window.clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
     };
   }, [mode]);
 
   useEffect(
     () => () => {
       if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
     },
     [],
   );
 
   const requestCancel = useCallback(() => {
     if (executing || phase === "closing") return;
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
     setPhase("closing");
     closeTimerRef.current = window.setTimeout(() => {
       closeTimerRef.current = null;

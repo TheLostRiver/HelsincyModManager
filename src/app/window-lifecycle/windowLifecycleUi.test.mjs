@@ -107,20 +107,33 @@ test("window close dialog follows semantic light and dark theme tokens", () => {
   assert.doesNotMatch(css, /backdrop-filter/);
 });
 
-test("window close dialog keeps closing content mounted for the CSS transition", () => {
+test("window close dialog releases compositor layers after transitions settle", () => {
   const source = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.tsx");
   const css = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.css");
 
-  assert.match(source, /type DialogPhase = "closed" \| "opening" \| "open" \| "closing"/);
+  assert.match(
+    source,
+    /type DialogPhase = "closed" \| "opening" \| "open" \| "settled" \| "closing"/,
+  );
   assert.match(source, /setPhase\("closing"\)/);
+  assert.match(source, /settleTimerRef/);
+  assert.match(source, /currentPhase === "open" \? "settled" : currentPhase/);
   assert.match(source, /const requestCancel = useCallback/);
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*?setRenderedMode\(null\)[\s\S]*?onCancel\(\)[\s\S]*?getDialogTransitionMillis\(\)/);
   assert.match(source, /closeTimerRef/);
-  assert.match(source, /requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) => setPhase\("open"\)\)/);
+  assert.match(
+    source,
+    /requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?setPhase\("open"\)/,
+  );
   assert.match(source, /cancelAnimationFrame\(openingFrame\)/);
+  assert.match(source, /clearTimeout\(settleTimerRef\.current\)/);
   assert.match(source, /--window-close-transition-duration/);
   assert.match(css, /\.window-close-overlay\.is-opening/);
+  assert.match(css, /\.window-close-overlay\.is-open/);
   assert.match(css, /\.window-close-overlay\.is-closing/);
+  assert.match(css, /\.window-close-overlay\s*\{[\s\S]*?transition:\s*none/);
+  assert.match(css, /\.window-close-dialog\s*\{[\s\S]*?transform:\s*none;[\s\S]*?transition:\s*none/);
+  assert.doesNotMatch(css, /\.window-close-option::after/);
   assert.match(css, /var\(--window-close-transition-duration, 200ms\)/);
   assert.match(css, /\.window-close-option\.is-default:focus/);
   assert.match(css, /prefers-reduced-motion: reduce/);
