@@ -12,10 +12,13 @@ type BackgroundProtectionAutoVerificationOptions = {
   clearTimer?: (handle: TimerHandle) => void;
 };
 
-// Verify almost immediately, then at roughly 1, 5, 10, and 16 minutes after enable.
+// Verify almost immediately, once more at roughly 3 seconds, then at 1, 5, 10,
+// and 16 minutes after enable. The short convergence read covers a worker
+// heartbeat that lands while the first Windows task inspection is still running.
 export const BACKGROUND_PROTECTION_AUTO_VERIFICATION_DELAYS_MS = [
   750,
-  59_250,
+  2_250,
+  57_000,
   4 * 60_000,
   5 * 60_000,
   6 * 60_000,
