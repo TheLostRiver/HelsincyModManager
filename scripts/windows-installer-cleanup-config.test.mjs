@@ -89,6 +89,14 @@ test("references the cleanup action from the locked WiX template", () => {
   );
   const template = readFileSync(templatePath, "utf8");
   assert.match(template, /<CustomActionRef Id="RunInstallerCleanup"\s*\/>/);
+  assert.match(
+    template,
+    /<Error Id="1722">HMM could not complete a required setup action\. If you are uninstalling, close HMM and wait for any background backup to finish, then retry\. Otherwise, retry setup or collect the installer log\.<\/Error>/,
+  );
+  assert.doesNotMatch(
+    template.match(/<Error Id="1722">([\s\S]*?)<\/Error>/)?.[1] ?? "",
+    /task.?name|SID|owner.?marker|XML|PowerShell|worker.?path/i,
+  );
 });
 
 test("runs the installed cleanup helper in user context before RemoveFiles", () => {

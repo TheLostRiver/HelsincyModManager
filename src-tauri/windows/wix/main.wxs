@@ -89,6 +89,10 @@
         <CustomActionRef Id="RunInstallerCleanup" />
 
         <UI>
+            <!-- WiX converts every non-zero EXE custom-action result to MSI error 1722.
+                 Keep the message actionable without exposing task names, paths, or helper output. -->
+            <Error Id="1722">HMM could not complete a required setup action. If you are uninstalling, close HMM and wait for any background backup to finish, then retry. Otherwise, retry setup or collect the installer log.</Error>
+
             <!-- launch app checkbox -->
             <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
 
