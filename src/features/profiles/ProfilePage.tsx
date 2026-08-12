@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Archive,
+  ArchiveRestore,
   CheckCircle2,
   Database,
   History,
@@ -1064,34 +1065,40 @@ function BackupHistoryPanel({
       </label>
 
       {rows.length > 0 ? (
-        <div className="profile-backup-table-wrapper">
-          <table className="profile-backup-table">
-            <thead>
-              <tr>
-                <th>存档点</th>
-                <th>大小</th>
-                <th>归档时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <strong>{row.name}</strong>
-                    <span>{row.detail}</span>
-                  </td>
-                  <td>{row.size}</td>
-                  <td>{row.createdAt}</td>
-                  <td>
-                    <button type="button" className="profile-action-button is-primary" disabled>
-                      恢复
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="profile-backup-list" role="list" aria-label="备份历史">
+          {rows.map((row) => (
+            <article className="profile-backup-item" key={row.id} role="listitem">
+              <div className="profile-backup-item__summary">
+                <strong title={row.name}>{row.name}</strong>
+                <span>{row.detail}</span>
+              </div>
+
+              <dl className="profile-backup-item__meta">
+                <div>
+                  <dt>大小</dt>
+                  <dd>{row.size}</dd>
+                </div>
+                <div>
+                  <dt>归档时间</dt>
+                  <dd>{row.createdAt}</dd>
+                </div>
+              </dl>
+
+              <div className="profile-backup-item__actions">
+                <button
+                  type="button"
+                  className="profile-action-button is-primary profile-backup-restore-button"
+                  aria-label={`恢复存档：${row.name}（功能即将开放）`}
+                  title="恢复功能将在安全校验与恢复前备份链路完成后开放"
+                  disabled
+                >
+                  <ArchiveRestore size={15} aria-hidden="true" />
+                  恢复存档
+                </button>
+                <span>即将开放</span>
+              </div>
+            </article>
+          ))}
         </div>
       ) : (
         <div className="profile-history-empty">
