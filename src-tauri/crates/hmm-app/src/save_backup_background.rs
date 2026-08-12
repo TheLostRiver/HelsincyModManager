@@ -188,10 +188,11 @@ impl SaveBackupBackgroundService {
     pub fn control_status(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
-        let settings = self
+        let settings_repository = self
             .background_settings_repository
             .as_ref()
-            .ok_or(SaveBackupBackgroundServiceError::SettingsUnavailable)?
+            .ok_or(SaveBackupBackgroundServiceError::SettingsUnavailable)?;
+        let settings = settings_repository
             .load()
             .map_err(|_| SaveBackupBackgroundServiceError::SettingsUnavailable)?;
 
@@ -203,7 +204,22 @@ impl SaveBackupBackgroundService {
             ));
         }
 
-        let registration = match self.registry.inspect() {
+        let registration_result = self.registry.inspect();
+        // Windows task inspection can take several seconds. Reload the global
+        // settings afterwards so a heartbeat or disable committed during that
+        // call is reflected in this same authoritative response.
+        let settings = settings_repository
+            .load()
+            .map_err(|_| SaveBackupBackgroundServiceError::SettingsUnavailable)?;
+        if !settings.desired_enabled {
+            return Ok(control_status_result(
+                settings,
+                SaveBackupBackgroundProtectionStatus::NotEnabled,
+                None,
+            ));
+        }
+
+        let registration = match registration_result {
             Ok(status) => status,
             Err(error) => {
                 return Ok(control_status_result(

@@ -36,9 +36,9 @@ function createTimerHarness() {
   };
 }
 
-test("auto verification runs almost immediately and stops after convergence", async () => {
+test("auto verification performs a short convergence read and stops after convergence", async () => {
   const timers = createTimerHarness();
-  const decisions = ["continue", "complete"];
+  const decisions = ["continue", "continue", "complete"];
   const activeChanges = [];
   let verifyCount = 0;
   const scheduler = new BackgroundProtectionAutoVerificationScheduler({
@@ -58,13 +58,26 @@ test("auto verification runs almost immediately and stops after convergence", as
 
   await timers.runNext();
   assert.equal(verifyCount, 1);
-  assert.equal(timers.nextDelay(), 59_250);
+  assert.equal(timers.nextDelay(), 2_250);
 
   await timers.runNext();
   assert.equal(verifyCount, 2);
+  assert.equal(timers.nextDelay(), 57_000);
+
+  await timers.runNext();
+  assert.equal(verifyCount, 3);
   assert.equal(timers.size(), 0);
   assert.equal(scheduler.isActive(), false);
   assert.deepEqual(activeChanges, [true, false]);
+});
+
+test("default verification points remain anchored near 3 seconds and 1, 5, 10, 16 minutes", () => {
+  const cumulativeDelays = BACKGROUND_PROTECTION_AUTO_VERIFICATION_DELAYS_MS.reduce(
+    (totals, delay) => [...totals, (totals.at(-1) ?? 0) + delay],
+    [],
+  );
+
+  assert.deepEqual(cumulativeDelays, [750, 3_000, 60_000, 5 * 60_000, 10 * 60_000, 16 * 60_000]);
 });
 
 test("temporary verification failures preserve the remaining retry points", async () => {

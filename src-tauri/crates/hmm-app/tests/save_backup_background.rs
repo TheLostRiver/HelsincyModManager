@@ -135,6 +135,60 @@ fn global_heartbeat_health_uses_enable_time_ttl_and_future_boundaries() {
 }
 
 #[test]
+fn control_status_observes_a_heartbeat_committed_during_registry_inspection() {
+    let now = 1_100_000;
+    let enabled_at = 1_000_000;
+    let settings = Arc::new(FakeBackgroundSettingsRepository::with_state(
+        enabled_settings(enabled_at, None),
+    ));
+    let registry = Arc::new(InspectMutationRegistry::new(
+        Arc::clone(&settings),
+        enabled_settings(enabled_at, Some(now)),
+    ));
+    let service = service_with_global_settings(
+        registry,
+        settings,
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(now)),
+    );
+
+    let status = service.control_status().expect("control status");
+
+    assert_eq!(
+        status.status,
+        SaveBackupBackgroundProtectionStatus::Protected
+    );
+    assert_eq!(status.last_heartbeat_at, Some(now));
+}
+
+#[test]
+fn control_status_observes_disable_committed_during_registry_inspection() {
+    let now = 1_100_000;
+    let settings = Arc::new(FakeBackgroundSettingsRepository::with_state(
+        enabled_settings(1_000_000, None),
+    ));
+    let registry = Arc::new(InspectMutationRegistry::new(
+        Arc::clone(&settings),
+        SaveBackupBackgroundSettings::disabled(),
+    ));
+    let service = service_with_global_settings(
+        registry,
+        settings,
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(now)),
+    );
+
+    let status = service.control_status().expect("control status");
+
+    assert_eq!(
+        status.status,
+        SaveBackupBackgroundProtectionStatus::NotEnabled
+    );
+    assert!(!status.desired_enabled);
+    assert_eq!(status.last_heartbeat_at, None);
+}
+
+#[test]
 fn global_control_status_maps_registration_and_dependency_failures() {
     let now = 1_000_000;
     let settings = SaveBackupBackgroundSettings {
@@ -1240,22 +1294,28 @@ fn service_with(
     )
 }
 
-fn service_with_global_settings(
-    registry: Arc<FakeRegistry>,
+fn service_with_global_settings<R>(
+    registry: Arc<R>,
     settings: Arc<FakeBackgroundSettingsRepository>,
     audit: Arc<RecordingAuditLog>,
     clock: Arc<FixedClock>,
-) -> SaveBackupBackgroundService {
+) -> SaveBackupBackgroundService
+where
+    R: SaveBackupBackgroundRegistry + 'static,
+{
     service_with_global_settings_and_scheduler_state(registry, settings, audit, clock, None)
 }
 
-fn service_with_global_settings_and_scheduler_state(
-    registry: Arc<FakeRegistry>,
+fn service_with_global_settings_and_scheduler_state<R>(
+    registry: Arc<R>,
     settings: Arc<FakeBackgroundSettingsRepository>,
     audit: Arc<RecordingAuditLog>,
     clock: Arc<FixedClock>,
     scheduler_state: Option<SaveBackupSchedulerState>,
-) -> SaveBackupBackgroundService {
+) -> SaveBackupBackgroundService
+where
+    R: SaveBackupBackgroundRegistry + 'static,
+{
     SaveBackupBackgroundService::new_with_settings_repository(
         registry,
         Arc::new(FakeSchedulerRepository::with_state(scheduler_state)),
@@ -1333,6 +1393,44 @@ struct FakeRegistry {
         Mutex<VecDeque<SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>>>,
     calls: Mutex<Vec<&'static str>>,
     shared_calls: Option<Arc<Mutex<Vec<&'static str>>>>,
+}
+
+struct InspectMutationRegistry {
+    settings: Arc<FakeBackgroundSettingsRepository>,
+    settings_after_inspect: SaveBackupBackgroundSettings,
+}
+
+impl InspectMutationRegistry {
+    fn new(
+        settings: Arc<FakeBackgroundSettingsRepository>,
+        settings_after_inspect: SaveBackupBackgroundSettings,
+    ) -> Self {
+        Self {
+            settings,
+            settings_after_inspect,
+        }
+    }
+}
+
+impl SaveBackupBackgroundRegistry for InspectMutationRegistry {
+    fn inspect(
+        &self,
+    ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
+        *self.settings.state.lock().expect("settings lock") = self.settings_after_inspect.clone();
+        Ok(SaveBackupBackgroundRegistrationStatus::Registered)
+    }
+
+    fn register(
+        &self,
+    ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
+        panic!("unused")
+    }
+
+    fn unregister(
+        &self,
+    ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
+        panic!("unused")
+    }
 }
 
 impl FakeRegistry {
