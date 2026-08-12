@@ -19,7 +19,7 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 - Settings 是唯一的全局启停入口；Profile 只读展示当前 profile 的备份节奏和全局后台保护状态，不提供第二个开关。
 - Settings 只允许直接点击开关控件启停，说明行本身不触发状态变化；检查、启用和停用期间必须显示可见的旋转/不定进度、实时耗时与完成/失败耗时。当前应用会话保留最近一次控制状态，离开再返回 Settings 不自动执行平台检查；用户点击“重新检查”可以随时强制刷新。
 - 启用成功先进入 `starting`。当前启用周期在 20 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。启停 command 的确认若短暂失败，前端必须以一次权威状态重读判断是否已经收敛，已收敛时清除旧操作错误，不要求用户再次手动检查。
-- 启用后只在当前仍挂载的 Settings 页面立即复查一次，再按约 1、5、10、16 分钟节点自动复查 `starting`；临时读取失败不得覆盖最近一次成功读取的开关与 control status，只显示“本次检查未完成”的临时警告并继续使用剩余节点。只有当前会话从未取得过有效 control status 时才显示全局“状态不可用”。离开页面会取消这些复查，返回页面仍只展示会话缓存，不自动触发平台查询。
+- 启用后只在当前仍挂载的 Settings 页面按约 0.75 秒、3 秒、1、5、10、16 分钟节点自动复查 `starting`；3 秒节点用于覆盖首次 Windows task inspect 尚未结束时 worker heartbeat 已经落盘的短暂陈旧窗口。临时读取失败不得覆盖最近一次成功读取的开关与 control status，只显示“本次检查未完成”的临时警告并继续使用剩余节点。只有当前会话从未取得过有效 control status 时才显示全局“状态不可用”。离开页面会取消这些复查，返回页面仍只展示会话缓存，不自动触发平台查询。
 - 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
 - `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
 
@@ -36,7 +36,7 @@ P7.2c disposable VM runtime gate 已完成。所有后续工作继续复用
 P7.2c 已完成 [设计规格](superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md) 与
 [实施计划](superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md)。helper、双
 Windows sidecar、NSIS hook、WiX custom action 和 fake/static/build gate 已完成；disposable VM
-runtime gate 仍待人工执行。实现固定以下边界：
+runtime gate 已完成 WiX 核心卸载矩阵，最终候选包的尾部矩阵仍待人工执行。实现固定以下边界：
 
 - 安装器调用独立、无参数的 installer cleanup helper；不调用 Settings `disable()`，也不扩展
   worker 固定 `--once` CLI。
@@ -62,8 +62,23 @@ P7.2a 安装态 worker/heartbeat runtime acceptance。
 2026-08-09 的首轮 NSIS runtime 矩阵中，`missing` 和 `owned exact` 的 interactive/silent 变体通过；
 `owned drift` 首次交互卸载在 owner marker 与 `Ready` 状态仍可确认时返回 `21/ownership_unverified`。
 失败路径正确保留 task、worker 和安装目录，但暴露了四次独立 PowerShell/ScheduledTasks 启动造成的
-延迟与 timeout 抖动。实现已收敛为上述两进程结构，新的 installer artifact 与 disposable Sandbox
-重验完成前，runtime gate 继续保持未完成。
+延迟与 timeout 抖动。实现已收敛为上述两进程结构。
+
+2026-08-12 的 WiX `0.1.9` 复验已覆盖 `missing`、`owned exact`、`owned drift`、`foreign` 和
+`owned running` 的 interactive/silent 变体。前三类均完成清理，foreign task 均保留；running 变体均以
+MSI `1603` fail closed，保留安装目录、三个 sibling EXE 和运行中 task，任务自然回到 `Ready` 后重试
+卸载成功并清除 owned task。WiX 对外部 EXE custom action 的所有非零退出统一报告 MSI `1722/1603`，
+无法稳定向 UI 透传 helper 原始 `20`；模板因此提供固定、非敏感且可操作的 `1722` 文案，提示关闭 HMM、
+等待后台备份结束后重试。该文案不放宽 `Return="check"` 或回滚语义。
+
+最终 HEAD 的 `0.1.10` NSIS/WiX debug 候选包已重建：NSIS 为 `13,578,498` bytes、SHA-256
+`40E00C74BF7FDC44179538BA952E6BF36DC6E026D95CB53549E4C38BE59420A6`；MSI 为 `20,156,416`
+bytes、SHA-256 `696E000AF732519780EB38A028B4B07DA7A20E111DED363A4E2111D709D73131`。最终 MSI 数据库确认
+三个 sibling 均在 `File` 表，`RunInstallerCleanup` sequence `3499` 位于 `RemoveFiles` sequence `3500`
+之前，条件为 `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`，固定 `1722` 文案已写入 `Error` 表。
+
+完整 runtime gate 仍等待该 `0.1.10` NSIS 的受影响路径复验，以及 WiX upgrade/repair 跳过 cleanup 的
+最终矩阵；在这些步骤和新包 Settings 自动收敛复验完成前，不把 P7.2c 标记为 runtime acceptance。
 
 ## 背景
 
@@ -339,10 +354,12 @@ unsupported_platform
 告知用户状态已自动重新同步；只有未收敛时才保留稳定错误提示。`starting` 仍不代表已保护，前端不得提前显示
 `protected`。
 
-启用后，当前 Settings 页面先在约 1 秒内做一次非阻塞权威复查，再在约 1、5、10、16 分钟节点有限复查，
-使注册状态快速收敛，并在首次 heartbeat 到达后无需用户再次点击。临时读取失败不能取消剩余节点；其他操作进行中时
-延后当前节点而不消耗它。自动复查必须在页面卸载时取消，重新进入 Settings 不自动查询；这样既避免页面切换触发
-十几秒平台检查，也避免长期轮询 Scheduled Task。
+启用后，当前 Settings 页面在约 0.75 秒和 3 秒执行两次短周期非阻塞权威复查，再在约 1、5、10、16 分钟节点
+有限复查，使注册状态快速收敛，并在首次 heartbeat 到达后无需用户再次点击。后端 `control_status()` 必须在可能耗时
+数秒的 Scheduled Task inspect 之后重新读取全局设置；这样 heartbeat 或停用意图若在 inspect 期间提交，同一次响应
+就能看到新事实，而不会返回开始检查前的陈旧快照。临时读取失败不能取消剩余节点；其他操作进行中时延后当前节点而
+不消耗它。自动复查必须在页面卸载时取消，重新进入 Settings 不自动查询；这样既避免页面切换触发十几秒平台检查，
+也避免长期轮询 Scheduled Task。
 
 系统启用“减少动画”时，普通装饰动画应继续降级；但检查、启用和停用中的状态图标与不定进度不能完全静止，
 否则会被误认为界面卡住。此类必要反馈改用更慢的阶梯动画，并继续配合实时耗时文字表达进度。
@@ -532,7 +549,7 @@ MVP 平台。推荐：
 - 已实现全局 SQLite 用户意图、启用时间和独立 worker heartbeat。
 - 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
 - 已实现 20 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生；启动宽限覆盖首次 15 分钟计划任务周期及调度抖动。
-- 已实现启停结果的权威重读收敛、动态进度、实时/完成耗时，以及仅限当前 Settings 页面生命周期的有限自动复查；页面返回不会自动执行平台查询。
+- 已实现启停结果的权威重读收敛、动态进度、实时/完成耗时，以及仅限当前 Settings 页面生命周期的有限自动复查；短周期节点覆盖首次 inspect 与 heartbeat 的竞争窗口，页面返回不会自动执行平台查询。
 - 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
 - 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 已完成，P7.2c installer cleanup
   仍未完成。

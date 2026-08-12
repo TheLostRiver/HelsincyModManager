@@ -589,12 +589,16 @@ build `19041`，`AMD64`；未使用真实游戏、Steam userdata 或玩家存档
 
 ### SAVE-03：Installer ownership cleanup
 
-状态：`implemented`，build/static gate 已通过；disposable Windows VM runtime gate 待人工执行。
+状态：`implemented`，build/static gate 已通过；disposable Windows VM runtime gate 已完成 WiX
+核心卸载矩阵，最终 `0.1.10` NSIS/WiX 候选包也已重建并完成静态产物审计，仍等待该候选包的
+NSIS runtime、WiX upgrade/repair 与 Settings 自动收敛复验。
 
 - [x] 实现 ownership-checked cleanup helper、双 Windows sidecar、NSIS `PREUNINSTALL` 和 WiX custom action。
 - [x] foreign task 保留；running/unknown owned task fail closed，并有 fake/static 测试覆盖。
-- [x] NSIS/WiX debug artifact 已生成并检查 payload/sequence；未安装或运行 artifact。
-- [ ] disposable VM 覆盖 install/run/uninstall/reinstall 和最终 cleanup；完成后才可标记 runtime acceptance。
+- [x] 最终 `0.1.10` NSIS/WiX debug artifact 已生成并检查三个 sibling、hook、MSI sequence 与错误文案；
+  未在开发者账户安装或运行 artifact。
+- [ ] disposable VM 已覆盖 WiX missing/exact/drift/foreign/running 与 running retry；继续覆盖最新 NSIS、
+  WiX upgrade/repair 和新包后台保护自动收敛，完成后才可标记 runtime acceptance。
 
 ### SAVE-04：玩家存档恢复
 
@@ -647,9 +651,9 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
-LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，当前停在 disposable
-Windows VM runtime gate；在该人工 gate 完成前不推进 SAVE-04 或 CLI-3A。AR6/WR-02B 继续等待
-可再分发的审计数据。
+LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，WiX 核心卸载矩阵已通过，
+当前停在 `0.1.10` NSIS、WiX upgrade/repair 和 Settings 自动收敛的 disposable Windows VM 尾部 gate；
+在该人工 gate 完成前不推进 SAVE-04 或 CLI-3A。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力
 

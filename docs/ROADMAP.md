@@ -47,12 +47,15 @@
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
     2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 的 helper、双 Windows
     sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static gate 已完成。disposable Windows
-    VM runtime gate 已开始：NSIS `missing` 与 `owned exact` 的 interactive/silent 变体通过；首次
-    `owned drift` 交互卸载以 `21/ownership_unverified` fail closed，并正确保留 task、worker 和安装目录。
-    helper 已收敛 ScheduledTasks 往返。验收同时暴露 Settings 后台保护整行误触、无操作反馈、页面返回
-    自动重检和应用内 mutation 重复 inspect 的延迟问题；现已收窄开关触发范围、增加进度/结果反馈、
-    复用会话状态，并将 register/unregister 收敛为单进程 mutation + 最终读回。等待新 artifact 与全新
-    Sandbox 重验真实交互和耗时；runtime gate 仍未完成。
+    VM runtime gate 已推进：WiX `0.1.9` 的 `missing`、`owned exact`、`owned drift`、`foreign` 和
+    `owned running` interactive/silent 变体均符合安全预期；running 在 MSI `1603` 阻断后保留任务与
+    安装目录，任务自然回到 `Ready` 后重试卸载成功。WiX 已增加兼容其他 setup action 的固定 `1722`
+    诊断文案，但其技术边界仍无法向 UI 透传 helper 原始 `20`。Settings 已收窄开关触发范围、增加动态
+    反馈/耗时、复用会话状态，并将 register/unregister 收敛为单进程 mutation + 最终读回；新修复又在
+    约 3 秒增加一次有限自动读回，覆盖首次 inspect 与 heartbeat 的竞争窗口。最终 `0.1.10` NSIS/WiX
+    候选包已从完整验证通过的 HEAD 重建并完成 payload、hook、MSI sequence 与 `Error 1722` 数据库审计；
+    等待该候选包的 NSIS runtime、WiX upgrade/repair 跳过 cleanup 和 Settings 自动收敛复验，runtime gate
+    仍未完成。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。
