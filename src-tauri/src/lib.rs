@@ -87,7 +87,7 @@ use save_directory_discovery_commands::{
 };
 use state::AppState;
 use task_commands::cancel_task;
-use tauri::{Manager, State};
+use tauri::{Manager, RunEvent, State};
 use thumbnail_protocol::register_thumbnail_protocol;
 use window_lifecycle_commands::{
     exit_app, get_app_exit_guard, hide_main_window_to_tray, register_window_lifecycle,
@@ -113,7 +113,7 @@ pub fn run_installer_cleanup_from_env() -> i32 {
 }
 
 pub fn run() {
-    register_thumbnail_protocol(tauri::Builder::default())
+    let app = register_thumbnail_protocol(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_log_health = app_log::initialize(app.handle());
@@ -225,8 +225,20 @@ pub fn run() {
             get_app_exit_guard,
             exit_app
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Helsincy Mod Manager");
+        .build(tauri::generate_context!())
+        .expect("failed to build Helsincy Mod Manager");
+
+    let exit_code = app.run_return(|_, event| match event {
+        RunEvent::ExitRequested { .. } => {
+            app_log::record_application_lifecycle(app_log::ApplicationLifecycleStage::ExitRequested)
+        }
+        RunEvent::Exit => {
+            app_log::record_application_lifecycle(app_log::ApplicationLifecycleStage::Exit)
+        }
+        _ => {}
+    });
+    app_log::record_application_lifecycle(app_log::ApplicationLifecycleStage::EventLoopReturned);
+    std::process::exit(exit_code);
 }
 
 #[cfg(test)]
@@ -237,5 +249,22 @@ mod tests {
     #[test]
     fn app_health_returns_logging_health_status() {
         assert_eq!(app_log::status_code(&AppLogHealth::ready()), "ok");
+    }
+
+    #[test]
+    fn application_run_releases_tauri_state_before_final_process_exit() {
+        let source = include_str!("lib.rs");
+        let build = source.find(".build(tauri::generate_context!())").unwrap();
+        let run_return = source.find("app.run_return(").unwrap();
+        let event_loop_stopped = source
+            .find("ApplicationLifecycleStage::EventLoopReturned")
+            .unwrap();
+        let final_exit = source.find("std::process::exit(exit_code)").unwrap();
+
+        assert!(build < run_return);
+        assert!(run_return < event_loop_stopped);
+        assert!(event_loop_stopped < final_exit);
+        let legacy_run = [".run(", "tauri::generate_context!())"].concat();
+        assert!(!source.contains(&legacy_run));
     }
 }

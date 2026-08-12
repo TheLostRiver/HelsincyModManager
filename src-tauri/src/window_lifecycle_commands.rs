@@ -1,3 +1,4 @@
+use crate::app_log::ApplicationLifecycleStage;
 use crate::dto::CommandErrorDto;
 use crate::state::AppState;
 use hmm_app::{SaveBackupExitDecision, SaveBackupExitGuard, SaveBackupExitReason};
@@ -218,6 +219,7 @@ pub async fn exit_app(
         }
         ExitAppAction::Exit => {}
     }
+    crate::app_log::record_application_lifecycle(ApplicationLifecycleStage::ExitCommandRequested);
     app.exit(0);
     Ok(())
 }

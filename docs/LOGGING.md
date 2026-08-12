@@ -291,6 +291,12 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
   Windows/Linux 用户名、Steam ID、token/cookie/API key、控制字符和第三方内容被拒绝或脱敏。
 - 最小事件覆盖应用启动、configuration/database state 初始化、游戏发现聚合结果、queued task 注册、
   窗口/后台任务等普通稳定错误；不会记录 task message/error/result ref、候选目录或原始平台错误。
+- GUI 完全退出链路额外记录四个固定、脱敏的 App Log 事件：`application.exit_requested` 表示后端
+  exit guard 与必要 override audit 已完成并发出退出请求；`application.exit_request_received` 表示
+  Tauri 事件循环已接收 `ExitRequested`；`application.exit_started` 表示事件循环进入 `Exit` 并开始
+  Tauri 资源清理；`application.event_loop_stopped` 表示 `run_return` 已完成且应用状态已释放，即将执行
+  最终进程退出。四项只使用 `operation=window_lifecycle`、`result=success`，不记录 PID、窗口句柄、
+  用户名、路径、后台任务身份或退出 guard 的原始平台详情。
 - `app_health` 只返回 `ok`、`app_log_event_rejected`、`app_log_retention_failed`、
   `app_log_write_failed` 或 `app_log_initialization_failed`。初始化/运行时失败不 panic、不写玩家目录，
   也不改变 InstallPlan、manifest、backup、rollback、recovery 或 Audit Log 事实链。

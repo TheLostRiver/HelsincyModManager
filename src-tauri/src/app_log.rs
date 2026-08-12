@@ -1,6 +1,25 @@
 use hmm_infra::{emit_safe_app_log, initialize_app_logging, AppLogEvent, AppLogHealth};
 use tauri::{AppHandle, Manager};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplicationLifecycleStage {
+    ExitCommandRequested,
+    ExitRequested,
+    Exit,
+    EventLoopReturned,
+}
+
+impl ApplicationLifecycleStage {
+    const fn event_name(self) -> &'static str {
+        match self {
+            Self::ExitCommandRequested => "application.exit_requested",
+            Self::ExitRequested => "application.exit_request_received",
+            Self::Exit => "application.exit_started",
+            Self::EventLoopReturned => "application.event_loop_stopped",
+        }
+    }
+}
+
 pub fn initialize(app_handle: &AppHandle) -> AppLogHealth {
     let health = match app_handle.path().app_data_dir() {
         Ok(app_data_dir) => initialize_app_logging(&app_data_dir),
@@ -28,6 +47,14 @@ pub fn record_state_initialization_failed() {
     );
 }
 
+pub fn record_application_lifecycle(stage: ApplicationLifecycleStage) {
+    emit_safe_app_log(
+        AppLogEvent::info(stage.event_name())
+            .with_operation("window_lifecycle")
+            .with_result("success"),
+    );
+}
+
 pub fn record_warning(event_name: &'static str, operation: &'static str, error_code: &'static str) {
     emit_safe_app_log(
         AppLogEvent::warning(event_name)
@@ -52,5 +79,32 @@ mod tests {
             status_code(&AppLogHealth::initialization_failed()),
             "app_log_initialization_failed"
         );
+    }
+
+    #[test]
+    fn application_lifecycle_stages_use_stable_sanitized_event_names() {
+        let cases = [
+            (
+                ApplicationLifecycleStage::ExitCommandRequested,
+                "application.exit_requested",
+            ),
+            (
+                ApplicationLifecycleStage::ExitRequested,
+                "application.exit_request_received",
+            ),
+            (ApplicationLifecycleStage::Exit, "application.exit_started"),
+            (
+                ApplicationLifecycleStage::EventLoopReturned,
+                "application.event_loop_stopped",
+            ),
+        ];
+
+        for (stage, expected) in cases {
+            let event_name = stage.event_name();
+            assert_eq!(event_name, expected);
+            assert!(!event_name.contains(['/', '\\']));
+            assert!(!event_name.contains("C:"));
+            assert!(!event_name.contains("S-1-5-21"));
+        }
     }
 }

@@ -22,8 +22,12 @@
    `hmm-save-backup-installer-cleanup.exe`，且启动 helper 时不会出现缺少 `VCRUNTIME140.dll` 等
    平台运行库错误。
 3. 启动 HMM，创建人工 profile 和最小 synthetic save fixture；启用后台保护并等待状态稳定。
-4. 关闭 HMM 后，在任务计划程序中只查看该任务的状态，不复制任务名、SID 或 XML 到证据。
-5. 每个 case 开始前重新启动 HMM 并确认当前安装器/版本和 evidence root。
+4. 使用 GUI“完全退出应用程序”，确认 5 秒内 `hmm-tauri` 与其 `msedgewebview2` 子进程都已消失；
+   App Log 依次出现 `application.exit_requested`、`application.exit_request_received`、
+   `application.exit_started`、`application.event_loop_stopped`。若进程仍残留或缺少后两项，记录为
+   退出生命周期失败并停止该 case，不使用卸载器关闭提示、CIM 或 `taskkill` 代替正常退出。
+5. HMM 完全退出后，在任务计划程序中只查看该任务的状态，不复制任务名、SID 或 XML 到证据。
+6. 每个 case 开始前重新启动 HMM 并确认当前安装器/版本和 evidence root。
 
 ## Case 矩阵
 
