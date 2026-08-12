@@ -82,6 +82,20 @@ test("unsafe dialog defaults focus to tray and cannot persist an exit preference
   assert.match(source, /约 1 分钟/);
 });
 
+test("window close dialog follows semantic light and dark theme tokens", () => {
+  const css = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.css");
+
+  assert.match(css, /\.window-close-dialog\s*\{[\s\S]*?color:\s*var\(--color-text\);/);
+  assert.match(css, /background:\s*color-mix\(in srgb, var\(--color-surface-raised\)/);
+  assert.match(css, /border:\s*1px solid var\(--color-border-muted\);/);
+  assert.match(css, /\.window-close-option__copy strong\s*\{[\s\S]*?var\(--color-text\)/);
+  assert.match(css, /\.window-close-dialog__success\s*\{[\s\S]*?var\(--color-surface-raised\)/);
+  assert.doesNotMatch(css, /background:\s*rgba\(15, 22, 38/);
+  assert.doesNotMatch(css, /background:\s*#090d16/);
+  assert.doesNotMatch(css, /color:\s*#f8fafc/);
+  assert.doesNotMatch(css, /color:\s*#f1f5f9/);
+});
+
 test("settings window preference write reports storage failures before changing UI state", () => {
   const source = readProjectFile("src/features/settings/SettingsPage.tsx");
 
