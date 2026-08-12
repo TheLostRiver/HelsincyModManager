@@ -1184,6 +1184,9 @@ MSI 版本覆盖文件仅用于本地验证，不能提交；使用 WiX `dark.ex
 `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`。只有一次性 Windows 账户或 disposable VM
 完成 interactive/silent uninstall、upgrade/repair/modify、foreign/running/owned task 矩阵后，
 才能记录 P7.2c runtime acceptance；普通自动化不得创建、运行或删除真实 Scheduled Task。
+WiX 会把外部 EXE custom action 的所有非零返回统一投影为 MSI `1722/1603`；人工验收必须同时读取
+安装目录与 task 的聚合状态来确认 fail-closed，不得把通用 MSI 返回误记为 helper 原始 `20/21/22/23`。
+交互提示只能使用固定、非敏感的操作建议，不能显示 task name、SID、路径、XML 或 helper 原始输出。
 
 P7.2b 全局用户意图、Settings/Profile 边界和统一退出保护至少运行：
 
@@ -1202,7 +1205,7 @@ node --test src/features/profiles/profileFrontendIntegration.test.mjs src/featur
 node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
 ```
 
-要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed/sequence clock；enable/disable 必须覆盖并发转换串行，global heartbeat 必须覆盖 cycle completion timestamp 与正常业务 skip。registry 测试必须锁定当前用户 SID 在同一进程内复用，register/update 与 unregister 分别在单个 mutation 命令中完成 ownership 检查和最终 read-back，app service 不得在成功 mutation 后追加重复 inspect。前端测试锁定 Settings 唯一控制入口、只有开关控件可触发启停、检查/启停动态反馈、页面 remount 不自动重检、显式刷新、Profile 只读、稳定 status/reason/code、未知 runtime 值的 fail-closed fallback 和 unsafe no-remember。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 5 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
+要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed/sequence clock；enable/disable 必须覆盖并发转换串行，global heartbeat 必须覆盖 cycle completion timestamp 与正常业务 skip。registry 测试必须锁定当前用户 SID 在同一进程内复用，register/update 与 unregister 分别在单个 mutation 命令中完成 ownership 检查和最终 read-back，app service 不得在成功 mutation 后追加重复 inspect。前端测试锁定 Settings 唯一控制入口、只有开关控件可触发启停、检查/启停动态反馈、页面 remount 不自动重检、显式刷新、Profile 只读、稳定 status/reason/code、未知 runtime 值的 fail-closed fallback 和 unsafe no-remember。启用后的有限自动复查必须覆盖约 0.75 秒、3 秒、1、5、10、16 分钟累计节点，短周期读回不得降低 fresh-heartbeat 判定。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 20 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
 
 Windows 安装态退出生命周期必须在 disposable Sandbox/VM 额外验证：点击“完全退出应用程序”后，
 5 秒内 `hmm-tauri` 与其 `msedgewebview2` 子进程均不存在；托盘收起/恢复仍可用；后台保护 unsafe

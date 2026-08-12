@@ -46,6 +46,11 @@
 `foreign` case 必须证明产品仍可卸载但第三方任务未被删除；`running/queued` case 必须证明 worker
 没有被强杀。
 
+WiX 使用 `Return="check"` 执行外部 cleanup helper。Windows Installer 会把 helper 的任意非零码统一
+投影为 MSI `1722/1603`，因此 WiX 报告不得伪造原始 helper exit code；必须结合安装目录 sibling 数量、
+task 聚合状态和重试结果确认是否命中 fail-closed。交互文案应提示关闭 HMM、等待后台备份完成并重试，
+但不得暴露 task name、SID、路径或 helper 输出。
+
 NSIS 计时和机器结果必须直接运行安装目录中的 uninstaller，并附带 Tauri 维护流程使用的
 `_?=<安装目录>` 参数，例如 `uninstall.exe /S _?=C:\...\Helsincy Mod Manager`。只运行裸
 `uninstall.exe` 会经过 self-extractor wrapper；wrapper 可能对外返回 `0`，即使内部 cleanup 已以
@@ -67,6 +72,36 @@ NSIS 计时和机器结果必须直接运行安装目录中的 uninstaller，并
 - 时间戳、截图路径和脱敏日志路径
 
 不要记录原始任务详情、用户目录、完整安装路径、PowerShell/XML 或存档内容。
+
+## 2026-08-12 WiX `0.1.9` 阶段记录
+
+| Case | Interactive | Silent | 聚合结论 |
+| --- | --- | --- | --- |
+| missing | exit `0`，19.3s | exit `0`，14.2s | 安装目录消失，owned task absent |
+| owned exact | exit `0`，17.3s | exit `0`，15.2s | owned task 清除 |
+| owned drift | exit `0`，17.3s | exit `0`，17.3s | marker 匹配时允许受控清除 |
+| foreign | exit `0`，14.2s | exit `0`，12.2s | foreign task 保持 `Ready` |
+| owned running | MSI exit `1603`，40.6s | MSI exit `1603`，11.2s | 安装目录、三个 sibling 与 running task 均保留 |
+| running retry | exit `0`，16.2s | 不适用 | task 自然回到 `Ready` 后卸载成功，owned task absent |
+
+该阶段证明 WiX 核心卸载矩阵的安全行为，但不是完整 runtime acceptance：upgrade/repair 仍待复验；
+modify 因当前 MSI 明确设置 `ARPNOMODIFY`/`ARPNOREPAIR`，若系统维护 UI 只提供 Remove，应记录为
+产品配置下不适用，不得伪造 PASS。
+
+## 最终 `0.1.10` 候选包 build/static 记录
+
+- NSIS：`13,578,498` bytes，SHA-256 `40E00C74BF7FDC44179538BA952E6BF36DC6E026D95CB53549E4C38BE59420A6`。
+- MSI：`20,156,416` bytes，SHA-256 `696E000AF732519780EB38A028B4B07DA7A20E111DED363A4E2111D709D73131`。
+- NSIS 生成脚本包含 GUI、worker、cleanup helper 三个 sibling，并在真正卸载时调用
+  `NSIS_HOOK_PREUNINSTALL`；update mode 跳过 cleanup，所有非零 helper 结果阻断卸载。
+- 最终 MSI 数据库的 `File` 表包含三个 sibling；`RunInstallerCleanup` 为同步检查结果的 EXE action，
+  sequence `3499`，位于 `RemoveFiles` sequence `3500` 前，条件严格为
+  `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`。
+- 最终 MSI `Error` 表包含固定 `1722` 操作建议，不包含 task name、SID、路径、XML、PowerShell 或
+  helper 原始输出。
+
+上述仅完成 build/static gate。仍需在 disposable VM 复验 `0.1.10` NSIS 受影响路径、WiX
+upgrade/repair 跳过 cleanup，以及新包 Settings 后台保护自动收敛。
 
 `owned drift` 应只修改非 ownership 属性，并在卸载前确认 marker 仍匹配且状态为 `Ready/Disabled`。
 如果仍返回 `ownership_unverified`，先确认 task、worker 和安装目录均被保留，再停止该 artifact 的后续矩阵；
