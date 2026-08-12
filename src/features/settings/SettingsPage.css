@@ -666,6 +666,9 @@
 }
 
 .background-protection-spinner {
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
   animation: background-protection-spin 0.9s linear infinite;
 }
 
@@ -1229,13 +1232,15 @@
   }
 
   .background-protection-spinner {
-    animation: none !important;
+    animation-duration: 1.8s !important;
+    animation-timing-function: steps(8, end) !important;
   }
 
   .background-protection-panel__operation.is-busy::after {
-    left: 0;
-    width: 100%;
-    animation: none !important;
+    left: -36%;
+    width: 36%;
+    animation-duration: 2.3s !important;
+    animation-timing-function: steps(6, end) !important;
   }
 
   .settings-reset-button:not(:disabled):hover,
