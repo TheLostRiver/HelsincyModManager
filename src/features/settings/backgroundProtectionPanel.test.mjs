@@ -29,13 +29,13 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /background-protection-panel__switch-control/);
   assert.match(source, /正在启用后台保护/);
   assert.match(source, /后台保护已启用/);
-  assert.match(source, /STARTING_AUTO_REFRESH_DELAYS_MS/);
-  assert.match(source, /source === "automatic" && autoVerificationArmedRef\.current/);
+  assert.match(source, /BackgroundProtectionAutoVerificationScheduler/);
+  assert.match(source, /automaticRefreshRef/);
   assert.match(source, /performance\.now\(\)/);
   assert.match(source, /formatBackgroundProtectionDuration/);
   assert.match(source, /hasBackgroundProtectionConverged/);
   assert.match(source, /系统状态已自动重新同步/);
-  assert.match(source, /HMM 会在当前页面自动复查/);
+  assert.match(source, /HMM 正在自动复查/);
   assert.doesNotMatch(source, /<label className="setting-row background-protection-panel__toggle">/);
   assert.match(source, /getBackgroundProtectionControlStatus\(/);
   assert.match(source, /enableBackgroundProtection/);
@@ -192,10 +192,11 @@ test("settings hosts the persisted panel outside session preview state", () => {
   assert.match(css, /\.background-protection-panel__operation\.is-busy::after/);
   assert.match(css, /@keyframes background-protection-progress/);
   assert.match(css, /\.background-protection-panel__timer/);
+  assert.match(css, /transform-box:\s*fill-box/);
   assert.match(css, /\.background-protection-panel__action:focus-visible/);
   assert.match(css, /@media \(max-width: 600px\)[\s\S]*?\.background-protection-panel__summary/);
-  assert.match(
-    css,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.background-protection-spinner\s*\{[\s\S]*?animation:\s*none !important;/,
-  );
+  const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+  assert.match(reducedMotion, /\.background-protection-spinner\s*\{[\s\S]*?animation-duration:\s*1\.8s !important;/);
+  assert.match(reducedMotion, /animation-timing-function:\s*steps\(8, end\) !important;/);
+  assert.doesNotMatch(reducedMotion, /\.background-protection-spinner\s*\{[\s\S]*?animation:\s*none !important;/);
 });

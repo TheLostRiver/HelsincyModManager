@@ -16,6 +16,10 @@ import {
   peekBackgroundProtectionControlStatus,
 } from "./backgroundProtectionApi";
 import {
+  BackgroundProtectionAutoVerificationScheduler,
+  type BackgroundProtectionAutoVerificationDecision,
+} from "./backgroundProtectionAutoVerification";
+import {
   getBackgroundProtectionCopy,
   getBackgroundProtectionErrorCode,
   getBackgroundProtectionErrorMessage,
@@ -53,8 +57,6 @@ type CompletedOperation = {
 };
 
 const OPERATION_TIMER_INTERVAL_MS = 100;
-// The cumulative verification points are roughly 1, 5, 10, and 16 minutes after enable.
-const STARTING_AUTO_REFRESH_DELAYS_MS = [60_000, 4 * 60_000, 5 * 60_000, 6 * 60_000] as const;
 
 let retainedPanelState: BackgroundProtectionPanelState | null = null;
 
@@ -84,18 +86,29 @@ export function BackgroundProtectionPanel() {
   const busyRef = useRef(false);
   const requestGenerationRef = useRef(0);
   const activeOperationRef = useRef<OperationToken | null>(null);
-  const autoRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoRefreshIndexRef = useRef(0);
-  const autoVerificationArmedRef = useRef(false);
+  const automaticRefreshRef = useRef<
+    () => Promise<BackgroundProtectionAutoVerificationDecision>
+  >(async () => "complete");
+  const autoVerificationSchedulerRef =
+    useRef<BackgroundProtectionAutoVerificationScheduler | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
+    autoVerificationSchedulerRef.current = new BackgroundProtectionAutoVerificationScheduler({
+      verify: () => automaticRefreshRef.current(),
+      isBusy: () => busyRef.current,
+      onActiveChange: (active) => {
+        if (mountedRef.current) setAutoVerificationActive(active);
+      },
+    });
+    const cleanup = () => {
+      mountedRef.current = false;
+      requestGenerationRef.current += 1;
+      autoVerificationSchedulerRef.current?.dispose();
+      autoVerificationSchedulerRef.current = null;
+    };
     if (retainedPanelState) {
-      return () => {
-        mountedRef.current = false;
-        requestGenerationRef.current += 1;
-        if (autoRefreshTimerRef.current) clearTimeout(autoRefreshTimerRef.current);
-      };
+      return cleanup;
     }
     const generation = ++requestGenerationRef.current;
 
@@ -122,11 +135,7 @@ export function BackgroundProtectionPanel() {
         }
       });
 
-    return () => {
-      mountedRef.current = false;
-      requestGenerationRef.current += 1;
-      if (autoRefreshTimerRef.current) clearTimeout(autoRefreshTimerRef.current);
-    };
+    return cleanup;
   }, []);
 
   useEffect(() => {
@@ -195,37 +204,7 @@ export function BackgroundProtectionPanel() {
   };
 
   const cancelStartingAutoRefresh = () => {
-    autoVerificationArmedRef.current = false;
-    autoRefreshIndexRef.current = 0;
-    if (autoRefreshTimerRef.current) {
-      clearTimeout(autoRefreshTimerRef.current);
-      autoRefreshTimerRef.current = null;
-    }
-    if (mountedRef.current) setAutoVerificationActive(false);
-  };
-
-  const scheduleStartingAutoRefresh = () => {
-    if (!autoVerificationArmedRef.current || autoRefreshTimerRef.current) return;
-    const delay = STARTING_AUTO_REFRESH_DELAYS_MS[autoRefreshIndexRef.current];
-    if (delay === undefined) {
-      cancelStartingAutoRefresh();
-      return;
-    }
-
-    autoRefreshTimerRef.current = setTimeout(() => {
-      autoRefreshTimerRef.current = null;
-      autoRefreshIndexRef.current += 1;
-      if (!mountedRef.current || !autoVerificationArmedRef.current) return;
-      if (busyRef.current) {
-        autoRefreshIndexRef.current -= 1;
-        autoRefreshTimerRef.current = setTimeout(() => {
-          autoRefreshTimerRef.current = null;
-          scheduleStartingAutoRefresh();
-        }, 2_000);
-        return;
-      }
-      void refreshStatus("automatic");
-    }, delay);
+    autoVerificationSchedulerRef.current?.cancel();
   };
 
   const armStartingAutoRefresh = (control: BackgroundProtectionControlDto) => {
@@ -233,15 +212,16 @@ export function BackgroundProtectionPanel() {
       cancelStartingAutoRefresh();
       return;
     }
-    autoVerificationArmedRef.current = true;
-    if (mountedRef.current) setAutoVerificationActive(true);
-    scheduleStartingAutoRefresh();
+    autoVerificationSchedulerRef.current?.arm();
   };
 
-  const refreshStatus = async (source: RefreshSource = "manual") => {
+  const refreshStatus = async (
+    source: RefreshSource = "manual",
+  ): Promise<BackgroundProtectionControlDto | null> => {
     const operation = beginOperation("refresh");
-    if (operation === null) return;
+    if (operation === null) return null;
     let outcome: OperationOutcome = "failed";
+    let refreshedControl: BackgroundProtectionControlDto | null = null;
 
     try {
       const nextControl = await getBackgroundProtectionControlStatus({ force: true });
@@ -253,10 +233,14 @@ export function BackgroundProtectionPanel() {
         };
         retainedPanelState = nextState;
         setState(nextState);
+        refreshedControl = nextControl;
         outcome = "success";
-        if (source === "automatic" && autoVerificationArmedRef.current) {
-          if (nextControl.status === "starting") scheduleStartingAutoRefresh();
-          else cancelStartingAutoRefresh();
+        if (
+          source === "manual" &&
+          autoVerificationSchedulerRef.current?.isActive() &&
+          (nextControl.status !== "starting" || !nextControl.desiredEnabled)
+        ) {
+          cancelStartingAutoRefresh();
         }
         const refreshedCopy = getBackgroundProtectionCopy(nextControl.status);
         if (source === "manual" || nextControl.status !== "starting") {
@@ -284,13 +268,19 @@ export function BackgroundProtectionPanel() {
           message: `${getBackgroundProtectionErrorMessage(errorCode)} 本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
           tone: "danger",
         });
-        if (source === "automatic" && autoVerificationArmedRef.current) {
-          scheduleStartingAutoRefresh();
-        }
       }
     } finally {
       finishOperation(operation, outcome);
     }
+    return refreshedControl;
+  };
+
+  automaticRefreshRef.current = async () => {
+    const nextControl = await refreshStatus("automatic");
+    if (!nextControl) return "continue";
+    return nextControl.status === "starting" && nextControl.desiredEnabled
+      ? "continue"
+      : "complete";
   };
 
   const changeProtection = async (desiredEnabled: boolean) => {
@@ -318,7 +308,9 @@ export function BackgroundProtectionPanel() {
             : "background-protection-disabled",
           title: desiredEnabled ? "后台保护已启用" : "后台保护已关闭",
           message: desiredEnabled
-            ? `系统任务已更新，正在等待首次后台运行验证；无需再次点击检查。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`
+            ? nextControl.status === "protected"
+              ? `系统任务与最近一次后台运行均已验证。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`
+              : `系统任务已更新，HMM 将立即自动复查并等待首次后台运行验证；无需再次点击检查。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`
             : `退出 HMM 后不再由系统任务检查自动备份。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
           tone: desiredEnabled ? "success" : "neutral",
         });
@@ -482,7 +474,7 @@ export function BackgroundProtectionPanel() {
           {showStartingHint ? (
             <p className="background-protection-panel__hint">
               {autoVerificationActive
-                ? "首次后台运行完成后，HMM 会在当前页面自动复查，无需重复点击；在此之前完全退出仍可能失去即时提醒。"
+                ? "HMM 正在自动复查；首次后台运行完成后会自动更新为已保护，无需重复点击。在此之前完全退出仍可能失去即时提醒。"
                 : "后台任务正在等待首次运行验证；需要立即确认时可重新检查，在此之前完全退出仍可能失去即时提醒。"}
             </p>
           ) : null}
