@@ -35,6 +35,9 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /formatBackgroundProtectionDuration/);
   assert.match(source, /hasBackgroundProtectionConverged/);
   assert.match(source, /系统状态已自动重新同步/);
+  assert.match(source, /preserveBackgroundProtectionStateAfterRefreshFailure/);
+  assert.match(source, /latestKnownPanelState/);
+  assert.match(source, /本次检查未完成，当前仍显示最近一次成功确认的状态/);
   assert.match(source, /HMM 正在自动复查/);
   assert.doesNotMatch(source, /<label className="setting-row background-protection-panel__toggle">/);
   assert.match(source, /getBackgroundProtectionControlStatus\(/);
@@ -196,7 +199,8 @@ test("settings hosts the persisted panel outside session preview state", () => {
   assert.match(css, /\.background-protection-panel__action:focus-visible/);
   assert.match(css, /@media \(max-width: 600px\)[\s\S]*?\.background-protection-panel__summary/);
   const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
-  assert.match(reducedMotion, /\.background-protection-spinner\s*\{[\s\S]*?animation-duration:\s*1\.8s !important;/);
-  assert.match(reducedMotion, /animation-timing-function:\s*steps\(8, end\) !important;/);
+  assert.match(reducedMotion, /\.background-protection-spinner\s*\{[\s\S]*?animation-duration:\s*2\.4s !important;/);
+  assert.match(reducedMotion, /animation-timing-function:\s*linear !important;/);
+  assert.doesNotMatch(reducedMotion, /steps\(/);
   assert.doesNotMatch(reducedMotion, /\.background-protection-spinner\s*\{[\s\S]*?animation:\s*none !important;/);
 });

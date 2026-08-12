@@ -603,13 +603,14 @@
 .background-protection-panel__operation.is-busy::after {
   position: absolute;
   bottom: 0;
-  left: -36%;
-  width: 36%;
+  left: 0;
+  width: 32%;
   height: 2px;
   content: "";
   background: var(--color-accent);
   border-radius: var(--radius-pill);
-  animation: background-protection-progress 1.15s ease-in-out infinite;
+  transform: translateX(-125%);
+  animation: background-protection-progress 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .background-protection-panel__timer {
@@ -658,6 +659,24 @@
   flex: 0 0 auto;
 }
 
+.background-protection-panel__warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-warning-dot);
+  border-radius: var(--radius-inner);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.background-protection-panel__warning svg {
+  flex: 0 0 auto;
+}
+
 .background-protection-panel__actions {
   display: flex;
   flex-wrap: wrap;
@@ -669,7 +688,7 @@
   transform-box: fill-box;
   transform-origin: center;
   will-change: transform;
-  animation: background-protection-spin 0.9s linear infinite;
+  animation: background-protection-spin 1.1s linear infinite;
 }
 
 @keyframes background-protection-spin {
@@ -679,8 +698,18 @@
 }
 
 @keyframes background-protection-progress {
-  to {
-    left: 100%;
+  0% {
+    opacity: 0.45;
+    transform: translateX(-125%) scaleX(0.78);
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.45;
+    transform: translateX(420%) scaleX(1.08);
   }
 }
 
@@ -1232,15 +1261,13 @@
   }
 
   .background-protection-spinner {
-    animation-duration: 1.8s !important;
-    animation-timing-function: steps(8, end) !important;
+    animation-duration: 2.4s !important;
+    animation-timing-function: linear !important;
   }
 
   .background-protection-panel__operation.is-busy::after {
-    left: -36%;
-    width: 36%;
-    animation-duration: 2.3s !important;
-    animation-timing-function: steps(6, end) !important;
+    animation-duration: 3.2s !important;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   .settings-reset-button:not(:disabled):hover,
