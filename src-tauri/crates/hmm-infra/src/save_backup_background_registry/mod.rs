@@ -39,6 +39,7 @@ enum ScheduledTaskCommand {
         owner_marker: String,
     },
     Register(ScheduledTaskSpec),
+    Start(ScheduledTaskSpec),
     Unregister {
         task_name: String,
         owner_marker: String,

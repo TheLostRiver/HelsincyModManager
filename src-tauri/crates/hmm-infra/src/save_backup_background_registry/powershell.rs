@@ -131,6 +131,18 @@ fn build_command_with_runtime(
                 .env("HMM_WORKER_PATH", &spec.worker_path)
                 .env("HMM_USER_SID", &spec.user_sid);
         }
+        ScheduledTaskCommand::Start(spec) => {
+            command
+                .env("HMM_OPERATION", "start")
+                .env(
+                    "HMM_SCHEDULED_TASKS_MODULE",
+                    &runtime.scheduled_tasks_module,
+                )
+                .env("HMM_TASK_NAME", &spec.task_name)
+                .env("HMM_OWNER_MARKER", &spec.owner_marker)
+                .env("HMM_WORKER_PATH", &spec.worker_path)
+                .env("HMM_USER_SID", &spec.user_sid);
+        }
         ScheduledTaskCommand::Unregister {
             task_name,
             owner_marker,
