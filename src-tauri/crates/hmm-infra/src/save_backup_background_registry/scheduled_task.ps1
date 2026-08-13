@@ -53,6 +53,17 @@ function Resolve-Sid([string]$Identity) {
     ).Value
 }
 
+function Normalize-WindowsPath([string]$Path) {
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if ($fullPath.StartsWith("\\?\UNC\", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "\\" + $fullPath.Substring(8)
+    }
+    if ($fullPath.StartsWith("\\?\", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $fullPath.Substring(4)
+    }
+    return $fullPath
+}
+
 function Write-TaskFoundResult($Task) {
     $actions = @($Task.Actions)
     $triggers = @($Task.Triggers)
@@ -87,6 +98,71 @@ function Write-TaskFoundResult($Task) {
         enabled = [string]$Task.State -ne "Disabled"
         state = [string]$Task.State
     }}
+}
+
+function Test-RegistrationTaskExact($Task, [string]$WorkerPath, [string]$UserSid, [string]$OwnerMarker) {
+    if ([string]$Task.TaskPath -ne "\" -or [string]$Task.Description -ne $OwnerMarker) {
+        return $false
+    }
+
+    $actions = @($Task.Actions)
+    $triggers = @($Task.Triggers)
+    $logon = @($triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskLogonTrigger" })
+    $time = @($triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskTimeTrigger" })
+    if ($actions.Count -ne 1 -or $logon.Count -ne 1 -or $time.Count -ne 1) {
+        return $false
+    }
+
+    $actionPath = [string]$actions[0].Execute
+    if (-not [System.IO.Path]::IsPathRooted($actionPath) -or
+        -not [System.StringComparer]::OrdinalIgnoreCase.Equals(
+            (Normalize-WindowsPath $actionPath),
+            (Normalize-WindowsPath $WorkerPath)
+        ) -or
+        [string]$actions[0].Arguments -ne "--once" -or
+        -not [string]::IsNullOrEmpty([string]$actions[0].WorkingDirectory)) {
+        return $false
+    }
+    try {
+        $worker = Get-Item -LiteralPath $actionPath -Force -ErrorAction Stop
+    } catch {
+        return $false
+    }
+    if ($worker.PSIsContainer -or
+        (($worker.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+        return $false
+    }
+    $parent = $worker.Directory
+    while ($null -ne $parent) {
+        if (($parent.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            return $false
+        }
+        $parent = $parent.Parent
+    }
+    if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals(
+            (Normalize-WindowsPath ([string]$worker.FullName)),
+            (Normalize-WindowsPath $WorkerPath)
+        )) {
+        return $false
+    }
+
+    return (Resolve-Sid ([string]$Task.Principal.UserId)) -eq $UserSid -and
+        (Resolve-Sid ([string]$logon[0].UserId)) -eq $UserSid -and
+        [bool]$logon[0].Enabled -and
+        [bool]$time[0].Enabled -and
+        [string]$logon[0].Delay -eq "PT1M" -and
+        [string]$time[0].Repetition.Interval -eq "PT15M" -and
+        [string]::IsNullOrEmpty([string]$time[0].Repetition.Duration) -and
+        [string]$Task.Principal.LogonType -eq "Interactive" -and
+        [string]$Task.Principal.RunLevel -eq "Limited" -and
+        [string]$Task.Settings.MultipleInstances -eq "IgnoreNew" -and
+        [bool]$Task.Settings.StartWhenAvailable -and
+        -not [bool]$Task.Settings.DisallowStartIfOnBatteries -and
+        -not [bool]$Task.Settings.StopIfGoingOnBatteries -and
+        -not [bool]$Task.Settings.WakeToRun -and
+        -not [bool]$Task.Settings.RunOnlyIfNetworkAvailable -and
+        [string]$Task.Settings.ExecutionTimeLimit -eq "PT1H" -and
+        [string]$Task.State -ne "Disabled"
 }
 
 function Assert-InstallerCleanupTaskIsQuiescent($Task, [string]$OwnerMarker) {
@@ -174,6 +250,44 @@ try {
             Enable-ScheduledTask -InputObject $updated | Out-Null
         }
         Write-TaskFoundResult (Get-TaskOrStatus $taskName)
+    }
+
+    if ($operation -eq "start") {
+        $workerPath = $env:HMM_WORKER_PATH
+        $userSid = $env:HMM_USER_SID
+        if ([string]::IsNullOrWhiteSpace($workerPath) -or [string]::IsNullOrWhiteSpace($userSid)) {
+            Write-Result @{ status = "operation_failed" }
+        }
+        $registered = Get-TaskOrStatus $taskName
+        if (-not (Test-RegistrationTaskExact $registered $workerPath $userSid $ownerMarker)) {
+            Write-TaskFoundResult $registered
+        }
+        $registeredState = [string]$registered.State
+        if ($registeredState -eq "Running" -or $registeredState -eq "Queued") {
+            Write-TaskFoundResult $registered
+        }
+        if ($registeredState -ne "Ready") {
+            Write-Result @{ status = "state_unverified" }
+        }
+        $launchTarget = Get-TaskOrStatus $taskName
+        if (-not (Test-RegistrationTaskExact $launchTarget $workerPath $userSid $ownerMarker)) {
+            Write-TaskFoundResult $launchTarget
+        }
+        $state = [string]$launchTarget.State
+        if ($state -eq "Ready") {
+            Start-ScheduledTask -InputObject $launchTarget -ErrorAction Stop
+        } elseif ($state -ne "Running" -and $state -ne "Queued") {
+            Write-Result @{ status = "state_unverified" }
+        }
+        $started = Get-TaskOrStatus $taskName
+        if (-not (Test-RegistrationTaskExact $started $workerPath $userSid $ownerMarker)) {
+            Write-TaskFoundResult $started
+        }
+        $startedState = [string]$started.State
+        if ($startedState -ne "Ready" -and $startedState -ne "Running" -and $startedState -ne "Queued") {
+            Write-Result @{ status = "state_unverified" }
+        }
+        Write-TaskFoundResult $started
     }
 
     if ($operation -eq "unregister") {

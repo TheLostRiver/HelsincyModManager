@@ -468,6 +468,9 @@ fn register_creates_missing_task_then_requires_exact_readback() {
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
     ]);
     let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
@@ -479,16 +482,20 @@ fn register_creates_missing_task_then_requires_exact_readback() {
         runner.commands().as_slice(),
         [
             ScheduledTaskCommand::Identity,
-            ScheduledTaskCommand::Register(_)
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
         ]
     ));
 }
 
 #[test]
-fn exact_registration_is_reconciled_in_one_command() {
+fn exact_registration_is_started_after_rust_readback() {
     let fixture = RegistryFixture::new();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback,
         ))),
@@ -503,7 +510,8 @@ fn exact_registration_is_reconciled_in_one_command() {
         runner.commands().as_slice(),
         [
             ScheduledTaskCommand::Identity,
-            ScheduledTaskCommand::Register(_)
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
         ]
     ));
 }
@@ -513,6 +521,9 @@ fn current_user_identity_is_cached_across_registry_operations() {
     let fixture = RegistryFixture::new();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
@@ -541,6 +552,7 @@ fn current_user_identity_is_cached_across_registry_operations() {
             ScheduledTaskCommand::Identity,
             ScheduledTaskCommand::Inspect { .. },
             ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_),
             ScheduledTaskCommand::Unregister { .. }
         ]
     ));
@@ -554,6 +566,9 @@ fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutatio
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
     ]);
     let registry = ScheduledTaskRegistry::new(repair.clone(), fixture.worker_path.clone());
     assert_eq!(
@@ -564,6 +579,10 @@ fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutatio
         .commands()
         .iter()
         .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
+    assert!(repair
+        .commands()
+        .iter()
+        .any(|command| matches!(command, ScheduledTaskCommand::Start(_))));
 
     let conflict = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
@@ -589,12 +608,69 @@ fn register_reports_post_write_drift_instead_of_claiming_success() {
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
     ]);
-    let registry = ScheduledTaskRegistry::new(runner, fixture.worker_path);
+    let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
     assert_eq!(
         registry.register().expect("register"),
         SaveBackupBackgroundRegistrationStatus::ConfigurationDrift
     );
+    assert!(matches!(
+        runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_)
+        ]
+    ));
+}
+
+#[test]
+fn register_fails_closed_when_initial_start_fails_or_drifts() {
+    let fixture = RegistryFixture::new();
+    let start_error = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
+        Err(SaveBackupBackgroundRegistryError::OperationFailed),
+    ]);
+    let registry = ScheduledTaskRegistry::new(start_error.clone(), fixture.worker_path.clone());
+    assert_eq!(
+        registry
+            .register()
+            .expect_err("initial start must fail closed"),
+        SaveBackupBackgroundRegistryError::OperationFailed
+    );
+    assert!(matches!(
+        start_error.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
+        ]
+    ));
+
+    let mut drift = fixture.exact_readback.clone();
+    drift.action_arguments = "--unexpected".to_owned();
+    let start_drift = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback,
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
+    ]);
+    let registry = ScheduledTaskRegistry::new(start_drift.clone(), fixture.worker_path);
+    assert_eq!(
+        registry.register().expect("drift is a stable status"),
+        SaveBackupBackgroundRegistrationStatus::ConfigurationDrift
+    );
+    assert!(matches!(
+        start_drift.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
+        ]
+    ));
 }
 
 #[test]
@@ -926,7 +1002,7 @@ fn windows_scheduled_task_registry_smoke() {
         );
         if std::env::var("HMM_WINDOWS_SMOKE_WAIT_FOR_TRIGGER").as_deref() == Ok("1") {
             println!(
-                "Run the registered task in Task Scheduler, verify the heartbeat in the second terminal, then press Enter."
+                "Wait for the automatic initial task run, verify the heartbeat in the second terminal, then press Enter."
             );
             let mut acknowledgement = String::new();
             std::io::stdin()
@@ -1176,6 +1252,28 @@ fn command_builder_uses_only_fixed_executable_script_and_internal_env_keys() {
         hmm_environment(&register),
         BTreeMap::from([
             ("HMM_OPERATION".to_owned(), "register".to_owned()),
+            ("HMM_OWNER_MARKER".to_owned(), spec.owner_marker.clone()),
+            (
+                "HMM_SCHEDULED_TASKS_MODULE".to_owned(),
+                runtime
+                    .scheduled_tasks_module
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("HMM_TASK_NAME".to_owned(), spec.task_name.clone()),
+            ("HMM_USER_SID".to_owned(), spec.user_sid.clone()),
+            (
+                "HMM_WORKER_PATH".to_owned(),
+                spec.worker_path.to_string_lossy().into_owned(),
+            ),
+        ])
+    );
+
+    let start = build_command(&ScheduledTaskCommand::Start(spec.clone())).expect("start command");
+    assert_eq!(
+        hmm_environment(&start),
+        BTreeMap::from([
+            ("HMM_OPERATION".to_owned(), "start".to_owned()),
             ("HMM_OWNER_MARKER".to_owned(), spec.owner_marker),
             (
                 "HMM_SCHEDULED_TASKS_MODULE".to_owned(),
@@ -1257,6 +1355,69 @@ fn scheduled_task_script_keeps_fail_closed_security_boundaries() {
     assert!(!script
         .lines()
         .any(|line| { line.contains("Register-ScheduledTask") && line.contains("-Force") }));
+
+    let registration_guard = script
+        .split("function Test-RegistrationTaskExact")
+        .nth(1)
+        .and_then(|value| {
+            value
+                .split("function Assert-InstallerCleanupTaskIsQuiescent")
+                .next()
+        })
+        .expect("registration exact-readback guard exists");
+    for required in [
+        "$Task.TaskPath",
+        "$Task.Description",
+        "$Task.Actions",
+        "$Task.Triggers",
+        "$Task.Principal.UserId",
+        "$Task.Principal.LogonType",
+        "$Task.Principal.RunLevel",
+        "$Task.Settings.MultipleInstances",
+        "$Task.Settings.StartWhenAvailable",
+        "$Task.Settings.ExecutionTimeLimit",
+        "Get-Item -LiteralPath $actionPath",
+        "FileAttributes]::ReparsePoint",
+        "$worker.Directory",
+        "Normalize-WindowsPath",
+    ] {
+        assert!(registration_guard.contains(required), "missing {required}");
+    }
+
+    let initial_start = script
+        .split("if ($operation -eq \"start\")")
+        .nth(1)
+        .and_then(|value| value.split("if ($operation -eq \"unregister\")").next())
+        .expect("start operation exists");
+    assert_eq!(
+        initial_start.matches("Test-RegistrationTaskExact").count(),
+        3
+    );
+    assert_eq!(initial_start.matches("Start-ScheduledTask").count(), 1);
+    let first_guard = initial_start
+        .find("Test-RegistrationTaskExact")
+        .expect("first exact read-back");
+    let busy_return = initial_start
+        .find("$registeredState -eq \"Running\"")
+        .expect("already-running short circuit");
+    let second_guard = initial_start[first_guard + 1..]
+        .find("Test-RegistrationTaskExact")
+        .map(|offset| first_guard + 1 + offset)
+        .expect("second exact read-back");
+    let start = initial_start
+        .find("Start-ScheduledTask -InputObject $launchTarget")
+        .expect("controlled initial start");
+    let post_start_guard = initial_start[start + 1..]
+        .find("Test-RegistrationTaskExact")
+        .map(|offset| start + 1 + offset)
+        .expect("post-start exact read-back");
+    assert!(
+        first_guard < busy_return
+            && busy_return < second_guard
+            && second_guard < start
+            && start < post_start_guard
+    );
+    assert!(!initial_start.contains("Start-ScheduledTask -TaskName"));
 
     let quiescence_guard = script
         .split("function Assert-InstallerCleanupTaskIsQuiescent")
