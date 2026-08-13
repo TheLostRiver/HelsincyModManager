@@ -85,6 +85,14 @@ bytes、SHA-256 `696E000AF732519780EB38A028B4B07DA7A20E111DED363A4E2111D709D7313
 因为注册流程没有保证本轮 worker 立即运行。上述两阶段 exact-owned 首次启动修复已进入新候选门禁；在新包
 完成 NSIS 重新启用自动收敛、owned 卸载和 running fail-closed 复验前，不把 P7.2c 标记为 runtime acceptance。
 
+首次运行修复的 `0.1.11` debug 候选已从提交 `7b9154d` 构建：NSIS 为 `13,575,580` bytes、SHA-256
+`0EB248CBFCC5969621765CE58D287E7B4E9F3F90EE0B5C3590BA13E5092047FD`；MSI 为 `20,164,608`
+bytes、SHA-256 `84DD4D66E6274331E0304334A477823D61DB0F69DBF92EF053765D494573E062`。NSIS 生成脚本确认三个
+sibling、update mode 跳过与 pre-uninstall fail-closed hook；MSI 数据库确认 ProductVersion `0.1.11`、
+三个 sibling、`RunInstallerCleanup` type `18` / sequence `3499`、`RemoveFiles` sequence `3500`、
+`REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE` 条件和固定 `1722` 文案。该证据只关闭 build/static gate，
+不替代 disposable Windows runtime gate。
+
 ## 背景
 
 自动备份如果只依赖主窗口打开期间的前端定时器或 Tauri 主进程内 tick，就无法覆盖用户真正退出客户端后的时间段。对存档管理工具来说，“用户以为开启了自动备份，但退出客户端后实际没有备份”是不可接受的产品风险。

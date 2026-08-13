@@ -243,6 +243,9 @@ P7.2c 的 installer cleanup 与首次运行修复实现已完成：
 - helper/registry、sidecar、NSIS/WiX 静态测试和 debug artifact 构建。
 - `0.1.10` 尾部矩阵发现 NSIS 重新启用后 task 已 exact 注册但没有立即产生本轮 heartbeat；现已在 Rust
   exact read-back 后增加内部首次启动阶段，并在启动前双重复验 owned task，避免按名字盲启或伪报已保护。
+- 首次运行修复的 `0.1.11` NSIS/WiX debug artifact 已从完整验证通过的提交构建，并完成版本、三个
+  sibling、NSIS PREUNINSTALL、MSI `RunInstallerCleanup=3499` / `RemoveFiles=3500`、卸载条件和固定
+  `1722` 文案审计；新 WSB 只映射 synthetic save/backup fixture。
 
 WiX upgrade/repair、owned/foreign/running 与最终卸载矩阵，以及 NSIS payload/配置持久化均已完成；仍待
 新候选在一次性 Windows 账户或 disposable VM 复验 NSIS 重新启用自动收敛、owned interactive/silent

@@ -100,6 +100,19 @@ modify 因当前 MSI 明确设置 `ARPNOMODIFY`/`ARPNOREPAIR`，若系统维护 
 - 最终 MSI `Error` 表包含固定 `1722` 操作建议，不包含 task name、SID、路径、XML、PowerShell 或
   helper 原始输出。
 
+## 首次运行修复 `0.1.11` 候选包 build/static 记录
+
+- 构建提交：`7b9154d0744420d5220a2df53f032d73315ac207`；完整 `scripts/verify.ps1` 以 `0` 退出。
+- NSIS：`13,575,580` bytes，SHA-256 `0EB248CBFCC5969621765CE58D287E7B4E9F3F90EE0B5C3590BA13E5092047FD`。
+- MSI：`20,164,608` bytes，SHA-256 `84DD4D66E6274331E0304334A477823D61DB0F69DBF92EF053765D494573E062`。
+- NSIS 生成脚本包含 GUI、worker、cleanup helper，并在删除 sibling 前插入 PREUNINSTALL hook；update mode
+  跳过 cleanup，所有非零 helper 结果继续 fail closed。
+- MSI 数据库 ProductVersion 为 `0.1.11`，三个 sibling 位于 `File` 表；`RunInstallerCleanup` type `18`、
+  sequence `3499`，位于 `RemoveFiles` sequence `3500` 前，条件仍严格为
+  `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`，固定 `1722` 文案存在。
+- 全新验收入口为 `D:\Temp\hmm-save03-0111.wsb`；bundle 只读映射，save/backup 使用独立 synthetic
+  fixture，状态脚本同时识别 NSIS LocalAppData 与 WiX Program Files 安装根，不在开发者账户安装或运行。
+
 `0.1.10` 后续已完成 WiX `0.1.9 -> 0.1.10` upgrade、interactive/silent repair、最终 owned 静默
 卸载，以及 NSIS payload/配置持久化；真实 synthetic 自动备份也生成了 ZIP 与 manifest。NSIS 重新启用
 后台保护时，task 已 exact 创建为 `Ready`，但没有保证本轮首次运行，Settings 因无 fresh heartbeat 长时间
