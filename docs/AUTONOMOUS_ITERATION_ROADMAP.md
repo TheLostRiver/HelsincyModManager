@@ -592,7 +592,8 @@ build `19041`，`AMD64`；未使用真实游戏、Steam userdata 或玩家存档
 状态：`implemented`，build/static gate 已通过；disposable Windows VM runtime gate 已完成 WiX
 核心卸载矩阵、`0.1.9 -> 0.1.10` upgrade、`0.1.10` repair、最终 owned 卸载、自动备份产物与 NSIS
 payload/配置持久化。NSIS 重新启用时暴露出 exact `Ready` task 没有本轮首次运行的问题；当前已实现
-Rust exact/canonical read-back 后的内部首次启动和启动前后复核，等待新候选的最终受影响路径复验。
+Rust exact/canonical read-back 后的内部首次启动和启动前后复核；`0.1.11` 新候选已构建并完成
+payload/hook/MSI database 静态审计，等待最终受影响路径复验。
 
 - [x] 实现 ownership-checked cleanup helper、双 Windows sidecar、NSIS `PREUNINSTALL` 和 WiX custom action。
 - [x] foreign task 保留；running/unknown owned task fail closed，并有 fake/static 测试覆盖。
@@ -600,6 +601,9 @@ Rust exact/canonical read-back 后的内部首次启动和启动前后复核，�
   未在开发者账户安装或运行 artifact。
 - [x] disposable VM 已覆盖 WiX missing/exact/drift/foreign/running、running retry、upgrade/repair、最终
   owned 卸载，以及旧候选的 NSIS payload、配置持久化和真实 synthetic 自动备份。
+- [x] 首次运行修复的 `0.1.11` NSIS/WiX debug artifact 已生成并审计三个 sibling、NSIS hook、
+  MSI `3499/3500` sequence、卸载条件与固定 `1722` 文案；验收 bundle、synthetic fixture 和全新 WSB
+  已准备，未在开发者账户安装或运行。
 - [ ] 新候选继续覆盖 NSIS 重新启用后的自动首次运行/fresh heartbeat/Settings 自动收敛、owned
   interactive/silent 卸载和 running fail-closed；完成后才可标记 runtime acceptance。
 
@@ -655,8 +659,9 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
 LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，`0.1.10` 的 WiX 核心卸载、
-upgrade/repair、最终 owned 卸载与 NSIS payload 尾部矩阵已通过；当前停在首次运行修复的新候选 NSIS
-自动收敛、owned 卸载和 running fail-closed disposable Windows VM 尾部 gate；
+upgrade/repair、最终 owned 卸载与 NSIS payload 尾部矩阵已通过；首次运行修复的 `0.1.11` 新候选也已
+通过 build/static 审计，当前停在其 NSIS 自动收敛、owned 卸载和 running fail-closed disposable
+Windows VM 尾部 gate；
 在该人工 gate 完成前不推进 SAVE-04 或 CLI-3A。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力

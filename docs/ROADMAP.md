@@ -55,8 +55,9 @@
     约 3 秒增加一次有限自动读回，覆盖首次 inspect 与 heartbeat 的竞争窗口。最终 `0.1.10` 已通过 WiX
     upgrade/repair、owned 卸载、自动备份产物和 NSIS payload 尾部矩阵，但 NSIS 重新注册 exact `Ready`
     task 后没有保证本轮 worker 首次运行，导致 UI 长时间停留在 `starting`。当前已实现 Rust read-back
-    校验后的独立 exact-owned 首次启动，并在启动操作内再次双读回防 TOCTOU；等待新候选的 NSIS 自动
-    收敛、owned 卸载和 running fail-closed 复验，runtime gate 仍未完成。
+    校验后的独立 exact-owned 首次启动，并在启动操作内再次双读回防 TOCTOU；`0.1.11` NSIS/WiX
+    新候选已构建并完成 payload、hook 与 MSI database 静态审计，等待其 NSIS 自动收敛、owned 卸载和
+    running fail-closed 复验，runtime gate 仍未完成。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。
