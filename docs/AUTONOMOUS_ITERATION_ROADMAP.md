@@ -590,15 +590,18 @@ build `19041`，`AMD64`；未使用真实游戏、Steam userdata 或玩家存档
 ### SAVE-03：Installer ownership cleanup
 
 状态：`implemented`，build/static gate 已通过；disposable Windows VM runtime gate 已完成 WiX
-核心卸载矩阵，最终 `0.1.10` NSIS/WiX 候选包也已重建并完成静态产物审计，仍等待该候选包的
-NSIS runtime、WiX upgrade/repair 与 Settings 自动收敛复验。
+核心卸载矩阵、`0.1.9 -> 0.1.10` upgrade、`0.1.10` repair、最终 owned 卸载、自动备份产物与 NSIS
+payload/配置持久化。NSIS 重新启用时暴露出 exact `Ready` task 没有本轮首次运行的问题；当前已实现
+Rust exact/canonical read-back 后的内部首次启动和启动前后复核，等待新候选的最终受影响路径复验。
 
 - [x] 实现 ownership-checked cleanup helper、双 Windows sidecar、NSIS `PREUNINSTALL` 和 WiX custom action。
 - [x] foreign task 保留；running/unknown owned task fail closed，并有 fake/static 测试覆盖。
 - [x] 最终 `0.1.10` NSIS/WiX debug artifact 已生成并检查三个 sibling、hook、MSI sequence 与错误文案；
   未在开发者账户安装或运行 artifact。
-- [ ] disposable VM 已覆盖 WiX missing/exact/drift/foreign/running 与 running retry；继续覆盖最新 NSIS、
-  WiX upgrade/repair 和新包后台保护自动收敛，完成后才可标记 runtime acceptance。
+- [x] disposable VM 已覆盖 WiX missing/exact/drift/foreign/running、running retry、upgrade/repair、最终
+  owned 卸载，以及旧候选的 NSIS payload、配置持久化和真实 synthetic 自动备份。
+- [ ] 新候选继续覆盖 NSIS 重新启用后的自动首次运行/fresh heartbeat/Settings 自动收敛、owned
+  interactive/silent 卸载和 running fail-closed；完成后才可标记 runtime acceptance。
 
 ### SAVE-04：玩家存档恢复
 
@@ -651,8 +654,9 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
-LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，WiX 核心卸载矩阵已通过，
-当前停在 `0.1.10` NSIS、WiX upgrade/repair 和 Settings 自动收敛的 disposable Windows VM 尾部 gate；
+LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，`0.1.10` 的 WiX 核心卸载、
+upgrade/repair、最终 owned 卸载与 NSIS payload 尾部矩阵已通过；当前停在首次运行修复的新候选 NSIS
+自动收敛、owned 卸载和 running fail-closed disposable Windows VM 尾部 gate；
 在该人工 gate 完成前不推进 SAVE-04 或 CLI-3A。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力

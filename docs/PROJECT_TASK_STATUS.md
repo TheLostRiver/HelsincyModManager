@@ -199,6 +199,8 @@ userdata/<account_id_32>/582010/remote
 - 固定参数的 headless worker：`hmm-save-backup-worker.exe --once`。
 - worker 与 GUI 复用 scheduler、backup、lease、heartbeat 和 Audit Log 链路。
 - user 级 Windows Scheduled Task 注册、更新、移除和 exact read-back。
+- register 写入后先由 Rust 复验完整 read-back 与 canonical worker，再由 infra 内部受控操作双重读回并
+  首次启动 exact-owned task；启动失败或 TOCTOU 漂移时 fail closed，inspect 仍保持纯只读。
 - Scheduled Task action 指向同目录 sibling worker，不接受任意 path/profile/lease 参数。
 - 登录触发延迟 1 分钟、每 15 分钟执行、单次上限 1 小时、`IgnoreNew`、`StartWhenAvailable`，
   不依赖网络、不唤醒机器，也不因电池状态停止。
@@ -231,17 +233,20 @@ ignored smoke 和 fake runner 自动化仍不能单独代替安装态验收；�
 disposable Windows 链路，不开放 Production CLI 写入，也不代表 P7.2c disposable VM runtime gate
 已经完成。
 
-### 实现完成，runtime gate 待人工
+### 首次运行修复完成，runtime gate 待最终人工
 
-P7.2c 的实现和 build/static gate 已完成：
+P7.2c 的 installer cleanup 与首次运行修复实现已完成：
 
 - 独立、无参数、ownership-checked cleanup helper 与双 Windows sidecar。
 - NSIS `PREUNINSTALL` 接入及非零 helper exit code 的 fail-closed 处理。
 - WiX `CustomActionRef`、pre-`RemoveFiles` custom action 和最终 MSI 反编译证据。
 - helper/registry、sidecar、NSIS/WiX 静态测试和 debug artifact 构建。
+- `0.1.10` 尾部矩阵发现 NSIS 重新启用后 task 已 exact 注册但没有立即产生本轮 heartbeat；现已在 Rust
+  exact read-back 后增加内部首次启动阶段，并在启动前双重复验 owned task，避免按名字盲启或伪报已保护。
 
-仍待一次性 Windows 账户或 disposable VM 执行安装、升级/repair/modify、interactive/silent 卸载，
-以及 owned/foreign/running task 矩阵；在该 gate 完成前不宣称 P7.2c runtime acceptance。
+WiX upgrade/repair、owned/foreign/running 与最终卸载矩阵，以及 NSIS payload/配置持久化均已完成；仍待
+新候选在一次性 Windows 账户或 disposable VM 复验 NSIS 重新启用自动收敛、owned interactive/silent
+卸载和 running fail-closed。在该 gate 完成前不宣称 P7.2c runtime acceptance。
 
 卸载规则必须保留 foreign task；owned task 若处于 running/unknown 状态必须 fail closed。
 SAVE-02 已解除环境前置，SAVE-03 已进入 `ready-for-human` runtime gate。

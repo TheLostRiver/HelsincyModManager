@@ -100,8 +100,15 @@ modify 因当前 MSI 明确设置 `ARPNOMODIFY`/`ARPNOREPAIR`，若系统维护 
 - 最终 MSI `Error` 表包含固定 `1722` 操作建议，不包含 task name、SID、路径、XML、PowerShell 或
   helper 原始输出。
 
-上述仅完成 build/static gate。仍需在 disposable VM 复验 `0.1.10` NSIS 受影响路径、WiX
-upgrade/repair 跳过 cleanup，以及新包 Settings 后台保护自动收敛。
+`0.1.10` 后续已完成 WiX `0.1.9 -> 0.1.10` upgrade、interactive/silent repair、最终 owned 静默
+卸载，以及 NSIS payload/配置持久化；真实 synthetic 自动备份也生成了 ZIP 与 manifest。NSIS 重新启用
+后台保护时，task 已 exact 创建为 `Ready`，但没有保证本轮首次运行，Settings 因无 fresh heartbeat 长时间
+停留在 `starting`。该缺口已通过两阶段 exact-owned 首次启动修复；新候选必须在全新 disposable VM 复验：
+
+- 点击重试启用后不手动运行 task、不点击重新检查，task 自动首跑并产生本轮 fresh heartbeat，Settings
+  自动显示“已保护”。
+- owned exact interactive/silent 卸载仍移除 task 与安装目录，并保留 synthetic save/backup/config。
+- owned running interactive/silent 仍 fail closed，保留 task 和安装目录；任务自然回到 `Ready` 后重试成功。
 
 `owned drift` 应只修改非 ownership 属性，并在卸载前确认 marker 仍匹配且状态为 `Ready/Disabled`。
 如果仍返回 `ownership_unverified`，先确认 task、worker 和安装目录均被保留，再停止该 artifact 的后续矩阵；
