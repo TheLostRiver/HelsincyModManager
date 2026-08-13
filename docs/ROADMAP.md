@@ -51,11 +51,12 @@
     `owned running` interactive/silent 变体均符合安全预期；running 在 MSI `1603` 阻断后保留任务与
     安装目录，任务自然回到 `Ready` 后重试卸载成功。WiX 已增加兼容其他 setup action 的固定 `1722`
     诊断文案，但其技术边界仍无法向 UI 透传 helper 原始 `20`。Settings 已收窄开关触发范围、增加动态
-    反馈/耗时、复用会话状态，并将 register/unregister 收敛为单进程 mutation + 最终读回；新修复又在
-    约 3 秒增加一次有限自动读回，覆盖首次 inspect 与 heartbeat 的竞争窗口。最终 `0.1.10` NSIS/WiX
-    候选包已从完整验证通过的 HEAD 重建并完成 payload、hook、MSI sequence 与 `Error 1722` 数据库审计；
-    等待该候选包的 NSIS runtime、WiX upgrade/repair 跳过 cleanup 和 Settings 自动收敛复验，runtime gate
-    仍未完成。
+    反馈/耗时、复用会话状态，并将 register/unregister 收敛为受控 mutation + 最终读回；新修复又在
+    约 3 秒增加一次有限自动读回，覆盖首次 inspect 与 heartbeat 的竞争窗口。最终 `0.1.10` 已通过 WiX
+    upgrade/repair、owned 卸载、自动备份产物和 NSIS payload 尾部矩阵，但 NSIS 重新注册 exact `Ready`
+    task 后没有保证本轮 worker 首次运行，导致 UI 长时间停留在 `starting`。当前已实现 Rust read-back
+    校验后的独立 exact-owned 首次启动，并在启动操作内再次双读回防 TOCTOU；等待新候选的 NSIS 自动
+    收敛、owned 卸载和 running fail-closed 复验，runtime gate 仍未完成。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。

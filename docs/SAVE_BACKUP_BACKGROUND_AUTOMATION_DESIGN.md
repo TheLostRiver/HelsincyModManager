@@ -8,6 +8,7 @@ P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 
 - 用户级 Scheduled Task adapter 支持受控 inspect、幂等 register/update、逐字段 read-back 和 ownership-checked unregister；固定任务每 15 分钟运行，并在用户登录后延迟 1 分钟触发。
 - task action 只能启动内部定位的 sibling worker，参数严格固定为 `--once`；前端和外部输入不能提供 task name、SID、命令、路径、参数、PowerShell 或 XML。
+- `register()` 在写入后先由 PowerShell 返回完整 read-back，再由 Rust 复验 task spec 与 canonical non-link worker；只有该层确认 exact 后，才进入独立的内部首次启动阶段。首次启动对需要启动的 `Ready` task 在 PowerShell 内执行两次 exact-owned read-back，只通过 `Start-ScheduledTask -InputObject` 启动该对象，并在启动后再次复验 exact 与 `Ready/Running/Queued` 状态。若 task 已经 `Running/Queued` 则不重复启动。任一 read-back、worker identity、状态或启动命令失败都 fail closed，不返回 `Registered`，也不伪造 heartbeat。
 - `worker_heartbeat_at` 已与 scheduler `last_checked_at` 分离。只有后台保护已启用、read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才派生 `protected`。
 - `get_save_backup_background_status` 只读执行注册检查和健康派生，不注册、不修复、不启动任务，也不获取 scheduler lease。
 - worker sidecar 的 dev/release 准备脚本和 Windows `externalBin` 已接入；target-triple 源产物被 Git 忽略。
@@ -46,8 +47,10 @@ runtime gate 已完成 WiX 核心卸载矩阵，最终候选包的尾部矩阵�
   执行两次 ownership/state 复核、一次 owned unregister 和 post-delete missing read-back，避免为每个
   阶段重复导入 ScheduledTasks 模块造成超时抖动。
 - 应用内 registry 在进程生命周期缓存已验证的当前用户 SID；普通 register/update 在一个 PowerShell
-  进程内完成 ownership 检查、写入和 exact read-back，unregister 在一个进程内完成 ownership 检查、
-  删除和 missing read-back。port 的成功返回已经代表最终后置条件，app service 不再追加重复 inspect。
+  进程内完成 ownership 检查、写入和 exact read-back。Rust 校验该 read-back 后，再用一个仅限 infra
+  内部的受控 PowerShell 操作对 exact-owned task 执行两次 read-back 和一次首次启动；启动后最终 read-back
+  仍由 Rust 复验。unregister 在一个进程内完成 ownership 检查、删除和 missing read-back。port 的成功返回
+  已经代表注册与首次启动后置条件，app service 不再追加重复 inspect。
 - missing、owned exact 和 owned drift 允许幂等清理；foreign task 必须保留并允许产品卸载继续。
 - owned task running/queued，或 identity、ownership、state、delete/read-back 无法确认时，真正
   卸载 fail closed；不得强杀正在备份的 worker。
@@ -77,8 +80,10 @@ bytes、SHA-256 `696E000AF732519780EB38A028B4B07DA7A20E111DED363A4E2111D709D7313
 三个 sibling 均在 `File` 表，`RunInstallerCleanup` sequence `3499` 位于 `RemoveFiles` sequence `3500`
 之前，条件为 `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`，固定 `1722` 文案已写入 `Error` 表。
 
-完整 runtime gate 仍等待该 `0.1.10` NSIS 的受影响路径复验，以及 WiX upgrade/repair 跳过 cleanup 的
-最终矩阵；在这些步骤和新包 Settings 自动收敛复验完成前，不把 P7.2c 标记为 runtime acceptance。
+该 `0.1.10` 已完成 WiX upgrade/repair、最终 owned 卸载、自动备份产物和 NSIS payload 等尾部矩阵，
+但 NSIS 在任务被重新创建后暴露出新的首次运行缺口：任务为 exact `Ready`，UI 长时间停留在 `starting`，
+因为注册流程没有保证本轮 worker 立即运行。上述两阶段 exact-owned 首次启动修复已进入新候选门禁；在新包
+完成 NSIS 重新启用自动收敛、owned 卸载和 running fail-closed 复验前，不把 P7.2c 标记为 runtime acceptance。
 
 ## 背景
 

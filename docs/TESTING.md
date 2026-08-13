@@ -1184,6 +1184,19 @@ MSI 版本覆盖文件仅用于本地验证，不能提交；使用 WiX `dark.ex
 `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`。只有一次性 Windows 账户或 disposable VM
 完成 interactive/silent uninstall、upgrade/repair/modify、foreign/running/owned task 矩阵后，
 才能记录 P7.2c runtime acceptance；普通自动化不得创建、运行或删除真实 Scheduled Task。
+
+后台保护注册后的首次运行还必须覆盖以下契约：
+
+- register mutation 先返回完整 task read-back，Rust 必须复验 owner、SID、action、固定 `--once`、trigger、
+  settings 和 canonical non-link worker；漂移或 foreign owner 时不得进入首次启动阶段。
+- 首次启动只能使用 infra 内部构造的同一 `ScheduledTaskSpec`；PowerShell 对需要启动的 `Ready` task
+  在启动前执行两次 exact-owned read-back，并只允许 `Start-ScheduledTask -InputObject`，不得按 task name
+  盲启；启动后还要复验 exact 与 `Ready/Running/Queued` 状态。
+- task 为 `Ready` 时发起一次启动；已为 `Running/Queued` 时不重复启动；其他状态 fail closed。
+- 启动命令失败、启动前 TOCTOU 漂移或启动后 read-back 不 exact 时，register 不得返回 `Registered`，
+  也不得写入或伪造 worker heartbeat。
+- `inspect()` 保持纯只读，不启动任务。自动化使用 fake runner 与 PowerShell 静态契约；真实首次运行、
+  fresh heartbeat 和 Settings 自动收敛只在 disposable Windows Sandbox/VM 验收。
 WiX 会把外部 EXE custom action 的所有非零返回统一投影为 MSI `1722/1603`；人工验收必须同时读取
 安装目录与 task 的聚合状态来确认 fail-closed，不得把通用 MSI 返回误记为 helper 原始 `20/21/22/23`。
 交互提示只能使用固定、非敏感的操作建议，不能显示 task name、SID、路径、XML 或 helper 原始输出。
