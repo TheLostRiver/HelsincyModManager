@@ -1,4 +1,5 @@
 mod app_settings;
+mod application_exit_guard;
 mod batch;
 mod batch_install;
 mod batch_reinstall;
@@ -38,10 +39,16 @@ mod save_backup_exit_guard;
 mod save_backup_scheduler;
 mod save_backup_task;
 mod save_directory_discovery;
+mod save_restore;
+mod save_restore_task;
 mod support_diagnostics;
 mod task_manager;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
+pub use application_exit_guard::{
+    ApplicationExitBeginDecision, ApplicationExitBlockReason, ApplicationExitDecision,
+    ApplicationExitGuard, ApplicationExitGuardError,
+};
 pub use batch::{
     execution_token_digest, BatchPlanPreview, BatchPlanPreviewError, BatchPlanSealError,
     BatchPlanSealResult, BatchPlanService, BatchTokenCodec, BatchTokenError, BatchTokenKind,
@@ -215,6 +222,19 @@ pub use save_backup_task::{
 pub use save_directory_discovery::{
     ConfirmProfileSaveDirectoryCandidateRequest, DiscoverProfileSaveDirectoriesRequest,
     ProfileSaveDirectoryDiscoveryService, SaveDirectoryDiscoveryError,
+};
+pub use save_restore::{
+    new_save_restore_transaction_id, PreviewSaveRestoreRequest, SaveRestoreCommitContext,
+    SaveRestorePreview, SaveRestorePreviewError, SaveRestoreService, SaveRestoreTokenCodec,
+    SaveRestoreTokenError, Sha256SaveRestoreTokenCodec, StartSaveRestoreRequest,
+    DEFAULT_SAVE_RESTORE_PREVIEW_TOKEN_TTL_MILLIS,
+};
+pub use save_restore_task::{
+    SaveRestoreCommitValidator, SaveRestoreTaskRunError, SaveRestoreTaskRunner,
+    SaveRestoreTaskScopeRegistry, SaveRestoreTaskService, SAVE_RESTORE_COMMITTING_PHASE,
+    SAVE_RESTORE_COMPLETED_PHASE, SAVE_RESTORE_FAILED_PHASE, SAVE_RESTORE_PREPARING_PHASE,
+    SAVE_RESTORE_PRE_RESTORE_BACKUP_PHASE, SAVE_RESTORE_RECOVERY_REQUIRED_PHASE,
+    SAVE_RESTORE_REVALIDATING_PHASE,
 };
 pub use support_diagnostics::{
     DiagnosticsPageSnapshot, DiagnosticsPageSnapshotService, SupportDiagnosticsExport,

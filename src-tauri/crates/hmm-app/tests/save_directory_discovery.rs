@@ -747,6 +747,7 @@ fn settings_with_save_directory(directory: &str) -> ProfileSaveSettings {
         },
         schedule: ProfileBackupSchedule::manual(),
         retention: ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
         updated_at: 1,
     }
 }

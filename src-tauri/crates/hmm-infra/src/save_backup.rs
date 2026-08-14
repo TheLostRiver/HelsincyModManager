@@ -1,3 +1,4 @@
+use crate::save_path::{normalize_save_relative_path, MAX_SAVE_DIRECTORY_COUNT};
 use anyhow::{anyhow, bail, Context, Result};
 use hmm_core::{
     ProfileDirectoryMode, ProfileDirectorySelection, SaveBackupManifest, SaveBackupManifestFile,
@@ -137,6 +138,7 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
             summary.game_id.as_str(),
             summary.profile_id.as_str(),
         )?;
+        let backup_dir = backup_directory_for_trigger(backup_dir, summary.trigger);
         remove_safe_child_file(&backup_dir, &summary.archive_file_name)?;
         remove_safe_child_file(&backup_dir, &summary.manifest_file_name)?;
         Ok(())
@@ -145,11 +147,12 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
 
 impl FileSystemSaveBackupWriter {
     fn backup_directory_for(&self, request: &SaveBackupWriteRequest) -> Result<PathBuf> {
-        self.backup_directory_from_selection(
+        let backup_dir = self.backup_directory_from_selection(
             &request.backup_directory,
             request.game_id.as_str(),
             request.profile_id.as_str(),
-        )
+        )?;
+        Ok(backup_directory_for_trigger(backup_dir, request.trigger))
     }
 
     fn backup_directory_from_selection(
@@ -158,26 +161,58 @@ impl FileSystemSaveBackupWriter {
         game_id: &str,
         profile_id: &str,
     ) -> Result<PathBuf> {
-        let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
-        match selection.mode {
-            ProfileDirectoryMode::Custom => {
-                let root = selection
-                    .directory
-                    .as_deref()
-                    .ok_or_else(|| anyhow!("custom save backup root is missing"))?;
-                Ok(PathBuf::from(root)
-                    .join("HelsincyModManager")
-                    .join("saves")
-                    .join(game_id)
-                    .join(profile_dir))
-            }
-            ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => Ok(self
-                .app_data_dir
-                .join("backups")
+        managed_backup_profile_directory(&self.app_data_dir, selection, game_id, profile_id)
+    }
+}
+
+pub(crate) fn managed_backup_directory_for_summary(
+    app_data_dir: &Path,
+    summary: &SaveBackupSummary,
+) -> Result<PathBuf> {
+    let profile_dir = managed_backup_profile_directory(
+        app_data_dir,
+        &summary.backup_directory,
+        summary.game_id.as_str(),
+        summary.profile_id.as_str(),
+    )?;
+    Ok(backup_directory_for_trigger(profile_dir, summary.trigger))
+}
+
+fn managed_backup_profile_directory(
+    app_data_dir: &Path,
+    selection: &ProfileDirectorySelection,
+    game_id: &str,
+    profile_id: &str,
+) -> Result<PathBuf> {
+    let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
+    match selection.mode {
+        ProfileDirectoryMode::Custom => {
+            let root = selection
+                .directory
+                .as_deref()
+                .ok_or_else(|| anyhow!("custom save backup root is missing"))?;
+            Ok(PathBuf::from(root)
+                .join("HelsincyModManager")
                 .join("saves")
                 .join(game_id)
-                .join(profile_dir)),
+                .join(profile_dir))
         }
+        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => Ok(app_data_dir
+            .join("backups")
+            .join("saves")
+            .join(game_id)
+            .join(profile_dir)),
+    }
+}
+
+fn backup_directory_for_trigger(
+    backup_dir: PathBuf,
+    trigger: hmm_core::SaveBackupTrigger,
+) -> PathBuf {
+    if trigger == hmm_core::SaveBackupTrigger::PreRestore {
+        backup_dir.join("pre-restore")
+    } else {
+        backup_dir
     }
 }
 
@@ -205,8 +240,8 @@ struct TimestampParts {
 fn canonical_existing_directory(path: impl AsRef<Path>) -> Result<PathBuf> {
     let path = path.as_ref();
     let metadata = fs::symlink_metadata(path).context("failed to inspect save directory")?;
-    if metadata.file_type().is_symlink() {
-        bail!("save directory must not be a symlink");
+    if is_symlink_or_reparse_point(&metadata) {
+        bail!("save directory must not be a link or reparse point");
     }
     if !metadata.is_dir() {
         bail!("save directory must be a directory");
@@ -220,12 +255,14 @@ fn scan_save_files(source_root: &Path) -> Result<Vec<ScannedSaveFile>> {
     let mut files = Vec::new();
     let mut normalized_paths = BTreeSet::new();
     let mut total_bytes = 0_u64;
+    let mut directory_count = 0_usize;
     scan_directory(
         source_root,
         source_root,
         &mut files,
         &mut normalized_paths,
         &mut total_bytes,
+        &mut directory_count,
     )?;
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(files)
@@ -237,17 +274,32 @@ fn scan_directory(
     files: &mut Vec<ScannedSaveFile>,
     normalized_paths: &mut BTreeSet<String>,
     total_bytes: &mut u64,
+    directory_count: &mut usize,
 ) -> Result<()> {
     for entry in fs::read_dir(current).context("failed to read save directory")? {
         let entry = entry.context("failed to read save entry")?;
         let path = entry.path();
         let metadata = fs::symlink_metadata(&path).context("failed to inspect save entry")?;
-        if metadata.file_type().is_symlink() {
-            bail!("save backup does not follow symlinks");
+        if is_symlink_or_reparse_point(&metadata) {
+            bail!("save backup does not follow links or reparse points");
         }
 
         if metadata.is_dir() {
-            scan_directory(source_root, &path, files, normalized_paths, total_bytes)?;
+            relative_path_label(source_root, &path)?;
+            *directory_count = directory_count
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("save backup directory count limit exceeded"))?;
+            if *directory_count > MAX_SAVE_DIRECTORY_COUNT {
+                bail!("save backup directory count limit exceeded");
+            }
+            scan_directory(
+                source_root,
+                &path,
+                files,
+                normalized_paths,
+                total_bytes,
+                directory_count,
+            )?;
             continue;
         }
 
@@ -290,14 +342,23 @@ fn relative_path_label(root: &Path, path: &Path) -> Result<String> {
     let mut parts = Vec::new();
     for component in relative.components() {
         match component {
-            Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
+            Component::Normal(part) => parts.push(
+                part.to_str()
+                    .ok_or_else(|| anyhow!("save backup relative path is not UTF-8"))?,
+            ),
             _ => bail!("save backup relative path is unsafe"),
         }
     }
     if parts.is_empty() {
         bail!("save backup relative path is empty");
     }
-    Ok(parts.join("/"))
+    let relative_path = parts.join("/");
+    let normalized = normalize_save_relative_path(&relative_path)
+        .ok_or_else(|| anyhow!("save backup relative path is unsafe"))?;
+    if normalized != relative_path {
+        bail!("save backup relative path is unsafe");
+    }
+    Ok(normalized)
 }
 
 fn write_zip_archive(
@@ -373,7 +434,7 @@ fn write_zip_archive(
 fn revalidate_scanned_file(source_root: &Path, file: &ScannedSaveFile) -> Result<fs::Metadata> {
     let metadata = fs::symlink_metadata(&file.absolute_path)
         .context("failed to revalidate save file before archiving")?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if is_symlink_or_reparse_point(&metadata) || !metadata.is_file() {
         bail!("save file changed during backup");
     }
     if metadata.len() > MAX_SINGLE_FILE_BYTES {
@@ -394,6 +455,21 @@ fn revalidate_scanned_file(source_root: &Path, file: &ScannedSaveFile) -> Result
     }
 
     Ok(metadata)
+}
+
+fn is_symlink_or_reparse_point(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    false
 }
 
 fn reject_containment(source_root: &Path, backup_dir: &Path) -> Result<()> {
@@ -640,5 +716,39 @@ mod tests {
             .expect_err("changed file type should be rejected");
 
         assert!(error.to_string().contains("changed"));
+    }
+
+    #[test]
+    fn scan_save_files_rejects_paths_deeper_than_restore_budget() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let source_root = temp.path().join("save-root");
+        let mut nested = source_root.clone();
+        for index in 0..crate::save_path::MAX_SAVE_PATH_COMPONENTS {
+            nested.push(format!("d{index}"));
+        }
+        fs::create_dir_all(&nested).expect("create deep source");
+        fs::write(nested.join("save.bin"), b"save").expect("write deep save");
+        let source_root = source_root.canonicalize().expect("canonical source");
+
+        let error = scan_save_files(&source_root).expect_err("deep save path must be rejected");
+
+        assert!(error.to_string().contains("relative path is unsafe"));
+    }
+
+    #[test]
+    fn scan_save_files_rejects_excess_directory_nodes() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let source_root = temp.path().join("save-root");
+        fs::create_dir(&source_root).expect("create source");
+        for index in 0..=MAX_SAVE_DIRECTORY_COUNT {
+            fs::create_dir(source_root.join(format!("directory-{index}")))
+                .expect("create directory node");
+        }
+        let source_root = source_root.canonicalize().expect("canonical source");
+
+        let error =
+            scan_save_files(&source_root).expect_err("directory node budget must be enforced");
+
+        assert!(error.to_string().contains("directory count limit exceeded"));
     }
 }

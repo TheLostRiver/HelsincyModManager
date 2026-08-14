@@ -46,7 +46,8 @@ impl SqliteProfileRepository {
         let backup_weekdays_json: String = row.get(6)?;
         let retention_max_count: i64 = row.get(7)?;
         let retention_max_age_days: Option<i64> = row.get(8)?;
-        let updated_at: i64 = row.get(9)?;
+        let pre_restore_backup_enabled: i64 = row.get(9)?;
+        let updated_at: i64 = row.get(10)?;
 
         let weekdays = serde_json::from_str::<Vec<u8>>(&backup_weekdays_json).map_err(|error| {
             rusqlite::Error::FromSqlConversionFailure(
@@ -76,6 +77,7 @@ impl SqliteProfileRepository {
                 max_count: retention_max_count as u32,
                 max_age_days: retention_max_age_days.map(|value| value as u32),
             },
+            pre_restore_backup_enabled: pre_restore_backup_enabled != 0,
             updated_at: updated_at as u128,
         })
     }
@@ -215,7 +217,8 @@ impl ProfileSaveSettingsRepository for SqliteProfileRepository {
             .prepare(
                 "SELECT profile_id, save_directory, backup_directory, backup_cadence,
                         backup_hour, backup_minute, backup_weekdays,
-                        retention_max_count, retention_max_age_days, updated_at
+                        retention_max_count, retention_max_age_days,
+                        pre_restore_backup_enabled, updated_at
                  FROM profile_save_settings WHERE profile_id = ?1",
             )
             .context("failed to prepare get profile save settings query")?;
@@ -240,8 +243,9 @@ impl ProfileSaveSettingsRepository for SqliteProfileRepository {
             "INSERT INTO profile_save_settings
                 (profile_id, save_directory, backup_directory, backup_cadence,
                  backup_hour, backup_minute, backup_weekdays,
-                 retention_max_count, retention_max_age_days, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 retention_max_count, retention_max_age_days,
+                 pre_restore_backup_enabled, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(profile_id) DO UPDATE SET
                 save_directory = excluded.save_directory,
                 backup_directory = excluded.backup_directory,
@@ -251,6 +255,7 @@ impl ProfileSaveSettingsRepository for SqliteProfileRepository {
                 backup_weekdays = excluded.backup_weekdays,
                 retention_max_count = excluded.retention_max_count,
                 retention_max_age_days = excluded.retention_max_age_days,
+                pre_restore_backup_enabled = excluded.pre_restore_backup_enabled,
                 updated_at = excluded.updated_at",
             rusqlite::params![
                 settings.profile_id,
@@ -262,6 +267,11 @@ impl ProfileSaveSettingsRepository for SqliteProfileRepository {
                 weekdays_json,
                 i64::from(settings.retention.max_count),
                 settings.retention.max_age_days.map(i64::from),
+                if settings.pre_restore_backup_enabled {
+                    1
+                } else {
+                    0
+                },
                 settings.updated_at as i64,
             ],
         )
@@ -442,5 +452,28 @@ mod tests {
         let profiles = repo.list_all().unwrap();
 
         assert_eq!(profiles[0].id, "profile-2");
+    }
+
+    #[test]
+    fn save_settings_round_trips_pre_restore_backup_preference() {
+        let repo = test_repo();
+        let settings = ProfileSaveSettings {
+            profile_id: "default".to_owned(),
+            save_directory: custom_directory_selection("C:/Fixture/Saves"),
+            backup_directory: custom_directory_selection("D:/Fixture/Backups"),
+            schedule: ProfileBackupSchedule::manual(),
+            retention: ProfileBackupRetention::default(),
+            pre_restore_backup_enabled: false,
+            updated_at: 42,
+        };
+
+        repo.save_settings(&settings).expect("save settings");
+        let loaded = repo
+            .get_settings("default")
+            .expect("read settings")
+            .expect("settings exist");
+
+        assert!(!loaded.pre_restore_backup_enabled);
+        assert_eq!(loaded.updated_at, 42);
     }
 }

@@ -126,6 +126,31 @@ impl SaveBackupRepository for SqliteSaveBackupRepository {
         Ok(())
     }
 
+    fn get_for_restore(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        backup_id: &str,
+    ) -> Result<Option<SaveBackupSummary>> {
+        let conn = self.lock_db()?;
+        let result = conn.query_row(
+            "SELECT backup_id, game_id, profile_id, trigger, status, archive_file_name,
+                    manifest_file_name, archive_size_bytes, archive_sha256, file_count,
+                    created_at, source_path_label, source_path_hash, notes,
+                    backup_directory_mode, backup_directory
+             FROM save_backups
+             WHERE game_id = ?1 AND profile_id = ?2 AND backup_id = ?3",
+            rusqlite::params![game_id.as_str(), profile_id.as_str(), backup_id],
+            Self::row_to_summary,
+        );
+
+        match result {
+            Ok(summary) => Ok(Some(summary)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error).context("failed to get save backup for restore"),
+        }
+    }
+
     fn list_for_profile(
         &self,
         game_id: &GameId,
@@ -204,6 +229,7 @@ fn parse_trigger(value: &str) -> std::result::Result<SaveBackupTrigger, String> 
         "manual" => Ok(SaveBackupTrigger::Manual),
         "auto" => Ok(SaveBackupTrigger::Auto),
         "pre_install" => Ok(SaveBackupTrigger::PreInstall),
+        "pre_restore" => Ok(SaveBackupTrigger::PreRestore),
         other => Err(format!("unknown save backup trigger: {other}")),
     }
 }

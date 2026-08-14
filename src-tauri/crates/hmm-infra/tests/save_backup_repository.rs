@@ -42,6 +42,16 @@ fn sqlite_save_backup_repository_round_trips_latest_first_and_updates_status() {
 
     assert_eq!(backups[0].backup_id, "backup-new");
     assert_eq!(backups[0].status, SaveBackupStatus::DeletedByRetention);
+
+    let exact = repo
+        .get_for_restore(&GameId::mhw(), &ProfileId::new("default"), "backup-old")
+        .expect("get exact backup")
+        .expect("backup exists");
+    assert_eq!(exact.backup_id, "backup-old");
+    assert!(repo
+        .get_for_restore(&GameId::mhw(), &ProfileId::new("other"), "backup-old",)
+        .expect("query other profile")
+        .is_none());
 }
 
 fn sample_summary(backup_id: &str, created_at: u128) -> SaveBackupSummary {

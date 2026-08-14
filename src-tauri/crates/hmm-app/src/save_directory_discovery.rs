@@ -1,9 +1,8 @@
 use hmm_core::{
-    GameDirectoryStatus, GameId, ProfileBackupSchedule,
-    ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId,
-    ProfileSaveSettings, SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource,
-    SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
-    SteamAccountProfileSummary,
+    GameDirectoryStatus, GameId, ProfileBackupSchedule, ProfileDirectoryMode,
+    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId, ProfileSaveSettings,
+    SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource, SaveDirectoryCandidateSummary,
+    SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult, SteamAccountProfileSummary,
 };
 use hmm_ports::{
     AppClock, GameConfigRepository, GameSaveDirectoryRule, PendingSaveDirectoryCandidate,
@@ -398,6 +397,9 @@ impl ProfileSaveDirectoryDiscoveryService {
             retention: existing_settings
                 .map(|settings| settings.retention.clone())
                 .unwrap_or_default(),
+            pre_restore_backup_enabled: existing_settings
+                .map(|settings| settings.pre_restore_backup_enabled)
+                .unwrap_or(true),
             updated_at: now,
         };
 

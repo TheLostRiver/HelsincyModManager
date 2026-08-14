@@ -83,5 +83,6 @@ pub struct ProfileSaveSettings {
     pub backup_directory: ProfileDirectorySelection,
     pub schedule: ProfileBackupSchedule,
     pub retention: ProfileBackupRetention,
+    pub pre_restore_backup_enabled: bool,
     pub updated_at: u128,
 }

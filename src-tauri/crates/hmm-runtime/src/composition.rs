@@ -4,6 +4,7 @@ use crate::{
 };
 use hmm_app::{
     is_identity_replacement_binding, AppSettingsService, AuditLogDiagnosticsExportService,
+    ApplicationExitGuard,
     CategoryService, CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
     GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
     ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
@@ -35,10 +36,11 @@ use hmm_app::{
     RetargetReinstallRequest, RetargetReinstallTaskExecutor, SaveBackupAutoSchedulerService,
     SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
     SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
-    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    SaveBackupTaskService, SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
+    SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
+    StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
@@ -58,7 +60,8 @@ use hmm_infra::{
     DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, FileSystemLogRetention, FileSystemLogStorageBudget,
-    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter, FileSystemTaskLogWriter,
+    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter,
+    FileSystemSaveRestoreFileSystem, FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter,
     FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
@@ -68,9 +71,9 @@ use hmm_infra::{
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
-    SqliteSaveBackupSchedulerStateRepository, SteamCommunityProfileClient,
-    SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
-    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
+    SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
     TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer, DEFAULT_LOG_STORAGE_MAX_BYTES,
 };
 use hmm_ports::{
@@ -81,11 +84,12 @@ use hmm_ports::{
     GameRunningDetector, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
     ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
     ModPackageInstallFileScanner, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository,
-    ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
-    SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TaskLogWriter,
-    TextLogReader, ThumbnailCacheMaintenance, MIN_LOG_STORAGE_MAX_BYTES,
+    ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository, ReplacementAdapter,
+    ReplacementCatalogProvider, SaveBackupBackgroundRegistry,
+    SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository, SaveBackupWriter, SaveRestoreSourceValidator,
+    SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
+    ThumbnailCacheMaintenance, MIN_LOG_STORAGE_MAX_BYTES,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -192,8 +196,12 @@ pub struct HmmRuntime {
     pub save_backup_background: Arc<SaveBackupBackgroundService>,
     pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
     pub save_backup_exit_guard: Arc<SaveBackupExitGuard>,
+    pub application_exit_guard: Arc<ApplicationExitGuard>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
+    pub save_restore: Arc<SaveRestoreService>,
+    pub save_restore_task_runner: Arc<SaveRestoreTaskRunner>,
+    pub save_restore_tasks: Arc<SaveRestoreTaskService>,
     pub task_manager: Arc<TaskManager>,
     db: Arc<Mutex<rusqlite::Connection>>,
 }
@@ -244,6 +252,8 @@ impl HmmRuntime {
             profile_repository.clone();
         let profile_repository_for_save_backups: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_restore: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_repository_for_save_backup_auto_scheduler: Arc<dyn ProfileRepository> =
             profile_repository.clone();
         let profile_repository_for_save_backup_background_worker: Arc<dyn ProfileRepository> =
@@ -256,6 +266,9 @@ impl HmmRuntime {
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backups: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_restore: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backup_auto_scheduler: Arc<
@@ -277,6 +290,13 @@ impl HmmRuntime {
         > = profile_repository.clone();
         let save_backup_repository: Arc<dyn SaveBackupRepository> =
             Arc::new(SqliteSaveBackupRepository::new(Arc::clone(&db)));
+        let save_restore_transaction_repository: Arc<dyn SaveRestoreTransactionRepository> =
+            Arc::new(SqliteSaveRestoreTransactionRepository::new(Arc::clone(&db)));
+        let save_restore_source_validator: Arc<dyn SaveRestoreSourceValidator> = Arc::new(
+            FileSystemSaveRestoreSourceValidator::new(app_data_dir.clone()),
+        );
+        let save_restore_file_system =
+            Arc::new(FileSystemSaveRestoreFileSystem::new(app_data_dir.clone()));
         let save_backup_scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository> =
             Arc::new(SqliteSaveBackupSchedulerStateRepository::new(Arc::clone(
                 &db,
@@ -292,6 +312,7 @@ impl HmmRuntime {
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
+        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
         let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(JsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -530,6 +551,43 @@ impl HmmRuntime {
             save_backup_writer,
             Arc::new(SystemClock),
         ));
+        let save_restore = Arc::new(SaveRestoreService::new(
+            profile_repository_for_save_restore,
+            profile_save_settings_repository_for_save_restore,
+            Arc::clone(&save_backup_repository),
+            save_restore_source_validator,
+            Arc::clone(&save_restore_transaction_repository),
+            game_running_detector_for_platform(&game_adapters),
+            Arc::new(SystemClock),
+            Arc::new(
+                Sha256SaveRestoreTokenCodec::new(uuid::Uuid::new_v4().as_bytes()).map_err(
+                    |error| format!("failed to create save restore token codec: {error}"),
+                )?,
+            ),
+        ));
+        let save_restore_validator: Arc<dyn hmm_app::SaveRestoreCommitValidator> =
+            save_restore.clone();
+        let save_restore_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
+        let save_restore_task_scopes = Arc::new(SaveRestoreTaskScopeRegistry::default());
+        let application_exit_guard = Arc::new(ApplicationExitGuard::new(
+            Arc::clone(&save_backup_exit_guard),
+            Arc::clone(&save_restore_task_scopes),
+        ));
+        let save_restore_task_runner = Arc::new(SaveRestoreTaskRunner::with_scope_registry(
+            Arc::clone(&task_manager),
+            save_restore_validator,
+            save_restore_file_system,
+            Arc::clone(&save_restore_transaction_repository),
+            save_restore_backup_executor,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+            Arc::clone(&install_write_locks),
+            Arc::clone(&save_restore_task_scopes),
+        ));
+        let save_restore_tasks = Arc::new(SaveRestoreTaskService::with_scope_registry(
+            Arc::clone(&task_manager),
+            save_restore_task_scopes,
+        ));
         let save_backup_auto_scheduler = Arc::new(SaveBackupAutoSchedulerService::new(
             profile_repository_for_save_backup_auto_scheduler,
             profile_save_settings_repository_for_save_backup_auto_scheduler,
@@ -603,7 +661,6 @@ impl HmmRuntime {
         )));
         let mod_library_query = mod_library_composition
             .query_service(Arc::clone(&mod_library), install_manifest_query.clone());
-        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
         let install_recovery_scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
@@ -827,7 +884,11 @@ impl HmmRuntime {
             save_backup_background,
             save_backup_background_worker,
             save_backup_exit_guard,
+            application_exit_guard,
             save_backups,
+            save_restore,
+            save_restore_task_runner,
+            save_restore_tasks,
             task_manager,
             db,
         };

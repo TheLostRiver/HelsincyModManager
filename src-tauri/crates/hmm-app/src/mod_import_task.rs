@@ -124,6 +124,9 @@ impl From<TaskManagerError> for ModImportTaskError {
             TaskManagerError::TaskScopeBusy { .. } => {
                 Self::TaskRegistrationFailed(error.to_string())
             }
+            TaskManagerError::TaskCreationBlocked { .. } => {
+                Self::TaskRegistrationFailed(error.to_string())
+            }
             TaskManagerError::TaskStoreUnavailable => {
                 Self::TaskRegistrationFailed(error.to_string())
             }

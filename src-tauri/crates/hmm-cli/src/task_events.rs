@@ -202,6 +202,7 @@ fn task_kind_code(kind: TaskKind) -> &'static str {
         TaskKind::ModImport => "mod_import",
         TaskKind::Install => "install",
         TaskKind::SaveBackup => "save_backup",
+        TaskKind::SaveRestore => "save_restore",
     }
 }
 

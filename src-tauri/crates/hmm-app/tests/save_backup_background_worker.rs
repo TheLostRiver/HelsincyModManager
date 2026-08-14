@@ -1152,6 +1152,7 @@ fn settings(profile_id: &str, cadence: BackupCadence) -> ProfileSaveSettings {
             weekdays: Vec::new(),
         },
         retention: ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
         updated_at: 1,
     }
 }

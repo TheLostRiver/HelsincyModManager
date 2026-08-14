@@ -805,6 +805,7 @@ fn settings_with_schedule(schedule: ProfileBackupSchedule) -> ProfileSaveSetting
         backup_directory: directory_selection("D:/HMM/Backups"),
         schedule,
         retention: ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     }
 }

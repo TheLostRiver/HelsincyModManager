@@ -11,6 +11,7 @@ mod replacement;
 mod retarget;
 mod save_backup;
 mod save_directory;
+mod save_restore;
 
 pub use batch::{
     build_batch_plan, BatchActionSummary, BatchAttempt, BatchAttemptStatus, BatchExecutionPolicy,
@@ -100,6 +101,7 @@ pub use save_directory::{
     SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
     SteamAccountProfileSummary, STEAM_ID64_ACCOUNT_ID_OFFSET,
 };
+pub use save_restore::{SaveRestoreTransaction, SaveRestoreTransactionStatus};
 
 #[cfg(test)]
 mod external_import_tests;
