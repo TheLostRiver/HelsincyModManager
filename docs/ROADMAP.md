@@ -45,24 +45,19 @@
    完整武器 catalog 仍等待明确可再分发的审计数据；LOG-01 Task/Audit retention、LOG-02 日志总空间
    上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
-    2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 的 helper、双 Windows
-    sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static gate 已完成。disposable Windows
-    VM runtime gate 已推进：WiX `0.1.9` 的 `missing`、`owned exact`、`owned drift`、`foreign` 和
-    `owned running` interactive/silent 变体均符合安全预期；running 在 MSI `1603` 阻断后保留任务与
-    安装目录，任务自然回到 `Ready` 后重试卸载成功。WiX 已增加兼容其他 setup action 的固定 `1722`
-    诊断文案，但其技术边界仍无法向 UI 透传 helper 原始 `20`。Settings 已收窄开关触发范围、增加动态
-    反馈/耗时、复用会话状态，并将 register/unregister 收敛为受控 mutation + 最终读回；新修复又在
-    约 3 秒增加一次有限自动读回，覆盖首次 inspect 与 heartbeat 的竞争窗口。最终 `0.1.10` 已通过 WiX
-    upgrade/repair、owned 卸载、自动备份产物和 NSIS payload 尾部矩阵，但 NSIS 重新注册 exact `Ready`
-    task 后没有保证本轮 worker 首次运行，导致 UI 长时间停留在 `starting`。当前已实现 Rust read-back
-    校验后的独立 exact-owned 首次启动，并在启动操作内再次双读回防 TOCTOU；`0.1.11` NSIS/WiX
-    新候选已构建并完成 payload、hook 与 MSI database 静态审计，等待其 NSIS 自动收敛、owned 卸载和
-    running fail-closed 复验，runtime gate 仍未完成。
+   2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 已于 2026-08-14 标记为
+   `certified`：helper、双 Windows sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static
+   gate 均通过；disposable Windows Sandbox 覆盖 WiX missing/exact/drift/foreign/running、upgrade/repair，
+   以及 NSIS 重新启用后的首次运行、fresh heartbeat、Settings 自动收敛、1 文件 synthetic 自动备份、
+   owned 卸载和 running fail-closed。Running 时 direct `_?=` 诊断模式返回稳定 `20` 并完整保留任务与
+   payload；回到 Ready 后使用正常 NSIS wrapper 完整删除安装目录和 owned task，synthetic save、ZIP 与
+   manifest 保留。`_?=` 已限定为 blocked 诊断，不再用于成功卸载验收。应用内用户 SID 与 Scheduled
+   Task 只读检查改走原生 Windows token/COM，mutation 继续使用受控 PowerShell 安全链。
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。
-8. Windows 存档后续重点是已确认 Steam 账号目录的回归门禁、SAVE-02 已认证基线之上的
-   ownership-checked installer cleanup、玩家存档恢复和 retention/备份中心。玩家存档恢复必须使用统一
+8. Windows 存档后续重点是已确认 Steam 账号目录的回归门禁、玩家存档恢复和 retention/备份中心。
+   玩家存档恢复必须使用统一
    悬浮确认，默认先在独立 `pre-restore/` 目录创建安全备份，成功后才允许覆盖；用户可以关闭该开关，
    但必须看到高风险警告并额外确认。账号昵称/头像和多候选显式选择已完成，不重新实现。
 9. Task/Audit retention、日志总空间上限和 Debug Log 已完成。Production CLI 写入继续等待跨进程
@@ -145,8 +140,8 @@ Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C 与 T13 Slice A-D 均已完成�
 CAT-01 装备数据治理、WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer 与
 WR-03B staging/InstallPlan/manifest 集成和 WR-04 受控 Tauri/UI/Gate D 均已完成，Gate D 为
 `certified`；AR6/WR-02B 等待可再分发的审计数据，LOG-01 Task/Audit retention、LOG-02 日志总空间
-上限和 LOG-03 Debug Log 均已完成；SAVE-02 安装态后台保护验收已 `certified`，当前下一无人值守
-`ready` 任务为 SAVE-03。完整 catalog 未到位前只使用人工 developer/Sandbox seed。
+上限和 LOG-03 Debug Log 均已完成；SAVE-02 与 SAVE-03 安装态验收均已 `certified`，当前下一纵向
+切片为 SAVE-04。完整 catalog 未到位前只使用人工 developer/Sandbox seed。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 

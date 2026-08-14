@@ -37,8 +37,8 @@ staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均
 2026-08-06 标记为 `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log
 均已完成；AR6/WR-02B 仍等待具有明确再分发权的审计数据。完整 catalog 未到位前只允许人工最小 developer/Sandbox seed；Sandbox
 认证不开放 Production 写入。
-Windows 后台存档保障的 SAVE-02 安装态验收已完成；installer ownership cleanup、完整前置依赖平台、
-玩家存档恢复与 Production CLI admission 仍未完成。当前下一无人值守 ready 项是 SAVE-03。
+Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成；完整
+前置依赖平台、玩家存档恢复与 Production CLI admission 仍未完成。当前下一纵向切片是 SAVE-04。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
 校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；仅 Sandbox
@@ -72,7 +72,7 @@ Windows 后台存档保障的 SAVE-02 安装态验收已完成；installer owner
 | T6 Profile 管理 | 已完成 | CRUD、活跃 Profile、生命周期与存档设置接入已落地 |
 | T7 一键启动 | 已完成 | `GameLauncher` port、MHW:I Steam 启动和 UI 入口已落地 |
 | Core Mod Lifecycle Gate A | Certified | 安装、卸载、真正重装、重启恢复、失败恢复和 exact baseline 已验收 |
-| T8 存档备份 | 部分完成 / SAVE-02 Certified | 备份与后台核心及安装态验收已完成；installer cleanup、玩家存档恢复和完整 retention 未完成 |
+| T8 存档备份 | 部分完成 / SAVE-02、SAVE-03 Certified | 备份、后台核心、安装态保护与 installer cleanup 已完成；玩家存档恢复和完整 retention 未完成 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 装备 Retarget | Armor / Weapon 流程均 Certified | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01、WR-02A、WR-03A、WR-03B 已完成；完整 bundled armor/weapon catalog 仍受 AR6/WR-02B 数据门禁 |
@@ -233,9 +233,10 @@ ignored smoke 和 fake runner 自动化仍不能单独代替安装态验收；�
 disposable Windows 链路，不开放 Production CLI 写入，也不代表 P7.2c disposable VM runtime gate
 已经完成。
 
-### 首次运行修复完成，runtime gate 待最终人工
+### P7.2c installer cleanup runtime gate 已认证
 
-P7.2c 的 installer cleanup 与首次运行修复实现已完成：
+P7.2c 的 installer cleanup 与首次运行修复已于 2026-08-14 完成 disposable Windows Sandbox runtime
+gate：
 
 - 独立、无参数、ownership-checked cleanup helper 与双 Windows sidecar。
 - NSIS `PREUNINSTALL` 接入及非零 helper exit code 的 fail-closed 处理。
@@ -243,16 +244,21 @@ P7.2c 的 installer cleanup 与首次运行修复实现已完成：
 - helper/registry、sidecar、NSIS/WiX 静态测试和 debug artifact 构建。
 - `0.1.10` 尾部矩阵发现 NSIS 重新启用后 task 已 exact 注册但没有立即产生本轮 heartbeat；现已在 Rust
   exact read-back 后增加内部首次启动阶段，并在启动前双重复验 owned task，避免按名字盲启或伪报已保护。
-- 首次运行修复的 `0.1.11` NSIS/WiX debug artifact 已从完整验证通过的提交构建，并完成版本、三个
-  sibling、NSIS PREUNINSTALL、MSI `RunInstallerCleanup=3499` / `RemoveFiles=3500`、卸载条件和固定
-  `1722` 文案审计；新 WSB 只映射 synthetic save/backup fixture。
+- 最终 `0.1.12` NSIS/WiX debug artifact 完成版本、三个 sibling、NSIS PREUNINSTALL、MSI
+  `RunInstallerCleanup=3499` / `RemoveFiles=3500`、卸载条件和固定 `1722` 文案审计；WSB 只映射
+  synthetic save/backup fixture。
+- NSIS 重新启用后台保护后自动产生 fresh heartbeat，Settings 无需手动检查即收敛为“已保护”；每日
+  cadence 对 1 文件 synthetic save 生成 1 个 ZIP 和 1 个 manifest。
+- owned exact interactive/silent 卸载清理安装目录与 owned task，并保留 synthetic save、ZIP 与
+  manifest；foreign task 保持 Ready 且 marker 不变。
+- owned task 为 Running 时 direct `_?=` 诊断模式返回稳定 `20`，安装目录、payload 和 task 完整保留；
+  任务回到 Ready 后先覆盖修复至 4 文件，再用正常 NSIS wrapper 卸载，安装目录和 owned task 均消失。
+- `_?=` 会关闭 NSIS 临时副本/self-delete，只允许用于 blocked exit-code 诊断；成功、missing 和 recovery
+  路径必须使用正常 wrapper，并用安装目录、task 和 synthetic 数据 read-back 判断结果。
 
-WiX upgrade/repair、owned/foreign/running 与最终卸载矩阵，以及 NSIS payload/配置持久化均已完成；仍待
-新候选在一次性 Windows 账户或 disposable VM 复验 NSIS 重新启用自动收敛、owned interactive/silent
-卸载和 running fail-closed。在该 gate 完成前不宣称 P7.2c runtime acceptance。
-
-卸载规则必须保留 foreign task；owned task 若处于 running/unknown 状态必须 fail closed。
-SAVE-02 已解除环境前置，SAVE-03 已进入 `ready-for-human` runtime gate。
+卸载规则继续要求保留 foreign task；owned task 若处于 running/unknown 状态必须 fail closed。日常自动化
+仍不得操作真实 Scheduled Task，后续回归继续使用 disposable Windows 环境。SAVE-03 标记为
+`certified`，SAVE-04 和 CLI-3A 的依赖门禁已解除，但两者仍需各自独立设计与验收。
 
 ## 日志、审计与诊断
 
@@ -346,8 +352,8 @@ alias/localization、dummy/隐藏条目策略、版本与 provenance/licensing �
 WR-03A 已交付人工 MOD3/MRL3 有界 preflight、pair compatibility、纯 transformer 与脱敏 digest/error
 projection。WR-03B 已交付 versioned registry、transform-aware staging、InstallPlan/manifest/recovery/
 Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 因缺少明确可再分发的审计数据而 blocked；
-WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02
-与 LOG-03 已完成；当前下一无人值守 `ready` 纵向切片是 SAVE-03 installer ownership cleanup。
+WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02、
+LOG-03、SAVE-02 与 SAVE-03 已完成；当前下一纵向切片是 SAVE-04 玩家存档恢复。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
@@ -481,8 +487,9 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
   在 apply/retry/new apply 保留只读预检，并以 SQLite 原子 scope admission 最终阻断并发新写入。
   result 只读取指定 batch/attempt，保留遗留状态的安全诊断能力。后续若要自动 reconciliation，必须
   单独设计安全终态、证据和恢复验收；Sandbox batch admission 也不等于 Production 通用写 admission。
-- Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；SAVE-02 已用 disposable Windows
-  安装态链路补齐该证据，但 installer cleanup 仍不能只凭 bundle 中存在 sibling worker 就标记完成。
+- Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；SAVE-02 与 SAVE-03 已用 disposable
+  Windows 安装态链路补齐保护与 installer cleanup 证据，后续回归仍不能只凭 bundle 中存在 sibling
+  worker 就标记完成。
 - Profile 删除的破坏性确认目前在卡片内联展开，而非共享悬浮确认层；这是非阻断 UX 债务。后续
   SAVE-04 存档恢复必须使用统一 Modal，并默认先创建独立 `pre-restore/` 安全备份，成功后才覆盖。
 - WR-04 仍有不阻断 Gate D 的 UI/诊断缺陷：顶栏目录状态陈旧、无元数据 Mod 名称回退为
@@ -498,8 +505,8 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 2. 保持 CAT-01 provenance/licensing 门禁；未达到 `bundled_eligible` 且未经人审的数据不得提交为 catalog。
 3. WR-04 Gate D 已认证；完整 catalog 未到位前继续只使用人工最小 seed，AR6/WR-02B 在获得明确可再分发的审计数据后恢复。
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
-5. LOG-01、LOG-02、LOG-03 与 SAVE-02 已完成；下一纵向切片实现 SAVE-03 installer ownership cleanup。
-6. SAVE-04 存档恢复按独立设计推进：统一悬浮确认、默认开启且独立存放的恢复前安全备份、失败
+5. LOG-01、LOG-02、LOG-03、SAVE-02 与 SAVE-03 已完成；下一纵向切片实现 SAVE-04 玩家存档恢复。
+6. SAVE-04 按独立设计推进：统一悬浮确认、默认开启且独立存放的恢复前安全备份、失败
   fail closed、持久通知与 Audit/rollback/recovery；完成后再推进 retention/备份中心和 Production CLI。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
