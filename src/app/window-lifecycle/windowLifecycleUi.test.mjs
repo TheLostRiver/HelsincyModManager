@@ -37,9 +37,10 @@ test("ordinary and override exits use explicit flags and the structured exit gua
   assert.match(host, /exitApplication\(true,/);
 });
 
-test("window close host carries normal and unsafe dialog modes", () => {
+test("window close host carries normal, unsafe, and restore-blocked dialog modes", () => {
   const host = readProjectFile("src/app/window-lifecycle/WindowCloseDialogHost.tsx");
   const hook = readProjectFile("src/app/window-lifecycle/useWindowCloseRequest.ts");
+  const api = readProjectFile("src/app/window-lifecycle/windowLifecycleApi.ts");
 
   assert.match(host, /WindowCloseDialogMode/);
   assert.match(hook, /kind: "normal"/);
@@ -48,6 +49,11 @@ test("window close host carries normal and unsafe dialog modes", () => {
   assert.match(host, /const result = await exitApplication\(true, mode\.exitAuthorization\)/);
   assert.match(host, /result\.outcome === "confirmation_required"/);
   assert.match(host, /exitAuthorization: result\.exitAuthorization/);
+  assert.match(host, /result\.outcome === "blocked"/);
+  assert.match(host, /setMode\(\{ kind: "blocked", reason: result\.reason \}\)/);
+  assert.match(host, /if \(mode\.kind === "blocked"\) \{\s*return;/);
+  assert.match(hook, /if \(result\.outcome === "blocked"\)[\s\S]*?kind: "blocked"/);
+  assert.match(api, /decision: "blocked"; reason: AppExitBlockReason; exitAuthorization: null/);
   assert.match(host, /mode=\{mode\}/);
 });
 
@@ -77,11 +83,15 @@ test("window close dialog traps focus and submits the safe tray action with Ente
   assert.match(source, /clearTimeout\(focusTimer\)/);
 });
 
-test("normal and unsafe dialogs default focus to tray and unsafe cannot persist a preference", () => {
+test("normal, unsafe, and restore-blocked dialogs default focus to tray", () => {
   const source = readProjectFile("src/app/window-lifecycle/WindowCloseDialog.tsx");
 
   assert.match(source, /renderedMode\.kind === "unsafe"/);
-  assert.match(source, /role=\{renderedMode\.kind === "unsafe" \? "alertdialog" : "dialog"\}/);
+  assert.match(source, /renderedMode\.kind === "normal" \? "dialog" : "alertdialog"/);
+  assert.match(source, /BLOCKED_EXIT_REASON_MESSAGES/);
+  assert.match(source, /save_restore_in_progress/);
+  assert.match(source, /renderedMode\.kind !== "blocked" \? \(/);
+  assert.match(source, /返回应用/);
   assert.match(source, /trayButtonRef/);
   assert.match(source, /setTimeout\(\(\) => trayButtonRef\.current\?\.focus\(\), 0\)/);
   assert.match(source, /renderedMode\.kind === "normal"[\s\S]*?window-close-dialog__remember/);

@@ -57,6 +57,14 @@ export function WindowCloseDialogHost() {
             exitAuthorization: result.exitAuthorization,
           });
         }
+        if (result.outcome === "blocked") {
+          setErrorMessage(null);
+          setMode({ kind: "blocked", reason: result.reason });
+        }
+        return;
+      }
+
+      if (mode.kind === "blocked") {
         return;
       }
 

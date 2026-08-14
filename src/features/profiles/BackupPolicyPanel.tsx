@@ -10,6 +10,7 @@ type BackupPolicyPanelProps = {
   settings: ProfileSaveSettingsDto;
   onScheduleChange: (schedule: ProfileBackupScheduleDto) => void;
   onRetentionChange: (retention: ProfileBackupRetentionDto) => void;
+  onPreRestoreBackupEnabledChange: (enabled: boolean) => void;
   disabled?: boolean;
 };
 
@@ -17,6 +18,7 @@ export function BackupPolicyPanel({
   settings,
   onScheduleChange,
   onRetentionChange,
+  onPreRestoreBackupEnabledChange,
   disabled = false,
 }: BackupPolicyPanelProps) {
   return (
@@ -65,6 +67,20 @@ export function BackupPolicyPanel({
               }
             />
           </label>
+        </div>
+
+        <div className="profile-pre-restore-setting">
+          <div>
+            <strong>恢复前安全备份</strong>
+            <span>恢复存档前先创建独立保护点，默认开启。</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={settings.preRestoreBackupEnabled}
+            disabled={disabled}
+            aria-label="恢复前自动备份"
+            onChange={(event) => onPreRestoreBackupEnabledChange(event.target.checked)}
+          />
         </div>
 
         <button

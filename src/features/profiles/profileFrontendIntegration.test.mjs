@@ -200,7 +200,7 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(pageSource, /className="profile-backup-list"/);
   assert.match(pageSource, /className="profile-backup-item"/);
   assert.match(pageSource, /恢复存档/);
-  assert.match(pageSource, /即将开放/);
+  assert.doesNotMatch(pageSource, /即将开放/);
   assert.match(saveManagerCss, /\.profile-backup-list/);
   assert.match(saveManagerCss, /\.profile-backup-item/);
   assert.match(saveManagerCss, /\.profile-backup-item__actions/);
@@ -268,7 +268,7 @@ test("backup history keeps the restore entry visible without horizontal scrollin
   assert.match(pageSource, /role="list" aria-label="备份历史"/);
   assert.match(pageSource, /role="listitem"/);
   assert.match(pageSource, /<ArchiveRestore size=\{15\}/);
-  assert.match(pageSource, /aria-label=\{`恢复存档：\$\{row\.name\}（功能即将开放）`\}/);
+  assert.match(pageSource, /aria-label=\{`恢复存档：\$\{row\.name\}`\}/);
   assert.match(saveManagerCss, /\.profile-backup-list\s*\{[\s\S]*?container-type:\s*inline-size/);
   assert.match(saveManagerCss, /\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(saveManagerCss, /@container \(min-width:\s*380px\)[\s\S]*?\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
