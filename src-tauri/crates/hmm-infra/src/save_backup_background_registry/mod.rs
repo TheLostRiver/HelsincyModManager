@@ -4,6 +4,9 @@ mod task_spec;
 #[cfg(windows)]
 mod powershell;
 
+#[cfg(windows)]
+mod native_inspect;
+
 #[cfg(any(windows, test))]
 mod registry;
 
