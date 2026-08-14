@@ -51,11 +51,16 @@ WiX 使用 `Return="check"` 执行外部 cleanup helper。Windows Installer 会�
 task 聚合状态和重试结果确认是否命中 fail-closed。交互文案应提示关闭 HMM、等待后台备份完成并重试，
 但不得暴露 task name、SID、路径或 helper 输出。
 
-NSIS 计时和机器结果必须直接运行安装目录中的 uninstaller，并附带 Tauri 维护流程使用的
-`_?=<安装目录>` 参数，例如 `uninstall.exe /S _?=C:\...\Helsincy Mod Manager`。只运行裸
-`uninstall.exe` 会经过 self-extractor wrapper；wrapper 可能对外返回 `0`，即使内部 cleanup 已以
-`20/21/22/23/64` 阻断。interactive 仍以 GUI 固定 reason 为准，silent 以 direct-uninstaller exit code
-加安装目录/task read-back 为准；报告中不要记录完整路径。
+NSIS 的 `_?=<安装目录>` 是内部 direct-uninstaller 诊断参数：它会关闭 NSIS 将 uninstaller 复制到
+临时目录的正常 self-extractor 流程。因此 direct 模式可以透传 helper 的 `20/21/22/23/64`，但即使
+卸载主体成功，也无法删除当前仍在运行的 `uninstall.exe`，不能作为成功卸载或恢复重试的入口。
+
+- `blocked` case：使用 `uninstall.exe /S _?=<安装目录>` 捕获稳定非零码，并以安装目录、三个 payload
+  与 task read-back 证明 fail-closed。不得因为 direct 模式留下自身而把该模式用于成功验收。
+- `continued`、`missing` 和 Running 自然回到 `Ready` 后的恢复重试：运行正常 `uninstall.exe /S`，让
+  NSIS wrapper 从临时副本完成自删除；以安装目录消失、owned task 消失、synthetic save/backup 保留为
+  权威结果。wrapper exit `0` 不能单独证明 helper 成功，必须与这些 read-back 同时成立。
+- interactive 仍以 GUI 固定 reason 与 read-back 为准；报告中不要记录完整路径。
 
 ## 记录格式
 

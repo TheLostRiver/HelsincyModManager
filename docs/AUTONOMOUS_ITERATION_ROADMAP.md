@@ -40,8 +40,8 @@
 - T17 狩技来源批量迁移 Slice 1-4C：`completed`，保持 import-only。
 - 多 Steam 用户存档候选发现、显式选择、昵称/头像展示和隐私降级：`completed`。
 - 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
-  support export：核心已完成；SAVE-02 安装态 runtime acceptance 已 `certified`，installer cleanup、
-  玩家存档恢复和 retention/备份中心仍有缺口。
+  support export：核心已完成；SAVE-02 与 SAVE-03 安装态 runtime acceptance 均已 `certified`，玩家
+  存档恢复和 retention/备份中心仍有缺口。
 - CLI-0A/0B/1A/1B/2A/2B/2C：`completed`；Sandbox 单项 lifecycle 已闭环，Production 写命令仍不可达。
 - 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
   Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
@@ -49,8 +49,8 @@
 - T13 Slice A-D：T13-07 为 `completed`；T13-08 Windows Sandbox Gate C 为 `certified`。
 - CAT-01、WR-01、WR-02A、WR-03A、WR-03B 与 WR-04 已完成；WR-04 Windows Gate D 为
   `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；
-  SAVE-02 安装态后台保护验收已 `certified`。production catalog 仍受 WR-02B 许可门禁约束，下一
-  `ready` 纵向切片为 SAVE-03。
+  SAVE-02 安装态后台保护与 SAVE-03 installer ownership cleanup 均已 `certified`。production catalog
+  仍受 WR-02B 许可门禁约束，下一 `ready` 纵向切片为 SAVE-04。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -135,8 +135,9 @@ flowchart TD
 QG-01、T13-00 和 Slice A-D 已完成；T13-05 的 Sandbox CLI、T13-06 的窄 Tauri/typed API、T13-07
 批量 UI 与 T13-08 Windows Gate C 已形成完整 Sandbox 玩家路径。CAT-01 装备数据治理、WR-01 武器
 设计、WR-02A 纯解析、WR-03A 纯 binary transformer、WR-03B 安装事实链和 WR-04 受控 UI/Gate D
-均已完成；LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log 与 SAVE-02
-安装态后台保护验收也已完成。AR6 与 WR-02B 等待已授权审计数据，当前下一纵向切片是 SAVE-03。Production weapon
+均已完成；LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
+安装态后台保护与 SAVE-03 installer cleanup 验收也已完成。AR6 与 WR-02B 等待已授权审计数据，当前
+下一纵向切片是 SAVE-04。Production weapon
 catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人工 seed。外部 review
 因额度缺席时仍按 CodeRabbit
 缺席流程完成独立全 diff 自审，且不能跳过 required CI terminal success。
@@ -154,9 +155,9 @@ catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人
 
 Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI、Slice C 的
 uninstall/reinstall runtime/CLI contract、Slice D 的 Tauri/UI/Gate C、CAT-01 数据治理和 WR-04
-Tauri/UI/Gate D、LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log 与 SAVE-02
-安装态后台保护验收均已完成。Sandbox 写能力不因此扩张为 Production 写能力；下一任务进入 SAVE-03
-installer ownership cleanup，AR6/WR-02B 在授权数据到位后恢复。
+Tauri/UI/Gate D、LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
+安装态后台保护与 SAVE-03 installer cleanup 验收均已完成。Sandbox 写能力不因此扩张为 Production
+写能力；下一任务进入 SAVE-04 玩家存档恢复，AR6/WR-02B 在授权数据到位后恢复。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -589,11 +590,10 @@ build `19041`，`AMD64`；未使用真实游戏、Steam userdata 或玩家存档
 
 ### SAVE-03：Installer ownership cleanup
 
-状态：`implemented`，build/static gate 已通过；disposable Windows VM runtime gate 已完成 WiX
-核心卸载矩阵、`0.1.9 -> 0.1.10` upgrade、`0.1.10` repair、最终 owned 卸载、自动备份产物与 NSIS
-payload/配置持久化。NSIS 重新启用时暴露出 exact `Ready` task 没有本轮首次运行的问题；当前已实现
-Rust exact/canonical read-back 后的内部首次启动和启动前后复核；`0.1.11` 新候选已构建并完成
-payload/hook/MSI database 静态审计，等待最终受影响路径复验。
+状态：`certified`（2026-08-14）。build/static gate 与 disposable Windows Sandbox runtime gate 均已
+完成。最终候选覆盖 WiX 核心卸载矩阵、upgrade/repair、NSIS payload/配置持久化、重新启用后的首次
+worker 运行、fresh heartbeat、Settings 自动收敛、synthetic 自动备份、owned 卸载和 running
+fail-closed。
 
 - [x] 实现 ownership-checked cleanup helper、双 Windows sidecar、NSIS `PREUNINSTALL` 和 WiX custom action。
 - [x] foreign task 保留；running/unknown owned task fail closed，并有 fake/static 测试覆盖。
@@ -601,15 +601,19 @@ payload/hook/MSI database 静态审计，等待最终受影响路径复验。
   未在开发者账户安装或运行 artifact。
 - [x] disposable VM 已覆盖 WiX missing/exact/drift/foreign/running、running retry、upgrade/repair、最终
   owned 卸载，以及旧候选的 NSIS payload、配置持久化和真实 synthetic 自动备份。
-- [x] 首次运行修复的 `0.1.11` NSIS/WiX debug artifact 已生成并审计三个 sibling、NSIS hook、
-  MSI `3499/3500` sequence、卸载条件与固定 `1722` 文案；验收 bundle、synthetic fixture 和全新 WSB
-  已准备，未在开发者账户安装或运行。
-- [ ] 新候选继续覆盖 NSIS 重新启用后的自动首次运行/fresh heartbeat/Settings 自动收敛、owned
-  interactive/silent 卸载和 running fail-closed；完成后才可标记 runtime acceptance。
+- [x] 最终 `0.1.12` NSIS/WiX debug artifact 已审计三个 sibling、NSIS hook、MSI `3499/3500`
+  sequence、卸载条件与固定 `1722` 文案，并只在 disposable Windows Sandbox 运行。
+- [x] NSIS 重新启用后自动产生 fresh heartbeat，Settings 无需手动检查即收敛为“已保护”；每日 cadence
+  对 1 文件 synthetic save 生成 1 个 ZIP 和 1 个 manifest。
+- [x] owned exact interactive/silent 卸载清理安装目录与 owned task，保留 synthetic save/ZIP/manifest；
+  foreign task 保留。owned task 为 Running 时 direct 诊断模式稳定返回 `20` 并完整保留安装目录、payload
+  与 task，任务回到 Ready 后使用正常 wrapper 重试完整卸载。
+- [x] `_?=<安装目录>` 已限定为 blocked case 的 direct exit-code 诊断参数；成功路径使用正常 NSIS
+  wrapper 和安装目录/task/synthetic 数据 read-back，避免把 direct 模式无法自删除误判为产品缺陷。
 
 ### SAVE-04：玩家存档恢复
 
-状态：`blocked`，等待 SAVE-03 disposable VM runtime gate。
+状态：`ready`，SAVE-03 disposable VM runtime gate 已完成。
 
 - 独立设计 preview、manifest/hash 校验、统一悬浮确认、restore 前安全备份和 rollback/recovery。
 - restore 前安全备份默认开启并持久化为 Profile 级开关；必须写入独立 `pre-restore/` 目录并使用清晰的
@@ -658,17 +662,15 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
-LOG-03 与 SAVE-02 均已完成。SAVE-03 的实现和 build/static gate 已完成，`0.1.10` 的 WiX 核心卸载、
-upgrade/repair、最终 owned 卸载与 NSIS payload 尾部矩阵已通过；首次运行修复的 `0.1.11` 新候选也已
-通过 build/static 审计，当前停在其 NSIS 自动收敛、owned 卸载和 running fail-closed disposable
-Windows VM 尾部 gate；
-在该人工 gate 完成前不推进 SAVE-04 或 CLI-3A。AR6/WR-02B 继续等待可再分发的审计数据。
+LOG-03、SAVE-02 与 SAVE-03 均已完成。SAVE-03 的 WiX/NSIS build/static、upgrade/repair、自动备份、
+owned/foreign/running 和正常 wrapper recovery 矩阵均已通过 disposable Windows Sandbox gate；下一纵向
+切片进入 SAVE-04。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力
 
 ### CLI-3A：跨进程 admission
 
-状态：`blocked`，T13-08 与 LOG-01 已满足，仍依赖 SAVE-03。
+状态：`ready`，T13-08、LOG-01 与 SAVE-03 均已满足；仍需独立设计和验收。
 
 - 定义 `game-profile-write`、`save-profile-write`、`background-registration-write` scopes。
 - GUI、CLI、worker 使用相同 admission；锁内重验，固定获取顺序。

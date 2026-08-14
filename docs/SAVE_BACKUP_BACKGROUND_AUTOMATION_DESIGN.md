@@ -6,7 +6,7 @@
 
 P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 
-- 用户级 Scheduled Task adapter 支持受控 inspect、幂等 register/update、逐字段 read-back 和 ownership-checked unregister；固定任务每 15 分钟运行，并在用户登录后延迟 1 分钟触发。
+- 用户级 Scheduled Task adapter 支持受控 inspect、幂等 register/update、逐字段 read-back 和 ownership-checked unregister；固定任务每 15 分钟运行，并在用户登录后延迟 1 分钟触发。应用内通过当前进程 token 原生读取用户 SID，并使用 Task Scheduler COM 读取完整 task definition、状态和账户身份，再把账户名归一化为 SID；缺失任务、权限不足和任一字段/枚举/COM 异常仍分别映射为受控结果或 fail closed，整个只读链路不启动 PowerShell。
 - task action 只能启动内部定位的 sibling worker，参数严格固定为 `--once`；前端和外部输入不能提供 task name、SID、命令、路径、参数、PowerShell 或 XML。
 - `register()` 在写入后先由 PowerShell 返回完整 read-back，再由 Rust 复验 task spec 与 canonical non-link worker；只有该层确认 exact 后，才进入独立的内部首次启动阶段。首次启动对需要启动的 `Ready` task 在 PowerShell 内执行两次 exact-owned read-back，只通过 `Start-ScheduledTask -InputObject` 启动该对象，并在启动后再次复验 exact 与 `Ready/Running/Queued` 状态。若 task 已经 `Running/Queued` 则不重复启动。任一 read-back、worker identity、状态或启动命令失败都 fail closed，不返回 `Registered`，也不伪造 heartbeat。
 - `worker_heartbeat_at` 已与 scheduler `last_checked_at` 分离。只有后台保护已启用、read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才派生 `protected`。
@@ -21,7 +21,7 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 - Settings 只允许直接点击开关控件启停，说明行本身不触发状态变化；检查、启用和停用期间必须显示可见的旋转/不定进度、实时耗时与完成/失败耗时。当前应用会话保留最近一次控制状态，离开再返回 Settings 不自动执行平台检查；用户点击“重新检查”可以随时强制刷新。
 - 启用成功先进入 `starting`。当前启用周期在 20 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。启停 command 的确认若短暂失败，前端必须以一次权威状态重读判断是否已经收敛，已收敛时清除旧操作错误，不要求用户再次手动检查。
 - 启用后只在当前仍挂载的 Settings 页面按约 0.75 秒、3 秒、1、5、10、16 分钟节点自动复查 `starting`；3 秒节点用于覆盖首次 Windows task inspect 尚未结束时 worker heartbeat 已经落盘的短暂陈旧窗口。临时读取失败不得覆盖最近一次成功读取的开关与 control status，只显示“本次检查未完成”的临时警告并继续使用剩余节点。只有当前会话从未取得过有效 control status 时才显示全局“状态不可用”。离开页面会取消这些复查，返回页面仍只展示会话缓存，不自动触发平台查询。
-- 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
+- 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。guard 每次都使用当前 Task Scheduler COM 精确读回和 fresh heartbeat，不缓存或延用平台保护事实；查询签发短时一次性授权，退出命令消费该授权以避免重复检查。授权缺失、过期、错配或已消费时仍回退到完整 guard并刷新危险确认，保持 fail-closed。普通对话框临时写入的“记住完全退出”偏好若被 guard 或 command 错误阻断，必须恢复原值。
 - `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
 
 P7.2a 安装态 runtime acceptance 已于 2026-08-07 在一次性 Windows Sandbox 完成：安装目录 sibling
@@ -136,7 +136,9 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 退出程序
 
-用户选择“退出程序”表示主客户端进程结束。所有真正退出入口必须先读取后端结构化 exit guard；普通退出只能在没有自动计划或全局状态为 `protected` 时继续。`starting`、未启用、注册失败、worker 不健康、权限不足、不支持或状态不可用时，必须显示原因明确的危险退出提示：
+用户选择“退出程序”表示主客户端进程结束。所有真正退出入口必须调用同一个后端退出命令；该命令先隐藏主窗口，再执行一次结构化 exit guard。普通退出只能在没有自动计划或全局状态为 `protected` 时继续；`starting`、未启用、注册失败、worker 不健康、权限不足、不支持或状态不可用时，窗口恢复并显示原因明确的危险退出提示：
+
+Windows 安装态验收把“窗口立即隐藏”和“进程实际退出”分开判定：安全退出必须在 5 秒内结束 `hmm-tauri` 及其 `msedgewebview2` 子进程。App Log 的 `application.exit_guard_evaluated.duration_ms` 用于定位实时检查耗时，进程观测记录真实退出耗时；不能以窗口隐藏代替进程退出成功。
 
 ```text
 退出主客户端后，自动备份将不再受后台保障。
@@ -368,8 +370,8 @@ unsupported_platform
 `protected`。
 
 启用后，当前 Settings 页面在约 0.75 秒和 3 秒执行两次短周期非阻塞权威复查，再在约 1、5、10、16 分钟节点
-有限复查，使注册状态快速收敛，并在首次 heartbeat 到达后无需用户再次点击。后端 `control_status()` 必须在可能耗时
-数秒的 Scheduled Task inspect 之后重新读取全局设置；这样 heartbeat 或停用意图若在 inspect 期间提交，同一次响应
+有限复查，使注册状态快速收敛，并在首次 heartbeat 到达后无需用户再次点击。后端 `control_status()` 必须在实时
+Scheduled Task inspect 之后重新读取全局设置；这样 heartbeat 或停用意图若在 inspect 期间提交，同一次响应
 就能看到新事实，而不会返回开始检查前的陈旧快照。临时读取失败不能取消剩余节点；其他操作进行中时延后当前节点而
 不消耗它。自动复查必须在页面卸载时取消，重新进入 Settings 不自动查询；这样既避免页面切换触发十几秒平台检查，
 也避免长期轮询 Scheduled Task。
@@ -563,7 +565,7 @@ MVP 平台。推荐：
 - 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
 - 已实现 20 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生；启动宽限覆盖首次 15 分钟计划任务周期及调度抖动。
 - 已实现启停结果的权威重读收敛、动态进度、实时/完成耗时，以及仅限当前 Settings 页面生命周期的有限自动复查；短周期节点覆盖首次 inspect 与 heartbeat 的竞争窗口，页面返回不会自动执行平台查询。
-- 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
+- 已实现统一 exit guard、结构化危险原因、短时一次性授权和当次 override；危险退出不保存偏好。退出命令先隐藏主窗口，安全检查失败时恢复窗口并显示确认，避免用户在等待后台检查时误以为退出未生效。授权存储或 command 失败同样必须恢复窗口并 fail closed；只有明确的 `exiting` 结果才保持隐藏。
 - 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 已完成，P7.2c installer cleanup
   仍未完成。
 

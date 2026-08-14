@@ -247,9 +247,11 @@ Tauri CLI 2.11.2 的 `NsisConfig.installerHooks` 支持
    不弹窗、不降级为继续。
 6. 升级路径不得 cleanup；模板 spike 无法证明升级判定时，NSIS gate 保持未完成。
 
-NSIS uninstaller 的 runtime evidence 使用 Tauri 维护流程同样的 `_?=<安装目录>` direct-uninstaller
-参数。裸 `uninstall.exe` 可能只返回 self-extractor wrapper 的 `0`，不能作为 silent helper 结果的唯一
-证据；必须同时读取 direct exit code 与 task/安装目录 read-back。
+NSIS uninstaller 的 fail-closed runtime evidence 可以使用 `_?=<安装目录>` direct-uninstaller 参数，
+因为该模式会透传 helper 的稳定非零退出码。但 `_?=` 同时关闭 NSIS 的临时副本/self-delete 流程，成功
+路径会留下正在运行的 `uninstall.exe`，因此不得用它验收成功卸载或 Running 后恢复重试。成功路径必须
+运行正常 uninstaller wrapper，并同时读取 task、安装目录和 synthetic 数据 read-back；wrapper 的 `0`
+不能作为 helper 成功的唯一证据。
 
 ## 12. WiX 接入
 
