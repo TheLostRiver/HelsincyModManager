@@ -97,6 +97,16 @@ pub trait SaveBackupWriter: Send + Sync {
 pub trait SaveBackupRepository: Send + Sync {
     fn save(&self, summary: &SaveBackupSummary) -> Result<()>;
 
+    fn get_for_restore(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        backup_id: &str,
+    ) -> Result<Option<SaveBackupSummary>> {
+        let _ = (game_id, profile_id, backup_id);
+        Ok(None)
+    }
+
     fn list_for_profile(
         &self,
         game_id: &GameId,

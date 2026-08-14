@@ -27,6 +27,7 @@ pub struct SetProfileSaveSettingsRequest {
     pub backup_directory: Option<String>,
     pub schedule: ProfileBackupSchedule,
     pub retention: ProfileBackupRetention,
+    pub pre_restore_backup_enabled: bool,
 }
 
 pub struct ProfileService {
@@ -151,6 +152,7 @@ impl ProfileService {
                 .default_backup_directory(game_id)?,
             schedule: ProfileBackupSchedule::manual(),
             retention: ProfileBackupRetention::default(),
+            pre_restore_backup_enabled: true,
             updated_at: 0,
         })
     }
@@ -217,6 +219,7 @@ impl ProfileService {
             backup_directory,
             schedule: request.schedule,
             retention: request.retention,
+            pre_restore_backup_enabled: request.pre_restore_backup_enabled,
             updated_at: self.clock.now_unix_millis()?,
         };
 

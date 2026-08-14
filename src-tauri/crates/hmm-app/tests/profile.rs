@@ -284,6 +284,7 @@ fn profile_save_settings_rejects_unknown_profile() {
         backup_directory: None,
         schedule: hmm_core::ProfileBackupSchedule::manual(),
         retention: hmm_core::ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
     });
 
     assert!(result.is_err());
@@ -340,6 +341,7 @@ fn profile_save_settings_validates_selected_directories_before_persisting() {
             max_count: 20,
             max_age_days: Some(30),
         },
+        pre_restore_backup_enabled: false,
     });
 
     let settings = result.expect("settings saved");
@@ -351,6 +353,7 @@ fn profile_save_settings_validates_selected_directories_before_persisting() {
     );
     assert_eq!(settings.schedule.cadence, hmm_core::BackupCadence::Daily);
     assert_eq!(settings.retention.max_count, 20);
+    assert!(!settings.pre_restore_backup_enabled);
 }
 
 #[test]
@@ -378,6 +381,7 @@ fn profile_save_settings_rejects_out_of_range_schedule_time() {
             weekdays: Vec::new(),
         },
         retention: hmm_core::ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
     });
     assert!(invalid_hour.is_err());
 
@@ -394,6 +398,7 @@ fn profile_save_settings_rejects_out_of_range_schedule_time() {
                 weekdays: vec![1],
             },
             retention: hmm_core::ProfileBackupRetention::default(),
+            pre_restore_backup_enabled: true,
         });
     assert!(invalid_minute.is_err());
 }

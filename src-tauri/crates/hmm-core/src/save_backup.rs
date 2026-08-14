@@ -9,6 +9,7 @@ pub enum SaveBackupTrigger {
     Manual,
     Auto,
     PreInstall,
+    PreRestore,
 }
 
 impl SaveBackupTrigger {
@@ -17,6 +18,7 @@ impl SaveBackupTrigger {
             Self::Manual => "manual",
             Self::Auto => "auto",
             Self::PreInstall => "pre_install",
+            Self::PreRestore => "pre_restore",
         }
     }
 }

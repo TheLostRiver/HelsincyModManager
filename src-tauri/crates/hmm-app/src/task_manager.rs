@@ -10,6 +10,7 @@ pub enum TaskKind {
     ModImport,
     Install,
     SaveBackup,
+    SaveRestore,
 }
 
 impl TaskKind {
@@ -18,6 +19,7 @@ impl TaskKind {
             Self::ModImport => "mod-import",
             Self::Install => "install",
             Self::SaveBackup => "save-backup",
+            Self::SaveRestore => "save-restore",
         }
     }
 }
@@ -122,6 +124,8 @@ pub enum TaskManagerError {
     },
     #[error("task scope is already active for {kind:?}: {task_id}")]
     TaskScopeBusy { kind: TaskKind, task_id: String },
+    #[error("task creation is blocked during application shutdown for {kind:?}")]
+    TaskCreationBlocked { kind: TaskKind },
     #[error("task store is unavailable")]
     TaskStoreUnavailable,
 }

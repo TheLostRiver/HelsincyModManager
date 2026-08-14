@@ -3,9 +3,9 @@ mod audit;
 mod batch;
 mod cancellation;
 mod category;
+mod debug_log;
 mod diagnostics_environment;
 mod diagnostics_health;
-mod debug_log;
 mod external_import;
 mod game_launch;
 mod game_prerequisites;
@@ -21,6 +21,7 @@ mod reinstall;
 mod replacement;
 mod save_backup;
 mod save_directory;
+mod save_restore;
 mod staging;
 mod task_log;
 mod text_log;
@@ -43,9 +44,9 @@ pub use batch::{
 };
 pub use cancellation::{CancellationToken, NeverCancelled};
 pub use category::CategoryRepository;
+pub use debug_log::{DebugLogControl, NoopDebugLogControl};
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
-pub use debug_log::{DebugLogControl, NoopDebugLogControl};
 pub use external_import::{
     ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
     ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
@@ -124,6 +125,12 @@ pub use save_directory::{
     GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,
     PendingSaveDirectoryDiscovery, ScannedSaveDirectoryCandidate, SteamAccountProfileClient,
     SteamUserdataScanRequest, SteamUserdataScanner,
+};
+pub use save_restore::{
+    PreparedSaveRestore, SaveRestoreCommitError, SaveRestoreCommitRequest, SaveRestoreCommitResult,
+    SaveRestoreFileSystem, SaveRestoreFinalizeError, SaveRestoreFinalizeRequest,
+    SaveRestorePrepareError, SaveRestorePrepareRequest, SaveRestoreSourceError,
+    SaveRestoreSourceValidator, SaveRestoreTransactionRepository, ValidatedSaveRestoreSource,
 };
 pub use staging::{
     ContentTransformDispatchError, ContentTransformOutput, ContentTransformRequest,

@@ -8,6 +8,7 @@ mod profile_repository;
 mod save_backup_background_settings_repository;
 mod save_backup_repository;
 mod save_backup_scheduler_repository;
+mod save_restore_transaction_repository;
 
 pub use batch_lifecycle_repository::SqliteBatchLifecycleRepository;
 pub use category_repository::SqliteCategoryRepository;
@@ -18,6 +19,7 @@ pub use profile_repository::SqliteProfileRepository;
 pub use save_backup_background_settings_repository::SqliteSaveBackupBackgroundSettingsRepository;
 pub use save_backup_repository::SqliteSaveBackupRepository;
 pub use save_backup_scheduler_repository::SqliteSaveBackupSchedulerStateRepository;
+pub use save_restore_transaction_repository::SqliteSaveRestoreTransactionRepository;
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OpenFlags};

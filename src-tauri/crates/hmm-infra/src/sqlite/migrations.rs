@@ -21,6 +21,7 @@ pub(crate) fn migrations() -> Migrations<'static> {
         M::up(include_str!("migrations/009_mod_library_projection.sql")),
         M::up(include_str!("migrations/010_external_import_preview.sql")),
         M::up(include_str!("migrations/011_batch_lifecycle.sql")),
+        M::up(include_str!("migrations/012_save_restore.sql")),
     ])
 }
 
@@ -107,5 +108,36 @@ mod tests {
             singleton_count, 0,
             "migration must not invent a background protection intent"
         );
+    }
+
+    #[test]
+    fn save_restore_migration_defaults_existing_profiles_to_pre_restore_backup_enabled() {
+        let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
+        let migrations = migrations();
+        migrations
+            .to_version(&mut conn, 11)
+            .expect("migrate through 011");
+        conn.execute(
+            "INSERT INTO profile_save_settings (
+                profile_id, backup_cadence, backup_weekdays,
+                retention_max_count, updated_at
+             ) VALUES ('default', 'manual', '[]', 20, 42)",
+            [],
+        )
+        .expect("insert legacy save settings");
+
+        migrations
+            .to_latest(&mut conn)
+            .expect("migrate through 012");
+
+        let enabled: i64 = conn
+            .query_row(
+                "SELECT pre_restore_backup_enabled
+                 FROM profile_save_settings WHERE profile_id = 'default'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated restore setting");
+        assert_eq!(enabled, 1);
     }
 }

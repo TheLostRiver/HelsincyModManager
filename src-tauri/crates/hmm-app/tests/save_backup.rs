@@ -25,6 +25,7 @@ fn manual_backup_uses_default_backup_directory_when_custom_backup_root_is_unset(
             max_count: 3,
             max_age_days: None,
         },
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
 
@@ -81,6 +82,7 @@ fn auto_backup_passes_auto_trigger_to_writer_and_history() {
             weekdays: Vec::new(),
         },
         retention: ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
 
@@ -118,6 +120,7 @@ fn manual_backup_rejects_unset_save_directory_before_writer_runs() {
         backup_directory: default_backup_directory_selection(),
         schedule: ProfileBackupSchedule::manual(),
         retention: ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
 
@@ -150,6 +153,7 @@ fn manual_backup_prunes_old_completed_backups_for_same_profile_only() {
             max_count: 1,
             max_age_days: None,
         },
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
     harness
@@ -207,6 +211,7 @@ fn manual_backup_returns_created_summary_when_retention_delete_fails() {
             max_count: 1,
             max_age_days: None,
         },
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
     harness
@@ -253,6 +258,7 @@ fn manual_backup_continues_retention_after_individual_delete_failure() {
             max_count: 1,
             max_age_days: None,
         },
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
     harness
@@ -313,6 +319,7 @@ fn manual_backup_retention_uses_each_backup_original_directory() {
             max_count: 1,
             max_age_days: None,
         },
+        pre_restore_backup_enabled: true,
         updated_at: 10,
     });
     let mut old_summary = sample_summary("backup-old", "default", 1);
@@ -335,6 +342,44 @@ fn manual_backup_retention_uses_each_backup_original_directory() {
     assert_eq!(deleted.len(), 1);
     assert_eq!(deleted[0].0, "backup-old");
     assert_eq!(deleted[0].1.as_deref(), Some("E:/OriginalBackups"));
+}
+
+#[test]
+fn ordinary_retention_does_not_delete_pre_restore_backups() {
+    let harness = Harness::new();
+    harness.insert_profile("default");
+    harness.insert_settings(ProfileSaveSettings {
+        profile_id: "default".to_owned(),
+        save_directory: custom_directory_selection("C:/Users/Test/Saves"),
+        backup_directory: default_backup_directory_selection(),
+        schedule: ProfileBackupSchedule::manual(),
+        retention: ProfileBackupRetention {
+            max_count: 1,
+            max_age_days: None,
+        },
+        pre_restore_backup_enabled: true,
+        updated_at: 10,
+    });
+    let mut pre_restore = sample_summary("backup-pre-restore", "default", 1);
+    pre_restore.trigger = SaveBackupTrigger::PreRestore;
+    harness
+        .repository
+        .save(&pre_restore)
+        .expect("save pre-restore summary");
+
+    harness
+        .service
+        .create_manual_backup(CreateSaveBackupRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            note: None,
+        })
+        .expect("manual backup succeeds");
+
+    assert!(!harness
+        .writer
+        .take_deleted_ids()
+        .contains(&"backup-pre-restore".to_owned()));
 }
 
 struct Harness {

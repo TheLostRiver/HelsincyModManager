@@ -191,6 +191,7 @@ impl SaveBackupService {
                 .map_err(|_| SaveBackupError::DestinationUnavailable)?,
             schedule: hmm_core::ProfileBackupSchedule::manual(),
             retention: hmm_core::ProfileBackupRetention::default(),
+            pre_restore_backup_enabled: true,
             updated_at: 0,
         })
     }
@@ -206,7 +207,10 @@ impl SaveBackupService {
             .list_for_profile(game_id, profile_id, None)
             .map_err(|_| SaveBackupError::RetentionFailed)?
             .into_iter()
-            .filter(|summary| summary.status == SaveBackupStatus::Completed)
+            .filter(|summary| {
+                summary.status == SaveBackupStatus::Completed
+                    && summary.trigger != SaveBackupTrigger::PreRestore
+            })
             .collect::<Vec<_>>();
 
         summaries.sort_by(|left, right| {
