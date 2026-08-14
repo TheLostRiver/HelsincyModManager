@@ -1720,9 +1720,11 @@ Mod 展示元数据契约边界：
 - `hmm://window-close-requested` 由 Tauri 后端在主窗口收到关闭请求时发出；后端会先阻止默认关闭，前端必须显示关闭选择或按已保存偏好调用窄命令。
 - `hide_main_window_to_tray` 只隐藏当前主窗口，不执行备份、不修改 Profile、不读取路径。
 - `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
-- `get_app_exit_guard()` 是只读结构化决策；所有真正退出入口，包括主窗口关闭、remembered exit 和托盘“退出程序”，都必须经过同一流程。
-- `exit_app({ request: { overrideUnprotected } })` 要求显式布尔值。普通退出只能传 `false`；只有危险退出对话框的当次明确确认可以传 `true`。后端在真正退出前始终重新计算 guard，不信任前端缓存。
-- `exit_app({ request: { overrideUnprotected: false } })` 若在查询后因状态竞态变为不安全，会返回稳定 code `exit_confirmation_required`；前端必须重新读取 `get_app_exit_guard`，不得解析 `CommandErrorDto.message` 猜测原因。
+- `get_app_exit_guard()` 是只读结构化决策；只有 `confirmation_required` 会同时返回后端签发的短时、一次性 `exitAuthorization`，`safe` 不签发授权。
+- `exit_app({ request: { overrideUnprotected, exitAuthorization? } })` 要求显式布尔值。普通退出只能传 `false`；命令先隐藏主窗口，再执行一次权威 guard。安全时返回 `outcome: "exiting"` 并退出；不安全时恢复窗口，返回 `outcome: "confirmation_required"`、稳定原因和一次性授权。
+- Windows guard 每次读取当前 Task Scheduler definition/status 并结合 fresh heartbeat 判定；不得用长 TTL 或会话缓存替代本次精确读回。只读 inspect 使用 Task Scheduler COM，注册、启动、停用和 installer cleanup 仍沿用受控 PowerShell mutation。
+- 隐藏窗口后的所有非退出路径（确认返回、授权存储/guard 错误或其他 command 失败）都必须恢复主窗口；只有明确返回 `outcome: "exiting"` 才允许保持隐藏。授权 mutex 错误必须直接 fail closed，不能回退为无授权的安全退出。
+- 只有危险退出对话框的当次明确确认可以传 `overrideUnprotected: true`，并必须透传该对话框持有的授权。授权缺失、过期、错配或已消费时，后端回退到完整 guard；若仍不安全则返回新的原因和授权，前端必须重置执行态并刷新当前危险确认，不能直接 override 或停留在“正在退出”。
 - 危险退出默认操作和初始焦点为留在托盘，不显示 remember；Escape、overlay 和关闭按钮都只取消。`starting` override 不 unregister、不清除 `desiredEnabled`。
 
 ```ts
@@ -1736,12 +1738,17 @@ type AppExitGuardReason =
   | "status_unavailable";
 
 type AppExitGuardDto =
-  | { decision: "safe"; reason: null }
-  | { decision: "confirmation_required"; reason: AppExitGuardReason };
+  | { decision: "safe"; reason: null; exitAuthorization: null }
+  | { decision: "confirmation_required"; reason: AppExitGuardReason; exitAuthorization: string };
 
 type ExitAppRequestDto = {
   overrideUnprotected: boolean;
+  exitAuthorization?: string;
 };
+
+type ExitAppResultDto =
+  | { outcome: "exiting"; reason: null; exitAuthorization: null }
+  | { outcome: "confirmation_required"; reason: AppExitGuardReason; exitAuthorization: string };
 ```
 
 - Settings 全局控制与 exit guard 均只消费稳定 snake_case status/reason/code；UI 不展示 raw backend message。

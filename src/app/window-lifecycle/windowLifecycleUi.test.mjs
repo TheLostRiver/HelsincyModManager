@@ -26,16 +26,15 @@ test("ordinary and override exits use explicit flags and the structured exit gua
   const hook = readProjectFile("src/app/window-lifecycle/useWindowCloseRequest.ts");
   const host = readProjectFile("src/app/window-lifecycle/WindowCloseDialogHost.tsx");
 
-  assert.match(api, /exitApplication\(overrideUnprotected = false\)/);
-  assert.match(api, /request:\s*\{ overrideUnprotected \}/);
+  assert.match(api, /exitApplication\(/);
+  assert.match(api, /overrideUnprotected/);
+  assert.match(api, /exitAuthorization/);
   assert.match(api, /invoke<AppExitGuardDto>\("get_app_exit_guard"\)/);
-  assert.match(hook, /getAppExitGuard\(\)/);
+  assert.match(hook, /const result = await exitApplication\(false\)/);
   assert.match(hook, /exitApplication\(false\)/);
-  assert.match(hook, /exit_confirmation_required/);
-  assert.match(hook, /MAX_ORDINARY_EXIT_ATTEMPTS/);
-  assert.match(hook, /return "status_unavailable"/);
+  assert.match(hook, /result\.outcome === "confirmation_required"/);
   assert.doesNotMatch(hook, /\.message/);
-  assert.match(host, /exitApplication\(true\)/);
+  assert.match(host, /exitApplication\(true,/);
 });
 
 test("window close host carries normal and unsafe dialog modes", () => {
@@ -44,17 +43,23 @@ test("window close host carries normal and unsafe dialog modes", () => {
 
   assert.match(host, /WindowCloseDialogMode/);
   assert.match(hook, /kind: "normal"/);
-  assert.match(host, /kind: "unsafe"/);
-  assert.match(host, /reason/);
+  assert.match(host, /setMode\(confirmation\)/);
+  assert.match(host, /confirmation/);
+  assert.match(host, /const result = await exitApplication\(true, mode\.exitAuthorization\)/);
+  assert.match(host, /result\.outcome === "confirmation_required"/);
+  assert.match(host, /exitAuthorization: result\.exitAuthorization/);
   assert.match(host, /mode=\{mode\}/);
 });
 
-test("a guarded exit race restores the preference written by the normal dialog", () => {
+test("guarded confirmations and command failures restore the preference written by the normal dialog", () => {
   const host = readProjectFile("src/app/window-lifecycle/WindowCloseDialogHost.tsx");
 
   assert.match(host, /loadWindowClosePreference\(\)/);
   assert.match(host, /preferenceSaved/);
-  assert.match(host, /if \(reason[\s\S]*?saveWindowClosePreference\(undefined, previousPreference\)/);
+  assert.match(host, /const restorePreviousPreference = \(\) =>/);
+  assert.match(host, /saveWindowClosePreference\(undefined, previousPreference\)/);
+  assert.match(host, /if \(confirmation\)[\s\S]*?restorePreviousPreference\(\)/);
+  assert.match(host, /catch \(error\)[\s\S]*?restorePreviousPreference\(\)/);
 });
 
 test("window close dialog traps focus and submits the safe tray action with Enter", () => {

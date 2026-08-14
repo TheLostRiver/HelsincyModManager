@@ -291,7 +291,9 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
   Windows/Linux 用户名、Steam ID、token/cookie/API key、控制字符和第三方内容被拒绝或脱敏。
 - 最小事件覆盖应用启动、configuration/database state 初始化、游戏发现聚合结果、queued task 注册、
   窗口/后台任务等普通稳定错误；不会记录 task message/error/result ref、候选目录或原始平台错误。
-- GUI 完全退出链路额外记录四个固定、脱敏的 App Log 事件：`application.exit_requested` 表示后端
+- GUI 完全退出链路额外记录固定、脱敏的 App Log 事件：`application.exit_guard_evaluated` 表示后端
+  guard 查询完成并携带 `duration_ms`，`operation` 区分首次查询和授权失效后的回退检查；
+  `application.exit_override_audit_completed` 表示危险退出 override 审计完成并携带 `duration_ms`。另有四个固定、脱敏的生命周期事件：`application.exit_requested` 表示后端
   exit guard 与必要 override audit 已完成并发出退出请求；`application.exit_request_received` 表示
   Tauri 事件循环已接收 `ExitRequested`；`application.exit_started` 表示事件循环进入 `Exit` 并开始
   Tauri 资源清理；`application.event_loop_stopped` 表示 `run_return` 已完成且应用状态已释放，即将执行
@@ -322,7 +324,7 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 - P7.2a 后台平台注册生命周期会写入 category `save_backup`、operation `background_registration` 的最小审计事件。除顶层 result 外，fields 只允许 `registration_status`、`task_schema_version` 和稳定 `error_code`；不得记录 task name、SID、worker path、PowerShell executable/script、task XML、原始 stdout/stderr、CIM exception、Profile/save/backup 路径或用户名。
 - 后台状态查询本身只读且不写重复审计；register/update/unregister 只有在受控 app use case 中才记录结果。ownership conflict、permission、invalid output 和 timeout 只映射稳定 code，不持久化原始平台错误。
 - 用户在 fail-closed 退出提示中明确选择当次仍然退出时，后端写入 category `save_backup`、operation `background_exit_override`、result `success` 的最小审计事件。fields 只允许 `protection_status` 和稳定 `error_code`；`starting` 的 error code 为空字符串，不得为补齐字段而记录原始错误。
-- `background_exit_override` 不记录 Profile/game id、task name、SID、worker id/path、PowerShell/XML、lease、完整本地路径、存档/备份内容或前端文案。override command 会在后端重新计算 guard；若审计不可用，只写脱敏 warning 并允许这次已经明确确认的退出，不能永久困住用户。
+- `background_exit_override` 不记录 Profile/game id、task name、SID、worker id/path、PowerShell/XML、lease、完整本地路径、存档/备份内容或前端文案。override command 只消费后端签发的短时一次性授权；授权无效时重新计算 guard 并重新要求确认。若审计不可用，只写脱敏 warning 并允许这次已经明确确认的退出，不能永久困住用户。
 - `export_preview_image_diagnostics` 成功写入受控预览图诊断 zip 后，会在 app data 下的 `logs/audit/audit-YYYY-MM-DD.log` 写入 JSONL 审计事件，日期来自事件时间戳；若诊断 zip 写入失败，也会先写入失败审计事件。
 - 该事件只记录操作名、类别、结果、导出文件名/ID、大小、稳定错误分类和聚合计数，不记录完整本地路径、原始错误文本、`thumbnailUrl`、`contentHash`、sandbox/cache 路径、README 全文、原始 Mod 包内容或原始日志。
 - `hmm-ports` 已提供最小 `TextLogReader` port，`hmm-infra` 可从 app data 下的 `logs/app`、`logs/debug` 与 `logs/tasks` 读取最近 N 行已校验文本；读取时会跳过不符合白名单文件名的日志、空行、包含控制字符或敏感片段的行，只返回安全文件名和文本行。Debug 类别只有在有内容时才创建目录。该读取能力已通过 `get_diagnostics_page_snapshot` 与 `export_support_diagnostics` 的 app service/command 链路受控使用。

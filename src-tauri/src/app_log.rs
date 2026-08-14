@@ -1,4 +1,5 @@
 use hmm_infra::{emit_safe_app_log, initialize_app_logging, AppLogEvent, AppLogHealth};
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +56,21 @@ pub fn record_application_lifecycle(stage: ApplicationLifecycleStage) {
     );
 }
 
+pub fn record_window_lifecycle_timing(
+    event_name: &'static str,
+    operation: &'static str,
+    result: &'static str,
+    duration: Duration,
+) {
+    let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+    emit_safe_app_log(
+        AppLogEvent::info(event_name)
+            .with_operation(operation)
+            .with_result(result)
+            .with_duration_ms(duration_ms),
+    );
+}
+
 pub fn record_warning(event_name: &'static str, operation: &'static str, error_code: &'static str) {
     emit_safe_app_log(
         AppLogEvent::warning(event_name)
@@ -106,5 +122,15 @@ mod tests {
             assert!(!event_name.contains("C:"));
             assert!(!event_name.contains("S-1-5-21"));
         }
+    }
+
+    #[test]
+    fn window_lifecycle_timing_accepts_only_stable_call_site_metadata() {
+        record_window_lifecycle_timing(
+            "application.exit_guard_evaluated",
+            "exit_guard_query",
+            "success",
+            Duration::from_millis(7),
+        );
     }
 }
