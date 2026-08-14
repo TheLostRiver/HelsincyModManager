@@ -37,6 +37,7 @@ tracing-subscriber = { version = "0.3.20", default-features = false, features = 
 unicode-normalization = "0.1.24"
 wait-timeout = "0.2.1"
 windows-sys = "0.61.2"
+windows = "0.61.3"
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6"
 uuid = { version = "1", features = ["v4"] }
