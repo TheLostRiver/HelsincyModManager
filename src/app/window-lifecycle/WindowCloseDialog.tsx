@@ -6,7 +6,7 @@ import "./WindowCloseDialog.css";
 
 export type WindowCloseDialogMode =
   | { kind: "normal" }
-  | { kind: "unsafe"; reason: AppExitGuardReason };
+  | { kind: "unsafe"; reason: AppExitGuardReason; exitAuthorization: string };
 
 type WindowCloseDialogProps = {
   mode: WindowCloseDialogMode | null;

@@ -2,6 +2,7 @@ const FALLBACK_WINDOW_LIFECYCLE_ERROR_MESSAGE = "窗口关闭操作失败";
 
 const WINDOW_LIFECYCLE_ERROR_MESSAGES = {
   exit_confirmation_required: "退出前需要确认后台保护状态。",
+  exit_authorization_unavailable: "退出确认状态不可用，请暂时留在托盘或重启应用后再试。",
   window_hide_failed: "窗口隐藏失败，请重试。",
 } as const;
 

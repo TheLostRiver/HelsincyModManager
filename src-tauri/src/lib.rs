@@ -91,6 +91,7 @@ use tauri::{Manager, RunEvent, State};
 use thumbnail_protocol::register_thumbnail_protocol;
 use window_lifecycle_commands::{
     exit_app, get_app_exit_guard, hide_main_window_to_tray, register_window_lifecycle,
+    ExitAuthorizationStore,
 };
 
 pub use background_worker::BackgroundWorkerEntryError;
@@ -123,6 +124,7 @@ pub fn run() {
             })?;
             app_log::record_state_initialized();
             app.manage(state);
+            app.manage(ExitAuthorizationStore::default());
             register_window_lifecycle(app).inspect_err(|_| {
                 app_log::record_warning(
                     "application.window_lifecycle_initialization_failed",

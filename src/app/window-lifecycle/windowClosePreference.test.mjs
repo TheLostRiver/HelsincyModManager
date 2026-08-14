@@ -60,6 +60,10 @@ test("maps only stable Tauri command error codes to local messages", () => {
     getWindowLifecycleErrorMessage({ code: "exit_confirmation_required", message: "raw backend message" }),
     "退出前需要确认后台保护状态。",
   );
+  assert.equal(
+    getWindowLifecycleErrorMessage({ code: "exit_authorization_unavailable", message: "raw backend message" }),
+    "退出确认状态不可用，请暂时留在托盘或重启应用后再试。",
+  );
   assert.equal(getWindowLifecycleErrorMessage(new Error("C:/Users/Alice/save")), "窗口关闭操作失败");
   assert.equal(getWindowLifecycleErrorMessage("raw backend message"), "窗口关闭操作失败");
   assert.equal(getWindowLifecycleErrorMessage({ code: "missing_message" }), "窗口关闭操作失败");

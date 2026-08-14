@@ -28,6 +28,15 @@ export function WindowCloseDialogHost() {
   const runAction = useCallback(async (action: WindowClosePreference, remember: boolean) => {
     if (!mode) return;
 
+    let previousPreference: WindowClosePreference | null = null;
+    let preferenceSaved = false;
+    const restorePreviousPreference = () => {
+      if (!preferenceSaved || previousPreference === null) return true;
+      const restored = saveWindowClosePreference(undefined, previousPreference);
+      if (restored) preferenceSaved = false;
+      return restored;
+    };
+
     try {
       if (action === "tray") {
         if (mode.kind === "normal" && remember && !saveWindowClosePreference(undefined, action)) {
@@ -39,29 +48,34 @@ export function WindowCloseDialogHost() {
       }
 
       if (mode.kind === "unsafe") {
-        await exitApplication(true);
+        const result = await exitApplication(true, mode.exitAuthorization);
+        if (result.outcome === "confirmation_required") {
+          setErrorMessage(null);
+          setMode({
+            kind: "unsafe",
+            reason: result.reason,
+            exitAuthorization: result.exitAuthorization,
+          });
+        }
         return;
       }
 
-      const previousPreference = remember ? loadWindowClosePreference() : null;
-      let preferenceSaved = false;
-      const reason = await requestOrdinaryExit(() => {
+      previousPreference = remember ? loadWindowClosePreference() : null;
+      const confirmation = await requestOrdinaryExit(() => {
         if (remember && !saveWindowClosePreference(undefined, action)) {
           throw new WindowClosePreferenceSaveError();
         }
         preferenceSaved = remember;
       });
-      if (reason) {
-        const restoreFailed =
-          preferenceSaved &&
-          previousPreference !== null &&
-          !saveWindowClosePreference(undefined, previousPreference);
+      if (confirmation) {
+        const restoreFailed = !restorePreviousPreference();
         setErrorMessage(restoreFailed ? WINDOW_CLOSE_PREFERENCE_SAVE_ERROR : null);
-        setMode({ kind: "unsafe", reason });
+        setMode(confirmation);
       }
     } catch (error) {
+      const restoreFailed = !restorePreviousPreference();
       setErrorMessage(
-        error instanceof WindowClosePreferenceSaveError
+        restoreFailed || error instanceof WindowClosePreferenceSaveError
           ? WINDOW_CLOSE_PREFERENCE_SAVE_ERROR
           : getWindowLifecycleErrorMessage(error),
       );
