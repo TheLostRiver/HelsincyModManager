@@ -1085,7 +1085,7 @@ Beta 当前目标。最终 manifest 卸载恢复为与 `Before` 长度和 SHA-25
 - 保留数量限制。
 - 备份目录不可写。
 - 源目录与备份目录包含关系拒绝。
-- symlink/junction 逃逸拒绝。
+- 源根与递归子项的 symlink/junction/reparse point 逃逸拒绝；根外 sentinel 不得进入 archive。
 - 大小写路径碰撞拒绝。
 - `save_backup.*` 任务事件携带 `taskId`。
 - 前端 typed API 只传 `gameId`、`profileId`、`note` 和 `limit`，不传路径、manifest、backup ref、sandbox/cache 或 hash。
@@ -1106,6 +1106,34 @@ cargo test -p hmm-infra --test save_backup_writer
 cargo test -p hmm-tauri save_backup
 cmd /c corepack pnpm run test -- src/features/profiles/profileApi.test.mjs
 ```
+
+SAVE-04 玩家存档恢复至少运行以下聚焦测试：
+
+```powershell
+cargo test -p hmm-app --test save_restore -- --nocapture
+cargo test -p hmm-app --test save_restore_task -- --nocapture
+cargo test -p hmm-infra save_restore -- --nocapture
+cargo test -p hmm-infra --test save_restore_validator -- --nocapture
+cargo test -p hmm-tauri save_restore -- --nocapture
+cmd /c corepack pnpm run test -- src/features/profiles/profileSaveRestoreApi.test.mjs src/features/profiles/profileSaveRestoreTaskState.test.mjs src/features/profiles/profileSaveRestoreUi.test.mjs src/features/profiles/profileFrontendIntegration.test.mjs
+node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs
+```
+
+SAVE-04 自动化必须只使用 temp/artificial save、backup、SQLite 和 fake task/audit/clock fixture。必须覆盖
+backup source 根与递归子项的 link/junction/reparse 拒绝及根外 sentinel 不归档、preview token identity/过期/stale、archive/manifest/hash/path/size/containment 拒绝、目标与 staging
+摘要漂移、非 UTF-8/过长/过深相对路径、单组件长度和目录节点预算拒绝、默认开启与关闭 pre-restore 的二次确认、独立 `pre-restore/` 目录和普通 retention 排除、
+pre-restore 备份失败 fail closed、共享 game/profile 写锁串行、commit barrier 取消、目录交换成功、
+rollback 与 recovery-required 证据保留、`Committing -> Committed -> Completed` 持久化顺序、finalize 部分成功后的幂等重试，以及 durable `Completed` 后 Task/Audit evidence degradation
+不得伪造业务失败。取消测试还必须故障注入事务终态写入失败，断言 prepared staging 不清理、未完成事务
+继续阻断、runner 发送 recovery-required 且 Audit 使用稳定错误码。前端测试必须锁定 command 名、camelCase
+DTO、精确 `taskId + kind + phase + status` 匹配、early-event buffer、recovery-required 覆盖乐观 cancelled、
+未保存设置时恢复入口禁用、rolled-back cleanup warning 可见、Modal 终态可见和无路径/manifest/hash 字段。
+退出保护还必须覆盖 active restore 拒绝完全退出、runner 释放 scope 后才可原子关闭后续 restore admission、
+`blocked` DTO 不携带授权，以及 blocked UI 只显示返回应用/收起托盘而不显示 override exit。
+
+真实存档或 Windows 桌面恢复验收只能在 disposable 一次性账户/VM 中使用人工最小 fixture；不能读取
+真实 Steam userdata、游戏目录、玩家存档或真实 Scheduled Task。SAVE-04 在该人工 gate 完成前只能记录为
+“实现完成、等待验收”，不得写成 `certified`。
 
 自动备份调度状态与后台保护状态查询切片至少运行聚焦测试：
 
@@ -1227,6 +1255,9 @@ Windows 安装态退出生命周期必须在 disposable Sandbox/VM 额外验证�
 `application.event_loop_stopped`。缺少后两项时先按事件循环/资源清理故障调查，不能通过 CIM、
 `taskkill` 或卸载器关闭提示把该 case 记为通过。证据还必须记录 `application.exit_guard_evaluated.duration_ms`
 和从点击退出到进程消失的实际耗时，以区分实时 Task Scheduler 读回与 Tauri/WebView2 资源清理延迟。
+SAVE-04 人工验收还必须在 artificial fixture 的 restore queued/running 阶段请求完全退出：窗口必须恢复并显示
+不可 override 的恢复保护提示，不能终止 `hmm-tauri` 或显示“仍然退出”；收起托盘后 restore 必须继续达到
+terminal，随后才允许完全退出。该步骤只可在 disposable VM/Sandbox 进行，不能使用真实玩家存档。
 
 存档目录自动发现切片至少运行聚焦测试：
 

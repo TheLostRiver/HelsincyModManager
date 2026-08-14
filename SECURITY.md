@@ -166,7 +166,34 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - 默认备份目录不在游戏安装目录内。
 - 支持玩家自定义备份目录。
 - 备份结果写入 manifest。
-- 恢复前二次确认。
+- 备份源根和递归子项必须通过 no-follow metadata 拒绝 symlink、junction 与其他 reparse point；任何
+  link/reparse 都不得让扫描或归档读取源根外文件。
+- 恢复来源只能是后端按 `(gameId, profileId, backupId)` 精确读取的 completed backup + manifest；前端不得
+  提交 archive、manifest、目标路径、文件列表或 hash。
+- 恢复 preview 与任务启动都必须校验 archive/manifest identity、SHA-256、逐文件 size/hash、安全相对
+  路径、大小上限和 containment，并对游戏运行中或运行状态未知 fail closed。
+- 恢复前二次确认；默认开启 Profile 级 pre-restore 安全备份。用户关闭时必须显示高风险警告并额外确认，
+  不能由单次请求临时关闭持久安全设置。
+- pre-restore backup 必须先完整写入独立 `pre-restore/` 目录、manifest 和历史记录，之后才允许提交；普通
+  retention 不得删除该目录的记录。
+- archive 校验、解压、staging 与安全备份位于共享写锁外；同 game/profile 的目标目录交换、rollback 和
+  recovery 收尾必须串行。commit 前重新读取短事实并复核 token、目标和 staging 摘要。
+- 恢复使用持久事务和受控 sibling 目录交换。失败优先恢复原 rollback sibling；无法证明原状态时保留
+  事务与 recovery evidence，并返回 `save_restore_recovery_required`，不得逐文件覆盖或静默删除证据。
+- 目录交换成功后必须先持久化非终态 `Committed` 事实，再幂等清理 rollback/failure evidence；只有收尾
+  成功后才能持久化 `Completed`。收尾失败必须保留可重试 evidence、持久化 `RecoveryRequired` 并阻断
+  新恢复，不能把“玩家文件已提交”误写成已回滚或普通失败。
+- durable `Completed` 后的 Task/Audit 写入失败只能投影 evidence degradation，不能伪造玩家文件回滚或
+  业务失败。
+- 协作取消只有在取消终态成功持久化后才能清理 prepared staging。若终态落盘失败，必须保留 staging 与
+  未完成事务、投影 `save_restore_recovery_required`，并覆盖先到达的乐观 cancelled UI 事件。
+- restore commit/finalize 依赖进程内保留的父目录 capability 和目录 identity。应用在提交后、durable
+  `Completed` 前崩溃或重启时不能按绝对路径重建该 capability；必须保留非终态事务与仍存活的磁盘
+  evidence 并 fail closed。若崩溃发生在幂等清理过程中，部分 sibling 可能已经安全删除，后续仍须由受控
+  恢复能力或人工支持根据事务与剩余 evidence 处理，不能放行新的恢复。
+- 应用完全退出必须在 restore admission scope 空闲时原子关闭新 restore 登记；任一 queued/running restore
+  或 scope 读取失败都必须 fail closed，恢复主窗口并拒绝完全退出。该状态不能使用后台保护 override 绕过，
+  用户只能返回应用或收起到托盘，直到 restore terminal 与 evidence 收尾完成。
 - 自动备份间隔和保留策略可配置。
 - 测试不得默认使用真实存档目录。
 

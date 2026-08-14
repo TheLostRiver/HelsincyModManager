@@ -1,6 +1,6 @@
 # 项目任务状态快照
 
-本文档记录 Helsincy Mod Manager 在 **2026-08-07** 的 Windows 项目任务全景，基准包含
+本文档记录 Helsincy Mod Manager 在 **2026-08-15** 的 Windows 项目任务全景，基准包含
 Slice A-D 交付并由 Gate C 认证的 batch Sandbox 玩家路径，以及 WR-04 Gate D 认证的人工 Weapon
 install/target switch/uninstall 玩家路径。此前包含
 CLI-0A 至 CLI-1B、PR #211 至 #214 的工程治理，以及 QG-01/PR #215 合并后的 frontend
@@ -37,8 +37,10 @@ staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均
 2026-08-06 标记为 `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log
 均已完成；AR6/WR-02B 仍等待具有明确再分发权的审计数据。完整 catalog 未到位前只允许人工最小 developer/Sandbox seed；Sandbox
 认证不开放 Production 写入。
-Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成；完整
-前置依赖平台、玩家存档恢复与 Production CLI admission 仍未完成。当前下一纵向切片是 SAVE-04。
+Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成。
+SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 verify 与 findings-first review 已完成，
+正在等待 disposable Windows 人工验收；完整前置依赖平台、SAVE-05 retention/备份中心与 Production CLI
+admission 仍未完成。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
 校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；仅 Sandbox
@@ -72,7 +74,7 @@ Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-0
 | T6 Profile 管理 | 已完成 | CRUD、活跃 Profile、生命周期与存档设置接入已落地 |
 | T7 一键启动 | 已完成 | `GameLauncher` port、MHW:I Steam 启动和 UI 入口已落地 |
 | Core Mod Lifecycle Gate A | Certified | 安装、卸载、真正重装、重启恢复、失败恢复和 exact baseline 已验收 |
-| T8 存档备份 | 部分完成 / SAVE-02、SAVE-03 Certified | 备份、后台核心、安装态保护与 installer cleanup 已完成；玩家存档恢复和完整 retention 未完成 |
+| T8 存档备份 | 部分完成 / SAVE-02、SAVE-03 Certified / SAVE-04 Implemented | 备份、后台核心、安装态保护、installer cleanup 与玩家恢复实现已完成；SAVE-04 自动化门禁已通过并等待 disposable Windows 验收，完整 retention 未完成 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 装备 Retarget | Armor / Weapon 流程均 Certified | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01、WR-02A、WR-03A、WR-03B 已完成；完整 bundled armor/weapon catalog 仍受 AR6/WR-02B 数据门禁 |
@@ -166,7 +168,7 @@ userdata/<account_id_32>/582010/remote
 - Steam OAuth、API key 或登录态接入。
 - 跨设备存档同步。
 - Steam 账号与 HMM Profile 自动绑定。
-- 玩家存档恢复。
+- Steam Cloud/账号协议层恢复；SAVE-04 只恢复当前 HMM Profile 已确认的本地存档目录，不是 Steam 云存档客户端。
 
 因此当前能力是“本机多账号存档目录安全发现与显式选择”，不是 Steam 云存档客户端。
 
@@ -183,11 +185,17 @@ userdata/<account_id_32>/582010/remote
 - scheduler state、跨进程 lease、heartbeat 与游戏运行保护。
 - 游戏运行中或运行状态未知时延后，不错误启动备份。
 - 手动、自动、pre-install backup、retention pruning 等 Audit Log。
+- SAVE-04 manifest-backed 玩家存档恢复：`preview_save_restore` / `start_save_restore_task`、5 分钟
+  preview token、统一 Modal、独立 `TaskKind::SaveRestore`、严格 taskId/phase listener、默认开启并按
+  Profile 持久化的 pre-restore 安全备份、独立 `pre-restore/` 目录、共享 game/profile 写锁、目录交换、
+  rollback/recovery-required 与 post-commit evidence degradation。
+- migration 012 为既有 Profile 默认开启 `preRestoreBackupEnabled`，普通数量 retention 排除
+  `trigger = pre_restore`；自动测试只使用 temp/artificial fixture。
 
 ### 未完成
 
-- 玩家存档恢复。当前 Profile 中的恢复入口仍是禁用占位；安装恢复中心只处理 Mod 安装事实，
-  不能替代玩家存档恢复。
+- SAVE-04 disposable Windows 人工验收与最终 `certified` 门禁；通过前不能把 temp/fake 自动化表述为真实
+  玩家存档发布认证。
 - 按时间/空间的存档备份 retention。
 - 独立 `features/backups/` 备份中心页面。
 - 真实玩家数据环境验收。普通测试只证明 temp/fake 链路。
@@ -353,7 +361,8 @@ WR-03A 已交付人工 MOD3/MRL3 有界 preflight、pair compatibility、纯 tra
 projection。WR-03B 已交付 versioned registry、transform-aware staging、InstallPlan/manifest/recovery/
 Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 因缺少明确可再分发的审计数据而 blocked；
 WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02、
-LOG-03、SAVE-02 与 SAVE-03 已完成；当前下一纵向切片是 SAVE-04 玩家存档恢复。
+LOG-03、SAVE-02 与 SAVE-03 已完成；SAVE-04 玩家存档恢复已实现且完整验证、自审通过，当前处于
+disposable Windows 人工验收门禁。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
@@ -490,8 +499,8 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 - Windows 后台保护的 fake/temp 自动化不能替代安装态 VM 验收；SAVE-02 与 SAVE-03 已用 disposable
   Windows 安装态链路补齐保护与 installer cleanup 证据，后续回归仍不能只凭 bundle 中存在 sibling
   worker 就标记完成。
-- Profile 删除的破坏性确认目前在卡片内联展开，而非共享悬浮确认层；这是非阻断 UX 债务。后续
-  SAVE-04 存档恢复必须使用统一 Modal，并默认先创建独立 `pre-restore/` 安全备份，成功后才覆盖。
+- Profile 删除的破坏性确认目前在卡片内联展开，而非共享悬浮确认层；这是非阻断 UX 债务。SAVE-04
+  存档恢复已经使用统一 Modal，并默认先创建独立 `pre-restore/` 安全备份，不能据此视为该旧债务已解决。
 - WR-04 仍有不阻断 Gate D 的 UI/诊断缺陷：顶栏目录状态陈旧、无元数据 Mod 名称回退为
   `mod-import-*`、空 NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 仅投影为通用失败、
   主题入口不在设置页，以及宽度不超过 1360px 时 `.window-tools` 被隐藏导致主题菜单不可达。
@@ -505,8 +514,9 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 2. 保持 CAT-01 provenance/licensing 门禁；未达到 `bundled_eligible` 且未经人审的数据不得提交为 catalog。
 3. WR-04 Gate D 已认证；完整 catalog 未到位前继续只使用人工最小 seed，AR6/WR-02B 在获得明确可再分发的审计数据后恢复。
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
-5. LOG-01、LOG-02、LOG-03、SAVE-02 与 SAVE-03 已完成；下一纵向切片实现 SAVE-04 玩家存档恢复。
-6. SAVE-04 按独立设计推进：统一悬浮确认、默认开启且独立存放的恢复前安全备份、失败
-  fail closed、持久通知与 Audit/rollback/recovery；完成后再推进 retention/备份中心和 Production CLI。
+5. LOG-01、LOG-02、LOG-03、SAVE-02 与 SAVE-03 已完成；SAVE-04 已实现且完整 verify、全 diff
+   findings-first review 已通过，当前等待 disposable Windows 人工恢复验收。
+6. SAVE-04 人工 gate 通过前保持 `implemented / awaiting acceptance`；通过后再推进 SAVE-05
+   retention/备份中心和 Production CLI，不能用 temp/fake 自动化提前替代认证。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
