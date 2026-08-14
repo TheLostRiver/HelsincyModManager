@@ -126,6 +126,7 @@ mod profile_dto_tests {
                 max_count: 20,
                 max_age_days: Some(30),
             },
+            pre_restore_backup_enabled: true,
             updated_at: 42,
         }
         .into();
@@ -138,6 +139,7 @@ mod profile_dto_tests {
         assert_eq!(value["schedule"]["cadence"], "weekly");
         assert_eq!(value["schedule"]["weekdays"][0], 0);
         assert_eq!(value["retention"]["maxCount"], 20);
+        assert_eq!(value["preRestoreBackupEnabled"], true);
         assert!(value.get("manifestPath").is_none());
         assert!(value.get("backupRoot").is_none());
         assert!(!value.to_string().contains("C:/Users/"));

@@ -73,6 +73,10 @@
   border-top-color: color-mix(in srgb, var(--color-warning-dot) 58%, var(--color-border));
 }
 
+.window-close-dialog.is-blocked {
+  border-top-color: color-mix(in srgb, var(--color-warning-dot) 72%, var(--color-border));
+}
+
 .window-close-dialog__close {
   position: absolute;
   top: 22px;

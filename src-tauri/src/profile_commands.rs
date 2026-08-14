@@ -147,6 +147,7 @@ pub fn set_profile_save_settings(
             backup_directory: input.backup_directory,
             schedule: input.schedule.into(),
             retention: input.retention.into(),
+            pre_restore_backup_enabled: input.pre_restore_backup_enabled,
         })
         .map(ProfileSaveSettingsDto::from)
         .map_err(profile_error)

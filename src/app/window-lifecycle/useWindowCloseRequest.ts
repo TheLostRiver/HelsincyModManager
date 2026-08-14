@@ -15,18 +15,24 @@ type UseWindowCloseRequestOptions = {
 };
 
 type BeforeExit = () => void | Promise<void>;
-type ExitConfirmation = Extract<WindowCloseDialogMode, { kind: "unsafe" }>;
+type ExitInterruption =
+  | Extract<WindowCloseDialogMode, { kind: "unsafe" }>
+  | Extract<WindowCloseDialogMode, { kind: "blocked" }>;
 
-export async function requestOrdinaryExit(beforeExit?: BeforeExit): Promise<ExitConfirmation | null> {
+export async function requestOrdinaryExit(beforeExit?: BeforeExit): Promise<ExitInterruption | null> {
   await beforeExit?.();
   const result = await exitApplication(false);
-  return result.outcome === "confirmation_required"
-    ? {
+  if (result.outcome === "confirmation_required") {
+    return {
         kind: "unsafe",
         reason: result.reason,
         exitAuthorization: result.exitAuthorization,
-      }
-    : null;
+    };
+  }
+  if (result.outcome === "blocked") {
+    return { kind: "blocked", reason: result.reason };
+  }
+  return null;
 }
 
 export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseRequestOptions) {
@@ -53,8 +59,8 @@ export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseR
       }
 
       void requestOrdinaryExit()
-        .then((reason) => {
-          if (reason) callbacksRef.current.onShowDialog(reason);
+        .then((interruption) => {
+          if (interruption) callbacksRef.current.onShowDialog(interruption);
         })
         .catch((error: unknown) => {
           callbacksRef.current.onShowDialog({ kind: "normal" });

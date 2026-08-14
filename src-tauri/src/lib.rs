@@ -29,6 +29,8 @@ mod save_backup_commands;
 mod save_backup_dto;
 mod save_directory_discovery_commands;
 mod save_directory_discovery_dto;
+mod save_restore_commands;
+mod save_restore_dto;
 mod state;
 mod task_commands;
 mod task_events;
@@ -85,6 +87,7 @@ use save_backup_commands::{
 use save_directory_discovery_commands::{
     confirm_profile_save_directory_candidate, discover_profile_save_directories,
 };
+use save_restore_commands::{preview_save_restore, start_save_restore_task};
 use state::AppState;
 use task_commands::cancel_task;
 use tauri::{Manager, RunEvent, State};
@@ -223,6 +226,8 @@ pub fn run() {
             enable_save_backup_background_protection,
             disable_save_backup_background_protection,
             list_save_backups,
+            preview_save_restore,
+            start_save_restore_task,
             hide_main_window_to_tray,
             get_app_exit_guard,
             exit_app

@@ -1,12 +1,13 @@
 import { Check, LoaderCircle, Minimize2, Power, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import type { AppExitGuardReason } from "./windowLifecycleApi";
+import type { AppExitBlockReason, SaveBackupExitGuardReason } from "./windowLifecycleApi";
 import type { WindowClosePreference } from "./windowClosePreference";
 import "./WindowCloseDialog.css";
 
 export type WindowCloseDialogMode =
   | { kind: "normal" }
-  | { kind: "unsafe"; reason: AppExitGuardReason; exitAuthorization: string };
+  | { kind: "unsafe"; reason: SaveBackupExitGuardReason; exitAuthorization: string }
+  | { kind: "blocked"; reason: AppExitBlockReason };
 
 type WindowCloseDialogProps = {
   mode: WindowCloseDialogMode | null;
@@ -21,7 +22,7 @@ type DialogPhase = "closed" | "opening" | "open" | "settled" | "closing";
 const EXECUTION_FEEDBACK_DELAY_MS = 360;
 const DIALOG_TRANSITION_MS = 200;
 const REDUCED_MOTION_TRANSITION_MS = 140;
-const UNSAFE_EXIT_REASON_MESSAGES: Record<AppExitGuardReason, string> = {
+const UNSAFE_EXIT_REASON_MESSAGES: Record<SaveBackupExitGuardReason, string> = {
   background_starting:
     "后台任务已注册，但尚未完成首次运行验证。Windows 仍会在约 1 分钟后尝试运行；若失败，应用退出后无法立即提醒你。",
   background_not_enabled: "后台保护尚未启用。完全退出后，自动备份不会继续按计划检查。",
@@ -30,6 +31,12 @@ const UNSAFE_EXIT_REASON_MESSAGES: Record<AppExitGuardReason, string> = {
   permission_required: "当前账户权限不足，后台任务无法完成注册或校验。",
   unsupported_platform: "当前平台不支持退出后的后台自动备份保护。",
   status_unavailable: "暂时无法确认后台保护状态。为避免静默失去保护，建议先留在托盘。",
+};
+const BLOCKED_EXIT_REASON_MESSAGES: Record<AppExitBlockReason, string> = {
+  save_restore_in_progress:
+    "存档恢复正在进行。为保护当前存档和自动创建的恢复前备份，此时不能完全退出应用程序。",
+  save_restore_status_unavailable:
+    "暂时无法确认存档恢复任务状态。为避免中断存档写入，此时不能完全退出应用程序。",
 };
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -221,7 +228,7 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
       <div
         ref={dialogRef}
         className={`window-close-dialog is-${renderedMode.kind}`}
-        role={renderedMode.kind === "unsafe" ? "alertdialog" : "dialog"}
+        role={renderedMode.kind === "normal" ? "dialog" : "alertdialog"}
         aria-modal="true"
         aria-labelledby="window-close-title"
         aria-describedby="window-close-description"
@@ -239,11 +246,17 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
 
         <header className="window-close-dialog__header">
           <h2 id="window-close-title">
-            {renderedMode.kind === "unsafe" ? "后台保护尚未就绪" : "准备退出 Helsincy？"}
+            {renderedMode.kind === "unsafe"
+              ? "后台保护尚未就绪"
+              : renderedMode.kind === "blocked"
+                ? "存档恢复正在保护中"
+                : "准备退出 Helsincy？"}
           </h2>
           <p id="window-close-description">
             {renderedMode.kind === "unsafe"
               ? UNSAFE_EXIT_REASON_MESSAGES[renderedMode.reason]
+              : renderedMode.kind === "blocked"
+                ? BLOCKED_EXIT_REASON_MESSAGES[renderedMode.reason]
               : "请选择关闭主窗口时的操作。你也可以在设置里随时改回每次询问。"}
           </p>
         </header>
@@ -268,32 +281,38 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
               <span>
                 {renderedMode.kind === "unsafe"
                   ? "保留客户端运行，让自动备份继续在本次会话内检查。"
+                  : renderedMode.kind === "blocked"
+                    ? "让存档恢复在后台继续完成；完成后可正常完全退出。"
                   : "应用将在后台持续运行，自动备份仍会在客户端运行期间检查。"}
               </span>
             </span>
             {executing === "tray" ? <LoaderCircle className="window-close-option__spinner" size={22} /> : null}
           </button>
 
-          <button
-            className="window-close-option is-exit"
-            type="button"
-            data-close-action="exit"
-            onClick={() => void execute("exit")}
-            disabled={interactionsDisabled}
-          >
-            <span className="window-close-option__icon" aria-hidden="true">
-              <Power size={24} strokeWidth={2.15} />
-            </span>
-            <span className="window-close-option__copy">
-              <strong>{renderedMode.kind === "unsafe" ? "仍然退出" : "完全退出应用程序"}</strong>
-              <span>
-                {renderedMode.kind === "unsafe"
-                  ? "忽略本次后台保护警告并完全退出。此确认只对本次有效。"
-                  : "关闭主客户端。若后台保护尚未就绪，退出前会再次向你确认。"}
+          {renderedMode.kind !== "blocked" ? (
+            <button
+              className="window-close-option is-exit"
+              type="button"
+              data-close-action="exit"
+              onClick={() => void execute("exit")}
+              disabled={interactionsDisabled}
+            >
+              <span className="window-close-option__icon" aria-hidden="true">
+                <Power size={24} strokeWidth={2.15} />
               </span>
-            </span>
-            {executing === "exit" ? <LoaderCircle className="window-close-option__spinner" size={22} /> : null}
-          </button>
+              <span className="window-close-option__copy">
+                <strong>{renderedMode.kind === "unsafe" ? "仍然退出" : "完全退出应用程序"}</strong>
+                <span>
+                  {renderedMode.kind === "unsafe"
+                    ? "忽略本次后台保护警告并完全退出。此确认只对本次有效。"
+                    : "关闭主客户端。若后台保护尚未就绪，退出前会再次向你确认。"}
+                </span>
+              </span>
+              {executing === "exit" ? (
+                <LoaderCircle className="window-close-option__spinner" size={22} />
+              ) : null}
+            </button>
+          ) : null}
         </div>
 
         <footer className={`window-close-dialog__footer is-${renderedMode.kind}`}>
@@ -318,7 +337,11 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
             onClick={requestCancel}
             disabled={interactionsDisabled}
           >
-            {renderedMode.kind === "unsafe" ? "取消退出" : "暂不退出"}
+            {renderedMode.kind === "unsafe"
+              ? "取消退出"
+              : renderedMode.kind === "blocked"
+                ? "返回应用"
+                : "暂不退出"}
           </button>
         </footer>
 

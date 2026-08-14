@@ -27,6 +27,7 @@ export type ProfileSaveSettingsDto = {
   backupDirectory: ProfileDirectorySelectionDto;
   schedule: ProfileBackupScheduleDto;
   retention: ProfileBackupRetentionDto;
+  preRestoreBackupEnabled: boolean;
   updatedAt: number;
 };
 
@@ -39,4 +40,5 @@ export type SetProfileSaveSettingsInput = {
   backupDirectory?: string | null;
   schedule: ProfileBackupScheduleDto;
   retention: ProfileBackupRetentionDto;
+  preRestoreBackupEnabled: boolean;
 };

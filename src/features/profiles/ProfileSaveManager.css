@@ -216,6 +216,146 @@
   white-space: nowrap;
 }
 
+.profile-pre-restore-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+  background: var(--color-surface-soft);
+}
+
+.profile-pre-restore-setting > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profile-pre-restore-setting strong,
+.profile-pre-restore-setting span,
+.profile-restore-protection strong,
+.profile-restore-protection span,
+.profile-restore-status span,
+.profile-restore-status strong,
+.profile-restore-high-risk-confirmation span {
+  overflow-wrap: anywhere;
+}
+
+.profile-pre-restore-setting span,
+.profile-restore-protection span,
+.profile-restore-status span,
+.profile-restore-high-risk-confirmation span {
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.profile-pre-restore-setting input,
+.profile-restore-high-risk-confirmation input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+}
+
+.profile-save-restore-dialog {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-restore-facts {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+  overflow: hidden;
+}
+
+.profile-restore-facts > div {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.profile-restore-facts > div:last-child {
+  border-bottom: 0;
+}
+
+.profile-restore-facts dt,
+.profile-restore-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-restore-facts dt {
+  color: var(--color-text-soft);
+  font-size: 12px;
+}
+
+.profile-restore-facts dd {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-restore-protection,
+.profile-restore-status,
+.profile-restore-high-risk-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
+  background: var(--color-surface-soft);
+}
+
+.profile-restore-protection > div {
+  display: grid;
+  gap: 4px;
+}
+
+.profile-restore-status > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profile-restore-protection.is-enabled,
+.profile-restore-status.is-success {
+  color: var(--color-success-text);
+  border-color: color-mix(in srgb, var(--color-success-dot) 28%, var(--color-border-muted));
+  background: var(--color-success-bg);
+}
+
+.profile-restore-status.is-warning {
+  color: var(--color-warning-text);
+  border-color: color-mix(in srgb, var(--color-warning-dot) 30%, var(--color-border-muted));
+  background: var(--color-warning-bg);
+}
+
+.profile-restore-status.is-danger {
+  color: var(--color-danger-text);
+  border-color: color-mix(in srgb, var(--color-danger-dot) 34%, var(--color-border-muted));
+  background: var(--color-danger-bg);
+}
+
+.profile-restore-protection.is-disabled,
+.profile-restore-status.is-error,
+.profile-restore-high-risk-confirmation {
+  color: var(--color-warning-text);
+  border-color: color-mix(in srgb, var(--color-warning-dot) 30%, var(--color-border-muted));
+  background: var(--color-warning-bg);
+}
+
+.profile-restore-high-risk-confirmation {
+  cursor: pointer;
+}
+
 @container (min-width: 380px) {
   .profile-backup-item {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -973,7 +1113,8 @@
   opacity: 1;
 }
 
-.profile-history-error {
+.profile-history-error,
+.profile-history-restore-blocked {
   display: flex;
   align-items: center;
   gap: 8px;

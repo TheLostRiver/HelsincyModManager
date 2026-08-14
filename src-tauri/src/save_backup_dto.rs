@@ -79,6 +79,7 @@ pub enum SaveBackupTriggerDto {
     Manual,
     Auto,
     PreInstall,
+    PreRestore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -282,6 +283,7 @@ impl From<SaveBackupTrigger> for SaveBackupTriggerDto {
             SaveBackupTrigger::Manual => Self::Manual,
             SaveBackupTrigger::Auto => Self::Auto,
             SaveBackupTrigger::PreInstall => Self::PreInstall,
+            SaveBackupTrigger::PreRestore => Self::PreRestore,
         }
     }
 }

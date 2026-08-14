@@ -65,6 +65,7 @@ impl CommandErrorDto {
             TaskManagerError::TaskCannotBeCancelled { .. } => "task_cannot_be_cancelled",
             TaskManagerError::TaskCannotTransition { .. } => "task_cannot_transition",
             TaskManagerError::TaskScopeBusy { .. } => "task_scope_busy",
+            TaskManagerError::TaskCreationBlocked { .. } => "task_creation_blocked",
             TaskManagerError::TaskStoreUnavailable => "task_store_unavailable",
         };
 
@@ -603,6 +604,7 @@ pub enum TaskKindDto {
     ModImport,
     Install,
     SaveBackup,
+    SaveRestore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -771,6 +773,7 @@ pub struct ProfileSaveSettingsDto {
     pub backup_directory: ProfileDirectorySelectionDto,
     pub schedule: ProfileBackupScheduleDto,
     pub retention: ProfileBackupRetentionDto,
+    pub pre_restore_backup_enabled: bool,
     pub updated_at: u64,
 }
 
@@ -785,6 +788,12 @@ pub struct SetProfileSaveSettingsRequestDto {
     pub backup_directory: Option<String>,
     pub schedule: ProfileBackupScheduleDto,
     pub retention: ProfileBackupRetentionDto,
+    #[serde(default = "default_pre_restore_backup_enabled")]
+    pub pre_restore_backup_enabled: bool,
+}
+
+const fn default_pre_restore_backup_enabled() -> bool {
+    true
 }
 
 impl From<hmm_core::Category> for CategoryDto {
@@ -923,6 +932,7 @@ impl From<ProfileSaveSettings> for ProfileSaveSettingsDto {
             backup_directory: settings.backup_directory.into(),
             schedule: settings.schedule.into(),
             retention: settings.retention.into(),
+            pre_restore_backup_enabled: settings.pre_restore_backup_enabled,
             updated_at: settings.updated_at as u64,
         }
     }
@@ -1403,6 +1413,7 @@ impl From<TaskKind> for TaskKindDto {
             TaskKind::ModImport => Self::ModImport,
             TaskKind::Install => Self::Install,
             TaskKind::SaveBackup => Self::SaveBackup,
+            TaskKind::SaveRestore => Self::SaveRestore,
         }
     }
 }

@@ -1,7 +1,10 @@
 use crate::app_log::ApplicationLifecycleStage;
 use crate::dto::CommandErrorDto;
 use crate::state::AppState;
-use hmm_app::{SaveBackupExitDecision, SaveBackupExitGuard, SaveBackupExitReason};
+use hmm_app::{
+    ApplicationExitBeginDecision, ApplicationExitBlockReason, ApplicationExitDecision,
+    ApplicationExitGuard, SaveBackupExitReason,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -17,7 +20,7 @@ const MENU_OPEN_ID: &str = "hmm-tray-open";
 const MENU_EXIT_ID: &str = "hmm-tray-exit";
 const EXIT_AUTHORIZATION_TTL: Duration = Duration::from_secs(60);
 
-type ExitGuardEvaluation = Result<SaveBackupExitDecision, ()>;
+type ExitGuardEvaluation = Result<ApplicationExitDecision, ()>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -60,6 +63,7 @@ pub struct ExitAuthorizationStore {
 pub enum AppExitDecisionDto {
     Safe,
     ConfirmationRequired,
+    Blocked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -72,6 +76,8 @@ pub enum AppExitReasonDto {
     PermissionRequired,
     UnsupportedPlatform,
     StatusUnavailable,
+    SaveRestoreInProgress,
+    SaveRestoreStatusUnavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -79,26 +85,36 @@ pub enum AppExitReasonDto {
 pub enum ExitAppOutcomeDto {
     Exiting,
     ConfirmationRequired,
+    Blocked,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExitAppAction {
     Exit,
     ConfirmationRequired { reason: SaveBackupExitReason },
+    Blocked { reason: ApplicationExitBlockReason },
     ExitWithOverrideAudit { reason: SaveBackupExitReason },
 }
 
 impl AppExitGuardDto {
-    fn from_decision(decision: SaveBackupExitDecision, exit_authorization: Option<String>) -> Self {
+    fn from_decision(
+        decision: ApplicationExitDecision,
+        exit_authorization: Option<String>,
+    ) -> Self {
         match decision {
-            SaveBackupExitDecision::Safe => Self {
+            ApplicationExitDecision::Safe => Self {
                 decision: AppExitDecisionDto::Safe,
                 reason: None,
                 exit_authorization: None,
             },
-            SaveBackupExitDecision::ConfirmationRequired { reason } => {
+            ApplicationExitDecision::ConfirmationRequired { reason } => {
                 Self::confirmation_required(reason, exit_authorization)
             }
+            ApplicationExitDecision::Blocked { reason } => Self {
+                decision: AppExitDecisionDto::Blocked,
+                reason: Some(reason.into()),
+                exit_authorization: None,
+            },
         }
     }
 
@@ -159,6 +175,17 @@ impl From<SaveBackupExitReason> for AppExitReasonDto {
             SaveBackupExitReason::PermissionRequired => Self::PermissionRequired,
             SaveBackupExitReason::UnsupportedPlatform => Self::UnsupportedPlatform,
             SaveBackupExitReason::StatusUnavailable => Self::StatusUnavailable,
+        }
+    }
+}
+
+impl From<ApplicationExitBlockReason> for AppExitReasonDto {
+    fn from(reason: ApplicationExitBlockReason) -> Self {
+        match reason {
+            ApplicationExitBlockReason::SaveRestoreInProgress => Self::SaveRestoreInProgress,
+            ApplicationExitBlockReason::SaveRestoreStatusUnavailable => {
+                Self::SaveRestoreStatusUnavailable
+            }
         }
     }
 }
@@ -291,11 +318,11 @@ pub async fn get_app_exit_guard(
     state: State<'_, AppState>,
     authorizations: State<'_, ExitAuthorizationStore>,
 ) -> Result<AppExitGuardDto, CommandErrorDto> {
-    let guard = Arc::clone(&state.save_backup_exit_guard);
+    let guard = Arc::clone(&state.application_exit_guard);
     let decision = fail_closed_exit_decision(evaluate_exit_guard(guard, "exit_guard_query").await);
     let exit_authorization = match decision {
-        SaveBackupExitDecision::Safe => None,
-        SaveBackupExitDecision::ConfirmationRequired { reason } => Some(
+        ApplicationExitDecision::Safe | ApplicationExitDecision::Blocked { .. } => None,
+        ApplicationExitDecision::ConfirmationRequired { reason } => Some(
             authorizations
                 .issue(reason, Instant::now())
                 .map_err(|_| exit_authorization_unavailable_error())?,
@@ -317,7 +344,7 @@ pub async fn exit_app(
         window_lifecycle_error("window_hide_failed", "failed to hide main window")
     })?;
     let mut window_restore = ExitWindowRestoreGuard::new(app.clone());
-    let guard = Arc::clone(&state.save_backup_exit_guard);
+    let guard = Arc::clone(&state.application_exit_guard);
     let authorized_reason = if request.override_unprotected {
         match authorizations.consume(request.exit_authorization.as_deref(), Instant::now()) {
             Ok(reason) => reason,
@@ -353,29 +380,39 @@ pub async fn exit_app(
                 exit_authorization: Some(exit_authorization?),
             });
         }
-        ExitAppAction::ExitWithOverrideAudit { reason } => {
-            let started = Instant::now();
-            let audit_result =
-                tauri::async_runtime::spawn_blocking(move || guard.record_override(reason)).await;
-            crate::app_log::record_window_lifecycle_timing(
-                "application.exit_override_audit_completed",
-                "exit_override_audit",
-                if matches!(audit_result, Ok(Ok(()))) {
-                    "success"
-                } else {
-                    "failed"
-                },
-                started.elapsed(),
-            );
-            if !matches!(audit_result, Ok(Ok(()))) {
-                crate::app_log::record_warning(
-                    "audit.write_failed",
-                    "exit_override",
-                    "exit_override_audit_unavailable",
-                );
-            }
+        ExitAppAction::Blocked { reason } => {
+            return Ok(blocked_exit_result(reason));
         }
-        ExitAppAction::Exit => {}
+        ExitAppAction::Exit | ExitAppAction::ExitWithOverrideAudit { .. } => {}
+    }
+    match guard.begin_exit() {
+        ApplicationExitBeginDecision::Proceed => {}
+        ApplicationExitBeginDecision::Blocked { reason } => {
+            return Ok(blocked_exit_result(reason));
+        }
+    }
+    if let ExitAppAction::ExitWithOverrideAudit { reason } = action {
+        let started = Instant::now();
+        let audit_guard = Arc::clone(&guard);
+        let audit_result =
+            tauri::async_runtime::spawn_blocking(move || audit_guard.record_override(reason)).await;
+        crate::app_log::record_window_lifecycle_timing(
+            "application.exit_override_audit_completed",
+            "exit_override_audit",
+            if matches!(audit_result, Ok(Ok(()))) {
+                "success"
+            } else {
+                "failed"
+            },
+            started.elapsed(),
+        );
+        if !matches!(audit_result, Ok(Ok(()))) {
+            crate::app_log::record_warning(
+                "audit.write_failed",
+                "exit_override",
+                "exit_override_audit_unavailable",
+            );
+        }
     }
     let result = ExitAppResultDto {
         outcome: ExitAppOutcomeDto::Exiting,
@@ -389,7 +426,7 @@ pub async fn exit_app(
 }
 
 async fn evaluate_exit_guard(
-    guard: Arc<SaveBackupExitGuard>,
+    guard: Arc<ApplicationExitGuard>,
     operation: &'static str,
 ) -> ExitGuardEvaluation {
     let started = Instant::now();
@@ -410,18 +447,27 @@ async fn evaluate_exit_guard(
     evaluation
 }
 
-fn fail_closed_exit_decision(evaluation: ExitGuardEvaluation) -> SaveBackupExitDecision {
-    evaluation.unwrap_or(SaveBackupExitDecision::ConfirmationRequired {
+fn fail_closed_exit_decision(evaluation: ExitGuardEvaluation) -> ApplicationExitDecision {
+    evaluation.unwrap_or(ApplicationExitDecision::ConfirmationRequired {
         reason: SaveBackupExitReason::StatusUnavailable,
     })
 }
 
 fn resolve_exit_action(evaluation: ExitGuardEvaluation) -> ExitAppAction {
     match fail_closed_exit_decision(evaluation) {
-        SaveBackupExitDecision::Safe => ExitAppAction::Exit,
-        SaveBackupExitDecision::ConfirmationRequired { reason } => {
+        ApplicationExitDecision::Safe => ExitAppAction::Exit,
+        ApplicationExitDecision::ConfirmationRequired { reason } => {
             ExitAppAction::ConfirmationRequired { reason }
         }
+        ApplicationExitDecision::Blocked { reason } => ExitAppAction::Blocked { reason },
+    }
+}
+
+fn blocked_exit_result(reason: ApplicationExitBlockReason) -> ExitAppResultDto {
+    ExitAppResultDto {
+        outcome: ExitAppOutcomeDto::Blocked,
+        reason: Some(reason.into()),
+        exit_authorization: None,
     }
 }
 
@@ -457,7 +503,7 @@ mod tests {
     #[test]
     fn exit_guard_dto_serializes_safe_and_stable_reasons_without_raw_details() {
         let safe = serde_json::to_value(AppExitGuardDto::from_decision(
-            SaveBackupExitDecision::Safe,
+            ApplicationExitDecision::Safe,
             None,
         ))
         .expect("serialize safe exit guard");
@@ -528,10 +574,21 @@ mod tests {
                 assert!(value.get(forbidden).is_none());
             }
         }
+
+        let blocked = serde_json::to_value(AppExitGuardDto::from_decision(
+            ApplicationExitDecision::Blocked {
+                reason: ApplicationExitBlockReason::SaveRestoreInProgress,
+            },
+            Some("must-not-leak".to_owned()),
+        ))
+        .expect("serialize blocked exit guard");
+        assert_eq!(blocked["decision"], "blocked");
+        assert_eq!(blocked["reason"], "save_restore_in_progress");
+        assert_eq!(blocked["exitAuthorization"], serde_json::Value::Null);
     }
 
     #[test]
-    fn exit_result_serializes_exiting_and_confirmation_without_raw_details() {
+    fn exit_result_serializes_exiting_confirmation_and_blocked_without_raw_details() {
         let exiting = serde_json::to_value(ExitAppResultDto {
             outcome: ExitAppOutcomeDto::Exiting,
             reason: None,
@@ -559,20 +616,28 @@ mod tests {
         for forbidden in ["path", "taskName", "sid", "workerId", "errorDetails"] {
             assert!(confirmation.get(forbidden).is_none());
         }
+
+        let blocked = serde_json::to_value(blocked_exit_result(
+            ApplicationExitBlockReason::SaveRestoreStatusUnavailable,
+        ))
+        .expect("serialize blocked result");
+        assert_eq!(blocked["outcome"], "blocked");
+        assert_eq!(blocked["reason"], "save_restore_status_unavailable");
+        assert_eq!(blocked["exitAuthorization"], serde_json::Value::Null);
     }
 
     #[test]
     fn exit_action_covers_safe_confirmation_override_and_unavailable() {
         assert_eq!(
-            resolve_exit_action(Ok(hmm_app::SaveBackupExitDecision::Safe)),
+            resolve_exit_action(Ok(ApplicationExitDecision::Safe)),
             ExitAppAction::Exit
         );
         assert_eq!(
-            resolve_exit_action(Ok(hmm_app::SaveBackupExitDecision::Safe)),
+            resolve_exit_action(Ok(ApplicationExitDecision::Safe)),
             ExitAppAction::Exit
         );
 
-        let unsafe_decision = hmm_app::SaveBackupExitDecision::ConfirmationRequired {
+        let unsafe_decision = ApplicationExitDecision::ConfirmationRequired {
             reason: hmm_app::SaveBackupExitReason::BackgroundStarting,
         };
         assert_eq!(
@@ -585,6 +650,14 @@ mod tests {
             resolve_exit_action(Err(())),
             ExitAppAction::ConfirmationRequired {
                 reason: hmm_app::SaveBackupExitReason::StatusUnavailable,
+            }
+        );
+        assert_eq!(
+            resolve_exit_action(Ok(ApplicationExitDecision::Blocked {
+                reason: ApplicationExitBlockReason::SaveRestoreInProgress,
+            })),
+            ExitAppAction::Blocked {
+                reason: ApplicationExitBlockReason::SaveRestoreInProgress,
             }
         );
     }
@@ -693,7 +766,7 @@ mod tests {
     #[test]
     fn invalid_override_authorization_cannot_produce_override_action() {
         assert_eq!(
-            resolve_exit_action(Ok(SaveBackupExitDecision::ConfirmationRequired {
+            resolve_exit_action(Ok(ApplicationExitDecision::ConfirmationRequired {
                 reason: SaveBackupExitReason::WorkerUnhealthy,
             })),
             ExitAppAction::ConfirmationRequired {
@@ -717,6 +790,11 @@ mod tests {
             exit_authorization: Some("test-token".to_owned()),
         });
         assert!(!keeps_window_hidden(&confirmation));
+
+        let blocked = Ok(blocked_exit_result(
+            ApplicationExitBlockReason::SaveRestoreInProgress,
+        ));
+        assert!(!keeps_window_hidden(&blocked));
 
         let failure = Err(window_lifecycle_error("test_failure", "test failure"));
         assert!(!keeps_window_hidden(&failure));
