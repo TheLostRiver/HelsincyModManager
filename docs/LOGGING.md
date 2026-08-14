@@ -211,6 +211,10 @@ result
 - 覆盖已有文件。
 - 删除游戏目录文件。
 - 创建或恢复备份。
+- 玩家存档恢复的成功、失败、取消、回滚、recovery required、取消终态持久化失败和证据降级；已回滚但
+  finalize/cleanup 失败必须额外写稳定 warning code，不能只记录主 `save_restore_rolled_back`。
+- 玩家文件已提交但 finalize/cleanup 未收敛时必须记录稳定 recovery-required 错误码；只有事务 durable
+  `Completed` 后的 Task/Audit writer 失败才投影 `save_restore_evidence_degraded`。
 - 自动备份因游戏运行或状态未知被延后（`result = deferred`，只在 pending 原因翻转时记录一次，避免重复检查刷屏）。
 - 写入安装清单。
 - 回滚成功或失败。
@@ -321,6 +325,14 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 - `rollback_install` 与 `reconcile_reinstall` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数；`reconcile_reinstall` 的计数既可表示 post-commit cleanup，也可表示受控恢复到 pre-reinstall 状态的 remove/restore/snapshot cleanup 数量。事件不记录完整本地路径、backup/snapshot ref 或 root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - `reinstall_mod` 事件只允许 `task_id`、`game_id`、`profile_id`、`mod_id`、`previous_revision_id`、`candidate_revision_id`、四类 target 聚合计数，以及失败时的稳定 `error_code` / `rollback_result`。ARMOR 同 revision target switch 在这份既有白名单上唯一新增可选 `target_id`；不记录 target 列表、binding、staging、plan token、完整路径、backup/snapshot ref、manifest/source 正文、hash 列表或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
+- SAVE-04 玩家存档恢复使用 category `save_restore`、operation `restore`。所有结果只允许
+  `task_id`、`transaction_id`、`game_id`、`profile_id`、`backup_id`；成功可增加 `file_count`，失败或
+  warning 可增加稳定 `error_code`。不得记录 preview token、pre-restore/rollback/staging 路径、archive
+  或 manifest 文件名、hash 列表、Steam ID、存档内容或底层错误原文。
+- `save_restore.*` Task Log 与 UI progress 必须使用同一 `task_id`。事务 durable `Completed` 后，
+  TaskManager completion 或 success Audit 写入失败只让 completed event 携带
+  `save_restore_evidence_degraded`，并按既有 `report_after_commit` 策略提升 evidence health；不得追加
+  虚假 `failure` Audit、修改已提交玩家文件或把成功事务重分类为回滚。
 - P7.2a 后台平台注册生命周期会写入 category `save_backup`、operation `background_registration` 的最小审计事件。除顶层 result 外，fields 只允许 `registration_status`、`task_schema_version` 和稳定 `error_code`；不得记录 task name、SID、worker path、PowerShell executable/script、task XML、原始 stdout/stderr、CIM exception、Profile/save/backup 路径或用户名。
 - 后台状态查询本身只读且不写重复审计；register/update/unregister 只有在受控 app use case 中才记录结果。ownership conflict、permission、invalid output 和 timeout 只映射稳定 code，不持久化原始平台错误。
 - 用户在 fail-closed 退出提示中明确选择当次仍然退出时，后端写入 category `save_backup`、operation `background_exit_override`、result `success` 的最小审计事件。fields 只允许 `protection_status` 和稳定 `error_code`；`starting` 的 error code 为空字符串，不得为补齐字段而记录原始错误。
@@ -361,6 +373,8 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 - token、API key、cookie 脱敏。
 - `task_id` 在任务日志和进度事件中一致传播。
 - 文件写入、覆盖、删除、备份、回滚都会产生 Audit Log。
+- 存档恢复成功、失败、recovery required 与 post-commit evidence degradation 使用稳定白名单字段，且
+  不含 token、路径、manifest/hash 列表或存档内容。
 - 后台 register/update/unregister 审计字段满足白名单，且不包含 task/SID/path/PowerShell/XML/raw output。
 - 诊断包不包含真实存档、第三方 Mod 包、完整本地路径或明显敏感信息。
 

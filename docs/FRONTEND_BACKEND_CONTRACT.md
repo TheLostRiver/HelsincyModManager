@@ -64,7 +64,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 分类管理：`create_category`、`update_category`、`delete_category`、`list_categories`、`set_mod_categories`、`get_mod_categories`
 - Mod 展示元数据：`update_mod_metadata`、`delete_mod_metadata`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
-- Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`
+- Profile 存档备份与恢复：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`、`preview_save_restore`、`start_save_restore_task`
 - 全局存档后台保护：`get_save_backup_background_control_status`、`enable_save_backup_background_protection`、`disable_save_backup_background_protection`
 - Profile 存档目录发现：`discover_profile_save_directories`、`confirm_profile_save_directory_candidate`
 - 窗口生命周期：`hide_main_window_to_tray`、`get_app_exit_guard`、`exit_app`
@@ -646,6 +646,15 @@ TaskProgressEventDto
 | `save_backup` | `save_backup.completed` | 存档备份已完成 |
 | `save_backup` | `save_backup.failed` | 存档备份失败；事件只携带稳定错误 code，不携带完整路径 |
 | `save_backup` | `save_backup.cancelled` | 存档备份任务被取消；已进入一致性收尾阶段时以后端状态为准 |
+| `save_restore` | `save_restore.queued` | 玩家存档恢复任务已登记，等待 listener 就绪后的后台执行 |
+| `save_restore` | `save_restore.preparing` | 锁外重新校验来源、物化受控 staging 并记录目标摘要 |
+| `save_restore` | `save_restore.pre_restore_backup` | 锁外创建默认开启的独立 pre-restore 安全备份 |
+| `save_restore` | `save_restore.revalidating` | 获取共享 game/profile 写锁后复核短事实、token 和目标/staging 摘要 |
+| `save_restore` | `save_restore.committing` | cancellation barrier 内执行目录交换、回滚或 recovery 收尾 |
+| `save_restore` | `save_restore.completed` | 恢复事务已 durable completed；`error` 可仅为 `save_restore_evidence_degraded` |
+| `save_restore` | `save_restore.failed` | 恢复未提交或已证明回滚；`error` 只携带稳定 code |
+| `save_restore` | `save_restore.recovery_required` | 无法证明原状态，事务与受控 recovery evidence 已保留 |
+| `save_restore` | `save_restore.cancelled` | transport 已接受 commit barrier 前的协作式取消 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -661,6 +670,11 @@ TaskProgressEventDto
 - install/uninstall/reinstall/recovery/retarget 共用 `install.cancelled` 作为 transport 发出的取消 terminal。runner
   在观察到 `TaskManager` 的取消事实后只停止后续安全阶段，不再发送第二个 cancelled；commit 取消屏障
   生效后以后端完成或失败终态为准。
+- save restore listener 必须同时匹配 `kind = save_restore`、精确 `taskId` 和已登记的
+  `save_restore.*` phase。`preparing`、pre-restore、等待锁和 `revalidating` 阶段可取消；进入
+  `committing` barrier 后 `cancel_task` 返回稳定不可取消错误，UI 必须等待 completed/failed/
+  recovery_required 终态，不能用本地取消状态覆盖后端事实。transport 或 command response 的 cancelled
+  可以先用于即时反馈，但 runner 若因取消终态持久化失败发送 `recovery_required`，后者必须覆盖 cancelled。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 
@@ -868,6 +882,8 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - `validate_profile_save_directory` 按游戏/应用规则校验存档源目录，并返回可安全展示的标签。
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
+- `preRestoreBackupEnabled` 是 Profile 级持久安全设置，缺省请求与 migration 012 都使用 `true`。前端可以
+  修改该开关，但单次恢复请求不能临时关闭它；后端提交时必须重新读取当前持久值。
 - `discover_profile_save_directories` 由后端基于已保存游戏配置、Steam root、MHW:I 存档规则和 Profile 设置执行存档源目录发现；前端只提交 `gameId` 和 `profileId`，不提交 Steam userdata 路径、account id、SteamID64、profile URL 或 XML。
 - `confirm_profile_save_directory_candidate` 只接收后端生成的 `discoveryId` 和 `candidateId`；后端从短期候选缓存恢复真实目录并重新验证后，才写入对应 Profile 的存档设置。确认成功会消费该 pending discovery，同一组 opaque id 不能重复确认。
 - 存档目录发现命令的错误使用稳定 `save_directory_discovery_*` code，`message` 固定为泛化文案，不包含完整本地路径、Steam ID、account id、profile URL、XML 原文或存档文件内容。
@@ -908,6 +924,7 @@ type ProfileSaveSettingsDto = {
   backupDirectory: ProfileDirectorySelectionDto;
   schedule: ProfileBackupScheduleDto;
   retention: ProfileBackupRetentionDto;
+  preRestoreBackupEnabled: boolean;
   updatedAt: number;
 };
 
@@ -1015,7 +1032,7 @@ type SaveBackupSummaryDto = {
   backupId: string;
   gameId: string;
   profileId: string;
-  trigger: "manual" | "auto" | "pre_install";
+  trigger: "manual" | "auto" | "pre_install" | "pre_restore";
   status: "completed" | "deleted_by_retention" | "missing" | "invalid";
   fileName: string;
   createdAt: number;
@@ -1073,6 +1090,82 @@ type SaveBackupBackgroundStatusDto = {
 ```
 
 `SaveBackupSummaryDto`、`ProfileAutoSaveBackupCheckDto` 和 `SaveBackupBackgroundStatusDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表、调度租约字段、worker 实例 id 或真实存档内容。
+
+Profile 玩家存档恢复命令：
+
+```text
+preview_save_restore({ request: { gameId, profileId, backupId } })
+start_save_restore_task({ request: {
+  gameId,
+  profileId,
+  backupId,
+  previewToken,
+  confirmed,
+  confirmedWithoutPreRestore
+} })
+```
+
+`backupId` 是后端备份 writer 生成的 opaque identity。当前 canonical 值为
+`<gameId>:<profileId>:<UTC timestamp>:<trigger>`，同秒文件名冲突时可带第五段 `sequence`；每段只允许
+ASCII 字母、数字、`-`、`_`、`.`。为兼容旧数据，后端可接受受控的单段 legacy ID。前端不得拆解、拼接、
+改写或把 `backupId` 当作文件名/路径；应从列表 DTO 原样回传。Tauri 边界必须拒绝空段、任意冒号形状、
+盘符、斜杠、UNC 和其他 path-shaped 值。
+
+请求只接收短的 game/profile/backup identity、后端签发的 opaque preview token 和确认位；不接收 archive、
+manifest、目标目录、文件列表、hash、备份根目录或任意本地路径。`preview_save_restore` 必须零玩家写入，
+在签发 token 前完成 backup summary identity、manifest/schema、archive SHA-256、逐文件 path/size/hash、
+大小上限、containment、目标目录和游戏运行状态校验。Preview DTO 形状为：
+
+```ts
+type SaveRestorePreviewDto = {
+  backup: SaveBackupSummaryDto;
+  fileCount: number;
+  totalUncompressedBytes: number;
+  preRestoreBackupEnabled: boolean;
+  requiresAdditionalConfirmation: boolean;
+  warningCodes: string[];
+  previewToken: string;
+  expiresAt: number;
+};
+
+type SaveRestoreTaskStartedDto = {
+  taskId: string;
+  kind: "save_restore";
+  status: "queued";
+};
+```
+
+`previewToken` 默认 5 分钟有效，并绑定 game/profile/backup、Profile 设置、source facts 和目标摘要。
+任务启动后在锁外重新校验并物化 staging；默认开启时先创建 `trigger = "pre_restore"` 的独立安全备份，
+备份失败不得进入 commit。获取共享 game/profile 写锁后只做短事实复核和目录交换；成功提交后刷新备份
+历史。关闭安全备份时 preview 必须返回 warning，start 同时要求 `confirmed = true` 与
+`confirmedWithoutPreRestore = true`。
+
+取消屏障：`preparing`、`pre_restore_backup`、等待锁和 `revalidating` 可协作取消；进入 `committing` 后
+禁止重分类为 cancelled。终态为 `completed`、`failed`、`recovery_required` 或 `cancelled`，且必须按
+同一 `taskId` 保留在恢复 Modal 中。`completed` 事件若 Task/Audit evidence 写入失败，只携带稳定
+`save_restore_evidence_degraded`，不能变成业务失败。协作取消必须先持久化
+`Failed + save_restore_cancelled` 再清理 staging；持久化失败时保留现场并发送
+`recovery_required + save_restore_transaction_unavailable`。`failed` 事件以 `error` 为主错误码；`message`
+仅可携带受控二级 warning code，例如 rolled-back 后的 `save_restore_recovery_cleanup_failed`，前端必须同时
+展示主结果与 warning，不能把 warning 当作原始文本。
+
+恢复错误使用稳定 code；至少包括 `save_restore_profile_missing`、`save_restore_backup_missing`、
+`save_restore_backup_unavailable`、`save_restore_target_unset`、`save_restore_target_invalid`、
+`save_restore_game_running`、`save_restore_game_running_unknown`、`save_restore_backup_directory_unavailable`、
+`save_restore_archive_unavailable`、`save_restore_manifest_unavailable`、`save_restore_manifest_invalid`、
+`save_restore_archive_invalid`、`save_restore_hash_mismatch`、`save_restore_path_unsafe`、
+`save_restore_size_limit_exceeded`、`save_restore_staging_unavailable`、`save_restore_clock_unavailable`、
+`save_restore_token_issue_failed`、`save_restore_token_invalid`、
+`save_restore_token_expired`、`save_restore_token_stale`、`save_restore_confirmation_required`、
+`save_restore_high_risk_confirmation_required`、`save_restore_pre_restore_backup_invalid`、
+`save_restore_facts_changed`、`save_restore_lock_unavailable`、`save_restore_prepared_missing`、
+`save_restore_target_unavailable`、`save_restore_target_unsafe`、`save_restore_target_changed`、
+`save_restore_commit_failed`、`save_restore_rolled_back`、`save_restore_recovery_required`、
+`save_restore_transaction_unavailable`、
+`save_restore_recovery_evidence_unsafe`、`save_restore_recovery_cleanup_failed`、
+`save_restore_evidence_degraded`。前端按 code 映射文案，不能按 message 分支，也不得把底层路径或错误原文
+显示给用户。
 
 ### 4. 游戏启动
 
@@ -1720,15 +1813,16 @@ Mod 展示元数据契约边界：
 - `hmm://window-close-requested` 由 Tauri 后端在主窗口收到关闭请求时发出；后端会先阻止默认关闭，前端必须显示关闭选择或按已保存偏好调用窄命令。
 - `hide_main_window_to_tray` 只隐藏当前主窗口，不执行备份、不修改 Profile、不读取路径。
 - `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
-- `get_app_exit_guard()` 是只读结构化决策；只有 `confirmation_required` 会同时返回后端签发的短时、一次性 `exitAuthorization`，`safe` 不签发授权。
-- `exit_app({ request: { overrideUnprotected, exitAuthorization? } })` 要求显式布尔值。普通退出只能传 `false`；命令先隐藏主窗口，再执行一次权威 guard。安全时返回 `outcome: "exiting"` 并退出；不安全时恢复窗口，返回 `outcome: "confirmation_required"`、稳定原因和一次性授权。
+- `get_app_exit_guard()` 是只读结构化决策；只有 `confirmation_required` 会同时返回后端签发的短时、一次性 `exitAuthorization`，`safe` 与 `blocked` 都不签发授权。
+- `exit_app({ request: { overrideUnprotected, exitAuthorization? } })` 要求显式布尔值。普通退出只能传 `false`；命令先隐藏主窗口，再执行一次权威 guard。安全时返回 `outcome: "exiting"` 并退出；后台保护不安全时恢复窗口，返回 `outcome: "confirmation_required"`、稳定原因和一次性授权。
+- `TaskKind::SaveRestore` 处于 queued/running 时，或 restore scope 状态不可读时，`get_app_exit_guard` 与 `exit_app` 必须 fail closed 返回 `blocked`。`blocked` 不是可 override 的后台保护警告：前端只能提供“返回应用”或“收起至系统托盘”，不得传递授权、渲染“仍然退出”或尝试绕过该状态。最终 exit admission 在后端原子关闭 restore 新任务登记，避免 guard 查询和实际退出之间的竞争窗口。
 - Windows guard 每次读取当前 Task Scheduler definition/status 并结合 fresh heartbeat 判定；不得用长 TTL 或会话缓存替代本次精确读回。只读 inspect 使用 Task Scheduler COM，注册、启动、停用和 installer cleanup 仍沿用受控 PowerShell mutation。
-- 隐藏窗口后的所有非退出路径（确认返回、授权存储/guard 错误或其他 command 失败）都必须恢复主窗口；只有明确返回 `outcome: "exiting"` 才允许保持隐藏。授权 mutex 错误必须直接 fail closed，不能回退为无授权的安全退出。
+- 隐藏窗口后的所有非退出路径（确认返回、restore `blocked`、授权存储/guard 错误或其他 command 失败）都必须恢复主窗口；只有明确返回 `outcome: "exiting"` 才允许保持隐藏。授权 mutex 错误必须直接 fail closed，不能回退为无授权的安全退出。
 - 只有危险退出对话框的当次明确确认可以传 `overrideUnprotected: true`，并必须透传该对话框持有的授权。授权缺失、过期、错配或已消费时，后端回退到完整 guard；若仍不安全则返回新的原因和授权，前端必须重置执行态并刷新当前危险确认，不能直接 override 或停留在“正在退出”。
 - 危险退出默认操作和初始焦点为留在托盘，不显示 remember；Escape、overlay 和关闭按钮都只取消。`starting` override 不 unregister、不清除 `desiredEnabled`。
 
 ```ts
-type AppExitGuardReason =
+type SaveBackupExitGuardReason =
   | "background_starting"
   | "background_not_enabled"
   | "registration_failed"
@@ -1737,9 +1831,18 @@ type AppExitGuardReason =
   | "unsupported_platform"
   | "status_unavailable";
 
+type AppExitBlockReason =
+  | "save_restore_in_progress"
+  | "save_restore_status_unavailable";
+
 type AppExitGuardDto =
   | { decision: "safe"; reason: null; exitAuthorization: null }
-  | { decision: "confirmation_required"; reason: AppExitGuardReason; exitAuthorization: string };
+  | {
+      decision: "confirmation_required";
+      reason: SaveBackupExitGuardReason;
+      exitAuthorization: string;
+    }
+  | { decision: "blocked"; reason: AppExitBlockReason; exitAuthorization: null };
 
 type ExitAppRequestDto = {
   overrideUnprotected: boolean;
@@ -1748,7 +1851,12 @@ type ExitAppRequestDto = {
 
 type ExitAppResultDto =
   | { outcome: "exiting"; reason: null; exitAuthorization: null }
-  | { outcome: "confirmation_required"; reason: AppExitGuardReason; exitAuthorization: string };
+  | {
+      outcome: "confirmation_required";
+      reason: SaveBackupExitGuardReason;
+      exitAuthorization: string;
+    }
+  | { outcome: "blocked"; reason: AppExitBlockReason; exitAuthorization: null };
 ```
 
 - Settings 全局控制与 exit guard 均只消费稳定 snake_case status/reason/code；UI 不展示 raw backend message。

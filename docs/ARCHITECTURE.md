@@ -505,6 +505,23 @@ WriteManifest
 
 默认备份目录应位于应用数据目录下，而不是游戏目录里。
 
+SAVE-04 在同一备份边界上增加独立的玩家存档恢复事务：来源只能是已持久化的 backup summary +
+manifest，前端只提交 game/profile/backup identity、短时 preview token 和确认位。完整 archive、manifest、
+hash、相对路径、大小和 containment 校验，以及目标同父目录 staging，都在共享写锁外完成；默认开启的
+`PreRestore` 安全备份也在等待锁前落盘。锁内只重读 Profile/backup/game/transaction 短事实、复核 token
+和目标/staging 摘要，并通过目录交换执行短提交。失败时优先恢复 rollback sibling，再使用已完成的
+pre-restore backup；无法证明原状态时持久化 `RecoveryRequired` 并保留证据。
+
+`pre_restore_backup_enabled` 是 Profile 级持久设置，migration 012 对既有 Profile 默认开启。
+`PreRestore` 备份写入独立 `pre-restore/` 子目录，不参与普通数量 retention。恢复事务由独立
+`SaveRestoreTransaction` 和 `TaskKind::SaveRestore` 表达，不复用 Mod `InstallPlan` 或安装恢复中心。
+目录交换成功后事务先进入非终态 `Committed`，仅在 rollback/failure evidence 收尾成功后才进入终态
+`Completed`；收尾失败持久化为 `RecoveryRequired` 并保留可重试 stage，不能把已提交的玩家文件重新标记为
+普通失败或回滚。路径预算、组件深度、目录节点和 ZIP/manifest/target digest 校验共用同一安全边界。
+恢复任务登记同时持有应用退出 admission scope：主窗口完全退出先原子确认 scope 为空并关闭后续 restore 登记；
+queued/running restore 或 scope 状态不可读时，窗口生命周期只允许返回应用或收起至托盘，不能以后台保护
+override 绕过。这样 event loop 退出不会在目录交换、rollback 或 evidence 收尾中终止 restore runner。
+
 ### 任务管理器
 
 长耗时操作必须作为后台任务执行：
@@ -516,6 +533,7 @@ WriteManifest
 - 安装计划生成
 - 安装执行
 - 存档备份压缩
+- 玩家存档恢复准备、提交与回滚收尾
 
 前端通过 Tauri command 启动任务，通过事件接收进度。
 
@@ -581,6 +599,7 @@ SQLite 存储用户数据和运行状态：
 - 替换绑定
 - 安装清单
 - 备份历史
+- 存档恢复事务
 - 用户设置
 - 可删除、可重建的 Mod 库 query projection（不是安装事实）
 

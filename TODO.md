@@ -335,8 +335,8 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 已完成部分保留；P7.2a 安装态 acceptance 已 `certified`，P7.2c installer cleanup、
-玩家存档恢复、retention 扩展和备份中心仍按各自发布门禁推进
+**状态**: 已完成部分保留；P7.2a 与 P7.2c 安装态 acceptance 已 `certified`，SAVE-04 玩家存档恢复
+已实现且自动化门禁通过，等待人工验收；retention 扩展和备份中心仍按后续发布门禁推进
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`、`docs/superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md`、`docs/superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md`
 
@@ -352,14 +352,15 @@ JSON 做不好的需求:
 - [x] P7.2b Settings 全局后台保障开关、Profile 只读状态、5 分钟 `starting` / 45 分钟 `protected` 健康派生与统一退出保护
 - [x] P7.2c NSIS/WiX owned Scheduled Task 卸载 cleanup 设计规格与实施计划（本项仅代表 docs 完成）
 - [x] P7.2c helper、双 Windows sidecar、NSIS PREUNINSTALL、WiX custom action 与 fake/static/build gate（不得删除 foreign task）
-- [ ] P7.2c disposable VM runtime gate（覆盖 upgrade/repair/modify、interactive/silent uninstall、running/foreign/owned task；未完成前不标记 runtime acceptance）
+- [x] P7.2c disposable VM runtime gate（覆盖 upgrade/repair/modify、interactive/silent uninstall、running/foreign/owned task，以及 Running 阻断后的 repair + 正常 wrapper 卸载恢复链路）
 - [x] 保留策略（数量）
 - [ ] 保留策略（时间/空间，暂停）
 - [x] 备份目录可选择（未手动选择时使用默认 app data）
 - [ ] 前端 `features/backups/` 页面（暂停）
-- [ ] SAVE-04 玩家存档恢复：统一悬浮确认；默认开启 Profile 级恢复前安全备份，写入独立
-  `pre-restore/` 目录并在成功后才允许覆盖；关闭开关时显示高风险警告并额外确认；失败 fail closed，
-  任务进度、持久通知、Audit 与 rollback/recovery 事实完整
+- [ ] SAVE-04 玩家存档恢复：实现、完整 verify 与 findings-first review 已完成，等待 disposable Windows
+  人工验收。已包含统一悬浮确认、默认开启的 Profile 级恢复前安全备份、独立 `pre-restore/` 目录、
+  高风险额外确认、5 分钟 token、共享写锁、目录交换、fail-closed rollback/recovery、任务进度、持久通知
+  与 Audit/evidence degradation；人工 gate 通过前不标记 `certified`
 
 ---
 
@@ -649,7 +650,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
-| T8 存档备份 | P2 | 部分完成；SAVE-02 安装态后台保护已 certified，SAVE-03/04/05 待推进 | |
+| T8 存档备份 | P2 | 部分完成；SAVE-02/03 已 certified，SAVE-04 已实现等待验收，SAVE-05 待推进 | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围未被当前复审选中 | |
 | T10 依赖检查 | P0/P1 支撑 | 单项 install/reinstall decision 与锁内重验已完成；更多依赖类型和自动修复未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |

@@ -387,7 +387,10 @@ save_backup_retention_failed
 
 不得记录完整存档目录、备份目录、Steam ID、Windows 用户名、存档内容或 manifest 正文。
 
-## 未来恢复设计边界
+## 玩家存档恢复（SAVE-04）
+
+当前状态：代码、temp/artificial fixture 自动化、完整验证与 findings-first review 已完成；在 disposable
+Windows 环境完成真实桌面工作流验收前不得标记为 `certified`。
 
 恢复能力必须单独切片，并满足：
 
@@ -412,7 +415,128 @@ save_backup_retention_failed
 - 备份、恢复和最终结果都要通过 task progress、持久成功/失败通知与 Audit Log 呈现；备份失败时
   fail closed，不开始恢复。
 
-没有这些基础前，不允许启用“恢复”按钮。
+Profile 备份历史只对状态为 `completed` 的记录启用恢复入口；其他状态继续 fail closed。
+
+### SAVE-04 恢复事实与事务契约
+
+`backupId` 是备份 writer 生成并持久化的 opaque identity，不是文件名、路径或可由前端解释的复合键。
+当前 canonical writer 格式为
+`<gameId>:<profileId>:<UTC timestamp>:<trigger>[:<sequence>]`（4 或 5 个 ASCII 分段）；同一时间槽
+发生文件名冲突时才出现第五段序号。各分段只允许字母、数字、`-`、`_`、`.`，不得为空。为兼容
+早期持久化数据，边界可接受受控的单段 legacy ID，但不接受任意冒号拼接、盘符、斜杠或路径形状。
+前端必须原样保存和回传该值，不得拆分、重建、规范化或将其当作路径。
+
+恢复以已持久化的 `(gameId, profileId, backupId)` 为唯一来源。前端只能提交这三个短 id、后端签发的
+短时 preview token，以及受控确认位；不得提交 archive/manifest/目标目录、文件名、hash 列表或任意
+路径。后端按历史记录中的备份目录快照定位 archive 和 manifest，并按以下顺序生成预览：
+
+1. 精确读取 backup summary，要求 game/profile/backup identity 一致且状态为 `completed`。
+2. 读取 manifest，校验 schema、identity、trigger、archive 文件名、size 和 SHA-256 与 summary 一致。
+3. 对 archive 逐 entry 流式读取与校验，preview 不创建恢复 staging；拒绝绝对路径、盘符/UNC、`..`、
+   空段、目录 entry、symlink/reparse、重复 entry、大小写碰撞、未知 entry，以及文件数/单文件/总大小越界。
+4. 按 manifest 逐文件校验 relative path、解压流 size 和 SHA-256；不得把 ZIP 列表直接当作可信事实。
+5. 读取当前 Profile settings 和游戏运行状态。目标存档目录必须仍为已验证目录；`Running` 与
+   `Unknown` 都阻断恢复。
+6. 对无路径的结构化事实生成 digest，签发短时 opaque preview token。预览 DTO 只包含来源时间、
+   trigger、文件数、总大小、目标 Profile 摘要、是否启用 pre-restore 和受控 warning/block code。
+
+commit 不信任 preview 时读取的路径或临时解包结果。任务启动后在锁外重新执行完整来源校验，并把
+archive 解包为目标同父目录下的受控 staging；manifest/hash/path/size 校验、staging 摘要和当前目标摘要
+均在等待共享 `GameProfileWriteLockRegistry` 前完成。获取锁后只重新读取 Profile settings、backup、
+游戏运行状态和事务等短事实，复用已验证 source facts 校验 preview token/facts digest，并重新计算目标与
+staging 摘要；锁内不再次解压或执行完整 archive/hash 扫描。Mod 安装、卸载、重装、安装恢复和存档恢复
+必须由 runtime 注入同一个 registry，使同一 game/profile 的提交串行。
+
+### pre-restore 与保留策略
+
+`ProfileSaveSettings.pre_restore_backup_enabled` 默认 `true`，按 Profile 持久化；migration 012 会把
+既有 Profile 显式迁移为开启。开启时，任务在等待共享写锁前通过现有备份 writer 创建
+`SaveBackupTrigger::PreRestore` 备份并写 manifest/SQLite；只有 archive、manifest 和历史记录全部成功
+后才允许进入锁内复核与覆盖。失败必须 fail closed。锁外安全备份不会放宽提交门禁：如果备份后目标
+内容发生变化，锁内目标摘要复核会拒绝提交。
+
+pre-restore 备份写入 profile 根下独立 `pre-restore/`，文件名为
+`<UTC>_<gameId>_profile-<profileId>_pre-restore[序号].zip` 及同名 manifest。它不参与普通
+manual/auto/pre-install 的 `maxCount` retention，避免一次恢复挤掉用户的常规备份；后续 SAVE-05 再为
+该目录定义独立 retention/空间策略。历史 DTO 必须明确显示 trigger 为 `pre_restore`。
+
+关闭 pre-restore 时，preview 显示高风险 warning，提交请求必须同时提供 `confirmed=true` 与
+`confirmed_without_pre_restore=true`；后端仍以当前持久设置为准，不能由前端临时关闭安全备份。
+
+### 短提交、回滚与崩溃恢复
+
+恢复 executor 只能操作已验证的目标存档根及其同父目录的应用拥有 sibling。进入覆盖前持久化恢复事务
+事实，至少记录 transaction id、game/profile/backup id、pre-restore backup id、阶段和脱敏错误码；
+不得记录完整路径或 manifest/hash 列表。
+
+锁内短提交采用目录交换语义：把验证完成的 restore staging 物化到目标同父目录的受控 sibling，重验
+目标和 sibling 均非 link/reparse 后，将现有目标改名为 rollback sibling，再将 restore sibling 改名为
+目标。交换成功后先持久化非终态 `Committed`，再幂等清理 rollback/failure evidence；只有清理成功后才
+持久化 `Completed`。finalize 失败持久化 `RecoveryRequired` 并保留可重试 stage。平台不支持可靠目录交换
+或目标无法证明归属时必须 fail closed，不能退化为逐文件覆盖。
+
+若第二次改名或后续一致性检查失败，优先用仍在同父目录的 rollback sibling 恢复原目标；若该事实不可用，
+再从已完成的 pre-restore archive 重新校验并恢复。能够确认原状态恢复时任务返回失败但不要求人工恢复；
+无法确认时持久化 `recovery_required`，保留事务事实和受控 sibling，任务/通知/Audit 明确提示需要恢复，
+不得伪报成功或静默删除证据。runtime 启动时后续可据事务事实扫描未完成恢复；SAVE-04 至少提供状态读取
+和显式失败投影，不复用 Mod InstallPlan recovery manifest。
+
+prepare 会在进程内保留目标父目录 capability、父/目标/staging identity 和受控子项名称；commit、rollback、
+discard 与 finalize 都只能相对该 capability 操作，并在每次目录交换前后复核 identity 与 digest。该 capability
+不持久化，也不能在应用崩溃或重启后从绝对路径安全重建。因此提交后、durable `Completed` 前发生进程
+终止时，重启后的行为必须保留 `Committing`/`Committed` 非终态事务和仍存活的磁盘 sibling、阻断新的恢复
+并 fail closed。finalize 本身幂等记录逐 child 清理进度；若进程在清理中终止，部分 sibling 可能已安全删除，
+其余 evidence 仍保留。当前切片不承诺自动跨进程收尾，人工验收和支持流程必须把这类现场视为 recovery
+evidence，而不是可直接删除的临时文件。
+
+### SAVE-04 command、task 与错误码
+
+新增窄 command：
+
+```text
+preview_save_restore({ request: { gameId, profileId, backupId } })
+start_save_restore_task({ request: {
+  gameId,
+  profileId,
+  backupId,
+  previewToken,
+  confirmed,
+  confirmedWithoutPreRestore
+} })
+```
+
+恢复使用独立 `TaskKind::SaveRestore` 和阶段：
+
+```text
+save_restore.queued
+save_restore.preparing
+save_restore.pre_restore_backup
+save_restore.revalidating
+save_restore.committing
+save_restore.completed
+save_restore.failed
+save_restore.recovery_required
+save_restore.cancelled
+```
+
+`preparing`、pre-restore 备份、等待锁和 `revalidating` 完成前可取消；持久化 `Committing` 前启用
+cancellation barrier，之后必须先完成提交或回滚收尾。取消 safe point 必须先把事务持久化为
+`Failed + save_restore_cancelled`，成功后才能清理 prepared staging 并发送 cancelled 终态；若该写入失败，
+保留 staging/未完成事务并发送 `recovery_required + save_restore_transaction_unavailable`。该后端终态允许
+覆盖 transport 或 command response 先投影的乐观 cancelled 状态。稳定错误码区分 profile/backup/target、
+archive/manifest/hash/path/size、游戏运行状态、token、确认、pre-restore、scope/lock、facts drift、
+commit/rollback/recovery 和 evidence degradation。事务 durable `Completed` 后，TaskManager completion 或
+success Audit 写入失败只在 completed event 投影 `save_restore_evidence_degraded`，不得伪造业务失败、
+failure Audit 或玩家文件回滚。`failed` 事件的 `error` 是主错误码；若已回滚但 finalize 失败，`message` 可携带
+受控二级 warning code，前端必须同时展示“已回滚”和 evidence 清理警告。错误 message、Task Log、Audit 和
+通知不得包含本地路径、Windows 用户名、
+Steam ID、manifest 正文、hash 或存档内容。
+
+恢复登记在 `SaveRestoreTaskScopeRegistry` 中保留 game/profile scope，直到 runner 发出 terminal 并完成 scope
+release。窗口完全退出在后端通过同一 registry 原子关闭新的 restore admission：已有 queued/running restore
+或 scope 无法读取时一律返回稳定 `blocked` 原因，不生成 override authorization，也不能借后台保护危险退出
+绕过。此时 UI 只可返回应用或收起至托盘，防止 event loop 在目录交换、rollback 或 finalize evidence 收尾期间
+终止 runner。
 
 ## 自动备份设计边界
 
@@ -471,11 +595,12 @@ save_backup_retention_failed
 
 ### 切片 5：恢复能力
 
-- 增加 `preview_restore_save_backup`。
-- 增加 `start_restore_save_backup_task`。
-- 统一悬浮确认层，默认开启恢复前 pre-restore 备份；关闭开关时显示风险并要求额外确认。
-- pre-restore 备份写入独立目录，成功后才允许恢复；失败时 fail closed 并保留可审计结果。
-- 恢复完成后刷新历史和审计。
+- [x] 增加 `preview_save_restore`。
+- [x] 增加 `start_save_restore_task` 与独立 `TaskKind::SaveRestore`。
+- [x] 统一悬浮确认层，默认开启恢复前 pre-restore 备份；关闭开关时显示风险并要求额外确认。
+- [x] pre-restore 备份写入独立目录，成功后才允许恢复；失败时 fail closed 并保留可审计结果。
+- [x] 恢复完成后刷新历史，并保留 Task/Audit/evidence degradation 投影。
+- [ ] disposable Windows 人工验收与最终 `certified` 门禁。
 
 ### 切片 6：独立备份中心页面
 
@@ -497,6 +622,13 @@ save_backup_retention_failed
 - 大小写路径碰撞被拒绝。
 - 备份目录不可写时返回稳定错误码。
 - `maxCount` 保留策略只删除同 profile 的旧备份。
+- `pre_restore` 备份写入独立目录，且不被普通 `maxCount` retention 删除。
+- restore preview/token 对 backup、manifest、archive、逐文件 hash/size/path 和目标状态 fail closed；
+  token stale/expired、目标 drift、游戏运行和未知状态均阻断提交。
+- 默认开启与关闭 pre-restore 的二次确认、pre-restore 失败不写目标、同 profile 写锁串行、commit barrier
+  取消、`Committing -> Committed -> Completed`、目录交换 rollback、幂等 finalize 重试和
+  recovery-required evidence 均有正负 fixture。
+- durable `Completed` 后 Task/Audit 写入失败只投影 evidence degradation，不伪造业务失败或回滚玩家文件。
 - 任务事件携带 `taskId`。
 - Audit Log 不含完整路径。
 
