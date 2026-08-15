@@ -1154,6 +1154,11 @@ SAVE-05 retention 与备份中心使用 fake repository 与 temp filesystem，�
 浏览器或 Windows 人工 smoke 至少覆盖 `1440x900`、`1280x800` 和 `480x800`，不得出现横向滚动才能发现
 恢复操作的布局。所有 fixture 仍只能使用 temp/artificial 数据。
 
+SAVE-05 已于 2026-08-16 按上述边界完成认证。disposable Windows synthetic gate 覆盖数量、年龄、空间、
+保护点 blocked、manifest 锁定 partial/释放后重试、备份中心恢复入口和完全退出后的持久化复核；最终
+archive/manifest 为 `3/3`、`pre_restore=1/1`、需处理为 0。证据与候选信息记录在
+[SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。
+
 自动备份调度状态与后台保护状态查询切片至少运行聚焦测试：
 
 ```powershell

@@ -40,8 +40,9 @@
 - T17 狩技来源批量迁移 Slice 1-4C：`completed`，保持 import-only。
 - 多 Steam 用户存档候选发现、显式选择、昵称/头像展示和隐私降级：`completed`。
 - 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
-  support export：核心已完成；SAVE-02 与 SAVE-03 安装态 runtime acceptance、SAVE-04 玩家存档恢复均已
-  `certified`；SAVE-05 retention/备份中心实现与自动化验证已完成，仍等待 disposable Windows 人工 gate。
+  support export：核心已完成；SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 均已 `certified`。SAVE-05
+  已通过 disposable Windows synthetic retention/备份中心人工 gate，覆盖数量、年龄、空间、保护点、
+  partial/retry、恢复入口和重启持久化。
 - CLI-0A/0B/1A/1B/2A/2B/2C：`completed`；Sandbox 单项 lifecycle 已闭环，Production 写命令仍不可达。
 - 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
   Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
@@ -49,9 +50,8 @@
 - T13 Slice A-D：T13-07 为 `completed`；T13-08 Windows Sandbox Gate C 为 `certified`。
 - CAT-01、WR-01、WR-02A、WR-03A、WR-03B 与 WR-04 已完成；WR-04 Windows Gate D 为
   `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；
-  SAVE-02 安装态后台保护、SAVE-03 installer ownership cleanup 与 SAVE-04 玩家存档恢复均已
-  `certified`；SAVE-05 retention/备份中心实现与自动化验证已完成，当前只等待 disposable Windows
-  synthetic 人工 gate。production catalog 仍受 WR-02B 许可门禁约束。
+  SAVE-02 安装态后台保护、SAVE-03 installer ownership cleanup、SAVE-04 玩家存档恢复与 SAVE-05
+  retention/备份中心均已 `certified`。production catalog 仍受 WR-02B 许可门禁约束。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -137,9 +137,8 @@ QG-01、T13-00 和 Slice A-D 已完成；T13-05 的 Sandbox CLI、T13-06 的窄 
 批量 UI 与 T13-08 Windows Gate C 已形成完整 Sandbox 玩家路径。CAT-01 装备数据治理、WR-01 武器
 设计、WR-02A 纯解析、WR-03A 纯 binary transformer、WR-03B 安装事实链和 WR-04 受控 UI/Gate D
 均已完成；LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
-安装态后台保护、SAVE-03 installer cleanup 与 SAVE-04 玩家存档恢复验收也已完成。SAVE-05 retention 与
-备份中心实现和自动化验证已完成，当前只等待 disposable Windows synthetic 人工 gate。AR6 与 WR-02B 等待
-已授权审计数据。Production weapon
+安装态后台保护、SAVE-03 installer cleanup、SAVE-04 玩家存档恢复和 SAVE-05 retention/备份中心验收
+均已完成并认证。AR6 与 WR-02B 等待已授权审计数据。Production weapon
 catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人工 seed。外部 review
 因额度缺席时仍按 CodeRabbit
 缺席流程完成独立全 diff 自审，且不能跳过 required CI terminal success。
@@ -158,8 +157,9 @@ catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人
 Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI、Slice C 的
 uninstall/reinstall runtime/CLI contract、Slice D 的 Tauri/UI/Gate C、CAT-01 数据治理和 WR-04
 Tauri/UI/Gate D、LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
-安装态后台保护、SAVE-03 installer cleanup 与 SAVE-04 玩家存档恢复验收均已完成。Sandbox 写能力不因此
-扩张为 Production 写能力；下一任务进入 SAVE-05 retention 与备份中心，AR6/WR-02B 在授权数据到位后恢复。
+安装态后台保护、SAVE-03 installer cleanup、SAVE-04 玩家存档恢复和 SAVE-05 retention/备份中心验收均已
+完成。Sandbox 写能力不因此扩张为 Production 写能力；下一 ready 单元进入 CLI-3A 跨进程 admission，
+AR6/WR-02B 在授权数据到位后恢复。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -627,12 +627,14 @@ fail-closed。
 
 ### SAVE-05：Retention 与备份中心
 
-状态：`implemented_pending_human_gate`，SAVE-04 已认证；安全语义与跨层契约见
-[SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。后端、Tauri、前端、聚焦测试和
-完整自动化门禁已完成，剩余 disposable Windows synthetic 验收。
+状态：`certified`（2026-08-16），SAVE-04 已认证；安全语义、跨层契约和 disposable Windows 证据见
+[SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。后端、Tauri、前端、聚焦测试、
+完整自动化门禁和 synthetic 人工验收均已完成。
 
 - 增加按时间/空间 retention、不可删/部分清理结果和空间预算。
 - 建立独立备份中心，展示 Profile、确认的 Steam 账号摘要、历史、状态和受控恢复入口。
+- 认证覆盖数量、空间、保护点 blocked、manifest 锁定 partial/重试、年龄整理和重启持久化；普通
+  retention 始终保留 `pre_restore`。
 
 ## P2 日志与空间治理
 
@@ -667,9 +669,9 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
-LOG-03、SAVE-02、SAVE-03 与 SAVE-04 均已完成。SAVE-03 的 WiX/NSIS build/static、upgrade/repair、自动备份、
-owned/foreign/running 和正常 wrapper recovery 矩阵均已通过 disposable Windows Sandbox gate；下一纵向
-切片进入 SAVE-05 retention 与备份中心。AR6/WR-02B 继续等待可再分发的审计数据。
+LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 均已完成并认证。SAVE-03 的 WiX/NSIS build/static、
+upgrade/repair、自动备份、owned/foreign/running 和正常 wrapper recovery 矩阵均已通过 disposable Windows
+Sandbox gate；下一纵向切片进入 CLI-3A 跨进程 admission。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力
 

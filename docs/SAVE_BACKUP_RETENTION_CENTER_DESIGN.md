@@ -3,7 +3,7 @@
 ## 状态
 
 - 路线图任务：SAVE-05
-- 实施状态：`implemented_pending_human_gate`
+- 实施状态：`certified`（2026-08-16）
 - 前置：SAVE-04 玩家存档恢复已 `certified`
 - 平台范围：Windows + MHW:I
 
@@ -259,3 +259,28 @@ partial 删除场景。验收需确认：
 - 跨 Profile 页面、筛选、备注和恢复入口可用。
 - 从备份中心启动恢复仍经过 SAVE-04 预览、确认、恢复前安全备份和完全退出闸门。
 - 升级/重启后 Profile、路径、账号展示摘要、retention、历史和备注保留。
+
+## 认证结果（2026-08-16）
+
+SAVE-05 已在 disposable Windows Sandbox 完成受控 synthetic 人工验收。候选代码终点为提交
+`7cea779`；验收只使用人工构造的 Alpha/Beta 存档、备份目录和 SQLite，未读取真实 Steam userdata、真实
+游戏目录、真实玩家存档或生产 Scheduled Task。
+
+- 数量 retention：Alpha 的普通备份按数量收敛，最新普通备份与 Beta 备份保留，历史事实未被伪删除。
+- 空间 retention：16 MiB 上限下物理备份从 3 对收敛到 2 对，释放字节与 UI 摘要一致。
+- 保护点与 blocked：恢复前自动备份写入独立 `pre_restore` 保护点；预算无法安全收敛时 UI 显示阻断，
+  没有突破保护点或最新普通备份。
+- partial/retry：锁定 manifest 时 archive/manifest 出现 `3/4` 的部分清理，备份中心显示需处理项；
+  释放锁后显式重试收敛为 `3/3`，需处理归零。
+- 年龄 retention：受控 helper 通过正式 writer/repository 写入一份三天前的 Alpha synthetic 备份；
+  将 Alpha 策略设为保留数量 `999`、保留天数 `1`、关闭空间上限并执行“立即整理”后，物理状态为
+  `archive/manifest=3/3`、`pre_restore=1/1`、已知空间 `23072683` bytes。当前 Alpha `R6`、Beta
+  `R0` 和恢复前保护点均保留，旧龄记录在历史中显示为“已整理/不可恢复”。
+- 重启持久化：Alpha 的 retention 设置、活动配置档、存档/备份路径、历史、备注、保护点和“需处理 0”
+  在完全退出并重启后保持一致；最终 UI 摘要为 9 条历史、22.0 MiB、1 个保护点、0 条需处理。
+- 安全边界：受控 helper 不是产品运行时能力，只用于一次性验收；它只接受 disposable Sandbox 的
+  synthetic profile/root，并在 HMM 未运行时执行。所有自动化和人工证据均未越过 fixture 映射边界。
+
+残余风险限定为非对抗性本地备份根上的文件系统 TOCTOU：受控句柄复验与按名删除之间仍存在理论上的
+并发替换窗口。当前威胁模型不把用户可写备份根视为对抗性并发主体，已有顺序替换、link/junction/reparse
+和外部 sentinel 负测；若未来扩大威胁模型，应单独设计平台专属 handle-delete 协议。
