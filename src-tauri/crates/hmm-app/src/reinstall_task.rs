@@ -507,10 +507,33 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             );
         }
 
-        let write_lock = self
-            .write_locks
-            .lock_for(request.game_id(), request.profile_id());
         let commit_result = {
+            let _cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+                request.game_id(),
+                request.profile_id(),
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if self.is_cancelled(task_id) {
+                        return Ok(events);
+                    }
+                    return self.fail_with_audit(
+                        task_id,
+                        request,
+                        audit_context,
+                        events,
+                        observer,
+                        error.code(),
+                        "not_attempted",
+                        false,
+                    );
+                }
+            };
+            let write_lock = self
+                .write_locks
+                .lock_for(request.game_id(), request.profile_id());
             let _guard = match write_lock.lock() {
                 Ok(guard) => guard,
                 Err(_) => {

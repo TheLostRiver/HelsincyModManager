@@ -11,7 +11,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
-    SaveBackupSchedulerStateRepository,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, SaveBackupSchedulerStateRepository,
 };
 
 use crate::save_profile_maintenance_scope::SaveProfileMaintenanceScopeGuard;
@@ -63,6 +63,29 @@ impl SaveBackupTaskScopeRegistry {
         Self {
             maintenance_registry,
         }
+    }
+
+    pub(crate) fn acquire_cross_process_for_task(
+        &self,
+        request: &StartSaveBackupTaskRequest,
+        task_manager: &TaskManager,
+        task_id: &str,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.maintenance_registry.acquire_cross_process_for_task(
+            &request.game_id,
+            &request.profile_id,
+            task_manager,
+            task_id,
+        )
+    }
+
+    pub(crate) fn acquire_cross_process_for_maintenance(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.maintenance_registry
+            .acquire_cross_process(game_id, profile_id)
     }
 
     pub fn reserve_task(
@@ -342,6 +365,24 @@ impl SaveBackupTaskRunner {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(SaveBackupTaskRunError { events: Vec::new() });
         }
+        let _cross_process_guard = match self.scope_registry.acquire_cross_process_for_task(
+            &request,
+            &self.task_manager,
+            task_id,
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                    return Ok(Vec::new());
+                }
+                return Err(self.fail_with_audit_code(
+                    task_id,
+                    &request,
+                    Vec::new(),
+                    error.code(),
+                ));
+            }
+        };
         let mut events = vec![
             running_event(task_id, SAVE_BACKUP_SCANNING_PHASE),
             running_event(task_id, SAVE_BACKUP_ARCHIVING_PHASE),
