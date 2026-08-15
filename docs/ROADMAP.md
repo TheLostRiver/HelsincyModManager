@@ -66,9 +66,13 @@
    [SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。验收覆盖数量、年龄、空间、
    保护点 blocked、manifest 锁定 partial/重试收敛、备份中心恢复入口和重启持久化；最终物理备份为
    archive/manifest `3/3`、`pre_restore=1/1`，需处理归零，未读取真实玩家数据。
-9. Task/Audit retention、日志总空间上限和 Debug Log 已完成。Production CLI 写入继续等待跨进程
-   admission；Sandbox CLI 已成为单项与批量核心生命周期自动化入口，批量 Tauri/前端体验已由
-   Slice D 完成。Gate C 认证不开放 Production 写入。
+9. Task/Audit retention、日志总空间上限和 Debug Log 已完成。CLI-3A 的 game/save/background
+   跨进程 admission、Windows named mutex、Unix capability-relative file lock、共享 runtime composition、
+   锁内重验与稳定错误投影已完成工程实现；本地完整验证与 findings-first 全 diff 审查已通过，候选仍需
+   Ubuntu required CI 和 disposable Windows 多进程 gate。Production CLI 写入继续等待 CLI-3B 按
+   command 审核与开放；Sandbox CLI 已成为单项与批量核心
+   生命周期自动化入口，批量 Tauri/前端体验已由 Slice D 完成。Gate C 或 CLI-3A 均不自动开放
+   Production 写入。
 10. GOV-01 至 GOV-04 已由 PR #211 至 #214 完成；DTO 测试外置、重装 dead-code 抑制清理、
     Tauri command 契约覆盖和治理检查加固成为后续任务必须保持的工程基线。
 

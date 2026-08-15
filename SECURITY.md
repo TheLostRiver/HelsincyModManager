@@ -145,6 +145,20 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - CLI 首次 Ctrl+C 通过 `TaskManager` 请求协作式取消；只有确认取消才发唯一 cancelled terminal 并
   返回 130。第二次中断强制退出前提示通过 recovery/status 重验状态；commit barrier 生效后不伪造
   cancelled。
+- CLI-3A 在 `hmm-ports` 定义三类跨进程 scope：`background-registration-write`、
+  `save-profile-write` 和 `game-profile-write`。scope identity 只接受固定全局值或稳定 game/profile ID，
+  不接受路径、Steam ID、task XML、archive/manifest ref 或自由文本。
+- 获取全序固定为 `background < save < game`；restore 只能按 `save -> game -> process-local game mutex`
+  进入短 commit。逆序、同 scope 重入、timeout、取消和平台不可用全部 fail closed 为稳定
+  `write_admission_*` code。
+- Windows named mutex 的对象名和 Unix lock filename 只包含 domain-separated digest。Unix 实现从已打开
+  app-data capability 以 no-follow 相对打开 lock root/file，路径被 symlink 替换时不能逃逸；owner record
+  只是 stale evidence，不能删除或抢占活跃 OS lock。
+- 取得跨进程 guard 只表示取得执行时隙，不是写授权。InstallPlan、manifest、backup、rollback/recovery、
+  save settings/transaction、containment 与 owned Scheduled Task read-back 必须在 guard 内重验。
+- CLI-3A 不改变 Production parser/runtime 门禁。Production 写命令只有在后续 CLI-3B 按 command 完成
+  capability、token、Audit、锁内事实和 disposable Windows 验收后才能逐项开放；不得提供 debug 或
+  环境变量绕过。
 - 自动测试只使用 temp/fake/人工 fixture，不执行 Production game 命令或读取测试机真实 Steam、
   AppData、游戏、日志和存档，也不查询、注册、更新、启动或删除真实 Windows Scheduled Task。
 
