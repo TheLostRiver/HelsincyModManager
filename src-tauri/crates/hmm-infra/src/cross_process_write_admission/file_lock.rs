@@ -307,7 +307,9 @@ mod tests {
         let admission = PlatformCrossProcessWriteAdmission::new(temp.path()).expect("admission");
         let lock_root = admission.open_lock_root().expect("opened lock root");
 
-        fs::remove_dir(&admission.lock_root_path).expect("remove original lock root");
+        let detached_lock_root = temp.path().join("detached-lock-root");
+        fs::rename(&admission.lock_root_path, &detached_lock_root)
+            .expect("detach original lock root");
         symlink(&external, &admission.lock_root_path).expect("replace lock root with symlink");
 
         let file = open_lock_file_from_root(
@@ -317,6 +319,12 @@ mod tests {
         .expect("capability-relative lock file");
         drop(file);
 
+        assert_eq!(
+            fs::read_dir(&detached_lock_root)
+                .expect("detached lock root remains readable")
+                .count(),
+            1
+        );
         assert_eq!(
             fs::read_dir(&external)
                 .expect("external directory remains readable")
