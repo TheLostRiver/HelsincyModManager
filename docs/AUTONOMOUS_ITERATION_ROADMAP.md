@@ -677,11 +677,13 @@ Sandbox gate；下一纵向切片进入 CLI-3A 跨进程 admission。AR6/WR-02B 
 
 ### CLI-3A：跨进程 admission
 
-状态：`ready`，T13-08、LOG-01 与 SAVE-03 均已满足；仍需独立设计和验收。
+状态：`in_progress`。工程实现、本地完整验证、findings-first review 与 Ubuntu required CI run
+`31910573714` 已通过；仍需 disposable Windows 多进程候选 gate，尚未 `certified`。
 
 - 定义 `game-profile-write`、`save-profile-write`、`background-registration-write` scopes。
 - GUI、CLI、worker 使用相同 admission；锁内重验，固定获取顺序。
 - 至少两个独立进程竞争、timeout、崩溃释放和 stale owner 测试。
+- Production 写命令仍由 CLI policy/runtime 双层拒绝；本阶段不得提前进入 CLI-3B。
 
 ### CLI-3B：逐命令开放 Production 写入
 
