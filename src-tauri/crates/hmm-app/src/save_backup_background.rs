@@ -5,8 +5,10 @@ use hmm_core::{
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundRegistryError, SaveBackupBackgroundSettingsRepository,
-    SaveBackupSchedulerStateRepository, SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
+    CrossProcessWriteAdmissionError, SaveBackupSchedulerStateRepository,
+    SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
+use crate::CrossProcessWriteAdmissionCoordinator;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
@@ -47,6 +49,8 @@ pub enum SaveBackupBackgroundServiceError {
     ClockUnavailable,
     #[error("audit log is unavailable")]
     AuditUnavailable,
+    #[error(transparent)]
+    WriteAdmission(#[from] CrossProcessWriteAdmissionError),
 }
 
 impl SaveBackupBackgroundServiceError {
@@ -56,6 +60,7 @@ impl SaveBackupBackgroundServiceError {
             Self::SettingsUnavailable => "save_backup_background_settings_unavailable",
             Self::ClockUnavailable => "save_backup_clock_unavailable",
             Self::AuditUnavailable => "save_backup_background_audit_unavailable",
+            Self::WriteAdmission(error) => error.code(),
         }
     }
 }
@@ -67,6 +72,7 @@ pub struct SaveBackupBackgroundService {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     registration_transition: Mutex<()>,
+    write_admission: Arc<CrossProcessWriteAdmissionCoordinator>,
 }
 
 impl SaveBackupBackgroundService {
@@ -76,6 +82,22 @@ impl SaveBackupBackgroundService {
         audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
+        Self::new_with_write_admission(
+            registry,
+            scheduler_state_repository,
+            audit_log,
+            clock,
+            Arc::new(CrossProcessWriteAdmissionCoordinator::process_local_compatibility()),
+        )
+    }
+
+    pub fn new_with_write_admission(
+        registry: Arc<dyn SaveBackupBackgroundRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_admission: Arc<CrossProcessWriteAdmissionCoordinator>,
+    ) -> Self {
         Self {
             registry,
             scheduler_state_repository,
@@ -83,6 +105,7 @@ impl SaveBackupBackgroundService {
             audit_log,
             clock,
             registration_transition: Mutex::new(()),
+            write_admission,
         }
     }
 
@@ -93,6 +116,25 @@ impl SaveBackupBackgroundService {
         audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
+        Self::new_with_settings_repository_and_write_admission(
+            registry,
+            scheduler_state_repository,
+            background_settings_repository,
+            audit_log,
+            clock,
+            Arc::new(CrossProcessWriteAdmissionCoordinator::process_local_compatibility()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_settings_repository_and_write_admission(
+        registry: Arc<dyn SaveBackupBackgroundRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        background_settings_repository: Arc<dyn SaveBackupBackgroundSettingsRepository>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_admission: Arc<CrossProcessWriteAdmissionCoordinator>,
+    ) -> Self {
         Self {
             registry,
             scheduler_state_repository,
@@ -100,6 +142,7 @@ impl SaveBackupBackgroundService {
             audit_log,
             clock,
             registration_transition: Mutex::new(()),
+            write_admission,
         }
     }
 
@@ -277,6 +320,7 @@ impl SaveBackupBackgroundService {
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
         let _transition = self.lock_registration_transition();
+        let _admission = self.write_admission.acquire_background_registration()?;
         self.change_registration(RegistrationOperation::Register)
     }
 
@@ -284,6 +328,7 @@ impl SaveBackupBackgroundService {
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
         let _transition = self.lock_registration_transition();
+        let _admission = self.write_admission.acquire_background_registration()?;
         self.change_registration(RegistrationOperation::Unregister)
     }
 
@@ -291,6 +336,7 @@ impl SaveBackupBackgroundService {
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
         let _transition = self.lock_registration_transition();
+        let _admission = self.write_admission.acquire_background_registration()?;
         let settings_repository = self.settings_repository()?;
         let timestamp_unix_millis = self
             .clock
@@ -332,6 +378,7 @@ impl SaveBackupBackgroundService {
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
         let _transition = self.lock_registration_transition();
+        let _admission = self.write_admission.acquire_background_registration()?;
         let settings_repository = self.settings_repository()?;
         let settings = settings_repository
             .load()

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use hmm_app::{
-    CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupExecutor,
-    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
-    SaveRestoreCommitContext, SaveRestorePreviewError, StartSaveBackupTaskRequest,
+    CreateSaveBackupRequest, CreateSaveBackupResult, CrossProcessWriteAdmissionCoordinator,
+    SaveBackupError, SaveBackupExecutor, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
+    SaveProfileMaintenanceScopeRegistry, SaveRestoreCommitContext, SaveRestorePreviewError,
+    StartSaveBackupTaskRequest,
 };
 use hmm_app::{
     SaveRestoreCommitValidator, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
@@ -16,7 +17,10 @@ use hmm_core::{
     SaveRestoreTransactionStatus,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, PreparedSaveRestore, SaveRestoreCommitError,
+    AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAcquisition,
+    CrossProcessWriteAdmission, CrossProcessWriteAdmissionError,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, CrossProcessWriteScope,
+    CrossProcessWriteScopeKind, PreparedSaveRestore, SaveRestoreCommitError,
     SaveRestoreCommitRequest, SaveRestoreCommitResult, SaveRestoreFileSystem,
     SaveRestoreFinalizeError, SaveRestoreFinalizeRequest, SaveRestorePrepareError,
     SaveRestorePrepareRequest, SaveRestoreTransactionRepository,
@@ -64,6 +68,68 @@ fn runner_persists_transaction_before_finalize_and_commits_pre_restore_backup() 
     assert!(events
         .iter()
         .any(|event| event.phase == "save_restore.completed"));
+}
+
+#[test]
+fn restore_holds_save_scope_then_stops_before_commit_when_game_scope_is_busy() {
+    let task_manager = Arc::new(TaskManager::new());
+    let transactions = Arc::new(RecordingTransactions::default());
+    let file_system = Arc::new(RecordingFileSystem::default());
+    let backup = Arc::new(RecordingBackupExecutor::default());
+    let audit = Arc::new(RecordingAudit::default());
+    let validator = Arc::new(StaticValidator::new([Ok(sample_context())]));
+    let admission = Arc::new(SaveThenRejectGameAdmission::default());
+    let coordinator = Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+        admission.clone(),
+        Duration::from_millis(1),
+    ));
+    let maintenance_registry = Arc::new(
+        SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(Arc::clone(
+            &coordinator,
+        )),
+    );
+    let scope_registry = Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
+        maintenance_registry,
+    ));
+    let write_locks = Arc::new(
+        hmm_app::GameProfileWriteLockRegistry::with_cross_process_admission(coordinator),
+    );
+    let runner = SaveRestoreTaskRunner::with_scope_registry(
+        Arc::clone(&task_manager),
+        validator,
+        file_system.clone(),
+        transactions.clone(),
+        backup,
+        audit,
+        Arc::new(FixedClock),
+        write_locks,
+        Arc::clone(&scope_registry),
+    );
+    let request = sample_request();
+    let task = SaveRestoreTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        scope_registry,
+    )
+    .start_save_restore_task(&request)
+    .expect("restore task starts");
+
+    let error = runner
+        .run_save_restore_task(&task.task_id, request)
+        .expect_err("busy game scope must reject restore commit");
+
+    assert_eq!(error.error_code, "write_admission_busy");
+    assert_eq!(file_system.commit_count(), 0);
+    assert_eq!(
+        transactions.statuses().last(),
+        Some(&SaveRestoreTransactionStatus::Failed)
+    );
+    assert_eq!(
+        admission.calls(),
+        vec![
+            CrossProcessWriteScopeKind::SaveProfileWrite,
+            CrossProcessWriteScopeKind::GameProfileWrite,
+        ]
+    );
 }
 
 #[test]
@@ -902,6 +968,51 @@ struct Harness {
     scope_registry: Arc<SaveRestoreTaskScopeRegistry>,
     write_locks: Arc<hmm_app::GameProfileWriteLockRegistry>,
     request: StartSaveRestoreRequest,
+}
+
+#[derive(Default)]
+struct SaveThenRejectGameAdmission {
+    calls: Mutex<Vec<CrossProcessWriteScopeKind>>,
+}
+
+impl SaveThenRejectGameAdmission {
+    fn calls(&self) -> Vec<CrossProcessWriteScopeKind> {
+        self.calls.lock().expect("admission calls").clone()
+    }
+}
+
+impl CrossProcessWriteAdmission for SaveThenRejectGameAdmission {
+    fn acquire(
+        &self,
+        scope: &CrossProcessWriteScope,
+        _timeout: Duration,
+        _cancellation: &dyn CancellationToken,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.calls
+            .lock()
+            .expect("admission calls")
+            .push(scope.kind());
+        if scope.kind() == CrossProcessWriteScopeKind::GameProfileWrite {
+            return Err(CrossProcessWriteAdmissionError::Busy);
+        }
+        Ok(Box::new(RecordingCrossProcessGuard {
+            scope: scope.clone(),
+        }))
+    }
+}
+
+struct RecordingCrossProcessGuard {
+    scope: CrossProcessWriteScope,
+}
+
+impl CrossProcessWriteGuard for RecordingCrossProcessGuard {
+    fn scope(&self) -> &CrossProcessWriteScope {
+        &self.scope
+    }
+
+    fn acquisition(&self) -> CrossProcessWriteAcquisition {
+        CrossProcessWriteAcquisition::default()
+    }
 }
 
 impl Harness {

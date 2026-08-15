@@ -1,8 +1,9 @@
 use anyhow::Result;
 use hmm_app::{
-    CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupExecutor,
-    SaveBackupTaskRunner, SaveBackupTaskService, SaveBackupWarning, StartSaveBackupTaskRequest,
-    TaskKind, TaskManager, TaskManagerError, TaskStatus,
+    CreateSaveBackupRequest, CreateSaveBackupResult, CrossProcessWriteAdmissionCoordinator,
+    SaveBackupError, SaveBackupExecutor, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
+    SaveBackupTaskService, SaveBackupWarning, SaveProfileMaintenanceScopeRegistry,
+    StartSaveBackupTaskRequest, TaskKind, TaskManager, TaskManagerError, TaskStatus,
 };
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupRetentionOutcome,
@@ -10,7 +11,11 @@ use hmm_core::{
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
     SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
+use hmm_ports::{
+    AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmission,
+    CrossProcessWriteAdmissionError, CrossProcessWriteAdmissionResult, CrossProcessWriteGuard,
+    CrossProcessWriteScope, SaveBackupSchedulerStateRepository,
+};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -31,6 +36,51 @@ fn start_save_backup_task_returns_queued_save_backup_task() {
     assert_eq!(
         task_manager.task_status(&task.task_id),
         Some(TaskStatus::Queued)
+    );
+}
+
+#[test]
+fn cross_process_busy_stops_save_backup_before_executor() {
+    let task_manager = Arc::new(TaskManager::new());
+    let coordinator = Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+        Arc::new(RejectingCrossProcessAdmission(
+            CrossProcessWriteAdmissionError::Busy,
+        )),
+        Duration::from_millis(1),
+    ));
+    let scope_registry = Arc::new(SaveBackupTaskScopeRegistry::with_maintenance_registry(
+        Arc::new(
+            SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(coordinator),
+        ),
+    ));
+    let service = SaveBackupTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::clone(&scope_registry),
+    );
+    let task = service
+        .start_save_backup_task(sample_request())
+        .expect("save backup task starts");
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
+    let runner = SaveBackupTaskRunner::with_scope_registry(
+        Arc::clone(&task_manager),
+        executor.clone(),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        scope_registry,
+    );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect_err("busy admission must reject save backup");
+
+    assert!(executor.take_requests().is_empty());
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:write_admission_busy")
+    );
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Failed)
     );
 }
 
@@ -1134,6 +1184,19 @@ fn sample_result() -> CreateSaveBackupResult {
 struct RecordingSaveBackupExecutor {
     result: Mutex<Result<CreateSaveBackupResult, SaveBackupError>>,
     requests: Mutex<Vec<(CreateSaveBackupRequest, SaveBackupTrigger)>>,
+}
+
+struct RejectingCrossProcessAdmission(CrossProcessWriteAdmissionError);
+
+impl CrossProcessWriteAdmission for RejectingCrossProcessAdmission {
+    fn acquire(
+        &self,
+        _scope: &CrossProcessWriteScope,
+        _timeout: Duration,
+        _cancellation: &dyn CancellationToken,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        Err(self.0)
+    }
 }
 
 impl RecordingSaveBackupExecutor {

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use hmm_app::{
-    SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundService,
-    SaveBackupBackgroundServiceError, SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
+    CrossProcessWriteAdmissionCoordinator, SaveBackupBackgroundRegistrationResult,
+    SaveBackupBackgroundService, SaveBackupBackgroundServiceError,
+    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
     SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
 };
 use hmm_core::{
@@ -10,9 +11,11 @@ use hmm_core::{
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
-    SaveBackupBackgroundRegistryError, SaveBackupBackgroundRegistryResult,
-    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmission,
+    CrossProcessWriteAdmissionError, CrossProcessWriteAdmissionResult, CrossProcessWriteGuard,
+    CrossProcessWriteScope, SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
+    SaveBackupBackgroundRegistryResult, SaveBackupBackgroundSettingsRepository,
+    SaveBackupSchedulerStateRepository,
 };
 use std::collections::VecDeque;
 use std::sync::{mpsc, Arc, Mutex};
@@ -1015,6 +1018,34 @@ fn register_and_unregister_require_verified_postconditions() {
 }
 
 #[test]
+fn cross_process_busy_stops_background_registration_before_registry_mutation() {
+    let registry = Arc::new(FakeRegistry::new(
+        Vec::new(),
+        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
+        Vec::new(),
+    ));
+    let service = SaveBackupBackgroundService::new_with_write_admission(
+        registry.clone(),
+        Arc::new(FakeSchedulerRepository::with_state(None)),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock::new(3_000_000)),
+        Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+            Arc::new(RejectingCrossProcessAdmission(
+                CrossProcessWriteAdmissionError::Busy,
+            )),
+            Duration::from_millis(1),
+        )),
+    );
+
+    let error = service
+        .register()
+        .expect_err("busy admission must reject background registration");
+
+    assert_eq!(error.code(), "write_admission_busy");
+    assert!(registry.calls().is_empty());
+}
+
+#[test]
 fn register_preserves_stable_postcondition_failures() {
     let cases = [
         (
@@ -1353,6 +1384,19 @@ fn sample_state(
 struct FixedClock {
     now: Mutex<u128>,
     fail: bool,
+}
+
+struct RejectingCrossProcessAdmission(CrossProcessWriteAdmissionError);
+
+impl CrossProcessWriteAdmission for RejectingCrossProcessAdmission {
+    fn acquire(
+        &self,
+        _scope: &CrossProcessWriteScope,
+        _timeout: Duration,
+        _cancellation: &dyn CancellationToken,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        Err(self.0)
+    }
 }
 
 impl FixedClock {

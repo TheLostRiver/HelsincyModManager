@@ -4,7 +4,13 @@ use std::sync::Mutex;
 
 use hmm_core::{GameId, ProfileId};
 
-use crate::{TaskKind, TaskManagerError, TaskSnapshot};
+use crate::{
+    CrossProcessWriteAdmissionCoordinator, TaskKind, TaskManager, TaskManagerError, TaskSnapshot,
+};
+use hmm_ports::{
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, NeverCancelled,
+};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct SaveProfileMaintenanceScope {
@@ -21,13 +27,24 @@ impl SaveProfileMaintenanceScope {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SaveProfileMaintenanceScopeRegistry {
     active_reservations: Mutex<BTreeMap<SaveProfileMaintenanceScope, String>>,
     pending_sequence: AtomicU64,
+    cross_process: Arc<CrossProcessWriteAdmissionCoordinator>,
 }
 
 impl SaveProfileMaintenanceScopeRegistry {
+    pub fn with_cross_process_admission(
+        cross_process: Arc<CrossProcessWriteAdmissionCoordinator>,
+    ) -> Self {
+        Self {
+            active_reservations: Mutex::new(BTreeMap::new()),
+            pending_sequence: AtomicU64::new(0),
+            cross_process,
+        }
+    }
+
     pub(crate) fn reserve_task(
         &self,
         game_id: &GameId,
@@ -74,6 +91,30 @@ impl SaveProfileMaintenanceScopeRegistry {
         })
     }
 
+    pub(crate) fn acquire_cross_process_for_task(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        task_manager: &TaskManager,
+        task_id: &str,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.cross_process.acquire_save_profile_for_task(
+            game_id,
+            profile_id,
+            task_manager,
+            task_id,
+        )
+    }
+
+    pub(crate) fn acquire_cross_process(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.cross_process
+            .acquire_save_profile(game_id, profile_id, &NeverCancelled)
+    }
+
     pub(crate) fn release_task(&self, game_id: &GameId, profile_id: &ProfileId, task_id: &str) {
         let scope = SaveProfileMaintenanceScope::new(game_id, profile_id);
         self.release_scope(&scope, task_id);
@@ -118,6 +159,14 @@ impl SaveProfileMaintenanceScopeRegistry {
         {
             active_reservations.remove(scope);
         }
+    }
+}
+
+impl Default for SaveProfileMaintenanceScopeRegistry {
+    fn default() -> Self {
+        Self::with_cross_process_admission(Arc::new(
+            CrossProcessWriteAdmissionCoordinator::process_local_compatibility(),
+        ))
     }
 }
 

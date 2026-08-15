@@ -503,9 +503,10 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(_) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
-                code: "install_task_failed",
+                code: write_admission_task_error_code(&error.events)
+                    .unwrap_or("install_task_failed"),
             }),
         }
     }
@@ -542,9 +543,10 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(_) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
-                code: "install_uninstall_task_failed",
+                code: write_admission_task_error_code(&error.events)
+                    .unwrap_or("install_uninstall_task_failed"),
             }),
         }
     }
@@ -585,9 +587,10 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(_) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
-                code: "install_reinstall_task_failed",
+                code: write_admission_task_error_code(&error.events)
+                    .unwrap_or("install_reinstall_task_failed"),
             }),
         }
     }
@@ -620,9 +623,10 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(_) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
-                code: "install_recovery_task_failed",
+                code: write_admission_task_error_code(&error.events)
+                    .unwrap_or("install_recovery_task_failed"),
             }),
         }
     }
@@ -635,6 +639,17 @@ impl SandboxLifecycleAutomation {
         LifecycleTaskCancellationHandle {
             task_manager: Arc::clone(&self.runtime.task_manager),
         }
+    }
+}
+
+fn write_admission_task_error_code(events: &[TaskProgressEvent]) -> Option<&'static str> {
+    let error = events.iter().rev().find_map(|event| event.error.as_deref())?;
+    match error.rsplit(':').next()? {
+        "write_admission_busy" => Some("write_admission_busy"),
+        "write_admission_cancelled" => Some("write_admission_cancelled"),
+        "write_admission_order_violation" => Some("write_admission_order_violation"),
+        "write_admission_unavailable" => Some("write_admission_unavailable"),
+        _ => None,
     }
 }
 
@@ -1476,6 +1491,22 @@ mod tests {
     use hmm_ports::{InstallManifestRepository, InstallRecoveryRecordRepository};
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn lifecycle_projection_preserves_stable_write_admission_code() {
+        let mut event = TaskProgressEvent::new(
+            "install-fixture",
+            hmm_app::TaskKind::Install,
+            hmm_app::TaskStatus::Failed,
+            "install.failed",
+        );
+        event.error = Some("install_failed:write_admission_busy".to_owned());
+
+        assert_eq!(
+            write_admission_task_error_code(&[event]),
+            Some("write_admission_busy")
+        );
+    }
 
     #[test]
     fn sandbox_install_and_uninstall_tokens_drive_real_runners_and_preserve_external_sentinel() {

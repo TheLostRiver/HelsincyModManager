@@ -162,10 +162,32 @@ impl RetargetInstallTaskRunner {
             ));
         }
 
-        let write_lock = self
-            .write_locks
-            .lock_for(&request.game_id, &request.profile_id);
         let commit_result = {
+            let _cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+                &request.game_id,
+                &request.profile_id,
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    self.planner.discard_initial_retarget_install(&plan);
+                    if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                        return Ok(events);
+                    }
+                    return Err(self.fail(
+                        task_id,
+                        &request,
+                        events,
+                        error.code(),
+                        action_count,
+                        adapter_facts.as_deref(),
+                    ));
+                }
+            };
+            let write_lock = self
+                .write_locks
+                .lock_for(&request.game_id, &request.profile_id);
             let _guard = write_lock.lock().map_err(|_| {
                 self.planner.discard_initial_retarget_install(&plan);
                 self.fail(

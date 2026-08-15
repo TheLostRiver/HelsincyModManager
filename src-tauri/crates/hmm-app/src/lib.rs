@@ -33,9 +33,9 @@ mod replacement;
 mod replacement_audit;
 mod replacement_task;
 mod save_backup;
-mod save_backup_center;
 mod save_backup_background;
 mod save_backup_background_worker;
+mod save_backup_center;
 mod save_backup_exit_guard;
 mod save_backup_scheduler;
 mod save_backup_task;
@@ -45,6 +45,7 @@ mod save_restore;
 mod save_restore_task;
 mod support_diagnostics;
 mod task_manager;
+mod write_admission;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use application_exit_guard::{
@@ -201,12 +202,6 @@ pub use save_backup::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
     SaveBackupWarning,
 };
-pub use save_backup_center::{
-    SaveBackupCenterError, SaveBackupCenterItem, SaveBackupCenterPage,
-    SaveBackupCenterProfileSummary, SaveBackupCenterQuery, SaveBackupCenterService,
-    SaveBackupCenterSummary, DEFAULT_SAVE_BACKUP_CENTER_LIMIT, MAX_SAVE_BACKUP_CENTER_LIMIT,
-    MAX_SAVE_BACKUP_CENTER_SEARCH_CHARS, MAX_SAVE_BACKUP_NOTE_CHARS,
-};
 pub use save_backup_background::{
     SaveBackupBackgroundControlStatus, SaveBackupBackgroundRegistrationResult,
     SaveBackupBackgroundService, SaveBackupBackgroundServiceError, SaveBackupBackgroundStatus,
@@ -215,6 +210,12 @@ pub use save_backup_background::{
 pub use save_backup_background_worker::{
     SaveBackupBackgroundWorker, SaveBackupBackgroundWorkerError,
     SaveBackupBackgroundWorkerRunSummary,
+};
+pub use save_backup_center::{
+    SaveBackupCenterError, SaveBackupCenterItem, SaveBackupCenterPage,
+    SaveBackupCenterProfileSummary, SaveBackupCenterQuery, SaveBackupCenterService,
+    SaveBackupCenterSummary, DEFAULT_SAVE_BACKUP_CENTER_LIMIT, MAX_SAVE_BACKUP_CENTER_LIMIT,
+    MAX_SAVE_BACKUP_CENTER_SEARCH_CHARS, MAX_SAVE_BACKUP_NOTE_CHARS,
 };
 pub use save_backup_exit_guard::{
     SaveBackupExitDecision, SaveBackupExitGuard, SaveBackupExitGuardError, SaveBackupExitReason,
@@ -253,6 +254,9 @@ pub use support_diagnostics::{
 pub use task_manager::{
     TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskSnapshot,
     TaskStatus,
+};
+pub use write_admission::{
+    CrossProcessWriteAdmissionCoordinator, DEFAULT_CROSS_PROCESS_WRITE_ADMISSION_TIMEOUT,
 };
 
 pub fn app_name() -> &'static str {
