@@ -92,7 +92,7 @@ test("profile save backup API invokes task and history commands without filesyst
   assert.match(typesSource, /startedTask:\s*TaskStartedDto\s*\|\s*null/);
   assert.match(typesSource, /export type SaveBackupSummaryDto = \{/);
   assert.match(typesSource, /trigger:\s*"manual" \| "auto" \| "pre_install"/);
-  assert.match(typesSource, /status:\s*"completed" \| "deleted_by_retention" \| "missing" \| "invalid"/);
+  assert.match(typesSource, /status:\s*"completed" \| "retention_pending" \| "retention_partial" \| "deleted_by_retention" \| "missing" \| "invalid"/);
   assert.match(typesSource, /fileName:\s*string/);
   assert.match(typesSource, /sourcePathLabel:\s*string\s*\|\s*null/);
   assert.doesNotMatch(typesSource, /manifestPath|backupRoot|backupRef|targetPath|sandbox|cache|hash/i);
@@ -114,4 +114,11 @@ test("profile save directory discovery API avoids raw paths and steam identifier
   assert.match(typesSource, /avatarUrl:\s*string\s*\|\s*null/);
   assert.match(typesSource, /savedSettings\?:\s*ProfileDirectorySelectionDto\s*\|\s*null/);
   assert.doesNotMatch(typesSource, forbiddenDiscoveryFields);
+});
+
+test("backup policy clamps retention inputs to backend bounds", () => {
+  const panel = readSource("src/features/profiles/BackupPolicyPanel.tsx");
+  assert.match(panel, /Math\.min\(3650, Math\.max\(1, Math\.floor/);
+  assert.match(panel, /Math\.min\(1_048_576, Math\.max\(16, Math\.floor/);
+  assert.match(panel, /step=\{1\}/);
 });

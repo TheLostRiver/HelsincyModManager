@@ -62,7 +62,28 @@ export function BackupPolicyPanel({
               onChange={(event) =>
                 onRetentionChange({
                   ...settings.retention,
-                  maxAgeDays: event.target.value ? Math.max(1, Number(event.target.value) || 1) : null,
+                  maxAgeDays: event.target.value
+                    ? Math.min(3650, Math.max(1, Math.floor(Number(event.target.value) || 1)))
+                    : null,
+                })
+              }
+            />
+          </label>
+          <label className="profile-field">
+            <span>空间上限（MiB）</span>
+            <input
+              type="number"
+              min={16}
+              max={1048576}
+              value={settings.retention.maxTotalBytes === null ? "" : Math.round(settings.retention.maxTotalBytes / (1024 * 1024))}
+              step={1}
+              disabled={disabled}
+              onChange={(event) =>
+                onRetentionChange({
+                  ...settings.retention,
+                  maxTotalBytes: event.target.value
+                    ? Math.min(1_048_576, Math.max(16, Math.floor(Number(event.target.value) || 16))) * 1024 * 1024
+                    : null,
                 })
               }
             />
@@ -87,7 +108,7 @@ export function BackupPolicyPanel({
           type="button"
           className="profile-action-button"
           disabled={disabled}
-          onClick={() => onRetentionChange({ maxCount: 20, maxAgeDays: 30 })}
+          onClick={() => onRetentionChange({ maxCount: 20, maxAgeDays: 30, maxTotalBytes: null })}
         >
           <RotateCcw size={14} />
           重置保留策略

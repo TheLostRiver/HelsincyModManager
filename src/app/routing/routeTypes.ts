@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-export type AppRouteId = "dashboard" | "mods" | "recovery" | "diagnostics" | "categories" | "profiles" | "settings";
+export type AppRouteId = "dashboard" | "mods" | "recovery" | "diagnostics" | "categories" | "profiles" | "backups" | "settings";
 
 export type AppRoute = {
   id: AppRouteId;

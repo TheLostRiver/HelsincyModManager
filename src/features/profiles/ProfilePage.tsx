@@ -110,7 +110,9 @@ const PREVIEW_SAVE_SETTINGS: ProfileSaveSettingsDto = {
   retention: {
     maxCount: 20,
     maxAgeDays: 30,
+    maxTotalBytes: null,
   },
+  steamAccount: null,
   preRestoreBackupEnabled: true,
   updatedAt: 0,
 };
@@ -120,7 +122,7 @@ const PREVIEW_SAVE_SETTINGS_BY_PROFILE: Record<string, ProfileSaveSettingsDto> =
     ...PREVIEW_SAVE_SETTINGS,
     profileId: "preview-taichi",
     schedule: { cadence: "weekly", hour: 2, minute: 30, weekdays: [1, 3, 5] },
-    retention: { maxCount: 36, maxAgeDays: 60 },
+    retention: { maxCount: 36, maxAgeDays: 60, maxTotalBytes: null },
     saveDirectory: {
       mode: "custom",
       status: "valid",
@@ -132,7 +134,7 @@ const PREVIEW_SAVE_SETTINGS_BY_PROFILE: Record<string, ProfileSaveSettingsDto> =
     ...PREVIEW_SAVE_SETTINGS,
     profileId: "preview-online-test",
     schedule: { cadence: "manual", hour: null, minute: null, weekdays: [] },
-    retention: { maxCount: 12, maxAgeDays: 14 },
+    retention: { maxCount: 12, maxAgeDays: 14, maxTotalBytes: null },
     saveDirectory: {
       mode: "unset",
       status: "unset",
