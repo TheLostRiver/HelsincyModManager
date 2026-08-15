@@ -49,8 +49,8 @@
 - T13 Slice A-D：T13-07 为 `completed`；T13-08 Windows Sandbox Gate C 为 `certified`。
 - CAT-01、WR-01、WR-02A、WR-03A、WR-03B 与 WR-04 已完成；WR-04 Windows Gate D 为
   `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；
-  SAVE-02 安装态后台保护与 SAVE-03 installer ownership cleanup 均已 `certified`。production catalog
-  仍受 WR-02B 许可门禁约束，下一 `ready` 纵向切片为 SAVE-04。
+  SAVE-02 安装态后台保护、SAVE-03 installer ownership cleanup 与 SAVE-04 玩家存档恢复均已
+  `certified`。production catalog 仍受 WR-02B 许可门禁约束，下一 `ready` 纵向切片为 SAVE-05。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -136,8 +136,8 @@ QG-01、T13-00 和 Slice A-D 已完成；T13-05 的 Sandbox CLI、T13-06 的窄 
 批量 UI 与 T13-08 Windows Gate C 已形成完整 Sandbox 玩家路径。CAT-01 装备数据治理、WR-01 武器
 设计、WR-02A 纯解析、WR-03A 纯 binary transformer、WR-03B 安装事实链和 WR-04 受控 UI/Gate D
 均已完成；LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
-安装态后台保护与 SAVE-03 installer cleanup 验收也已完成。AR6 与 WR-02B 等待已授权审计数据，当前
-下一纵向切片是 SAVE-04。Production weapon
+安装态后台保护、SAVE-03 installer cleanup 与 SAVE-04 玩家存档恢复验收也已完成。AR6 与 WR-02B 等待
+已授权审计数据，当前下一纵向切片是 SAVE-05 retention 与备份中心。Production weapon
 catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人工 seed。外部 review
 因额度缺席时仍按 CodeRabbit
 缺席流程完成独立全 diff 自审，且不能跳过 required CI terminal success。
@@ -156,8 +156,8 @@ catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人
 Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI、Slice C 的
 uninstall/reinstall runtime/CLI contract、Slice D 的 Tauri/UI/Gate C、CAT-01 数据治理和 WR-04
 Tauri/UI/Gate D、LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
-安装态后台保护与 SAVE-03 installer cleanup 验收均已完成。Sandbox 写能力不因此扩张为 Production
-写能力；下一任务进入 SAVE-04 玩家存档恢复，AR6/WR-02B 在授权数据到位后恢复。
+安装态后台保护、SAVE-03 installer cleanup 与 SAVE-04 玩家存档恢复验收均已完成。Sandbox 写能力不因此
+扩张为 Production 写能力；下一任务进入 SAVE-05 retention 与备份中心，AR6/WR-02B 在授权数据到位后恢复。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -613,7 +613,8 @@ fail-closed。
 
 ### SAVE-04：玩家存档恢复
 
-状态：`ready`，SAVE-03 disposable VM runtime gate 已完成。
+状态：`certified`，2026-08-15 在 disposable Windows Sandbox 完成人工验收；详细证据见
+[SAVE-04 验收记录](SAVE_04_ACCEPTANCE.md)。
 
 - 独立设计 preview、manifest/hash 校验、统一悬浮确认、restore 前安全备份和 rollback/recovery。
 - restore 前安全备份默认开启并持久化为 Profile 级开关；必须写入独立 `pre-restore/` 目录并使用清晰的
@@ -624,7 +625,7 @@ fail-closed。
 
 ### SAVE-05：Retention 与备份中心
 
-状态：`blocked`，依赖 SAVE-04。
+状态：`ready`，SAVE-04 已认证；实现仍需独立设计、聚焦测试和 disposable Windows 验收。
 
 - 增加按时间/空间 retention、不可删/部分清理结果和空间预算。
 - 建立独立备份中心，展示 Profile、确认的 Steam 账号摘要、历史、状态和受控恢复入口。
@@ -662,9 +663,9 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 - 默认关闭时不创建目录；开启后按 UTC 日写入并保留 7 日，reader/export 和总预算复用 managed-log。
 - Debug 类别失败独立投影 health/count，不阻断 Task/Audit 清理或改变安装、备份、rollback/recovery 事实。
 
-LOG-03、SAVE-02 与 SAVE-03 均已完成。SAVE-03 的 WiX/NSIS build/static、upgrade/repair、自动备份、
+LOG-03、SAVE-02、SAVE-03 与 SAVE-04 均已完成。SAVE-03 的 WiX/NSIS build/static、upgrade/repair、自动备份、
 owned/foreign/running 和正常 wrapper recovery 矩阵均已通过 disposable Windows Sandbox gate；下一纵向
-切片进入 SAVE-04。AR6/WR-02B 继续等待可再分发的审计数据。
+切片进入 SAVE-05 retention 与备份中心。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力
 

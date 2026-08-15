@@ -56,13 +56,12 @@
    完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
    防具 AR1-AR5 已认证不等于完整防具
    数据或完整武器链路已实现。
-8. SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 verify 与 findings-first review 已完成，
-   当前等待 disposable Windows 人工验收；通过前保持 `implemented / awaiting acceptance`，不能提前标记
+8. SAVE-04 玩家存档恢复已于 2026-08-15 在 disposable Windows Sandbox 完成人工验收并标记为
    `certified`。实现使用统一悬浮确认、5 分钟 preview token、独立 `TaskKind::SaveRestore`、默认开启且
    按 Profile 持久化的 pre-restore 安全备份、独立 `pre-restore/` 目录、共享 game/profile 写锁、目录交换、
    rollback/recovery、evidence degradation，以及 queued/running restore 不可 override 的应用退出闸门。
-   账号昵称/头像和多候选显式选择已完成，不重新实现。
-   SAVE-05 retention/备份中心在 SAVE-04 验收完成前不启动。
+   证据与限制见 [SAVE-04 验收记录](SAVE_04_ACCEPTANCE.md)。账号昵称/头像和多候选显式选择已完成，
+   不重新实现。SAVE-05 retention/备份中心现已解锁，作为下一纵向切片。
 9. Task/Audit retention、日志总空间上限和 Debug Log 已完成。Production CLI 写入继续等待跨进程
    admission；Sandbox CLI 已成为单项与批量核心生命周期自动化入口，批量 Tauri/前端体验已由
    Slice D 完成。Gate C 认证不开放 Production 写入。
@@ -143,8 +142,8 @@ Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C 与 T13 Slice A-D 均已完成�
 CAT-01 装备数据治理、WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer 与
 WR-03B staging/InstallPlan/manifest 集成和 WR-04 受控 Tauri/UI/Gate D 均已完成，Gate D 为
 `certified`；AR6/WR-02B 等待可再分发的审计数据，LOG-01 Task/Audit retention、LOG-02 日志总空间
-上限和 LOG-03 Debug Log 均已完成；SAVE-02 与 SAVE-03 安装态验收均已 `certified`。SAVE-04 已实现且
-完整验证与全 diff 自审通过，当前门禁为 disposable Windows 人工恢复验收；完成前不推进 SAVE-05。完整
+上限和 LOG-03 Debug Log 均已完成；SAVE-02、SAVE-03 与 SAVE-04 均已 `certified`。SAVE-04 已实现、
+完整验证、全 diff 自审和 disposable Windows 人工恢复验收均通过；下一纵向切片进入 SAVE-05。完整
 catalog 未到位前只使用人工 developer/Sandbox seed。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）

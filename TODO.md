@@ -2,9 +2,10 @@
 
 创建时间：2026-06-27
 基于 HEAD：`09ceef6` (`hy/post-gate-logical-commits`)
-最近同步：2026-08-07，T13 Slice A-D 与 WR-04 已完成；Gate C、Gate D 均为 `certified`；LOG-01
+最近同步：2026-08-15，T13 Slice A-D 与 WR-04 已完成；Gate C、Gate D 均为 `certified`；LOG-01
 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；SAVE-02 安装态后台保护验收已
-`certified`；AR6/WR-02B 继续等待已授权数据，下一无人值守 `ready` 单元为 SAVE-03 installer ownership cleanup
+`certified`；SAVE-03 installer ownership cleanup 与 SAVE-04 玩家存档恢复均已 `certified`；AR6/WR-02B
+继续等待已授权数据，下一无人值守 `ready` 单元为 SAVE-05 retention 与备份中心
 
 ---
 
@@ -335,8 +336,8 @@ JSON 做不好的需求:
 ### T8: 存档备份系统
 
 **前置**: T2
-**状态**: 已完成部分保留；P7.2a 与 P7.2c 安装态 acceptance 已 `certified`，SAVE-04 玩家存档恢复
-已实现且自动化门禁通过，等待人工验收；retention 扩展和备份中心仍按后续发布门禁推进
+**状态**: 已完成部分保留；P7.2a、P7.2c 与 SAVE-04 玩家存档恢复 acceptance 已 `certified`；
+retention 扩展和备份中心仍按后续发布门禁推进
 **预估**: 大
 **独立文档**: **已创建** → `docs/SAVE_BACKUP_DESIGN.md`、`docs/SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md`、`docs/SAVE_DIRECTORY_AUTO_DISCOVERY_DESIGN.md`、`docs/superpowers/plans/2026-07-05-save-directory-auto-discovery-implementation.md`、`docs/superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md`、`docs/superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md`
 
@@ -357,10 +358,10 @@ JSON 做不好的需求:
 - [ ] 保留策略（时间/空间，暂停）
 - [x] 备份目录可选择（未手动选择时使用默认 app data）
 - [ ] 前端 `features/backups/` 页面（暂停）
-- [ ] SAVE-04 玩家存档恢复：实现、完整 verify 与 findings-first review 已完成，等待 disposable Windows
-  人工验收。已包含统一悬浮确认、默认开启的 Profile 级恢复前安全备份、独立 `pre-restore/` 目录、
-  高风险额外确认、5 分钟 token、共享写锁、目录交换、fail-closed rollback/recovery、任务进度、持久通知
-  与 Audit/evidence degradation；人工 gate 通过前不标记 `certified`
+- [x] SAVE-04 玩家存档恢复：实现、完整 verify、findings-first review 与 disposable Windows 人工 gate
+  已完成并标记 `certified`。已包含统一悬浮确认、默认开启的 Profile 级恢复前安全备份、独立
+  `pre-restore/` 目录、高风险额外确认、5 分钟 token、共享写锁、目录交换、fail-closed rollback/recovery、
+  任务进度、持久通知与 Audit/evidence degradation；证据见 `docs/SAVE_04_ACCEPTANCE.md`
 
 ---
 
@@ -631,7 +632,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> completed: LOG-01 Task/Audit retention
   -> completed: LOG-02 日志总空间上限
   -> completed: LOG-03 Debug Log（默认关闭、持久化开关、7 日 retention、诊断/export、runtime 重启和 no-follow 负测）
-  -> certified: SAVE-02 disposable VM 安装态人工验收（2026-08-07）；ready: SAVE-03 installer ownership cleanup；AR6/WR-02B 等待授权数据；CLI-3A 依赖 SAVE-03
+  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）；ready: SAVE-05 retention/备份中心；AR6/WR-02B 等待授权数据；CLI-3A 依赖 SAVE-03
   -> blocked-external-data: 防具/完整武器 catalog 扩容
   -> Windows 存档后台发布加固、后续日志治理和 Production CLI admission
 ```
@@ -650,7 +651,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
-| T8 存档备份 | P2 | 部分完成；SAVE-02/03 已 certified，SAVE-04 已实现等待验收，SAVE-05 待推进 | |
+| T8 存档备份 | P2 | 部分完成；SAVE-02/03/04 已 certified，SAVE-05 retention/备份中心待推进 | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围未被当前复审选中 | |
 | T10 依赖检查 | P0/P1 支撑 | 单项 install/reinstall decision 与锁内重验已完成；更多依赖类型和自动修复未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |

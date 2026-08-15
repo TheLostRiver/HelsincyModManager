@@ -389,8 +389,8 @@ save_backup_retention_failed
 
 ## 玩家存档恢复（SAVE-04）
 
-当前状态：代码、temp/artificial fixture 自动化、完整验证与 findings-first review 已完成；在 disposable
-Windows 环境完成真实桌面工作流验收前不得标记为 `certified`。
+当前状态：代码、temp/artificial fixture 自动化、完整验证、findings-first review 和 disposable Windows
+桌面工作流验收均已完成，状态为 `certified`。验收证据见 [SAVE-04 验收记录](SAVE_04_ACCEPTANCE.md)。
 
 恢复能力必须单独切片，并满足：
 
@@ -600,7 +600,7 @@ release。窗口完全退出在后端通过同一 registry 原子关闭新的 re
 - [x] 统一悬浮确认层，默认开启恢复前 pre-restore 备份；关闭开关时显示风险并要求额外确认。
 - [x] pre-restore 备份写入独立目录，成功后才允许恢复；失败时 fail closed 并保留可审计结果。
 - [x] 恢复完成后刷新历史，并保留 Task/Audit/evidence degradation 投影。
-- [ ] disposable Windows 人工验收与最终 `certified` 门禁。
+- [x] disposable Windows 人工验收与最终 `certified` 门禁。
 
 ### 切片 6：独立备份中心页面
 
