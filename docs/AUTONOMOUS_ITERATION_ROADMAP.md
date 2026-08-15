@@ -40,8 +40,8 @@
 - T17 狩技来源批量迁移 Slice 1-4C：`completed`，保持 import-only。
 - 多 Steam 用户存档候选发现、显式选择、昵称/头像展示和隐私降级：`completed`。
 - 手动/运行期自动备份、后台 worker/Scheduled Task 软件核心、App/Task/Audit Log、诊断页和
-  support export：核心已完成；SAVE-02 与 SAVE-03 安装态 runtime acceptance 均已 `certified`，玩家
-  存档恢复和 retention/备份中心仍有缺口。
+  support export：核心已完成；SAVE-02 与 SAVE-03 安装态 runtime acceptance、SAVE-04 玩家存档恢复均已
+  `certified`；SAVE-05 retention/备份中心实现与自动化验证已完成，仍等待 disposable Windows 人工 gate。
 - CLI-0A/0B/1A/1B/2A/2B/2C：`completed`；Sandbox 单项 lifecycle 已闭环，Production 写命令仍不可达。
 - 工程治理 GOV-01 至 GOV-04：`completed`。DTO 测试外置、重装路径 dead-code 抑制清理、
   Tauri command 契约覆盖和治理检查加固已分别由 PR #211 至 #214 交付。
@@ -50,7 +50,8 @@
 - CAT-01、WR-01、WR-02A、WR-03A、WR-03B 与 WR-04 已完成；WR-04 Windows Gate D 为
   `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；
   SAVE-02 安装态后台保护、SAVE-03 installer ownership cleanup 与 SAVE-04 玩家存档恢复均已
-  `certified`。production catalog 仍受 WR-02B 许可门禁约束，下一 `ready` 纵向切片为 SAVE-05。
+  `certified`；SAVE-05 retention/备份中心实现与自动化验证已完成，当前只等待 disposable Windows
+  synthetic 人工 gate。production catalog 仍受 WR-02B 许可门禁约束。
 
 “已完成”不表示后续 task 可以绕过现有边界。批量和 CLI 写能力必须复用相同的领域服务、安全链和
 任务/审计事实。
@@ -136,8 +137,9 @@ QG-01、T13-00 和 Slice A-D 已完成；T13-05 的 Sandbox CLI、T13-06 的窄 
 批量 UI 与 T13-08 Windows Gate C 已形成完整 Sandbox 玩家路径。CAT-01 装备数据治理、WR-01 武器
 设计、WR-02A 纯解析、WR-03A 纯 binary transformer、WR-03B 安装事实链和 WR-04 受控 UI/Gate D
 均已完成；LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
-安装态后台保护、SAVE-03 installer cleanup 与 SAVE-04 玩家存档恢复验收也已完成。AR6 与 WR-02B 等待
-已授权审计数据，当前下一纵向切片是 SAVE-05 retention 与备份中心。Production weapon
+安装态后台保护、SAVE-03 installer cleanup 与 SAVE-04 玩家存档恢复验收也已完成。SAVE-05 retention 与
+备份中心实现和自动化验证已完成，当前只等待 disposable Windows synthetic 人工 gate。AR6 与 WR-02B 等待
+已授权审计数据。Production weapon
 catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人工 seed。外部 review
 因额度缺席时仍按 CodeRabbit
 缺席流程完成独立全 diff 自审，且不能跳过 required CI terminal success。
@@ -625,7 +627,9 @@ fail-closed。
 
 ### SAVE-05：Retention 与备份中心
 
-状态：`ready`，SAVE-04 已认证；实现仍需独立设计、聚焦测试和 disposable Windows 验收。
+状态：`implemented_pending_human_gate`，SAVE-04 已认证；安全语义与跨层契约见
+[SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。后端、Tauri、前端、聚焦测试和
+完整自动化门禁已完成，剩余 disposable Windows synthetic 验收。
 
 - 增加按时间/空间 retention、不可删/部分清理结果和空间预算。
 - 建立独立备份中心，展示 Profile、确认的 Steam 账号摘要、历史、状态和受控恢复入口。

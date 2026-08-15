@@ -216,6 +216,8 @@ result
 - 玩家文件已提交但 finalize/cleanup 未收敛时必须记录稳定 recovery-required 错误码；只有事务 durable
   `Completed` 后的 Task/Audit writer 失败才投影 `save_restore_evidence_degraded`。
 - 自动备份因游戏运行或状态未知被延后（`result = deferred`，只在 pending 原因翻转时记录一次，避免重复检查刷屏）。
+- 存档 retention 的自动或显式维护；只记录稳定结果 `outcome`、扫描/保护点/问题/候选/删除/partial/blocked
+  计数、空间前后值、释放字节和稳定错误码，不记录备注、文件名、路径、账号展示字段、manifest 或 hash。
 - 写入安装清单。
 - 回滚成功或失败。
 - 修改替换目标绑定。
@@ -325,6 +327,10 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 - `rollback_install` 与 `reconcile_reinstall` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数；`reconcile_reinstall` 的计数既可表示 post-commit cleanup，也可表示受控恢复到 pre-reinstall 状态的 remove/restore/snapshot cleanup 数量。事件不记录完整本地路径、backup/snapshot ref 或 root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - `reinstall_mod` 事件只允许 `task_id`、`game_id`、`profile_id`、`mod_id`、`previous_revision_id`、`candidate_revision_id`、四类 target 聚合计数，以及失败时的稳定 `error_code` / `rollback_result`。ARMOR 同 revision target switch 在这份既有白名单上唯一新增可选 `target_id`；不记录 target 列表、binding、staging、plan token、完整路径、backup/snapshot ref、manifest/source 正文、hash 列表或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
+- SAVE-05 retention 的物理清理完成后，若 retention Audit 写入失败，显式维护报告的
+  `evidence_degraded` 为 `true`，自动备份的 `save_backup.completed` event 只携带稳定
+  `save_backup_evidence_degraded`；不得把已完成的清理或备份重分类为业务失败，也不得伪造
+  `failure` Audit。该标记不携带底层错误原文、路径、文件名或账号信息。
 - SAVE-04 玩家存档恢复使用 category `save_restore`、operation `restore`。所有结果只允许
   `task_id`、`transaction_id`、`game_id`、`profile_id`、`backup_id`；成功可增加 `file_count`，失败或
   warning 可增加稳定 `error_code`。不得记录 preview token、pre-restore/rollback/staging 路径、archive
