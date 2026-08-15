@@ -66,7 +66,8 @@ pub use preview_image::{
 };
 pub use profile::{
     BackupCadence, Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
-    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
+    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings,
+    SteamAccountDisplaySummary, DEFAULT_PROFILE_ID,
 };
 pub use reinstall::{
     classify_reinstall_targets, is_same_revision_replacement_target_switch,
@@ -91,7 +92,8 @@ pub use retarget::{
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,
     SaveBackupBackgroundSettings, SaveBackupManifest, SaveBackupManifestFile,
-    SaveBackupManifestSource, SaveBackupSchedulerLeaseRenewalRequest,
+    SaveBackupManifestSource, SaveBackupRetentionOutcome, SaveBackupRetentionReason,
+    SaveBackupRetentionReport, SaveBackupSchedulerLeaseRenewalRequest,
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason, SaveBackupSchedulerState,
     SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger, SaveBackupWorkerHeartbeat,
     SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,

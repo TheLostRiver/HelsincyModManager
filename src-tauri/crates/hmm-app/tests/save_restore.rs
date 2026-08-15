@@ -310,6 +310,7 @@ fn sample_settings() -> ProfileSaveSettings {
             weekdays: Vec::new(),
         },
         retention: ProfileBackupRetention::default(),
+        steam_account: None,
         pre_restore_backup_enabled: true,
         updated_at: 10,
     }
@@ -325,6 +326,7 @@ fn sample_backup() -> SaveBackupSummary {
         archive_file_name: "backup-1.zip".to_owned(),
         manifest_file_name: "backup-1.manifest.json".to_owned(),
         archive_size_bytes: 36,
+        retention_released_bytes: 0,
         archive_sha256: "sha256:archive".to_owned(),
         file_count: 1,
         created_at: 5,

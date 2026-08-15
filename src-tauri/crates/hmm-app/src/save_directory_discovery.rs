@@ -2,7 +2,8 @@ use hmm_core::{
     GameDirectoryStatus, GameId, ProfileBackupSchedule, ProfileDirectoryMode,
     ProfileDirectorySelection, ProfileDirectoryStatus, ProfileId, ProfileSaveSettings,
     SaveDirectoryCandidateConfidence, SaveDirectoryCandidateSource, SaveDirectoryCandidateSummary,
-    SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult, SteamAccountProfileSummary,
+    SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult, SteamAccountDisplaySummary,
+    SteamAccountProfileSummary,
 };
 use hmm_ports::{
     AppClock, GameConfigRepository, GameSaveDirectoryRule, PendingSaveDirectoryCandidate,
@@ -214,10 +215,16 @@ impl ProfileSaveDirectoryDiscoveryService {
         }
 
         if scanned.len() == 1 && scanned[0].confidence == SaveDirectoryCandidateConfidence::High {
+            let steam_account = SteamAccountDisplaySummary {
+                account_name: None,
+                avatar_url: None,
+                account_label: scanned[0].account_label.clone(),
+            };
             let settings = self.save_candidate_settings(
                 &request.game_id,
                 &request.profile_id,
                 &scanned[0],
+                steam_account,
                 existing_settings.as_ref(),
             )?;
             let summary = candidate_summary(scanned.remove(0), None, true);
@@ -329,9 +336,21 @@ impl ProfileSaveDirectoryDiscoveryService {
             &pending.game_id,
             &pending.profile_id,
             &validated,
+            SteamAccountDisplaySummary {
+                account_name: pending.summary.account_name.clone(),
+                avatar_url: pending.summary.avatar_url.clone(),
+                account_label: pending.summary.account_label.clone(),
+            },
             existing_settings.as_ref(),
         )?;
-        let summary = candidate_summary(validated, None, true);
+        let summary = candidate_summary(
+            validated,
+            Some(SteamAccountProfileSummary {
+                account_name: pending.summary.account_name,
+                avatar_url: pending.summary.avatar_url,
+            }),
+            true,
+        );
 
         Ok(SaveDirectoryDiscoveryResult {
             discovery_id: request.discovery_id,
@@ -369,6 +388,7 @@ impl ProfileSaveDirectoryDiscoveryService {
         game_id: &GameId,
         profile_id: &ProfileId,
         candidate: &ScannedSaveDirectoryCandidate,
+        steam_account: SteamAccountDisplaySummary,
         existing_settings: Option<&ProfileSaveSettings>,
     ) -> Result<ProfileSaveSettings, SaveDirectoryDiscoveryError> {
         let now = self
@@ -397,6 +417,7 @@ impl ProfileSaveDirectoryDiscoveryService {
             retention: existing_settings
                 .map(|settings| settings.retention.clone())
                 .unwrap_or_default(),
+            steam_account: Some(steam_account),
             pre_restore_backup_enabled: existing_settings
                 .map(|settings| settings.pre_restore_backup_enabled)
                 .unwrap_or(true),

@@ -125,7 +125,9 @@ mod profile_dto_tests {
             retention: hmm_core::ProfileBackupRetention {
                 max_count: 20,
                 max_age_days: Some(30),
+                max_total_bytes: None,
             },
+            steam_account: None,
             pre_restore_backup_enabled: true,
             updated_at: 42,
         }

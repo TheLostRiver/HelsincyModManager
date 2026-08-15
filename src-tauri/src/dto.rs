@@ -763,6 +763,15 @@ pub struct ProfileBackupScheduleDto {
 pub struct ProfileBackupRetentionDto {
     pub max_count: u32,
     pub max_age_days: Option<u32>,
+    pub max_total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamAccountDisplaySummaryDto {
+    pub account_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub account_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -773,6 +782,7 @@ pub struct ProfileSaveSettingsDto {
     pub backup_directory: ProfileDirectorySelectionDto,
     pub schedule: ProfileBackupScheduleDto,
     pub retention: ProfileBackupRetentionDto,
+    pub steam_account: Option<SteamAccountDisplaySummaryDto>,
     pub pre_restore_backup_enabled: bool,
     pub updated_at: u64,
 }
@@ -911,6 +921,7 @@ impl From<ProfileBackupRetention> for ProfileBackupRetentionDto {
         Self {
             max_count: retention.max_count,
             max_age_days: retention.max_age_days,
+            max_total_bytes: retention.max_total_bytes,
         }
     }
 }
@@ -920,6 +931,7 @@ impl From<ProfileBackupRetentionDto> for ProfileBackupRetention {
         Self {
             max_count: retention.max_count,
             max_age_days: retention.max_age_days,
+            max_total_bytes: retention.max_total_bytes,
         }
     }
 }
@@ -932,8 +944,19 @@ impl From<ProfileSaveSettings> for ProfileSaveSettingsDto {
             backup_directory: settings.backup_directory.into(),
             schedule: settings.schedule.into(),
             retention: settings.retention.into(),
+            steam_account: settings.steam_account.map(Into::into),
             pre_restore_backup_enabled: settings.pre_restore_backup_enabled,
             updated_at: settings.updated_at as u64,
+        }
+    }
+}
+
+impl From<hmm_core::SteamAccountDisplaySummary> for SteamAccountDisplaySummaryDto {
+    fn from(summary: hmm_core::SteamAccountDisplaySummary) -> Self {
+        Self {
+            account_name: summary.account_name,
+            avatar_url: summary.avatar_url,
+            account_label: summary.account_label,
         }
     }
 }

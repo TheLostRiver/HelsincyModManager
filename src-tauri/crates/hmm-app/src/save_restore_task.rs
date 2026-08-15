@@ -1,9 +1,10 @@
+use crate::save_profile_maintenance_scope::SaveProfileMaintenanceScopeRegistry;
 use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 use crate::{
     new_save_restore_transaction_id, CreateSaveBackupRequest, GameProfileWriteLockRegistry,
     SaveBackupExecutor, SaveRestoreCommitContext, SaveRestorePreviewError, SaveRestoreService,
     StartSaveRestoreRequest, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent,
-    TaskProgressObserver, TaskStarted, TaskStatus,
+    TaskProgressObserver, TaskSnapshot, TaskStarted, TaskStatus,
 };
 use hmm_core::{
     SaveBackupStatus, SaveBackupTrigger, SaveRestoreTransaction, SaveRestoreTransactionStatus,
@@ -15,7 +16,7 @@ use hmm_ports::{
 };
 use std::collections::BTreeMap;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
 
@@ -116,18 +117,64 @@ impl From<&StartSaveRestoreRequest> for SaveRestoreTaskScope {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SaveRestoreTaskScopeRegistry {
     active_tasks: Mutex<BTreeMap<SaveRestoreTaskScope, String>>,
     exit_requested: AtomicBool,
+    pending_sequence: AtomicU64,
+    maintenance_registry: Arc<SaveProfileMaintenanceScopeRegistry>,
+}
+
+impl Default for SaveRestoreTaskScopeRegistry {
+    fn default() -> Self {
+        Self::with_maintenance_registry(Arc::new(SaveProfileMaintenanceScopeRegistry::default()))
+    }
 }
 
 impl SaveRestoreTaskScopeRegistry {
+    pub fn with_maintenance_registry(
+        maintenance_registry: Arc<SaveProfileMaintenanceScopeRegistry>,
+    ) -> Self {
+        Self {
+            active_tasks: Mutex::new(BTreeMap::new()),
+            exit_requested: AtomicBool::new(false),
+            pending_sequence: AtomicU64::new(0),
+            maintenance_registry,
+        }
+    }
+
     pub fn reserve_task(
         &self,
         request: &StartSaveRestoreRequest,
-        create_task: impl FnOnce() -> Result<crate::TaskSnapshot, TaskManagerError>,
+        create_task: impl FnOnce() -> Result<TaskSnapshot, TaskManagerError>,
     ) -> Result<crate::TaskSnapshot, TaskManagerError> {
+        let pending_id = format!(
+            "save-restore-pending-{}",
+            self.pending_sequence.fetch_add(1, Ordering::Relaxed)
+        );
+        let mut pending = self.reserve_pending(request, pending_id)?;
+        let task = self.maintenance_registry.reserve_task(
+            &request.game_id,
+            &request.profile_id,
+            TaskKind::SaveRestore,
+            create_task,
+        )?;
+        if let Err(error) = pending.commit(&task.task_id) {
+            self.maintenance_registry.release_task(
+                &request.game_id,
+                &request.profile_id,
+                &task.task_id,
+            );
+            return Err(error);
+        }
+        Ok(task)
+    }
+
+    fn reserve_pending(
+        &self,
+        request: &StartSaveRestoreRequest,
+        reservation_id: String,
+    ) -> Result<SaveRestoreTaskScopePendingGuard<'_>, TaskManagerError> {
         let scope = SaveRestoreTaskScope::from(request);
         let mut active_tasks = self
             .active_tasks
@@ -144,21 +191,35 @@ impl SaveRestoreTaskScopeRegistry {
                 task_id: task_id.clone(),
             });
         }
-        let task = create_task()?;
-        active_tasks.insert(scope, task.task_id.clone());
-        Ok(task)
+        active_tasks.insert(scope.clone(), reservation_id.clone());
+        drop(active_tasks);
+        Ok(SaveRestoreTaskScopePendingGuard {
+            registry: self,
+            scope,
+            reservation_id,
+            committed: false,
+        })
     }
 
     pub fn release_task(&self, request: &StartSaveRestoreRequest, task_id: &str) {
         let scope = SaveRestoreTaskScope::from(request);
-        let Ok(mut active_tasks) = self.active_tasks.lock() else {
-            return;
+        let should_release_shared_scope = {
+            let Ok(mut active_tasks) = self.active_tasks.lock() else {
+                return;
+            };
+            if active_tasks
+                .get(&scope)
+                .is_some_and(|active_task_id| active_task_id == task_id)
+            {
+                active_tasks.remove(&scope);
+                true
+            } else {
+                false
+            }
         };
-        if active_tasks
-            .get(&scope)
-            .is_some_and(|active_task_id| active_task_id == task_id)
-        {
-            active_tasks.remove(&scope);
+        if should_release_shared_scope {
+            self.maintenance_registry
+                .release_task(&request.game_id, &request.profile_id, task_id);
         }
     }
 
@@ -180,6 +241,48 @@ impl SaveRestoreTaskScopeRegistry {
         }
         self.exit_requested.store(true, Ordering::Release);
         Ok(true)
+    }
+}
+
+struct SaveRestoreTaskScopePendingGuard<'a> {
+    registry: &'a SaveRestoreTaskScopeRegistry,
+    scope: SaveRestoreTaskScope,
+    reservation_id: String,
+    committed: bool,
+}
+
+impl SaveRestoreTaskScopePendingGuard<'_> {
+    fn commit(&mut self, task_id: &str) -> Result<(), TaskManagerError> {
+        let mut active_tasks = self
+            .registry
+            .active_tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        if active_tasks
+            .get(&self.scope)
+            .is_none_or(|active_id| active_id != &self.reservation_id)
+        {
+            return Err(TaskManagerError::TaskStoreUnavailable);
+        }
+        active_tasks.insert(self.scope.clone(), task_id.to_owned());
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for SaveRestoreTaskScopePendingGuard<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            let Ok(mut active_tasks) = self.registry.active_tasks.lock() else {
+                return;
+            };
+            if active_tasks
+                .get(&self.scope)
+                .is_some_and(|active_id| active_id == &self.reservation_id)
+            {
+                active_tasks.remove(&self.scope);
+            }
+        }
     }
 }
 

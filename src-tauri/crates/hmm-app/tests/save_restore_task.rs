@@ -1,11 +1,13 @@
 use anyhow::Result;
 use hmm_app::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupExecutor,
-    SaveRestoreCommitContext, SaveRestorePreviewError,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
+    SaveRestoreCommitContext, SaveRestorePreviewError, StartSaveBackupTaskRequest,
 };
 use hmm_app::{
     SaveRestoreCommitValidator, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
-    SaveRestoreTaskService, StartSaveRestoreRequest, TaskManager, TaskManagerError, TaskStatus,
+    SaveRestoreTaskService, StartSaveRestoreRequest, TaskKind, TaskManager, TaskManagerError,
+    TaskSnapshot, TaskStatus,
 };
 use hmm_core::{
     BackupCadence, GameId, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
@@ -230,6 +232,154 @@ fn aborting_an_unpublished_queued_task_releases_scope() {
 }
 
 #[test]
+fn backup_restore_and_retention_share_the_same_profile_maintenance_scope() {
+    let task_manager = Arc::new(TaskManager::new());
+    let maintenance_registry = Arc::new(SaveProfileMaintenanceScopeRegistry::default());
+    let backup_registry = Arc::new(SaveBackupTaskScopeRegistry::with_maintenance_registry(
+        Arc::clone(&maintenance_registry),
+    ));
+    let restore_registry = Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
+        maintenance_registry,
+    ));
+    let backup_service = SaveBackupTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::clone(&backup_registry),
+    );
+    let restore_service = SaveRestoreTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::clone(&restore_registry),
+    );
+    let restore_request = sample_request();
+    let backup_request = StartSaveBackupTaskRequest {
+        game_id: restore_request.game_id.clone(),
+        profile_id: restore_request.profile_id.clone(),
+        trigger: SaveBackupTrigger::Auto,
+        note: None,
+        scheduler_lease_owner: None,
+    };
+
+    let restore = restore_service
+        .start_save_restore_task(&restore_request)
+        .expect("restore reserves shared maintenance scope");
+    restore_registry.release_task(&restore_request, "not-the-active-task");
+    assert_eq!(
+        backup_service
+            .start_save_backup_task(backup_request.clone())
+            .expect_err("backup cannot race an active restore"),
+        TaskManagerError::TaskScopeBusy {
+            kind: TaskKind::SaveBackup,
+            task_id: restore.task_id.clone(),
+        }
+    );
+    assert!(matches!(
+        backup_registry.reserve_maintenance(
+            &restore_request.game_id,
+            &restore_request.profile_id
+        ),
+        Err(TaskManagerError::TaskScopeBusy {
+            kind: TaskKind::SaveBackup,
+            task_id,
+        }) if task_id == restore.task_id
+    ));
+    restore_service
+        .abort_queued_save_restore_task(&restore_request, &restore.task_id)
+        .expect("aborting restore releases both scope registries");
+
+    let backup = backup_service
+        .start_save_backup_task(backup_request.clone())
+        .expect("backup reserves shared maintenance scope");
+    assert_eq!(
+        restore_service
+            .start_save_restore_task(&restore_request)
+            .expect_err("restore cannot race backup retention"),
+        TaskManagerError::TaskScopeBusy {
+            kind: TaskKind::SaveRestore,
+            task_id: backup.task_id.clone(),
+        }
+    );
+    backup_registry.release_task(&backup_request, &backup.task_id);
+
+    let retention = backup_registry
+        .reserve_maintenance(&restore_request.game_id, &restore_request.profile_id)
+        .expect("explicit retention reserves shared maintenance scope");
+    assert_eq!(
+        restore_service
+            .start_save_restore_task(&restore_request)
+            .expect_err("restore cannot race explicit retention"),
+        TaskManagerError::TaskScopeBusy {
+            kind: TaskKind::SaveRestore,
+            task_id: "retention-maintenance".to_owned(),
+        }
+    );
+    drop(retention);
+
+    let next = restore_service
+        .start_save_restore_task(&restore_request)
+        .expect("restore can start after retention releases shared scope");
+    restore_service
+        .abort_queued_save_restore_task(&restore_request, &next.task_id)
+        .expect("cleanup queued restore");
+}
+
+#[test]
+fn task_creation_failure_or_panic_releases_shared_maintenance_scope() {
+    let task_manager = Arc::new(TaskManager::new());
+    let maintenance_registry = Arc::new(SaveProfileMaintenanceScopeRegistry::default());
+    let backup_registry = Arc::new(SaveBackupTaskScopeRegistry::with_maintenance_registry(
+        Arc::clone(&maintenance_registry),
+    ));
+    let restore_registry = Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
+        maintenance_registry,
+    ));
+    let restore_request = sample_request();
+    let backup_request = StartSaveBackupTaskRequest {
+        game_id: restore_request.game_id.clone(),
+        profile_id: restore_request.profile_id.clone(),
+        trigger: SaveBackupTrigger::Manual,
+        note: None,
+        scheduler_lease_owner: None,
+    };
+
+    assert_eq!(
+        backup_registry.reserve_task(&backup_request, || {
+            Err(TaskManagerError::TaskStoreUnavailable)
+        }),
+        Err(TaskManagerError::TaskStoreUnavailable)
+    );
+    let backup_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = backup_registry.reserve_task(
+            &backup_request,
+            || -> std::result::Result<TaskSnapshot, TaskManagerError> {
+                panic!("injected backup task creation panic")
+            },
+        );
+    }));
+    assert!(backup_panic.is_err());
+
+    let restore_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = restore_registry.reserve_task(
+            &restore_request,
+            || -> std::result::Result<TaskSnapshot, TaskManagerError> {
+                panic!("injected restore task creation panic")
+            },
+        );
+    }));
+    assert!(restore_panic.is_err());
+    assert!(!restore_registry
+        .has_active_task()
+        .expect("restore registry remains usable after panic"));
+
+    let restore_service =
+        SaveRestoreTaskService::with_scope_registry(task_manager, Arc::clone(&restore_registry));
+    let next = restore_service
+        .start_save_restore_task(&restore_request)
+        .expect("shared maintenance scope is released after failure and panic");
+    restore_service
+        .abort_queued_save_restore_task(&restore_request, &next.task_id)
+        .expect("cleanup queued restore");
+}
+
+#[test]
 fn exit_admission_stays_closed_only_after_the_active_restore_releases_its_scope() {
     let harness = Harness::success();
     let service = harness.service();
@@ -237,30 +387,24 @@ fn exit_admission_stays_closed_only_after_the_active_restore_releases_its_scope(
         .start_save_restore_task(&harness.request)
         .expect("task starts");
 
-    assert!(
-        !harness
-            .scope_registry
-            .begin_exit_if_idle()
-            .expect("active restore blocks exit admission")
-    );
-    assert!(
-        harness
-            .scope_registry
-            .has_active_task()
-            .expect("scope status is available")
-    );
+    assert!(!harness
+        .scope_registry
+        .begin_exit_if_idle()
+        .expect("active restore blocks exit admission"));
+    assert!(harness
+        .scope_registry
+        .has_active_task()
+        .expect("scope status is available"));
 
     harness
         .runner
         .run_save_restore_task(&started.task_id, harness.request.clone())
         .expect("restore completes");
 
-    assert!(
-        harness
-            .scope_registry
-            .begin_exit_if_idle()
-            .expect("idle restore scope can close admission")
-    );
+    assert!(harness
+        .scope_registry
+        .begin_exit_if_idle()
+        .expect("idle restore scope can close admission"));
     assert!(matches!(
         service.start_save_restore_task(&harness.request),
         Err(TaskManagerError::TaskCreationBlocked {
@@ -1159,6 +1303,7 @@ impl SaveBackupExecutor for RecordingBackupExecutor {
                 archive_file_name: "pre-restore-1.zip".to_owned(),
                 manifest_file_name: "pre-restore-1.manifest.json".to_owned(),
                 archive_size_bytes: 36,
+                retention_released_bytes: 0,
                 archive_sha256: "sha256:pre".to_owned(),
                 file_count: 1,
                 created_at: 2,
@@ -1168,6 +1313,7 @@ impl SaveBackupExecutor for RecordingBackupExecutor {
                 notes: None,
             },
             warnings: Vec::new(),
+            retention_report: None,
         })
     }
 }
@@ -1252,6 +1398,7 @@ fn sample_context() -> SaveRestoreCommitContext {
             archive_file_name: "backup-1.zip".to_owned(),
             manifest_file_name: "backup-1.manifest.json".to_owned(),
             archive_size_bytes: 36,
+            retention_released_bytes: 0,
             archive_sha256: "sha256:archive".to_owned(),
             file_count: 1,
             created_at: 1,
@@ -1271,6 +1418,7 @@ fn sample_context() -> SaveRestoreCommitContext {
                 weekdays: Vec::new(),
             },
             retention: ProfileBackupRetention::default(),
+            steam_account: None,
             pre_restore_backup_enabled: true,
             updated_at: 1,
         },

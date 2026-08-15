@@ -805,6 +805,7 @@ fn settings_with_schedule(schedule: ProfileBackupSchedule) -> ProfileSaveSetting
         backup_directory: directory_selection("D:/HMM/Backups"),
         schedule,
         retention: ProfileBackupRetention::default(),
+        steam_account: None,
         pre_restore_backup_enabled: true,
         updated_at: 10,
     }
@@ -820,6 +821,7 @@ fn auto_summary(backup_id: &str, created_at: u128) -> SaveBackupSummary {
         archive_file_name: format!("{backup_id}.zip"),
         manifest_file_name: format!("{backup_id}.manifest.json"),
         archive_size_bytes: 128,
+        retention_released_bytes: 0,
         archive_sha256: "sha256:test".to_owned(),
         file_count: 1,
         created_at,
