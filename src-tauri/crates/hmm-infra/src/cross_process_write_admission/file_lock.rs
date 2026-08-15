@@ -4,7 +4,7 @@ use super::{
 };
 use crate::controlled_fs::{open_existing_directory_nofollow, open_or_create_child_directory};
 use cap_fs_ext::{DirExt as _, FollowSymlinks, OpenOptionsFollowExt as _};
-use cap_std::fs::{Dir, OpenOptions};
+use cap_std::fs::{Dir, OpenOptions, OpenOptionsExt as _};
 use fs2::FileExt;
 use hmm_ports::{
     CancellationToken, CrossProcessWriteAcquisition, CrossProcessWriteAdmission,
@@ -15,7 +15,6 @@ use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
