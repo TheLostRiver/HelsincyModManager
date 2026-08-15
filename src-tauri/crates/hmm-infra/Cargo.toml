@@ -49,4 +49,7 @@ windows-sys = { workspace = true, features = [
 ] }
 winreg = "0.56"
 
+[target.'cfg(not(windows))'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
