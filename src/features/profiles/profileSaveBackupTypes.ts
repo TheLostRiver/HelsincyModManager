@@ -74,7 +74,7 @@ export type SaveBackupSummaryDto = {
   gameId: string;
   profileId: string;
   trigger: "manual" | "auto" | "pre_install" | "pre_restore";
-  status: "completed" | "deleted_by_retention" | "missing" | "invalid";
+  status: "completed" | "retention_pending" | "retention_partial" | "deleted_by_retention" | "missing" | "invalid";
   fileName: string;
   createdAt: number;
   sizeBytes: number;

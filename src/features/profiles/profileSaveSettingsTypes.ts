@@ -19,6 +19,13 @@ export type ProfileBackupScheduleDto = {
 export type ProfileBackupRetentionDto = {
   maxCount: number;
   maxAgeDays: number | null;
+  maxTotalBytes: number | null;
+};
+
+export type SteamAccountDisplaySummaryDto = {
+  accountName: string | null;
+  avatarUrl: string | null;
+  accountLabel: string;
 };
 
 export type ProfileSaveSettingsDto = {
@@ -27,6 +34,7 @@ export type ProfileSaveSettingsDto = {
   backupDirectory: ProfileDirectorySelectionDto;
   schedule: ProfileBackupScheduleDto;
   retention: ProfileBackupRetentionDto;
+  steamAccount: SteamAccountDisplaySummaryDto | null;
   preRestoreBackupEnabled: boolean;
   updatedAt: number;
 };

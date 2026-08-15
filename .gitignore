@@ -47,6 +47,8 @@ tmp/
 temp/
 cache/
 backups/
+!src/features/backups/
+!src/features/backups/**
 .tmp/
 
 # Test coverage
