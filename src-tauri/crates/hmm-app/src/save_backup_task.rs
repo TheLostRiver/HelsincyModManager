@@ -1,22 +1,24 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
 use hmm_core::{
-    GameId, ProfileId, SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerState,
-    SaveBackupSummary, SaveBackupTrigger,
+    GameId, ProfileId, SaveBackupRetentionOutcome, SaveBackupRetentionReport,
+    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerState, SaveBackupSummary,
+    SaveBackupTrigger,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
     SaveBackupSchedulerStateRepository,
 };
 
+use crate::save_profile_maintenance_scope::SaveProfileMaintenanceScopeGuard;
 use crate::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupService,
-    SaveBackupWarning, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskSnapshot,
-    TaskStarted, TaskStatus,
+    SaveProfileMaintenanceScopeRegistry, TaskKind, TaskManager, TaskManagerError,
+    TaskProgressEvent, TaskSnapshot, TaskStarted, TaskStatus,
 };
 
 const SAVE_BACKUP_SCANNING_PHASE: &str = "save_backup.scanning";
@@ -26,6 +28,7 @@ const SAVE_BACKUP_RETENTION_PRUNING_PHASE: &str = "save_backup.retention_pruning
 const SAVE_BACKUP_COMPLETED_PHASE: &str = "save_backup.completed";
 const SAVE_BACKUP_FAILED_PHASE: &str = "save_backup.failed";
 const SAVE_BACKUP_FAILED_ERROR: &str = "save_backup_failed";
+const SAVE_BACKUP_EVIDENCE_DEGRADED_ERROR: &str = "save_backup_evidence_degraded";
 const SAVE_BACKUP_SCHEDULER_LEASE_UNAVAILABLE_ERROR: &str =
     "save_backup_scheduler_lease_unavailable";
 const SCHEDULER_LEASE_TTL_MILLIS: u128 = 5 * 60_000;
@@ -42,64 +45,62 @@ pub struct StartSaveBackupTaskRequest {
     pub scheduler_lease_owner: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct SaveBackupTaskScope {
-    game_id: String,
-    profile_id: String,
+#[derive(Debug)]
+pub struct SaveBackupTaskScopeRegistry {
+    maintenance_registry: Arc<SaveProfileMaintenanceScopeRegistry>,
 }
 
-impl From<&StartSaveBackupTaskRequest> for SaveBackupTaskScope {
-    fn from(request: &StartSaveBackupTaskRequest) -> Self {
-        Self {
-            game_id: request.game_id.as_str().to_owned(),
-            profile_id: request.profile_id.as_str().to_owned(),
-        }
+impl Default for SaveBackupTaskScopeRegistry {
+    fn default() -> Self {
+        Self::with_maintenance_registry(Arc::new(SaveProfileMaintenanceScopeRegistry::default()))
     }
 }
 
-#[derive(Debug, Default)]
-pub struct SaveBackupTaskScopeRegistry {
-    active_tasks: Mutex<BTreeMap<SaveBackupTaskScope, String>>,
-}
-
 impl SaveBackupTaskScopeRegistry {
+    pub fn with_maintenance_registry(
+        maintenance_registry: Arc<SaveProfileMaintenanceScopeRegistry>,
+    ) -> Self {
+        Self {
+            maintenance_registry,
+        }
+    }
+
     pub fn reserve_task(
         &self,
         request: &StartSaveBackupTaskRequest,
         create_task: impl FnOnce() -> Result<TaskSnapshot, TaskManagerError>,
     ) -> Result<TaskSnapshot, TaskManagerError> {
-        let scope = SaveBackupTaskScope::from(request);
-        let mut active_tasks = self
-            .active_tasks
-            .lock()
-            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
-
-        if let Some(task_id) = active_tasks.get(&scope) {
-            return Err(TaskManagerError::TaskScopeBusy {
-                kind: TaskKind::SaveBackup,
-                task_id: task_id.clone(),
-            });
-        }
-
-        let task = create_task()?;
-        active_tasks.insert(scope, task.task_id.clone());
-
-        Ok(task)
+        self.maintenance_registry.reserve_task(
+            &request.game_id,
+            &request.profile_id,
+            TaskKind::SaveBackup,
+            create_task,
+        )
     }
 
     pub fn release_task(&self, request: &StartSaveBackupTaskRequest, task_id: &str) {
-        let scope = SaveBackupTaskScope::from(request);
-        let Ok(mut active_tasks) = self.active_tasks.lock() else {
-            return;
-        };
-
-        if active_tasks
-            .get(&scope)
-            .is_some_and(|active_task_id| active_task_id == task_id)
-        {
-            active_tasks.remove(&scope);
-        }
+        self.maintenance_registry
+            .release_task(&request.game_id, &request.profile_id, task_id);
     }
+
+    pub fn reserve_maintenance(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<SaveBackupMaintenanceScopeGuard<'_>, TaskManagerError> {
+        Ok(SaveBackupMaintenanceScopeGuard {
+            _guard: self.maintenance_registry.reserve_maintenance(
+                game_id,
+                profile_id,
+                TaskKind::SaveBackup,
+                "retention-maintenance",
+            )?,
+        })
+    }
+}
+
+pub struct SaveBackupMaintenanceScopeGuard<'a> {
+    _guard: SaveProfileMaintenanceScopeGuard<'a>,
 }
 
 struct SaveBackupTaskScopeReleaseGuard<'a> {
@@ -396,20 +397,24 @@ impl SaveBackupTaskRunner {
                 events.push(running_event(task_id, SAVE_BACKUP_MANIFEST_WRITING_PHASE));
                 events.push(running_event(task_id, SAVE_BACKUP_RETENTION_PRUNING_PHASE));
                 self.record_scheduler_success(&request, &result.summary);
-                self.record_success_audit(task_id, &request, &result.summary);
-                self.record_warning_audits(task_id, &request, &result.warnings);
-                events.push(TaskProgressEvent::new(
+                let backup_audit_ok = self.record_success_audit(task_id, &request, &result.summary);
+                let retention_audit_ok = self.record_retention_audit(task_id, &request, &result);
+                let mut completed = TaskProgressEvent::new(
                     task.task_id,
                     task.kind,
                     task.status,
                     SAVE_BACKUP_COMPLETED_PHASE,
-                ));
+                );
+                if !backup_audit_ok || !retention_audit_ok {
+                    completed.error = Some(SAVE_BACKUP_EVIDENCE_DEGRADED_ERROR.to_owned());
+                }
+                events.push(completed);
                 Ok(events)
             }
             Err(_) if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) => {
                 self.record_scheduler_success(&request, &result.summary);
-                self.record_success_audit(task_id, &request, &result.summary);
-                self.record_warning_audits(task_id, &request, &result.warnings);
+                let _ = self.record_success_audit(task_id, &request, &result.summary);
+                let _ = self.record_retention_audit(task_id, &request, &result);
                 Ok(Vec::new())
             }
             Err(_) => Err(self.fail_with_audit(
@@ -594,7 +599,7 @@ impl SaveBackupTaskRunner {
         task_id: &str,
         request: &StartSaveBackupTaskRequest,
         summary: &SaveBackupSummary,
-    ) {
+    ) -> bool {
         let mut fields = audit_fields(task_id, request);
         fields.insert("backup_id".to_owned(), summary.backup_id.clone());
         fields.insert("trigger".to_owned(), summary.trigger.as_str().to_owned());
@@ -604,19 +609,35 @@ impl SaveBackupTaskRunner {
             summary.archive_size_bytes.to_string(),
         );
 
-        self.record_audit(request.trigger, "success", fields);
+        self.record_audit(request.trigger, "success", fields)
     }
 
-    fn record_warning_audits(
+    fn record_retention_audit(
         &self,
         task_id: &str,
         request: &StartSaveBackupTaskRequest,
-        warnings: &[SaveBackupWarning],
-    ) {
-        for warning in warnings {
-            let mut fields = audit_fields(task_id, request);
+        result: &CreateSaveBackupResult,
+    ) -> bool {
+        let mut fields = audit_fields(task_id, request);
+        if let Some(report) = result.retention_report.as_ref() {
+            add_retention_audit_fields(&mut fields, report);
+            if let Some(warning) = result.warnings.first() {
+                fields.insert("error_code".to_owned(), warning.code().to_owned());
+            }
+            let audit_result = match report.outcome {
+                SaveBackupRetentionOutcome::WithinPolicy
+                | SaveBackupRetentionOutcome::Completed => "success",
+                SaveBackupRetentionOutcome::Partial | SaveBackupRetentionOutcome::Blocked => {
+                    "warning"
+                }
+                SaveBackupRetentionOutcome::Failed => "failure",
+            };
+            self.record_audit_for_operation("retention_pruning", audit_result, fields)
+        } else if let Some(warning) = result.warnings.first() {
             fields.insert("error_code".to_owned(), warning.code().to_owned());
-            self.record_audit_for_operation("retention_pruning", "warning", fields);
+            self.record_audit_for_operation("retention_pruning", "warning", fields)
+        } else {
+            true
         }
     }
 
@@ -629,7 +650,7 @@ impl SaveBackupTaskRunner {
         let mut fields = audit_fields(task_id, request);
         fields.insert("error_code".to_owned(), error_code.to_owned());
 
-        self.record_audit(request.trigger, "failure", fields);
+        let _ = self.record_audit(request.trigger, "failure", fields);
     }
 
     fn record_audit(
@@ -637,8 +658,8 @@ impl SaveBackupTaskRunner {
         trigger: SaveBackupTrigger,
         result: &str,
         fields: BTreeMap<String, String>,
-    ) {
-        self.record_audit_for_operation(backup_operation(trigger), result, fields);
+    ) -> bool {
+        self.record_audit_for_operation(backup_operation(trigger), result, fields)
     }
 
     fn record_audit_for_operation(
@@ -646,20 +667,58 @@ impl SaveBackupTaskRunner {
         operation: &str,
         result: &str,
         fields: BTreeMap<String, String>,
-    ) {
+    ) -> bool {
         let timestamp_unix_millis = self.clock.now_unix_millis().unwrap_or_default();
         let policy = AuditWriteFailurePolicy::for_commit_result(result);
-        let _ = self.audit_log.record_with_policy(
-            AuditLogEvent {
-                timestamp_unix_millis,
-                category: "save_backup".to_owned(),
-                operation: operation.to_owned(),
-                result: result.to_owned(),
-                fields,
-            },
-            policy,
-        );
+        self.audit_log
+            .record_with_policy(
+                AuditLogEvent {
+                    timestamp_unix_millis,
+                    category: "save_backup".to_owned(),
+                    operation: operation.to_owned(),
+                    result: result.to_owned(),
+                    fields,
+                },
+                policy,
+            )
+            .is_ok()
     }
+}
+
+fn add_retention_audit_fields(
+    fields: &mut BTreeMap<String, String>,
+    report: &SaveBackupRetentionReport,
+) {
+    fields.insert("outcome".to_owned(), report.outcome.as_str().to_owned());
+    fields.insert("scanned_count".to_owned(), report.scanned_count.to_string());
+    fields.insert(
+        "protected_count".to_owned(),
+        report.protected_count.to_string(),
+    );
+    fields.insert("problem_count".to_owned(), report.problem_count.to_string());
+    fields.insert(
+        "candidate_count".to_owned(),
+        report.candidate_count.to_string(),
+    );
+    fields.insert("deleted_count".to_owned(), report.deleted_count.to_string());
+    fields.insert("partial_count".to_owned(), report.partial_count.to_string());
+    fields.insert("blocked_count".to_owned(), report.blocked_count.to_string());
+    fields.insert(
+        "archive_bytes_before".to_owned(),
+        report.archive_bytes_before.to_string(),
+    );
+    fields.insert(
+        "archive_bytes_after".to_owned(),
+        report.archive_bytes_after.to_string(),
+    );
+    fields.insert(
+        "released_bytes".to_owned(),
+        report.released_bytes.to_string(),
+    );
+    fields.insert(
+        "budget_satisfied".to_owned(),
+        report.budget_satisfied.to_string(),
+    );
 }
 
 fn backup_operation(trigger: SaveBackupTrigger) -> &'static str {

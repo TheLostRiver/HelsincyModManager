@@ -3,11 +3,10 @@ use crate::{
     RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
 };
 use hmm_app::{
-    is_identity_replacement_binding, AppSettingsService, AuditLogDiagnosticsExportService,
-    ApplicationExitGuard,
-    CategoryService, CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
-    GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
-    ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
+    is_identity_replacement_binding, AppSettingsService, ApplicationExitGuard,
+    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest, GameLaunchService,
+    GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry,
+    GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
@@ -34,9 +33,10 @@ use hmm_app::{
     ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementWorkflowError,
     ReplacementWorkflowService, RetargetInstallTaskRunner, RetargetInstallTaskService,
     RetargetReinstallRequest, RetargetReinstallTaskExecutor, SaveBackupAutoSchedulerService,
-    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
-    SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
-    SaveBackupTaskService, SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
+    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupCenterService,
+    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
+    SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
     SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
     StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
     ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
@@ -192,6 +192,7 @@ pub struct HmmRuntime {
     pub profiles: Arc<ProfileService>,
     pub save_directory_discovery: Arc<ProfileSaveDirectoryDiscoveryService>,
     pub save_backups: Arc<SaveBackupService>,
+    pub save_backup_center: Arc<SaveBackupCenterService>,
     pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
     pub save_backup_background: Arc<SaveBackupBackgroundService>,
     pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
@@ -252,6 +253,8 @@ impl HmmRuntime {
             profile_repository.clone();
         let profile_repository_for_save_backups: Arc<dyn ProfileRepository> =
             profile_repository.clone();
+        let profile_repository_for_save_backup_center: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
         let profile_repository_for_save_restore: Arc<dyn ProfileRepository> =
             profile_repository.clone();
         let profile_repository_for_save_backup_auto_scheduler: Arc<dyn ProfileRepository> =
@@ -266,6 +269,9 @@ impl HmmRuntime {
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backups: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_backup_center: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_restore: Arc<
@@ -568,7 +574,12 @@ impl HmmRuntime {
         let save_restore_validator: Arc<dyn hmm_app::SaveRestoreCommitValidator> =
             save_restore.clone();
         let save_restore_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
-        let save_restore_task_scopes = Arc::new(SaveRestoreTaskScopeRegistry::default());
+        let save_profile_maintenance_scopes =
+            Arc::new(SaveProfileMaintenanceScopeRegistry::default());
+        let save_restore_task_scopes =
+            Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
+                Arc::clone(&save_profile_maintenance_scopes),
+            ));
         let application_exit_guard = Arc::new(ApplicationExitGuard::new(
             Arc::clone(&save_backup_exit_guard),
             Arc::clone(&save_restore_task_scopes),
@@ -613,7 +624,9 @@ impl HmmRuntime {
             Arc::new(SystemClock),
         ));
         let save_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
-        let save_backup_task_scopes = Arc::new(SaveBackupTaskScopeRegistry::default());
+        let save_backup_task_scopes = Arc::new(
+            SaveBackupTaskScopeRegistry::with_maintenance_registry(save_profile_maintenance_scopes),
+        );
         let save_backup_task_runner = Arc::new(
             SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
                 Arc::clone(&task_manager),
@@ -626,7 +639,16 @@ impl HmmRuntime {
         );
         let save_backup_tasks = Arc::new(SaveBackupTaskService::with_scope_registry(
             Arc::clone(&task_manager),
+            Arc::clone(&save_backup_task_scopes),
+        ));
+        let save_backup_center = Arc::new(SaveBackupCenterService::new(
+            profile_repository_for_save_backup_center,
+            profile_save_settings_repository_for_save_backup_center,
+            Arc::clone(&save_backup_repository),
+            Arc::clone(&save_backups),
             save_backup_task_scopes,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
         ));
         let save_backup_background_worker =
             Arc::new(SaveBackupBackgroundWorker::new_with_settings_repository(
@@ -878,6 +900,7 @@ impl HmmRuntime {
                 Arc::new(SystemClock),
             )),
             save_directory_discovery,
+            save_backup_center,
             save_backup_task_runner,
             save_backup_tasks,
             save_backup_auto_scheduler,

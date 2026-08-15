@@ -152,6 +152,7 @@ impl ProfileService {
                 .default_backup_directory(game_id)?,
             schedule: ProfileBackupSchedule::manual(),
             retention: ProfileBackupRetention::default(),
+            steam_account: None,
             pre_restore_backup_enabled: true,
             updated_at: 0,
         })
@@ -213,18 +214,39 @@ impl ProfileService {
         validate_schedule(&request.schedule)?;
         validate_retention(&request.retention)?;
 
+        let steam_account = existing_settings.as_ref().and_then(|settings| {
+            directories_equivalent(
+                settings.save_directory.directory.as_deref(),
+                save_directory.directory.as_deref(),
+            )
+            .then(|| settings.steam_account.clone())
+            .flatten()
+        });
+
         let settings = ProfileSaveSettings {
             profile_id: request.profile_id,
             save_directory,
             backup_directory,
             schedule: request.schedule,
             retention: request.retention,
+            steam_account,
             pre_restore_backup_enabled: request.pre_restore_backup_enabled,
             updated_at: self.clock.now_unix_millis()?,
         };
 
         self.save_settings_repository.save_settings(&settings)?;
         Ok(settings)
+    }
+}
+
+fn directories_equivalent(left: Option<&str>, right: Option<&str>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) if cfg!(windows) => left
+            .replace('\\', "/")
+            .eq_ignore_ascii_case(&right.replace('\\', "/")),
+        (Some(left), Some(right)) => left == right,
+        _ => false,
     }
 }
 
@@ -291,8 +313,14 @@ fn validate_retention(retention: &ProfileBackupRetention) -> Result<()> {
     );
     if let Some(max_age_days) = retention.max_age_days {
         ensure!(
-            max_age_days > 0,
-            "backup retention max age days must be greater than zero"
+            (1..=3650).contains(&max_age_days),
+            "backup retention max age days must be between 1 and 3650"
+        );
+    }
+    if let Some(max_total_bytes) = retention.max_total_bytes {
+        ensure!(
+            (16 * 1024 * 1024..=1024 * 1024 * 1024 * 1024).contains(&max_total_bytes),
+            "backup retention max total bytes must be between 16 MiB and 1 TiB"
         );
     }
     Ok(())

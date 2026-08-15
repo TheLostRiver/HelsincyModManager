@@ -1,10 +1,17 @@
+use crate::controlled_fs::{
+    ensure_regular_file_metadata, is_not_found, open_existing_directory_chain,
+    open_existing_directory_nofollow, open_regular_file_nofollow,
+};
 use crate::save_path::{normalize_save_relative_path, MAX_SAVE_DIRECTORY_COUNT};
 use anyhow::{anyhow, bail, Context, Result};
 use hmm_core::{
     ProfileDirectoryMode, ProfileDirectorySelection, SaveBackupManifest, SaveBackupManifestFile,
     SaveBackupManifestSource, SaveBackupStatus, SaveBackupSummary,
 };
-use hmm_ports::{SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter};
+use hmm_ports::{
+    SaveBackupDeleteReport, SaveBackupFileDeleteDisposition, SaveBackupFileDeleteResult,
+    SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
+};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
@@ -117,6 +124,7 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
                 archive_file_name,
                 manifest_file_name,
                 archive_size_bytes,
+                retention_released_bytes: 0,
                 archive_sha256,
                 file_count: archived_files.len() as u32,
                 created_at: request.created_at_unix_millis,
@@ -143,6 +151,76 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
         remove_safe_child_file(&backup_dir, &summary.manifest_file_name)?;
         Ok(())
     }
+
+    fn delete_backup_files_report(
+        &self,
+        backup_directory: &ProfileDirectorySelection,
+        summary: &SaveBackupSummary,
+    ) -> Result<SaveBackupDeleteReport> {
+        let directory = match open_retention_backup_directory(
+            &self.app_data_dir,
+            backup_directory,
+            summary.game_id.as_str(),
+            summary.profile_id.as_str(),
+            summary.trigger,
+        ) {
+            Ok(directory) => directory,
+            Err(_) => {
+                return Ok(SaveBackupDeleteReport {
+                    archive: blocked_file("save_backup_retention_directory_unavailable"),
+                    manifest: blocked_file("save_backup_retention_directory_unavailable"),
+                });
+            }
+        };
+
+        Ok(SaveBackupDeleteReport {
+            archive: remove_verified_child_file(&directory, &summary.archive_file_name, true),
+            manifest: remove_verified_child_file(&directory, &summary.manifest_file_name, false),
+        })
+    }
+}
+
+fn open_retention_backup_directory(
+    app_data_dir: &Path,
+    selection: &ProfileDirectorySelection,
+    game_id: &str,
+    profile_id: &str,
+    trigger: hmm_core::SaveBackupTrigger,
+) -> Result<cap_std::fs::Dir> {
+    let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
+    let (root_path, mut components) = match selection.mode {
+        ProfileDirectoryMode::Custom => {
+            let root = selection
+                .directory
+                .as_deref()
+                .ok_or_else(|| anyhow!("custom save backup root is missing"))?;
+            (
+                PathBuf::from(root),
+                vec![
+                    "HelsincyModManager".to_owned(),
+                    "saves".to_owned(),
+                    game_id.to_owned(),
+                    profile_dir,
+                ],
+            )
+        }
+        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => (
+            app_data_dir.to_path_buf(),
+            vec![
+                "backups".to_owned(),
+                "saves".to_owned(),
+                game_id.to_owned(),
+                profile_dir,
+            ],
+        ),
+    };
+    if trigger == hmm_core::SaveBackupTrigger::PreRestore {
+        components.push("pre-restore".to_owned());
+    }
+
+    let root = open_existing_directory_nofollow(&root_path, "save backup retention root")?;
+    let components = components.iter().map(String::as_str).collect::<Vec<_>>();
+    open_existing_directory_chain(&root, &components, "save backup retention directory")
 }
 
 impl FileSystemSaveBackupWriter {
@@ -658,6 +736,139 @@ fn remove_safe_child_file(root: &Path, file_name: &str) -> Result<()> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error).context("failed to remove save backup file"),
+    }
+}
+
+fn remove_verified_child_file(
+    directory: &cap_std::fs::Dir,
+    file_name: &str,
+    count_released_bytes: bool,
+) -> SaveBackupFileDeleteResult {
+    if file_name.contains('/') || file_name.contains('\\') || file_name.trim().is_empty() {
+        return blocked_file("save_backup_retention_unsafe_entry");
+    }
+
+    let name = std::ffi::OsStr::new(file_name);
+    let before = match directory.symlink_metadata(name) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return already_missing_file();
+        }
+        Err(_) => return blocked_file("save_backup_retention_entry_unavailable"),
+    };
+    if ensure_regular_file_metadata(&before, "save backup retention file").is_err() {
+        return blocked_file("save_backup_retention_entry_untrusted");
+    }
+
+    let opened = match open_regular_file_nofollow(directory, name, "save backup retention file") {
+        Ok(file) => file,
+        Err(error) if is_not_found(&error) => return already_missing_file(),
+        Err(_) => return blocked_file("save_backup_retention_entry_untrusted"),
+    };
+    let opened_metadata = match opened.metadata() {
+        Ok(metadata) => metadata,
+        Err(_) => return blocked_file("save_backup_retention_entry_unavailable"),
+    };
+    if before.len() != opened_metadata.len()
+        || before.modified().ok() != opened_metadata.modified().ok()
+    {
+        return blocked_file("save_backup_retention_entry_changed");
+    }
+    let Some(opened_identity) = file_identity(&opened) else {
+        return blocked_file("save_backup_retention_entry_unavailable");
+    };
+    let released_bytes = if count_released_bytes {
+        opened_metadata.len()
+    } else {
+        0
+    };
+    let current = match open_regular_file_nofollow(directory, name, "save backup retention file") {
+        Ok(file) => file,
+        Err(error) if is_not_found(&error) => return already_missing_file(),
+        Err(_) => return blocked_file("save_backup_retention_entry_untrusted"),
+    };
+    if file_identity(&current) != Some(opened_identity) {
+        return blocked_file("save_backup_retention_entry_changed");
+    }
+    drop(current);
+    drop(opened);
+
+    match directory.remove_file(name) {
+        Ok(()) => SaveBackupFileDeleteResult {
+            disposition: SaveBackupFileDeleteDisposition::Deleted,
+            released_bytes,
+            error_code: None,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => already_missing_file(),
+        Err(_) => blocked_file("save_backup_retention_delete_failed"),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileIdentity {
+    #[cfg(windows)]
+    Windows {
+        volume_serial_number: u32,
+        file_index: u64,
+    },
+    #[cfg(unix)]
+    Unix { dev: u64, ino: u64 },
+    #[cfg(not(any(windows, unix)))]
+    Unsupported,
+}
+
+fn file_identity(file: &cap_std::fs::File) -> Option<FileIdentity> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle as _;
+        use windows_sys::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+        };
+
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        let succeeded = unsafe {
+            GetFileInformationByHandle(
+                file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE,
+                &mut information,
+            )
+        };
+        if succeeded == 0 {
+            return None;
+        }
+        Some(FileIdentity::Windows {
+            volume_serial_number: information.dwVolumeSerialNumber,
+            file_index: (u64::from(information.nFileIndexHigh) << 32)
+                | u64::from(information.nFileIndexLow),
+        })
+    }
+    #[cfg(unix)]
+    {
+        use cap_std::fs::MetadataExt as _;
+        let metadata = file.metadata().ok()?;
+        Some(FileIdentity::Unix {
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+        })
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        Some(FileIdentity::Unsupported)
+    }
+}
+
+fn already_missing_file() -> SaveBackupFileDeleteResult {
+    SaveBackupFileDeleteResult {
+        disposition: SaveBackupFileDeleteDisposition::AlreadyMissing,
+        released_bytes: 0,
+        error_code: None,
+    }
+}
+
+fn blocked_file(error_code: &str) -> SaveBackupFileDeleteResult {
+    SaveBackupFileDeleteResult {
+        disposition: SaveBackupFileDeleteDisposition::Blocked,
+        released_bytes: 0,
+        error_code: Some(error_code.to_owned()),
     }
 }
 

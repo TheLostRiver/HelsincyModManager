@@ -124,6 +124,7 @@ fn validator_rejects_parent_path_in_manifest_and_zip() {
         archive_file_name: archive_name.to_owned(),
         manifest_file_name: manifest_name.to_owned(),
         archive_size_bytes: archive_bytes.len() as u64,
+        retention_released_bytes: 0,
         archive_sha256: sha256(&archive_bytes),
         file_count: 1,
         created_at: 0,

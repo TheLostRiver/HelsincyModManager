@@ -2,7 +2,7 @@ use anyhow::Result;
 use hmm_app::{CreateProfileRequest, ProfileService, UpdateProfileRequest};
 use hmm_core::{
     Profile, ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus,
-    ProfileSaveSettings,
+    ProfileSaveSettings, SteamAccountDisplaySummary,
 };
 use hmm_ports::{
     AppClock, ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
@@ -77,16 +77,25 @@ impl AppClock for FixedClock {
 }
 
 fn make_service() -> (ProfileService, Arc<FakeProfileRepository>) {
+    let (service, repo, _) = make_service_with_settings();
+    (service, repo)
+}
+
+fn make_service_with_settings() -> (
+    ProfileService,
+    Arc<FakeProfileRepository>,
+    Arc<FakeProfileSaveSettingsRepository>,
+) {
     let repo = Arc::new(FakeProfileRepository::default());
     let settings_repo = Arc::new(FakeProfileSaveSettingsRepository::default());
     let validator = Arc::new(FakeProfileSaveDirectoryValidator);
     let service = ProfileService::new(
         Arc::clone(&repo) as _,
-        settings_repo,
+        Arc::clone(&settings_repo) as _,
         validator,
         Arc::new(FixedClock(7000)),
     );
-    (service, repo)
+    (service, repo, settings_repo)
 }
 
 #[derive(Default)]
@@ -340,6 +349,7 @@ fn profile_save_settings_validates_selected_directories_before_persisting() {
         retention: hmm_core::ProfileBackupRetention {
             max_count: 20,
             max_age_days: Some(30),
+            max_total_bytes: None,
         },
         pre_restore_backup_enabled: false,
     });
@@ -401,4 +411,112 @@ fn profile_save_settings_rejects_out_of_range_schedule_time() {
             pre_restore_backup_enabled: true,
         });
     assert!(invalid_minute.is_err());
+}
+
+#[test]
+fn profile_save_settings_accepts_only_the_supported_space_budget_range() {
+    let (service, repo) = make_service();
+    repo.save(&Profile {
+        id: "profile-1".to_owned(),
+        name: "Profile".to_owned(),
+        description: None,
+        is_active: false,
+        created_at: 1,
+        updated_at: 1,
+    })
+    .unwrap();
+
+    let request = |max_total_bytes| hmm_app::SetProfileSaveSettingsRequest {
+        profile_id: "profile-1".to_owned(),
+        game_id: "mhw".to_owned(),
+        save_directory: None,
+        backup_directory: None,
+        schedule: hmm_core::ProfileBackupSchedule::manual(),
+        retention: hmm_core::ProfileBackupRetention {
+            max_count: 20,
+            max_age_days: Some(30),
+            max_total_bytes,
+        },
+        pre_restore_backup_enabled: true,
+    };
+
+    assert!(service
+        .set_profile_save_settings(request(Some(16 * 1024 * 1024)))
+        .is_ok());
+    assert!(service
+        .set_profile_save_settings(request(Some(1024 * 1024 * 1024 * 1024)))
+        .is_ok());
+    assert!(service
+        .set_profile_save_settings(request(Some(16 * 1024 * 1024 - 1)))
+        .is_err());
+    assert!(service
+        .set_profile_save_settings(request(Some(1024 * 1024 * 1024 * 1024 + 1)))
+        .is_err());
+}
+
+#[test]
+fn profile_save_settings_preserve_account_for_same_directory_and_clear_it_for_a_new_one() {
+    let (service, repo, settings_repo) = make_service_with_settings();
+    repo.save(&Profile {
+        id: "profile-1".to_owned(),
+        name: "Profile".to_owned(),
+        description: None,
+        is_active: false,
+        created_at: 1,
+        updated_at: 1,
+    })
+    .unwrap();
+
+    let original_directory = if cfg!(windows) {
+        "C:\\Fixture\\Saves"
+    } else {
+        "/fixture/saves"
+    };
+    let equivalent_directory = if cfg!(windows) {
+        "c:/fixture/saves"
+    } else {
+        "/fixture/saves"
+    };
+    let different_directory = if cfg!(windows) {
+        "C:/Fixture/OtherSaves"
+    } else {
+        "/fixture/other-saves"
+    };
+    let steam_account = SteamAccountDisplaySummary {
+        account_name: Some("Synthetic Hunter".to_owned()),
+        avatar_url: Some("https://avatars.steamstatic.com/fixture.jpg".to_owned()),
+        account_label: "Steam 12****34".to_owned(),
+    };
+    settings_repo
+        .save_settings(&ProfileSaveSettings {
+            profile_id: "profile-1".to_owned(),
+            save_directory: custom_directory_selection(original_directory),
+            backup_directory: custom_directory_selection("D:/Fixture/Backups"),
+            schedule: hmm_core::ProfileBackupSchedule::manual(),
+            retention: hmm_core::ProfileBackupRetention::default(),
+            steam_account: Some(steam_account.clone()),
+            pre_restore_backup_enabled: true,
+            updated_at: 1,
+        })
+        .unwrap();
+
+    let request = |save_directory: &str| hmm_app::SetProfileSaveSettingsRequest {
+        profile_id: "profile-1".to_owned(),
+        game_id: "mhw".to_owned(),
+        save_directory: Some(save_directory.to_owned()),
+        backup_directory: None,
+        schedule: hmm_core::ProfileBackupSchedule::manual(),
+        retention: hmm_core::ProfileBackupRetention::default(),
+        pre_restore_backup_enabled: true,
+    };
+
+    let preserved = service
+        .set_profile_save_settings(request(equivalent_directory))
+        .expect("save equivalent directory");
+    assert_eq!(preserved.steam_account, Some(steam_account));
+
+    let cleared = service
+        .set_profile_save_settings(request(different_directory))
+        .expect("save different directory");
+    assert_eq!(cleared.steam_account, None);
 }

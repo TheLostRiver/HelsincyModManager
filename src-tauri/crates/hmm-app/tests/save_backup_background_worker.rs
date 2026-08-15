@@ -1067,6 +1067,7 @@ impl SaveBackupExecutor for RecordingSaveBackupExecutor {
                 archive_file_name: "backup.zip".to_owned(),
                 manifest_file_name: "backup.manifest.json".to_owned(),
                 archive_size_bytes: 1,
+                retention_released_bytes: 0,
                 archive_sha256: "sha256:test".to_owned(),
                 file_count: 1,
                 created_at: NOW,
@@ -1076,6 +1077,7 @@ impl SaveBackupExecutor for RecordingSaveBackupExecutor {
                 notes: None,
             },
             warnings: Vec::new(),
+            retention_report: None,
         })
     }
 }
@@ -1152,6 +1154,7 @@ fn settings(profile_id: &str, cadence: BackupCadence) -> ProfileSaveSettings {
             weekdays: Vec::new(),
         },
         retention: ProfileBackupRetention::default(),
+        steam_account: None,
         pre_restore_backup_enabled: true,
         updated_at: 1,
     }

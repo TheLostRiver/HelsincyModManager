@@ -26,6 +26,8 @@ mod reinstall_dto;
 mod replacement_commands;
 mod replacement_dto;
 mod save_backup_commands;
+mod save_backup_center_commands;
+mod save_backup_center_dto;
 mod save_backup_dto;
 mod save_directory_discovery_commands;
 mod save_directory_discovery_dto;
@@ -83,6 +85,9 @@ use save_backup_commands::{
     check_auto_save_backup, disable_save_backup_background_protection,
     enable_save_backup_background_protection, get_save_backup_background_control_status,
     get_save_backup_background_status, list_save_backups, start_save_backup_task,
+};
+use save_backup_center_commands::{
+    query_save_backup_center, run_save_backup_retention, update_save_backup_note,
 };
 use save_directory_discovery_commands::{
     confirm_profile_save_directory_candidate, discover_profile_save_directories,
@@ -226,6 +231,9 @@ pub fn run() {
             enable_save_backup_background_protection,
             disable_save_backup_background_protection,
             list_save_backups,
+            query_save_backup_center,
+            update_save_backup_note,
+            run_save_backup_retention,
             preview_save_restore,
             start_save_restore_task,
             hide_main_window_to_tray,

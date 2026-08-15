@@ -433,6 +433,7 @@ fn settings(profile_id: &str, cadence: BackupCadence) -> ProfileSaveSettings {
             }
         },
         retention: ProfileBackupRetention::default(),
+        steam_account: None,
         pre_restore_backup_enabled: true,
         updated_at: 1,
     }
