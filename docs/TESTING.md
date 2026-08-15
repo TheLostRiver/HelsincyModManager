@@ -1135,6 +1135,25 @@ DTO、精确 `taskId + kind + phase + status` 匹配、early-event buffer、reco
 真实 Steam userdata、游戏目录、玩家存档或真实 Scheduled Task。SAVE-04 在该人工 gate 完成前只能记录为
 “实现完成、等待验收”，不得写成 `certified`。
 
+SAVE-05 retention 与备份中心使用 fake repository 与 temp filesystem，至少覆盖：
+
+- count/age/space 单独及组合规则、边界时间和确定性排序。
+- 最新普通备份与所有 `pre_restore` 保护点不被普通 retention 删除。
+- 保护点或问题项导致预算无法收敛时返回 blocked，而不是突破保护或伪报成功。
+- `Completed -> RetentionPending -> DeletedByRetention | RetentionPartial` 持久化事实链。
+- begin intent 失败、archive/manifest 单项缺失、单项删除失败、最终 DB 写回失败与下一次重试收敛。
+- link/junction/reparse、目录或文件 identity 替换 fail closed，外部 sentinel 不受影响。
+- 跨 Profile 分页、筛选、聚合、备注，以及确认 Steam 展示 snapshot 的 migration/保留/清空语义。
+- 同 game/profile 的 queued/running backup、备份末尾 retention、显式 retention 与 restore 共享维护 scope；
+  双向冲突均 fail closed，不同 scope 不受影响。
+- task 创建失败或 panic、runner error/panic、queued restore abort 和 terminal 路径都会释放维护 scope；restore
+  退出 admission 仍只统计 restore task，不把普通备份或 retention 计入 active restore。
+
+前端聚焦测试覆盖 `/backups` 路由、loading/empty/error/partial/blocked、筛选分页、备注、整理反馈、
+“立即整理”二次确认及取消默认焦点、搜索/空间预算输入边界、持久化头像 URL 二次白名单和 SAVE-04 恢复入口。
+浏览器或 Windows 人工 smoke 至少覆盖 `1440x900`、`1280x800` 和 `480x800`，不得出现横向滚动才能发现
+恢复操作的布局。所有 fixture 仍只能使用 temp/artificial 数据。
+
 自动备份调度状态与后台保护状态查询切片至少运行聚焦测试：
 
 ```powershell

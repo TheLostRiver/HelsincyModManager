@@ -916,6 +916,13 @@ type ProfileBackupScheduleDto = {
 type ProfileBackupRetentionDto = {
   maxCount: number;
   maxAgeDays: number | null;
+  maxTotalBytes: number | null;
+};
+
+type SteamAccountDisplaySummaryDto = {
+  accountName: string | null;
+  avatarUrl: string | null;
+  accountLabel: string;
 };
 
 type ProfileSaveSettingsDto = {
@@ -924,6 +931,7 @@ type ProfileSaveSettingsDto = {
   backupDirectory: ProfileDirectorySelectionDto;
   schedule: ProfileBackupScheduleDto;
   retention: ProfileBackupRetentionDto;
+  steamAccount: SteamAccountDisplaySummaryDto | null;
   preRestoreBackupEnabled: boolean;
   updatedAt: number;
 };
@@ -968,6 +976,9 @@ Profile 存档备份命令：
 ```text
 start_save_backup_task({ request: { gameId, profileId, note? } })
 list_save_backups({ request: { gameId, profileId, limit? } })
+query_save_backup_center({ request: { gameId, profileId?, trigger?, status?, search?, offset?, limit? } })
+update_save_backup_note({ request: { gameId, profileId, backupId, note? } })
+run_save_backup_retention({ request: { gameId, profileId } })
 check_auto_save_backup({ request: { gameId, profileId } })
 get_save_backup_background_status({ request: { gameId, profileId } })
 ```
@@ -976,6 +987,16 @@ get_save_backup_background_status({ request: { gameId, profileId } })
 
 - `start_save_backup_task` 是手动存档备份的长任务入口，返回 `TaskStartedDto`；前端按 `taskId` 监听 `save_backup.*` phase。
 - `list_save_backups` 只查询后端持久化的备份历史摘要，用于 Profile 页面或后续备份中心刷新历史。
+- `query_save_backup_center` 是跨 Profile 的后端权威分页与聚合入口；前端不得先列 Profile 再 N+1 拼装历史、
+  空间或状态事实。`limit` 最大 100，`offset` 必须位于后端支持的 signed integer 范围，搜索只匹配 Profile
+  名称和备注且最长 100 字符。
+- `update_save_backup_note` 只接收短 identity 和最长 200 字符的可选备注；不得传 manifest、文件名或路径。
+- `run_save_backup_retention` 与同一 game/profile 的备份任务共用 scope，返回结构化报告。删除进入持久化
+  intent 后不可取消，必须收敛为 completed/partial 或保留 pending 供重试。前端调用前必须显示二次确认，
+  不能把“立即整理”做成单击即永久删除。
+- 备份中心稳定错误至少包括 `save_backup_center_query_invalid`、`save_backup_center_unavailable`、
+  `save_backup_center_profile_missing`、`save_backup_center_backup_missing`、`save_backup_note_invalid`、
+  `save_backup_task_conflict` 和 `save_backup_retention_failed`；前端不得用 message 文本分支。
 - `check_auto_save_backup` 是客户端运行期/启动时的自动备份检查入口；它根据后端持久化的 Profile 存档设置和备份历史判断当前计划是否到期。若到期，后端会以 `trigger = "auto"` 复用存档备份任务链路并返回 `startedTask`。
 - 计划到期时后端先做游戏运行检测：游戏运行中或无法判断时保守延后，不获取调度租约、不启动任务，并在 `pendingReason` 返回 `game_running` / `game_running_unknown`；游戏退出后的下一次检查自动补跑。运行检测由后端 `GameRunningDetector` port 决定，前端不参与判断。
 - 前端只能传递 `gameId`、`profileId`、可选 `note` 和可选 `limit`；不得传入存档源路径、备份根目录、文件名、manifest 正文、文件列表、hash、sandbox/cache 路径或 backup ref。
@@ -1033,7 +1054,13 @@ type SaveBackupSummaryDto = {
   gameId: string;
   profileId: string;
   trigger: "manual" | "auto" | "pre_install" | "pre_restore";
-  status: "completed" | "deleted_by_retention" | "missing" | "invalid";
+  status:
+    | "completed"
+    | "retention_pending"
+    | "retention_partial"
+    | "deleted_by_retention"
+    | "missing"
+    | "invalid";
   fileName: string;
   createdAt: number;
   sizeBytes: number;
@@ -1041,6 +1068,61 @@ type SaveBackupSummaryDto = {
   sourcePathLabel: string | null;
   notes: string | null;
 };
+
+type SaveBackupCenterProfileSummaryDto = {
+  profileId: string;
+  profileName: string;
+  isActive: boolean;
+  steamAccount: SteamAccountDisplaySummaryDto | null;
+  retention: ProfileBackupRetentionDto;
+  backupCount: number;
+  archiveBytes: number;
+  protectedCount: number;
+  attentionCount: number;
+  budgetSatisfied: boolean;
+};
+
+type SaveBackupCenterItemDto = {
+  profileName: string;
+  backup: SaveBackupSummaryDto;
+};
+
+type SaveBackupCenterSummaryDto = {
+  backupCount: number;
+  archiveBytes: number;
+  protectedCount: number;
+  attentionCount: number;
+};
+
+type SaveBackupCenterPageDto = {
+  items: SaveBackupCenterItemDto[];
+  profiles: SaveBackupCenterProfileSummaryDto[];
+  offset: number;
+  limit: number;
+  totalCount: number;
+  summary: SaveBackupCenterSummaryDto;
+};
+
+type SaveBackupRetentionReportDto = {
+  outcome: "within_policy" | "completed" | "partial" | "blocked" | "failed";
+  evidenceDegraded: boolean;
+  scannedCount: number;
+  protectedCount: number;
+  problemCount: number;
+  candidateCount: number;
+  deletedCount: number;
+  partialCount: number;
+  blockedCount: number;
+  archiveBytesBefore: number;
+  archiveBytesAfter: number;
+  releasedBytes: number;
+  maxTotalBytes: number | null;
+  budgetSatisfied: boolean;
+};
+
+`evidenceDegraded` 只表示 retention Audit 在文件清理完成后未能确认。显式维护仍返回原业务
+`outcome`；自动备份的 `save_backup.completed` event 以稳定 `save_backup_evidence_degraded` code
+投影同一情况，不得改写为业务失败。
 
 type ProfileAutoSaveBackupCheckDto = {
   gameId: string;
@@ -1089,7 +1171,11 @@ type SaveBackupBackgroundStatusDto = {
 };
 ```
 
-`SaveBackupSummaryDto`、`ProfileAutoSaveBackupCheckDto` 和 `SaveBackupBackgroundStatusDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表、调度租约字段、worker 实例 id 或真实存档内容。
+`SaveBackupSummaryDto`、备份中心 DTO、`ProfileAutoSaveBackupCheckDto` 和 `SaveBackupBackgroundStatusDto` 不返回
+完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表、调度租约字段、worker
+实例 id 或真实存档内容。账号昵称、白名单头像 URL 和掩码 label 只能来自后端确认后持久化的展示 snapshot；
+它们不参与 restore、retention ownership 或目录校验。备份中心渲染持久化头像前仍须再次校验 HTTPS 和受信
+Steam hostname，损坏或本机篡改的 snapshot 必须回退为文字头像。
 
 Profile 玩家存档恢复命令：
 

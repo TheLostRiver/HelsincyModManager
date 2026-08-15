@@ -522,6 +522,16 @@ pre-restore backup；无法证明原状态时持久化 `RecoveryRequired` 并保
 queued/running restore 或 scope 状态不可读时，窗口生命周期只允许返回应用或收起至托盘，不能以后台保护
 override 绕过。这样 event loop 退出不会在目录交换、rollback 或 evidence 收尾中终止 restore runner。
 
+SAVE-05 在该边界上增加独立 retention 服务和 `features/backups/` 备份中心。Profile retention 同时支持
+数量、年龄和可选空间预算；普通 retention 永久排除 `PreRestore`，但空间摘要会计入其占用并在无法安全
+收敛时返回 blocked。物理删除前必须先把 intent compare-and-set 为 `RetentionPending`，archive/manifest
+通过 capability-relative no-follow 复验后分别删除，最终收敛为 `DeletedByRetention` 或可重试的
+`RetentionPartial`。跨 Profile 查询、聚合、备注和账号展示摘要由后端权威服务提供；React 不做 N+1 文件
+事实拼装，恢复入口继续复用 SAVE-04 preview/token/task。备份任务、备份末尾 retention、显式整理和恢复任务
+在 runtime composition 中共享按 game/profile 的 `SaveProfileMaintenanceScopeRegistry`；恢复从 queued 登记到
+terminal 持有该 scope，避免来源通过校验后被 retention 并发删除。该维护 scope 不替代游戏写锁，退出闸门
+仍只读取独立的 restore task registry。
+
 ### 任务管理器
 
 长耗时操作必须作为后台任务执行：

@@ -176,6 +176,14 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   不能由单次请求临时关闭持久安全设置。
 - pre-restore backup 必须先完整写入独立 `pre-restore/` 目录、manifest 和历史记录，之后才允许提交；普通
   retention 不得删除该目录的记录。
+- 按数量、年龄或空间执行普通 retention 时，物理删除前必须先持久化清理意图；archive 与 manifest 只能
+  通过 repository 目录快照和 capability-relative no-follow 句柄复验、删除。半删必须记录为可重试
+  `retention_pending` / `retention_partial`，不能继续显示为 completed 或伪报释放空间。
+- 空间预算计入受保护 `pre_restore` 占用，但普通 retention 不得突破该保护点或最新普通备份下限；无法
+  收敛时返回稳定 blocked/partial 结果。
+- 同 game/profile 的备份任务、自动/显式 retention 与恢复任务必须共享存档维护 scope。恢复从 queued 登记
+  到 terminal 持有该 scope，防止来源在校验、准备、pre-restore 或提交之间被并发 retention 删除；错误、
+  abort 和 panic 路径必须释放占用。该 scope 不替代目标目录的短游戏写锁。
 - archive 校验、解压、staging 与安全备份位于共享写锁外；同 game/profile 的目标目录交换、rollback 和
   recovery 收尾必须串行。commit 前重新读取短事实并复核 token、目标和 staging 摘要。
 - 恢复使用持久事务和受控 sibling 目录交换。失败优先恢复原 rollback sibling；无法证明原状态时保留
@@ -195,6 +203,8 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   或 scope 读取失败都必须 fail closed，恢复主窗口并拒绝完全退出。该状态不能使用后台保护 override 绕过，
   用户只能返回应用或收起到托盘，直到 restore terminal 与 evidence 收尾完成。
 - 自动备份间隔和保留策略可配置。
+- 备份中心只接收短 game/profile/backup identity 和规范化备注；不得接收或返回 archive/manifest 路径、
+  Steam ID、hash 列表或真实存档内容。确认过的 Steam 账号快照只用于展示，不参与 restore ownership。
 - 测试不得默认使用真实存档目录。
 
 ## 响应原则
