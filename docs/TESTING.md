@@ -1259,6 +1259,8 @@ SAVE-04 人工验收还必须在 artificial fixture 的 restore queued/running �
 不可 override 的恢复保护提示，不能终止 `hmm-tauri` 或显示“仍然退出”；收起托盘后 restore 必须继续达到
 terminal，随后才允许完全退出。该步骤只可在 disposable VM/Sandbox 进行，不能使用真实玩家存档。
 
+SAVE-04 当前已按上述门禁完成认证；证据矩阵和候选哈希记录在 [SAVE-04 验收记录](SAVE_04_ACCEPTANCE.md)。
+
 存档目录自动发现切片至少运行聚焦测试：
 
 ```powershell
