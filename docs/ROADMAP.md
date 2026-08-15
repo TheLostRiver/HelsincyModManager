@@ -68,8 +68,8 @@
    archive/manifest `3/3`、`pre_restore=1/1`，需处理归零，未读取真实玩家数据。
 9. Task/Audit retention、日志总空间上限和 Debug Log 已完成。CLI-3A 的 game/save/background
    跨进程 admission、Windows named mutex、Unix capability-relative file lock、共享 runtime composition、
-   锁内重验与稳定错误投影已完成工程实现；本地完整验证与 findings-first 全 diff 审查已通过，候选仍需
-   Ubuntu required CI 和 disposable Windows 多进程 gate。Production CLI 写入继续等待 CLI-3B 按
+   锁内重验与稳定错误投影已完成工程实现；本地完整验证、findings-first 全 diff 审查和 Ubuntu required
+   CI run `31910573714` 已通过，候选仍需 disposable Windows 多进程 gate。Production CLI 写入继续等待 CLI-3B 按
    command 审核与开放；Sandbox CLI 已成为单项与批量核心
    生命周期自动化入口，批量 Tauri/前端体验已由 Slice D 完成。Gate C 或 CLI-3A 均不自动开放
    Production 写入。
