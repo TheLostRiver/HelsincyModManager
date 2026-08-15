@@ -50,4 +50,5 @@
 不依赖该清理原语。
 
 SAVE-04 认证只覆盖 synthetic disposable 环境中的产品工作流，不代表 Steam Cloud、真实玩家数据迁移或
-跨设备同步能力。下一纵向切片为 SAVE-05 retention 与备份中心。
+跨设备同步能力。后续 SAVE-05 retention/备份中心已于 2026-08-16 完成认证；下一 `ready` 单元为 CLI-3A
+跨进程 admission。

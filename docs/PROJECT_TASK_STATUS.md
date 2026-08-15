@@ -39,7 +39,8 @@ staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均
 认证不开放 Production 写入。
 Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成。
 SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 verify、findings-first review 和
-disposable Windows 人工验收均已完成并标记为 `certified`；完整前置依赖平台、SAVE-05 retention/备份中心
+disposable Windows 人工验收均已完成并标记为 `certified`；SAVE-05 retention/备份中心也已完成实现、
+完整验证、全 diff 自审和 disposable Windows synthetic 人工验收并标记为 `certified`。完整前置依赖平台
 与 Production CLI admission 仍未完成。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
@@ -74,7 +75,7 @@ disposable Windows 人工验收均已完成并标记为 `certified`；完整前�
 | T6 Profile 管理 | 已完成 | CRUD、活跃 Profile、生命周期与存档设置接入已落地 |
 | T7 一键启动 | 已完成 | `GameLauncher` port、MHW:I Steam 启动和 UI 入口已落地 |
 | Core Mod Lifecycle Gate A | Certified | 安装、卸载、真正重装、重启恢复、失败恢复和 exact baseline 已验收 |
-| T8 存档备份 | 部分完成 / SAVE-02、SAVE-03、SAVE-04 Certified | 备份、后台核心、安装态保护、installer cleanup 与玩家恢复已认证；SAVE-05 时间/空间 retention 与独立备份中心仍未完成 |
+| T8 存档备份 | 已完成 / SAVE-02 至 SAVE-05 Certified | 备份、后台核心、安装态保护、installer cleanup、玩家恢复、时间/空间 retention 与独立备份中心均已认证 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 装备 Retarget | Armor / Weapon 流程均 Certified | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01、WR-02A、WR-03A、WR-03B 已完成；完整 bundled armor/weapon catalog 仍受 AR6/WR-02B 数据门禁 |
@@ -359,7 +360,7 @@ WR-03A 已交付人工 MOD3/MRL3 有界 preflight、pair compatibility、纯 tra
 projection。WR-03B 已交付 versioned registry、transform-aware staging、InstallPlan/manifest/recovery/
 Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 因缺少明确可再分发的审计数据而 blocked；
 WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02、
-LOG-03、SAVE-02、SAVE-03 与 SAVE-04 已完成并认证；下一纵向切片为 SAVE-05 retention 与备份中心。
+LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证；下一纵向切片为 CLI-3A 跨进程 admission。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
@@ -511,8 +512,9 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 2. 保持 CAT-01 provenance/licensing 门禁；未达到 `bundled_eligible` 且未经人审的数据不得提交为 catalog。
 3. WR-04 Gate D 已认证；完整 catalog 未到位前继续只使用人工最小 seed，AR6/WR-02B 在获得明确可再分发的审计数据后恢复。
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
-5. LOG-01、LOG-02、LOG-03、SAVE-02、SAVE-03 与 SAVE-04 已完成并认证；继续保持完整 verify、
-   findings-first review 和人工 gate 证据可追溯。
-6. 下一纵向切片为 SAVE-05 retention/备份中心；仍不能用 temp/fake 自动化替代真实 disposable gate。
+5. LOG-01、LOG-02、LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证；继续保持完整
+   verify、findings-first review 和人工 gate 证据可追溯。
+6. 下一纵向切片为 CLI-3A 跨进程 admission；Production 写入仍不能绕过跨进程 scope、Audit 和 Windows
+   验收门禁。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

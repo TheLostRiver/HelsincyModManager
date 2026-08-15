@@ -2,10 +2,10 @@
 
 创建时间：2026-06-27
 基于 HEAD：`09ceef6` (`hy/post-gate-logical-commits`)
-最近同步：2026-08-15，T13 Slice A-D 与 WR-04 已完成；Gate C、Gate D 均为 `certified`；LOG-01
+最近同步：2026-08-16，T13 Slice A-D 与 WR-04 已完成；Gate C、Gate D 均为 `certified`；LOG-01
 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；SAVE-02 安装态后台保护验收已
-`certified`；SAVE-03 installer ownership cleanup 与 SAVE-04 玩家存档恢复均已 `certified`；AR6/WR-02B
-继续等待已授权数据，下一无人值守 `ready` 单元为 SAVE-05 retention 与备份中心
+`certified`；SAVE-03 installer ownership cleanup、SAVE-04 玩家存档恢复与 SAVE-05 retention/备份中心
+均已 `certified`；AR6/WR-02B 继续等待已授权数据，下一 `ready` 单元为 CLI-3A 跨进程 admission
 
 ---
 
@@ -66,8 +66,8 @@ Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完�
 5. 2026-07-30 优先级复审已把 T13 恢复为 P0，但仍与 T17 正交：QG-01 CI 质量门禁已由 PR #215
    合并；T13-00 至 T13-08 已按独立批量领域设计完成，Gate C 于 2026-08-05 认证。CAT-01 数据治理、
    WR-01 武器设计、WR-02A 纯解析、WR-03A binary transformer、WR-03B staging/manifest 与 WR-04
-   受控 Tauri/UI/Gate D 随后完成，Gate D 于 2026-08-06 认证；LOG-01、LOG-02 与 LOG-03 已完成，
-   下一步进入 SAVE-03，仍不能把 T17 import-only 编排当成批量安装实现。
+   受控 Tauri/UI/Gate D 随后完成，Gate D 于 2026-08-06 认证；LOG-01、LOG-02、LOG-03 与 SAVE-02 至
+   SAVE-05 均已完成并认证；下一步进入 CLI-3A，仍不能把 T17 import-only 编排当成批量安装实现。
 
 ---
 
@@ -632,7 +632,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> completed: LOG-01 Task/Audit retention
   -> completed: LOG-02 日志总空间上限
   -> completed: LOG-03 Debug Log（默认关闭、持久化开关、7 日 retention、诊断/export、runtime 重启和 no-follow 负测）
-  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）；ready: SAVE-05 retention/备份中心；AR6/WR-02B 等待授权数据；CLI-3A 依赖 SAVE-03
+  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）；ready: CLI-3A 跨进程 admission；AR6/WR-02B 等待授权数据
   -> blocked-external-data: 防具/完整武器 catalog 扩容
   -> Windows 存档后台发布加固、后续日志治理和 Production CLI admission
 ```
@@ -651,7 +651,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T6 Profile 管理 | P1 | 已完成 | #122 |
 | T7 一键启动 | P1 | 已完成 | #125 |
 | Core Mod Lifecycle Gate A | P0 | 已 certified（CL0-CL4、L1/L2/L3 与完整验证通过） | |
-| T8 存档备份 | P2 | 部分完成；SAVE-02/03/04 已 certified，SAVE-05 retention/备份中心待推进 | |
+| T8 存档备份 | P2 | 已完成；SAVE-02/03/04/05 均已 certified | |
 | T9 Rich Manifest | P0/P1 支撑 | Gate B binding snapshot 已落地；其余范围未被当前复审选中 | |
 | T10 依赖检查 | P0/P1 支撑 | 单项 install/reinstall decision 与锁内重验已完成；更多依赖类型和自动修复未被当前复审选中 | |
 | T11 ARMOR_RETARGET | P1 | Gate B 已 certified（AR1-AR5、最终 Sandbox 纵向复验与完整验证通过） | |
