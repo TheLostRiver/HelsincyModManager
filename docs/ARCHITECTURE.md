@@ -227,10 +227,21 @@ backup worker --/       |--> hmm-app -------> hmm-ports
                        \--> hmm-games-* ---> hmm-ports / hmm-core
 ```
 
-`hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。Production 的 CLI
-写命令在跨进程 admission 完成前保持不可达。Sandbox 单项 lifecycle 命令已经复用完整 application
-service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和写锁；其他写命令仍需按各自
-安全边界逐项开放。
+`hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。CLI-3A 在
+`hmm-ports` 定义 `CrossProcessWriteAdmission`，由 `hmm-infra` 提供 Windows named mutex 与 Unix
+capability-relative advisory file lock 实现。`HmmRuntime::from_builder` 创建唯一 coordinator，并把它
+注入桌面 GUI、Sandbox lifecycle CLI、固定 `--once` worker 以及 install/save/background 写服务。
+
+跨进程 scope 固定按 `background-registration-write < save-profile-write < game-profile-write` 获取；
+restore 保持 `save -> game -> 进程内 game/profile mutex`，其他 lifecycle 写入在跨进程 game scope 后
+再取得既有进程内 mutex。获得 guard 只表示取得执行时隙，不代表授权：InstallPlan、manifest、recovery、
+backup、retention、restore transaction、target containment 与 owned Scheduled Task read-back 都必须在
+guard 内继续重验。平台对象名只包含稳定 digest，不包含路径、用户名、SID、Steam ID 或 profile 明文。
+
+CLI-3A 不改变 parser command tree。Production 写命令仍保持不可达，后续只能在 CLI-3B 按 command
+完成 capability、token、Audit、锁内重验和 disposable Windows 验收后逐项开放。Sandbox 单项 lifecycle
+命令继续复用完整 application service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和
+写锁；其他写命令仍需按各自安全边界逐项开放。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 
