@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const nodePolicyScript = join(scriptsDir, "check-policy.mjs");
 const powershellFileSizeScript = join(scriptsDir, "check-file-size.ps1");
+const powershellForbiddenFilesScript = join(scriptsDir, "check-forbidden-files.ps1");
 const powershellSecretScript = join(scriptsDir, "check-secrets.ps1");
 
 function writeFixtureFile(repoRoot, relativePath, content) {
@@ -32,6 +33,8 @@ function createPolicyFixture(
     reviewLineLimit = 80,
     blockLineLimit = 100,
     allowlist = [],
+    forbiddenPathPatterns = [],
+    allowedForbiddenPathPatterns = [],
     forceIncludePathPatterns = [],
     secretPatterns = [],
     files = {},
@@ -77,7 +80,8 @@ function createPolicyFixture(
     },
     forbiddenFiles: {
       extensions: [],
-      pathPatterns: [],
+      pathPatterns: forbiddenPathPatterns,
+      allowedPathPatterns: allowedForbiddenPathPatterns,
     },
     secretPatterns,
     governanceFiles: [],
@@ -201,6 +205,53 @@ function assertSecretResult(repoRoot, { succeeds, messages = [] }) {
     }
   }
 }
+
+function assertForbiddenResult(repoRoot, { succeeds, message }) {
+  const nodeResult = runNodePolicy(repoRoot);
+  assert.equal(nodeResult.status === 0, succeeds, resultOutput(nodeResult));
+  if (message) {
+    assert.match(resultOutput(nodeResult), message);
+  }
+
+  const powershellResult = runPowerShellScript(repoRoot, powershellForbiddenFilesScript);
+  if (powershellResult) {
+    assert.equal(powershellResult.status === 0, succeeds, resultOutput(powershellResult));
+    if (message) {
+      assert.match(resultOutput(powershellResult), message);
+    }
+  }
+}
+
+test("forbidden path allowlist permits repository HMM Codex skills", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: 256,
+    forbiddenPathPatterns: [".codex/**"],
+    allowedForbiddenPathPatterns: [".codex/skills/hmm*/**"],
+    files: {
+      ".codex/skills/hmm-review-gate/SKILL.md": "# Review gate\n",
+    },
+  });
+
+  assertForbiddenResult(repoRoot, { succeeds: true });
+});
+
+test("forbidden path allowlist rejects other Codex files", (t) => {
+  const repoRoot = createPolicyFixture(t, {
+    blockBytes: 1024,
+    maxLineLength: 256,
+    forbiddenPathPatterns: [".codex/**"],
+    allowedForbiddenPathPatterns: [".codex/skills/hmm*/**"],
+    files: {
+      ".codex/skills/planning-with-files/SKILL.md": "# Local tool\n",
+    },
+  });
+
+  assertForbiddenResult(repoRoot, {
+    succeeds: false,
+    message: /Forbidden path: \.codex\/skills\/planning-with-files\/SKILL\.md/,
+  });
+});
 
 test("file size checks reject a file above the byte limit", (t) => {
   const repoRoot = createPolicyFixture(t, {

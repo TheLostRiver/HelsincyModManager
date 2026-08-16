@@ -13,6 +13,7 @@ $files = Select-PolicyIncludedFiles -Files (Get-GitCandidateFiles -RepoRoot $rep
 $errors = New-Object System.Collections.Generic.List[string]
 $forbiddenExtensions = @($policy.forbiddenFiles.extensions | ForEach-Object { $_.ToLowerInvariant() })
 $pathRegexes = @($policy.forbiddenFiles.pathPatterns | ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })
+$allowedPathRegexes = @($policy.forbiddenFiles.allowedPathPatterns | ForEach-Object { Convert-PolicyGlobToRegex -Pattern $_ })
 
 foreach ($file in $files) {
     $normalized = $file -replace '\\', '/'
@@ -20,6 +21,10 @@ foreach ($file in $files) {
 
     if ($forbiddenExtensions -contains $extension) {
         $errors.Add("Forbidden file type: $normalized")
+        continue
+    }
+
+    if (@($allowedPathRegexes | Where-Object { $normalized -match $_ }).Count -gt 0) {
         continue
     }
 
