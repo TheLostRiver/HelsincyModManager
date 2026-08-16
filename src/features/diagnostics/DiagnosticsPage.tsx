@@ -49,7 +49,7 @@ export function DiagnosticsPage() {
 
   return (
     <section className="diagnostics-page" aria-labelledby="diagnostics-title">
-      <header className="diagnostics-page__hero">
+      <header className="diagnostics-page__hero" data-tour-id="diagnostics.actions">
         <div>
           <span>只读支持工具</span>
           <h2 id="diagnostics-title">日志与诊断</h2>
@@ -142,7 +142,11 @@ function DiagnosticsContent({
 }) {
   return (
     <>
-      <section className="diagnostics-page__health" aria-label="诊断健康摘要">
+      <section
+        className="diagnostics-page__health"
+        aria-label="诊断健康摘要"
+        data-tour-id="diagnostics.health"
+      >
         <HealthCard label="平台" status={snapshot.platformStatus} />
         <HealthCard label="App Log" status={snapshot.appLogStatus} />
         <HealthCard label="Debug Log" status={combinedStatus(snapshot.debugLogStatus, snapshot.evidenceHealth.debugLogStatus)} />
@@ -170,7 +174,7 @@ function DiagnosticsContent({
         </section>
       )}
 
-      <section className="diagnostics-page__columns">
+      <section className="diagnostics-page__columns" data-tour-id="diagnostics.logs">
         <LogPanel title="App Log" status={snapshot.appLogStatus} lines={snapshot.appLogLines} />
         <LogPanel title="Debug Log" status={snapshot.debugLogStatus} lines={snapshot.debugLogLines} />
         <LogPanel title="Task Log" status={snapshot.taskLogStatus} lines={snapshot.taskLogLines} />

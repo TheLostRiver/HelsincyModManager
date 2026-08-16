@@ -27,7 +27,11 @@ export function SetupStatusPanel({
   const stepItems = resolveSetupSteps(status);
 
   return (
-    <aside className="setup-rail" aria-label="首次启动设置状态">
+    <aside
+      className="setup-rail"
+      aria-label="首次启动设置状态"
+      data-tour-id="dashboard.setup-status"
+    >
       <header className="rail-header">
         <span>首次启动</span>
         <h2>设置状态</h2>

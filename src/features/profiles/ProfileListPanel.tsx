@@ -87,7 +87,11 @@ export function ProfileListPanel({
   }, [closeFloatingForm, floatingFormOpen]);
 
   return (
-    <aside className="profile-list-panel glass-card slot-panel" aria-labelledby="profile-list-title">
+    <aside
+      className="profile-list-panel glass-card slot-panel"
+      aria-labelledby="profile-list-title"
+      data-tour-id="profiles.list"
+    >
       <div className="profile-list-panel__floating-root">
         <div className="profile-list-panel__header panel-header-row">
           <div>

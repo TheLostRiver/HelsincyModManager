@@ -59,6 +59,7 @@ type SettingSectionProps = {
   title: string;
   description: string;
   icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  tourId?: string;
   children: ReactNode;
 };
 
@@ -142,6 +143,7 @@ export function SettingsPage() {
           title="界面偏好"
           description="控制工作台和列表页的显示密度。正式保存前不会写入配置文件。"
           icon={SlidersHorizontal}
+          tourId="settings.appearance"
         >
           <ToggleRow
             title="紧凑面板"
@@ -171,6 +173,7 @@ export function SettingsPage() {
           title="窗口行为"
           description="控制点击窗口关闭按钮时的默认动作；这不会改变后台守护是否已启用。"
           icon={MonitorCog}
+          tourId="settings.window-behavior"
         >
           <ChoiceGroup
             label="关闭主窗口时"
@@ -216,6 +219,7 @@ export function SettingsPage() {
           title="前置环境"
           description="只读检查当前已配置游戏目录中的 Stracker's Loader 与 CRCBypass，不访问测试目录。"
           icon={ShieldCheck}
+          tourId="settings.prerequisites"
         >
           <GamePrerequisitePanel state={prerequisites.state} onRefresh={prerequisites.refresh} variant="embedded" />
         </SettingsSection>
@@ -224,6 +228,7 @@ export function SettingsPage() {
           title="存档备份"
           description="后台保护会正式保存；备份提醒和节奏仍是当前会话预览，不读取真实存档。"
           icon={ShieldCheck}
+          tourId="settings.save-backup"
         >
           <BackgroundProtectionPanel />
           <ToggleRow
@@ -331,9 +336,9 @@ export function SettingsPage() {
   );
 }
 
-function SettingsSection({ title, description, icon: Icon, children }: SettingSectionProps) {
+function SettingsSection({ title, description, icon: Icon, tourId, children }: SettingSectionProps) {
   return (
-    <article className="settings-section">
+    <article className="settings-section" data-tour-id={tourId}>
       <header className="settings-section__header">
         <div className="settings-section__icon" aria-hidden="true">
           <Icon size={18} strokeWidth={2} />

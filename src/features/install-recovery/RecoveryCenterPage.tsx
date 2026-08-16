@@ -55,7 +55,7 @@ export function RecoveryCenterPage() {
 
   return (
     <section className="recovery-center" aria-labelledby="recovery-center-title">
-      <header className="recovery-center__hero">
+      <header className="recovery-center__hero" data-tour-id="recovery.actions">
         <div className="recovery-center__hero-copy">
           <span className="recovery-center__eyebrow">受控恢复中心</span>
           <h2 id="recovery-center-title">恢复中心</h2>
@@ -421,7 +421,11 @@ function RecoveryCenterSummary({
 
   return (
     <>
-      <section className={`recovery-center__panel ${copy.panelClass}`} aria-labelledby="recovery-overview-title">
+      <section
+        className={`recovery-center__panel ${copy.panelClass}`}
+        aria-labelledby="recovery-overview-title"
+        data-tour-id="recovery.overview"
+      >
         <div className="recovery-center__state-icon" aria-hidden="true">
           {copy.icon}
         </div>
@@ -458,7 +462,12 @@ function RecoveryCenterSummary({
         <IssueList label="恢复问题聚合" issues={viewModel.overview.issues} />
       ) : null}
 
-      <section className="recovery-center__mods" aria-labelledby="recovery-mod-list-title" ref={modListRef}>
+      <section
+        className="recovery-center__mods"
+        aria-labelledby="recovery-mod-list-title"
+        ref={modListRef}
+        data-tour-id="recovery.mods"
+      >
         <div className="recovery-center__section-heading">
           <h3 id="recovery-mod-list-title">托管 Mod 状态</h3>
           <span>{viewModel.mods.length} 项</span>
@@ -502,7 +511,11 @@ function ManualHandlingPanel({
   isExporting: boolean;
 }) {
   return (
-    <section className={`recovery-center__manual-decision is-${manualDecision.status}`} aria-label="人工处理决策">
+    <section
+      className={`recovery-center__manual-decision is-${manualDecision.status}`}
+      aria-label="人工处理决策"
+      data-tour-id="recovery.manual-actions"
+    >
       <div className="recovery-center__manual-copy">
         <h3>{manualDecision.title}</h3>
         <p>{manualDecision.description}</p>

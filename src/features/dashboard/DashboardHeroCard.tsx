@@ -46,7 +46,11 @@ export function DashboardHeroCard({
   const LaunchStatusIcon = isLaunchReady ? CheckCircle2 : CircleDashed;
 
   return (
-    <section className="setup-panel" aria-labelledby="setup-title">
+    <section
+      className="setup-panel"
+      aria-labelledby="setup-title"
+      data-tour-id="dashboard.game-setup"
+    >
       <div className="setup-message">
         <span className={`badge ${copy.badgeTone}`}>
           <span className={`dot ${copy.dotClass}`} aria-hidden="true" />
@@ -105,7 +109,11 @@ export function DashboardHeroCard({
         />
       ) : null}
 
-      <GamePrerequisitePanel state={prerequisiteState} onRefresh={onRefreshPrerequisites} />
+      <GamePrerequisitePanel
+        state={prerequisiteState}
+        onRefresh={onRefreshPrerequisites}
+        tourId="dashboard.prerequisites"
+      />
 
       <div className="support-grid" aria-label="支持信息">
         {supportCards.map((card) => (

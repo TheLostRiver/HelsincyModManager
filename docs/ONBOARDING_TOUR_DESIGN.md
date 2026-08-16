@@ -1,10 +1,34 @@
 # 精准锚定式新手引导设计
 
-状态：Proposal
+状态：Phase 1 任务型导航与页面关键功能说明已实现；Phase 2 至 Phase 4 保持 Proposal
 
 范围：React 前端 UI
 
 风险等级：设计文档为 Low；后续实现涉及 App Shell、全局 overlay、焦点与跨页面交互，按 Medium 前端改动验证
+
+当前实现基线（2026-08-17）：
+
+- 已交付任务型 `hmm.first-run`：首次自动启动为欢迎页加 43 个上下文步骤，顶部入口手动启动为 43 步。
+- 顶部全局栏提供固定入口；用户从哪个页面启动，就从该页面开始，再按导航顺序旋转访问其余已启用页面。
+- 引导是独立 body portal overlay，只给全局头部、路由层和导航按钮增加入口或 `data-tour-id`；工作台、右栏内容、顺序和行为不变。
+- 使用 `@floating-ui/react@0.27.20` 的 offset/flip/shift/size/autoUpdate，spotlight 使用实时 DOMRect。
+- 页面介绍和页面内功能说明使用 `blocked + controls`；导航任务使用四块 blocker 实现
+  `target-only + route-change`，等待用户真实点击和 route id 变化后推进。
+- 8 个页面共覆盖 28 个关键功能区：游戏目录与前置检查、Mod 导入与安装计划、恢复处理、分类整理、
+  配置档与存档备份、备份中心、诊断导出、窗口行为和后台保护。引导解释真实入口，但不放行业务控件点击。
+- 条件渲染的功能区支持 primary anchor + fallback anchor：正常状态精准高亮具体面板，空状态或未配置状态
+  自动回落到稳定页面容器，不会永久停在目标定位中。
+- 引导打开与关闭使用 320ms 柔和过渡，步骤内容使用 360ms、7px 内的小幅方向切换；Floating UI 只控制
+  外层 positioner，内层视觉面板通过 460ms FLIP/WAAPI 从上一布局位置连续迁移，高亮 mask/ring 以
+  440ms 同步改变几何；reduced motion 下全部压缩到近即时反馈。
+- 当前覆盖工作台、Mod 管理、恢复中心、分类/标签、配置档、存档备份、日志/诊断和设置的重要操作区；
+  不自动点击任何目标。
+- 不自动执行扫描、目录选择、安装、备份、恢复或其他业务动作。
+- 完成与跳过按内容版本写入 `helsincy.onboarding`；首次进入 Dashboard 自动启动。
+- Phase 1 已覆盖 pure/source tests、typecheck、lint、前端边界检查，以及 Classic/Floating、浅色/深色、
+  `1280x800`、`480x800` 浏览器 smoke；真实 Tauri/WebView2 DPI 仍保留为人工验收门槛。
+- 新增的 43 步内容与 primary/fallback anchor 已覆盖 pure/source tests 和完整前端验证；由于本次工具宿主
+  启动的 Vite 长驻进程无法处理 HTTP 请求，页面内步骤的新版浏览器 smoke 仍需在普通本地终端重跑。
 
 ## 1. 结论
 
@@ -109,7 +133,8 @@ HMM 需要支持相同思路，但必须适配当前架构：
 - mounted 更新使用 `autoUpdate` 或等价机制。
 - route 动画或 transform 期间短时启用逐帧更新，稳定后关闭持续 animation frame。
 
-依赖不在本设计任务中安装。实现前必须完成第 14.1 节的 Spike，确认 React 19、Tauri WebView2、包体、许可证和清理行为。
+Phase 0 Spike 已完成并采用 `@floating-ui/react@0.27.20`：许可证为 MIT，React/ReactDOM peer
+dependency 为 `>=17.0.0`，与当前 React 19 基线兼容。WebView2 下的最终 DPI/缩放验收仍按第 19.5 节执行。
 
 ## 5. 模块边界
 
@@ -184,6 +209,7 @@ type TourStep = {
   id: TourStepId;
   route?: string;
   target?: TourTarget;
+  fallbackTarget?: TourTarget;
   content: TourContent;
   placement?: TourPlacement;
   spotlight?: TourSpotlightOptions;
@@ -557,6 +583,9 @@ type PersistedOnboardingState = {
 - `lastStepId` 不存在或已被新版本删除时，从第一个仍满足条件的步骤开始。
 - 完成后的普通文案修改不应强制重播。只有 registry 明确使用 `once-per-version` 才按 contentVersion 重播。
 
+Phase 1 只保存终态 `{ contentVersion, outcome }`，不保存进行中步骤；`in_progress` / `lastStepId` 与
+Settings 的继续/重播/重置入口留到 Phase 4 产品化切片。
+
 Settings 增加“帮助与引导”区域：
 
 - 继续未完成引导。
@@ -572,7 +601,9 @@ Settings 增加“帮助与引导”区域：
 hmm.first-run
 ```
 
-建议长度控制在 6 至 9 步。不要复制参考项目的 21 步大流程；后续 Mod 导入、分类、配置档和备份各自拆成独立 tour。
+Phase 1 先交付跨页面任务型导航切片，用于验证 overlay、spotlight、定位、焦点、target-only、
+route-change 和持久化；不进入页面内的业务操作。下表中的游戏配置动作仍属于 Phase 2。后续 Mod
+导入、分类、配置档和备份的真实操作应拆成独立短 tour，不继续扩张当前 15/16 步页面总览。
 
 | 步骤 | 条件 | Target | 推进方式 |
 | --- | --- | --- | --- |
@@ -622,7 +653,8 @@ DOM tour 无法定位 Tauri dialog plugin 打开的 Windows 文件选择器。�
 
 ### 16.2 键盘
 
-- Escape：打开确认“退出本次引导”，结果记录为 skipped，不记录 completed。
+- Escape：Phase 1 直接退出并记录 skipped，不记录 completed；交互型长流程若增加退出确认，应继续保持
+  skipped/completed 事实分离。
 - ArrowLeft/ArrowRight：仅在焦点不处于 input、textarea、select、contenteditable 时切换非交互步骤。
 - Enter/Space：遵循当前聚焦元素原生语义，不由全局 handler 调用任意业务 target `.click()`。
 - Tab：由当前 focus scope 管理，不能落到被遮罩的背景控件。
@@ -719,6 +751,7 @@ tour_storage_unavailable
 - target ResizeObserver 触发。
 - portal target。
 - target 暂时卸载后恢复。
+- primary target 缺失时按顺序命中 fallback target。
 - light/dark/system theme。
 - reduced motion。
 - browser zoom/DPR 组合。
@@ -762,15 +795,22 @@ tour_storage_unavailable
 
 完成门槛：第 19.4 节几何门槛在 fixture 通过。
 
-### 20.2 Phase 1：核心引擎与纯说明 Tour
+### 20.2 Phase 1：核心引擎、任务型导航与页面内功能说明（已实现，待 Tauri 人工门槛）
 
 - 新增 shared onboarding 状态、storage、resolver、geometry、spotlight 和 popover。
 - 新增 app TourProvider、registry、portal host 和 z-index token。
 - 审计/治理会逃逸到 body 的 999/1000 transient overlays。
-- 为 App navigation、Dashboard 主区、设置状态添加 anchor。
-- 先交付不触发业务动作的 3 至 4 步 shell tour。
+- 为全局头部、App navigation、两种侧栏按钮和全部已启用 route layer 添加入口或 anchor。
+- 页面介绍与关键功能说明由 controls 推进；导航任务只允许真实目标点击，并在 route id 变化后继续。
+- 为 8 个页面的 28 个重要功能区增加稳定 anchor；条件渲染区域使用 primary/fallback anchor。
+- 不触发扫描、选择目录或其他业务动作。
 
 完成门槛：两种 sidebar、五个 viewport、route transition 和 reduced motion 通过。
+
+当前证据：两种 sidebar、浅色/深色、真实 anchor/ring DOMRect、背景 blocker、目标孔洞命中、
+真实路由推进、Esc、Enter、焦点和完成后不重播已通过浏览器；`1280x800`、`480x800` 无横向溢出，
+顶部入口在窄窗口仍可见。pure/source tests、typecheck、lint、build 与 frontend boundary check 由本
+切片验证。真实 Tauri WebView2/DPI 仍需人工验收后才能把 Phase 1 标记为 certified。
 
 ### 20.3 Phase 2：首次游戏配置交互
 
@@ -797,9 +837,9 @@ tour_storage_unavailable
 - 每条 tour 控制在一个清晰用户旅程内。
 - 只有明确产品需求时才增加脱敏聚合遥测。
 
-## 21. 后续实现预计影响文件
+## 21. 当前实现与后续预计影响文件
 
-本设计任务不修改以下文件。后续实现预计会触及：
+Phase 1 已修改或新增以下边界；Phase 2 以后会继续在相同边界内扩展：
 
 ```text
 package.json

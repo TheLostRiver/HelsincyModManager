@@ -20,6 +20,7 @@ type ModImportActionProps = {
   mode?: "new" | "revision";
   modId?: string | null;
   disabledReason?: string;
+  tourId?: string;
   onImported: () => Promise<void> | void;
 };
 
@@ -85,6 +86,7 @@ export function ModImportAction({
   mode = "new",
   modId,
   disabledReason,
+  tourId,
   onImported,
 }: ModImportActionProps) {
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
@@ -344,6 +346,7 @@ export function ModImportAction({
         type="button"
         className="compact-action compact-import-action is-primary"
         data-variant="primary"
+        data-tour-id={tourId}
         onClick={() => {
           if (listenerStatus === "failed") {
             retryTaskProgressListener();

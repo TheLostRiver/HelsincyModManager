@@ -40,7 +40,7 @@ export function GameDirectoryActions({
   }
 
   return (
-    <div className="setup-actions">
+    <div className="setup-actions" data-tour-id="dashboard.directory-actions">
       <button type="button" className="primary-action" disabled={isBusy} onClick={() => void handleSteamScan()}>
         <Search size={16} />
         自动扫描 Steam

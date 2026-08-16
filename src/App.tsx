@@ -1,5 +1,6 @@
 import { AppShell } from "./app/AppShell";
 import { ColorSchemeProvider } from "./app/appearance/ColorSchemeProvider";
+import { TourProvider } from "./app/onboarding/TourProvider";
 import { AppRouteProvider } from "./app/routing/AppRouteProvider";
 import { RouterOutlet } from "./app/routing/RouterOutlet";
 import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
@@ -13,13 +14,15 @@ export function App() {
       <ColorSchemeProvider>
         <SidebarModeProvider>
           <AppRouteProvider>
-            <ActiveProfileProvider>
-              <ProfileSaveDirectoryDiscoveryProvider>
-                <AppShell>
-                  <RouterOutlet />
-                </AppShell>
-              </ProfileSaveDirectoryDiscoveryProvider>
-            </ActiveProfileProvider>
+            <TourProvider>
+              <ActiveProfileProvider>
+                <ProfileSaveDirectoryDiscoveryProvider>
+                  <AppShell>
+                    <RouterOutlet />
+                  </AppShell>
+                </ProfileSaveDirectoryDiscoveryProvider>
+              </ActiveProfileProvider>
+            </TourProvider>
           </AppRouteProvider>
         </SidebarModeProvider>
       </ColorSchemeProvider>

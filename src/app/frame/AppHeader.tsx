@@ -1,10 +1,12 @@
-import { Settings } from "lucide-react";
+import { Map, Settings } from "lucide-react";
 import { useActiveProfile } from "../../features/profiles/ActiveProfileProvider";
+import { useTour } from "../onboarding/TourContext";
 import { useAppRoute } from "../routing/useAppRoute";
 import { ThemeMenu } from "./ThemeMenu";
 
 export function AppHeader() {
   const { navigate } = useAppRoute();
+  const { isTourOpen, startTour } = useTour();
   const { activeProfile } = useActiveProfile();
   const activeProfileLabel =
     activeProfile.status === "ready"
@@ -37,8 +39,23 @@ export function AppHeader() {
       </div>
 
       <div className="window-tools" aria-label="窗口工具">
+        <button
+          type="button"
+          className="icon-button onboarding-launcher"
+          aria-label="打开新手引导"
+          title="打开新手引导"
+          disabled={isTourOpen}
+          onClick={startTour}
+        >
+          <Map size={16} />
+        </button>
         <ThemeMenu />
-        <button type="button" className="icon-button" aria-label="打开设置" onClick={() => navigate("/settings")}>
+        <button
+          type="button"
+          className="icon-button header-settings-button"
+          aria-label="打开设置"
+          onClick={() => navigate("/settings")}
+        >
           <Settings size={16} />
         </button>
       </div>
