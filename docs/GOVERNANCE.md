@@ -109,6 +109,12 @@ GitHub Actions 工作流：
 名称保持 `Policy and docs`。因此 CI 与 Windows 本地入口共享前端 tests 和 workspace clippy 门禁，
 不在 workflow 中复制命令。
 
+GitHub CodeQL 使用仓库设置中的 default setup，不由版本库内 workflow 配置。当前分析语言固定为
+GitHub Actions、JavaScript / TypeScript 和 Rust。语言选择必须与 PR head 及合并后的默认分支实际受
+版本管理的源码保持一致；移除某语言最后一份受跟踪源码时，应在该 PR 的合并门禁前同步取消对应语言，
+避免 CodeQL 在没有可分析源码时于 database finalize 阶段失败。新增受支持语言时，应同步更新该设置
+和本节，并确认每个已选语言的 analyze job 都达到 terminal `success`。
+
 CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分支保护配合。
 
 ### 6. CODEOWNERS 层
