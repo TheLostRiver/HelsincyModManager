@@ -3,7 +3,7 @@ use hmm_core::{
     ProfileDirectoryStatus, ProfileId, SaveBackupManifest, SaveBackupTrigger,
 };
 use hmm_infra::FileSystemSaveBackupWriter;
-use hmm_ports::{SaveBackupWriteRequest, SaveBackupWriter};
+use hmm_ports::{SaveBackupFileDeleteDisposition, SaveBackupWriteRequest, SaveBackupWriter};
 use std::fs;
 use zip::ZipArchive;
 
@@ -29,6 +29,7 @@ fn file_system_save_backup_writer_creates_zip_manifest_and_summary_without_raw_s
             retention: ProfileBackupRetention {
                 max_count: 20,
                 max_age_days: None,
+                max_total_bytes: None,
             },
             note: Some("manual smoke".to_owned()),
             created_at_unix_millis: 0,
@@ -142,6 +143,213 @@ fn file_system_save_backup_writer_places_custom_roots_under_managed_profile_fold
 }
 
 #[test]
+fn file_system_save_backup_writer_places_pre_restore_backups_in_dedicated_folder() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let save_root = temp.path().join("save-root");
+    fs::create_dir_all(&save_root).expect("create save root");
+    fs::write(save_root.join("SAVEDATA1000"), b"before-restore").expect("write save");
+
+    let writer = FileSystemSaveBackupWriter::new(app_data.clone());
+    let mut request = sample_write_request(&save_root, 0);
+    request.trigger = SaveBackupTrigger::PreRestore;
+    let result = writer
+        .write_backup(request)
+        .expect("pre-restore backup should be written");
+
+    let directory = app_data
+        .join("backups")
+        .join("saves")
+        .join("mhw")
+        .join("profile-default")
+        .join("pre-restore");
+    assert!(directory.join(&result.summary.archive_file_name).exists());
+    assert!(directory.join(&result.summary.manifest_file_name).exists());
+    assert!(result
+        .summary
+        .archive_file_name
+        .ends_with("_pre_restore.zip"));
+}
+
+#[test]
+fn file_system_save_backup_writer_reports_verified_deletion_and_missing_retry() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let save_root = temp.path().join("save-root");
+    fs::create_dir_all(&save_root).expect("create save root");
+    fs::write(save_root.join("SAVEDATA1000"), b"hunter-save").expect("write save");
+
+    let writer = FileSystemSaveBackupWriter::new(app_data.clone());
+    let result = writer
+        .write_backup(sample_write_request(&save_root, 0))
+        .expect("write backup");
+    let backup_dir = app_data
+        .join("backups")
+        .join("saves")
+        .join("mhw")
+        .join("profile-default");
+    let sentinel = backup_dir.join("unknown.keep");
+    fs::write(&sentinel, b"not-owned-by-retention").expect("write unknown sentinel");
+
+    let deleted = writer
+        .delete_backup_files_report(&result.summary.backup_directory, &result.summary)
+        .expect("delete report");
+    assert_eq!(
+        deleted.archive.disposition,
+        SaveBackupFileDeleteDisposition::Deleted
+    );
+    assert_eq!(
+        deleted.archive.released_bytes,
+        result.summary.archive_size_bytes
+    );
+    assert_eq!(
+        deleted.manifest.disposition,
+        SaveBackupFileDeleteDisposition::Deleted
+    );
+    assert!(sentinel.exists(), "unknown files must not be removed");
+
+    let retry = writer
+        .delete_backup_files_report(&result.summary.backup_directory, &result.summary)
+        .expect("missing retry report");
+    assert_eq!(
+        retry.archive.disposition,
+        SaveBackupFileDeleteDisposition::AlreadyMissing
+    );
+    assert_eq!(
+        retry.manifest.disposition,
+        SaveBackupFileDeleteDisposition::AlreadyMissing
+    );
+}
+
+#[test]
+fn file_system_save_backup_writer_blocks_when_retention_directory_is_unavailable() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let save_root = temp.path().join("save-root");
+    fs::create_dir_all(&save_root).expect("create save root");
+    fs::write(save_root.join("SAVEDATA1000"), b"hunter-save").expect("write save");
+
+    let writer = FileSystemSaveBackupWriter::new(app_data.clone());
+    let result = writer
+        .write_backup(sample_write_request(&save_root, 0))
+        .expect("write backup");
+    let backup_dir = app_data
+        .join("backups")
+        .join("saves")
+        .join("mhw")
+        .join("profile-default");
+    fs::remove_dir_all(&backup_dir).expect("simulate unavailable backup directory");
+
+    let report = writer
+        .delete_backup_files_report(&result.summary.backup_directory, &result.summary)
+        .expect("directory failure is a structured blocked report");
+
+    assert_eq!(
+        report.archive.disposition,
+        SaveBackupFileDeleteDisposition::Blocked
+    );
+    assert_eq!(
+        report.manifest.disposition,
+        SaveBackupFileDeleteDisposition::Blocked
+    );
+    assert_eq!(
+        report.archive.error_code.as_deref(),
+        Some("save_backup_retention_directory_unavailable")
+    );
+    assert_eq!(
+        report.manifest.error_code.as_deref(),
+        Some("save_backup_retention_directory_unavailable")
+    );
+}
+
+#[test]
+fn file_system_save_backup_writer_reports_partial_when_manifest_type_changes() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let save_root = temp.path().join("save-root");
+    fs::create_dir_all(&save_root).expect("create save root");
+    fs::write(save_root.join("SAVEDATA1000"), b"hunter-save").expect("write save");
+
+    let writer = FileSystemSaveBackupWriter::new(app_data.clone());
+    let result = writer
+        .write_backup(sample_write_request(&save_root, 0))
+        .expect("write backup");
+    let backup_dir = app_data
+        .join("backups")
+        .join("saves")
+        .join("mhw")
+        .join("profile-default");
+    let manifest = backup_dir.join(&result.summary.manifest_file_name);
+    fs::remove_file(&manifest).expect("remove manifest");
+    fs::create_dir(&manifest).expect("replace manifest with directory");
+
+    let report = writer
+        .delete_backup_files_report(&result.summary.backup_directory, &result.summary)
+        .expect("partial delete report");
+
+    assert_eq!(
+        report.archive.disposition,
+        SaveBackupFileDeleteDisposition::Deleted
+    );
+    assert_eq!(
+        report.manifest.disposition,
+        SaveBackupFileDeleteDisposition::Blocked
+    );
+    assert_eq!(
+        report.manifest.error_code.as_deref(),
+        Some("save_backup_retention_entry_untrusted")
+    );
+    assert!(manifest.is_dir(), "untrusted replacement must be preserved");
+}
+
+#[test]
+fn file_system_save_backup_writer_blocks_replaced_intermediate_retention_directory() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let save_root = temp.path().join("save-root");
+    fs::create_dir_all(&save_root).expect("create save root");
+    fs::write(save_root.join("SAVEDATA1000"), b"hunter-save").expect("write save");
+
+    let writer = FileSystemSaveBackupWriter::new(app_data.clone());
+    let result = writer
+        .write_backup(sample_write_request(&save_root, 0))
+        .expect("write backup");
+    let managed_game_dir = app_data.join("backups").join("saves").join("mhw");
+    fs::remove_dir_all(&managed_game_dir).expect("remove managed game directory");
+
+    let outside_game_dir = temp.path().join("outside-game");
+    let outside_profile_dir = outside_game_dir.join("profile-default");
+    fs::create_dir_all(&outside_profile_dir).expect("create outside profile directory");
+    let outside_archive = outside_profile_dir.join(&result.summary.archive_file_name);
+    let outside_manifest = outside_profile_dir.join(&result.summary.manifest_file_name);
+    fs::write(&outside_archive, b"outside archive sentinel").expect("write outside archive");
+    fs::write(&outside_manifest, b"outside manifest sentinel").expect("write outside manifest");
+    create_directory_link(&outside_game_dir, &managed_game_dir);
+
+    let report = writer
+        .delete_backup_files_report(&result.summary.backup_directory, &result.summary)
+        .expect("replaced directory is a structured blocked report");
+
+    assert_eq!(
+        report.archive.disposition,
+        SaveBackupFileDeleteDisposition::Blocked
+    );
+    assert_eq!(
+        report.manifest.disposition,
+        SaveBackupFileDeleteDisposition::Blocked
+    );
+    assert_eq!(
+        fs::read(&outside_archive).expect("read outside archive"),
+        b"outside archive sentinel"
+    );
+    assert_eq!(
+        fs::read(&outside_manifest).expect("read outside manifest"),
+        b"outside manifest sentinel"
+    );
+    remove_directory_link(&managed_game_dir);
+}
+
+#[test]
 fn file_system_save_backup_writer_rejects_destination_inside_source() {
     let temp = tempfile::tempdir().expect("temp dir");
     let save_root = temp.path().join("save-root");
@@ -158,6 +366,93 @@ fn file_system_save_backup_writer_rejects_destination_inside_source() {
     assert!(error.to_string().contains("destination"));
 }
 
+#[test]
+fn file_system_save_backup_writer_rejects_linked_directory_without_archiving_outside_files() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let save_root = temp.path().join("save-root");
+    let outside_root = temp.path().join("outside-root");
+    fs::create_dir_all(&save_root).expect("create save root");
+    fs::create_dir_all(&outside_root).expect("create outside root");
+    fs::write(save_root.join("SAVEDATA1000"), b"hunter-save").expect("write save");
+    fs::write(
+        outside_root.join("outside.sentinel"),
+        b"must-not-be-archived",
+    )
+    .expect("write outside sentinel");
+
+    let linked_directory = save_root.join("linked");
+    create_directory_link(&outside_root, &linked_directory);
+
+    let writer = FileSystemSaveBackupWriter::new(app_data.clone());
+    let error = writer
+        .write_backup(sample_write_request(&save_root, 0))
+        .expect_err("save backup must reject linked directories");
+    assert!(error.to_string().contains("link"));
+    assert_eq!(
+        fs::read(outside_root.join("outside.sentinel")).expect("read outside sentinel"),
+        b"must-not-be-archived"
+    );
+    assert!(
+        !app_data.exists()
+            || fs::read_dir(&app_data)
+                .expect("read app data")
+                .next()
+                .is_none(),
+        "rejected backup must not leave an archive"
+    );
+    remove_directory_link(&linked_directory);
+}
+
+#[test]
+fn file_system_save_backup_writer_rejects_linked_source_root() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let app_data = temp.path().join("app-data");
+    let real_root = temp.path().join("real-root");
+    let linked_root = temp.path().join("linked-root");
+    fs::create_dir_all(&real_root).expect("create real root");
+    fs::write(real_root.join("SAVEDATA1000"), b"hunter-save").expect("write save");
+    create_directory_link(&real_root, &linked_root);
+
+    let writer = FileSystemSaveBackupWriter::new(app_data);
+    let error = writer
+        .write_backup(sample_write_request(&linked_root, 0))
+        .expect_err("linked source root must be rejected");
+    assert!(error.to_string().contains("link"));
+    remove_directory_link(&linked_root);
+}
+
+#[cfg(unix)]
+fn create_directory_link(target: &std::path::Path, link: &std::path::Path) {
+    std::os::unix::fs::symlink(target, link).expect("create directory symlink");
+}
+
+#[cfg(windows)]
+fn create_directory_link(target: &std::path::Path, link: &std::path::Path) {
+    let output = std::process::Command::new("cmd")
+        .args(["/d", "/c", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .output()
+        .expect("create directory junction");
+    assert!(
+        output.status.success(),
+        "mklink failed: {}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[cfg(unix)]
+fn remove_directory_link(link: &std::path::Path) {
+    fs::remove_file(link).expect("remove directory symlink");
+}
+
+#[cfg(windows)]
+fn remove_directory_link(link: &std::path::Path) {
+    fs::remove_dir(link).expect("remove directory junction");
+}
+
 fn sample_write_request(
     save_root: &std::path::Path,
     created_at_unix_millis: u128,
@@ -172,6 +467,7 @@ fn sample_write_request(
         retention: ProfileBackupRetention {
             max_count: 20,
             max_age_days: None,
+            max_total_bytes: None,
         },
         note: None,
         created_at_unix_millis,

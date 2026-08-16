@@ -3,6 +3,7 @@ mod audit;
 mod batch;
 mod cancellation;
 mod category;
+mod debug_log;
 mod diagnostics_environment;
 mod diagnostics_health;
 mod external_import;
@@ -20,9 +21,11 @@ mod reinstall;
 mod replacement;
 mod save_backup;
 mod save_directory;
+mod save_restore;
 mod staging;
 mod task_log;
 mod text_log;
+mod write_admission;
 
 use anyhow::Result;
 
@@ -30,6 +33,7 @@ pub type PortResult<T> = anyhow::Result<T>;
 
 pub use app_settings::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AppSettingsRepositoryResult,
+    MIN_LOG_STORAGE_MAX_BYTES,
 };
 pub use audit::{
     AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
@@ -41,6 +45,7 @@ pub use batch::{
 };
 pub use cancellation::{CancellationToken, NeverCancelled};
 pub use category::CategoryRepository;
+pub use debug_log::{DebugLogControl, NoopDebugLogControl};
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
 pub use external_import::{
@@ -78,11 +83,11 @@ pub use mod_import::{
     ModImportCatalogUpsert, ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
     ModImportExternalDisplayNameAdmission, ModImportPackagePrepareReaderRequest,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileScanRequest,
-    ModPackageInstallFileScanner, ModPackageMetadata, ModPackageMetadataAnalyzer,
-    PreparedModPackage, StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
-    StoredModOriginProvenance, StoredModPackageMetadata, StoredModRevision,
-    MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
+    ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
+    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
 pub use mod_library_projection::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
@@ -107,23 +112,44 @@ pub use profile::{
 pub use reinstall::{ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore};
 pub use replacement::{
     ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
-    ReplacementAnalysisRequest, ReplacementAsset, ReplacementCatalogError,
-    ReplacementCatalogProvider, ReplacementCatalogResult, RetargetPlanRequest,
+    ReplacementAnalysisRequest, ReplacementAsset, ReplacementAssetContentReader,
+    ReplacementCatalogError, ReplacementCatalogProvider, ReplacementCatalogResult,
+    RetargetPlanRequest,
 };
 pub use save_backup::{
     SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
     SaveBackupBackgroundRegistryResult, SaveBackupBackgroundSettingsRepository,
-    SaveBackupRepository, SaveBackupSchedulerStateRepository, SaveBackupWriteRequest,
-    SaveBackupWriteResult, SaveBackupWriter, SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
+    SaveBackupCenterRepositoryFacts, SaveBackupCenterRepositoryItem,
+    SaveBackupCenterRepositoryPage, SaveBackupCenterRepositoryProfileFacts,
+    SaveBackupCenterRepositoryQuery, SaveBackupDeleteReport, SaveBackupFileDeleteDisposition,
+    SaveBackupFileDeleteResult, SaveBackupRepository, SaveBackupSchedulerStateRepository,
+    SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
+    SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
 pub use save_directory::{
     GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,
     PendingSaveDirectoryDiscovery, ScannedSaveDirectoryCandidate, SteamAccountProfileClient,
     SteamUserdataScanRequest, SteamUserdataScanner,
 };
-pub use staging::{RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer};
+pub use save_restore::{
+    PreparedSaveRestore, SaveRestoreCommitError, SaveRestoreCommitRequest, SaveRestoreCommitResult,
+    SaveRestoreFileSystem, SaveRestoreFinalizeError, SaveRestoreFinalizeRequest,
+    SaveRestorePrepareError, SaveRestorePrepareRequest, SaveRestoreSourceError,
+    SaveRestoreSourceValidator, SaveRestoreTransactionRepository, ValidatedSaveRestoreSource,
+};
+pub use staging::{
+    ContentTransformDispatchError, ContentTransformOutput, ContentTransformRequest,
+    ContentTransformer, ContentTransformerError, ContentTransformerRegistry,
+    ContentTransformerRegistryError, RetargetStagingError, RetargetStagingFile,
+    RetargetStagingMaterializer,
+};
 pub use task_log::{TaskLogRecord, TaskLogWriter};
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
+pub use write_admission::{
+    CrossProcessWriteAcquisition, CrossProcessWriteAdmission, CrossProcessWriteAdmissionError,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, CrossProcessWriteRecovery,
+    CrossProcessWriteScope, CrossProcessWriteScopeKind,
+};
 
 pub trait AppClock: Send + Sync {
     fn now_unix_millis(&self) -> Result<u128>;

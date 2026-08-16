@@ -9,6 +9,7 @@ import {
 import type {
   BatchModLifecycleExecutionPolicy,
   BatchModLifecycleRequestDto,
+  BatchModLifecycleReplacementTargetFacts,
 } from "./batchModLifecycleTypes.ts";
 import { BATCH_MOD_LIFECYCLE_MAX_ITEMS } from "./batchModLifecycleTypes.ts";
 import {
@@ -30,6 +31,9 @@ export type UseBatchModLifecycleWorkflowInput = {
   profileId: string | null;
   loadManifestStatuses: (modIds: string[]) => Promise<InstallManifestStatusSummary[]>;
   loadRevisions: (modId: string) => Promise<ModRevisionList>;
+  loadReplacementTargetFacts?: (
+    modIds: string[],
+  ) => Promise<BatchModLifecycleReplacementTargetFacts[]>;
 };
 
 function preferBatchRevision(revisions: ModRevisionList): string | null {
@@ -57,7 +61,13 @@ export function commandErrorCode(error: unknown): string {
 }
 
 export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflowInput) {
-  const { gameId, profileId, loadManifestStatuses, loadRevisions } = input;
+  const {
+    gameId,
+    profileId,
+    loadManifestStatuses,
+    loadRevisions,
+    loadReplacementTargetFacts,
+  } = input;
   const [state, setState] = useState<BatchModLifecycleWorkflowState>({ status: "idle" });
   const stateRef = useRef(state);
   const generationRef = useRef(0);
@@ -66,6 +76,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     excluded: [],
     unresolvable: [],
   });
+  const replacementTargetsRef = useRef<{ modId: string; targetId: string }[]>([]);
   const activeAttemptRef = useRef<{ batchId: string; attemptNumber: number } | null>(null);
 
   const updateState = useCallback((next: BatchModLifecycleWorkflowState) => {
@@ -84,6 +95,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         profileId,
         policy,
         items: resolutionRef.current.items,
+        replacementTargets: replacementTargetsRef.current,
       });
     },
     [gameId, profileId],
@@ -190,6 +202,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
           preferRevision: preferBatchRevision,
         });
         resolutionRef.current = resolution;
+        replacementTargetsRef.current = [];
         if (resolution.items.length === 0) {
           updateState({
             status: "preview-error",
@@ -205,6 +218,64 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
             errorCode: "batch_resource_limit_exceeded",
             policy: DEFAULT_BATCH_EXECUTION_POLICY,
             operation,
+          });
+          return;
+        }
+
+        const sameRevisionReinstallModIds =
+          operation === "reinstall"
+            ? resolution.items.flatMap((item) =>
+                item.operation === "reinstall"
+                && item.installedRevisionId === item.candidateRevisionId
+                  ? [item.modId]
+                  : [],
+              )
+            : [];
+        if (sameRevisionReinstallModIds.length > 0) {
+          if (loadReplacementTargetFacts === undefined) {
+            updateState({
+              status: "preview-error",
+              errorCode: "batch_replacement_facts_unavailable",
+              policy: DEFAULT_BATCH_EXECUTION_POLICY,
+              operation,
+            });
+            return;
+          }
+          let targetFacts: BatchModLifecycleReplacementTargetFacts[];
+          try {
+            targetFacts = await loadReplacementTargetFacts(sameRevisionReinstallModIds);
+          } catch {
+            if (generation === generationRef.current) {
+              updateState({
+                status: "preview-error",
+                errorCode: "batch_replacement_facts_unavailable",
+                policy: DEFAULT_BATCH_EXECUTION_POLICY,
+                operation,
+              });
+            }
+            return;
+          }
+          if (generation !== generationRef.current) {
+            return;
+          }
+          const factsByModId = new Map(targetFacts.map((facts) => [facts.modId, facts]));
+          const orderedTargetFacts = sameRevisionReinstallModIds.map(
+            (modId) =>
+              factsByModId.get(modId) ?? {
+                modId,
+                retargetable: false,
+                installedTargetId: null,
+                targets: [],
+              },
+          );
+          updateState({
+            status: "target-selection",
+            operation: "reinstall",
+            policy: DEFAULT_BATCH_EXECUTION_POLICY,
+            targetFacts: orderedTargetFacts,
+            selectedTargets: Object.fromEntries(
+              orderedTargetFacts.map((facts) => [facts.modId, null]),
+            ),
           });
           return;
         }
@@ -224,12 +295,25 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         }
       }
     },
-    [gameId, profileId, loadManifestStatuses, loadRevisions, previewRequest, requestFor, updateState],
+    [
+      gameId,
+      profileId,
+      loadManifestStatuses,
+      loadRevisions,
+      loadReplacementTargetFacts,
+      previewRequest,
+      requestFor,
+      updateState,
+    ],
   );
 
   const setPolicy = useCallback(
     (policy: BatchModLifecycleExecutionPolicy) => {
       const current = stateRef.current;
+      if (current.status === "target-selection") {
+        updateState({ ...current, policy });
+        return;
+      }
       if (current.status !== "preview-ready" && current.status !== "preview-error") {
         return;
       }
@@ -244,8 +328,66 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       }
       void previewRequest(request, generation, policy);
     },
-    [previewRequest, requestFor],
+    [previewRequest, requestFor, updateState],
   );
+
+  const setReplacementTarget = useCallback(
+    (modId: string, targetId: string) => {
+      const current = stateRef.current;
+      if (current.status !== "target-selection") {
+        return;
+      }
+      const facts = current.targetFacts.find((candidate) => candidate.modId === modId);
+      if (
+        facts === undefined
+        || !facts.retargetable
+        || facts.installedTargetId === targetId
+        || !facts.targets.some((target) => target.id === targetId)
+      ) {
+        return;
+      }
+      updateState({
+        ...current,
+        selectedTargets: {
+          ...current.selectedTargets,
+          [modId]: targetId,
+        },
+      });
+    },
+    [updateState],
+  );
+
+  const previewWithReplacementTargets = useCallback(() => {
+    const current = stateRef.current;
+    if (current.status !== "target-selection") {
+      return;
+    }
+    const replacementTargets = current.targetFacts.map((facts) => ({
+      facts,
+      targetId: current.selectedTargets[facts.modId],
+    }));
+    if (
+      replacementTargets.some(
+        ({ facts, targetId }) =>
+          !facts.retargetable
+          || targetId === null
+          || targetId === facts.installedTargetId
+          || !facts.targets.some((target) => target.id === targetId),
+      )
+    ) {
+      return;
+    }
+    replacementTargetsRef.current = replacementTargets.map(({ facts, targetId }) => ({
+      modId: facts.modId,
+      targetId: targetId as string,
+    }));
+    const generation = ++generationRef.current;
+    const request = requestFor("reinstall", current.policy);
+    if (request === null) {
+      return;
+    }
+    void previewRequest(request, generation, current.policy);
+  }, [previewRequest, requestFor]);
 
   const confirmAndStart = useCallback(async () => {
     const current = stateRef.current;
@@ -388,6 +530,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   const reset = useCallback(() => {
     generationRef.current += 1;
     activeAttemptRef.current = null;
+    replacementTargetsRef.current = [];
     resolutionRef.current = { items: [], excluded: [], unresolvable: [] };
     updateState({ status: "idle" });
   }, [updateState]);
@@ -397,6 +540,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     resolution: resolutionRef.current,
     prepare,
     setPolicy,
+    setReplacementTarget,
+    previewWithReplacementTargets,
     confirmAndStart,
     retry,
     loadMoreResult,

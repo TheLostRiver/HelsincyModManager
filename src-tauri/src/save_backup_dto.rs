@@ -49,7 +49,7 @@ pub struct ProfileAutoSaveBackupCheckDto {
     pub started_task: Option<TaskStartedDto>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileAutoSaveBackupCheckStatusDto {
     ManualOnly,
@@ -73,18 +73,21 @@ pub struct SaveBackupSummaryDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveBackupTriggerDto {
     Manual,
     Auto,
     PreInstall,
+    PreRestore,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveBackupStatusDto {
     Completed,
+    RetentionPending,
+    RetentionPartial,
     DeletedByRetention,
     Missing,
     Invalid,
@@ -282,6 +285,7 @@ impl From<SaveBackupTrigger> for SaveBackupTriggerDto {
             SaveBackupTrigger::Manual => Self::Manual,
             SaveBackupTrigger::Auto => Self::Auto,
             SaveBackupTrigger::PreInstall => Self::PreInstall,
+            SaveBackupTrigger::PreRestore => Self::PreRestore,
         }
     }
 }
@@ -290,9 +294,35 @@ impl From<SaveBackupStatus> for SaveBackupStatusDto {
     fn from(status: SaveBackupStatus) -> Self {
         match status {
             SaveBackupStatus::Completed => Self::Completed,
+            SaveBackupStatus::RetentionPending => Self::RetentionPending,
+            SaveBackupStatus::RetentionPartial => Self::RetentionPartial,
             SaveBackupStatus::DeletedByRetention => Self::DeletedByRetention,
             SaveBackupStatus::Missing => Self::Missing,
             SaveBackupStatus::Invalid => Self::Invalid,
+        }
+    }
+}
+
+impl From<SaveBackupTriggerDto> for SaveBackupTrigger {
+    fn from(trigger: SaveBackupTriggerDto) -> Self {
+        match trigger {
+            SaveBackupTriggerDto::Manual => Self::Manual,
+            SaveBackupTriggerDto::Auto => Self::Auto,
+            SaveBackupTriggerDto::PreInstall => Self::PreInstall,
+            SaveBackupTriggerDto::PreRestore => Self::PreRestore,
+        }
+    }
+}
+
+impl From<SaveBackupStatusDto> for SaveBackupStatus {
+    fn from(status: SaveBackupStatusDto) -> Self {
+        match status {
+            SaveBackupStatusDto::Completed => Self::Completed,
+            SaveBackupStatusDto::RetentionPending => Self::RetentionPending,
+            SaveBackupStatusDto::RetentionPartial => Self::RetentionPartial,
+            SaveBackupStatusDto::DeletedByRetention => Self::DeletedByRetention,
+            SaveBackupStatusDto::Missing => Self::Missing,
+            SaveBackupStatusDto::Invalid => Self::Invalid,
         }
     }
 }
@@ -488,6 +518,7 @@ mod tests {
             manifest_file_name: "20260704-221530_mhw_profile-default_manual.manifest.json"
                 .to_owned(),
             archive_size_bytes: 128,
+            retention_released_bytes: 0,
             archive_sha256: "sha256:archive".to_owned(),
             file_count: 1,
             created_at: 42,
@@ -523,6 +554,7 @@ mod tests {
         assert!(value.get("archiveSha256").is_none());
         assert!(value.get("sourcePathHash").is_none());
         assert!(value.get("backupDirectory").is_none());
+        assert!(value.get("retentionReleasedBytes").is_none());
         assert!(value.get("manifest").is_none());
         assert!(value.get("path").is_none());
         assert!(!value.to_string().contains("D:/Backups"));

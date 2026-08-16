@@ -62,6 +62,15 @@ pub(crate) fn open_or_create_child_directory(
     open_child_directory_nofollow(parent, name, label)
 }
 
+/// Creates a previously absent direct child and immediately reopens it without following links.
+/// Existing entries fail closed so callers never adopt or clean up an attacker-provided scope.
+pub(crate) fn create_new_child_directory(parent: &Dir, name: &OsStr, label: &str) -> Result<Dir> {
+    parent
+        .create_dir(name)
+        .with_context(|| format!("failed to create {label}"))?;
+    open_child_directory_nofollow(parent, name, label)
+}
+
 /// Descends through application-controlled literal directory names from an already verified
 /// capability root. Each component is created and reopened without following links.
 pub(crate) fn open_or_create_directory_chain(
@@ -221,7 +230,7 @@ fn remove_open_directory_contents(directory: &Dir, label: &str) -> Result<()> {
     Ok(())
 }
 
-fn is_not_found(error: &anyhow::Error) -> bool {
+pub(crate) fn is_not_found(error: &anyhow::Error) -> bool {
     error
         .chain()
         .filter_map(|cause| cause.downcast_ref::<std::io::Error>())

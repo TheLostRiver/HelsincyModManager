@@ -41,7 +41,7 @@ export function useRecoveryDiagnosticsExport() {
         pushToast({
           eventKey: `recovery.diagnostics.exported.${result.exportId}`,
           title: "诊断包已导出",
-          message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`,
+          message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，Debug 日志 ${result.debugLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`,
           tone: "success",
         });
         setState({ status: "idle" });

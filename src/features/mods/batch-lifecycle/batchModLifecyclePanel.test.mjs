@@ -30,8 +30,36 @@ test("batch preview panel exposes a modal with policy choice and blocked confirm
   assert.match(source, /跳过失败项继续/);
   assert.match(source, /preview\.previewToken === null/);
   assert.match(source, /blockedItemCount > 0/);
+  assert.match(source, /target-selection/);
+  assert.match(source, /onReplacementTargetChange/);
+  assert.match(source, /onPreviewWithReplacementTargets/);
+  assert.match(source, /type="radio"/);
   assert.match(source, /getBatchOperationLabel\(operation\)/);
+  assert.match(source, /aria-label="批量计划逐项明细"/);
+  assert.match(source, /已安装版本/);
+  assert.match(source, /候选展示版本/);
+  assert.match(source, /item\.layer\.name/);
+  assert.match(source, /item\.layer\.priority/);
+  assert.match(source, /切换至/);
+  assert.match(source, /replacementTargets/);
   assert.doesNotMatch(source, /nativePC|targetPath|installPath|cachePath|sandboxPath|convertFileSrc/i);
+});
+
+test("batch panels consume appearance tokens and keep controls reachable on narrow windows", () => {
+  const source = readSource(
+    "src/features/mods/batch-lifecycle/BatchModLifecyclePanel.css",
+  );
+
+  assert.match(source, /var\(--color-surface\)/);
+  assert.match(source, /var\(--color-text\)/);
+  assert.match(source, /var\(--color-border\)/);
+  assert.match(source, /var\(--z-feedback-dialog\)/);
+  assert.match(source, /\.batch-panel__body/);
+  assert.match(source, /overflow-y:\s*auto/);
+  assert.match(source, /@media \(max-width: 640px\)/);
+  assert.match(source, /100dvh/);
+  assert.doesNotMatch(source, /--hmm-/);
+  assert.doesNotMatch(source, /#1c1f26|#e8e8ea|#f0a0a0|#e8c080|#90d8a8/i);
 });
 
 test("batch result panel gates retry and pagination on backend facts", () => {
@@ -65,6 +93,7 @@ test("batch copy maps stable codes without raw backend text", () => {
   const codes = [
     "batch_no_applicable_items",
     "batch_facts_unavailable",
+    "batch_replacement_facts_unavailable",
     "batch_input_invalid",
     "batch_duplicate_item",
     "batch_resource_limit_exceeded",
@@ -103,6 +132,37 @@ test("ModLibraryPage dispatches batch flows only for multi-selection", () => {
   assert.match(page, /BatchModLifecyclePreviewPanel/);
   assert.match(page, /BatchModLifecycleResultPanel/);
   assert.match(page, /useEffect\(\(\) => \{\s*batchWorkflow\.reset\(\);/);
+  assert.match(page, /handledBatchTerminalAttemptsRef = useRef\(new Set<string>\(\)\)/);
+  assert.match(page, /batchWorkflow\.state\.status !== "result"/);
+  assert.match(
+    page,
+    /const batchAttemptKey = `\$\{batchWorkflow\.state\.batchId\}:\$\{batchWorkflow\.state\.attemptNumber\}`/,
+  );
+  assert.match(
+    page,
+    /handledBatchTerminalAttemptsRef\.current\.add\(batchAttemptKey\);\s*void refreshLibraryPage\(\)\.catch/,
+  );
+});
+
+test("batch lifecycle resolves exact installed revisions from manifest facts", () => {
+  const page = readSource("src/features/mods/ModLibraryPage.tsx");
+  const batchWorkflowCall = page.match(
+    /const batchWorkflow = useBatchModLifecycleWorkflow\(\{[\s\S]*?\n {2}\}\);/,
+  );
+  assert.ok(batchWorkflowCall, "expected batch workflow wiring");
+
+  const manifestLoader = batchWorkflowCall[0].match(
+    /loadManifestStatuses:[\s\S]*?loadRevisions:/,
+  );
+  assert.ok(manifestLoader, "expected batch manifest loader");
+  assert.match(manifestLoader[0], /getInstallManifestStatus\(\{/);
+  assert.match(manifestLoader[0], /profileId:\s*profileContext\.profileId/);
+  assert.match(manifestLoader[0], /modIds/);
+  assert.doesNotMatch(
+    manifestLoader[0],
+    /gameId:/,
+    "gameId switches the command to recovery projection, which has no installed revision",
+  );
 });
 
 test("batch panels keep selection-invalidation wiring", () => {

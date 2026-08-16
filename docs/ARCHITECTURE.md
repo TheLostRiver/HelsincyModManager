@@ -87,6 +87,26 @@ recovery runner 会在阶段实际推进时调用 observer，同时继续返回 
 JSONL。observer 失败不改变 task 状态、commit、rollback 或玩家文件事实。取消 terminal 由发起取消的
 transport 发送，runner 只停止后续安全阶段，避免重复 terminal。
 
+LOG-01 在同一 `HmmRuntime::from_builder` composition 中装配 Task/Audit retention。Tauri、Sandbox
+lifecycle CLI 和固定 `--once` worker 启动完整 runtime 时，共同执行 Task 30 天、Audit 90 天的
+best-effort 清理；只读 automation 不触发副作用。目录、writer、reader 和删除都通过 `hmm-infra`
+内部的 capability-relative no-follow 日志基元，未知或无法证明归属的 entry 保留。清理失败只提升
+evidence health 的稳定状态与计数，不阻断 runtime，也不进入安装、存档、rollback 或 recovery 事实链。
+
+LOG-02 在同一 composition 中增加 `hmm-infra::LogStorageBudgetService`。预算来自现有 schema v1
+`AppSettings` 的可选 `logStorageMaxBytes`，缺失时使用 128 MiB，合法下限为 1 MiB；Tauri 通过两个窄
+settings command 读写该值，不暴露文件系统 primitive。服务只枚举固定 App/Task/Audit/Debug owned
+文件，Debug/Task 最先按年龄清理，再处理 App，最后只处理 30 天硬下限之外的 Audit；当前日 App/Debug、
+未知/non-regular/link/reparse entry 和受保护 Audit 保留。删除通过 capability-relative no-follow 句柄
+并在打开前、打开后、删除前复验文件身份；类别失败彼此隔离，无法收敛投影稳定 health/count，而不扩大
+删除 authority。维护 Audit 在预算动作结束后至多写一条且不递归回调维护。
+
+LOG-03 在同一 composition 中装配 `hmm-infra::DebugLogController`。它从 `AppSettings.debugLogEnabled`
+读取初始开关，并通过 `AppSettingsService` 在持久化成功后即时更新共享原子状态；旧 settings 缺少该字段或
+settings 损坏时默认关闭。Debug writer/reader 仅允许白名单事件和受控 ID，默认关闭时不创建
+`logs/debug`；runtime 初始化事件只在开启后写入。Debug reader、7 日 UTC retention、诊断页面和 support
+export 均复用既有 ports/infra 边界，Tauri command 只暴露 `{ enabled }`，前端不接触日志路径或文件系统。
+
 CLI-1A 在 `hmm-runtime` 中增加 `ReadOnlyGameAutomation`。它不构造会打开/迁移 SQLite 或执行恢复
 装配的完整 `HmmRuntime`，只装配 game config reader、MHW:I adapter、只读 prerequisite rules、
 directory probe 和 Steam discovery。facade 返回的安全 snapshot 类型不包含游戏/candidate/rule
@@ -151,7 +171,7 @@ SQLite、journal、Audit 或 projection。`result` 成功读取 terminal partial
 scope 新写入。
 
 T13-03 已在 `hmm-app` 完成批量卸载 facts provider 与 item executor，并由 T13-05 接入 Sandbox
-runtime/CLI；Tauri 和前端仍未接入。provider 只消费 manifest、installed summary、backup 与
+runtime/CLI、由 T13-06/T13-07 接入窄 Tauri command 与批量前端工作流。provider 只消费 manifest、installed summary、backup 与
 install/reinstall recovery，不读取
 package/source；共享 target、backup ownership 和 profile 级 recovery 形成不可被 continue 越过的
 global blocker。执行仍逐项进入既有 `UninstallTaskRunner` 和同 game/profile 写锁；锁外重验 item facts，
@@ -161,14 +181,15 @@ installed summary 和 replacement binding，防止同 revision target switch 穿
 取消屏障。
 
 T13-04 已在 `hmm-app` 完成批量真正重装 facts provider 与 item executor，并由 T13-05 接入 Sandbox
-runtime/CLI；Tauri 和前端仍未接入。跨 revision item 从既有真正重装 preparation 投影
+runtime/CLI、由 T13-06/T13-07 接入窄 Tauri command 与批量前端工作流。跨 revision item 从既有真正重装 preparation 投影
 retained/replaced/added/stale、target、
 backup、binding 和 prerequisite 事实；封存的是当前 Mod 的稳定摘要，执行前重新 prepare 并比较摘要，
 实际 commit 仍消费当次完整 token 并走原有 durable transaction。非重叠前项改变 profile manifest 不会
 误判后项 stale；same-revision binding 只分派到既有 retarget runner。rollback succeeded、recovery
 required、post-commit/cleanup 和 Audit degradation 依据结构化单项结果分类，不解析展示文本。
-runtime 纯只读 retarget facts 装配和批量 uninstall/reinstall CLI contract 已由 T13-05 完成；Tauri
-command 与前端工作流继续按 T13-06/T13-07 的依赖开放。
+runtime 纯只读 retarget facts 装配和批量 uninstall/reinstall CLI contract 已由 T13-05 完成；T13-06
+与 T13-07 已完成 Sandbox-only Tauri/typed API 和前端工作流，T13-08 Gate C 已认证。Production 写入
+仍保持不可达。
 
 CORE-PREF-01 将 `GamePrerequisiteDecisionProvider` 固定为单项安装/重装的 app-level 单一事实源。
 `ImportedModInstallPreflightService`、`ReinstallPreviewService`、桌面 task runner 和
@@ -206,10 +227,21 @@ backup worker --/       |--> hmm-app -------> hmm-ports
                        \--> hmm-games-* ---> hmm-ports / hmm-core
 ```
 
-`hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。Production 的 CLI
-写命令在跨进程 admission 完成前保持不可达。Sandbox 单项 lifecycle 命令已经复用完整 application
-service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和写锁；其他写命令仍需按各自
-安全边界逐项开放。
+`hmm-cli` 不依赖 `hmm-tauri`；`hmm-runtime` 不依赖 Tauri、WebView 或 CLI 参数类型。CLI-3A 在
+`hmm-ports` 定义 `CrossProcessWriteAdmission`，由 `hmm-infra` 提供 Windows named mutex 与 Unix
+capability-relative advisory file lock 实现。`HmmRuntime::from_builder` 创建唯一 coordinator，并把它
+注入桌面 GUI、Sandbox lifecycle CLI、固定 `--once` worker 以及 install/save/background 写服务。
+
+跨进程 scope 固定按 `background-registration-write < save-profile-write < game-profile-write` 获取；
+restore 保持 `save -> game -> 进程内 game/profile mutex`，其他 lifecycle 写入在跨进程 game scope 后
+再取得既有进程内 mutex。获得 guard 只表示取得执行时隙，不代表授权：InstallPlan、manifest、recovery、
+backup、retention、restore transaction、target containment 与 owned Scheduled Task read-back 都必须在
+guard 内继续重验。平台对象名只包含稳定 digest，不包含路径、用户名、SID、Steam ID 或 profile 明文。
+
+CLI-3A 不改变 parser command tree。Production 写命令仍保持不可达，后续只能在 CLI-3B 按 command
+完成 capability、token、Audit、锁内重验和 disposable Windows 验收后逐项开放。Sandbox 单项 lifecycle
+命令继续复用完整 application service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和
+写锁；其他写命令仍需按各自安全边界逐项开放。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 
@@ -399,7 +431,8 @@ ReplacementBinding
 
 ReplacementBindingSnapshot
   安装计划与 manifest 持久化的稳定绑定事实；包含 Mod/profile/revision 归属和 source/target
-  identity/path-family，不包含 staging/cache/sandbox 路径
+  identity/path-family；可选保存版本化 adapter/transformer 聚合事实，不包含 invocation 参数、
+  staging/cache/sandbox 路径
 
 ReplacementCatalog
   带稳定版本的游戏目标集合；查询和搜索规则由游戏 adapter 提供
@@ -411,7 +444,8 @@ RetargetPlan
   为了把 Mod 重定向到目标槽位，需要在 staging 目录执行的纯相对路径改写计划
 
 RetargetAction
-  关联 package file identity、source/final relative path 与不透明 source/target facts
+  关联 package file identity、source/final relative path、不透明 source/target facts，以及可选的
+  有界版本化 content-transform invocation
 ```
 
 外观替换需要支持：
@@ -425,7 +459,8 @@ RetargetAction
 - 原始导入的 Mod 包永远只读。
 - 包分析和 `RetargetPlan` 生成是纯操作，不携带 cache/sandbox 绝对路径。
 - 重定向只发生在 staging 目录。
-- `InstallPlan` 与安装清单记录玩家选择的替换绑定快照，并把快照事实纳入计划身份。
+- `InstallPlan` 与安装清单记录玩家选择的替换绑定快照，并把 adapter/transformer snapshot 纳入
+  install plan hash、reinstall token、batch digest 和 recovery identity。
 - 冲突检测基于最终目标路径，而不是原始压缩包路径。
 - 玩家切换目标时，本质上是卸载旧绑定，再安装新绑定。
 
@@ -481,6 +516,33 @@ WriteManifest
 
 默认备份目录应位于应用数据目录下，而不是游戏目录里。
 
+SAVE-04 在同一备份边界上增加独立的玩家存档恢复事务：来源只能是已持久化的 backup summary +
+manifest，前端只提交 game/profile/backup identity、短时 preview token 和确认位。完整 archive、manifest、
+hash、相对路径、大小和 containment 校验，以及目标同父目录 staging，都在共享写锁外完成；默认开启的
+`PreRestore` 安全备份也在等待锁前落盘。锁内只重读 Profile/backup/game/transaction 短事实、复核 token
+和目标/staging 摘要，并通过目录交换执行短提交。失败时优先恢复 rollback sibling，再使用已完成的
+pre-restore backup；无法证明原状态时持久化 `RecoveryRequired` 并保留证据。
+
+`pre_restore_backup_enabled` 是 Profile 级持久设置，migration 012 对既有 Profile 默认开启。
+`PreRestore` 备份写入独立 `pre-restore/` 子目录，不参与普通数量 retention。恢复事务由独立
+`SaveRestoreTransaction` 和 `TaskKind::SaveRestore` 表达，不复用 Mod `InstallPlan` 或安装恢复中心。
+目录交换成功后事务先进入非终态 `Committed`，仅在 rollback/failure evidence 收尾成功后才进入终态
+`Completed`；收尾失败持久化为 `RecoveryRequired` 并保留可重试 stage，不能把已提交的玩家文件重新标记为
+普通失败或回滚。路径预算、组件深度、目录节点和 ZIP/manifest/target digest 校验共用同一安全边界。
+恢复任务登记同时持有应用退出 admission scope：主窗口完全退出先原子确认 scope 为空并关闭后续 restore 登记；
+queued/running restore 或 scope 状态不可读时，窗口生命周期只允许返回应用或收起至托盘，不能以后台保护
+override 绕过。这样 event loop 退出不会在目录交换、rollback 或 evidence 收尾中终止 restore runner。
+
+SAVE-05 在该边界上增加独立 retention 服务和 `features/backups/` 备份中心。Profile retention 同时支持
+数量、年龄和可选空间预算；普通 retention 永久排除 `PreRestore`，但空间摘要会计入其占用并在无法安全
+收敛时返回 blocked。物理删除前必须先把 intent compare-and-set 为 `RetentionPending`，archive/manifest
+通过 capability-relative no-follow 复验后分别删除，最终收敛为 `DeletedByRetention` 或可重试的
+`RetentionPartial`。跨 Profile 查询、聚合、备注和账号展示摘要由后端权威服务提供；React 不做 N+1 文件
+事实拼装，恢复入口继续复用 SAVE-04 preview/token/task。备份任务、备份末尾 retention、显式整理和恢复任务
+在 runtime composition 中共享按 game/profile 的 `SaveProfileMaintenanceScopeRegistry`；恢复从 queued 登记到
+terminal 持有该 scope，避免来源通过校验后被 retention 并发删除。该维护 scope 不替代游戏写锁，退出闸门
+仍只读取独立的 restore task registry。
+
 ### 任务管理器
 
 长耗时操作必须作为后台任务执行：
@@ -492,6 +554,7 @@ WriteManifest
 - 安装计划生成
 - 安装执行
 - 存档备份压缩
+- 玩家存档恢复准备、提交与回滚收尾
 
 前端通过 Tauri command 启动任务，通过事件接收进度。
 
@@ -506,6 +569,13 @@ WriteManifest
 - 游戏目录写入、覆盖、删除、备份、恢复、manifest 和回滚必须写 Audit Log。
 - 日志写入前必须统一脱敏，禁止记录完整本地路径、Steam ID、token、cookie、真实存档内容或第三方 Mod 内容。
 - 诊断包只能包含已脱敏日志和配置摘要，不能包含真实存档或真实 Mod 包。
+- App/Task/Audit/Debug 共用可配置的 owned-log 总空间预算；预算清理不能删除未知项、诊断包、备份、
+  manifest、recovery 或玩家文件，也不能突破 Audit 最低保留窗口。
+- 日志预算 settings、维护失败和无法收敛通过稳定 DTO/health code 投影；前端不得自行重建清理顺序或
+  获得路径级删除能力。
+- Debug Log 默认关闭；用户主动开启后才写入，按 UTC 日文件轮转并保留 7 日。非法事件、原始路径/错误、
+  manifest/hash、存档和 Mod 内容必须 fail closed；Debug 类别的读取、保留或预算失败只降低 Debug health，
+  不改变安装事实，也不阻断 App/Task/Audit 其他类别。
 
 ## 并发模型
 
@@ -550,6 +620,7 @@ SQLite 存储用户数据和运行状态：
 - 替换绑定
 - 安装清单
 - 备份历史
+- 存档恢复事务
 - 用户设置
 - 可删除、可重建的 Mod 库 query projection（不是安装事实）
 
@@ -699,6 +770,36 @@ entry/binding，重启后恢复新 target，最终卸载仍由 manifest 驱动�
 修复当前 target 呈现缺陷后的最终 artifact 已在全新 disposable Windows Sandbox 完成首次 retarget
 安装、真正重装 target switch、两次重启恢复和 manifest 卸载 exact baseline 纵向复验，Gate B 已
 标记为 `certified`。
+
+CAT-01 在 `hmm-games-mhw` 增加独立的 equipment candidate schema/validator 治理层。候选数据先经过
+严格 serde shape、`InstallTargetPath` 相对路径安全校验、MHW path-family/资源身份、SHA-256 stable ID、
+localization/alias 去重与 provenance/licensing 门禁；只有显式 `bundled_eligible` 的输入才允许在后续
+独立提交生成 runtime artifact。该层是只读开发工具，不改变现有 bundled armor seed、replacement
+port、InstallPlan 或真实文件事务。完整规则见[装备 Catalog 候选数据治理](EQUIPMENT_CATALOG_GOVERNANCE.md)。
+
+WR-01 已冻结独立 Weapon 边界；WR-02A 已在 `hmm-games-mhw` 落地 14 类 family/part registry、
+`nativePC/wp/<family>/<main-id>` resource/model path parser、source closure，以及只解析调用方内存 JSON 的
+versioned catalog-source validator。它复用 CAT-01 stable ID，并对未知 family/part、不完整 MOD3/MRL3 pair、
+多 source、混合 payload 和大小写碰撞 fail closed；没有 production catalog provider、bundled weapon 数据、
+文件系统 I/O 或可执行 `RetargetPlan`。WR-03A 已在同一 game adapter 内加入有界 MOD3/MRL3 preflight、
+JAMCRC material pair compatibility、安全 game-resource reference parser 和
+`mhw.weapon.mrl3-texture-path.v1` 纯字节 transformer；公开投影只含版本、聚合计数、role 与确定性 digest，
+不返回路径、offset、material name 或 binary 内容。WR-03B 已在通用 core 增加有界、版本化 transformer
+invocation/adapter facts，在 ports 增加精确 id/version registry，并由 infra 在 sibling `.partial` 中完成
+source/dependency/output/mapping digest 重验、contained 写入和原子发布。final target 继续进入既有
+InstallPlan/conflict/backup/manifest/rollback/recovery 链；facts 同时进入 plan/token/batch identity，
+manifest/recovery 重启后保留，Audit 只记录稳定 identity/version 与聚合计数。runtime 只注册 transformer，
+没有增加第二个 MHW adapter、production weapon catalog、Tauri/UI 或 Production 写入。WR-04 在此基础上
+注册单一 MHW 聚合 replacement adapter/catalog：Production 分支保持 Armor-only；只有显式 GUI Sandbox
+environment 同时启用两个完全人工 weapon target 与全生命周期 root admission。app 层通过受限 package
+content reader 构造 content-aware plan，infra 继续负责 package-file containment，game adapter 负责
+256 MiB 单文件上限和 MOD3/MRL3 语义。Tauri target 查询要求 `modId` 并在后端按 source type/path-family
+过滤；前端只显示稳定类型、internal id、动作数、冲突和 prerequisite，不解析或展示 `nativePC/wp`。
+最终 artifact 已在 disposable Windows Sandbox 完成 `one001` 安装、重启、`one002` true reinstall
+target switch、再次重启、manifest 卸载与 10 文件/316 bytes exact baseline；manifest/recovery/staging
+归零，light/dark/system 响应式 smoke 通过，WR-04 Gate D 于 2026-08-06 标记为 `certified`。该认证不
+改变 Production Armor-only composition，也不解除 WR-02B 的 catalog provenance/licensing 门禁。
+正式契约见 [MHW:I 武器重定向设计](WEAPON_RETARGET_DESIGN.md)。
 
 Tauri command 只负责参数解析、DTO 转换和调用应用用例，不直接判断某个游戏目录是否有效，也不直接承担配置文件读写细节。
 

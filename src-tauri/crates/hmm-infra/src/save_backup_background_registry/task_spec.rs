@@ -49,6 +49,17 @@ pub(super) struct ScheduledTaskReadback {
     pub run_only_if_network_available: bool,
     pub execution_time_limit: String,
     pub enabled: bool,
+    pub state: ScheduledTaskState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(super) enum ScheduledTaskState {
+    Unknown,
+    Disabled,
+    Queued,
+    Ready,
+    Running,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

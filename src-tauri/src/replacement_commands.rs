@@ -26,6 +26,8 @@ use crate::state::{AppState, ConfiguredRetargetReinstallError};
 use crate::task_events::{emit_task_progress, INSTALL_REINSTALL_QUEUED_PHASE};
 
 const RETARGET_QUEUED_PHASE: &str = "install.retarget.queued";
+const CATALOG_SCOPE_METADATA_KEY: &str = "catalog_scope";
+const DEVELOPER_SANDBOX_CATALOG_SCOPE: &str = "developer_sandbox";
 
 #[tauri::command]
 pub fn list_replacement_targets(
@@ -33,9 +35,14 @@ pub fn list_replacement_targets(
     state: State<'_, AppState>,
 ) -> Result<Vec<ReplacementTargetDto>, CommandErrorDto> {
     let game_id = parse_game_id(request.game_id)?;
+    let mod_id = ModId::new(required_id(
+        request.mod_id,
+        "replacement_mod_id_invalid",
+        "Mod id is required",
+    )?);
     state
         .replacement_workflow
-        .list_targets(&game_id, request.query.as_deref())
+        .list_compatible_targets(&game_id, &mod_id, request.query.as_deref())
         .map(|targets| targets.into_iter().map(Into::into).collect())
         .map_err(replacement_workflow_error_to_command_error)
 }
@@ -447,6 +454,12 @@ fn analysis_error_to_command_error(error: ReplacementServiceError) -> CommandErr
             hmm_ports::ReplacementAdapterError::TargetCatalogMissing { .. }
             | hmm_ports::ReplacementAdapterError::TargetCatalogUnavailable,
         ) => "replacement_target_catalog_unavailable",
+        ReplacementServiceError::Adapter(
+            hmm_ports::ReplacementAdapterError::SourceContentUnavailable,
+        ) => "weapon_source_content_unavailable",
+        ReplacementServiceError::Adapter(
+            hmm_ports::ReplacementAdapterError::AnalysisRejected { code },
+        ) => code,
         ReplacementServiceError::Adapter(_) => "replacement_analysis_unavailable",
     };
     CommandErrorDto {
@@ -477,7 +490,13 @@ impl From<ReplacementTarget> for ReplacementTargetDto {
             secondary_name,
             aliases: target.aliases().to_vec(),
             internal_id: target.internal_id().to_owned(),
-            metadata: target.metadata().clone(),
+            catalog_scope: target
+                .metadata()
+                .get(CATALOG_SCOPE_METADATA_KEY)
+                .and_then(serde_json::Value::as_str)
+                .filter(|scope| *scope == DEVELOPER_SANDBOX_CATALOG_SCOPE)
+                .unwrap_or("production")
+                .to_owned(),
         }
     }
 }
@@ -496,7 +515,6 @@ impl From<ReplacementAnalysis> for ReplacementAnalysisDto {
                     id: source.id().as_str().to_owned(),
                     source_type: source.source_type().as_str().to_owned(),
                     internal_id: source.internal_id().to_owned(),
-                    path_family: source.path_family().to_owned(),
                     supported: source.is_supported(),
                 })
                 .collect(),
@@ -517,6 +535,7 @@ impl From<ReplacementWarning> for ReplacementWarningDto {
             ReplacementWarning::MultipleSources => Self::MultipleSources,
             ReplacementWarning::UnsupportedSource => Self::UnsupportedSource,
             ReplacementWarning::SourceMatchesTarget => Self::SourceMatchesTarget,
+            ReplacementWarning::WeaponPartialPartSet => Self::WeaponPartialPartSet,
         }
     }
 }
@@ -532,12 +551,8 @@ impl From<InitialRetargetInstallPreflight> for InitialRetargetInstallPreviewDto 
                 .actions()
                 .iter()
                 .map(|action| RetargetActionPreviewDto {
-                    source_relative_path: action.source_relative_path().as_str().to_owned(),
-                    target_relative_path: action.target_relative_path().as_str().to_owned(),
                     source_internal_id: action.source_internal_id().to_owned(),
                     target_internal_id: action.target_internal_id().to_owned(),
-                    source_path_family: action.source_path_family().to_owned(),
-                    target_path_family: action.target_path_family().to_owned(),
                 })
                 .collect(),
             warnings: planned
@@ -556,7 +571,44 @@ impl From<InitialRetargetInstallPreflight> for InitialRetargetInstallPreviewDto 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hmm_core::{LocalizedText, ReplacementTargetKind};
     use serde_json::json;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn target_scope_projection_uses_catalog_metadata_instead_of_target_kind() {
+        let make_target = |id: &str, metadata| {
+            ReplacementTarget::new(
+                ReplacementTargetId::parse(id).expect("target id"),
+                GameId::mhw(),
+                ReplacementTargetKind::parse("weapon").expect("weapon kind"),
+                LocalizedText::new(BTreeMap::from([(
+                    "en".to_owned(),
+                    "Artificial weapon".to_owned(),
+                )]))
+                .expect("display name"),
+                Vec::new(),
+                "one001",
+                metadata,
+            )
+            .expect("replacement target")
+        };
+
+        let production = ReplacementTargetDto::from(make_target(
+            "mhw:weapon:production-one001",
+            BTreeMap::new(),
+        ));
+        let developer = ReplacementTargetDto::from(make_target(
+            "mhw:weapon:developer-one001",
+            BTreeMap::from([(
+                CATALOG_SCOPE_METADATA_KEY.to_owned(),
+                json!(DEVELOPER_SANDBOX_CATALOG_SCOPE),
+            )]),
+        ));
+
+        assert_eq!(production.catalog_scope, "production");
+        assert_eq!(developer.catalog_scope, "developer_sandbox");
+    }
 
     #[test]
     fn request_mapping_rejects_paths_and_accepts_only_stable_ids() {

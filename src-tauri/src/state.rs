@@ -2,6 +2,7 @@ use crate::app_log;
 use hmm_runtime::{HmmRuntime, RuntimeEnvironment};
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
 pub(crate) use hmm_runtime::{ConfiguredReinstallExecutor, ConfiguredRetargetReinstallError};
@@ -28,6 +29,7 @@ pub struct AppState {
 /// contexts per command.
 pub(crate) struct BatchSandboxHandle {
     environment: RuntimeEnvironment,
+    in_process_database: Option<Arc<Mutex<rusqlite::Connection>>>,
 }
 
 impl AppState {
@@ -52,9 +54,21 @@ impl AppState {
         app_data_dir: PathBuf,
         startup: AppStateStartup,
     ) -> Result<Self, String> {
-        let batch_sandbox = resolve_batch_sandbox_handle();
+        let sandbox_environment = resolve_sandbox_environment();
+        let mut runtime_builder = HmmRuntime::builder(app_data_dir.clone());
+        if let Some(environment) = sandbox_environment.clone() {
+            runtime_builder = runtime_builder.with_sandbox_environment(environment)?;
+        }
+        let runtime = runtime_builder.build()?;
+        let batch_sandbox = sandbox_environment.map(|environment| BatchSandboxHandle {
+            in_process_database: environment
+                .sandbox_data_dir()
+                .is_some_and(|sandbox_root| same_existing_directory(sandbox_root, &app_data_dir))
+                .then(|| runtime.database_handle()),
+            environment,
+        });
         let state = Self {
-            runtime: HmmRuntime::from_app_data_dir(app_data_dir)?,
+            runtime,
             batch_sandbox,
         };
         run_state_startup(startup, &state);
@@ -68,9 +82,18 @@ impl AppState {
             .as_ref()
             .map(|handle| &handle.environment)
     }
+
+    /// Returns the GUI-owned database connection only when the batch root is the same app-data
+    /// root. A differently configured batch root must keep the existing fail-closed snapshot
+    /// behavior instead of accidentally journaling into the GUI database.
+    pub fn batch_sandbox_database(&self) -> Option<Arc<Mutex<rusqlite::Connection>>> {
+        self.batch_sandbox
+            .as_ref()
+            .and_then(|handle| handle.in_process_database.clone())
+    }
 }
 
-fn resolve_batch_sandbox_handle() -> Option<BatchSandboxHandle> {
+fn resolve_sandbox_environment() -> Option<RuntimeEnvironment> {
     let Ok(value) = std::env::var(HMM_SANDBOX_DATA_DIR_ENV) else {
         return None;
     };
@@ -79,7 +102,7 @@ fn resolve_batch_sandbox_handle() -> Option<BatchSandboxHandle> {
         return None;
     }
     match RuntimeEnvironment::sandbox(PathBuf::from(trimmed)) {
-        Ok(environment) => Some(BatchSandboxHandle { environment }),
+        Ok(environment) => Some(environment),
         Err(error) => {
             app_log::record_warning(
                 error.code(),
@@ -88,6 +111,20 @@ fn resolve_batch_sandbox_handle() -> Option<BatchSandboxHandle> {
             );
             None
         }
+    }
+}
+
+fn same_existing_directory(left: &std::path::Path, right: &std::path::Path) -> bool {
+    let (Ok(left), Ok(right)) = (left.canonicalize(), right.canonicalize()) else {
+        return false;
+    };
+
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        let left = left.to_string_lossy().replace('\\', "/");
+        let right = right.to_string_lossy().replace('\\', "/");
+        left.eq_ignore_ascii_case(&right)
+    } else {
+        left == right
     }
 }
 
@@ -142,6 +179,28 @@ fn with_state_startup_observer<R>(
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn same_existing_directory_accepts_aliases_and_rejects_other_roots() {
+        let parent =
+            std::env::temp_dir().join(format!("hmm-state-root-identity-{}", uuid::Uuid::new_v4()));
+        let app_data_dir = parent.join("app-data");
+        let other_dir = parent.join("other");
+        std::fs::create_dir_all(&app_data_dir).expect("create app data directory");
+        std::fs::create_dir_all(&other_dir).expect("create other directory");
+
+        assert!(same_existing_directory(
+            &app_data_dir.join("."),
+            &app_data_dir
+        ));
+        assert!(!same_existing_directory(&other_dir, &app_data_dir));
+        assert!(!same_existing_directory(
+            &parent.join("missing"),
+            &app_data_dir
+        ));
+
+        std::fs::remove_dir_all(parent).expect("remove temporary root identity directory");
+    }
 
     #[test]
     fn public_headless_entry_selects_headless_startup() {

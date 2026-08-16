@@ -112,6 +112,7 @@ fn task_kind_code(kind: TaskKindDto) -> &'static str {
         TaskKindDto::ModImport => "mod_import",
         TaskKindDto::Install => "install",
         TaskKindDto::SaveBackup => "save_backup",
+        TaskKindDto::SaveRestore => "save_restore",
     }
 }
 

@@ -1017,6 +1017,50 @@ fn replacement_snapshot(mod_id: &str) -> hmm_core::ReplacementBindingSnapshot {
     .expect("replacement snapshot")
 }
 
+fn canonical_source_snapshot(mod_id: &str) -> hmm_core::ReplacementBindingSnapshot {
+    hmm_core::ReplacementBindingSnapshot::new(
+        hmm_core::ReplacementBinding::new(
+            hmm_core::ReplacementBindingId::parse("binding-source-a").expect("binding id"),
+            ModId::new(mod_id),
+            ProfileId::new("default"),
+            hmm_core::ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
+                .expect("source id"),
+            hmm_core::ReplacementTargetId::parse("mhw:armor:guardian-alpha").expect("target id"),
+            0,
+        )
+        .expect("binding"),
+        Some(ModRevisionId::new(mod_id)),
+        "pl121_0000",
+        "pl121_0000",
+        "pl/f_equip",
+        "pl/f_equip",
+        hmm_core::ReplacementTargetKind::parse("armor").expect("target kind"),
+    )
+    .expect("canonical source snapshot")
+}
+
+fn explicit_identity_snapshot(mod_id: &str) -> hmm_core::ReplacementBindingSnapshot {
+    hmm_core::ReplacementBindingSnapshot::new(
+        hmm_core::ReplacementBinding::new(
+            hmm_core::ReplacementBindingId::parse("binding-explicit-source-a").expect("binding id"),
+            ModId::new(mod_id),
+            ProfileId::new("default"),
+            hmm_core::ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
+                .expect("source id"),
+            hmm_core::ReplacementTargetId::parse("mhw:armor:guardian-alpha").expect("target id"),
+            1,
+        )
+        .expect("binding"),
+        Some(ModRevisionId::new(mod_id)),
+        "pl121_0000",
+        "pl121_0000",
+        "pl/f_equip",
+        "pl/f_equip",
+        hmm_core::ReplacementTargetKind::parse("armor").expect("target kind"),
+    )
+    .expect("explicit identity snapshot")
+}
+
 #[test]
 fn stop_on_failure_preserves_success_and_skips_following_item() {
     let (batch, attempt, token) = batch();
@@ -2324,6 +2368,78 @@ fn replacement_snapshot_is_blocked_before_plain_install_execution() {
         .create_task(TaskKind::Install)
         .expect("next task");
     assert_eq!(next_task.task_id.rsplit('-').next(), Some("1"));
+}
+
+#[test]
+fn explicit_identity_snapshot_is_blocked_before_plain_install_execution() {
+    let (mut batch, _, _) = batch();
+    let hmm_core::BatchItemInput::Install(input) = &mut batch.plan.items[0].input_snapshot else {
+        panic!("install input");
+    };
+    input.replacement_binding_snapshot = Some(explicit_identity_snapshot("a"));
+    let task_manager = Arc::new(TaskManager::new());
+    let parent_task_id = start_parent_task(&task_manager);
+    let (executor, game_files, recovery, _) = transaction_item_executor(
+        task_manager.clone(),
+        false,
+        false,
+        Arc::new(RecordingAuditLogWriter::default()),
+    );
+
+    assert_eq!(
+        executor.execute(first_item_request(&batch, parent_task_id)),
+        BatchInstallItemExecution::Blocked {
+            reason_code: "batch_retarget_install_unsupported".to_owned(),
+        }
+    );
+    assert_eq!(game_files.file_bytes("nativepc/a"), None);
+    assert!(recovery.history().is_empty());
+    let next_task = task_manager
+        .create_task(TaskKind::Install)
+        .expect("next task");
+    assert_eq!(next_task.task_id.rsplit('-').next(), Some("1"));
+}
+
+#[test]
+fn canonical_source_snapshot_is_persisted_by_plain_batch_install() {
+    let (mut batch, _, _) = batch();
+    let snapshot = canonical_source_snapshot("a");
+    let hmm_core::BatchItemInput::Install(input) = &mut batch.plan.items[0].input_snapshot else {
+        panic!("install input");
+    };
+    input.replacement_binding_snapshot = Some(snapshot.clone());
+    let task_manager = Arc::new(TaskManager::new());
+    let parent_task_id = start_parent_task(&task_manager);
+    let (executor, game_files, recovery, manifests) = transaction_item_executor(
+        task_manager,
+        false,
+        false,
+        Arc::new(RecordingAuditLogWriter::default()),
+    );
+
+    assert_eq!(
+        executor.execute(first_item_request(&batch, parent_task_id)),
+        BatchInstallItemExecution::Succeeded {
+            evidence_health_degraded: false,
+        }
+    );
+    assert_eq!(
+        game_files.file_bytes("nativepc/a"),
+        Some(b"new item bytes".to_vec())
+    );
+    assert_eq!(
+        recovery
+            .load_record(&ProfileId::new("default"), &ModId::new("a"))
+            .expect("current recovery record"),
+        None
+    );
+    assert_eq!(
+        manifests
+            .saved_manifest()
+            .expect("installed manifest")
+            .replacement_bindings,
+        vec![snapshot]
+    );
 }
 
 #[test]

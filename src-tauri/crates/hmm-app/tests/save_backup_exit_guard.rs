@@ -1,7 +1,7 @@
 use anyhow::Result;
 use hmm_app::{
     SaveBackupBackgroundService, SaveBackupExitDecision, SaveBackupExitGuard,
-    SaveBackupExitGuardError, SaveBackupExitReason,
+    SaveBackupExitGuardError, SaveBackupExitReason, SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
 };
 use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
@@ -17,7 +17,7 @@ use hmm_ports::{
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-const NOW: u128 = 1_000_000;
+const NOW: u128 = SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS + 1_000_000;
 
 #[test]
 fn no_auto_profile_can_exit_without_background_protection() {
@@ -382,7 +382,7 @@ impl BackgroundScenario {
                 false,
             ),
             Self::WorkerUnhealthy => (
-                enabled(1, None),
+                enabled(NOW - SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS - 1, None),
                 SaveBackupBackgroundRegistrationStatus::Registered,
                 false,
                 false,
@@ -433,6 +433,8 @@ fn settings(profile_id: &str, cadence: BackupCadence) -> ProfileSaveSettings {
             }
         },
         retention: ProfileBackupRetention::default(),
+        steam_account: None,
+        pre_restore_backup_enabled: true,
         updated_at: 1,
     }
 }

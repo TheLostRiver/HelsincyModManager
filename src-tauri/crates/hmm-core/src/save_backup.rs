@@ -9,6 +9,7 @@ pub enum SaveBackupTrigger {
     Manual,
     Auto,
     PreInstall,
+    PreRestore,
 }
 
 impl SaveBackupTrigger {
@@ -17,6 +18,7 @@ impl SaveBackupTrigger {
             Self::Manual => "manual",
             Self::Auto => "auto",
             Self::PreInstall => "pre_install",
+            Self::PreRestore => "pre_restore",
         }
     }
 }
@@ -25,6 +27,8 @@ impl SaveBackupTrigger {
 #[serde(rename_all = "snake_case")]
 pub enum SaveBackupStatus {
     Completed,
+    RetentionPending,
+    RetentionPartial,
     DeletedByRetention,
     Missing,
     Invalid,
@@ -34,11 +38,73 @@ impl SaveBackupStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Completed => "completed",
+            Self::RetentionPending => "retention_pending",
+            Self::RetentionPartial => "retention_partial",
             Self::DeletedByRetention => "deleted_by_retention",
             Self::Missing => "missing",
             Self::Invalid => "invalid",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveBackupRetentionReason {
+    Count,
+    Age,
+    Space,
+    Retry,
+}
+
+impl SaveBackupRetentionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Count => "count",
+            Self::Age => "age",
+            Self::Space => "space",
+            Self::Retry => "retry",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveBackupRetentionOutcome {
+    WithinPolicy,
+    Completed,
+    Partial,
+    Blocked,
+    Failed,
+}
+
+impl SaveBackupRetentionOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::WithinPolicy => "within_policy",
+            Self::Completed => "completed",
+            Self::Partial => "partial",
+            Self::Blocked => "blocked",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupRetentionReport {
+    pub outcome: SaveBackupRetentionOutcome,
+    pub evidence_degraded: bool,
+    pub scanned_count: u32,
+    pub protected_count: u32,
+    pub problem_count: u32,
+    pub candidate_count: u32,
+    pub deleted_count: u32,
+    pub partial_count: u32,
+    pub blocked_count: u32,
+    pub archive_bytes_before: u64,
+    pub archive_bytes_after: u64,
+    pub released_bytes: u64,
+    pub max_total_bytes: Option<u64>,
+    pub budget_satisfied: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +117,7 @@ pub struct SaveBackupSummary {
     pub archive_file_name: String,
     pub manifest_file_name: String,
     pub archive_size_bytes: u64,
+    pub retention_released_bytes: u64,
     pub archive_sha256: String,
     pub file_count: u32,
     pub created_at: u128,

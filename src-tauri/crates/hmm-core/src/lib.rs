@@ -11,6 +11,7 @@ mod replacement;
 mod retarget;
 mod save_backup;
 mod save_directory;
+mod save_restore;
 
 pub use batch::{
     build_batch_plan, BatchActionSummary, BatchAttempt, BatchAttemptStatus, BatchExecutionPolicy,
@@ -65,7 +66,8 @@ pub use preview_image::{
 };
 pub use profile::{
     BackupCadence, Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
-    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings, DEFAULT_PROFILE_ID,
+    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings,
+    SteamAccountDisplaySummary, DEFAULT_PROFILE_ID,
 };
 pub use reinstall::{
     classify_reinstall_targets, is_same_revision_replacement_target_switch,
@@ -77,9 +79,11 @@ pub use reinstall::{
     ReinstallTargetClass, ReinstallTargetClassification, ReinstallTargetState,
 };
 pub use replacement::{
-    LocalizedText, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-    ReplacementCatalog, ReplacementCatalogVersion, ReplacementError, ReplacementSourceId,
-    ReplacementTarget, ReplacementTargetId, ReplacementTargetKind,
+    ContentTransformInvocation, ContentTransformerIdentity, LocalizedText, ReplacementAdapterFacts,
+    ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot, ReplacementCatalog,
+    ReplacementCatalogVersion, ReplacementError, ReplacementSourceId, ReplacementTarget,
+    ReplacementTargetId, ReplacementTargetKind, CONTENT_TRANSFORM_INVOCATION_SCHEMA_VERSION,
+    REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
 };
 pub use retarget::{
     ReplacementAnalysis, ReplacementSource, ReplacementWarning, RetargetAction, RetargetError,
@@ -88,7 +92,8 @@ pub use retarget::{
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,
     SaveBackupBackgroundSettings, SaveBackupManifest, SaveBackupManifestFile,
-    SaveBackupManifestSource, SaveBackupSchedulerLeaseRenewalRequest,
+    SaveBackupManifestSource, SaveBackupRetentionOutcome, SaveBackupRetentionReason,
+    SaveBackupRetentionReport, SaveBackupSchedulerLeaseRenewalRequest,
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason, SaveBackupSchedulerState,
     SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger, SaveBackupWorkerHeartbeat,
     SAVE_BACKUP_MANIFEST_SCHEMA_VERSION,
@@ -98,6 +103,7 @@ pub use save_directory::{
     SaveDirectoryCandidateSummary, SaveDirectoryDiscoveryOutcome, SaveDirectoryDiscoveryResult,
     SteamAccountProfileSummary, STEAM_ID64_ACCOUNT_ID_OFFSET,
 };
+pub use save_restore::{SaveRestoreTransaction, SaveRestoreTransactionStatus};
 
 #[cfg(test)]
 mod external_import_tests;

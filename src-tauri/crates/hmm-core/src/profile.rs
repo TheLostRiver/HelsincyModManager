@@ -65,6 +65,7 @@ impl ProfileBackupSchedule {
 pub struct ProfileBackupRetention {
     pub max_count: u32,
     pub max_age_days: Option<u32>,
+    pub max_total_bytes: Option<u64>,
 }
 
 impl Default for ProfileBackupRetention {
@@ -72,8 +73,16 @@ impl Default for ProfileBackupRetention {
         Self {
             max_count: 20,
             max_age_days: Some(30),
+            max_total_bytes: None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SteamAccountDisplaySummary {
+    pub account_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub account_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,5 +92,7 @@ pub struct ProfileSaveSettings {
     pub backup_directory: ProfileDirectorySelection,
     pub schedule: ProfileBackupSchedule,
     pub retention: ProfileBackupRetention,
+    pub steam_account: Option<SteamAccountDisplaySummary>,
+    pub pre_restore_backup_enabled: bool,
     pub updated_at: u128,
 }

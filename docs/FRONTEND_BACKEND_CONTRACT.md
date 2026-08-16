@@ -64,7 +64,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 分类管理：`create_category`、`update_category`、`delete_category`、`list_categories`、`set_mod_categories`、`get_mod_categories`
 - Mod 展示元数据：`update_mod_metadata`、`delete_mod_metadata`
 - Profile 管理：`list_profiles`、`get_active_profile`、`create_profile`、`update_profile`、`delete_profile`、`set_active_profile`
-- Profile 存档备份：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`
+- Profile 存档备份与恢复：`start_save_backup_task`、`list_save_backups`、`check_auto_save_backup`、`get_save_backup_background_status`、`preview_save_restore`、`start_save_restore_task`
 - 全局存档后台保护：`get_save_backup_background_control_status`、`enable_save_backup_background_protection`、`disable_save_backup_background_protection`
 - Profile 存档目录发现：`discover_profile_save_directories`、`confirm_profile_save_directory_candidate`
 - 窗口生命周期：`hide_main_window_to_tray`、`get_app_exit_guard`、`exit_app`
@@ -77,7 +77,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 导出审计日志诊断包：`export_audit_log_diagnostics`
 - 导出完整支持诊断包：`export_support_diagnostics`
 - 手动后端维护：`maintain_thumbnail_cache`
-- 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`
+- 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`、`get_log_storage_settings`、`set_log_storage_settings`、`get_debug_log_settings`、`set_debug_log_settings`
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
@@ -87,13 +87,27 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 ## 应用健康与 App Log
 
 L3 新增无参数 `get_diagnostics_page_snapshot`。后端固定每类最多返回 100 条已校验内容，返回平台安全摘要、
-App/Task 安全日志行、已校验 Audit 事件及稳定健康状态。契约不接受或返回日志路径、任意文件名、原始错误；
+App/Debug/Task 安全日志行、已校验 Audit 事件及稳定健康状态。契约不接受或返回日志路径、任意文件名、原始错误；
 单类读取失败只以稳定 `*_read_failed` 状态降级。前端只允许复制事件中已校验的 `error_code` / `task_id`。
 
-`evidenceHealth` 是写入链路的聚合健康对象：`taskLogStatus` / `auditLogStatus` 是稳定状态码；
+`evidenceHealth` 是写入链路的聚合健康对象：`debugLogStatus` / `taskLogStatus` / `auditLogStatus` /
+`logStorageStatus` 是稳定状态码；`debugLogEventRejectedCount` / `debugLogWriteFailureCount` /
+`debugLogRetentionFailureCount` 分别累计 Debug 事件拒绝、写入失败和保留清理失败；
 `taskLogWriteFailureCount` / `auditWriteFailureCount` 分别累计 Task/Audit 写入失败；
+`taskLogRetentionFailureCount` / `auditLogRetentionFailureCount` 分别累计 Task/Audit 保留清理失败；
 `auditWriteFailureAfterCommitCount` 累计玩家文件与 manifest 已提交后发生的审计写入失败。此时
 `auditLogStatus` 为 `audit_write_failed_after_commit`，页面必须显示诊断退化，但不得为补写审计再次改动玩家文件。
+`logStorageFailureCount`、`logStorageUnsatisfiedCount` 和 `logStorageSettingsFailureCount` 分别累计预算维护失败、
+受保护文件导致无法收敛和 settings 读取/校验失败；`logStorageStatus` 稳定值为
+`ok | log_storage_settings_unavailable | log_storage_budget_unsatisfied | log_storage_budget_failed`，严重度按该顺序递增。
+Task 状态为 `ok | task_log_retention_failed | task_log_write_failed`；Audit 状态为
+`ok | audit_log_retention_failed | audit_write_failed | audit_write_failed_after_commit`。write 与
+post-commit failure 的严重度高于 retention failure，后续清理失败不能覆盖或降低更严重状态。
+
+Debug 设置 DTO 固定为 `{ enabled: boolean }`。`get_debug_log_settings` 无参数；
+`set_debug_log_settings` 只接受顶层 `enabled`，不接受路径、文件名、类别、过滤器或自由文本。
+设置持久化成功后立即更新当前进程的共享开关，保存失败保持旧状态。前端设置页必须提供
+loading/saving/error/retry 状态，并且不能把该持久化开关混入仅当前会话有效的预览设置 dirty state。
 
 `app_health()` 不接收参数，只返回下面的稳定字符串之一：
 
@@ -112,8 +126,9 @@ manifest、backup、rollback、recovery 或 Task Log 的事实来源；退化不
 仅代表最近一次事件，也不能据此推断安装或恢复状态。
 
 L1 App Log 只消费后端专用安全事件 envelope。任务注册只记录 `taskId/kind/status/phase` 的 queued 摘要；
-游戏发现只记录 `gameId/outcome/candidateCount` 或稳定错误码。Task Log、Audit 写入失败显式策略和日志 UI
-仍属于后续切片，不由该 command 暴露。
+游戏发现只记录 `gameId/outcome/candidateCount` 或稳定错误码。Task/Audit writer、reader、写入失败策略与
+retention 健康现由 `get_diagnostics_page_snapshot` 的 `evidenceHealth` 投影；`app_health` 仍只表示 App Log，
+不得混入 Task/Audit 状态或据此推断玩家文件事实。
 
 ## DTO 边界
 
@@ -216,7 +231,7 @@ batch/result 事实或伪造导入失败。
 
 本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的 transport 形状，用于约束
 T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service 和 typed API；T13-07 前端
-工作流可调用它们，但生产 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
+工作流已接入它们，但当前 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
 
 ```text
 preview_batch_mod_lifecycle
@@ -227,8 +242,9 @@ retry_batch_mod_lifecycle
 ```
 
 取消继续复用受控 `cancel_task(taskId)`，但只有 `start`/`retry` 返回真实 `TaskStartedDto` 后才有可取消
-task；当前 T13-06 的 start/retry 同步执行完整批次，返回的 task 已是终态（取消返回
-`task_cannot_be_cancelled`），运行中取消与中间 progress 事件留给 T13-07 的异步化配套。
+task；当前 start/retry 同步执行完整批次，返回的 task 已是终态（取消返回
+`task_cannot_be_cancelled`）。运行中取消与中间 progress 事件不属于当前已认证契约；如需开放，必须
+作为独立异步化任务设计和验证。
 前端不能在本地循环调用单项 install/uninstall/reinstall command 来构造批次。
 
 preview/seal request 使用同一完整输入；`items` 元素是带 `operation` tag 的 discriminated union：
@@ -284,9 +300,9 @@ artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任
 `install`；`task.status` 与 phase 的映射为：`completed`/`completed_with_errors` -> `completed`
 （phase 分别为 `.completed` / `.completed_with_errors`），`cancelled` -> `cancelled`，
 `blocked`/`recovery_required`/`interrupted`/`failed` -> `failed`（phase 分别为 `.failed` /
-`.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。queued/planning/
-preflight/processing/stopping 等中间 phase 与运行中取消由 T13-07 的异步化配套引入，在此之前
-`cancel_task` 对 batch task 返回 `task_cannot_be_cancelled`。
+`.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。当前契约不发出 queued/
+planning/preflight/processing/stopping 等中间 phase，`cancel_task` 对 batch task 返回
+`task_cannot_be_cancelled`；未来异步化不得在未更新本契约与 Gate 证据时静默改变这些语义。
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
@@ -463,7 +479,7 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 
 如果服务需要内部可变状态，优先让服务内部用清晰的锁或队列表达，而不是在 command 中临时拼装全局状态。
 
-## ARMOR_RETARGET AR4/AR5 契约
+## Equipment Replacement AR4/AR5/WR-04 契约
 
 AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件修改”只负责用
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
@@ -473,7 +489,7 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
-| `list_replacement_targets` | `gameId`、可选 `query` | catalog target 列表 |
+| `list_replacement_targets` | `gameId`、`modId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
@@ -483,8 +499,13 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
 `sourceId`、`bindingId`、`internalId` 或最终 target path。前四个 AR4 command 从当前 display revision
 重建包事实，重新扫描并分析唯一受支持 source，按 `targetId` 查询 catalog，生成 binding、
-`RetargetPlan`、staging 和 `InstallPlan`。两个 AR5 target-switch command 的 revision 来源见下文，
-不得复用 display revision。`internalId` 与最终相对路径只能作为后端返回的只读预览信息。
+`RetargetPlan`、staging 和 `InstallPlan`。WR-04 Weapon preview 会由受限 content reader 从同一受控
+revision sandbox 读取 MOD3/MRL3 bytes 并生成 sealed transform invocation；前端不接触 bytes、digest、
+transformer 参数或路径。两个 AR5/WR-04 target-switch command 的 revision 来源见下文，不得复用
+display revision。target DTO 只返回展示名、alias、稳定 id/internal id、target type 与 `catalogScope`，
+不返回原始 catalog metadata。source/action DTO 只投影稳定 type/id/internal id、support 与动作事实，
+不返回 source/target relative path 或 path-family；UI preview 只显示 resource type、internal id、动作数、
+冲突与 prerequisite。
 
 `preview_initial_retarget_install` 与 `start_retarget_install_task` 只允许目标 Mod 在当前 profile 的恢复
 状态严格为 `not_installed`。`installed`、`committed_cleanup_pending`、`cleanup_pending`、
@@ -520,6 +541,14 @@ binding identity、revision、internal id、相对/绝对路径、staging 或 ma
 - `replacement_install_state_unavailable`
 - `replacement_initial_install_blocked`
 - `replacement_preview_unavailable`
+- `weapon_developer_seed_unavailable`
+- `weapon_source_content_unavailable`
+- `weapon_cross_family_target`
+
+完整 Weapon catalog 仍受 WR-02B provenance/licensing 门禁。`catalogScope=developer_sandbox` 的人工
+weapon target 只有在 GUI runtime 从显式 `HMM_SANDBOX_DATA_DIR` 构造有效 Sandbox environment 时才会
+注册；同一 environment 同时启用生命周期 root admission。Production composition 保持 Armor-only，
+不能仅通过前端输入或普通 feature flag 打开人工 weapon target 或 Production 写入。
 
 `start_retarget_install_task` 继续使用 `TaskKind::Install`、`hmm://task-progress` 和既有
 game/profile 写锁。新增 phase 为 `install.retarget.queued`、`install.retarget.plan.building`、
@@ -617,6 +646,15 @@ TaskProgressEventDto
 | `save_backup` | `save_backup.completed` | 存档备份已完成 |
 | `save_backup` | `save_backup.failed` | 存档备份失败；事件只携带稳定错误 code，不携带完整路径 |
 | `save_backup` | `save_backup.cancelled` | 存档备份任务被取消；已进入一致性收尾阶段时以后端状态为准 |
+| `save_restore` | `save_restore.queued` | 玩家存档恢复任务已登记，等待 listener 就绪后的后台执行 |
+| `save_restore` | `save_restore.preparing` | 锁外重新校验来源、物化受控 staging 并记录目标摘要 |
+| `save_restore` | `save_restore.pre_restore_backup` | 锁外创建默认开启的独立 pre-restore 安全备份 |
+| `save_restore` | `save_restore.revalidating` | 获取共享 game/profile 写锁后复核短事实、token 和目标/staging 摘要 |
+| `save_restore` | `save_restore.committing` | cancellation barrier 内执行目录交换、回滚或 recovery 收尾 |
+| `save_restore` | `save_restore.completed` | 恢复事务已 durable completed；`error` 可仅为 `save_restore_evidence_degraded` |
+| `save_restore` | `save_restore.failed` | 恢复未提交或已证明回滚；`error` 只携带稳定 code |
+| `save_restore` | `save_restore.recovery_required` | 无法证明原状态，事务与受控 recovery evidence 已保留 |
+| `save_restore` | `save_restore.cancelled` | transport 已接受 commit barrier 前的协作式取消 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -632,6 +670,11 @@ TaskProgressEventDto
 - install/uninstall/reinstall/recovery/retarget 共用 `install.cancelled` 作为 transport 发出的取消 terminal。runner
   在观察到 `TaskManager` 的取消事实后只停止后续安全阶段，不再发送第二个 cancelled；commit 取消屏障
   生效后以后端完成或失败终态为准。
+- save restore listener 必须同时匹配 `kind = save_restore`、精确 `taskId` 和已登记的
+  `save_restore.*` phase。`preparing`、pre-restore、等待锁和 `revalidating` 阶段可取消；进入
+  `committing` barrier 后 `cancel_task` 返回稳定不可取消错误，UI 必须等待 completed/failed/
+  recovery_required 终态，不能用本地取消状态覆盖后端事实。transport 或 command response 的 cancelled
+  可以先用于即时反馈，但 runner 若因取消终态持久化失败发送 `recovery_required`，后者必须覆盖 cancelled。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
 - 写入同一游戏实例的 commit 阶段必须串行。
 
@@ -758,7 +801,7 @@ type GamePrerequisiteDecisionDto = {
 首批 command：
 
 ```text
-list_replacement_targets({ gameId, query? })
+list_replacement_targets({ gameId, modId, query? })
 analyze_imported_mod_replacement({ gameId, profileId?, modId })
 preview_initial_retarget_install({ gameId, profileId, modId, targetId, layerName, layerPriority })
 start_retarget_install_task({ gameId, profileId, modId, targetId, layerName, layerPriority })
@@ -773,7 +816,8 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
 - 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
   不接受 cache、sandbox 或 staging path，也不隐式升级。
 - MHW adapter 负责 slot 解析、catalog 归一化和路径级 plan。
-- 返回 preview 时可展示最终相对路径摘要，但前端不能自行生成路径。
+- 返回 preview 时前端只展示稳定类型、internal id、动作数、冲突和 prerequisite；不显示或自行生成
+  source/target relative path 与 path-family。
 - initial preview/start 只允许 recovery status 严格为 `not_installed`；retarget reinstall preview/start 只允许
   `installed`，并复用真正重装的 plan token、锁、backup、manifest、rollback/recovery 与 task phases。
 - initial preview 顶层返回与普通 install/reinstall 同源的 `prerequisiteDecision`，nested
@@ -838,6 +882,8 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - `validate_profile_save_directory` 按游戏/应用规则校验存档源目录，并返回可安全展示的标签。
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
+- `preRestoreBackupEnabled` 是 Profile 级持久安全设置，缺省请求与 migration 012 都使用 `true`。前端可以
+  修改该开关，但单次恢复请求不能临时关闭它；后端提交时必须重新读取当前持久值。
 - `discover_profile_save_directories` 由后端基于已保存游戏配置、Steam root、MHW:I 存档规则和 Profile 设置执行存档源目录发现；前端只提交 `gameId` 和 `profileId`，不提交 Steam userdata 路径、account id、SteamID64、profile URL 或 XML。
 - `confirm_profile_save_directory_candidate` 只接收后端生成的 `discoveryId` 和 `candidateId`；后端从短期候选缓存恢复真实目录并重新验证后，才写入对应 Profile 的存档设置。确认成功会消费该 pending discovery，同一组 opaque id 不能重复确认。
 - 存档目录发现命令的错误使用稳定 `save_directory_discovery_*` code，`message` 固定为泛化文案，不包含完整本地路径、Steam ID、account id、profile URL、XML 原文或存档文件内容。
@@ -870,6 +916,13 @@ type ProfileBackupScheduleDto = {
 type ProfileBackupRetentionDto = {
   maxCount: number;
   maxAgeDays: number | null;
+  maxTotalBytes: number | null;
+};
+
+type SteamAccountDisplaySummaryDto = {
+  accountName: string | null;
+  avatarUrl: string | null;
+  accountLabel: string;
 };
 
 type ProfileSaveSettingsDto = {
@@ -878,6 +931,8 @@ type ProfileSaveSettingsDto = {
   backupDirectory: ProfileDirectorySelectionDto;
   schedule: ProfileBackupScheduleDto;
   retention: ProfileBackupRetentionDto;
+  steamAccount: SteamAccountDisplaySummaryDto | null;
+  preRestoreBackupEnabled: boolean;
   updatedAt: number;
 };
 
@@ -921,6 +976,9 @@ Profile 存档备份命令：
 ```text
 start_save_backup_task({ request: { gameId, profileId, note? } })
 list_save_backups({ request: { gameId, profileId, limit? } })
+query_save_backup_center({ request: { gameId, profileId?, trigger?, status?, search?, offset?, limit? } })
+update_save_backup_note({ request: { gameId, profileId, backupId, note? } })
+run_save_backup_retention({ request: { gameId, profileId } })
 check_auto_save_backup({ request: { gameId, profileId } })
 get_save_backup_background_status({ request: { gameId, profileId } })
 ```
@@ -929,6 +987,16 @@ get_save_backup_background_status({ request: { gameId, profileId } })
 
 - `start_save_backup_task` 是手动存档备份的长任务入口，返回 `TaskStartedDto`；前端按 `taskId` 监听 `save_backup.*` phase。
 - `list_save_backups` 只查询后端持久化的备份历史摘要，用于 Profile 页面或后续备份中心刷新历史。
+- `query_save_backup_center` 是跨 Profile 的后端权威分页与聚合入口；前端不得先列 Profile 再 N+1 拼装历史、
+  空间或状态事实。`limit` 最大 100，`offset` 必须位于后端支持的 signed integer 范围，搜索只匹配 Profile
+  名称和备注且最长 100 字符。
+- `update_save_backup_note` 只接收短 identity 和最长 200 字符的可选备注；不得传 manifest、文件名或路径。
+- `run_save_backup_retention` 与同一 game/profile 的备份任务共用 scope，返回结构化报告。删除进入持久化
+  intent 后不可取消，必须收敛为 completed/partial 或保留 pending 供重试。前端调用前必须显示二次确认，
+  不能把“立即整理”做成单击即永久删除。
+- 备份中心稳定错误至少包括 `save_backup_center_query_invalid`、`save_backup_center_unavailable`、
+  `save_backup_center_profile_missing`、`save_backup_center_backup_missing`、`save_backup_note_invalid`、
+  `save_backup_task_conflict` 和 `save_backup_retention_failed`；前端不得用 message 文本分支。
 - `check_auto_save_backup` 是客户端运行期/启动时的自动备份检查入口；它根据后端持久化的 Profile 存档设置和备份历史判断当前计划是否到期。若到期，后端会以 `trigger = "auto"` 复用存档备份任务链路并返回 `startedTask`。
 - 计划到期时后端先做游戏运行检测：游戏运行中或无法判断时保守延后，不获取调度租约、不启动任务，并在 `pendingReason` 返回 `game_running` / `game_running_unknown`；游戏退出后的下一次检查自动补跑。运行检测由后端 `GameRunningDetector` port 决定，前端不参与判断。
 - 前端只能传递 `gameId`、`profileId`、可选 `note` 和可选 `limit`；不得传入存档源路径、备份根目录、文件名、manifest 正文、文件列表、hash、sandbox/cache 路径或 backup ref。
@@ -985,8 +1053,14 @@ type SaveBackupSummaryDto = {
   backupId: string;
   gameId: string;
   profileId: string;
-  trigger: "manual" | "auto" | "pre_install";
-  status: "completed" | "deleted_by_retention" | "missing" | "invalid";
+  trigger: "manual" | "auto" | "pre_install" | "pre_restore";
+  status:
+    | "completed"
+    | "retention_pending"
+    | "retention_partial"
+    | "deleted_by_retention"
+    | "missing"
+    | "invalid";
   fileName: string;
   createdAt: number;
   sizeBytes: number;
@@ -994,6 +1068,61 @@ type SaveBackupSummaryDto = {
   sourcePathLabel: string | null;
   notes: string | null;
 };
+
+type SaveBackupCenterProfileSummaryDto = {
+  profileId: string;
+  profileName: string;
+  isActive: boolean;
+  steamAccount: SteamAccountDisplaySummaryDto | null;
+  retention: ProfileBackupRetentionDto;
+  backupCount: number;
+  archiveBytes: number;
+  protectedCount: number;
+  attentionCount: number;
+  budgetSatisfied: boolean;
+};
+
+type SaveBackupCenterItemDto = {
+  profileName: string;
+  backup: SaveBackupSummaryDto;
+};
+
+type SaveBackupCenterSummaryDto = {
+  backupCount: number;
+  archiveBytes: number;
+  protectedCount: number;
+  attentionCount: number;
+};
+
+type SaveBackupCenterPageDto = {
+  items: SaveBackupCenterItemDto[];
+  profiles: SaveBackupCenterProfileSummaryDto[];
+  offset: number;
+  limit: number;
+  totalCount: number;
+  summary: SaveBackupCenterSummaryDto;
+};
+
+type SaveBackupRetentionReportDto = {
+  outcome: "within_policy" | "completed" | "partial" | "blocked" | "failed";
+  evidenceDegraded: boolean;
+  scannedCount: number;
+  protectedCount: number;
+  problemCount: number;
+  candidateCount: number;
+  deletedCount: number;
+  partialCount: number;
+  blockedCount: number;
+  archiveBytesBefore: number;
+  archiveBytesAfter: number;
+  releasedBytes: number;
+  maxTotalBytes: number | null;
+  budgetSatisfied: boolean;
+};
+
+`evidenceDegraded` 只表示 retention Audit 在文件清理完成后未能确认。显式维护仍返回原业务
+`outcome`；自动备份的 `save_backup.completed` event 以稳定 `save_backup_evidence_degraded` code
+投影同一情况，不得改写为业务失败。
 
 type ProfileAutoSaveBackupCheckDto = {
   gameId: string;
@@ -1042,7 +1171,87 @@ type SaveBackupBackgroundStatusDto = {
 };
 ```
 
-`SaveBackupSummaryDto`、`ProfileAutoSaveBackupCheckDto` 和 `SaveBackupBackgroundStatusDto` 不返回完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表、调度租约字段、worker 实例 id 或真实存档内容。
+`SaveBackupSummaryDto`、备份中心 DTO、`ProfileAutoSaveBackupCheckDto` 和 `SaveBackupBackgroundStatusDto` 不返回
+完整本地路径、备份根目录、存档源目录、Steam ID、manifest 正文、文件 hash 列表、调度租约字段、worker
+实例 id 或真实存档内容。账号昵称、白名单头像 URL 和掩码 label 只能来自后端确认后持久化的展示 snapshot；
+它们不参与 restore、retention ownership 或目录校验。备份中心渲染持久化头像前仍须再次校验 HTTPS 和受信
+Steam hostname，损坏或本机篡改的 snapshot 必须回退为文字头像。
+
+Profile 玩家存档恢复命令：
+
+```text
+preview_save_restore({ request: { gameId, profileId, backupId } })
+start_save_restore_task({ request: {
+  gameId,
+  profileId,
+  backupId,
+  previewToken,
+  confirmed,
+  confirmedWithoutPreRestore
+} })
+```
+
+`backupId` 是后端备份 writer 生成的 opaque identity。当前 canonical 值为
+`<gameId>:<profileId>:<UTC timestamp>:<trigger>`，同秒文件名冲突时可带第五段 `sequence`；每段只允许
+ASCII 字母、数字、`-`、`_`、`.`。为兼容旧数据，后端可接受受控的单段 legacy ID。前端不得拆解、拼接、
+改写或把 `backupId` 当作文件名/路径；应从列表 DTO 原样回传。Tauri 边界必须拒绝空段、任意冒号形状、
+盘符、斜杠、UNC 和其他 path-shaped 值。
+
+请求只接收短的 game/profile/backup identity、后端签发的 opaque preview token 和确认位；不接收 archive、
+manifest、目标目录、文件列表、hash、备份根目录或任意本地路径。`preview_save_restore` 必须零玩家写入，
+在签发 token 前完成 backup summary identity、manifest/schema、archive SHA-256、逐文件 path/size/hash、
+大小上限、containment、目标目录和游戏运行状态校验。Preview DTO 形状为：
+
+```ts
+type SaveRestorePreviewDto = {
+  backup: SaveBackupSummaryDto;
+  fileCount: number;
+  totalUncompressedBytes: number;
+  preRestoreBackupEnabled: boolean;
+  requiresAdditionalConfirmation: boolean;
+  warningCodes: string[];
+  previewToken: string;
+  expiresAt: number;
+};
+
+type SaveRestoreTaskStartedDto = {
+  taskId: string;
+  kind: "save_restore";
+  status: "queued";
+};
+```
+
+`previewToken` 默认 5 分钟有效，并绑定 game/profile/backup、Profile 设置、source facts 和目标摘要。
+任务启动后在锁外重新校验并物化 staging；默认开启时先创建 `trigger = "pre_restore"` 的独立安全备份，
+备份失败不得进入 commit。获取共享 game/profile 写锁后只做短事实复核和目录交换；成功提交后刷新备份
+历史。关闭安全备份时 preview 必须返回 warning，start 同时要求 `confirmed = true` 与
+`confirmedWithoutPreRestore = true`。
+
+取消屏障：`preparing`、`pre_restore_backup`、等待锁和 `revalidating` 可协作取消；进入 `committing` 后
+禁止重分类为 cancelled。终态为 `completed`、`failed`、`recovery_required` 或 `cancelled`，且必须按
+同一 `taskId` 保留在恢复 Modal 中。`completed` 事件若 Task/Audit evidence 写入失败，只携带稳定
+`save_restore_evidence_degraded`，不能变成业务失败。协作取消必须先持久化
+`Failed + save_restore_cancelled` 再清理 staging；持久化失败时保留现场并发送
+`recovery_required + save_restore_transaction_unavailable`。`failed` 事件以 `error` 为主错误码；`message`
+仅可携带受控二级 warning code，例如 rolled-back 后的 `save_restore_recovery_cleanup_failed`，前端必须同时
+展示主结果与 warning，不能把 warning 当作原始文本。
+
+恢复错误使用稳定 code；至少包括 `save_restore_profile_missing`、`save_restore_backup_missing`、
+`save_restore_backup_unavailable`、`save_restore_target_unset`、`save_restore_target_invalid`、
+`save_restore_game_running`、`save_restore_game_running_unknown`、`save_restore_backup_directory_unavailable`、
+`save_restore_archive_unavailable`、`save_restore_manifest_unavailable`、`save_restore_manifest_invalid`、
+`save_restore_archive_invalid`、`save_restore_hash_mismatch`、`save_restore_path_unsafe`、
+`save_restore_size_limit_exceeded`、`save_restore_staging_unavailable`、`save_restore_clock_unavailable`、
+`save_restore_token_issue_failed`、`save_restore_token_invalid`、
+`save_restore_token_expired`、`save_restore_token_stale`、`save_restore_confirmation_required`、
+`save_restore_high_risk_confirmation_required`、`save_restore_pre_restore_backup_invalid`、
+`save_restore_facts_changed`、`save_restore_lock_unavailable`、`save_restore_prepared_missing`、
+`save_restore_target_unavailable`、`save_restore_target_unsafe`、`save_restore_target_changed`、
+`save_restore_commit_failed`、`save_restore_rolled_back`、`save_restore_recovery_required`、
+`save_restore_transaction_unavailable`、
+`save_restore_recovery_evidence_unsafe`、`save_restore_recovery_cleanup_failed`、
+`save_restore_evidence_degraded`。前端按 code 映射文案，不能按 message 分支，也不得把底层路径或错误原文
+显示给用户。
 
 ### 4. 游戏启动
 
@@ -1441,6 +1650,10 @@ export_support_diagnostics()
 maintain_thumbnail_cache()
 get_thumbnail_cache_settings()
 set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays })
+get_log_storage_settings()
+set_log_storage_settings({ maxBytes })
+get_debug_log_settings()
+set_debug_log_settings({ enabled })
 ```
 
 边界：
@@ -1456,10 +1669,12 @@ set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays 
 - `get_preview_image_diagnostics()` 基于已持久化导入结果返回预览图处理摘要：`totalImportedMods`、`thumbnailCount`、`fallbackCount`、按 `reason` 聚合的 `fallbackReasons`，以及用于导出前确认的 `exportCategories`。当前 `exportCategories` 声明预览图聚合摘要可纳入诊断包，并明确排除缩略图文件、`thumbnailUrl` 资源引用和原始第三方 Mod 包内容。该命令不创建长任务、不发送 progress event、不读取或导出第三方图片内容、不返回 `thumbnailUrl`、缓存路径、sandbox 路径或本地路径。
 - `export_preview_image_diagnostics()` 基于同一份已脱敏摘要写入受控诊断 zip。该命令不接受输出路径参数；后端固定写入 app data 下的 `logs/diagnostics/`，返回 `exportId`、`fileName`、`sizeBytes` 和本次导出的 `diagnostics` 摘要。当前 zip 只包含 `preview-image-diagnostics.json`，不包含缩略图文件、`thumbnailUrl`、`contentHash`、sandbox/cache/local 路径、README 全文、原始第三方 Mod 包内容或原始日志。导出成功后后端会写入最小 Audit Log 事件；若诊断 zip 写入失败，会先写入只含稳定错误分类和聚合计数的失败审计事件；若审计写入失败，命令不返回成功。该命令不创建长任务、不发送 progress event；更通用的日志/audit 诊断包导出仍需后续治理能力补齐。
 - `export_audit_log_diagnostics()` 导出已脱敏审计日志诊断包。该命令不接受输出路径、日志路径或事件数量参数；后端固定读取 app data 下已校验的最近审计事件，单次最多 200 条，并固定写入 app data 下的 `logs/diagnostics/`。返回 DTO 只包含 `exportId`、`fileName`、`sizeBytes` 和 `auditEventCount`，不返回审计事件正文、审计日志路径、本地路径、原始错误文本、第三方 Mod 内容、缩略图 URL 或缓存/sandbox 路径。该命令不创建长任务、不发送 progress event；当前只覆盖 Audit Log 子集。
-- `export_support_diagnostics()` 导出完整支持诊断包。该命令不接受输出路径、日志路径、类别选择、行数或事件数量参数；后端固定从 app data 下读取已校验 App Log / Task Log 文本行、已校验 Audit Log 事件和平台摘要，并固定写入 app data 下的 `logs/diagnostics/`。返回 DTO 只包含 `exportId`、`fileName`、`sizeBytes`、三类计数，以及稳定、无路径的 `taskLogStatus`、`auditLogStatus`、`taskLogWriteFailureCount`、`auditWriteFailureCount`、`auditWriteFailureAfterCommitCount`。状态码当前为 `ok`、`task_log_write_failed`、`audit_write_failed` 或 `audit_write_failed_after_commit`；命令不返回日志正文、审计事件正文、诊断包路径、本地路径、原始错误文本、第三方 Mod 内容、缩略图 URL、`contentHash` 或缓存/sandbox 路径。该命令不创建长任务、不发送 progress event；用户可见入口仍应在前端展示类别确认，而不是展示敏感原文。
+- `export_support_diagnostics()` 导出完整支持诊断包。该命令不接受输出路径、日志路径、类别选择、行数或事件数量参数；后端固定从 app data 下读取已校验 App Log / Debug Log / Task Log 文本行、已校验 Audit Log 事件和平台摘要，并固定写入 app data 下的 `logs/diagnostics/`。返回 DTO 只包含 `exportId`、`fileName`、`sizeBytes`、四类计数，以及稳定、无路径的 `debugLogStatus`、`taskLogStatus`、`auditLogStatus`、`logStorageStatus`、`debugLogEventRejectedCount`、`debugLogWriteFailureCount`、`debugLogRetentionFailureCount`、`taskLogWriteFailureCount`、`taskLogRetentionFailureCount`、`auditWriteFailureCount`、`auditWriteFailureAfterCommitCount`、`auditLogRetentionFailureCount`、`logStorageFailureCount`、`logStorageUnsatisfiedCount`、`logStorageSettingsFailureCount`。Debug、Task、Audit 和日志空间状态只使用本节登记的稳定 code；命令不返回日志正文、审计事件正文、诊断包路径、本地路径、原始错误文本、第三方 Mod 内容、缩略图 URL、`contentHash` 或缓存/sandbox 路径。该命令不创建长任务、不发送 progress event；用户可见入口仍应在前端展示类别确认，而不是展示敏感原文。
 - `maintain_thumbnail_cache()` 手动触发后端缩略图缓存维护，复用当前导入结果引用保留、settings 空间上限 / LRU 清理和可选按时间保留逻辑。该命令不创建长任务、不发送 progress event、不返回清理报告或真实缓存路径；清理失败按 best-effort 处理，不改变导入、安装、卸载或回滚事实。
 - `get_thumbnail_cache_settings()` 读取当前受控后端设置并返回 `AppSettingsDto`。该命令不接受参数、不写入 settings 文件、不触发缓存维护，也不返回 settings 文件路径、缓存路径、sandbox 路径或任意文件系统路径。
 - `set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays })` 写入受控后端设置并返回当前设置 DTO。`thumbnailCacheMaxBytes` 可为正整数或 `null`，`null` 表示回退默认空间上限；`0` 会返回稳定错误码 `thumbnail_cache_max_bytes_invalid`。`thumbnailCacheMaxAgeDays` 可为正整数天数或 `null`，`null` 表示不启用按时间保留延迟、沿用当前未引用缩略图维护语义；`0` 会返回稳定错误码 `thumbnail_cache_max_age_days_invalid`。该命令不接收或返回 settings 文件路径、缓存路径、sandbox 路径或任意文件系统路径。
+- `get_log_storage_settings()` 读取当前日志总空间预算并返回窄 `LogStorageSettingsDto { maxBytes }`。`maxBytes` 为正整数或 `null`；`null` 表示使用后端默认 128 MiB。该命令不接受参数、不写 settings、不执行预算维护，也不返回日志目录、文件名、清理候选或任意文件系统路径。
+- `set_log_storage_settings({ maxBytes })` 只更新日志总空间预算并返回当前 `LogStorageSettingsDto`。`maxBytes` 为不小于 1 MiB 的整数或 `null`；`null` 表示回退默认 128 MiB，小于 1 MiB 返回稳定错误码 `log_storage_max_bytes_invalid`，settings 读取或保存失败返回 `app_settings_unavailable`。该命令不会立即删除日志，不接受类别、文件名、路径或清理优先级参数；启动维护仍由共享 runtime 按后端固定策略执行。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。
@@ -1612,17 +1827,28 @@ type SupportDiagnosticsExportDto = {
   fileName: string;
   sizeBytes: number;
   appLogLineCount: number;
+  debugLogLineCount: number;
   taskLogLineCount: number;
   auditEventCount: number;
-  taskLogStatus: "ok" | "task_log_write_failed";
-  auditLogStatus: "ok" | "audit_write_failed" | "audit_write_failed_after_commit";
+  debugLogStatus: "ok" | "debug_log_retention_failed" | "debug_log_event_rejected" | "debug_log_write_failed";
+  taskLogStatus: "ok" | "task_log_retention_failed" | "task_log_write_failed";
+  auditLogStatus: "ok" | "audit_log_retention_failed" | "audit_write_failed" | "audit_write_failed_after_commit";
+  logStorageStatus: "ok" | "log_storage_settings_unavailable" | "log_storage_budget_unsatisfied" | "log_storage_budget_failed";
+  debugLogEventRejectedCount: number;
+  debugLogWriteFailureCount: number;
+  debugLogRetentionFailureCount: number;
   taskLogWriteFailureCount: number;
+  taskLogRetentionFailureCount: number;
   auditWriteFailureCount: number;
   auditWriteFailureAfterCommitCount: number;
+  auditLogRetentionFailureCount: number;
+  logStorageFailureCount: number;
+  logStorageUnsatisfiedCount: number;
+  logStorageSettingsFailureCount: number;
 };
 ```
 
-`fileName` 只是文件名，不是完整本地路径；前端不能传入或拼接导出路径。当前导出包可包含已脱敏平台摘要、已校验 App Log 文本行、已校验 Task Log 文本行和最多 200 条已校验 Audit Log 事件，但命令 DTO 本身不返回日志正文、事件正文、诊断包路径、本地路径、原始 Mod 包内容、缩略图 URL、`contentHash`、缓存/sandbox 路径、原始日志或未脱敏错误文本。
+`fileName` 只是文件名，不是完整本地路径；前端不能传入或拼接导出路径。当前导出包可包含已脱敏平台摘要、已校验 App/Debug/Task Log 文本行和最多 200 条已校验 Audit Log 事件，但命令 DTO 本身不返回日志正文、事件正文、诊断包路径、本地路径、原始 Mod 包内容、缩略图 URL、`contentHash`、缓存/sandbox 路径、原始日志或未脱敏错误文本。
 
 ### 7. 分类与 Mod 展示元数据
 
@@ -1673,13 +1899,16 @@ Mod 展示元数据契约边界：
 - `hmm://window-close-requested` 由 Tauri 后端在主窗口收到关闭请求时发出；后端会先阻止默认关闭，前端必须显示关闭选择或按已保存偏好调用窄命令。
 - `hide_main_window_to_tray` 只隐藏当前主窗口，不执行备份、不修改 Profile、不读取路径。
 - `exit_app` 只退出当前 Tauri 主客户端进程，不声明后台守护已接管。
-- `get_app_exit_guard()` 是只读结构化决策；所有真正退出入口，包括主窗口关闭、remembered exit 和托盘“退出程序”，都必须经过同一流程。
-- `exit_app({ request: { overrideUnprotected } })` 要求显式布尔值。普通退出只能传 `false`；只有危险退出对话框的当次明确确认可以传 `true`。后端在真正退出前始终重新计算 guard，不信任前端缓存。
-- `exit_app({ request: { overrideUnprotected: false } })` 若在查询后因状态竞态变为不安全，会返回稳定 code `exit_confirmation_required`；前端必须重新读取 `get_app_exit_guard`，不得解析 `CommandErrorDto.message` 猜测原因。
+- `get_app_exit_guard()` 是只读结构化决策；只有 `confirmation_required` 会同时返回后端签发的短时、一次性 `exitAuthorization`，`safe` 与 `blocked` 都不签发授权。
+- `exit_app({ request: { overrideUnprotected, exitAuthorization? } })` 要求显式布尔值。普通退出只能传 `false`；命令先隐藏主窗口，再执行一次权威 guard。安全时返回 `outcome: "exiting"` 并退出；后台保护不安全时恢复窗口，返回 `outcome: "confirmation_required"`、稳定原因和一次性授权。
+- `TaskKind::SaveRestore` 处于 queued/running 时，或 restore scope 状态不可读时，`get_app_exit_guard` 与 `exit_app` 必须 fail closed 返回 `blocked`。`blocked` 不是可 override 的后台保护警告：前端只能提供“返回应用”或“收起至系统托盘”，不得传递授权、渲染“仍然退出”或尝试绕过该状态。最终 exit admission 在后端原子关闭 restore 新任务登记，避免 guard 查询和实际退出之间的竞争窗口。
+- Windows guard 每次读取当前 Task Scheduler definition/status 并结合 fresh heartbeat 判定；不得用长 TTL 或会话缓存替代本次精确读回。只读 inspect 使用 Task Scheduler COM，注册、启动、停用和 installer cleanup 仍沿用受控 PowerShell mutation。
+- 隐藏窗口后的所有非退出路径（确认返回、restore `blocked`、授权存储/guard 错误或其他 command 失败）都必须恢复主窗口；只有明确返回 `outcome: "exiting"` 才允许保持隐藏。授权 mutex 错误必须直接 fail closed，不能回退为无授权的安全退出。
+- 只有危险退出对话框的当次明确确认可以传 `overrideUnprotected: true`，并必须透传该对话框持有的授权。授权缺失、过期、错配或已消费时，后端回退到完整 guard；若仍不安全则返回新的原因和授权，前端必须重置执行态并刷新当前危险确认，不能直接 override 或停留在“正在退出”。
 - 危险退出默认操作和初始焦点为留在托盘，不显示 remember；Escape、overlay 和关闭按钮都只取消。`starting` override 不 unregister、不清除 `desiredEnabled`。
 
 ```ts
-type AppExitGuardReason =
+type SaveBackupExitGuardReason =
   | "background_starting"
   | "background_not_enabled"
   | "registration_failed"
@@ -1688,13 +1917,32 @@ type AppExitGuardReason =
   | "unsupported_platform"
   | "status_unavailable";
 
+type AppExitBlockReason =
+  | "save_restore_in_progress"
+  | "save_restore_status_unavailable";
+
 type AppExitGuardDto =
-  | { decision: "safe"; reason: null }
-  | { decision: "confirmation_required"; reason: AppExitGuardReason };
+  | { decision: "safe"; reason: null; exitAuthorization: null }
+  | {
+      decision: "confirmation_required";
+      reason: SaveBackupExitGuardReason;
+      exitAuthorization: string;
+    }
+  | { decision: "blocked"; reason: AppExitBlockReason; exitAuthorization: null };
 
 type ExitAppRequestDto = {
   overrideUnprotected: boolean;
+  exitAuthorization?: string;
 };
+
+type ExitAppResultDto =
+  | { outcome: "exiting"; reason: null; exitAuthorization: null }
+  | {
+      outcome: "confirmation_required";
+      reason: SaveBackupExitGuardReason;
+      exitAuthorization: string;
+    }
+  | { outcome: "blocked"; reason: AppExitBlockReason; exitAuthorization: null };
 ```
 
 - Settings 全局控制与 exit guard 均只消费稳定 snake_case status/reason/code；UI 不展示 raw backend message。

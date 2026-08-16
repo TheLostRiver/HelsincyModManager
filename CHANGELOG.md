@@ -12,7 +12,7 @@
 - 添加架构设计、路线图、贡献指南、安全策略、测试指南和 AI 协作约束。
 - 添加发布与产物规划文档。
 - 添加机器可读策略文件、本地验证脚本、Git hooks 和 GitHub Actions 验证工作流。
-- 添加 Codex 上下文管理工具目录 `.codex/`，用于项目内 planning hooks、skills、脚本和模板。
+- 添加 `.codex/skills/hmm*` 项目技能，用于 HMM 功能路由、安装安全和 review 门禁。
 - 添加 CODEOWNERS 和工程治理文档，规划分支保护、治理文件 review 和强制约束层级。
 - 添加日志与审计设计文档，明确日志类型、脱敏规则、Audit Log、诊断导出和测试要求。
 - 添加 Tauri 2、React、TypeScript、Vite 与 Rust workspace 脚手架基线。
@@ -27,6 +27,7 @@
 ### Changed
 
 - 将项目文档默认语言确认为简体中文。
+- 收窄 `.codex` 跟踪范围；通用 Codex hooks、skills、脚本、模板和个人配置改为本地 ignored 内容。
 - 放宽文件大小治理提醒线，并增加大文件滥用的硬性干预线。
 - 更新忽略规则，排除 Python 缓存和上下文管理工具运行时状态。
 - 扩展文件大小检查覆盖范围，纳入 JavaScript、样式、HTML、Vue、Svelte、Python、Shell、TOML 和配置文件。
@@ -39,6 +40,7 @@
 
 ### Fixed
 
+- 同步 CodeQL 默认分析语言与当前受版本管理的源码，避免无 Python 源码时分析任务在 finalize 阶段失败。
 - 补齐 Tauri Linux CI 需要的 PNG 图标资源，并在统一验证脚本中检查 Tauri 图标资产是否存在。
 - 避免 Windows release 构建打开额外控制台窗口。
 - 修复悬浮侧边栏在低高度窗口下的垂直挤压风险，并稳定侧边栏模式切换时的滚动边界。

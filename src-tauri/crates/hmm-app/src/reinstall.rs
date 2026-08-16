@@ -126,7 +126,7 @@ pub struct InstalledReplacementReinstallContext {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstalledReplacementReinstallResolution {
-    Ready(InstalledReplacementReinstallContext),
+    Ready(Box<InstalledReplacementReinstallContext>),
     Blocked(ReinstallPlanPreview),
 }
 
@@ -355,12 +355,12 @@ impl ReinstallPreviewService {
             ));
         };
 
-        Ok(InstalledReplacementReinstallResolution::Ready(
+        Ok(InstalledReplacementReinstallResolution::Ready(Box::new(
             InstalledReplacementReinstallContext {
                 installed_revision_id,
                 installed_binding: installed_binding.clone(),
             },
-        ))
+        )))
     }
 
     pub(crate) fn prepare(
@@ -1143,6 +1143,27 @@ fn hash_replacement_snapshots(hasher: &mut Sha256, snapshots: &[ReplacementBindi
         hash_field(hasher, snapshot.source_path_family());
         hash_field(hasher, snapshot.target_path_family());
         hash_field(hasher, snapshot.retarget_kind().as_str());
+        match snapshot.adapter_facts() {
+            Some(facts) => {
+                hasher.update([1]);
+                hasher.update(b"hmm-replacement-adapter-facts-v1");
+                hasher.update(facts.schema_version().to_be_bytes());
+                hash_field(hasher, facts.adapter_id());
+                hash_field(hasher, facts.strategy_id());
+                hasher.update(facts.strategy_version().to_be_bytes());
+                hash_field(hasher, facts.source_closure_sha256());
+                hash_field(hasher, facts.part_set_sha256());
+                hash_field(hasher, facts.transform_set_sha256());
+                hasher.update(facts.part_count().to_be_bytes());
+                hasher.update(facts.file_count().to_be_bytes());
+                hash_u64(hasher, facts.transformer_identities().len() as u64);
+                for identity in facts.transformer_identities() {
+                    hash_field(hasher, identity.transformer_id());
+                    hasher.update(identity.transformer_version().to_be_bytes());
+                }
+            }
+            None => hasher.update([0]),
+        }
     }
 }
 

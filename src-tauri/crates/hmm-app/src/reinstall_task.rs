@@ -5,6 +5,9 @@ use hmm_core::{FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReplacementTa
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 
 use crate::reinstall::{PreparedReinstall, ReinstallPreparation};
+use crate::replacement_audit::{
+    append_adapter_audit_fields, unique_adapter_audit_facts, ReplacementAdapterAuditFacts,
+};
 use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 use crate::{
     GameProfileWriteLockRegistry, InstallWriteAdmission, ReinstallCommitError,
@@ -116,6 +119,7 @@ pub struct ReinstallTaskAuditContext {
     pub previous_revision_id: Option<ModRevisionId>,
     pub candidate_revision_id: ModRevisionId,
     pub counts: ReinstallTargetCounts,
+    pub adapter_facts: Option<Box<ReplacementAdapterAuditFacts>>,
 }
 
 pub trait ReinstallTaskPrepared: Send {
@@ -130,6 +134,7 @@ impl ReinstallTaskPrepared for PreparedReinstall {
             previous_revision_id: Some(self.installed_revision_id.clone()),
             candidate_revision_id: self.candidate.revision_id.clone(),
             counts: self.counts,
+            adapter_facts: unique_adapter_audit_facts(&self.candidate_replacement_bindings),
         }
     }
 
@@ -210,6 +215,7 @@ impl ReinstallTaskExecutor for ReinstallTaskExecutorService {
             previous_revision_id: None,
             candidate_revision_id: request.candidate_revision_id.clone(),
             counts: ReinstallTargetCounts::default(),
+            adapter_facts: None,
         };
         match self.preview.prepare(request.clone()) {
             Ok(ReinstallPreparation::Ready(prepared)) => Ok(*prepared),
@@ -223,6 +229,7 @@ impl ReinstallTaskExecutor for ReinstallTaskExecutorService {
                         .map(|revision| revision.revision_id)
                         .unwrap_or(request.candidate_revision_id),
                     counts: preview.counts,
+                    adapter_facts: None,
                 }),
             ),
             Err(ReinstallPreviewError::CatalogUnavailable)
@@ -500,10 +507,33 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             );
         }
 
-        let write_lock = self
-            .write_locks
-            .lock_for(request.game_id(), request.profile_id());
         let commit_result = {
+            let _cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+                request.game_id(),
+                request.profile_id(),
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if self.is_cancelled(task_id) {
+                        return Ok(events);
+                    }
+                    return self.fail_with_audit(
+                        task_id,
+                        request,
+                        audit_context,
+                        events,
+                        observer,
+                        error.code(),
+                        "not_attempted",
+                        false,
+                    );
+                }
+            };
+            let write_lock = self
+                .write_locks
+                .lock_for(request.game_id(), request.profile_id());
             let _guard = match write_lock.lock() {
                 Ok(guard) => guard,
                 Err(_) => {
@@ -775,6 +805,7 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
         );
         fields.insert("added_count".to_owned(), context.counts.added.to_string());
         fields.insert("stale_count".to_owned(), context.counts.stale.to_string());
+        append_adapter_audit_fields(&mut fields, context.adapter_facts.as_deref());
         if let Some(error_code) = error_code {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }

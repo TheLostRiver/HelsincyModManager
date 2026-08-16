@@ -14,9 +14,13 @@ test("background protection API uses only global narrow commands", () => {
 
   const source = readProjectFile(API_PATH);
 
-  assert.match(source, /invoke<BackgroundProtectionControlDto>\("get_save_backup_background_control_status"\)/);
-  assert.match(source, /invoke<BackgroundProtectionControlDto>\("enable_save_backup_background_protection"\)/);
-  assert.match(source, /invoke<BackgroundProtectionControlDto>\("disable_save_backup_background_protection"\)/);
+  assert.match(source, /invoke<BackgroundProtectionControlDto>\(\s*"get_save_backup_background_control_status"/);
+  assert.match(source, /invoke<BackgroundProtectionControlDto>\(\s*"enable_save_backup_background_protection"/);
+  assert.match(source, /invoke<BackgroundProtectionControlDto>\(\s*"disable_save_backup_background_protection"/);
+  assert.match(source, /peekBackgroundProtectionControlStatus/);
+  assert.match(source, /cachedControlStatus/);
+  assert.match(source, /pendingControlStatus/);
+  assert.match(source, /options\?\.force/);
   assert.doesNotMatch(source, /taskName|taskXml|workerPath|workerId|PowerShell|sid|leaseOwner|savePath|backupPath/i);
 });
 

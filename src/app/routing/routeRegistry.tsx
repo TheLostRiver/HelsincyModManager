@@ -6,6 +6,7 @@ import { CategoryPage } from "../../features/categories/CategoryPage";
 import { ProfilePage } from "../../features/profiles/ProfilePage";
 import type { AppRoute } from "./routeTypes";
 import { DiagnosticsPage } from "../../features/diagnostics/DiagnosticsPage";
+import { BackupCenterPage } from "../../features/backups/BackupCenterPage";
 
 export const appRoutes = [
   {
@@ -37,6 +38,11 @@ export const appRoutes = [
     id: "profiles",
     path: "/profiles",
     element: ProfilePage,
+  },
+  {
+    id: "backups",
+    path: "/backups",
+    element: BackupCenterPage,
   },
   {
     id: "settings",

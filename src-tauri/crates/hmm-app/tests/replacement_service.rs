@@ -13,6 +13,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
+    ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ReplacementAdapter,
     ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
     ReplacementCatalogProvider, ReplacementCatalogResult, RetargetPlanRequest,
@@ -130,6 +131,15 @@ impl ModPackageInstallFileScanner for FakeFileScanner {
             package_file_id: "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3".to_owned(),
             target_path: "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3".to_owned(),
         }])
+    }
+}
+
+impl ModPackageInstallFileReader for FakeFileScanner {
+    fn read_install_file(
+        &self,
+        _request: ModPackageInstallFileReadRequest<'_>,
+    ) -> anyhow::Result<Vec<u8>> {
+        anyhow::bail!("armor replacement tests must not read source content")
     }
 }
 
@@ -262,6 +272,7 @@ fn workflow(status: hmm_app::InstallRecoveryStatus) -> ReplacementWorkflowServic
         vec![Arc::new(FakeCatalog)],
         Arc::new(FakeRepository),
         Arc::new(FakeSandboxLocator),
+        Arc::new(FakeFileScanner),
         Arc::new(FakeFileScanner),
         Arc::new(FixedStatus(status)),
         Arc::new(FixedClock),
@@ -416,12 +427,8 @@ fn workflow_rebuilds_the_installed_revision_with_stable_binding_lineage_for_targ
             profile_id: ProfileId::new("profile-a"),
             mod_id: ModId::new("mod-a"),
             installed_revision_id: ModRevisionId::new("revision-v1"),
-            installed_binding: installed_binding(
-                "mhw:armor:guardian-alpha",
-                "pl121_0000",
-            ),
-            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
-                .expect("target id"),
+            installed_binding: installed_binding("mhw:armor:guardian-alpha", "pl121_0000"),
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
             layer: FileLayer::new("base", 0),
         })
         .expect("target-switch candidate");
@@ -452,12 +459,8 @@ fn workflow_rebuilds_the_installed_revision_with_stable_binding_lineage_for_targ
             profile_id: ProfileId::new("profile-a"),
             mod_id: ModId::new("mod-a"),
             installed_revision_id: ModRevisionId::new("revision-v1"),
-            installed_binding: installed_binding(
-                "mhw:armor:fatalis-alpha",
-                "pl129_0000",
-            ),
-            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
-                .expect("target id"),
+            installed_binding: installed_binding("mhw:armor:fatalis-alpha", "pl129_0000"),
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
             layer: FileLayer::new("base", 0),
         })
         .expect_err("current target must not produce a reinstall candidate");

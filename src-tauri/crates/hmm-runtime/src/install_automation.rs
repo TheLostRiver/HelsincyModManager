@@ -1,21 +1,22 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
-use crate::{production_app_data_dir, RuntimeEnvironment};
+use crate::{production_app_data_dir, RuntimeEnvironment, RuntimeEnvironmentKind};
 use hmm_app::{
-    BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest, BatchReinstallPlanFactsProvider,
-    BatchUninstallPlanFactsProvider, BuildImportedModInstallPlanRequest, GamePrerequisiteDecision,
-    GamePrerequisiteDecisionProvider, GameSetupService, ImportedModInstallPreflightService,
-    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    InstallManifestQueryRequest, InstallManifestQueryService, InstallManifestStatus,
-    InstallPlanningError, InstallPlanningService, InstallRecoveryActionAvailability,
-    InstallRecoveryActionBlockReason, InstallRecoveryActionKind, InstallRecoveryActionPreview,
-    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
-    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
-    InstallRecoverySummary, InstalledReplacementReinstallResolution,
-    PreviewRetargetReinstallRequest, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
-    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreparation,
-    ReinstallPreviewBatchItemFactsReader, ReinstallPreviewError, ReinstallPreviewRequest,
-    ReinstallPreviewService, ReinstallPreviewStatus, ReinstallRevisionSummary,
-    ReinstallTargetCounts, ReplacementWorkflowService,
+    is_identity_replacement_binding, BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest,
+    BatchReinstallPlanFactsProvider, BatchUninstallPlanFactsProvider,
+    BuildImportedModInstallPlanRequest, GamePrerequisiteDecision, GamePrerequisiteDecisionProvider,
+    GameSetupService, ImportedModInstallPreflightService, InitialRetargetInstallStatusError,
+    InitialRetargetInstallStatusReader, InstallManifestQueryRequest, InstallManifestQueryService,
+    InstallManifestStatus, InstallPlanningError, InstallPlanningService,
+    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason, InstallRecoveryActionKind,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewRequest,
+    InstallRecoveryActionPreviewService, InstallRecoveryIssue, InstallRecoveryScanRequest,
+    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
+    InstalledReplacementReinstallResolution, PreviewRetargetReinstallRequest,
+    ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallCandidateSourceReader,
+    ReinstallPlanPreview, ReinstallPreparation, ReinstallPreviewBatchItemFactsReader,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+    ReplacementWorkflowService,
 };
 use hmm_core::{
     BatchItemFacts, BatchPlanFacts, FileLayer, GameId, GameInstance, InstallManifest,
@@ -23,7 +24,7 @@ use hmm_core::{
     PackageFileId, ProfileId, ReinstallBatchItemInput, ReinstallRecoveryTransaction,
     ReplacementBindingSnapshot, ReplacementTargetId,
 };
-use hmm_games_mhw::{MhwArmorCatalog, MhwArmorReplacementAdapter, MonsterHunterWorldAdapter};
+use hmm_games_mhw::{MhwReplacementAdapter, MhwReplacementCatalog, MonsterHunterWorldAdapter};
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonGameConfigRepository, JsonInstallManifestRepository,
@@ -36,9 +37,9 @@ use hmm_infra::{
 use hmm_ports::{
     BatchPlanFactsProvider, GameAdapter, GameConfigRepository, GamePrerequisiteRuleRepository,
     InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanner,
-    ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore, ReplacementAdapter,
-    ReplacementCatalogProvider, StoredModRevision,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
+    ModPackageInstallFileScanner, ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
+    ReplacementAdapter, ReplacementCatalogProvider, StoredModRevision,
 };
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -513,6 +514,8 @@ impl ReadOnlyInstallAutomation {
             Arc::new(ContainedReadOnlyModImportSandboxLocator::new(&app_data_dir));
         let file_scanner: Arc<dyn ModPackageInstallFileScanner> =
             Arc::new(SandboxModPackageInstallFileScanner);
+        let file_reader: Arc<dyn ModPackageInstallFileReader> =
+            Arc::new(SandboxModPackageInstallFileScanner);
         let prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(ReadOnlyJsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -553,16 +556,26 @@ impl ReadOnlyInstallAutomation {
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
             ));
+        let developer_weapon_seed = environment.kind() == RuntimeEnvironmentKind::Sandbox;
         let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
-            vec![Arc::new(MhwArmorReplacementAdapter)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementAdapter::with_developer_weapon_seed()
+            } else {
+                MhwReplacementAdapter::production()
+            })];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
-            vec![Arc::new(MhwArmorCatalog)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementCatalog::with_developer_weapon_seed()
+            } else {
+                MhwReplacementCatalog::production()
+            })];
         let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
             replacement_adapters,
             replacement_catalogs,
             Arc::clone(&catalog),
             Arc::clone(&sandbox_locator),
             file_scanner,
+            file_reader,
             Arc::new(ReadOnlyInitialRetargetInstallStatusReader),
             Arc::new(SystemClock),
         ));
@@ -697,6 +710,7 @@ impl ReadOnlyInstallAutomation {
         profile_id: &str,
         mod_id: &str,
         revision_id: &str,
+        layer: &FileLayer,
     ) -> Result<
         (
             GameId,
@@ -723,14 +737,42 @@ impl ReadOnlyInstallAutomation {
         )?);
         let preflight = self
             .preflight
-            .preview_revision(&game_id, &mod_id, &revision_id, &base_file_layer())
+            .preview_revision(&game_id, &mod_id, &revision_id, layer)
             .map_err(map_planning_error)?;
+        let mut plan = preflight.plan;
+        if !plan.replacement_bindings.is_empty() {
+            return Err(ReadOnlyInstallAutomationError::InstallPlanInvalid);
+        }
+        if let Ok(Some(canonical_plan)) = self
+            .replacement_workflow
+            .preview_canonical_source_install_plan(
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &revision_id,
+                layer,
+            )
+        {
+            if let [binding] = canonical_plan.replacement_bindings.as_slice() {
+                if canonical_plan.actions == plan.actions
+                    && canonical_plan.conflicts == plan.conflicts
+                    && is_identity_replacement_binding(binding)
+                    && binding.mod_id() == &mod_id
+                    && binding.profile_id() == &profile_id
+                    && binding.revision_id() == Some(&revision_id)
+                {
+                    plan = plan
+                        .with_replacement_bindings(vec![binding.clone()])
+                        .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
+                }
+            }
+        }
         Ok((
             game_id,
             profile_id,
             mod_id,
             revision_id,
-            preflight.plan,
+            plan,
             preflight.prerequisite_decision,
         ))
     }

@@ -2,6 +2,7 @@ import type {
   BatchModLifecycleExecutionPolicy,
   BatchModLifecycleItemInputDto,
   BatchModLifecyclePreviewDto,
+  BatchModLifecycleReplacementTargetFacts,
   BatchModLifecycleRequestDto,
   BatchModLifecycleResultPageDto,
   BatchModLifecycleStartedDto,
@@ -27,6 +28,13 @@ export type BatchModLifecycleItemFacts = {
 export type BatchModLifecycleWorkflowState =
   | { status: "idle" }
   | { status: "resolving" }
+  | {
+      status: "target-selection";
+      operation: "reinstall";
+      policy: BatchModLifecycleExecutionPolicy;
+      targetFacts: BatchModLifecycleReplacementTargetFacts[];
+      selectedTargets: Record<string, string | null>;
+    }
   | { status: "preview-loading"; policy: BatchModLifecycleExecutionPolicy }
   | {
       status: "preview-ready";
@@ -151,7 +159,9 @@ export function buildBatchModLifecycleRequest(input: {
   profileId: string;
   policy: BatchModLifecycleExecutionPolicy;
   items: BatchModLifecycleItemInputDto[];
+  replacementTargets?: { modId: string; targetId: string }[];
 }): BatchModLifecycleRequestDto {
+  const replacementTargets = input.replacementTargets ?? [];
   return {
     schemaVersion: BATCH_MOD_LIFECYCLE_SCHEMA_VERSION,
     operation: input.operation,
@@ -159,6 +169,7 @@ export function buildBatchModLifecycleRequest(input: {
     profileId: input.profileId,
     executionPolicy: input.policy,
     items: input.items,
+    ...(replacementTargets.length > 0 ? { replacementTargets } : {}),
   };
 }
 

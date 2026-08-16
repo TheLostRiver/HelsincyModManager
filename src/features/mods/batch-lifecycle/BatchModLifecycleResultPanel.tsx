@@ -79,48 +79,50 @@ export function BatchModLifecycleResultPanel({
           </button>
         </header>
 
-        <div className={`batch-panel__attempt batch-panel__attempt--${tone}`} role="status">
-          <CheckCircle2 size={16} aria-hidden="true" />
-          {getBatchAttemptStatusLabel(result.status)}
-          <span className="batch-panel__attempt-id">批次 {batchId}</span>
-        </div>
+        <div className="batch-panel__body">
+          <div className={`batch-panel__attempt batch-panel__attempt--${tone}`} role="status">
+            <CheckCircle2 size={16} aria-hidden="true" />
+            {getBatchAttemptStatusLabel(result.status)}
+            <span className="batch-panel__attempt-id">批次 {batchId}</span>
+          </div>
 
-        <div className="batch-panel__summary-counts" aria-label="批量结果汇总">
-          <span>成功 {summary.succeededCount}</span>
-          <span>失败 {summary.failedCount}</span>
-          <span>被阻止 {summary.blockedCount}</span>
-          <span>跳过 {summary.skippedCount}</span>
-          <span>取消 {summary.cancelledCount}</span>
-          {summary.recoveryRequiredCount > 0 && (
-            <span>需恢复 {summary.recoveryRequiredCount}</span>
+          <div className="batch-panel__summary-counts" aria-label="批量结果汇总">
+            <span>成功 {summary.succeededCount}</span>
+            <span>失败 {summary.failedCount}</span>
+            <span>被阻止 {summary.blockedCount}</span>
+            <span>跳过 {summary.skippedCount}</span>
+            <span>取消 {summary.cancelledCount}</span>
+            {summary.recoveryRequiredCount > 0 && (
+              <span>需恢复 {summary.recoveryRequiredCount}</span>
+            )}
+          </div>
+
+          {result.evidenceHealthDegraded && (
+            <p className="batch-panel__blocked-note" role="status">
+              <AlertTriangle size={14} aria-hidden="true" />
+              部分执行证据健康度下降，请前往恢复中心检查。
+            </p>
           )}
-        </div>
 
-        {result.evidenceHealthDegraded && (
-          <p className="batch-panel__blocked-note" role="status">
-            <AlertTriangle size={14} aria-hidden="true" />
-            部分执行证据健康度下降，请前往恢复中心检查。
-          </p>
-        )}
-
-        <ul className="batch-panel__items" aria-label="逐项结果">
-          {result.items.map((item) => (
-            <li key={item.itemId} className="batch-panel__item">
-              <span className={`batch-panel__item-status batch-panel__item-status--${item.status}`}>
-                {getBatchItemStatusLabel(item.status)}
-              </span>
-              <span className="batch-panel__item-mod">{item.modId}</span>
-              {item.reasonCode !== null && (
-                <span className="batch-panel__item-reason">
-                  {getBatchReasonCodeLabel(item.reasonCode)}
+          <ul className="batch-panel__items" aria-label="逐项结果">
+            {result.items.map((item) => (
+              <li key={item.itemId} className="batch-panel__item">
+                <span className={`batch-panel__item-status batch-panel__item-status--${item.status}`}>
+                  {getBatchItemStatusLabel(item.status)}
                 </span>
-              )}
-              {item.retryable && (
-                <span className="batch-panel__item-retryable">可重试</span>
-              )}
-            </li>
-          ))}
-        </ul>
+                <span className="batch-panel__item-mod">{item.modId}</span>
+                {item.reasonCode !== null && (
+                  <span className="batch-panel__item-reason">
+                    {getBatchReasonCodeLabel(item.reasonCode)}
+                  </span>
+                )}
+                {item.retryable && (
+                  <span className="batch-panel__item-retryable">可重试</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <footer className="batch-panel__footer">
           <button type="button" className="batch-panel__cancel" onClick={onClose}>
@@ -190,17 +192,19 @@ export function BatchModLifecycleRunningPanel({
             <X size={16} aria-hidden="true" />
           </button>
         </header>
-        {errorCode !== null ? (
-          <div className="batch-panel__error" role="alert">
-            <AlertTriangle size={16} aria-hidden="true" />
-            {getBatchErrorLabel(errorCode)}
-          </div>
-        ) : (
-          <div className="batch-panel__loading" role="status">
-            <LoaderCircle size={18} className="batch-panel__spinner" aria-hidden="true" />
-            正在执行批量{operation === "install" ? "安装" : operation === "uninstall" ? "卸载" : "重装"}…
-          </div>
-        )}
+        <div className="batch-panel__body">
+          {errorCode !== null ? (
+            <div className="batch-panel__error" role="alert">
+              <AlertTriangle size={16} aria-hidden="true" />
+              {getBatchErrorLabel(errorCode)}
+            </div>
+          ) : (
+            <div className="batch-panel__loading" role="status">
+              <LoaderCircle size={18} className="batch-panel__spinner" aria-hidden="true" />
+              正在执行批量{operation === "install" ? "安装" : operation === "uninstall" ? "卸载" : "重装"}…
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

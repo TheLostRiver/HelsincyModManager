@@ -1,3 +1,5 @@
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   createContext,
   useCallback,
@@ -54,6 +56,12 @@ export function ColorSchemeProvider({ children }: ColorSchemeProviderProps) {
     }
 
     document.documentElement.dataset.colorScheme = effective;
+
+    if (isTauri()) {
+      void getCurrentWindow().setTheme(effective).catch(() => {
+        // Browser previews and restricted desktop shells may not expose native theme control.
+      });
+    }
   }, [effective]);
 
   const setPreference = useCallback((nextPreference: ColorSchemePreference) => {

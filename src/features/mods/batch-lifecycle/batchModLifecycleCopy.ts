@@ -109,6 +109,8 @@ export function getBatchErrorLabel(code: string): string {
       return "选中的 Mod 均不适用于该操作，或无法读取版本信息";
     case "batch_facts_unavailable":
       return "无法读取安装状态或版本信息";
+    case "batch_replacement_facts_unavailable":
+      return "同版本重装所需的目标信息不可用";
     case "batch_input_invalid":
       return "批量请求不合法";
     case "batch_duplicate_item":

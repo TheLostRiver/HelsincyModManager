@@ -20,6 +20,10 @@ struct AppSettingsFile {
     thumbnail_cache_max_bytes: Option<u64>,
     #[serde(default)]
     thumbnail_cache_max_age_days: Option<u32>,
+    #[serde(default)]
+    log_storage_max_bytes: Option<u64>,
+    #[serde(default)]
+    debug_log_enabled: bool,
 }
 
 impl Default for AppSettingsFile {
@@ -28,6 +32,8 @@ impl Default for AppSettingsFile {
             version: CURRENT_SCHEMA_VERSION,
             thumbnail_cache_max_bytes: None,
             thumbnail_cache_max_age_days: None,
+            log_storage_max_bytes: None,
+            debug_log_enabled: false,
         }
     }
 }
@@ -148,6 +154,8 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
         Ok(AppSettings {
             thumbnail_cache_max_bytes: config.thumbnail_cache_max_bytes,
             thumbnail_cache_max_age_days: config.thumbnail_cache_max_age_days,
+            log_storage_max_bytes: config.log_storage_max_bytes,
+            debug_log_enabled: config.debug_log_enabled,
         })
     }
 
@@ -159,6 +167,8 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
             version: CURRENT_SCHEMA_VERSION,
             thumbnail_cache_max_bytes: settings.thumbnail_cache_max_bytes,
             thumbnail_cache_max_age_days: settings.thumbnail_cache_max_age_days,
+            log_storage_max_bytes: settings.log_storage_max_bytes,
+            debug_log_enabled: settings.debug_log_enabled,
         })
     }
 }
@@ -186,6 +196,8 @@ mod tests {
 
         assert_eq!(settings.thumbnail_cache_max_bytes, None);
         assert_eq!(settings.thumbnail_cache_max_age_days, None);
+        assert_eq!(settings.log_storage_max_bytes, None);
+        assert!(!settings.debug_log_enabled);
     }
 
     #[test]
@@ -207,6 +219,8 @@ mod tests {
 
         assert_eq!(settings.thumbnail_cache_max_bytes, Some(64 * 1024 * 1024));
         assert_eq!(settings.thumbnail_cache_max_age_days, Some(30));
+        assert_eq!(settings.log_storage_max_bytes, None);
+        assert!(!settings.debug_log_enabled);
     }
 
     #[test]
@@ -217,12 +231,16 @@ mod tests {
         repo.save_settings(&AppSettings {
             thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
             thumbnail_cache_max_age_days: Some(14),
+            log_storage_max_bytes: Some(64 * 1024 * 1024),
+            debug_log_enabled: true,
         })
         .expect("save settings");
         let settings = repo.load_settings().expect("load settings");
 
         assert_eq!(settings.thumbnail_cache_max_bytes, Some(128 * 1024 * 1024));
         assert_eq!(settings.thumbnail_cache_max_age_days, Some(14));
+        assert_eq!(settings.log_storage_max_bytes, Some(64 * 1024 * 1024));
+        assert!(settings.debug_log_enabled);
     }
 
     #[test]

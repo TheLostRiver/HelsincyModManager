@@ -335,6 +335,56 @@ fn windows_smoke_probe_sees_fresh_worker_heartbeat() {
     assert!(now - heartbeat <= 45 * 60_000, "worker heartbeat is stale");
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "reads disposable smoke AppData after a real Scheduled Task trigger"]
+fn windows_smoke_probe_sees_fresh_worker_heartbeat_by_profile_name() {
+    assert_eq!(
+        std::env::var("HMM_RUN_WINDOWS_SCHEDULED_TASK_SMOKE").as_deref(),
+        Ok("1"),
+        "explicit smoke authorization is required",
+    );
+    let database_path = PathBuf::from(
+        std::env::var_os("HMM_WINDOWS_SMOKE_DATABASE_PATH")
+            .expect("disposable smoke database path is required"),
+    );
+    let profile_name = std::env::var("HMM_WINDOWS_SMOKE_PROFILE_NAME")
+        .expect("synthetic smoke profile name is required");
+    let conn = rusqlite::Connection::open_with_flags(
+        database_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .expect("open disposable database read-only");
+    let mut statement = conn
+        .prepare("SELECT profile_id FROM profiles WHERE name = ?1")
+        .expect("prepare synthetic profile lookup");
+    let profile_ids = statement
+        .query_map([&profile_name], |row| row.get::<_, String>(0))
+        .expect("query synthetic profile")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("read synthetic profile ids");
+    assert_eq!(
+        profile_ids.len(),
+        1,
+        "synthetic smoke profile name must identify exactly one profile"
+    );
+    let heartbeat: Option<i64> = conn
+        .query_row(
+            "SELECT worker_heartbeat_at FROM save_backup_scheduler_state
+             WHERE game_id = 'mhw' AND profile_id = ?1",
+            [&profile_ids[0]],
+            |row| row.get(0),
+        )
+        .expect("synthetic scheduler state exists");
+    let heartbeat = heartbeat.expect("worker heartbeat exists") as u128;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is after epoch")
+        .as_millis();
+    assert!(heartbeat <= now);
+    assert!(now - heartbeat <= 45 * 60_000, "worker heartbeat is stale");
+}
+
 fn scheduler_repo() -> (tempfile::TempDir, SqliteSaveBackupSchedulerStateRepository) {
     let temp = tempfile::tempdir().expect("temp dir");
     let conn = open_database(&temp.path().join("test.db")).expect("open db");

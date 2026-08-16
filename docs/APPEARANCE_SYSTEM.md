@@ -69,6 +69,8 @@ const iceborneFocusPreset: AppearancePreset = {
 
 颜色方案只负责颜色语义，不负责布局。它通过 CSS variables 提供设计 token。
 
+桌面端的有效颜色方案还必须同步给 Tauri 主窗口，使 Windows 原生标题栏与 WebView 内容使用同一浅色/深色外观。普通浏览器预览不具备该能力时应静默降级，不能因原生主题 API 不可用导致白屏。
+
 示例：
 
 ```css
@@ -154,6 +156,8 @@ Shell 变体只消费统一的导航定义和全局状态，不直接实现 Mod 
 ```
 
 必须尊重系统级 `prefers-reduced-motion`。当系统要求减少动效时，应用不应强行播放复杂动画。
+
+全屏遮罩与模态弹层在 Windows WebView2 中应避免叠加多层 `backdrop-filter`。嵌套 blur/saturate 容易触发 GPU 分块合成瑕疵；优先使用单层纯色半透明遮罩、不透明语义表面和短时 opacity/transform 过渡。动画结束后应移除稳定态的 identity transform、opacity transition 和不可见的全尺寸渐变装饰层，让 WebView2 释放临时合成层，避免深色表面残留矩形纹理分块。减少动效模式下可保留短时淡入淡出，但应取消明显位移和缩放。
 
 ## 推荐目录结构
 

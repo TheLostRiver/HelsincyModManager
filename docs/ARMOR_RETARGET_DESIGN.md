@@ -220,6 +220,12 @@ AR1；AR3 的 staging I/O 继续独立建模，core/app 不携带 staging root �
 
 MHW:I armor catalog 应使用 JSON 或 TOML 存储，并由 `hmm-games-mhw` 加载。建议先使用静态随包数据，后续再考虑社区补丁或版本化更新。
 
+AR1 的 `mhw-armor-targets.v1.json` 是最小 runtime seed，不是未审计数据的导入口。CAT-01 已在其上游
+定义独立 candidate schema、资源路径派生 stable ID、localization/alias、dummy/hidden 和
+provenance/licensing 门禁；候选通过结构校验不等于可以随应用再分发。完整契约和只读验证入口见
+[装备 Catalog 候选数据治理](EQUIPMENT_CATALOG_GOVERNANCE.md)。经审计的 catalog 扩容属于 AR6，
+必须在独立 artifact 提交中保留现有四个 target ID 的兼容映射。
+
 顶层字段保持游戏无关（与 `hmm-core` 的 `ReplacementTarget` 一致），游戏专属字段放进 `metadata`：
 
 ```json
@@ -564,7 +570,8 @@ SQLite 中应持久化玩家状态：
 - 支持多源 slot 拆分。
 - 支持整套/单部位策略。
 - 评估二进制引用改写 transformer。
-- 扩展到武器、语音或其他游戏。
+- 武器已由独立的 [MHW:I 武器重定向设计](WEAPON_RETARGET_DESIGN.md) 承接，不扩张 Armor adapter。
+- 语音或其他游戏仍需独立 adapter/设计。
 
 ## 开放问题
 

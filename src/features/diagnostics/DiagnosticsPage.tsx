@@ -41,7 +41,7 @@ export function DiagnosticsPage() {
     if (!exportPromise) return;
     setExporting(true);
     void exportPromise.then((result) => {
-      pushToast({ eventKey: `diagnostics.exported.${result.exportId}`, title: "诊断包已导出", message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`, tone: "success" });
+      pushToast({ eventKey: `diagnostics.exported.${result.exportId}`, title: "诊断包已导出", message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，Debug 日志 ${result.debugLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`, tone: "success" });
       setConfirming(false);
     }).catch(() => pushToast({ eventKey: "diagnostics.export.failed", title: "诊断导出失败", message: "未生成诊断包，请稍后重试。", tone: "danger" }))
       .finally(() => setExporting(false));
@@ -145,6 +145,7 @@ function DiagnosticsContent({
       <section className="diagnostics-page__health" aria-label="诊断健康摘要">
         <HealthCard label="平台" status={snapshot.platformStatus} />
         <HealthCard label="App Log" status={snapshot.appLogStatus} />
+        <HealthCard label="Debug Log" status={combinedStatus(snapshot.debugLogStatus, snapshot.evidenceHealth.debugLogStatus)} />
         <HealthCard
           label="Task Log"
           status={combinedStatus(snapshot.taskLogStatus, snapshot.evidenceHealth.taskLogStatus)}
@@ -153,6 +154,7 @@ function DiagnosticsContent({
           label="Audit Log"
           status={combinedStatus(snapshot.auditLogStatus, snapshot.evidenceHealth.auditLogStatus)}
         />
+        <HealthCard label="日志空间" status={snapshot.evidenceHealth.logStorageStatus} />
       </section>
 
       {snapshot.platformSummary && (
@@ -170,6 +172,7 @@ function DiagnosticsContent({
 
       <section className="diagnostics-page__columns">
         <LogPanel title="App Log" status={snapshot.appLogStatus} lines={snapshot.appLogLines} />
+        <LogPanel title="Debug Log" status={snapshot.debugLogStatus} lines={snapshot.debugLogLines} />
         <LogPanel title="Task Log" status={snapshot.taskLogStatus} lines={snapshot.taskLogLines} />
       </section>
 

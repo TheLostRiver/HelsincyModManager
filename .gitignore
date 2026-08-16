@@ -47,6 +47,8 @@ tmp/
 temp/
 cache/
 backups/
+!src/features/backups/
+!src/features/backups/**
 .tmp/
 
 # Test coverage
@@ -55,6 +57,16 @@ lcov.info
 
 # Local agent worktrees
 .worktrees/
+
+# Codex desktop session metadata
+.reasonix/
+
+# Codex local tooling and personal configuration
+/.codex/*
+!/.codex/skills/
+/.codex/skills/*
+!/.codex/skills/hmm*/
+!/.codex/skills/hmm*/**
 
 # Subagent execution ledger
 .superpowers/

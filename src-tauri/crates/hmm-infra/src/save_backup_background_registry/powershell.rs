@@ -131,12 +131,37 @@ fn build_command_with_runtime(
                 .env("HMM_WORKER_PATH", &spec.worker_path)
                 .env("HMM_USER_SID", &spec.user_sid);
         }
+        ScheduledTaskCommand::Start(spec) => {
+            command
+                .env("HMM_OPERATION", "start")
+                .env(
+                    "HMM_SCHEDULED_TASKS_MODULE",
+                    &runtime.scheduled_tasks_module,
+                )
+                .env("HMM_TASK_NAME", &spec.task_name)
+                .env("HMM_OWNER_MARKER", &spec.owner_marker)
+                .env("HMM_WORKER_PATH", &spec.worker_path)
+                .env("HMM_USER_SID", &spec.user_sid);
+        }
         ScheduledTaskCommand::Unregister {
             task_name,
             owner_marker,
         } => {
             command
                 .env("HMM_OPERATION", "unregister")
+                .env(
+                    "HMM_SCHEDULED_TASKS_MODULE",
+                    &runtime.scheduled_tasks_module,
+                )
+                .env("HMM_TASK_NAME", task_name)
+                .env("HMM_OWNER_MARKER", owner_marker);
+        }
+        ScheduledTaskCommand::InstallerCleanup {
+            task_name,
+            owner_marker,
+        } => {
+            command
+                .env("HMM_OPERATION", "installer_cleanup")
                 .env(
                     "HMM_SCHEDULED_TASKS_MODULE",
                     &runtime.scheduled_tasks_module,
@@ -183,9 +208,13 @@ pub(super) fn parse_script_output(
         ("not_found", None, None) => Ok(ScheduledTaskCommandOutcome::Missing),
         ("found", None, Some(task)) => Ok(ScheduledTaskCommandOutcome::Found(Box::new(task))),
         ("completed", None, None) => Ok(ScheduledTaskCommandOutcome::Completed),
+        ("post_delete_owned", None, None) => Ok(ScheduledTaskCommandOutcome::PostDeleteOwned),
+        ("post_delete_foreign", None, None) => Ok(ScheduledTaskCommandOutcome::PostDeleteForeign),
         ("permission_required", None, None) => Ok(ScheduledTaskCommandOutcome::PermissionRequired),
         ("module_unavailable", None, None) => Ok(ScheduledTaskCommandOutcome::ModuleUnavailable),
         ("ownership_conflict", None, None) => Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
+        ("task_busy", None, None) => Ok(ScheduledTaskCommandOutcome::TaskBusy),
+        ("state_unverified", None, None) => Ok(ScheduledTaskCommandOutcome::StateUnverified),
         ("operation_failed", None, None) => Err(SaveBackupBackgroundRegistryError::OperationFailed),
         _ => Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput),
     }

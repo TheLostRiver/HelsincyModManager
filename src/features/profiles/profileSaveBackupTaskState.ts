@@ -15,8 +15,30 @@ export type ProfileSaveBackupTaskState =
   | { status: "starting" }
   | { status: "running"; taskId: string; phase: Exclude<ProfileSaveBackupTaskPhase, "save_backup.completed" | "save_backup.failed" | "save_backup.cancelled"> }
   | { status: "completed"; taskId: string; phase: "save_backup.completed"; resultRef: string | null }
-  | { status: "failed"; taskId: string | null; phase: "save_backup.failed"; message: string }
+  | {
+      status: "failed";
+      taskId: string | null;
+      phase: "save_backup.failed";
+      errorCode: string | null;
+      message: string;
+    }
   | { status: "cancelled"; taskId: string; phase: "save_backup.cancelled" };
+
+const errorMessages: Record<string, string> = {
+  write_admission_busy: "另一项存档操作正在进行，请稍后再试。",
+  write_admission_cancelled: "存档备份已取消。",
+  write_admission_order_violation: "存档操作顺序发生变化，请稍后重试。",
+  write_admission_unavailable: "暂时无法锁定存档写入，请稍后重试。",
+  save_backup_profile_missing: "当前配置档已不存在，请刷新后重试。",
+  save_backup_source_unset: "当前配置档尚未设置存档目录。",
+  save_backup_source_invalid: "当前配置档的存档目录无效，请先重新设置。",
+  save_backup_clock_unavailable: "无法建立可靠的备份时间，请稍后重试。",
+  save_backup_destination_unavailable: "备份目录当前不可用，请检查目录设置。",
+  save_backup_archive_write_failed: "无法写入存档备份，请检查备份目录。",
+  save_backup_history_unavailable: "备份历史当前不可用，请稍后重试。",
+  save_backup_retention_failed: "备份保留策略执行失败，请检查备份中心。",
+  save_backup_scheduler_lease_unavailable: "自动备份调度状态暂时不可用，请稍后重试。",
+};
 
 const profileSaveBackupTaskPhaseLabels: Record<ProfileSaveBackupTaskPhase, string> = {
   "save_backup.queued": "等待备份",
@@ -38,7 +60,20 @@ export function getProfileSaveBackupTaskPhaseLabel(phase: ProfileSaveBackupTaskP
 }
 
 export function defaultProfileSaveBackupTaskErrorMessage() {
-  return "存档备份失败";
+  return "存档备份失败，请稍后重试。";
+}
+
+export function getProfileSaveBackupTaskErrorCode(error: unknown) {
+  if (typeof error === "string") return normalizeProfileSaveBackupErrorCode(error);
+  if (error && typeof error === "object" && "code" in error) {
+    return normalizeProfileSaveBackupErrorCode(String(error.code));
+  }
+  return null;
+}
+
+export function getProfileSaveBackupTaskErrorMessage(error: unknown) {
+  const code = getProfileSaveBackupTaskErrorCode(error);
+  return code ? errorMessages[code] ?? defaultProfileSaveBackupTaskErrorMessage() : defaultProfileSaveBackupTaskErrorMessage();
 }
 
 export function nextProfileSaveBackupTaskStateFromProgress(
@@ -64,11 +99,14 @@ export function nextProfileSaveBackupTaskStateFromProgress(
   }
 
   if (phase === "save_backup.failed") {
+    const errorCode = getProfileSaveBackupTaskErrorCode(event.error)
+      ?? getProfileSaveBackupTaskErrorCode(event.message);
     return {
       status: "failed",
       taskId: event.taskId,
       phase,
-      message: event.error ?? event.message ?? defaultProfileSaveBackupTaskErrorMessage(),
+      errorCode,
+      message: getProfileSaveBackupTaskErrorMessage(errorCode),
     };
   }
 
@@ -89,4 +127,12 @@ export function nextProfileSaveBackupTaskStateFromProgress(
 
 export function shouldRefreshProfileSaveBackupHistory(state: ProfileSaveBackupTaskState) {
   return state.status === "completed";
+}
+
+function normalizeProfileSaveBackupErrorCode(value: string) {
+  const trimmed = value.trim();
+  const prefix = "save_backup_failed:";
+  const candidate = trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
+  if (!candidate || candidate.length > 96) return null;
+  return /^[a-z][a-z0-9_]*$/.test(candidate) ? candidate : null;
 }

@@ -33,9 +33,7 @@
   ],
   "checkScopes": {
     "preCommit": {
-      "excludePathPatterns": [
-        ".codex/**"
-      ]
+      "excludePathPatterns": []
     },
     "verify": {
       "excludePathPatterns": []
@@ -110,9 +108,7 @@
       "pnpm-lock.yaml",
       "Cargo.lock"
     ],
-    "excludePathPatterns": [
-      ".codex/**"
-    ]
+    "excludePathPatterns": []
   },
   "forbiddenFiles": {
     "extensions": [
@@ -123,6 +119,7 @@
       ".bak"
     ],
     "pathPatterns": [
+      ".codex/**",
       ".hmm/**",
       "tmp/**",
       "temp/**",
@@ -133,6 +130,9 @@
       "release-artifacts/**",
       "src-tauri/target/**",
       "target/**"
+    ],
+    "allowedPathPatterns": [
+      ".codex/skills/hmm*/**"
     ]
   },
   "secretPatterns": [

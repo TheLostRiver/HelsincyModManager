@@ -474,6 +474,48 @@ CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必
 - Production 四条 lifecycle 写命令在 CLI policy 和 runtime 两层拒绝；测试不得读取或写入真实
   Steam、游戏、存档、AppData、Scheduled Task 或第三方 Mod。
 
+CLI-3A 跨进程写入 admission 的聚焦入口：
+
+```powershell
+cargo test -p hmm-infra --test cross_process_write_admission -- --nocapture
+cargo test -p hmm-app --no-fail-fast
+cargo test -p hmm-runtime --no-fail-fast
+cargo test -p hmm-cli --no-fail-fast
+
+# 新 worktree 首次运行根 Tauri 测试前，先生成 ignored development sidecars。
+cmd /c corepack pnpm run prepare:windows-sidecars:dev
+cargo test -p hmm-tauri install_recovery_write_admission_errors_preserve_stable_codes_without_paths -- --nocapture
+cargo check -p hmm-infra -p hmm-app -p hmm-runtime -p hmm-cli -p hmm-tauri --all-targets
+```
+
+要求：
+
+- 独立子进程竞争同一 scope 时，一个持有，另一个在 deadline 返回 `write_admission_busy`；不同 profile
+  和不同 scope 不得错误互斥。
+- waiter cancellation 返回 `write_admission_cancelled`；逆序或同 scope 重入在平台等待前返回
+  `write_admission_order_violation`。
+- owner 不执行 guard Drop 而直接退出后，Windows 必须报告 `abandoned_owner`，Unix 必须报告
+  `stale_owner_metadata`，后续仍执行正常锁内事实重验。
+- 非法 namespace、link/reparse/symlink escape 和平台错误必须 fail closed 为
+  `write_admission_unavailable`；machine/UI/Task 投影不得包含 mutex 名、lock path、SID、app-data path
+  或原始平台错误。
+- install/backup/background fake admission 的 busy 分支不得进入 committer、backup executor 或 registry
+  mutation；restore 必须保持 `save -> game -> process-local game mutex`。
+- runtime composition 测试确认 GUI、Sandbox CLI 与固定 worker 使用同一 coordinator；Production
+  parser/runtime 写门禁继续拒绝，CLI-3A 不自动开放新 command。
+- Unix `cap-std`/`fs2` 分支必须由 Ubuntu required CI 实际编译运行。Windows 本机结果不能声称覆盖
+  Unix file-lock、no-follow 或路径替换回归测试。
+- 自动化只使用 temp/artificial app-data 与受控 helper 子进程，不读取真实游戏、Steam、玩家存档或
+  Scheduled Task。PR candidate 还必须运行一次完整 `scripts/verify.ps1`；安装态竞争和后台注册 scope
+  另在 disposable Windows 环境执行人工 gate。
+
+CLI-3A 首次认证 gate 已于 2026-08-16 完成：Ubuntu required CI run `31910573714` 实际覆盖 Unix
+file-lock/no-follow/path-replacement；disposable Windows synthetic 环境覆盖 helper timeout/cancel/
+abandoned owner、CLI game scope 竞争与释放、GUI/worker save scope busy fail-closed、释放后 backup 增长、
+background registration enable/disable 双向竞争。最终 owned task 为 `Ready`、archive/manifest 为
+`3/3`、live gate process 为 `0`。这些证据只认证 CLI-3A 共享互斥基础，不替代 CLI-3B 每个 Production
+写命令自己的 capability、token、Audit、锁内事实和 Windows 验收。
+
 CLI-0B shared composition 的聚焦入口：
 
 ```powershell
@@ -618,8 +660,8 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
 runtime/CLI，并为 same-revision retarget 提供纯只读 preview facts；T13-06 已落地 5 个窄 Tauri
 command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与同步 terminal event（仅 Sandbox
 模式可用）；T13-07 已落地批量 workflow（跨页选择、策略选择、preview/seal/start/result/retry
-状态机）、预览/结果 UI 与行为测试。disposable Windows Gate C（T13-08）仍未实现，4 个 viewport
-视觉 smoke 待人工验收。不得把后续场景写成已经通过。
+状态机）、预览/结果 UI、行为测试与 4 viewport smoke。T13-08 disposable Windows Gate C 已于
+2026-08-05 通过主链和受控 partial failure -> retry 补充链，并标记为 `certified`。
 
 | Task | 实现后必须覆盖的自动化 |
 | --- | --- |
@@ -631,7 +673,7 @@ command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与�
 | T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
 | T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、按 attemptNumber 绑定的分页（默认 50、最大 100）和 typed API wrapper；seal→start→result 端到端、重复 start 幂等、Production 拒绝；tauriContractCoverage 证明所有注册 command 已在契约文档登记 |
 | T13-07 | 跨页多选累积（翻页保留、搜索/筛选/刷新清空）、批量 preview/确认（策略显式单选、blocked 项确认）、start 进度、分页 result、partial success 和 retry UI；选择变化使旧 batch plan 失效；manifest installedRevisionId 数据源；前端不计算 target/retryable/文件规则；1440x900/1366x768/1280x800/480x800 视觉 smoke（人工） |
-| T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> restart -> recovery 检查 -> batch uninstall -> exact baseline，并清理受控产物 |
+| T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> 受控 partial failure -> retry retryable 项 -> restart -> recovery 检查 -> batch uninstall -> exact baseline；核对 task/Audit/journal、manifest/binding、backup/recovery/staging 清理与 evidence health |
 
 T13-05 Slice B/C 当前聚焦入口：
 
@@ -664,6 +706,24 @@ cmd /c corepack pnpm run lint
 cargo test -p hmm-app install_manifest_query --lib
 cargo test -p hmm-tauri --lib install_manifest
 ```
+
+T13-07/T13-08 最终验收证据：
+
+- release artifact SHA-256：
+  `08EF5FF15DAFDC00790C0975FAA160C792AF487D47C186271E93D09D84AB8C8D`。
+- `1440x900`、`1366x768`、`1280x800`、`480x800` 实际窗口 smoke 全部复验；没有路径泄漏，已发现的
+  480x800 stacking、浅色面板和终态刷新缺陷在最终 artifact 修复后重新通过。
+- Gate C 主链完成 install/restart/Alpha v2 true reinstall/Armor target switch/restart/recovery/uninstall，
+  最终 9 文件/212 字节 baseline 的路径、大小和 SHA-256 全部一致。
+- 受控 partial/retry batch `batch-94eedbc4-3006-4f76-aa39-b0d1bae71650`：attempt 0 task
+  `install-1785897638158-0` 为 `completed_with_errors`（0/1/2，三项 retryable）；attempt 1 task
+  `install-1785897713997-0` 为 3 成功。卸载 batch `batch-aab2d50e-7412-4694-9a7f-5433eed50b89`、task
+  `install-1785897949309-0` 为 3 成功。
+- 补充场景最终 manifest entries/bindings 与 profile status 投影为空，Recovery Center 归零，backup/
+  recovery 标准目录为空且无 staging；10 文件/243 字节 baseline 精确一致，三个 attempt 的 evidence
+  health 均未降级。
+- 全部验收只使用人工 fixture 和 disposable Sandbox；不得用这些步骤替代真实玩家数据保护边界，也不
+  因 Gate C 通过而开放 Production 写命令。
 
 T13-03 app 层批量卸载聚焦入口：
 
@@ -822,6 +882,127 @@ cargo test -p hmm-games-mhw --test armor_catalog
 trait contract、`mhw-armor-v1` seed、MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和
 Fatalis/Alatreon 精确隔离。
 
+### CAT-01 装备 Catalog 候选数据治理
+
+CAT-01 只校验人工 JSON 字符串和 schema 常量，不读取真实候选 catalog、第三方 Mod、游戏目录或
+玩家数据：
+
+```powershell
+cargo test -p hmm-games-mhw --test equipment_catalog_candidate --no-fail-fast
+cargo clippy -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+测试锁定 candidate schema version、完整 SHA-256 stable ID、legacy ID 兼容字段、locale/alias 归一化、
+active/hidden/dummy、provenance/licensing 与显式 bundling gate；负测覆盖绝对路径、`..`、大小写碰撞、
+重复 stable ID、重复展示名、错误 path family、缺失许可审核事实和报告不回显候选值。CAT-01 只验证
+`nativePC/wp/<family>/...` 的安全路径与 family 一致性；14 类 family、part/parser 与 transformer
+契约已由 WR-01 设计冻结，运行时实现已从 WR-02A 开始。
+
+### WR-01 / WR-02A 武器 Family、Parser 与人工最小 Catalog
+
+WR-01 是文档设计，聚焦检查为 Markdown link/whitespace。WR-02A 已实现，固定聚焦入口为：
+
+```powershell
+cargo test -p hmm-games-mhw --test weapon_retarget --no-fail-fast
+cargo clippy -p hmm-core -p hmm-ports -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+测试只使用人工 family/main/part 路径和人工最小 catalog。覆盖 14 类普通/`bs_` main id、六类已知
+副件映射、stable ID、alias、legacy id、unknown family/part、missing MOD3/MRL3 pair、大小写碰撞、
+多 source、混合 family 和混合 install payload。完整 603-target catalog 不得从来源未明私有数据生成。
+
+2026-08-05 候选验证：WR-02A 固定入口 15/15；当时 `cargo test -p hmm-games-mhw --no-fail-fast`
+共 63 个 unit/integration test 与 doc-tests 全部通过；上述三 crate all-targets clippy 通过。WR-02A
+交付范围没有 bundled weapon data、文件系统 I/O、binary transformer、staging 或真实游戏写入。
+
+### WR-03A 武器 Binary Parser 与 Transformer
+
+WR-03A 只使用完全人工构造的内存 bytes，固定入口为：
+
+```powershell
+cargo test -p hmm-games-mhw --test weapon_binary --no-fail-fast
+cargo test -p hmm-games-mhw --no-fail-fast
+cargo clippy -p hmm-core -p hmm-ports -p hmm-games-mhw --all-targets -- -D warnings
+```
+
+测试覆盖 MOD3/MRL3 magic/version/count/offset/bounds、texture/material/resource table、JAMCRC material
+pair compatibility、unsafe/absolute/traversal/control reference、精确 source/target root、六类副件 normal
+到 `bs_` mapping、ambiguous tail、255-byte 容量、跨 family、opaque timestamp、changed-range
+postcondition、确定性 source/output/mapping digest 和错误/`Debug` 脱敏。2026-08-05 候选验证：固定入口
+9/9；`hmm-games-mhw` 共 72 项及 doc-tests 全过；上述三 crate all-targets clippy 通过。
+
+### WR-03B Transformer Staging / InstallPlan / Manifest
+
+WR-03B 只使用人工 bytes、fake services 与 temp roots，固定聚焦入口为：
+
+```powershell
+cargo test -p hmm-core -p hmm-ports -p hmm-infra -p hmm-games-mhw -p hmm-app -p hmm-runtime
+cargo clippy -p hmm-core -p hmm-ports -p hmm-infra -p hmm-games-mhw -p hmm-app -p hmm-runtime --all-targets -- -D warnings
+cargo test -p hmm-runtime --test weapon_transform_lifecycle --no-fail-fast
+```
+
+测试覆盖 invocation/adapter facts 的 schema、上限与旧 JSON 缺省兼容，registry duplicate/unknown/stale
+fail-closed，source/dependency/output/mapping digest 漂移，`.partial` 清理，大小写碰撞、target escape 和
+symlink/junction containment。plan hash、reinstall token、batch digest、manifest/recovery 与 Audit
+projection 都有直接断言；Audit 不得包含 digest、invocation 参数、texture path 或本地路径。
+
+temp-root lifecycle 使用人工 MOD3/MRL3 bytes 证明 install -> JSON manifest restart -> same-revision target
+switch -> JSON manifest restart -> manifest uninstall -> byte-for-byte baseline；既有事务测试继续覆盖 commit
+failure/rollback success 和 rollback failure/recovery-required。2026-08-05 候选聚焦验证中，`hmm-app`
+431 项、`hmm-infra` 308 项（另 3 项环境型 ignored）、`hmm-runtime` 66 项与 weapon lifecycle 1 项通过，
+受影响六 crate 的 tests/doc-tests 和 all-targets clippy 全部通过。自动测试不得读取游戏原始 binary、
+真实 Mod、真实游戏目录、AppData 或玩家数据。
+
+### WR-04 Weapon Tauri / UI / Windows Gate D
+
+WR-04 继续只使用人工 MOD3/MRL3 bytes、fake services、temp roots 和 disposable Windows Sandbox。
+Production composition 必须保持 Armor-only；只有显式 `HMM_SANDBOX_DATA_DIR` 环境可以同时启用人工
+Weapon seed 与 lifecycle root admission。固定聚焦入口为：
+
+```powershell
+cargo test -p hmm-games-mhw -p hmm-app -p hmm-runtime -p hmm-tauri
+cargo test -p hmm-games-mhw developer_router_builds_content_sealed_weapon_plan_from_artificial_bytes
+cargo test -p hmm-runtime composition::tests
+cargo clippy -p hmm-core -p hmm-ports -p hmm-infra -p hmm-games-mhw -p hmm-app -p hmm-runtime -p hmm-tauri --all-targets -- -D warnings
+cmd /c corepack pnpm run typecheck
+cmd /c corepack pnpm run lint
+cmd /c corepack pnpm run test
+cmd /c corepack pnpm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-boundaries.ps1
+```
+
+契约测试必须断言 `list_replacement_targets({ gameId, modId, query? })`、camelCase DTO、稳定错误码、
+`catalogScope = production | developer_sandbox`，并拒绝 relative path、path-family、staging、digest 和
+transform invocation 泄漏。人工 Weapon 正向测试应证明 2 个动作中恰有 1 个 sealed transform；Production
+同类 source 返回 `weapon_developer_seed_unavailable`。Sandbox capability 正负测试还应覆盖合法 marker
+与 app/game containment 放行、Sandbox 外 game root 拒绝、link/reparse/marker 篡改 fail closed，以及
+Production environment 无法启用 developer seed。
+
+Gate D 必须从最终 Tauri artifact 和全新的 disposable Sandbox root 开始。先记录人工 game fixture 的
+相对路径集合、文件大小和 SHA-256，再通过 GUI 导入人工 Weapon fixture，完成 initial target install ->
+关闭并重启 GUI -> same-revision true reinstall `one001 -> one002` target switch -> 关闭并重启 GUI ->
+manifest uninstall。每一步记录 UI analysis/preview/result、task id、installed target、manifest/recovery 与
+脱敏日志；最终断言 manifest 和 recovery 为空，backup/staging 无残留，game fixture 的路径集合、大小和
+SHA-256 与初始 baseline 完全一致。不得使用真实游戏、存档、AppData 或第三方 Mod。
+
+视觉 smoke 在 replacement analysis、preview、running/result、warning/error 等实际状态下检查
+`1440x900`、`1366x768`、`1280x800`、`480x800`，并覆盖 light/dark/system。重点确认 modal 高于全局
+“当前游戏”顶栏，窄屏可以滚动到全部内容和操作按钮，文本不截断、不重叠，不显示 package/game/
+staging 路径或 path-family。只有 automated checks、视觉 smoke 和上述 exact-baseline 生命周期全部通过，
+WR-04 才可标记 `certified`。
+
+2026-08-06 Gate D 已按上述门禁标记为 `certified`：最终 artifact SHA-256 为
+`156c42118c6620d803c1611397c55c1847ab782bb6505cd713c56a17398ea2af`，完整 `verify.ps1` 退出码 0，
+Tauri 188 passed / 1 ignored。Sandbox task 为 initial install `install-1785952182807-1`、target switch
+`install-1785953522595-0`、uninstall `install-1785955067791-0`；对应 Audit Log 均为 success。最终
+manifest entries/bindings 与 recovery/staging 为空，10 文件/316 bytes 的路径、大小和 SHA-256 baseline
+差异均为 0。light 覆盖四个固定 viewport，dark 覆盖 1280x800/480x800，system 覆盖 1366x768。
+
+本次认证保留以下非阻断残余风险：全局顶栏目录状态陈旧、无元数据 Mod 的技术型 fallback 名称、空
+NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口，
+以及 `max-width: 1360px` 下 `.window-tools` 被隐藏导致窄屏主题菜单不可达。后续相关修复应补聚焦 UI/
+contract 测试；这些缺陷不改变本次已验证的 replacement modal 层级、滚动、路径脱敏和生命周期结果。
+
 ### ARMOR_RETARGET AR2
 
 AR2 只使用人工 package file identity 和相对路径字符串，不读取真实 Mod、游戏目录或玩家数据：
@@ -946,7 +1127,7 @@ Beta 当前目标。最终 manifest 卸载恢复为与 `Before` 长度和 SHA-25
 - 保留数量限制。
 - 备份目录不可写。
 - 源目录与备份目录包含关系拒绝。
-- symlink/junction 逃逸拒绝。
+- 源根与递归子项的 symlink/junction/reparse point 逃逸拒绝；根外 sentinel 不得进入 archive。
 - 大小写路径碰撞拒绝。
 - `save_backup.*` 任务事件携带 `taskId`。
 - 前端 typed API 只传 `gameId`、`profileId`、`note` 和 `limit`，不传路径、manifest、backup ref、sandbox/cache 或 hash。
@@ -967,6 +1148,58 @@ cargo test -p hmm-infra --test save_backup_writer
 cargo test -p hmm-tauri save_backup
 cmd /c corepack pnpm run test -- src/features/profiles/profileApi.test.mjs
 ```
+
+SAVE-04 玩家存档恢复至少运行以下聚焦测试：
+
+```powershell
+cargo test -p hmm-app --test save_restore -- --nocapture
+cargo test -p hmm-app --test save_restore_task -- --nocapture
+cargo test -p hmm-infra save_restore -- --nocapture
+cargo test -p hmm-infra --test save_restore_validator -- --nocapture
+cargo test -p hmm-tauri save_restore -- --nocapture
+cmd /c corepack pnpm run test -- src/features/profiles/profileSaveRestoreApi.test.mjs src/features/profiles/profileSaveRestoreTaskState.test.mjs src/features/profiles/profileSaveRestoreUi.test.mjs src/features/profiles/profileFrontendIntegration.test.mjs
+node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs
+```
+
+SAVE-04 自动化必须只使用 temp/artificial save、backup、SQLite 和 fake task/audit/clock fixture。必须覆盖
+backup source 根与递归子项的 link/junction/reparse 拒绝及根外 sentinel 不归档、preview token identity/过期/stale、archive/manifest/hash/path/size/containment 拒绝、目标与 staging
+摘要漂移、非 UTF-8/过长/过深相对路径、单组件长度和目录节点预算拒绝、默认开启与关闭 pre-restore 的二次确认、独立 `pre-restore/` 目录和普通 retention 排除、
+pre-restore 备份失败 fail closed、共享 game/profile 写锁串行、commit barrier 取消、目录交换成功、
+rollback 与 recovery-required 证据保留、`Committing -> Committed -> Completed` 持久化顺序、finalize 部分成功后的幂等重试，以及 durable `Completed` 后 Task/Audit evidence degradation
+不得伪造业务失败。取消测试还必须故障注入事务终态写入失败，断言 prepared staging 不清理、未完成事务
+继续阻断、runner 发送 recovery-required 且 Audit 使用稳定错误码。前端测试必须锁定 command 名、camelCase
+DTO、精确 `taskId + kind + phase + status` 匹配、early-event buffer、recovery-required 覆盖乐观 cancelled、
+未保存设置时恢复入口禁用、rolled-back cleanup warning 可见、Modal 终态可见和无路径/manifest/hash 字段。
+退出保护还必须覆盖 active restore 拒绝完全退出、runner 释放 scope 后才可原子关闭后续 restore admission、
+`blocked` DTO 不携带授权，以及 blocked UI 只显示返回应用/收起托盘而不显示 override exit。
+
+真实存档或 Windows 桌面恢复验收只能在 disposable 一次性账户/VM 中使用人工最小 fixture；不能读取
+真实 Steam userdata、游戏目录、玩家存档或真实 Scheduled Task。SAVE-04 在该人工 gate 完成前只能记录为
+“实现完成、等待验收”，不得写成 `certified`。
+
+SAVE-05 retention 与备份中心使用 fake repository 与 temp filesystem，至少覆盖：
+
+- count/age/space 单独及组合规则、边界时间和确定性排序。
+- 最新普通备份与所有 `pre_restore` 保护点不被普通 retention 删除。
+- 保护点或问题项导致预算无法收敛时返回 blocked，而不是突破保护或伪报成功。
+- `Completed -> RetentionPending -> DeletedByRetention | RetentionPartial` 持久化事实链。
+- begin intent 失败、archive/manifest 单项缺失、单项删除失败、最终 DB 写回失败与下一次重试收敛。
+- link/junction/reparse、目录或文件 identity 替换 fail closed，外部 sentinel 不受影响。
+- 跨 Profile 分页、筛选、聚合、备注，以及确认 Steam 展示 snapshot 的 migration/保留/清空语义。
+- 同 game/profile 的 queued/running backup、备份末尾 retention、显式 retention 与 restore 共享维护 scope；
+  双向冲突均 fail closed，不同 scope 不受影响。
+- task 创建失败或 panic、runner error/panic、queued restore abort 和 terminal 路径都会释放维护 scope；restore
+  退出 admission 仍只统计 restore task，不把普通备份或 retention 计入 active restore。
+
+前端聚焦测试覆盖 `/backups` 路由、loading/empty/error/partial/blocked、筛选分页、备注、整理反馈、
+“立即整理”二次确认及取消默认焦点、搜索/空间预算输入边界、持久化头像 URL 二次白名单和 SAVE-04 恢复入口。
+浏览器或 Windows 人工 smoke 至少覆盖 `1440x900`、`1280x800` 和 `480x800`，不得出现横向滚动才能发现
+恢复操作的布局。所有 fixture 仍只能使用 temp/artificial 数据。
+
+SAVE-05 已于 2026-08-16 按上述边界完成认证。disposable Windows synthetic gate 覆盖数量、年龄、空间、
+保护点 blocked、manifest 锁定 partial/释放后重试、备份中心恢复入口和完全退出后的持久化复核；最终
+archive/manifest 为 `3/3`、`pre_restore=1/1`、需处理为 0。证据与候选信息记录在
+[SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。
 
 自动备份调度状态与后台保护状态查询切片至少运行聚焦测试：
 
@@ -1014,6 +1247,54 @@ node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
 
 真实 Windows 验收只允许人工在一次性本地账户或 VM 按 [Windows 存档后台任务人工 Smoke](testing/windows-save-backup-scheduled-task-smoke.md) 执行。只有安装态 sibling worker、任务真实触发、fresh heartbeat 和最终 cleanup 全部通过，才能记录 Windows runtime acceptance；不得在开发者日常账户为了完成 checklist 运行 ignored smoke。
 
+P7.2c installer ownership cleanup 至少运行以下聚焦检查；真实安装器验收按
+[Windows 存档后台任务安装器清理人工 Smoke](testing/windows-save-backup-installer-cleanup-smoke.md)
+执行：
+
+```powershell
+node --test scripts/windows-installer-cleanup-config.test.mjs scripts/prepare-windows-sidecars.test.mjs
+cargo test -p hmm-infra save_backup_installer_cleanup
+cargo test -p hmm-infra save_backup_background_registry::tests
+cargo test -p hmm-tauri installer_cleanup
+```
+
+聚焦测试必须锁定 helper 只执行 `Identity -> InstallerCleanup` 两次受控进程调用；单个 cleanup
+PowerShell 操作内部必须在删除前两次复核 owner/state，并在删除后 read-back。foreign 与 busy 分支必须在
+`Unregister-ScheduledTask` 前返回，post-delete owned/foreign 分别映射为 removal/ownership unverified。
+
+Windows sidecar 准备脚本必须仅对 `windows-msvc` 目标追加静态 CRT 构建标志，并在复制 bundle 输入前
+拒绝仍导入 `VCRUNTIME140`、`MSVCP140` 或 UCRT runtime API 的产物。disposable VM 不预装 Visual C++
+Redistributable；安装器 helper/worker 不能把该运行库作为隐性前提。
+
+Windows packaging build gate 只生成并检查 artifact，不安装或运行 installer：
+
+```powershell
+corepack pnpm tauri build --bundles nsis --debug
+corepack pnpm tauri build --bundles msi --debug --config tauri.msi-build-test.conf.json
+```
+
+MSI 版本覆盖文件仅用于本地验证，不能提交；使用 WiX `dark.exe` 反编译确认最终 MSI 同时包含
+`RunInstallerCleanup`、cleanup helper `FileKey`、`Before="RemoveFiles"` 和
+`REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`。只有一次性 Windows 账户或 disposable VM
+完成 interactive/silent uninstall、upgrade/repair/modify、foreign/running/owned task 矩阵后，
+才能记录 P7.2c runtime acceptance；普通自动化不得创建、运行或删除真实 Scheduled Task。
+
+后台保护注册后的首次运行还必须覆盖以下契约：
+
+- register mutation 先返回完整 task read-back，Rust 必须复验 owner、SID、action、固定 `--once`、trigger、
+  settings 和 canonical non-link worker；漂移或 foreign owner 时不得进入首次启动阶段。
+- 首次启动只能使用 infra 内部构造的同一 `ScheduledTaskSpec`；PowerShell 对需要启动的 `Ready` task
+  在启动前执行两次 exact-owned read-back，并只允许 `Start-ScheduledTask -InputObject`，不得按 task name
+  盲启；启动后还要复验 exact 与 `Ready/Running/Queued` 状态。
+- task 为 `Ready` 时发起一次启动；已为 `Running/Queued` 时不重复启动；其他状态 fail closed。
+- 启动命令失败、启动前 TOCTOU 漂移或启动后 read-back 不 exact 时，register 不得返回 `Registered`，
+  也不得写入或伪造 worker heartbeat。
+- `inspect()` 保持纯只读，不启动任务。自动化使用 fake runner 与 PowerShell 静态契约；真实首次运行、
+  fresh heartbeat 和 Settings 自动收敛只在 disposable Windows Sandbox/VM 验收。
+WiX 会把外部 EXE custom action 的所有非零返回统一投影为 MSI `1722/1603`；人工验收必须同时读取
+安装目录与 task 的聚合状态来确认 fail-closed，不得把通用 MSI 返回误记为 helper 原始 `20/21/22/23`。
+交互提示只能使用固定、非敏感的操作建议，不能显示 task name、SID、路径、XML 或 helper 原始输出。
+
 P7.2b 全局用户意图、Settings/Profile 边界和统一退出保护至少运行：
 
 ```powershell
@@ -1031,7 +1312,20 @@ node --test src/features/profiles/profileFrontendIntegration.test.mjs src/featur
 node --test src/app/window-lifecycle/windowLifecycleUi.test.mjs src/app/window-lifecycle/windowClosePreference.test.mjs
 ```
 
-要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed/sequence clock；enable/disable 必须覆盖并发转换串行，global heartbeat 必须覆盖 cycle completion timestamp 与正常业务 skip。前端测试锁定 Settings 唯一控制入口、Profile 只读、稳定 status/reason/code、未知 runtime 值的 fail-closed fallback 和 unsafe no-remember。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 5 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
+要求：SQLite repository 使用临时数据库；service/worker/exit guard 使用 fake registry、fake repositories 和 fixed/sequence clock；enable/disable 必须覆盖并发转换串行，global heartbeat 必须覆盖 cycle completion timestamp 与正常业务 skip。registry 测试必须锁定当前用户 SID 在同一进程内复用；Windows 只读链路必须锁定为当前进程 token 的原生 SID 读取与 Task Scheduler COM inspect、完整字段映射、账户名到 SID 归一化和异常 fail closed，且不得启动 PowerShell。register/update、start、unregister 与 installer cleanup 仍走既有 PowerShell mutation 安全链。register/update 与 unregister 分别在单个 mutation 命令中完成 ownership 检查和最终 read-back，app service 不得在成功 mutation 后追加重复 inspect。前端测试锁定 Settings 唯一控制入口、只有开关控件可触发启停、检查/启停动态反馈、页面 remount 不自动重检、显式刷新、Profile 只读、稳定 status/reason/code、未知 runtime 值的 fail-closed fallback 和 unsafe no-remember。启用后的有限自动复查必须覆盖约 0.75 秒、3 秒、1、5、10、16 分钟累计节点，短周期读回不得降低 fresh-heartbeat 判定。普通自动化与 `verify.ps1` 仍不得创建、更新、启动或删除真实 Scheduled Task，也不得读取真实游戏、Steam userdata 或玩家存档。`starting` 20 分钟与 `protected` 45 分钟边界必须覆盖；真实安装态 runtime acceptance 仍按上一段人工 gate 执行。
+
+Windows 安装态退出生命周期必须在 disposable Sandbox/VM 额外验证：点击“完全退出应用程序”后，
+窗口应立即隐藏，且 5 秒内 `hmm-tauri` 与其 `msedgewebview2` 子进程均不存在；托盘收起/恢复仍可用；后台保护 unsafe
+确认仍先经过后端 guard，明确 override 时仍先完成最小 Audit。App Log 应依次包含
+`application.exit_requested`、`application.exit_request_received`、`application.exit_started` 和
+`application.event_loop_stopped`。缺少后两项时先按事件循环/资源清理故障调查，不能通过 CIM、
+`taskkill` 或卸载器关闭提示把该 case 记为通过。证据还必须记录 `application.exit_guard_evaluated.duration_ms`
+和从点击退出到进程消失的实际耗时，以区分实时 Task Scheduler 读回与 Tauri/WebView2 资源清理延迟。
+SAVE-04 人工验收还必须在 artificial fixture 的 restore queued/running 阶段请求完全退出：窗口必须恢复并显示
+不可 override 的恢复保护提示，不能终止 `hmm-tauri` 或显示“仍然退出”；收起托盘后 restore 必须继续达到
+terminal，随后才允许完全退出。该步骤只可在 disposable VM/Sandbox 进行，不能使用真实玩家存档。
+
+SAVE-04 当前已按上述门禁完成认证；证据矩阵和候选哈希记录在 [SAVE-04 验收记录](SAVE_04_ACCEPTANCE.md)。
 
 存档目录自动发现切片至少运行聚焦测试：
 
@@ -1116,6 +1410,77 @@ JSONL reader 兼容、UTC 日轮转、14 天保留、初始化/运行时写入�
 祖先目录替换或链接无法把写入/删除引向根外、外部 sentinel 保持不变，以及 Unix `logs`/`logs/app`
 目录 `0700`、日文件 `0600`。测试只使用临时 app data、fixed clock 和人工敏感字符串；sidecar、日志和
 诊断包均为 ignored 生成物，不能提交。
+
+LOG-01 Task/Audit retention 聚焦验证：
+
+```powershell
+cargo test -p hmm-infra log_retention
+cargo test -p hmm-infra task_log
+cargo test -p hmm-infra audit_log
+cargo test -p hmm-infra text_log
+cargo test -p hmm-infra diagnostics_health
+cargo test -p hmm-runtime retention --no-fail-fast
+cargo test -p hmm-app support_diagnostics --no-fail-fast
+cargo test -p hmm-tauri diagnostics --lib --no-fail-fast
+node --test src/features/diagnostics/diagnosticsPage.test.mjs
+cargo clippy -p hmm-ports -p hmm-infra -p hmm-app -p hmm-runtime -p hmm-tauri --all-targets -- -D warnings
+```
+
+必须覆盖含当天在内的 Task 30 天 mtime 边界、Audit 90 天合法 UTC 文件名边界、未知/非法/non-regular
+entry 保留、Task/Audit 类别独立失败、稳定 retention health code/count、write/post-commit 严重度优先级，
+以及 Windows junction / Unix symlink 下根外 sentinel 不读、不写、不删。共享 composition 测试必须证明
+完整 runtime 启动执行一次清理；只读 automation 保持无清理副作用。DTO、support diagnostics JSON 与
+前端类型必须包含 retention 状态/计数且不新增路径或原始错误字段。所有文件系统用例只使用 temp/fake/
+人工日志，不读取或清理真实 AppData、游戏目录、存档、Steam 或第三方 Mod。
+
+LOG-02 日志总空间预算聚焦验证：
+
+```powershell
+cargo test -p hmm-infra log_storage_budget -- --nocapture
+cargo test -p hmm-infra managed_log -- --nocapture
+cargo test -p hmm-infra app_settings_repository -- --nocapture
+cargo test -p hmm-app app_settings -- --nocapture
+cargo test -p hmm-app support_diagnostics -- --nocapture
+cargo test -p hmm-runtime shared_runtime_ -- --nocapture
+cargo test -p hmm-runtime invalid_persisted_log_budget -- --nocapture
+cargo test -p hmm-runtime corrupted_log_settings -- --nocapture
+cargo test -p hmm-tauri dto_tests -- --nocapture
+cargo test -p hmm-tauri diagnostics -- --nocapture
+node --test src/features/diagnostics/diagnosticsPage.test.mjs
+```
+
+必须覆盖默认 128 MiB、显式最小 1 MiB、旧 schema 缺失字段兼容和损坏/非法 settings 回退；清理顺序
+必须证明 Debug/Task 同层按最旧、再 App、最后仅删除 30 天硬下限之外的 Audit。当前 UTC 日 App/Debug、
+最近 30 天 Audit、未知/非法/non-regular/link/junction/reparse entry 必须保留。用例还必须覆盖 16 KiB
+维护 Audit reserve、受保护或超大文件导致的 `unsatisfied`、类别独立失败、目录漂移和文件替换复验，
+以及维护 Audit 至多写一条且不会递归触发第二次清理。
+
+settings command/DTO 测试必须证明 Tauri 只接受和返回 `{ maxBytes }`，使用 camelCase，非法值返回稳定
+`log_storage_max_bytes_invalid`，不暴露日志路径、文件名或删除参数。diagnostics Rust/TypeScript 契约
+必须覆盖 `logStorageStatus` 与三类计数。所有测试只使用 temp/fake/人工日志；不得读取或清理真实
+AppData、游戏、Steam、存档、Scheduled Task 或第三方 Mod。
+
+LOG-03 Debug Log 聚焦验证：
+
+```powershell
+cargo test -p hmm-infra debug_log --lib
+cargo test -p hmm-infra log_retention --lib
+cargo test -p hmm-app app_settings --lib
+cargo test -p hmm-app support_diagnostics --lib
+cargo test -p hmm-runtime composition --lib
+cargo test -p hmm-runtime diagnostics_automation --lib
+cargo test -p hmm-tauri dto --lib
+node --test src/features/settings/debugLogSettings.test.mjs src/features/diagnostics/diagnosticsPage.test.mjs
+cmd /c corepack pnpm run typecheck
+```
+
+必须覆盖默认关闭、旧 settings 缺字段兼容、显式开启持久化、损坏 settings fail-closed、保存失败不改变
+进程内开关，以及禁用时不创建 `logs/debug`。writer 只接受固定 schema 与稳定 code/ID/数值字段；路径型、
+自由文本、credential、manifest/hash/Mod/save 内容必须拒绝且累计稳定 health。7 日 UTC retention 必须保留
+边界日、非法日期、未知/non-regular/link/junction/reparse entry；Debug 类别失败不得阻断 Task/Audit。
+diagnostics page/export、CLI snapshot、Tauri DTO 和 TypeScript 类型必须包含 Debug status/count/line count，
+但不得返回日志目录、任意文件名参数、原始错误或正文到只读 CLI。所有文件系统用例只使用 temp/fake/人工
+日志，不访问真实 AppData、游戏目录、Steam、存档或第三方 Mod。
 
 ## 游戏适配器
 

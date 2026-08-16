@@ -1,16 +1,21 @@
 use anyhow::Result;
 use hmm_app::{
-    CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupError, SaveBackupExecutor,
-    SaveBackupTaskRunner, SaveBackupTaskService, SaveBackupWarning, StartSaveBackupTaskRequest,
-    TaskKind, TaskManager, TaskManagerError, TaskStatus,
+    CreateSaveBackupRequest, CreateSaveBackupResult, CrossProcessWriteAdmissionCoordinator,
+    SaveBackupError, SaveBackupExecutor, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
+    SaveBackupTaskService, SaveBackupWarning, SaveProfileMaintenanceScopeRegistry,
+    StartSaveBackupTaskRequest, TaskKind, TaskManager, TaskManagerError, TaskStatus,
 };
 use hmm_core::{
-    GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
-    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
-    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
-    SaveBackupWorkerHeartbeat,
+    GameId, ProfileId, SaveBackupBackgroundProtectionStatus, SaveBackupRetentionOutcome,
+    SaveBackupRetentionReport, SaveBackupSchedulerLeaseRenewalRequest,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
+    SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, SaveBackupSchedulerStateRepository};
+use hmm_ports::{
+    AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmission,
+    CrossProcessWriteAdmissionError, CrossProcessWriteAdmissionResult, CrossProcessWriteGuard,
+    CrossProcessWriteScope, SaveBackupSchedulerStateRepository,
+};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -31,6 +36,51 @@ fn start_save_backup_task_returns_queued_save_backup_task() {
     assert_eq!(
         task_manager.task_status(&task.task_id),
         Some(TaskStatus::Queued)
+    );
+}
+
+#[test]
+fn cross_process_busy_stops_save_backup_before_executor() {
+    let task_manager = Arc::new(TaskManager::new());
+    let coordinator = Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+        Arc::new(RejectingCrossProcessAdmission(
+            CrossProcessWriteAdmissionError::Busy,
+        )),
+        Duration::from_millis(1),
+    ));
+    let scope_registry = Arc::new(SaveBackupTaskScopeRegistry::with_maintenance_registry(
+        Arc::new(
+            SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(coordinator),
+        ),
+    ));
+    let service = SaveBackupTaskService::with_scope_registry(
+        Arc::clone(&task_manager),
+        Arc::clone(&scope_registry),
+    );
+    let task = service
+        .start_save_backup_task(sample_request())
+        .expect("save backup task starts");
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(sample_result()));
+    let runner = SaveBackupTaskRunner::with_scope_registry(
+        Arc::clone(&task_manager),
+        executor.clone(),
+        Arc::new(RecordingAuditLogWriter::default()),
+        Arc::new(FixedClock),
+        scope_registry,
+    );
+
+    let error = runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect_err("busy admission must reject save backup");
+
+    assert!(executor.take_requests().is_empty());
+    assert_eq!(
+        error.events.last().and_then(|event| event.error.as_deref()),
+        Some("save_backup_failed:write_admission_busy")
+    );
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Failed)
     );
 }
 
@@ -842,6 +892,7 @@ fn run_save_backup_task_records_retention_warning_audit_without_failing_task() {
     let executor = Arc::new(RecordingSaveBackupExecutor::ok(CreateSaveBackupResult {
         summary: sample_summary(),
         warnings: vec![SaveBackupWarning::RetentionFailed],
+        retention_report: None,
     }));
     let audit_log = Arc::new(RecordingAuditLogWriter::default());
     let runner = SaveBackupTaskRunner::new(
@@ -873,6 +924,135 @@ fn run_save_backup_task_records_retention_warning_audit_without_failing_task() {
         events[1].fields["error_code"],
         "save_backup_retention_failed"
     );
+}
+
+#[test]
+fn run_save_backup_task_records_structured_retention_audit_fields() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let executor = Arc::new(RecordingSaveBackupExecutor::ok(CreateSaveBackupResult {
+        summary: sample_summary(),
+        warnings: vec![SaveBackupWarning::RetentionPartial],
+        retention_report: Some(SaveBackupRetentionReport {
+            outcome: SaveBackupRetentionOutcome::Partial,
+            evidence_degraded: false,
+            scanned_count: 7,
+            protected_count: 2,
+            problem_count: 1,
+            candidate_count: 3,
+            deleted_count: 2,
+            partial_count: 1,
+            blocked_count: 1,
+            archive_bytes_before: 4_096,
+            archive_bytes_after: 1_024,
+            released_bytes: 3_072,
+            max_total_bytes: Some(512),
+            budget_satisfied: false,
+        }),
+    }));
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    let runner = SaveBackupTaskRunner::new(
+        Arc::clone(&task_manager),
+        executor,
+        audit_log.clone(),
+        Arc::new(FixedClock),
+    );
+
+    runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect("partial retention must not fail the completed backup");
+
+    let events = audit_log.take_events();
+    assert_eq!(events.len(), 2);
+    let retention = &events[1];
+    assert_eq!(retention.operation, "retention_pruning");
+    assert_eq!(retention.result, "warning");
+
+    assert_eq!(
+        retention
+            .fields
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec![
+            "archive_bytes_after",
+            "archive_bytes_before",
+            "blocked_count",
+            "budget_satisfied",
+            "candidate_count",
+            "deleted_count",
+            "error_code",
+            "game_id",
+            "outcome",
+            "partial_count",
+            "problem_count",
+            "profile_id",
+            "protected_count",
+            "released_bytes",
+            "scanned_count",
+            "task_id",
+            "trigger",
+        ]
+    );
+    assert_eq!(retention.fields["outcome"], "partial");
+    assert_eq!(retention.fields["protected_count"], "2");
+    assert_eq!(retention.fields["problem_count"], "1");
+    assert_eq!(retention.fields["scanned_count"], "7");
+    assert_eq!(retention.fields["candidate_count"], "3");
+    assert_eq!(retention.fields["deleted_count"], "2");
+    assert_eq!(retention.fields["partial_count"], "1");
+    assert_eq!(retention.fields["blocked_count"], "1");
+    assert_eq!(retention.fields["released_bytes"], "3072");
+    assert_eq!(retention.fields["budget_satisfied"], "false");
+    assert_eq!(
+        retention.fields["error_code"],
+        "save_backup_retention_partial"
+    );
+
+    let serialized = serde_json::to_string(&retention.fields).expect("serialize retention audit");
+    for forbidden in ["manual note", "manifest", "hash", "C:/", "\\\\", "steam_id"] {
+        assert!(
+            !serialized.contains(forbidden),
+            "retention audit must not contain {forbidden:?}"
+        );
+    }
+}
+
+#[test]
+fn run_save_backup_task_reports_audit_evidence_degradation_without_failing_backup() {
+    let task_manager = Arc::new(TaskManager::new());
+    let task = task_manager
+        .create_task(TaskKind::SaveBackup)
+        .expect("task can be created");
+    let audit_log = Arc::new(RecordingAuditLogWriter::default());
+    audit_log.set_fail(true);
+    let runner = SaveBackupTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::new(RecordingSaveBackupExecutor::ok(sample_result())),
+        audit_log,
+        Arc::new(FixedClock),
+    );
+
+    let events = runner
+        .run_save_backup_task(&task.task_id, sample_request())
+        .expect("audit failure cannot reclassify a durable backup");
+
+    assert_eq!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Completed)
+    );
+    let completed = events.last().expect("completed event");
+    assert_eq!(completed.phase, "save_backup.completed");
+    assert_eq!(completed.status, TaskStatus::Completed);
+    assert_eq!(
+        completed.error.as_deref(),
+        Some("save_backup_evidence_degraded")
+    );
+    assert!(!events
+        .iter()
+        .any(|event| event.phase == "save_backup.failed"));
 }
 
 #[test]
@@ -976,6 +1156,7 @@ fn sample_summary() -> SaveBackupSummary {
         archive_file_name: "20260704-221530_mhw_profile-default_manual.zip".to_owned(),
         manifest_file_name: "20260704-221530_mhw_profile-default_manual.manifest.json".to_owned(),
         archive_size_bytes: 128,
+        retention_released_bytes: 0,
         archive_sha256: "sha256:test".to_owned(),
         file_count: 1,
         created_at: 42,
@@ -996,12 +1177,26 @@ fn sample_result() -> CreateSaveBackupResult {
     CreateSaveBackupResult {
         summary: sample_summary(),
         warnings: Vec::new(),
+        retention_report: None,
     }
 }
 
 struct RecordingSaveBackupExecutor {
     result: Mutex<Result<CreateSaveBackupResult, SaveBackupError>>,
     requests: Mutex<Vec<(CreateSaveBackupRequest, SaveBackupTrigger)>>,
+}
+
+struct RejectingCrossProcessAdmission(CrossProcessWriteAdmissionError);
+
+impl CrossProcessWriteAdmission for RejectingCrossProcessAdmission {
+    fn acquire(
+        &self,
+        _scope: &CrossProcessWriteScope,
+        _timeout: Duration,
+        _cancellation: &dyn CancellationToken,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        Err(self.0)
+    }
 }
 
 impl RecordingSaveBackupExecutor {
@@ -1106,9 +1301,14 @@ impl SaveBackupExecutor for PanickingSaveBackupExecutor {
 #[derive(Default)]
 struct RecordingAuditLogWriter {
     events: Mutex<Vec<AuditLogEvent>>,
+    fail: Mutex<bool>,
 }
 
 impl RecordingAuditLogWriter {
+    fn set_fail(&self, fail: bool) {
+        *self.fail.lock().unwrap() = fail;
+    }
+
     fn take_events(&self) -> Vec<AuditLogEvent> {
         std::mem::take(&mut *self.events.lock().unwrap())
     }
@@ -1116,6 +1316,9 @@ impl RecordingAuditLogWriter {
 
 impl AuditLogWriter for RecordingAuditLogWriter {
     fn record(&self, event: AuditLogEvent) -> Result<()> {
+        if *self.fail.lock().unwrap() {
+            anyhow::bail!("injected audit failure");
+        }
         self.events.lock().unwrap().push(event);
         Ok(())
     }

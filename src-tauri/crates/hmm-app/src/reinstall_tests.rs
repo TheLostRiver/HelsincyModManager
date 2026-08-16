@@ -5,12 +5,12 @@ use crate::{
 };
 use anyhow::Result;
 use hmm_core::{
-    BatchTargetWriteKind, FileLayer, InstallConflict, InstallFileProvider, InstallManifest,
-    InstallManifestEntry, InstallManifestStatus, InstallPlan, InstallTargetPath,
-    InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId, ReinstallBatchItemInput,
-    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus, ReplacementBinding,
-    ReplacementBindingId, ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId,
-    ReplacementTargetKind,
+    BatchTargetWriteKind, ContentTransformerIdentity, FileLayer, InstallConflict,
+    InstallFileProvider, InstallManifest, InstallManifestEntry, InstallManifestStatus, InstallPlan,
+    InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+    ReinstallBatchItemInput, ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
+    ReplacementAdapterFacts, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
+    ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -516,6 +516,38 @@ fn plan_token_changes_with_manifest_candidate_source_layer_target_and_backup_fac
         base_token,
         ready_token(&candidate_binding_changed, default_request())
     );
+
+    let candidate_adapter_facts_changed = Fixture::ready();
+    let facts_plan = candidate_plan("v2")
+        .with_replacement_bindings(vec![replacement_snapshot(
+            "binding-v2",
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+            Some("v2"),
+        )
+        .with_adapter_facts(transformer_facts(1, 1))])
+        .expect("candidate adapter facts");
+    candidate_adapter_facts_changed.planner.set_plan(facts_plan);
+    let adapter_facts_token = ready_token(&candidate_adapter_facts_changed, default_request());
+    assert_ne!(base_token, adapter_facts_token);
+
+    let candidate_transformer_changed = Fixture::ready();
+    let changed_transformer_plan = candidate_plan("v2")
+        .with_replacement_bindings(vec![replacement_snapshot(
+            "binding-v2",
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+            Some("v2"),
+        )
+        .with_adapter_facts(transformer_facts(2, 1))])
+        .expect("changed transformer facts");
+    candidate_transformer_changed
+        .planner
+        .set_plan(changed_transformer_plan);
+    assert_ne!(
+        adapter_facts_token,
+        ready_token(&candidate_transformer_changed, default_request())
+    );
 }
 
 #[test]
@@ -974,6 +1006,29 @@ fn replacement_snapshot(
         ReplacementTargetKind::parse("armor").expect("replacement kind"),
     )
     .expect("replacement snapshot")
+}
+
+fn transformer_facts(transformer_version: u32, file_count: u32) -> ReplacementAdapterFacts {
+    ReplacementAdapterFacts::new(
+        1,
+        "mhw.weapon",
+        "mrl3-texture-path",
+        1,
+        "a".repeat(64),
+        "b".repeat(64),
+        "c".repeat(64),
+    )
+    .expect("adapter facts")
+    .with_transformers(
+        vec![ContentTransformerIdentity::new(
+            "mhw.weapon.mrl3-texture-path.v1",
+            transformer_version,
+        )
+        .expect("transformer identity")],
+        1,
+        file_count,
+    )
+    .expect("transformer facts")
 }
 
 fn candidate_provider(path: &str, package_file_id: &str) -> InstallFileProvider {

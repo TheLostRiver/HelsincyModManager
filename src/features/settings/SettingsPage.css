@@ -331,6 +331,57 @@
     0 0 0 3px var(--color-accent-alpha-12);
 }
 
+.debug-log-settings-panel {
+  display: grid;
+  min-width: 0;
+}
+
+.debug-log-settings-panel__toggle {
+  border-bottom: 0;
+}
+
+.debug-log-settings-panel__status {
+  margin: -2px 20px 12px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.debug-log-settings-panel__error {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.debug-log-settings-panel__error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.debug-log-settings-panel__error button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.debug-log-settings-panel__spinner {
+  color: var(--color-accent);
+  animation: debug-log-settings-spin 0.9s linear infinite;
+}
+
+@keyframes debug-log-settings-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Background Protection ─── */
 
 .background-protection-panel {
@@ -450,23 +501,124 @@
 .background-protection-panel__toggle {
   min-height: 72px;
   border-bottom: none;
+  cursor: default;
 }
 
-.background-protection-panel__toggle:has(input:disabled) {
-  cursor: not-allowed;
+.background-protection-panel__toggle::before {
+  height: 0 !important;
 }
 
-.background-protection-panel__toggle:has(input:disabled):hover {
+.background-protection-panel__toggle:hover {
   background: transparent;
 }
 
-.background-protection-panel__toggle:has(input:disabled)::before {
-  height: 0;
+.background-protection-panel__toggle:focus-within {
+  outline: none;
+}
+
+.background-protection-panel__toggle:hover .setting-switch {
+  box-shadow: none;
+}
+
+.background-protection-panel__toggle:hover input:checked + .setting-switch {
+  box-shadow: 0 0 10px var(--color-accent-alpha-25);
+}
+
+.background-protection-panel__switch-control {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.background-protection-panel__switch-control:hover .setting-switch {
+  box-shadow: 0 0 0 3px var(--color-accent-alpha-12);
+}
+
+.background-protection-panel__switch-control:hover input:checked + .setting-switch {
+  box-shadow:
+    0 0 10px var(--color-accent-alpha-25),
+    0 0 0 3px var(--color-accent-alpha-12);
+}
+
+.background-protection-panel__switch-control:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.background-protection-panel__switch-control.is-disabled {
+  cursor: not-allowed;
+}
+
+.background-protection-panel__switch-control.is-disabled:hover .setting-switch {
+  box-shadow: none;
 }
 
 .background-protection-panel__toggle input:disabled + .setting-switch {
   box-shadow: none;
   opacity: 0.5;
+}
+
+.background-protection-panel__operation {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 20px;
+  overflow: hidden;
+  color: transparent;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.background-protection-panel__operation.is-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-alpha-08);
+  opacity: 1;
+}
+
+.background-protection-panel__operation.is-success {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.background-protection-panel__operation.is-reconciled {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.background-protection-panel__operation.is-failed {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+.background-protection-panel__operation.is-busy::after {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 32%;
+  height: 2px;
+  content: "";
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+  transform: translateX(-125%);
+  animation: background-protection-progress 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.background-protection-panel__timer {
+  margin-left: auto;
+  color: currentcolor;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .background-protection-panel__feedback {
@@ -507,6 +659,24 @@
   flex: 0 0 auto;
 }
 
+.background-protection-panel__warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-warning-dot);
+  border-radius: var(--radius-inner);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.background-protection-panel__warning svg {
+  flex: 0 0 auto;
+}
+
 .background-protection-panel__actions {
   display: flex;
   flex-wrap: wrap;
@@ -515,12 +685,31 @@
 }
 
 .background-protection-spinner {
-  animation: background-protection-spin 0.9s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
+  animation: background-protection-spin 1.1s linear infinite;
 }
 
 @keyframes background-protection-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes background-protection-progress {
+  0% {
+    opacity: 0.45;
+    transform: translateX(-125%) scaleX(0.78);
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.45;
+    transform: translateX(420%) scaleX(1.08);
   }
 }
 
@@ -1033,6 +1222,15 @@
     padding: 0 14px 12px;
   }
 
+  .background-protection-panel__operation {
+    flex-wrap: wrap;
+    padding: 8px 14px;
+  }
+
+  .background-protection-panel__timer {
+    margin-left: 0;
+  }
+
   .background-protection-panel__actions {
     justify-content: flex-start;
   }
@@ -1063,7 +1261,13 @@
   }
 
   .background-protection-spinner {
-    animation: none !important;
+    animation-duration: 2.4s !important;
+    animation-timing-function: linear !important;
+  }
+
+  .background-protection-panel__operation.is-busy::after {
+    animation-duration: 3.2s !important;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   .settings-reset-button:not(:disabled):hover,

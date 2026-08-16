@@ -184,7 +184,10 @@ fn discovery_degrades_when_steam_profile_lookup_fails() {
 #[test]
 fn confirm_candidate_revalidates_and_saves_selected_directory() {
     let harness = Harness::new();
-    let pending = pending_discovery(11_000, vec![pending_candidate("candidate-a", 1234)]);
+    let mut pending = pending_discovery(11_000, vec![pending_candidate("candidate-a", 1234)]);
+    pending.candidates[0].summary.account_name = Some("Synthetic Hunter".to_owned());
+    pending.candidates[0].summary.avatar_url =
+        Some("https://avatars.steamstatic.com/fixture.jpg".to_owned());
     harness.pending_store.put(pending, 10_000).unwrap();
     harness
         .scanner
@@ -209,6 +212,13 @@ fn confirm_candidate_revalidates_and_saves_selected_directory() {
         saved.save_directory.directory.as_deref(),
         Some("C:/Synthetic/Steam/userdata/1234/582010/remote")
     );
+    let account = saved.steam_account.expect("confirmed account snapshot");
+    assert_eq!(account.account_name.as_deref(), Some("Synthetic Hunter"));
+    assert_eq!(
+        account.avatar_url.as_deref(),
+        Some("https://avatars.steamstatic.com/fixture.jpg")
+    );
+    assert_eq!(account.account_label, "Steam user ****1234");
 }
 
 #[test]
@@ -747,6 +757,8 @@ fn settings_with_save_directory(directory: &str) -> ProfileSaveSettings {
         },
         schedule: ProfileBackupSchedule::manual(),
         retention: ProfileBackupRetention::default(),
+        steam_account: None,
+        pre_restore_backup_enabled: true,
         updated_at: 1,
     }
 }

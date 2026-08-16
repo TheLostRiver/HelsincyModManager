@@ -10,14 +10,38 @@ use hmm_ports::{
 use std::sync::Arc;
 
 mod armor_retarget;
+mod equipment_catalog_candidate;
 mod prerequisites;
 mod save_directory;
+mod weapon_retarget;
 
 pub use armor_retarget::{
     normalize_armor_display_text, normalize_armor_search_text, ArmorPathError, ArmorResourcePath,
     MhwArmorCatalog, MhwArmorReplacementAdapter,
 };
+pub use equipment_catalog_candidate::{
+    generate_mhw_equipment_stable_id, validate_mhw_equipment_candidate_catalog,
+    validate_mhw_equipment_candidate_catalog_for_bundling, EquipmentCandidateBundleBlocker,
+    EquipmentCandidateBundlingError, EquipmentCandidateCatalogError,
+    EquipmentCandidateIdentityError, EquipmentCandidateTargetKind,
+    EquipmentCandidateValidationIssue, EquipmentCandidateValidationReport,
+    MHW_EQUIPMENT_CANDIDATE_JSON_SCHEMA, MHW_EQUIPMENT_CANDIDATE_SCHEMA_VERSION,
+};
 pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
+pub use weapon_retarget::{
+    analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation,
+    preflight_mhw_weapon_mod3, preflight_mhw_weapon_model_pair, preflight_mhw_weapon_mrl3,
+    transform_mhw_weapon_mrl3_texture_paths, MhwReplacementAdapter, MhwReplacementCatalog,
+    MhwWeaponCatalogSource, MhwWeaponMrl3TexturePathTransformer, WeaponAnalysisError,
+    WeaponAnalysisWarning, WeaponBinaryError, WeaponCatalogSourceError, WeaponFamily,
+    WeaponFamilyError, WeaponMainId, WeaponMod3Preflight, WeaponModelAssetKind,
+    WeaponModelAssetPath, WeaponModelPair, WeaponModelPairPreflight, WeaponMrl3Preflight,
+    WeaponMrl3TransformOutput, WeaponMrl3TransformReport, WeaponPartId, WeaponPartRole,
+    WeaponPathError, WeaponResourceRoot, WeaponSecondaryPart, WeaponSourceAsset,
+    WeaponSourceClosure, WeaponTargetMetadata, WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES,
+    MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID,
+    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
+};
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
 const STEAM_APP_ID: u32 = 582010;

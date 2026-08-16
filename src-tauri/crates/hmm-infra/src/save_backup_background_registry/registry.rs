@@ -1,6 +1,7 @@
 use super::{
     task_spec::{task_name_for_sid, ScheduledTaskSpec, ScheduledTaskSpecMatch, TASK_OWNER_MARKER},
-    ScheduledTaskCommand, ScheduledTaskCommandOutcome, ScheduledTaskCommandRunner,
+    InstallerCleanupOutcome, ScheduledTaskCommand, ScheduledTaskCommandOutcome,
+    ScheduledTaskCommandRunner,
 };
 use hmm_core::SaveBackupBackgroundRegistrationStatus;
 use hmm_ports::{
@@ -8,15 +9,16 @@ use hmm_ports::{
     SaveBackupBackgroundRegistryResult,
 };
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 struct RegistryInspection {
     status: SaveBackupBackgroundRegistrationStatus,
-    spec: ScheduledTaskSpec,
 }
 
 pub(super) struct ScheduledTaskRegistry<R> {
     runner: R,
     worker_path: Option<PathBuf>,
+    current_user_sid: Mutex<Option<String>>,
 }
 
 impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
@@ -29,12 +31,24 @@ impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
         Self {
             runner,
             worker_path,
+            current_user_sid: Mutex::new(None),
         }
     }
 
     fn current_user_sid(&self) -> SaveBackupBackgroundRegistryResult<String> {
+        let mut cached = self
+            .current_user_sid
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(sid) = cached.as_ref() {
+            return Ok(sid.clone());
+        }
+
         match self.runner.run(ScheduledTaskCommand::Identity)? {
-            ScheduledTaskCommandOutcome::Identity(sid) if !sid.is_empty() => Ok(sid),
+            ScheduledTaskCommandOutcome::Identity(sid) if !sid.is_empty() => {
+                *cached = Some(sid.clone());
+                Ok(sid)
+            }
             _ => Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput),
         }
     }
@@ -49,7 +63,7 @@ impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
         let spec = ScheduledTaskSpec::new(&user_sid, worker_path)
             .map_err(|_| SaveBackupBackgroundRegistryError::CommandInvalidOutput)?;
         let status = self.inspect_expected(&spec)?;
-        Ok(RegistryInspection { status, spec })
+        Ok(RegistryInspection { status })
     }
 
     fn inspect_expected(
@@ -84,54 +98,95 @@ impl<R: ScheduledTaskCommandRunner> ScheduledTaskRegistry<R> {
                     Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
                 }
             },
-            ScheduledTaskCommandOutcome::Identity(_) | ScheduledTaskCommandOutcome::Completed => {
+            ScheduledTaskCommandOutcome::Identity(_)
+            | ScheduledTaskCommandOutcome::Completed
+            | ScheduledTaskCommandOutcome::PostDeleteOwned
+            | ScheduledTaskCommandOutcome::PostDeleteForeign => {
+                Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput)
+            }
+            ScheduledTaskCommandOutcome::TaskBusy
+            | ScheduledTaskCommandOutcome::StateUnverified => {
                 Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput)
             }
         }
     }
 
-    fn inspect_owned_raw(
+    fn exact_registration_status(
         &self,
-    ) -> SaveBackupBackgroundRegistryResult<(String, ScheduledTaskCommandOutcome)> {
-        let user_sid = self.current_user_sid()?;
-        let task_name = task_name_for_sid(&user_sid)
-            .map_err(|_| SaveBackupBackgroundRegistryError::CommandInvalidOutput)?;
-        let outcome = self.runner.run(ScheduledTaskCommand::Inspect {
-            task_name: task_name.clone(),
-            owner_marker: TASK_OWNER_MARKER.to_owned(),
-        })?;
-        Ok((task_name, outcome))
-    }
-
-    fn post_delete_status(
-        &self,
-        task_name: String,
+        spec: &ScheduledTaskSpec,
+        outcome: ScheduledTaskCommandOutcome,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
-        match self.runner.run(ScheduledTaskCommand::Inspect {
-            task_name,
-            owner_marker: TASK_OWNER_MARKER.to_owned(),
-        })? {
-            ScheduledTaskCommandOutcome::Missing => {
-                Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)
-            }
+        match outcome {
+            ScheduledTaskCommandOutcome::Found(actual) => match spec.compare(&actual) {
+                ScheduledTaskSpecMatch::Exact if readback_worker_is_exact(spec, &actual) => {
+                    Ok(SaveBackupBackgroundRegistrationStatus::Registered)
+                }
+                ScheduledTaskSpecMatch::Exact | ScheduledTaskSpecMatch::OwnedDrift => {
+                    Ok(SaveBackupBackgroundRegistrationStatus::ConfigurationDrift)
+                }
+                ScheduledTaskSpecMatch::OwnershipConflict => {
+                    Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
+                }
+            },
             ScheduledTaskCommandOutcome::PermissionRequired => {
                 Ok(SaveBackupBackgroundRegistrationStatus::PermissionRequired)
             }
             ScheduledTaskCommandOutcome::ModuleUnavailable => {
                 Ok(SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform)
             }
-            ScheduledTaskCommandOutcome::Found(actual) => {
-                if actual.owner_marker == TASK_OWNER_MARKER {
-                    Ok(SaveBackupBackgroundRegistrationStatus::RegistrationFailed)
-                } else {
-                    Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
-                }
+            ScheduledTaskCommandOutcome::OwnershipConflict => {
+                Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
             }
             ScheduledTaskCommandOutcome::Identity(_)
+            | ScheduledTaskCommandOutcome::Missing
             | ScheduledTaskCommandOutcome::Completed
-            | ScheduledTaskCommandOutcome::OwnershipConflict => {
+            | ScheduledTaskCommandOutcome::PostDeleteOwned
+            | ScheduledTaskCommandOutcome::PostDeleteForeign
+            | ScheduledTaskCommandOutcome::TaskBusy
+            | ScheduledTaskCommandOutcome::StateUnverified => {
                 Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput)
             }
+        }
+    }
+
+    pub(super) fn cleanup_for_installer(&self) -> InstallerCleanupOutcome {
+        let user_sid = match self.runner.run(ScheduledTaskCommand::Identity) {
+            Ok(ScheduledTaskCommandOutcome::Identity(sid)) if !sid.is_empty() => sid,
+            Ok(ScheduledTaskCommandOutcome::ModuleUnavailable) => {
+                return InstallerCleanupOutcome::PlatformUnavailable;
+            }
+            Ok(_) | Err(_) => return InstallerCleanupOutcome::OwnershipUnverified,
+        };
+        let task_name = match task_name_for_sid(&user_sid) {
+            Ok(task_name) => task_name,
+            Err(_) => return InstallerCleanupOutcome::OwnershipUnverified,
+        };
+        let owner_marker = TASK_OWNER_MARKER.to_owned();
+
+        match self.runner.run(ScheduledTaskCommand::InstallerCleanup {
+            task_name,
+            owner_marker,
+        }) {
+            Ok(ScheduledTaskCommandOutcome::Completed) => InstallerCleanupOutcome::Removed,
+            Ok(ScheduledTaskCommandOutcome::Missing) => InstallerCleanupOutcome::AlreadyAbsent,
+            Ok(ScheduledTaskCommandOutcome::OwnershipConflict) => {
+                InstallerCleanupOutcome::ForeignPreserved
+            }
+            Ok(ScheduledTaskCommandOutcome::TaskBusy) => InstallerCleanupOutcome::OwnedTaskRunning,
+            Ok(ScheduledTaskCommandOutcome::ModuleUnavailable) => {
+                InstallerCleanupOutcome::PlatformUnavailable
+            }
+            Ok(ScheduledTaskCommandOutcome::PermissionRequired)
+            | Ok(ScheduledTaskCommandOutcome::StateUnverified)
+            | Ok(ScheduledTaskCommandOutcome::PostDeleteForeign) => {
+                InstallerCleanupOutcome::OwnershipUnverified
+            }
+            Ok(ScheduledTaskCommandOutcome::PostDeleteOwned) => {
+                InstallerCleanupOutcome::RemovalUnverified
+            }
+            Ok(ScheduledTaskCommandOutcome::Identity(_))
+            | Ok(ScheduledTaskCommandOutcome::Found(_))
+            | Err(_) => InstallerCleanupOutcome::RemovalUnverified,
         }
     }
 }
@@ -146,85 +201,65 @@ impl<R: ScheduledTaskCommandRunner> SaveBackupBackgroundRegistry for ScheduledTa
     fn register(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
-        let before = self.inspect_internal()?;
-        match before.status {
-            SaveBackupBackgroundRegistrationStatus::Registered => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::Registered);
-            }
-            SaveBackupBackgroundRegistrationStatus::NotRegistered
-            | SaveBackupBackgroundRegistrationStatus::ConfigurationDrift => {}
-            SaveBackupBackgroundRegistrationStatus::PermissionRequired
-            | SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform
-            | SaveBackupBackgroundRegistrationStatus::RegistrationFailed => {
-                return Ok(before.status);
-            }
+        let worker_path = self
+            .worker_path
+            .as_deref()
+            .ok_or(SaveBackupBackgroundRegistryError::WorkerBinaryUnavailable)?;
+        let worker_path = canonical_worker_path(worker_path)?;
+        let user_sid = self.current_user_sid()?;
+        let spec = ScheduledTaskSpec::new(&user_sid, worker_path)
+            .map_err(|_| SaveBackupBackgroundRegistryError::CommandInvalidOutput)?;
+
+        let registration_status = self.exact_registration_status(
+            &spec,
+            self.runner
+                .run(ScheduledTaskCommand::Register(spec.clone()))?,
+        )?;
+        if registration_status != SaveBackupBackgroundRegistrationStatus::Registered {
+            return Ok(registration_status);
         }
 
-        match self
-            .runner
-            .run(ScheduledTaskCommand::Register(before.spec.clone()))?
-        {
-            ScheduledTaskCommandOutcome::Completed => {}
-            ScheduledTaskCommandOutcome::PermissionRequired => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::PermissionRequired);
-            }
-            ScheduledTaskCommandOutcome::ModuleUnavailable => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform);
-            }
-            ScheduledTaskCommandOutcome::OwnershipConflict => {
-                return Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict);
-            }
-            _ => return Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput),
-        }
-
-        self.inspect_expected(&before.spec)
+        self.exact_registration_status(
+            &spec,
+            self.runner.run(ScheduledTaskCommand::Start(spec.clone()))?,
+        )
     }
 
     fn unregister(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus> {
-        let (task_name, before) = self.inspect_owned_raw()?;
-        match before {
-            ScheduledTaskCommandOutcome::Missing => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered);
-            }
-            ScheduledTaskCommandOutcome::PermissionRequired => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::PermissionRequired);
-            }
-            ScheduledTaskCommandOutcome::ModuleUnavailable => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform);
-            }
-            ScheduledTaskCommandOutcome::OwnershipConflict => {
-                return Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict);
-            }
-            ScheduledTaskCommandOutcome::Found(actual) => {
-                if actual.owner_marker != TASK_OWNER_MARKER {
-                    return Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict);
-                }
-            }
-            ScheduledTaskCommandOutcome::Identity(_) | ScheduledTaskCommandOutcome::Completed => {
-                return Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput);
-            }
-        }
-
+        let user_sid = self.current_user_sid()?;
+        let task_name = task_name_for_sid(&user_sid)
+            .map_err(|_| SaveBackupBackgroundRegistryError::CommandInvalidOutput)?;
         match self.runner.run(ScheduledTaskCommand::Unregister {
-            task_name: task_name.clone(),
+            task_name,
             owner_marker: TASK_OWNER_MARKER.to_owned(),
         })? {
-            ScheduledTaskCommandOutcome::Completed => {}
+            ScheduledTaskCommandOutcome::Missing | ScheduledTaskCommandOutcome::Completed => {
+                Ok(SaveBackupBackgroundRegistrationStatus::NotRegistered)
+            }
             ScheduledTaskCommandOutcome::PermissionRequired => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::PermissionRequired);
+                Ok(SaveBackupBackgroundRegistrationStatus::PermissionRequired)
             }
             ScheduledTaskCommandOutcome::ModuleUnavailable => {
-                return Ok(SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform);
+                Ok(SaveBackupBackgroundRegistrationStatus::UnsupportedPlatform)
             }
             ScheduledTaskCommandOutcome::OwnershipConflict => {
-                return Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict);
+                Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
             }
-            _ => return Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput),
+            ScheduledTaskCommandOutcome::PostDeleteOwned => {
+                Ok(SaveBackupBackgroundRegistrationStatus::RegistrationFailed)
+            }
+            ScheduledTaskCommandOutcome::PostDeleteForeign => {
+                Err(SaveBackupBackgroundRegistryError::TaskOwnershipConflict)
+            }
+            ScheduledTaskCommandOutcome::Identity(_)
+            | ScheduledTaskCommandOutcome::Found(_)
+            | ScheduledTaskCommandOutcome::TaskBusy
+            | ScheduledTaskCommandOutcome::StateUnverified => {
+                Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput)
+            }
         }
-
-        self.post_delete_status(task_name)
     }
 }
 
