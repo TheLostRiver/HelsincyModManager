@@ -239,18 +239,32 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 
 涉及 `RollbackFailed` 或 `DataSafetyRisk` 的事件必须进入 Audit Log。
 
-CLI-3A 跨进程写入 admission 使用以下稳定错误码：
+CLI-3A 跨进程写入 admission 在运行期使用以下稳定错误码：
 
 - `write_admission_busy`
 - `write_admission_cancelled`
 - `write_admission_order_violation`
 - `write_admission_unavailable`
 
-App/Task/CLI/Tauri 投影只能传播上述稳定 code。admission 日志只允许 scope kind、结果、等待毫秒、
-稳定 error code 和 `abandoned_owner | stale_owner_metadata | none`；禁止记录 mutex/object 名、lock 文件名
-或路径、SID、用户名、完整 app-data path、Steam ID、存档路径和原始平台错误。guard release/unlock 或
-owner-record 清理失败只记录 `write_admission_release_failed` 的受控 stage，不能把已经提交的玩家文件、
-manifest、backup、rollback 或 recovery 事实改写成业务失败。
+runtime composition 初始化还可以返回以下稳定错误码：
+
+- `write_admission_namespace_unavailable`
+- `write_admission_identity_unavailable`
+
+运行中的 App/Task/CLI/Tauri 操作只能传播四个运行期 code；初始化边界只能传播上述两个初始化 code。
+admission 使用以下稳定 tracing event：
+
+- `write_admission_acquired`
+- `write_admission_acquire_failed`
+- `write_admission_owner_recovered`
+- `write_admission_release_order_violation`
+- `write_admission_release_failed`
+
+admission 日志只允许 scope kind、结果、等待毫秒、稳定 error code、受控 release stage 和
+`abandoned_owner | stale_owner_metadata | none`；禁止记录 mutex/object 名、lock 文件名或路径、SID、
+用户名、完整 app-data path、Steam ID、存档路径和原始平台错误。guard release/unlock、owner-record
+清理或 release order 失败只能记录对应的受控 event/stage，不能把已经提交的玩家文件、manifest、
+backup、rollback 或 recovery 事实改写成业务失败。
 
 ## 诊断导出
 

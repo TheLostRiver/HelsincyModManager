@@ -96,8 +96,9 @@ deadline 与 `CancellationToken`：
 - cancellation：`write_admission_cancelled`；
 - 其他平台错误：稳定 `write_admission_unavailable`，不输出对象名或原始错误。
 
-guard 保持 thread-affine 且非 `Send`。Drop 在 owner thread 调用 `ReleaseMutex`；失败只写脱敏安全日志，
-不能把已经提交的玩家文件事实改写成回滚或业务失败。handle 关闭后 OS 仍负责最终释放。
+guard 保持 thread-affine 且非 `Send`，公开 trait object 与内部线程亲和 marker 共同阻止跨线程移动。
+Drop 在 owner thread 调用 `ReleaseMutex`；失败只写脱敏安全日志，不能把已经提交的玩家文件事实改写成
+回滚或业务失败。handle 关闭后 OS 仍负责最终释放。
 
 ### 非 Windows advisory lock
 
@@ -148,8 +149,8 @@ abandoned/stale owner recovery 不跳过任何重验，也不自动删除 manife
 - `write_admission_unavailable`
 
 日志只记录 scope kind、结果、等待毫秒和 recovered-owner 类型；禁止记录 mutex 名、lock path、SID、完整
-app-data path、Steam ID、存档路径或原始平台错误。release failure 是 evidence degradation，不改变已经
-完成的 commit/rollback/recovery 事实。
+app-data path、Steam ID、存档路径或原始平台错误。释放失败只表示证据降级，不改变已经完成的提交、回滚
+或恢复事实。
 
 ## 自动化矩阵
 
