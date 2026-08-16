@@ -35,7 +35,7 @@ export function LibraryToolbar({
   const labelToggleTitle = showCardCategoryLabels ? "隐藏分类标签" : "显示分类标签";
 
   return (
-    <div className="library-toolbar">
+    <div className="library-toolbar" data-tour-id="mods.toolbar">
       <div className="library-toolbar__top-row">
         <div className="library-search">
           <Search size={16} aria-hidden="true" />

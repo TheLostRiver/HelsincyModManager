@@ -760,6 +760,8 @@ recovery 语义未改变：
 - Rise / Wilds：`out_of_scope`。
 - Steam Cloud/OAuth/跨设备同步：`out_of_scope`。
 - 纯视觉美化、无行为证据的 UI 重构：`out_of_scope`。
+- 新手引导的后续页面内业务步骤由维护者显式纳入，不从本无人值守队列自行扩张；Phase 1 状态、门槛和后续交互范围以
+  [精准锚定式新手引导设计](ONBOARDING_TOUR_DESIGN.md) 为准。
 
 ## 每个纵向切片的完成定义
 

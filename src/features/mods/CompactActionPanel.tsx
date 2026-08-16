@@ -69,14 +69,20 @@ export function CompactActionPanel({
         : undefined;
 
   return (
-    <aside className="compact-panel" aria-label="快捷操作">
+    <aside className="compact-panel" aria-label="快捷操作" data-tour-id="mods.actions">
       <header className="compact-panel__header">
         <h3 className="compact-panel__title">快捷操作</h3>
         <span className="compact-panel__selected-pill">已选 {selectedCount}</span>
       </header>
 
       <div className="compact-panel__stack">
-        {addAction ? <ModImportAction label={addAction.label} onImported={onImportCompleted} /> : null}
+        {addAction ? (
+          <ModImportAction
+            label={addAction.label}
+            onImported={onImportCompleted}
+            tourId="mods.import-action"
+          />
+        ) : null}
         <ExternalImportAction onImported={onImportCompleted} />
         {addRevisionAction ? (
           <ModImportAction

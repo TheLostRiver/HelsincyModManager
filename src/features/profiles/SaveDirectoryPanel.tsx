@@ -78,7 +78,11 @@ export function SaveDirectoryPanel({
   };
 
   return (
-    <section className={`profile-directory-console ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-save-directories-title">
+    <section
+      className={`profile-directory-console ${disabled ? "is-disabled" : ""}`}
+      aria-labelledby="profile-save-directories-title"
+      data-tour-id="profiles.save-directories"
+    >
       <div className="profile-directory-summary">
         <div className="profile-directory-summary__header">
           <span className="profile-directory-summary__icon" aria-hidden="true">

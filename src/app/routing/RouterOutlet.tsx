@@ -72,6 +72,7 @@ export function RouterOutlet() {
             aria-hidden={isHiddenFromA11y || undefined}
             inert={isHiddenFromA11y ? true : undefined}
             data-route-id={layer.route.id}
+            data-tour-id={`page.${layer.route.id}`}
             onAnimationEnd={(event) => handleLayerAnimationEnd(event, layer.phase)}
           >
             <RouteElement />

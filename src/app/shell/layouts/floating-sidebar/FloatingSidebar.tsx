@@ -15,7 +15,7 @@ export function FloatingSidebar() {
         <AppBrandMark className="floating-sidebar__brand-mark" />
       </div>
 
-      <nav className="floating-sidebar__nav">
+      <nav className="floating-sidebar__nav" data-tour-id="app.navigation">
         {navigationItems.map((item) => (
           <FloatingNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
@@ -51,6 +51,7 @@ function FloatingNavButton({
     <button
       type="button"
       className={`floating-sidebar__item ${isActive ? "is-active" : ""}`}
+      data-tour-id={`nav.${item.id}`}
       aria-disabled={isDisabled || undefined}
       aria-current={isActive ? "page" : undefined}
       aria-label={label}

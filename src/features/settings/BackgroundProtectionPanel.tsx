@@ -379,6 +379,7 @@ export function BackgroundProtectionPanel() {
     <div
       className="background-protection-panel"
       aria-busy={busy || state.status === "loading"}
+      data-tour-id="settings.background-protection"
     >
       <div
         className="background-protection-panel__summary"

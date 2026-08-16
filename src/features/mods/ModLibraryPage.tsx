@@ -1390,7 +1390,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         />
       ) : null}
 
-      <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
+      <div
+        className="mod-library__content-shell"
+        data-scroll-ui={showScrollUi ? "visible" : "hidden"}
+        data-tour-id="mods.library"
+      >
         <ModLibraryQueryFeedback
           busy={!libraryQueryBlocked && libraryQuery.refreshing}
           errorMessage={libraryPage === null ? null : libraryQuery.errorMessage}

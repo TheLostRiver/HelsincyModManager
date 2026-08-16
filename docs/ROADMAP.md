@@ -144,6 +144,7 @@ partial failure/retry、recovery、批量卸载和 exact baseline，并于 2026-
 - 添加 Mod 库后端查询分页、稳定排序和本页选择语义，支撑大规模 Mod 库。详见 [Mod 库分页设计](MOD_LIBRARY_PAGINATION_DESIGN.md)。
 - 添加第三方 Mod 管理器批量迁移，首个兼容来源为狩技盒子目录，默认只导入而不安装或启用。详见 [第三方 Mod 管理器批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md)。
 - 添加任务进度和取消 UI。
+- 添加独立的任务型新手引导 overlay；顶部入口从当前页面启动，逐一说明各页面重要操作区，并引导用户亲自点击真实导航目标后继续；不替换工作台右栏，也不自动触发业务操作。详见 [精准锚定式新手引导设计](ONBOARDING_TOUR_DESIGN.md)。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固、T18
 Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C 与 T13 Slice A-D 均已完成。批量破坏性操作继续
@@ -155,6 +156,13 @@ WR-03B staging/InstallPlan/manifest 集成和 WR-04 受控 Tauri/UI/Gate D 均�
 上限和 LOG-03 Debug Log 均已完成；SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 均已 `certified`。SAVE-05
 已完成实现、完整自动化验证、全 diff 自审和 disposable Windows synthetic retention/备份中心人工验收；
 完整 catalog 未到位前只使用人工 developer/Sandbox seed。
+
+新手引导 Phase 1 当前为 `implemented`：shared geometry/resolver/storage、App TourProvider、
+Floating UI popover、顶部全局入口、双侧栏导航锚点、8 个页面 route anchor、28 个关键功能区、
+primary/fallback target、target-only blocker 和 route-change 推进已落地；Classic/Floating、浅色/深色、
+`1280x800`、`480x800` 浏览器验收通过，
+真实 Tauri/WebView2 DPI 人工验收完成前不标记为 `certified`。Phase 2 的扫描/目录选择交互步骤不会
+在本切片提前实现。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 

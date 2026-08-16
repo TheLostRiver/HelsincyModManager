@@ -18,7 +18,7 @@ export function ClassicSidebar() {
         </div>
       </div>
 
-      <nav className="nav-list">
+      <nav className="nav-list" data-tour-id="app.navigation">
         {navigationItems.map((item) => (
           <ClassicNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
@@ -51,6 +51,7 @@ function ClassicNavButton({
     <button
       type="button"
       className={`nav-item ${isActive ? "is-active" : ""}`}
+      data-tour-id={`nav.${item.id}`}
       disabled={isDisabled}
       aria-current={isActive ? "page" : undefined}
       title={isDisabled ? item.disabledReason : undefined}

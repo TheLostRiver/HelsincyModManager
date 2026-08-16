@@ -448,7 +448,7 @@ export function BackupCenterPage() {
         </section>
       ) : null}
 
-      <section className="backup-center-filters" aria-label="筛选备份">
+      <section className="backup-center-filters" aria-label="筛选备份" data-tour-id="backups.filters">
         <div className="backup-filter-label"><Filter size={16} /> 筛选</div>
         <label>
           <span>配置档</span>
@@ -487,7 +487,7 @@ export function BackupCenterPage() {
 
       {page ? (
         <section className="backup-center-workspace">
-          <aside className="backup-center-profiles" aria-label="配置档摘要">
+          <aside className="backup-center-profiles" aria-label="配置档摘要" data-tour-id="backups.profiles">
             <div className="backup-section-heading"><div><span className="backup-section-kicker">PROFILES</span><h2>配置档摘要</h2></div><span>{page.profiles.length} 个</span></div>
             <div className="backup-profile-list">
               {page.profiles.map((profile) => (
@@ -503,7 +503,7 @@ export function BackupCenterPage() {
             </div>
           </aside>
 
-          <section className="backup-center-history" aria-label="备份历史">
+          <section className="backup-center-history" aria-label="备份历史" data-tour-id="backups.history">
             <div className="backup-section-heading"><div><span className="backup-section-kicker">HISTORY</span><h2>备份历史</h2></div><span>{page.totalCount} 条</span></div>
             {pageState.status === "error" ? <div className="backup-center-alert is-danger"><CircleAlert size={18} /> {pageState.message}</div> : null}
             {loading ? <LoadingRows /> : page.items.length === 0 ? <EmptyHistory /> : (

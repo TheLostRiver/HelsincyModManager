@@ -282,7 +282,7 @@
 
 @media (max-width: 1360px) {
   .top-status-bar {
-    grid-template-columns: minmax(180px, 1fr) minmax(0, auto);
+    grid-template-columns: minmax(180px, 1fr) minmax(0, auto) auto;
   }
 
   .status-actions {
@@ -294,7 +294,7 @@
     display: none;
   }
 
-  .window-tools {
+  .window-tools > :not(.onboarding-launcher) {
     display: none;
   }
 }
@@ -322,6 +322,10 @@
   .status-actions {
     justify-content: start;
     flex-wrap: wrap;
+  }
+
+  .window-tools {
+    justify-content: start;
   }
 
   .install-recovery-global-alert {
