@@ -475,7 +475,8 @@ CLI 自身不得新增“打印原始错误”“显示内部路径”“dump ma
 
 两个独立进程竞争同一 scope、timeout、取消、不同 scope/profile、owner 强退恢复和非法 namespace 已有
 集成测试。Windows 本机覆盖 named mutex 分支；Unix capability/file-lock 分支由 Ubuntu required CI
-编译运行，不能用 Windows 结果替代。
+编译运行，不能用 Windows 结果替代。2026-08-16 disposable Windows synthetic gate 进一步覆盖
+GUI/CLI/worker 的安装、存档和后台注册竞争、释放后写入以及最终 task/evidence 清理，CLI-3A 已认证。
 
 ### 继续保留的 Production 硬门禁
 
@@ -884,16 +885,17 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
 
 ### CLI-3A/3B：跨进程 admission 与生产写入
 
-CLI-3A 已完成工程实现：
+CLI-3A 已完成并认证（2026-08-16）：
 
 - game/save/background registration admission ports 与 Windows/Unix 平台实现已落地。
 - Tauri、Sandbox CLI 和固定 worker 通过共享 runtime composition 使用同一 admission。
 - 双进程竞争、取消、timeout、owner 强退恢复、顺序拒绝、锁内重验和稳定错误投影已有自动化。
-- 本地完整 `scripts/verify.ps1` 与 findings-first 全 diff 审查已通过；Unix 分支仍等待 Ubuntu required
-  CI，Windows 安装态竞争与后台注册仍等待 disposable 环境 gate。
+- 本地完整 `scripts/verify.ps1`、findings-first 全 diff 审查、Ubuntu required CI run `31910573714` 和
+  disposable Windows synthetic gate 均已通过；Windows gate 覆盖 busy fail-closed、timeout/cancel、
+  abandoned owner、释放后 worker backup 增长与 background registration 双向 mutation。
 - Production parser/runtime 写门禁没有改变。
 
-CLI-3B 后续按 command 开放 Production 写入：
+CLI-3B 现为 `ready`，但仍须按 command 开放 Production 写入：
 
 - 逐项复核 capability、preview/token、Audit、锁内事实和机器输出契约。
 - 在 disposable Windows 环境验证 GUI/CLI/worker 竞争以及后台保护注册链路。
