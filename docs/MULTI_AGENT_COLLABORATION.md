@@ -69,7 +69,7 @@
 - 游戏目录识别。
 - Mod 安装规则。
 - 存档备份和恢复。
-- GitHub Actions、hooks、policy、`.codex/` 治理脚本。
+- GitHub Actions、hooks、policy、`.codex/skills/hmm*` 项目技能。
 
 如果前端 worker 发现任务需要这些能力，必须停止并返回 `NEEDS_CONTEXT` 或 `BLOCKED`。
 

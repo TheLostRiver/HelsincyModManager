@@ -68,9 +68,11 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [测试指南](docs/TESTING.md)
 - [AI 协作约束](AGENTS.md)
 
-## 内置工具
+## Agent 技能与本地工具
 
-- **[HelsincyPlanWithFiles](https://github.com/TheLostRiver/HelsincyPlanWithFiles)** — 基于 `.codex/` 的上下文管理与任务规划工具（MIT 协议），为 AI Agent 提供文件级规划、进度追踪与上下文切换能力。
+- 仓库只分发 `.codex/skills/hmm*` 下的 HMM 项目技能，用于功能路由、安装安全和 review 门禁。
+- 通用 Codex hooks、skills、脚本、模板和个人配置不进入版本库。需要文件级任务规划时，可在本地单独安装
+  **[HelsincyPlanWithFiles](https://github.com/TheLostRiver/HelsincyPlanWithFiles)**（MIT 协议）。
 
 ## 支持项目
 

@@ -61,5 +61,12 @@ lcov.info
 # Codex desktop session metadata
 .reasonix/
 
+# Codex local tooling and personal configuration
+/.codex/*
+!/.codex/skills/
+/.codex/skills/*
+!/.codex/skills/hmm*/
+!/.codex/skills/hmm*/**
+
 # Subagent execution ledger
 .superpowers/
