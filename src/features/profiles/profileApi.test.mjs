@@ -116,9 +116,16 @@ test("profile save directory discovery API avoids raw paths and steam identifier
   assert.doesNotMatch(typesSource, forbiddenDiscoveryFields);
 });
 
-test("backup policy clamps retention inputs to backend bounds", () => {
+test("backup policy maps zero age and space limits to the unbounded DTO form", () => {
   const panel = readSource("src/features/profiles/BackupPolicyPanel.tsx");
-  assert.match(panel, /Math\.min\(3650, Math\.max\(1, Math\.floor/);
-  assert.match(panel, /Math\.min\(1_048_576, Math\.max\(16, Math\.floor/);
+  const defaults = readSource("src/features/profiles/profileSaveSettingsDefaults.ts");
+
+  assert.equal([...panel.matchAll(/min=\{0\}/g)].length, 2);
+  assert.match(panel, /maxAgeDays:\s*maxAgeDays === 0 \? null : maxAgeDays/);
+  assert.match(panel, /maxTotalMiB === 0 \? null : Math\.max\(MIN_RETENTION_TOTAL_MIB, maxTotalMiB\)/);
+  assert.match(panel, /0 = 不限制/);
   assert.match(panel, /step=\{1\}/);
+  assert.match(defaults, /maxCount:\s*50/);
+  assert.match(defaults, /maxAgeDays:\s*90/);
+  assert.match(defaults, /maxTotalBytes:\s*null/);
 });

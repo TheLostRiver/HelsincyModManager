@@ -29,6 +29,7 @@ import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscover
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { SaveRestoreDialog } from "./SaveRestoreDialog";
 import { listProfiles } from "./profileApi";
+import { DEFAULT_PROFILE_BACKUP_RETENTION } from "./profileSaveSettingsDefaults";
 import {
   checkProfileAutoSaveBackup,
   getSaveBackupBackgroundStatus,
@@ -109,11 +110,7 @@ const PREVIEW_SAVE_SETTINGS: ProfileSaveSettingsDto = {
     minute: 0,
     weekdays: [],
   },
-  retention: {
-    maxCount: 20,
-    maxAgeDays: 30,
-    maxTotalBytes: null,
-  },
+  retention: { ...DEFAULT_PROFILE_BACKUP_RETENTION },
   steamAccount: null,
   preRestoreBackupEnabled: true,
   updatedAt: 0,

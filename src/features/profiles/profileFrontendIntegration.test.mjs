@@ -108,6 +108,16 @@ test("profile create and edit forms use a floating dialog instead of inline list
   assert.match(css, /\.profile-floating-form \.profile-inline-form\s*\{[\s\S]*?background:\s*transparent/);
 });
 
+test("profile primary actions preserve readable text across hover and active states", () => {
+  const css = readSource("src/features/profiles/ProfilePage.css");
+  const hoverRule = css.match(/\.profile-action-button\.is-primary:not\(:disabled\):hover\s*\{[^}]*\}/)?.[0] ?? "";
+  const activeRule = css.match(/\.profile-action-button\.is-primary:not\(:disabled\):active\s*\{[^}]*\}/)?.[0] ?? "";
+
+  assert.match(hoverRule, /color:\s*var\(--color-primary-action-text\)/);
+  assert.match(hoverRule, /border-color:\s*var\(--color-primary-action-border\)/);
+  assert.match(activeRule, /color:\s*var\(--color-primary-action-text\)/);
+});
+
 test("save directory picker catches dialog and validation failures consistently", () => {
   const source = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
   const chooseDirectoryBlock = source.match(/const chooseDirectory[\s\S]*?^ {2}};/m)?.[0] ?? "";
