@@ -930,8 +930,8 @@ impl From<ProfileBackupRetentionDto> for ProfileBackupRetention {
     fn from(retention: ProfileBackupRetentionDto) -> Self {
         Self {
             max_count: retention.max_count,
-            max_age_days: retention.max_age_days,
-            max_total_bytes: retention.max_total_bytes,
+            max_age_days: retention.max_age_days.filter(|value| *value != 0),
+            max_total_bytes: retention.max_total_bytes.filter(|value| *value != 0),
         }
     }
 }

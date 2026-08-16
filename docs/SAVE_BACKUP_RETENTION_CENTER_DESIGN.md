@@ -36,10 +36,12 @@ max_age_days: Option<u32>
 max_total_bytes: Option<u64>
 ```
 
-- `max_count` 至少为 1。
+- `max_count` 范围为 1..=999。新配置档和用户主动重置时默认保留 50 份。
 - `max_age_days = None` 表示关闭按年龄治理；有值时范围为 1..=3650 天。
 - `max_total_bytes = None` 表示关闭空间预算。为避免升级后静默删除既有备份，migration 和默认值都使用 `None`。
 - 启用时范围为 16 MiB..=1 TiB。UI 使用 GiB/MiB 展示，Tauri DTO 仍传精确字节数。
+- UI 对年龄和空间显示 `0 = 不限制`，提交时把 0 归一化为 DTO `null`；Tauri 边界也兼容将数值 0
+  归一化为领域层 `None`。新配置档和用户主动重置时默认使用 90 天、无限空间；既有 Profile 设置不迁移、不覆盖。
 - 空间预算作用于同一 `gameId/profileId` 的 HMM 已知备份 archive 总量；manifest 是受控元数据，但不计入预算数值。
 
 Profile 存档设置同时增加后端确认来源的可选展示快照：

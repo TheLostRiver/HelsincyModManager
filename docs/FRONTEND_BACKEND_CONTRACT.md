@@ -882,6 +882,9 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - `validate_profile_save_directory` 按游戏/应用规则校验存档源目录，并返回可安全展示的标签。
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
+- `retention.maxCount` 范围为 1..=999。`retention.maxAgeDays` 与 `retention.maxTotalBytes` 的 `null`
+  表示不限制；为支持数字输入 UI，Tauri DTO 边界也接受数值 `0` 并归一化为 `null`/领域层 `None`。
+  非零年龄范围仍为 1..=3650 天，非零空间范围仍为 16 MiB..=1 TiB。
 - `preRestoreBackupEnabled` 是 Profile 级持久安全设置，缺省请求与 migration 012 都使用 `true`。前端可以
   修改该开关，但单次恢复请求不能临时关闭它；后端提交时必须重新读取当前持久值。
 - `discover_profile_save_directories` 由后端基于已保存游戏配置、Steam root、MHW:I 存档规则和 Profile 设置执行存档源目录发现；前端只提交 `gameId` 和 `profileId`，不提交 Steam userdata 路径、account id、SteamID64、profile URL 或 XML。

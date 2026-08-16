@@ -308,8 +308,8 @@ fn validate_schedule_time(schedule: &ProfileBackupSchedule) -> Result<()> {
 
 fn validate_retention(retention: &ProfileBackupRetention) -> Result<()> {
     ensure!(
-        retention.max_count > 0,
-        "backup retention max count must be greater than zero"
+        (1..=999).contains(&retention.max_count),
+        "backup retention max count must be between 1 and 999"
     );
     if let Some(max_age_days) = retention.max_age_days {
         ensure!(

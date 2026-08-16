@@ -465,12 +465,16 @@
 }
 
 .profile-action-button.is-primary:not(:disabled):hover {
+  color: var(--color-primary-action-text);
   background: var(--color-primary-action-bg-hover);
+  border-color: var(--color-primary-action-border);
   box-shadow: var(--shadow-primary-action-hover);
 }
 
 .profile-action-button.is-primary:not(:disabled):active {
+  color: var(--color-primary-action-text);
   background: var(--color-primary-action-bg-active);
+  border-color: var(--color-primary-action-border);
   box-shadow: var(--shadow-primary-action-active);
 }
 
@@ -1263,6 +1267,14 @@
 
 .profile-retention-grid .profile-field {
   flex: 1 1 140px;
+}
+
+.profile-retention-note {
+  margin: -4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .profile-settings-state,

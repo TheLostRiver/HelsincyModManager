@@ -71,8 +71,8 @@ pub struct ProfileBackupRetention {
 impl Default for ProfileBackupRetention {
     fn default() -> Self {
         Self {
-            max_count: 20,
-            max_age_days: Some(30),
+            max_count: 50,
+            max_age_days: Some(90),
             max_total_bytes: None,
         }
     }
@@ -95,4 +95,18 @@ pub struct ProfileSaveSettings {
     pub steam_account: Option<SteamAccountDisplaySummary>,
     pub pre_restore_backup_enabled: bool,
     pub updated_at: u128,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProfileBackupRetention;
+
+    #[test]
+    fn profile_backup_retention_defaults_are_extended_without_a_space_limit() {
+        let retention = ProfileBackupRetention::default();
+
+        assert_eq!(retention.max_count, 50);
+        assert_eq!(retention.max_age_days, Some(90));
+        assert_eq!(retention.max_total_bytes, None);
+    }
 }

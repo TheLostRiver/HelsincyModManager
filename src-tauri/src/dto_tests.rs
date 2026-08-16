@@ -1,6 +1,20 @@
 use super::*;
 use hmm_app::InstallManifestStatus;
 
+#[test]
+fn zero_profile_retention_limits_map_to_unbounded_domain_values() {
+    let retention: hmm_core::ProfileBackupRetention = ProfileBackupRetentionDto {
+        max_count: 1,
+        max_age_days: Some(0),
+        max_total_bytes: Some(0),
+    }
+    .into();
+
+    assert_eq!(retention.max_count, 1);
+    assert_eq!(retention.max_age_days, None);
+    assert_eq!(retention.max_total_bytes, None);
+}
+
 #[cfg(test)]
 mod app_settings_dto_tests {
     use super::*;
