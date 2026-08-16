@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 const HELPER_MODE_ENV: &str = "HMM_WRITE_ADMISSION_TEST_HELPER_MODE";
 const HELPER_ROOT_ENV: &str = "HMM_WRITE_ADMISSION_TEST_ROOT";
+const HELPER_SCOPE_ENV: &str = "HMM_WRITE_ADMISSION_TEST_SCOPE";
 const HELPER_PROFILE_ENV: &str = "HMM_WRITE_ADMISSION_TEST_PROFILE";
 const HELPER_READY_ENV: &str = "HMM_WRITE_ADMISSION_TEST_READY";
 const HELPER_RELEASE_ENV: &str = "HMM_WRITE_ADMISSION_TEST_RELEASE";
@@ -76,6 +77,36 @@ fn same_scope_times_out_while_different_scope_and_profile_remain_available() {
     let released = admission
         .acquire(&held_scope, Duration::ZERO, &NeverCancelled)
         .expect("normal child release must free the scope");
+    assert_eq!(released.acquisition().recovery, None);
+}
+
+#[test]
+fn background_scope_times_out_while_profile_scopes_remain_available() {
+    let fixture = AdmissionFixture::new();
+    let mut holder = fixture.spawn_background_helper("hold");
+    wait_for_file(&holder.ready_path, &mut holder.child, CHILD_WAIT_LIMIT);
+
+    let admission = fixture.admission();
+    let held_scope = CrossProcessWriteScope::background_registration();
+    let error = match admission.acquire(&held_scope, Duration::from_millis(175), &NeverCancelled) {
+        Ok(_) => panic!("the competing process must retain the background scope"),
+        Err(error) => error,
+    };
+    assert_eq!(error, CrossProcessWriteAdmissionError::Busy);
+
+    let save = admission
+        .acquire(&save_scope("profile-a"), Duration::ZERO, &NeverCancelled)
+        .expect("the background scope must not block save-profile writes");
+    drop(save);
+    let game = admission
+        .acquire(&game_scope("profile-a"), Duration::ZERO, &NeverCancelled)
+        .expect("the background scope must not block game-profile writes");
+    drop(game);
+
+    holder.finish();
+    let released = admission
+        .acquire(&held_scope, Duration::ZERO, &NeverCancelled)
+        .expect("normal child release must free the background scope");
     assert_eq!(released.acquisition().recovery, None);
 }
 
@@ -150,16 +181,18 @@ fn cross_process_write_admission_helper() {
         return;
     };
     let root = required_path_env(HELPER_ROOT_ENV);
+    let scope_kind = std::env::var(HELPER_SCOPE_ENV).expect("helper scope kind");
     let profile_id = std::env::var(HELPER_PROFILE_ENV).expect("helper profile id");
     let ready_path = required_path_env(HELPER_READY_ENV);
     let release_path = required_path_env(HELPER_RELEASE_ENV);
     let admission = PlatformCrossProcessWriteAdmission::new(&root).expect("helper admission");
+    let scope = match scope_kind.as_str() {
+        "background" => CrossProcessWriteScope::background_registration(),
+        "save" => save_scope(&profile_id),
+        _ => panic!("unknown helper scope kind"),
+    };
     let guard = admission
-        .acquire(
-            &save_scope(&profile_id),
-            Duration::from_secs(5),
-            &NeverCancelled,
-        )
+        .acquire(&scope, Duration::from_secs(5), &NeverCancelled)
         .expect("helper acquires scope");
     std::fs::write(&ready_path, b"ready").expect("write helper ready marker");
     wait_for_signal(&release_path, CHILD_WAIT_LIMIT);
@@ -243,6 +276,19 @@ impl AdmissionFixture {
     }
 
     fn spawn_helper(&self, mode: &str, profile_id: &str) -> HelperProcess {
+        self.spawn_helper_for_scope(mode, "save", profile_id)
+    }
+
+    fn spawn_background_helper(&self, mode: &str) -> HelperProcess {
+        self.spawn_helper_for_scope(mode, "background", "unused")
+    }
+
+    fn spawn_helper_for_scope(
+        &self,
+        mode: &str,
+        scope_kind: &str,
+        profile_id: &str,
+    ) -> HelperProcess {
         let run_id = uuid::Uuid::new_v4().to_string();
         let ready_path = self.signal_dir.join(format!("{run_id}.ready"));
         let release_path = self.signal_dir.join(format!("{run_id}.release"));
@@ -255,6 +301,7 @@ impl AdmissionFixture {
             ])
             .env(HELPER_MODE_ENV, mode)
             .env(HELPER_ROOT_ENV, &self.app_data_dir)
+            .env(HELPER_SCOPE_ENV, scope_kind)
             .env(HELPER_PROFILE_ENV, profile_id)
             .env(HELPER_READY_ENV, &ready_path)
             .env(HELPER_RELEASE_ENV, &release_path)

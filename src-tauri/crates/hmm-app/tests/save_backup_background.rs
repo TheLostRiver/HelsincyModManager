@@ -2,8 +2,7 @@ use anyhow::Result;
 use hmm_app::{
     CrossProcessWriteAdmissionCoordinator, SaveBackupBackgroundRegistrationResult,
     SaveBackupBackgroundService, SaveBackupBackgroundServiceError,
-    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
-    SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
+    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS, SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
 };
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
@@ -1018,31 +1017,53 @@ fn register_and_unregister_require_verified_postconditions() {
 }
 
 #[test]
-fn cross_process_busy_stops_background_registration_before_registry_mutation() {
-    let registry = Arc::new(FakeRegistry::new(
-        Vec::new(),
-        vec![Ok(SaveBackupBackgroundRegistrationStatus::Registered)],
-        Vec::new(),
-    ));
-    let service = SaveBackupBackgroundService::new_with_write_admission(
-        registry.clone(),
-        Arc::new(FakeSchedulerRepository::with_state(None)),
-        Arc::new(RecordingAuditLog::default()),
-        Arc::new(FixedClock::new(3_000_000)),
-        Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
-            Arc::new(RejectingCrossProcessAdmission(
-                CrossProcessWriteAdmissionError::Busy,
+fn cross_process_busy_audits_all_entry_points_before_background_mutation() {
+    for entry_point in ["register", "unregister", "enable", "disable"] {
+        let registry = Arc::new(FakeRegistry::new(Vec::new(), Vec::new(), Vec::new()));
+        let initial_settings = if entry_point == "disable" {
+            enabled_settings(1_000_000, Some(1_100_000))
+        } else {
+            SaveBackupBackgroundSettings::disabled()
+        };
+        let settings = Arc::new(FakeBackgroundSettingsRepository::with_state(
+            initial_settings.clone(),
+        ));
+        let audit = Arc::new(RecordingAuditLog::default());
+        let service = SaveBackupBackgroundService::new_with_settings_repository_and_write_admission(
+            registry.clone(),
+            Arc::new(FakeSchedulerRepository::with_state(None)),
+            settings.clone(),
+            audit.clone(),
+            Arc::new(FixedClock::new(3_000_000)),
+            Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+                Arc::new(RejectingCrossProcessAdmission(
+                    CrossProcessWriteAdmissionError::Busy,
+                )),
+                Duration::from_millis(1),
             )),
-            Duration::from_millis(1),
-        )),
-    );
+        );
 
-    let error = service
-        .register()
-        .expect_err("busy admission must reject background registration");
+        let result = match entry_point {
+            "register" => service.register().map(|_| ()),
+            "unregister" => service.unregister().map(|_| ()),
+            "enable" => service.enable().map(|_| ()),
+            "disable" => service.disable().map(|_| ()),
+            _ => unreachable!("fixed entry-point matrix"),
+        };
+        let error = result.expect_err("busy admission must reject background mutation");
 
-    assert_eq!(error.code(), "write_admission_busy");
-    assert!(registry.calls().is_empty());
+        assert_eq!(error.code(), "write_admission_busy");
+        assert!(registry.calls().is_empty());
+        assert_eq!(settings.state(), initial_settings);
+        let events = audit.events();
+        assert_eq!(events.len(), 1, "entry point: {entry_point}");
+        assert_registration_audit(
+            &events[0],
+            "registration_failed",
+            "failure",
+            Some("write_admission_busy"),
+        );
+    }
 }
 
 #[test]

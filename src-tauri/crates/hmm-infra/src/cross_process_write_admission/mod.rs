@@ -5,7 +5,7 @@ mod windows_mutex;
 
 use hmm_ports::{CrossProcessWriteScope, CrossProcessWriteScopeKind};
 use sha2::{Digest, Sha256};
-use std::cell::RefCell;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use thiserror::Error;
 
 #[cfg(not(windows))]
@@ -57,6 +57,7 @@ impl ScopeOrderKey {
 struct HeldScope {
     namespace: String,
     key: ScopeOrderKey,
+    kind: CrossProcessWriteScopeKind,
 }
 
 thread_local! {
@@ -65,6 +66,7 @@ thread_local! {
 
 struct HeldScopeOrderGuard {
     held: Option<HeldScope>,
+    _thread_affinity: PhantomData<Rc<()>>,
 }
 
 impl HeldScopeOrderGuard {
@@ -80,13 +82,17 @@ impl HeldScopeOrderGuard {
         valid.then_some(key).ok_or(())
     }
 
-    fn register(namespace: &str, key: ScopeOrderKey) -> Self {
+    fn register(namespace: &str, key: ScopeOrderKey, kind: CrossProcessWriteScopeKind) -> Self {
         let held = HeldScope {
             namespace: namespace.to_owned(),
             key,
+            kind,
         };
         HELD_SCOPES.with(|scopes| scopes.borrow_mut().push(held.clone()));
-        Self { held: Some(held) }
+        Self {
+            held: Some(held),
+            _thread_affinity: PhantomData,
+        }
     }
 }
 
@@ -106,18 +112,10 @@ impl Drop for HeldScopeOrderGuard {
             }
             tracing::error!(
                 event = "write_admission_release_order_violation",
-                scope = scope_kind_from_rank(held.key.rank).as_str(),
+                scope = held.kind.as_str(),
                 result = "failure"
             );
         });
-    }
-}
-
-fn scope_kind_from_rank(rank: u8) -> CrossProcessWriteScopeKind {
-    match rank {
-        0 => CrossProcessWriteScopeKind::BackgroundRegistrationWrite,
-        1 => CrossProcessWriteScopeKind::SaveProfileWrite,
-        _ => CrossProcessWriteScopeKind::GameProfileWrite,
     }
 }
 
@@ -181,15 +179,15 @@ mod tests {
         let game = CrossProcessWriteScope::game_profile(&game_id, &profile_id);
 
         let save_key = HeldScopeOrderGuard::validate(namespace, &save).expect("save first");
-        let save_guard = HeldScopeOrderGuard::register(namespace, save_key);
+        let save_guard = HeldScopeOrderGuard::register(namespace, save_key, save.kind());
         assert!(HeldScopeOrderGuard::validate(namespace, &save).is_err());
         let game_key = HeldScopeOrderGuard::validate(namespace, &game).expect("game after save");
-        let game_guard = HeldScopeOrderGuard::register(namespace, game_key);
+        let game_guard = HeldScopeOrderGuard::register(namespace, game_key, game.kind());
         drop(game_guard);
         drop(save_guard);
 
         let game_key = HeldScopeOrderGuard::validate(namespace, &game).expect("game first");
-        let game_guard = HeldScopeOrderGuard::register(namespace, game_key);
+        let game_guard = HeldScopeOrderGuard::register(namespace, game_key, game.kind());
         assert!(HeldScopeOrderGuard::validate(namespace, &save).is_err());
         drop(game_guard);
     }
