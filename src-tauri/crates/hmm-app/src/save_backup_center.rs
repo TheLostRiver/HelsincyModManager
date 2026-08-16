@@ -6,7 +6,8 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, ProfileRepository,
-    ProfileSaveSettingsRepository, SaveBackupCenterRepositoryQuery, SaveBackupRepository,
+    CrossProcessWriteAdmissionError, ProfileSaveSettingsRepository,
+    SaveBackupCenterRepositoryQuery, SaveBackupRepository,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -82,6 +83,8 @@ pub enum SaveBackupCenterError {
     TaskConflict,
     #[error("save backup retention failed")]
     RetentionFailed,
+    #[error(transparent)]
+    WriteAdmission(#[from] CrossProcessWriteAdmissionError),
 }
 
 impl SaveBackupCenterError {
@@ -94,6 +97,7 @@ impl SaveBackupCenterError {
             Self::BackupMissing => "save_backup_center_backup_missing",
             Self::TaskConflict => "save_backup_task_conflict",
             Self::RetentionFailed => "save_backup_retention_failed",
+            Self::WriteAdmission(error) => error.code(),
         }
     }
 }
@@ -359,6 +363,9 @@ impl SaveBackupCenterService {
             .scope_registry
             .reserve_maintenance(game_id, profile_id)
             .map_err(|_| SaveBackupCenterError::TaskConflict)?;
+        let _cross_process_guard = self
+            .scope_registry
+            .acquire_cross_process_for_maintenance(game_id, profile_id)?;
         let mut report = self
             .save_backup_service
             .run_retention(game_id, profile_id)

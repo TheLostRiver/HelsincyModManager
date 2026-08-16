@@ -5,6 +5,7 @@ use crate::{
 use hmm_app::{
     is_identity_replacement_binding, AppSettingsService, ApplicationExitGuard,
     AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest, GameLaunchService,
+    CrossProcessWriteAdmissionCoordinator,
     GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry,
     GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
@@ -66,7 +67,8 @@ use hmm_infra::{
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
-    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformSteamRootProvider,
+    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
+    PlatformSteamRootProvider,
     RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
@@ -242,6 +244,12 @@ impl HmmRuntime {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
+        let cross_process_write_admission = Arc::new(
+            CrossProcessWriteAdmissionCoordinator::new(Arc::new(
+                PlatformCrossProcessWriteAdmission::new(&app_data_dir)
+                    .map_err(|error| error.code().to_owned())?,
+            )),
+        );
         let mod_library_composition = ModLibraryComposition::new(&db, mod_import_results_path)?;
         let mod_metadata_repository = mod_library_composition.mod_metadata_repository();
         let category_repository = mod_library_composition.category_repository();
@@ -318,7 +326,11 @@ impl HmmRuntime {
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
-        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
+        let install_write_locks = Arc::new(
+            GameProfileWriteLockRegistry::with_cross_process_admission(Arc::clone(
+                &cross_process_write_admission,
+            )),
+        );
         let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(JsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -426,14 +438,16 @@ impl HmmRuntime {
                 Arc::new(UnsupportedSaveBackupBackgroundRegistry)
             }
         };
-        let save_backup_background =
-            Arc::new(SaveBackupBackgroundService::new_with_settings_repository(
+        let save_backup_background = Arc::new(
+            SaveBackupBackgroundService::new_with_settings_repository_and_write_admission(
                 save_backup_background_registry,
                 Arc::clone(&save_backup_scheduler_state_repository),
                 settings_for_service,
                 Arc::clone(&audit_log_writer),
                 Arc::clone(&save_backup_background_clock),
-            ));
+                Arc::clone(&cross_process_write_admission),
+            ),
+        );
         let save_backup_exit_guard = Arc::new(SaveBackupExitGuard::new(
             profile_repository_for_save_backup_exit_guard,
             profile_save_settings_repository_for_save_backup_exit_guard,
@@ -574,8 +588,11 @@ impl HmmRuntime {
         let save_restore_validator: Arc<dyn hmm_app::SaveRestoreCommitValidator> =
             save_restore.clone();
         let save_restore_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
-        let save_profile_maintenance_scopes =
-            Arc::new(SaveProfileMaintenanceScopeRegistry::default());
+        let save_profile_maintenance_scopes = Arc::new(
+            SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(Arc::clone(
+                &cross_process_write_admission,
+            )),
+        );
         let save_restore_task_scopes =
             Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
                 Arc::clone(&save_profile_maintenance_scopes),
@@ -1612,6 +1629,9 @@ impl ConfiguredInstallRecoveryScanner {
         game_id: GameId,
         request: InstallRecoveryScanRequest,
     ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
+        let _cross_process_guard = self
+            .write_locks
+            .acquire_cross_process(&game_id, &request.profile_id)?;
         let write_lock = self.write_locks.lock_for(&game_id, &request.profile_id);
         let _guard = write_lock
             .lock()
@@ -1718,6 +1738,9 @@ impl ConfiguredInstallRecoveryActionPreviewer {
         game_id: GameId,
         request: InstallRecoveryActionPreviewRequest,
     ) -> Result<InstallRecoveryActionPreview, InstallRecoveryActionPreviewError> {
+        let _cross_process_guard = self
+            .write_locks
+            .acquire_cross_process(&game_id, &request.profile_id)?;
         let write_lock = self.write_locks.lock_for(&game_id, &request.profile_id);
         let _guard = write_lock
             .lock()

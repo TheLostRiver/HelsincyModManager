@@ -11,8 +11,9 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, SaveRestoreCommitError,
-    SaveRestoreCommitRequest, SaveRestoreFileSystem, SaveRestoreFinalizeRequest,
-    SaveRestorePrepareRequest, SaveRestoreTransactionRepository, ValidatedSaveRestoreSource,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, SaveRestoreCommitRequest,
+    SaveRestoreFileSystem, SaveRestoreFinalizeRequest, SaveRestorePrepareRequest,
+    SaveRestoreTransactionRepository, ValidatedSaveRestoreSource,
 };
 use std::collections::BTreeMap;
 use std::sync::{
@@ -221,6 +222,20 @@ impl SaveRestoreTaskScopeRegistry {
             self.maintenance_registry
                 .release_task(&request.game_id, &request.profile_id, task_id);
         }
+    }
+
+    fn acquire_cross_process_for_task(
+        &self,
+        request: &StartSaveRestoreRequest,
+        task_manager: &TaskManager,
+        task_id: &str,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.maintenance_registry.acquire_cross_process_for_task(
+            &request.game_id,
+            &request.profile_id,
+            task_manager,
+            task_id,
+        )
     }
 
     pub fn has_active_task(&self) -> Result<bool, TaskManagerError> {
@@ -446,6 +461,23 @@ impl SaveRestoreTaskRunner {
             });
         }
 
+        let _save_cross_process_guard = match self.scope_registry.acquire_cross_process_for_task(
+            &request,
+            &self.task_manager,
+            task_id,
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                return Err(self.fail_without_transaction(
+                    task_id,
+                    &request,
+                    Vec::new(),
+                    observer,
+                    error.code(),
+                ));
+            }
+        };
+
         let mut events = Vec::new();
         observe_task_progress(
             &mut events,
@@ -644,6 +676,39 @@ impl SaveRestoreTaskRunner {
             ));
         }
 
+        let _game_cross_process_guard =
+            match self.write_locks.acquire_cross_process_for_task(
+                &request.game_id,
+                &request.profile_id,
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                        return Err(self.cancel_transaction(
+                            task_id,
+                            &request,
+                            &mut transaction,
+                            &prepared.prepared_id,
+                            events,
+                            observer,
+                        ));
+                    }
+                    self.file_system.discard_prepared(&prepared.prepared_id);
+                    return Err(self.fail_transaction(
+                        task_id,
+                        &request,
+                        &mut transaction,
+                        events,
+                        observer,
+                        SaveRestoreTransactionFailure {
+                            status: SaveRestoreTransactionStatus::Failed,
+                            error_code: error.code(),
+                        },
+                    ));
+                }
+            };
         let write_lock = self
             .write_locks
             .lock_for(&request.game_id, &request.profile_id);

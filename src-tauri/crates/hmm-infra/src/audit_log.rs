@@ -4,7 +4,11 @@ use crate::managed_log::{
     open_or_create_log_directory, open_read_log_file,
 };
 use anyhow::{Context, Result};
+#[cfg(not(windows))]
+use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt as _};
 use cap_std::fs::Dir;
+#[cfg(not(windows))]
+use cap_std::fs::{OpenOptions, OpenOptionsExt as _};
 use hmm_ports::{
     AuditLogEvent, AuditLogReadRequest, AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy,
     DiagnosticsEvidenceHealth,
@@ -318,9 +322,14 @@ fn sync_directory(directory: &Dir) -> std::io::Result<()> {
 
 #[cfg(not(windows))]
 fn sync_directory(directory: &Dir) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .follow(FollowSymlinks::No);
     directory
-        .try_clone()
-        .and_then(|directory| directory.into_std_file().sync_all())
+        .open_with(".", &options)
+        .and_then(|directory| directory.into_std().sync_all())
 }
 
 #[cfg(windows)]

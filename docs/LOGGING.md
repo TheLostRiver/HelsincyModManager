@@ -239,6 +239,33 @@ Audit Log 必须记录操作结果。如果操作失败，应记录错误分类�
 
 涉及 `RollbackFailed` 或 `DataSafetyRisk` 的事件必须进入 Audit Log。
 
+CLI-3A 跨进程写入 admission 在运行期使用以下稳定错误码：
+
+- `write_admission_busy`
+- `write_admission_cancelled`
+- `write_admission_order_violation`
+- `write_admission_unavailable`
+
+runtime composition 初始化还可以返回以下稳定错误码：
+
+- `write_admission_namespace_unavailable`
+- `write_admission_identity_unavailable`
+
+运行中的 App/Task/CLI/Tauri 操作只能传播四个运行期 code；初始化边界只能传播上述两个初始化 code。
+admission 使用以下稳定 tracing event：
+
+- `write_admission_acquired`
+- `write_admission_acquire_failed`
+- `write_admission_owner_recovered`
+- `write_admission_release_order_violation`
+- `write_admission_release_failed`
+
+admission 日志只允许 scope kind、结果、等待毫秒、稳定 error code、受控 release stage 和
+`abandoned_owner | stale_owner_metadata | none`；禁止记录 mutex/object 名、lock 文件名或路径、SID、
+用户名、完整 app-data path、Steam ID、存档路径和原始平台错误。guard release/unlock、owner-record
+清理或 release order 失败只能记录对应的受控 event/stage，不能把已经提交的玩家文件、manifest、
+backup、rollback 或 recovery 事实改写成业务失败。
+
 ## 诊断导出
 
 L3 的 `/diagnostics` 页面通过无参数 `get_diagnostics_page_snapshot` 读取固定上限安全快照。App/Task 文本
@@ -382,6 +409,8 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 - 存档恢复成功、失败、recovery required 与 post-commit evidence degradation 使用稳定白名单字段，且
   不含 token、路径、manifest/hash 列表或存档内容。
 - 后台 register/update/unregister 审计字段满足白名单，且不包含 task/SID/path/PowerShell/XML/raw output。
+- 跨进程 admission busy/cancelled/order/unavailable 和 owner recovery 日志只包含稳定 scope/code/计数，
+  不包含平台对象名、lock path、SID、用户名、app-data 或玩家路径。
 - 诊断包不包含真实存档、第三方 Mod 包、完整本地路径或明显敏感信息。
 
 测试必须使用人工构造的路径、临时目录和最小样本，不能依赖真实游戏安装目录或真实玩家存档。

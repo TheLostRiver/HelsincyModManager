@@ -2,17 +2,14 @@ use super::{
     task_spec::{task_name_for_sid, ScheduledTaskReadback, ScheduledTaskState},
     ScheduledTaskCommandOutcome,
 };
+use crate::windows_identity::{current_process_user_sid, sid_to_string};
 use hmm_ports::{SaveBackupBackgroundRegistryError, SaveBackupBackgroundRegistryResult};
 use std::path::PathBuf;
 use windows::core::{Interface, BSTR, HRESULT, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, LocalFree, ERROR_INSUFFICIENT_BUFFER, E_ACCESSDENIED, E_INVALIDARG, HANDLE,
-    HLOCAL, RPC_E_CHANGED_MODE, VARIANT_BOOL,
+    ERROR_INSUFFICIENT_BUFFER, E_ACCESSDENIED, E_INVALIDARG, RPC_E_CHANGED_MODE, VARIANT_BOOL,
 };
-use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
-use windows::Win32::Security::{
-    GetTokenInformation, LookupAccountNameW, TokenUser, PSID, SID_NAME_USE, TOKEN_QUERY, TOKEN_USER,
-};
+use windows::Win32::Security::{LookupAccountNameW, PSID, SID_NAME_USE};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
@@ -25,7 +22,6 @@ use windows::Win32::System::TaskScheduler::{
     TASK_RUNLEVEL_LUA, TASK_STATE_DISABLED, TASK_STATE_QUEUED, TASK_STATE_READY,
     TASK_STATE_RUNNING, TASK_TRIGGER_LOGON, TASK_TRIGGER_TIME,
 };
-use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::System::Variant::VARIANT;
 
 const TASK_NOT_FOUND: HRESULT = HRESULT::from_win32(2);
@@ -411,75 +407,6 @@ fn lookup_account_sid(account_name: &str) -> windows::core::Result<String> {
     }
 
     sid_to_string(PSID(sid.as_mut_ptr().cast()))
-}
-
-fn current_process_user_sid() -> windows::core::Result<String> {
-    let mut token = HANDLE::default();
-    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)? };
-    let token = OwnedHandle(token);
-
-    let mut required_bytes = 0_u32;
-    let first = unsafe { GetTokenInformation(token.0, TokenUser, None, 0, &mut required_bytes) };
-    let first_error = match first {
-        Err(error) => error,
-        Ok(()) => return Err(native_readback_error()),
-    };
-    if first_error.code() != HRESULT::from_win32(ERROR_INSUFFICIENT_BUFFER.0)
-        || required_bytes < std::mem::size_of::<TOKEN_USER>() as u32
-    {
-        return Err(first_error);
-    }
-
-    let word_bytes = std::mem::size_of::<usize>();
-    let word_count = (required_bytes as usize).div_ceil(word_bytes);
-    let mut token_user = vec![0_usize; word_count];
-    let buffer_bytes =
-        u32::try_from(token_user.len() * word_bytes).map_err(|_| native_readback_error())?;
-    unsafe {
-        GetTokenInformation(
-            token.0,
-            TokenUser,
-            Some(token_user.as_mut_ptr().cast()),
-            buffer_bytes,
-            &mut required_bytes,
-        )?;
-    }
-    let token_user = unsafe { &*token_user.as_ptr().cast::<TOKEN_USER>() };
-    sid_to_string(token_user.User.Sid)
-}
-
-fn sid_to_string(sid: PSID) -> windows::core::Result<String> {
-    if sid.is_invalid() {
-        return Err(native_readback_error());
-    }
-    let mut sid_text = PWSTR::null();
-    unsafe { ConvertSidToStringSidW(sid, &mut sid_text)? };
-    let sid_text = LocalWideString(sid_text);
-    unsafe { sid_text.0.to_string() }.map_err(|_| native_readback_error())
-}
-
-struct OwnedHandle(HANDLE);
-
-impl Drop for OwnedHandle {
-    fn drop(&mut self) {
-        if !self.0.is_invalid() {
-            unsafe {
-                let _ = CloseHandle(self.0);
-            }
-        }
-    }
-}
-
-struct LocalWideString(PWSTR);
-
-impl Drop for LocalWideString {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe {
-                let _ = LocalFree(Some(HLOCAL(self.0.as_ptr().cast())));
-            }
-        }
-    }
 }
 
 fn native_readback_error() -> windows::core::Error {

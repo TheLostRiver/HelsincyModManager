@@ -445,37 +445,48 @@ CLI 自身不得新增“打印原始错误”“显示内部路径”“dump ma
 
 ## 跨进程写入门禁
 
-### 当前硬门禁
+### CLI-3A 当前状态
 
-当前 `GameProfileWriteLockRegistry` 只在单进程内生效。因此在跨进程 admission 完成前：
-
-- Production 模式只开放只读命令。
-- 所有 CLI 写命令只能使用显式 Sandbox app data 和人工 fixture。
-- 不允许隐藏环境变量、debug flag 或未文档化参数开启 production write。
-- GUI 测试通过和单进程锁测试不能作为解除门禁的证据。
-
-### 目标 admission
-
-在 `hmm-ports` 定义跨进程 admission port，在 `hmm-infra` 提供平台实现。至少区分：
+`GameProfileWriteLockRegistry` 与 `SaveProfileMaintenanceScopeRegistry` 继续负责进程内串行；CLI-3A 已在
+其外层增加共享跨进程 admission。`hmm-ports` 定义窄 port，`hmm-infra` 提供平台实现，
+`HmmRuntime::from_builder` 为 GUI、Sandbox CLI 和固定 worker 装配同一 coordinator。当前区分：
 
 | scope | 保护对象 |
 | --- | --- |
 | `game-profile-write` | 安装、卸载、重装、retarget、安装恢复 |
-| `save-profile-write` | 手动/自动备份、retention、未来存档恢复 |
+| `save-profile-write` | 手动/自动备份、retention、存档恢复 |
 | `background-registration-write` | 后台保护 enable/disable 和 owned task registration |
 
-最小要求：
+已落地约束：
 
 - lock key 只使用稳定 game/profile ID 或固定全局 scope，不使用完整路径。
-- acquisition 有明确 timeout 和稳定 `write_admission_busy` code。
-- 崩溃后不会永久锁死；stale owner 处理必须有平台证据，不能只看进程内时间。
+- acquisition 有明确 timeout、取消和稳定 `write_admission_*` code。
+- Windows 使用当前用户命名空间内的 `Global\\HelsincyModManager.WriteAdmission.v1.<digest>` mutex；
+  `WAIT_ABANDONED` 是 owner 强退后的恢复证据。
+- Unix 使用 canonical app-data 下 capability-relative、no-follow 打开的 `write-admission/` lock file；OS
+  advisory lock 是互斥 authority，残留 owner record 只投影 stale-owner evidence。
 - 同一 scope 在 GUI、CLI 和 worker 之间互斥。
-- 获取顺序固定，禁止在持有游戏写锁时执行长时间扫描、hash 或 archive 分析。
+- 获取全序固定为 `background < save < game`，同 rank identity 再按稳定 game/profile ID 排序；逆序和
+  同 scope 重入在平台等待前返回 `write_admission_order_violation`。
+- 禁止在持有 game scope 或游戏写锁时执行长时间扫描、hash 或 archive 分析。
 - 进入锁后重新读取所有安全事实；锁外 plan 只用于预览。
 - release 失败进入安全日志，但不能伪造业务回滚。
 - 自动备份现有 scheduler lease 继续负责 due claim，不能被误当成所有 save 写入的通用互斥锁。
 
-Production 写命令开放前，必须有两个独立进程竞争同一 scope 的集成测试，而不只是两个线程。
+两个独立进程竞争同一 scope、timeout、取消、不同 scope/profile、owner 强退恢复和非法 namespace 已有
+集成测试。Windows 本机覆盖 named mutex 分支；Unix capability/file-lock 分支由 Ubuntu required CI
+编译运行，不能用 Windows 结果替代。2026-08-16 disposable Windows synthetic gate 进一步覆盖
+GUI/CLI/worker 的安装、存档和后台注册竞争、释放后写入以及最终 task/evidence 清理，CLI-3A 已认证。
+
+### 继续保留的 Production 硬门禁
+
+CLI-3A 只建立共享互斥基础，不改变 parser command tree，也不自动授权 Production 写入：
+
+- Production 模式继续只开放既有只读命令。
+- 现有 CLI 写命令继续只能使用显式 Sandbox app data 和人工 fixture。
+- 不允许隐藏环境变量、debug flag 或未文档化参数开启 production write。
+- CLI-3B 必须按 command 复核 capability、token、Audit、锁内事实和 disposable Windows 验收，再逐项
+  解除门禁；GUI 测试、单进程锁测试或仅取得跨进程 guard 都不是授权证据。
 
 ## 批量安装/卸载/真正重装
 
@@ -872,17 +883,28 @@ immutable opener 不提供跨进程快照锁；需要一致结果的 backup 查�
   调用，且发生漂移时 commit service 和文件写入未发生。
 - Tauri DTO、frontend typed contract 和 UI warning/blocked 状态消费同一 decision。
 
-### CLI-3：跨进程 admission 与生产写入
+### CLI-3A/3B：跨进程 admission 与生产写入
 
-- 设计并实现 game/save/background registration admission ports。
-- Tauri、CLI 和 worker 全部迁移到同一 admission。
-- 增加双进程竞争、崩溃释放、timeout 和锁内重验测试。
-- 按 command 单独解除 production write 门禁。
-- 在 disposable VM 中验证后台保护 enable/status/worker heartbeat/disable/cleanup。
+CLI-3A 已完成并认证（2026-08-16）：
+
+- game/save/background registration admission ports 与 Windows/Unix 平台实现已落地。
+- Tauri、Sandbox CLI 和固定 worker 通过共享 runtime composition 使用同一 admission。
+- 双进程竞争、取消、timeout、owner 强退恢复、顺序拒绝、锁内重验和稳定错误投影已有自动化。
+- 本地完整 `scripts/verify.ps1`、findings-first 全 diff 审查、Ubuntu required CI run `31910573714` 和
+  disposable Windows synthetic gate 均已通过；Windows gate 覆盖 busy fail-closed、timeout/cancel、
+  abandoned owner、释放后 worker backup 增长与 background registration 双向 mutation。
+- Production parser/runtime 写门禁没有改变。
+
+CLI-3B 现为 `ready`，但仍须按 command 开放 Production 写入：
+
+- 逐项复核 capability、preview/token、Audit、锁内事实和机器输出契约。
+- 在 disposable Windows 环境验证 GUI/CLI/worker 竞争以及后台保护注册链路。
+- 每个 command 独立解除门禁；不得因为 CLI-3A 基础设施存在而批量开放。
 
 完成定义：
 
-- 每个开放写命令都有对应跨进程 scope 和测试证据。
+- CLI-3A 三类 scope 在 GUI/CLI/worker 中共享且有双进程与故障测试证据。
+- 每个 CLI-3B 开放写命令都有对应 capability、跨进程 scope、锁内重验和验收证据。
 - 不存在 debug/环境变量绕过。
 - Windows 安装态验收与普通 CI 结果分开记录。
 

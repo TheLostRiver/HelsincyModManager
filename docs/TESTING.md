@@ -474,6 +474,48 @@ CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必
 - Production 四条 lifecycle 写命令在 CLI policy 和 runtime 两层拒绝；测试不得读取或写入真实
   Steam、游戏、存档、AppData、Scheduled Task 或第三方 Mod。
 
+CLI-3A 跨进程写入 admission 的聚焦入口：
+
+```powershell
+cargo test -p hmm-infra --test cross_process_write_admission -- --nocapture
+cargo test -p hmm-app --no-fail-fast
+cargo test -p hmm-runtime --no-fail-fast
+cargo test -p hmm-cli --no-fail-fast
+
+# 新 worktree 首次运行根 Tauri 测试前，先生成 ignored development sidecars。
+cmd /c corepack pnpm run prepare:windows-sidecars:dev
+cargo test -p hmm-tauri install_recovery_write_admission_errors_preserve_stable_codes_without_paths -- --nocapture
+cargo check -p hmm-infra -p hmm-app -p hmm-runtime -p hmm-cli -p hmm-tauri --all-targets
+```
+
+要求：
+
+- 独立子进程竞争同一 scope 时，一个持有，另一个在 deadline 返回 `write_admission_busy`；不同 profile
+  和不同 scope 不得错误互斥。
+- waiter cancellation 返回 `write_admission_cancelled`；逆序或同 scope 重入在平台等待前返回
+  `write_admission_order_violation`。
+- owner 不执行 guard Drop 而直接退出后，Windows 必须报告 `abandoned_owner`，Unix 必须报告
+  `stale_owner_metadata`，后续仍执行正常锁内事实重验。
+- 非法 namespace、link/reparse/symlink escape 和平台错误必须 fail closed 为
+  `write_admission_unavailable`；machine/UI/Task 投影不得包含 mutex 名、lock path、SID、app-data path
+  或原始平台错误。
+- install/backup/background fake admission 的 busy 分支不得进入 committer、backup executor 或 registry
+  mutation；restore 必须保持 `save -> game -> process-local game mutex`。
+- runtime composition 测试确认 GUI、Sandbox CLI 与固定 worker 使用同一 coordinator；Production
+  parser/runtime 写门禁继续拒绝，CLI-3A 不自动开放新 command。
+- Unix `cap-std`/`fs2` 分支必须由 Ubuntu required CI 实际编译运行。Windows 本机结果不能声称覆盖
+  Unix file-lock、no-follow 或路径替换回归测试。
+- 自动化只使用 temp/artificial app-data 与受控 helper 子进程，不读取真实游戏、Steam、玩家存档或
+  Scheduled Task。PR candidate 还必须运行一次完整 `scripts/verify.ps1`；安装态竞争和后台注册 scope
+  另在 disposable Windows 环境执行人工 gate。
+
+CLI-3A 首次认证 gate 已于 2026-08-16 完成：Ubuntu required CI run `31910573714` 实际覆盖 Unix
+file-lock/no-follow/path-replacement；disposable Windows synthetic 环境覆盖 helper timeout/cancel/
+abandoned owner、CLI game scope 竞争与释放、GUI/worker save scope busy fail-closed、释放后 backup 增长、
+background registration enable/disable 双向竞争。最终 owned task 为 `Ready`、archive/manifest 为
+`3/3`、live gate process 为 `0`。这些证据只认证 CLI-3A 共享互斥基础，不替代 CLI-3B 每个 Production
+写命令自己的 capability、token、Audit、锁内事实和 Windows 验收。
+
 CLI-0B shared composition 的聚焦入口：
 
 ```powershell

@@ -6,6 +6,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, NeverCancelled,
     ReinstallRecoveryTransactionRepository,
 };
 use thiserror::Error;
@@ -19,6 +20,7 @@ use crate::{
     InstallRecoveryActionResult, InstallRecoveryActionService, TaskKind, TaskManager,
     TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted, TaskStatus,
     UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
+    CrossProcessWriteAdmissionCoordinator,
 };
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
@@ -637,10 +639,31 @@ impl InstallTaskRunner {
             ));
         }
 
-        let write_lock = self
-            .write_locks
-            .lock_for(&request.game_id, &request.profile_id);
         let commit_result = {
+            let _cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+                &request.game_id,
+                &request.profile_id,
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                        return Ok(events);
+                    }
+                    return Err(self.fail_with_audit(
+                        task_id,
+                        &request,
+                        events,
+                        observer,
+                        error.code(),
+                        action_count,
+                    ));
+                }
+            };
+            let write_lock = self
+                .write_locks
+                .lock_for(&request.game_id, &request.profile_id);
             let _guard = write_lock.lock().map_err(|_| {
                 self.fail_with_audit(
                     task_id,
@@ -987,10 +1010,32 @@ impl UninstallTaskRunner {
         }
 
         let mut events = Vec::new();
-        let write_lock = self
-            .write_locks
-            .lock_for(&request.game_id, &request.profile_id);
         let uninstall_result = {
+            let _cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+                &request.game_id,
+                &request.profile_id,
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                        return Ok(events);
+                    }
+                    return Err(self.fail_uninstall_with_audit(
+                        task_id,
+                        &request,
+                        events,
+                        observer,
+                        error.code(),
+                        None,
+                        None,
+                    ));
+                }
+            };
+            let write_lock = self
+                .write_locks
+                .lock_for(&request.game_id, &request.profile_id);
             let _guard = write_lock.lock().map_err(|_| {
                 self.fail_uninstall_with_audit(
                     task_id,
@@ -1273,10 +1318,31 @@ impl RecoveryActionTaskRunner {
             observer,
             running_event(task_id, INSTALL_RECOVERY_PLANNING_PHASE),
         );
-        let write_lock = self
-            .write_locks
-            .lock_for(&request.game_id, &request.profile_id);
         let action_result = {
+            let _cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+                &request.game_id,
+                &request.profile_id,
+                &self.task_manager,
+                task_id,
+            ) {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                        return Ok(events);
+                    }
+                    return Err(self.fail_recovery_action_with_audit(
+                        task_id,
+                        &request,
+                        events,
+                        observer,
+                        error.code(),
+                        None,
+                    ));
+                }
+            };
+            let write_lock = self
+                .write_locks
+                .lock_for(&request.game_id, &request.profile_id);
             let _guard = write_lock.lock().map_err(|_| {
                 self.fail_recovery_action_with_audit(
                     task_id,
@@ -1451,21 +1517,62 @@ impl RecoveryActionTaskRunner {
     }
 }
 
-#[derive(Default)]
 pub struct GameProfileWriteLockRegistry {
     locks: Mutex<HashMap<GameProfileLockKey, GameProfileLock>>,
+    cross_process: Arc<CrossProcessWriteAdmissionCoordinator>,
 }
 
 type GameProfileLockKey = (String, String);
 type GameProfileLock = Arc<Mutex<()>>;
 
 impl GameProfileWriteLockRegistry {
+    pub fn with_cross_process_admission(
+        cross_process: Arc<CrossProcessWriteAdmissionCoordinator>,
+    ) -> Self {
+        Self {
+            locks: Mutex::new(HashMap::new()),
+            cross_process,
+        }
+    }
+
     pub fn lock_for(&self, game_id: &GameId, profile_id: &ProfileId) -> Arc<Mutex<()>> {
         let mut locks = self.locks.lock().expect("write lock registry");
         locks
             .entry((game_id.as_str().to_owned(), profile_id.as_str().to_owned()))
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone()
+    }
+
+    pub fn acquire_cross_process_for_task(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        task_manager: &TaskManager,
+        task_id: &str,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.cross_process.acquire_game_profile_for_task(
+            game_id,
+            profile_id,
+            task_manager,
+            task_id,
+        )
+    }
+
+    pub fn acquire_cross_process(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        self.cross_process
+            .acquire_game_profile(game_id, profile_id, &NeverCancelled)
+    }
+}
+
+impl Default for GameProfileWriteLockRegistry {
+    fn default() -> Self {
+        Self::with_cross_process_admission(Arc::new(
+            CrossProcessWriteAdmissionCoordinator::process_local_compatibility(),
+        ))
     }
 }
 
@@ -1545,7 +1652,11 @@ mod tests {
         ModRevisionId, PackageFileId, ReinstallRecoveryTransaction,
         ReinstallRecoveryTransactionStatus,
     };
-    use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter};
+    use hmm_ports::{
+        AppClock, AuditLogEvent, AuditLogWriter, CancellationToken,
+        CrossProcessWriteAdmission, CrossProcessWriteAdmissionError,
+        CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, CrossProcessWriteScope,
+    };
     use std::sync::{mpsc, Arc, Mutex};
     use std::thread;
     use std::time::Duration;
@@ -1784,6 +1895,49 @@ mod tests {
         assert!(!serialized.contains("nativePC/models/player.mod3"));
         assert!(!serialized.contains("C:/"));
         assert!(!serialized.contains('\\'));
+    }
+
+    #[test]
+    fn cross_process_busy_stops_install_before_committer() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let coordinator = Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+            Arc::new(RejectingCrossProcessAdmission(
+                CrossProcessWriteAdmissionError::Busy,
+            )),
+            Duration::from_millis(1),
+        ));
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            committer.clone(),
+            audit_log.clone(),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::with_cross_process_admission(
+                coordinator,
+            )),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("busy admission must reject install");
+
+        assert!(committer.take_profiles().is_empty());
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_failed:write_admission_busy")
+        );
+        assert_eq!(
+            audit_log
+                .take_event()
+                .expect("failure audit")
+                .fields["error_code"],
+            "install_failed:write_admission_busy"
+        );
     }
 
     #[test]
@@ -2859,6 +3013,19 @@ mod tests {
         Empty,
         Pending,
         Unavailable,
+    }
+
+    struct RejectingCrossProcessAdmission(CrossProcessWriteAdmissionError);
+
+    impl CrossProcessWriteAdmission for RejectingCrossProcessAdmission {
+        fn acquire(
+            &self,
+            _scope: &CrossProcessWriteScope,
+            _timeout: Duration,
+            _cancellation: &dyn CancellationToken,
+        ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+            Err(self.0)
+        }
     }
 
     struct AdmissionRecoveryRepository {

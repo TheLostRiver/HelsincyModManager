@@ -25,6 +25,7 @@ mod save_restore;
 mod staging;
 mod task_log;
 mod text_log;
+mod write_admission;
 
 use anyhow::Result;
 
@@ -144,6 +145,11 @@ pub use staging::{
 };
 pub use task_log::{TaskLogRecord, TaskLogWriter};
 pub use text_log::{TextLogKind, TextLogLine, TextLogReadRequest, TextLogReader};
+pub use write_admission::{
+    CrossProcessWriteAcquisition, CrossProcessWriteAdmission, CrossProcessWriteAdmissionError,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, CrossProcessWriteRecovery,
+    CrossProcessWriteScope, CrossProcessWriteScopeKind,
+};
 
 pub trait AppClock: Send + Sync {
     fn now_unix_millis(&self) -> Result<u128>;

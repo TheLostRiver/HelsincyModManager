@@ -1,8 +1,8 @@
 use anyhow::Result;
 use hmm_app::{
-    SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundService,
-    SaveBackupBackgroundServiceError, SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS,
-    SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
+    CrossProcessWriteAdmissionCoordinator, SaveBackupBackgroundRegistrationResult,
+    SaveBackupBackgroundService, SaveBackupBackgroundServiceError,
+    SAVE_BACKUP_BACKGROUND_HEARTBEAT_TTL_MILLIS, SAVE_BACKUP_BACKGROUND_STARTUP_GRACE_MILLIS,
 };
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
@@ -10,9 +10,11 @@ use hmm_core::{
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupWorkerHeartbeat,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
-    SaveBackupBackgroundRegistryError, SaveBackupBackgroundRegistryResult,
-    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmission,
+    CrossProcessWriteAdmissionError, CrossProcessWriteAdmissionResult, CrossProcessWriteGuard,
+    CrossProcessWriteScope, SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
+    SaveBackupBackgroundRegistryResult, SaveBackupBackgroundSettingsRepository,
+    SaveBackupSchedulerStateRepository,
 };
 use std::collections::VecDeque;
 use std::sync::{mpsc, Arc, Mutex};
@@ -1015,6 +1017,56 @@ fn register_and_unregister_require_verified_postconditions() {
 }
 
 #[test]
+fn cross_process_busy_audits_all_entry_points_before_background_mutation() {
+    for entry_point in ["register", "unregister", "enable", "disable"] {
+        let registry = Arc::new(FakeRegistry::new(Vec::new(), Vec::new(), Vec::new()));
+        let initial_settings = if entry_point == "disable" {
+            enabled_settings(1_000_000, Some(1_100_000))
+        } else {
+            SaveBackupBackgroundSettings::disabled()
+        };
+        let settings = Arc::new(FakeBackgroundSettingsRepository::with_state(
+            initial_settings.clone(),
+        ));
+        let audit = Arc::new(RecordingAuditLog::default());
+        let service = SaveBackupBackgroundService::new_with_settings_repository_and_write_admission(
+            registry.clone(),
+            Arc::new(FakeSchedulerRepository::with_state(None)),
+            settings.clone(),
+            audit.clone(),
+            Arc::new(FixedClock::new(3_000_000)),
+            Arc::new(CrossProcessWriteAdmissionCoordinator::with_timeout(
+                Arc::new(RejectingCrossProcessAdmission(
+                    CrossProcessWriteAdmissionError::Busy,
+                )),
+                Duration::from_millis(1),
+            )),
+        );
+
+        let result = match entry_point {
+            "register" => service.register().map(|_| ()),
+            "unregister" => service.unregister().map(|_| ()),
+            "enable" => service.enable().map(|_| ()),
+            "disable" => service.disable().map(|_| ()),
+            _ => unreachable!("fixed entry-point matrix"),
+        };
+        let error = result.expect_err("busy admission must reject background mutation");
+
+        assert_eq!(error.code(), "write_admission_busy");
+        assert!(registry.calls().is_empty());
+        assert_eq!(settings.state(), initial_settings);
+        let events = audit.events();
+        assert_eq!(events.len(), 1, "entry point: {entry_point}");
+        assert_registration_audit(
+            &events[0],
+            "registration_failed",
+            "failure",
+            Some("write_admission_busy"),
+        );
+    }
+}
+
+#[test]
 fn register_preserves_stable_postcondition_failures() {
     let cases = [
         (
@@ -1353,6 +1405,19 @@ fn sample_state(
 struct FixedClock {
     now: Mutex<u128>,
     fail: bool,
+}
+
+struct RejectingCrossProcessAdmission(CrossProcessWriteAdmissionError);
+
+impl CrossProcessWriteAdmission for RejectingCrossProcessAdmission {
+    fn acquire(
+        &self,
+        _scope: &CrossProcessWriteScope,
+        _timeout: Duration,
+        _cancellation: &dyn CancellationToken,
+    ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
+        Err(self.0)
+    }
 }
 
 impl FixedClock {
