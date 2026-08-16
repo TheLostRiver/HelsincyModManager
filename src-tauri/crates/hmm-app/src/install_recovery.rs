@@ -5,9 +5,9 @@ use hmm_core::{
     ReinstallSnapshotCleanupOwner, ReinstallSnapshotState, ReinstallTargetClass,
 };
 use hmm_ports::{
-    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    InstallRecoveryRecordRepository, ReinstallRecoveryTransactionRepository,
-    ReinstallSnapshotStore,
+    CrossProcessWriteAdmissionError, InstallBackupStore, InstallGameFileSystem,
+    InstallManifestRepository, InstallRecoveryRecordRepository,
+    ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -122,6 +122,8 @@ pub enum InstallRecoveryScanError {
     GameInstanceUnavailable,
     #[error("install recovery scan failed")]
     ManifestUnavailable,
+    #[error(transparent)]
+    WriteAdmission(#[from] CrossProcessWriteAdmissionError),
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -130,6 +132,8 @@ pub enum InstallRecoveryActionPreviewError {
     GameInstanceUnavailable,
     #[error("install recovery action preview failed")]
     PreviewUnavailable,
+    #[error(transparent)]
+    WriteAdmission(#[from] CrossProcessWriteAdmissionError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

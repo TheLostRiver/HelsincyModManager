@@ -1,11 +1,13 @@
+use crate::CrossProcessWriteAdmissionCoordinator;
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
     SaveBackupBackgroundRegistrationStatus, SaveBackupBackgroundSettings, SaveBackupSchedulerState,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
-    SaveBackupBackgroundRegistryError, SaveBackupBackgroundSettingsRepository,
-    SaveBackupSchedulerStateRepository, SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
+    AppClock, AuditLogEvent, AuditLogWriter, CrossProcessWriteAdmissionError,
+    CrossProcessWriteGuard, SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
+    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
+    SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -47,6 +49,8 @@ pub enum SaveBackupBackgroundServiceError {
     ClockUnavailable,
     #[error("audit log is unavailable")]
     AuditUnavailable,
+    #[error(transparent)]
+    WriteAdmission(#[from] CrossProcessWriteAdmissionError),
 }
 
 impl SaveBackupBackgroundServiceError {
@@ -56,6 +60,7 @@ impl SaveBackupBackgroundServiceError {
             Self::SettingsUnavailable => "save_backup_background_settings_unavailable",
             Self::ClockUnavailable => "save_backup_clock_unavailable",
             Self::AuditUnavailable => "save_backup_background_audit_unavailable",
+            Self::WriteAdmission(error) => error.code(),
         }
     }
 }
@@ -67,6 +72,7 @@ pub struct SaveBackupBackgroundService {
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
     registration_transition: Mutex<()>,
+    write_admission: Arc<CrossProcessWriteAdmissionCoordinator>,
 }
 
 impl SaveBackupBackgroundService {
@@ -76,6 +82,22 @@ impl SaveBackupBackgroundService {
         audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
+        Self::new_with_write_admission(
+            registry,
+            scheduler_state_repository,
+            audit_log,
+            clock,
+            Arc::new(CrossProcessWriteAdmissionCoordinator::process_local_compatibility()),
+        )
+    }
+
+    pub fn new_with_write_admission(
+        registry: Arc<dyn SaveBackupBackgroundRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_admission: Arc<CrossProcessWriteAdmissionCoordinator>,
+    ) -> Self {
         Self {
             registry,
             scheduler_state_repository,
@@ -83,6 +105,7 @@ impl SaveBackupBackgroundService {
             audit_log,
             clock,
             registration_transition: Mutex::new(()),
+            write_admission,
         }
     }
 
@@ -93,6 +116,25 @@ impl SaveBackupBackgroundService {
         audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
+        Self::new_with_settings_repository_and_write_admission(
+            registry,
+            scheduler_state_repository,
+            background_settings_repository,
+            audit_log,
+            clock,
+            Arc::new(CrossProcessWriteAdmissionCoordinator::process_local_compatibility()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_settings_repository_and_write_admission(
+        registry: Arc<dyn SaveBackupBackgroundRegistry>,
+        scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
+        background_settings_repository: Arc<dyn SaveBackupBackgroundSettingsRepository>,
+        audit_log: Arc<dyn AuditLogWriter>,
+        clock: Arc<dyn AppClock>,
+        write_admission: Arc<CrossProcessWriteAdmissionCoordinator>,
+    ) -> Self {
         Self {
             registry,
             scheduler_state_repository,
@@ -100,6 +142,7 @@ impl SaveBackupBackgroundService {
             audit_log,
             clock,
             registration_transition: Mutex::new(()),
+            write_admission,
         }
     }
 
@@ -276,6 +319,8 @@ impl SaveBackupBackgroundService {
     pub fn register(
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Register)?;
         let _transition = self.lock_registration_transition();
         self.change_registration(RegistrationOperation::Register)
     }
@@ -283,6 +328,8 @@ impl SaveBackupBackgroundService {
     pub fn unregister(
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Unregister)?;
         let _transition = self.lock_registration_transition();
         self.change_registration(RegistrationOperation::Unregister)
     }
@@ -290,6 +337,8 @@ impl SaveBackupBackgroundService {
     pub fn enable(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Register)?;
         let _transition = self.lock_registration_transition();
         let settings_repository = self.settings_repository()?;
         let timestamp_unix_millis = self
@@ -331,6 +380,8 @@ impl SaveBackupBackgroundService {
     pub fn disable(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Unregister)?;
         let _transition = self.lock_registration_transition();
         let settings_repository = self.settings_repository()?;
         let settings = settings_repository
@@ -399,6 +450,27 @@ impl SaveBackupBackgroundService {
         let result = self.registration_operation_result(operation);
         self.record_registration_audit(timestamp_unix_millis, operation, &result)?;
         Ok(result)
+    }
+
+    fn acquire_registration_write_admission(
+        &self,
+        operation: RegistrationOperation,
+    ) -> Result<Box<dyn CrossProcessWriteGuard>, SaveBackupBackgroundServiceError> {
+        match self.write_admission.acquire_background_registration() {
+            Ok(guard) => Ok(guard),
+            Err(error) => {
+                let timestamp_unix_millis = self
+                    .clock
+                    .now_unix_millis()
+                    .map_err(|_| SaveBackupBackgroundServiceError::ClockUnavailable)?;
+                let result = registration_result(
+                    SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+                    Some(error.code()),
+                );
+                self.record_registration_audit(timestamp_unix_millis, operation, &result)?;
+                Err(SaveBackupBackgroundServiceError::WriteAdmission(error))
+            }
+        }
     }
 
     fn settings_repository(

@@ -1,6 +1,6 @@
 use crate::dto::{
-    CommandErrorDto, InstallManifestStatusRequestDto, InstallManifestStatusSummaryDto,
-    ImportedModInstallPreflightDto, InstallPlanPreviewDto, InstallRecoveryActionKindDto,
+    CommandErrorDto, ImportedModInstallPreflightDto, InstallManifestStatusRequestDto,
+    InstallManifestStatusSummaryDto, InstallPlanPreviewDto, InstallRecoveryActionKindDto,
     InstallRecoveryActionPreviewDto, InstallRecoveryActionPreviewRequestDto,
     InstallRecoveryScanRequestDto, InstallRecoverySummaryDto,
     PreviewImportedModInstallPlanRequestDto, PreviewInstallPlanFileInputDto,
@@ -196,11 +196,7 @@ fn spawn_recovery_action_runner(
 ) {
     std::thread::spawn(move || {
         let observer = TauriTaskProgressObserver::new(&app_handle);
-        let _ = runner.run_recovery_action_task_with_observer(
-            &task_id,
-            request,
-            &observer,
-        );
+        let _ = runner.run_recovery_action_task_with_observer(&task_id, request, &observer);
     });
 }
 
@@ -559,6 +555,10 @@ fn install_recovery_scan_error_to_command_error(
             code: "install_recovery_unavailable".to_owned(),
             message: "install recovery scan is unavailable".to_owned(),
         },
+        InstallRecoveryScanError::WriteAdmission(error) => CommandErrorDto {
+            code: error.code().to_owned(),
+            message: "cross-process write admission is unavailable".to_owned(),
+        },
     }
 }
 
@@ -573,6 +573,10 @@ fn install_recovery_action_preview_error_to_command_error(
         InstallRecoveryActionPreviewError::PreviewUnavailable => CommandErrorDto {
             code: "install_recovery_action_preview_unavailable".to_owned(),
             message: "install recovery action preview is unavailable".to_owned(),
+        },
+        InstallRecoveryActionPreviewError::WriteAdmission(error) => CommandErrorDto {
+            code: error.code().to_owned(),
+            message: "cross-process write admission is unavailable".to_owned(),
         },
     }
 }
@@ -986,6 +990,31 @@ mod tests {
         assert!(!error.message.contains('\\'));
         assert!(!error.message.contains("manifest"));
         assert!(!error.message.contains("backup"));
+    }
+
+    #[test]
+    fn install_recovery_write_admission_errors_preserve_stable_codes_without_paths() {
+        for admission_error in [
+            hmm_ports::CrossProcessWriteAdmissionError::Busy,
+            hmm_ports::CrossProcessWriteAdmissionError::Cancelled,
+            hmm_ports::CrossProcessWriteAdmissionError::OrderViolation,
+            hmm_ports::CrossProcessWriteAdmissionError::Unavailable,
+        ] {
+            let scan_error = install_recovery_scan_error_to_command_error(
+                hmm_app::InstallRecoveryScanError::WriteAdmission(admission_error),
+            );
+            let preview_error = install_recovery_action_preview_error_to_command_error(
+                hmm_app::InstallRecoveryActionPreviewError::WriteAdmission(admission_error),
+            );
+
+            assert_eq!(scan_error.code, admission_error.code());
+            assert_eq!(preview_error.code, admission_error.code());
+            for message in [&scan_error.message, &preview_error.message] {
+                assert!(!message.contains(':'));
+                assert!(!message.contains('\\'));
+                assert!(!message.contains('/'));
+            }
+        }
     }
 
     #[test]

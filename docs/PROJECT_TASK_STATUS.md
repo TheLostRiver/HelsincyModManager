@@ -1,6 +1,6 @@
 # 项目任务状态快照
 
-本文档记录 Helsincy Mod Manager 在 **2026-08-15** 的 Windows 项目任务全景，基准包含
+本文档记录 Helsincy Mod Manager 在 **2026-08-16** 的 Windows 项目任务全景，基准包含
 Slice A-D 交付并由 Gate C 认证的 batch Sandbox 玩家路径，以及 WR-04 Gate D 认证的人工 Weapon
 install/target switch/uninstall 玩家路径。此前包含
 CLI-0A 至 CLI-1B、PR #211 至 #214 的工程治理，以及 QG-01/PR #215 合并后的 frontend
@@ -40,8 +40,10 @@ staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均
 Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成。
 SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 verify、findings-first review 和
 disposable Windows 人工验收均已完成并标记为 `certified`；SAVE-05 retention/备份中心也已完成实现、
-完整验证、全 diff 自审和 disposable Windows synthetic 人工验收并标记为 `certified`。完整前置依赖平台
-与 Production CLI admission 仍未完成。
+完整验证、全 diff 自审和 disposable Windows synthetic 人工验收并标记为 `certified`。CLI-3A 三类
+跨进程写入 admission 已于 2026-08-16 完成工程实现、本地完整验证、findings-first 全 diff 审查、
+Ubuntu required CI 和 disposable Windows synthetic 多进程 gate，并标记为 `certified`；Production CLI
+command-level admission 与开放仍未完成。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
 校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；仅 Sandbox
@@ -88,7 +90,7 @@ disposable Windows 人工验收均已完成并标记为 `certified`；SAVE-05 re
 | T18 Mod 库分页 | 已完成 | 后端权威分页、projection、freshness gate 和 10,000 条性能门禁已落地 |
 | T19 生命周期产品化加固 | 已完成 | A1-L3：headless acceptance、日志/诊断与反馈 UI 均已交付 |
 | T20 浮层动画共享基元 | 待评审 | 下次新增浮层前或出现第三处重复实现时再启动 |
-| CLI 自动化入口 | CLI-2C 已实现 | 已有只读 game/install/backup/diagnostics 命令，以及仅 Sandbox 的单项 install/uninstall/reinstall/recovery apply；5 分钟 token、双确认、写锁内重验、取消、失败恢复与 Production 双层拒绝已覆盖 |
+| CLI 自动化入口 | CLI-2C 已实现；CLI-3A Certified；CLI-3B Ready | 已有只读 game/install/backup/diagnostics 命令，以及仅 Sandbox 的单项 install/uninstall/reinstall/recovery apply；5 分钟 token、双确认、写锁内重验、取消、失败恢复与 Production 双层拒绝已覆盖。CLI-3A 已接入 game/save/background 三类跨进程 admission、稳定错误码和共享 GUI/CLI/worker composition，并通过 Ubuntu CI 与 disposable Windows synthetic gate；Production command-level 写入仍未开放 |
 | 工程治理 GOV-01 至 GOV-04 | 已完成 | DTO 测试外置、重装 lint 抑制清理、Tauri 契约防回归和治理检查加固已由 PR #211 至 #214 交付 |
 | LOG-01 Task/Audit retention | 已完成 | Task 30 天、Audit 90 天；共享 runtime composition、capability-relative no-follow 清理、稳定 health code/count 与 temp-root junction 负测已落地 |
 | LOG-02 日志总空间上限 | 已完成 | 128 MiB 默认/1 MiB 下限、Debug/Task -> App -> 30 天外 Audit 优先级、16 KiB Audit reserve、稳定 health/count 与 no-follow 复验已落地 |
@@ -265,7 +267,8 @@ gate：
 
 卸载规则继续要求保留 foreign task；owned task 若处于 running/unknown 状态必须 fail closed。日常自动化
 仍不得操作真实 Scheduled Task，后续回归继续使用 disposable Windows 环境。SAVE-03 标记为
-`certified`，SAVE-04 和 CLI-3A 的依赖门禁已解除，但两者仍需各自独立设计与验收。
+`certified`；SAVE-04 与 CLI-3A 均已完成各自独立设计、实现和验收，后续 Production 写能力仍按 CLI-3B
+逐 command 复核，不因共享 admission 已认证而自动开放。
 
 ## 日志、审计与诊断
 
@@ -360,13 +363,16 @@ WR-03A 已交付人工 MOD3/MRL3 有界 preflight、pair compatibility、纯 tra
 projection。WR-03B 已交付 versioned registry、transform-aware staging、InstallPlan/manifest/recovery/
 Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 因缺少明确可再分发的审计数据而 blocked；
 WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02、
-LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证；下一纵向切片为 CLI-3A 跨进程 admission。
+LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证。CLI-3A 已实现
+`background-registration-write`、`save-profile-write` 与 `game-profile-write`，并接入 GUI、Sandbox CLI
+和固定 worker；本地完整验证、findings-first 全 diff 审查、Ubuntu required CI run `31910573714` 与
+2026-08-16 disposable Windows synthetic gate 均已通过，现标记为 `certified`。
 
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
 
-Production 写命令仍依赖跨进程 admission；当前 Sandbox lifecycle capability 不自动解锁 backup、
-background registration 或 diagnostics export。
+Production 写命令仍依赖 CLI-3B 的 command-level capability、token、Audit、锁内重验和 Windows 验收；
+CLI-3A 的共享互斥基础不自动解锁 backup、restore、background registration 或 diagnostics export。
 
 ## 验证证据
 
@@ -436,6 +442,25 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
   包含 policy、hygiene、frontend typecheck/lint/tests/build、Rust workspace tests/check/clippy。
 - stale preview 在构造 `HmmRuntime` 前由只读 facts service 验证；失败时沙盒目录快照不变，不创建
   `hmm.db`、journal 或 projection。上述测试均只使用 temp/fake/人工 fixture。
+
+### CLI-3A 跨进程写入 admission 候选证据
+
+- `cargo test -p hmm-tauri install_recovery_write_admission_errors_preserve_stable_codes_without_paths -- --nocapture`：通过。
+- `cargo test -p hmm-infra --test cross_process_write_admission -- --nocapture`：Windows 本机 `4 passed / 1 ignored`，覆盖同 scope busy、不同 scope/profile、取消、owner 强退恢复和非法 namespace；ignored helper 仅由测试进程调用。
+- `cargo check -p hmm-infra -p hmm-app -p hmm-runtime -p hmm-cli -p hmm-tauri --all-targets`：通过。
+- `cargo test -p hmm-runtime`：76 个 lib tests 与 1 个 integration test 通过。
+- `cargo test -p hmm-cli`：29 个 lib tests 与 52 个 CLI contract tests 通过；Production 写命令继续被 policy/runtime 双层拒绝。
+- `cargo test -p hmm-app --no-fail-fast`：通过；覆盖 install/reinstall/recovery、backup/retention/restore 和 background 接入的 busy/error projection 与锁内重验。
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1`：最终候选完整通过，终态为 `Verification passed.`；覆盖 workspace check/test/clippy、frontend lint/typecheck/tests/build 和仓库 hygiene 门禁。
+- PR #226 的 Ubuntu required CI run `31910573714` 终态为 success；core Mod lifecycle acceptance 与 full verification 均通过，实际覆盖 Unix file-lock、capability-relative no-follow 和 path replacement 回归。
+- findings-first 全 diff 审查未发现 Critical 或 Important 问题；锁顺序、guard 内事实重验、Production 写命令不可达和日志脱敏边界均已复核。
+- Windows 本机结果不用于声称覆盖 Unix 分支；该分支已由上述 Ubuntu required CI 实际验证。disposable
+  Windows gate 已覆盖 helper timeout/cancel/abandoned owner、CLI game scope 竞争与释放、GUI/worker
+  save scope busy fail-closed 与释放后备份增长、background registration enable/disable 双向竞争。
+- 最终 worker gate 输出 `worker-preflight=passed`、`worker-busy-count-unchanged=true`、
+  `worker-release-backup-increased=true`、`worker-blocked-exit=0`、`worker-released-exit=0`；终态为
+  `gate-final=ready-for-review`、owned task `Ready`、archive/manifest `3/3`、live gate processes `0`。
+- 自动化只使用 temp/artificial fixture，不读取真实游戏、Steam、玩家存档、AppData 或真实 Scheduled Task；本轮 SAVE-05 Alpha retention/备份中心人工证据已独立认证，不重复纳入 CLI-3A 测试。
 
 ### T13-07 / T13-08 最终验收证据
 
@@ -514,7 +539,8 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
 5. LOG-01、LOG-02、LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证；继续保持完整
    verify、findings-first review 和人工 gate 证据可追溯。
-6. 下一纵向切片为 CLI-3A 跨进程 admission；Production 写入仍不能绕过跨进程 scope、Audit 和 Windows
-   验收门禁。
+6. CLI-3A 的本地完整 verify、findings-first review、Ubuntu required CI 与 disposable Windows gate 均已
+   完成并认证；进入 CLI-3B，按 command 复核 capability、token、Audit、锁内事实和 Windows 验收。
+   Production 写入仍不能仅凭跨进程 guard 绕过这些门禁。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

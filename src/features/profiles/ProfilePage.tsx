@@ -37,6 +37,8 @@ import {
 } from "./profileSaveBackupApi";
 import {
   getProfileSaveBackupTaskPhaseLabel,
+  getProfileSaveBackupTaskErrorCode,
+  getProfileSaveBackupTaskErrorMessage,
   isProfileSaveBackupTaskPhase,
   nextProfileSaveBackupTaskStateFromProgress,
   shouldRefreshProfileSaveBackupHistory,
@@ -589,11 +591,12 @@ export function ProfilePage() {
 
     if (saveBackupTaskState.status === "failed") {
       if (saveBackupTaskState.taskId) saveBackupTaskProfileIdsRef.current.delete(saveBackupTaskState.taskId);
+      const admissionBusy = saveBackupTaskState.errorCode === "write_admission_busy";
       pushToast({
         eventKey: `profile.save-backup.failed.${saveBackupTaskState.taskId ?? "start"}`,
         taskId: saveBackupTaskState.taskId ?? undefined,
-        tone: "danger",
-        title: "存档备份失败",
+        tone: admissionBusy ? "warning" : "danger",
+        title: admissionBusy ? "存档操作正在进行" : "存档备份失败",
         message: saveBackupTaskState.message,
       });
     }
@@ -719,11 +722,13 @@ export function ProfilePage() {
       });
       attachStartedSaveBackupTask(task, selectedProfileId);
     } catch (error) {
+      const errorCode = getProfileSaveBackupTaskErrorCode(error);
       setSaveBackupTaskState({
         status: "failed",
         taskId: null,
         phase: "save_backup.failed",
-        message: getErrorMessage(error, "启动备份失败"),
+        errorCode,
+        message: getProfileSaveBackupTaskErrorMessage(errorCode),
       });
     }
   }, [attachStartedSaveBackupTask, canStartManualSaveBackup, previewMode, selectedProfile, selectedProfileId]);
