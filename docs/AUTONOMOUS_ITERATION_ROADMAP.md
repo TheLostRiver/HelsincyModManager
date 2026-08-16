@@ -157,9 +157,9 @@ catalog 仍受许可门禁，只有 developer/Sandbox capability 可以使用人
 Slice A 的 CLI-2A/2B/2C 与 CORE-PREF-01、Slice B 的 sealed batch install CLI、Slice C 的
 uninstall/reinstall runtime/CLI contract、Slice D 的 Tauri/UI/Gate C、CAT-01 数据治理和 WR-04
 Tauri/UI/Gate D、LOG-01 Task/Audit retention、LOG-02 日志总空间上限、LOG-03 Debug Log、SAVE-02
-安装态后台保护、SAVE-03 installer cleanup、SAVE-04 玩家存档恢复和 SAVE-05 retention/备份中心验收均已
-完成。Sandbox 写能力不因此扩张为 Production 写能力；下一 ready 单元进入 CLI-3A 跨进程 admission，
-AR6/WR-02B 在授权数据到位后恢复。
+安装态后台保护、SAVE-03 installer cleanup、SAVE-04 玩家存档恢复、SAVE-05 retention/备份中心验收和
+CLI-3A 跨进程 admission 均已完成并认证。Sandbox 写能力不因此扩张为 Production 写能力；下一 ready
+单元进入 CLI-3B，AR6/WR-02B 在授权数据到位后恢复。
 
 ### QG-01：补齐 CI 质量门禁
 
@@ -671,23 +671,27 @@ Tauri、Sandbox lifecycle CLI 与 worker 复用同一策略。
 
 LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 均已完成并认证。SAVE-03 的 WiX/NSIS build/static、
 upgrade/repair、自动备份、owned/foreign/running 和正常 wrapper recovery 矩阵均已通过 disposable Windows
-Sandbox gate；下一纵向切片进入 CLI-3A 跨进程 admission。AR6/WR-02B 继续等待可再分发的审计数据。
+ Sandbox gate；下一纵向切片进入 CLI-3B 逐命令 Production 写能力。AR6/WR-02B 继续等待可再分发的审计数据。
 
 ## P3 Production CLI 写能力
 
 ### CLI-3A：跨进程 admission
 
-状态：`in_progress`。工程实现、本地完整验证、findings-first review 与 Ubuntu required CI run
-`31910573714` 已通过；仍需 disposable Windows 多进程候选 gate，尚未 `certified`。
+状态：`certified`（2026-08-16）。工程实现、本地完整验证、findings-first review、Ubuntu required CI
+run `31910573714` 与 disposable Windows synthetic 多进程 gate 均已通过。
 
 - 定义 `game-profile-write`、`save-profile-write`、`background-registration-write` scopes。
 - GUI、CLI、worker 使用相同 admission；锁内重验，固定获取顺序。
 - 至少两个独立进程竞争、timeout、崩溃释放和 stale owner 测试。
 - Production 写命令仍由 CLI policy/runtime 双层拒绝；本阶段不得提前进入 CLI-3B。
 
+认证证据还覆盖 GUI/worker 对 `save-profile-write` 的 busy fail-closed、释放后 backup 增长，
+background registration enable/disable 的双向竞争，以及最终 owned task `Ready`、archive/manifest `3/3`
+和零 gate 残留进程。所有人工步骤只使用 synthetic fixture。
+
 ### CLI-3B：逐命令开放 Production 写入
 
-状态：`blocked`，依赖 CLI-3A。
+状态：`ready`，CLI-3A 依赖已满足；尚未开放任何 Production 写命令。
 
 按 install/uninstall/reinstall/recovery、backup、background registration、diagnostics export 分开评审。
 每个命令只有在对应 scope、测试、Audit、Windows 验收和文档齐全后单独开放；不提供全局 `--force`。

@@ -19,10 +19,12 @@ Windows Scheduled Task。
 ## 当前实现状态
 
 CLI-3A 的 port、Windows/Unix 平台实现、共享 runtime composition、三类写路径接入、稳定错误映射和
-自动化已经落地。本地完整 `scripts/verify.ps1` 与 findings-first 全 diff 审查已通过，未发现 Critical
-或 Important 问题。Production CLI parser/runtime 门禁保持不变；CLI-3A 不等于 CLI-3B 的
-command-level 写授权。候选仍需 Ubuntu required CI 实际验证 Unix 分支，以及 disposable Windows 的
-多进程竞争/timeout/强退恢复/后台注册人工 gate。
+自动化已经落地，并于 2026-08-16 完成认证。本地完整 `scripts/verify.ps1`、findings-first 全 diff
+审查、Ubuntu required CI run `31910573714` 与 disposable Windows synthetic 多进程 gate 均已通过，
+未发现 Critical 或 Important 问题。Windows gate 覆盖 helper timeout/cancel/abandoned owner、CLI
+game scope 竞争与释放、GUI/worker save scope busy fail-closed 与释放后备份增长、background
+registration enable/disable 双向竞争，以及最终 task/backup/evidence 无残留。Production CLI
+parser/runtime 门禁保持不变；CLI-3A 不等于 CLI-3B 的 command-level 写授权。
 
 ## Scope 模型
 
@@ -164,6 +166,8 @@ app-data path、Steam ID、存档路径或原始平台错误。release failure �
 | Production CLI gate | policy/parser 继续拒绝全部 Production 写命令 |
 
 候选阶段已运行 touched crate 聚焦测试、真实双进程测试、完整 `scripts/verify.ps1` 与 findings-first 全
-diff 自审。Windows disposable gate 仍需单独验证 GUI/CLI/worker 竞争、timeout、进程强退后的
-abandoned 获取和后台注册 scope；不把普通 CI 结果伪装成安装态验收。Unix capability-relative
-file-lock 分支必须由 Ubuntu required CI 实际运行，不能用 Windows named mutex 结果代替。
+diff 自审。2026-08-16 disposable Windows gate 已单独验证 GUI/CLI/worker 竞争、timeout、进程强退后的
+abandoned 获取、释放后正常写入和后台注册 scope；最终 `gate-final=ready-for-review`，owned task 为
+`Ready`、archive/manifest 为 `3/3`、live gate process 为 `0`。人工步骤只使用 synthetic fixture，
+不把普通 CI 结果替代安装态验收。Unix capability-relative file-lock 分支由 Ubuntu required CI
+实际运行，不能用 Windows named mutex 结果代替。

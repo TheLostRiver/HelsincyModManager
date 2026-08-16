@@ -509,6 +509,13 @@ cargo check -p hmm-infra -p hmm-app -p hmm-runtime -p hmm-cli -p hmm-tauri --all
   Scheduled Task。PR candidate 还必须运行一次完整 `scripts/verify.ps1`；安装态竞争和后台注册 scope
   另在 disposable Windows 环境执行人工 gate。
 
+CLI-3A 首次认证 gate 已于 2026-08-16 完成：Ubuntu required CI run `31910573714` 实际覆盖 Unix
+file-lock/no-follow/path-replacement；disposable Windows synthetic 环境覆盖 helper timeout/cancel/
+abandoned owner、CLI game scope 竞争与释放、GUI/worker save scope busy fail-closed、释放后 backup 增长、
+background registration enable/disable 双向竞争。最终 owned task 为 `Ready`、archive/manifest 为
+`3/3`、live gate process 为 `0`。这些证据只认证 CLI-3A 共享互斥基础，不替代 CLI-3B 每个 Production
+写命令自己的 capability、token、Audit、锁内事实和 Windows 验收。
+
 CLI-0B shared composition 的聚焦入口：
 
 ```powershell
