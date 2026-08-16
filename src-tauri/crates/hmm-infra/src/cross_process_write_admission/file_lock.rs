@@ -136,7 +136,7 @@ impl CrossProcessWriteAdmission for PlatformCrossProcessWriteAdmission {
             let _ = FileExt::unlock(&file);
             CrossProcessWriteAdmissionError::Unavailable
         })?;
-        let order_guard = HeldScopeOrderGuard::register(&self.namespace, order_key);
+        let order_guard = HeldScopeOrderGuard::register(&self.namespace, order_key, scope.kind());
         if let Some(recovery) = recovery {
             tracing::warn!(
                 event = "write_admission_owner_recovered",

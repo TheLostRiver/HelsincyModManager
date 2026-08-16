@@ -18,12 +18,11 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAcquisition,
-    CrossProcessWriteAdmission, CrossProcessWriteAdmissionError,
-    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, CrossProcessWriteScope,
-    CrossProcessWriteScopeKind, PreparedSaveRestore, SaveRestoreCommitError,
-    SaveRestoreCommitRequest, SaveRestoreCommitResult, SaveRestoreFileSystem,
-    SaveRestoreFinalizeError, SaveRestoreFinalizeRequest, SaveRestorePrepareError,
-    SaveRestorePrepareRequest, SaveRestoreTransactionRepository,
+    CrossProcessWriteAdmission, CrossProcessWriteAdmissionError, CrossProcessWriteAdmissionResult,
+    CrossProcessWriteGuard, CrossProcessWriteScope, CrossProcessWriteScopeKind,
+    PreparedSaveRestore, SaveRestoreCommitError, SaveRestoreCommitRequest, SaveRestoreCommitResult,
+    SaveRestoreFileSystem, SaveRestoreFinalizeError, SaveRestoreFinalizeRequest,
+    SaveRestorePrepareError, SaveRestorePrepareRequest, SaveRestoreTransactionRepository,
 };
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex};
@@ -84,16 +83,13 @@ fn restore_holds_save_scope_then_stops_before_commit_when_game_scope_is_busy() {
         Duration::from_millis(1),
     ));
     let maintenance_registry = Arc::new(
-        SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(Arc::clone(
-            &coordinator,
-        )),
+        SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(Arc::clone(&coordinator)),
     );
     let scope_registry = Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
         maintenance_registry,
     ));
-    let write_locks = Arc::new(
-        hmm_app::GameProfileWriteLockRegistry::with_cross_process_admission(coordinator),
-    );
+    let write_locks =
+        Arc::new(hmm_app::GameProfileWriteLockRegistry::with_cross_process_admission(coordinator));
     let runner = SaveRestoreTaskRunner::with_scope_registry(
         Arc::clone(&task_manager),
         validator,
@@ -106,12 +102,10 @@ fn restore_holds_save_scope_then_stops_before_commit_when_game_scope_is_busy() {
         Arc::clone(&scope_registry),
     );
     let request = sample_request();
-    let task = SaveRestoreTaskService::with_scope_registry(
-        Arc::clone(&task_manager),
-        scope_registry,
-    )
-    .start_save_restore_task(&request)
-    .expect("restore task starts");
+    let task =
+        SaveRestoreTaskService::with_scope_registry(Arc::clone(&task_manager), scope_registry)
+            .start_save_restore_task(&request)
+            .expect("restore task starts");
 
     let error = runner
         .run_save_restore_task(&task.task_id, request)
@@ -119,6 +113,7 @@ fn restore_holds_save_scope_then_stops_before_commit_when_game_scope_is_busy() {
 
     assert_eq!(error.error_code, "write_admission_busy");
     assert_eq!(file_system.commit_count(), 0);
+    assert_eq!(file_system.discard_count(), 1);
     assert_eq!(
         transactions.statuses().last(),
         Some(&SaveRestoreTransactionStatus::Failed)

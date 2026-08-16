@@ -1,14 +1,14 @@
+use crate::CrossProcessWriteAdmissionCoordinator;
 use hmm_core::{
     GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
     SaveBackupBackgroundRegistrationStatus, SaveBackupBackgroundSettings, SaveBackupSchedulerState,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, SaveBackupBackgroundRegistry,
-    SaveBackupBackgroundRegistryError, SaveBackupBackgroundSettingsRepository,
-    CrossProcessWriteAdmissionError, SaveBackupSchedulerStateRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, CrossProcessWriteAdmissionError,
+    CrossProcessWriteGuard, SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
+    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
     SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
-use crate::CrossProcessWriteAdmissionCoordinator;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
@@ -319,24 +319,27 @@ impl SaveBackupBackgroundService {
     pub fn register(
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Register)?;
         let _transition = self.lock_registration_transition();
-        let _admission = self.write_admission.acquire_background_registration()?;
         self.change_registration(RegistrationOperation::Register)
     }
 
     pub fn unregister(
         &self,
     ) -> Result<SaveBackupBackgroundRegistrationResult, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Unregister)?;
         let _transition = self.lock_registration_transition();
-        let _admission = self.write_admission.acquire_background_registration()?;
         self.change_registration(RegistrationOperation::Unregister)
     }
 
     pub fn enable(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Register)?;
         let _transition = self.lock_registration_transition();
-        let _admission = self.write_admission.acquire_background_registration()?;
         let settings_repository = self.settings_repository()?;
         let timestamp_unix_millis = self
             .clock
@@ -377,8 +380,9 @@ impl SaveBackupBackgroundService {
     pub fn disable(
         &self,
     ) -> Result<SaveBackupBackgroundControlStatus, SaveBackupBackgroundServiceError> {
+        let _admission =
+            self.acquire_registration_write_admission(RegistrationOperation::Unregister)?;
         let _transition = self.lock_registration_transition();
-        let _admission = self.write_admission.acquire_background_registration()?;
         let settings_repository = self.settings_repository()?;
         let settings = settings_repository
             .load()
@@ -446,6 +450,27 @@ impl SaveBackupBackgroundService {
         let result = self.registration_operation_result(operation);
         self.record_registration_audit(timestamp_unix_millis, operation, &result)?;
         Ok(result)
+    }
+
+    fn acquire_registration_write_admission(
+        &self,
+        operation: RegistrationOperation,
+    ) -> Result<Box<dyn CrossProcessWriteGuard>, SaveBackupBackgroundServiceError> {
+        match self.write_admission.acquire_background_registration() {
+            Ok(guard) => Ok(guard),
+            Err(error) => {
+                let timestamp_unix_millis = self
+                    .clock
+                    .now_unix_millis()
+                    .map_err(|_| SaveBackupBackgroundServiceError::ClockUnavailable)?;
+                let result = registration_result(
+                    SaveBackupBackgroundRegistrationStatus::RegistrationFailed,
+                    Some(error.code()),
+                );
+                self.record_registration_audit(timestamp_unix_millis, operation, &result)?;
+                Err(SaveBackupBackgroundServiceError::WriteAdmission(error))
+            }
+        }
     }
 
     fn settings_repository(
