@@ -1,8 +1,32 @@
 use super::*;
 use hmm_core::{
-    ModRevisionId, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-    ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
+    ContentTransformerIdentity, ModRevisionId, ReplacementAdapterFacts, ReplacementBinding,
+    ReplacementBindingId, ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetId,
+    ReplacementTargetKind,
 };
+
+fn transformer_facts(transformer_version: u32, file_count: u32) -> ReplacementAdapterFacts {
+    ReplacementAdapterFacts::new(
+        1,
+        "mhw.weapon",
+        "mrl3-texture-path",
+        1,
+        "a".repeat(64),
+        "b".repeat(64),
+        "c".repeat(64),
+    )
+    .expect("adapter facts")
+    .with_transformers(
+        vec![ContentTransformerIdentity::new(
+            "mhw.weapon.mrl3-texture-path.v1",
+            transformer_version,
+        )
+        .expect("transformer identity")],
+        1,
+        file_count,
+    )
+    .expect("transformer facts")
+}
 
 pub(super) fn replacement_snapshot(
     mod_id: &str,
@@ -59,9 +83,41 @@ fn commit_persists_replacement_snapshot_and_includes_it_in_plan_hash() {
             None,
         )])
         .expect("second plan");
+    let with_adapter_facts = InstallPlan::from_providers([InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target"),
+        FileLayer::new("base", 0),
+    )])
+    .with_replacement_bindings(vec![replacement_snapshot(
+        "mod-a",
+        "default",
+        "binding-a",
+        "mhw:armor:fatalis-alpha",
+        None,
+    )
+    .with_adapter_facts(transformer_facts(1, 1))])
+    .expect("adapter facts plan");
+    let with_changed_transformer = InstallPlan::from_providers([InstallFileProvider::new(
+        ModId::new("mod-a"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"]).expect("target"),
+        FileLayer::new("base", 0),
+    )])
+    .with_replacement_bindings(vec![replacement_snapshot(
+        "mod-a",
+        "default",
+        "binding-a",
+        "mhw:armor:fatalis-alpha",
+        None,
+    )
+    .with_adapter_facts(transformer_facts(2, 1))])
+    .expect("changed transformer plan");
 
     let first_manifest = commit_plan_for_hash_test(first);
     let second_manifest = commit_plan_for_hash_test(second);
+    let adapter_facts_manifest = commit_plan_for_hash_test(with_adapter_facts);
+    let changed_transformer_manifest = commit_plan_for_hash_test(with_changed_transformer);
 
     assert_eq!(first_manifest.replacement_bindings.len(), 1);
     assert_eq!(
@@ -72,6 +128,14 @@ fn commit_persists_replacement_snapshot_and_includes_it_in_plan_hash() {
         "mhw:armor:fatalis-alpha"
     );
     assert_ne!(first_manifest.plan_hash, second_manifest.plan_hash);
+    assert_ne!(first_manifest.plan_hash, adapter_facts_manifest.plan_hash);
+    assert_ne!(
+        adapter_facts_manifest.plan_hash,
+        changed_transformer_manifest.plan_hash
+    );
+    assert!(adapter_facts_manifest.replacement_bindings[0]
+        .adapter_facts()
+        .is_some());
 }
 
 #[test]

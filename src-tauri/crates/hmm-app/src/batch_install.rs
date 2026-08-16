@@ -1296,7 +1296,11 @@ impl BatchInstallItemExecutor for InstallTaskBatchItemExecutor {
                 };
             }
         };
-        if input.replacement_binding_snapshot.is_some() {
+        if input
+            .replacement_binding_snapshot
+            .as_ref()
+            .is_some_and(|binding| !crate::is_identity_replacement_binding(binding))
+        {
             return BatchInstallItemExecution::Blocked {
                 reason_code: "batch_retarget_install_unsupported".to_owned(),
             };
@@ -1327,6 +1331,7 @@ impl BatchInstallItemExecutor for InstallTaskBatchItemExecutor {
                     layer: input.layer.clone(),
                 },
                 input.revision_id.clone(),
+                input.replacement_binding_snapshot.clone(),
                 &observer,
             );
         match result {

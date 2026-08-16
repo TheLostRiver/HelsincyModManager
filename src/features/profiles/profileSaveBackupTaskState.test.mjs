@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  getProfileSaveBackupTaskErrorCode,
+  getProfileSaveBackupTaskErrorMessage,
   getProfileSaveBackupTaskPhaseLabel,
   isProfileSaveBackupTaskPhase,
   nextProfileSaveBackupTaskStateFromProgress,
@@ -102,7 +104,24 @@ test("profile save backup completed and failed progress map to stable UI states"
       status: "failed",
       taskId: "save-backup-a",
       phase: "save_backup.failed",
-      message: "save_backup_source_unset",
+      errorCode: "save_backup_source_unset",
+      message: "当前配置档尚未设置存档目录。",
     },
   );
+});
+
+test("profile save backup failures map stable codes without exposing raw backend text", () => {
+  assert.equal(
+    getProfileSaveBackupTaskErrorCode("save_backup_failed:write_admission_busy"),
+    "write_admission_busy",
+  );
+  assert.equal(
+    getProfileSaveBackupTaskErrorMessage("save_backup_failed:write_admission_busy"),
+    "另一项存档操作正在进行，请稍后再试。",
+  );
+  assert.equal(
+    getProfileSaveBackupTaskErrorMessage("save_backup_failed:future_internal_error"),
+    "存档备份失败，请稍后重试。",
+  );
+  assert.equal(getProfileSaveBackupTaskErrorCode("raw backend failure with spaces"), null);
 });

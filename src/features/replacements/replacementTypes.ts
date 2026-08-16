@@ -8,6 +8,7 @@ import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 
 export type ListReplacementTargetsInput = {
   gameId: GameId;
+  modId: string;
   query?: string;
 };
 
@@ -46,14 +47,13 @@ export type ReplacementTarget = {
   secondaryName?: string;
   aliases: string[];
   internalId: string;
-  metadata: Record<string, unknown>;
+  catalogScope: "production" | "developer_sandbox";
 };
 
 export type ReplacementSource = {
   id: string;
   sourceType: string;
   internalId: string;
-  pathFamily: string;
   supported: boolean;
 };
 
@@ -61,7 +61,8 @@ export type ReplacementWarning =
   | "no_supported_assets"
   | "multiple_sources"
   | "unsupported_source"
-  | "source_matches_target";
+  | "source_matches_target"
+  | "weapon_partial_part_set";
 
 export type ReplacementAnalysis = {
   gameId: string;
@@ -73,12 +74,8 @@ export type ReplacementAnalysis = {
 };
 
 export type RetargetActionPreview = {
-  sourceRelativePath: string;
-  targetRelativePath: string;
   sourceInternalId: string;
   targetInternalId: string;
-  sourcePathFamily: string;
-  targetPathFamily: string;
 };
 
 export type InitialRetargetInstallPreview = {

@@ -186,6 +186,56 @@ fn commit_contract_exposes_stable_phase_codes() {
 }
 
 #[test]
+fn rollback_required_transaction_preserves_candidate_adapter_facts() {
+    let fixture = Fixture::ready();
+    let adapter_facts = hmm_core::ReplacementAdapterFacts::new(
+        1,
+        "mhw.weapon",
+        "mrl3-texture-path",
+        1,
+        "a".repeat(64),
+        "b".repeat(64),
+        "c".repeat(64),
+    )
+    .expect("adapter facts");
+    fixture.planner.set_plan(candidate_plan_with_binding(
+        "v2",
+        replacement_snapshot(
+            "binding-v2",
+            "mhw:armor:fatalis-alpha",
+            "pl129_0000",
+            Some("v2"),
+        )
+        .with_adapter_facts(adapter_facts.clone()),
+    ));
+    let prepared = fixture.prepare(default_request());
+    let token = prepared.plan_token.clone();
+    fixture.game.fail_mutation(2);
+    fixture.game.fail_mutation_before(3);
+    let snapshots = Arc::new(FakeSnapshots::new(fixture.source.clone()));
+
+    let error = commit_service(&fixture, snapshots)
+        .commit(prepared, &token)
+        .expect_err("partial rollback");
+
+    assert_eq!(
+        error,
+        ReinstallCommitError::RollbackRequired {
+            failed_phase: ReinstallCommitPhase::Mutation
+        }
+    );
+    let transaction = fixture.recovery.current().expect("rollback transaction");
+    assert_eq!(
+        transaction.status,
+        ReinstallRecoveryTransactionStatus::RollbackRequired
+    );
+    assert_eq!(
+        transaction.candidate_replacement_bindings[0].adapter_facts(),
+        Some(&adapter_facts)
+    );
+}
+
+#[test]
 fn commit_fakes_preserve_manifest_and_recovery_repository_keys() {
     let fixture = Fixture::ready();
     assert!(fixture

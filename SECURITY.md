@@ -145,6 +145,20 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - CLI 首次 Ctrl+C 通过 `TaskManager` 请求协作式取消；只有确认取消才发唯一 cancelled terminal 并
   返回 130。第二次中断强制退出前提示通过 recovery/status 重验状态；commit barrier 生效后不伪造
   cancelled。
+- CLI-3A 在 `hmm-ports` 定义三类跨进程 scope：`background-registration-write`、
+  `save-profile-write` 和 `game-profile-write`。scope identity 只接受固定全局值或稳定 game/profile ID，
+  不接受路径、Steam ID、task XML、archive/manifest ref 或自由文本。
+- 获取全序固定为 `background < save < game`；restore 只能按 `save -> game -> process-local game mutex`
+  进入短 commit。逆序、同 scope 重入、timeout、取消和平台不可用全部 fail closed 为稳定
+  `write_admission_*` code。
+- Windows named mutex 的对象名和 Unix lock filename 只包含 domain-separated digest。Unix 实现从已打开
+  app-data capability 以 no-follow 相对打开 lock root/file，路径被 symlink 替换时不能逃逸；owner record
+  只是 stale evidence，不能删除或抢占活跃 OS lock。
+- 取得跨进程 guard 只表示取得执行时隙，不是写授权。InstallPlan、manifest、backup、rollback/recovery、
+  save settings/transaction、containment 与 owned Scheduled Task read-back 必须在 guard 内重验。
+- CLI-3A 不改变 Production parser/runtime 门禁。Production 写命令只有在后续 CLI-3B 按 command 完成
+  capability、token、Audit、锁内事实和 disposable Windows 验收后才能逐项开放；不得提供 debug 或
+  环境变量绕过。
 - 自动测试只使用 temp/fake/人工 fixture，不执行 Production game 命令或读取测试机真实 Steam、
   AppData、游戏、日志和存档，也不查询、注册、更新、启动或删除真实 Windows Scheduled Task。
 
@@ -166,8 +180,45 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - 默认备份目录不在游戏安装目录内。
 - 支持玩家自定义备份目录。
 - 备份结果写入 manifest。
-- 恢复前二次确认。
+- 备份源根和递归子项必须通过 no-follow metadata 拒绝 symlink、junction 与其他 reparse point；任何
+  link/reparse 都不得让扫描或归档读取源根外文件。
+- 恢复来源只能是后端按 `(gameId, profileId, backupId)` 精确读取的 completed backup + manifest；前端不得
+  提交 archive、manifest、目标路径、文件列表或 hash。
+- 恢复 preview 与任务启动都必须校验 archive/manifest identity、SHA-256、逐文件 size/hash、安全相对
+  路径、大小上限和 containment，并对游戏运行中或运行状态未知 fail closed。
+- 恢复前二次确认；默认开启 Profile 级 pre-restore 安全备份。用户关闭时必须显示高风险警告并额外确认，
+  不能由单次请求临时关闭持久安全设置。
+- pre-restore backup 必须先完整写入独立 `pre-restore/` 目录、manifest 和历史记录，之后才允许提交；普通
+  retention 不得删除该目录的记录。
+- 按数量、年龄或空间执行普通 retention 时，物理删除前必须先持久化清理意图；archive 与 manifest 只能
+  通过 repository 目录快照和 capability-relative no-follow 句柄复验、删除。半删必须记录为可重试
+  `retention_pending` / `retention_partial`，不能继续显示为 completed 或伪报释放空间。
+- 空间预算计入受保护 `pre_restore` 占用，但普通 retention 不得突破该保护点或最新普通备份下限；无法
+  收敛时返回稳定 blocked/partial 结果。
+- 同 game/profile 的备份任务、自动/显式 retention 与恢复任务必须共享存档维护 scope。恢复从 queued 登记
+  到 terminal 持有该 scope，防止来源在校验、准备、pre-restore 或提交之间被并发 retention 删除；错误、
+  abort 和 panic 路径必须释放占用。该 scope 不替代目标目录的短游戏写锁。
+- archive 校验、解压、staging 与安全备份位于共享写锁外；同 game/profile 的目标目录交换、rollback 和
+  recovery 收尾必须串行。commit 前重新读取短事实并复核 token、目标和 staging 摘要。
+- 恢复使用持久事务和受控 sibling 目录交换。失败优先恢复原 rollback sibling；无法证明原状态时保留
+  事务与 recovery evidence，并返回 `save_restore_recovery_required`，不得逐文件覆盖或静默删除证据。
+- 目录交换成功后必须先持久化非终态 `Committed` 事实，再幂等清理 rollback/failure evidence；只有收尾
+  成功后才能持久化 `Completed`。收尾失败必须保留可重试 evidence、持久化 `RecoveryRequired` 并阻断
+  新恢复，不能把“玩家文件已提交”误写成已回滚或普通失败。
+- durable `Completed` 后的 Task/Audit 写入失败只能投影 evidence degradation，不能伪造玩家文件回滚或
+  业务失败。
+- 协作取消只有在取消终态成功持久化后才能清理 prepared staging。若终态落盘失败，必须保留 staging 与
+  未完成事务、投影 `save_restore_recovery_required`，并覆盖先到达的乐观 cancelled UI 事件。
+- restore commit/finalize 依赖进程内保留的父目录 capability 和目录 identity。应用在提交后、durable
+  `Completed` 前崩溃或重启时不能按绝对路径重建该 capability；必须保留非终态事务与仍存活的磁盘
+  evidence 并 fail closed。若崩溃发生在幂等清理过程中，部分 sibling 可能已经安全删除，后续仍须由受控
+  恢复能力或人工支持根据事务与剩余 evidence 处理，不能放行新的恢复。
+- 应用完全退出必须在 restore admission scope 空闲时原子关闭新 restore 登记；任一 queued/running restore
+  或 scope 读取失败都必须 fail closed，恢复主窗口并拒绝完全退出。该状态不能使用后台保护 override 绕过，
+  用户只能返回应用或收起到托盘，直到 restore terminal 与 evidence 收尾完成。
 - 自动备份间隔和保留策略可配置。
+- 备份中心只接收短 game/profile/backup identity 和规范化备注；不得接收或返回 archive/manifest 路径、
+  Steam ID、hash 列表或真实存档内容。确认过的 Steam 账号快照只用于展示，不参与 restore ownership。
 - 测试不得默认使用真实存档目录。
 
 ## 响应原则

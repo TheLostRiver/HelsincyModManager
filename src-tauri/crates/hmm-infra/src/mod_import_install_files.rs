@@ -1,8 +1,14 @@
+use crate::controlled_fs::{
+    ensure_regular_file_metadata, open_existing_directory_chain, open_existing_directory_nofollow,
+    open_regular_file_nofollow,
+};
 use anyhow::{Context, Result};
 use hmm_ports::{
-    ModPackageInstallFile, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
+    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path};
 
 const MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH: usize = 64;
@@ -18,6 +24,69 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
         collect_sandbox_install_files(request.sandbox_root, request.sandbox_root, 0, &mut files)?;
         files.sort_by(|left, right| left.target_path.cmp(&right.target_path));
         Ok(files)
+    }
+}
+
+impl ModPackageInstallFileReader for SandboxModPackageInstallFileScanner {
+    fn read_install_file(&self, request: ModPackageInstallFileReadRequest<'_>) -> Result<Vec<u8>> {
+        if request.max_bytes == 0 {
+            anyhow::bail!("imported mod file read limit is invalid");
+        }
+        let relative = sandbox_install_relative_path(Path::new(request.package_file_id.as_str()))?;
+        if relative != request.package_file_id.as_str() {
+            anyhow::bail!("imported mod package file id is not canonical");
+        }
+
+        let mut components = relative.split('/').collect::<Vec<_>>();
+        let file_name = components
+            .pop()
+            .context("imported mod package file id is empty")?;
+        let package_root =
+            open_existing_directory_nofollow(request.sandbox_root, "imported mod package root")?;
+        let parent = open_existing_directory_chain(
+            &package_root,
+            &components,
+            "imported mod package directory",
+        )?;
+        let mut file = open_regular_file_nofollow(
+            &parent,
+            std::ffi::OsStr::new(file_name),
+            "imported mod package file",
+        )?;
+        let before = file
+            .metadata()
+            .context("failed to inspect opened imported mod package file")?;
+        ensure_regular_file_metadata(&before, "imported mod package file")?;
+        if before.len() > request.max_bytes {
+            anyhow::bail!("imported mod package file exceeds read limit");
+        }
+        let before_modified = before
+            .modified()
+            .context("failed to inspect imported mod package file timestamp")?;
+
+        let capacity = usize::try_from(before.len()).unwrap_or(0);
+        let mut bytes = Vec::with_capacity(capacity);
+        file.by_ref()
+            .take(request.max_bytes.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .context("failed to read imported mod package file")?;
+        let bytes_read = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        if bytes_read > request.max_bytes || bytes_read != before.len() {
+            anyhow::bail!("imported mod package file exceeds read limit");
+        }
+        let after = file
+            .metadata()
+            .context("failed to re-inspect imported mod package file")?;
+        ensure_regular_file_metadata(&after, "imported mod package file")?;
+        if after.len() != before.len()
+            || after
+                .modified()
+                .context("failed to re-inspect imported mod package file timestamp")?
+                != before_modified
+        {
+            anyhow::bail!("imported mod package file changed while reading");
+        }
+        Ok(bytes)
     }
 }
 
@@ -96,7 +165,8 @@ fn sandbox_install_relative_path(path: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hmm_ports::ModPackageInstallFileScanRequest;
+    use hmm_core::PackageFileId;
+    use hmm_ports::{ModPackageInstallFileReadRequest, ModPackageInstallFileScanRequest};
     use std::fs;
 
     #[test]
@@ -145,9 +215,44 @@ mod tests {
         assert!(error.to_string().contains("depth"));
     }
 
+    #[test]
+    fn sandbox_install_file_reader_enforces_canonical_id_and_size_limit() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("nativePC/wp/one/one001/mod"))
+            .expect("create fixture dirs");
+        fs::write(
+            sandbox_root.join("nativePC/wp/one/one001/mod/one001.mod3"),
+            b"artificial",
+        )
+        .expect("write fixture");
+
+        let reader = SandboxModPackageInstallFileScanner;
+        let package_file_id = PackageFileId::new("nativePC/wp/one/one001/mod/one001.mod3");
+        let bytes = reader
+            .read_install_file(ModPackageInstallFileReadRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+                package_file_id: &package_file_id,
+                max_bytes: 32,
+            })
+            .expect("read contained fixture");
+        assert_eq!(bytes, b"artificial");
+
+        let error = reader
+            .read_install_file(ModPackageInstallFileReadRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+                package_file_id: &package_file_id,
+                max_bytes: 4,
+            })
+            .expect_err("size limit must reject");
+        assert!(error.to_string().contains("read limit"));
+    }
+
     #[cfg(windows)]
     #[test]
-    fn sandbox_install_file_scanner_rejects_windows_directory_junctions() {
+    fn sandbox_install_file_access_rejects_windows_directory_junctions() {
         use std::process::Command;
 
         let temp = tempfile::tempdir().expect("temp dir");
@@ -184,10 +289,26 @@ mod tests {
             })
             .expect_err("junction should be rejected");
 
+        let package_file_id = PackageFileId::new("nativePC/junction/escape.mod3");
+        let read_error = SandboxModPackageInstallFileScanner
+            .read_install_file(ModPackageInstallFileReadRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+                package_file_id: &package_file_id,
+                max_bytes: 32,
+            })
+            .expect_err("reader must not follow a junction");
+
         fs::remove_dir(&junction_path).expect("remove junction");
         assert!(
             error.to_string().contains("unsupported link") || error.to_string().contains("reparse"),
             "unexpected error: {error}"
+        );
+        assert!(
+            read_error.to_string().contains("directory")
+                || read_error.to_string().contains("reparse")
+                || read_error.to_string().contains("link"),
+            "unexpected reader error: {read_error}"
         );
     }
 }

@@ -6,8 +6,9 @@
 
 P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 
-- 用户级 Scheduled Task adapter 支持受控 inspect、幂等 register/update、逐字段 read-back 和 ownership-checked unregister；固定任务每 15 分钟运行，并在用户登录后延迟 1 分钟触发。
+- 用户级 Scheduled Task adapter 支持受控 inspect、幂等 register/update、逐字段 read-back 和 ownership-checked unregister；固定任务每 15 分钟运行，并在用户登录后延迟 1 分钟触发。应用内通过当前进程 token 原生读取用户 SID，并使用 Task Scheduler COM 读取完整 task definition、状态和账户身份，再把账户名归一化为 SID；缺失任务、权限不足和任一字段/枚举/COM 异常仍分别映射为受控结果或 fail closed，整个只读链路不启动 PowerShell。
 - task action 只能启动内部定位的 sibling worker，参数严格固定为 `--once`；前端和外部输入不能提供 task name、SID、命令、路径、参数、PowerShell 或 XML。
+- `register()` 在写入后先由 PowerShell 返回完整 read-back，再由 Rust 复验 task spec 与 canonical non-link worker；只有该层确认 exact 后，才进入独立的内部首次启动阶段。首次启动对需要启动的 `Ready` task 在 PowerShell 内执行两次 exact-owned read-back，只通过 `Start-ScheduledTask -InputObject` 启动该对象，并在启动后再次复验 exact 与 `Ready/Running/Queued` 状态。若 task 已经 `Running/Queued` 则不重复启动。任一 read-back、worker identity、状态或启动命令失败都 fail closed，不返回 `Registered`，也不伪造 heartbeat。
 - `worker_heartbeat_at` 已与 scheduler `last_checked_at` 分离。只有后台保护已启用、read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才派生 `protected`。
 - `get_save_backup_background_status` 只读执行注册检查和健康派生，不注册、不修复、不启动任务，也不获取 scheduler lease。
 - worker sidecar 的 dev/release 准备脚本和 Windows `externalBin` 已接入；target-triple 源产物被 Git 忽略。
@@ -17,22 +18,39 @@ P7.2b 已在上述平台核心上接入应用级用户流程：
 
 - 全局 SQLite 设置持久化 `desired_enabled`、`enabled_at`、`last_worker_heartbeat_at` 和更新时间；worker 在禁用时立即 no-op，不枚举 Profile、不触发备份、不写 heartbeat。
 - Settings 是唯一的全局启停入口；Profile 只读展示当前 profile 的备份节奏和全局后台保护状态，不提供第二个开关。
-- 启用成功先进入 `starting`。当前启用周期在 5 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。
-- 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。
+- Settings 只允许直接点击开关控件启停，说明行本身不触发状态变化；检查、启用和停用期间必须显示可见的旋转/不定进度、实时耗时与完成/失败耗时。当前应用会话保留最近一次控制状态，离开再返回 Settings 不自动执行平台检查；用户点击“重新检查”可以随时强制刷新。
+- 启用成功先进入 `starting`。当前启用周期在 20 分钟内尚无有效 heartbeat 时保持“正在验证”；只有注册 read-back 完全匹配且 heartbeat 位于 `[now - 45m, now]` 时才显示 `protected`。启停 command 的确认若短暂失败，前端必须以一次权威状态重读判断是否已经收敛，已收敛时清除旧操作错误，不要求用户再次手动检查。
+- 启用后只在当前仍挂载的 Settings 页面按约 0.75 秒、3 秒、1、5、10、16 分钟节点自动复查 `starting`；3 秒节点用于覆盖首次 Windows task inspect 尚未结束时 worker heartbeat 已经落盘的短暂陈旧窗口。临时读取失败不得覆盖最近一次成功读取的开关与 control status，只显示“本次检查未完成”的临时警告并继续使用剩余节点。只有当前会话从未取得过有效 control status 时才显示全局“状态不可用”。离开页面会取消这些复查，返回页面仍只展示会话缓存，不自动触发平台查询。
+- 所有真正退出入口统一经过后端 exit guard。普通退出只在安全时继续；非保护状态显示原因明确的危险退出对话框，默认留在托盘，用户只能为当次显式 override，不能保存危险退出偏好。guard 每次都使用当前 Task Scheduler COM 精确读回和 fresh heartbeat，不缓存或延用平台保护事实；查询签发短时一次性授权，退出命令消费该授权以避免重复检查。授权缺失、过期、错配或已消费时仍回退到完整 guard并刷新危险确认，保持 fail-closed。普通对话框临时写入的“记住完全退出”偏好若被 guard 或 command 错误阻断，必须恢复原值。
 - `starting` 时 override 不注销任务、不清除启用意图；Windows 仍会在约 1 分钟后按登录 trigger 尝试运行 worker。
 
-这些能力完成的是应用级启停、状态展示和 fail-closed 退出保护，不等于 Windows 安装态 runtime acceptance。安装态 sibling worker、真实 Scheduled Task 触发、fresh heartbeat 和 cleanup 的人工 smoke 尚未在一次性账户/VM 完成；P7.2c NSIS/WiX owned-task 自动卸载 cleanup 也仍是独立 release packaging gate。所有后续工作继续复用 `SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
+P7.2a 安装态 runtime acceptance 已于 2026-08-07 在一次性 Windows Sandbox 完成：安装目录 sibling
+worker、真实 user Scheduled Task 的 exact/幂等注册、Task Scheduler 人工 Run、fresh heartbeat、一次
+synthetic automatic backup 与 ownership-checked 幂等 cleanup 均有证据。Terminal A 的 stdin
+acknowledgement 未生效，最终 unregister leg 使用 dedicated cleanup smoke 完成并经 UI 确认无残留；
+该偏差保留在 smoke 记录中。此 gate 证明安装态执行链，不替代长期 cadence/升级 soak，也不代表
+P7.2c disposable VM runtime gate 已完成。所有后续工作继续复用
+`SaveBackupTaskRunner -> SaveBackupService -> SaveBackupWriter/Repository/AuditLog`，不得建立第二套备份写入链路。
 
-### P7.2c 卸载 cleanup 规划状态
+### P7.2c 卸载 cleanup 实施状态
 
 P7.2c 已完成 [设计规格](superpowers/specs/2026-07-12-save-backup-installer-cleanup-design.md) 与
-[实施计划](superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md)，但尚未实现
-helper、NSIS hook、WiX custom action 或 disposable VM gate。规划固定以下边界：
+[实施计划](superpowers/plans/2026-07-12-save-backup-installer-cleanup-implementation.md)。helper、双
+Windows sidecar、NSIS hook、WiX custom action 和 fake/static/build gate 已完成；disposable VM
+runtime gate 已完成 WiX 核心卸载矩阵，最终候选包的尾部矩阵仍待人工执行。实现固定以下边界：
 
 - 安装器调用独立、无参数的 installer cleanup helper；不调用 Settings `disable()`，也不扩展
   worker 固定 `--once` CLI。
 - helper 直接复用 infra 的 current-user identity、固定 ownership marker、受控 unregister 和
   post-delete read-back；不读取 AppData、SQLite、Audit Log、Profile/save/backup/game 路径或网络。
+- helper 在 Rust 中派生当前用户 task identity 后，只启动一个 cleanup PowerShell 进程；该进程内依次
+  执行两次 ownership/state 复核、一次 owned unregister 和 post-delete missing read-back，避免为每个
+  阶段重复导入 ScheduledTasks 模块造成超时抖动。
+- 应用内 registry 在进程生命周期缓存已验证的当前用户 SID；普通 register/update 在一个 PowerShell
+  进程内完成 ownership 检查、写入和 exact read-back。Rust 校验该 read-back 后，再用一个仅限 infra
+  内部的受控 PowerShell 操作对 exact-owned task 执行两次 read-back 和一次首次启动；启动后最终 read-back
+  仍由 Rust 复验。unregister 在一个进程内完成 ownership 检查、删除和 missing read-back。port 的成功返回
+  已经代表注册与首次启动后置条件，app service 不再追加重复 inspect。
 - missing、owned exact 和 owned drift 允许幂等清理；foreign task 必须保留并允许产品卸载继续。
 - owned task running/queued，或 identity、ownership、state、delete/read-back 无法确认时，真正
   卸载 fail closed；不得强杀正在备份的 worker。
@@ -41,8 +59,39 @@ helper、NSIS hook、WiX custom action 或 disposable VM gate。规划固定以�
 - NSIS 与 WiX 的 static/build/runtime gate 分别记录；自动化只使用 fake runner 和静态检查，真实
   task 验收只在一次性 Windows 账户或 VM 执行。
 
-在 helper、两个 installer 接入和 disposable VM 矩阵全部完成前，不得把 P7.2c 标为实现完成，
-也不得用该规划替代 P7.2a 安装态 worker/heartbeat runtime acceptance。
+在 disposable VM 矩阵完成前，不得把 P7.2c 标为 runtime acceptance 完成，也不得用该实现替代
+P7.2a 安装态 worker/heartbeat runtime acceptance。
+
+2026-08-09 的首轮 NSIS runtime 矩阵中，`missing` 和 `owned exact` 的 interactive/silent 变体通过；
+`owned drift` 首次交互卸载在 owner marker 与 `Ready` 状态仍可确认时返回 `21/ownership_unverified`。
+失败路径正确保留 task、worker 和安装目录，但暴露了四次独立 PowerShell/ScheduledTasks 启动造成的
+延迟与 timeout 抖动。实现已收敛为上述两进程结构。
+
+2026-08-12 的 WiX `0.1.9` 复验已覆盖 `missing`、`owned exact`、`owned drift`、`foreign` 和
+`owned running` 的 interactive/silent 变体。前三类均完成清理，foreign task 均保留；running 变体均以
+MSI `1603` fail closed，保留安装目录、三个 sibling EXE 和运行中 task，任务自然回到 `Ready` 后重试
+卸载成功并清除 owned task。WiX 对外部 EXE custom action 的所有非零退出统一报告 MSI `1722/1603`，
+无法稳定向 UI 透传 helper 原始 `20`；模板因此提供固定、非敏感且可操作的 `1722` 文案，提示关闭 HMM、
+等待后台备份结束后重试。该文案不放宽 `Return="check"` 或回滚语义。
+
+最终 HEAD 的 `0.1.10` NSIS/WiX debug 候选包已重建：NSIS 为 `13,578,498` bytes、SHA-256
+`40E00C74BF7FDC44179538BA952E6BF36DC6E026D95CB53549E4C38BE59420A6`；MSI 为 `20,156,416`
+bytes、SHA-256 `696E000AF732519780EB38A028B4B07DA7A20E111DED363A4E2111D709D73131`。最终 MSI 数据库确认
+三个 sibling 均在 `File` 表，`RunInstallerCleanup` sequence `3499` 位于 `RemoveFiles` sequence `3500`
+之前，条件为 `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`，固定 `1722` 文案已写入 `Error` 表。
+
+该 `0.1.10` 已完成 WiX upgrade/repair、最终 owned 卸载、自动备份产物和 NSIS payload 等尾部矩阵，
+但 NSIS 在任务被重新创建后暴露出新的首次运行缺口：任务为 exact `Ready`，UI 长时间停留在 `starting`，
+因为注册流程没有保证本轮 worker 立即运行。上述两阶段 exact-owned 首次启动修复已进入新候选门禁；在新包
+完成 NSIS 重新启用自动收敛、owned 卸载和 running fail-closed 复验前，不把 P7.2c 标记为 runtime acceptance。
+
+首次运行修复的 `0.1.11` debug 候选已从提交 `7b9154d` 构建：NSIS 为 `13,575,580` bytes、SHA-256
+`0EB248CBFCC5969621765CE58D287E7B4E9F3F90EE0B5C3590BA13E5092047FD`；MSI 为 `20,164,608`
+bytes、SHA-256 `84DD4D66E6274331E0304334A477823D61DB0F69DBF92EF053765D494573E062`。NSIS 生成脚本确认三个
+sibling、update mode 跳过与 pre-uninstall fail-closed hook；MSI 数据库确认 ProductVersion `0.1.11`、
+三个 sibling、`RunInstallerCleanup` type `18` / sequence `3499`、`RemoveFiles` sequence `3500`、
+`REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE` 条件和固定 `1722` 文案。该证据只关闭 build/static gate，
+不替代 disposable Windows runtime gate。
 
 ## 背景
 
@@ -87,7 +136,9 @@ UI 必须提供清晰入口说明当前状态是“后台运行中”，而不�
 
 ### 退出程序
 
-用户选择“退出程序”表示主客户端进程结束。所有真正退出入口必须先读取后端结构化 exit guard；普通退出只能在没有自动计划或全局状态为 `protected` 时继续。`starting`、未启用、注册失败、worker 不健康、权限不足、不支持或状态不可用时，必须显示原因明确的危险退出提示：
+用户选择“退出程序”表示主客户端进程结束。所有真正退出入口必须调用同一个后端退出命令；该命令先隐藏主窗口，再执行一次结构化 exit guard。普通退出只能在没有自动计划或全局状态为 `protected` 时继续；`starting`、未启用、注册失败、worker 不健康、权限不足、不支持或状态不可用时，窗口恢复并显示原因明确的危险退出提示：
+
+Windows 安装态验收把“窗口立即隐藏”和“进程实际退出”分开判定：安全退出必须在 5 秒内结束 `hmm-tauri` 及其 `msedgewebview2` 子进程。App Log 的 `application.exit_guard_evaluated.duration_ms` 用于定位实时检查耗时，进程观测记录真实退出耗时；不能以窗口隐藏代替进程退出成功。
 
 ```text
 退出主客户端后，自动备份将不再受后台保障。
@@ -291,7 +342,7 @@ unsupported_platform
 - `protected`：后台保护已启用、Scheduled Task read-back 完全匹配，且 worker heartbeat 位于 `[now - 45m, now]`。
 - `tray_only`：主客户端托盘常驻可执行自动备份，但真正退出后不受保护。
 - `not_enabled`：用户未启用后台保障。
-- `starting`：任务已完成注册 read-back，但当前启用周期仍在 5 分钟启动宽限内，尚无有效 worker heartbeat；不能提前声称已保护。
+- `starting`：任务已完成注册 read-back，但当前启用周期仍在 20 分钟启动宽限内，尚无有效 worker heartbeat；该窗口覆盖首次 15 分钟周期和调度抖动，且不能提前声称已保护。
 - `registration_failed`：计划任务或自启动注册失败。
 - `worker_unhealthy`：已注册但最近没有心跳或连续失败。
 - `permission_required`：当前环境需要额外权限或系统设置。
@@ -311,6 +362,22 @@ unsupported_platform
 - 最近 worker heartbeat 时间。
 - 最近失败原因。
 - “重新检查”按钮。
+- 检查、启用和停用过程的动态反馈与实时耗时，以及完成后的本次耗时。
+
+启停请求返回错误时，UI 不能直接把一次 transport/确认失败等同于最终系统状态。前端应立即强制读取一次
+权威 control status：若启用已收敛为 `starting`/`protected`，或停用已收敛为 `not_enabled`，则清除旧操作错误并
+告知用户状态已自动重新同步；只有未收敛时才保留稳定错误提示。`starting` 仍不代表已保护，前端不得提前显示
+`protected`。
+
+启用后，当前 Settings 页面在约 0.75 秒和 3 秒执行两次短周期非阻塞权威复查，再在约 1、5、10、16 分钟节点
+有限复查，使注册状态快速收敛，并在首次 heartbeat 到达后无需用户再次点击。后端 `control_status()` 必须在实时
+Scheduled Task inspect 之后重新读取全局设置；这样 heartbeat 或停用意图若在 inspect 期间提交，同一次响应
+就能看到新事实，而不会返回开始检查前的陈旧快照。临时读取失败不能取消剩余节点；其他操作进行中时延后当前节点而
+不消耗它。自动复查必须在页面卸载时取消，重新进入 Settings 不自动查询；这样既避免页面切换触发十几秒平台检查，
+也避免长期轮询 Scheduled Task。
+
+系统启用“减少动画”时，普通装饰动画应继续降级；但检查、启用和停用中的状态图标与不定进度不能完全静止，
+否则会被误认为界面卡住。此类必要反馈改用更慢的阶梯动画，并继续配合实时耗时文字表达进度。
 
 当用户启用自动备份但未启用后台保障时，应显示明确提示：
 
@@ -489,15 +556,18 @@ MVP 平台。推荐：
 
 - 已实现 Windows 用户级 Scheduled Task inspect/register/update/unregister 和 ownership/read-back 保护。
 - 已实现独立 worker heartbeat、45 分钟 TTL 和 exact registration + fresh heartbeat 的 `protected` 派生。
-- 已实现 Windows worker sidecar 准备与打包配置；安装态人工 smoke 尚未完成，不构成 Windows runtime acceptance。
+- 已实现 Windows worker sidecar 准备与打包配置；2026-08-07 安装态人工 smoke 已完成并记录为
+  SAVE-02 `certified`。
 
 ### 切片 4b：P7.2b 主客户端状态与提示
 
 - 已实现全局 SQLite 用户意图、启用时间和独立 worker heartbeat。
 - 已实现 Settings 唯一全局启停入口，以及 Profile 只读状态展示。
-- 已实现 5 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生。
-- 已实现统一 exit guard、结构化危险原因和当次 override；危险退出不保存偏好。
-- 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 和 P7.2c installer cleanup 仍未完成。
+- 已实现 20 分钟 `starting`、45 分钟 `protected` TTL 和 fail-closed 状态派生；启动宽限覆盖首次 15 分钟计划任务周期及调度抖动。
+- 已实现启停结果的权威重读收敛、动态进度、实时/完成耗时，以及仅限当前 Settings 页面生命周期的有限自动复查；短周期节点覆盖首次 inspect 与 heartbeat 的竞争窗口，页面返回不会自动执行平台查询。
+- 已实现统一 exit guard、结构化危险原因、短时一次性授权和当次 override；危险退出不保存偏好。退出命令先隐藏主窗口，安全检查失败时恢复窗口并显示确认，避免用户在等待后台检查时误以为退出未生效。授权存储或 command 失败同样必须恢复窗口并 fail closed；只有明确的 `exiting` 结果才保持隐藏。
+- 已完成应用级自动化与响应式 UI 检查；安装态 runtime acceptance 已完成，P7.2c installer cleanup
+  仍未完成。
 
 ### 切片 5：跨平台扩展
 
@@ -517,4 +587,6 @@ MVP 平台。推荐：
 - 所有高风险路径都有临时目录或 fake 依赖测试覆盖。
 - 文档、契约、测试说明和日志说明同步更新。
 
-P7.2b 已满足应用级启停、状态 UI、退出保护和自动化门禁，但没有执行真实安装态 Scheduled Task，因此不能仅凭本切片勾选“主客户端退出后仍会按计划备份”。
+P7.2b 已满足应用级启停、状态 UI、退出保护和自动化门禁；SAVE-02 又完成了真实安装态 Scheduled Task
+的人工触发、fresh heartbeat、实际 synthetic backup 与 cleanup。两者共同证明安装态后台执行链，
+但 SAVE-02 没有做长时间 cadence/升级 soak，P7.2c installer cleanup 也仍是独立发布 gate。

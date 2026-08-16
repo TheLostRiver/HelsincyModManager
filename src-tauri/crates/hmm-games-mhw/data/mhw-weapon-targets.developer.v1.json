@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "catalog_version": "wr04-developer-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:8b2e179c065aa2622d8f3903ec6c73628a30413d50f3f359093018c3ab83165f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one001",
+      "internal_id": "one001",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "en": {
+          "display_name": "WR-04 Artificial Great Sword A",
+          "aliases": ["WR04 seed A", "one001"]
+        },
+        "zh_cn": {
+          "display_name": "WR-04 人工大剑 A",
+          "aliases": ["人工种子 A"]
+        }
+      },
+      "legacy_ids": ["mhw:weapon:wr04-one001"]
+    },
+    {
+      "stable_id": "mhw:weapon:0784b06e3b1e031bee9d1da31deeb995cba0d35dca4f7583f1cd8a019c5facc1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one002",
+      "internal_id": "one002",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "en": {
+          "display_name": "WR-04 Artificial Great Sword B",
+          "aliases": ["WR04 seed B", "one002"]
+        },
+        "zh_cn": {
+          "display_name": "WR-04 人工大剑 B",
+          "aliases": ["人工种子 B"]
+        }
+      },
+      "legacy_ids": ["mhw:weapon:wr04-one002"]
+    }
+  ]
+}

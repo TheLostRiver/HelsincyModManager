@@ -1,0 +1,19 @@
+[package]
+name = "hmm-save-backup-sidecars"
+version = "0.1.0-alpha.0"
+description = "Windows sidecars for Helsincy Mod Manager"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "hmm-save-backup-worker"
+path = "src/bin/hmm-save-backup-worker.rs"
+
+[[bin]]
+name = "hmm-save-backup-installer-cleanup"
+path = "src/bin/hmm-save-backup-installer-cleanup.rs"
+
+[dependencies]
+hmm-tauri = { path = "../.." }

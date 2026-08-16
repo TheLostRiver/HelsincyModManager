@@ -1,11 +1,11 @@
 use crate::dto::{GamePrerequisiteDecisionDto, InstallPlanPreviewDto};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ListReplacementTargetsRequestDto {
     pub game_id: String,
+    pub mod_id: String,
     #[serde(default)]
     pub query: Option<String>,
 }
@@ -75,7 +75,7 @@ pub struct ReplacementTargetDto {
     pub secondary_name: Option<String>,
     pub aliases: Vec<String>,
     pub internal_id: String,
-    pub metadata: BTreeMap<String, serde_json::Value>,
+    pub catalog_scope: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -84,7 +84,6 @@ pub struct ReplacementSourceDto {
     pub id: String,
     pub source_type: String,
     pub internal_id: String,
-    pub path_family: String,
     pub supported: bool,
 }
 
@@ -95,6 +94,7 @@ pub enum ReplacementWarningDto {
     MultipleSources,
     UnsupportedSource,
     SourceMatchesTarget,
+    WeaponPartialPartSet,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -112,12 +112,8 @@ pub struct ReplacementAnalysisDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RetargetActionPreviewDto {
-    pub source_relative_path: String,
-    pub target_relative_path: String,
     pub source_internal_id: String,
     pub target_internal_id: String,
-    pub source_path_family: String,
-    pub target_path_family: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -136,6 +132,32 @@ mod replacement_dto_tests {
     use super::*;
     use crate::dto::{GamePrerequisiteDecisionCodeDto, GamePrerequisiteDecisionStatusDto};
     use serde_json::json;
+
+    #[test]
+    fn target_list_request_requires_mod_identity_and_rejects_backend_paths() {
+        let request: ListReplacementTargetsRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "modId": "weapon-mod",
+            "query": "one"
+        }))
+        .expect("deserialize target list request");
+        assert_eq!(request.mod_id, "weapon-mod");
+
+        assert!(
+            serde_json::from_value::<ListReplacementTargetsRequestDto>(json!({
+                "gameId": "mhw",
+                "modId": "weapon-mod",
+                "sandboxPath": "C:\\private\\package"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<ListReplacementTargetsRequestDto>(json!({
+                "gameId": "mhw"
+            }))
+            .is_err()
+        );
+    }
 
     #[test]
     fn initial_retarget_requests_deserialize_stable_ids_without_backend_paths() {
@@ -231,7 +253,7 @@ mod replacement_dto_tests {
             secondary_name: Some("Fatalis Alpha +".to_owned()),
             aliases: vec!["黑龙".to_owned()],
             internal_id: "pl129_0000".to_owned(),
-            metadata: BTreeMap::from([("rank".to_owned(), json!("master"))]),
+            catalog_scope: "production".to_owned(),
         };
         let analysis = ReplacementAnalysisDto {
             game_id: "mhw".to_owned(),
@@ -242,7 +264,6 @@ mod replacement_dto_tests {
                 id: "mhw:armor:f_equip:pl121_0000".to_owned(),
                 source_type: "armor".to_owned(),
                 internal_id: "pl121_0000".to_owned(),
-                path_family: "pl/f_equip".to_owned(),
                 supported: true,
             }],
             warnings: vec![ReplacementWarningDto::SourceMatchesTarget],
@@ -250,8 +271,15 @@ mod replacement_dto_tests {
 
         let target_value = serde_json::to_value(target).expect("serialize target");
         let analysis_value = serde_json::to_value(analysis).expect("serialize analysis");
+        let action_value = serde_json::to_value(RetargetActionPreviewDto {
+            source_internal_id: "one001".to_owned(),
+            target_internal_id: "one002".to_owned(),
+        })
+        .expect("serialize action");
         assert_eq!(target_value["gameId"], "mhw");
         assert_eq!(target_value["secondaryName"], "Fatalis Alpha +");
+        assert_eq!(target_value["catalogScope"], "production");
+        assert!(target_value.get("metadata").is_none());
         assert_eq!(analysis_value["matchedAssetCount"], 1);
         assert_eq!(
             analysis_value["installedTargetId"],
@@ -259,6 +287,18 @@ mod replacement_dto_tests {
         );
         assert_eq!(analysis_value["warnings"][0], "source_matches_target");
         assert!(!target_value.to_string().contains("nativePC"));
+        assert_eq!(action_value["sourceInternalId"], "one001");
+        assert_eq!(action_value["targetInternalId"], "one002");
+        for forbidden in [
+            "pathFamily",
+            "sourceRelativePath",
+            "targetRelativePath",
+            "sourcePathFamily",
+            "targetPathFamily",
+        ] {
+            assert!(analysis_value.get(forbidden).is_none());
+            assert!(action_value.get(forbidden).is_none());
+        }
     }
 
     #[test]
@@ -315,7 +355,7 @@ mod replacement_dto_tests {
                 secondary_name: None,
                 aliases: Vec::new(),
                 internal_id: "pl129_0000".to_owned(),
-                metadata: BTreeMap::new(),
+                catalog_scope: "production".to_owned(),
             },
             actions: Vec::new(),
             warnings: Vec::new(),

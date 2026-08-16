@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HMM MHW equipment catalog candidate v1",
+  "description": "Untrusted, pre-audit candidate input. Passing this schema does not grant bundled distribution eligibility.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_version", "game_id", "sources", "targets"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "catalog_version": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "game_id": {
+      "const": "mhw"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_name", "source_url", "retrieved_at", "license"],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "source_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_url": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "retrieved_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "license": {
+          "$ref": "#/$defs/license"
+        }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["unknown", "restricted", "redistributable"]
+        },
+        "spdx_expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_url": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "attribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewed_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    },
+    "localized_names": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display_name", "aliases"],
+      "properties": {
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_id",
+        "target_kind",
+        "path_family",
+        "resource_path",
+        "status",
+        "names",
+        "source_ids"
+      ],
+      "properties": {
+        "stable_id": {
+          "type": "string",
+          "pattern": "^mhw:(armor|weapon):[a-f0-9]{64}$"
+        },
+        "target_kind": {
+          "enum": ["armor", "weapon"]
+        },
+        "path_family": {
+          "type": "string",
+          "pattern": "^(pl/f_equip|wp/[a-z0-9][a-z0-9_-]*)$"
+        },
+        "resource_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["active", "hidden", "dummy"]
+        },
+        "names": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[a-z]{2,3}(_[a-z0-9]{2,8})*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/localized_names"
+          }
+        },
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          }
+        },
+        "legacy_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^mhw:(armor|weapon):[a-z0-9][a-z0-9._-]*$"
+          }
+        }
+      }
+    }
+  },
+  "$comment": "The hmm-games-mhw validator additionally recomputes stable_id, validates MHW path families, detects normalized collisions and duplicate display names, and gates bundling on provenance/license status."
+}

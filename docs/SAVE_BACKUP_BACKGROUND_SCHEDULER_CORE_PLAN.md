@@ -1,6 +1,6 @@
 # 后台自动备份调度内核实现计划
 
-本文档定义 `SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md` 中的后台调度内核，以及 P7.1 worker 基础和 P7.2a Windows 平台核心。P7.2a 已落地用户级 Scheduled Task 注册/read-back/移除、独立 heartbeat 健康派生和 worker sidecar 基础；P7.2b 用户启用与退出流程仍未实现。
+本文档定义 `SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md` 中的后台调度内核，以及 P7.1 worker 基础和 P7.2a Windows 平台核心。P7.2a 已落地用户级 Scheduled Task 注册/read-back/移除、独立 heartbeat 健康派生和 worker sidecar 基础；P7.2b 用户启用与退出流程也已实现，SAVE-02 安装态 runtime acceptance 已于 2026-08-07 完成。
 
 ## 当前实施状态
 
@@ -12,7 +12,10 @@ P7.1 已完成 scheduler state、lease 和单次 worker。P7.2a 进一步完成�
 - dev/release worker sidecar 准备与 Windows `externalBin` 配置。
 - fake registry/runner、固定 clock、临时 SQLite/目录覆盖的自动化测试；不操作真实系统任务。
 
-P7.2a 没有 Profile/Settings 真实启用开关或退出前提示，安装态人工 smoke 也尚未在一次性账户/VM 完成。因此普通产品流程仍保持 `tray_only`，不得表述为已通过 Windows runtime acceptance 或完整退出后保障。
+P7.2b 已提供 Settings 唯一真实启用开关、Profile 只读状态和退出前保护。SAVE-02 在一次性 Windows
+Sandbox 完成 sibling worker、真实 user Scheduled Task 人工触发、fresh heartbeat、synthetic backup
+与幂等 cleanup，因此 P7.2a 安装态 runtime gate 已通过。该结论不包含 P7.2c installer cleanup、
+长期 cadence/升级 soak 或跨平台保障。
 
 ## 目标
 
@@ -220,8 +223,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 
 ## 后续切片
 
-1. 在已授权的一次性 Windows 账户/VM 按 smoke 文档完成安装态 sibling worker、真实触发、fresh heartbeat 与 cleanup 验收。
-2. P7.2b：接入 Profile/Settings 后台保护真实启用开关。
-3. P7.2b：接入退出主客户端时的“启用并退出”提示和真实启用后的端到端 `protected` 验收。
-4. 发布 gate：补 NSIS/WiX 自动卸载 cleanup，并分别验证安装器包含 sidecar 和卸载无残留任务。
-5. Linux / Steam Deck user service 或 autostart 实验支持。
+1. [x] 在已授权的一次性 Windows Sandbox 按 smoke 文档完成安装态 sibling worker、真实触发、fresh heartbeat 与 cleanup 验收。
+2. [x] P7.2b：接入 Profile/Settings 后台保护真实启用开关。
+3. [x] P7.2b：接入退出主客户端时的保护提示和真实启用后的 `starting` / `protected` 状态链。
+4. [ ] 发布 gate：补 NSIS/WiX 自动卸载 cleanup，并分别验证安装器包含 sidecar 和卸载无残留任务。
+5. [ ] Linux / Steam Deck user service 或 autostart 实验支持（本轮 out of scope）。

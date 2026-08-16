@@ -296,7 +296,38 @@ impl ModImportTaskRunner {
                     }
                     ModImportCatalogTarget::ExistingLogicalMod(mod_id) => mod_id.clone(),
                 };
-                let revision = stored_revision_from_result(&mod_id, &result.analysis);
+                let mut revision = stored_revision_from_result(&mod_id, &result.analysis);
+                // The package id fallback identifies a revision; it must not rename its logical Mod.
+                if result.analysis.metadata.display_name.is_none() {
+                    if let ModImportCatalogTarget::ExistingLogicalMod(existing_mod_id) = &target {
+                        let inherited_display_name = self
+                            .result_repository
+                            .get_mod(existing_mod_id)
+                            .and_then(|logical_mod| {
+                                logical_mod.ok_or_else(|| anyhow::anyhow!("logical Mod not found"))
+                            })
+                            .and_then(|logical_mod| {
+                                self.result_repository
+                                    .get_revision(&logical_mod.display_revision_id)
+                            })
+                            .and_then(|display_revision| {
+                                display_revision
+                                    .ok_or_else(|| anyhow::anyhow!("display revision not found"))
+                            });
+                        match inherited_display_name {
+                            Ok(display_revision) => {
+                                revision.display_name = display_revision.display_name;
+                            }
+                            Err(error) => {
+                                let _ = self.task_manager.fail_task(task_id);
+                                return Err(ModImportTaskRunError {
+                                    events: vec![failed_event(task_id)],
+                                    cause: Some(error.to_string()),
+                                });
+                            }
+                        }
+                    }
+                }
                 let save_result = match target {
                     ModImportCatalogTarget::NewLogicalMod => {
                         let logical_mod = StoredLogicalMod {

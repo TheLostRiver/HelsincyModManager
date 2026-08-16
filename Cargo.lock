@@ -1556,6 +1556,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
+ "tracing",
  "uuid",
 ]
 
@@ -1590,10 +1591,12 @@ dependencies = [
 name = "hmm-games-mhw"
 version = "0.1.0-alpha.0"
 dependencies = [
+ "crc32fast",
  "hmm-core",
  "hmm-ports",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "unicode-normalization",
 ]
@@ -1610,6 +1613,7 @@ dependencies = [
  "hmm-core",
  "hmm-ports",
  "image",
+ "libc",
  "quick-xml",
  "reqwest",
  "rusqlite",
@@ -1624,6 +1628,7 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "wait-timeout",
+ "windows",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
  "zip",
@@ -1662,6 +1667,13 @@ dependencies = [
  "uuid",
  "windows-sys 0.61.2",
  "zip",
+]
+
+[[package]]
+name = "hmm-save-backup-sidecars"
+version = "0.1.0-alpha.0"
+dependencies = [
+ "hmm-tauri",
 ]
 
 [[package]]

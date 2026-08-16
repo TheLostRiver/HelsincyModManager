@@ -36,6 +36,7 @@ import {
   BatchModLifecycleRunningPanel,
 } from "./batch-lifecycle/BatchModLifecycleResultPanel.tsx";
 import { DEFAULT_BATCH_EXECUTION_POLICY } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
+import type { BatchModLifecycleReplacementTargetFacts } from "./batch-lifecycle/batchModLifecycleTypes.ts";
 import {
   getInstallManifestStatus,
   previewInstallPlanForImportedMod,
@@ -94,6 +95,10 @@ import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 import { useModLibraryQuery } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
 import { MOD_LIBRARY_QUERY_BUSY_MESSAGE } from "./compactActionAvailability";
+import {
+  analyzeImportedModReplacement,
+  listReplacementTargets,
+} from "../replacements/replacementApi";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -305,6 +310,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const activeProfileIdRef = useRef<string | null>(activeProfileId);
   const pageMountedRef = useRef(true);
   const handledInstallTerminalTaskIdsRef = useRef(new Set<string>());
+  const handledBatchTerminalAttemptsRef = useRef(new Set<string>());
   const startFailureToastSequenceRef = useRef(0);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const installPlanPreviewGenerationRef = useRef(0);
@@ -371,6 +377,45 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     profileContext,
     loadPage: loadModLibraryPage,
   });
+  const loadBatchReplacementTargetFacts = useCallback(
+    async (modIds: string[]): Promise<BatchModLifecycleReplacementTargetFacts[]> => {
+      if (profileContext === null) {
+        throw new Error("profile context required");
+      }
+      return Promise.all(
+        modIds.map(async (modId) => {
+          try {
+            const [analysis, targets] = await Promise.all([
+              analyzeImportedModReplacement({
+                gameId: DEFAULT_INSTALL_GAME_ID,
+                profileId: profileContext.profileId,
+                modId,
+              }),
+              listReplacementTargets({ gameId: DEFAULT_INSTALL_GAME_ID, modId }),
+            ]);
+            return {
+              modId,
+              retargetable: analysis.retargetable,
+              installedTargetId: analysis.installedTargetId ?? null,
+              targets: targets.map(({ id, displayName, secondaryName }) => ({
+                id,
+                displayName,
+                secondaryName,
+              })),
+            };
+          } catch {
+            return {
+              modId,
+              retargetable: false,
+              installedTargetId: null,
+              targets: [],
+            };
+          }
+        }),
+      );
+    },
+    [profileContext],
+  );
   const batchWorkflow = useBatchModLifecycleWorkflow({
     gameId: profileContext === null ? null : DEFAULT_INSTALL_GAME_ID,
     profileId: profileContext?.profileId ?? null,
@@ -378,11 +423,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       profileContext === null
         ? Promise.reject(new Error("profile context required"))
         : getInstallManifestStatus({
-            gameId: DEFAULT_INSTALL_GAME_ID,
+            // Batch inputs require the exact installed revision from manifest facts.
+            // Recovery and manifest safety are revalidated by the backend preview.
             profileId: profileContext.profileId,
             modIds,
           }),
     loadRevisions: (modId) => getModRevisions({ modId }),
+    loadReplacementTargetFacts: loadBatchReplacementTargetFacts,
   });
   const libraryPage = libraryQuery.page;
   const renderedPage = libraryPage?.page ?? null;
@@ -594,6 +641,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     batchWorkflow.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIds]);
+
+  useEffect(() => {
+    if (batchWorkflow.state.status !== "result") {
+      return;
+    }
+    const batchAttemptKey = `${batchWorkflow.state.batchId}:${batchWorkflow.state.attemptNumber}`;
+    if (handledBatchTerminalAttemptsRef.current.has(batchAttemptKey)) {
+      return;
+    }
+
+    handledBatchTerminalAttemptsRef.current.add(batchAttemptKey);
+    void refreshLibraryPage().catch(() => undefined);
+  }, [batchWorkflow.state, refreshLibraryPage]);
 
   useEffect(() => {
     if (!isManagedInstallTaskTerminal(installTaskState)) {
@@ -1267,6 +1327,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       />
 
       {(batchWorkflow.state.status === "resolving"
+        || batchWorkflow.state.status === "target-selection"
         || batchWorkflow.state.status === "preview-loading"
         || batchWorkflow.state.status === "preview-ready"
         || batchWorkflow.state.status === "preview-error"
@@ -1280,6 +1341,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               : batchWorkflow.state.policy
           }
           onPolicyChange={batchWorkflow.setPolicy}
+          onReplacementTargetChange={batchWorkflow.setReplacementTarget}
+          onPreviewWithReplacementTargets={batchWorkflow.previewWithReplacementTargets}
           onConfirm={() => void batchWorkflow.confirmAndStart()}
           onClose={batchWorkflow.reset}
         />

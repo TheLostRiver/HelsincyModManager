@@ -257,7 +257,7 @@ Gate B 已通过，因此表中的 Gate B 时间门禁已经满足；任务仍�
 
 | 工作 | 当前状态 | 最早恢复条件 |
 | --- | --- | --- |
-| P7.2c installer cleanup | 设计/计划保留，实施暂停 | Gate B 后、Windows beta packaging 前重新评审 |
+| P7.2c installer cleanup | helper/installer 接入与 static/build gate 已完成；disposable VM runtime gate 待人工 | runtime acceptance 完成后再进入 Windows beta packaging |
 | P7.2a 安装态后台备份验收与备份中心 | 暂停 | Gate B 后按发布风险重排 |
 | T18 Mod 库分页 | 已恢复，Slice 1 为当前主线 | T19 完成；先落地 app-level query/filter/sort/page 兼容切片 |
 | T17 第三方管理器批量迁移 | 设计保留，实施暂停 | Gate B 通过，且单包生命周期已 certified |

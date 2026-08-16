@@ -87,6 +87,38 @@ fn revision_import_appends_to_explicit_existing_logical_mod() {
     assert_eq!(revisions[1].mod_id, ModId::new("mod-a"));
     assert_eq!(revisions[1].package_id, "package-v2");
     assert_eq!(revisions[1].import_task_id, task.task_id);
+    assert_eq!(revisions[1].display_name, "Candidate Revision");
+}
+
+#[test]
+fn revision_import_without_candidate_name_preserves_current_display_name() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create revision import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed("mod-a", "revision-v1", "package-v1");
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    runner
+        .run_prepare_revision_task(&task.task_id, archive_path(), ModId::new("mod-a"))
+        .expect("revision import succeeds");
+
+    let revisions = repository
+        .list_revisions(&ModId::new("mod-a"))
+        .expect("list target revisions");
+    assert_eq!(revisions.len(), 2);
+    assert_eq!(
+        revisions[1].revision_id,
+        ModRevisionId::new("mod-import-task-id")
+    );
+    assert_eq!(revisions[1].display_name, "Origin Revision");
+    assert_eq!(revisions[1].metadata.version.as_deref(), Some("2.0"));
 }
 
 #[test]
@@ -285,6 +317,20 @@ fn runner(
     preparer: Box<dyn ModImportPackagePreparer>,
     repository: Arc<FakeRevisionCatalogRepository>,
 ) -> ModImportTaskRunner {
+    runner_with_metadata_analyzer(
+        task_manager,
+        preparer,
+        repository,
+        Box::new(FixedMetadataAnalyzer),
+    )
+}
+
+fn runner_with_metadata_analyzer(
+    task_manager: Arc<crate::TaskManager>,
+    preparer: Box<dyn ModImportPackagePreparer>,
+    repository: Arc<FakeRevisionCatalogRepository>,
+    metadata_analyzer: Box<dyn ModPackageMetadataAnalyzer>,
+) -> ModImportTaskRunner {
     ModImportTaskRunner::new(
         task_manager,
         Arc::new(ModImportPrepareService::new(
@@ -292,7 +338,7 @@ fn runner(
             ModImportAnalysisService::new(
                 Box::new(FallbackPreviewProcessor),
                 Box::new(NoopThumbnailStore),
-                Box::new(FixedMetadataAnalyzer),
+                metadata_analyzer,
             ),
         )),
         repository,
@@ -425,6 +471,21 @@ impl ModPackageMetadataAnalyzer for FixedMetadataAnalyzer {
             display_name: Some("Candidate Revision".to_owned()),
             version: Some("2.0".to_owned()),
             category: Some("candidate-import".to_owned()),
+            ..ModPackageMetadata::default()
+        })
+    }
+}
+
+struct MissingDisplayNameMetadataAnalyzer;
+
+impl ModPackageMetadataAnalyzer for MissingDisplayNameMetadataAnalyzer {
+    fn analyze_metadata(
+        &self,
+        _package_id: &str,
+        _sandbox_root: &Path,
+    ) -> anyhow::Result<ModPackageMetadata> {
+        Ok(ModPackageMetadata {
+            version: Some("2.0".to_owned()),
             ..ModPackageMetadata::default()
         })
     }

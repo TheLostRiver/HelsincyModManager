@@ -2,9 +2,9 @@ use anyhow::Result;
 use hmm_core::{
     GameId, ProfileBackupRetention, ProfileDirectorySelection, ProfileId,
     SaveBackupBackgroundRegistrationStatus, SaveBackupBackgroundSettings,
-    SaveBackupSchedulerLeaseRenewalRequest, SaveBackupSchedulerLeaseRequest,
-    SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
-    SaveBackupWorkerHeartbeat,
+    SaveBackupRetentionReason, SaveBackupSchedulerLeaseRenewalRequest,
+    SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
+    SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +23,83 @@ pub struct SaveBackupWriteRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupWriteResult {
     pub summary: SaveBackupSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveBackupFileDeleteDisposition {
+    Deleted,
+    AlreadyMissing,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupFileDeleteResult {
+    pub disposition: SaveBackupFileDeleteDisposition,
+    pub released_bytes: u64,
+    pub error_code: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupDeleteReport {
+    pub archive: SaveBackupFileDeleteResult,
+    pub manifest: SaveBackupFileDeleteResult,
+}
+
+impl SaveBackupDeleteReport {
+    pub fn converged(&self) -> bool {
+        self.archive.disposition != SaveBackupFileDeleteDisposition::Blocked
+            && self.manifest.disposition != SaveBackupFileDeleteDisposition::Blocked
+    }
+
+    pub fn released_archive_bytes(&self) -> u64 {
+        self.archive.released_bytes
+    }
+
+    pub fn stable_error_code(&self) -> Option<&str> {
+        self.archive
+            .error_code
+            .as_deref()
+            .or(self.manifest.error_code.as_deref())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupCenterRepositoryQuery {
+    pub game_id: GameId,
+    pub profile_id: Option<ProfileId>,
+    pub trigger: Option<SaveBackupTrigger>,
+    pub status: Option<SaveBackupStatus>,
+    pub search: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SaveBackupCenterRepositoryFacts {
+    pub backup_count: u32,
+    pub archive_bytes: u64,
+    pub protected_count: u32,
+    pub attention_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupCenterRepositoryProfileFacts {
+    pub profile_id: ProfileId,
+    pub facts: SaveBackupCenterRepositoryFacts,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupCenterRepositoryItem {
+    pub profile_name: String,
+    pub backup: SaveBackupSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveBackupCenterRepositoryPage {
+    pub total_count: usize,
+    pub summary: SaveBackupCenterRepositoryFacts,
+    pub profiles: Vec<SaveBackupCenterRepositoryProfileFacts>,
+    pub items: Vec<SaveBackupCenterRepositoryItem>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,10 +140,12 @@ pub trait SaveBackupBackgroundRegistry: Send + Sync {
     fn inspect(&self)
         -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
 
+    /// Returns `Registered` only after the written registration was read back and verified.
     fn register(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
 
+    /// Returns `NotRegistered` only after absence was read back and verified.
     fn unregister(
         &self,
     ) -> SaveBackupBackgroundRegistryResult<SaveBackupBackgroundRegistrationStatus>;
@@ -90,10 +169,40 @@ pub trait SaveBackupWriter: Send + Sync {
         backup_directory: &ProfileDirectorySelection,
         summary: &SaveBackupSummary,
     ) -> Result<()>;
+
+    fn delete_backup_files_report(
+        &self,
+        backup_directory: &ProfileDirectorySelection,
+        summary: &SaveBackupSummary,
+    ) -> Result<SaveBackupDeleteReport> {
+        self.delete_backup_files(backup_directory, summary)?;
+        Ok(SaveBackupDeleteReport {
+            archive: SaveBackupFileDeleteResult {
+                disposition: SaveBackupFileDeleteDisposition::Deleted,
+                released_bytes: summary.archive_size_bytes,
+                error_code: None,
+            },
+            manifest: SaveBackupFileDeleteResult {
+                disposition: SaveBackupFileDeleteDisposition::Deleted,
+                released_bytes: 0,
+                error_code: None,
+            },
+        })
+    }
 }
 
 pub trait SaveBackupRepository: Send + Sync {
     fn save(&self, summary: &SaveBackupSummary) -> Result<()>;
+
+    fn get_for_restore(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        backup_id: &str,
+    ) -> Result<Option<SaveBackupSummary>> {
+        let _ = (game_id, profile_id, backup_id);
+        Ok(None)
+    }
 
     fn list_for_profile(
         &self,
@@ -102,7 +211,57 @@ pub trait SaveBackupRepository: Send + Sync {
         limit: Option<usize>,
     ) -> Result<Vec<SaveBackupSummary>>;
 
+    fn list_for_game(&self, _game_id: &GameId) -> Result<Vec<SaveBackupSummary>> {
+        Ok(Vec::new())
+    }
+
+    /// Returns a database-backed page and aggregate facts when the repository can evaluate
+    /// the complete center query without materializing the full history in the application.
+    /// Small fake repositories may return `None` and use the service fallback.
+    fn query_for_center(
+        &self,
+        _request: &SaveBackupCenterRepositoryQuery,
+    ) -> Result<Option<SaveBackupCenterRepositoryPage>> {
+        Ok(None)
+    }
+
     fn mark_status(&self, backup_id: &str, status: SaveBackupStatus) -> Result<()>;
+
+    fn begin_retention(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        backup_id: &str,
+        reasons: &[SaveBackupRetentionReason],
+        attempted_at: u128,
+    ) -> Result<bool> {
+        let _ = (game_id, profile_id, reasons, attempted_at);
+        self.mark_status(backup_id, SaveBackupStatus::RetentionPending)?;
+        Ok(true)
+    }
+
+    fn finish_retention(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        backup_id: &str,
+        status: SaveBackupStatus,
+        error_code: Option<&str>,
+        released_bytes: u64,
+    ) -> Result<()> {
+        let _ = (game_id, profile_id, error_code, released_bytes);
+        self.mark_status(backup_id, status)
+    }
+
+    fn update_note(
+        &self,
+        _game_id: &GameId,
+        _profile_id: &ProfileId,
+        _backup_id: &str,
+        _note: Option<&str>,
+    ) -> Result<bool> {
+        Ok(false)
+    }
 }
 
 pub trait SaveBackupSchedulerStateRepository: Send + Sync {

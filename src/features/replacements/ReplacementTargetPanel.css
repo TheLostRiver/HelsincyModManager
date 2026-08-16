@@ -123,7 +123,7 @@
 
 .replacement-panel__source-facts div {
   display: grid;
-  grid-template-columns: minmax(80px, auto) minmax(100px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(80px, auto) minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   min-height: 38px;
@@ -150,8 +150,7 @@
   font-weight: 600;
 }
 
-.replacement-panel__warnings,
-.replacement-panel__action-list {
+.replacement-panel__warnings {
   display: grid;
   gap: 6px;
   margin: 0;
@@ -289,24 +288,52 @@
   font-weight: 600;
 }
 
-.replacement-panel__target-row code,
-.replacement-panel__action-list code {
+.replacement-panel__target-row code {
   overflow-wrap: anywhere;
   color: var(--color-text-soft);
   font-size: 11px;
 }
 
-.replacement-panel__action-list {
-  max-height: 160px;
-  overflow: auto;
+.replacement-panel__target-facts {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
 }
 
-.replacement-panel__action-list li {
-  padding: 8px 10px;
+.replacement-panel__target-facts small {
+  color: var(--color-warning-text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.replacement-panel__preview-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.replacement-panel__preview-facts > div {
+  min-width: 0;
+  padding: 9px 10px;
   background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
   border-radius: 10px;
-  box-shadow: inset 2px 0 0 var(--color-border);
+}
+
+.replacement-panel__preview-facts dt {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.replacement-panel__preview-facts dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .replacement-panel__counts {
@@ -522,10 +549,6 @@
     padding: 8px 10px;
   }
 
-  .replacement-panel__source-facts dd:last-child {
-    grid-column: 1 / -1;
-  }
-
   .replacement-panel__actions {
     display: grid;
     grid-template-columns: 1fr;
@@ -533,6 +556,10 @@
 
   .replacement-panel__counts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .replacement-panel__preview-facts {
+    grid-template-columns: 1fr;
   }
 
   .replacement-panel__task-state {

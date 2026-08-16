@@ -7,6 +7,7 @@ use tauri::{AppHandle, State};
 const MOD_IMPORT_CANCELLED_PHASE: &str = "mod_import.cancelled";
 const INSTALL_CANCELLED_PHASE: &str = "install.cancelled";
 const SAVE_BACKUP_CANCELLED_PHASE: &str = "save_backup.cancelled";
+const SAVE_RESTORE_CANCELLED_PHASE: &str = "save_restore.cancelled";
 
 #[tauri::command]
 pub fn cancel_task(
@@ -20,14 +21,23 @@ pub fn cancel_task(
         .cancel_task(&task_id)
         .map_err(CommandErrorDto::from_task_manager_error)?;
 
-    emit_task_progress(&app_handle, cancelled_event_for_task(&task))?;
+    Ok(cancelled_task_response(task, |event| {
+        emit_task_progress(&app_handle, event)
+    }))
+}
 
-    Ok(TaskStarted {
+fn cancelled_task_response<E>(
+    task: TaskSnapshot,
+    emit: impl FnOnce(TaskProgressEvent) -> Result<(), E>,
+) -> TaskStartedDto {
+    // The runner re-emits the terminal event; transport failure cannot undo cancellation state.
+    let _ = emit(cancelled_event_for_task(&task));
+    TaskStarted {
         task_id: task.task_id,
         kind: task.kind,
         status: task.status,
     }
-    .into())
+    .into()
 }
 
 fn cancelled_event_for_task(task: &TaskSnapshot) -> TaskProgressEvent {
@@ -44,6 +54,7 @@ fn cancelled_phase_for_kind(kind: TaskKind) -> &'static str {
         TaskKind::ModImport => MOD_IMPORT_CANCELLED_PHASE,
         TaskKind::Install => INSTALL_CANCELLED_PHASE,
         TaskKind::SaveBackup => SAVE_BACKUP_CANCELLED_PHASE,
+        TaskKind::SaveRestore => SAVE_RESTORE_CANCELLED_PHASE,
     }
 }
 
@@ -128,6 +139,38 @@ mod tests {
         assert_eq!(value["kind"], "save_backup");
         assert_eq!(value["status"], "cancelled");
         assert_eq!(value["phase"], "save_backup.cancelled");
+    }
+
+    #[test]
+    fn cancelled_event_for_save_restore_task_uses_save_restore_phase() {
+        let task = TaskSnapshot {
+            task_id: "save-restore-123".to_owned(),
+            kind: TaskKind::SaveRestore,
+            status: TaskStatus::Cancelled,
+        };
+
+        let dto: TaskProgressEventDto = cancelled_event_for_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "save-restore-123");
+        assert_eq!(value["kind"], "save_restore");
+        assert_eq!(value["status"], "cancelled");
+        assert_eq!(value["phase"], "save_restore.cancelled");
+    }
+
+    #[test]
+    fn cancelled_response_stays_successful_when_event_transport_fails() {
+        let task = TaskSnapshot {
+            task_id: "save-restore-123".to_owned(),
+            kind: TaskKind::SaveRestore,
+            status: TaskStatus::Cancelled,
+        };
+
+        let response = cancelled_task_response(task, |_event| Err("transport unavailable"));
+
+        assert_eq!(response.task_id, "save-restore-123");
+        assert_eq!(response.kind, crate::dto::TaskKindDto::SaveRestore);
+        assert_eq!(response.status, crate::dto::TaskStatusDto::Cancelled);
     }
 
     #[test]

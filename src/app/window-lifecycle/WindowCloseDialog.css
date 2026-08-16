@@ -5,8 +5,26 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(4, 6, 12, 0.5);
-  backdrop-filter: blur(8px);
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  transition: none;
+}
+
+.window-close-overlay.is-opening {
+  opacity: 0;
+}
+
+.window-close-overlay.is-open,
+.window-close-overlay.is-closing {
+  transition: opacity var(--window-close-transition-duration, 200ms) ease-out;
+}
+
+.window-close-overlay.is-closing {
+  opacity: 0;
+}
+
+.window-close-overlay.is-closing {
+  pointer-events: none;
 }
 
 .window-close-dialog {
@@ -17,20 +35,46 @@
   padding: 36px;
   overflow-x: hidden;
   overflow-y: auto;
-  color: #f8fafc;
-  background: rgba(15, 22, 38, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-top-color: rgba(255, 255, 255, 0.16);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-top-color: var(--color-border);
   border-radius: 28px;
-  box-shadow:
-    0 24px 70px rgba(0, 0, 0, 0.62),
-    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-panel);
   outline: none;
-  backdrop-filter: blur(28px) saturate(180%);
+  transform: none;
+  transition: none;
+}
+
+.window-close-overlay.is-opening .window-close-dialog,
+.window-close-overlay.is-open .window-close-dialog,
+.window-close-overlay.is-closing .window-close-dialog {
+  transition:
+    opacity var(--window-close-transition-duration, 200ms) ease-out,
+    transform var(--window-close-transition-duration, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.window-close-overlay.is-opening .window-close-dialog {
+  opacity: 0;
+  transform: translateY(10px) scale(0.975);
+}
+
+.window-close-overlay.is-open .window-close-dialog {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.window-close-overlay.is-closing .window-close-dialog {
+  opacity: 0;
+  transform: translateY(6px) scale(0.985);
 }
 
 .window-close-dialog.is-unsafe {
-  border-top-color: rgba(251, 191, 36, 0.48);
+  border-top-color: color-mix(in srgb, var(--color-warning-dot) 58%, var(--color-border));
+}
+
+.window-close-dialog.is-blocked {
+  border-top-color: color-mix(in srgb, var(--color-warning-dot) 72%, var(--color-border));
 }
 
 .window-close-dialog__close {
@@ -41,9 +85,9 @@
   place-items: center;
   width: 32px;
   height: 32px;
-  color: #94a3b8;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
   border-radius: 999px;
   cursor: pointer;
   transition:
@@ -54,17 +98,18 @@
 }
 
 .window-close-dialog__close:hover:not(:disabled) {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border);
   transform: scale(1.04);
 }
 
 .window-close-dialog__close:focus-visible,
+.window-close-option.is-default:focus,
 .window-close-option:focus-visible,
 .window-close-dialog__cancel:focus-visible,
 .window-close-dialog__remember:focus-within .window-close-dialog__checkbox {
-  outline: 2px solid rgba(129, 140, 248, 0.88);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -91,9 +136,9 @@
 }
 
 .window-close-dialog__header p,
-.window-close-dialog__error {
+.window-close-dialog__remember {
   margin: 0;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -101,10 +146,12 @@
 .window-close-dialog__error {
   margin: -8px 0 18px;
   padding: 10px 12px;
-  color: #fecaca;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(248, 113, 113, 0.26);
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger-dot) 34%, var(--color-border-muted));
   border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .window-close-dialog__options {
@@ -125,8 +172,8 @@
   overflow: hidden;
   color: inherit;
   text-align: left;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
   border-radius: 20px;
   cursor: pointer;
   transition:
@@ -136,25 +183,11 @@
     transform 0.18s ease;
 }
 
-.window-close-option::after {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(110deg, rgba(255, 255, 255, 0.08), transparent 42%);
-  opacity: 0;
-  transition: opacity 0.22s ease;
-  content: "";
-}
-
 .window-close-option:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-soft);
   transform: translateY(-2px);
-}
-
-.window-close-option:hover:not(:disabled)::after {
-  opacity: 1;
 }
 
 .window-close-option__icon {
@@ -183,20 +216,20 @@
 }
 
 .window-close-option__copy strong {
-  color: #f1f5f9;
+  color: var(--color-text);
   font-size: 16px;
   font-weight: 700;
   line-height: 1.25;
 }
 
 .window-close-option__copy span {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.42;
 }
 
 .window-close-option__spinner {
-  color: #c7d2fe;
+  color: var(--color-accent);
   animation: window-close-spin 0.9s linear infinite;
 }
 
@@ -217,7 +250,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 13.5px;
   line-height: 1.35;
   cursor: pointer;
@@ -235,8 +268,8 @@
   width: 18px;
   height: 18px;
   color: transparent;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
   border-radius: 6px;
   transition:
     color 0.18s ease,
@@ -245,15 +278,15 @@
 }
 
 .window-close-dialog__remember input:checked + .window-close-dialog__checkbox {
-  color: white;
-  background: #6366f1;
-  border-color: #6366f1;
+  color: var(--color-primary-action-text);
+  background: var(--color-primary-action-bg);
+  border-color: var(--color-accent);
 }
 
 .window-close-dialog__cancel {
   min-width: max-content;
   padding: 8px 14px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 13.5px;
   font-weight: 650;
@@ -267,8 +300,8 @@
 }
 
 .window-close-dialog__cancel:hover:not(:disabled) {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
 }
 
 .window-close-dialog__success {
@@ -279,9 +312,10 @@
   gap: 16px;
   place-items: center;
   align-content: center;
-  color: #f1f5f9;
+  color: var(--color-success-text);
   text-align: center;
-  background: #090d16;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-muted);
   border-radius: inherit;
 }
 
@@ -350,9 +384,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .window-close-overlay {
+    transition-timing-function: linear;
+  }
+
+  .window-close-dialog,
+  .window-close-overlay.is-opening .window-close-dialog,
+  .window-close-overlay.is-closing .window-close-dialog {
+    transform: none;
+    transition-timing-function: linear;
+  }
+
   .window-close-dialog__close,
   .window-close-option,
-  .window-close-option::after,
   .window-close-dialog__checkbox,
   .window-close-dialog__cancel {
     transition-duration: 0.01ms !important;

@@ -66,6 +66,17 @@ test("profile page exposes save settings workspace panels without shell coupling
   assert.match(css, /@media\s*\(max-width:\s*860px\)/);
 });
 
+test("activating a profile also selects it before refreshing its settings", () => {
+  const source = readSource("src/features/profiles/ProfilePage.tsx");
+  const activationHandler =
+    source.match(/const handleActivateProfile = async \(profileId: string\) => \{[\s\S]*?^ {2}\};/m)?.[0] ?? "";
+
+  assert.match(
+    activationHandler,
+    /await setActiveProfile\(profileId\);[\s\S]*?setSelectedProfileId\(profileId\);[\s\S]*?refreshProfiles\(\);/,
+  );
+});
+
 test("profile create and edit forms use a floating dialog instead of inline list replacement", () => {
   const listSource = readSource("src/features/profiles/ProfileListPanel.tsx");
   const css = readSource("src/features/profiles/ProfilePage.css");
@@ -186,7 +197,15 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.match(saveManagerCss, /\.active-save-banner/);
   assert.doesNotMatch(saveManagerCss, /profile-overview|profile-toolbar-save-box|profile-metric/);
   assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
-  assert.match(saveManagerCss, /\.profile-backup-table/);
+  assert.match(pageSource, /className="profile-backup-list"/);
+  assert.match(pageSource, /className="profile-backup-item"/);
+  assert.match(pageSource, /恢复存档/);
+  assert.doesNotMatch(pageSource, /即将开放/);
+  assert.match(saveManagerCss, /\.profile-backup-list/);
+  assert.match(saveManagerCss, /\.profile-backup-item/);
+  assert.match(saveManagerCss, /\.profile-backup-item__actions/);
+  assert.doesNotMatch(pageSource, /profile-backup-table/);
+  assert.doesNotMatch(saveManagerCss, /\.profile-backup-table|overflow-x:\s*auto|min-width:\s*520px/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?overflow:\s*visible/);
   assert.match(saveManagerCss, /\.profile-save-manager-deck\.save-manager-deck\s*\{[\s\S]*?grid-template-areas:\s*"strategy directories"\s*"strategy history"/);
   assert.match(saveManagerCss, /\.profile-directory-zone\s*\{[\s\S]*?grid-area:\s*directories/);
@@ -238,7 +257,23 @@ test("profile page wires manual save backup execution, progress, and history ref
   assert.match(saveManagerCss, /\.profile-manual-backup-card/);
   assert.match(saveManagerCss, /\.profile-manual-backup-status/);
   assert.match(saveManagerCss, /\.profile-create-backup-button\.profile-action-button\.is-primary\s*\{[\s\S]*?color:\s*#fff/);
-  assert.match(saveManagerCss, /\.profile-backup-table/);
+  assert.match(saveManagerCss, /\.profile-backup-list/);
+  assert.match(saveManagerCss, /\.profile-backup-restore-button/);
+});
+
+test("backup history keeps the restore entry visible without horizontal scrolling", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+
+  assert.match(pageSource, /role="list" aria-label="备份历史"/);
+  assert.match(pageSource, /role="listitem"/);
+  assert.match(pageSource, /<ArchiveRestore size=\{15\}/);
+  assert.match(pageSource, /aria-label=\{`恢复存档：\$\{row\.name\}`\}/);
+  assert.match(saveManagerCss, /\.profile-backup-list\s*\{[\s\S]*?container-type:\s*inline-size/);
+  assert.match(saveManagerCss, /\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(saveManagerCss, /@container \(min-width:\s*380px\)[\s\S]*?\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
+  assert.match(saveManagerCss, /@container \(min-width:\s*680px\)[\s\S]*?\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(172px,\s*auto\) auto/);
+  assert.doesNotMatch(saveManagerCss, /profile-backup[^}]*overflow-x:\s*auto/);
 });
 
 test("profile page wires client runtime auto backup checks honestly", () => {

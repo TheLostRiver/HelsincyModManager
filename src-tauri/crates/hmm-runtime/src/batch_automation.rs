@@ -171,8 +171,18 @@ fn facts_for_install_batch(
                 request.profile_id.as_str(),
                 input.mod_id.as_str(),
                 input.revision_id.as_str(),
+                &input.layer,
             )
             .map_err(|error| anyhow::anyhow!(error.code()))?;
+        let current_binding = match plan.replacement_bindings.as_slice() {
+            [] => None,
+            [binding] => Some(binding),
+            _ => anyhow::bail!("batch install plan has multiple replacement bindings"),
+        };
+        anyhow::ensure!(
+            current_binding == input.replacement_binding_snapshot.as_ref(),
+            "batch install canonical source binding changed"
+        );
         items.push(facts_for_install(
             &mod_id,
             &revision_id,
@@ -476,7 +486,7 @@ impl SandboxBatchInstallAutomation {
         build_read_only_plan_service(environment)?
             .validate_preview(request.clone(), preview_token)
             .map_err(map_seal_error)?;
-        ensure_scope_reconciled(environment, &request.game_id, &request.profile_id)?;
+        ensure_scope_reconciled(environment, &request.game_id, &request.profile_id, None)?;
         let context = build_write_context(environment, request.operation)?;
         let sealed = context
             .plan_service
@@ -518,12 +528,38 @@ impl SandboxBatchInstallAutomation {
         request: SandboxBatchPlanRequest,
         preview_token: &str,
     ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
+        Self::seal_request_internal(environment, request, preview_token, None)
+    }
+
+    /// Seals a batch from a GUI process that already owns the app database connection. The
+    /// shared handle is used only for journal reads; CLI callers keep the immutable snapshot
+    /// path and its fail-closed WAL checks.
+    pub fn seal_request_with_database(
+        environment: &RuntimeEnvironment,
+        request: SandboxBatchPlanRequest,
+        preview_token: &str,
+        database: Arc<Mutex<rusqlite::Connection>>,
+    ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
+        Self::seal_request_internal(environment, request, preview_token, Some(database))
+    }
+
+    fn seal_request_internal(
+        environment: &RuntimeEnvironment,
+        request: SandboxBatchPlanRequest,
+        preview_token: &str,
+        database: Option<SharedBatchDatabase>,
+    ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
         let request = resolve_batch_plan_request(environment, request, "batch_plan_stale")?;
         let operation = request.operation;
         build_read_only_plan_service(environment)?
             .validate_preview(request.clone(), preview_token)
             .map_err(map_seal_error)?;
-        ensure_scope_reconciled(environment, &request.game_id, &request.profile_id)?;
+        ensure_scope_reconciled(
+            environment,
+            &request.game_id,
+            &request.profile_id,
+            database.as_ref(),
+        )?;
         let context = build_write_context(environment, request.operation)?;
         let sealed = context
             .plan_service
@@ -540,11 +576,34 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         plan_token: &str,
     ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
+        Self::start_request_internal(environment, batch_id, plan_token, None)
+    }
+
+    /// Starts a batch while reading its sealed identity through the GUI-owned database handle.
+    pub fn start_request_with_database(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        plan_token: &str,
+        database: Arc<Mutex<rusqlite::Connection>>,
+    ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
+        Self::start_request_internal(environment, batch_id, plan_token, Some(database))
+    }
+
+    fn start_request_internal(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        plan_token: &str,
+        database: Option<SharedBatchDatabase>,
+    ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
         let operation = {
-            let repository =
-                open_batch_repository_read_only(environment, false, "batch_unavailable")?
-                    .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+            let repository = open_batch_repository_read_only(
+                environment,
+                false,
+                "batch_unavailable",
+                database.as_ref(),
+            )?
+            .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
             let batch = repository
                 .load_batch(&batch_id)
                 .map_err(|_| SandboxBatchAutomationError::new("batch_unavailable"))?
@@ -589,9 +648,46 @@ impl SandboxBatchInstallAutomation {
         ),
         SandboxBatchAutomationError,
     > {
+        Self::retry_with_operation_internal(environment, batch_id, attempt_number, None)
+    }
+
+    /// Retries a batch while reconciling its journal through the GUI-owned database handle.
+    pub fn retry_with_operation_with_database(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+        database: Arc<Mutex<rusqlite::Connection>>,
+    ) -> Result<
+        (
+            BatchOperation,
+            BatchInstallRetryResult,
+            BatchInstallRunResult,
+        ),
+        SandboxBatchAutomationError,
+    > {
+        Self::retry_with_operation_internal(environment, batch_id, attempt_number, Some(database))
+    }
+
+    fn retry_with_operation_internal(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+        database: Option<SharedBatchDatabase>,
+    ) -> Result<
+        (
+            BatchOperation,
+            BatchInstallRetryResult,
+            BatchInstallRunResult,
+        ),
+        SandboxBatchAutomationError,
+    > {
         let batch_id = parse_batch_id(batch_id)?;
-        let (_, reconciled_batch) =
-            ensure_batch_reconciled(environment, &batch_id, "batch_unavailable")?;
+        let (_, reconciled_batch) = ensure_batch_reconciled(
+            environment,
+            &batch_id,
+            "batch_unavailable",
+            database.as_ref(),
+        )?;
         let operation = reconciled_batch.plan.operation;
         let context = build_write_context(environment, operation)?;
         let retry = context
@@ -619,10 +715,34 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         attempt_number: u32,
     ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
+        Self::result_internal(environment, batch_id, attempt_number, None)
+    }
+
+    /// Reads a batch result through the GUI-owned database handle so committed WAL rows remain
+    /// visible without weakening the immutable snapshot contract used by CLI diagnostics.
+    pub fn result_with_database(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+        database: Arc<Mutex<rusqlite::Connection>>,
+    ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
+        Self::result_internal(environment, batch_id, attempt_number, Some(database))
+    }
+
+    fn result_internal(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+        database: Option<SharedBatchDatabase>,
+    ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
-        let repository =
-            open_batch_repository_read_only(environment, false, "batch_result_unavailable")?
-                .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+        let repository = open_batch_repository_read_only(
+            environment,
+            false,
+            "batch_result_unavailable",
+            database.as_ref(),
+        )?
+        .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
         let batch = repository
             .load_batch(&batch_id)
             .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
@@ -652,44 +772,69 @@ fn resolve_batch_plan_request(
         return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
     }
 
-    let requires_resolution = plan.items.iter().any(|item| {
-        matches!(
-            item,
-            BatchItemInput::Reinstall(input)
-                if input.installed_revision_id == input.candidate_revision_id
-        )
-    });
+    let requires_resolution = plan.operation == BatchOperation::Install
+        || plan.items.iter().any(|item| {
+            matches!(
+                item,
+                BatchItemInput::Reinstall(input)
+                    if input.installed_revision_id == input.candidate_revision_id
+            )
+        });
     let read_only = requires_resolution
         .then(|| ReadOnlyInstallAutomation::from_environment(environment))
         .transpose()
         .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
 
     for item in &mut plan.items {
-        let BatchItemInput::Reinstall(input) = item else {
-            continue;
-        };
-        if input.installed_revision_id == input.candidate_revision_id {
-            if input.replacement_binding_snapshot.is_some() {
-                return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+        match item {
+            BatchItemInput::Install(input) => {
+                if input.replacement_binding_snapshot.is_some() {
+                    return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+                }
+                let (_, _, _, _, install_plan, _) = read_only
+                    .as_ref()
+                    .expect("batch install initialized read-only automation")
+                    .build_install_plan_for_revision(
+                        plan.game_id.as_str(),
+                        plan.profile_id.as_str(),
+                        input.mod_id.as_str(),
+                        input.revision_id.as_str(),
+                        &input.layer,
+                    )
+                    .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+                input.replacement_binding_snapshot =
+                    match install_plan.replacement_bindings.as_slice() {
+                        [] => None,
+                        [binding] => Some(binding.clone()),
+                        _ => return Err(SandboxBatchAutomationError::new(unavailable_code)),
+                    };
             }
-            let target_id = replacement_targets
-                .remove(&input.mod_id)
-                .ok_or_else(|| SandboxBatchAutomationError::new("batch_input_invalid"))?;
-            let binding = read_only
-                .as_ref()
-                .expect("same-revision reinstall initialized read-only automation")
-                .resolve_batch_replacement_binding(
-                    &plan.game_id,
-                    &plan.profile_id,
-                    input,
-                    &target_id,
-                )
-                .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
-            input.replacement_binding_snapshot = Some(binding);
-        } else if input.replacement_binding_snapshot.is_some()
-            || replacement_targets.contains_key(&input.mod_id)
-        {
-            return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+            BatchItemInput::Reinstall(input) => {
+                if input.installed_revision_id == input.candidate_revision_id {
+                    if input.replacement_binding_snapshot.is_some() {
+                        return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+                    }
+                    let target_id = replacement_targets
+                        .remove(&input.mod_id)
+                        .ok_or_else(|| SandboxBatchAutomationError::new("batch_input_invalid"))?;
+                    let binding = read_only
+                        .as_ref()
+                        .expect("same-revision reinstall initialized read-only automation")
+                        .resolve_batch_replacement_binding(
+                            &plan.game_id,
+                            &plan.profile_id,
+                            input,
+                            &target_id,
+                        )
+                        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+                    input.replacement_binding_snapshot = Some(binding);
+                } else if input.replacement_binding_snapshot.is_some()
+                    || replacement_targets.contains_key(&input.mod_id)
+                {
+                    return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+                }
+            }
+            BatchItemInput::Uninstall(_) => {}
         }
     }
     if !replacement_targets.is_empty() {
@@ -831,13 +976,20 @@ fn parse_batch_id(value: &str) -> Result<BatchId, SandboxBatchAutomationError> {
 }
 
 type ReadOnlyBatchRepository = Arc<dyn BatchLifecycleRepository>;
+type SharedBatchDatabase = Arc<Mutex<rusqlite::Connection>>;
 
 fn open_batch_repository_read_only(
     environment: &RuntimeEnvironment,
     missing_is_empty: bool,
     unavailable_code: &'static str,
+    database: Option<&SharedBatchDatabase>,
 ) -> Result<Option<ReadOnlyBatchRepository>, SandboxBatchAutomationError> {
     ensure_sandbox(environment)?;
+    if let Some(database) = database {
+        return Ok(Some(Arc::new(SqliteBatchLifecycleRepository::new(
+            Arc::clone(database),
+        ))));
+    }
     let root = environment
         .sandbox_data_dir()
         .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?;
@@ -859,9 +1011,10 @@ fn ensure_scope_reconciled(
     environment: &RuntimeEnvironment,
     game_id: &hmm_core::GameId,
     profile_id: &hmm_core::ProfileId,
+    database: Option<&SharedBatchDatabase>,
 ) -> Result<(), SandboxBatchAutomationError> {
     let Some(repository) =
-        open_batch_repository_read_only(environment, true, "batch_journal_unavailable")?
+        open_batch_repository_read_only(environment, true, "batch_journal_unavailable", database)?
     else {
         return Ok(());
     };
@@ -880,9 +1033,11 @@ fn ensure_batch_reconciled(
     environment: &RuntimeEnvironment,
     batch_id: &BatchId,
     unavailable_code: &'static str,
+    database: Option<&SharedBatchDatabase>,
 ) -> Result<(ReadOnlyBatchRepository, SealedBatch), SandboxBatchAutomationError> {
-    let repository = open_batch_repository_read_only(environment, false, unavailable_code)?
-        .ok_or_else(|| SandboxBatchAutomationError::new(unavailable_code))?;
+    let repository =
+        open_batch_repository_read_only(environment, false, unavailable_code, database)?
+            .ok_or_else(|| SandboxBatchAutomationError::new(unavailable_code))?;
     let batch = repository
         .load_batch(batch_id)
         .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?
@@ -957,7 +1112,8 @@ mod tests {
     use crate::lifecycle_automation::write_install_fixture;
     use hmm_core::{
         BatchAttemptStatus, BatchExecutionPolicy, BatchItemInput, BatchPlanRequest, FileLayer,
-        GameId, InstallBatchItemInput, ModId, ModRevisionId, ProfileId, BATCH_PLAN_SCHEMA_VERSION,
+        GameId, InstallBatchItemInput, InstallManifest, ModId, ModRevisionId, ProfileId,
+        ReinstallBatchItemInput, BATCH_PLAN_SCHEMA_VERSION,
     };
     use std::collections::BTreeMap;
 
@@ -1024,6 +1180,132 @@ mod tests {
         }
     }
 
+    fn write_batch_armor_fixture(sandbox: &std::path::Path) -> PathBuf {
+        let game_root = write_install_fixture(sandbox);
+        fs::write(
+            sandbox.join("mod-import/results.json"),
+            r#"{
+  "version": 1,
+  "records": [{
+    "mod_id": "mod-armor",
+    "task_id": "task-armor",
+    "package_id": "package-armor",
+    "display_name": "Armor Retarget Fixture"
+  }]
+}"#,
+        )
+        .expect("armor Mod catalog");
+        let package_root = sandbox
+            .join("mod-import/sandboxes/package-armor")
+            .join("nativePC/pl/f_equip/pl121_0000/arm/mod");
+        fs::create_dir_all(&package_root).expect("armor package root");
+        fs::write(package_root.join("f_body.mod3"), b"synthetic armor fixture")
+            .expect("armor package file");
+        game_root
+    }
+
+    fn armor_install_request() -> SandboxBatchPlanRequest {
+        SandboxBatchPlanRequest {
+            plan: BatchPlanRequest {
+                schema_version: BATCH_PLAN_SCHEMA_VERSION,
+                operation: BatchOperation::Install,
+                game_id: GameId::mhw(),
+                profile_id: ProfileId::new("default"),
+                execution_policy: BatchExecutionPolicy::StopOnFailure,
+                items: vec![BatchItemInput::Install(InstallBatchItemInput {
+                    mod_id: ModId::new("mod-armor"),
+                    revision_id: ModRevisionId::new("package-armor"),
+                    layer: FileLayer::new("base", 0),
+                    replacement_binding_snapshot: None,
+                })],
+            },
+            replacement_targets: BTreeMap::new(),
+        }
+    }
+
+    fn armor_target_switch_request() -> SandboxBatchPlanRequest {
+        SandboxBatchPlanRequest {
+            plan: BatchPlanRequest {
+                schema_version: BATCH_PLAN_SCHEMA_VERSION,
+                operation: BatchOperation::Reinstall,
+                game_id: GameId::mhw(),
+                profile_id: ProfileId::new("default"),
+                execution_policy: BatchExecutionPolicy::StopOnFailure,
+                items: vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                    mod_id: ModId::new("mod-armor"),
+                    installed_revision_id: ModRevisionId::new("package-armor"),
+                    candidate_revision_id: ModRevisionId::new("package-armor"),
+                    layer: FileLayer::new("base", 0),
+                    replacement_binding_snapshot: None,
+                })],
+            },
+            replacement_targets: BTreeMap::from([(
+                ModId::new("mod-armor"),
+                ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+            )]),
+        }
+    }
+
+    #[test]
+    fn gui_database_handle_reads_batch_journal_while_wal_is_active() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_install_fixture(sandbox.path());
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+        let gui_runtime =
+            HmmRuntime::from_app_data_dir(sandbox.path().to_path_buf()).expect("GUI runtime");
+        let gui_database = gui_runtime.database_handle();
+
+        let wal_path = sandbox.path().join("hmm.db-wal");
+        let shm_path = sandbox.path().join("hmm.db-shm");
+        assert!(
+            wal_path.exists() || shm_path.exists(),
+            "GUI runtime should keep SQLite WAL state active"
+        );
+
+        let preview =
+            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+                .expect("sandbox preview");
+        let preview_token = preview.preview_token.expect("ready preview token");
+        let (_, sealed) = SandboxBatchInstallAutomation::seal_request_with_database(
+            &environment,
+            batch_install_request(),
+            &preview_token,
+            Arc::clone(&gui_database),
+        )
+        .expect("sandbox seal through GUI database");
+
+        let (_, run) = SandboxBatchInstallAutomation::start_request_with_database(
+            &environment,
+            &sealed.batch_id,
+            &sealed.plan_token,
+            Arc::clone(&gui_database),
+        )
+        .expect("sandbox start through GUI database");
+        let snapshot = SandboxBatchInstallAutomation::result_with_database(
+            &environment,
+            &sealed.batch_id,
+            run.attempt_number,
+            Arc::clone(&gui_database),
+        )
+        .expect("attempt result through GUI database");
+
+        assert_eq!(snapshot.status, BatchAttemptStatus::Completed);
+        assert_eq!(snapshot.summary.succeeded_count, 1);
+        assert_eq!(
+            fs::read(game_root.join("nativePC/models/player.mod3")).expect("installed target"),
+            b"fixture"
+        );
+
+        let snapshot_error = SandboxBatchInstallAutomation::result(
+            &environment,
+            &sealed.batch_id,
+            run.attempt_number,
+        )
+        .expect_err("immutable snapshot path must remain fail-closed while WAL is active");
+        assert_eq!(snapshot_error.code(), "batch_result_unavailable");
+    }
+
     #[test]
     fn seal_then_start_runs_attempt_and_repeated_start_is_idempotent() {
         let sandbox = tempfile::tempdir().expect("sandbox");
@@ -1088,6 +1370,107 @@ mod tests {
     }
 
     #[test]
+    fn source_slot_batch_install_persists_binding_for_same_revision_target_switch() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = write_batch_armor_fixture(sandbox.path());
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+
+        let install_preview =
+            SandboxBatchInstallAutomation::preview_request(&environment, armor_install_request())
+                .expect("armor batch install preview");
+        let BatchItemInput::Install(install_input) = &install_preview.plan.items[0].input_snapshot
+        else {
+            panic!("install input");
+        };
+        let source_binding = install_input
+            .replacement_binding_snapshot
+            .as_ref()
+            .expect("canonical source binding");
+        assert_eq!(
+            source_binding.binding().target_id().as_str(),
+            "mhw:armor:guardian-alpha"
+        );
+        assert_eq!(source_binding.source_internal_id(), "pl121_0000");
+        assert_eq!(source_binding.target_internal_id(), "pl121_0000");
+
+        let (_, sealed_install) = SandboxBatchInstallAutomation::seal_request(
+            &environment,
+            armor_install_request(),
+            install_preview
+                .preview_token
+                .as_deref()
+                .expect("preview token"),
+        )
+        .expect("seal armor install");
+        let (_, install_run) = SandboxBatchInstallAutomation::start_request(
+            &environment,
+            &sealed_install.batch_id,
+            &sealed_install.plan_token,
+        )
+        .expect("run armor install");
+        assert_eq!(install_run.status, BatchAttemptStatus::Completed);
+
+        let manifest_path = sandbox.path().join("install/manifests/default.json");
+        let installed_manifest: InstallManifest =
+            serde_json::from_slice(&fs::read(&manifest_path).expect("read installed manifest"))
+                .expect("parse installed manifest");
+        assert_eq!(installed_manifest.replacement_bindings.len(), 1);
+        assert_eq!(
+            installed_manifest.replacement_bindings[0]
+                .binding()
+                .target_id()
+                .as_str(),
+            "mhw:armor:guardian-alpha"
+        );
+
+        let switch_preview = SandboxBatchInstallAutomation::preview_request(
+            &environment,
+            armor_target_switch_request(),
+        )
+        .expect("same-revision target-switch preview");
+        assert_eq!(
+            switch_preview.plan.status(),
+            hmm_core::BatchPlanStatus::Ready
+        );
+        let (_, sealed_switch) = SandboxBatchInstallAutomation::seal_request(
+            &environment,
+            armor_target_switch_request(),
+            switch_preview
+                .preview_token
+                .as_deref()
+                .expect("switch token"),
+        )
+        .expect("seal target switch");
+        let (_, switch_run) = SandboxBatchInstallAutomation::start_request(
+            &environment,
+            &sealed_switch.batch_id,
+            &sealed_switch.plan_token,
+        )
+        .expect("run target switch");
+        assert_eq!(switch_run.status, BatchAttemptStatus::Completed);
+
+        let source_path = game_root.join("nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3");
+        let target_path = game_root.join("nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3");
+        assert!(!source_path.exists());
+        assert_eq!(
+            fs::read(target_path).expect("read switched target"),
+            b"synthetic armor fixture"
+        );
+        let switched_manifest: InstallManifest =
+            serde_json::from_slice(&fs::read(manifest_path).expect("read switched manifest"))
+                .expect("parse switched manifest");
+        assert_eq!(switched_manifest.replacement_bindings.len(), 1);
+        assert_eq!(
+            switched_manifest.replacement_bindings[0]
+                .binding()
+                .target_id()
+                .as_str(),
+            "mhw:armor:fatalis-alpha"
+        );
+    }
+
+    #[test]
     fn start_rejects_invalid_plan_token_before_any_game_write() {
         let sandbox = tempfile::tempdir().expect("sandbox");
         let game_root = write_install_fixture(sandbox.path());
@@ -1095,11 +1478,9 @@ mod tests {
         let environment =
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
 
-        let preview = SandboxBatchInstallAutomation::preview_request(
-            &environment,
-            batch_install_request(),
-        )
-        .expect("sandbox preview");
+        let preview =
+            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+                .expect("sandbox preview");
         let preview_token = preview.preview_token.expect("ready preview token");
         let (_, sealed) = SandboxBatchInstallAutomation::seal_request(
             &environment,
@@ -1116,12 +1497,8 @@ mod tests {
         .expect_err("forged plan token must be rejected");
         assert_eq!(error.code(), "batch_token_invalid");
 
-        let snapshot = SandboxBatchInstallAutomation::result(
-            &environment,
-            &sealed.batch_id,
-            0,
-        )
-        .expect("attempt remains readable");
+        let snapshot = SandboxBatchInstallAutomation::result(&environment, &sealed.batch_id, 0)
+            .expect("attempt remains readable");
         assert_eq!(snapshot.status, BatchAttemptStatus::Sealed);
         assert_eq!(snapshot.task_id, None);
         assert_eq!(

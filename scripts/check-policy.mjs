@@ -318,12 +318,17 @@ function checkForbiddenFiles(policy, files, scope) {
   const includedFiles = selectIncludedFiles(files, getScopeExcludePatterns(policy, scope));
   const forbiddenExtensions = new Set((policy.forbiddenFiles?.extensions ?? []).map((item) => item.toLowerCase()));
   const pathRegexes = (policy.forbiddenFiles?.pathPatterns ?? []).map(globToRegex);
+  const allowedPathRegexes = (policy.forbiddenFiles?.allowedPathPatterns ?? []).map(globToRegex);
 
   for (const file of includedFiles) {
     const normalized = file.replaceAll("\\", "/");
     const extension = path.extname(normalized).toLowerCase();
     if (forbiddenExtensions.has(extension)) {
       errors.push(`Forbidden file type: ${normalized}`);
+      continue;
+    }
+
+    if (pathMatchesAny(normalized, allowedPathRegexes)) {
       continue;
     }
 

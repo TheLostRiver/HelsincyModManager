@@ -10,6 +10,8 @@ mod app_settings_dto_tests {
         let dto: AppSettingsDto = AppSettings {
             thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
             thumbnail_cache_max_age_days: Some(14),
+            log_storage_max_bytes: Some(64 * 1024 * 1024),
+            debug_log_enabled: false,
         }
         .into();
 
@@ -37,6 +39,33 @@ mod app_settings_dto_tests {
         );
 
         assert_eq!(error.code, "thumbnail_cache_max_age_days_invalid");
+        assert!(!error.message.contains(':'));
+        assert!(!error.message.contains('\\'));
+    }
+
+    #[test]
+    fn serializes_log_storage_settings_with_a_narrow_camel_case_shape() {
+        let dto: LogStorageSettingsDto = AppSettings {
+            thumbnail_cache_max_bytes: Some(128 * 1024 * 1024),
+            thumbnail_cache_max_age_days: Some(14),
+            log_storage_max_bytes: Some(64 * 1024 * 1024),
+            debug_log_enabled: false,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize log storage settings");
+
+        assert_eq!(value["maxBytes"], 64 * 1024 * 1024);
+        assert_eq!(value.as_object().expect("settings object").len(), 1);
+    }
+
+    #[test]
+    fn maps_invalid_log_storage_setting_to_stable_error_code() {
+        let error = CommandErrorDto::from_app_settings_service_error(
+            AppSettingsServiceError::InvalidLogStorageMaxBytes,
+        );
+
+        assert_eq!(error.code, "log_storage_max_bytes_invalid");
         assert!(!error.message.contains(':'));
         assert!(!error.message.contains('\\'));
     }
@@ -96,7 +125,10 @@ mod profile_dto_tests {
             retention: hmm_core::ProfileBackupRetention {
                 max_count: 20,
                 max_age_days: Some(30),
+                max_total_bytes: None,
             },
+            steam_account: None,
+            pre_restore_backup_enabled: true,
             updated_at: 42,
         }
         .into();
@@ -109,6 +141,7 @@ mod profile_dto_tests {
         assert_eq!(value["schedule"]["cadence"], "weekly");
         assert_eq!(value["schedule"]["weekdays"][0], 0);
         assert_eq!(value["retention"]["maxCount"], 20);
+        assert_eq!(value["preRestoreBackupEnabled"], true);
         assert!(value.get("manifestPath").is_none());
         assert!(value.get("backupRoot").is_none());
         assert!(!value.to_string().contains("C:/Users/"));
@@ -330,14 +363,25 @@ mod preview_image_tests {
             file_name: "support-diagnostics-42.zip".to_owned(),
             size_bytes: 4096,
             app_log_line_count: 2,
+            debug_log_line_count: 3,
             task_log_line_count: 3,
             audit_event_count: 4,
             evidence_health: hmm_ports::DiagnosticsEvidenceHealthSnapshot {
+                debug_log_status: "debug_log_write_failed".to_owned(),
                 task_log_status: "task_log_write_failed".to_owned(),
                 audit_log_status: "audit_write_failed_after_commit".to_owned(),
+                log_storage_status: "log_storage_budget_unsatisfied".to_owned(),
+                debug_log_event_rejected_count: 8,
+                debug_log_write_failure_count: 9,
+                debug_log_retention_failure_count: 10,
                 task_log_write_failure_count: 1,
+                task_log_retention_failure_count: 3,
                 audit_write_failure_count: 2,
                 audit_write_failure_after_commit_count: 1,
+                audit_log_retention_failure_count: 4,
+                log_storage_failure_count: 5,
+                log_storage_unsatisfied_count: 6,
+                log_storage_settings_failure_count: 7,
             },
         }
         .into();
@@ -348,13 +392,24 @@ mod preview_image_tests {
         assert_eq!(value["fileName"], "support-diagnostics-42.zip");
         assert_eq!(value["sizeBytes"], 4096);
         assert_eq!(value["appLogLineCount"], 2);
+        assert_eq!(value["debugLogLineCount"], 3);
         assert_eq!(value["taskLogLineCount"], 3);
         assert_eq!(value["auditEventCount"], 4);
         assert_eq!(value["taskLogStatus"], "task_log_write_failed");
+        assert_eq!(value["debugLogStatus"], "debug_log_write_failed");
         assert_eq!(value["auditLogStatus"], "audit_write_failed_after_commit");
         assert_eq!(value["taskLogWriteFailureCount"], 1);
+        assert_eq!(value["debugLogEventRejectedCount"], 8);
+        assert_eq!(value["debugLogWriteFailureCount"], 9);
+        assert_eq!(value["debugLogRetentionFailureCount"], 10);
+        assert_eq!(value["taskLogRetentionFailureCount"], 3);
         assert_eq!(value["auditWriteFailureCount"], 2);
         assert_eq!(value["auditWriteFailureAfterCommitCount"], 1);
+        assert_eq!(value["auditLogRetentionFailureCount"], 4);
+        assert_eq!(value["logStorageStatus"], "log_storage_budget_unsatisfied");
+        assert_eq!(value["logStorageFailureCount"], 5);
+        assert_eq!(value["logStorageUnsatisfiedCount"], 6);
+        assert_eq!(value["logStorageSettingsFailureCount"], 7);
         assert!(value.get("appLogLines").is_none());
         assert!(value.get("taskLogLines").is_none());
         assert!(value.get("events").is_none());

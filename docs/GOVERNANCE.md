@@ -65,7 +65,12 @@ bash scripts/verify.sh
 - 前端 typecheck、lint、tests 和 build。
 - Rust workspace tests、check 和 `clippy --all-targets -D warnings`。
 
-检查作用域由 `policy/project-policy.json` 的 `checkScopes` 定义。`preCommit` 可以配置局部排除路径，例如 `.codex/**`；`verify` 默认保持全量检查。新增排除目录时优先修改 policy，不应在 hook 或检查脚本里硬编码路径。
+检查作用域由 `policy/project-policy.json` 的 `checkScopes` 定义。`preCommit` 和 `verify` 默认都检查
+受版本管理的 `.codex/skills/hmm*` 项目技能；本地 ignored 的 Codex 工具不属于 Git 候选文件。
+新增排除目录时优先修改 policy，不应在 hook 或检查脚本里硬编码路径。
+
+`forbiddenFiles` 另外禁止跟踪 `.codex/**`，只通过窄 allow pattern 放行
+`.codex/skills/hmm*/**`。因此即使使用 `git add -f`，非 HMM Codex 文件也会在本地验证和 CI 中失败。
 
 QG-01 将前端 tests 和 workspace clippy 纳入两个统一入口。后续 PR 运行完整统一入口后，不需要再把
 这两项作为 CI 缺口额外手工补跑；聚焦测试仍按改动边界执行。当前 Windows 本机观察中，前端 tests
@@ -103,6 +108,12 @@ GitHub Actions 工作流：
 该工作流在 push 和 pull request 时通过 `bash scripts/verify.sh` 运行 Linux 原生入口，required job
 名称保持 `Policy and docs`。因此 CI 与 Windows 本地入口共享前端 tests 和 workspace clippy 门禁，
 不在 workflow 中复制命令。
+
+GitHub CodeQL 使用仓库设置中的 default setup，不由版本库内 workflow 配置。当前分析语言固定为
+GitHub Actions、JavaScript / TypeScript 和 Rust。语言选择必须与 PR head 及合并后的默认分支实际受
+版本管理的源码保持一致；移除某语言最后一份受跟踪源码时，应在该 PR 的合并门禁前同步取消对应语言，
+避免 CodeQL 在没有可分析源码时于 database finalize 阶段失败。新增受支持语言时，应同步更新该设置
+和本节，并确认每个已选语言的 analyze job 都达到 terminal `success`。
 
 CI 是当前项目的远程自动门禁。真正强制合并还需要 GitHub 分支保护配合。
 
@@ -164,7 +175,8 @@ review warning 用于发现混合职责和维护性风险，应在相关功能 P
 如果确实是生成代码、协议定义、静态 catalog，或与主应用无关的独立工具目录，应加入 allowlist、
 `fileSize.excludePathPatterns` 或对应的窄检查排除项，并在 PR 中解释原因。
 
-当前 `.codex/` 是独立的上下文管理工具，不属于主应用运行时代码边界；文件大小硬性限制默认通过 `fileSize.excludePathPatterns` 排除该目录，避免工具自身演进被主应用代码体量门禁误拦截。
+当前只有 `.codex/skills/hmm*` 属于仓库治理内容，并与其他受管文档一样接受文件大小、空白、链接和
+敏感信息检查。其余 `.codex` 内容是本地工具状态，由 `.gitignore` 排除，不通过仓库分发。
 
 ## 交付单位与验证分级
 

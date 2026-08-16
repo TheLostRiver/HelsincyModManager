@@ -1,6 +1,11 @@
 use super::registry::ScheduledTaskRegistry;
-use super::task_spec::{ScheduledTaskReadback, ScheduledTaskSpec, ScheduledTaskSpecMatch};
-use super::{ScheduledTaskCommand, ScheduledTaskCommandOutcome, ScheduledTaskCommandRunner};
+use super::task_spec::{
+    ScheduledTaskReadback, ScheduledTaskSpec, ScheduledTaskSpecMatch, ScheduledTaskState,
+};
+use super::{
+    InstallerCleanupOutcome, ScheduledTaskCommand, ScheduledTaskCommandOutcome,
+    ScheduledTaskCommandRunner,
+};
 use hmm_core::SaveBackupBackgroundRegistrationStatus;
 use hmm_ports::{
     SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
@@ -56,6 +61,13 @@ fn exact_readback_matches_and_each_security_field_can_drift() {
     assert_eq!(
         spec.compare(&exact_readback(&spec)),
         ScheduledTaskSpecMatch::Exact
+    );
+    let mut running = exact_readback(&spec);
+    running.state = ScheduledTaskState::Running;
+    assert_eq!(
+        spec.compare(&running),
+        ScheduledTaskSpecMatch::Exact,
+        "runtime state must not participate in registration spec drift",
     );
 
     let mut cases = Vec::new();
@@ -232,6 +244,183 @@ impl ScheduledTaskCommandRunner for FakeRunner {
     }
 }
 
+#[test]
+fn save_backup_installer_cleanup_preserves_missing_and_foreign_tasks_without_mutation() {
+    let fixture = RegistryFixture::new_without_worker_file();
+    let missing = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+        Ok(ScheduledTaskCommandOutcome::Missing),
+    ]);
+    let registry = ScheduledTaskRegistry::with_worker_path(missing.clone(), None);
+    assert_eq!(
+        registry.cleanup_for_installer(),
+        InstallerCleanupOutcome::AlreadyAbsent
+    );
+    assert!(matches!(
+        missing.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::InstallerCleanup { .. }
+        ]
+    ));
+
+    let foreign_runner = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
+    ]);
+    let registry = ScheduledTaskRegistry::with_worker_path(foreign_runner.clone(), None);
+    assert_eq!(
+        registry.cleanup_for_installer(),
+        InstallerCleanupOutcome::ForeignPreserved
+    );
+    assert!(matches!(
+        foreign_runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::InstallerCleanup { .. }
+        ]
+    ));
+}
+
+#[test]
+fn save_backup_installer_cleanup_removes_owned_exact_and_drift_when_quiescent() {
+    for _case in ["owned_exact", "owned_drift"] {
+        let fixture = RegistryFixture::new_without_worker_file();
+        let runner = FakeRunner::with_outcomes(vec![
+            Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+            Ok(ScheduledTaskCommandOutcome::Completed),
+        ]);
+        let registry =
+            ScheduledTaskRegistry::with_worker_path(runner.clone(), Some(fixture.worker_path));
+
+        assert_eq!(
+            registry.cleanup_for_installer(),
+            InstallerCleanupOutcome::Removed
+        );
+        assert!(matches!(
+            runner.commands().as_slice(),
+            [
+                ScheduledTaskCommand::Identity,
+                ScheduledTaskCommand::InstallerCleanup { .. }
+            ]
+        ));
+    }
+}
+
+#[test]
+fn save_backup_installer_cleanup_blocks_running_and_queued_tasks_without_mutation() {
+    for _state in [ScheduledTaskState::Running, ScheduledTaskState::Queued] {
+        let fixture = RegistryFixture::new_without_worker_file();
+        let runner = FakeRunner::with_outcomes(vec![
+            Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+            Ok(ScheduledTaskCommandOutcome::TaskBusy),
+        ]);
+        let registry = ScheduledTaskRegistry::with_worker_path(runner.clone(), None);
+
+        assert_eq!(
+            registry.cleanup_for_installer(),
+            InstallerCleanupOutcome::OwnedTaskRunning
+        );
+        assert!(matches!(
+            runner.commands().as_slice(),
+            [
+                ScheduledTaskCommand::Identity,
+                ScheduledTaskCommand::InstallerCleanup { .. }
+            ]
+        ));
+    }
+}
+
+#[test]
+fn save_backup_installer_cleanup_fails_closed_when_identity_owner_or_state_is_unverified() {
+    let identity_error =
+        FakeRunner::with_outcomes(vec![Err(SaveBackupBackgroundRegistryError::CommandTimeout)]);
+    let registry = ScheduledTaskRegistry::with_worker_path(identity_error.clone(), None);
+    assert_eq!(
+        registry.cleanup_for_installer(),
+        InstallerCleanupOutcome::OwnershipUnverified
+    );
+    assert_eq!(
+        identity_error.commands(),
+        vec![ScheduledTaskCommand::Identity]
+    );
+
+    let fixture = RegistryFixture::new_without_worker_file();
+    for (cleanup, expected) in [
+        (
+            ScheduledTaskCommandOutcome::PermissionRequired,
+            InstallerCleanupOutcome::OwnershipUnverified,
+        ),
+        (
+            ScheduledTaskCommandOutcome::ModuleUnavailable,
+            InstallerCleanupOutcome::PlatformUnavailable,
+        ),
+        (
+            ScheduledTaskCommandOutcome::StateUnverified,
+            InstallerCleanupOutcome::OwnershipUnverified,
+        ),
+        (
+            ScheduledTaskCommandOutcome::PostDeleteForeign,
+            InstallerCleanupOutcome::OwnershipUnverified,
+        ),
+    ] {
+        let runner = FakeRunner::with_outcomes(vec![
+            Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+            Ok(cleanup),
+        ]);
+        let registry = ScheduledTaskRegistry::with_worker_path(runner.clone(), None);
+        assert_eq!(registry.cleanup_for_installer(), expected);
+        assert_eq!(runner.commands().len(), 2);
+    }
+}
+
+#[test]
+fn save_backup_installer_cleanup_distinguishes_mutation_and_post_delete_failures() {
+    let fixture = RegistryFixture::new_without_worker_file();
+    for (cleanup, expected) in [
+        (
+            Ok(ScheduledTaskCommandOutcome::Missing),
+            InstallerCleanupOutcome::AlreadyAbsent,
+        ),
+        (
+            Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
+            InstallerCleanupOutcome::ForeignPreserved,
+        ),
+        (
+            Ok(ScheduledTaskCommandOutcome::PermissionRequired),
+            InstallerCleanupOutcome::OwnershipUnverified,
+        ),
+        (
+            Ok(ScheduledTaskCommandOutcome::StateUnverified),
+            InstallerCleanupOutcome::OwnershipUnverified,
+        ),
+        (
+            Ok(ScheduledTaskCommandOutcome::TaskBusy),
+            InstallerCleanupOutcome::OwnedTaskRunning,
+        ),
+        (
+            Ok(ScheduledTaskCommandOutcome::PostDeleteOwned),
+            InstallerCleanupOutcome::RemovalUnverified,
+        ),
+        (
+            Ok(ScheduledTaskCommandOutcome::PostDeleteForeign),
+            InstallerCleanupOutcome::OwnershipUnverified,
+        ),
+        (
+            Err(SaveBackupBackgroundRegistryError::OperationFailed),
+            InstallerCleanupOutcome::RemovalUnverified,
+        ),
+    ] {
+        let runner = FakeRunner::with_outcomes(vec![
+            Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+            cleanup,
+        ]);
+        let registry = ScheduledTaskRegistry::with_worker_path(runner.clone(), None);
+        assert_eq!(registry.cleanup_for_installer(), expected);
+        assert_eq!(runner.commands().len(), 2);
+    }
+}
+
 struct RegistryFixture {
     _temp: tempfile::TempDir,
     sid: String,
@@ -276,8 +465,9 @@ fn register_creates_missing_task_then_requires_exact_readback() {
     let fixture = RegistryFixture::new();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
-        Ok(ScheduledTaskCommandOutcome::Missing),
-        Ok(ScheduledTaskCommandOutcome::Completed),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
@@ -292,18 +482,20 @@ fn register_creates_missing_task_then_requires_exact_readback() {
         runner.commands().as_slice(),
         [
             ScheduledTaskCommand::Identity,
-            ScheduledTaskCommand::Inspect { .. },
             ScheduledTaskCommand::Register(_),
-            ScheduledTaskCommand::Inspect { .. }
+            ScheduledTaskCommand::Start(_)
         ]
     ));
 }
 
 #[test]
-fn exact_registration_is_a_noop() {
+fn exact_registration_is_started_after_rust_readback() {
     let fixture = RegistryFixture::new();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback,
         ))),
@@ -314,21 +506,66 @@ fn exact_registration_is_a_noop() {
         registry.register().expect("register"),
         SaveBackupBackgroundRegistrationStatus::Registered
     );
-    assert!(!runner
-        .commands()
-        .iter()
-        .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
+    assert!(matches!(
+        runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
+        ]
+    ));
+}
+
+#[test]
+fn current_user_identity_is_cached_across_registry_operations() {
+    let fixture = RegistryFixture::new();
+    let runner = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback,
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Completed),
+    ]);
+    let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
+
+    assert_eq!(
+        registry.inspect().expect("inspect"),
+        SaveBackupBackgroundRegistrationStatus::Registered
+    );
+    assert_eq!(
+        registry.register().expect("register"),
+        SaveBackupBackgroundRegistrationStatus::Registered
+    );
+    assert_eq!(
+        registry.unregister().expect("unregister"),
+        SaveBackupBackgroundRegistrationStatus::NotRegistered
+    );
+    assert!(matches!(
+        runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Inspect { .. },
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_),
+            ScheduledTaskCommand::Unregister { .. }
+        ]
+    ));
 }
 
 #[test]
 fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutation() {
     let fixture = RegistryFixture::new();
-    let mut drift = fixture.exact_readback.clone();
-    drift.action_arguments = "--once --profile default".to_owned();
     let repair = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
-        Ok(ScheduledTaskCommandOutcome::Completed),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(
             fixture.exact_readback.clone(),
         ))),
@@ -342,19 +579,21 @@ fn register_repairs_owned_drift_and_blocks_foreign_owner_observed_before_mutatio
         .commands()
         .iter()
         .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
+    assert!(repair
+        .commands()
+        .iter()
+        .any(|command| matches!(command, ScheduledTaskCommand::Start(_))));
 
-    let mut foreign = fixture.exact_readback;
-    foreign.owner_marker = "another.application/task/v1".to_owned();
     let conflict = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(foreign))),
+        Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
     ]);
     let registry = ScheduledTaskRegistry::new(conflict.clone(), fixture.worker_path);
     assert_eq!(
         registry.register().expect_err("foreign owner blocked"),
         SaveBackupBackgroundRegistryError::TaskOwnershipConflict
     );
-    assert!(!conflict
+    assert!(conflict
         .commands()
         .iter()
         .any(|command| matches!(command, ScheduledTaskCommand::Register(_))));
@@ -367,16 +606,71 @@ fn register_reports_post_write_drift_instead_of_claiming_success() {
     drift.enabled = false;
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Missing),
-        Ok(ScheduledTaskCommandOutcome::Completed),
         Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
     ]);
-    let registry = ScheduledTaskRegistry::new(runner, fixture.worker_path);
+    let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
     assert_eq!(
         registry.register().expect("register"),
         SaveBackupBackgroundRegistrationStatus::ConfigurationDrift
     );
+    assert!(matches!(
+        runner.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_)
+        ]
+    ));
+}
+
+#[test]
+fn register_fails_closed_when_initial_start_fails_or_drifts() {
+    let fixture = RegistryFixture::new();
+    let start_error = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid.clone())),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback.clone(),
+        ))),
+        Err(SaveBackupBackgroundRegistryError::OperationFailed),
+    ]);
+    let registry = ScheduledTaskRegistry::new(start_error.clone(), fixture.worker_path.clone());
+    assert_eq!(
+        registry
+            .register()
+            .expect_err("initial start must fail closed"),
+        SaveBackupBackgroundRegistryError::OperationFailed
+    );
+    assert!(matches!(
+        start_error.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
+        ]
+    ));
+
+    let mut drift = fixture.exact_readback.clone();
+    drift.action_arguments = "--unexpected".to_owned();
+    let start_drift = FakeRunner::with_outcomes(vec![
+        Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
+            fixture.exact_readback,
+        ))),
+        Ok(ScheduledTaskCommandOutcome::Found(Box::new(drift))),
+    ]);
+    let registry = ScheduledTaskRegistry::new(start_drift.clone(), fixture.worker_path);
+    assert_eq!(
+        registry.register().expect("drift is a stable status"),
+        SaveBackupBackgroundRegistrationStatus::ConfigurationDrift
+    );
+    assert!(matches!(
+        start_drift.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Register(_),
+            ScheduledTaskCommand::Start(_)
+        ]
+    ));
 }
 
 #[test]
@@ -448,13 +742,12 @@ fn register_maps_write_permission_and_module_outcomes_without_readback() {
         let fixture = RegistryFixture::new();
         let runner = FakeRunner::with_outcomes(vec![
             Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-            Ok(ScheduledTaskCommandOutcome::Missing),
             Ok(outcome),
         ]);
         let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
         assert_eq!(registry.register().expect("register status"), expected);
-        assert_eq!(runner.commands().len(), 3);
+        assert_eq!(runner.commands().len(), 2);
     }
 }
 
@@ -514,11 +807,7 @@ fn unregister_is_idempotent_rechecks_and_does_not_require_worker_file() {
     let fixture = RegistryFixture::new_without_worker_file();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
-            fixture.exact_readback,
-        ))),
         Ok(ScheduledTaskCommandOutcome::Completed),
-        Ok(ScheduledTaskCommandOutcome::Missing),
     ]);
     let registry = ScheduledTaskRegistry::new(runner.clone(), fixture.worker_path);
 
@@ -530,9 +819,7 @@ fn unregister_is_idempotent_rechecks_and_does_not_require_worker_file() {
         runner.commands().as_slice(),
         [
             ScheduledTaskCommand::Identity,
-            ScheduledTaskCommand::Inspect { .. },
-            ScheduledTaskCommand::Unregister { .. },
-            ScheduledTaskCommand::Inspect { .. }
+            ScheduledTaskCommand::Unregister { .. }
         ]
     ));
 }
@@ -549,16 +836,17 @@ fn unregister_missing_task_is_a_noop_and_foreign_task_is_blocked() {
         registry.unregister().expect("missing unregister"),
         SaveBackupBackgroundRegistrationStatus::NotRegistered
     );
-    assert!(!missing
-        .commands()
-        .iter()
-        .any(|command| matches!(command, ScheduledTaskCommand::Unregister { .. })));
+    assert!(matches!(
+        missing.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Unregister { .. }
+        ]
+    ));
 
-    let mut foreign = fixture.exact_readback;
-    foreign.owner_marker = "another.application/task/v1".to_owned();
     let conflict = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(foreign))),
+        Ok(ScheduledTaskCommandOutcome::OwnershipConflict),
     ]);
     let registry = ScheduledTaskRegistry::new(conflict.clone(), fixture.worker_path);
     assert_eq!(
@@ -567,10 +855,13 @@ fn unregister_missing_task_is_a_noop_and_foreign_task_is_blocked() {
             .expect_err("foreign unregister blocked"),
         SaveBackupBackgroundRegistryError::TaskOwnershipConflict
     );
-    assert!(!conflict
-        .commands()
-        .iter()
-        .any(|command| matches!(command, ScheduledTaskCommand::Unregister { .. })));
+    assert!(matches!(
+        conflict.commands().as_slice(),
+        [
+            ScheduledTaskCommand::Identity,
+            ScheduledTaskCommand::Unregister { .. }
+        ]
+    ));
 }
 
 #[test]
@@ -578,13 +869,7 @@ fn unregister_requires_missing_post_delete_readback() {
     let fixture = RegistryFixture::new_without_worker_file();
     let runner = FakeRunner::with_outcomes(vec![
         Ok(ScheduledTaskCommandOutcome::Identity(fixture.sid)),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
-            fixture.exact_readback.clone(),
-        ))),
-        Ok(ScheduledTaskCommandOutcome::Completed),
-        Ok(ScheduledTaskCommandOutcome::Found(Box::new(
-            fixture.exact_readback,
-        ))),
+        Ok(ScheduledTaskCommandOutcome::PostDeleteOwned),
     ]);
     let registry = ScheduledTaskRegistry::new(runner, fixture.worker_path);
 
@@ -717,7 +1002,7 @@ fn windows_scheduled_task_registry_smoke() {
         );
         if std::env::var("HMM_WINDOWS_SMOKE_WAIT_FOR_TRIGGER").as_deref() == Ok("1") {
             println!(
-                "Run the registered task in Task Scheduler, verify the heartbeat in the second terminal, then press Enter."
+                "Wait for the automatic initial task run, verify the heartbeat in the second terminal, then press Enter."
             );
             let mut acknowledgement = String::new();
             std::io::stdin()
@@ -786,11 +1071,35 @@ fn create_file_symlink(target: &std::path::Path, link: &std::path::Path) -> std:
 #[cfg(windows)]
 #[test]
 fn parses_versioned_inspect_output_without_exposing_raw_output() {
-    let output = br#"{"schemaVersion":1,"status":"found","task":{"taskPath":"\\","ownerMarker":"dev.helsincy.modmanager/save-backup","userSid":"S-1-5-21-1","actionCount":1,"actionExecute":"C:\\HMM\\hmm-save-backup-worker.exe","actionArguments":"--once","actionWorkingDirectory":"","logonTriggerCount":1,"timeTriggerCount":1,"logonTriggerUserSid":"S-1-5-21-1","logonTriggerEnabled":true,"timeTriggerEnabled":true,"logonDelay":"PT1M","periodicInterval":"PT15M","periodicDuration":"","logonType":"Interactive","runLevel":"Limited","multipleInstances":"IgnoreNew","startWhenAvailable":true,"allowStartOnBatteries":true,"dontStopOnBatteries":true,"wakeToRun":false,"runOnlyIfNetworkAvailable":false,"executionTimeLimit":"PT1H","enabled":true}}"#;
+    let output = br#"{"schemaVersion":1,"status":"found","task":{"taskPath":"\\","ownerMarker":"dev.helsincy.modmanager/save-backup","userSid":"S-1-5-21-1","actionCount":1,"actionExecute":"C:\\HMM\\hmm-save-backup-worker.exe","actionArguments":"--once","actionWorkingDirectory":"","logonTriggerCount":1,"timeTriggerCount":1,"logonTriggerUserSid":"S-1-5-21-1","logonTriggerEnabled":true,"timeTriggerEnabled":true,"logonDelay":"PT1M","periodicInterval":"PT15M","periodicDuration":"","logonType":"Interactive","runLevel":"Limited","multipleInstances":"IgnoreNew","startWhenAvailable":true,"allowStartOnBatteries":true,"dontStopOnBatteries":true,"wakeToRun":false,"runOnlyIfNetworkAvailable":false,"executionTimeLimit":"PT1H","enabled":true,"state":"Ready"}}"#;
 
     let parsed = parse_script_output(output).expect("valid output");
 
     assert!(matches!(parsed, ScheduledTaskCommandOutcome::Found(_)));
+    assert_eq!(
+        parse_script_output(br#"{"schemaVersion":1,"status":"task_busy"}"#),
+        Ok(ScheduledTaskCommandOutcome::TaskBusy)
+    );
+    assert_eq!(
+        parse_script_output(br#"{"schemaVersion":1,"status":"state_unverified"}"#),
+        Ok(ScheduledTaskCommandOutcome::StateUnverified)
+    );
+    assert_eq!(
+        parse_script_output(br#"{"schemaVersion":1,"status":"post_delete_owned"}"#),
+        Ok(ScheduledTaskCommandOutcome::PostDeleteOwned)
+    );
+    assert_eq!(
+        parse_script_output(br#"{"schemaVersion":1,"status":"post_delete_foreign"}"#),
+        Ok(ScheduledTaskCommandOutcome::PostDeleteForeign)
+    );
+
+    let invalid_state = String::from_utf8(output.to_vec())
+        .expect("readback fixture is UTF-8")
+        .replace("\"state\":\"Ready\"", "\"state\":\"Unexpected\"");
+    assert_eq!(
+        parse_script_output(invalid_state.as_bytes()),
+        Err(SaveBackupBackgroundRegistryError::CommandInvalidOutput)
+    );
 }
 
 #[cfg(windows)]
@@ -943,6 +1252,28 @@ fn command_builder_uses_only_fixed_executable_script_and_internal_env_keys() {
         hmm_environment(&register),
         BTreeMap::from([
             ("HMM_OPERATION".to_owned(), "register".to_owned()),
+            ("HMM_OWNER_MARKER".to_owned(), spec.owner_marker.clone()),
+            (
+                "HMM_SCHEDULED_TASKS_MODULE".to_owned(),
+                runtime
+                    .scheduled_tasks_module
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("HMM_TASK_NAME".to_owned(), spec.task_name.clone()),
+            ("HMM_USER_SID".to_owned(), spec.user_sid.clone()),
+            (
+                "HMM_WORKER_PATH".to_owned(),
+                spec.worker_path.to_string_lossy().into_owned(),
+            ),
+        ])
+    );
+
+    let start = build_command(&ScheduledTaskCommand::Start(spec.clone())).expect("start command");
+    assert_eq!(
+        hmm_environment(&start),
+        BTreeMap::from([
+            ("HMM_OPERATION".to_owned(), "start".to_owned()),
             ("HMM_OWNER_MARKER".to_owned(), spec.owner_marker),
             (
                 "HMM_SCHEDULED_TASKS_MODULE".to_owned(),
@@ -980,6 +1311,27 @@ fn command_builder_uses_only_fixed_executable_script_and_internal_env_keys() {
             ("HMM_TASK_NAME".to_owned(), "task-name".to_owned()),
         ])
     );
+
+    let installer_cleanup = build_command(&ScheduledTaskCommand::InstallerCleanup {
+        task_name: "task-name".to_owned(),
+        owner_marker: "owner-marker".to_owned(),
+    })
+    .expect("installer cleanup command");
+    assert_eq!(
+        hmm_environment(&installer_cleanup),
+        BTreeMap::from([
+            ("HMM_OPERATION".to_owned(), "installer_cleanup".to_owned(),),
+            ("HMM_OWNER_MARKER".to_owned(), "owner-marker".to_owned()),
+            (
+                "HMM_SCHEDULED_TASKS_MODULE".to_owned(),
+                runtime
+                    .scheduled_tasks_module
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("HMM_TASK_NAME".to_owned(), "task-name".to_owned()),
+        ])
+    );
 }
 
 #[cfg(windows)]
@@ -997,9 +1349,112 @@ fn scheduled_task_script_keeps_fail_closed_security_boundaries() {
     assert!(!script.contains("Get-Module -ListAvailable"));
     assert!(!script.contains("ExecutionPolicy"));
     assert!(!script.contains("Invoke-Expression"));
+    assert!(!script.contains("Stop-ScheduledTask"));
+    assert!(!script.contains("Stop-Process"));
+    assert!(!script.contains("schtasks"));
     assert!(!script
         .lines()
         .any(|line| { line.contains("Register-ScheduledTask") && line.contains("-Force") }));
+
+    let registration_guard = script
+        .split("function Test-RegistrationTaskExact")
+        .nth(1)
+        .and_then(|value| {
+            value
+                .split("function Assert-InstallerCleanupTaskIsQuiescent")
+                .next()
+        })
+        .expect("registration exact-readback guard exists");
+    for required in [
+        "$Task.TaskPath",
+        "$Task.Description",
+        "$Task.Actions",
+        "$Task.Triggers",
+        "$Task.Principal.UserId",
+        "$Task.Principal.LogonType",
+        "$Task.Principal.RunLevel",
+        "$Task.Settings.MultipleInstances",
+        "$Task.Settings.StartWhenAvailable",
+        "$Task.Settings.ExecutionTimeLimit",
+        "Get-Item -LiteralPath $actionPath",
+        "FileAttributes]::ReparsePoint",
+        "$worker.Directory",
+        "Normalize-WindowsPath",
+    ] {
+        assert!(registration_guard.contains(required), "missing {required}");
+    }
+
+    let initial_start = script
+        .split("if ($operation -eq \"start\")")
+        .nth(1)
+        .and_then(|value| value.split("if ($operation -eq \"unregister\")").next())
+        .expect("start operation exists");
+    assert_eq!(
+        initial_start.matches("Test-RegistrationTaskExact").count(),
+        3
+    );
+    assert_eq!(initial_start.matches("Start-ScheduledTask").count(), 1);
+    let first_guard = initial_start
+        .find("Test-RegistrationTaskExact")
+        .expect("first exact read-back");
+    let busy_return = initial_start
+        .find("$registeredState -eq \"Running\"")
+        .expect("already-running short circuit");
+    let second_guard = initial_start[first_guard + 1..]
+        .find("Test-RegistrationTaskExact")
+        .map(|offset| first_guard + 1 + offset)
+        .expect("second exact read-back");
+    let start = initial_start
+        .find("Start-ScheduledTask -InputObject $launchTarget")
+        .expect("controlled initial start");
+    let post_start_guard = initial_start[start + 1..]
+        .find("Test-RegistrationTaskExact")
+        .map(|offset| start + 1 + offset)
+        .expect("post-start exact read-back");
+    assert!(
+        first_guard < busy_return
+            && busy_return < second_guard
+            && second_guard < start
+            && start < post_start_guard
+    );
+    assert!(!initial_start.contains("Start-ScheduledTask -TaskName"));
+
+    let quiescence_guard = script
+        .split("function Assert-InstallerCleanupTaskIsQuiescent")
+        .nth(1)
+        .and_then(|value| {
+            value
+                .split("function Write-InstallerCleanupPostDeleteStatus")
+                .next()
+        })
+        .expect("installer cleanup quiescence guard exists");
+    let owner_check = quiescence_guard
+        .find("$Task.Description")
+        .expect("owner check");
+    let state_check = quiescence_guard.find("$Task.State").expect("state check");
+    assert!(owner_check < state_check);
+
+    let cleanup = script
+        .split("if ($operation -eq \"installer_cleanup\")")
+        .nth(1)
+        .expect("installer cleanup operation exists");
+    assert_eq!(
+        cleanup
+            .matches("Assert-InstallerCleanupTaskIsQuiescent")
+            .count(),
+        2
+    );
+    assert_eq!(cleanup.matches("Get-TaskOrStatus $taskName").count(), 2);
+    let delete = cleanup
+        .find("Unregister-ScheduledTask")
+        .expect("owned delete");
+    let post_delete = cleanup
+        .find("Write-InstallerCleanupPostDeleteStatus")
+        .expect("post-delete read-back");
+    assert!(delete < post_delete);
+    assert!(!cleanup.contains(".Actions"));
+    assert!(!cleanup.contains(".Triggers"));
+    assert!(!cleanup.contains(".Settings"));
 }
 
 #[cfg(windows)]
@@ -1051,5 +1506,6 @@ fn exact_readback(spec: &ScheduledTaskSpec) -> ScheduledTaskReadback {
         run_only_if_network_available: false,
         execution_time_limit: spec.execution_time_limit.clone(),
         enabled: true,
+        state: ScheduledTaskState::Ready,
     }
 }

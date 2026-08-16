@@ -4,6 +4,9 @@ mod task_spec;
 #[cfg(windows)]
 mod powershell;
 
+#[cfg(windows)]
+mod native_inspect;
+
 #[cfg(any(windows, test))]
 mod registry;
 
@@ -19,6 +22,17 @@ use hmm_ports::{SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryResult
 #[cfg(any(windows, test))]
 use task_spec::{ScheduledTaskReadback, ScheduledTaskSpec};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallerCleanupOutcome {
+    Removed,
+    AlreadyAbsent,
+    ForeignPreserved,
+    OwnedTaskRunning,
+    OwnershipUnverified,
+    RemovalUnverified,
+    PlatformUnavailable,
+}
+
 #[cfg(any(windows, test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ScheduledTaskCommand {
@@ -28,7 +42,12 @@ enum ScheduledTaskCommand {
         owner_marker: String,
     },
     Register(ScheduledTaskSpec),
+    Start(ScheduledTaskSpec),
     Unregister {
+        task_name: String,
+        owner_marker: String,
+    },
+    InstallerCleanup {
         task_name: String,
         owner_marker: String,
     },
@@ -41,9 +60,13 @@ enum ScheduledTaskCommandOutcome {
     Missing,
     Found(Box<ScheduledTaskReadback>),
     Completed,
+    PostDeleteOwned,
+    PostDeleteForeign,
     PermissionRequired,
     ModuleUnavailable,
     OwnershipConflict,
+    TaskBusy,
+    StateUnverified,
 }
 
 #[cfg(any(windows, test))]
@@ -56,6 +79,22 @@ trait ScheduledTaskCommandRunner: Send + Sync {
 
 #[cfg(windows)]
 pub use windows::WindowsScheduledTaskRegistry;
+
+pub fn cleanup_owned_save_backup_task_for_installer() -> InstallerCleanupOutcome {
+    #[cfg(windows)]
+    {
+        registry::ScheduledTaskRegistry::with_worker_path(
+            powershell::PowerShellScheduledTaskCommandRunner,
+            None,
+        )
+        .cleanup_for_installer()
+    }
+
+    #[cfg(not(windows))]
+    {
+        InstallerCleanupOutcome::PlatformUnavailable
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct UnsupportedSaveBackupBackgroundRegistry;

@@ -3,6 +3,7 @@ mod background_worker;
 mod batch_mod_lifecycle_commands;
 mod batch_mod_lifecycle_dto;
 mod category_commands;
+mod debug_log_commands;
 mod diagnostics_dto;
 mod dto;
 mod external_import_commands;
@@ -11,6 +12,8 @@ mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
 mod install_commands;
+mod installer_cleanup;
+mod log_storage_commands;
 mod mod_import_commands;
 mod mod_library_commands;
 mod mod_library_dto;
@@ -23,9 +26,13 @@ mod reinstall_dto;
 mod replacement_commands;
 mod replacement_dto;
 mod save_backup_commands;
+mod save_backup_center_commands;
+mod save_backup_center_dto;
 mod save_backup_dto;
 mod save_directory_discovery_commands;
 mod save_directory_discovery_dto;
+mod save_restore_commands;
+mod save_restore_dto;
 mod state;
 mod task_commands;
 mod task_events;
@@ -36,6 +43,7 @@ use category_commands::{
     create_category, delete_category, get_mod_categories, list_categories, set_mod_categories,
     update_category,
 };
+use debug_log_commands::{get_debug_log_settings, set_debug_log_settings};
 use external_import_commands::{
     create_external_import_selection, get_external_import_batch_result,
     get_external_import_preview, retry_external_import_batch,
@@ -52,6 +60,7 @@ use install_commands::{
     preview_recovery_action, scan_install_recovery, start_install_task, start_recovery_action_task,
     start_uninstall_task,
 };
+use log_storage_commands::{get_log_storage_settings, set_log_storage_settings};
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
     get_diagnostics_page_snapshot, get_mod_dependency_graph, get_mod_detail,
@@ -77,15 +86,20 @@ use save_backup_commands::{
     enable_save_backup_background_protection, get_save_backup_background_control_status,
     get_save_backup_background_status, list_save_backups, start_save_backup_task,
 };
+use save_backup_center_commands::{
+    query_save_backup_center, run_save_backup_retention, update_save_backup_note,
+};
 use save_directory_discovery_commands::{
     confirm_profile_save_directory_candidate, discover_profile_save_directories,
 };
+use save_restore_commands::{preview_save_restore, start_save_restore_task};
 use state::AppState;
 use task_commands::cancel_task;
-use tauri::{Manager, State};
+use tauri::{Manager, RunEvent, State};
 use thumbnail_protocol::register_thumbnail_protocol;
 use window_lifecycle_commands::{
     exit_app, get_app_exit_guard, hide_main_window_to_tray, register_window_lifecycle,
+    ExitAuthorizationStore,
 };
 
 pub use background_worker::BackgroundWorkerEntryError;
@@ -103,8 +117,12 @@ pub fn run_save_backup_worker_once_from_env() -> Result<(), BackgroundWorkerEntr
     background_worker::run_save_backup_worker_once_from_env()
 }
 
+pub fn run_installer_cleanup_from_env() -> i32 {
+    installer_cleanup::run_installer_cleanup_from_env()
+}
+
 pub fn run() {
-    register_thumbnail_protocol(tauri::Builder::default())
+    let app = register_thumbnail_protocol(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_log_health = app_log::initialize(app.handle());
@@ -114,6 +132,7 @@ pub fn run() {
             })?;
             app_log::record_state_initialized();
             app.manage(state);
+            app.manage(ExitAuthorizationStore::default());
             register_window_lifecycle(app).inspect_err(|_| {
                 app_log::record_warning(
                     "application.window_lifecycle_initialization_failed",
@@ -181,6 +200,10 @@ pub fn run() {
             maintain_thumbnail_cache,
             get_thumbnail_cache_settings,
             set_thumbnail_cache_settings,
+            get_log_storage_settings,
+            set_log_storage_settings,
+            get_debug_log_settings,
+            set_debug_log_settings,
             update_mod_metadata,
             delete_mod_metadata,
             create_category,
@@ -208,12 +231,29 @@ pub fn run() {
             enable_save_backup_background_protection,
             disable_save_backup_background_protection,
             list_save_backups,
+            query_save_backup_center,
+            update_save_backup_note,
+            run_save_backup_retention,
+            preview_save_restore,
+            start_save_restore_task,
             hide_main_window_to_tray,
             get_app_exit_guard,
             exit_app
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Helsincy Mod Manager");
+        .build(tauri::generate_context!())
+        .expect("failed to build Helsincy Mod Manager");
+
+    let exit_code = app.run_return(|_, event| match event {
+        RunEvent::ExitRequested { .. } => {
+            app_log::record_application_lifecycle(app_log::ApplicationLifecycleStage::ExitRequested)
+        }
+        RunEvent::Exit => {
+            app_log::record_application_lifecycle(app_log::ApplicationLifecycleStage::Exit)
+        }
+        _ => {}
+    });
+    app_log::record_application_lifecycle(app_log::ApplicationLifecycleStage::EventLoopReturned);
+    std::process::exit(exit_code);
 }
 
 #[cfg(test)]
@@ -224,5 +264,22 @@ mod tests {
     #[test]
     fn app_health_returns_logging_health_status() {
         assert_eq!(app_log::status_code(&AppLogHealth::ready()), "ok");
+    }
+
+    #[test]
+    fn application_run_releases_tauri_state_before_final_process_exit() {
+        let source = include_str!("lib.rs");
+        let build = source.find(".build(tauri::generate_context!())").unwrap();
+        let run_return = source.find("app.run_return(").unwrap();
+        let event_loop_stopped = source
+            .find("ApplicationLifecycleStage::EventLoopReturned")
+            .unwrap();
+        let final_exit = source.find("std::process::exit(exit_code)").unwrap();
+
+        assert!(build < run_return);
+        assert!(run_return < event_loop_stopped);
+        assert!(event_loop_stopped < final_exit);
+        let legacy_run = [".run(", "tauri::generate_context!())"].concat();
+        assert!(!source.contains(&legacy_run));
     }
 }

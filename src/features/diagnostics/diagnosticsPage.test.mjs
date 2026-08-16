@@ -15,7 +15,7 @@ test("diagnostics route is enabled and uses a feature-local narrow API", () => {
   assert.equal(nav.split("\n").find((line) => line.includes('id: "diagnostics"'))?.includes("disabledReason"), false);
   assert.match(api, /invoke<DiagnosticsPageSnapshot>\("get_diagnostics_page_snapshot"\)/);
   for (const forbidden of ["readTextFile", "readFile", "convertFileSrc", "diagnosticsPath", "logPath"]) assert.equal(api.includes(forbidden), false);
-  for (const field of ["taskLogStatus", "auditLogStatus", "taskLogWriteFailureCount", "auditWriteFailureCount", "auditWriteFailureAfterCommitCount"]) assert.match(types, new RegExp(`${field}:`));
+  for (const field of ["debugLogStatus", "debugLogLines", "debugLogLineCount", "debugLogEventRejectedCount", "debugLogWriteFailureCount", "debugLogRetentionFailureCount", "taskLogStatus", "auditLogStatus", "logStorageStatus", "taskLogWriteFailureCount", "taskLogRetentionFailureCount", "auditWriteFailureCount", "auditWriteFailureAfterCommitCount", "auditLogRetentionFailureCount", "logStorageFailureCount", "logStorageUnsatisfiedCount", "logStorageSettingsFailureCount"]) assert.match(types, new RegExp(`${field}:`));
 });
 
 test("diagnostics page exposes stable states, controlled export confirmation and safe copying", () => {
@@ -54,8 +54,10 @@ test("diagnostics page exposes stable states, controlled export confirmation and
   assert.match(page, /fields\.error_code/);
   assert.match(page, /fields\.task_id/);
   assert.match(page, /combinedStatus\(snapshot\.taskLogStatus/);
+  assert.match(page, /label="日志空间" status=\{snapshot\.evidenceHealth\.logStorageStatus\}/);
   assert.match(page, /diagnostics\.copy\.failed/);
   assert.match(page, /result\.appLogLineCount/);
+  assert.match(page, /result\.debugLogLineCount/);
   assert.match(page, /result\.taskLogLineCount/);
   assert.match(page, /result\.auditEventCount/);
   assert.match(page, /1024 \* 1024/);

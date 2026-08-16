@@ -312,6 +312,7 @@ impl ReinstallTaskPrepared for FakePrepared {
                 replaced: 1,
                 ..crate::ReinstallTargetCounts::default()
             },
+            adapter_facts: None,
         }
     }
 

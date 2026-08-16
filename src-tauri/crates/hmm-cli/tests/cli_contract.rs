@@ -426,7 +426,11 @@ fn write_backup_database(sandbox: &Path) {
                 source_path_hash TEXT NOT NULL,
                 notes TEXT,
                 backup_directory_mode TEXT NOT NULL,
-                backup_directory TEXT
+                backup_directory TEXT,
+                retention_reasons TEXT,
+                retention_attempted_at INTEGER,
+                retention_error_code TEXT,
+                retention_released_bytes INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE save_backup_scheduler_state (
                 game_id TEXT NOT NULL,

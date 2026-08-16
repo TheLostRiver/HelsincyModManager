@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Archive,
+  ArchiveRestore,
   CheckCircle2,
   Database,
   History,
@@ -26,6 +27,7 @@ import { ProfileListPanel } from "./ProfileListPanel";
 import { ProfileSaveDirectoryCandidateList } from "./ProfileSaveDirectoryCandidateList";
 import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscoveryProvider";
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
+import { SaveRestoreDialog } from "./SaveRestoreDialog";
 import { listProfiles } from "./profileApi";
 import {
   checkProfileAutoSaveBackup,
@@ -35,6 +37,8 @@ import {
 } from "./profileSaveBackupApi";
 import {
   getProfileSaveBackupTaskPhaseLabel,
+  getProfileSaveBackupTaskErrorCode,
+  getProfileSaveBackupTaskErrorMessage,
   isProfileSaveBackupTaskPhase,
   nextProfileSaveBackupTaskStateFromProgress,
   shouldRefreshProfileSaveBackupHistory,
@@ -108,7 +112,10 @@ const PREVIEW_SAVE_SETTINGS: ProfileSaveSettingsDto = {
   retention: {
     maxCount: 20,
     maxAgeDays: 30,
+    maxTotalBytes: null,
   },
+  steamAccount: null,
+  preRestoreBackupEnabled: true,
   updatedAt: 0,
 };
 const PREVIEW_SAVE_SETTINGS_BY_PROFILE: Record<string, ProfileSaveSettingsDto> = {
@@ -117,7 +124,7 @@ const PREVIEW_SAVE_SETTINGS_BY_PROFILE: Record<string, ProfileSaveSettingsDto> =
     ...PREVIEW_SAVE_SETTINGS,
     profileId: "preview-taichi",
     schedule: { cadence: "weekly", hour: 2, minute: 30, weekdays: [1, 3, 5] },
-    retention: { maxCount: 36, maxAgeDays: 60 },
+    retention: { maxCount: 36, maxAgeDays: 60, maxTotalBytes: null },
     saveDirectory: {
       mode: "custom",
       status: "valid",
@@ -129,7 +136,7 @@ const PREVIEW_SAVE_SETTINGS_BY_PROFILE: Record<string, ProfileSaveSettingsDto> =
     ...PREVIEW_SAVE_SETTINGS,
     profileId: "preview-online-test",
     schedule: { cadence: "manual", hour: null, minute: null, weekdays: [] },
-    retention: { maxCount: 12, maxAgeDays: 14 },
+    retention: { maxCount: 12, maxAgeDays: 14, maxTotalBytes: null },
     saveDirectory: {
       mode: "unset",
       status: "unset",
@@ -232,6 +239,7 @@ export function ProfilePage() {
     backups: [],
   });
   const [backupHistoryRefreshToken, setBackupHistoryRefreshToken] = useState(0);
+  const [restoreBackup, setRestoreBackup] = useState<SaveBackupSummaryDto | null>(null);
   const [saveBackupTaskState, setSaveBackupTaskState] = useState<ProfileSaveBackupTaskState>({ status: "idle" });
   const saveBackupTaskStateRef = useRef<ProfileSaveBackupTaskState>({ status: "idle" });
   const pendingSaveBackupProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
@@ -583,11 +591,12 @@ export function ProfilePage() {
 
     if (saveBackupTaskState.status === "failed") {
       if (saveBackupTaskState.taskId) saveBackupTaskProfileIdsRef.current.delete(saveBackupTaskState.taskId);
+      const admissionBusy = saveBackupTaskState.errorCode === "write_admission_busy";
       pushToast({
         eventKey: `profile.save-backup.failed.${saveBackupTaskState.taskId ?? "start"}`,
         taskId: saveBackupTaskState.taskId ?? undefined,
-        tone: "danger",
-        title: "存档备份失败",
+        tone: admissionBusy ? "warning" : "danger",
+        title: admissionBusy ? "存档操作正在进行" : "存档备份失败",
         message: saveBackupTaskState.message,
       });
     }
@@ -608,6 +617,12 @@ export function ProfilePage() {
   });
   const canStartManualSaveBackup = manualBackupBlockedReason === null;
   const autoBackupCheckBlockedReason = getAutoBackupCheckBlockedReason(saveBackupTaskState);
+  const saveRestoreBlockedReason = getSaveRestoreBlockedReason({
+    dirty,
+    savingSettings,
+    selectedProfileId,
+    settingsState,
+  });
 
   const updateSettings = (settings: ProfileSaveSettingsDto) => {
     setDraftSettings(settings);
@@ -642,6 +657,7 @@ export function ProfilePage() {
     }
     try {
       await setActiveProfile(profileId);
+      setSelectedProfileId(profileId);
       refreshProfiles();
     } finally {
       setBusyProfileId(null);
@@ -669,6 +685,7 @@ export function ProfilePage() {
         backupDirectory: pendingDirectories.backupDirectory,
         schedule: draftSettings.schedule,
         retention: draftSettings.retention,
+        preRestoreBackupEnabled: draftSettings.preRestoreBackupEnabled,
       });
       setSettingsState({ status: "ready", settings });
       setDraftSettings(settings);
@@ -705,11 +722,13 @@ export function ProfilePage() {
       });
       attachStartedSaveBackupTask(task, selectedProfileId);
     } catch (error) {
+      const errorCode = getProfileSaveBackupTaskErrorCode(error);
       setSaveBackupTaskState({
         status: "failed",
         taskId: null,
         phase: "save_backup.failed",
-        message: getErrorMessage(error, "启动备份失败"),
+        errorCode,
+        message: getProfileSaveBackupTaskErrorMessage(errorCode),
       });
     }
   }, [attachStartedSaveBackupTask, canStartManualSaveBackup, previewMode, selectedProfile, selectedProfileId]);
@@ -828,6 +847,9 @@ export function ProfilePage() {
                     settings={visibleSettings}
                     onScheduleChange={updateSchedule}
                     onRetentionChange={updateRetention}
+                    onPreRestoreBackupEnabledChange={(enabled) =>
+                      updateSettings({ ...draftSettings, preRestoreBackupEnabled: enabled })
+                    }
                   />
                 </div>
                 <div className="profile-directory-zone">
@@ -861,12 +883,23 @@ export function ProfilePage() {
                   profile={selectedProfile}
                   historyState={backupHistoryState}
                   onRefresh={() => setBackupHistoryRefreshToken((current) => current + 1)}
+                  onRestore={setRestoreBackup}
+                  restoreBlockedReason={saveRestoreBlockedReason}
                 />
               </div>
             </>
           ) : null}
         </main>
       </div>
+      <SaveRestoreDialog
+        backup={restoreBackup}
+        profileId={selectedProfileId}
+        previewMode={previewMode}
+        onClose={() => setRestoreBackup(null)}
+        onCompleted={() => {
+          setBackupHistoryRefreshToken((current) => current + 1);
+        }}
+      />
     </section>
   );
 }
@@ -1029,12 +1062,16 @@ function BackupHistoryPanel({
   profile,
   historyState,
   onRefresh,
+  onRestore,
+  restoreBlockedReason,
 }: {
   profile: Profile | null;
   historyState: BackupHistoryState;
   onRefresh: () => void;
+  onRestore: (backup: SaveBackupSummaryDto) => void;
+  restoreBlockedReason: string | null;
 }) {
-  const rows = historyState.backups.map(toBackupHistoryRow);
+  const rows = historyState.backups.map((backup) => ({ backup, ...toBackupHistoryRow(backup) }));
   const countLabel = historyState.status === "loading" ? "刷新中" : `${rows.length} 个归档包`;
 
   return (
@@ -1056,6 +1093,13 @@ function BackupHistoryPanel({
         </div>
       ) : null}
 
+      {restoreBlockedReason ? (
+        <div className="profile-history-restore-blocked" role="status">
+          <AlertTriangle size={16} />
+          <span>恢复暂不可用：{restoreBlockedReason}</span>
+        </div>
+      ) : null}
+
       <label className="profile-history-search search-row">
         <Search size={14} aria-hidden="true" />
         <span className="sr-only">筛选备份历史</span>
@@ -1063,34 +1107,42 @@ function BackupHistoryPanel({
       </label>
 
       {rows.length > 0 ? (
-        <div className="profile-backup-table-wrapper">
-          <table className="profile-backup-table">
-            <thead>
-              <tr>
-                <th>存档点</th>
-                <th>大小</th>
-                <th>归档时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <strong>{row.name}</strong>
-                    <span>{row.detail}</span>
-                  </td>
-                  <td>{row.size}</td>
-                  <td>{row.createdAt}</td>
-                  <td>
-                    <button type="button" className="profile-action-button is-primary" disabled>
-                      恢复
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="profile-backup-list" role="list" aria-label="备份历史">
+          {rows.map((row) => (
+            <article className="profile-backup-item" key={row.id} role="listitem">
+              <div className="profile-backup-item__summary">
+                <strong title={row.name}>{row.name}</strong>
+                <span>{row.detail}</span>
+              </div>
+
+              <dl className="profile-backup-item__meta">
+                <div>
+                  <dt>大小</dt>
+                  <dd>{row.size}</dd>
+                </div>
+                <div>
+                  <dt>归档时间</dt>
+                  <dd>{row.createdAt}</dd>
+                </div>
+              </dl>
+
+              <div className="profile-backup-item__actions">
+                <button
+                  type="button"
+                  className="profile-action-button is-primary profile-backup-restore-button"
+                  aria-label={`恢复存档：${row.name}`}
+                  title={row.backup.status !== "completed"
+                    ? "该备份尚未完成，不能恢复"
+                    : restoreBlockedReason ?? "预览并恢复此存档"}
+                  disabled={row.backup.status !== "completed" || restoreBlockedReason !== null}
+                  onClick={() => onRestore(row.backup)}
+                >
+                  <ArchiveRestore size={15} aria-hidden="true" />
+                  恢复存档
+                </button>
+              </div>
+            </article>
+          ))}
         </div>
       ) : (
         <div className="profile-history-empty">
@@ -1263,6 +1315,27 @@ function getManualBackupBlockedReason({
   if (settingsState.settings.saveDirectory.status !== "valid") return "请先关联有效存档目录";
   if (dirty) return "请先保存存档设置";
   if (taskState.status === "starting" || taskState.status === "running") return "备份任务正在执行";
+  return null;
+}
+
+function getSaveRestoreBlockedReason({
+  dirty,
+  savingSettings,
+  selectedProfileId,
+  settingsState,
+}: {
+  dirty: boolean;
+  savingSettings: boolean;
+  selectedProfileId: string | null;
+  settingsState: SaveSettingsState;
+}) {
+  if (!selectedProfileId) return "请选择配置档";
+  if (savingSettings) return "正在保存存档设置";
+  if (settingsState.status !== "ready") {
+    return settingsState.status === "error" ? "存档设置不可用" : "读取存档设置后可恢复";
+  }
+  if (dirty) return "请先保存存档设置";
+  if (settingsState.settings.saveDirectory.status !== "valid") return "请先关联有效存档目录";
   return null;
 }
 
@@ -1591,6 +1664,7 @@ function formatRelativeTime(timestamp: number) {
 function formatBackupTrigger(trigger: SaveBackupSummaryDto["trigger"]) {
   if (trigger === "auto") return "自动备份";
   if (trigger === "pre_install") return "安装前备份";
+  if (trigger === "pre_restore") return "恢复前安全备份";
   return "手动备份";
 }
 

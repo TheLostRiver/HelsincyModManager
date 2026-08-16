@@ -63,6 +63,8 @@ test("modal surface exposes dialog semantics, close policy, and shared focus beh
   assert.match(modal, /closeOnEscape:\s*closeOnEscape\s*&&\s*canClose/);
   assert.match(modal, /event\.target\s*===\s*event\.currentTarget\s*&&\s*closeOnBackdrop\s*&&\s*canClose/);
   assert.match(modal, /aria-label=\{closeLabel\}/);
+  assert.match(modal, /active:\s*phase\s*!==\s*"closed"/);
+  assert.match(modal, /closeOnEscape:\s*closeOnEscape\s*&&\s*canClose\s*&&\s*phase\s*!==\s*"closing"/);
 
   assert.match(focus, /document\.addEventListener\("keydown", handleKeyDown, true\)/);
   assert.match(focus, /event\.key\s*===\s*"Escape"\s*&&\s*closeOnEscape/);
@@ -86,6 +88,50 @@ test("modal surface exposes dialog semantics, close policy, and shared focus beh
   const focusFrameEnd = focus.indexOf("return () =>", focusFrameStart);
   const focusFrame = focus.slice(focusFrameStart, focusFrameEnd);
   assert.match(focusFrame, /isTopmostModalSurface\(container\)[\s\S]*target\.focus\(\)/);
+});
+
+test("modal surface keeps mounted opening and closing phases in sync with feedback styles", () => {
+  const modal = readSource("src/shared/feedback/ModalSurface.tsx");
+  const css = readSource("src/shared/feedback/feedback.css");
+
+  const transitionDurationMs = Number(
+    modal.match(/const MODAL_TRANSITION_MS = (\d+);/)?.[1],
+  );
+  const reducedMotionDurationMs = Number(
+    modal.match(/const REDUCED_MOTION_TRANSITION_MS = (\d+);/)?.[1],
+  );
+  assert.ok(Number.isInteger(transitionDurationMs) && transitionDurationMs > 0);
+  assert.ok(Number.isInteger(reducedMotionDurationMs) && reducedMotionDurationMs > 0);
+  assert.ok(reducedMotionDurationMs < transitionDurationMs);
+
+  assert.match(modal, /type ModalPhase = "closed" \| "opening" \| "open" \| "settled" \| "closing"/);
+  assert.match(
+    modal,
+    /window\.requestAnimationFrame\(\(\) => \{[\s\S]*window\.requestAnimationFrame\(\(\) => \{[\s\S]*updatePhase\("open"\)/,
+  );
+  assert.match(
+    modal,
+    /updatePhase\("closing"\)[\s\S]*window\.setTimeout\(\(\) => \{[\s\S]*updatePhase\("closed"\)/,
+  );
+  assert.ok(modal.includes('className={`feedback-overlay is-${kind} is-${phase}`}'));
+  assert.ok(modal.includes('"--feedback-modal-transition-duration": `${getModalTransitionMillis()}ms`'));
+  assert.match(modal, /onClickCapture=\{blockInteractionWhileClosing\}/);
+  assert.match(modal, /onKeyDownCapture=\{blockInteractionWhileClosing\}/);
+  assert.match(
+    modal,
+    /phase\s*!==\s*"closing"[\s\S]*event\.preventDefault\(\)[\s\S]*event\.stopPropagation\(\)/,
+  );
+
+  assert.match(
+    css,
+    new RegExp(`var\\(--feedback-modal-transition-duration, ${transitionDurationMs}ms\\)`),
+  );
+  assert.match(css, /\.feedback-overlay\.is-closing\s*\{[\s\S]*?pointer-events:\s*none/);
+  assert.match(css, /\.feedback-overlay\.is-opening \.feedback-modal[\s\S]*?translateY\(8px\) scale\(0\.985\)/);
+
+  const reducedMotionStyles = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+  assert.match(reducedMotionStyles, /\.feedback-overlay\.is-opening \.feedback-modal[\s\S]*?transform:\s*none/);
+  assert.match(reducedMotionStyles, /\.feedback-overlay\.is-open \.feedback-modal[\s\S]*?transition-property:\s*opacity/);
 });
 
 test("task and toast primitives expose stable live-region containers without business logic", () => {

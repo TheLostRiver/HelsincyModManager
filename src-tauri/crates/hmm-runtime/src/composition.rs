@@ -1,9 +1,13 @@
 use crate::mod_library::ModLibraryComposition;
+use crate::{
+    RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
+};
 use hmm_app::{
-    AppSettingsService, AuditLogDiagnosticsExportService, CategoryService,
-    CommitInstallPlanRequest, GameLaunchService, GamePrerequisiteDecision,
-    GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
-    ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
+    is_identity_replacement_binding, AppSettingsService, ApplicationExitGuard,
+    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest, GameLaunchService,
+    CrossProcessWriteAdmissionCoordinator,
+    GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry,
+    GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
@@ -30,17 +34,19 @@ use hmm_app::{
     ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementWorkflowError,
     ReplacementWorkflowService, RetargetInstallTaskRunner, RetargetInstallTaskService,
     RetargetReinstallRequest, RetargetReinstallTaskExecutor, SaveBackupAutoSchedulerService,
-    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupExecutor,
-    SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
-    SaveBackupTaskService, StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupCenterService,
+    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
+    SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
+    SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
+    StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
-    MhwArmorCatalog, MhwArmorReplacementAdapter, MonsterHunterWorldAdapter,
-    MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
+    MhwReplacementAdapter, MhwReplacementCatalog, MhwWeaponMrl3TexturePathTransformer,
+    MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
@@ -51,36 +57,43 @@ use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
 #[cfg(target_os = "windows")]
 use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
-    emit_safe_app_log, AppLogEvent, DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter,
-    FileSystemDiagnosticPackageExporter, FileSystemInstallBackupStore,
-    FileSystemInstallGameFileSystem, FileSystemInstallSourceFileReader,
-    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter, FileSystemTaskLogWriter,
+    emit_safe_app_log, AppLogEvent, DebugLogController, DebugLogEvent,
+    DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
+    FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
+    FileSystemInstallSourceFileReader, FileSystemLogRetention, FileSystemLogStorageBudget,
+    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupWriter,
+    FileSystemSaveRestoreFileSystem, FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter,
     FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
-    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
+    PlatformSteamRootProvider,
+    RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
-    SqliteSaveBackupSchedulerStateRepository, SteamCommunityProfileClient,
-    SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner, SystemClock,
-    SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
+    SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer, DEFAULT_LOG_STORAGE_MAX_BYTES,
 };
 use hmm_ports::{
-    AppClock, AppSettingsRepository, AuditLogReader, AuditLogWriter, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
-    GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
-    InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFileScanner, ProfileRepository,
-    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
-    ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
-    SaveBackupBackgroundRegistry, SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository, SaveBackupWriter, StoredModRevision, TaskLogWriter,
-    TextLogReader, ThumbnailCacheMaintenance,
+    AppClock, AppSettingsRepository, AuditLogEvent, AuditLogReader, AuditLogWriter,
+    AuditWriteFailurePolicy, ContentTransformer, ContentTransformerRegistry, DebugLogControl,
+    DiagnosticPackageExporter, DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth,
+    GameAdapter, GameConfigRepository, GameLauncher, GamePrerequisiteRuleRepository,
+    GameRunningDetector, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
+    ModPackageInstallFileScanner, ProfileRepository, ProfileSaveDirectoryValidator,
+    ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository, ReplacementAdapter,
+    ReplacementCatalogProvider, SaveBackupBackgroundRegistry,
+    SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository, SaveBackupWriter, SaveRestoreSourceValidator,
+    SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
+    ThumbnailCacheMaintenance, MIN_LOG_STORAGE_MAX_BYTES,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -88,6 +101,7 @@ pub struct HmmRuntimeBuilder {
     app_data_dir: PathBuf,
     install_manifest_repository: Option<Arc<dyn InstallManifestRepository>>,
     sandbox_write_admission: Option<Arc<dyn InstallWriteAdmission>>,
+    sandbox_environment: Option<RuntimeEnvironment>,
 }
 
 impl HmmRuntimeBuilder {
@@ -96,6 +110,7 @@ impl HmmRuntimeBuilder {
             app_data_dir,
             install_manifest_repository: None,
             sandbox_write_admission: None,
+            sandbox_environment: None,
         }
     }
 
@@ -114,6 +129,17 @@ impl HmmRuntimeBuilder {
     ) -> Self {
         self.sandbox_write_admission = Some(admission);
         self
+    }
+
+    pub fn with_sandbox_environment(
+        mut self,
+        environment: RuntimeEnvironment,
+    ) -> Result<Self, String> {
+        if environment.kind() != RuntimeEnvironmentKind::Sandbox {
+            return Err("developer weapon seed requires a Sandbox environment".to_owned());
+        }
+        self.sandbox_environment = Some(environment);
+        Ok(self)
     }
 
     pub fn build(self) -> Result<HmmRuntime, String> {
@@ -162,17 +188,23 @@ pub struct HmmRuntime {
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub external_import: crate::external_import::ExternalImportComposition,
     pub app_settings: Arc<AppSettingsService>,
+    pub debug_log: Arc<DebugLogController>,
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
     pub profiles: Arc<ProfileService>,
     pub save_directory_discovery: Arc<ProfileSaveDirectoryDiscoveryService>,
     pub save_backups: Arc<SaveBackupService>,
+    pub save_backup_center: Arc<SaveBackupCenterService>,
     pub save_backup_auto_scheduler: Arc<SaveBackupAutoSchedulerService>,
     pub save_backup_background: Arc<SaveBackupBackgroundService>,
     pub save_backup_background_worker: Arc<SaveBackupBackgroundWorker>,
     pub save_backup_exit_guard: Arc<SaveBackupExitGuard>,
+    pub application_exit_guard: Arc<ApplicationExitGuard>,
     pub save_backup_task_runner: Arc<SaveBackupTaskRunner>,
     pub save_backup_tasks: Arc<SaveBackupTaskService>,
+    pub save_restore: Arc<SaveRestoreService>,
+    pub save_restore_task_runner: Arc<SaveRestoreTaskRunner>,
+    pub save_restore_tasks: Arc<SaveRestoreTaskService>,
     pub task_manager: Arc<TaskManager>,
     db: Arc<Mutex<rusqlite::Connection>>,
 }
@@ -186,7 +218,10 @@ impl HmmRuntime {
         Self::builder(app_data_dir).build()
     }
 
-    pub(crate) fn database_handle(&self) -> Arc<Mutex<rusqlite::Connection>> {
+    /// Returns the process-local database handle for consumers that must observe the same
+    /// SQLite WAL connection as the GUI. Callers still go through repositories; this only
+    /// avoids opening an immutable snapshot while the GUI owns an active WAL.
+    pub fn database_handle(&self) -> Arc<Mutex<rusqlite::Connection>> {
         Arc::clone(&self.db)
     }
 
@@ -199,6 +234,7 @@ impl HmmRuntime {
             app_data_dir,
             install_manifest_repository,
             sandbox_write_admission,
+            sandbox_environment,
         } = builder;
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
@@ -208,6 +244,12 @@ impl HmmRuntime {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
+        let cross_process_write_admission = Arc::new(
+            CrossProcessWriteAdmissionCoordinator::new(Arc::new(
+                PlatformCrossProcessWriteAdmission::new(&app_data_dir)
+                    .map_err(|error| error.code().to_owned())?,
+            )),
+        );
         let mod_library_composition = ModLibraryComposition::new(&db, mod_import_results_path)?;
         let mod_metadata_repository = mod_library_composition.mod_metadata_repository();
         let category_repository = mod_library_composition.category_repository();
@@ -218,6 +260,10 @@ impl HmmRuntime {
         let profile_repository_for_save_directory_discovery: Arc<dyn ProfileRepository> =
             profile_repository.clone();
         let profile_repository_for_save_backups: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
+        let profile_repository_for_save_backup_center: Arc<dyn ProfileRepository> =
+            profile_repository.clone();
+        let profile_repository_for_save_restore: Arc<dyn ProfileRepository> =
             profile_repository.clone();
         let profile_repository_for_save_backup_auto_scheduler: Arc<dyn ProfileRepository> =
             profile_repository.clone();
@@ -231,6 +277,12 @@ impl HmmRuntime {
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backups: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_backup_center: Arc<
+            dyn ProfileSaveSettingsRepository,
+        > = profile_repository.clone();
+        let profile_save_settings_repository_for_save_restore: Arc<
             dyn ProfileSaveSettingsRepository,
         > = profile_repository.clone();
         let profile_save_settings_repository_for_save_backup_auto_scheduler: Arc<
@@ -252,6 +304,13 @@ impl HmmRuntime {
         > = profile_repository.clone();
         let save_backup_repository: Arc<dyn SaveBackupRepository> =
             Arc::new(SqliteSaveBackupRepository::new(Arc::clone(&db)));
+        let save_restore_transaction_repository: Arc<dyn SaveRestoreTransactionRepository> =
+            Arc::new(SqliteSaveRestoreTransactionRepository::new(Arc::clone(&db)));
+        let save_restore_source_validator: Arc<dyn SaveRestoreSourceValidator> = Arc::new(
+            FileSystemSaveRestoreSourceValidator::new(app_data_dir.clone()),
+        );
+        let save_restore_file_system =
+            Arc::new(FileSystemSaveRestoreFileSystem::new(app_data_dir.clone()));
         let save_backup_scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository> =
             Arc::new(SqliteSaveBackupSchedulerStateRepository::new(Arc::clone(
                 &db,
@@ -267,6 +326,11 @@ impl HmmRuntime {
             Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
+        let install_write_locks = Arc::new(
+            GameProfileWriteLockRegistry::with_cross_process_admission(Arc::clone(
+                &cross_process_write_admission,
+            )),
+        );
         let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(JsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -312,6 +376,39 @@ impl HmmRuntime {
             ));
         let evidence_health: Arc<dyn DiagnosticsEvidenceHealth> =
             Arc::new(DiagnosticsEvidenceHealthState::default());
+        let app_settings_repository: Arc<dyn AppSettingsRepository> =
+            Arc::new(JsonAppSettingsRepository::new(settings_path));
+        let (log_storage_max_bytes, log_storage_settings_degraded, debug_log_enabled) =
+            resolve_log_settings(app_settings_repository.as_ref(), evidence_health.as_ref());
+        let debug_log = Arc::new(DebugLogController::new(
+            app_data_dir.clone(),
+            debug_log_enabled,
+            Arc::clone(&evidence_health),
+        ));
+        let log_retention =
+            FileSystemLogRetention::new(app_data_dir.clone(), Arc::clone(&evidence_health));
+        let log_storage_budget =
+            FileSystemLogStorageBudget::new(app_data_dir.clone(), Arc::clone(&evidence_health));
+        let log_storage_maintenance = match SystemClock.now_unix_millis() {
+            Ok(timestamp_unix_millis) => {
+                log_retention.run_at(timestamp_unix_millis);
+                Some((
+                    timestamp_unix_millis,
+                    log_storage_budget.run_at(
+                        timestamp_unix_millis,
+                        log_storage_max_bytes,
+                        log_storage_settings_degraded,
+                    ),
+                ))
+            }
+            Err(_) => {
+                evidence_health.record_debug_log_retention_failure();
+                evidence_health.record_task_log_retention_failure();
+                evidence_health.record_audit_log_retention_failure();
+                evidence_health.record_log_storage_budget_failure();
+                None
+            }
+        };
         let task_log_writer: Arc<dyn TaskLogWriter> = Arc::new(FileSystemTaskLogWriter::new(
             app_data_dir.clone(),
             Arc::clone(&evidence_health),
@@ -322,6 +419,14 @@ impl HmmRuntime {
         ));
         let audit_log_writer: Arc<dyn AuditLogWriter> = file_system_audit_log.clone();
         let audit_log_reader: Arc<dyn AuditLogReader> = file_system_audit_log;
+        if let Some((timestamp_unix_millis, report)) = log_storage_maintenance {
+            record_log_storage_budget_maintenance(
+                audit_log_writer.as_ref(),
+                timestamp_unix_millis,
+                report,
+                log_storage_settings_degraded,
+            );
+        }
         let save_backup_background_clock: Arc<dyn AppClock> = Arc::new(SystemClock);
         let save_backup_background_registry: Arc<dyn SaveBackupBackgroundRegistry> = {
             #[cfg(target_os = "windows")]
@@ -333,14 +438,16 @@ impl HmmRuntime {
                 Arc::new(UnsupportedSaveBackupBackgroundRegistry)
             }
         };
-        let save_backup_background =
-            Arc::new(SaveBackupBackgroundService::new_with_settings_repository(
+        let save_backup_background = Arc::new(
+            SaveBackupBackgroundService::new_with_settings_repository_and_write_admission(
                 save_backup_background_registry,
                 Arc::clone(&save_backup_scheduler_state_repository),
                 settings_for_service,
                 Arc::clone(&audit_log_writer),
                 Arc::clone(&save_backup_background_clock),
-            ));
+                Arc::clone(&cross_process_write_admission),
+            ),
+        );
         let save_backup_exit_guard = Arc::new(SaveBackupExitGuard::new(
             profile_repository_for_save_backup_exit_guard,
             profile_save_settings_repository_for_save_backup_exit_guard,
@@ -348,8 +455,6 @@ impl HmmRuntime {
             Arc::clone(&audit_log_writer),
             Arc::clone(&save_backup_background_clock),
         ));
-        let app_settings_repository: Arc<dyn AppSettingsRepository> =
-            Arc::new(JsonAppSettingsRepository::new(settings_path));
         let install_manifest_repository = mod_library_composition.install_manifest_repository(
             install_manifest_repository_for(&app_data_dir, install_manifest_repository),
         );
@@ -357,9 +462,17 @@ impl HmmRuntime {
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
             ));
-        let app_settings = Arc::new(AppSettingsService::new(Arc::clone(
-            &app_settings_repository,
-        )));
+        let debug_log_control: Arc<dyn DebugLogControl> = debug_log.clone();
+        let app_settings = Arc::new(AppSettingsService::new_with_debug_log_control(
+            Arc::clone(&app_settings_repository),
+            debug_log_control,
+        ));
+        let _ = debug_log.record(
+            DebugLogEvent::new("runtime.initialized")
+                .with_component("runtime")
+                .with_operation("composition")
+                .with_result("success"),
+        );
         let preview_image_service = PreviewImageService::new(
             PreviewImagePolicy::default(),
             Box::new(SandboxPackagePreviewScanner),
@@ -458,6 +571,51 @@ impl HmmRuntime {
             save_backup_writer,
             Arc::new(SystemClock),
         ));
+        let save_restore = Arc::new(SaveRestoreService::new(
+            profile_repository_for_save_restore,
+            profile_save_settings_repository_for_save_restore,
+            Arc::clone(&save_backup_repository),
+            save_restore_source_validator,
+            Arc::clone(&save_restore_transaction_repository),
+            game_running_detector_for_platform(&game_adapters),
+            Arc::new(SystemClock),
+            Arc::new(
+                Sha256SaveRestoreTokenCodec::new(uuid::Uuid::new_v4().as_bytes()).map_err(
+                    |error| format!("failed to create save restore token codec: {error}"),
+                )?,
+            ),
+        ));
+        let save_restore_validator: Arc<dyn hmm_app::SaveRestoreCommitValidator> =
+            save_restore.clone();
+        let save_restore_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
+        let save_profile_maintenance_scopes = Arc::new(
+            SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(Arc::clone(
+                &cross_process_write_admission,
+            )),
+        );
+        let save_restore_task_scopes =
+            Arc::new(SaveRestoreTaskScopeRegistry::with_maintenance_registry(
+                Arc::clone(&save_profile_maintenance_scopes),
+            ));
+        let application_exit_guard = Arc::new(ApplicationExitGuard::new(
+            Arc::clone(&save_backup_exit_guard),
+            Arc::clone(&save_restore_task_scopes),
+        ));
+        let save_restore_task_runner = Arc::new(SaveRestoreTaskRunner::with_scope_registry(
+            Arc::clone(&task_manager),
+            save_restore_validator,
+            save_restore_file_system,
+            Arc::clone(&save_restore_transaction_repository),
+            save_restore_backup_executor,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+            Arc::clone(&install_write_locks),
+            Arc::clone(&save_restore_task_scopes),
+        ));
+        let save_restore_tasks = Arc::new(SaveRestoreTaskService::with_scope_registry(
+            Arc::clone(&task_manager),
+            save_restore_task_scopes,
+        ));
         let save_backup_auto_scheduler = Arc::new(SaveBackupAutoSchedulerService::new(
             profile_repository_for_save_backup_auto_scheduler,
             profile_save_settings_repository_for_save_backup_auto_scheduler,
@@ -483,7 +641,9 @@ impl HmmRuntime {
             Arc::new(SystemClock),
         ));
         let save_backup_executor: Arc<dyn SaveBackupExecutor> = save_backups.clone();
-        let save_backup_task_scopes = Arc::new(SaveBackupTaskScopeRegistry::default());
+        let save_backup_task_scopes = Arc::new(
+            SaveBackupTaskScopeRegistry::with_maintenance_registry(save_profile_maintenance_scopes),
+        );
         let save_backup_task_runner = Arc::new(
             SaveBackupTaskRunner::with_scope_registry_and_scheduler_state(
                 Arc::clone(&task_manager),
@@ -496,7 +656,16 @@ impl HmmRuntime {
         );
         let save_backup_tasks = Arc::new(SaveBackupTaskService::with_scope_registry(
             Arc::clone(&task_manager),
+            Arc::clone(&save_backup_task_scopes),
+        ));
+        let save_backup_center = Arc::new(SaveBackupCenterService::new(
+            profile_repository_for_save_backup_center,
+            profile_save_settings_repository_for_save_backup_center,
+            Arc::clone(&save_backup_repository),
+            Arc::clone(&save_backups),
             save_backup_task_scopes,
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
         ));
         let save_backup_background_worker =
             Arc::new(SaveBackupBackgroundWorker::new_with_settings_repository(
@@ -512,6 +681,8 @@ impl HmmRuntime {
                 save_backup_background_clock,
             ));
         let install_file_scanner: Arc<dyn ModPackageInstallFileScanner> =
+            Arc::new(SandboxModPackageInstallFileScanner);
+        let install_file_reader: Arc<dyn ModPackageInstallFileReader> =
             Arc::new(SandboxModPackageInstallFileScanner);
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
@@ -529,7 +700,6 @@ impl HmmRuntime {
         )));
         let mod_library_query = mod_library_composition
             .query_service(Arc::clone(&mod_library), install_manifest_query.clone());
-        let install_write_locks = Arc::new(GameProfileWriteLockRegistry::default());
         let install_recovery_scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
@@ -538,19 +708,35 @@ impl HmmRuntime {
         ));
         let initial_retarget_install_status: Arc<dyn InitialRetargetInstallStatusReader> =
             install_recovery_scanner.clone();
+        let developer_weapon_seed = sandbox_environment.is_some();
         let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
-            vec![Arc::new(MhwArmorReplacementAdapter)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementAdapter::with_developer_weapon_seed()
+            } else {
+                MhwReplacementAdapter::production()
+            })];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
-            vec![Arc::new(MhwArmorCatalog)];
+            vec![Arc::new(if developer_weapon_seed {
+                MhwReplacementCatalog::with_developer_weapon_seed()
+            } else {
+                MhwReplacementCatalog::production()
+            })];
         let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
             replacement_adapters,
             replacement_catalogs,
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
             install_file_scanner,
+            install_file_reader,
             initial_retarget_install_status,
             Arc::new(SystemClock),
         ));
+        let content_transformers = Arc::new(
+            ContentTransformerRegistry::new(vec![
+                Arc::new(MhwWeaponMrl3TexturePathTransformer) as Arc<dyn ContentTransformer>
+            ])
+            .map_err(|_| "content transformer registry is invalid".to_owned())?,
+        );
         let initial_retarget_install_preflight =
             Arc::new(InitialRetargetInstallPreflightService::new(
                 Arc::clone(&replacement_workflow),
@@ -580,7 +766,15 @@ impl HmmRuntime {
                 Arc::clone(&reinstall_recovery_repository),
             ));
         let sandbox_write_admission: Arc<dyn InstallWriteAdmission> =
-            sandbox_write_admission.unwrap_or_else(|| Arc::new(AllowRuntimeWriteAdmission));
+            match (sandbox_write_admission, sandbox_environment) {
+                (Some(admission), _) => admission,
+                (None, Some(environment)) => Arc::new(SandboxRuntimeWriteAdmission::new(
+                    environment,
+                    app_data_dir.clone(),
+                    Arc::clone(&game_config_repository),
+                )),
+                (None, None) => Arc::new(AllowRuntimeWriteAdmission),
+            };
         let reinstall_write_admission: Arc<dyn InstallWriteAdmission> = Arc::new(
             ReinstallRecoveryWriteAdmission::new(Arc::clone(&reinstall_recovery_repository)),
         );
@@ -604,6 +798,7 @@ impl HmmRuntime {
                 Arc::clone(&prerequisites),
                 Arc::clone(&mod_import_sandbox_locator),
                 Arc::clone(&install_recovery_scanner),
+                Arc::clone(&content_transformers),
                 app_data_dir.clone(),
             ));
         let retarget_install_task_runner =
@@ -642,6 +837,7 @@ impl HmmRuntime {
             Arc::clone(&install_manifest_repository),
             Arc::clone(&reinstall_recovery_repository),
             Arc::clone(&replacement_workflow),
+            content_transformers,
             app_data_dir.clone(),
         ));
         let reinstall_task_runner = Arc::new(ReinstallTaskRunner::with_write_coordination(
@@ -705,6 +901,7 @@ impl HmmRuntime {
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             external_import,
             app_settings,
+            debug_log,
             mod_metadata: Arc::new(ModMetadataService::new(
                 mod_metadata_repository,
                 Arc::new(SystemClock),
@@ -720,13 +917,18 @@ impl HmmRuntime {
                 Arc::new(SystemClock),
             )),
             save_directory_discovery,
+            save_backup_center,
             save_backup_task_runner,
             save_backup_tasks,
             save_backup_auto_scheduler,
             save_backup_background,
             save_backup_background_worker,
             save_backup_exit_guard,
+            application_exit_guard,
             save_backups,
+            save_restore,
+            save_restore_task_runner,
+            save_restore_tasks,
             task_manager,
             db,
         };
@@ -804,6 +1006,142 @@ impl InstallWriteAdmission for AllowRuntimeWriteAdmission {
     ) -> Result<(), InstallWriteAdmissionError> {
         Ok(())
     }
+}
+
+struct SandboxRuntimeWriteAdmission {
+    environment: RuntimeEnvironment,
+    app_data_dir: PathBuf,
+    game_config_repository: Arc<dyn GameConfigRepository>,
+    capability: Mutex<Option<SandboxWriteCapability>>,
+}
+
+impl SandboxRuntimeWriteAdmission {
+    fn new(
+        environment: RuntimeEnvironment,
+        app_data_dir: PathBuf,
+        game_config_repository: Arc<dyn GameConfigRepository>,
+    ) -> Self {
+        Self {
+            environment,
+            app_data_dir,
+            game_config_repository,
+            capability: Mutex::new(None),
+        }
+    }
+}
+
+impl InstallWriteAdmission for SandboxRuntimeWriteAdmission {
+    fn ensure_write_allowed(
+        &self,
+        game_id: &GameId,
+        _profile_id: &hmm_core::ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        let game_instance = self
+            .game_config_repository
+            .load_game_instance(game_id)
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
+        let mut capability = self
+            .capability
+            .lock()
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
+        if capability.is_none() {
+            *capability = Some(
+                SandboxWriteCapability::acquire(&self.environment)
+                    .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?,
+            );
+        }
+        capability
+            .as_ref()
+            .ok_or(InstallWriteAdmissionError::SafetyRejected)?
+            .admit_roots(SandboxWriteRoots::new(
+                self.app_data_dir.clone(),
+                game_instance.root_dir,
+            ))
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+            .revalidate()
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+    }
+}
+
+fn resolve_log_settings(
+    repository: &dyn AppSettingsRepository,
+    health: &dyn DiagnosticsEvidenceHealth,
+) -> (u64, bool, bool) {
+    match repository.load_settings() {
+        Ok(settings) => {
+            let (max_bytes, degraded) = match settings.log_storage_max_bytes {
+                None => (DEFAULT_LOG_STORAGE_MAX_BYTES, false),
+                Some(max_bytes) if max_bytes >= MIN_LOG_STORAGE_MAX_BYTES => (max_bytes, false),
+                Some(_) => {
+                    health.record_log_storage_settings_failure();
+                    (DEFAULT_LOG_STORAGE_MAX_BYTES, true)
+                }
+            };
+            (max_bytes, degraded, settings.debug_log_enabled)
+        }
+        Err(_) => {
+            health.record_log_storage_settings_failure();
+            (DEFAULT_LOG_STORAGE_MAX_BYTES, true, false)
+        }
+    }
+}
+
+fn record_log_storage_budget_maintenance(
+    audit_log_writer: &dyn AuditLogWriter,
+    timestamp_unix_millis: u128,
+    report: LogStorageBudgetReport,
+    settings_degraded: bool,
+) {
+    let should_record = settings_degraded
+        || report.deleted_file_count > 0
+        || matches!(
+            report.outcome,
+            LogStorageBudgetOutcome::Unsatisfied | LogStorageBudgetOutcome::Failed
+        );
+    if !should_record {
+        return;
+    }
+
+    let result = match report.outcome {
+        LogStorageBudgetOutcome::Failed => "failed",
+        _ if settings_degraded => "degraded",
+        LogStorageBudgetOutcome::Unsatisfied => "degraded",
+        LogStorageBudgetOutcome::WithinBudget | LogStorageBudgetOutcome::ReducedToBudget => {
+            "success"
+        }
+    };
+    let fields = BTreeMap::from([
+        ("outcome".to_owned(), report.outcome.code().to_owned()),
+        ("max_bytes".to_owned(), report.max_bytes.to_string()),
+        (
+            "owned_bytes_after".to_owned(),
+            report.owned_bytes_after.to_string(),
+        ),
+        (
+            "deleted_file_count".to_owned(),
+            report.deleted_file_count.to_string(),
+        ),
+        ("deleted_bytes".to_owned(), report.deleted_bytes.to_string()),
+        (
+            "failed_category_count".to_owned(),
+            report.failed_category_count.to_string(),
+        ),
+        (
+            "settings_status".to_owned(),
+            if settings_degraded { "degraded" } else { "ok" }.to_owned(),
+        ),
+    ]);
+    let _ = audit_log_writer.record_with_policy(
+        AuditLogEvent {
+            timestamp_unix_millis,
+            category: "log_storage".to_owned(),
+            operation: "log_storage_budget_maintenance".to_owned(),
+            result: result.to_owned(),
+            fields,
+        },
+        AuditWriteFailurePolicy::BestEffort,
+    );
 }
 
 fn install_manifest_repository_for(
@@ -891,6 +1229,7 @@ pub struct ConfiguredReinstallExecutor {
     manifest_repository: Arc<dyn InstallManifestRepository>,
     recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
     replacement_workflow: Arc<ReplacementWorkflowService>,
+    content_transformers: Arc<ContentTransformerRegistry>,
     app_data_dir: PathBuf,
 }
 
@@ -939,6 +1278,7 @@ impl ConfiguredReinstallExecutor {
         manifest_repository: Arc<dyn InstallManifestRepository>,
         recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
         replacement_workflow: Arc<ReplacementWorkflowService>,
+        content_transformers: Arc<ContentTransformerRegistry>,
         app_data_dir: PathBuf,
     ) -> Self {
         let source = Arc::new(ConfiguredReinstallCandidateSourceReader::new(Arc::clone(
@@ -954,6 +1294,7 @@ impl ConfiguredReinstallExecutor {
             manifest_repository,
             recovery_repository,
             replacement_workflow,
+            content_transformers,
             app_data_dir,
         }
     }
@@ -1021,9 +1362,10 @@ impl ConfiguredReinstallExecutor {
                 )
             })?;
         let staging_root = retarget_reinstall_staging_root(&self.app_data_dir);
-        let materializer = FileSystemRetargetStagingMaterializer::new(
+        let materializer = FileSystemRetargetStagingMaterializer::new_with_registry(
             staging_root.clone(),
             Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            Arc::clone(&self.content_transformers),
         );
         let plan = self
             .replacement_workflow
@@ -1151,6 +1493,7 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
             previous_revision_id: None,
             candidate_revision_id: request.candidate_revision_id.clone(),
             counts: ReinstallTargetCounts::default(),
+            adapter_facts: None,
         };
         let services = self
             .services_for(&request.game_id)
@@ -1206,6 +1549,7 @@ impl RetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
             previous_revision_id: None,
             candidate_revision_id: hmm_core::ModRevisionId::new("unresolved"),
             counts: ReinstallTargetCounts::default(),
+            adapter_facts: None,
         };
         let prepared = match ConfiguredReinstallExecutor::prepare_retarget_reinstall(self, request)
         {
@@ -1251,6 +1595,7 @@ impl RetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
                         })
                         .unwrap_or(fallback.candidate_revision_id),
                     counts: preview.counts,
+                    adapter_facts: None,
                 },
             )),
         }
@@ -1284,6 +1629,9 @@ impl ConfiguredInstallRecoveryScanner {
         game_id: GameId,
         request: InstallRecoveryScanRequest,
     ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
+        let _cross_process_guard = self
+            .write_locks
+            .acquire_cross_process(&game_id, &request.profile_id)?;
         let write_lock = self.write_locks.lock_for(&game_id, &request.profile_id);
         let _guard = write_lock
             .lock()
@@ -1390,6 +1738,9 @@ impl ConfiguredInstallRecoveryActionPreviewer {
         game_id: GameId,
         request: InstallRecoveryActionPreviewRequest,
     ) -> Result<InstallRecoveryActionPreview, InstallRecoveryActionPreviewError> {
+        let _cross_process_guard = self
+            .write_locks
+            .acquire_cross_process(&game_id, &request.profile_id)?;
         let write_lock = self.write_locks.lock_for(&game_id, &request.profile_id);
         let _guard = write_lock
             .lock()
@@ -1481,6 +1832,7 @@ struct ConfiguredInitialRetargetInstallPlanner {
     prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+    content_transformers: Arc<ContentTransformerRegistry>,
     app_data_dir: PathBuf,
 }
 
@@ -1490,6 +1842,7 @@ impl ConfiguredInitialRetargetInstallPlanner {
         prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
+        content_transformers: Arc<ContentTransformerRegistry>,
         app_data_dir: PathBuf,
     ) -> Self {
         Self {
@@ -1497,6 +1850,7 @@ impl ConfiguredInitialRetargetInstallPlanner {
             prerequisites,
             sandbox_locator,
             install_recovery_scanner,
+            content_transformers,
             app_data_dir,
         }
     }
@@ -1511,9 +1865,10 @@ impl ConfiguredInitialRetargetInstallPlanner {
             .map_err(|_| ReplacementWorkflowError::SandboxUnavailable)?;
         let staging_root = retarget_staging_root(&self.app_data_dir, planned.binding_id())
             .ok_or(ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(FileSystemRetargetStagingMaterializer::new(
+        Ok(FileSystemRetargetStagingMaterializer::new_with_registry(
             staging_root,
             Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            Arc::clone(&self.content_transformers),
         ))
     }
 }
@@ -1642,32 +1997,35 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
         let source_error = || InstallCommitError::Failed {
             phase: InstallCommitPhase::SourceRead,
         };
+        let imported_source_files = || {
+            let package_id = match request.revision_id.as_ref() {
+                Some(revision_id) => self
+                    .mod_import_result_repository
+                    .get_revision(revision_id)
+                    .map_err(|_| source_error())?
+                    .filter(|revision| revision.mod_id == request.mod_id)
+                    .map(|revision| revision.package_id)
+                    .ok_or_else(source_error)?,
+                None => self
+                    .mod_import_result_repository
+                    .get_analysis(request.mod_id.as_str())
+                    .map_err(|_| source_error())?
+                    .map(|analysis| analysis.package_id)
+                    .ok_or_else(source_error)?,
+            };
+            let source_root = self
+                .mod_import_sandbox_locator
+                .sandbox_root_for_package(&package_id)
+                .map_err(|_| source_error())?;
+            Ok::<Arc<dyn InstallSourceFileReader>, InstallCommitError>(Arc::new(
+                FileSystemInstallSourceFileReader::new(source_root),
+            ))
+        };
         let (source_files, staging_root): (Arc<dyn InstallSourceFileReader>, Option<PathBuf>) =
             match request.plan.replacement_bindings.as_slice() {
-                [] => {
-                    let package_id = match request.revision_id.as_ref() {
-                        Some(revision_id) => self
-                            .mod_import_result_repository
-                            .get_revision(revision_id)
-                            .map_err(|_| source_error())?
-                            .filter(|revision| revision.mod_id == request.mod_id)
-                            .map(|revision| revision.package_id)
-                            .ok_or_else(source_error)?,
-                        None => self
-                            .mod_import_result_repository
-                            .get_analysis(request.mod_id.as_str())
-                            .map_err(|_| source_error())?
-                            .map(|analysis| analysis.package_id)
-                            .ok_or_else(source_error)?,
-                    };
-                    let source_root = self
-                        .mod_import_sandbox_locator
-                        .sandbox_root_for_package(&package_id)
-                        .map_err(|_| source_error())?;
-                    (
-                        Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
-                        None,
-                    )
+                [] => (imported_source_files()?, None),
+                [snapshot] if is_identity_replacement_binding(snapshot) => {
+                    (imported_source_files()?, None)
                 }
                 [snapshot] => {
                     let staging_root =
@@ -1783,12 +2141,13 @@ mod tests {
     use super::*;
     use hmm_core::{GameDirectoryStatus, GameId, GameInstance, ModId, ProfileId};
     use hmm_ports::{
-        GameConfigRepositoryError, GameConfigRepositoryResult,
+        DebugLogControl, GameConfigRepositoryError, GameConfigRepositoryResult,
         SaveBackupBackgroundSettingsRepository,
     };
+    use std::fs::{self, File, FileTimes};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Barrier};
-    use std::time::{Duration, Instant};
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::time::{Duration, Instant, SystemTime};
 
     fn recovery_summary(
         mod_id: &str,
@@ -1802,6 +2161,28 @@ mod tests {
             backup_count: 0,
             issue_count: 0,
             issues: Vec::new(),
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturingAuditLogWriter {
+        policy: Mutex<Option<AuditWriteFailurePolicy>>,
+        event: Mutex<Option<AuditLogEvent>>,
+    }
+
+    impl AuditLogWriter for CapturingAuditLogWriter {
+        fn record(&self, _event: AuditLogEvent) -> anyhow::Result<()> {
+            panic!("maintenance audit must select an explicit failure policy")
+        }
+
+        fn record_with_policy(
+            &self,
+            event: AuditLogEvent,
+            policy: AuditWriteFailurePolicy,
+        ) -> anyhow::Result<()> {
+            *self.policy.lock().expect("audit policy lock") = Some(policy);
+            *self.event.lock().expect("audit event lock") = Some(event);
+            Ok(())
         }
     }
 
@@ -1886,6 +2267,75 @@ mod tests {
         }
     }
 
+    #[test]
+    fn sandbox_runtime_write_admission_accepts_only_roots_inside_the_capability() {
+        let sandbox = tempfile::tempdir().expect("temporary sandbox root");
+        let app_data_dir = sandbox.path().join("app-data");
+        let game_dir = sandbox.path().join("game");
+        std::fs::write(
+            sandbox.path().join(crate::SANDBOX_MARKER_FILE_NAME),
+            crate::SANDBOX_MARKER_SCHEMA,
+        )
+        .expect("write artificial sandbox marker");
+        std::fs::create_dir_all(&app_data_dir).expect("create app data root");
+        std::fs::create_dir_all(&game_dir).expect("create game root");
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("sandbox environment");
+        let admission = SandboxRuntimeWriteAdmission::new(
+            environment,
+            app_data_dir,
+            Arc::new(StaticGameConfigRepository {
+                instance: Some(GameInstance {
+                    id: "mhw-sandbox".to_owned(),
+                    game_id: GameId::mhw(),
+                    display_name: "Artificial MHW".to_owned(),
+                    root_dir: game_dir,
+                    status: GameDirectoryStatus::Configured,
+                    configured_at_unix_millis: 1,
+                }),
+            }),
+        );
+
+        admission
+            .ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default"))
+            .expect("sandbox roots are admitted");
+        assert!(sandbox
+            .path()
+            .join(crate::SANDBOX_MARKER_FILE_NAME)
+            .is_file());
+
+        let outside = tempfile::tempdir().expect("outside game root");
+        let rejected = SandboxRuntimeWriteAdmission::new(
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("sandbox environment"),
+            sandbox.path().join("app-data"),
+            Arc::new(StaticGameConfigRepository {
+                instance: Some(GameInstance {
+                    id: "mhw-outside".to_owned(),
+                    game_id: GameId::mhw(),
+                    display_name: "Artificial MHW".to_owned(),
+                    root_dir: outside.path().to_path_buf(),
+                    status: GameDirectoryStatus::Configured,
+                    configured_at_unix_millis: 1,
+                }),
+            }),
+        );
+        assert_eq!(
+            rejected.ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default")),
+            Err(InstallWriteAdmissionError::SafetyRejected)
+        );
+    }
+
+    #[test]
+    fn developer_weapon_seed_builder_requires_a_sandbox_environment() {
+        let production = RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
+            .expect("production environment");
+        assert!(
+            HmmRuntime::builder(std::env::temp_dir().join("hmm-production-builder"))
+                .with_sandbox_environment(production)
+                .is_err()
+        );
+    }
+
     struct TestGameAdapter {
         process_names: Vec<String>,
     }
@@ -1937,6 +2387,213 @@ mod tests {
         start_best_effort_background_task("thumbnail-cache-maintenance", || -> Result<(), &str> {
             Err("spawn failed")
         });
+    }
+
+    #[test]
+    fn shared_runtime_composition_applies_task_and_audit_retention_on_startup() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let task_dir = app_data_dir.join("logs").join("tasks");
+        let audit_dir = app_data_dir.join("logs").join("audit");
+        fs::create_dir_all(&task_dir).expect("create task log directory");
+        fs::create_dir_all(&audit_dir).expect("create audit log directory");
+        let expired_task = task_dir.join("task-install-expired.log");
+        let unknown_task = task_dir.join("notes.txt");
+        let expired_audit = audit_dir.join("audit-1970-01-01.log");
+        fs::write(&expired_task, "expired\n").expect("write expired task log");
+        fs::write(&unknown_task, "unmanaged\n").expect("write unmanaged task file");
+        fs::write(&expired_audit, "expired\n").expect("write expired audit log");
+        File::options()
+            .write(true)
+            .open(&expired_task)
+            .expect("open expired task log")
+            .set_times(FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+            .expect("age expired task log");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("shared runtime composition succeeds");
+
+        assert!(!expired_task.exists());
+        assert!(!expired_audit.exists());
+        assert!(unknown_task.exists());
+        let health = state
+            .support_diagnostics_export
+            .read_page_snapshot()
+            .evidence_health;
+        assert_eq!(health.task_log_status, "ok");
+        assert_eq!(health.audit_log_status, "ok");
+        assert_eq!(health.task_log_retention_failure_count, 0);
+        assert_eq!(health.audit_log_retention_failure_count, 0);
+    }
+
+    #[test]
+    fn shared_runtime_initializes_debug_log_from_persisted_settings() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{"version":1,"debugLogEnabled":true}"#,
+        )
+        .expect("write enabled debug settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+            .expect("shared runtime composition succeeds");
+
+        assert!(state.debug_log.is_enabled());
+        let debug_log = app_data_dir.join("logs").join("debug");
+        assert!(debug_log.is_dir());
+        assert_eq!(
+            fs::read_dir(debug_log)
+                .expect("read debug log directory")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn shared_runtime_defaults_debug_log_to_disabled_when_settings_are_corrupt() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(config_dir.join("settings.json"), b"{not-json").expect("write corrupt settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+            .expect("corrupt settings should fail closed");
+
+        assert!(!state.debug_log.is_enabled());
+        assert!(!app_data_dir.join("logs").join("debug").exists());
+    }
+
+    #[test]
+    fn shared_runtime_applies_custom_log_budget_and_records_one_maintenance_audit() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        let task_dir = app_data_dir.join("logs").join("tasks");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::create_dir_all(&task_dir).expect("create task log directory");
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+                "version": 1,
+                "logStorageMaxBytes": 1048576
+            }"#,
+        )
+        .expect("write log storage settings");
+        let oversized_task = task_dir.join("task-install-budget.log");
+        fs::write(&oversized_task, vec![b'x'; 1_100_000]).expect("write oversized task log");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("shared runtime composition succeeds");
+
+        assert!(!oversized_task.exists());
+        let snapshot = state.support_diagnostics_export.read_page_snapshot();
+        let maintenance_events = snapshot
+            .audit_events
+            .iter()
+            .filter(|event| event.operation == "log_storage_budget_maintenance")
+            .collect::<Vec<_>>();
+        assert_eq!(maintenance_events.len(), 1);
+        assert_eq!(maintenance_events[0].result, "success");
+        assert_eq!(maintenance_events[0].fields["outcome"], "reduced_to_budget");
+        assert_eq!(maintenance_events[0].fields["deleted_file_count"], "1");
+        assert_eq!(snapshot.evidence_health.log_storage_status, "ok");
+    }
+
+    #[test]
+    fn log_storage_maintenance_audit_is_not_classified_as_a_player_commit() {
+        let writer = CapturingAuditLogWriter::default();
+        record_log_storage_budget_maintenance(
+            &writer,
+            1,
+            LogStorageBudgetReport {
+                outcome: LogStorageBudgetOutcome::ReducedToBudget,
+                max_bytes: 1024 * 1024,
+                cleanup_target_bytes: 1024 * 1024 - 16 * 1024,
+                owned_bytes_before: 1024 * 1024 + 1,
+                owned_bytes_after: 512 * 1024,
+                deleted_file_count: 1,
+                deleted_bytes: 512 * 1024 + 1,
+                failed_category_count: 0,
+            },
+            false,
+        );
+
+        assert_eq!(
+            *writer.policy.lock().expect("audit policy lock"),
+            Some(AuditWriteFailurePolicy::BestEffort)
+        );
+        assert_eq!(
+            writer
+                .event
+                .lock()
+                .expect("audit event lock")
+                .as_ref()
+                .expect("maintenance audit event")
+                .result,
+            "success"
+        );
+    }
+
+    #[test]
+    fn invalid_persisted_log_budget_falls_back_and_degrades_health_without_failing_startup() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+                "version": 1,
+                "logStorageMaxBytes": 1024
+            }"#,
+        )
+        .expect("write invalid log storage settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("runtime falls back to the default log budget");
+
+        let snapshot = state.support_diagnostics_export.read_page_snapshot();
+        assert_eq!(
+            snapshot.evidence_health.log_storage_status,
+            "log_storage_settings_unavailable"
+        );
+        assert_eq!(
+            snapshot.evidence_health.log_storage_settings_failure_count,
+            1
+        );
+        let maintenance = snapshot
+            .audit_events
+            .iter()
+            .find(|event| event.operation == "log_storage_budget_maintenance")
+            .expect("settings degradation is audited once");
+        assert_eq!(maintenance.result, "degraded");
+        assert_eq!(maintenance.fields["settings_status"], "degraded");
+    }
+
+    #[test]
+    fn corrupted_log_settings_fall_back_without_blocking_runtime_composition() {
+        let temp = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = temp.path().to_path_buf();
+        let config_dir = app_data_dir.join("config");
+        fs::create_dir_all(&config_dir).expect("create config directory");
+        fs::write(config_dir.join("settings.json"), "{not json").expect("write corrupted settings");
+
+        let state = HmmRuntime::from_app_data_dir(app_data_dir)
+            .expect("runtime falls back when settings are unavailable");
+        let health = state
+            .support_diagnostics_export
+            .read_page_snapshot()
+            .evidence_health;
+
+        assert_eq!(
+            health.log_storage_status,
+            "log_storage_settings_unavailable"
+        );
+        assert_eq!(health.log_storage_settings_failure_count, 1);
     }
 
     #[test]

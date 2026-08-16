@@ -13,13 +13,34 @@
 
 .brand-block {
   display: grid;
-  gap: 4px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
   width: 100%;
+  min-width: 0;
+  min-height: 52px;
+}
+
+.brand-block__mark {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  user-select: none;
+}
+
+.brand-block__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .brand-block h1,
 .brand-block p {
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-block h1 {

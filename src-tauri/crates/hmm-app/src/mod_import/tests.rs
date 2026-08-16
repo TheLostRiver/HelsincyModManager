@@ -1470,6 +1470,8 @@
             settings: AppSettings {
                 thumbnail_cache_max_bytes: Some(max_bytes),
                 thumbnail_cache_max_age_days: Some(max_age_days),
+                log_storage_max_bytes: None,
+                debug_log_enabled: false,
             },
             load_count: Mutex::new(0),
         })

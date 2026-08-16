@@ -184,21 +184,25 @@ InvalidInvocation
 ## 8. Cleanup 算法与幂等
 
 1. 拒绝任何参数。
-2. 通过既有受控 runner 读取当前交互用户 SID 并派生 task name。
-3. raw inspect 固定 owner marker：
+2. 通过既有受控 runner 读取当前交互用户 SID 并在 Rust 中派生 task name。
+3. 启动单个受控 `installer_cleanup` PowerShell 操作；该操作首先 raw inspect 固定 owner marker：
    - missing -> `AlreadyAbsent`。
    - marker 不匹配 -> `ForeignPreserved`，不 mutation。
    - permission/module/timeout/invalid output/unknown state -> fail closed。
 4. marker 匹配时读取 task state：
    - `Running` 或 `Queued` -> `OwnedTaskRunning`。
    - 只有已知 quiescent 状态可进入删除。
-5. 受控 unregister mutation 在删除前再次校验 marker 和运行状态。若在第二次检查时变为
+5. 同一个 PowerShell 操作在删除前再次读取 task 并校验 marker 和运行状态。若在第二次检查时变为
    running/queued，返回 busy；不得删除或停止任务。
 6. 删除时复用现有 ownership-checked unregister 原语，不调用宽泛名称删除。
-7. 删除后再次 raw inspect：
+7. 同一个 PowerShell 操作在删除后再次 raw inspect：
    - missing -> `Removed`。
    - 仍为 owned -> `RemovalUnverified`。
    - 变为 foreign 或无法确认 -> `OwnershipUnverified`，不得二次删除。
+
+identity 与完整 cleanup 总计只启动两个受控 PowerShell 进程。不得为 preflight、mutation 和
+post-delete read-back 分别重复导入 ScheduledTasks 模块；该拆分会放大启动延迟和单命令 timeout 抖动，
+并使 installer 在任务仍可验证时错误返回 `ownership_unverified`。
 
 helper 每次调用只执行一次有界 cleanup，不在安装器进程内轮询等待备份结束。用户可在备份完成
 后重新运行卸载。missing、owned exact、owned drift 和 foreign preservation 都必须可重复执行。
@@ -242,6 +246,12 @@ Tauri CLI 2.11.2 的 `NsisConfig.installerHooks` 支持
 5. 交互卸载显示固定泛化提示；silent uninstall 返回失败并写 installer 自身的非敏感日志，
    不弹窗、不降级为继续。
 6. 升级路径不得 cleanup；模板 spike 无法证明升级判定时，NSIS gate 保持未完成。
+
+NSIS uninstaller 的 fail-closed runtime evidence 可以使用 `_?=<安装目录>` direct-uninstaller 参数，
+因为该模式会透传 helper 的稳定非零退出码。但 `_?=` 同时关闭 NSIS 的临时副本/self-delete 流程，成功
+路径会留下正在运行的 `uninstall.exe`，因此不得用它验收成功卸载或 Running 后恢复重试。成功路径必须
+运行正常 uninstaller wrapper，并同时读取 task、安装目录和 synthetic 数据 read-back；wrapper 的 `0`
+不能作为 helper 成功的唯一证据。
 
 ## 12. WiX 接入
 

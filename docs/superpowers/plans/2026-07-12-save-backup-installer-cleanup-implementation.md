@@ -1,12 +1,12 @@
 # Windows 安装器 Owned Task 卸载清理（P7.2c）实施计划
 
-> **执行说明：** 本计划当前只定义后续工作，不代表 helper、NSIS hook、WiX custom action 或
-> runtime gate 已实现。执行时按 Task 顺序小步提交；每个 RED 必须先观察预期失败，再写 GREEN。
+> **执行说明：** helper、NSIS hook、WiX custom action 与 fake/static/build gate 已完成；本计划
+> 保留实现边界、验证证据和 disposable VM runtime gate，不能把 build/static 结果当作 runtime acceptance。
 
-> **优先级暂停（2026-07-12）：** 本计划资产保留，但实现已由
-> [核心 Mod 生命周期优先级计划](../../CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 暂停。下一项工作不是本
-> 计划 Task 1。只有 Gate B 通过、进入 Windows beta packaging 前重新评审后，才能恢复执行；
-> Critical/Important 安全问题或明确发布硬门禁除外。
+> **执行状态（2026-08-09）：** Gate B、LOG-03、SAVE-02 已完成；SAVE-03 helper、双 sidecar、NSIS/WiX
+> 接入和 fake/static/build gate 已完成，完整验证已通过。仍须在一次性 VM 分别执行 NSIS/WiX 的
+> install/upgrade/repair/modify/interactive/silent uninstall 矩阵，不能跳过 foreign/running/unknown
+> fail-closed 门禁。
 
 **目标：** 为 NSIS/WiX 真正产品卸载提供同一个无参数 cleanup helper，只清理当前用户的 HMM
 owned Scheduled Task，保留 foreign task，阻断正在运行或无法确认的 cleanup，并完成两个
@@ -15,10 +15,9 @@ installer 的独立 disposable VM gate。
 **设计规格：**
 [Windows 安装器 Owned Task 卸载清理设计](../specs/2026-07-12-save-backup-installer-cleanup-design.md)
 
-**历史依赖说明：** P7.2a registry/runner/sidecar 与 P7.2b 用户流程已经存在；P7.2a 安装态
-runtime acceptance 尚未完成。P7.2a runtime acceptance 与 P7.2c cleanup acceptance 是两个独立
-gate，不能互相替代。两者在验收依赖上彼此独立，但当前执行顺序仍由上方优先级暂停说明约束；
-恢复 P7.2c 后仍须分别记录两个 gate。
+**依赖说明：** P7.2a registry/runner/sidecar、P7.2b 用户流程与 P7.2a 安装态 runtime acceptance
+均已完成。P7.2a runtime acceptance 与 P7.2c cleanup acceptance 是两个独立 gate，不能互相替代；
+本计划完成后仍须分别保留两个 gate 的证据。
 
 ## 执行护栏
 
@@ -468,18 +467,18 @@ git commit -m "test: harden installer cleanup packaging gates"
 - Documents: helper contract、exit mapping、upgrade/repair/true uninstall、NSIS/WiX gates、已执行证据。
 - Preserves: P7.2a runtime acceptance 与 P7.2c cleanup acceptance 是独立状态。
 
-- [ ] **Step 1: 先写 disposable VM smoke 文档**
+- [x] **Step 1: 先写 disposable VM smoke 文档**
 
 文档固定一次性账户/VM、synthetic task/profile/save/backup fixture、授权边界、每个 case 的 cleanup
 和停止条件。禁止在日常账户执行；禁止记录 task name、SID、路径、XML 或原始命令输出。
 
-- [ ] **Step 2: 同步正式 contract 与命令**
+- [x] **Step 2: 同步正式 contract 与命令**
 
 只有真实脚本/命令落地后才把它们写进 `docs/TESTING.md`。日志文档明确 installer 只记录稳定
 exit/reason，不使用 App Audit Log。发布文档分别记录 build、P7.2a runtime、P7.2c NSIS、
 P7.2c WiX 四类证据。
 
-- [ ] **Step 3: 本地 review gate**
+- [x] **Step 3: 本地 review gate**
 
 按 `hmm-review-gate` findings-first 复审：
 
@@ -490,7 +489,7 @@ P7.2c WiX 四类证据。
 - no `.planning/`、bundle、sidecar、logs、fixtures、private paths 或 secrets。
 - docs 不提前声称 VM gate 已通过。
 
-- [ ] **Step 4: 运行完整本地验证**
+- [x] **Step 4: 运行完整本地验证**
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
@@ -507,7 +506,7 @@ case必须证明 task 保留但产品成功卸载。
 如果没有可访问 VM、可安装 bundle 或明确授权，记录“未执行”并保持 P7.2c TODO 未完成。不得在
 开发者日常账户补跑真实 task 操作。
 
-- [ ] **Step 6: 更新状态并提交文档**
+- [x] **Step 6: 更新状态并提交文档**
 
 只有 NSIS 和 WiX runtime gate 都通过，才能勾选 P7.2c 实现完成。否则文档应精确列出已完成的
 代码/static/build gate 与仍未执行的 runtime gate。
@@ -521,17 +520,17 @@ git commit -m "docs: record installer cleanup release gates"
 
 ## Final Review Checklist
 
-- [ ] Diff 只包含 P7.2c 相关文件，没有 `.planning/`、sidecar、installer、logs 或 fixture。
-- [ ] helper 无参数，不依赖 AppData/SQLite/Audit Log/worker/save/backup/game/network。
-- [ ] task name、SID、marker、PowerShell 与 delete/read-back 只有 infra ownership 核心一份。
-- [ ] missing/owned exact/owned drift/foreign 均可幂等继续；foreign 从未 mutation。
-- [ ] running/queued 不 mutation、不强杀；unknown state fail closed。
-- [ ] mutation 前 ownership/state 复核与 post-delete missing read-back 有测试。
-- [ ] Settings `disable()` 和 worker `--once` contract 未改变。
-- [ ] upgrade/repair/modify 跳过，true interactive/silent uninstall 执行同一 fail-closed helper。
-- [ ] NSIS PREUNINSTALL 与 WiX pre-RemoveFiles sequencing 均由生成模板证据和静态测试证明。
-- [ ] WiX custom action 在发起卸载的当前交互用户上下文运行。
-- [ ] 两个 installer payload 都包含无 triple 后缀的 worker/helper sibling。
-- [ ] 自动化没有真实 Scheduled Task 或玩家数据操作。
-- [ ] `verify.ps1` 在最后一次变更后通过；未执行检查有明确原因。
+- [x] Diff 只包含 P7.2c 相关文件，没有 `.planning/`、sidecar、installer、logs 或 fixture。
+- [x] helper 无参数，不依赖 AppData/SQLite/Audit Log/worker/save/backup/game/network。
+- [x] task name、SID、marker、PowerShell 与 delete/read-back 只有 infra ownership 核心一份。
+- [x] missing/owned exact/owned drift/foreign 均可幂等继续；foreign 从未 mutation。
+- [x] running/queued 不 mutation、不强杀；unknown state fail closed。
+- [x] mutation 前 ownership/state 复核与 post-delete missing read-back 有测试。
+- [x] Settings `disable()` 和 worker `--once` contract 未改变。
+- [x] upgrade/repair/modify 跳过，true interactive/silent uninstall 执行同一 fail-closed helper。
+- [x] NSIS PREUNINSTALL 与 WiX pre-RemoveFiles sequencing 均由生成模板证据和静态测试证明。
+- [x] WiX custom action 在发起卸载的当前交互用户上下文运行。
+- [x] 两个 installer payload 都包含无 triple 后缀的 worker/helper sibling。
+- [x] 自动化没有真实 Scheduled Task 或玩家数据操作。
+- [x] `verify.ps1` 在最后一次变更后通过；未执行检查有明确原因。
 - [ ] NSIS/WiX disposable VM gate 分别记录；任一未通过时不宣称 P7.2c 完成。

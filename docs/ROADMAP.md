@@ -3,7 +3,7 @@
 > 无人值守自主迭代的具体任务队列见 [自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。
 > 本文件描述产品阶段，那份描述在没有人盯着时可以安全推进哪些工作。
 
-## 当前执行焦点（2026-08-02）
+## 当前执行焦点（2026-08-15）
 
 当前路线由 [核心 Mod 生命周期优先级计划](CORE_MOD_LIFECYCLE_PRIORITY_PLAN.md) 和
 [核心 Mod 生命周期产品化加固实施计划](CORE_MOD_LIFECYCLE_PRODUCTIZATION_PLAN.md) 共同约束：
@@ -30,18 +30,51 @@
    T17 范围保持 Windows + MHW:I；Linux/Steam Deck 和更多游戏不进入本轮。T13 与 T17 继续正交，
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
 6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)
-   是 T13 的权威语义。Slice A 已完成 Sandbox 单项生命周期 E2E 和统一 prerequisite decision；
-   Slice B/C 已完成 sealed batch 的安装、卸载、真正重装及 Sandbox CLI 契约。下一步是 Slice D 的
-   Tauri/typed API、前端工作流和 disposable Windows Sandbox Gate C。
-7. 装备重定向排在 Gate C 之后：先治理候选 catalog 数据并扩容现有防具 catalog，再为武器建立独立的
-   MHW:I catalog/path parser/adapter、InstallPlan/manifest 集成和受控 UI。防具 AR1-AR5 已认证不等于
-   完整防具数据或武器链路已完成。
-8. Windows 存档后续重点是已确认 Steam 账号目录的回归门禁、安装态 Scheduled Task/heartbeat/cleanup
-   验收、ownership-checked installer cleanup、玩家存档恢复和 retention/备份中心。账号昵称/头像和
-   多候选显式选择已完成，不重新实现。
-9. 日志后续补 Task/Audit retention、总空间上限和 Debug Log。Production CLI 写入继续等待跨进程
-   admission；Sandbox CLI 已成为单项与批量核心生命周期自动化入口，批量 Tauri/前端体验仍由
-   Slice D 完成。
+   是 T13 的权威语义。Slice A-D 已完成：Sandbox 单项与批量 install/uninstall/true reinstall、窄
+   Tauri/typed API、批量前端工作流和 4 viewport smoke 均已落地；最终 artifact 在 disposable
+   Windows Sandbox 通过主链、受控 partial failure -> retry、重启、recovery 和 exact baseline，
+   T13-08 Gate C 已于 2026-08-05 标记为 `certified`。CAT-01 装备数据治理也已完成。
+7. 装备重定向排在 Gate C 之后：CAT-01 已交付 candidate schema/validator、stable ID、名称/状态和
+   provenance/licensing 门禁；WR-01 已完成设计，WR-02A 已交付 14-family/part registry、严格路径与
+   source closure parser、纯内存 catalog-source validator，WR-03A 已交付有界 MOD3/MRL3 preflight、
+   pair compatibility 与纯 transformer，WR-03B 已完成版本化 registry、transform-aware staging、
+   InstallPlan/manifest/recovery/Audit facts 与 temp-root exact-baseline 生命周期。WR-04 已完成窄 Tauri/
+   typed API、Mod 详情目标工作流、4 viewport/theme smoke，并在全新 disposable Windows Sandbox 通过
+   `one001` 安装 -> 重启 -> `one002` true reinstall target switch -> 重启 -> manifest 卸载 ->
+   10 文件/316 bytes exact baseline，Gate D 于 2026-08-06 标记为 `certified`。AR6 防具扩容和 WR-02B
+   完整武器 catalog 仍等待明确可再分发的审计数据；LOG-01 Task/Audit retention、LOG-02 日志总空间
+   上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
+   worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
+   2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 已于 2026-08-14 标记为
+   `certified`：helper、双 Windows sidecar、NSIS PREUNINSTALL 和 WiX pre-`RemoveFiles` build/static
+   gate 均通过；disposable Windows Sandbox 覆盖 WiX missing/exact/drift/foreign/running、upgrade/repair，
+   以及 NSIS 重新启用后的首次运行、fresh heartbeat、Settings 自动收敛、1 文件 synthetic 自动备份、
+   owned 卸载和 running fail-closed。Running 时 direct `_?=` 诊断模式返回稳定 `20` 并完整保留任务与
+   payload；回到 Ready 后使用正常 NSIS wrapper 完整删除安装目录和 owned task，synthetic save、ZIP 与
+   manifest 保留。`_?=` 已限定为 blocked 诊断，不再用于成功卸载验收。应用内用户 SID 与 Scheduled
+   Task 只读检查改走原生 Windows token/COM，mutation 继续使用受控 PowerShell 安全链。
+   完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
+   防具 AR1-AR5 已认证不等于完整防具
+   数据或完整武器链路已实现。
+8. SAVE-04 玩家存档恢复已于 2026-08-15 在 disposable Windows Sandbox 完成人工验收并标记为
+   `certified`。实现使用统一悬浮确认、5 分钟 preview token、独立 `TaskKind::SaveRestore`、默认开启且
+   按 Profile 持久化的 pre-restore 安全备份、独立 `pre-restore/` 目录、共享 game/profile 写锁、目录交换、
+   rollback/recovery、evidence degradation，以及 queued/running restore 不可 override 的应用退出闸门。
+   证据与限制见 [SAVE-04 验收记录](SAVE_04_ACCEPTANCE.md)。账号昵称/头像和多候选显式选择已完成，
+   不重新实现。SAVE-05 retention/备份中心已于 2026-08-16 在 disposable Windows Sandbox 完成 synthetic
+   人工验收并标记为 `certified`，设计与认证证据见
+   [SAVE-05 Retention 与备份中心设计](SAVE_BACKUP_RETENTION_CENTER_DESIGN.md)。验收覆盖数量、年龄、空间、
+   保护点 blocked、manifest 锁定 partial/重试收敛、备份中心恢复入口和重启持久化；最终物理备份为
+   archive/manifest `3/3`、`pre_restore=1/1`，需处理归零，未读取真实玩家数据。
+9. Task/Audit retention、日志总空间上限和 Debug Log 已完成。CLI-3A 的 game/save/background
+   跨进程 admission、Windows named mutex、Unix capability-relative file lock、共享 runtime composition、
+   锁内重验与稳定错误投影已于 2026-08-16 完成工程实现、完整验证、findings-first 全 diff 审查、Ubuntu
+   required CI（run `31910573714`）和 disposable Windows synthetic 多进程 gate，并标记为 `certified`。
+   Gate 覆盖 helper 的 timeout/cancel/abandoned owner、CLI game scope 竞争与释放、GUI/worker save scope
+   busy fail-closed 与释放后备份增长、background registration 双向竞争，以及最终 `Ready` task、3/3
+   archive/manifest 和零残留 gate 进程。Production CLI 写入继续等待 CLI-3B 按 command 审核与开放；Sandbox CLI 已成为单项与批量核心
+   生命周期自动化入口，批量 Tauri/前端体验已由 Slice D 完成。Gate C 或 CLI-3A 均不自动开放
+   Production 写入。
 10. GOV-01 至 GOV-04 已由 PR #211 至 #214 完成；DTO 测试外置、重装 dead-code 抑制清理、
     Tauri command 契约覆盖和治理检查加固成为后续任务必须保持的工程基线。
 
@@ -97,6 +130,10 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 日志、审计降级可见性和分层操作反馈均已落地，A1-L3 七切片的独立 review、完整验证、视觉 smoke、
 受控 Windows 桌面复验和契约同步均已完成。
 
+T13 Slice A-D 已在该基线上完成；T13-07 的批量 UI 与 4 viewport smoke 为 `completed`，T13-08
+disposable Windows Sandbox Gate C 已覆盖批量安装、重启、真正重装、Armor target switch、受控
+partial failure/retry、recovery、批量卸载和 exact baseline，并于 2026-08-05 标记为 `certified`。
+
 ## Phase 3：玩家工作流扩展（Gate B 后已重新排序）
 
 - 添加 Profile 支持。
@@ -109,10 +146,15 @@ Gate A/B 之后执行的 [核心 Mod 生命周期产品化加固](CORE_MOD_LIFEC
 - 添加任务进度和取消 UI。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固、T18
-Slice 1/2/3/4A/4B/4C 与 T17 Slice 1/2/3/4A/4B/4C 均已完成。批量破坏性操作仍属于 T13，必须另行
-评审；T13-00 设计见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)，其规划接口在
-T13-06 前不可调用。T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck
-或更多游戏。
+Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C 与 T13 Slice A-D 均已完成。批量破坏性操作继续
+受 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 约束，只在显式 Sandbox capability
+下开放；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
+CAT-01 装备数据治理、WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer 与
+WR-03B staging/InstallPlan/manifest 集成和 WR-04 受控 Tauri/UI/Gate D 均已完成，Gate D 为
+`certified`；AR6/WR-02B 等待可再分发的审计数据，LOG-01 Task/Audit retention、LOG-02 日志总空间
+上限和 LOG-03 Debug Log 均已完成；SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 均已 `certified`。SAVE-05
+已完成实现、完整自动化验证、全 diff 自审和 disposable Windows synthetic retention/备份中心人工验收；
+完整 catalog 未到位前只使用人工 developer/Sandbox seed。
 
 ## Phase 4：核心差异能力（Gate A 后立即执行）
 
@@ -125,6 +167,23 @@ T13-06 前不可调用。T17 保持 Windows + MHW:I 与 import-only 边界，不
   fail closed。
 - 已完成 AR5 同 revision target switch、重启恢复、manifest 卸载与当前 installed target 呈现；最终
   artifact 已通过全新 disposable Windows Sandbox Gate B 复验并标记为 `certified`。
+- 已完成 CAT-01 candidate schema/validator、资源路径 SHA-256 stable ID、localization/alias、
+  dummy/hidden 与 provenance/licensing 门禁；未授权候选数据继续禁止进入 bundled catalog。
+- 已完成 WR-01 独立武器重定向设计；14 类 family、part pair、MOD3/MRL3 能力和 fail-closed 矩阵见
+  [MHW:I 武器重定向设计](WEAPON_RETARGET_DESIGN.md)。
+- 已完成 WR-02A：14-family/part registry、严格 resource/model path parser、source closure 和只读
+  catalog-source validator 已落地；完整 catalog、staging 与真实写入仍未实现。
+- 已完成 WR-03A：有界 MOD3/MRL3 preflight、JAMCRC pair compatibility、安全 game-resource reference
+  parser、`mhw.weapon.mrl3-texture-path.v1` 纯 transformer、changed-range postcondition 与脱敏 digest/
+  error projection 已由完全人工 bytes 覆盖。
+- 已完成 WR-03B：通用 versioned invocation/registry、transform-aware sibling `.partial` staging、
+  source/dependency/output/mapping digest 重验，以及 InstallPlan/reinstall/batch/manifest/recovery/Audit facts
+  集成已落地；人工 temp-root 已通过安装、重启、same-revision target switch、再次重启、manifest 卸载和
+  exact baseline。未增加 production weapon catalog、Tauri/UI 或 Production 写入。
+- 已完成 WR-04：Production 继续保持 Armor-only；显式 GUI Sandbox 才启用人工 weapon seed 和受控写入
+  admission。最终 artifact 已通过 contract/build/完整验证、light/dark/system 响应式 smoke，以及
+  disposable Windows Sandbox 安装、两次重启、target switch、manifest 卸载、recovery 归零和 exact
+  baseline，Gate D 已标记为 `certified`。
 - 完整 catalog、本地化筛选和其他资源类型已满足 Gate B 时间门禁，但仍需经过后续优先级复审。
 
 Gate B 后续范围：

@@ -123,3 +123,22 @@ export function getBackgroundProtectionErrorMessage(code: string | null | undefi
       return UNKNOWN_ERROR_MESSAGE;
   }
 }
+
+export function hasBackgroundProtectionConverged(
+  control: BackgroundProtectionControlDto,
+  desiredEnabled: boolean,
+): boolean {
+  if (desiredEnabled) {
+    return (
+      control.desiredEnabled &&
+      (control.status === "starting" || control.status === "protected")
+    );
+  }
+
+  return !control.desiredEnabled && control.status === "not_enabled";
+}
+
+export function formatBackgroundProtectionDuration(elapsedMs: number): string {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return "不足 0.1 秒";
+  return `${Math.max(0.1, elapsedMs / 1_000).toFixed(1)} 秒`;
+}

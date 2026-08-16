@@ -1,4 +1,5 @@
 mod app_settings;
+mod application_exit_guard;
 mod batch;
 mod batch_install;
 mod batch_reinstall;
@@ -29,18 +30,28 @@ mod reinstall;
 mod reinstall_commit;
 mod reinstall_task;
 mod replacement;
+mod replacement_audit;
 mod replacement_task;
 mod save_backup;
 mod save_backup_background;
 mod save_backup_background_worker;
+mod save_backup_center;
 mod save_backup_exit_guard;
 mod save_backup_scheduler;
 mod save_backup_task;
 mod save_directory_discovery;
+mod save_profile_maintenance_scope;
+mod save_restore;
+mod save_restore_task;
 mod support_diagnostics;
 mod task_manager;
+mod write_admission;
 
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
+pub use application_exit_guard::{
+    ApplicationExitBeginDecision, ApplicationExitBlockReason, ApplicationExitDecision,
+    ApplicationExitGuard, ApplicationExitGuardError,
+};
 pub use batch::{
     execution_token_digest, BatchPlanPreview, BatchPlanPreviewError, BatchPlanSealError,
     BatchPlanSealResult, BatchPlanService, BatchTokenCodec, BatchTokenError, BatchTokenKind,
@@ -174,13 +185,15 @@ pub use reinstall_task::{
     StartRetargetReinstallTaskRequest,
 };
 pub use replacement::{
-    AnalyzeImportedReplacementRequest, InitialRetargetInstallStatusError,
-    InitialRetargetInstallStatusReader, MaterializeRetargetRequest, MaterializedRetarget,
-    PlannedInitialRetargetInstall, PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
+    is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
+    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
+    MaterializeRetargetRequest, MaterializedRetarget, PlannedInitialRetargetInstall,
+    PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
     ReplacementWorkflowError, ReplacementWorkflowService, RetargetMaterializeError,
     RetargetReinstallRequest,
 };
+pub use replacement_audit::ReplacementAdapterAuditFacts;
 pub use replacement_task::{
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner, RetargetInstallTaskRunError,
     RetargetInstallTaskRunner, RetargetInstallTaskService, StartRetargetInstallTaskRequest,
@@ -198,6 +211,12 @@ pub use save_backup_background_worker::{
     SaveBackupBackgroundWorker, SaveBackupBackgroundWorkerError,
     SaveBackupBackgroundWorkerRunSummary,
 };
+pub use save_backup_center::{
+    SaveBackupCenterError, SaveBackupCenterItem, SaveBackupCenterPage,
+    SaveBackupCenterProfileSummary, SaveBackupCenterQuery, SaveBackupCenterService,
+    SaveBackupCenterSummary, DEFAULT_SAVE_BACKUP_CENTER_LIMIT, MAX_SAVE_BACKUP_CENTER_LIMIT,
+    MAX_SAVE_BACKUP_CENTER_SEARCH_CHARS, MAX_SAVE_BACKUP_NOTE_CHARS,
+};
 pub use save_backup_exit_guard::{
     SaveBackupExitDecision, SaveBackupExitGuard, SaveBackupExitGuardError, SaveBackupExitReason,
 };
@@ -213,6 +232,20 @@ pub use save_directory_discovery::{
     ConfirmProfileSaveDirectoryCandidateRequest, DiscoverProfileSaveDirectoriesRequest,
     ProfileSaveDirectoryDiscoveryService, SaveDirectoryDiscoveryError,
 };
+pub use save_profile_maintenance_scope::SaveProfileMaintenanceScopeRegistry;
+pub use save_restore::{
+    new_save_restore_transaction_id, PreviewSaveRestoreRequest, SaveRestoreCommitContext,
+    SaveRestorePreview, SaveRestorePreviewError, SaveRestoreService, SaveRestoreTokenCodec,
+    SaveRestoreTokenError, Sha256SaveRestoreTokenCodec, StartSaveRestoreRequest,
+    DEFAULT_SAVE_RESTORE_PREVIEW_TOKEN_TTL_MILLIS,
+};
+pub use save_restore_task::{
+    SaveRestoreCommitValidator, SaveRestoreTaskRunError, SaveRestoreTaskRunner,
+    SaveRestoreTaskScopeRegistry, SaveRestoreTaskService, SAVE_RESTORE_COMMITTING_PHASE,
+    SAVE_RESTORE_COMPLETED_PHASE, SAVE_RESTORE_FAILED_PHASE, SAVE_RESTORE_PREPARING_PHASE,
+    SAVE_RESTORE_PRE_RESTORE_BACKUP_PHASE, SAVE_RESTORE_RECOVERY_REQUIRED_PHASE,
+    SAVE_RESTORE_REVALIDATING_PHASE,
+};
 pub use support_diagnostics::{
     DiagnosticsPageSnapshot, DiagnosticsPageSnapshotService, SupportDiagnosticsExport,
     SupportDiagnosticsExportService, MAX_DIAGNOSTICS_PAGE_ITEMS,
@@ -221,6 +254,9 @@ pub use support_diagnostics::{
 pub use task_manager::{
     TaskKind, TaskManager, TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskSnapshot,
     TaskStatus,
+};
+pub use write_admission::{
+    CrossProcessWriteAdmissionCoordinator, DEFAULT_CROSS_PROCESS_WRITE_ADMISSION_TIMEOUT,
 };
 
 pub fn app_name() -> &'static str {
