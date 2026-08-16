@@ -752,6 +752,7 @@ mod tests {
         );
         assert_eq!(manifest_summary.managed_file_count, 2);
         assert_eq!(manifest_summary.backup_count, 1);
+        assert_eq!(manifest_summary.installed_revision_id, None);
     }
 
     #[test]
