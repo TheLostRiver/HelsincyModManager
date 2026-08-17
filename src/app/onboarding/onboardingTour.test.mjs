@@ -45,7 +45,15 @@ test("task tour remains an independent route-driven overlay", () => {
     providerSource,
     /requestAnimationFrame\(\(\) => \{\s*autoStartCheckedRef\.current = true;/,
   );
+  const statusActionsIndex = headerSource.indexOf('className="status-actions"');
+  const launcherIndex = headerSource.indexOf('className="onboarding-launcher"');
+  const profileStatusIndex = headerSource.indexOf('className={`status-pill ${activeProfileTone}`}');
+  const windowToolsIndex = headerSource.indexOf('className="window-tools"');
+  assert.ok(statusActionsIndex < launcherIndex);
+  assert.ok(launcherIndex < profileStatusIndex);
+  assert.ok(profileStatusIndex < windowToolsIndex);
   assert.match(headerSource, /aria-label="打开新手引导"/);
+  assert.match(headerSource, /<span>新手引导<\/span>/);
   assert.match(headerSource, /onClick=\{startTour\}/);
   assert.match(overlaySource, /function InteractionBlockers/);
   assert.match(overlaySource, /interaction !== "target-only"/);
