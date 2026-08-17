@@ -68,7 +68,7 @@ export function DiagnosticsPage() {
       </header>
 
       {state.status === "loading" && (
-        <div className="diagnostics-page__state" role="status">
+        <div className="diagnostics-page__state" role="status" data-tour-id="diagnostics.state">
           <span className="diagnostics-page__state-icon" aria-hidden="true">
             <RefreshCw size={20} />
           </span>
@@ -81,7 +81,11 @@ export function DiagnosticsPage() {
        * 若失败态不带 role，读屏用户在错误出现时不会收到任何通知，只能自己浏览到才发现。
        */}
       {state.status === "failed" && (
-        <div className="diagnostics-page__state is-error" role="alert">
+        <div
+          className="diagnostics-page__state is-error"
+          role="alert"
+          data-tour-id="diagnostics.state"
+        >
           <span className="diagnostics-page__state-icon" aria-hidden="true">
             <AlertTriangle size={22} />
           </span>

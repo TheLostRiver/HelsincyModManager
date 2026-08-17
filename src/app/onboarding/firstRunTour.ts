@@ -114,7 +114,7 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         title: "先看恢复健康摘要",
         description: "摘要会区分正常、需处理、未知和托管文件数量，帮助判断是否需要人工介入。",
         target: "recovery.overview",
-        fallbackTarget: "recovery.actions",
+        fallbackTarget: "recovery.state",
         placement: "bottom-start",
       },
       {
@@ -129,10 +129,11 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
       {
         id: "recovery-mods",
         title: "定位具体 Mod",
-        description: "托管 Mod 列表显示每个项目的文件、备份和问题数，并只在需要时提供回滚入口。",
+        description: "配置完成后，托管 Mod 列表会显示每个项目的文件、备份和问题数，并只在需要时提供回滚入口。",
         target: "recovery.mods",
-        fallbackTarget: "recovery.actions",
+        fallbackTarget: "recovery.state-detail",
         placement: "top-start",
+        callout: "当前列表不可用时，高亮区域会说明还缺少哪些前置条件。",
       },
     ],
   },
@@ -268,7 +269,7 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         title: "检查证据健康状态",
         description: "健康卡汇总平台、App、Debug、Task、Audit 日志和日志空间是否可用。",
         target: "diagnostics.health",
-        fallbackTarget: "diagnostics.actions",
+        fallbackTarget: "diagnostics.state",
         placement: "bottom-start",
       },
       {
