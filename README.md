@@ -86,6 +86,7 @@ Mod 和存档操作遵循以下基本链路：
 ### 架构与安全
 
 - [架构设计](docs/ARCHITECTURE.md)
+- [Mod 库多选与批量操作交互设计](docs/MOD_LIBRARY_MULTI_SELECTION_DESIGN.md)
 - [日志与审计设计](docs/LOGGING.md)
 - [安全策略](SECURITY.md)
 
