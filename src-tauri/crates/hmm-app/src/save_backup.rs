@@ -303,16 +303,18 @@ impl SaveBackupService {
             }
         }
 
-        for (index, summary) in ordinary
-            .iter()
-            .filter(|summary| summary.status == SaveBackupStatus::Completed)
-            .enumerate()
-        {
-            if index >= retention.max_count as usize {
-                candidates
-                    .entry(summary.backup_id.clone())
-                    .or_default()
-                    .insert(SaveBackupRetentionReason::Count);
+        if retention.max_count > 0 {
+            for (index, summary) in ordinary
+                .iter()
+                .filter(|summary| summary.status == SaveBackupStatus::Completed)
+                .enumerate()
+            {
+                if index >= retention.max_count as usize {
+                    candidates
+                        .entry(summary.backup_id.clone())
+                        .or_default()
+                        .insert(SaveBackupRetentionReason::Count);
+                }
             }
         }
 

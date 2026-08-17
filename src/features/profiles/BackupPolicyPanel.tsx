@@ -55,14 +55,15 @@ export function BackupPolicyPanel({
             <span>保留数量</span>
             <input
               type="number"
-              min={1}
+              min={0}
               max={MAX_RETENTION_COUNT}
               value={settings.retention.maxCount}
               disabled={disabled}
+              aria-describedby="profile-retention-unlimited-note"
               onChange={(event) =>
                 onRetentionChange({
                   ...settings.retention,
-                  maxCount: clampInteger(event.target.value, 1, MAX_RETENTION_COUNT, 1),
+                  maxCount: clampInteger(event.target.value, 0, MAX_RETENTION_COUNT, 0),
                 })
               }
             />
@@ -107,7 +108,7 @@ export function BackupPolicyPanel({
           </label>
         </div>
         <p id="profile-retention-unlimited-note" className="profile-retention-note">
-          保留天数与空间上限：0 = 不限制
+          数量、天数和空间上限：0 = 不限制
         </p>
 
         <div className="profile-pre-restore-setting">

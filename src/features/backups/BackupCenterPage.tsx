@@ -350,7 +350,10 @@ export function BackupCenterPage() {
           scannedCount: profile.backupCount,
           protectedCount: profile.protectedCount,
           problemCount: profile.attentionCount,
-          candidateCount: Math.max(0, profile.backupCount - profile.retention.maxCount),
+          candidateCount:
+            profile.retention.maxCount === 0
+              ? 0
+              : Math.max(0, profile.backupCount - profile.retention.maxCount),
           deletedCount: 0,
           partialCount: 0,
           blockedCount: 0,
