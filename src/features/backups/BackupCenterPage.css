@@ -1,7 +1,8 @@
 .backup-center-page {
   grid-column: 1 / -1;
   display: grid;
-  gap: 16px;
+  align-content: start;
+  gap: 12px;
   width: 100%;
   min-width: 0;
   color: var(--color-text);
@@ -28,7 +29,7 @@
 .backup-center-header {
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--color-border-muted);
 }
 
@@ -172,39 +173,57 @@
   border-color: var(--color-danger-dot);
 }
 
-.backup-center-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+.backup-center-overview {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 10px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
 }
 
 .backup-summary-metric {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 70px;
-  padding: 12px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-muted);
-  border-radius: var(--radius-inner);
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 16px;
+}
+
+.backup-summary-metric:first-child {
+  padding-left: 0;
+}
+
+.backup-summary-metric + .backup-summary-metric {
+  border-left: 1px solid var(--color-border-muted);
 }
 
 .backup-summary-metric__icon,
 .backup-profile-avatar {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
   color: var(--color-accent-strong);
   background: var(--color-surface-subtle);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-inner);
 }
 
+.backup-summary-metric__icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.backup-profile-avatar {
+  width: 36px;
+  height: 36px;
+}
+
 .backup-summary-metric > span:last-child {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .backup-summary-metric small,
@@ -217,7 +236,7 @@
 
 .backup-summary-metric strong {
   overflow-wrap: anywhere;
-  font-size: 17px;
+  font-size: 14px;
   line-height: 1.25;
 }
 
@@ -228,10 +247,11 @@
 
 .backup-center-filters {
   display: grid;
-  grid-template-columns: auto repeat(3, minmax(130px, 0.7fr)) minmax(210px, 1.4fr);
-  align-items: end;
-  gap: 10px;
-  padding: 12px;
+  grid-template-columns: auto repeat(3, minmax(170px, 0.8fr)) minmax(240px, 1.4fr);
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 48px;
+  padding: 7px 10px;
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-inner);
@@ -249,7 +269,9 @@
 
 .backup-center-filters label {
   display: grid;
-  gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
 }
 
 .backup-center-filters label > span:first-child {
@@ -262,7 +284,7 @@
 .backup-center-filters input,
 .backup-note-editor input {
   width: 100%;
-  height: 36px;
+  height: 32px;
   padding: 0 10px;
   color: var(--color-text);
   background: var(--color-surface);
@@ -646,15 +668,13 @@
 
 @media (max-width: 1120px) {
   .backup-center-filters {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    height: max-content;
   }
 
   .backup-filter-label {
     grid-column: 1 / -1;
-  }
-
-  .backup-search-control {
-    grid-column: span 1;
+    min-height: 28px;
   }
 }
 
@@ -669,10 +689,26 @@
 }
 
 @media (max-width: 720px) {
-  .backup-center-summary,
-  .backup-center-filters,
+  .backup-center-overview,
   .backup-profile-list {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .backup-center-overview {
+    height: max-content;
+  }
+
+  .backup-summary-metric {
+    padding: 4px 10px;
+  }
+
+  .backup-summary-metric:first-child {
+    padding-left: 10px;
+  }
+
+  .backup-summary-metric:nth-child(odd) {
+    border-left: 0;
   }
 
   .backup-search-control {
@@ -700,10 +736,6 @@
   .backup-center-filters,
   .backup-profile-list {
     grid-template-columns: 1fr;
-  }
-
-  .backup-center-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .backup-filter-label,

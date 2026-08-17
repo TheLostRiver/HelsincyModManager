@@ -435,19 +435,12 @@ export function BackupCenterPage() {
         </button>
       </header>
 
-      {page?.summary.attentionCount ? (
-        <div className="backup-center-alert is-warning" role="status">
-          <CircleAlert size={18} />
-          <span>{page.summary.attentionCount} 条备份需要整理或检查。</span>
-        </div>
-      ) : null}
-
       {page ? (
-        <section className="backup-center-summary" aria-label="备份摘要">
-          <SummaryMetric label="备份记录" value={String(page.summary.backupCount)} icon={<Archive size={17} />} />
-          <SummaryMetric label="已知空间" value={formatBytes(page.summary.archiveBytes)} icon={<Save size={17} />} />
-          <SummaryMetric label="保护点" value={String(page.summary.protectedCount)} icon={<ShieldCheck size={17} />} />
-          <SummaryMetric label="需处理" value={String(page.summary.attentionCount)} icon={<CircleAlert size={17} />} tone={page.summary.attentionCount ? "warning" : "normal"} />
+        <section className="backup-center-overview" aria-label="备份摘要">
+          <SummaryMetric label="备份记录" value={String(page.summary.backupCount)} icon={<Archive size={15} />} />
+          <SummaryMetric label="已知空间" value={formatBytes(page.summary.archiveBytes)} icon={<Save size={15} />} />
+          <SummaryMetric label="保护点" value={String(page.summary.protectedCount)} icon={<ShieldCheck size={15} />} />
+          <SummaryMetric label="需处理" value={String(page.summary.attentionCount)} icon={<CircleAlert size={15} />} tone={page.summary.attentionCount ? "warning" : "normal"} />
         </section>
       ) : null}
 
