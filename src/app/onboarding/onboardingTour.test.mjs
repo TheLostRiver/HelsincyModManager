@@ -92,11 +92,13 @@ test("contextual tour rotates from the current page and excludes unavailable rou
     new Set(registeredRouteIds.filter((routeId) => routeId !== "categories")),
   );
   assert.equal(ONBOARDING_ROUTE_ORDER.includes("categories"), false);
+  assert.equal(ONBOARDING_ROUTE_ORDER.includes("about"), true);
   assert.deepEqual(rotateRoutesFrom("profiles"), [
     "profiles",
     "backups",
     "diagnostics",
     "settings",
+    "about",
     "dashboard",
     "mods",
     "recovery",
@@ -107,8 +109,8 @@ test("contextual tour rotates from the current page and excludes unavailable rou
   assert.equal(manualTour.steps[0].id, "page-profiles");
   assert.equal(manualTour.steps[0].target, "page.profiles");
   assert.equal(manualTour.steps[1].id, "profiles-list");
-  assert.equal(manualTour.steps.length, 39);
-  assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 6);
+  assert.equal(manualTour.steps.length, 43);
+  assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 7);
   assert.deepEqual(
     manualTour.steps.find((step) => step.id === "profiles-directories"),
     {
@@ -138,7 +140,7 @@ test("contextual tour rotates from the current page and excludes unavailable rou
   const automaticTour = buildOnboardingTour("dashboard", { includeWelcome: true });
   assert.equal(automaticTour.steps[0].id, "welcome");
   assert.equal(automaticTour.steps[1].id, "page-dashboard");
-  assert.equal(automaticTour.steps.length, 40);
+  assert.equal(automaticTour.steps.length, 44);
   assert.equal(
     automaticTour.steps.find((step) => step.id === "recovery-actions")?.fallbackTarget,
     "recovery.actions",
@@ -183,6 +185,7 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   const backups = readProjectFile("src/features/backups/BackupCenterPage.tsx");
   const diagnostics = readProjectFile("src/features/diagnostics/DiagnosticsPage.tsx");
   const settings = readProjectFile("src/features/settings/SettingsPage.tsx");
+  const about = readProjectFile("src/features/about/AboutPage.tsx");
   const backgroundProtection = readProjectFile("src/features/settings/BackgroundProtectionPanel.tsx");
 
   assert.match(classicSidebar, /data-tour-id="app\.navigation"/);
@@ -225,6 +228,8 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   assert.match(settings, /tourId="settings\.prerequisites"/);
   assert.match(settings, /tourId="settings\.save-backup"/);
   assert.match(backgroundProtection, /data-tour-id="settings\.background-protection"/);
+  assert.match(about, /data-tour-id="about\.release"/);
+  assert.match(about, /data-tour-id="about\.links"/);
   assert.match(statusPanel, />下一步</);
   assert.match(statusPanel, />设置摘要</);
   assert.doesNotMatch(statusPanel, /FirstRunChecklist|first-run-checklist/);

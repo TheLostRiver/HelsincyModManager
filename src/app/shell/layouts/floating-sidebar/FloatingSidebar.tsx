@@ -8,6 +8,8 @@ import type { NavigationStateItem } from "../../../routing/routeTypes";
 export function FloatingSidebar() {
   const { getNavigationState, navigate } = useAppRoute();
   const navigationItems = getNavigationState(navItems);
+  const primaryItems = navigationItems.filter((item) => item.placement !== "utility");
+  const utilityItems = navigationItems.filter((item) => item.placement === "utility");
 
   return (
     <aside className="floating-sidebar" aria-label="主导航">
@@ -16,7 +18,13 @@ export function FloatingSidebar() {
       </div>
 
       <nav className="floating-sidebar__nav" data-tour-id="app.navigation">
-        {navigationItems.map((item) => (
+        {primaryItems.map((item) => (
+          <FloatingNavButton key={item.id} item={item} onNavigate={navigate} />
+        ))}
+      </nav>
+
+      <nav className="floating-sidebar__utility-nav" aria-label="辅助导航">
+        {utilityItems.map((item) => (
           <FloatingNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
       </nav>

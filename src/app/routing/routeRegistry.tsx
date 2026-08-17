@@ -7,6 +7,7 @@ import { ProfilePage } from "../../features/profiles/ProfilePage";
 import type { AppRoute } from "./routeTypes";
 import { DiagnosticsPage } from "../../features/diagnostics/DiagnosticsPage";
 import { BackupCenterPage } from "../../features/backups/BackupCenterPage";
+import { AboutPage } from "../../features/about/AboutPage";
 
 export const appRoutes = [
   {
@@ -48,6 +49,11 @@ export const appRoutes = [
     id: "settings",
     path: "/settings",
     element: SettingsPage,
+  },
+  {
+    id: "about",
+    path: "/about",
+    element: AboutPage,
   },
 ] satisfies AppRoute[];
 

@@ -3,5 +3,16 @@
   "identifier": "default",
   "description": "Default desktop capability for Helsincy Mod Manager.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-set-theme", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-theme",
+    "dialog:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://github.com/TheLostRiver" },
+        { "url": "https://github.com/TheLostRiver/**" }
+      ]
+    }
+  ]
 }
