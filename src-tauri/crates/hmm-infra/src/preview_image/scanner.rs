@@ -3,6 +3,7 @@ use hmm_ports::{
     CancellationToken, PackagePreviewScanner, PreviewImageCandidate, PreviewImageScanRequest,
     PreviewImageSourceRef,
 };
+use std::collections::BTreeSet;
 use std::path::Path;
 
 pub struct SandboxPackagePreviewScanner;
@@ -13,19 +14,69 @@ impl PackagePreviewScanner for SandboxPackagePreviewScanner {
         request: PreviewImageScanRequest<'_>,
     ) -> Result<Vec<PreviewImageCandidate>> {
         let mut candidates = Vec::new();
-        collect_candidates(
-            request.package_id,
-            request.sandbox_root,
-            request.sandbox_root,
-            request.policy.max_candidates_per_package,
-            request.cancellation_token,
-            &mut candidates,
-        )?;
+        let candidate_roots =
+            find_candidate_roots(request.sandbox_root, request.cancellation_token)?;
+
+        for candidate_root in candidate_roots {
+            collect_direct_candidates(
+                request.package_id,
+                request.sandbox_root,
+                &candidate_root,
+                request.policy.max_candidates_per_package,
+                request.cancellation_token,
+                &mut candidates,
+            )?;
+        }
+
         Ok(candidates)
     }
 }
 
-fn collect_candidates(
+fn find_candidate_roots(
+    sandbox_root: &Path,
+    cancellation_token: &dyn CancellationToken,
+) -> Result<Vec<std::path::PathBuf>> {
+    let mut native_pc_parents = BTreeSet::new();
+    collect_native_pc_parents(sandbox_root, cancellation_token, &mut native_pc_parents)?;
+
+    if native_pc_parents.is_empty() {
+        native_pc_parents.insert(sandbox_root.to_path_buf());
+    }
+
+    Ok(native_pc_parents.into_iter().collect())
+}
+
+fn collect_native_pc_parents(
+    current_dir: &Path,
+    cancellation_token: &dyn CancellationToken,
+    out: &mut BTreeSet<std::path::PathBuf>,
+) -> Result<()> {
+    ensure_not_cancelled(cancellation_token)?;
+    for entry in std::fs::read_dir(current_dir)? {
+        ensure_not_cancelled(cancellation_token)?;
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+
+        if file_type.is_symlink() || !file_type.is_dir() {
+            continue;
+        }
+
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case("nativepc")
+        {
+            out.insert(current_dir.to_path_buf());
+            continue;
+        }
+
+        collect_native_pc_parents(&entry.path(), cancellation_token, out)?;
+    }
+
+    Ok(())
+}
+
+fn collect_direct_candidates(
     package_id: &str,
     sandbox_root: &Path,
     current_dir: &Path,
@@ -44,18 +95,6 @@ fn collect_candidates(
         }
 
         let path = entry.path();
-        if file_type.is_dir() {
-            collect_candidates(
-                package_id,
-                sandbox_root,
-                &path,
-                max_candidates,
-                cancellation_token,
-                out,
-            )?;
-            continue;
-        }
-
         if !file_type.is_file() || !has_image_extension(&path) {
             continue;
         }
@@ -105,6 +144,7 @@ fn insert_candidate(
         (
             candidate.priority,
             candidate.source_ref.logical_path.to_ascii_lowercase(),
+            candidate.source_ref.logical_path.clone(),
         )
     });
     candidates.truncate(max_candidates);
@@ -190,6 +230,88 @@ mod tests {
             .expect("scan candidates");
 
         assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn scanner_only_collects_direct_images_next_to_native_pc() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let package_root = temp.path().join("外层包装");
+        std::fs::create_dir_all(package_root.join("nativePC/textures"))
+            .expect("create nativePC tree");
+        std::fs::create_dir_all(package_root.join("screenshots")).expect("create screenshots tree");
+        std::fs::write(package_root.join("中文预览图 #1!.png"), b"")
+            .expect("write unicode preview");
+        std::fs::write(package_root.join("123.webp"), b"").expect("write numeric preview");
+        std::fs::write(package_root.join("nativePC/textures/in-game.png"), b"")
+            .expect("write nativePC texture");
+        std::fs::write(package_root.join("screenshots/nested.jpg"), b"")
+            .expect("write nested screenshot");
+        std::fs::write(temp.path().join("archive-root.jpg"), b"")
+            .expect("write archive root image");
+
+        let scanner = SandboxPackagePreviewScanner;
+        let candidates = scanner
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &PreviewImagePolicy::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan candidates");
+
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.file_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["123.webp", "中文预览图 #1!.png"]
+        );
+        assert!(candidates
+            .iter()
+            .all(|candidate| candidate.source_ref.logical_path.starts_with("外层包装/")));
+    }
+
+    #[test]
+    fn scanner_matches_native_pc_case_insensitively() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let package_root = temp.path().join("wrapped");
+        std::fs::create_dir_all(package_root.join("NATIVEpc")).expect("create mixed-case nativePC");
+        std::fs::write(package_root.join("cover.jpg"), b"").expect("write cover");
+
+        let scanner = SandboxPackagePreviewScanner;
+        let candidates = scanner
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &PreviewImagePolicy::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan candidates");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].source_ref.logical_path, "wrapped/cover.jpg");
+    }
+
+    #[test]
+    fn scanner_without_native_pc_only_collects_sandbox_root_images() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        std::fs::create_dir_all(temp.path().join("assets")).expect("create assets");
+        std::fs::write(temp.path().join("root-preview.png"), b"").expect("write root preview");
+        std::fs::write(temp.path().join("assets/nested-preview.png"), b"")
+            .expect("write nested preview");
+
+        let scanner = SandboxPackagePreviewScanner;
+        let candidates = scanner
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &PreviewImagePolicy::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan candidates");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].source_ref.logical_path, "root-preview.png");
     }
 
     #[test]
