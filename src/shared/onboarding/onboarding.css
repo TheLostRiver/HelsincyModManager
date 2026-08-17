@@ -293,7 +293,8 @@
 }
 
 .tour-panel__callout,
-.tour-panel__pending {
+.tour-panel__pending,
+.tour-panel__target-unavailable {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
@@ -310,6 +311,40 @@
 .tour-panel__pending {
   color: var(--color-text-muted);
   background: var(--color-surface-subtle);
+}
+
+.tour-panel__target-unavailable {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.tour-panel__target-unavailable div {
+  display: grid;
+  gap: 2px;
+}
+
+.tour-panel__target-unavailable strong,
+.tour-panel__target-unavailable span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tour-panel__target-unavailable button {
+  min-height: 30px;
+  padding: 0 10px;
+  color: var(--color-warning-text);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-inner);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tour-panel__target-unavailable button:hover {
+  background: color-mix(in srgb, currentColor 9%, transparent);
 }
 
 .tour-panel__callout strong,
@@ -533,6 +568,15 @@
   .tour-panel__exit-button,
   .tour-panel__primary-button,
   .tour-panel__interaction-hint {
+    width: 100%;
+  }
+
+  .tour-panel__target-unavailable {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .tour-panel__target-unavailable button {
+    grid-column: 1 / -1;
     width: 100%;
   }
 

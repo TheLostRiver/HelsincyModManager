@@ -9,6 +9,7 @@ import {
   LoaderCircle,
   MapPinned,
   MousePointerClick,
+  RefreshCw,
   Rocket,
   ShieldCheck,
   Sparkles,
@@ -71,11 +72,12 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
   const viewportSize = useViewportSize();
   const maskId = `tour-mask-${useId().replaceAll(":", "")}`;
   const hasRequestedTarget = Boolean(step.target || step.fallbackTarget);
-  const isTargetPending = hasRequestedTarget && !targetState.rect;
+  const isTargetUnavailable = hasRequestedTarget && !targetState.rect && targetState.timedOut;
+  const isTargetPending = hasRequestedTarget && !targetState.rect && !isTargetUnavailable;
   const isAwaitingRouteChange = step.advance.kind === "route-change";
   const canGoPrevious = stepIndex > 0 && steps[stepIndex - 1]?.advance.kind !== "route-change";
   const stepDirection = stepIndex < previousStepIndexRef.current ? "backward" : "forward";
-  const isDocked = isTargetPending || shouldDockTourPanel(
+  const isDocked = !targetState.rect || shouldDockTourPanel(
       targetState.rect,
       viewportSize.width,
       viewportSize.height,
@@ -309,6 +311,21 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
                   </div>
                 ) : null}
 
+                {isTargetUnavailable ? (
+                  <div className="tour-panel__target-unavailable" role="status">
+                    <RefreshCw size={17} aria-hidden="true" />
+                    <div>
+                      <strong>当前页面没有可高亮的对应区域</strong>
+                      <span>
+                        {isAwaitingRouteChange
+                          ? "可以重新定位；若页面入口尚未开放，请退出引导后先完成前置设置。"
+                          : "可以重新定位，或跳过此项继续查看后续功能。"}
+                      </span>
+                    </div>
+                    <button type="button" onClick={targetState.retry}>重新定位</button>
+                  </div>
+                ) : null}
+
                 {step.callout ? (
                   <div className="tour-panel__callout">
                     <Lightbulb size={18} aria-hidden="true" />
@@ -362,7 +379,7 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
                     onClick={goNext}
                   >
                     {stepIndex === 0 ? <Rocket size={17} /> : step.advance.kind === "terminal" ? <Check size={17} /> : null}
-                    <span>{step.primaryLabel}</span>
+                    <span>{isTargetUnavailable ? "跳过此项" : step.primaryLabel}</span>
                     {stepIndex > 0 && step.advance.kind === "controls" ? <ArrowRight size={17} /> : null}
                   </button>
                 )}

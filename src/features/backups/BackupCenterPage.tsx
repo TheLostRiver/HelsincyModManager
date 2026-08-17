@@ -427,7 +427,7 @@ export function BackupCenterPage() {
       <header className="backup-center-header">
         <div>
           <span className="backup-center-eyebrow"><Archive size={14} /> BACKUP CENTER</span>
-          <h1>存档备份</h1>
+          <h1>备份整理</h1>
           <p>跨配置档查看备份历史、保护点与整理状态。</p>
         </div>
         <button className="backup-icon-button" type="button" title="重新加载" aria-label="重新加载" aria-busy={pageState.status === "loading"} onClick={() => setRefreshToken((value) => value + 1)}>

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import { expandAndClampRect, rectsEqual, type TourRect } from "./tourGeometry";
 import { resolvePreferredTourTarget } from "./tourTarget";
 import type { TourAnchorId } from "./tourTypes";
@@ -9,6 +9,7 @@ type TourTargetState = {
   element: HTMLElement | null;
   rect: TourRect | null;
   interactionRect: TourRect | null;
+  timedOut: boolean;
 };
 
 const EMPTY_TARGET: TourTargetState = {
@@ -17,7 +18,11 @@ const EMPTY_TARGET: TourTargetState = {
   element: null,
   rect: null,
   interactionRect: null,
+  timedOut: false,
 };
+
+const TOUR_TARGET_WAIT_MS = 1_800;
+const TOUR_TARGET_ANIMATION_POLL_MS = 1_200;
 
 export function useTourTarget(
   primaryAnchor: TourAnchorId | undefined,
@@ -25,7 +30,9 @@ export function useTourTarget(
   padding: number,
 ) {
   const [state, setState] = useState<TourTargetState>(EMPTY_TARGET);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const requestKey = createRequestKey(primaryAnchor, fallbackAnchor);
+  const retry = useCallback(() => setRetryAttempt((attempt) => attempt + 1), []);
 
   useLayoutEffect(() => {
     if (!primaryAnchor && !fallbackAnchor) {
@@ -34,8 +41,32 @@ export function useTourTarget(
     }
 
     let frameId: number | null = null;
+    let animationPollFrameId: number | null = null;
+    let timeoutId: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let currentTarget: HTMLElement | null = null;
+    const animationPollDeadline = performance.now() + TOUR_TARGET_ANIMATION_POLL_MS;
+
+    const markUnavailableAfterWait = () => {
+      if (timeoutId !== null) return;
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null;
+        setState((previous) => previous.requestKey === requestKey && previous.element === null
+          ? { ...previous, timedOut: true }
+          : previous);
+      }, TOUR_TARGET_WAIT_MS);
+    };
+
+    setState((previous) => previous.requestKey === requestKey
+      ? { ...previous, timedOut: false }
+      : {
+          requestKey,
+          anchor: null,
+          element: null,
+          rect: null,
+          interactionRect: null,
+          timedOut: false,
+        });
 
     const measure = () => {
       frameId = null;
@@ -53,10 +84,23 @@ export function useTourTarget(
       }
 
       if (!target) {
+        markUnavailableAfterWait();
         setState((previous) => previous.requestKey === requestKey && previous.element === null
           ? previous
-          : { requestKey, anchor: null, element: null, rect: null, interactionRect: null });
+          : {
+              requestKey,
+              anchor: null,
+              element: null,
+              rect: null,
+              interactionRect: null,
+              timedOut: false,
+            });
         return;
+      }
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
       }
 
       const targetRect = target.getBoundingClientRect();
@@ -84,6 +128,7 @@ export function useTourTarget(
               element: target,
               rect,
               interactionRect,
+              timedOut: false,
             },
       );
     };
@@ -91,6 +136,15 @@ export function useTourTarget(
     function scheduleMeasure() {
       if (frameId !== null) return;
       frameId = window.requestAnimationFrame(measure);
+    }
+
+    function pollAnimatedTarget(timestamp: number) {
+      scheduleMeasure();
+      if (timestamp < animationPollDeadline && currentTarget === null) {
+        animationPollFrameId = window.requestAnimationFrame(pollAnimatedTarget);
+      } else {
+        animationPollFrameId = null;
+      }
     }
 
     const initialTarget = resolvePreferredTourTarget(primaryAnchor, fallbackAnchor)?.element ?? null;
@@ -122,9 +176,13 @@ export function useTourTarget(
     window.visualViewport?.addEventListener("scroll", scheduleMeasure);
     document.addEventListener("scroll", scheduleMeasure, true);
     scheduleMeasure();
+    animationPollFrameId = window.requestAnimationFrame(pollAnimatedTarget);
+    markUnavailableAfterWait();
 
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
+      if (animationPollFrameId !== null) window.cancelAnimationFrame(animationPollFrameId);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       resizeObserver?.disconnect();
       mutationObserver.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
@@ -132,9 +190,12 @@ export function useTourTarget(
       window.visualViewport?.removeEventListener("scroll", scheduleMeasure);
       document.removeEventListener("scroll", scheduleMeasure, true);
     };
-  }, [fallbackAnchor, padding, primaryAnchor, requestKey]);
+  }, [fallbackAnchor, padding, primaryAnchor, requestKey, retryAttempt]);
 
-  return state.requestKey === requestKey ? state : EMPTY_TARGET;
+  return {
+    ...(state.requestKey === requestKey ? state : EMPTY_TARGET),
+    retry,
+  };
 }
 
 function createRequestKey(
