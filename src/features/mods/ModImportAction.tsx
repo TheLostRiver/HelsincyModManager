@@ -9,6 +9,7 @@ import {
   type TaskProgressEventDto,
 } from "./modImportTypes";
 import {
+  consumeReconnectImportRequest,
   getModImportTaskPhaseLabel,
   nextModImportTaskStateFromProgress,
   type ModImportTaskState,
@@ -151,9 +152,16 @@ export function ModImportAction({
   }, [onImported]);
 
   useEffect(() => {
-    if (listenerStatus !== "ready" || !continueImportAfterReconnectRef.current) return;
-    continueImportAfterReconnectRef.current = false;
-    void handleImportRef.current();
+    handleImportRef.current = handleImport;
+  });
+
+  useEffect(() => {
+    const reconnect = consumeReconnectImportRequest(
+      listenerStatus,
+      continueImportAfterReconnectRef.current,
+    );
+    continueImportAfterReconnectRef.current = reconnect.nextRequested;
+    if (reconnect.shouldStart) void handleImportRef.current();
   }, [listenerStatus]);
 
   useEffect(() => {
@@ -341,8 +349,6 @@ export function ModImportAction({
       });
     }
   }
-
-  handleImportRef.current = handleImport;
 
   const taskActive = isImportTaskActive(taskState);
   const statusText = disabledReason ?? (listenerStatus === "failed"

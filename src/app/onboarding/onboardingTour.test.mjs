@@ -43,7 +43,11 @@ test("task tour remains an independent route-driven overlay", () => {
   assert.match(providerSource, /activeStep\.advance\.expectedRouteId !== currentRoute\.id/);
   assert.match(
     providerSource,
-    /requestAnimationFrame\(\(\) => \{\s*autoStartCheckedRef\.current = true;/,
+    /requestAnimationFrame\(\(\) => \{\s*if \(autoStartCheckedRef\.current\) return;\s*autoStartCheckedRef\.current = true;/,
+  );
+  assert.match(
+    providerSource,
+    /const startTour = useCallback\(\(\) => \{\s*autoStartCheckedRef\.current = true;/,
   );
   const statusActionsIndex = headerSource.indexOf('className="status-actions"');
   const launcherIndex = headerSource.indexOf('className="onboarding-launcher"');
@@ -68,8 +72,13 @@ test("task tour remains an independent route-driven overlay", () => {
   );
   assert.match(
     overlaySource,
-    /requestAnimationFrame\(\(\) => targetState\.element\?\.focus\(\)\)/,
+    /targetState\.element\s*\?\s*window\.requestAnimationFrame\(\(\) => targetState\.element\?\.focus\(\)\)/,
   );
+  assert.match(overlaySource, /if \(frameId !== null\) window\.cancelAnimationFrame\(frameId\)/);
+  assert.match(overlaySource, /stepId=\{step\.id\}/);
+  assert.match(overlaySource, /visualTarget\.stepId === stepId \? visualTarget\.rect : null/);
+  assert.match(tourSources, /document\.getElementById\("root"\) \?\? document\.body/);
+  assert.match(tourSources, /capture: true, passive: true/);
   assert.match(overlaySource, /event\.key !== "Tab"/);
   assert.match(overlaySource, /allowedFocusTargets/);
   assert.match(

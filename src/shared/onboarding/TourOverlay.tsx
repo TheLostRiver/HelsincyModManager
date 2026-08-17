@@ -172,8 +172,10 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
   }, [isAwaitingRouteChange, isTargetPending, phase, step.id]);
 
   useEffect(() => {
-    if (phase === "closing" || !isAwaitingRouteChange || !targetState.element) return undefined;
-    const frameId = window.requestAnimationFrame(() => targetState.element?.focus());
+    if (phase === "closing" || !isAwaitingRouteChange) return undefined;
+    const frameId = targetState.element
+      ? window.requestAnimationFrame(() => targetState.element?.focus())
+      : null;
     const handleTargetOnlyKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -205,7 +207,7 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
     };
     document.addEventListener("keydown", handleTargetOnlyKeyDown, true);
     return () => {
-      window.cancelAnimationFrame(frameId);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
       document.removeEventListener("keydown", handleTargetOnlyKeyDown, true);
     };
   }, [isAwaitingRouteChange, phase, requestFinish, targetState.element]);
@@ -247,6 +249,7 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
           maskId={maskId}
           rect={targetState.rect}
           hasTarget={hasRequestedTarget}
+          stepId={step.id}
         />
 
         <div
@@ -423,17 +426,23 @@ function Spotlight({
   maskId,
   rect,
   hasTarget,
+  stepId,
 }: {
   maskId: string;
   rect: ReturnType<typeof useTourTarget>["rect"];
   hasTarget: boolean;
+  stepId: string;
 }) {
-  const [visualRect, setVisualRect] = useState(rect);
+  const [visualTarget, setVisualTarget] = useState({ stepId, rect });
 
   useEffect(() => {
-    if (rect) setVisualRect(rect);
-  }, [rect]);
+    setVisualTarget((current) => {
+      if (current.stepId !== stepId) return { stepId, rect };
+      return rect ? { stepId, rect } : current;
+    });
+  }, [rect, stepId]);
 
+  const visualRect = visualTarget.stepId === stepId ? visualTarget.rect : null;
   const isVisible = Boolean(rect || (hasTarget && visualRect));
   const geometryStyle = visualRect ? getSpotlightGeometryStyle(visualRect) : undefined;
 

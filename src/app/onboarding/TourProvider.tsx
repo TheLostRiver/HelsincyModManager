@@ -28,6 +28,7 @@ export function TourProvider({ children }: TourProviderProps) {
     }
 
     const frameId = window.requestAnimationFrame(() => {
+      if (autoStartCheckedRef.current) return;
       autoStartCheckedRef.current = true;
       setStepIndex(0);
       setActiveTour(firstRunTour);
@@ -46,6 +47,7 @@ export function TourProvider({ children }: TourProviderProps) {
   }, [activeStep, activeTour?.steps.length, currentRoute.id]);
 
   const startTour = useCallback(() => {
+    autoStartCheckedRef.current = true;
     setStepIndex(0);
     setActiveTour(buildOnboardingTour(currentRoute.id));
   }, [currentRoute.id]);
