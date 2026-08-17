@@ -90,36 +90,39 @@ test("task tour remains an independent route-driven overlay", () => {
   assert.doesNotMatch(tourSources, /onScanSteam|onDirectorySelected|onLaunchGame|invoke\s*</);
 });
 
-test("contextual tour rotates from the current page and excludes unavailable routes", async () => {
-  const { buildOnboardingTour, ONBOARDING_ROUTE_ORDER, rotateRoutesFrom } =
+test("core onboarding stays concise while optional pages build local tours", async () => {
+  const {
+    buildOnboardingTour,
+    ONBOARDING_ROUTE_ORDER,
+    OPTIONAL_ONBOARDING_ROUTE_IDS,
+    rotateRoutesFrom,
+  } =
     await importTypeScriptModule("src/app/onboarding/firstRunTour.ts");
-  const routeRegistry = readProjectFile("src/app/routing/routeRegistry.tsx");
-  const registeredRouteIds = [...routeRegistry.matchAll(/id:\s*"([^"]+)"/g)].map((match) => match[1]);
 
-  assert.deepEqual(
-    new Set(ONBOARDING_ROUTE_ORDER),
-    new Set(registeredRouteIds.filter((routeId) => routeId !== "categories")),
-  );
-  assert.equal(ONBOARDING_ROUTE_ORDER.includes("categories"), false);
-  assert.equal(ONBOARDING_ROUTE_ORDER.includes("about"), true);
-  assert.deepEqual(rotateRoutesFrom("profiles"), [
-    "profiles",
+  assert.deepEqual(ONBOARDING_ROUTE_ORDER, ["dashboard", "mods", "profiles", "settings"]);
+  assert.deepEqual(OPTIONAL_ONBOARDING_ROUTE_IDS, [
+    "recovery",
+    "categories",
     "backups",
     "diagnostics",
-    "settings",
     "about",
+  ]);
+  assert.deepEqual(rotateRoutesFrom("profiles"), [
+    "profiles",
+    "settings",
     "dashboard",
     "mods",
-    "recovery",
   ]);
+  assert.deepEqual(rotateRoutesFrom("recovery"), ["recovery"]);
+  assert.deepEqual(rotateRoutesFrom("categories"), ["categories"]);
 
   const manualTour = buildOnboardingTour("profiles");
-  assert.equal(manualTour.contentVersion, 4);
-  assert.equal(manualTour.steps[0].id, "page-profiles");
-  assert.equal(manualTour.steps[0].target, "page.profiles");
-  assert.equal(manualTour.steps[1].id, "profiles-list");
-  assert.equal(manualTour.steps.length, 43);
-  assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 7);
+  assert.equal(manualTour.id, "hmm.first-run");
+  assert.equal(manualTour.contentVersion, 5);
+  assert.equal(manualTour.steps[0].id, "profiles-list");
+  assert.equal(manualTour.steps.length, 17);
+  assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 3);
+  assert.equal(manualTour.steps.some((step) => step.id.startsWith("page-")), false);
   assert.deepEqual(
     manualTour.steps.find((step) => step.id === "profiles-directories"),
     {
@@ -143,31 +146,43 @@ test("contextual tour rotates from the current page and excludes unavailable rou
   for (const step of manualTour.steps.filter((item) => !item.id.startsWith("navigate-"))) {
     assert.equal(step.interaction, "blocked");
   }
-  assert.equal(manualTour.steps.at(-1).id, "recovery-mods");
+  assert.equal(manualTour.steps.at(-1).id, "mods-lifecycle");
   assert.deepEqual(manualTour.steps.at(-1).advance, { kind: "terminal" });
 
   const automaticTour = buildOnboardingTour("dashboard", { includeWelcome: true });
   assert.equal(automaticTour.steps[0].id, "welcome");
-  assert.equal(automaticTour.steps[1].id, "page-dashboard");
-  assert.equal(automaticTour.steps.length, 44);
-  assert.equal(
-    automaticTour.steps.find((step) => step.id === "recovery-actions")?.fallbackTarget,
-    "recovery.actions",
-  );
+  assert.equal(automaticTour.steps[1].id, "dashboard-steam-scan");
+  assert.equal(automaticTour.steps.length, 18);
+  assert.equal(automaticTour.steps.at(-1).id, "settings-background-protection");
+  assert.equal(automaticTour.steps.some((step) => step.id === "mods-toolbar"), false);
+  assert.equal(automaticTour.steps.some((step) => step.id === "dashboard-status"), false);
+  assert.equal(automaticTour.steps.some((step) => step.id === "settings-window-behavior"), false);
+  assert.equal(automaticTour.steps.some((step) => step.id.startsWith("page-")), false);
   assert.deepEqual(
-    ["recovery-overview", "recovery-actions", "recovery-mods"].map((stepId) => {
-      const step = automaticTour.steps.find((item) => item.id === stepId);
-      return step?.fallbackTarget ?? step?.target;
-    }),
-    ["recovery.state", "recovery.actions", "recovery.state-detail"],
+    automaticTour.steps.slice(1, 5).map((step) => step.id),
+    [
+      "dashboard-steam-scan",
+      "dashboard-manual-directory",
+      "dashboard-launch-game",
+      "dashboard-prerequisites",
+    ],
   );
-  assert.deepEqual(
-    ["diagnostics-actions", "diagnostics-health"].map((stepId) => {
-      const step = automaticTour.steps.find((item) => item.id === stepId);
-      return step?.fallbackTarget ?? step?.target;
-    }),
-    ["diagnostics.actions", "diagnostics.state"],
-  );
+
+  const recoveryTour = buildOnboardingTour("recovery");
+  assert.equal(recoveryTour.id, "hmm.page-tour.recovery");
+  assert.equal(recoveryTour.contentVersion, 1);
+  assert.equal(recoveryTour.steps.length, 4);
+  assert.equal(recoveryTour.steps[0].id, "page-recovery");
+  assert.equal(recoveryTour.steps.at(-1).id, "recovery-mods");
+  assert.equal(recoveryTour.steps.some((step) => step.advance.kind === "route-change"), false);
+
+  const categoriesTour = buildOnboardingTour("categories");
+  assert.equal(categoriesTour.id, "hmm.page-tour.categories");
+  assert.deepEqual(categoriesTour.steps.map((step) => step.id), [
+    "page-categories",
+    "categories-create",
+    "categories-manage",
+  ]);
 });
 
 test("tour anchors are additive and preserve the existing dashboard status rail", () => {
@@ -205,6 +220,9 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   assert.match(hero, /data-tour-id="dashboard\.game-setup"/);
   assert.match(statusPanel, /data-tour-id="dashboard\.setup-status"/);
   assert.match(gameDirectoryActions, /data-tour-id="dashboard\.directory-actions"/);
+  assert.match(gameDirectoryActions, /data-tour-id="dashboard\.steam-scan"/);
+  assert.match(gameDirectoryActions, /data-tour-id="dashboard\.manual-directory"/);
+  assert.match(hero, /data-tour-id="dashboard\.launch-game"/);
   assert.match(gamePrerequisites, /data-tour-id=\{tourId\}/);
   assert.match(hero, /tourId="dashboard\.prerequisites"/);
   assert.match(modToolbar, /data-tour-id="mods\.toolbar"/);
@@ -270,6 +288,12 @@ test("tour positioning and stacking contracts avoid WebView and safety-overlay r
   assert.match(overlaySource, /previousStepIndexRef/);
   assert.match(overlaySource, /className=\{positionerClassName\}/);
   assert.match(overlaySource, /useTourPanelRelocation\(positionerRef, panelRef/);
+  assert.match(overlaySource, /function useStableTourPanelLayout/);
+  assert.match(overlaySource, /Keep the last stable layout while the next target is being resolved/);
+  assert.match(overlaySource, /open:\s*Boolean\(targetState\.element\)/);
+  assert.match(overlaySource, /!floatingPositioned/);
+  assert.match(overlaySource, /panelLayout\.kind === "welcome" \? "is-welcome" : "is-targeted"/);
+  assert.doesNotMatch(overlaySource, /const isDocked = !targetState\.rect/);
   assert.match(overlaySource, /const animation = panel\.animate\(/);
   assert.match(overlaySource, /TOUR_PANEL_RELOCATION_MS/);
   assert.match(overlaySource, /当前页面没有可高亮的对应区域/);
@@ -277,6 +301,8 @@ test("tour positioning and stacking contracts avoid WebView and safety-overlay r
   assert.match(overlaySource, /"跳过此项"/);
   assert.match(overlaySource, /className=\{`tour-panel__stage is-\$\{stepDirection\}`\}/);
   assert.match(forwardStepKeyframes, /transform:/);
+  assert.match(tourCss, /tour-panel-step-forward 360ms[^;]+both;/);
+  assert.match(tourCss, /tour-panel-step-backward 360ms[^;]+both;/);
   assert.match(tourCss, /\.tour-panel-positioner\.is-welcome/);
   assert.match(tourCss, /\.tour-spotlight__cutout\s*\{/);
   assert.match(tourCss, /x 440ms cubic-bezier/);
