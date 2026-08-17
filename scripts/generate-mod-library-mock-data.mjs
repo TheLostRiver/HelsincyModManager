@@ -208,7 +208,7 @@ export type CompactAction = {
 };
 
 export const compactActions: CompactAction[] = [
-  { id: "add", label: "添加 MOD", variant: "primary" },
+  { id: "add", label: "导入 Mod", variant: "primary" },
   { id: "add-revision", label: "导入新版本", variant: "info" },
   { id: "select-all", label: "选择本页", variant: "neutral" },
   { id: "invert", label: "反选本页", variant: "neutral" },
