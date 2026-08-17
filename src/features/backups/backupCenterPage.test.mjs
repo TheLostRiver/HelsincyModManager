@@ -72,10 +72,19 @@ test("backup center keeps restore controlled and exposes note and retention stat
 });
 
 test("backup center is responsive without horizontal scrolling or translucent blur surfaces", () => {
+  const page = read("src/features/backups/BackupCenterPage.tsx");
   const css = read("src/features/backups/BackupCenterPage.css");
   const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
 
-  assert.match(css, /\.backup-center-page\s*\{[\s\S]*?overflow-x:\s*hidden/);
+  assert.match(page, /className="backup-center-overview"/);
+  assert.doesNotMatch(page, /backup-center-alert is-warning/);
+  assert.match(css, /\.backup-center-overview\s*\{[\s\S]*?min-height:\s*44px/);
+  assert.match(css, /\.backup-summary-metric\s*\{[\s\S]*?min-height:\s*30px/);
+  assert.match(css, /\.backup-center-filters label\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\)/);
+  assert.match(css, /\.backup-center-filters select,[\s\S]*?height:\s*32px/);
+  assert.match(css, /@media\s*\(max-width:\s*1120px\)[\s\S]*?\.backup-center-filters\s*\{[\s\S]*?height:\s*max-content/);
+  assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*?\.backup-center-overview\s*\{[\s\S]*?height:\s*max-content/);
+  assert.match(css, /\.backup-center-page\s*\{[\s\S]*?align-content:\s*start[\s\S]*?overflow-x:\s*hidden/);
   assert.match(css, /@media\s*\(max-width:\s*520px\)/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.match(reducedMotion, /\.backup-spin,[\s\S]*?animation:\s*none/);
