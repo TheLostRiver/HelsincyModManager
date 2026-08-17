@@ -244,9 +244,14 @@ test("AppFrame 小屏契约保留：1360px 状态栏降级并保留引导入口 
   const rules = parseCssRules(readProjectFile("src/app/frame/AppFrame.css"));
 
   expectDeclaration(
-    findRule(rules, ".window-tools > :not(.onboarding-launcher)", "(max-width: 1360px)"),
+    findRule(rules, ".top-status-bar", "(max-width: 1360px)"),
+    /grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+minmax\(0,\s*auto\);/,
+    "缺少 1360px 下为状态组保留的双列布局",
+  );
+  expectDeclaration(
+    findRule(rules, ".window-tools", "(max-width: 1360px)"),
     /display:\s*none;/,
-    "缺少 1360px 下只隐藏非引导工具的规则",
+    "缺少 1360px 下隐藏窗口工具组的规则",
   );
   expectDeclaration(
     findRule(rules, ".status-pill:not(.compact)", "(max-width: 1360px)"),

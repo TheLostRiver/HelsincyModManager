@@ -24,6 +24,17 @@ export function AppHeader() {
       </div>
 
       <div className="status-actions" aria-label="当前状态">
+        <button
+          type="button"
+          className="onboarding-launcher"
+          aria-label="打开新手引导"
+          title="打开新手引导"
+          disabled={isTourOpen}
+          onClick={startTour}
+        >
+          <Map size={16} aria-hidden="true" />
+          <span>新手引导</span>
+        </button>
         <span className={`status-pill ${activeProfileTone}`}>
           <span>配置档</span>
           <strong>{activeProfileLabel}</strong>
@@ -39,16 +50,6 @@ export function AppHeader() {
       </div>
 
       <div className="window-tools" aria-label="窗口工具">
-        <button
-          type="button"
-          className="icon-button onboarding-launcher"
-          aria-label="打开新手引导"
-          title="打开新手引导"
-          disabled={isTourOpen}
-          onClick={startTour}
-        >
-          <Map size={16} />
-        </button>
         <ThemeMenu />
         <button
           type="button"
