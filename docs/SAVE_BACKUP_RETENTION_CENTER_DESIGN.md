@@ -36,12 +36,13 @@ max_age_days: Option<u32>
 max_total_bytes: Option<u64>
 ```
 
-- `max_count` 范围为 1..=999。新配置档和用户主动重置时默认保留 50 份。
+- `max_count` 范围为 0..=999；`0` 表示关闭按数量治理。
 - `max_age_days = None` 表示关闭按年龄治理；有值时范围为 1..=3650 天。
 - `max_total_bytes = None` 表示关闭空间预算。为避免升级后静默删除既有备份，migration 和默认值都使用 `None`。
 - 启用时范围为 16 MiB..=1 TiB。UI 使用 GiB/MiB 展示，Tauri DTO 仍传精确字节数。
-- UI 对年龄和空间显示 `0 = 不限制`，提交时把 0 归一化为 DTO `null`；Tauri 边界也兼容将数值 0
-  归一化为领域层 `None`。新配置档和用户主动重置时默认使用 90 天、无限空间；既有 Profile 设置不迁移、不覆盖。
+- UI 对数量、年龄和空间显示 `0 = 不限制`。年龄与空间提交时把 0 归一化为 DTO `null`；Tauri 边界
+  也兼容将数值 0 归一化为领域层 `None`。新配置档和用户主动重置时三项默认均不限制；既有 Profile
+  设置不迁移、不覆盖。
 - 空间预算作用于同一 `gameId/profileId` 的 HMM 已知备份 archive 总量；manifest 是受控元数据，但不计入预算数值。
 
 Profile 存档设置同时增加后端确认来源的可选展示快照：
@@ -69,7 +70,7 @@ SteamAccountDisplaySummary
 ### 规则合并
 
 1. 按 `created_at DESC, backup_id DESC` 确定普通备份的新旧顺序。
-2. `max_count` 把第 N 个之后的普通备份列为候选。
+2. `max_count` 非零时把第 N 个之后的普通备份列为候选；为 0 时不产生 count 候选。
 3. `max_age_days` 把 `created_at < now - days * 86_400_000` 的普通备份列为候选。
 4. count/age 候选先从空间模拟中移除；若剩余已知 archive 字节仍超过预算，再按最旧优先增加普通候选。
 5. 最新一份普通 completed 备份始终保留。若它或受保护 `pre_restore` 已使预算不可收敛，返回 `blocked`，不得突破保护边界。
@@ -229,7 +230,7 @@ archive_bytes_before archive_bytes_after released_bytes budget_satisfied
 后端聚焦测试至少覆盖：
 
 - count、age、space 单独和组合规则的确定性排序与边界时间。
-- 默认 `max_total_bytes = None` 不对升级用户引入新删除。
+- 默认 `max_count = 0`、`max_age_days = None`、`max_total_bytes = None` 不产生任何新删除候选。
 - 最新普通备份和所有 `pre_restore` 永不被普通 retention 删除。
 - 保护点导致预算不可收敛时返回 blocked。
 - begin intent 失败时没有文件删除。

@@ -320,8 +320,8 @@ fn get_profile_save_settings_uses_requested_game_id_for_default_backup() {
         settings.backup_directory.path_label.as_deref(),
         Some("mhw-test/HelsincyModManager/Backups")
     );
-    assert_eq!(settings.retention.max_count, 50);
-    assert_eq!(settings.retention.max_age_days, Some(90));
+    assert_eq!(settings.retention.max_count, 0);
+    assert_eq!(settings.retention.max_age_days, None);
     assert_eq!(settings.retention.max_total_bytes, None);
 }
 
@@ -458,7 +458,7 @@ fn profile_save_settings_accepts_only_the_supported_space_budget_range() {
 }
 
 #[test]
-fn profile_save_settings_accepts_unbounded_limits_and_rejects_zero_domain_limits() {
+fn profile_save_settings_accepts_unbounded_count_and_rejects_zero_optional_domain_limits() {
     let (service, repo) = make_service();
     repo.save(&Profile {
         id: "profile-1".to_owned(),
@@ -486,11 +486,8 @@ fn profile_save_settings_accepts_unbounded_limits_and_rejects_zero_domain_limits
         };
 
     assert!(service
-        .set_profile_save_settings(request(1, None, None))
-        .is_ok());
-    assert!(service
         .set_profile_save_settings(request(0, None, None))
-        .is_err());
+        .is_ok());
     assert!(service
         .set_profile_save_settings(request(1_000, None, None))
         .is_err());

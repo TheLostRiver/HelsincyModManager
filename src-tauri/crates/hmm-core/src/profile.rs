@@ -61,21 +61,11 @@ impl ProfileBackupSchedule {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileBackupRetention {
     pub max_count: u32,
     pub max_age_days: Option<u32>,
     pub max_total_bytes: Option<u64>,
-}
-
-impl Default for ProfileBackupRetention {
-    fn default() -> Self {
-        Self {
-            max_count: 50,
-            max_age_days: Some(90),
-            max_total_bytes: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,11 +92,11 @@ mod tests {
     use super::ProfileBackupRetention;
 
     #[test]
-    fn profile_backup_retention_defaults_are_extended_without_a_space_limit() {
+    fn profile_backup_retention_defaults_are_unbounded() {
         let retention = ProfileBackupRetention::default();
 
-        assert_eq!(retention.max_count, 50);
-        assert_eq!(retention.max_age_days, Some(90));
+        assert_eq!(retention.max_count, 0);
+        assert_eq!(retention.max_age_days, None);
         assert_eq!(retention.max_total_bytes, None);
     }
 }

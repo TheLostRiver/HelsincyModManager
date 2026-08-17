@@ -54,6 +54,7 @@ test("backup center keeps restore controlled and exposes note and retention stat
   assert.match(page, /report\.outcome === "failed"/);
   assert.match(page, /report\.evidenceDegraded/);
   assert.match(page, /审计记录不可用/);
+  assert.match(page, /profile\.retention\.maxCount === 0\s*\? 0/);
   assert.match(page, /pageState\.status === "error"/);
   assert.match(page, /retention_partial/);
   assert.match(page, /retention_pending/);
