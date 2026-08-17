@@ -5,7 +5,6 @@ export const ONBOARDING_ROUTE_ORDER: readonly AppRouteId[] = [
   "dashboard",
   "mods",
   "recovery",
-  "categories",
   "profiles",
   "backups",
   "diagnostics",
@@ -115,7 +114,7 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         title: "先看恢复健康摘要",
         description: "摘要会区分正常、需处理、未知和托管文件数量，帮助判断是否需要人工介入。",
         target: "recovery.overview",
-        fallbackTarget: "page.recovery",
+        fallbackTarget: "recovery.actions",
         placement: "bottom-start",
       },
       {
@@ -123,7 +122,7 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         title: "按建议处理异常",
         description: "人工处理区会给出推荐动作；需要回滚时仍会先生成受控预览。",
         target: "recovery.manual-actions",
-        fallbackTarget: "page.recovery",
+        fallbackTarget: "recovery.actions",
         placement: "top-start",
         bullets: ["刷新用于重新读取事实。", "诊断导出会先确认并保持脱敏。"],
       },
@@ -132,7 +131,7 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         title: "定位具体 Mod",
         description: "托管 Mod 列表显示每个项目的文件、备份和问题数，并只在需要时提供回滚入口。",
         target: "recovery.mods",
-        fallbackTarget: "page.recovery",
+        fallbackTarget: "recovery.actions",
         placement: "top-start",
       },
     ],
@@ -161,8 +160,8 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
     ],
   },
   profiles: {
-    title: "配置档",
-    description: "这里管理不同游戏场景使用的配置档，并选择当前活动配置档。",
+    title: "存档备份",
+    description: "这里管理不同游戏场景使用的配置档、存档目录与备份计划。",
     bullets: ["同一时间只有一个活动配置档。", "删除或切换仍使用页面原有确认流程。"],
     featureSteps: [
       {
@@ -221,8 +220,8 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
     ],
   },
   backups: {
-    title: "存档备份",
-    description: "这里查看备份历史、后台保护状态和存档恢复入口。",
+    title: "备份整理",
+    description: "这里集中筛选、整理并恢复已有备份。",
     bullets: ["恢复存档前默认创建独立安全备份。", "引导不会创建备份或执行恢复。"],
     featureSteps: [
       {
@@ -384,7 +383,7 @@ export function buildOnboardingTour(
 
   return {
     id: "hmm.first-run",
-    contentVersion: 3,
+    contentVersion: 4,
     steps,
   };
 }

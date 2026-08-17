@@ -738,7 +738,7 @@ export function ProfilePage() {
             <ShieldCheck size={15} />
             Profile Workspace
           </span>
-          <h1 id="profile-page-title">配置档控制台</h1>
+          <h1 id="profile-page-title">存档备份</h1>
           <p className="profile-page__subtitle">
             管理当前游戏实例的多套存档配置、目录映射与自动备份策略
           </p>

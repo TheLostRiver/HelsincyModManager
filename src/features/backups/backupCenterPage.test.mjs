@@ -15,7 +15,7 @@ test("backup center is an enabled first-class route with tracked feature-local s
   assert.match(routes, /id:\s*"backups"[\s\S]*?path:\s*"\/backups"[\s\S]*?element:\s*BackupCenterPage/);
   const navLine = nav.split("\n").find((line) => line.includes('id: "backups"'));
   assert.ok(navLine);
-  assert.match(navLine, /label:\s*"存档备份"/);
+  assert.match(navLine, /label:\s*"备份整理"/);
   assert.equal(navLine.includes("disabledReason"), false);
   assert.match(main, /features\/backups\/BackupCenterPage\.css/);
   assert.match(gitignore, /!src\/features\/backups\/\*\*/);
@@ -40,6 +40,8 @@ test("backup center uses narrow camelCase DTOs and controlled commands", () => {
 test("backup center keeps restore controlled and exposes note and retention states", () => {
   const page = read("src/features/backups/BackupCenterPage.tsx");
 
+  assert.match(page, /<h1>备份整理<\/h1>/);
+  assert.match(page, /跨配置档查看备份历史、保护点与整理状态/);
   assert.match(page, /SaveRestoreDialog/);
   assert.match(page, /backup\.status === "completed"\s*\?/);
   assert.match(page, /恢复存档/);

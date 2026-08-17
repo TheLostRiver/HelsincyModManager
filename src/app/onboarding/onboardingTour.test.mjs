@@ -73,13 +73,17 @@ test("task tour remains an independent route-driven overlay", () => {
   assert.doesNotMatch(tourSources, /onScanSteam|onDirectorySelected|onLaunchGame|invoke\s*</);
 });
 
-test("contextual tour rotates from the current page and covers every enabled route", async () => {
+test("contextual tour rotates from the current page and excludes unavailable routes", async () => {
   const { buildOnboardingTour, ONBOARDING_ROUTE_ORDER, rotateRoutesFrom } =
     await importTypeScriptModule("src/app/onboarding/firstRunTour.ts");
   const routeRegistry = readProjectFile("src/app/routing/routeRegistry.tsx");
   const registeredRouteIds = [...routeRegistry.matchAll(/id:\s*"([^"]+)"/g)].map((match) => match[1]);
 
-  assert.deepEqual(new Set(ONBOARDING_ROUTE_ORDER), new Set(registeredRouteIds));
+  assert.deepEqual(
+    new Set(ONBOARDING_ROUTE_ORDER),
+    new Set(registeredRouteIds.filter((routeId) => routeId !== "categories")),
+  );
+  assert.equal(ONBOARDING_ROUTE_ORDER.includes("categories"), false);
   assert.deepEqual(rotateRoutesFrom("profiles"), [
     "profiles",
     "backups",
@@ -88,16 +92,15 @@ test("contextual tour rotates from the current page and covers every enabled rou
     "dashboard",
     "mods",
     "recovery",
-    "categories",
   ]);
 
   const manualTour = buildOnboardingTour("profiles");
-  assert.equal(manualTour.contentVersion, 3);
+  assert.equal(manualTour.contentVersion, 4);
   assert.equal(manualTour.steps[0].id, "page-profiles");
   assert.equal(manualTour.steps[0].target, "page.profiles");
   assert.equal(manualTour.steps[1].id, "profiles-list");
-  assert.equal(manualTour.steps.length, 43);
-  assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 7);
+  assert.equal(manualTour.steps.length, 39);
+  assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 6);
   assert.deepEqual(
     manualTour.steps.find((step) => step.id === "profiles-directories"),
     {
@@ -121,13 +124,17 @@ test("contextual tour rotates from the current page and covers every enabled rou
   for (const step of manualTour.steps.filter((item) => !item.id.startsWith("navigate-"))) {
     assert.equal(step.interaction, "blocked");
   }
-  assert.equal(manualTour.steps.at(-1).id, "categories-manage");
+  assert.equal(manualTour.steps.at(-1).id, "recovery-mods");
   assert.deepEqual(manualTour.steps.at(-1).advance, { kind: "terminal" });
 
   const automaticTour = buildOnboardingTour("dashboard", { includeWelcome: true });
   assert.equal(automaticTour.steps[0].id, "welcome");
   assert.equal(automaticTour.steps[1].id, "page-dashboard");
-  assert.equal(automaticTour.steps.length, 44);
+  assert.equal(automaticTour.steps.length, 40);
+  assert.equal(
+    automaticTour.steps.find((step) => step.id === "recovery-actions")?.fallbackTarget,
+    "recovery.actions",
+  );
 });
 
 test("tour anchors are additive and preserve the existing dashboard status rail", () => {
@@ -214,6 +221,10 @@ test("tour positioning and stacking contracts avoid WebView and safety-overlay r
   assert.match(targetSource, /resolvePreferredTourTarget\(primaryAnchor, fallbackAnchor\)/);
   assert.match(targetSource, /state\.requestKey === requestKey/);
   assert.match(targetSource, /interactionRect/);
+  assert.match(targetSource, /TOUR_TARGET_WAIT_MS = 1_800/);
+  assert.match(targetSource, /TOUR_TARGET_ANIMATION_POLL_MS = 1_200/);
+  assert.match(targetSource, /window\.requestAnimationFrame\(pollAnimatedTarget\)/);
+  assert.match(targetSource, /timedOut: true/);
   assert.match(tourCss, /\.tour-layer__blocker\.is-top/);
   assert.match(tourCss, /\.tour-layer__blocker\.is-bottom/);
   assert.match(tourCss, /\.tour-layer\s*\{[\s\S]*?pointer-events:\s*none;/);
@@ -222,6 +233,9 @@ test("tour positioning and stacking contracts avoid WebView and safety-overlay r
   assert.match(overlaySource, /useTourPanelRelocation\(positionerRef, panelRef/);
   assert.match(overlaySource, /const animation = panel\.animate\(/);
   assert.match(overlaySource, /TOUR_PANEL_RELOCATION_MS/);
+  assert.match(overlaySource, /当前页面没有可高亮的对应区域/);
+  assert.match(overlaySource, />重新定位</);
+  assert.match(overlaySource, /"跳过此项"/);
   assert.match(overlaySource, /className=\{`tour-panel__stage is-\$\{stepDirection\}`\}/);
   assert.match(forwardStepKeyframes, /transform:/);
   assert.match(tourCss, /\.tour-panel-positioner\.is-welcome/);
