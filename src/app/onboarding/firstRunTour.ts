@@ -4,11 +4,15 @@ import type { TourDefinition, TourStep } from "../../shared/onboarding/tourTypes
 export const ONBOARDING_ROUTE_ORDER: readonly AppRouteId[] = [
   "dashboard",
   "mods",
-  "recovery",
   "profiles",
+  "settings",
+];
+
+export const OPTIONAL_ONBOARDING_ROUTE_IDS: readonly AppRouteId[] = [
+  "recovery",
+  "categories",
   "backups",
   "diagnostics",
-  "settings",
   "about",
 ];
 
@@ -35,16 +39,33 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
   dashboard: {
     title: "工作台",
     description: "这里汇总当前游戏、目录识别、前置环境和首次设置进度。",
-    bullets: ["先确认游戏目录状态。", "右侧状态区会提示当前最需要处理的事项。"],
+    bullets: ["先识别游戏目录，再检查前置环境。", "引导只说明入口，不会自动扫描或启动游戏。"],
     featureSteps: [
       {
-        id: "dashboard-directory",
-        title: "识别游戏目录",
-        description: "先让 HMM 找到《怪物猎人：世界 冰原》的安装目录，后续 Mod 操作才会解锁。",
-        target: "dashboard.directory-actions",
+        id: "dashboard-steam-scan",
+        title: "自动扫描 Steam",
+        description: "优先让 HMM 从 Steam 库中查找《怪物猎人：世界 冰原》的安装目录。",
+        target: "dashboard.steam-scan",
         fallbackTarget: "dashboard.game-setup",
         placement: "bottom-start",
-        bullets: ["自动扫描会查找 Steam 库。", "自动结果不正确时再手动选择目录。"],
+        bullets: ["扫描只读取 Steam 库配置。", "找到候选后仍会校验游戏目录。"],
+      },
+      {
+        id: "dashboard-manual-directory",
+        title: "手动选择游戏目录",
+        description: "自动扫描没有找到游戏时，可以直接选择包含 MonsterHunterWorld.exe 的目录。",
+        target: "dashboard.manual-directory",
+        fallbackTarget: "dashboard.game-setup",
+        placement: "bottom-start",
+      },
+      {
+        id: "dashboard-launch-game",
+        title: "启动游戏",
+        description: "游戏目录通过校验后，可以从工作台直接启动当前游戏。",
+        target: "dashboard.launch-game",
+        fallbackTarget: "dashboard.game-setup",
+        placement: "top-start",
+        callout: "目录尚未配置时按钮会保持不可用。",
       },
       {
         id: "dashboard-prerequisites",
@@ -55,14 +76,6 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         placement: "right-start",
         bullets: ["缺失或配置错误会阻断需要前置的安装。", "“重新检查”不会写入游戏目录。"],
       },
-      {
-        id: "dashboard-status",
-        title: "看懂设置状态",
-        description: "右侧状态区把目录、配置档、前置环境和下一步行动汇总在一起。",
-        target: "dashboard.setup-status",
-        placement: "left-start",
-        bullets: ["优先处理标记为等待或错误的项目。", "状态满足后再进入 Mod 管理。"],
-      },
     ],
   },
   mods: {
@@ -70,14 +83,6 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
     description: "这里用于导入、筛选并管理当前配置档中的 Mod。",
     bullets: ["安装前会先生成预览。", "引导不会替你导入、安装或卸载任何 Mod。"],
     featureSteps: [
-      {
-        id: "mods-toolbar",
-        title: "搜索、筛选与切换视图",
-        description: "工具栏用于按名称、作者、标签和状态缩小范围，并切换适合当前窗口的列表布局。",
-        target: "mods.toolbar",
-        placement: "bottom-start",
-        bullets: ["搜索框按 Enter 可立即提交。", "筛选和视图只改变浏览方式，不会安装 Mod。"],
-      },
       {
         id: "mods-import",
         title: "把 Mod 导入资料库",
@@ -88,20 +93,20 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         bullets: ["导入只建立受控资料记录。", "从第三方管理器迁移也从快捷操作区开始。"],
       },
       {
-        id: "mods-lifecycle",
-        title: "先选择，再预览安装计划",
-        description: "选择 Mod 后，快捷操作区会提供预览计划、安装、真正重装和卸载。",
-        target: "mods.actions",
-        placement: "bottom-start",
-        bullets: ["先看预览中的目标文件、冲突和阻断原因。", "写入操作仍会经过原有确认与恢复机制。"],
-      },
-      {
         id: "mods-library",
         title: "从资料库选择 Mod",
         description: "这里显示当前查询结果；选择项目后才能查看详情或执行批量生命周期操作。",
         target: "mods.library",
         placement: "top-start",
         bullets: ["卡片和列表会显示安装状态。", "空列表时先检查筛选条件或导入 Mod。"],
+      },
+      {
+        id: "mods-lifecycle",
+        title: "先选择，再预览安装计划",
+        description: "选择 Mod 后，快捷操作区会提供预览计划、安装、真正重装和卸载。",
+        target: "mods.actions",
+        placement: "bottom-start",
+        bullets: ["先看预览中的目标文件、冲突和阻断原因。", "写入操作仍会经过原有确认与恢复机制。"],
       },
     ],
   },
@@ -286,30 +291,8 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
   settings: {
     title: "设置",
     description: "这里调整外观、关闭行为、前置检查和存档后台保护等选项。",
-    bullets: ["正式保存项会明确反馈结果。", "预览设置与持久化设置会分别标识。"],
+    bullets: ["这里只说明退出后的存档后台保护。", "配置档自己的备份计划仍在存档备份页维护。"],
     featureSteps: [
-      {
-        id: "settings-appearance",
-        title: "调整界面与启动偏好",
-        description: "紧凑面板、减少动效和启动页面属于界面偏好；标记为预览的项目只影响当前会话。",
-        target: "settings.appearance",
-        placement: "left-start",
-      },
-      {
-        id: "settings-window-behavior",
-        title: "选择窗口关闭行为",
-        description: "这里决定点击关闭按钮时询问、收起到托盘或完全退出。",
-        target: "settings.window-behavior",
-        placement: "left-start",
-        bullets: ["窗口关闭偏好会正式保存。", "它与后台保护是否启用是两件独立的事。"],
-      },
-      {
-        id: "settings-prerequisites",
-        title: "在设置页重新检查前置",
-        description: "前置环境区域与工作台使用同一套只读检查结果，可在修复文件后重新检查。",
-        target: "settings.prerequisites",
-        placement: "left-start",
-      },
       {
         id: "settings-background-protection",
         title: "管理退出后的后台保护",
@@ -354,25 +337,28 @@ export function buildOnboardingTour(
   { includeWelcome = false }: BuildOnboardingTourOptions = {},
 ): TourDefinition {
   const routeOrder = rotateRoutesFrom(startRouteId);
+  const isPageLocalTour = !ONBOARDING_ROUTE_ORDER.includes(startRouteId);
   const steps: TourStep[] = includeWelcome ? [welcomeStep] : [];
 
   routeOrder.forEach((routeId, index) => {
     const guidance = routeGuidance[routeId];
     const isLastRoute = index === routeOrder.length - 1;
 
-    steps.push({
-      id: `page-${routeId}`,
-      title: guidance.title,
-      description: guidance.description,
-      target: `page.${routeId}`,
-      placement: "bottom-start",
-      bullets: guidance.bullets,
-      callout: "接下来会逐一高亮本页最重要的操作区；这里只说明用途，不会执行操作。",
-      primaryLabel: "查看本页功能",
-      spotlightPadding: 0,
-      interaction: "blocked",
-      advance: { kind: "controls" },
-    });
+    if (isPageLocalTour) {
+      steps.push({
+        id: `page-${routeId}`,
+        title: guidance.title,
+        description: guidance.description,
+        target: `page.${routeId}`,
+        placement: "bottom-start",
+        bullets: guidance.bullets,
+        callout: "接下来只介绍当前页面的重要功能，不会自动进入其他页面或执行操作。",
+        primaryLabel: "查看本页功能",
+        spotlightPadding: 0,
+        interaction: "blocked",
+        advance: { kind: "controls" },
+      });
+    }
 
     guidance.featureSteps.forEach((feature, featureIndex) => {
       const isLastFeature = featureIndex === guidance.featureSteps.length - 1;
@@ -406,15 +392,15 @@ export function buildOnboardingTour(
   });
 
   return {
-    id: "hmm.first-run",
-    contentVersion: 4,
+    id: isPageLocalTour ? `hmm.page-tour.${startRouteId}` : "hmm.first-run",
+    contentVersion: isPageLocalTour ? 1 : 5,
     steps,
   };
 }
 
 export function rotateRoutesFrom(startRouteId: AppRouteId) {
   const startIndex = ONBOARDING_ROUTE_ORDER.indexOf(startRouteId);
-  if (startIndex < 0) return [...ONBOARDING_ROUTE_ORDER];
+  if (startIndex < 0) return [startRouteId];
   return [
     ...ONBOARDING_ROUTE_ORDER.slice(startIndex),
     ...ONBOARDING_ROUTE_ORDER.slice(0, startIndex),

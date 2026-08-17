@@ -55,6 +55,11 @@ type TourPhase = "opening" | "open" | "closing";
 const TOUR_TRANSITION_MS = 320;
 const TOUR_PANEL_RELOCATION_MS = 460;
 
+type StableTourPanelLayout =
+  | { kind: "welcome"; stepId: string }
+  | { kind: "docked"; stepId: string }
+  | { kind: "floating"; stepId: string; x: number; y: number; style: CSSProperties };
+
 export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOverlayProps) {
   const step = steps[stepIndex];
   const positionerRef = useRef<HTMLDivElement | null>(null);
@@ -77,13 +82,9 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
   const isAwaitingRouteChange = step.advance.kind === "route-change";
   const canGoPrevious = stepIndex > 0 && steps[stepIndex - 1]?.advance.kind !== "route-change";
   const stepDirection = stepIndex < previousStepIndexRef.current ? "backward" : "forward";
-  const isDocked = !targetState.rect || shouldDockTourPanel(
-      targetState.rect,
-      viewportSize.width,
-      viewportSize.height,
-    );
 
   const floating = useFloating({
+    open: Boolean(targetState.element),
     strategy: "fixed",
     placement: (step.placement ?? "right-start") as Placement,
     whileElementsMounted: autoUpdate,
@@ -106,6 +107,21 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
       }),
     ],
   });
+  const panelLayout = useStableTourPanelLayout({
+    stepId: step.id,
+    hasRequestedTarget,
+    targetRect: targetState.rect,
+    shouldDock: shouldDockTourPanel(
+      targetState.rect,
+      viewportSize.width,
+      viewportSize.height,
+    ),
+    floatingX: floating.x,
+    floatingY: floating.y,
+    floatingStyle: floating.floatingStyles,
+    floatingPositioned: floating.isPositioned,
+  });
+  const isDocked = panelLayout.kind === "docked";
 
   const setPositionerRef = useCallback((node: HTMLDivElement | null) => {
     positionerRef.current = node;
@@ -231,12 +247,10 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
 
   const positionerClassName = [
     "tour-panel-positioner",
-    hasRequestedTarget ? "is-targeted" : "is-welcome",
+    panelLayout.kind === "welcome" ? "is-welcome" : "is-targeted",
     isDocked ? "is-docked" : "",
   ].filter(Boolean).join(" ");
-  const positionerStyle = hasRequestedTarget && !isDocked
-    ? floating.floatingStyles
-    : undefined;
+  const positionerStyle = panelLayout.kind === "floating" ? panelLayout.style : undefined;
 
   return (
     <FeedbackPortal>
@@ -537,6 +551,83 @@ function useTourPanelRelocation(
   });
 
   useEffect(() => () => animationRef.current?.cancel(), []);
+}
+
+function useStableTourPanelLayout({
+  stepId,
+  hasRequestedTarget,
+  targetRect,
+  shouldDock,
+  floatingX,
+  floatingY,
+  floatingStyle,
+  floatingPositioned,
+}: {
+  stepId: string;
+  hasRequestedTarget: boolean;
+  targetRect: ReturnType<typeof useTourTarget>["rect"];
+  shouldDock: boolean;
+  floatingX: number | null;
+  floatingY: number | null;
+  floatingStyle: CSSProperties;
+  floatingPositioned: boolean;
+}) {
+  const [layout, setLayout] = useState<StableTourPanelLayout>(() => (
+    hasRequestedTarget
+      ? { kind: "docked", stepId }
+      : { kind: "welcome", stepId }
+  ));
+
+  useLayoutEffect(() => {
+    if (!hasRequestedTarget) {
+      setLayout((current) => current.kind === "welcome" && current.stepId === stepId
+        ? current
+        : { kind: "welcome", stepId });
+      return;
+    }
+
+    // Keep the last stable layout while the next target is being resolved.
+    // This prevents the positioner from briefly snapping to a fallback location.
+    if (!targetRect) return;
+
+    if (shouldDock) {
+      setLayout((current) => current.kind === "docked" && current.stepId === stepId
+        ? current
+        : { kind: "docked", stepId });
+      return;
+    }
+
+    if (floatingX === null || floatingY === null || !floatingPositioned) return;
+    setLayout((current) => {
+      if (
+        current.kind === "floating"
+        && current.stepId === stepId
+        && Math.abs(current.x - floatingX) < 0.25
+        && Math.abs(current.y - floatingY) < 0.25
+      ) {
+        return current;
+      }
+
+      return {
+        kind: "floating",
+        stepId,
+        x: floatingX,
+        y: floatingY,
+        style: { ...floatingStyle },
+      };
+    });
+  }, [
+    floatingStyle,
+    floatingPositioned,
+    floatingX,
+    floatingY,
+    hasRequestedTarget,
+    shouldDock,
+    stepId,
+    targetRect,
+  ]);
+
+  return layout;
 }
 
 function getSpotlightGeometryStyle(

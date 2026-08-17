@@ -8,27 +8,28 @@
 
 当前实现基线（2026-08-17）：
 
-- 已交付任务型 `hmm.first-run`：首次自动启动为欢迎页加 43 个上下文步骤，顶部入口手动启动为 43 步。
-- 顶部全局栏提供固定入口；用户从哪个页面启动，就从该页面开始，再按导航顺序旋转访问其余已启用页面。
+- 已交付任务型 `hmm.first-run`：首次自动启动为欢迎页加 17 个核心步骤；核心页面手动启动为 17 步。
+- 默认跨页流程只覆盖工作台、Mod 管理、存档备份和设置，并从当前核心页面开始旋转；恢复中心、
+  分类/标签、备份整理、日志/诊断和关于只在用户位于该页面手动启动时提供当前页局部引导。
 - 引导是独立 body portal overlay，只给全局头部、路由层和导航按钮增加入口或 `data-tour-id`；工作台、右栏内容、顺序和行为不变。
 - 使用 `@floating-ui/react@0.27.20` 的 offset/flip/shift/size/autoUpdate，spotlight 使用实时 DOMRect。
-- 页面介绍和页面内功能说明使用 `blocked + controls`；导航任务使用四块 blocker 实现
+- 核心流程直接高亮关键操作区，不重复介绍一眼可理解的页面总览；可选页面的局部介绍和功能说明使用
+  `blocked + controls`；导航任务使用四块 blocker 实现
   `target-only + route-change`，等待用户真实点击和 route id 变化后推进。
-- 8 个页面共覆盖 28 个关键功能区：游戏目录与前置检查、Mod 导入与安装计划、恢复处理、配置档与
-  存档备份、备份整理、诊断导出、窗口行为与后台保护、关于与支持信息。引导解释真实入口，但不放行业务控件点击。
+- 核心流程覆盖 14 个关键功能区：Steam 扫描、手动目录、启动游戏、前置检查、Mod 导入与生命周期、
+  配置档与存档备份、后台保护。5 个可选页面另保留 13 个局部功能区。引导解释真实入口，但不放行业务控件点击。
 - 条件渲染的功能区支持 primary anchor + fallback anchor：正常状态精准高亮具体面板，空状态或未配置状态
   自动回落到稳定页面容器，不会永久停在目标定位中。
-- 引导打开与关闭使用 320ms 柔和过渡，步骤内容使用 360ms、7px 内的小幅方向切换；Floating UI 只控制
-  外层 positioner，内层视觉面板通过 460ms FLIP/WAAPI 从上一布局位置连续迁移，高亮 mask/ring 以
-  440ms 同步改变几何；reduced motion 下全部压缩到近即时反馈。
-- 当前覆盖工作台、Mod 管理、恢复中心、存档备份、备份整理、日志/诊断、设置和关于的重要操作区；
-  不自动点击任何目标。
+- 引导打开与关闭使用 320ms 柔和过渡，步骤内容使用 360ms、4px 内的小幅方向切换并固定动画首帧；
+  Floating UI 只控制外层 positioner，目标解析期间保留最后一次稳定布局，内层视觉面板再通过 460ms
+  FLIP/WAAPI 连续迁移，高亮 mask/ring 以 440ms 同步改变几何；reduced motion 下全部压缩到近即时反馈。
+- 默认流程覆盖工作台、Mod 管理、存档备份和设置；其余已启用页面只提供手动局部引导，不自动点击任何目标。
 - 不自动执行扫描、目录选择、安装、备份、恢复或其他业务动作。
-- 完成与跳过按内容版本写入 `helsincy.onboarding`；首次进入 Dashboard 自动启动。
+- 核心流程和可选页面局部流程使用独立 tour id 写入 `helsincy.onboarding`；首次进入 Dashboard 只自动启动核心流程。
 - Phase 1 已覆盖 pure/source tests、typecheck、lint、前端边界检查，以及 Classic/Floating、浅色/深色、
   `1280x800`、`480x800` 浏览器 smoke；真实 Tauri/WebView2 DPI 仍保留为人工验收门槛。
-- 新增的 43 步内容与 primary/fallback anchor 已覆盖 pure/source tests 和完整前端验证；由于本次工具宿主
-  启动的 Vite 长驻进程无法处理 HTTP 请求，页面内步骤的新版浏览器 smoke 仍需在普通本地终端重跑。
+- 精简后的核心/局部步骤与 primary/fallback anchor 已覆盖 pure/source tests 和完整前端验证；最新生产构建
+  已完成工作台连续切步、恢复中心局部流程和设置后台保护的浏览器 smoke，确认面板不会经过临时位置。
 
 ## 1. 结论
 
@@ -801,8 +802,9 @@ tour_storage_unavailable
 - 新增 app TourProvider、registry、portal host 和 z-index token。
 - 审计/治理会逃逸到 body 的 999/1000 transient overlays。
 - 为全局头部、App navigation、两种侧栏按钮和全部已启用 route layer 添加入口或 anchor。
-- 页面介绍与关键功能说明由 controls 推进；导航任务只允许真实目标点击，并在 route id 变化后继续。
-- 为 8 个页面的 28 个重要功能区增加稳定 anchor；条件渲染区域使用 primary/fallback anchor。
+- 核心关键功能说明由 controls 推进；可选页面保留局部页面介绍；导航任务只允许真实目标点击，并在
+  route id 变化后继续。
+- 默认四页覆盖 14 个关键功能区，可选五页保留 13 个局部功能区；条件渲染区域使用 primary/fallback anchor。
 - 不触发扫描、选择目录或其他业务动作。
 
 完成门槛：两种 sidebar、五个 viewport、route transition 和 reduced motion 通过。

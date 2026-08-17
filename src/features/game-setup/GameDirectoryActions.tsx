@@ -41,11 +41,23 @@ export function GameDirectoryActions({
 
   return (
     <div className="setup-actions" data-tour-id="dashboard.directory-actions">
-      <button type="button" className="primary-action" disabled={isBusy} onClick={() => void handleSteamScan()}>
+      <button
+        type="button"
+        className="primary-action"
+        disabled={isBusy}
+        data-tour-id="dashboard.steam-scan"
+        onClick={() => void handleSteamScan()}
+      >
         <Search size={16} />
         自动扫描 Steam
       </button>
-      <button type="button" className="secondary-action" disabled={isBusy} onClick={() => void handleManualSelect()}>
+      <button
+        type="button"
+        className="secondary-action"
+        disabled={isBusy}
+        data-tour-id="dashboard.manual-directory"
+        onClick={() => void handleManualSelect()}
+      >
         <FolderOpen size={16} />
         手动选择游戏目录
       </button>

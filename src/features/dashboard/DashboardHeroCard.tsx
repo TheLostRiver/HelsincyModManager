@@ -69,7 +69,12 @@ export function DashboardHeroCard({
         />
       ) : null}
 
-      <div className={`launch-action-card${isLaunchReady ? "" : " is-disabled"}`} role="group" aria-label="游戏启动">
+      <div
+        className={`launch-action-card${isLaunchReady ? "" : " is-disabled"}`}
+        role="group"
+        aria-label="游戏启动"
+        data-tour-id="dashboard.launch-game"
+      >
         <div className={`launch-action-copy${isLaunchReady ? "" : " is-muted"}`}>
           <span>
             <LaunchStatusIcon size={14} aria-hidden="true" />
