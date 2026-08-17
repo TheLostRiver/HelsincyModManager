@@ -2,7 +2,7 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的基本结构，并计划采用语义化版本。
 
-当前项目仍处于规划和脚手架前阶段，因此尚未发布正式版本。
+当前版本为 `0.1.0-alpha.0`，仍处于 Alpha 阶段，尚未发布稳定版本。
 
 ## [Unreleased]
 
@@ -29,6 +29,7 @@
 
 ### Changed
 
+- 更新 README，反映当前 Alpha 产品阶段、Windows-first / MHW:I 支持边界、已落地能力和开发入口。
 - 将项目文档默认语言确认为简体中文。
 - 收窄 `.codex` 跟踪范围；通用 Codex hooks、skills、脚本、模板和个人配置改为本地 ignored 内容。
 - 放宽文件大小治理提醒线，并增加大文件滥用的硬性干预线。
