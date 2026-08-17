@@ -72,8 +72,6 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 ## Agent 技能与本地工具
 
 - 仓库只分发 `.codex/skills/hmm*` 下的 HMM 项目技能，用于功能路由、安装安全和 review 门禁。
-- 通用 Codex hooks、skills、脚本、模板、HelsincyPlanWithFiles 和个人配置均属于开发者本地工具，
-  不进入本仓库，也不随项目分发。
 
 ## 支持项目
 
