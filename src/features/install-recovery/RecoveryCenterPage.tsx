@@ -320,11 +320,15 @@ function DiagnosticExportPanel({
 
 function NotConfiguredPanel() {
   return (
-    <section className="recovery-center__panel is-neutral" aria-labelledby="recovery-not-configured-title">
+    <section
+      className="recovery-center__panel is-neutral"
+      aria-labelledby="recovery-not-configured-title"
+      data-tour-id="recovery.state"
+    >
       <div className="recovery-center__state-icon" aria-hidden="true">
         <CircleHelp size={18} />
       </div>
-      <div>
+      <div data-tour-id="recovery.state-detail">
         <h3 id="recovery-not-configured-title">等待游戏目录配置</h3>
         <p>恢复中心需要先有受控游戏实例，才能读取当前配置档的托管安装摘要。</p>
       </div>
@@ -355,11 +359,16 @@ function RecoveryCenterBody({
 }) {
   if (state.status === "idle" || state.status === "loading") {
     return (
-      <section className="recovery-center__panel is-loading" role="status" aria-label="恢复扫描状态">
+      <section
+        className="recovery-center__panel is-loading"
+        role="status"
+        aria-label="恢复扫描状态"
+        data-tour-id="recovery.state"
+      >
         <div className="recovery-center__state-icon" aria-hidden="true">
           <Loader2 size={18} />
         </div>
-        <div>
+        <div data-tour-id="recovery.state-detail">
           <h3>正在读取恢复摘要</h3>
           <p>正在从后端读取当前配置档的托管安装状态。</p>
         </div>
@@ -369,11 +378,15 @@ function RecoveryCenterBody({
 
   if (state.status === "unavailable") {
     return (
-      <section className="recovery-center__panel is-unknown" aria-labelledby="recovery-unavailable-title">
+      <section
+        className="recovery-center__panel is-unknown"
+        aria-labelledby="recovery-unavailable-title"
+        data-tour-id="recovery.state"
+      >
         <div className="recovery-center__state-icon" aria-hidden="true">
           <CircleHelp size={18} />
         </div>
-        <div>
+        <div data-tour-id="recovery.state-detail">
           <h3 id="recovery-unavailable-title">恢复摘要不可用</h3>
           <p>无法确认当前托管安装状态。请稍后刷新，或先回到 Mod 管理页避免继续安装/卸载。</p>
         </div>

@@ -143,6 +143,20 @@ test("contextual tour rotates from the current page and excludes unavailable rou
     automaticTour.steps.find((step) => step.id === "recovery-actions")?.fallbackTarget,
     "recovery.actions",
   );
+  assert.deepEqual(
+    ["recovery-overview", "recovery-actions", "recovery-mods"].map((stepId) => {
+      const step = automaticTour.steps.find((item) => item.id === stepId);
+      return step?.fallbackTarget ?? step?.target;
+    }),
+    ["recovery.state", "recovery.actions", "recovery.state-detail"],
+  );
+  assert.deepEqual(
+    ["diagnostics-actions", "diagnostics-health"].map((stepId) => {
+      const step = automaticTour.steps.find((item) => item.id === stepId);
+      return step?.fallbackTarget ?? step?.target;
+    }),
+    ["diagnostics.actions", "diagnostics.state"],
+  );
 });
 
 test("tour anchors are additive and preserve the existing dashboard status rail", () => {
@@ -195,6 +209,8 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   assert.match(recovery, /data-tour-id="recovery\.overview"/);
   assert.match(recovery, /data-tour-id="recovery\.manual-actions"/);
   assert.match(recovery, /data-tour-id="recovery\.mods"/);
+  assert.equal((recovery.match(/data-tour-id="recovery\.state"/g) ?? []).length, 3);
+  assert.equal((recovery.match(/data-tour-id="recovery\.state-detail"/g) ?? []).length, 3);
   assert.match(categories, /data-tour-id="categories\.create"/);
   assert.match(categories, /data-tour-id="categories\.manage"/);
   assert.match(backups, /data-tour-id="backups\.filters"/);
@@ -203,6 +219,7 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   assert.match(diagnostics, /data-tour-id="diagnostics\.actions"/);
   assert.match(diagnostics, /data-tour-id="diagnostics\.health"/);
   assert.match(diagnostics, /data-tour-id="diagnostics\.logs"/);
+  assert.equal((diagnostics.match(/data-tour-id="diagnostics\.state"/g) ?? []).length, 2);
   assert.match(settings, /tourId="settings\.appearance"/);
   assert.match(settings, /tourId="settings\.window-behavior"/);
   assert.match(settings, /tourId="settings\.prerequisites"/);
