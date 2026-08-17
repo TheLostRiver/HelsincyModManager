@@ -1,5 +1,5 @@
 import { Bell, Check, Database, FileArchive, MonitorCog, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
 import {
@@ -19,40 +19,6 @@ type ToggleSettingId =
 
 type SettingsState = Record<ToggleSettingId, boolean> & {
   startPage: "dashboard" | "mods" | "last";
-  backupCadence: "manual" | "daily" | "weekly";
-  dailyBackupHour: number;
-  dailyBackupMinute: number;
-  weeklyBackupHour: number;
-  weeklyBackupMinute: number;
-  weeklyBackupDays: number[];
-};
-
-const BACKUP_HOURS = Array.from({ length: 24 }, (_, i) => i);
-const BACKUP_MINUTES = Array.from({ length: 60 }, (_, i) => i);
-const WEEKDAYS = [
-  { value: 1, label: "周一" },
-  { value: 2, label: "周二" },
-  { value: 3, label: "周三" },
-  { value: 4, label: "周四" },
-  { value: 5, label: "周五" },
-  { value: 6, label: "周六" },
-  { value: 0, label: "周日" },
-];
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
-const formatWeeklyDays = (days: number[]) => {
-  if (days.length === 7) return "每天";
-  if (days.length === 0) return "每周";
-  const sortedDays = [...days].sort((a, b) => {
-    const adjA = a === 0 ? 7 : a;
-    const adjB = b === 0 ? 7 : b;
-    return adjA - adjB;
-  });
-  const dayNames = sortedDays
-    .map((d) => WEEKDAYS.find((w) => w.value === d)?.label.replace("周", ""))
-    .filter(Boolean)
-    .join("、");
-  return `每周${dayNames}`;
 };
 
 type SettingSectionProps = {
@@ -70,17 +36,10 @@ const initialSettings: SettingsState = {
   confirmBeforeConflict: true,
   backupReminder: true,
   startPage: "dashboard",
-  backupCadence: "manual",
-  dailyBackupHour: 3,
-  dailyBackupMinute: 0,
-  weeklyBackupHour: 3,
-  weeklyBackupMinute: 0,
-  weeklyBackupDays: [0],
 };
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
-  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
   const prerequisites = useGamePrerequisites("mhw");
   const [windowClosePreference, setWindowClosePreference] = useState<WindowClosePreference>(() =>
     typeof window === "undefined" ? "ask" : loadWindowClosePreference(),
@@ -226,7 +185,7 @@ export function SettingsPage() {
 
         <SettingsSection
           title="存档备份"
-          description="后台保护会正式保存；备份提醒和节奏仍是当前会话预览，不读取真实存档。"
+          description="后台保护会正式保存；安装前提醒仍是当前会话预览，不读取真实存档。"
           icon={ShieldCheck}
           tourId="settings.save-backup"
         >
@@ -237,87 +196,6 @@ export function SettingsPage() {
             checked={settings.backupReminder}
             onChange={() => updateToggle("backupReminder")}
           />
-          <div className="backup-cadence-wrapper" style={{ position: "relative" }}>
-            <ChoiceGroup
-              label="自动备份节奏"
-              value={settings.backupCadence}
-              options={[
-                { value: "manual", label: "仅手动" },
-                { 
-                  value: "daily", 
-                  label: settings.backupCadence === "daily" 
-                    ? `每日 ${pad2(settings.dailyBackupHour)}:${pad2(settings.dailyBackupMinute)}` 
-                    : "每日" 
-                },
-                { 
-                  value: "weekly", 
-                  label: settings.backupCadence === "weekly" 
-                    ? `${formatWeeklyDays(settings.weeklyBackupDays)} ${pad2(settings.weeklyBackupHour)}:${pad2(settings.weeklyBackupMinute)}` 
-                    : "每周" 
-                },
-              ]}
-              onChange={(value) => {
-                updateChoice("backupCadence", value);
-                if (value !== "manual") {
-                  setIsTimePickerOpen(true);
-                } else {
-                  setIsTimePickerOpen(false);
-                }
-              }}
-            />
-            {isTimePickerOpen && settings.backupCadence !== "manual" && (
-              <TimePickerPopover
-                key={settings.backupCadence}
-                initialHour={settings.backupCadence === "daily" ? settings.dailyBackupHour : settings.weeklyBackupHour}
-                initialMinute={settings.backupCadence === "daily" ? settings.dailyBackupMinute : settings.weeklyBackupMinute}
-                onSave={(h, m) => {
-                  if (settings.backupCadence === "daily") {
-                    updateChoice("dailyBackupHour", h);
-                    updateChoice("dailyBackupMinute", m);
-                  } else {
-                    updateChoice("weeklyBackupHour", h);
-                    updateChoice("weeklyBackupMinute", m);
-                  }
-                  setIsTimePickerOpen(false);
-                }}
-                onClose={() => setIsTimePickerOpen(false)}
-              />
-            )}
-          </div>
-          {settings.backupCadence !== "manual" && (
-            <div className="backup-schedule-detail">
-              {settings.backupCadence === "weekly" && (
-                <div className="backup-schedule-row">
-                  <span className="backup-schedule-row__label">备份日</span>
-                  <div className="backup-day-options">
-                    {WEEKDAYS.map((day) => {
-                      const isSelected = settings.weeklyBackupDays.includes(day.value);
-                      return (
-                        <button
-                          key={day.value}
-                          type="button"
-                          className={`backup-day-btn ${isSelected ? "is-selected" : ""}`}
-                          aria-pressed={isSelected}
-                          onClick={() => {
-                            const current = settings.weeklyBackupDays;
-                            if (isSelected) {
-                              if (current.length > 1) {
-                                updateChoice("weeklyBackupDays", current.filter((d) => d !== day.value));
-                              }
-                            } else {
-                              updateChoice("weeklyBackupDays", [...current, day.value]);
-                            }
-                          }}
-                        >
-                          {day.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </SettingsSection>
 
         <SettingsSection
@@ -405,181 +283,5 @@ function ChoiceGroup<TValue extends string>({
         ))}
       </div>
     </fieldset>
-  );
-}
-
-function TimePickerPopover({
-  initialHour,
-  initialMinute,
-  onSave,
-  onClose,
-}: {
-  initialHour: number;
-  initialMinute: number;
-  onSave: (h: number, m: number) => void;
-  onClose: () => void;
-}) {
-  const [hour, setHour] = useState(initialHour);
-  const [minute, setMinute] = useState(initialMinute);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [onClose]);
-
-  return (
-    <div className="backup-time-popover" ref={popoverRef}>
-      <div className="backup-time-pickers">
-        <ScrollPicker values={BACKUP_HOURS} value={hour} onChange={setHour} suffix="时" />
-        <span className="backup-time-colon" aria-hidden="true">:</span>
-        <ScrollPicker values={BACKUP_MINUTES} value={minute} onChange={setMinute} suffix="分" />
-      </div>
-      <div className="backup-time-popover__footer">
-        <button type="button" className="backup-time-popover__btn" onClick={() => onSave(hour, minute)}>
-          确定
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ScrollPicker({
-  values,
-  value,
-  onChange,
-  suffix,
-}: {
-  values: number[];
-  value: number;
-  onChange: (value: number) => void;
-  suffix: string;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isScrolling = useRef(false);
-  const scrollTimeout = useRef<ReturnType<typeof window.setTimeout> | undefined>(undefined);
-  
-  const REPEAT_COUNT = 5;
-  const CENTER_SET = 2;
-  const repeatedValues = useMemo(() => Array.from({ length: REPEAT_COUNT }, () => values).flat(), [values]);
-
-  const getCenterIdx = (val: number) => {
-    const realIdx = values.indexOf(val);
-    return realIdx !== -1 ? realIdx + values.length * CENTER_SET : 0;
-  };
-
-  const [activeIndex, setActiveIndex] = useState(() => getCenterIdx(value));
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(scrollTimeout.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isScrolling.current) {
-      const realIdx = values.indexOf(value);
-      if (realIdx !== -1) {
-        const currentRealIdx = activeIndex % values.length;
-        if (currentRealIdx !== realIdx) {
-          const newIdx = realIdx + values.length * CENTER_SET;
-          setActiveIndex(newIdx);
-          if (containerRef.current) {
-            containerRef.current.scrollTop = newIdx * 38;
-          }
-        }
-      }
-    }
-  }, [value, values, activeIndex]);
-
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = activeIndex * 38;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const top = e.currentTarget.scrollTop;
-    const idx = Math.max(0, Math.min(repeatedValues.length - 1, Math.round(top / 38)));
-    
-    if (idx !== activeIndex) {
-      setActiveIndex(idx);
-    }
-
-    isScrolling.current = true;
-    clearTimeout(scrollTimeout.current);
-    scrollTimeout.current = setTimeout(() => {
-      isScrolling.current = false;
-      const realVal = repeatedValues[idx];
-      onChange(realVal);
-
-      if (idx < values.length || idx >= values.length * (REPEAT_COUNT - 1)) {
-        const realIdx = idx % values.length;
-        const centerIdx = realIdx + values.length * CENTER_SET;
-        if (containerRef.current) {
-          containerRef.current.scrollTop = centerIdx * 38;
-          setActiveIndex(centerIdx);
-        }
-      }
-    }, 150);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const next = Math.min(repeatedValues.length - 1, activeIndex + 1);
-      if (containerRef.current) containerRef.current.scrollTo({ top: next * 38, behavior: "smooth" });
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const next = Math.max(0, activeIndex - 1);
-      if (containerRef.current) containerRef.current.scrollTo({ top: next * 38, behavior: "smooth" });
-    }
-  };
-
-  return (
-    <div className="scroll-picker-wrapper" aria-label={suffix}>
-      <div className="scroll-picker__highlight" aria-hidden="true" />
-      <div
-        className="scroll-picker"
-        ref={containerRef}
-        onScroll={handleScroll}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
-        role="listbox"
-      >
-        <div className="scroll-picker__spacer" aria-hidden="true" />
-        {repeatedValues.map((v, idx) => {
-          const offset = Math.abs(idx - activeIndex);
-          const dataOffset = offset > 2 ? 3 : offset;
-          return (
-            <div
-              key={`${idx}-${v}`}
-              className="scroll-picker__item"
-              data-offset={dataOffset}
-              aria-selected={idx === activeIndex}
-              role="option"
-              onClick={() => {
-                if (containerRef.current) {
-                  containerRef.current.scrollTo({ top: idx * 38, behavior: "smooth" });
-                }
-              }}
-            >
-              <span className="scroll-picker__value">{pad2(v)}</span>
-              <span className="scroll-picker__suffix" style={{ opacity: idx === activeIndex ? 1 : 0 }}>
-                {suffix}
-              </span>
-            </div>
-          );
-        })}
-        <div className="scroll-picker__spacer" aria-hidden="true" />
-      </div>
-    </div>
   );
 }
