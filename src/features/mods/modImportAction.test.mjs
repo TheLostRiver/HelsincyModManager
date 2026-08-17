@@ -17,8 +17,13 @@ test("mod import action opens a ZIP picker and starts the controlled task", () =
   assert.match(source, /setListenerAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
   assert.match(source, /listenerStatus\s*===\s*"failed"[\s\S]*retryTaskProgressListener\(\)/);
   assert.match(source, /continueImportAfterReconnectRef\.current = true/);
-  assert.match(source, /listenerStatus !== "ready" \|\| !continueImportAfterReconnectRef\.current/);
-  assert.match(source, /void handleImportRef\.current\(\)/);
+  assert.match(source, /consumeReconnectImportRequest\(\s*listenerStatus,/);
+  assert.match(source, /if \(reconnect\.shouldStart\) void handleImportRef\.current\(\)/);
+  const handlerCommitIndex = source.indexOf("handleImportRef.current = handleImport");
+  const reconnectEffectIndex = source.indexOf("const reconnect = consumeReconnectImportRequest");
+  assert.ok(handlerCommitIndex > 0);
+  assert.ok(handlerCommitIndex < reconnectEffectIndex);
+  assert.doesNotMatch(source, /handleImportRef\.current = handleImport;\s*\n\s*const taskActive/);
   assert.match(source, /mode === "revision" \? "导入新版本" : "导入 Mod"/);
   assert.match(source, /导入服务暂时不可用，点击后将自动重连并继续/);
   assert.match(source, /isImportTaskTerminal\(next\)[\s\S]*taskIdRef\.current\s*=\s*null/);

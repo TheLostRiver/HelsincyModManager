@@ -164,17 +164,19 @@ export function useTourTarget(
     }
 
     const mutationObserver = new MutationObserver(scheduleMeasure);
-    mutationObserver.observe(document.body, {
+    const observationRoot = document.getElementById("root") ?? document.body;
+    mutationObserver.observe(observationRoot, {
       attributes: true,
       childList: true,
       subtree: true,
       attributeFilter: ["aria-hidden", "class", "hidden", "inert"],
     });
 
+    const scrollListenerOptions = { capture: true, passive: true } as const;
     window.addEventListener("resize", scheduleMeasure);
     window.visualViewport?.addEventListener("resize", scheduleMeasure);
     window.visualViewport?.addEventListener("scroll", scheduleMeasure);
-    document.addEventListener("scroll", scheduleMeasure, true);
+    document.addEventListener("scroll", scheduleMeasure, scrollListenerOptions);
     scheduleMeasure();
     animationPollFrameId = window.requestAnimationFrame(pollAnimatedTarget);
     markUnavailableAfterWait();
@@ -188,7 +190,7 @@ export function useTourTarget(
       window.removeEventListener("resize", scheduleMeasure);
       window.visualViewport?.removeEventListener("resize", scheduleMeasure);
       window.visualViewport?.removeEventListener("scroll", scheduleMeasure);
-      document.removeEventListener("scroll", scheduleMeasure, true);
+      document.removeEventListener("scroll", scheduleMeasure, scrollListenerOptions);
     };
   }, [fallbackAnchor, padding, primaryAnchor, requestKey, retryAttempt]);
 
