@@ -4,6 +4,12 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 
 项目目前处于架构设计与脚手架基线阶段，已开始落地 Tauri 2、React、TypeScript 与 Rust workspace。
 
+## 非官方项目声明
+
+Helsincy Mod Manager 是由社区开发者独立维护的个人开源项目，与 CAPCOM CO., LTD.（卡普空）及其
+关联公司不存在任何隶属、授权、赞助、合作或官方认可关系。本项目中提及的游戏名称、商标、角色、
+图像及其他相关权利均归其各自权利人所有。
+
 ## 计划技术栈
 
 - 桌面框架：Tauri 2
