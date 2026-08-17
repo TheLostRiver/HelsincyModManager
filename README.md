@@ -61,6 +61,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 - [发布与产物说明](docs/release/发布与产物说明.md)
 - [构建发布与脚本说明](docs/release/构建发布与脚本说明.md)
 - [更新日志](CHANGELOG.md)
+- [赞助与支持](docs/SPONSOR.md)
 - [工程治理与强制约束](docs/GOVERNANCE.md)
 - [日志与审计设计](docs/LOGGING.md)
 - [多 Agent 协作手册](docs/MULTI_AGENT_COLLABORATION.md)
@@ -75,15 +76,7 @@ Helsincy Mod Manager 是一个面向《怪物猎人》系列 PC 版的跨平台�
 
 ## 支持项目
 
-如果 Helsincy Mod Manager 对你有帮助，欢迎通过以下方式支持项目的持续开发与维护。支持完全自愿，不影响项目功能、更新或开源协作。
-
-### [通过爱发电支持 Helsincy](https://afdian.com/a/Helsincy)
-
-### [通过 Ko-fi 支持 Helsincy](https://ko-fi.com/helsincy)
-
-### 微信赞赏码
-
-<img src="docs/assets/support/wechat-reward-code.jpg" alt="微信赞赏码" width="320">
+赞助方式、用途说明和其他支持项目的方法见 [赞助与支持](docs/SPONSOR.md)。
 
 ## 本地开发
 

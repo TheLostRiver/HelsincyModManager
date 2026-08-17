@@ -1,10 +1,10 @@
 .floating-sidebar {
   z-index: 20;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   align-items: start;
   justify-items: center;
-  gap: 16px;
+  gap: 10px;
   width: 88px;
   /*
    * 上下留白与左侧留白必须跟随 .app-surface 的页面内边距，否则在 2K/4K 下
@@ -50,8 +50,18 @@
 .floating-sidebar__nav {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
+}
+
+.floating-sidebar__utility-nav {
+  display: grid;
+}
+
+.floating-sidebar__utility-nav .floating-sidebar__item {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
 }
 
 .floating-sidebar__item,
@@ -126,6 +136,12 @@ button.floating-sidebar__item {
   .floating-sidebar__nav {
     gap: 6px;
   }
+
+  .floating-sidebar__utility-nav .floating-sidebar__item {
+    width: 32px;
+    height: 32px;
+    border-radius: 11px;
+  }
 }
 
 @media (max-height: 820px) and (min-width: 861px) {
@@ -134,7 +150,7 @@ button.floating-sidebar__item {
      * 本断点只收窄侧边栏本体，上下留白继续由基础规则跟随页面内边距，保持与状态栏对齐。
      * 原有的 top/bottom 声明是死代码：.floating-sidebar 没有 position，偏移属性不生效。
      */
-    gap: 10px;
+    gap: 8px;
     width: 76px;
     padding: 10px 14px;
     border-radius: 26px;
@@ -148,7 +164,39 @@ button.floating-sidebar__item {
   }
 
   .floating-sidebar__nav {
+    gap: 5px;
+  }
+
+  .floating-sidebar__utility-nav .floating-sidebar__item {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 861px) {
+  .floating-sidebar {
     gap: 6px;
+    width: 68px;
+    padding: 8px 12px;
+    border-radius: 22px;
+  }
+
+  .floating-sidebar__brand,
+  .floating-sidebar__item {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+  }
+
+  .floating-sidebar__nav {
+    gap: 4px;
+  }
+
+  .floating-sidebar__utility-nav .floating-sidebar__item {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
   }
 }
 

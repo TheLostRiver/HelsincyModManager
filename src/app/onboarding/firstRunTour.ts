@@ -9,6 +9,7 @@ export const ONBOARDING_ROUTE_ORDER: readonly AppRouteId[] = [
   "backups",
   "diagnostics",
   "settings",
+  "about",
 ];
 
 type TourFeatureStep = {
@@ -317,6 +318,28 @@ const routeGuidance: Record<AppRouteId, RouteGuidance> = {
         fallbackTarget: "settings.save-backup",
         placement: "left-start",
         bullets: ["开关不会修改配置档自己的备份计划。", "“重新检查”只验证系统任务与 worker 状态。"],
+      },
+    ],
+  },
+  about: {
+    title: "关于 HMM",
+    description: "这里集中显示当前版本、发布入口、项目地址、赞助说明和意见反馈渠道。",
+    bullets: ["当前版本来自安装产物。", "所有外部入口都会在系统浏览器中打开。"],
+    featureSteps: [
+      {
+        id: "about-release",
+        title: "查看版本与更新",
+        description: "先确认当前 HMM 版本，再前往 GitHub Releases 检查新版本或阅读更新记录。",
+        target: "about.release",
+        placement: "bottom-start",
+      },
+      {
+        id: "about-links",
+        title: "找到项目支持入口",
+        description: "作者主页、开源仓库、赞助说明和 Issues 都集中在这里。",
+        target: "about.links",
+        placement: "top-start",
+        bullets: ["功能建议和缺陷请提交到 Issues。", "敏感安全问题请按仓库安全策略私下报告。"],
       },
     ],
   },

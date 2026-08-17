@@ -124,6 +124,7 @@ pub fn run_installer_cleanup_from_env() -> i32 {
 pub fn run() {
     let app = register_thumbnail_protocol(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_log_health = app_log::initialize(app.handle());
             app.manage(app_log_health);

@@ -7,6 +7,8 @@ import { ClassicSidebarModeButton } from "../../sidebar-mode-control/SidebarMode
 export function ClassicSidebar() {
   const { getNavigationState, navigate } = useAppRoute();
   const navigationItems = getNavigationState(navItems);
+  const primaryItems = navigationItems.filter((item) => item.placement !== "utility");
+  const utilityItems = navigationItems.filter((item) => item.placement === "utility");
 
   return (
     <aside className="sidebar" aria-label="主导航">
@@ -19,12 +21,17 @@ export function ClassicSidebar() {
       </div>
 
       <nav className="nav-list" data-tour-id="app.navigation">
-        {navigationItems.map((item) => (
+        {primaryItems.map((item) => (
           <ClassicNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
       </nav>
 
       <div className="sidebar-footer">
+        <nav className="sidebar-utility-nav" aria-label="辅助导航">
+          {utilityItems.map((item) => (
+            <ClassicNavButton key={item.id} item={item} onNavigate={navigate} />
+          ))}
+        </nav>
         <ClassicSidebarModeButton />
 
         <div className="nav-footnote">

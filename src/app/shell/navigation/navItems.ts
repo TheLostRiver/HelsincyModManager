@@ -3,6 +3,7 @@ import {
   Crosshair,
   FileSearch,
   Gamepad2,
+  Info,
   LayoutDashboard,
   ListChecks,
   Puzzle,
@@ -19,6 +20,7 @@ export type NavItem = {
   icon: ComponentType<{ size?: number; strokeWidth?: number }>;
   route: string;
   disabledReason?: string;
+  placement?: "primary" | "utility";
 };
 
 export const navItems: NavItem[] = [
@@ -33,4 +35,5 @@ export const navItems: NavItem[] = [
   { id: "tasks", label: "任务队列", icon: ListChecks, route: "/tasks", disabledReason: "任务队列页面尚未接入" },
   { id: "diagnostics", label: "日志 / 诊断", icon: FileSearch, route: "/diagnostics" },
   { id: "settings", label: "设置", icon: Settings, route: "/settings" },
+  { id: "about", label: "关于", icon: Info, route: "/about", placement: "utility" },
 ];
