@@ -104,9 +104,23 @@ test("batch mode keeps right-click selection intact and disables single-item wri
   const menu = readSource("src/features/mods/ModContextMenu.tsx");
 
   assert.match(page, /if \(selectionMode === "single" && !selectedIds\.has\(modId\)\)/);
-  assert.match(page, /batchSelectionActive=\{selectionMode === "batch"\}/);
-  assert.match(menu, /aria-disabled=\{batchSelectionActive \|\| undefined\}/);
-  assert.match(menu, /批量选择中，请使用上方批量操作/);
+  assert.match(page, /selectionMode === "batch"[\s\S]*?批量选择中，请使用上方批量操作/);
+  assert.match(menu, /disabled=\{lifecycleDisabled\}/);
+});
+
+test("context menu lifecycle action reuses the existing single-item install and uninstall workflows", () => {
+  const page = readSource("src/features/mods/ModLibraryPage.tsx");
+  const menu = readSource("src/features/mods/ModContextMenu.tsx");
+
+  assert.match(page, /status === "installed"[\s\S]*?"卸载 Mod"/);
+  assert.match(page, /status === "not_installed"[\s\S]*?"安装 Mod"/);
+  assert.match(page, /case "install":\s*startSelectedInstallTask\(modId\)/);
+  assert.match(page, /case "uninstall":\s*promptSelectedUninstallTask\(modId\)/);
+  assert.match(page, /const startSelectedInstallTask = \(requestedModId\?: string\)/);
+  assert.match(page, /const promptSelectedUninstallTask = \(requestedModId\?: string\)/);
+  assert.match(page, /selectionInteractionLocked/);
+  assert.match(menu, /handleItemClick\(lifecycleAction\.actionId\)/);
+  assert.doesNotMatch(menu, /toggle-enable|启用 \/ 禁用/);
 });
 
 test("query context changes reset selection while pagination keeps it", () => {
