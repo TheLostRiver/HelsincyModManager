@@ -6,7 +6,12 @@ export type ModContextMenuProps = {
   x: number;
   y: number;
   modId: string;
-  batchSelectionActive?: boolean;
+  lifecycleAction?: {
+    actionId: "install" | "uninstall" | null;
+    label: string;
+    tone?: "danger" | "neutral";
+    disabledReason?: string;
+  };
   onClose: () => void;
   onAction: (actionId: string, modId: string) => void;
 };
@@ -51,7 +56,11 @@ export function ModContextMenu({
   x,
   y,
   modId,
-  batchSelectionActive = false,
+  lifecycleAction = {
+    actionId: null,
+    label: "安装 / 卸载 Mod",
+    disabledReason: "当前 Mod 状态不可用",
+  },
   onClose,
   onAction,
 }: ModContextMenuProps) {
@@ -122,24 +131,28 @@ export function ModContextMenu({
     onClose();
   };
 
+  const lifecycleDisabled = lifecycleAction.actionId === null || lifecycleAction.disabledReason !== undefined;
+
   return createPortal(
     <div className="mod-context-menu" style={getStyle()} ref={menuRef}>
-      <div
-        className={`mod-context-menu__item is-danger${batchSelectionActive ? " is-disabled" : ""}`}
-        aria-disabled={batchSelectionActive || undefined}
-        title={batchSelectionActive ? "批量选择中，请使用上方批量操作" : undefined}
+      <button
+        type="button"
+        className={`mod-context-menu__item${lifecycleAction.tone === "danger" ? " is-danger" : ""}${lifecycleDisabled ? " is-disabled" : ""}`}
+        aria-disabled={lifecycleDisabled || undefined}
+        disabled={lifecycleDisabled}
+        title={lifecycleAction.disabledReason}
         onClick={() => {
-          if (!batchSelectionActive) {
-            handleItemClick("toggle-enable");
+          if (lifecycleAction.actionId !== null && !lifecycleDisabled) {
+            handleItemClick(lifecycleAction.actionId);
           }
         }}
       >
         <IconPower />
         <span className="mod-context-menu__item-copy">
-          <span>启用 / 禁用</span>
-          {batchSelectionActive ? <small>请使用上方批量操作</small> : null}
+          <span>{lifecycleAction.label}</span>
+          {lifecycleAction.disabledReason ? <small>{lifecycleAction.disabledReason}</small> : null}
         </span>
-      </div>
+      </button>
       <div className="mod-context-menu__divider" />
       <div
         className="mod-context-menu__item"

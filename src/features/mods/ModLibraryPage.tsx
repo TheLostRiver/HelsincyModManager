@@ -883,6 +883,47 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         ? "请先完成或关闭当前批量操作"
         : undefined;
   const selectionInteractionLocked = selectionInteractionDisabledReason !== undefined;
+  const contextMenuLifecycleAction = useMemo(() => {
+    const item = contextMenuState === null
+      ? null
+      : libraryItems.find((candidate) => candidate.id === contextMenuState.modId) ?? null;
+    const status = item?.installSummary?.status;
+    const label = status === "installed"
+      ? "卸载 Mod"
+      : status === "not_installed"
+        ? "安装 Mod"
+        : "安装 / 卸载 Mod";
+
+    if (item === null) {
+      return { actionId: null, label, disabledReason: "当前 Mod 不在列表中" } as const;
+    }
+    if (selectionMode === "batch") {
+      return { actionId: null, label, disabledReason: "批量选择中，请使用上方批量操作" } as const;
+    }
+    if (selectionInteractionDisabledReason !== undefined) {
+      return { actionId: null, label, disabledReason: selectionInteractionDisabledReason } as const;
+    }
+    if (activeProfile.status !== "ready" || activeProfileId === null) {
+      return { actionId: null, label, disabledReason: "选择配置档后可执行此操作" } as const;
+    }
+    if (recoveryPanelStateForItem(item) !== null) {
+      return { actionId: null, label, disabledReason: "请先处理安装恢复状态" } as const;
+    }
+    if (status === "installed") {
+      return { actionId: "uninstall", label, tone: "danger" } as const;
+    }
+    if (status === "not_installed") {
+      return { actionId: "install", label, tone: "neutral" } as const;
+    }
+    return { actionId: null, label, disabledReason: "当前安装状态不可执行此操作" } as const;
+  }, [
+    activeProfile.status,
+    activeProfileId,
+    contextMenuState,
+    libraryItems,
+    selectionInteractionDisabledReason,
+    selectionMode,
+  ]);
 
   const handleQueryChange = (nextQuery: string) => {
     setQuery(nextQuery);
@@ -1004,17 +1045,21 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       });
   };
 
-  const startSelectedInstallTask = () => {
+  const startSelectedInstallTask = (requestedModId?: string) => {
     if (
       libraryQueryBusy
       || selectionMode !== "single"
-      || selectedIds.size !== 1
+      || (requestedModId === undefined && selectedIds.size !== 1)
+      || selectionInteractionLocked
       || reinstallWorkflow.workflowActive
     ) {
       return;
     }
 
-    const [modId] = Array.from(selectedIds);
+    const modId = requestedModId ?? Array.from(selectedIds)[0];
+    if (modId === undefined) {
+      return;
+    }
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
     const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
@@ -1115,15 +1160,23 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       });
   };
 
-  const promptSelectedUninstallTask = () => {
+  const promptSelectedUninstallTask = (requestedModId?: string) => {
     if (
       libraryQueryBusy ||
       selectionMode !== "single" ||
+      (requestedModId === undefined && selectedIds.size !== 1) ||
+      selectionInteractionLocked ||
       reinstallWorkflow.workflowActive ||
       activeProfileId === null ||
-      !selectedItem ||
-      selectedItem.installSummary?.status !== "installed"
+      (requestedModId === undefined && !selectedItem)
     ) {
+      return;
+    }
+
+    const item = requestedModId === undefined
+      ? selectedItem
+      : libraryItems.find((candidate) => candidate.id === requestedModId) ?? null;
+    if (!item || item.installSummary?.status !== "installed") {
       return;
     }
 
@@ -1131,10 +1184,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     setInstallPlanDetailState({ status: "idle" });
     setUninstallConfirmation({
       profileId: activeProfileId,
-      modId: selectedItem.id,
-      modName: selectedItem.name,
-      managedFileCount: selectedItem.installSummary.managedFileCount,
-      backupCount: selectedItem.installSummary.backupCount,
+      modId: item.id,
+      modName: item.name,
+      managedFileCount: item.installSummary.managedFileCount,
+      backupCount: item.installSummary.backupCount,
     });
     setTrackedInstallTaskState({ status: "idle" });
   };
@@ -1296,10 +1349,16 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const handleContextMenuAction = (actionId: string, modId: string) => {
-    if (libraryQueryBusy) {
+    if (libraryQueryBusy || selectionInteractionLocked) {
       return;
     }
     switch (actionId) {
+      case "install":
+        startSelectedInstallTask(modId);
+        break;
+      case "uninstall":
+        promptSelectedUninstallTask(modId);
+        break;
       case "info-settings":
         setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "details"));
         break;
@@ -1579,7 +1638,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           x={contextMenuState.x}
           y={contextMenuState.y}
           modId={contextMenuState.modId}
-          batchSelectionActive={selectionMode === "batch"}
+          lifecycleAction={contextMenuLifecycleAction}
           onClose={() => setContextMenuState(null)}
           onAction={handleContextMenuAction}
         />

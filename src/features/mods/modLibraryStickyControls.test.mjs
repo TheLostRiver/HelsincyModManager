@@ -77,10 +77,10 @@ test("query refresh fails closed for stale page interactions and clears landed-p
 
   assert.match(page, /const selectCard = \(intent: ModCardSelectionIntent\) => \{\s*if \(selectionInteractionLocked\) \{\s*return;/);
   assert.match(page, /const handleContextMenu = \(modId: string, x: number, y: number\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
-  assert.match(page, /selectionMode !== "single"\s*\|\| selectedIds\.size !== 1/);
-  assert.match(page, /const promptSelectedUninstallTask = \(\) => \{\s*if \(\s*libraryQueryBusy \|\|/);
+  assert.match(page, /selectionMode !== "single"\s*\|\|\s*\(requestedModId === undefined && selectedIds\.size !== 1\)/);
+  assert.match(page, /const promptSelectedUninstallTask = \(requestedModId\?: string\) => \{\s*if \(\s*libraryQueryBusy \|\|/);
   assert.match(page, /case "reinstall":\s*if \(libraryQueryBusy\) \{\s*break;/);
-  assert.match(page, /const handleContextMenuAction = \(actionId: string, modId: string\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
+  assert.match(page, /const handleContextMenuAction = \(actionId: string, modId: string\) => \{\s*if \(libraryQueryBusy \|\| selectionInteractionLocked\) \{\s*return;/);
   // Cross-page selection: the library-page effect no longer clears selections; refresh and
   // query/filter changes own that responsibility (refreshModLibrary + resetPageInteraction).
   assert.match(page, /useEffect\(\(\) => \{\s*setContextMenuState\(null\);\s*\}, \[libraryPage\]\);/);
