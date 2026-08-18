@@ -1,9 +1,10 @@
 use crate::batch_mod_lifecycle_dto::{
-    BatchModLifecycleActionSummaryDto, BatchModLifecycleItemInputDto, BatchModLifecycleLayerDto,
-    BatchModLifecycleOperationDto, BatchModLifecyclePreviewDto, BatchModLifecyclePreviewStatusDto,
-    BatchModLifecycleReasonSummaryDto, BatchModLifecycleRequestDto, BatchModLifecycleResultItemDto,
-    BatchModLifecycleResultPageDto, BatchModLifecycleResultSummaryDto, BatchModLifecycleSealDto,
-    BatchModLifecycleSealStatusDto, BatchModLifecycleStartedDto,
+    BatchModLifecycleActionSummaryDto, BatchModLifecycleCapabilityDto,
+    BatchModLifecycleItemInputDto, BatchModLifecycleLayerDto, BatchModLifecycleOperationDto,
+    BatchModLifecyclePreviewDto, BatchModLifecyclePreviewStatusDto, BatchModLifecycleReasonSummaryDto,
+    BatchModLifecycleRequestDto, BatchModLifecycleResultItemDto, BatchModLifecycleResultPageDto,
+    BatchModLifecycleResultSummaryDto, BatchModLifecycleSealDto, BatchModLifecycleSealStatusDto,
+    BatchModLifecycleStartedDto,
 };
 use crate::dto::CommandErrorDto;
 use crate::state::AppState;
@@ -22,6 +23,30 @@ pub const DEFAULT_BATCH_MOD_LIFECYCLE_RESULT_LIMIT: usize = 50;
 pub const MAX_BATCH_MOD_LIFECYCLE_RESULT_LIMIT: usize = 100;
 const BATCH_OPAQUE_ID_MAX_LENGTH: usize = 160;
 const BATCH_TARGET_ID_MAX_LENGTH: usize = 256;
+
+#[tauri::command]
+pub fn get_batch_mod_lifecycle_capability(
+    state: State<'_, AppState>,
+) -> BatchModLifecycleCapabilityDto {
+    project_batch_capability(state.batch_sandbox_environment())
+}
+
+fn project_batch_capability(
+    environment: Option<&hmm_runtime::RuntimeEnvironment>,
+) -> BatchModLifecycleCapabilityDto {
+    match environment {
+        Some(_) => BatchModLifecycleCapabilityDto {
+            preview_available: true,
+            write_available: true,
+            unavailable_reason_code: None,
+        },
+        None => BatchModLifecycleCapabilityDto {
+            preview_available: false,
+            write_available: false,
+            unavailable_reason_code: Some("sandbox_batch_production_forbidden".to_owned()),
+        },
+    }
+}
 
 #[tauri::command]
 pub fn preview_batch_mod_lifecycle(
@@ -758,5 +783,28 @@ mod tests {
         assert_eq!(error, "batch plan is stale");
         let fallback = batch_error_message("unregistered_code");
         assert_eq!(fallback, "batch mod lifecycle operation failed");
+    }
+
+    #[test]
+    fn capability_projection_disables_batch_entry_points_outside_sandbox() {
+        let production = project_batch_capability(None);
+        assert!(!production.preview_available);
+        assert!(!production.write_available);
+        assert_eq!(
+            production.unavailable_reason_code.as_deref(),
+            Some("sandbox_batch_production_forbidden")
+        );
+    }
+
+    #[test]
+    fn capability_projection_enables_batch_entry_points_for_valid_sandbox_environment() {
+        let temp = tempfile::tempdir().expect("temp sandbox root");
+        let environment = hmm_runtime::RuntimeEnvironment::sandbox(temp.path().to_path_buf())
+            .expect("absolute temp path is a valid sandbox root");
+        let capability = project_batch_capability(Some(&environment));
+
+        assert!(capability.preview_available);
+        assert!(capability.write_available);
+        assert_eq!(capability.unavailable_reason_code, None);
     }
 }

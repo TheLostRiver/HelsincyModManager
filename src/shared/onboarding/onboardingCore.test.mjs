@@ -115,3 +115,13 @@ test("tour target candidates prefer the precise anchor and de-duplicate fallback
   ]);
   assert.deepEqual(getTourAnchorCandidates(undefined, "page.profiles"), ["page.profiles"]);
 });
+
+test("tour targets reject disabled ancestors instead of highlighting unusable controls", () => {
+  const source = readFileSync("src/shared/onboarding/tourTarget.ts", "utf8");
+
+  assert.match(
+    source,
+    /element\.closest\('\[aria-disabled="true"\], fieldset:disabled'\)/,
+  );
+  assert.match(source, /if \(element\.hidden\) return false;/);
+});

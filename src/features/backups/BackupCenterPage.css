@@ -130,6 +130,7 @@
   border-color: var(--color-primary-action-border);
 }
 
+.backup-icon-button.is-primary:hover:not(:disabled),
 .backup-action-button.is-primary:hover:not(:disabled),
 .backup-action-button.is-restore:hover:not(:disabled) {
   color: var(--color-primary-action-text);
@@ -138,6 +139,7 @@
   box-shadow: var(--shadow-primary-action-hover);
 }
 
+.backup-icon-button.is-primary:active:not(:disabled),
 .backup-action-button.is-primary:active:not(:disabled),
 .backup-action-button.is-restore:active:not(:disabled) {
   color: var(--color-primary-action-text);

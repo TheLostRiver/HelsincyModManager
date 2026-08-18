@@ -14,6 +14,10 @@ import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { useBatchModLifecycleWorkflow } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
 import {
+  useBatchModLifecycleCapability,
+} from "./batch-lifecycle/useBatchModLifecycleCapability.ts";
+import { getBatchCapabilityUnavailableLabel } from "./batch-lifecycle/batchModLifecycleCopy.ts";
+import {
   InstallPlanDetailSheet,
   ManagedInstallTaskFeedback,
   UninstallConfirmationDialog,
@@ -354,6 +358,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       : null,
     [activeProfile.status, activeProfileId],
   );
+  const batchCapability = useBatchModLifecycleCapability();
+  const batchCapabilityUnavailableReason = getBatchCapabilityUnavailableLabel(
+    batchCapability.capability,
+  );
+  const batchPreviewUnavailableReason =
+    batchCapability.status === "loading" || !batchCapability.capability?.previewAvailable
+      ? batchCapabilityUnavailableReason
+      : undefined;
+  const batchWriteUnavailableReason =
+    batchCapability.status === "loading" || !batchCapability.capability?.writeAvailable
+      ? batchCapabilityUnavailableReason
+      : undefined;
   const browserPreviewEnabled = useMemo(
     () => isPlainBrowserDevRuntime({
       isDev: (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true,
@@ -481,20 +497,22 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     return libraryItems.find((item) => item.id === selectedId) ?? null;
   }, [libraryItems, selectedIds, selectionMode]);
   const managedInstallTaskActive = installTaskState.status === "starting" || installTaskState.status === "running";
+  const batchWriteAvailable = batchCapability.capability?.writeAvailable === true;
+  const batchPreviewAvailable = batchCapability.capability?.previewAvailable === true;
   const canUninstallSelected =
     activeProfile.status === "ready"
     && (selectionMode === "batch"
-      ? selectedIds.size > 0
+      ? selectedIds.size > 0 && batchWriteAvailable
       : selectedItem?.installSummary?.status === "installed");
   const canReinstallSelected =
     activeProfile.status === "ready"
     && (selectionMode === "batch"
-      ? selectedIds.size > 0
+      ? selectedIds.size > 0 && batchWriteAvailable
       : selectedItem?.installSummary?.status === "installed");
   const canInstallSelected =
     activeProfile.status === "ready"
     && (selectionMode === "batch"
-      ? selectedIds.size > 0
+      ? selectedIds.size > 0 && batchWriteAvailable
       : selectedItem !== null && selectedItem.installSummary?.status === "not_installed");
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
@@ -1240,14 +1258,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       case "preview-plan":
         if (selectionMode === "single") {
           previewSelectedInstallPlan();
-        } else {
+        } else if (!selectionInteractionLocked && batchPreviewAvailable) {
           void batchWorkflow.prepare("install", Array.from(selectedIds));
         }
         break;
       case "install":
         if (selectionMode === "single") {
           startSelectedInstallTask();
-        } else {
+        } else if (!selectionInteractionLocked && batchWriteAvailable) {
           void batchWorkflow.prepare("install", Array.from(selectedIds));
         }
         break;
@@ -1260,14 +1278,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         setInstallPlanDetailState({ status: "idle" });
         if (selectionMode === "single") {
           openReinstall();
-        } else {
+        } else if (!selectionInteractionLocked && batchWriteAvailable) {
           void batchWorkflow.prepare("reinstall", Array.from(selectedIds));
         }
         break;
       case "uninstall":
         if (selectionMode === "single") {
           promptSelectedUninstallTask();
-        } else {
+        } else if (!selectionInteractionLocked && batchWriteAvailable) {
           void batchWorkflow.prepare("uninstall", Array.from(selectedIds));
         }
         break;
@@ -1376,6 +1394,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             pageCount={libraryItems.length}
             selectionNotice={selectionNotice?.message ?? null}
             selectionInteractionDisabledReason={selectionInteractionDisabledReason}
+            batchPreviewUnavailableReason={batchPreviewUnavailableReason}
+            batchWriteUnavailableReason={batchWriteUnavailableReason}
             selectedModId={selectionMode === "single" ? selectedItem?.id ?? null : null}
             installTaskActive={installTaskActive}
             libraryQueryBusy={libraryQueryBusy}

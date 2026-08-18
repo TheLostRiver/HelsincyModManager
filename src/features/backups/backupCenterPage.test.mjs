@@ -94,10 +94,12 @@ test("backup center is responsive without horizontal scrolling or translucent bl
   assert.match(css, /\.backup-profile-avatar img\s*\{[\s\S]*?object-fit:\s*cover/);
 });
 
-test("backup restore action preserves primary text color while hovered", () => {
+test("primary backup icon and action buttons preserve primary colors while hovered", () => {
   const css = read("src/features/backups/BackupCenterPage.css");
-  const hoverRule = css.match(/\.backup-action-button\.is-primary:hover:not\(:disabled\),[\s\S]*?\.backup-action-button\.is-restore:hover:not\(:disabled\)\s*\{[^}]*\}/)?.[0] ?? "";
+  const hoverRule = css.match(/\.backup-icon-button\.is-primary:hover:not\(:disabled\),[\s\S]*?\.backup-action-button\.is-restore:hover:not\(:disabled\)\s*\{[^}]*\}/)?.[0] ?? "";
 
+  assert.match(hoverRule, /\.backup-icon-button\.is-primary/);
+  assert.match(hoverRule, /\.backup-action-button\.is-primary/);
   assert.match(hoverRule, /color:\s*var\(--color-primary-action-text\)/);
   assert.match(hoverRule, /background:\s*var\(--color-primary-action-bg-hover\)/);
   assert.match(hoverRule, /border-color:\s*var\(--color-primary-action-border\)/);

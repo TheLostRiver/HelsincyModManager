@@ -13,6 +13,7 @@ type TourProviderProps = {
 export function TourProvider({ children }: TourProviderProps) {
   const { currentRoute } = useAppRoute();
   const autoStartCheckedRef = useRef(false);
+  const activatedTargetStepIdRef = useRef<string | null>(null);
   const [activeTour, setActiveTour] = useState<TourDefinition | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const activeStep = activeTour?.steps[stepIndex];
@@ -38,22 +39,35 @@ export function TourProvider({ children }: TourProviderProps) {
 
   useEffect(() => {
     if (activeStep?.advance.kind !== "route-change") return undefined;
+    if (activatedTargetStepIdRef.current !== activeStep.id) return undefined;
     if (activeStep.advance.expectedRouteId !== currentRoute.id) return undefined;
 
     const frameId = window.requestAnimationFrame(() => {
+      activatedTargetStepIdRef.current = null;
       setStepIndex((current) => Math.min(current + 1, (activeTour?.steps.length ?? 1) - 1));
     });
     return () => window.cancelAnimationFrame(frameId);
   }, [activeStep, activeTour?.steps.length, currentRoute.id]);
 
+  const changeStep = useCallback((index: number) => {
+    activatedTargetStepIdRef.current = null;
+    setStepIndex(index);
+  }, []);
+
+  const markTargetActivated = useCallback((stepId: string) => {
+    activatedTargetStepIdRef.current = stepId;
+  }, []);
+
   const startTour = useCallback(() => {
     autoStartCheckedRef.current = true;
+    activatedTargetStepIdRef.current = null;
     setStepIndex(0);
     setActiveTour(buildOnboardingTour(currentRoute.id));
   }, [currentRoute.id]);
 
   const finishTour = useCallback((outcome: TourOutcome) => {
     if (activeTour) saveTourOutcome(activeTour, outcome, getLocalStorage());
+    activatedTargetStepIdRef.current = null;
     setActiveTour(null);
     setStepIndex(0);
   }, [activeTour]);
@@ -70,7 +84,8 @@ export function TourProvider({ children }: TourProviderProps) {
         <TourOverlay
           steps={activeTour.steps}
           stepIndex={stepIndex}
-          onStepChange={setStepIndex}
+          onStepChange={changeStep}
+          onTargetActivate={markTargetActivated}
           onFinish={finishTour}
         />
       ) : null}

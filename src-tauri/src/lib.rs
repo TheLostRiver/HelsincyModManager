@@ -104,8 +104,9 @@ use window_lifecycle_commands::{
 
 pub use background_worker::BackgroundWorkerEntryError;
 use batch_mod_lifecycle_commands::{
-    get_batch_mod_lifecycle_result, preview_batch_mod_lifecycle, retry_batch_mod_lifecycle,
-    seal_batch_mod_lifecycle, start_batch_mod_lifecycle,
+    get_batch_mod_lifecycle_capability, get_batch_mod_lifecycle_result,
+    preview_batch_mod_lifecycle, retry_batch_mod_lifecycle, seal_batch_mod_lifecycle,
+    start_batch_mod_lifecycle,
 };
 
 #[tauri::command]
@@ -145,6 +146,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_health,
+            get_batch_mod_lifecycle_capability,
             preview_batch_mod_lifecycle,
             seal_batch_mod_lifecycle,
             start_batch_mod_lifecycle,

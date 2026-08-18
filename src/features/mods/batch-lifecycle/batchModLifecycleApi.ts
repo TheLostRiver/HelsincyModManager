@@ -2,12 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import type { TaskStartedDto } from "../modImportTypes";
 import {
   BATCH_MOD_LIFECYCLE_RESULT_PAGE_SIZE,
+  type BatchModLifecycleCapabilityDto,
   type BatchModLifecyclePreviewDto,
   type BatchModLifecycleRequestDto,
   type BatchModLifecycleResultPageDto,
   type BatchModLifecycleSealDto,
   type BatchModLifecycleStartedDto,
 } from "./batchModLifecycleTypes.ts";
+
+export function getBatchModLifecycleCapability(): Promise<BatchModLifecycleCapabilityDto> {
+  return invoke<BatchModLifecycleCapabilityDto>("get_batch_mod_lifecycle_capability");
+}
 
 export function previewBatchModLifecycle(
   request: BatchModLifecycleRequestDto,

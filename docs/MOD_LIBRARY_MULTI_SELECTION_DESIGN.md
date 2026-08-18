@@ -642,7 +642,7 @@ Windows 中文输入法可能占用 `Ctrl + Space`。该组合键是补充快捷
 - 增加显式 `single | batch` 状态。
 - 把卡片回调改为明确 selection intent。
 - 接入 `Ctrl + 点击`、`Ctrl + Space`和批量模式 Space。
-- 补纯状态和卡片交互测试。
+- 补充纯状态和卡片交互测试。
 
 ### Slice B：快捷操作与跨页规则
 

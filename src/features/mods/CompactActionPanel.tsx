@@ -29,6 +29,8 @@ type CompactActionPanelProps = {
   pageCount: number;
   selectionNotice?: string | null;
   selectionInteractionDisabledReason?: string;
+  batchPreviewUnavailableReason?: string;
+  batchWriteUnavailableReason?: string;
   selectedModId?: string | null;
   installTaskActive?: boolean;
   libraryQueryBusy: boolean;
@@ -58,6 +60,8 @@ export function CompactActionPanel({
   pageCount,
   selectionNotice = null,
   selectionInteractionDisabledReason,
+  batchPreviewUnavailableReason,
+  batchWriteUnavailableReason,
   selectedModId = null,
   installTaskActive = false,
   libraryQueryBusy,
@@ -98,6 +102,19 @@ export function CompactActionPanel({
     };
     return labels[actionId] ?? fallback;
   };
+  const batchCapabilityDisabledReason = (actionId: string) =>
+    batchSelectionActive && actionId === "preview-plan"
+      ? batchPreviewUnavailableReason
+      : batchSelectionActive
+        ? batchWriteUnavailableReason
+        : undefined;
+  const lifecycleDisabledReason = (
+    actionId: string,
+    fallbackReason: string | undefined,
+  ) =>
+    selectionInteractionDisabledReason
+    ?? batchCapabilityDisabledReason(actionId)
+    ?? fallbackReason;
 
   return (
     <aside
@@ -180,16 +197,19 @@ export function CompactActionPanel({
           .filter((a) => !["select-all", "invert", "refresh", "add", "add-revision"].includes(a.id))
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
-            const disabledReason = getCompactActionDisabledReason({
-              actionId: action.id,
-              selectedCount,
-              profileReady,
-              installTaskActive,
-              libraryQueryBusy,
-              canInstallSelection,
-              canReinstallSelection,
-              canUninstallSelection,
-            });
+            const disabledReason = lifecycleDisabledReason(
+              action.id,
+              getCompactActionDisabledReason({
+                actionId: action.id,
+                selectedCount,
+                profileReady,
+                installTaskActive,
+                libraryQueryBusy,
+                canInstallSelection,
+                canReinstallSelection,
+                canUninstallSelection,
+              }),
+            );
             return (
               <ModLibraryControlTooltip key={action.id} content={disabledReason}>
                 {(descriptionId) => (
