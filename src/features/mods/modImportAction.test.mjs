@@ -16,6 +16,16 @@ test("mod import action opens a ZIP picker and starts the controlled task", () =
   assert.match(source, /event\.payload\.taskId\s*!==\s*taskId/);
   assert.match(source, /setListenerAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
   assert.match(source, /listenerStatus\s*===\s*"failed"[\s\S]*retryTaskProgressListener\(\)/);
+  assert.match(source, /continueImportAfterReconnectRef\.current = true/);
+  assert.match(source, /consumeReconnectImportRequest\(\s*listenerStatus,/);
+  assert.match(source, /if \(reconnect\.shouldStart\) void handleImportRef\.current\(\)/);
+  const handlerCommitIndex = source.indexOf("handleImportRef.current = handleImport");
+  const reconnectEffectIndex = source.indexOf("const reconnect = consumeReconnectImportRequest");
+  assert.ok(handlerCommitIndex > 0);
+  assert.ok(handlerCommitIndex < reconnectEffectIndex);
+  assert.doesNotMatch(source, /handleImportRef\.current = handleImport;\s*\n\s*const taskActive/);
+  assert.match(source, /mode === "revision" \? "导入新版本" : "导入 Mod"/);
+  assert.match(source, /导入服务暂时不可用，点击后将自动重连并继续/);
   assert.match(source, /isImportTaskTerminal\(next\)[\s\S]*taskIdRef\.current\s*=\s*null/);
   assert.match(source, /showTaskNotice\(\{/);
   assert.match(source, /taskId:\s*taskState\.taskId/);
@@ -28,9 +38,11 @@ test("mod import action opens a ZIP picker and starts the controlled task", () =
 test("the existing add action owns import and refreshes the library on completion", () => {
   const panelSource = readSource("src/features/mods/CompactActionPanel.tsx");
   const pageSource = readSource("src/features/mods/ModLibraryPage.tsx");
+  const dataSource = readSource("src/features/mods/modsLibraryData.ts");
 
   assert.match(panelSource, /<ModImportAction\s+label=\{addAction\.label\}\s+onImported=\{onImportCompleted\}/);
   assert.match(pageSource, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
+  assert.match(dataSource, /id: "add", label: "导入 Mod"/);
 });
 
 test("candidate import reuses the picker task UI with an explicit selected mod owner", () => {

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import "./shared/styles/reset.css";
 import "./shared/styles/tokens.css";
+import "./shared/onboarding/onboarding.css";
 import "./app/frame/AppFrame.css";
 import "./app/frame/ThemeMenu.css";
 import "./app/routing/RouterOutlet.css";

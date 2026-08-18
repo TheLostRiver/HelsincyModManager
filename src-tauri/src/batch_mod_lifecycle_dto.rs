@@ -183,6 +183,19 @@ pub struct BatchModLifecycleStartedDto {
     pub attempt_number: u32,
 }
 
+// ===== Capability =====
+
+/// Backend-owned projection that lets the UI disable unavailable batch lifecycle entry points
+/// before calling a write/preview command. Production still revalidates the Sandbox gate on every
+/// command; this DTO is an interaction gate, not a write authorization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchModLifecycleCapabilityDto {
+    pub preview_available: bool,
+    pub write_available: bool,
+    pub unavailable_reason_code: Option<String>,
+}
+
 // ===== Result page =====
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -356,6 +369,36 @@ mod tests {
         assert_eq!(request.operation, BatchModLifecycleOperationDto::Reinstall);
         assert_eq!(request.replacement_targets.len(), 1);
         assert_eq!(request.replacement_targets[0].mod_id, "mod-a");
+    }
+
+    #[test]
+    fn capability_dto_serializes_backend_owned_gate_without_paths_or_tokens() {
+        let unavailable = BatchModLifecycleCapabilityDto {
+            preview_available: false,
+            write_available: false,
+            unavailable_reason_code: Some("sandbox_batch_production_forbidden".to_owned()),
+        };
+        let value = serde_json::to_value(&unavailable).expect("serialize capability dto");
+
+        assert_eq!(value["previewAvailable"], false);
+        assert_eq!(value["writeAvailable"], false);
+        assert_eq!(
+            value["unavailableReasonCode"],
+            "sandbox_batch_production_forbidden"
+        );
+
+        let available = BatchModLifecycleCapabilityDto {
+            preview_available: true,
+            write_available: true,
+            unavailable_reason_code: None,
+        };
+        let value = serde_json::to_value(&available).expect("serialize capability dto");
+        assert_eq!(value["previewAvailable"], true);
+        assert_eq!(value["writeAvailable"], true);
+        assert!(value["unavailableReasonCode"].is_null());
+        assert!(!serde_json::to_string(&value)
+            .expect("compact serialization")
+            .contains('\\'));
     }
 
     #[test]

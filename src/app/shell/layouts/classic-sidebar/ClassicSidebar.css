@@ -147,6 +147,11 @@
   margin-top: auto;
 }
 
+.sidebar-utility-nav {
+  display: grid;
+  gap: 4px;
+}
+
 .nav-footnote {
   display: grid;
   gap: 6px;

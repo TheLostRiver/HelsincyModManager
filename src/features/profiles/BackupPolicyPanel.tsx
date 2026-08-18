@@ -1,10 +1,22 @@
 import { RotateCcw, ShieldCheck } from "lucide-react";
 import { BackupSchedulePicker } from "./BackupSchedulePicker";
+import { DEFAULT_PROFILE_BACKUP_RETENTION } from "./profileSaveSettingsDefaults";
 import type {
   ProfileBackupRetentionDto,
   ProfileBackupScheduleDto,
   ProfileSaveSettingsDto,
 } from "./profileSaveSettingsTypes";
+
+const MAX_RETENTION_COUNT = 999;
+const MAX_RETENTION_AGE_DAYS = 3650;
+const MIN_RETENTION_TOTAL_MIB = 16;
+const MAX_RETENTION_TOTAL_MIB = 1_048_576;
+const MEBIBYTE = 1024 * 1024;
+
+function clampInteger(rawValue: string, minimum: number, maximum: number, fallback: number) {
+  const parsed = Math.floor(Number(rawValue));
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+}
 
 type BackupPolicyPanelProps = {
   settings: ProfileSaveSettingsDto;
@@ -22,7 +34,11 @@ export function BackupPolicyPanel({
   disabled = false,
 }: BackupPolicyPanelProps) {
   return (
-    <section className={`profile-policy-card ${disabled ? "is-disabled" : ""}`} aria-labelledby="profile-backup-policy-title">
+    <section
+      className={`profile-policy-card ${disabled ? "is-disabled" : ""}`}
+      aria-labelledby="profile-backup-policy-title"
+      data-tour-id="profiles.backup-policy"
+    >
       <div className="profile-policy-card__header panel-header-row">
         <div>
           <h2 id="profile-backup-policy-title">自动备份</h2>
@@ -39,14 +55,15 @@ export function BackupPolicyPanel({
             <span>保留数量</span>
             <input
               type="number"
-              min={1}
-              max={999}
+              min={0}
+              max={MAX_RETENTION_COUNT}
               value={settings.retention.maxCount}
               disabled={disabled}
+              aria-describedby="profile-retention-unlimited-note"
               onChange={(event) =>
                 onRetentionChange({
                   ...settings.retention,
-                  maxCount: Math.max(1, Number(event.target.value) || 1),
+                  maxCount: clampInteger(event.target.value, 0, MAX_RETENTION_COUNT, 0),
                 })
               }
             />
@@ -55,40 +72,44 @@ export function BackupPolicyPanel({
             <span>保留天数</span>
             <input
               type="number"
-              min={1}
-              max={3650}
-              value={settings.retention.maxAgeDays ?? ""}
+              min={0}
+              max={MAX_RETENTION_AGE_DAYS}
+              value={settings.retention.maxAgeDays ?? 0}
               disabled={disabled}
-              onChange={(event) =>
+              aria-describedby="profile-retention-unlimited-note"
+              onChange={(event) => {
+                const maxAgeDays = clampInteger(event.target.value, 0, MAX_RETENTION_AGE_DAYS, 0);
                 onRetentionChange({
                   ...settings.retention,
-                  maxAgeDays: event.target.value
-                    ? Math.min(3650, Math.max(1, Math.floor(Number(event.target.value) || 1)))
-                    : null,
-                })
-              }
+                  maxAgeDays: maxAgeDays === 0 ? null : maxAgeDays,
+                });
+              }}
             />
           </label>
           <label className="profile-field">
             <span>空间上限（MiB）</span>
             <input
               type="number"
-              min={16}
-              max={1048576}
-              value={settings.retention.maxTotalBytes === null ? "" : Math.round(settings.retention.maxTotalBytes / (1024 * 1024))}
+              min={0}
+              max={MAX_RETENTION_TOTAL_MIB}
+              value={settings.retention.maxTotalBytes === null ? 0 : Math.round(settings.retention.maxTotalBytes / MEBIBYTE)}
               step={1}
               disabled={disabled}
-              onChange={(event) =>
+              aria-describedby="profile-retention-unlimited-note"
+              onChange={(event) => {
+                const maxTotalMiB = clampInteger(event.target.value, 0, MAX_RETENTION_TOTAL_MIB, 0);
                 onRetentionChange({
                   ...settings.retention,
-                  maxTotalBytes: event.target.value
-                    ? Math.min(1_048_576, Math.max(16, Math.floor(Number(event.target.value) || 16))) * 1024 * 1024
-                    : null,
-                })
-              }
+                  maxTotalBytes:
+                    maxTotalMiB === 0 ? null : Math.max(MIN_RETENTION_TOTAL_MIB, maxTotalMiB) * MEBIBYTE,
+                });
+              }}
             />
           </label>
         </div>
+        <p id="profile-retention-unlimited-note" className="profile-retention-note">
+          数量、天数和空间上限：0 = 不限制
+        </p>
 
         <div className="profile-pre-restore-setting">
           <div>
@@ -108,7 +129,7 @@ export function BackupPolicyPanel({
           type="button"
           className="profile-action-button"
           disabled={disabled}
-          onClick={() => onRetentionChange({ maxCount: 20, maxAgeDays: 30, maxTotalBytes: null })}
+          onClick={() => onRetentionChange({ ...DEFAULT_PROFILE_BACKUP_RETENTION })}
         >
           <RotateCcw size={14} />
           重置保留策略

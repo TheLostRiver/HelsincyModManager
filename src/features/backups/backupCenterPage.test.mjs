@@ -15,7 +15,7 @@ test("backup center is an enabled first-class route with tracked feature-local s
   assert.match(routes, /id:\s*"backups"[\s\S]*?path:\s*"\/backups"[\s\S]*?element:\s*BackupCenterPage/);
   const navLine = nav.split("\n").find((line) => line.includes('id: "backups"'));
   assert.ok(navLine);
-  assert.match(navLine, /label:\s*"存档备份"/);
+  assert.match(navLine, /label:\s*"备份整理"/);
   assert.equal(navLine.includes("disabledReason"), false);
   assert.match(main, /features\/backups\/BackupCenterPage\.css/);
   assert.match(gitignore, /!src\/features\/backups\/\*\*/);
@@ -40,6 +40,8 @@ test("backup center uses narrow camelCase DTOs and controlled commands", () => {
 test("backup center keeps restore controlled and exposes note and retention states", () => {
   const page = read("src/features/backups/BackupCenterPage.tsx");
 
+  assert.match(page, /<h1>备份整理<\/h1>/);
+  assert.match(page, /跨配置档查看备份历史、保护点与整理状态/);
   assert.match(page, /SaveRestoreDialog/);
   assert.match(page, /backup\.status === "completed"\s*\?/);
   assert.match(page, /恢复存档/);
@@ -54,6 +56,7 @@ test("backup center keeps restore controlled and exposes note and retention stat
   assert.match(page, /report\.outcome === "failed"/);
   assert.match(page, /report\.evidenceDegraded/);
   assert.match(page, /审计记录不可用/);
+  assert.match(page, /profile\.retention\.maxCount === 0\s*\? 0/);
   assert.match(page, /pageState\.status === "error"/);
   assert.match(page, /retention_partial/);
   assert.match(page, /retention_pending/);
@@ -69,10 +72,19 @@ test("backup center keeps restore controlled and exposes note and retention stat
 });
 
 test("backup center is responsive without horizontal scrolling or translucent blur surfaces", () => {
+  const page = read("src/features/backups/BackupCenterPage.tsx");
   const css = read("src/features/backups/BackupCenterPage.css");
   const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
 
-  assert.match(css, /\.backup-center-page\s*\{[\s\S]*?overflow-x:\s*hidden/);
+  assert.match(page, /className="backup-center-overview"/);
+  assert.doesNotMatch(page, /backup-center-alert is-warning/);
+  assert.match(css, /\.backup-center-overview\s*\{[\s\S]*?min-height:\s*44px/);
+  assert.match(css, /\.backup-summary-metric\s*\{[\s\S]*?min-height:\s*30px/);
+  assert.match(css, /\.backup-center-filters label\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\)/);
+  assert.match(css, /\.backup-center-filters select,[\s\S]*?height:\s*32px/);
+  assert.match(css, /@media\s*\(max-width:\s*1120px\)[\s\S]*?\.backup-center-filters\s*\{[\s\S]*?height:\s*max-content/);
+  assert.match(css, /@media\s*\(max-width:\s*720px\)[\s\S]*?\.backup-center-overview\s*\{[\s\S]*?height:\s*max-content/);
+  assert.match(css, /\.backup-center-page\s*\{[\s\S]*?align-content:\s*start[\s\S]*?overflow-x:\s*hidden/);
   assert.match(css, /@media\s*\(max-width:\s*520px\)/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.match(reducedMotion, /\.backup-spin,[\s\S]*?animation:\s*none/);
@@ -80,4 +92,15 @@ test("backup center is responsive without horizontal scrolling or translucent bl
   assert.doesNotMatch(css, /backdrop-filter|filter:\s*blur/);
   assert.doesNotMatch(css, /min-width:\s*[6-9]\d{2}px/);
   assert.match(css, /\.backup-profile-avatar img\s*\{[\s\S]*?object-fit:\s*cover/);
+});
+
+test("primary backup icon and action buttons preserve primary colors while hovered", () => {
+  const css = read("src/features/backups/BackupCenterPage.css");
+  const hoverRule = css.match(/\.backup-icon-button\.is-primary:hover:not\(:disabled\),[\s\S]*?\.backup-action-button\.is-restore:hover:not\(:disabled\)\s*\{[^}]*\}/)?.[0] ?? "";
+
+  assert.match(hoverRule, /\.backup-icon-button\.is-primary/);
+  assert.match(hoverRule, /\.backup-action-button\.is-primary/);
+  assert.match(hoverRule, /color:\s*var\(--color-primary-action-text\)/);
+  assert.match(hoverRule, /background:\s*var\(--color-primary-action-bg-hover\)/);
+  assert.match(hoverRule, /border-color:\s*var\(--color-primary-action-border\)/);
 });

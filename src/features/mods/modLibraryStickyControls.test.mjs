@@ -32,7 +32,7 @@ function getRuleBody(css, selector) {
   return css.slice(openBraceIndex + 1, closeBraceIndex);
 }
 
-test("ModLibraryPage groups controls while keeping selection and action counts page-local", () => {
+test("ModLibraryPage groups controls while separating global and page-local selection counts", () => {
   const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
 
   // sticky-controls 整体承载入场动画；内部 slot 不再各自动画。
@@ -41,7 +41,9 @@ test("ModLibraryPage groups controls while keeping selection and action counts p
   assert.match(source, /className="mod-library__actions-slot"/);
   assert.match(source, /<LibraryToolbar[\s\S]*?query={query}[\s\S]*?activeFilter={activeFilter}/);
   assert.match(source, /<CompactActionPanel[\s\S]*?selectedCount={selectedCount}/);
-  assert.match(source, /<CompactActionPanel[\s\S]*?totalCount={libraryItems\.length}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?selectionMode={selectionMode}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?selectedPageCount={selectedPageCount}/);
+  assert.match(source, /<CompactActionPanel[\s\S]*?pageCount={libraryItems\.length}/);
   assert.match(source, /<CompactActionPanel[\s\S]*?installTaskActive={installTaskActive}/);
   assert.match(source, /<CompactActionPanel[\s\S]*?libraryQueryBusy={libraryQueryBusy}/);
   assert.match(
@@ -51,9 +53,9 @@ test("ModLibraryPage groups controls while keeping selection and action counts p
   assert.match(source, /<CompactActionPanel[\s\S]*?onAction={handleAction}/);
   assert.match(
     source,
-    /const selectAll = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?setSelectedIds\(\(prev\) => \{\s*const next = new Set\(prev\);/,
+    /const selectAll = \(\) => \{\s*if \(selectionInteractionLocked\) \{\s*return;\s*\}\s*if \(selectionMode === "single"\) \{\s*dispatchSelection\(\{ type: "enter-batch" \}\);\s*\}[\s\S]*?dispatchSelection\(\{ type: "select-page"/,
   );
-  assert.match(source, /const invertSelection = \(\) => \{\s*if \(libraryQueryBusy\) \{\s*return;\s*\}[\s\S]*?for \(const item of libraryItems\)/);
+  assert.match(source, /const invertSelection = \(\) => \{\s*if \(selectionInteractionLocked\) \{\s*return;\s*\}\s*if \(selectionMode === "single"\) \{\s*dispatchSelection\(\{ type: "enter-batch" \}\);\s*\}[\s\S]*?dispatchSelection\(\{ type: "invert-page"/);
   assert.match(source, /const handlePageChange = \(nextPage: number\) => \{[\s\S]*?resetContentScroll\(\);/);
   assert.match(source, /const handlePageSizeChange = \(nextPageSize:[\s\S]*?resetContentScroll\(\);/);
 
@@ -73,29 +75,21 @@ test("query refresh fails closed for stale page interactions and clears landed-p
   const page = readProjectFile("src/features/mods/ModLibraryPage.tsx");
   const panel = readProjectFile("src/features/mods/CompactActionPanel.tsx");
 
-  assert.match(page, /const selectCard = \(id: string\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
+  assert.match(page, /const selectCard = \(intent: ModCardSelectionIntent\) => \{\s*if \(selectionInteractionLocked\) \{\s*return;/);
   assert.match(page, /const handleContextMenu = \(modId: string, x: number, y: number\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
-  assert.match(page, /if \(libraryQueryBusy \|\| selectedIds\.size !== 1 \|\| reinstallWorkflow\.workflowActive\)/);
-  assert.equal(
-    page.match(/if \(libraryQueryBusy \|\| selectedIds\.size !== 1 \|\| reinstallWorkflow\.workflowActive\)/g)?.length,
-    2,
-  );
+  assert.match(page, /selectionMode !== "single"\s*\|\| selectedIds\.size !== 1/);
   assert.match(page, /const promptSelectedUninstallTask = \(\) => \{\s*if \(\s*libraryQueryBusy \|\|/);
   assert.match(page, /case "reinstall":\s*if \(libraryQueryBusy\) \{\s*break;/);
   assert.match(page, /const handleContextMenuAction = \(actionId: string, modId: string\) => \{\s*if \(libraryQueryBusy\) \{\s*return;/);
   // Cross-page selection: the library-page effect no longer clears selections; refresh and
   // query/filter changes own that responsibility (refreshModLibrary + resetPageInteraction).
   assert.match(page, /useEffect\(\(\) => \{\s*setContextMenuState\(null\);\s*\}, \[libraryPage\]\);/);
-  assert.match(page, /const refreshModLibrary = useCallback\(async \(\) => \{[\s\S]*?setSelectedIds\(new Set\(\)\);/);
-  assert.equal(
-    panel.match(/<ModLibraryControlTooltip key=\{action\.id\} content=\{disabledReason\}>/g)?.length,
-    2,
-  );
-  assert.equal(panel.match(/aria-disabled=\{disabledReason \? true : undefined\}/g)?.length, 2);
-  assert.equal(panel.match(/aria-describedby=\{descriptionId\}/g)?.length, 2);
+  assert.match(page, /const refreshModLibrary = useCallback\(async \(\) => \{[\s\S]*?dispatchSelection\(\{ type: "reset-context", reason: "Mod 库已刷新" \}\);/);
+  assert.ok((panel.match(/<ModLibraryControlTooltip/g) ?? []).length >= 3);
+  assert.ok((panel.match(/aria-describedby=\{descriptionId\}/g) ?? []).length >= 3);
   assert.doesNotMatch(panel, /aria-label=\{disabledReason/);
   assert.doesNotMatch(panel, /\sdisabled=\{disabledReason/);
-  assert.match(page, /<ModPosterCard[\s\S]*?interactionDisabled=\{libraryQueryBusy\}/);
+  assert.match(page, /<ModPosterCard[\s\S]*?interactionDisabled=\{selectionInteractionLocked\}/);
   assert.match(
     panel,
     /const revisionImportDisabledReason =\s*libraryQueryBusy\s*\? MOD_LIBRARY_QUERY_BUSY_MESSAGE/,
@@ -107,7 +101,7 @@ test("automatic filter reconciliation resets page interaction only when the filt
 
   assert.match(page, /const normalizedFilter = normalizeLibraryFilter\(activeFilter, filterChips\);/);
   assert.match(page, /if \(normalizedFilter === activeFilter\) \{\s*return;/);
-  assert.match(page, /if \(!isSameLibraryFilter\(activeFilter, normalizedFilter\)\) \{[\s\S]*?resetLibraryPage\(\);[\s\S]*?resetPageInteraction\(\);/);
+  assert.match(page, /if \(!isSameLibraryFilter\(activeFilter, normalizedFilter\)\) \{[\s\S]*?resetLibraryPage\(\);[\s\S]*?resetPageInteraction\("筛选条件已变化"\);/);
   assert.match(page, /setActiveFilter\(normalizedFilter\);/);
 });
 
@@ -153,7 +147,7 @@ test("lifecycle and future batch actions fail closed with focusable custom reaso
   assert.match(source, /aria-describedby=\{descriptionId\}/);
   assert.match(source, /if \(disabledReason\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?return;/);
   assert.doesNotMatch(source, /disabled=\{isDisabled\}/);
-  assert.match(source, /role="status" aria-live="polite" aria-atomic="true"/);
+  assert.match(source, /role="status"[\s\S]*?aria-live="polite"[\s\S]*?aria-atomic="true"/);
 });
 
 test("compact page-selection tooltips escape the segmented group without losing separators", () => {
@@ -377,7 +371,10 @@ test("tech view selection styling overrides the generic blue filled card state",
 
 test("mod library starts with no selected mod cards", () => {
   const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
+  const selection = readProjectFile("src/features/mods/modSelection.ts");
 
-  assert.match(source, /const \[selectedIds,\s*setSelectedIds\] = useState<Set<string>>\(new Set\(\)\);/);
-  assert.doesNotMatch(source, /useState<Set<string>>\(new Set\(\[/);
+  assert.match(source, /const \[selectionState, dispatchSelection\] = useReducer\(/);
+  assert.match(source, /createInitialModSelectionState\(\)/);
+  assert.match(selection, /mode: "single",\s*selectedIds: new Set<string>\(\)/);
+  assert.doesNotMatch(selection, /selectedIds: new Set<string>\(\[/);
 });

@@ -29,6 +29,7 @@ import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscover
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { SaveRestoreDialog } from "./SaveRestoreDialog";
 import { listProfiles } from "./profileApi";
+import { DEFAULT_PROFILE_BACKUP_RETENTION } from "./profileSaveSettingsDefaults";
 import {
   checkProfileAutoSaveBackup,
   getSaveBackupBackgroundStatus,
@@ -109,11 +110,7 @@ const PREVIEW_SAVE_SETTINGS: ProfileSaveSettingsDto = {
     minute: 0,
     weekdays: [],
   },
-  retention: {
-    maxCount: 20,
-    maxAgeDays: 30,
-    maxTotalBytes: null,
-  },
+  retention: { ...DEFAULT_PROFILE_BACKUP_RETENTION },
   steamAccount: null,
   preRestoreBackupEnabled: true,
   updatedAt: 0,
@@ -741,7 +738,7 @@ export function ProfilePage() {
             <ShieldCheck size={15} />
             Profile Workspace
           </span>
-          <h1 id="profile-page-title">配置档控制台</h1>
+          <h1 id="profile-page-title">存档备份</h1>
           <p className="profile-page__subtitle">
             管理当前游戏实例的多套存档配置、目录映射与自动备份策略
           </p>
@@ -792,7 +789,11 @@ export function ProfilePage() {
           }}
         />
 
-        <main className="profile-settings-stack detail-column" aria-live="polite">
+        <main
+          className="profile-settings-stack detail-column"
+          aria-live="polite"
+          data-tour-id="profiles.settings"
+        >
           {settingsState.status !== "ready" ? (
             <section className="profile-settings-panel glass-card profile-detail-console" aria-label="配置档详情与存档目录">
             {settingsState.status === "idle" ? (
@@ -955,7 +956,11 @@ function ManualSaveBackupPanel({
   const running = taskState.status === "starting" || taskState.status === "running";
 
   return (
-    <section className="profile-manual-backup-card" aria-labelledby="profile-manual-backup-title">
+    <section
+      className="profile-manual-backup-card"
+      aria-labelledby="profile-manual-backup-title"
+      data-tour-id="profiles.manual-backup"
+    >
       <div className="profile-manual-backup-card__copy">
         <h2 id="profile-manual-backup-title">手动备份</h2>
         <p>立即为当前配置档创建一个受控存档归档点。</p>
@@ -1005,7 +1010,11 @@ function AutoSaveBackupRuntimePanel({
   const nextDue = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.nextDueAt) : "等待调度信息";
 
   return (
-    <section className="profile-auto-backup-card" aria-labelledby="profile-auto-backup-title">
+    <section
+      className="profile-auto-backup-card"
+      aria-labelledby="profile-auto-backup-title"
+      data-tour-id="profiles.auto-backup"
+    >
       <div className="profile-auto-backup-card__header">
         <div>
           <h2 id="profile-auto-backup-title">自动备份运行期</h2>
@@ -1075,7 +1084,11 @@ function BackupHistoryPanel({
   const countLabel = historyState.status === "loading" ? "刷新中" : `${rows.length} 个归档包`;
 
   return (
-    <section className="profile-settings-panel glass-card history-card profile-history-card" aria-labelledby="profile-history-title">
+    <section
+      className="profile-settings-panel glass-card history-card profile-history-card"
+      aria-labelledby="profile-history-title"
+      data-tour-id="profiles.backup-history"
+    >
       <div className="profile-settings-panel__header profile-history-header">
         <div>
           <h2 id="profile-history-title">备份历史点</h2>

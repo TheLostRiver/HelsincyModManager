@@ -101,6 +101,12 @@ export type BatchModLifecycleSealDto = {
   planToken: string;
 };
 
+export type BatchModLifecycleCapabilityDto = {
+  previewAvailable: boolean;
+  writeAvailable: boolean;
+  unavailableReasonCode: string | null;
+};
+
 export type BatchModLifecycleStartedDto = {
   task: TaskStartedDto;
   batchId: string;

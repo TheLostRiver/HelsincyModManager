@@ -4,14 +4,16 @@ import type { ModViewMode } from "./ModLibraryPage";
 import { isUnsafeInstallStatus } from "./modLibraryLoadState";
 import type { ModLibraryItem } from "./modLibraryTypes";
 import { visibleCategoryLabelsForCard } from "./modLibraryFilters";
+import type { ModCardSelectionIntent, ModSelectionMode } from "./modSelection";
 import "./ModPosterCard.css";
 
 type ModPosterCardProps = {
   item: ModLibraryItem;
   selected: boolean;
+  selectionMode: ModSelectionMode;
   interactionDisabled?: boolean;
   viewMode: ModViewMode;
-  onSelect: (id: string) => void;
+  onSelect: (intent: ModCardSelectionIntent) => void;
   onContextMenu?: (id: string, x: number, y: number) => void;
   index?: number;
   showCategoryLabels?: boolean;
@@ -75,6 +77,7 @@ function statusLabelForItem(item: ModLibraryItem) {
 export function ModPosterCard({
   item,
   selected,
+  selectionMode,
   interactionDisabled = false,
   viewMode,
   onSelect,
@@ -126,6 +129,27 @@ export function ModPosterCard({
         ) : null}
       </div>
     ) : null;
+  const batchSelectionActive = selectionMode === "batch";
+
+  const selectWithIntent = (
+    toggle: boolean,
+    source: "pointer" | "keyboard" | "ctrl-pointer" | "ctrl-keyboard",
+  ) => {
+    if (toggle) {
+      onSelect({
+        kind: "toggle",
+        modId: item.id,
+        source: source === "ctrl-pointer" ? "ctrl-pointer" : "ctrl-keyboard",
+      });
+      return;
+    }
+
+    onSelect({
+      kind: "primary",
+      modId: item.id,
+      source: source === "pointer" ? "pointer" : "keyboard",
+    });
+  };
 
   useEffect(() => {
     setPosterFailed(false);
@@ -133,13 +157,13 @@ export function ModPosterCard({
 
   return (
     <div
-      role="button"
+      role={batchSelectionActive ? "checkbox" : "button"}
       tabIndex={0}
-      className={`mod-card${selected ? " is-selected" : ""}`}
+      className={`mod-card${selected ? " is-selected" : ""}${batchSelectionActive ? " is-batch-selection" : ""}`}
       style={{ "--stagger-idx": index + 1 } as CSSProperties}
-      onClick={() => {
+      onClick={(event) => {
         if (!interactionDisabled) {
-          onSelect(item.id);
+          selectWithIntent(event.ctrlKey, event.ctrlKey ? "ctrl-pointer" : "pointer");
         }
       }}
       onContextMenu={(e) => {
@@ -158,20 +182,23 @@ export function ModPosterCard({
           if (interactionDisabled) {
             return;
           }
-          onSelect(item.id);
+          selectWithIntent(e.ctrlKey, e.ctrlKey ? "ctrl-keyboard" : "keyboard");
         }
       }}
-      aria-pressed={selected}
+      aria-pressed={batchSelectionActive ? undefined : selected}
+      aria-checked={batchSelectionActive ? selected : undefined}
       aria-disabled={interactionDisabled || undefined}
-      aria-label={`选择 ${item.name}${categorySummary}`}
+      aria-label={
+        batchSelectionActive
+          ? `${selected ? "取消选择" : "选择"} ${item.name}${categorySummary}`
+          : `选择 ${item.name}${categorySummary}`
+      }
       data-status={item.status}
+      data-selection-mode={selectionMode}
     >
-      {/* 选中指示器：所有非经典视图共享 */}
-      {!isClassic && (
-        <div className="mod-card__selection-indicator">
-          <Check size={14} strokeWidth={3} className="mod-card__check-icon" aria-hidden="true" />
-        </div>
-      )}
+      <div className="mod-card__selection-indicator" aria-hidden="true">
+        <Check size={14} strokeWidth={3} className="mod-card__check-icon" />
+      </div>
 
       {/* TECH 视图：彻底不展示封面 */}
       {isTech ? null : (

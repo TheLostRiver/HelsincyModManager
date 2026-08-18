@@ -107,7 +107,8 @@ test("mod poster card can hide category labels without affecting card rendering"
   assert.match(source, /categoryLabels\.visible\.length > 0/);
   assert.match(source, /data-visible=\{showCategoryLabels \? "true" : "false"\}/);
   assert.match(source, /aria-hidden="true"/);
-  assert.match(source, /aria-label=\{`选择 \$\{item\.name\}\$\{categorySummary\}`\}/);
+  assert.match(source, /batchSelectionActive[\s\S]*?`\$\{selected \? "取消选择" : "选择"\} \$\{item\.name\}\$\{categorySummary\}`/);
+  assert.match(source, /: `选择 \$\{item\.name\}\$\{categorySummary\}`/);
 
   assert.match(css, /\.mod-card__categories\s*{[\s\S]*?max-height:\s*22px;/);
   assert.match(css, /\.mod-card__categories\s*{[\s\S]*?transition:[\s\S]*?opacity[\s\S]*?max-height[\s\S]*?transform/);
@@ -123,7 +124,7 @@ test("mod poster cards stay focusable but expose and guard busy interaction", ()
   assert.match(source, /interactionDisabled = false/);
   assert.match(source, /tabIndex=\{0\}/);
   assert.match(source, /aria-disabled=\{interactionDisabled \|\| undefined\}/);
-  assert.match(source, /onClick=\{\(\) => \{\s*if \(!interactionDisabled\) \{\s*onSelect\(item\.id\);/);
+  assert.match(source, /onClick=\{\(event\) => \{\s*if \(!interactionDisabled\) \{\s*selectWithIntent\(event\.ctrlKey/);
   assert.match(source, /onContextMenu=\{\(e\) => \{[\s\S]*?if \(interactionDisabled\) \{\s*return;/);
   assert.match(source, /onKeyDown=\{\(e\) => \{[\s\S]*?if \(interactionDisabled\) \{\s*return;/);
 });

@@ -720,6 +720,7 @@ Task observer/result channel 失败同样不能伪造 rollback；当前 item 收
 T13-06 已将下列 command 接入 Tauri（仅 Sandbox 模式可用，`HMM_SANDBOX_DATA_DIR`）：
 
 ```text
+get_batch_mod_lifecycle_capability()
 preview_batch_mod_lifecycle(request)
 seal_batch_mod_lifecycle(request, previewToken)
 start_batch_mod_lifecycle(batchId, planToken)
@@ -727,6 +728,10 @@ get_batch_mod_lifecycle_result(batchId, attemptNumber, cursor?, limit?)
 retry_batch_mod_lifecycle(batchId, expectedAttemptNumber)
 cancel_task(taskId)
 ```
+
+`get_batch_mod_lifecycle_capability` 只返回 backend-owned 的 `previewAvailable` /
+`writeAvailable` / `unavailableReasonCode`，用于 Production 在 UI 层禁用批量 preview/write
+入口；它不是写入授权，后续 preview/seal/start/retry 仍必须在 command 层逐次重验 Sandbox 环境。
 
 seal/start 由 hmm-runtime 的 `seal_request`/`start_request` 提供：seal 只持久化 attempt 0 并返回
 planToken，start 消费 batchId+planToken 执行批次；CLI `apply` 仍为 seal+run 一体化路径。start/retry

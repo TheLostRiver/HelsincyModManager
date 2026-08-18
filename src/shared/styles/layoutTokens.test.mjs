@@ -240,13 +240,18 @@ test("Mod 管理页消费密度 token，无残留硬编码", () => {
 
 // ===== L2: 小屏契约负向保护（不得删除/破坏）=====
 
-test("AppFrame 小屏契约保留：1360px 状态栏降级 + 860px shell 单列", () => {
+test("AppFrame 小屏契约保留：1360px 状态栏降级并保留引导入口 + 860px shell 单列", () => {
   const rules = parseCssRules(readProjectFile("src/app/frame/AppFrame.css"));
 
   expectDeclaration(
+    findRule(rules, ".top-status-bar", "(max-width: 1360px)"),
+    /grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+minmax\(0,\s*auto\);/,
+    "缺少 1360px 下为状态组保留的双列布局",
+  );
+  expectDeclaration(
     findRule(rules, ".window-tools", "(max-width: 1360px)"),
     /display:\s*none;/,
-    "缺少 1360px 下隐藏 window tools 的规则",
+    "缺少 1360px 下隐藏窗口工具组的规则",
   );
   expectDeclaration(
     findRule(rules, ".status-pill:not(.compact)", "(max-width: 1360px)"),

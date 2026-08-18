@@ -6,6 +6,7 @@ export type ModContextMenuProps = {
   x: number;
   y: number;
   modId: string;
+  batchSelectionActive?: boolean;
   onClose: () => void;
   onAction: (actionId: string, modId: string) => void;
 };
@@ -46,7 +47,14 @@ const IconFolder = () => (
   </svg>
 );
 
-export function ModContextMenu({ x, y, modId, onClose, onAction }: ModContextMenuProps) {
+export function ModContextMenu({
+  x,
+  y,
+  modId,
+  batchSelectionActive = false,
+  onClose,
+  onAction,
+}: ModContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -117,10 +125,20 @@ export function ModContextMenu({ x, y, modId, onClose, onAction }: ModContextMen
   return createPortal(
     <div className="mod-context-menu" style={getStyle()} ref={menuRef}>
       <div
-        className="mod-context-menu__item is-danger"
-        onClick={() => handleItemClick("toggle-enable")}
+        className={`mod-context-menu__item is-danger${batchSelectionActive ? " is-disabled" : ""}`}
+        aria-disabled={batchSelectionActive || undefined}
+        title={batchSelectionActive ? "批量选择中，请使用上方批量操作" : undefined}
+        onClick={() => {
+          if (!batchSelectionActive) {
+            handleItemClick("toggle-enable");
+          }
+        }}
       >
-        <IconPower /> 启用 / 禁用
+        <IconPower />
+        <span className="mod-context-menu__item-copy">
+          <span>启用 / 禁用</span>
+          {batchSelectionActive ? <small>请使用上方批量操作</small> : null}
+        </span>
       </div>
       <div className="mod-context-menu__divider" />
       <div

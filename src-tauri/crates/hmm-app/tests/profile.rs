@@ -320,6 +320,9 @@ fn get_profile_save_settings_uses_requested_game_id_for_default_backup() {
         settings.backup_directory.path_label.as_deref(),
         Some("mhw-test/HelsincyModManager/Backups")
     );
+    assert_eq!(settings.retention.max_count, 0);
+    assert_eq!(settings.retention.max_age_days, None);
+    assert_eq!(settings.retention.max_total_bytes, None);
 }
 
 #[test]
@@ -451,6 +454,48 @@ fn profile_save_settings_accepts_only_the_supported_space_budget_range() {
         .is_err());
     assert!(service
         .set_profile_save_settings(request(Some(1024 * 1024 * 1024 * 1024 + 1)))
+        .is_err());
+}
+
+#[test]
+fn profile_save_settings_accepts_unbounded_count_and_rejects_zero_optional_domain_limits() {
+    let (service, repo) = make_service();
+    repo.save(&Profile {
+        id: "profile-1".to_owned(),
+        name: "Profile".to_owned(),
+        description: None,
+        is_active: false,
+        created_at: 1,
+        updated_at: 1,
+    })
+    .unwrap();
+
+    let request =
+        |max_count, max_age_days, max_total_bytes| hmm_app::SetProfileSaveSettingsRequest {
+            profile_id: "profile-1".to_owned(),
+            game_id: "mhw".to_owned(),
+            save_directory: None,
+            backup_directory: None,
+            schedule: hmm_core::ProfileBackupSchedule::manual(),
+            retention: hmm_core::ProfileBackupRetention {
+                max_count,
+                max_age_days,
+                max_total_bytes,
+            },
+            pre_restore_backup_enabled: true,
+        };
+
+    assert!(service
+        .set_profile_save_settings(request(0, None, None))
+        .is_ok());
+    assert!(service
+        .set_profile_save_settings(request(1_000, None, None))
+        .is_err());
+    assert!(service
+        .set_profile_save_settings(request(1, Some(0), None))
+        .is_err());
+    assert!(service
+        .set_profile_save_settings(request(1, None, Some(0)))
         .is_err());
 }
 

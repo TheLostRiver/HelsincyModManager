@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type CSSProperties,
@@ -12,6 +13,10 @@ import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
 import { useBatchModLifecycleWorkflow } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
+import {
+  useBatchModLifecycleCapability,
+} from "./batch-lifecycle/useBatchModLifecycleCapability.ts";
+import { getBatchCapabilityUnavailableLabel } from "./batch-lifecycle/batchModLifecycleCopy.ts";
 import {
   InstallPlanDetailSheet,
   ManagedInstallTaskFeedback,
@@ -88,7 +93,12 @@ import type {
   ModLibraryProfileContext,
   QueryModLibraryInput,
 } from "./modLibraryTypes";
-import { applyModSelection } from "./modSelection";
+import {
+  countSelectedOnPage,
+  createInitialModSelectionState,
+  reduceModSelection,
+  type ModCardSelectionIntent,
+} from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
@@ -288,7 +298,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [showCardCategoryLabels, setShowCardCategoryLabels] = useState(readInitialCardCategoryLabelsVisibility);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectionState, dispatchSelection] = useReducer(
+    reduceModSelection,
+    createInitialModSelectionState(),
+  );
+  const {
+    mode: selectionMode,
+    selectedIds,
+    notice: selectionNotice,
+  } = selectionState;
   const libraryItemsRef = useRef<ModLibraryItem[]>([]);
   const categoriesRef = useRef<CategoryItem[]>([]);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -329,8 +347,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const resetContentScroll = useCallback(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, []);
-  const resetPageInteraction = useCallback(() => {
-    setSelectedIds(new Set());
+  const resetPageInteraction = useCallback((reason = "查询条件已变化") => {
+    dispatchSelection({ type: "reset-context", reason });
     resetContentScroll();
   }, [resetContentScroll]);
 
@@ -340,6 +358,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       : null,
     [activeProfile.status, activeProfileId],
   );
+  const batchCapability = useBatchModLifecycleCapability();
+  const batchCapabilityUnavailableReason = getBatchCapabilityUnavailableLabel(
+    batchCapability.capability,
+  );
+  const batchPreviewUnavailableReason =
+    batchCapability.status === "loading" || !batchCapability.capability?.previewAvailable
+      ? batchCapabilityUnavailableReason
+      : undefined;
+  const batchWriteUnavailableReason =
+    batchCapability.status === "loading" || !batchCapability.capability?.writeAvailable
+      ? batchCapabilityUnavailableReason
+      : undefined;
   const browserPreviewEnabled = useMemo(
     () => isPlainBrowserDevRuntime({
       isDev: (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true,
@@ -454,37 +484,36 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   );
 
   const selectedCount = selectedIds.size;
+  const selectedPageCount = useMemo(
+    () => countSelectedOnPage(selectedIds, libraryItems.map((item) => item.id)),
+    [libraryItems, selectedIds],
+  );
   const selectedItem = useMemo(() => {
-    if (selectedIds.size !== 1) {
+    if (selectionMode !== "single" || selectedIds.size !== 1) {
       return null;
     }
 
     const [selectedId] = Array.from(selectedIds);
     return libraryItems.find((item) => item.id === selectedId) ?? null;
-  }, [libraryItems, selectedIds]);
-  const selectedLibraryItems = useMemo(
-    () => libraryItems.filter((item) => selectedIds.has(item.id)),
-    [libraryItems, selectedIds],
-  );
-  const batchSelectionHas = (predicate: (item: ModLibraryItem) => boolean) =>
-    selectedIds.size > 0
-    && (selectedLibraryItems.length === 0 || selectedLibraryItems.some(predicate));
+  }, [libraryItems, selectedIds, selectionMode]);
   const managedInstallTaskActive = installTaskState.status === "starting" || installTaskState.status === "running";
+  const batchWriteAvailable = batchCapability.capability?.writeAvailable === true;
+  const batchPreviewAvailable = batchCapability.capability?.previewAvailable === true;
   const canUninstallSelected =
     activeProfile.status === "ready"
-    && (selectedIds.size === 1
-      ? selectedItem?.installSummary?.status === "installed"
-      : batchSelectionHas((item) => item.installSummary?.status === "installed"));
+    && (selectionMode === "batch"
+      ? selectedIds.size > 0 && batchWriteAvailable
+      : selectedItem?.installSummary?.status === "installed");
   const canReinstallSelected =
     activeProfile.status === "ready"
-    && (selectedIds.size === 1
-      ? selectedItem?.installSummary?.status === "installed"
-      : batchSelectionHas((item) => item.installSummary?.status === "installed"));
+    && (selectionMode === "batch"
+      ? selectedIds.size > 0 && batchWriteAvailable
+      : selectedItem?.installSummary?.status === "installed");
   const canInstallSelected =
     activeProfile.status === "ready"
-    && (selectedIds.size === 1
-      ? selectedItem !== null && selectedItem.installSummary?.status === "not_installed"
-      : batchSelectionHas((item) => item.installSummary?.status === "not_installed"));
+    && (selectionMode === "batch"
+      ? selectedIds.size > 0 && batchWriteAvailable
+      : selectedItem !== null && selectedItem.installSummary?.status === "not_installed");
   const { handleViewModeChange, viewTransitionPhase, viewTransitionVariant } = useModViewTransition(
     viewMode,
     setViewMode,
@@ -518,7 +547,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, []);
 
   const refreshModLibrary = useCallback(async () => {
-    setSelectedIds(new Set());
+    dispatchSelection({ type: "reset-context", reason: "Mod 库已刷新" });
     await Promise.all([refreshLibraryPage(), refreshCategories()]);
   }, [refreshCategories, refreshLibraryPage]);
 
@@ -607,13 +636,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
     if (!isSameLibraryFilter(activeFilter, normalizedFilter)) {
       resetLibraryPage();
-      resetPageInteraction();
+      resetPageInteraction("筛选条件已变化");
     }
     setActiveFilter(normalizedFilter);
   }, [activeFilter, filterChips, resetLibraryPage, resetPageInteraction]);
 
   useEffect(() => {
-    setSelectedIds(new Set());
+    dispatchSelection({ type: "reset-context", reason: "活动配置档已变化" });
     resetLibraryPage();
     resetContentScroll();
   }, [activeProfile.status, activeProfileId, resetContentScroll, resetLibraryPage]);
@@ -636,11 +665,42 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
   }, [libraryQueryBusy]);
 
+  useEffect(() => {
+    if (selectionMode !== "batch") {
+      return undefined;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || contextMenuState !== null) {
+        return;
+      }
+      if (document.querySelector('[role="dialog"][aria-modal="true"]') !== null) {
+        return;
+      }
+
+      dispatchSelection({ type: "exit-batch" });
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [contextMenuState, selectionMode]);
+
+  useEffect(() => {
+    if (selectionNotice === null) {
+      return undefined;
+    }
+
+    const noticeTimer = window.setTimeout(() => {
+      dispatchSelection({ type: "dismiss-notice" });
+    }, 4000);
+    return () => window.clearTimeout(noticeTimer);
+  }, [selectionNotice]);
+
   // Selection changes invalidate any in-flight batch preview; the next action starts fresh.
   useEffect(() => {
     batchWorkflow.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds]);
+  }, [selectedIds, selectionMode]);
 
   useEffect(() => {
     if (batchWorkflow.state.status !== "result") {
@@ -815,15 +875,24 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     };
   }, [libraryItems.length, scrollUiState.showScrollUi, updateScrollUiState]);
 
+  const selectionInteractionDisabledReason = libraryQueryBusy
+    ? MOD_LIBRARY_QUERY_BUSY_MESSAGE
+    : managedInstallTaskActive || reinstallWorkflow.workflowActive
+      ? "请等待当前安装任务完成"
+      : batchWorkflow.state.status !== "idle"
+        ? "请先完成或关闭当前批量操作"
+        : undefined;
+  const selectionInteractionLocked = selectionInteractionDisabledReason !== undefined;
+
   const handleQueryChange = (nextQuery: string) => {
     setQuery(nextQuery);
-    resetPageInteraction();
+    resetPageInteraction("搜索条件已变化");
   };
 
   const handleFilterChange = (nextFilter: ModLibraryFilter) => {
     setActiveFilter(nextFilter);
     libraryQuery.resetPage();
-    resetPageInteraction();
+    resetPageInteraction("筛选条件已变化");
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -840,18 +909,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     setQuery("");
     setActiveFilter(allLibraryFilter);
     libraryQuery.resetPage();
-    resetPageInteraction();
+    resetPageInteraction("查询条件已重置");
   };
 
   const retryLibraryQuery = () => {
     void libraryQuery.refresh().catch(() => undefined);
   };
 
-  const selectCard = (id: string) => {
-    if (libraryQueryBusy) {
+  const selectCard = (intent: ModCardSelectionIntent) => {
+    if (selectionInteractionLocked) {
       return;
     }
-    setSelectedIds((prev) => applyModSelection(prev, id, "replace"));
+    dispatchSelection({ type: "apply-intent", intent });
   };
 
   const handleContextMenu = (modId: string, x: number, y: number) => {
@@ -859,47 +928,41 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       return;
     }
     setContextMenuState({ x, y, modId });
-    // If the card isn't selected, select it
-    if (!selectedIds.has(modId)) {
-      setSelectedIds((prev) => applyModSelection(prev, modId, "replace"));
+    if (selectionMode === "single" && !selectedIds.has(modId)) {
+      dispatchSelection({
+        type: "apply-intent",
+        intent: { kind: "primary", modId, source: "pointer" },
+      });
     }
   };
 
   const selectAll = () => {
-    if (libraryQueryBusy) {
+    if (selectionInteractionLocked) {
       return;
     }
-    // Cross-page accumulation: keep selections from other pages and add the current page.
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const item of libraryItems) {
-        next.add(item.id);
-      }
-      return next;
-    });
+    if (selectionMode === "single") {
+      dispatchSelection({ type: "enter-batch" });
+    }
+    dispatchSelection({ type: "select-page", modIds: libraryItems.map((item) => item.id) });
   };
 
   const invertSelection = () => {
-    if (libraryQueryBusy) {
+    if (selectionInteractionLocked) {
       return;
     }
-    // Cross-page accumulation: only flip membership of the current page; other pages keep
-    // their previous selection state.
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const item of libraryItems) {
-        if (next.has(item.id)) {
-          next.delete(item.id);
-        } else {
-          next.add(item.id);
-        }
-      }
-      return next;
-    });
+    if (selectionMode === "single") {
+      dispatchSelection({ type: "enter-batch" });
+    }
+    dispatchSelection({ type: "invert-page", modIds: libraryItems.map((item) => item.id) });
   };
 
   const previewSelectedInstallPlan = () => {
-    if (libraryQueryBusy || selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
+    if (
+      libraryQueryBusy
+      || selectionMode !== "single"
+      || selectedIds.size !== 1
+      || reinstallWorkflow.workflowActive
+    ) {
       return;
     }
 
@@ -942,7 +1005,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const startSelectedInstallTask = () => {
-    if (libraryQueryBusy || selectedIds.size !== 1 || reinstallWorkflow.workflowActive) {
+    if (
+      libraryQueryBusy
+      || selectionMode !== "single"
+      || selectedIds.size !== 1
+      || reinstallWorkflow.workflowActive
+    ) {
       return;
     }
 
@@ -1050,6 +1118,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const promptSelectedUninstallTask = () => {
     if (
       libraryQueryBusy ||
+      selectionMode !== "single" ||
       reinstallWorkflow.workflowActive ||
       activeProfileId === null ||
       !selectedItem ||
@@ -1160,6 +1229,21 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const handleAction = (actionId: string) => {
     switch (actionId) {
+      case "enter-batch-selection":
+        if (!selectionInteractionLocked) {
+          dispatchSelection({ type: "enter-batch" });
+        }
+        break;
+      case "exit-batch-selection":
+        if (!selectionInteractionLocked) {
+          dispatchSelection({ type: "exit-batch" });
+        }
+        break;
+      case "clear-selection":
+        if (!selectionInteractionLocked) {
+          dispatchSelection({ type: "clear-selection" });
+        }
+        break;
       case "select-all":
         selectAll();
         break;
@@ -1167,19 +1251,21 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         invertSelection();
         break;
       case "refresh":
-        void refreshModLibrary().catch(() => undefined);
+        if (!selectionInteractionLocked) {
+          void refreshModLibrary().catch(() => undefined);
+        }
         break;
       case "preview-plan":
-        if (selectedIds.size === 1) {
+        if (selectionMode === "single") {
           previewSelectedInstallPlan();
-        } else {
+        } else if (!selectionInteractionLocked && batchPreviewAvailable) {
           void batchWorkflow.prepare("install", Array.from(selectedIds));
         }
         break;
       case "install":
-        if (selectedIds.size === 1) {
+        if (selectionMode === "single") {
           startSelectedInstallTask();
-        } else {
+        } else if (!selectionInteractionLocked && batchWriteAvailable) {
           void batchWorkflow.prepare("install", Array.from(selectedIds));
         }
         break;
@@ -1190,16 +1276,16 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         setUninstallConfirmation(null);
         installPlanPreviewGenerationRef.current += 1;
         setInstallPlanDetailState({ status: "idle" });
-        if (selectedIds.size === 1) {
+        if (selectionMode === "single") {
           openReinstall();
-        } else {
+        } else if (!selectionInteractionLocked && batchWriteAvailable) {
           void batchWorkflow.prepare("reinstall", Array.from(selectedIds));
         }
         break;
       case "uninstall":
-        if (selectedIds.size === 1) {
+        if (selectionMode === "single") {
           promptSelectedUninstallTask();
-        } else {
+        } else if (!selectionInteractionLocked && batchWriteAvailable) {
           void batchWorkflow.prepare("uninstall", Array.from(selectedIds));
         }
         break;
@@ -1267,6 +1353,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   };
 
   const installTaskActive = managedInstallTaskActive || reinstallWorkflow.workflowActive;
+  const closeBatchResult = () => {
+    const completed =
+      batchWorkflow.state.status === "result"
+      && batchWorkflow.state.result.status === "completed";
+    batchWorkflow.reset();
+    if (completed) {
+      dispatchSelection({ type: "reset-context", reason: "批量操作已完成" });
+    }
+  };
   const closeInstallPlanDetail = () => {
     installPlanPreviewGenerationRef.current += 1;
     setInstallPlanDetailState({ status: "idle" });
@@ -1293,9 +1388,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
         <div className="mod-library__actions-slot">
           <CompactActionPanel
+            selectionMode={selectionMode}
             selectedCount={selectedCount}
-            totalCount={libraryItems.length}
-            selectedModId={selectedItem?.id ?? null}
+            selectedPageCount={selectedPageCount}
+            pageCount={libraryItems.length}
+            selectionNotice={selectionNotice?.message ?? null}
+            selectionInteractionDisabledReason={selectionInteractionDisabledReason}
+            batchPreviewUnavailableReason={batchPreviewUnavailableReason}
+            batchWriteUnavailableReason={batchWriteUnavailableReason}
+            selectedModId={selectionMode === "single" ? selectedItem?.id ?? null : null}
             installTaskActive={installTaskActive}
             libraryQueryBusy={libraryQueryBusy}
             profileReady={activeProfile.status === "ready" && activeProfileId !== null}
@@ -1353,7 +1454,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           workflowState={batchWorkflow.state}
           onRetry={() => void batchWorkflow.retry()}
           onLoadMore={() => void batchWorkflow.loadMoreResult()}
-          onClose={batchWorkflow.reset}
+          onClose={closeBatchResult}
         />
       )}
 
@@ -1390,7 +1491,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         />
       ) : null}
 
-      <div className="mod-library__content-shell" data-scroll-ui={showScrollUi ? "visible" : "hidden"}>
+      <div
+        className="mod-library__content-shell"
+        data-scroll-ui={showScrollUi ? "visible" : "hidden"}
+        data-tour-id="mods.library"
+      >
         <ModLibraryQueryFeedback
           busy={!libraryQueryBlocked && libraryQuery.refreshing}
           errorMessage={libraryPage === null ? null : libraryQuery.errorMessage}
@@ -1436,7 +1541,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                   key={item.id}
                   item={item}
                   selected={selectedIds.has(item.id)}
-                  interactionDisabled={libraryQueryBusy}
+                  selectionMode={selectionMode}
+                  interactionDisabled={selectionInteractionLocked}
                   viewMode={viewMode}
                   onSelect={selectCard}
                   onContextMenu={handleContextMenu}
@@ -1473,6 +1579,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           x={contextMenuState.x}
           y={contextMenuState.y}
           modId={contextMenuState.modId}
+          batchSelectionActive={selectionMode === "batch"}
           onClose={() => setContextMenuState(null)}
           onAction={handleContextMenuAction}
         />

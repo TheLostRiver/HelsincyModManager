@@ -49,7 +49,7 @@ export function DiagnosticsPage() {
 
   return (
     <section className="diagnostics-page" aria-labelledby="diagnostics-title">
-      <header className="diagnostics-page__hero">
+      <header className="diagnostics-page__hero" data-tour-id="diagnostics.actions">
         <div>
           <span>只读支持工具</span>
           <h2 id="diagnostics-title">日志与诊断</h2>
@@ -68,7 +68,7 @@ export function DiagnosticsPage() {
       </header>
 
       {state.status === "loading" && (
-        <div className="diagnostics-page__state" role="status">
+        <div className="diagnostics-page__state" role="status" data-tour-id="diagnostics.state">
           <span className="diagnostics-page__state-icon" aria-hidden="true">
             <RefreshCw size={20} />
           </span>
@@ -81,7 +81,11 @@ export function DiagnosticsPage() {
        * 若失败态不带 role，读屏用户在错误出现时不会收到任何通知，只能自己浏览到才发现。
        */}
       {state.status === "failed" && (
-        <div className="diagnostics-page__state is-error" role="alert">
+        <div
+          className="diagnostics-page__state is-error"
+          role="alert"
+          data-tour-id="diagnostics.state"
+        >
           <span className="diagnostics-page__state-icon" aria-hidden="true">
             <AlertTriangle size={22} />
           </span>
@@ -142,7 +146,11 @@ function DiagnosticsContent({
 }) {
   return (
     <>
-      <section className="diagnostics-page__health" aria-label="诊断健康摘要">
+      <section
+        className="diagnostics-page__health"
+        aria-label="诊断健康摘要"
+        data-tour-id="diagnostics.health"
+      >
         <HealthCard label="平台" status={snapshot.platformStatus} />
         <HealthCard label="App Log" status={snapshot.appLogStatus} />
         <HealthCard label="Debug Log" status={combinedStatus(snapshot.debugLogStatus, snapshot.evidenceHealth.debugLogStatus)} />
@@ -170,7 +178,7 @@ function DiagnosticsContent({
         </section>
       )}
 
-      <section className="diagnostics-page__columns">
+      <section className="diagnostics-page__columns" data-tour-id="diagnostics.logs">
         <LogPanel title="App Log" status={snapshot.appLogStatus} lines={snapshot.appLogLines} />
         <LogPanel title="Debug Log" status={snapshot.debugLogStatus} lines={snapshot.debugLogLines} />
         <LogPanel title="Task Log" status={snapshot.taskLogStatus} lines={snapshot.taskLogLines} />
