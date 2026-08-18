@@ -121,12 +121,13 @@ test("batch copy maps stable codes without raw backend text", () => {
   assert.equal(getBatchExcludedReasonLabel("installed_revision_unavailable"), "已安装但缺少版本信息（旧格式清单），无法参与");
 });
 
-test("ModLibraryPage dispatches batch flows only for multi-selection", () => {
+test("ModLibraryPage dispatches lifecycle flows by explicit selection mode", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
 
-  assert.match(page, /case "install":\s*if \(selectedIds\.size === 1\) \{\s*startSelectedInstallTask\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("install"/);
-  assert.match(page, /case "uninstall":\s*if \(selectedIds\.size === 1\) \{\s*promptSelectedUninstallTask\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("uninstall"/);
-  assert.match(page, /case "reinstall":[\s\S]*?if \(selectedIds\.size === 1\) \{\s*openReinstall\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("reinstall"/);
+  assert.match(page, /case "install":\s*if \(selectionMode === "single"\) \{\s*startSelectedInstallTask\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("install"/);
+  assert.match(page, /case "uninstall":\s*if \(selectionMode === "single"\) \{\s*promptSelectedUninstallTask\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("uninstall"/);
+  assert.match(page, /case "reinstall":[\s\S]*?if \(selectionMode === "single"\) \{\s*openReinstall\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("reinstall"/);
+  assert.match(page, /selectionMode !== "single"\s*\|\| selectedIds\.size !== 1/);
   assert.match(page, /batchWorkflow\.state\.status === "result" &&/);
   assert.match(page, /batchWorkflow\.state\.status === "starting"/);
   assert.match(page, /BatchModLifecyclePreviewPanel/);
