@@ -116,7 +116,7 @@ test("mod library switches views through a visible two-phase transition", () => 
   assert.match(page, /data-view-transition-variant={viewTransitionVariant}/);
   assert.match(page, /onViewModeChange={handleViewModeChange}/);
   assert.doesNotMatch(page, /\.animate\(\s*\[/);
-  assert.match(card, /className={`mod-card\$\{selected \? " is-selected" : ""\}`}/);
+  assert.match(card, /className={`mod-card\$\{selected \? " is-selected" : ""\}\$\{batchSelectionActive \? " is-batch-selection" : ""\}`}/);
   assert.doesNotMatch(card, /mod-card anim-stagger-item/);
 
   assert.match(
