@@ -6,11 +6,12 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
-test("batch lifecycle API invokes the five documented narrow commands", () => {
+test("batch lifecycle API invokes the six documented narrow commands", () => {
   const source = readSource(
     "src/features/mods/batch-lifecycle/batchModLifecycleApi.ts",
   );
 
+  assert.match(source, /invoke<BatchModLifecycleCapabilityDto>\("get_batch_mod_lifecycle_capability"\)/);
   assert.match(source, /invoke<BatchModLifecyclePreviewDto>\("preview_batch_mod_lifecycle"/);
   assert.match(source, /request,\s*\n\s*\}\);/);
   assert.match(source, /invoke<BatchModLifecycleSealDto>\("seal_batch_mod_lifecycle"/);
@@ -61,6 +62,8 @@ test("batch lifecycle types register stable status and policy vocabularies", () 
   assert.match(source, /BATCH_MOD_LIFECYCLE_RESULT_PAGE_MAX_SIZE\s*=\s*100/);
   assert.match(source, /BATCH_MOD_LIFECYCLE_MAX_ITEMS\s*=\s*100/);
   assert.match(source, /BATCH_MOD_LIFECYCLE_SCHEMA_VERSION\s*=\s*1/);
+  assert.match(source, /BatchModLifecycleCapabilityDto = \{\s*previewAvailable: boolean;/);
+  assert.match(source, /unavailableReasonCode: string \| null/);
   assert.match(source, /"stop_on_failure"/);
   assert.match(source, /"continue_on_item_failure"/);
   assert.match(source, /"completed_with_errors"/);

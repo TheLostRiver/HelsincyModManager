@@ -234,6 +234,7 @@ T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service �
 工作流已接入它们，但当前 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
 
 ```text
+get_batch_mod_lifecycle_capability
 preview_batch_mod_lifecycle
 seal_batch_mod_lifecycle
 start_batch_mod_lifecycle
@@ -284,6 +285,7 @@ operation、一个 game/profile，最多 100 项；同一 `modId` 重复时整�
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
+| `get_batch_mod_lifecycle_capability` | 无 | `BatchModLifecycleCapabilityDto`；只包含 `previewAvailable`、`writeAvailable` 和可选稳定 `unavailableReasonCode`。Production 未接入 Sandbox 时两者为 `false` 且 reason 为 `sandbox_batch_production_forbidden`；该 DTO 只是交互门禁，每个 preview/write command 仍必须逐次重验 Sandbox 环境 |
 | `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
 | `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAtUnixMillis` 和 opaque `planToken` |
 | `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }`；同步执行 attempt 0 后在返回前发出唯一 terminal event |

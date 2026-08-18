@@ -40,7 +40,9 @@ test("task tour remains an independent route-driven overlay", () => {
   assert.match(providerSource, /currentRoute\.id !== "dashboard"/);
   assert.match(providerSource, /buildOnboardingTour\(currentRoute\.id\)/);
   assert.match(providerSource, /shouldAutoStartTour\(firstRunTour, storage\)/);
+  assert.match(providerSource, /activatedTargetStepIdRef\.current !== activeStep\.id/);
   assert.match(providerSource, /activeStep\.advance\.expectedRouteId !== currentRoute\.id/);
+  assert.match(providerSource, /onTargetActivate=\{markTargetActivated\}/);
   assert.match(
     providerSource,
     /requestAnimationFrame\(\(\) => \{\s*if \(autoStartCheckedRef\.current\) return;\s*autoStartCheckedRef\.current = true;/,
@@ -72,8 +74,19 @@ test("task tour remains an independent route-driven overlay", () => {
   );
   assert.match(
     overlaySource,
-    /targetState\.element\s*\?\s*window\.requestAnimationFrame\(\(\) => targetState\.element\?\.focus\(\)\)/,
+    /const frameId = target\s*\?\s*window\.requestAnimationFrame\(\(\) => target\.focus\(\)\)/,
   );
+  assert.match(overlaySource, /onTargetActivate\?\.\(step\.id\)/);
+  assert.match(
+    overlaySource,
+    /target\.addEventListener\("click", notifyTargetActivated, true\)/,
+  );
+  assert.match(
+    overlaySource,
+    /target\.removeEventListener\("click", notifyTargetActivated, true\)/,
+  );
+  assert.match(overlaySource, /Math\.min\(Math\.max\(requestedStepIndex, 0\), steps\.length - 1\)/);
+  assert.match(overlaySource, /if \(steps\.length === 0\) return null;/);
   assert.match(overlaySource, /if \(frameId !== null\) window\.cancelAnimationFrame\(frameId\)/);
   assert.match(overlaySource, /stepId=\{step\.id\}/);
   assert.match(overlaySource, /visualTarget\.stepId === stepId \? visualTarget\.rect : null/);

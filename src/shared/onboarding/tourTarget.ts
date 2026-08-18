@@ -37,7 +37,8 @@ export function resolveTourTarget(anchor: TourAnchorId): HTMLElement | null {
 export function isUsableTourTarget(element: HTMLElement) {
   if (!element.isConnected || element.closest('[inert], [aria-hidden="true"]')) return false;
   if (element.closest(".route-transition__layer.is-exiting")) return false;
-  if (element.hidden || element.getAttribute("aria-disabled") === "true") return false;
+  if (element.closest('[aria-disabled="true"], fieldset:disabled')) return false;
+  if (element.hidden) return false;
   if ("disabled" in element && element.disabled === true) return false;
 
   let current: HTMLElement | null = element;

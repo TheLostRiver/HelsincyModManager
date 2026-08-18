@@ -47,7 +47,17 @@ type TourOverlayProps = {
   steps: readonly TourStep[];
   stepIndex: number;
   onStepChange: (index: number) => void;
+  onTargetActivate?: (stepId: string) => void;
   onFinish: (outcome: TourOutcome) => void;
+};
+
+const EMPTY_TOUR_STEP: TourStep = {
+  id: "tour-step-unavailable",
+  title: "",
+  description: "",
+  primaryLabel: "关闭引导",
+  interaction: "blocked",
+  advance: { kind: "terminal" },
 };
 
 type TourPhase = "opening" | "open" | "closing";
@@ -60,8 +70,17 @@ type StableTourPanelLayout =
   | { kind: "docked"; stepId: string }
   | { kind: "floating"; stepId: string; x: number; y: number; style: CSSProperties };
 
-export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOverlayProps) {
-  const step = steps[stepIndex];
+export function TourOverlay({
+  steps,
+  stepIndex: requestedStepIndex,
+  onStepChange,
+  onTargetActivate,
+  onFinish,
+}: TourOverlayProps) {
+  const stepIndex = steps.length === 0
+    ? 0
+    : Math.min(Math.max(requestedStepIndex, 0), steps.length - 1);
+  const step = steps[stepIndex] ?? EMPTY_TOUR_STEP;
   const positionerRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const primaryActionRef = useRef<HTMLButtonElement | null>(null);
@@ -172,6 +191,11 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
     onStepChange(stepIndex + 1);
   }, [isTargetPending, onStepChange, requestFinish, step.advance.kind, stepIndex]);
 
+  const notifyTargetActivated = useCallback(() => {
+    if (!isAwaitingRouteChange || phase === "closing") return;
+    onTargetActivate?.(step.id);
+  }, [isAwaitingRouteChange, onTargetActivate, phase, step.id]);
+
   useModalFocusTrap({
     active: phase !== "closing" && step.interaction === "blocked",
     containerRef: panelRef,
@@ -189,9 +213,15 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
 
   useEffect(() => {
     if (phase === "closing" || !isAwaitingRouteChange) return undefined;
-    const frameId = targetState.element
-      ? window.requestAnimationFrame(() => targetState.element?.focus())
+    const target = targetState.element;
+    const frameId = target
+      ? window.requestAnimationFrame(() => target.focus())
       : null;
+    if (target) {
+      // Capture the activation before the navigation button's own click handler changes
+      // the route. This lets TourProvider require both activation and the expected route.
+      target.addEventListener("click", notifyTargetActivated, true);
+    }
     const handleTargetOnlyKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -224,9 +254,10 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
     document.addEventListener("keydown", handleTargetOnlyKeyDown, true);
     return () => {
       if (frameId !== null) window.cancelAnimationFrame(frameId);
+      if (target) target.removeEventListener("click", notifyTargetActivated, true);
       document.removeEventListener("keydown", handleTargetOnlyKeyDown, true);
     };
-  }, [isAwaitingRouteChange, phase, requestFinish, targetState.element]);
+  }, [isAwaitingRouteChange, notifyTargetActivated, phase, requestFinish, targetState.element]);
 
   const handlePanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -244,6 +275,8 @@ export function TourOverlay({ steps, stepIndex, onStepChange, onFinish }: TourOv
       goNext();
     }
   };
+
+  if (steps.length === 0) return null;
 
   const positionerClassName = [
     "tour-panel-positioner",

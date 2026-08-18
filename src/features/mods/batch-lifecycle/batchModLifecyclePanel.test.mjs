@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   getBatchAttemptStatusLabel,
+  getBatchCapabilityUnavailableLabel,
   getBatchErrorLabel,
   getBatchExcludedReasonLabel,
   getBatchItemStatusLabel,
@@ -124,9 +125,9 @@ test("batch copy maps stable codes without raw backend text", () => {
 test("ModLibraryPage dispatches lifecycle flows by explicit selection mode", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
 
-  assert.match(page, /case "install":\s*if \(selectionMode === "single"\) \{\s*startSelectedInstallTask\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("install"/);
-  assert.match(page, /case "uninstall":\s*if \(selectionMode === "single"\) \{\s*promptSelectedUninstallTask\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("uninstall"/);
-  assert.match(page, /case "reinstall":[\s\S]*?if \(selectionMode === "single"\) \{\s*openReinstall\(\);\s*\} else \{\s*void batchWorkflow\.prepare\("reinstall"/);
+  assert.match(page, /case "install":\s*if \(selectionMode === "single"\) \{\s*startSelectedInstallTask\(\);\s*\} else if \(!selectionInteractionLocked && batchWriteAvailable\) \{\s*void batchWorkflow\.prepare\("install"/);
+  assert.match(page, /case "uninstall":\s*if \(selectionMode === "single"\) \{\s*promptSelectedUninstallTask\(\);\s*\} else if \(!selectionInteractionLocked && batchWriteAvailable\) \{\s*void batchWorkflow\.prepare\("uninstall"/);
+  assert.match(page, /case "reinstall":[\s\S]*?if \(selectionMode === "single"\) \{\s*openReinstall\(\);\s*\} else if \(!selectionInteractionLocked && batchWriteAvailable\) \{\s*void batchWorkflow\.prepare\("reinstall"/);
   assert.match(page, /selectionMode !== "single"\s*\|\| selectedIds\.size !== 1/);
   assert.match(page, /batchWorkflow\.state\.status === "result" &&/);
   assert.match(page, /batchWorkflow\.state\.status === "starting"/);
@@ -172,4 +173,34 @@ test("batch panels keep selection-invalidation wiring", () => {
   // 选择变化使旧 batch plan 失效（T13-07 契约）。
   assert.match(page, /Selection changes invalidate any in-flight batch preview/);
   assert.match(page, /batchWorkflow\.reset\(\);\s*\/\/ eslint-disable-next-line/);
+});
+
+test("batch capability is backend-owned, fail-closed, and mapped to product copy", () => {
+  const hookSource = readSource(
+    "src/features/mods/batch-lifecycle/useBatchModLifecycleCapability.ts",
+  );
+
+  assert.match(hookSource, /status: "loading",\s*capability: null/);
+  assert.match(hookSource, /getBatchModLifecycleCapability\(\)/);
+  assert.match(hookSource, /catch\(\(\) =>/);
+  assert.match(hookSource, /UNAVAILABLE_BATCH_CAPABILITY/);
+  assert.doesNotMatch(hookSource, /HMM_SANDBOX_DATA_DIR|process\.env|import\.meta\.env/);
+
+  assert.equal(
+    getBatchCapabilityUnavailableLabel({
+      previewAvailable: false,
+      writeAvailable: false,
+      unavailableReasonCode: "sandbox_batch_production_forbidden",
+    }),
+    "当前版本仅允许在受控测试环境执行批量操作",
+  );
+  assert.equal(
+    getBatchCapabilityUnavailableLabel({
+      previewAvailable: false,
+      writeAvailable: false,
+      unavailableReasonCode: "batch_capability_unavailable",
+    }),
+    "无法确认批量操作权限，请刷新后重试",
+  );
+  assert.ok(getBatchCapabilityUnavailableLabel(null).length > 0);
 });

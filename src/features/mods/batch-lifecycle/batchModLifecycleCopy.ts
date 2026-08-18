@@ -1,8 +1,30 @@
 import type {
   BatchModLifecycleAttemptStatus,
+  BatchModLifecycleCapabilityDto,
   BatchModLifecycleItemStatus,
   BatchModLifecycleOperation,
 } from "./batchModLifecycleTypes";
+
+export const BATCH_MOD_LIFECYCLE_CAPABILITY_LOADING_MESSAGE =
+  "正在确认批量操作权限，请稍候";
+
+export function getBatchCapabilityUnavailableLabel(
+  capability: BatchModLifecycleCapabilityDto | null,
+): string {
+  if (capability === null) {
+    return BATCH_MOD_LIFECYCLE_CAPABILITY_LOADING_MESSAGE;
+  }
+  switch (capability.unavailableReasonCode) {
+    case "sandbox_batch_production_forbidden":
+      return "当前版本仅允许在受控测试环境执行批量操作";
+    case "batch_capability_unavailable":
+      return "无法确认批量操作权限，请刷新后重试";
+    case null:
+      return "批量操作当前不可用";
+    default:
+      return "当前环境不支持批量操作";
+  }
+}
 
 export function getBatchOperationLabel(operation: BatchModLifecycleOperation): string {
   switch (operation) {

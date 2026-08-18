@@ -6,6 +6,11 @@ use hmm_ports::{
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// Sandbox content comes from third-party archives. Keep the `nativePC` parent discovery
+/// explicitly bounded so a deeply nested directory tree cannot turn into unbounded recursion.
+/// Values below the limit are already deeper than any supported mod layout.
+const MAX_PREVIEW_CANDIDATE_ROOT_DEPTH: usize = 64;
+
 pub struct SandboxPackagePreviewScanner;
 
 impl PackagePreviewScanner for SandboxPackagePreviewScanner {
@@ -37,7 +42,7 @@ fn find_candidate_roots(
     cancellation_token: &dyn CancellationToken,
 ) -> Result<Vec<std::path::PathBuf>> {
     let mut native_pc_parents = BTreeSet::new();
-    collect_native_pc_parents(sandbox_root, cancellation_token, &mut native_pc_parents)?;
+    collect_native_pc_parents(sandbox_root, 0, cancellation_token, &mut native_pc_parents)?;
 
     if native_pc_parents.is_empty() {
         native_pc_parents.insert(sandbox_root.to_path_buf());
@@ -48,10 +53,15 @@ fn find_candidate_roots(
 
 fn collect_native_pc_parents(
     current_dir: &Path,
+    depth: usize,
     cancellation_token: &dyn CancellationToken,
     out: &mut BTreeSet<std::path::PathBuf>,
 ) -> Result<()> {
     ensure_not_cancelled(cancellation_token)?;
+    if depth >= MAX_PREVIEW_CANDIDATE_ROOT_DEPTH {
+        return Ok(());
+    }
+
     for entry in std::fs::read_dir(current_dir)? {
         ensure_not_cancelled(cancellation_token)?;
         let entry = entry?;
@@ -70,7 +80,7 @@ fn collect_native_pc_parents(
             continue;
         }
 
-        collect_native_pc_parents(&entry.path(), cancellation_token, out)?;
+        collect_native_pc_parents(&entry.path(), depth + 1, cancellation_token, out)?;
     }
 
     Ok(())
@@ -341,6 +351,34 @@ mod tests {
         assert_eq!(candidates[0].file_name, "candidate-000.png");
         assert_eq!(candidates[1].file_name, "candidate-001.png");
         assert_eq!(candidates[2].file_name, "candidate-002.png");
+    }
+
+    #[test]
+    fn scanner_stops_native_pc_discovery_at_the_depth_limit() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        std::fs::write(temp.path().join("root-preview.png"), b"")
+            .expect("write sandbox-root preview");
+
+        let mut deep_path = temp.path().to_path_buf();
+        for _ in 0..(MAX_PREVIEW_CANDIDATE_ROOT_DEPTH + 2) {
+            deep_path.push("d");
+        }
+        std::fs::create_dir_all(&deep_path).expect("create deep tree");
+        std::fs::create_dir_all(deep_path.join("nativePC")).expect("create over-deep nativePC");
+        std::fs::write(deep_path.join("deep-preview.png"), b"").expect("write deep preview");
+
+        let scanner = SandboxPackagePreviewScanner;
+        let candidates = scanner
+            .scan_candidates(PreviewImageScanRequest {
+                package_id: "pkg-1",
+                sandbox_root: temp.path(),
+                policy: &PreviewImagePolicy::default(),
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("depth-limited scan succeeds without recursion overflow");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].source_ref.logical_path, "root-preview.png");
     }
 
     #[test]

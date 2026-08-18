@@ -38,6 +38,45 @@ test("refresh remains visible but honors the workflow selection lock and page-lo
   assert.match(page, /case "refresh":\s*if \(!selectionInteractionLocked\) \{\s*void refreshModLibrary\(\)/);
 });
 
+test("batch lifecycle actions honor workflow lock and backend capability before dispatch", () => {
+  const panel = readSource("src/features/mods/CompactActionPanel.tsx");
+  const page = readSource("src/features/mods/ModLibraryPage.tsx");
+
+  assert.match(
+    panel,
+    /const lifecycleDisabledReason = \([\s\S]*?selectionInteractionDisabledReason\s*\?\?\s*batchCapabilityDisabledReason\(actionId\)\s*\?\?\s*fallbackReason/,
+  );
+  assert.match(panel, /batchSelectionActive && actionId === "preview-plan"/);
+  assert.match(panel, /batchPreviewUnavailableReason/);
+  assert.match(panel, /batchWriteUnavailableReason/);
+
+  assert.match(page, /const batchCapability = useBatchModLifecycleCapability\(\)/);
+  assert.match(page, /batchWriteAvailable = batchCapability\.capability\?\.writeAvailable === true/);
+  assert.match(page, /batchPreviewAvailable = batchCapability\.capability\?\.previewAvailable === true/);
+  assert.match(
+    page,
+    /selectedIds\.size > 0 && batchWriteAvailable/,
+  );
+  assert.match(
+    page,
+    /case "preview-plan":[\s\S]*?else if \(!selectionInteractionLocked && batchPreviewAvailable\)/,
+  );
+  assert.match(
+    page,
+    /case "install":[\s\S]*?else if \(!selectionInteractionLocked && batchWriteAvailable\)/,
+  );
+  assert.match(
+    page,
+    /case "reinstall":[\s\S]*?else if \(!selectionInteractionLocked && batchWriteAvailable\)/,
+  );
+  assert.match(
+    page,
+    /case "uninstall":[\s\S]*?else if \(!selectionInteractionLocked && batchWriteAvailable\)/,
+  );
+  assert.match(page, /batchPreviewUnavailableReason=\{batchPreviewUnavailableReason\}/);
+  assert.match(page, /batchWriteUnavailableReason=\{batchWriteUnavailableReason\}/);
+});
+
 test("mod cards convert pointer and keyboard Ctrl input into pure selection intents", () => {
   const card = readSource("src/features/mods/ModPosterCard.tsx");
 
