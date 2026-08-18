@@ -10,12 +10,14 @@ type GamePrerequisitePanelProps = {
   state: GamePrerequisiteLoadState;
   onRefresh: () => Promise<void>;
   variant?: "default" | "embedded";
+  tourId?: string;
 };
 
 export function GamePrerequisitePanel({
   state,
   onRefresh,
   variant = "default",
+  tourId,
 }: GamePrerequisitePanelProps) {
   const summary = summaryCopyForState(state);
   const SummaryIcon = summary.icon;
@@ -24,6 +26,7 @@ export function GamePrerequisitePanel({
   return (
     <section
       className={`game-prerequisite-panel${isEmbedded ? " game-prerequisite-panel--embedded" : ""}`}
+      data-tour-id={tourId}
       aria-label={isEmbedded ? "前置环境" : undefined}
       aria-labelledby={isEmbedded ? undefined : "game-prerequisite-title"}
     >

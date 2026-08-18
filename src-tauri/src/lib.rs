@@ -104,8 +104,9 @@ use window_lifecycle_commands::{
 
 pub use background_worker::BackgroundWorkerEntryError;
 use batch_mod_lifecycle_commands::{
-    get_batch_mod_lifecycle_result, preview_batch_mod_lifecycle, retry_batch_mod_lifecycle,
-    seal_batch_mod_lifecycle, start_batch_mod_lifecycle,
+    get_batch_mod_lifecycle_capability, get_batch_mod_lifecycle_result,
+    preview_batch_mod_lifecycle, retry_batch_mod_lifecycle, seal_batch_mod_lifecycle,
+    start_batch_mod_lifecycle,
 };
 
 #[tauri::command]
@@ -124,6 +125,7 @@ pub fn run_installer_cleanup_from_env() -> i32 {
 pub fn run() {
     let app = register_thumbnail_protocol(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_log_health = app_log::initialize(app.handle());
             app.manage(app_log_health);
@@ -144,6 +146,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_health,
+            get_batch_mod_lifecycle_capability,
             preview_batch_mod_lifecycle,
             seal_batch_mod_lifecycle,
             start_batch_mod_lifecycle,

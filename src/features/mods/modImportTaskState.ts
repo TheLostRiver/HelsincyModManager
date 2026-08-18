@@ -30,6 +30,17 @@ export function getModImportTaskPhaseLabel(phase: string) {
   return modImportPhaseLabels[phase] ?? "正在导入";
 }
 
+export function consumeReconnectImportRequest(
+  listenerStatus: "loading" | "ready" | "failed",
+  requested: boolean,
+) {
+  if (listenerStatus !== "ready" || !requested) {
+    return { shouldStart: false, nextRequested: requested };
+  }
+
+  return { shouldStart: true, nextRequested: false };
+}
+
 export function nextModImportTaskStateFromProgress(
   current: ModImportTaskState,
   event: TaskProgressEventDto,

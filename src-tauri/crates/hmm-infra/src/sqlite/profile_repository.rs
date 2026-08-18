@@ -544,7 +544,7 @@ mod tests {
             backup_directory: custom_directory_selection("D:/Fixture/Backups"),
             schedule: ProfileBackupSchedule::manual(),
             retention: ProfileBackupRetention {
-                max_count: 12,
+                max_count: 0,
                 max_age_days: Some(45),
                 max_total_bytes: Some(64 * 1024 * 1024),
             },

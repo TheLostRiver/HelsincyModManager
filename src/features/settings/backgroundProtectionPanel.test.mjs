@@ -185,6 +185,9 @@ test("settings hosts the persisted panel outside session preview state", () => {
   assert.ok(backupSectionIndex >= 0);
   assert.ok(panelIndex > backupSectionIndex);
   assert.ok(previewReminderIndex > panelIndex);
+  assert.doesNotMatch(page, /自动备份节奏/);
+  assert.doesNotMatch(page, /backupCadence/);
+  assert.doesNotMatch(page, /TimePickerPopover/);
   assert.doesNotMatch(page.slice(0, page.indexOf("export function SettingsPage")), /BackgroundProtectionControlDto/);
 
   assert.match(css, /\.background-protection-panel\s*\{[\s\S]*?min-height:/);

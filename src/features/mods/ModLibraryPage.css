@@ -498,11 +498,41 @@
 }
 
 .compact-panel__selection-status {
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 500;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
   margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+.compact-panel__selection-status strong {
+  color: var(--color-accent-strong, #1d4ed8);
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-panel__selection-feedback {
+  flex: 1 1 260px;
+  min-width: 0;
+  color: var(--color-warning-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.compact-panel__selection-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---------- 快捷操作按钮 ---------- */
@@ -616,6 +646,18 @@
 
 .compact-action.is-neutral .compact-action__dot {
   background: var(--color-neutral-dot);
+}
+
+.compact-action.is-mode-toggle[aria-pressed="true"] {
+  color: var(--color-accent-strong, #1d4ed8);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.compact-action.is-icon-only {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
 }
 
 /* 成功（启用全部）：薄荷渐变。 */
@@ -874,4 +916,3 @@
     transform: none;
   }
 }
-

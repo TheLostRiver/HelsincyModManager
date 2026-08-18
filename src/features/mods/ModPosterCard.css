@@ -208,7 +208,10 @@
 }
 
 .mod-grid.view-tech .mod-card__selection-indicator {
-  display: none; /* 彻底移除选中圆圈，仅靠卡片边框/位移表示选中 */
+  top: 12px;
+  right: 12px;
+  left: auto;
+  display: flex;
 }
 
 :root[data-color-scheme="dark"] .mod-grid.view-tech .mod-card {
@@ -245,6 +248,7 @@
   text-transform: uppercase;
   letter-spacing: -0.5px;
   border-bottom: 1px solid var(--color-border);
+  padding-right: 36px;
   padding-bottom: 12px;
 }
 
@@ -603,6 +607,11 @@
 }
 
 .mod-card:hover .mod-card__selection-indicator {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.mod-card.is-batch-selection .mod-card__selection-indicator {
   opacity: 1;
   transform: scale(1);
 }

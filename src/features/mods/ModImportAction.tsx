@@ -9,6 +9,7 @@ import {
   type TaskProgressEventDto,
 } from "./modImportTypes";
 import {
+  consumeReconnectImportRequest,
   getModImportTaskPhaseLabel,
   nextModImportTaskStateFromProgress,
   type ModImportTaskState,
@@ -20,6 +21,7 @@ type ModImportActionProps = {
   mode?: "new" | "revision";
   modId?: string | null;
   disabledReason?: string;
+  tourId?: string;
   onImported: () => Promise<void> | void;
 };
 
@@ -52,10 +54,10 @@ function importActionLabel(label: string, state: ModImportTaskState, mode: "new"
     case "running":
       return getModImportTaskPhaseLabel(state.phase);
     case "completed":
-      return mode === "revision" ? "继续导入新版本" : "继续添加 MOD";
+      return mode === "revision" ? "继续导入新版本" : "继续导入 Mod";
     case "failed":
     case "cancelled":
-      return mode === "revision" ? "重试导入新版本" : "重试添加 MOD";
+      return mode === "revision" ? "重试导入新版本" : "重试导入 Mod";
     default:
       return label;
   }
@@ -85,6 +87,7 @@ export function ModImportAction({
   mode = "new",
   modId,
   disabledReason,
+  tourId,
   onImported,
 }: ModImportActionProps) {
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
@@ -97,6 +100,8 @@ export function ModImportAction({
   const startPendingRef = useRef(false);
   const pendingProgressEventsRef = useRef(new Map<string, TaskProgressEventDto>());
   const completedTaskIdsRef = useRef(new Set<string>());
+  const continueImportAfterReconnectRef = useRef(false);
+  const handleImportRef = useRef<() => Promise<void>>(async () => undefined);
   const onImportedRef = useRef(onImported);
   const displayedTaskNoticeIdRef = useRef<string | null>(null);
 
@@ -145,6 +150,19 @@ export function ModImportAction({
   useEffect(() => {
     onImportedRef.current = onImported;
   }, [onImported]);
+
+  useEffect(() => {
+    handleImportRef.current = handleImport;
+  });
+
+  useEffect(() => {
+    const reconnect = consumeReconnectImportRequest(
+      listenerStatus,
+      continueImportAfterReconnectRef.current,
+    );
+    continueImportAfterReconnectRef.current = reconnect.nextRequested;
+    if (reconnect.shouldStart) void handleImportRef.current();
+  }, [listenerStatus]);
 
   useEffect(() => {
     if (taskState.status === "failed") {
@@ -333,7 +351,9 @@ export function ModImportAction({
   }
 
   const taskActive = isImportTaskActive(taskState);
-  const statusText = disabledReason;
+  const statusText = disabledReason ?? (listenerStatus === "failed"
+    ? "导入服务暂时不可用，点击后将自动重连并继续"
+    : undefined);
   const listenerLoading = listenerStatus === "loading";
   const actionDisabled =
     listenerLoading || taskActive || Boolean(disabledReason) || (mode === "revision" && !modId);
@@ -344,8 +364,10 @@ export function ModImportAction({
         type="button"
         className="compact-action compact-import-action is-primary"
         data-variant="primary"
+        data-tour-id={tourId}
         onClick={() => {
           if (listenerStatus === "failed") {
+            continueImportAfterReconnectRef.current = true;
             retryTaskProgressListener();
             return;
           }
@@ -364,7 +386,7 @@ export function ModImportAction({
             {listenerLoading
               ? "准备导入..."
               : listenerStatus === "failed"
-                ? "重试导入连接"
+                ? mode === "revision" ? "导入新版本" : "导入 Mod"
                 : importActionLabel(label, taskState, mode)}
           </span>
         </span>

@@ -234,6 +234,7 @@ T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service �
 工作流已接入它们，但当前 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
 
 ```text
+get_batch_mod_lifecycle_capability
 preview_batch_mod_lifecycle
 seal_batch_mod_lifecycle
 start_batch_mod_lifecycle
@@ -284,6 +285,7 @@ operation、一个 game/profile，最多 100 项；同一 `modId` 重复时整�
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
+| `get_batch_mod_lifecycle_capability` | 无 | `BatchModLifecycleCapabilityDto`；只包含 `previewAvailable`、`writeAvailable` 和可选稳定 `unavailableReasonCode`。Production 未接入 Sandbox 时两者为 `false` 且 reason 为 `sandbox_batch_production_forbidden`；该 DTO 只是交互门禁，每个 preview/write command 仍必须逐次重验 Sandbox 环境 |
 | `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
 | `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAtUnixMillis` 和 opaque `planToken` |
 | `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }`；同步执行 attempt 0 后在返回前发出唯一 terminal event |
@@ -882,6 +884,10 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - `validate_profile_save_directory` 按游戏/应用规则校验存档源目录，并返回可安全展示的标签。
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
+- `retention.maxCount` 范围为 0..=999，其中 `0` 表示不按数量限制。`retention.maxAgeDays` 与
+  `retention.maxTotalBytes` 的 `null` 表示不限制；为支持数字输入 UI，Tauri DTO 边界也接受数值 `0`
+  并归一化为 `null`/领域层 `None`。非零年龄范围仍为 1..=3650 天，非零空间范围仍为 16 MiB..=1 TiB。
+  新配置档默认三项均不限制；已有配置档的持久化值不迁移、不覆盖。
 - `preRestoreBackupEnabled` 是 Profile 级持久安全设置，缺省请求与 migration 012 都使用 `true`。前端可以
   修改该开关，但单次恢复请求不能临时关闭它；后端提交时必须重新读取当前持久值。
 - `discover_profile_save_directories` 由后端基于已保存游戏配置、Steam root、MHW:I 存档规则和 Profile 设置执行存档源目录发现；前端只提交 `gameId` 和 `profileId`，不提交 Steam userdata 路径、account id、SteamID64、profile URL 或 XML。

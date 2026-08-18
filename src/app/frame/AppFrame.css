@@ -211,6 +211,42 @@
   gap: 12px;
 }
 
+.onboarding-launcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0 11px;
+  color: var(--color-accent-strong);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.onboarding-launcher:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+  border-color: var(--color-accent);
+}
+
+.onboarding-launcher:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.onboarding-launcher:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -322,6 +358,10 @@
   .status-actions {
     justify-content: start;
     flex-wrap: wrap;
+  }
+
+  .window-tools {
+    justify-content: start;
   }
 
   .install-recovery-global-alert {

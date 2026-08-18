@@ -657,9 +657,9 @@ T13 的权威语义见 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE
 `hmm-app` service、批量 runner、journal 和 retry；T13-03 已交付批量卸载 facts/executor 与
 锁内 manifest snapshot revalidation；T13-04 已交付 app 层批量真正重装 facts/executor、Mod 级稳定
 摘要与结构化 recovery/committed 分类；T13-05 已把 install/uninstall/reinstall 接入 Sandbox
-runtime/CLI，并为 same-revision retarget 提供纯只读 preview facts；T13-06 已落地 5 个窄 Tauri
-command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与同步 terminal event（仅 Sandbox
-模式可用）；T13-07 已落地批量 workflow（跨页选择、策略选择、preview/seal/start/result/retry
+runtime/CLI，并为 same-revision retarget 提供纯只读 preview facts；T13-06 已落地 6 个窄 Tauri
+command（含 backend-owned capability 投影）、camelCase/严格未知字段拒绝 DTO、feature-local typed
+API 与同步 terminal event（仅 Sandbox 模式可用）；T13-07 已落地批量 workflow（跨页选择、策略选择、preview/seal/start/result/retry
 状态机）、预览/结果 UI、行为测试与 4 viewport smoke。T13-08 disposable Windows Gate C 已于
 2026-08-05 通过主链和受控 partial failure -> retry 补充链，并标记为 `certified`。
 
@@ -671,7 +671,7 @@ command、camelCase/严格未知字段拒绝 DTO、feature-local typed API 与�
 | T13-03 | 批量 uninstall 只消费 manifest/installed summary/backup；target changed/missing/read failure、backup unavailable、invalid manifest 和 remove/restore overlap 阻断；同 revision binding/entry 漂移在写锁内拒绝；中途失败不伪回滚已成功项；restart 后可区分 succeeded/retryable/recovery required |
 | T13-04 | 批量 true reinstall 的 retained/replaced/added/stale 与单项计划一致；installed/candidate revision、binding、target、original backup stale；manifest failure 回滚旧 revision；不完整 rollback 进入 recovery required；同 revision retarget 复用既有 snapshot/transaction |
 | T13-05 | CLI JSON/JSONL schema、唯一 terminal event、exit code、partial result/retry、parser write gate、Sandbox containment、stale preview 零副作用和机器输出脱敏；CLI 不循环调用单项 command |
-| T13-06 | 五个窄 Tauri command 的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、按 attemptNumber 绑定的分页（默认 50、最大 100）和 typed API wrapper；seal→start→result 端到端、重复 start 幂等、Production 拒绝；tauriContractCoverage 证明所有注册 command 已在契约文档登记 |
+| T13-06 | 六个窄 Tauri command（含 backend-owned capability 投影）的 camelCase DTO、未知字段拒绝、stable code、taskId/phase serialization、按 attemptNumber 绑定的分页（默认 50、最大 100）和 typed API wrapper；seal→start→result 端到端、重复 start 幂等、Production 拒绝；tauriContractCoverage 证明所有注册 command 已在契约文档登记 |
 | T13-07 | 跨页多选累积（翻页保留、搜索/筛选/刷新清空）、批量 preview/确认（策略显式单选、blocked 项确认）、start 进度、分页 result、partial success 和 retry UI；选择变化使旧 batch plan 失效；manifest installedRevisionId 数据源；前端不计算 target/retryable/文件规则；1440x900/1366x768/1280x800/480x800 视觉 smoke（人工） |
 | T13-08 | disposable Windows Sandbox 中用人工 fixture 完成 batch install -> restart -> batch true reinstall（含一个 Armor target switch）-> 受控 partial failure -> retry retryable 项 -> restart -> recovery 检查 -> batch uninstall -> exact baseline；核对 task/Audit/journal、manifest/binding、backup/recovery/staging 清理与 evidence health |
 

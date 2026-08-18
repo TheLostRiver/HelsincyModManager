@@ -2,10 +2,31 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  consumeReconnectImportRequest,
   getModImportTaskPhaseLabel,
   isModImportTaskPhase,
   nextModImportTaskStateFromProgress,
 } from "./modImportTaskState.ts";
+
+test("reconnect requests are consumed exactly once after the listener is ready", () => {
+  let requested = true;
+  let startCount = 0;
+  const shouldStartResults = [];
+  const nextRequestedResults = [];
+
+  for (const listenerStatus of ["loading", "ready", "ready"]) {
+    const result = consumeReconnectImportRequest(listenerStatus, requested);
+    shouldStartResults.push(result.shouldStart);
+    nextRequestedResults.push(result.nextRequested);
+    requested = result.nextRequested;
+    if (result.shouldStart) startCount += 1;
+  }
+
+  assert.deepEqual(shouldStartResults, [false, true, false]);
+  assert.deepEqual(nextRequestedResults, [true, false, false]);
+  assert.equal(startCount, 1);
+  assert.equal(requested, false);
+});
 
 function progress(overrides = {}) {
   return {

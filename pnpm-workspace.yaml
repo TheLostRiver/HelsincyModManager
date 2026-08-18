@@ -3,5 +3,8 @@ packages:
 allowBuilds:
   esbuild: true
 overrides:
+  "brace-expansion@<1.1.18": 1.1.18
+  "brace-expansion@>=2.0.0 <2.1.4": 2.1.4
   esbuild: 0.27.2
-  js-yaml: 4.2.0
+  js-yaml: 4.3.1
+  postcss: 8.5.23

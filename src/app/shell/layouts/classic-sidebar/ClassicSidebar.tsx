@@ -7,6 +7,8 @@ import { ClassicSidebarModeButton } from "../../sidebar-mode-control/SidebarMode
 export function ClassicSidebar() {
   const { getNavigationState, navigate } = useAppRoute();
   const navigationItems = getNavigationState(navItems);
+  const primaryItems = navigationItems.filter((item) => item.placement !== "utility");
+  const utilityItems = navigationItems.filter((item) => item.placement === "utility");
 
   return (
     <aside className="sidebar" aria-label="主导航">
@@ -18,13 +20,18 @@ export function ClassicSidebar() {
         </div>
       </div>
 
-      <nav className="nav-list">
-        {navigationItems.map((item) => (
+      <nav className="nav-list" data-tour-id="app.navigation">
+        {primaryItems.map((item) => (
           <ClassicNavButton key={item.id} item={item} onNavigate={navigate} />
         ))}
       </nav>
 
       <div className="sidebar-footer">
+        <nav className="sidebar-utility-nav" aria-label="辅助导航">
+          {utilityItems.map((item) => (
+            <ClassicNavButton key={item.id} item={item} onNavigate={navigate} />
+          ))}
+        </nav>
         <ClassicSidebarModeButton />
 
         <div className="nav-footnote">
@@ -51,6 +58,7 @@ function ClassicNavButton({
     <button
       type="button"
       className={`nav-item ${isActive ? "is-active" : ""}`}
+      data-tour-id={`nav.${item.id}`}
       disabled={isDisabled}
       aria-current={isActive ? "page" : undefined}
       title={isDisabled ? item.disabledReason : undefined}

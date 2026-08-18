@@ -350,7 +350,10 @@ export function BackupCenterPage() {
           scannedCount: profile.backupCount,
           protectedCount: profile.protectedCount,
           problemCount: profile.attentionCount,
-          candidateCount: Math.max(0, profile.backupCount - profile.retention.maxCount),
+          candidateCount:
+            profile.retention.maxCount === 0
+              ? 0
+              : Math.max(0, profile.backupCount - profile.retention.maxCount),
           deletedCount: 0,
           partialCount: 0,
           blockedCount: 0,
@@ -424,7 +427,7 @@ export function BackupCenterPage() {
       <header className="backup-center-header">
         <div>
           <span className="backup-center-eyebrow"><Archive size={14} /> BACKUP CENTER</span>
-          <h1>存档备份</h1>
+          <h1>备份整理</h1>
           <p>跨配置档查看备份历史、保护点与整理状态。</p>
         </div>
         <button className="backup-icon-button" type="button" title="重新加载" aria-label="重新加载" aria-busy={pageState.status === "loading"} onClick={() => setRefreshToken((value) => value + 1)}>
@@ -432,23 +435,16 @@ export function BackupCenterPage() {
         </button>
       </header>
 
-      {page?.summary.attentionCount ? (
-        <div className="backup-center-alert is-warning" role="status">
-          <CircleAlert size={18} />
-          <span>{page.summary.attentionCount} 条备份需要整理或检查。</span>
-        </div>
-      ) : null}
-
       {page ? (
-        <section className="backup-center-summary" aria-label="备份摘要">
-          <SummaryMetric label="备份记录" value={String(page.summary.backupCount)} icon={<Archive size={17} />} />
-          <SummaryMetric label="已知空间" value={formatBytes(page.summary.archiveBytes)} icon={<Save size={17} />} />
-          <SummaryMetric label="保护点" value={String(page.summary.protectedCount)} icon={<ShieldCheck size={17} />} />
-          <SummaryMetric label="需处理" value={String(page.summary.attentionCount)} icon={<CircleAlert size={17} />} tone={page.summary.attentionCount ? "warning" : "normal"} />
+        <section className="backup-center-overview" aria-label="备份摘要">
+          <SummaryMetric label="备份记录" value={String(page.summary.backupCount)} icon={<Archive size={15} />} />
+          <SummaryMetric label="已知空间" value={formatBytes(page.summary.archiveBytes)} icon={<Save size={15} />} />
+          <SummaryMetric label="保护点" value={String(page.summary.protectedCount)} icon={<ShieldCheck size={15} />} />
+          <SummaryMetric label="需处理" value={String(page.summary.attentionCount)} icon={<CircleAlert size={15} />} tone={page.summary.attentionCount ? "warning" : "normal"} />
         </section>
       ) : null}
 
-      <section className="backup-center-filters" aria-label="筛选备份">
+      <section className="backup-center-filters" aria-label="筛选备份" data-tour-id="backups.filters">
         <div className="backup-filter-label"><Filter size={16} /> 筛选</div>
         <label>
           <span>配置档</span>
@@ -487,7 +483,7 @@ export function BackupCenterPage() {
 
       {page ? (
         <section className="backup-center-workspace">
-          <aside className="backup-center-profiles" aria-label="配置档摘要">
+          <aside className="backup-center-profiles" aria-label="配置档摘要" data-tour-id="backups.profiles">
             <div className="backup-section-heading"><div><span className="backup-section-kicker">PROFILES</span><h2>配置档摘要</h2></div><span>{page.profiles.length} 个</span></div>
             <div className="backup-profile-list">
               {page.profiles.map((profile) => (
@@ -503,7 +499,7 @@ export function BackupCenterPage() {
             </div>
           </aside>
 
-          <section className="backup-center-history" aria-label="备份历史">
+          <section className="backup-center-history" aria-label="备份历史" data-tour-id="backups.history">
             <div className="backup-section-heading"><div><span className="backup-section-kicker">HISTORY</span><h2>备份历史</h2></div><span>{page.totalCount} 条</span></div>
             {pageState.status === "error" ? <div className="backup-center-alert is-danger"><CircleAlert size={18} /> {pageState.message}</div> : null}
             {loading ? <LoadingRows /> : page.items.length === 0 ? <EmptyHistory /> : (

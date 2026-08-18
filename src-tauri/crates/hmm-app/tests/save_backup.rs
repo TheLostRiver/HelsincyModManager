@@ -459,6 +459,53 @@ fn pre_restore_backup_creation_does_not_prune_the_restore_candidate() {
 }
 
 #[test]
+fn retention_with_all_limits_unbounded_keeps_every_completed_backup() {
+    let harness = Harness::new();
+    harness.insert_profile("default");
+    harness.insert_settings(ProfileSaveSettings {
+        profile_id: "default".to_owned(),
+        save_directory: custom_directory_selection("C:/Users/Test/Saves"),
+        backup_directory: default_backup_directory_selection(),
+        schedule: ProfileBackupSchedule::manual(),
+        retention: ProfileBackupRetention::default(),
+        steam_account: None,
+        pre_restore_backup_enabled: true,
+        updated_at: 10,
+    });
+    for (backup_id, created_at) in [
+        ("backup-latest", 3),
+        ("backup-middle", 2),
+        ("backup-oldest", 1),
+    ] {
+        harness
+            .repository
+            .save(&sample_summary(backup_id, "default", created_at))
+            .expect("save completed backup");
+    }
+
+    let report = harness
+        .service
+        .run_retention(&GameId::mhw(), &ProfileId::new("default"))
+        .expect("unbounded retention should be a no-op");
+
+    assert_eq!(report.outcome, SaveBackupRetentionOutcome::WithinPolicy);
+    assert_eq!(report.scanned_count, 3);
+    assert_eq!(report.candidate_count, 0);
+    assert_eq!(report.deleted_count, 0);
+    assert_eq!(report.archive_bytes_before, 384);
+    assert_eq!(report.archive_bytes_after, 384);
+    assert_eq!(report.released_bytes, 0);
+    assert!(report.budget_satisfied);
+    assert!(harness.writer.take_deleted_ids().is_empty());
+    assert!(harness.repository.take_retention_reasons().is_empty());
+    assert!(harness
+        .repository
+        .take_saved()
+        .iter()
+        .all(|summary| summary.status == SaveBackupStatus::Completed));
+}
+
+#[test]
 fn retention_combines_count_age_and_space_candidates_oldest_first() {
     let harness = Harness::with_now(10 * DAY_MILLIS);
     harness.insert_profile("default");

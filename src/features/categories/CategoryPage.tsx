@@ -213,7 +213,7 @@ export function CategoryPage() {
 
   return (
     <section className="category-page" aria-labelledby="category-title">
-      <header className="category-page__header">
+      <header className="category-page__header" data-tour-id="categories.create">
         <div className="category-page__title-block">
           <span className="category-page__eyebrow">
             <Tags size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -307,7 +307,7 @@ export function CategoryPage() {
         </div>
       )}
 
-      <div className="category-main-card">
+      <div className="category-main-card" data-tour-id="categories.manage">
         <div className="category-summary-strip" aria-label="分类概览">
           <div className="category-summary-stat">
             <span>总分类</span>
