@@ -10,10 +10,10 @@ use hmm_core::{
     SaveBackupStatus, SaveBackupTrigger, SaveRestoreTransaction, SaveRestoreTransactionStatus,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, SaveRestoreCommitError,
-    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, SaveRestoreCommitRequest,
-    SaveRestoreFileSystem, SaveRestoreFinalizeRequest, SaveRestorePrepareRequest,
-    SaveRestoreTransactionRepository, ValidatedSaveRestoreSource,
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
+    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, SaveRestoreCommitError,
+    SaveRestoreCommitRequest, SaveRestoreFileSystem, SaveRestoreFinalizeRequest,
+    SaveRestorePrepareRequest, SaveRestoreTransactionRepository, ValidatedSaveRestoreSource,
 };
 use std::collections::BTreeMap;
 use std::sync::{
@@ -676,39 +676,38 @@ impl SaveRestoreTaskRunner {
             ));
         }
 
-        let _game_cross_process_guard =
-            match self.write_locks.acquire_cross_process_for_task(
-                &request.game_id,
-                &request.profile_id,
-                &self.task_manager,
-                task_id,
-            ) {
-                Ok(guard) => guard,
-                Err(error) => {
-                    if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
-                        return Err(self.cancel_transaction(
-                            task_id,
-                            &request,
-                            &mut transaction,
-                            &prepared.prepared_id,
-                            events,
-                            observer,
-                        ));
-                    }
-                    self.file_system.discard_prepared(&prepared.prepared_id);
-                    return Err(self.fail_transaction(
+        let _game_cross_process_guard = match self.write_locks.acquire_cross_process_for_task(
+            &request.game_id,
+            &request.profile_id,
+            &self.task_manager,
+            task_id,
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+                    return Err(self.cancel_transaction(
                         task_id,
                         &request,
                         &mut transaction,
+                        &prepared.prepared_id,
                         events,
                         observer,
-                        SaveRestoreTransactionFailure {
-                            status: SaveRestoreTransactionStatus::Failed,
-                            error_code: error.code(),
-                        },
                     ));
                 }
-            };
+                self.file_system.discard_prepared(&prepared.prepared_id);
+                return Err(self.fail_transaction(
+                    task_id,
+                    &request,
+                    &mut transaction,
+                    events,
+                    observer,
+                    SaveRestoreTransactionFailure {
+                        status: SaveRestoreTransactionStatus::Failed,
+                        error_code: error.code(),
+                    },
+                ));
+            }
+        };
         let write_lock = self
             .write_locks
             .lock_for(&request.game_id, &request.profile_id);

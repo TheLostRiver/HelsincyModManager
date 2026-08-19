@@ -68,8 +68,7 @@ impl ExternalImportBatchService {
             .candidates
             .into_iter()
             .map(|candidate| {
-                let selection_decision =
-                    selection_entries.get(&candidate.candidate_id).cloned();
+                let selection_decision = selection_entries.get(&candidate.candidate_id).cloned();
                 ExternalImportPreviewCandidate {
                     selected: selection_decision.is_some(),
                     selection_decision: selection_decision.flatten(),

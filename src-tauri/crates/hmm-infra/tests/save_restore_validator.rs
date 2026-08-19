@@ -69,10 +69,7 @@ fn validator_rejects_archive_hash_drift_before_extracting() {
 fn validator_rejects_parent_path_in_manifest_and_zip() {
     let temp = tempfile::tempdir().expect("temp dir");
     let app_data = temp.path().join("app-data");
-    let backup_dir = app_data
-        .join("saves")
-        .join("mhw")
-        .join("profile-default");
+    let backup_dir = app_data.join("saves").join("mhw").join("profile-default");
     fs::create_dir_all(&backup_dir).expect("create backup dir");
     let archive_name = "fixture.zip";
     let manifest_name = "fixture.manifest.json";

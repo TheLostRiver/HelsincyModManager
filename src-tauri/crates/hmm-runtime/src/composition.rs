@@ -4,10 +4,10 @@ use crate::{
 };
 use hmm_app::{
     is_identity_replacement_binding, AppSettingsService, ApplicationExitGuard,
-    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest, GameLaunchService,
-    CrossProcessWriteAdmissionCoordinator,
-    GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry,
-    GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
+    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest,
+    CrossProcessWriteAdmissionCoordinator, GameLaunchService, GamePrerequisiteDecision,
+    GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
+    ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
@@ -68,8 +68,7 @@ use hmm_infra::{
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
     LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
-    PlatformSteamRootProvider,
-    RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
@@ -244,12 +243,11 @@ impl HmmRuntime {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
-        let cross_process_write_admission = Arc::new(
-            CrossProcessWriteAdmissionCoordinator::new(Arc::new(
+        let cross_process_write_admission =
+            Arc::new(CrossProcessWriteAdmissionCoordinator::new(Arc::new(
                 PlatformCrossProcessWriteAdmission::new(&app_data_dir)
                     .map_err(|error| error.code().to_owned())?,
-            )),
-        );
+            )));
         let mod_library_composition = ModLibraryComposition::new(&db, mod_import_results_path)?;
         let mod_metadata_repository = mod_library_composition.mod_metadata_repository();
         let category_repository = mod_library_composition.category_repository();
@@ -330,11 +328,10 @@ impl HmmRuntime {
             Arc::new(FileSystemSaveBackupWriter::new(save_backup_root.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
-        let install_write_locks = Arc::new(
-            GameProfileWriteLockRegistry::with_cross_process_admission(Arc::clone(
-                &cross_process_write_admission,
-            )),
-        );
+        let install_write_locks =
+            Arc::new(GameProfileWriteLockRegistry::with_cross_process_admission(
+                Arc::clone(&cross_process_write_admission),
+            ));
         let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(JsonGamePrerequisiteRuleRepository::new(
                 app_data_dir

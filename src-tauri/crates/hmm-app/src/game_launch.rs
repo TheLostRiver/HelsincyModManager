@@ -69,9 +69,7 @@ impl GameLaunchService {
 
     fn map_storage_error(error: GameConfigRepositoryError) -> GameLaunchServiceError {
         match error {
-            GameConfigRepositoryError::StorageCorrupted => {
-                GameLaunchServiceError::StorageCorrupted
-            }
+            GameConfigRepositoryError::StorageCorrupted => GameLaunchServiceError::StorageCorrupted,
             GameConfigRepositoryError::StorageFailed(message) => {
                 GameLaunchServiceError::StorageFailed(message)
             }

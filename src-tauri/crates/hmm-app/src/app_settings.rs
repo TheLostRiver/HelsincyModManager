@@ -261,10 +261,8 @@ mod tests {
     fn persists_debug_log_setting_before_updating_process_state() {
         let repository = Arc::new(FakeAppSettingsRepository::default());
         let control = Arc::new(RecordingDebugLogControl::default());
-        let service = AppSettingsService::new_with_debug_log_control(
-            repository.clone(),
-            control.clone(),
-        );
+        let service =
+            AppSettingsService::new_with_debug_log_control(repository.clone(), control.clone());
 
         let settings = service
             .update_debug_log_enabled(true)
@@ -272,13 +270,15 @@ mod tests {
 
         assert!(settings.debug_log_enabled);
         assert!(control.is_enabled());
-        assert!(repository
-            .saved_settings
-            .lock()
-            .expect("settings lock")
-            .as_ref()
-            .expect("saved settings")
-            .debug_log_enabled);
+        assert!(
+            repository
+                .saved_settings
+                .lock()
+                .expect("settings lock")
+                .as_ref()
+                .expect("saved settings")
+                .debug_log_enabled
+        );
     }
 
     #[test]

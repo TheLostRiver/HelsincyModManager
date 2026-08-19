@@ -112,7 +112,13 @@ mod tests {
                 Ok(self.0.lock().unwrap().clone())
             }
             fn get_analysis(&self, id: &str) -> anyhow::Result<Option<StoredModImportAnalysis>> {
-                Ok(self.0.lock().unwrap().iter().find(|r| r.mod_id == id).cloned())
+                Ok(self
+                    .0
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|r| r.mod_id == id)
+                    .cloned())
             }
         }
 
@@ -137,8 +143,11 @@ mod tests {
             .unwrap();
 
         // Before overlay: library shows original values
-        let library_service =
-            ModLibraryService::new(Arc::clone(&result_repo) as _, Arc::clone(&metadata_repo) as _, Arc::clone(&category_repo) as _);
+        let library_service = ModLibraryService::new(
+            Arc::clone(&result_repo) as _,
+            Arc::clone(&metadata_repo) as _,
+            Arc::clone(&category_repo) as _,
+        );
         let before = library_service.get_mod_library().unwrap();
         assert_eq!(before[0].name, "Original Name");
         assert_eq!(before[0].author.as_deref(), Some("Original Author"));
@@ -146,7 +155,9 @@ mod tests {
         // Write overlay via ModMetadataService (same path as update_mod_metadata command)
         struct FixedClock;
         impl hmm_ports::AppClock for FixedClock {
-            fn now_unix_millis(&self) -> anyhow::Result<u128> { Ok(9999) }
+            fn now_unix_millis(&self) -> anyhow::Result<u128> {
+                Ok(9999)
+            }
         }
         let metadata_service =
             ModMetadataService::new(Arc::clone(&metadata_repo) as _, Arc::new(FixedClock));

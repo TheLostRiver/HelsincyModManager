@@ -3,9 +3,10 @@ use crate::reinstall::{
 };
 use hmm_core::{
     replace_entries_and_bindings_for_mod, InstallManifest, InstallManifestEntry,
-    InstallManifestStatus, InstallTargetPath, ReinstallRecoveryTarget, ReinstallRecoveryTransaction,
-    ReinstallRecoveryTransactionStatus, ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose,
-    ReinstallSnapshotState, ReinstallTargetClass,
+    InstallManifestStatus, InstallTargetPath, ReinstallRecoveryTarget,
+    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
+    ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose, ReinstallSnapshotState,
+    ReinstallTargetClass,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
