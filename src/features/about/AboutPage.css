@@ -1,19 +1,70 @@
+/*
+ * About 是纯信息页，没有右侧栏内容。route 层默认预留 --layout-route-aside-width，
+ * 这里显式收成单栏，与 categories / profiles 的处理保持一致，
+ * 不再依赖 .about-page 的 grid-column: 1 / -1 去跨栏兜住。
+ */
+.route-transition__layer[data-route-id="about"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .about-page {
+  /*
+   * 宽屏策略与全局一致：不设内容硬顶宽度，而是让元素尺度随视口放大。
+   * --layout-shell-max-width 在 1921/2561/3201px 断点上是 2400→3040→3440 递增的，
+   * 页面限宽居中会与这个"宽屏装更多内容"的取向直接冲突——内容区 2100px 时
+   * 1080px 硬顶只占 51%，主体被压成一条窄柱，两侧留白比内容还宽。
+   *
+   * 真正让大屏别扭的是元素尺度照窄屏设计：标题 24px、正文 12px、图标 34px
+   * 放到 1500px 宽的容器里显得过小，像把窄屏布局横向拉开。
+   *
+   * 系数按两个基准点解出：4K/150% 非最大化(≈1792px CSS 视口)与最大化(≈2560px)。
+   * 每项的 clamp 下界即改动前的窄屏取值，1400-1500px 附近开始生效，
+   * 上界在最大化时达到，避免继续放大到失真。全部尺度集中在此，调整只改这一处。
+   */
+  --about-scale-title: clamp(24px, 1.67vw, 36px);
+  --about-scale-heading: clamp(15px, 1vw, 21px);
+  --about-scale-body: clamp(12px, 0.78vw, 16px);
+  --about-scale-label: clamp(13px, 0.86vw, 18px);
+  --about-scale-eyebrow: clamp(11px, 0.72vw, 15px);
+  --about-scale-version: clamp(17px, 1.19vw, 27px);
+  --about-scale-icon: clamp(34px, 2.45vw, 54px);
+  --about-scale-glyph: clamp(18px, 1.23vw, 27px);
+  --about-scale-glyph-sm: clamp(16px, 1.09vw, 23px);
+  --about-scale-glyph-xs: clamp(14px, 0.95vw, 20px);
+  --about-scale-brand: clamp(58px, 4.02vw, 92px);
+  --about-scale-pad-block: clamp(20px, 1.56vw, 34px);
+  --about-scale-pad-inline: clamp(22px, 1.78vw, 38px);
+  --about-scale-row-pad: clamp(12px, 0.95vw, 22px);
+  --about-scale-gap-sm: clamp(4px, 0.34vw, 8px);
+  --about-scale-gap-md: clamp(8px, 0.67vw, 15px);
+  --about-scale-gap-lg: clamp(14px, 1.12vw, 26px);
+  --about-scale-gap-xl: clamp(16px, 1.28vw, 30px);
+  --about-scale-control-h: clamp(38px, 2.68vw, 58px);
+
   grid-column: 1 / -1;
   display: grid;
-  gap: 18px;
+  /*
+   * 必须显式 start。.about-page 是被拉伸到路由区满高的 grid item，
+   * align-content 取默认值 normal 时在 grid 中等价于 stretch，
+   * 会把富余垂直空间等分摊给全部 auto 行——窗口越高，hero 与版本卡内部被撑得越空，
+   * 底部提示条则被顶到视口最下沿。同级页面根节点均已显式声明该属性。
+   */
+  align-content: start;
+  gap: var(--layout-content-gap);
   width: 100%;
   min-width: 0;
 }
 
 .about-page__hero {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: var(--about-scale-brand) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
+  gap: var(--about-scale-gap-xl);
   min-width: 0;
-  padding: 20px 22px;
-  background: var(--color-surface);
+  padding: var(--about-scale-pad-block) var(--about-scale-pad-inline);
+  background:
+    radial-gradient(ellipse at 100% 0%, var(--color-accent-alpha-12) 0%, transparent 58%),
+    var(--color-surface);
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-soft);
@@ -21,14 +72,14 @@
 
 .about-page__brand-mark {
   display: block;
-  width: 58px;
-  height: 58px;
+  width: var(--about-scale-brand);
+  height: var(--about-scale-brand);
   object-fit: contain;
 }
 
 .about-page__hero-copy {
   display: grid;
-  gap: 4px;
+  gap: var(--about-scale-gap-sm);
   min-width: 0;
 }
 
@@ -38,7 +89,7 @@
   color: var(--color-accent);
   background: var(--color-accent-weak);
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--about-scale-eyebrow);
   font-weight: 700;
 }
 
@@ -52,7 +103,7 @@
 }
 
 .about-page__hero h2 {
-  font-size: 24px;
+  font-size: var(--about-scale-title);
   font-weight: 750;
   line-height: 1.2;
 }
@@ -62,44 +113,55 @@
 .about-page__link-group p,
 .about-page__link-copy span {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--about-scale-body);
   line-height: 1.55;
 }
 
 .about-page__version {
   display: grid;
   gap: 2px;
-  min-width: 172px;
-  padding: 12px 14px;
+  justify-items: end;
+  min-width: clamp(156px, 10.9vw, 240px);
+  padding: clamp(10px, 0.78vw, 18px) clamp(14px, 1.09vw, 24px);
+  text-align: right;
   background: var(--color-surface-subtle);
   border: 1px solid var(--color-border-muted);
-  border-radius: 8px;
+  border-radius: var(--radius-inner);
 }
 
 .about-page__version span,
 .about-page__version small {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--about-scale-eyebrow);
   font-weight: 600;
 }
 
 .about-page__version strong {
   color: var(--color-text);
-  font-size: 17px;
+  font-size: var(--about-scale-version);
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
+}
+
+/*
+ * release 卡与下方两个链接组共用一套 surface 语言（--radius-card + 同一组描边/阴影）。
+ * 改动前 release 是无阴影的 8px 裸卡、链接组只有一条 border-top，一屏内出现三种容器处理。
+ */
+.about-page__release,
+.about-page__link-group {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
 }
 
 .about-page__release {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
+  gap: var(--about-scale-gap-lg);
   min-width: 0;
-  padding: 16px 18px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-muted);
-  border-radius: 8px;
+  padding: clamp(16px, 1.25vw, 28px) clamp(18px, 1.42vw, 32px);
 }
 
 .about-page__release-icon,
@@ -108,30 +170,41 @@
   place-items: center;
   color: var(--color-accent);
   background: var(--color-accent-weak);
+  border-radius: var(--radius-inner);
+}
+
+/*
+ * lucide 把 size 写成 SVG 的 width/height 属性（18/20px）。图标底板改为随视口放大后，
+ * 字形若仍是固定值就会变成一个小图标浮在大色块中央，因此在 CSS 里同步放大。
+ * 属性选择器不必要——这两个底板内只有图标一个子元素。
+ */
+.about-page__release-icon > svg,
+.about-page__link-icon > svg {
+  width: var(--about-scale-glyph);
+  height: var(--about-scale-glyph);
 }
 
 .about-page__release-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
+  width: calc(var(--about-scale-icon) + 4px);
+  height: calc(var(--about-scale-icon) + 4px);
 }
 
 .about-page__release-copy {
   display: grid;
-  gap: 4px;
+  gap: var(--about-scale-gap-sm);
   min-width: 0;
 }
 
 .about-page__release h3,
 .about-page__link-group h3 {
-  font-size: 15px;
+  font-size: var(--about-scale-heading);
   font-weight: 700;
 }
 
 .about-page__release-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--about-scale-gap-md);
 }
 
 .about-page__action {
@@ -139,14 +212,14 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 38px;
-  padding: 0 13px;
+  min-height: var(--about-scale-control-h);
+  padding: 0 clamp(13px, 1.05vw, 24px);
   color: var(--color-text-soft);
   text-decoration: none;
   background: var(--color-surface-subtle);
   border: 1px solid var(--color-border-muted);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--radius-inner);
+  font-size: var(--about-scale-body);
   font-weight: 700;
   white-space: nowrap;
   transition:
@@ -181,10 +254,26 @@
   outline-offset: 2px;
 }
 
+/* 按钮内的前置图标与末尾外链角标同样是固定 16/14px，跟随文字尺度放大。 */
+.about-page__action > svg:first-child {
+  width: var(--about-scale-glyph-sm);
+  height: var(--about-scale-glyph-sm);
+}
+
+.about-page__action > svg:last-child {
+  width: var(--about-scale-glyph-xs);
+  height: var(--about-scale-glyph-xs);
+}
+
 .about-page__link-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px;
+  /*
+   * auto-fit + minmax 而不是写死 repeat(2)：两个分组在常规宽度下并排，
+   * 内容区收窄时自动落到单列，无需额外断点；未来加第三组也不必改这里。
+   */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  align-items: start;
+  gap: var(--layout-content-gap);
   min-width: 0;
 }
 
@@ -192,13 +281,13 @@
   display: grid;
   align-content: start;
   min-width: 0;
-  border-top: 1px solid var(--color-border);
+  padding: clamp(4px, 0.36vw, 10px) clamp(12px, 0.95vw, 22px) clamp(8px, 0.64vw, 16px);
 }
 
 .about-page__link-group > header {
   display: grid;
-  gap: 4px;
-  padding: 14px 2px 10px;
+  gap: var(--about-scale-gap-sm);
+  padding: clamp(13px, 1.02vw, 22px) clamp(8px, 0.64vw, 14px) clamp(9px, 0.72vw, 16px);
 }
 
 .about-page__link-list {
@@ -210,13 +299,19 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 11px;
+  gap: clamp(11px, 0.88vw, 20px);
   min-width: 0;
-  padding: 13px 12px;
+  padding: var(--about-scale-row-pad) clamp(8px, 0.64vw, 14px);
   color: var(--color-text);
   text-decoration: none;
   border-bottom: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-inner);
   transition: color 160ms ease, background-color 160ms ease;
+}
+
+/* 卡片自身已有下边界，最后一行的分隔线会与之重叠成双线。 */
+.about-page__link-row:last-child {
+  border-bottom-color: transparent;
 }
 
 .about-page__link-row:hover {
@@ -225,6 +320,9 @@
 }
 
 .about-page__link-row > svg {
+  flex: 0 0 auto;
+  width: var(--about-scale-glyph-sm);
+  height: var(--about-scale-glyph-sm);
   color: var(--color-text-muted);
 }
 
@@ -233,9 +331,8 @@
 }
 
 .about-page__link-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+  width: var(--about-scale-icon);
+  height: var(--about-scale-icon);
 }
 
 .about-page__link-copy {
@@ -245,48 +342,63 @@
 }
 
 .about-page__link-copy strong {
-  font-size: 13px;
+  font-size: var(--about-scale-label);
 }
 
 .about-page__feedback {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
   padding: 10px 12px;
-  color: var(--color-neutral-text);
-  background: var(--color-neutral-bg);
-  border-left: 3px solid var(--color-neutral-dot);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-inner);
+  font-size: var(--about-scale-body);
   font-weight: 600;
+}
+
+/*
+ * 默认那条 neutral 文案（"外部链接将在系统默认浏览器中打开。"）是常驻静态说明，
+ * 不是状态变化，按 alert 条渲染会常态占据一整块带色边的横幅、抢走真实反馈的注意力。
+ * 因此 neutral 降级为脚注排版；只有成功/失败才升级成带背景与色边的条状反馈。
+ * role/aria-live 仍由组件维持，无障碍播报不受影响。
+ */
+.about-page__feedback.is-neutral {
+  padding: 0 8px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.about-page__feedback.is-neutral > svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
 }
 
 .about-page__feedback.is-success {
   color: var(--color-success-text);
   background: var(--color-success-bg);
-  border-left-color: var(--color-success-dot);
+  border-left: 3px solid var(--color-success-dot);
 }
 
 .about-page__feedback.is-danger {
   color: var(--color-danger-text);
   background: var(--color-danger-bg);
-  border-left-color: var(--color-danger-dot);
+  border-left: 3px solid var(--color-danger-dot);
 }
 
 @media (max-width: 920px) {
-  .about-page__hero {
-    grid-template-columns: 50px minmax(0, 1fr);
+  .about-page {
+    /* 窄屏取消尺度放大，全部回落到 clamp 下界，避免 vw 项在小视口继续参与计算。 */
+    --about-scale-brand: 50px;
   }
 
-  .about-page__brand-mark {
-    width: 50px;
-    height: 50px;
+  .about-page__hero {
+    grid-template-columns: var(--about-scale-brand) minmax(0, 1fr);
   }
 
   .about-page__version {
     grid-column: 1 / -1;
+    justify-items: start;
     min-width: 0;
+    text-align: left;
   }
 
   .about-page__release {
