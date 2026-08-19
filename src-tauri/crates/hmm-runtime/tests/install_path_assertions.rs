@@ -212,6 +212,7 @@ fn uninstall_restores_the_game_directory_to_its_exact_initial_state() {
 fn install_leaves_no_temporary_artifacts_in_the_game_directory() {
     let fixture = fixture();
     let target = "nativePC/models/player.mod3";
+    let initial = snapshot_tree(&fixture.game_root);
     write_source(&fixture, target, b"payload");
 
     fixture
@@ -222,22 +223,15 @@ fn install_leaves_no_temporary_artifacts_in_the_game_directory() {
         })
         .expect("commit should succeed");
 
-    // 原子写会在目标目录建临时文件再 rename。留下 .tmp 说明清理有漏，
-    // 玩家会在游戏目录里看到垃圾文件，也可能被游戏本体误读。
+    // 原子写会在目标目录建临时文件再 rename。留下垃圾文件玩家会在游戏目录里看到，
+    // 也可能被游戏本体误读。
     //
-    // 先断言目标文件确实存在：否则一旦快照因为别的原因收集不到任何文件，
-    // "没有 .tmp"会在空集合上平凡成立，这个测试就变成了摆设。
-    let snapshot = snapshot_tree(&fixture.game_root);
-    assert_eq!(
-        snapshot.get(target),
-        Some(&digest_of(b"payload")),
-        "installed target must be present before asserting on leftovers"
-    );
-    let leftovers = snapshot
-        .into_keys()
-        .filter(|path| path.ends_with(".tmp"))
-        .collect::<Vec<_>>();
-    assert_eq!(leftovers, Vec::<String>::new());
+    // 与"安装前快照 + 目标文件"全量比对，而不是只过滤 .tmp 后缀：临时文件的命名
+    // 是实现细节，换成 .part、.bak 或随机名都该被这个测试挡住。全量比对同时
+    // 顺带保证目标文件确实写进去了——否则"没有残留"会在空集合上平凡成立。
+    let mut expected = initial;
+    expected.insert(target.to_owned(), digest_of(b"payload"));
+    assert_eq!(snapshot_tree(&fixture.game_root), expected);
 }
 
 #[test]

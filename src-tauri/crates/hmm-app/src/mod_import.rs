@@ -431,6 +431,16 @@ impl ModImportTaskRunner {
     ///
     /// 读不到 catalog 时按原名写入。展示名只用于前端展示，不参与身份判定，
     /// 为它中断一次已经解包完成的导入不划算；退化行为就是本次改动之前的样子。
+    ///
+    /// **尽力而为，不保证唯一。**本方法的快照读取与调用方的 `save_new_mod`
+    /// 之间没有共同的临界区，两个并发导入可能各自选中同一个名字。这是刻意的取舍：
+    /// 该竞态的最坏结果是库里出现两条同名条目，与本次改动之前的行为一致，
+    /// 既不丢数据也不会让导入失败——普通导入的落库路径（`save_new_mod`）只校验
+    /// `mod_id` 与 `revision_id`，展示名准入检查只作用于外部导入。
+    /// 为一个纯展示层的结果引入跨任务串行化，代价高于收益。
+    ///
+    /// 若日后展示名被赋予任何身份语义，这个假设就不再成立，届时必须改为
+    /// 由仓储提供"分配可用名称并落库"的原子操作。
     fn deduplicated_display_name(&self, display_name: &str) -> String {
         let Ok(snapshot) = self.result_repository.catalog_snapshot() else {
             return display_name.to_owned();

@@ -533,12 +533,12 @@ recovery、reinstall-recovery 和 retarget-staging 均为空；游戏文件为 1
 SHA-256 与 baseline 完全一致。light 覆盖 1440x900/1366x768/1280x800/480x800，dark 覆盖
 1280x800/480x800，system 覆盖 1366x768；replacement modal 的层级、滚动、warning、按钮和路径脱敏通过。
 
-不阻断本次 replacement 主链的已知问题：顶栏目录状态可能陈旧；空 NexusMods ID 显示 `null`；
+不阻断本次 replacement 主链的已知问题：空 NexusMods ID 显示 `null`；
 `weapon_binary_pair_incompatible` 仅显示通用失败提示；主题入口不在设置页。这些问题必须保留在
 后续 UI/诊断债务中，不得被 Gate D `certified` 隐去。
 
-原列于此的"无元数据导入名回退为技术型 `mod-import-*`"与"`AppFrame.css` 在宽度不超过 1360px 时
-隐藏 `.window-tools`"两项已在 `0.1.0-alpha.0` 真机验收后修复。
+原列于此的"无元数据导入名回退为技术型 `mod-import-*`"、"`AppFrame.css` 在宽度不超过 1360px 时
+隐藏 `.window-tools`"与"顶栏目录状态可能陈旧"三项已在 `0.1.0-alpha.0` 真机验收后修复。
 
 ## P1 条件任务：狩技来源导入
 
