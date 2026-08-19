@@ -66,6 +66,39 @@ test("profile page exposes save settings workspace panels without shell coupling
   assert.match(css, /@media\s*\(max-width:\s*860px\)/);
 });
 
+test("存档路径行在窄容器下重排而不是把文字压到逐字换行", () => {
+  const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
+  const pageCss = readSource("src/features/profiles/ProfilePage.css");
+
+  // 标签所在列是 minmax(0, 1fr)，右侧操作组是 min-width: max-content 不肯收缩，
+  // 因此标签能被压到接近零宽。中文没有词边界，不禁止换行就会逐字竖排。
+  const labelRule = /\.profile-directory-row__copy span \{([\s\S]*?)\}/.exec(saveManagerCss);
+  assert.ok(labelRule, "缺少存档路径行的标签样式");
+  assert.match(labelRule[1], /white-space:\s*nowrap;/);
+  assert.match(labelRule[1], /text-overflow:\s*ellipsis;/);
+
+  // 面板嵌在两层网格里，实际可用宽度由外层分配决定，视口断点判断不出它何时变窄。
+  const consoleRule = /\.profile-directory-console \{([\s\S]*?)\}/.exec(saveManagerCss);
+  assert.ok(consoleRule, "缺少存档路径面板样式");
+  assert.match(consoleRule[1], /container-type:\s*inline-size;/);
+
+  // 窄容器下操作组换到第二行，让文字与按钮各自拿到完整宽度。
+  assert.match(
+    saveManagerCss,
+    /@container \(max-width: 380px\)[\s\S]*?\.profile-directory-row \{[\s\S]*?grid-template-areas:/,
+    "缺少窄容器下的存档路径行两段式重排",
+  );
+
+  // 配置卡包列宽会一路传导到存档路径面板的可用宽度，不得回涨。
+  const workspaceRule = /\.profile-workspace \{([\s\S]*?)\}/.exec(pageCss);
+  assert.ok(workspaceRule, "缺少 profile-workspace 布局");
+  const [, minWidth, maxWidth] = /minmax\((\d+)px,\s*(\d+)px\)/.exec(workspaceRule[1]);
+  assert.ok(
+    Number(minWidth) <= 240 && Number(maxWidth) <= 280,
+    `配置卡包列 ${minWidth}-${maxWidth}px 过宽，会挤压存档路径面板`,
+  );
+});
+
 test("activating a profile also selects it before refreshing its settings", () => {
   const source = readSource("src/features/profiles/ProfilePage.tsx");
   const activationHandler =
