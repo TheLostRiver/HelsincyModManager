@@ -44,6 +44,18 @@ pub fn sanitize_mod_metadata_text(value: &str) -> Option<String> {
     }
 }
 
+/// 把展示名归一化成同名判定用的比较键。
+///
+/// 去首尾空白并统一大小写：玩家眼里 `黑骑士大剑 ` 与 `黑骑士大剑`、`BlackKnight`
+/// 与 `blackknight` 是同一个名字，判重要跟着这个直觉走，否则"看起来一样却当成两个"
+/// 会让去重和冲突提示都失去意义。
+///
+/// 所有同名判定都必须共用这一份规则。外部导入的准入检查与新建 Mod 的自动去重若各写
+/// 一套，去重产出的名字仍可能撞上准入检查——两边各自"正确"却互相打架。
+pub fn normalize_mod_display_name(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
 /// 从压缩包路径派生展示名候选，无法产出有效名称时返回 `None`。
 ///
 /// 只取 `file_stem`，即剥掉最后一级扩展名——`mod.v1.2.zip` 保留 `mod.v1.2`，
@@ -104,6 +116,24 @@ mod tests {
         assert_eq!(
             sanitize_mod_metadata_text("Black Knight 大剑 v2.1 [HD]"),
             Some("Black Knight 大剑 v2.1 [HD]".to_owned())
+        );
+    }
+
+    #[test]
+    fn normalizes_case_and_edge_whitespace_for_name_comparison() {
+        assert_eq!(
+            normalize_mod_display_name("  BlackKnight  "),
+            normalize_mod_display_name("blackknight")
+        );
+    }
+
+    #[test]
+    fn normalization_keeps_interior_whitespace_significant() {
+        // "黑骑士 大剑" 与 "黑骑士大剑" 是两个名字：折叠内部空白是净化的职责，
+        // 归一化再折叠一次会让净化后本就不同的名字被误判为重名。
+        assert_ne!(
+            normalize_mod_display_name("黑骑士 大剑"),
+            normalize_mod_display_name("黑骑士大剑")
         );
     }
 
