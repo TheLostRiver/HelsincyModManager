@@ -33,6 +33,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          # 显式声明：verify.sh 依赖 rustfmt 与 clippy，不指望默认 profile 一直带着它们。
+          components: rustfmt, clippy
 
       - name: Install Tauri Linux dependencies
         shell: bash
