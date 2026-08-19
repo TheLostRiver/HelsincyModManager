@@ -2,8 +2,8 @@ use crate::mod_import_diagnostics::{
     preview_image_diagnostics_from_stored, PreviewImageDiagnosticsSummary,
 };
 use hmm_core::{
-    mod_display_name_from_archive_path, CategoryLabel, ModId, ModRevisionId,
-    PreviewImageRejectionReason,
+    deduplicate_mod_display_name, mod_display_name_from_archive_path, normalize_mod_display_name,
+    CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason,
 };
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, CategoryRepository, ModImportPackagePrepareRequest,
@@ -14,7 +14,7 @@ use hmm_ports::{
     StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
     ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -158,6 +158,8 @@ pub struct ModImportTaskRunner {
     result_repository: Arc<dyn ModImportResultRepository>,
     thumbnail_cache_maintenance: Option<Arc<dyn ThumbnailCacheMaintenance>>,
     app_settings_repository: Option<Arc<dyn AppSettingsRepository>>,
+    /// 仅用于展示名去重时读取用户改名。缺省时按 catalog 名字去重。
+    metadata_repository: Option<Arc<dyn ModMetadataRepository>>,
 }
 
 enum ModImportCatalogTarget {
@@ -200,6 +202,7 @@ impl ModImportTaskRunner {
             result_repository,
             thumbnail_cache_maintenance: None,
             app_settings_repository: None,
+            metadata_repository: None,
         }
     }
 
@@ -216,6 +219,14 @@ impl ModImportTaskRunner {
         app_settings_repository: Arc<dyn AppSettingsRepository>,
     ) -> Self {
         self.app_settings_repository = Some(app_settings_repository);
+        self
+    }
+
+    pub fn with_metadata_repository(
+        mut self,
+        metadata_repository: Arc<dyn ModMetadataRepository>,
+    ) -> Self {
+        self.metadata_repository = Some(metadata_repository);
         self
     }
 
@@ -338,6 +349,11 @@ impl ModImportTaskRunner {
                 }
                 let save_result = match target {
                     ModImportCatalogTarget::NewLogicalMod => {
+                        // 只对新建 logical Mod 去重。revision 追加要么继承既有 Mod 的
+                        // 名字（上一段），要么沿用作者在元数据里声明的名字，
+                        // 两者都不该被追加序号——那会让同一个 Mod 每更新一版就改名。
+                        revision.display_name =
+                            self.deduplicated_display_name(&revision.display_name);
                         let logical_mod = StoredLogicalMod {
                             mod_id,
                             origin_revision_id: revision.revision_id.clone(),
@@ -405,6 +421,53 @@ impl ModImportTaskRunner {
 
     fn is_task_cancelled(&self, task_id: &str) -> bool {
         self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
+    }
+
+    /// 让新建 Mod 的展示名在库内唯一，与既有 Mod 冲突时追加序号。
+    ///
+    /// 展示名自从继承压缩包文件名后就不再天然唯一：同一个 Mod 的两个版本、或不同
+    /// 作者的同名作品，导入后在库里是两条无法区分的条目——卡片上除名字外只有版本号，
+    /// 而无元数据的包一律显示 v1.0.0。
+    ///
+    /// 读不到 catalog 时按原名写入。展示名只用于前端展示，不参与身份判定，
+    /// 为它中断一次已经解包完成的导入不划算；退化行为就是本次改动之前的样子。
+    fn deduplicated_display_name(&self, display_name: &str) -> String {
+        let Ok(snapshot) = self.result_repository.catalog_snapshot() else {
+            return display_name.to_owned();
+        };
+        // 必须按用户实际看到的名字比较，也就是 overlay 覆盖后的结果（见库查询里
+        // overlay.display_name 对 item.name 的覆写）。拿 catalog 名字去比会两头错：
+        // 用户改名造成的重复漏判，而对着一个已被改掉、界面上根本不存在的旧名字
+        // 又会凭空加出序号。
+        let renamed = self
+            .metadata_repository
+            .as_ref()
+            .and_then(|repository| repository.list_all().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|overlay| Some((overlay.mod_id, overlay.display_name?)))
+            .collect::<BTreeMap<_, _>>();
+        let revisions_by_id = snapshot
+            .revisions
+            .iter()
+            .map(|revision| (&revision.revision_id, revision))
+            .collect::<BTreeMap<_, _>>();
+        // 每个 logical Mod 只贡献一个名字，且只取当前展示的那条 revision：
+        // 历史 revision 的旧名字不出现在界面上，让它占用名字会凭空产生序号。
+        let taken = snapshot
+            .logical_mods
+            .iter()
+            .filter_map(|logical_mod| {
+                renamed.get(&logical_mod.mod_id).cloned().or_else(|| {
+                    revisions_by_id
+                        .get(&logical_mod.display_revision_id)
+                        .map(|revision| revision.display_name.clone())
+                })
+            })
+            .map(|name| normalize_mod_display_name(&name))
+            .collect::<BTreeSet<_>>();
+
+        deduplicate_mod_display_name(display_name, |candidate| taken.contains(candidate))
     }
 
     fn maintain_thumbnail_cache(&self) {

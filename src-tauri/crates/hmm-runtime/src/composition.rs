@@ -859,7 +859,8 @@ impl HmmRuntime {
                 Arc::clone(&mod_import_result_repository),
             )
             .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance)
-            .with_app_settings_repository(app_settings_repository),
+            .with_app_settings_repository(app_settings_repository)
+            .with_metadata_repository(Arc::clone(&mod_metadata_repository)),
         );
         let state = Self {
             game_setup,
