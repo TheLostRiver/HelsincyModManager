@@ -999,7 +999,7 @@ Tauri 188 passed / 1 ignored。Sandbox task 为 initial install `install-1785952
 manifest entries/bindings 与 recovery/staging 为空，10 文件/316 bytes 的路径、大小和 SHA-256 baseline
 差异均为 0。light 覆盖四个固定 viewport，dark 覆盖 1280x800/480x800，system 覆盖 1366x768。
 
-本次认证保留以下非阻断残余风险：全局顶栏目录状态陈旧、空
+本次认证保留以下非阻断残余风险：空
 NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口。
 后续相关修复应补聚焦 UI/
 contract 测试；这些缺陷不改变本次已验证的 replacement modal 层级、滚动、路径脱敏和生命周期结果。
