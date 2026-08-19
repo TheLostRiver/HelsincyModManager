@@ -71,8 +71,15 @@ jobs:
         shell: bash
         run: corepack pnpm run tauri:build
 
-      # Tauri 产物名带空格且不含平台/架构渠道信息，与
+      # Tauri 产物名带空格且不含平台/架构/渠道信息，与
       # docs/release/发布与产物说明.md 的命名规则不一致，此处统一重命名。
+      #
+      # 产物在 workspace 根的 target/ 而不是 src-tauri/target/：
+      # Cargo workspace 共用根 target 目录。这一点已由本地 tauri build 实测确认。
+      #
+      # 只打 NSIS：MSI 拒绝 SemVer 的字母预发布标识，0.1.0-alpha.0 会让
+      # bundle 阶段直接失败（"pre-release identifier must be numeric-only"）。
+      # 目标已在 tauri.windows.conf.json 限定为 nsis。
       - name: Collect and rename artifacts
         id: artifacts
         shell: pwsh
@@ -81,28 +88,21 @@ jobs:
           $outDir = 'release-artifacts'
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-          $bundleRoot = 'src-tauri/target/release/bundle'
-          $map = @(
-            @{ Path = "$bundleRoot/nsis"; Filter = '*-setup.exe'; Suffix = 'setup.exe' }
-            @{ Path = "$bundleRoot/msi";  Filter = '*.msi';       Suffix = 'installer.msi' }
-          )
+          $nsisDir = 'target/release/bundle/nsis'
+          if (-not (Test-Path $nsisDir)) {
+            throw "未找到 NSIS 产物目录: $nsisDir"
+          }
 
           $collected = @()
-          foreach ($entry in $map) {
-            if (-not (Test-Path $entry.Path)) {
-              Write-Host "跳过不存在的产物目录: $($entry.Path)"
-              continue
-            }
-            foreach ($file in Get-ChildItem -Path $entry.Path -Filter $entry.Filter) {
-              $target = "HelsincyModManager-$version-windows-x64-$($entry.Suffix)"
-              Copy-Item $file.FullName (Join-Path $outDir $target)
-              $collected += $target
-              Write-Host "$($file.Name) -> $target"
-            }
+          foreach ($file in Get-ChildItem -Path $nsisDir -Filter '*-setup.exe') {
+            $target = "HelsincyModManager-$version-windows-x64-setup.exe"
+            Copy-Item $file.FullName (Join-Path $outDir $target)
+            $collected += $target
+            Write-Host "$($file.Name) -> $target"
           }
 
           if ($collected.Count -eq 0) {
-            throw "未找到任何 Windows 安装包产物"
+            throw "未找到 Windows 安装包产物"
           }
 
       # 发布文档要求 Release 必须包含校验文件。
@@ -119,27 +119,34 @@ jobs:
           Get-Content "SHA256SUMS-$version.txt"
           Pop-Location
 
-      # 验证 docs/TESTING.md 要求的 sidecar 同装约束。
-      # 缺失时安装包会静默失去后台备份能力和卸载清理能力，必须在发布前拦截。
+      # 验证 docs/TESTING.md 要求的 sidecar 同装约束与 installer cleanup gate。
       #
-      # externalBin 的源文件带 target-triple 后缀并位于 src-tauri/binaries/，
-      # 由 prepare:windows-sidecars 在 beforeBuildCommand 阶段拷入；
-      # Tauri 打包时会去掉后缀装进安装目录。这里校验源文件存在。
-      - name: Verify sidecars are staged for bundling
+      # 校验 Tauri 生成的 installer.nsi 而不是只看源文件存在：
+      # TESTING.md 明确要求 cleanup 作为独立 gate 验证，不能由"bundle 包含
+      # sidecar"代替。installer.nsi 是安装器实际写入哪些文件的权威依据，
+      # 源文件存在不代表它被打进了安装包。
+      - name: Verify sidecars and uninstall hook are wired into the installer
         shell: pwsh
         run: |
-          $triple = 'x86_64-pc-windows-msvc'
-          $required = @(
-            'hmm-save-backup-worker'
-            'hmm-save-backup-installer-cleanup'
-          )
-          foreach ($name in $required) {
-            $path = "src-tauri/binaries/$name-$triple.exe"
-            if (-not (Test-Path $path)) {
-              throw "缺少 sidecar 产物: $path"
-            }
-            Write-Host "已确认 sidecar: $path"
+          $nsi = 'target/release/nsis/x64/installer.nsi'
+          if (-not (Test-Path $nsi)) {
+            throw "未找到生成的 NSIS 脚本: $nsi"
           }
+          $content = Get-Content $nsi -Raw
+
+          # sidecar 必须以去掉 target-triple 的名字与主程序同装。
+          foreach ($name in @('hmm-save-backup-worker.exe', 'hmm-save-backup-installer-cleanup.exe')) {
+            if ($content -notmatch [regex]::Escape("/oname=$name")) {
+              throw "installer.nsi 未安装 sidecar: $name"
+            }
+            Write-Host "已确认 sidecar 进入安装器: $name"
+          }
+
+          # 卸载前 cleanup hook 必须接入，否则卸载会残留后台任务。
+          if ($content -notmatch 'NSIS_HOOK_PREUNINSTALL') {
+            throw "installer.nsi 未接入卸载前 cleanup hook"
+          }
+          Write-Host "已确认卸载前 cleanup hook 已接入"
 
       # 用预装的 gh CLI 而不是第三方 action：仓库治理要求第三方 action 固定
       # 到 commit SHA，少一个供应链依赖就少一处需要持续核验的 SHA。
