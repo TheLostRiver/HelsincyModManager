@@ -871,7 +871,9 @@
   margin-right: 8px;
 }
 
-@media (max-width: 1360px) {
+/* 与 RouterOutlet.css 的 aside 断点保持同值：.setup-rail 的固定宽度必须和
+ * route 层的列定义同时释放，否则单列下右侧栏仍按 360px 撑宽。 */
+@media (max-width: 1180px) {
   .workbench-body {
     grid-template-columns: 1fr;
     gap: var(--space-content-gap);

@@ -270,17 +270,25 @@ test("AppFrame 小屏契约保留：1360px 状态栏降级并保留引导入口 
   );
 });
 
-test("RouterOutlet 与 Dashboard 小屏契约保留：1360px 单列化", () => {
+test("RouterOutlet 与 Dashboard 小屏契约保留：1180px 单列化", () => {
   for (const file of ["src/app/routing/RouterOutlet.css", "src/features/dashboard/Dashboard.css"]) {
     const rules = parseCssRules(readProjectFile(file));
     const selector = file.includes("RouterOutlet") ? ".route-transition__layer" : ".workbench-body";
 
     expectDeclaration(
-      findRule(rules, selector, "(max-width: 1360px)"),
+      findRule(rules, selector, "(max-width: 1180px)"),
       /grid-template-columns:\s*1fr;/,
-      `${file} 缺少 1360px 单列化`,
+      `${file} 缺少 1180px 单列化`,
     );
   }
+
+  // .setup-rail 的固定 360px 宽度必须与 route 层列定义在同一断点释放，
+  // 否则单列下右侧栏仍按 aside 宽度撑开。
+  expectDeclaration(
+    findRule(parseCssRules(readProjectFile("src/features/dashboard/Dashboard.css")), ".setup-rail", "(max-width: 1180px)"),
+    /width:\s*auto;/,
+    "Dashboard.css 缺少 1180px 下释放 setup-rail 固定宽度",
+  );
 });
 
 test("关键承压容器保留 min-width: 0 护栏", () => {
