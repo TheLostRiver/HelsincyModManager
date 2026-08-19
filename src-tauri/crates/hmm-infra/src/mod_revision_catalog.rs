@@ -655,7 +655,7 @@ fn catalog_contains_other_display_name(
 }
 
 fn normalize_display_name_for_admission(value: &str) -> String {
-    value.trim().to_lowercase()
+    hmm_core::normalize_mod_display_name(value)
 }
 
 fn migrate_v1_catalog(legacy: ModImportResultsV1) -> Result<ModRevisionCatalogV2> {
