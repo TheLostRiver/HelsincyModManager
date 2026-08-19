@@ -1,4 +1,4 @@
-import { useGameSetup } from "../game-setup/useGameSetup";
+import { useGameSetup } from "../game-setup/GameSetupProvider";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
 import { useGameLaunch } from "../game-launch/useGameLaunch";
 import { useInstallRecoveryHealth } from "../install-recovery/useInstallRecoveryHealth";
@@ -7,7 +7,7 @@ import { DashboardModulePreview } from "./DashboardModulePreview";
 import { SetupStatusPanel } from "./SetupStatusPanel";
 
 export function DashboardPage() {
-  const gameSetup = useGameSetup("mhw");
+  const gameSetup = useGameSetup();
   const gamePrerequisites = useGamePrerequisites("mhw");
   const gameLaunch = useGameLaunch("mhw");
   const recoveryHealth = useInstallRecoveryHealth({
