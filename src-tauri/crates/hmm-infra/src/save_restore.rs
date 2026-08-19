@@ -149,7 +149,10 @@ impl FileSystemSaveRestoreFileSystem {
     }
 
     #[cfg(test)]
-    fn with_renamer(save_backup_root: PathBuf, renamer: Arc<dyn SaveRestoreDirectoryRenamer>) -> Self {
+    fn with_renamer(
+        save_backup_root: PathBuf,
+        renamer: Arc<dyn SaveRestoreDirectoryRenamer>,
+    ) -> Self {
         Self {
             save_backup_root,
             prepared: Mutex::new(HashMap::new()),
@@ -183,10 +186,13 @@ impl SaveRestoreFileSystem for FileSystemSaveRestoreFileSystem {
     ) -> Result<PreparedSaveRestore, SaveRestorePrepareError> {
         let target_root = target_directory(&request.target_directory)
             .map_err(|_| SaveRestorePrepareError::TargetUnavailable)?;
-        let backup_dir = managed_backup_directory_for_summary(&self.save_backup_root, &request.summary)
-            .map_err(|_| {
-                SaveRestorePrepareError::Source(SaveRestoreSourceError::BackupDirectoryUnavailable)
-            })?;
+        let backup_dir =
+            managed_backup_directory_for_summary(&self.save_backup_root, &request.summary)
+                .map_err(|_| {
+                    SaveRestorePrepareError::Source(
+                        SaveRestoreSourceError::BackupDirectoryUnavailable,
+                    )
+                })?;
         let backup_dir = canonical_regular_directory(&backup_dir).map_err(|_| {
             SaveRestorePrepareError::Source(SaveRestoreSourceError::BackupDirectoryUnavailable)
         })?;

@@ -1,9 +1,9 @@
+use crate::dto::GamePrerequisiteDecisionDto;
 use hmm_app::{
     InstallManifestStatus, InstallRecoveryActionKind, InstallRecoveryStatus, ModRevisionList,
     ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallPlanPreview,
     ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
 };
-use crate::dto::GamePrerequisiteDecisionDto;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -329,10 +329,9 @@ impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
 mod tests {
     use super::*;
     use hmm_app::{
-        GamePrerequisiteDecision, GamePrerequisiteDecisionCode,
-        GamePrerequisiteDecisionStatus, ReinstallBlockingReason,
-        ReinstallBlockingReasonSummary, ReinstallPlanPreview, ReinstallPreviewStatus,
-        ReinstallRevisionSummary, ReinstallTargetCounts,
+        GamePrerequisiteDecision, GamePrerequisiteDecisionCode, GamePrerequisiteDecisionStatus,
+        ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallPlanPreview,
+        ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
     };
     use hmm_core::{GameId, ModRevisionId};
     use serde_json::{json, Value};

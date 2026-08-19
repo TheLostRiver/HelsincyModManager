@@ -30,9 +30,10 @@ pub(crate) fn build_user_category_map(
 ) -> HashMap<String, Vec<CategoryLabel>> {
     let mut map: HashMap<String, Vec<CategoryLabel>> = HashMap::new();
     for (mod_id, cat) in pairs {
-        map.entry(mod_id)
-            .or_default()
-            .push(CategoryLabel { name: cat.name, color: cat.color });
+        map.entry(mod_id).or_default().push(CategoryLabel {
+            name: cat.name,
+            color: cat.color,
+        });
     }
     map
 }
@@ -61,10 +62,7 @@ pub struct CategoryService {
 }
 
 impl CategoryService {
-    pub fn new(
-        category_repository: Arc<dyn CategoryRepository>,
-        clock: Arc<dyn AppClock>,
-    ) -> Self {
+    pub fn new(category_repository: Arc<dyn CategoryRepository>, clock: Arc<dyn AppClock>) -> Self {
         Self {
             category_repository,
             clock,
@@ -81,9 +79,7 @@ impl CategoryService {
         if name.is_empty() {
             bail!("category name must not be empty");
         }
-        let color = color
-            .map(|c| c.trim().to_owned())
-            .filter(|c| !c.is_empty());
+        let color = color.map(|c| c.trim().to_owned()).filter(|c| !c.is_empty());
 
         let id = Uuid::new_v4().to_string();
         let now = self.clock.now_unix_millis()?;
@@ -230,7 +226,11 @@ mod tests {
                 .filter(|(mid, _)| mid == mod_id)
                 .map(|(_, cid)| cid.as_str())
                 .collect();
-            Ok(cats.iter().filter(|c| ids.contains(&c.id.as_str())).cloned().collect())
+            Ok(cats
+                .iter()
+                .filter(|c| ids.contains(&c.id.as_str()))
+                .cloned()
+                .collect())
         }
 
         fn set_mod_categories(&self, mod_id: &str, category_ids: &[String]) -> Result<()> {
@@ -273,7 +273,9 @@ mod tests {
     #[test]
     fn create_category_returns_uuid_and_saves() {
         let (service, repo) = make_service();
-        let id = service.create_category("Gameplay".to_owned(), None, None).unwrap();
+        let id = service
+            .create_category("Gameplay".to_owned(), None, None)
+            .unwrap();
 
         assert!(!id.is_empty());
         let saved = repo.get(&id).unwrap().expect("should exist");
@@ -286,7 +288,9 @@ mod tests {
     #[test]
     fn create_category_trims_name() {
         let (service, repo) = make_service();
-        let id = service.create_category("  Trimmed  ".to_owned(), None, None).unwrap();
+        let id = service
+            .create_category("  Trimmed  ".to_owned(), None, None)
+            .unwrap();
         let saved = repo.get(&id).unwrap().unwrap();
         assert_eq!(saved.name, "Trimmed");
     }
@@ -294,7 +298,9 @@ mod tests {
     #[test]
     fn create_category_rejects_empty_name() {
         let (service, _) = make_service();
-        assert!(service.create_category("   ".to_owned(), None, None).is_err());
+        assert!(service
+            .create_category("   ".to_owned(), None, None)
+            .is_err());
     }
 
     #[test]
@@ -343,8 +349,12 @@ mod tests {
     #[test]
     fn update_category_rejects_empty_name() {
         let (service, _) = make_service();
-        let id = service.create_category("Cat".to_owned(), None, None).unwrap();
-        assert!(service.update_category(id, Some("  ".to_owned()), None, None).is_err());
+        let id = service
+            .create_category("Cat".to_owned(), None, None)
+            .unwrap();
+        assert!(service
+            .update_category(id, Some("  ".to_owned()), None, None)
+            .is_err());
     }
 
     #[test]
@@ -395,14 +405,30 @@ pub(crate) mod test_support {
     pub(crate) struct EmptyCategoryRepository;
 
     impl CategoryRepository for EmptyCategoryRepository {
-        fn get(&self, _: &str) -> anyhow::Result<Option<Category>> { Ok(None) }
-        fn save(&self, _: &Category) -> anyhow::Result<()> { Ok(()) }
-        fn delete(&self, _: &str) -> anyhow::Result<()> { Ok(()) }
-        fn list_all(&self) -> anyhow::Result<Vec<Category>> { Ok(vec![]) }
-        fn count_mods(&self, _: &str) -> anyhow::Result<u32> { Ok(0) }
-        fn get_mod_categories(&self, _: &str) -> anyhow::Result<Vec<Category>> { Ok(vec![]) }
-        fn set_mod_categories(&self, _: &str, _: &[String]) -> anyhow::Result<()> { Ok(()) }
-        fn list_mod_category_pairs(&self) -> anyhow::Result<Vec<(String, Category)>> { Ok(vec![]) }
+        fn get(&self, _: &str) -> anyhow::Result<Option<Category>> {
+            Ok(None)
+        }
+        fn save(&self, _: &Category) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn delete(&self, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn list_all(&self) -> anyhow::Result<Vec<Category>> {
+            Ok(vec![])
+        }
+        fn count_mods(&self, _: &str) -> anyhow::Result<u32> {
+            Ok(0)
+        }
+        fn get_mod_categories(&self, _: &str) -> anyhow::Result<Vec<Category>> {
+            Ok(vec![])
+        }
+        fn set_mod_categories(&self, _: &str, _: &[String]) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn list_mod_category_pairs(&self) -> anyhow::Result<Vec<(String, Category)>> {
+            Ok(vec![])
+        }
     }
 
     pub(crate) fn empty_category_repo() -> Arc<EmptyCategoryRepository> {

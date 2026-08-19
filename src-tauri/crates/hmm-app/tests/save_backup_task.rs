@@ -49,9 +49,7 @@ fn cross_process_busy_stops_save_backup_before_executor() {
         Duration::from_millis(1),
     ));
     let scope_registry = Arc::new(SaveBackupTaskScopeRegistry::with_maintenance_registry(
-        Arc::new(
-            SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(coordinator),
-        ),
+        Arc::new(SaveProfileMaintenanceScopeRegistry::with_cross_process_admission(coordinator)),
     ));
     let service = SaveBackupTaskService::with_scope_registry(
         Arc::clone(&task_manager),

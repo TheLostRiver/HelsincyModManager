@@ -207,17 +207,17 @@ impl SupportDiagnosticsExportService {
             }) {
             Ok(lines) => lines,
             Err(_) => {
-                let _ = self.audit_log_writer.record(
-                    support_diagnostics_export_failure_audit_event(
-                        export_timestamp,
-                        &file_name,
-                        "debug_log_read_failed",
-                        app_log_lines.len(),
-                        0,
-                        0,
-                        0,
-                    ),
-                );
+                let _ =
+                    self.audit_log_writer
+                        .record(support_diagnostics_export_failure_audit_event(
+                            export_timestamp,
+                            &file_name,
+                            "debug_log_read_failed",
+                            app_log_lines.len(),
+                            0,
+                            0,
+                            0,
+                        ));
                 return Err(support_diagnostics_unavailable());
             }
         };
@@ -378,11 +378,8 @@ fn read_page_snapshot(
     };
     let (app_log_lines, app_log_status) =
         read_text_log_snapshot(text_log_reader, TextLogKind::App, "app_log_read_failed");
-    let (debug_log_lines, debug_log_status) = read_text_log_snapshot(
-        text_log_reader,
-        TextLogKind::Debug,
-        "debug_log_read_failed",
-    );
+    let (debug_log_lines, debug_log_status) =
+        read_text_log_snapshot(text_log_reader, TextLogKind::Debug, "debug_log_read_failed");
     let (task_log_lines, task_log_status) =
         read_text_log_snapshot(text_log_reader, TextLogKind::Task, "task_log_read_failed");
     let (audit_events, audit_log_status) =

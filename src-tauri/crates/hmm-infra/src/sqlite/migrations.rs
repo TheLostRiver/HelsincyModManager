@@ -25,9 +25,7 @@ pub(crate) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "migrations/013_save_backup_retention_center.sql"
         )),
-        M::up(include_str!(
-            "migrations/014_profile_retention_default.sql"
-        )),
+        M::up(include_str!("migrations/014_profile_retention_default.sql")),
     ])
 }
 
@@ -100,7 +98,10 @@ mod tests {
         );
 
         // 重建表最容易犯的错是漏列，逐列比对而不是只看几个字段。
-        assert_eq!(table_columns(&conn, "profile_save_settings"), columns_before);
+        assert_eq!(
+            table_columns(&conn, "profile_save_settings"),
+            columns_before
+        );
     }
 
     #[test]
@@ -108,7 +109,9 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
         conn.pragma_update(None, "foreign_keys", "ON")
             .expect("enable foreign keys");
-        migrations().to_latest(&mut conn).expect("migrate to latest");
+        migrations()
+            .to_latest(&mut conn)
+            .expect("migrate to latest");
         conn.execute(
             "INSERT INTO profiles (profile_id, name, is_active, created_at, updated_at)
              VALUES ('fresh', 'Fresh', 0, 1, 1)",
@@ -140,7 +143,9 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
         conn.pragma_update(None, "foreign_keys", "ON")
             .expect("enable foreign keys");
-        migrations().to_latest(&mut conn).expect("migrate to latest");
+        migrations()
+            .to_latest(&mut conn)
+            .expect("migrate to latest");
 
         // 重建表时漏掉外键不会有任何报错，只会在删除配置档时留下孤儿设置行。
         let error = conn

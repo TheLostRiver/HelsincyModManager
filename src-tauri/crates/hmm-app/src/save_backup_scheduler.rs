@@ -7,8 +7,8 @@ use hmm_core::{
     SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, GameRunningDetector, GameRunningStatus,
-    ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, GameRunningDetector,
+    GameRunningStatus, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository,
 };
 use thiserror::Error;
@@ -292,7 +292,9 @@ impl SaveBackupAutoSchedulerService {
         checked_at: u128,
     ) {
         let error_code = match reason {
-            SaveBackupSchedulerPendingReason::GameRunning => "save_backup_auto_skipped_game_running",
+            SaveBackupSchedulerPendingReason::GameRunning => {
+                "save_backup_auto_skipped_game_running"
+            }
             SaveBackupSchedulerPendingReason::GameRunningUnknown => {
                 "save_backup_auto_skipped_game_running_unknown"
             }
@@ -305,17 +307,23 @@ impl SaveBackupAutoSchedulerService {
         let fields = BTreeMap::from([
             ("game_id".to_owned(), game_id.as_str().to_owned()),
             ("profile_id".to_owned(), profile_id.as_str().to_owned()),
-            ("trigger".to_owned(), SaveBackupTrigger::Auto.as_str().to_owned()),
+            (
+                "trigger".to_owned(),
+                SaveBackupTrigger::Auto.as_str().to_owned(),
+            ),
             ("error_code".to_owned(), error_code.to_owned()),
         ]);
         // 审计写失败不阻塞调度检查。
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis: checked_at,
-            category: "save_backup".to_owned(),
-            operation: "auto_backup".to_owned(),
-            result: "deferred".to_owned(),
-            fields,
-        }, AuditWriteFailurePolicy::BestEffort);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis: checked_at,
+                category: "save_backup".to_owned(),
+                operation: "auto_backup".to_owned(),
+                result: "deferred".to_owned(),
+                fields,
+            },
+            AuditWriteFailurePolicy::BestEffort,
+        );
     }
 
     fn save_scheduler_state(

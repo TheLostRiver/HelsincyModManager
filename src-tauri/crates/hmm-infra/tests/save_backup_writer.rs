@@ -46,10 +46,7 @@ fn file_system_save_backup_writer_creates_zip_manifest_and_summary_without_raw_s
         .manifest_file_name
         .ends_with("_manual.manifest.json"));
 
-    let backup_dir = app_data
-        .join("saves")
-        .join("mhw")
-        .join("profile-default");
+    let backup_dir = app_data.join("saves").join("mhw").join("profile-default");
     let archive_path = backup_dir.join(&result.summary.archive_file_name);
     let manifest_path = backup_dir.join(&result.summary.manifest_file_name);
     assert!(archive_path.exists());
@@ -181,10 +178,7 @@ fn file_system_save_backup_writer_reports_verified_deletion_and_missing_retry() 
     let result = writer
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
-    let backup_dir = app_data
-        .join("saves")
-        .join("mhw")
-        .join("profile-default");
+    let backup_dir = app_data.join("saves").join("mhw").join("profile-default");
     let sentinel = backup_dir.join("unknown.keep");
     fs::write(&sentinel, b"not-owned-by-retention").expect("write unknown sentinel");
 
@@ -230,10 +224,7 @@ fn file_system_save_backup_writer_blocks_when_retention_directory_is_unavailable
     let result = writer
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
-    let backup_dir = app_data
-        .join("saves")
-        .join("mhw")
-        .join("profile-default");
+    let backup_dir = app_data.join("saves").join("mhw").join("profile-default");
     fs::remove_dir_all(&backup_dir).expect("simulate unavailable backup directory");
 
     let report = writer
@@ -270,10 +261,7 @@ fn file_system_save_backup_writer_reports_partial_when_manifest_type_changes() {
     let result = writer
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
-    let backup_dir = app_data
-        .join("saves")
-        .join("mhw")
-        .join("profile-default");
+    let backup_dir = app_data.join("saves").join("mhw").join("profile-default");
     let manifest = backup_dir.join(&result.summary.manifest_file_name);
     fs::remove_file(&manifest).expect("remove manifest");
     fs::create_dir(&manifest).expect("replace manifest with directory");

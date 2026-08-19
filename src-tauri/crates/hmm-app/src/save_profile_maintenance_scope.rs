@@ -7,9 +7,7 @@ use hmm_core::{GameId, ProfileId};
 use crate::{
     CrossProcessWriteAdmissionCoordinator, TaskKind, TaskManager, TaskManagerError, TaskSnapshot,
 };
-use hmm_ports::{
-    CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, NeverCancelled,
-};
+use hmm_ports::{CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, NeverCancelled};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -98,12 +96,8 @@ impl SaveProfileMaintenanceScopeRegistry {
         task_manager: &TaskManager,
         task_id: &str,
     ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
-        self.cross_process.acquire_save_profile_for_task(
-            game_id,
-            profile_id,
-            task_manager,
-            task_id,
-        )
+        self.cross_process
+            .acquire_save_profile_for_task(game_id, profile_id, task_manager, task_id)
     }
 
     pub(crate) fn acquire_cross_process(
