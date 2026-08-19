@@ -275,6 +275,17 @@
   background: var(--color-neutral-bg);
 }
 
+/* 目录状态徽章会随真实配置状态在四种色调间切换，四种都要有对应样式。 */
+.status-pill.success {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.status-pill.danger {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
 .dot {
   display: inline-block;
   width: 8px;
@@ -288,6 +299,14 @@
 
 .neutral-dot {
   background: var(--color-neutral-dot);
+}
+
+.success-dot {
+  background: var(--color-success-dot);
+}
+
+.danger-dot {
+  background: var(--color-danger-dot);
 }
 
 .window-tools {
