@@ -4,6 +4,7 @@
     "beforeBuildCommand": "corepack pnpm build && corepack pnpm run prepare:windows-sidecars"
   },
   "bundle": {
+    "targets": ["nsis"],
     "externalBin": [
       "binaries/hmm-save-backup-worker",
       "binaries/hmm-save-backup-installer-cleanup"
