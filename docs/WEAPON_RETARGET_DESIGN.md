@@ -579,9 +579,10 @@ Windows Sandbox Gate D 均已完成。
 - light 主题覆盖 1440x900、1366x768、1280x800、480x800；dark 覆盖 1280x800、480x800；system
   覆盖 1366x768。modal 层级、窄屏滚动、warning、按钮与路径脱敏通过。证据 bundle 名为
   `hmm-wr04-gated-20260805-2315`，保存在仓库外，不提交截图、日志、人工 archive 或 AppData。
-- 已知非阻断缺陷包括：顶栏目录状态陈旧、技术型 Mod fallback 名称、空 NexusMods ID 显示 `null`、
-  二进制不兼容错误未映射为具体文案、主题入口可发现性弱，以及宽度不超过 1360px 时 `.window-tools`
-  被隐藏导致主题菜单不可达。Gate D 只认证 replacement 主链与既定视觉检查，不表示这些 UI 缺陷已关闭。
+- 已知非阻断缺陷包括：顶栏目录状态陈旧、空 NexusMods ID 显示 `null`、
+  二进制不兼容错误未映射为具体文案、主题入口可发现性弱。Gate D 只认证 replacement 主链与既定
+  视觉检查，不表示这些 UI 缺陷已关闭。原列于此的"技术型 Mod fallback 名称"与"宽度不超过
+  1360px 时 `.window-tools` 被隐藏"两项已在 `0.1.0-alpha.0` 真机验收后修复。
 
 ## 停止条件与开放问题
 
