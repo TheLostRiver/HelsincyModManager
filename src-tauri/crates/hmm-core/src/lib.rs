@@ -60,8 +60,9 @@ pub use install::{
     INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 pub use mod_metadata::{
-    mod_display_name_from_archive_path, normalize_mod_display_name, sanitize_mod_metadata_text,
-    ModMetadataOverlay, MOD_METADATA_MAX_DISPLAY_NAME_CHARS,
+    deduplicate_mod_display_name, mod_display_name_from_archive_path, normalize_mod_display_name,
+    sanitize_mod_metadata_text, ModMetadataOverlay, MOD_DISPLAY_NAME_MAX_ORDINAL,
+    MOD_METADATA_MAX_DISPLAY_NAME_CHARS,
 };
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,

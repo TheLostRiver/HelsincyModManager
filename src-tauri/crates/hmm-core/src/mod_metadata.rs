@@ -56,6 +56,42 @@ pub fn normalize_mod_display_name(value: &str) -> String {
     value.trim().to_lowercase()
 }
 
+/// 自动去重允许追加的最大序号。
+///
+/// 上限存在只为杜绝病态输入下的长循环，不是产品约束：真实库里同名 Mod 到不了三位数。
+pub const MOD_DISPLAY_NAME_MAX_ORDINAL: u32 = 999;
+
+/// 让展示名在库内唯一，与既有名字冲突时追加 ` (2)`、` (3)`…… 序号。
+///
+/// `base` 必须是 [`sanitize_mod_metadata_text`] 的产物或同等保证的非空文本；
+/// `is_taken` 收到的是已经过 [`normalize_mod_display_name`] 的比较键。
+///
+/// 追加后仍受 [`MOD_METADATA_MAX_DISPLAY_NAME_CHARS`] 约束，必要时截断基名给序号
+/// 让位——上限约束的是写进投影与搜索键的长度，不能被后缀绕过。
+///
+/// 序号耗尽时返回原名而不是报错。展示名只用于前端展示，不参与身份判定
+/// （安装路径、去重、revision 继承都走 mod_id / package_id / 内容指纹），
+/// 因此重名的代价只是界面上不好辨认，远轻于让导入失败。
+pub fn deduplicate_mod_display_name(base: &str, is_taken: impl Fn(&str) -> bool) -> String {
+    if !is_taken(&normalize_mod_display_name(base)) {
+        return base.to_owned();
+    }
+
+    (2..=MOD_DISPLAY_NAME_MAX_ORDINAL)
+        .map(|ordinal| display_name_with_ordinal(base, ordinal))
+        .find(|candidate| !is_taken(&normalize_mod_display_name(candidate)))
+        .unwrap_or_else(|| base.to_owned())
+}
+
+fn display_name_with_ordinal(base: &str, ordinal: u32) -> String {
+    let suffix = format!(" ({ordinal})");
+    let base_budget = MOD_METADATA_MAX_DISPLAY_NAME_CHARS.saturating_sub(suffix.chars().count());
+    let truncated = base.chars().take(base_budget).collect::<String>();
+
+    // 截断可能正好切在词中或空格上，trim_end 避免产出 "Black Knight  (2)"。
+    format!("{}{suffix}", truncated.trim_end())
+}
+
 /// 从压缩包路径派生展示名候选，无法产出有效名称时返回 `None`。
 ///
 /// 只取 `file_stem`，即剥掉最后一级扩展名——`mod.v1.2.zip` 保留 `mod.v1.2`，
@@ -135,6 +171,108 @@ mod tests {
             normalize_mod_display_name("黑骑士 大剑"),
             normalize_mod_display_name("黑骑士大剑")
         );
+    }
+
+    fn taken_set(names: &[&str]) -> impl Fn(&str) -> bool + use<> {
+        let taken = names
+            .iter()
+            .map(|name| normalize_mod_display_name(name))
+            .collect::<std::collections::BTreeSet<_>>();
+        move |candidate: &str| taken.contains(candidate)
+    }
+
+    #[test]
+    fn keeps_the_original_name_when_nothing_collides() {
+        assert_eq!(
+            deduplicate_mod_display_name("黑骑士大剑", taken_set(&["另一个 Mod"])),
+            "黑骑士大剑"
+        );
+    }
+
+    #[test]
+    fn appends_the_first_free_ordinal() {
+        assert_eq!(
+            deduplicate_mod_display_name("黑骑士大剑", taken_set(&["黑骑士大剑"])),
+            "黑骑士大剑 (2)"
+        );
+        assert_eq!(
+            deduplicate_mod_display_name(
+                "黑骑士大剑",
+                taken_set(&["黑骑士大剑", "黑骑士大剑 (2)"])
+            ),
+            "黑骑士大剑 (3)"
+        );
+    }
+
+    #[test]
+    fn reuses_ordinals_freed_by_deletion_instead_of_always_counting_up() {
+        // 删掉 (2) 之后再导入应当补回 (2)，而不是跳到 (4)——序号是给玩家看的，
+        // 不是单调计数器。
+        assert_eq!(
+            deduplicate_mod_display_name(
+                "黑骑士大剑",
+                taken_set(&["黑骑士大剑", "黑骑士大剑 (3)"])
+            ),
+            "黑骑士大剑 (2)"
+        );
+    }
+
+    #[test]
+    fn collides_case_insensitively_like_the_admission_check() {
+        assert_eq!(
+            deduplicate_mod_display_name("BlackKnight", taken_set(&["blackknight"])),
+            "BlackKnight (2)"
+        );
+    }
+
+    #[test]
+    fn suffixed_names_still_respect_the_character_cap() {
+        let long_name = "黑".repeat(MOD_METADATA_MAX_DISPLAY_NAME_CHARS);
+
+        let deduplicated = deduplicate_mod_display_name(&long_name, taken_set(&[&long_name]));
+
+        assert!(deduplicated.ends_with(" (2)"));
+        assert_eq!(
+            deduplicated.chars().count(),
+            MOD_METADATA_MAX_DISPLAY_NAME_CHARS,
+            "后缀不能把展示名顶出上限：{deduplicated}"
+        );
+    }
+
+    #[test]
+    fn truncation_does_not_leave_whitespace_before_the_ordinal() {
+        // 截断点正好落在空格上时，不能产出 "…… (2)" 这种双空格。
+        let base = format!("{} X", "a".repeat(MOD_METADATA_MAX_DISPLAY_NAME_CHARS - 6));
+
+        let deduplicated = deduplicate_mod_display_name(&base, taken_set(&[&base]));
+
+        assert!(
+            !deduplicated.contains("  "),
+            "截断后残留空白：{deduplicated:?}"
+        );
+        assert!(deduplicated.ends_with(" (2)"));
+    }
+
+    #[test]
+    fn falls_back_to_the_original_name_when_every_ordinal_is_taken() {
+        // 允许重名，不允许导入失败：展示名不参与身份判定。
+        assert_eq!(
+            deduplicate_mod_display_name("黑骑士大剑", |_| true),
+            "黑骑士大剑"
+        );
+    }
+
+    #[test]
+    fn stops_probing_within_the_declared_ordinal_bound() {
+        let probes = std::cell::Cell::new(0_u32);
+
+        deduplicate_mod_display_name("黑骑士大剑", |_| {
+            probes.set(probes.get() + 1);
+            true
+        });
+
+        // 基名 1 次 + 序号 2..=MOD_DISPLAY_NAME_MAX_ORDINAL。
+        assert_eq!(probes.get(), MOD_DISPLAY_NAME_MAX_ORDINAL);
     }
 
     #[test]

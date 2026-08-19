@@ -179,6 +179,181 @@ fn new_logical_mod_import_without_metadata_uses_the_archive_file_name() {
 }
 
 #[test]
+fn new_logical_mod_import_appends_an_ordinal_when_the_name_is_already_used() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    // 库里已有一个同名 Mod：玩家先前导入过同一个 candidate.zip。
+    repository.seed_named("mod-a", "revision-v1", "package-v1", "candidate");
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    runner
+        .run_prepare_task(&task.task_id, archive_path())
+        .expect("import succeeds");
+
+    let imported = repository
+        .list_mods()
+        .expect("list logical mods")
+        .into_iter()
+        .find(|logical_mod| logical_mod.mod_id != ModId::new("mod-a"))
+        .expect("new logical Mod exists");
+    let revisions = repository
+        .list_revisions(&imported.mod_id)
+        .expect("list revisions");
+    // 重名不阻断导入，但要能在列表里分辨出来。
+    assert_eq!(revisions[0].display_name, "candidate (2)");
+}
+
+#[test]
+fn deduplication_only_counts_names_currently_on_display() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed_named("mod-a", "revision-v1", "package-v1", "candidate");
+    // 追加一条改名后的 revision 并让它成为展示版本：旧名字"candidate"退出界面。
+    let mut renamed = candidate_revision("revision-v2", "mod-a", "task-v2");
+    renamed.display_name = "改名后的 Mod".to_owned();
+    repository
+        .append_revision(&renamed)
+        .expect("append renamed revision");
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    runner
+        .run_prepare_task(&task.task_id, archive_path())
+        .expect("import succeeds");
+
+    let imported = repository
+        .list_mods()
+        .expect("list logical mods")
+        .into_iter()
+        .find(|logical_mod| logical_mod.mod_id != ModId::new("mod-a"))
+        .expect("new logical Mod exists");
+    let revisions = repository
+        .list_revisions(&imported.mod_id)
+        .expect("list revisions");
+    // 历史 revision 的旧名字不出现在界面上，不该凭空产生序号。
+    assert_eq!(revisions[0].display_name, "candidate");
+}
+
+#[test]
+fn deduplication_sees_collisions_created_by_a_user_rename() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed_named("mod-a", "revision-v1", "package-v1", "别的名字");
+    // 用户手动把它改名成了 candidate：catalog 名字没变，界面上却已经叫这个了。
+    let runner = runner_with_renames(
+        Arc::clone(&task_manager),
+        Arc::clone(&repository),
+        &[("mod-a", "candidate")],
+    );
+
+    runner
+        .run_prepare_task(&task.task_id, archive_path())
+        .expect("import succeeds");
+
+    assert_eq!(
+        imported_display_name(&repository, &["mod-a"]),
+        "candidate (2)"
+    );
+}
+
+#[test]
+fn deduplication_does_not_invent_an_ordinal_for_a_name_the_user_renamed_away() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed_named("mod-a", "revision-v1", "package-v1", "candidate");
+    // 用户已经把它改名走了，界面上不存在 candidate 这个名字。
+    let runner = runner_with_renames(
+        Arc::clone(&task_manager),
+        Arc::clone(&repository),
+        &[("mod-a", "candidate-旧版")],
+    );
+
+    runner
+        .run_prepare_task(&task.task_id, archive_path())
+        .expect("import succeeds");
+
+    // 加序号会凭空造出一个"(2)"，而界面上根本看不到与之对应的"(1)"。
+    assert_eq!(imported_display_name(&repository, &["mod-a"]), "candidate");
+}
+
+#[test]
+fn revision_import_keeps_the_inherited_name_even_when_another_mod_shares_it() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create revision import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed_named("mod-a", "revision-v1", "package-v1", "共享名字");
+    repository.seed_named("mod-b", "revision-b1", "package-b1", "共享名字");
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    runner
+        .run_prepare_revision_task(&task.task_id, archive_path(), ModId::new("mod-a"))
+        .expect("revision import succeeds");
+
+    let revisions = repository
+        .list_revisions(&ModId::new("mod-a"))
+        .expect("list target revisions");
+    // 去重只作用于新建 logical Mod。给既有 Mod 更新版本时追加序号，
+    // 会让同一个 Mod 每更新一版就改一次名。
+    assert_eq!(revisions[1].display_name, "共享名字");
+}
+
+#[test]
+fn import_keeps_the_original_name_when_the_catalog_cannot_be_read() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.fail_list_mods_with("catalog unavailable");
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    // 展示名不参与身份判定，读不到 catalog 不该让一次已解包完成的导入失败。
+    runner
+        .run_prepare_task(&task.task_id, archive_path())
+        .expect("import still succeeds without the catalog");
+
+    let mods = repository.list_mods_unguarded();
+    assert_eq!(mods.len(), 1);
+    let revisions = repository
+        .list_revisions(&mods[0].mod_id)
+        .expect("list revisions");
+    assert_eq!(revisions[0].display_name, "candidate");
+}
+
+#[test]
 fn revision_query_returns_explicit_origin_display_and_owned_revision_ids() {
     let repository = Arc::new(FakeRevisionCatalogRepository::default());
     repository.seed("mod-a", "revision-v1", "package-v1");
@@ -402,6 +577,41 @@ fn runner_with_metadata_analyzer(
     )
 }
 
+fn runner_with_renames(
+    task_manager: Arc<crate::TaskManager>,
+    repository: Arc<FakeRevisionCatalogRepository>,
+    renames: &[(&str, &str)],
+) -> ModImportTaskRunner {
+    runner_with_metadata_analyzer(
+        task_manager,
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        repository,
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    )
+    .with_metadata_repository(Arc::new(RenameOverlayRepository::new(renames)))
+}
+
+fn imported_display_name(
+    repository: &FakeRevisionCatalogRepository,
+    seeded_mod_ids: &[&str],
+) -> String {
+    let imported = repository
+        .list_mods()
+        .expect("list logical mods")
+        .into_iter()
+        .find(|logical_mod| {
+            !seeded_mod_ids
+                .iter()
+                .any(|seeded| logical_mod.mod_id == ModId::new(*seeded))
+        })
+        .expect("new logical Mod exists");
+    repository
+        .list_revisions(&imported.mod_id)
+        .expect("list revisions")
+        .swap_remove(0)
+        .display_name
+}
+
 fn archive_path() -> PathBuf {
     Path::new("C:/mods/candidate.zip").to_path_buf()
 }
@@ -554,10 +764,15 @@ struct FakeRevisionCatalogRepository {
     revisions: Mutex<Vec<StoredModRevision>>,
     operations: Mutex<Vec<&'static str>>,
     get_mod_error: Mutex<Option<String>>,
+    list_mods_error: Mutex<Option<String>>,
 }
 
 impl FakeRevisionCatalogRepository {
     fn seed(&self, mod_id: &str, revision_id: &str, package_id: &str) {
+        self.seed_named(mod_id, revision_id, package_id, "Origin Revision");
+    }
+
+    fn seed_named(&self, mod_id: &str, revision_id: &str, package_id: &str, display_name: &str) {
         let revision_id = ModRevisionId::new(revision_id);
         self.mods.lock().expect("mods lock").push(StoredLogicalMod {
             mod_id: ModId::new(mod_id),
@@ -573,10 +788,19 @@ impl FakeRevisionCatalogRepository {
                 mod_id: ModId::new(mod_id),
                 import_task_id: "task-v1".to_owned(),
                 package_id: package_id.to_owned(),
-                display_name: "Origin Revision".to_owned(),
+                display_name: display_name.to_owned(),
                 metadata: StoredModPackageMetadata::default(),
                 preview_image: fallback_preview(),
             });
+    }
+
+    fn fail_list_mods_with(&self, message: &str) {
+        *self.list_mods_error.lock().expect("list Mods error lock") = Some(message.to_owned());
+    }
+
+    /// 绕过 `fail_list_mods_with` 注入的故障读取内部状态，供断言检查故障期间写入的结果。
+    fn list_mods_unguarded(&self) -> Vec<StoredLogicalMod> {
+        self.mods.lock().expect("mods lock").clone()
     }
 
     fn operations(&self) -> Vec<&'static str> {
@@ -672,7 +896,25 @@ impl ModImportResultRepository for FakeRevisionCatalogRepository {
     }
 
     fn list_mods(&self) -> anyhow::Result<Vec<StoredLogicalMod>> {
+        if let Some(message) = self
+            .list_mods_error
+            .lock()
+            .expect("list Mods error lock")
+            .clone()
+        {
+            anyhow::bail!(message);
+        }
         Ok(self.mods.lock().expect("mods lock").clone())
+    }
+
+    /// 必须覆写：默认实现只按 `display_revision_id` 逐条取，产出的 `revisions`
+    /// 恰好只有展示中的那些，而生产实现（JSON catalog）直接返回全部 revision。
+    /// 沿用默认实现会让"只统计展示中的名字"这条断言在测试里恒真。
+    fn catalog_snapshot(&self) -> anyhow::Result<hmm_ports::ModImportCatalogSnapshot> {
+        Ok(hmm_ports::ModImportCatalogSnapshot {
+            logical_mods: self.list_mods()?,
+            revisions: self.revisions.lock().expect("revisions lock").clone(),
+        })
     }
 
     fn get_revision(
@@ -750,6 +992,60 @@ impl ModImportResultRepository for FakeRevisionCatalogRepository {
             .projected_analysis()
             .into_iter()
             .find(|analysis| analysis.mod_id == mod_id))
+    }
+}
+
+/// 只提供改名 overlay 的仓储，用于验证去重按用户实际看到的名字比较。
+struct RenameOverlayRepository {
+    renames: Vec<(String, String)>,
+}
+
+impl RenameOverlayRepository {
+    fn new(renames: &[(&str, &str)]) -> Self {
+        Self {
+            renames: renames
+                .iter()
+                .map(|(mod_id, display_name)| ((*mod_id).to_owned(), (*display_name).to_owned()))
+                .collect(),
+        }
+    }
+
+    fn overlay(mod_id: &str, display_name: &str) -> ModMetadataOverlay {
+        ModMetadataOverlay {
+            mod_id: ModId::new(mod_id),
+            display_name: Some(display_name.to_owned()),
+            author: None,
+            version: None,
+            description: None,
+            nexus_mod_id: None,
+            updated_at: 0,
+        }
+    }
+}
+
+impl ModMetadataRepository for RenameOverlayRepository {
+    fn get(&self, mod_id: &str) -> anyhow::Result<Option<ModMetadataOverlay>> {
+        Ok(self
+            .renames
+            .iter()
+            .find(|(id, _)| id == mod_id)
+            .map(|(id, display_name)| Self::overlay(id, display_name)))
+    }
+
+    fn save(&self, _overlay: &ModMetadataOverlay) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn delete(&self, _mod_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn list_all(&self) -> anyhow::Result<Vec<ModMetadataOverlay>> {
+        Ok(self
+            .renames
+            .iter()
+            .map(|(id, display_name)| Self::overlay(id, display_name))
+            .collect())
     }
 }
 
