@@ -167,9 +167,7 @@ impl From<ExternalImportConflictResolution> for ExternalImportConflictResolution
     fn from(value: ExternalImportConflictResolution) -> Self {
         match value {
             ExternalImportConflictResolution::KeepBoth => Self::KeepBoth,
-            ExternalImportConflictResolution::IgnoreInvalidMetadata => {
-                Self::IgnoreInvalidMetadata
-            }
+            ExternalImportConflictResolution::IgnoreInvalidMetadata => Self::IgnoreInvalidMetadata,
         }
     }
 }
@@ -478,8 +476,8 @@ mod tests {
         ExternalImportAdapterId, ExternalImportBatchId, ExternalImportCandidate,
         ExternalImportCandidateId, ExternalImportConflictKind, ExternalImportConflictResolution,
         ExternalImportItemResult, ExternalImportItemStatus, ExternalImportReasonCode,
-        ExternalImportResourceUsage, ExternalImportSelectionDecision,
-        ExternalImportSelectionEntry, ExternalImportSelectionId, ExternalImportSourceId, ModId,
+        ExternalImportResourceUsage, ExternalImportSelectionDecision, ExternalImportSelectionEntry,
+        ExternalImportSelectionId, ExternalImportSourceId, ModId,
     };
 
     #[test]
@@ -546,7 +544,10 @@ mod tests {
             .expect("serialize external import preview dto");
         let serialized = value.to_string();
 
-        assert_eq!(value["selection"]["selectionId"], "external-import-selection-1");
+        assert_eq!(
+            value["selection"]["selectionId"],
+            "external-import-selection-1"
+        );
         assert_eq!(value["selection"]["selectedCount"], 1);
         assert_eq!(value["candidates"][0]["selected"], true);
         assert_eq!(

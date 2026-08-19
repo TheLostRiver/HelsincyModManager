@@ -139,12 +139,7 @@ fn preview_rejects_missing_or_cross_batch_selection() {
         Err(ExternalImportBatchError::SelectionUnavailable)
     );
     assert_eq!(
-        service.get_preview(
-            &batch.batch_id,
-            Some(&other_selection.selection_id),
-            0,
-            50,
-        ),
+        service.get_preview(&batch.batch_id, Some(&other_selection.selection_id), 0, 50,),
         Err(ExternalImportBatchError::SelectionUnavailable)
     );
 }

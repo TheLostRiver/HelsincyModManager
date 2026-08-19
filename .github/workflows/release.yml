@@ -1,0 +1,210 @@
+name: Release
+
+# 打 tag 触发 Windows 发布构建。产出 draft release，不自动发布：
+# 发布是不可逆的对外动作，必须由人工确认验收清单后手动点发布。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（不含 v 前缀），例如 0.1.0-alpha.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    permissions:
+      # 创建 release 需要写权限，仅本 job 提升。
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # 本 job 有 contents: write，且在用到 GH_TOKEN 之前先跑依赖安装与构建脚本。
+          # 默认会把 job token 写进 git config，任何被投毒的依赖都能读到它。
+          # 本 workflow 无需认证的 git 操作，直接关掉。
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        shell: bash
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        shell: bash
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      # 版本号以 tauri.conf.json 为准，tag 只用于校验一致性。
+      # 避免出现 tag 与产物版本不一致的发布。
+      - name: Resolve and verify version
+        id: version
+        shell: pwsh
+        run: |
+          $configVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+
+          if ($configVersion -ne $packageVersion) {
+            throw "版本号不一致: tauri.conf.json=$configVersion package.json=$packageVersion"
+          }
+
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($tagVersion -ne $configVersion) {
+              throw "tag 与配置版本不一致: tag=$tagVersion config=$configVersion"
+            }
+          }
+          else {
+            # 手动触发时 version 输入是必填的，此前却被完全忽略——填错也照发，
+            # 输入形同虚设。改为当作"手抄一遍版本号"的确认闸门。
+            $inputVersion = '${{ inputs.version }}' -replace '^v', ''
+            if ($inputVersion -ne $configVersion) {
+              throw "手动输入的版本与配置版本不一致: input=$inputVersion config=$configVersion"
+            }
+          }
+
+          "version=$configVersion" >> $env:GITHUB_OUTPUT
+          Write-Host "发布版本: $configVersion"
+
+      - name: Build Windows bundle
+        shell: bash
+        run: corepack pnpm run tauri:build
+
+      # Tauri 产物名带空格且不含平台/架构/渠道信息，与
+      # docs/release/发布与产物说明.md 的命名规则不一致，此处统一重命名。
+      #
+      # 产物在 workspace 根的 target/ 而不是 src-tauri/target/：
+      # Cargo workspace 共用根 target 目录。这一点已由本地 tauri build 实测确认。
+      #
+      # 只打 NSIS：MSI 拒绝 SemVer 的字母预发布标识，0.1.0-alpha.0 会让
+      # bundle 阶段直接失败（"pre-release identifier must be numeric-only"）。
+      # 目标已在 tauri.windows.conf.json 限定为 nsis。
+      - name: Collect and rename artifacts
+        id: artifacts
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $outDir = 'release-artifacts'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+          $nsisDir = 'target/release/bundle/nsis'
+          if (-not (Test-Path $nsisDir)) {
+            throw "未找到 NSIS 产物目录: $nsisDir"
+          }
+
+          $collected = @()
+          foreach ($file in Get-ChildItem -Path $nsisDir -Filter '*-setup.exe') {
+            $target = "HelsincyModManager-$version-windows-x64-setup.exe"
+            Copy-Item $file.FullName (Join-Path $outDir $target)
+            $collected += $target
+            Write-Host "$($file.Name) -> $target"
+          }
+
+          if ($collected.Count -eq 0) {
+            throw "未找到 Windows 安装包产物"
+          }
+
+      # 发布文档要求 Release 必须包含校验文件。
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          Push-Location release-artifacts
+          $lines = foreach ($file in Get-ChildItem -File) {
+            $hash = (Get-FileHash $file.Name -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -Path "SHA256SUMS-$version.txt" -Encoding ascii
+          Get-Content "SHA256SUMS-$version.txt"
+          Pop-Location
+
+      # 验证 docs/TESTING.md 要求的 sidecar 同装约束与 installer cleanup gate。
+      #
+      # 校验 Tauri 生成的 installer.nsi 而不是只看源文件存在：
+      # TESTING.md 明确要求 cleanup 作为独立 gate 验证，不能由"bundle 包含
+      # sidecar"代替。installer.nsi 是安装器实际写入哪些文件的权威依据，
+      # 源文件存在不代表它被打进了安装包。
+      - name: Verify sidecars and uninstall hook are wired into the installer
+        shell: pwsh
+        run: |
+          $nsi = 'target/release/nsis/x64/installer.nsi'
+          if (-not (Test-Path $nsi)) {
+            throw "未找到生成的 NSIS 脚本: $nsi"
+          }
+          $content = Get-Content $nsi -Raw
+
+          # sidecar 必须以去掉 target-triple 的名字与主程序同装。
+          foreach ($name in @('hmm-save-backup-worker.exe', 'hmm-save-backup-installer-cleanup.exe')) {
+            if ($content -notmatch [regex]::Escape("/oname=$name")) {
+              throw "installer.nsi 未安装 sidecar: $name"
+            }
+            Write-Host "已确认 sidecar 进入安装器: $name"
+          }
+
+          # 卸载前 cleanup hook 必须接入，否则卸载会残留后台任务。
+          if ($content -notmatch 'NSIS_HOOK_PREUNINSTALL') {
+            throw "installer.nsi 未接入卸载前 cleanup hook"
+          }
+          Write-Host "已确认卸载前 cleanup hook 已接入"
+
+      # 用预装的 gh CLI 而不是第三方 action：仓库治理要求第三方 action 固定
+      # 到 commit SHA，少一个供应链依赖就少一处需要持续核验的 SHA。
+      #
+      # --draft 是刻意的：产物必须经 docs/release/ALPHA_0_ACCEPTANCE.md
+      # 人工验收后才能发布，CI 不做这个决定。
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "v$version" }
+
+          # notes 走仓库内的 --notes-file，不在脚本里拼多行中文字符串：
+          # 反引号是 PowerShell 转义符，Markdown 的 `code` 标记会被吞掉；
+          # 中文内容还依赖 runner 的编码行为，无法在本机预先验证。
+          # 落到文件后内容可 review、可 diff，CI 只负责读取。
+          $notesFile = 'docs/release/draft-release-notes.md'
+          if (-not (Test-Path $notesFile)) {
+            throw "缺少 release notes 文件: $notesFile"
+          }
+
+          $assets = Get-ChildItem release-artifacts | ForEach-Object { $_.FullName }
+
+          $existing = gh release view $tag --json isDraft,targetCommitish 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $release = $existing | ConvertFrom-Json
+
+            # --clobber 会先删同名资产再上传。对已发布的 release 重跑本 workflow，
+            # 等于把玩家正在下载的安装包删掉再传一份，中途失败就是资产没了。
+            # 已发布 = 人工已按验收清单确认过，此时只能新开版本，不能就地覆盖。
+            if (-not $release.isDraft) {
+              throw "release $tag 已发布，拒绝覆盖其资产。要重新发布请改用新版本号。"
+            }
+
+            Write-Host "draft release $tag 已存在，仅上传产物"
+            gh release upload $tag @assets --clobber
+          } else {
+            # --target 绑定到本次构建的提交。手动触发时 tag 尚不存在，
+            # 缺省会把 tag 打在默认分支 HEAD 上，指向的代码与产物并非同一份。
+            gh release create $tag --draft --title "v$version" --notes-file $notesFile --target $env:GITHUB_SHA @assets
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release 操作失败"
+          }
+
+          Write-Host "draft release 已就绪: $tag"

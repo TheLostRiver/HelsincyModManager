@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { AlertTriangle, CircleHelp, FileDown, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "lucide-react";
-import { useGameSetup } from "../game-setup/useGameSetup";
+import { useGameSetup } from "../game-setup/GameSetupProvider";
 import type {
   RecoveryCenterIssueView,
   RecoveryCenterManualAction,
@@ -35,7 +35,7 @@ const blockReasonLabels: Record<string, string> = {
 };
 
 export function RecoveryCenterPage() {
-  const gameSetup = useGameSetup("mhw");
+  const gameSetup = useGameSetup();
   const isConfigured = gameSetup.status.kind === "configured";
   const diagnostics = useRecoveryDiagnosticsExport();
   const scan = useRecoveryCenterScan({

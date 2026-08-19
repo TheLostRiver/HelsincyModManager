@@ -95,6 +95,13 @@ try {
     }
 
     if (Test-Path -LiteralPath (Join-Path $repoRoot "Cargo.toml")) {
+        Write-Host "Running Rust format check..."
+        cargo fmt --all --check
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Formatting drift detected. Run 'cargo fmt --all' and commit the result separately."
+            exit $LASTEXITCODE
+        }
+
         Write-Host "Running Rust tests..."
         cargo test --workspace
         if ($LASTEXITCODE -ne 0) {

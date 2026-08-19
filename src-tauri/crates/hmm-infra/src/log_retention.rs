@@ -66,11 +66,8 @@ impl FileSystemLogRetention {
 
     fn prune_debug_logs(&self, current_day: i64) -> Result<u64> {
         let cutoff_day = retention_cutoff_day(current_day, DEFAULT_DEBUG_LOG_RETENTION_DAYS)?;
-        let Some(directory) = open_existing_log_directory(
-            &self.app_data_root,
-            "debug",
-            "debug log directory",
-        )?
+        let Some(directory) =
+            open_existing_log_directory(&self.app_data_root, "debug", "debug log directory")?
         else {
             return Ok(0);
         };
@@ -357,7 +354,10 @@ mod tests {
 
         assert_eq!(report.debug_log_deleted_count, 0);
         assert_eq!(report.audit_log_deleted_count, 1);
-        assert_eq!(fs::read_to_string(&sentinel).expect("read outside sentinel"), "outside\n");
+        assert_eq!(
+            fs::read_to_string(&sentinel).expect("read outside sentinel"),
+            "outside\n"
+        );
         assert!(!expired_audit.exists());
         assert_eq!(
             health.snapshot().debug_log_status,

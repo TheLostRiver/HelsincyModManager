@@ -31,7 +31,14 @@ type GameSetupState = {
 const DEFAULT_GAME_ID: GameId = "mhw";
 const STARTUP_DETECTION_TIMEOUT_MS = 10000;
 
-export function useGameSetup(gameId: GameId = DEFAULT_GAME_ID) {
+/**
+ * 游戏目录配置的状态与操作。
+ *
+ * 只应由 GameSetupProvider 调用一次。它在挂载时会触发一次启动自检（含 Steam 库扫描
+ * 与 10 秒超时），每多一个调用方就多跑一遍；而各调用方持有的又是彼此独立的副本，
+ * 在一处配置完目录，另一处不会更新。组件请改用 useGameSetup()。
+ */
+export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
   const { pushToast } = useFeedback();
   const [state, setState] = useState<GameSetupState>({
     status: { kind: "not_configured", gameId },

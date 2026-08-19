@@ -1,0 +1,12 @@
+# 只有格式、没有语义的提交。`git blame` 应当跳过它们，否则整片代码的责任行
+# 都会指向格式化本身，而不是真正写下这段逻辑的提交。
+#
+# 本地启用：
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub 会自动识别仓库根目录下的这个文件，无需额外配置。
+#
+# 加入条件：该提交 `git diff -w` 之外没有任何语义改动。
+
+# style: 全仓执行 cargo fmt
+af3f39e166dfeb663811f563f5ccbd7647ed0ba4

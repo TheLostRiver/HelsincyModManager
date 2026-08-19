@@ -643,7 +643,10 @@ impl SandboxLifecycleAutomation {
 }
 
 fn write_admission_task_error_code(events: &[TaskProgressEvent]) -> Option<&'static str> {
-    let error = events.iter().rev().find_map(|event| event.error.as_deref())?;
+    let error = events
+        .iter()
+        .rev()
+        .find_map(|event| event.error.as_deref())?;
     match error.rsplit(':').next()? {
         "write_admission_busy" => Some("write_admission_busy"),
         "write_admission_cancelled" => Some("write_admission_cancelled"),

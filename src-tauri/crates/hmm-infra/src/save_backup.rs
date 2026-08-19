@@ -24,12 +24,12 @@ const MAX_SINGLE_FILE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
 
 pub struct FileSystemSaveBackupWriter {
-    app_data_dir: PathBuf,
+    save_backup_root: PathBuf,
 }
 
 impl FileSystemSaveBackupWriter {
-    pub fn new(app_data_dir: PathBuf) -> Self {
-        Self { app_data_dir }
+    pub fn new(save_backup_root: PathBuf) -> Self {
+        Self { save_backup_root }
     }
 }
 
@@ -158,7 +158,7 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
         summary: &SaveBackupSummary,
     ) -> Result<SaveBackupDeleteReport> {
         let directory = match open_retention_backup_directory(
-            &self.app_data_dir,
+            &self.save_backup_root,
             backup_directory,
             summary.game_id.as_str(),
             summary.profile_id.as_str(),
@@ -181,13 +181,16 @@ impl SaveBackupWriter for FileSystemSaveBackupWriter {
 }
 
 fn open_retention_backup_directory(
-    app_data_dir: &Path,
+    save_backup_root: &Path,
     selection: &ProfileDirectorySelection,
     game_id: &str,
     profile_id: &str,
     trigger: hmm_core::SaveBackupTrigger,
 ) -> Result<cap_std::fs::Dir> {
     let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
+    // 逐级 nofollow 打开，因此必须把布局拆成 component 列表，不能直接 join。
+    // 这里的层级要与 managed_backup_profile_directory 保持一致，否则整理会去错目录、
+    // 把该删的留下而误判成"目录不可用"。
     let (root_path, mut components) = match selection.mode {
         ProfileDirectoryMode::Custom => {
             let root = selection
@@ -197,18 +200,17 @@ fn open_retention_backup_directory(
             (
                 PathBuf::from(root),
                 vec![
-                    "HelsincyModManager".to_owned(),
-                    "saves".to_owned(),
+                    CUSTOM_BACKUP_DIRECTORY_NAME.to_owned(),
+                    SAVE_BACKUP_SEGMENT.to_owned(),
                     game_id.to_owned(),
                     profile_dir,
                 ],
             )
         }
         ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => (
-            app_data_dir.to_path_buf(),
+            save_backup_root.to_path_buf(),
             vec![
-                "backups".to_owned(),
-                "saves".to_owned(),
+                SAVE_BACKUP_SEGMENT.to_owned(),
                 game_id.to_owned(),
                 profile_dir,
             ],
@@ -239,16 +241,16 @@ impl FileSystemSaveBackupWriter {
         game_id: &str,
         profile_id: &str,
     ) -> Result<PathBuf> {
-        managed_backup_profile_directory(&self.app_data_dir, selection, game_id, profile_id)
+        managed_backup_profile_directory(&self.save_backup_root, selection, game_id, profile_id)
     }
 }
 
 pub(crate) fn managed_backup_directory_for_summary(
-    app_data_dir: &Path,
+    save_backup_root: &Path,
     summary: &SaveBackupSummary,
 ) -> Result<PathBuf> {
     let profile_dir = managed_backup_profile_directory(
-        app_data_dir,
+        save_backup_root,
         &summary.backup_directory,
         summary.game_id.as_str(),
         summary.profile_id.as_str(),
@@ -256,31 +258,39 @@ pub(crate) fn managed_backup_directory_for_summary(
     Ok(backup_directory_for_trigger(profile_dir, summary.trigger))
 }
 
+/// 自定义备份根下再套一层的目录名，避免直接把归档散落在玩家选的目录里。
+/// 默认根本身已经是这个名字，因此不再重复套一层。
+pub(crate) const CUSTOM_BACKUP_DIRECTORY_NAME: &str = "HelsincyModManager";
+/// 备份根之下的固定布局，默认模式与自定义模式共用。
+pub(crate) const SAVE_BACKUP_SEGMENT: &str = "saves";
+
 fn managed_backup_profile_directory(
-    app_data_dir: &Path,
+    save_backup_root: &Path,
     selection: &ProfileDirectorySelection,
     game_id: &str,
     profile_id: &str,
 ) -> Result<PathBuf> {
     let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
-    match selection.mode {
+    // 两种模式布局完全一致，只有根目录不同：默认根由运行时解析到文档目录下，
+    // 自定义根是玩家选的目录再套一层应用名。保持同构可以让玩家在两者之间搬迁
+    // 备份时不需要重排目录结构。
+    let root = match selection.mode {
         ProfileDirectoryMode::Custom => {
             let root = selection
                 .directory
                 .as_deref()
                 .ok_or_else(|| anyhow!("custom save backup root is missing"))?;
-            Ok(PathBuf::from(root)
-                .join("HelsincyModManager")
-                .join("saves")
-                .join(game_id)
-                .join(profile_dir))
+            PathBuf::from(root).join(CUSTOM_BACKUP_DIRECTORY_NAME)
         }
-        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => Ok(app_data_dir
-            .join("backups")
-            .join("saves")
-            .join(game_id)
-            .join(profile_dir)),
-    }
+        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => {
+            save_backup_root.to_path_buf()
+        }
+    };
+
+    Ok(root
+        .join(SAVE_BACKUP_SEGMENT)
+        .join(game_id)
+        .join(profile_dir))
 }
 
 fn backup_directory_for_trigger(

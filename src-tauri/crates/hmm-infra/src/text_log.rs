@@ -295,7 +295,9 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].source, "debug-1970-01-01.log");
         assert!(lines[0].line.contains("runtime.initialized"));
-        assert!(!serde_json::to_string(&lines).unwrap().contains("C:/Users/Player"));
+        assert!(!serde_json::to_string(&lines)
+            .unwrap()
+            .contains("C:/Users/Player"));
     }
 
     #[test]

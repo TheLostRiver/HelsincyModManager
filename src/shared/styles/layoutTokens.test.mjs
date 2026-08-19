@@ -240,24 +240,33 @@ test("Mod 管理页消费密度 token，无残留硬编码", () => {
 
 // ===== L2: 小屏契约负向保护（不得删除/破坏）=====
 
-test("AppFrame 小屏契约保留：1360px 状态栏降级并保留引导入口 + 860px shell 单列", () => {
+test("AppFrame 小屏契约保留：1180/1060 两档状态栏降级 + 860px shell 单列", () => {
   const rules = parseCssRules(readProjectFile("src/app/frame/AppFrame.css"));
 
+  // 1180 档只瘦身文字，保持三列，窗口工具组仍可达。
   expectDeclaration(
-    findRule(rules, ".top-status-bar", "(max-width: 1360px)"),
+    findRule(rules, ".top-status-bar", "(max-width: 1180px)"),
+    /grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+auto\s+auto;/,
+    "缺少 1180px 下保留三列的状态栏布局",
+  );
+  expectDeclaration(
+    findRule(rules, ".status-pill:not(.compact)", "(max-width: 1180px)"),
+    /display:\s*none;/,
+    "缺少 1180px 下隐藏非 compact status pill 的规则",
+  );
+
+  // 1060 档才收两列并隐藏窗口工具组。
+  expectDeclaration(
+    findRule(rules, ".top-status-bar", "(max-width: 1060px)"),
     /grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+minmax\(0,\s*auto\);/,
-    "缺少 1360px 下为状态组保留的双列布局",
+    "缺少 1060px 下为状态组保留的双列布局",
   );
   expectDeclaration(
-    findRule(rules, ".window-tools", "(max-width: 1360px)"),
+    findRule(rules, ".window-tools", "(max-width: 1060px)"),
     /display:\s*none;/,
-    "缺少 1360px 下隐藏窗口工具组的规则",
+    "缺少 1060px 下隐藏窗口工具组的规则",
   );
-  expectDeclaration(
-    findRule(rules, ".status-pill:not(.compact)", "(max-width: 1360px)"),
-    /display:\s*none;/,
-    "缺少 1360px 下隐藏非 compact status pill 的规则",
-  );
+
   expectDeclaration(
     findRule(rules, ".app-shell:not([data-sidebar-mode=\"floating\"])", "(max-width: 860px)"),
     /grid-template-columns:\s*1fr;/,
@@ -270,17 +279,63 @@ test("AppFrame 小屏契约保留：1360px 状态栏降级并保留引导入口 
   );
 });
 
-test("RouterOutlet 与 Dashboard 小屏契约保留：1360px 单列化", () => {
+test("状态栏两列收缩与隐藏窗口工具组必须同断点", () => {
+  const css = readProjectFile("src/app/frame/AppFrame.css");
+  const rules = parseCssRules(css);
+
+  // 状态栏有三个 grid item。只收成两列而不隐藏窗口工具组，第三个 item 会被
+  // 挤到隐式第二行，而 .top-status-bar 是固定 height: 64px，第二行直接溢出。
+  // 这两条声明是一对——0.1.0-alpha.0 修复期差点把它们拆到不同断点。
+  const twoColumnMedia = rules
+    .filter((rule) => rule.selector === ".top-status-bar"
+      && /grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+minmax\(0,\s*auto\);/.test(rule.body))
+    .map((rule) => rule.media);
+  assert.equal(twoColumnMedia.length, 1, "状态栏两列收缩应只在一个断点出现");
+
+  const hiddenToolsMedia = rules
+    .filter((rule) => rule.selector === ".window-tools" && /display:\s*none;/.test(rule.body))
+    .map((rule) => rule.media);
+  assert.deepEqual(
+    hiddenToolsMedia,
+    twoColumnMedia,
+    "隐藏窗口工具组必须与状态栏两列收缩处于同一 media query",
+  );
+});
+
+test("窗口工具组不得在保留三列的断点内被隐藏", () => {
+  const rules = parseCssRules(readProjectFile("src/app/frame/AppFrame.css"));
+
+  // 主题菜单与设置齿轮是常用入口。1180 档的意图是只瘦身文字，
+  // 若把 display:none 提到这一档，窄屏用户又会失去这两个入口。
+  const rule = findRule(rules, ".window-tools", "(max-width: 1180px)");
+  if (rule) {
+    assert.doesNotMatch(
+      rule.body,
+      /display:\s*none;/,
+      "1180px 档保留三列，不应隐藏窗口工具组",
+    );
+  }
+});
+
+test("RouterOutlet 与 Dashboard 小屏契约保留：1180px 单列化", () => {
   for (const file of ["src/app/routing/RouterOutlet.css", "src/features/dashboard/Dashboard.css"]) {
     const rules = parseCssRules(readProjectFile(file));
     const selector = file.includes("RouterOutlet") ? ".route-transition__layer" : ".workbench-body";
 
     expectDeclaration(
-      findRule(rules, selector, "(max-width: 1360px)"),
+      findRule(rules, selector, "(max-width: 1180px)"),
       /grid-template-columns:\s*1fr;/,
-      `${file} 缺少 1360px 单列化`,
+      `${file} 缺少 1180px 单列化`,
     );
   }
+
+  // .setup-rail 的固定 360px 宽度必须与 route 层列定义在同一断点释放，
+  // 否则单列下右侧栏仍按 aside 宽度撑开。
+  expectDeclaration(
+    findRule(parseCssRules(readProjectFile("src/features/dashboard/Dashboard.css")), ".setup-rail", "(max-width: 1180px)"),
+    /width:\s*auto;/,
+    "Dashboard.css 缺少 1180px 下释放 setup-rail 固定宽度",
+  );
 });
 
 test("关键承压容器保留 min-width: 0 护栏", () => {

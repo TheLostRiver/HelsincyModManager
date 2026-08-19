@@ -346,7 +346,9 @@ pub fn is_same_revision_replacement_target_switch(
     candidate.mod_id() == mod_id
         && candidate.profile_id() == &manifest.profile_id
         && candidate.revision_id() == Some(revision_id)
-        && installed.revision_id().is_none_or(|installed| installed == revision_id)
+        && installed
+            .revision_id()
+            .is_none_or(|installed| installed == revision_id)
         && candidate.binding_id() == installed.binding_id()
         && candidate.binding().created_at_unix_millis()
             == installed.binding().created_at_unix_millis()
@@ -405,7 +407,9 @@ pub enum ReinstallManifestError {
     CandidateRevisionMissing,
     #[error("candidate manifest entry revision does not match the requested candidate")]
     CandidateRevisionMismatch,
-    #[error("candidate replacement binding does not match the requested Mod, profile, or revision")]
+    #[error(
+        "candidate replacement binding does not match the requested Mod, profile, or revision"
+    )]
     CandidateReplacementBindingMismatch,
     #[error("reinstall target is also owned by another Mod")]
     CrossModTargetOwnership {
@@ -1243,11 +1247,8 @@ mod tests {
             ("mod-a", "default", "v3"),
         ] {
             let mut invalid = transaction.clone();
-            invalid.candidate_replacement_bindings = vec![replacement_snapshot(
-                mod_id,
-                profile_id,
-                revision_id,
-            )];
+            invalid.candidate_replacement_bindings =
+                vec![replacement_snapshot(mod_id, profile_id, revision_id)];
             assert_eq!(
                 invalid.validate(),
                 Err(
@@ -1264,16 +1265,15 @@ mod tests {
         transaction.candidate_revision_id = ModRevisionId::new("v1");
         transaction.pre_reinstall_manifest.schema_version =
             crate::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
-        transaction.pre_reinstall_manifest.replacement_bindings = vec![
-            replacement_snapshot_for_target(
+        transaction.pre_reinstall_manifest.replacement_bindings =
+            vec![replacement_snapshot_for_target(
                 "binding-v2",
                 "mod-a",
                 "default",
                 None,
                 "mhw:armor:guardian-alpha",
                 "pl121_0000",
-            ),
-        ];
+            )];
         transaction.candidate_replacement_bindings = vec![replacement_snapshot_for_target(
             "binding-v2",
             "mod-a",
@@ -1316,23 +1316,22 @@ mod tests {
             Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged)
         );
 
-        let mut changed_target_family = recovery_transaction(
-            ReinstallRecoveryTransactionStatus::Planned,
-        );
+        let mut changed_target_family =
+            recovery_transaction(ReinstallRecoveryTransactionStatus::Planned);
         changed_target_family.old_revision_id = ModRevisionId::new("v1");
         changed_target_family.candidate_revision_id = ModRevisionId::new("v1");
         changed_target_family.pre_reinstall_manifest.schema_version =
             crate::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
-        changed_target_family.pre_reinstall_manifest.replacement_bindings = vec![
-            replacement_snapshot_for_target(
-                "binding-v2",
-                "mod-a",
-                "default",
-                None,
-                "mhw:armor:guardian-alpha",
-                "pl121_0000",
-            ),
-        ];
+        changed_target_family
+            .pre_reinstall_manifest
+            .replacement_bindings = vec![replacement_snapshot_for_target(
+            "binding-v2",
+            "mod-a",
+            "default",
+            None,
+            "mhw:armor:guardian-alpha",
+            "pl121_0000",
+        )];
         let mut candidate = replacement_snapshot_for_target(
             "binding-v2",
             "mod-a",
@@ -1592,8 +1591,7 @@ mod tests {
                 ReplacementBindingId::parse(binding_id).expect("binding id"),
                 ModId::new(mod_id),
                 ProfileId::new(profile_id),
-                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000")
-                    .expect("source id"),
+                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
                 ReplacementTargetId::parse(target_id).expect("target id"),
                 42,
             )
