@@ -1,0 +1,179 @@
+name: Release
+
+# 打 tag 触发 Windows 发布构建。产出 draft release，不自动发布：
+# 发布是不可逆的对外动作，必须由人工确认验收清单后手动点发布。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（不含 v 前缀），例如 0.1.0-alpha.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    permissions:
+      # 创建 release 需要写权限，仅本 job 提升。
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        shell: bash
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        shell: bash
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      # 版本号以 tauri.conf.json 为准，tag 只用于校验一致性。
+      # 避免出现 tag 与产物版本不一致的发布。
+      - name: Resolve and verify version
+        id: version
+        shell: pwsh
+        run: |
+          $configVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+
+          if ($configVersion -ne $packageVersion) {
+            throw "版本号不一致: tauri.conf.json=$configVersion package.json=$packageVersion"
+          }
+
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($tagVersion -ne $configVersion) {
+              throw "tag 与配置版本不一致: tag=$tagVersion config=$configVersion"
+            }
+          }
+
+          "version=$configVersion" >> $env:GITHUB_OUTPUT
+          Write-Host "发布版本: $configVersion"
+
+      - name: Build Windows bundle
+        shell: bash
+        run: corepack pnpm run tauri:build
+
+      # Tauri 产物名带空格且不含平台/架构渠道信息，与
+      # docs/release/发布与产物说明.md 的命名规则不一致，此处统一重命名。
+      - name: Collect and rename artifacts
+        id: artifacts
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $outDir = 'release-artifacts'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+          $bundleRoot = 'src-tauri/target/release/bundle'
+          $map = @(
+            @{ Path = "$bundleRoot/nsis"; Filter = '*-setup.exe'; Suffix = 'setup.exe' }
+            @{ Path = "$bundleRoot/msi";  Filter = '*.msi';       Suffix = 'installer.msi' }
+          )
+
+          $collected = @()
+          foreach ($entry in $map) {
+            if (-not (Test-Path $entry.Path)) {
+              Write-Host "跳过不存在的产物目录: $($entry.Path)"
+              continue
+            }
+            foreach ($file in Get-ChildItem -Path $entry.Path -Filter $entry.Filter) {
+              $target = "HelsincyModManager-$version-windows-x64-$($entry.Suffix)"
+              Copy-Item $file.FullName (Join-Path $outDir $target)
+              $collected += $target
+              Write-Host "$($file.Name) -> $target"
+            }
+          }
+
+          if ($collected.Count -eq 0) {
+            throw "未找到任何 Windows 安装包产物"
+          }
+
+      # 发布文档要求 Release 必须包含校验文件。
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          Push-Location release-artifacts
+          $lines = foreach ($file in Get-ChildItem -File) {
+            $hash = (Get-FileHash $file.Name -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -Path "SHA256SUMS-$version.txt" -Encoding ascii
+          Get-Content "SHA256SUMS-$version.txt"
+          Pop-Location
+
+      # 验证 docs/TESTING.md 要求的 sidecar 同装约束。
+      # 缺失时安装包会静默失去后台备份能力和卸载清理能力，必须在发布前拦截。
+      #
+      # externalBin 的源文件带 target-triple 后缀并位于 src-tauri/binaries/，
+      # 由 prepare:windows-sidecars 在 beforeBuildCommand 阶段拷入；
+      # Tauri 打包时会去掉后缀装进安装目录。这里校验源文件存在。
+      - name: Verify sidecars are staged for bundling
+        shell: pwsh
+        run: |
+          $triple = 'x86_64-pc-windows-msvc'
+          $required = @(
+            'hmm-save-backup-worker'
+            'hmm-save-backup-installer-cleanup'
+          )
+          foreach ($name in $required) {
+            $path = "src-tauri/binaries/$name-$triple.exe"
+            if (-not (Test-Path $path)) {
+              throw "缺少 sidecar 产物: $path"
+            }
+            Write-Host "已确认 sidecar: $path"
+          }
+
+      # 用预装的 gh CLI 而不是第三方 action：仓库治理要求第三方 action 固定
+      # 到 commit SHA，少一个供应链依赖就少一处需要持续核验的 SHA。
+      #
+      # --draft 是刻意的：产物必须经 docs/release/ALPHA_0_ACCEPTANCE.md
+      # 人工验收后才能发布，CI 不做这个决定。
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "v$version" }
+
+          # notes 走仓库内的 --notes-file，不在脚本里拼多行中文字符串：
+          # 反引号是 PowerShell 转义符，Markdown 的 `code` 标记会被吞掉；
+          # 中文内容还依赖 runner 的编码行为，无法在本机预先验证。
+          # 落到文件后内容可 review、可 diff，CI 只负责读取。
+          $notesFile = 'docs/release/draft-release-notes.md'
+          if (-not (Test-Path $notesFile)) {
+            throw "缺少 release notes 文件: $notesFile"
+          }
+
+          $assets = Get-ChildItem release-artifacts | ForEach-Object { $_.FullName }
+
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "release $tag 已存在，仅上传产物"
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag --draft --title "v$version" --notes-file $notesFile @assets
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release 操作失败"
+          }
+
+          Write-Host "draft release 已创建: $tag"
