@@ -122,6 +122,63 @@ fn revision_import_without_candidate_name_preserves_current_display_name() {
 }
 
 #[test]
+fn revision_import_without_candidate_name_ignores_the_archive_file_name() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create revision import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed("mod-a", "revision-v1", "package-v1");
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    runner
+        .run_prepare_revision_task(&task.task_id, archive_path(), ModId::new("mod-a"))
+        .expect("revision import succeeds");
+
+    let revisions = repository
+        .list_revisions(&ModId::new("mod-a"))
+        .expect("list target revisions");
+    // archive_path() 的文件名是 candidate，但给既有 logical Mod 追加 revision 时
+    // 必须继承它当前的展示名。文件名只在新建 logical Mod 时充当候选，
+    // 否则玩家换个压缩包文件名就会把库里的 Mod 改名。
+    assert_eq!(revisions[1].display_name, "Origin Revision");
+    assert_ne!(revisions[1].display_name, "candidate");
+}
+
+#[test]
+fn new_logical_mod_import_without_metadata_uses_the_archive_file_name() {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("create import task");
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    let runner = runner_with_metadata_analyzer(
+        Arc::clone(&task_manager),
+        Box::new(SuccessfulPreparer::new("mod-import-task-id")),
+        Arc::clone(&repository),
+        Box::new(MissingDisplayNameMetadataAnalyzer),
+    );
+
+    runner
+        .run_prepare_task(&task.task_id, archive_path())
+        .expect("import succeeds");
+
+    let mods = repository.list_mods().expect("list logical mods");
+    assert_eq!(mods.len(), 1);
+    let revisions = repository
+        .list_revisions(&mods[0].mod_id)
+        .expect("list revisions");
+    assert_eq!(revisions.len(), 1);
+    // 无元数据的新 Mod 取压缩包文件名，而不是 mod-import-<时间戳> 这类内部标识。
+    assert_eq!(revisions[0].display_name, "candidate");
+}
+
+#[test]
 fn revision_query_returns_explicit_origin_display_and_owned_revision_ids() {
     let repository = Arc::new(FakeRevisionCatalogRepository::default());
     repository.seed("mod-a", "revision-v1", "package-v1");

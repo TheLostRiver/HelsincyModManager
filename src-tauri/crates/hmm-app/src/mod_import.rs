@@ -1,7 +1,10 @@
 use crate::mod_import_diagnostics::{
     preview_image_diagnostics_from_stored, PreviewImageDiagnosticsSummary,
 };
-use hmm_core::{CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason};
+use hmm_core::{
+    mod_display_name_from_archive_path, CategoryLabel, ModId, ModRevisionId,
+    PreviewImageRejectionReason,
+};
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, CategoryRepository, ModImportPackagePrepareRequest,
     ModImportPackagePreparer, ModImportResultRepository, ModImportSandboxLocator,
@@ -50,6 +53,11 @@ pub struct ModImportAnalysisRequest {
     pub task_id: String,
     pub package_id: String,
     pub sandbox_root: PathBuf,
+    /// 压缩包文件名派生出的展示名候选，仅在包内元数据没有声明名称时使用。
+    ///
+    /// 命名点出它的地位：这是 hint 而非权威来源。只有走归档路径的普通导入能提供，
+    /// reader 入口（外部导入）没有可用文件名，填 `None`。
+    pub archive_display_name_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -882,6 +890,9 @@ impl ModImportPrepareService {
                 task_id: request.task_id.clone(),
                 package_id: prepared_package.package_id,
                 sandbox_root: prepared_package.sandbox_root,
+                archive_display_name_hint: mod_display_name_from_archive_path(
+                    &request.archive_path,
+                ),
             },
             cancellation_token,
         )?;
@@ -911,6 +922,9 @@ impl ModImportPrepareService {
                 task_id,
                 package_id,
                 sandbox_root,
+                // 这条入口只拿到 package_id 与 sandbox，没有原始归档文件名。
+                // 外部导入走这里，它有更好的名称来源（适配器提供的元数据 hint）。
+                archive_display_name_hint: None,
             },
             cancellation_token,
         )
@@ -1032,9 +1046,18 @@ impl ModImportAnalysisService {
             .metadata_analyzer
             .analyze_metadata(&request.package_id, &request.sandbox_root)
             .unwrap_or_default();
+        // 三级优先：包内元数据声明的名称 → 压缩包文件名 → package_id。
+        //
+        // 只写 analysis.display_name，绝不回填 metadata.display_name：后者是 revision
+        // 继承的判据（见本文件 catalog 保存分支对 metadata.display_name.is_none() 的判断），
+        // 把文件名写进去会让 revision 导入用新压缩包的文件名重命名既有 logical Mod。
+        //
+        // 末端必须是 package_id 而非空串：投影仓储在 display_name 为空时会硬失败
+        // 整个写入，而文件名可能净化成 None（纯空白或非 UTF-8 的 stem）。
         let display_name = metadata
             .display_name
             .clone()
+            .or_else(|| request.archive_display_name_hint.clone())
             .unwrap_or_else(|| request.package_id.clone());
 
         Ok(ModImportAnalysisResult {
