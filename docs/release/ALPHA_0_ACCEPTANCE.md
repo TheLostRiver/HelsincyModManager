@@ -9,6 +9,8 @@
 
 ## 使用方式
 
+- **先读 `ALPHA_0_MANUAL_TEST_GUIDE.md`**：其中包含开始前必做项（Debug Log 默认关闭，
+  不先开启会让日志失去大部分诊断价值）、容易测漏的点和日志导出边界。
 - 逐项执行，在 `结果` 栏填 `通过` / `失败` / `跳过`，失败项必须记录现象与复现步骤。
 - 遇到 P0 判定为失败时**停止发布**，不要继续走后续章节。
 - 按 `docs/TESTING.md`「结果记录约定」记录：已执行、未执行、风险三类，不把"应该能通过"写成"已通过"。
@@ -27,14 +29,20 @@
 
 ## A. 构建与产物（P0）
 
+A1-A5 已在开发机实测通过（NSIS-only 构建，产物 12MB；sidecar 与卸载 hook
+已由生成的 `installer.nsi` 确认接入）。真机验收重点是 A6，它只能在双击安装后的
+exe 上测到，命令行启动看不出来。
+
 | # | 项目 | 判定标准 | 结果 |
 |---|---|---|---|
-| A1 | `corepack pnpm run tauri:build` 成功 | 无错误退出 | |
-| A2 | 产物名称正确 | 含应用名、版本号、平台、架构 | |
+| A1 | `corepack pnpm run tauri:build` 成功 | 无错误退出 | 开发机已通过 |
+| A2 | 产物名称正确 | 含应用名、版本号、平台、架构 | 开发机已通过 |
 | A3 | 安装目录同时包含 GUI 主程序与 sibling `hmm-save-backup-worker.exe` | 两个文件都在 | |
 | A4 | 安装目录包含 `hmm-save-backup-installer-cleanup.exe` | 文件存在 | |
-| A5 | target-triple sidecar 源产物保持 ignored/untracked | `git status` 干净 | |
+| A5 | target-triple sidecar 源产物保持 ignored/untracked | `git status` 干净 | 开发机已通过 |
 | A6 | release 构建不弹出额外控制台窗口 | 启动只有主窗口 | |
+
+> A3/A4 在开发机只验证到「安装脚本会安装它们」，实际安装目录内容需真机确认。
 
 ## B. 安装与卸载（P0）
 
@@ -82,6 +90,11 @@ installer cleanup 必须作为**独立 gate** 验证，不能用"bundle 包含 s
 | E2 | 恢复中心的受控操作可执行 | 结果与提示一致 | |
 | E3 | 审计日志记录安装/卸载/恢复 | 记录存在且脱敏 | |
 | E4 | 诊断导出不含真实路径与敏感信息 | 已脱敏 | |
+| E5 | Debug 日志开关可开启并实际写入 | 开启后 `logs/debug/` 有当日文件 | |
+| E6 | 诊断包导出成功且 Debug 行数非 0 | toast 显示各类行数 | |
+
+> E5/E6 应在验收**开始前**先确认，否则整轮日志缺少 Debug 类别，
+> 事后无法复原细节。见 `ALPHA_0_MANUAL_TEST_GUIDE.md` 第一节。
 
 ## F. 界面与交互（P1）
 
