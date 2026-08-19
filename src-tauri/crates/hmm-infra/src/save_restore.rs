@@ -38,12 +38,12 @@ struct OpenSaveRestoreSource {
 }
 
 pub struct FileSystemSaveRestoreSourceValidator {
-    app_data_dir: PathBuf,
+    save_backup_root: PathBuf,
 }
 
 impl FileSystemSaveRestoreSourceValidator {
-    pub fn new(app_data_dir: PathBuf) -> Self {
-        Self { app_data_dir }
+    pub fn new(save_backup_root: PathBuf) -> Self {
+        Self { save_backup_root }
     }
 }
 
@@ -52,7 +52,7 @@ impl SaveRestoreSourceValidator for FileSystemSaveRestoreSourceValidator {
         &self,
         summary: &SaveBackupSummary,
     ) -> Result<ValidatedSaveRestoreSource, SaveRestoreSourceError> {
-        let backup_dir = managed_backup_directory_for_summary(&self.app_data_dir, summary)
+        let backup_dir = managed_backup_directory_for_summary(&self.save_backup_root, summary)
             .map_err(|_| SaveRestoreSourceError::BackupDirectoryUnavailable)?;
         let backup_dir = canonical_regular_directory(&backup_dir)
             .map_err(|_| SaveRestoreSourceError::BackupDirectoryUnavailable)?;
@@ -126,7 +126,7 @@ impl SaveRestoreDirectoryRenamer for StdSaveRestoreDirectoryRenamer {
 }
 
 pub struct FileSystemSaveRestoreFileSystem {
-    app_data_dir: PathBuf,
+    save_backup_root: PathBuf,
     prepared: Mutex<HashMap<String, PreparedStage>>,
     finalization: Mutex<HashMap<String, FinalizeStage>>,
     finalized: Mutex<BTreeSet<String>>,
@@ -136,9 +136,9 @@ pub struct FileSystemSaveRestoreFileSystem {
 }
 
 impl FileSystemSaveRestoreFileSystem {
-    pub fn new(app_data_dir: PathBuf) -> Self {
+    pub fn new(save_backup_root: PathBuf) -> Self {
         Self {
-            app_data_dir,
+            save_backup_root,
             prepared: Mutex::new(HashMap::new()),
             finalization: Mutex::new(HashMap::new()),
             finalized: Mutex::new(BTreeSet::new()),
@@ -149,9 +149,9 @@ impl FileSystemSaveRestoreFileSystem {
     }
 
     #[cfg(test)]
-    fn with_renamer(app_data_dir: PathBuf, renamer: Arc<dyn SaveRestoreDirectoryRenamer>) -> Self {
+    fn with_renamer(save_backup_root: PathBuf, renamer: Arc<dyn SaveRestoreDirectoryRenamer>) -> Self {
         Self {
-            app_data_dir,
+            save_backup_root,
             prepared: Mutex::new(HashMap::new()),
             finalization: Mutex::new(HashMap::new()),
             finalized: Mutex::new(BTreeSet::new()),
@@ -162,11 +162,11 @@ impl FileSystemSaveRestoreFileSystem {
 
     #[cfg(test)]
     fn with_post_rename_parent_binding_override(
-        app_data_dir: PathBuf,
+        save_backup_root: PathBuf,
         override_result: bool,
     ) -> Self {
         Self {
-            app_data_dir,
+            save_backup_root,
             prepared: Mutex::new(HashMap::new()),
             finalization: Mutex::new(HashMap::new()),
             finalized: Mutex::new(BTreeSet::new()),
@@ -183,7 +183,7 @@ impl SaveRestoreFileSystem for FileSystemSaveRestoreFileSystem {
     ) -> Result<PreparedSaveRestore, SaveRestorePrepareError> {
         let target_root = target_directory(&request.target_directory)
             .map_err(|_| SaveRestorePrepareError::TargetUnavailable)?;
-        let backup_dir = managed_backup_directory_for_summary(&self.app_data_dir, &request.summary)
+        let backup_dir = managed_backup_directory_for_summary(&self.save_backup_root, &request.summary)
             .map_err(|_| {
                 SaveRestorePrepareError::Source(SaveRestoreSourceError::BackupDirectoryUnavailable)
             })?;
@@ -750,7 +750,7 @@ impl FileSystemSaveRestoreFileSystem {
             "save restore fallback directory",
         )
         .map_err(|_| ())?;
-        let prepared = extract_summary_into(&self.app_data_dir, summary, &fallback_dir)
+        let prepared = extract_summary_into(&self.save_backup_root, summary, &fallback_dir)
             .map_err(|_| ())
             .and_then(|()| {
                 let identity = directory_identity(&fallback_dir)?;
@@ -796,11 +796,11 @@ impl FileSystemSaveRestoreFileSystem {
 }
 
 fn extract_summary_into(
-    app_data_dir: &Path,
+    save_backup_root: &Path,
     summary: &SaveBackupSummary,
     staging_root: &Dir,
 ) -> Result<(), SaveRestoreSourceError> {
-    let backup_dir = managed_backup_directory_for_summary(app_data_dir, summary)
+    let backup_dir = managed_backup_directory_for_summary(save_backup_root, summary)
         .map_err(|_| SaveRestoreSourceError::BackupDirectoryUnavailable)?;
     let backup_dir = canonical_regular_directory(&backup_dir)
         .map_err(|_| SaveRestoreSourceError::BackupDirectoryUnavailable)?;

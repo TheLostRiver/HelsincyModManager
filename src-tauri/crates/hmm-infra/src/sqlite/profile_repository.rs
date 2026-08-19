@@ -420,8 +420,11 @@ fn default_backup_directory_selection() -> ProfileDirectorySelection {
         mode: ProfileDirectoryMode::Default,
         status: ProfileDirectoryStatus::Defaulted,
         directory: None,
-        path_label: Some("HelsincyModManager/Backups".to_owned()),
-        messages: vec!["使用默认备份目录".to_owned()],
+        // 标签要与真实写入位置对得上，否则玩家会照着它去找文件却找不到。
+        // 真实路径是 <文档>/HelsincyModManager/saves/<游戏>/<配置档>，
+        // 这里只给玩家能据此定位的相对部分，不暴露完整本机路径。
+        path_label: Some("文档/HelsincyModManager/saves".to_owned()),
+        messages: vec!["使用默认备份目录（位于文档，卸载不会清除）".to_owned()],
     }
 }
 

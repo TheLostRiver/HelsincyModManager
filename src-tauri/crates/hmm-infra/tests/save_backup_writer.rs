@@ -47,7 +47,6 @@ fn file_system_save_backup_writer_creates_zip_manifest_and_summary_without_raw_s
         .ends_with("_manual.manifest.json"));
 
     let backup_dir = app_data
-        .join("backups")
         .join("saves")
         .join("mhw")
         .join("profile-default");
@@ -158,7 +157,6 @@ fn file_system_save_backup_writer_places_pre_restore_backups_in_dedicated_folder
         .expect("pre-restore backup should be written");
 
     let directory = app_data
-        .join("backups")
         .join("saves")
         .join("mhw")
         .join("profile-default")
@@ -184,7 +182,6 @@ fn file_system_save_backup_writer_reports_verified_deletion_and_missing_retry() 
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
     let backup_dir = app_data
-        .join("backups")
         .join("saves")
         .join("mhw")
         .join("profile-default");
@@ -234,7 +231,6 @@ fn file_system_save_backup_writer_blocks_when_retention_directory_is_unavailable
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
     let backup_dir = app_data
-        .join("backups")
         .join("saves")
         .join("mhw")
         .join("profile-default");
@@ -275,7 +271,6 @@ fn file_system_save_backup_writer_reports_partial_when_manifest_type_changes() {
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
     let backup_dir = app_data
-        .join("backups")
         .join("saves")
         .join("mhw")
         .join("profile-default");
@@ -314,7 +309,7 @@ fn file_system_save_backup_writer_blocks_replaced_intermediate_retention_directo
     let result = writer
         .write_backup(sample_write_request(&save_root, 0))
         .expect("write backup");
-    let managed_game_dir = app_data.join("backups").join("saves").join("mhw");
+    let managed_game_dir = app_data.join("saves").join("mhw");
     fs::remove_dir_all(&managed_game_dir).expect("remove managed game directory");
 
     let outside_game_dir = temp.path().join("outside-game");
