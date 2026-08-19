@@ -306,11 +306,15 @@ impl HmmRuntime {
             Arc::new(SqliteSaveBackupRepository::new(Arc::clone(&db)));
         let save_restore_transaction_repository: Arc<dyn SaveRestoreTransactionRepository> =
             Arc::new(SqliteSaveRestoreTransactionRepository::new(Arc::clone(&db)));
+        // 存档备份根刻意不在 app data 下：卸载器的"删除应用数据"选项会整个清掉那里，
+        // 而存档是不可恢复数据。详见 default_save_backup_root 的说明。
+        let save_backup_root = crate::default_save_backup_root(&app_data_dir);
         let save_restore_source_validator: Arc<dyn SaveRestoreSourceValidator> = Arc::new(
-            FileSystemSaveRestoreSourceValidator::new(app_data_dir.clone()),
+            FileSystemSaveRestoreSourceValidator::new(save_backup_root.clone()),
         );
-        let save_restore_file_system =
-            Arc::new(FileSystemSaveRestoreFileSystem::new(app_data_dir.clone()));
+        let save_restore_file_system = Arc::new(FileSystemSaveRestoreFileSystem::new(
+            save_backup_root.clone(),
+        ));
         let save_backup_scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository> =
             Arc::new(SqliteSaveBackupSchedulerStateRepository::new(Arc::clone(
                 &db,
@@ -323,7 +327,7 @@ impl HmmRuntime {
         let settings_for_worker: Arc<dyn SaveBackupBackgroundSettingsRepository> =
             save_backup_background_settings_repository;
         let save_backup_writer: Arc<dyn SaveBackupWriter> =
-            Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
+            Arc::new(FileSystemSaveBackupWriter::new(save_backup_root.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
         let install_write_locks = Arc::new(
