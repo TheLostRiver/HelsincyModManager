@@ -23,6 +23,31 @@ const EMPTY_TARGET: TourTargetState = {
 
 const TOUR_TARGET_WAIT_MS = 1_800;
 const TOUR_TARGET_ANIMATION_POLL_MS = 1_200;
+/** 判定目标是否贴边的安全内缩，同时也是滚动后期望留出的余量。 */
+const TOUR_TARGET_SAFE_INSET = 12;
+
+/**
+ * 目标贴近或超出视口边缘时把它滚到中间。
+ *
+ * 只在需要时滚动：目标已完整落在安全区内就不动，避免每次重新测量都抢走
+ * 用户自己的滚动位置。用 block: "center" 而非 "nearest"，因为高亮矩形会被
+ * 钳到视口范围内，目标居中才能保证整块都画得出来。
+ */
+function scrollTargetIntoSafeViewport(target: HTMLElement) {
+  const rect = target.getBoundingClientRect();
+  const isOutsideSafeViewport = rect.top < TOUR_TARGET_SAFE_INSET
+    || rect.left < TOUR_TARGET_SAFE_INSET
+    || rect.bottom > window.innerHeight - TOUR_TARGET_SAFE_INSET
+    || rect.right > window.innerWidth - TOUR_TARGET_SAFE_INSET;
+
+  if (!isOutsideSafeViewport) return;
+
+  target.scrollIntoView({
+    behavior: prefersReducedMotion() ? "auto" : "smooth",
+    block: "center",
+    inline: "nearest",
+  });
+}
 
 export function useTourTarget(
   primaryAnchor: TourAnchorId | undefined,
@@ -76,6 +101,25 @@ export function useTourTarget(
       if (target !== currentTarget) {
         resizeObserver?.disconnect();
         currentTarget = target;
+        /*
+         * 滚动跟着"元素身份变化"走，而不是在 effect 顶层做一次性检查。
+         *
+         * 路由层进场动画 route-layer-enter 的 from { opacity: 0 } 在
+         * animation-fill-mode: both 下让动画启动前的计算 opacity 就是 0，
+         * 而 isUsableTourTarget 会因此判定目标不可用。引导跨路由推进步骤时
+         * 恰好落在这一两帧上：一次性检查拿到 null 就永久跳过滚动，目标停在
+         * 上一页遗留的滚动位置，高亮矩形被钳到视口边缘只露出一部分。
+         *
+         * 放在这里可以直接复用下方 pollAnimatedTarget 的重试生命周期——
+         * 它本来就每帧重试直到目标可解析。也顺带修好"主锚点比 fallback 晚
+         * 挂载"的情形：身份从 fallback 切到精确锚点时会重新滚动。
+         *
+         * 不需要"是否已滚动"标志：这个分支只在元素身份变化时进入，
+         * 用户手动滚动只触发 measure 而不改变身份，因此不会和用户抢滚动条。
+         */
+        if (target) {
+          scrollTargetIntoSafeViewport(target);
+        }
         if (target && typeof ResizeObserver !== "undefined") {
           resizeObserver = new ResizeObserver(scheduleMeasure);
           resizeObserver.observe(target);
@@ -144,22 +188,6 @@ export function useTourTarget(
         animationPollFrameId = window.requestAnimationFrame(pollAnimatedTarget);
       } else {
         animationPollFrameId = null;
-      }
-    }
-
-    const initialTarget = resolvePreferredTourTarget(primaryAnchor, fallbackAnchor)?.element ?? null;
-    if (initialTarget) {
-      const rect = initialTarget.getBoundingClientRect();
-      const isOutsideSafeViewport = rect.top < 12
-        || rect.left < 12
-        || rect.bottom > window.innerHeight - 12
-        || rect.right > window.innerWidth - 12;
-      if (isOutsideSafeViewport) {
-        initialTarget.scrollIntoView({
-          behavior: prefersReducedMotion() ? "auto" : "smooth",
-          block: "center",
-          inline: "nearest",
-        });
       }
     }
 

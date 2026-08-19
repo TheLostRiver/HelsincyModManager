@@ -55,8 +55,31 @@ pub use sandbox_write::{
 
 pub const APP_IDENTIFIER: &str = "dev.helsincy.modmanager";
 
+/// 玩家可见的数据目录名。默认存档备份放在这个目录下，与自定义备份根的布局一致。
+pub const USER_DATA_DIRECTORY_NAME: &str = "HelsincyModManager";
+
 pub fn production_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|path| path.join(APP_IDENTIFIER))
+}
+
+/// 默认存档备份根目录。
+///
+/// **不能**放在 app data 目录下。NSIS 卸载器带一个"删除应用数据"复选框，勾选后执行
+/// `RmDir /r $APPDATA\dev.helsincy.modmanager`，会把该目录下的一切连同玩家的全部
+/// 存档备份一起删掉；而那个选项的措辞完全看不出包含存档备份。存档是不可恢复数据，
+/// 不能挂在一个一键清除的位置上。
+///
+/// 选文档目录的理由：卸载器不碰它、玩家能自己找到并复制走、无需新增依赖。
+/// 若文档目录被重定向到云盘，备份会顺带获得一份异地副本——对存档来说是好事；
+/// 不希望如此的玩家可以在界面上改成自定义备份目录。
+///
+/// 回退顺序：文档目录 → 用户主目录下的 Documents → app data。最后一档是保底，
+/// 此时会退回可被卸载清除的位置，但总好过完全无法备份。
+pub fn default_save_backup_root(app_data_dir: &Path) -> PathBuf {
+    dirs::document_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join("Documents")))
+        .unwrap_or_else(|| app_data_dir.to_path_buf())
+        .join(USER_DATA_DIRECTORY_NAME)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,6 +295,35 @@ mod tests {
                 .as_slice(),
             [event]
         );
+    }
+
+    #[test]
+    fn default_save_backup_root_stays_outside_the_app_data_directory() {
+        let app_data_dir = production_app_data_dir().expect("app data dir");
+
+        let backup_root = default_save_backup_root(&app_data_dir);
+
+        // 这是本函数存在的全部理由：卸载器的"删除应用数据"选项会执行
+        // RmDir /r 到 app data 目录，落在它下面的备份会被一并删光。
+        // 除非连文档目录和用户主目录都拿不到（此时已无处可放），否则不得落入其中。
+        let fell_back_to_app_data = dirs::document_dir().is_none() && dirs::home_dir().is_none();
+        if !fell_back_to_app_data {
+            assert!(
+                !backup_root.starts_with(&app_data_dir),
+                "备份根 {backup_root:?} 不得位于 app data 目录 {app_data_dir:?} 之下"
+            );
+        }
+        assert!(backup_root.ends_with(USER_DATA_DIRECTORY_NAME));
+    }
+
+    #[test]
+    fn default_save_backup_root_falls_back_without_losing_the_directory_name() {
+        // 回退到 app data 是保底档：此时备份仍可写，只是失去卸载存活性。
+        // 返回值不能是空路径，否则备份会写到进程当前目录。
+        let fallback = default_save_backup_root(Path::new("/nonexistent-app-data"));
+
+        assert!(fallback.is_absolute() || fallback.starts_with("/nonexistent-app-data"));
+        assert!(fallback.ends_with(USER_DATA_DIRECTORY_NAME));
     }
 
     #[test]

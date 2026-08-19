@@ -121,9 +121,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 涉及 UI Shell、侧边栏模式或 Dashboard v2 视觉基线时，建议补充浏览器 smoke test：
 
-- 桌面宽屏 `1440x900`：验证普通侧边栏和悬浮侧边栏下，顶部状态栏、主卡片、模块预览和右侧状态面板均正常显示，切换侧边栏后文案不变。
-- 常见窗口 `1366x768`：验证普通侧边栏和悬浮侧边栏均可用，顶部状态栏文字不重叠，主操作按钮完整可读，切换侧边栏不会让页面滚动到错误位置。
+- 桌面宽屏 `1440x900`：验证普通侧边栏和悬浮侧边栏下，顶部状态栏、主卡片、模块预览和右侧状态面板均正常显示，切换侧边栏后文案不变。这也是默认窗口尺寸（`1440x920`）所在档位。
+- 常见窗口 `1366x768`：验证普通侧边栏和悬浮侧边栏均可用，顶部状态栏文字不重叠，主操作按钮完整可读，切换侧边栏不会让页面滚动到错误位置。右侧状态面板在此宽度下仍应保留（aside 断点为 1180px）。
 - Steam Deck 近似窗口 `1280x800`：验证触控目标尺寸可用，悬浮侧边栏不遮挡主操作按钮和右侧状态面板，空间不足时按响应式策略由内部内容区滚动。
+- 状态栏降级边界 `1181/1180` 与 `1061/1060`：逐一确认右侧栏在 1180 处收起、主题菜单与设置齿轮在 1060 处才隐藏，且状态栏在任一宽度都不换行、不超出 64px 高度。这两组数值按字体度量推算，必须真机拖动窗口验证。
 
 涉及真实桌面交互、窗口、文件选择器或 Tauri command 调用时，需要启动本地应用进行手动 smoke test。
 
@@ -998,10 +999,14 @@ Tauri 188 passed / 1 ignored。Sandbox task 为 initial install `install-1785952
 manifest entries/bindings 与 recovery/staging 为空，10 文件/316 bytes 的路径、大小和 SHA-256 baseline
 差异均为 0。light 覆盖四个固定 viewport，dark 覆盖 1280x800/480x800，system 覆盖 1366x768。
 
-本次认证保留以下非阻断残余风险：全局顶栏目录状态陈旧、无元数据 Mod 的技术型 fallback 名称、空
-NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口，
-以及 `max-width: 1360px` 下 `.window-tools` 被隐藏导致窄屏主题菜单不可达。后续相关修复应补聚焦 UI/
+本次认证保留以下非阻断残余风险：空
+NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口。
+后续相关修复应补聚焦 UI/
 contract 测试；这些缺陷不改变本次已验证的 replacement modal 层级、滚动、路径脱敏和生命周期结果。
+
+> 原列于此的两项已在 `0.1.0-alpha.0` 真机验收后修复：无元数据 Mod 的技术型 fallback 名称
+> （改为继承压缩包文件名），以及 `max-width: 1360px` 下 `.window-tools` 被隐藏导致窄屏主题菜单
+> 不可达（隐藏阈值下调到 1060px，并新增护栏断言要求它与状态栏两列收缩同断点）。
 
 ### ARMOR_RETARGET AR2
 

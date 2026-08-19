@@ -1,11 +1,11 @@
 import { AlertTriangle, CircleHelp } from "lucide-react";
 import { useAppRoute } from "../../app/routing/useAppRoute";
-import { useGameSetup } from "../game-setup/useGameSetup";
+import { useGameSetup } from "../game-setup/GameSetupProvider";
 import { deriveInstallRecoveryGlobalAlert, type InstallRecoveryGlobalAlertView } from "./installRecoveryGlobalAlert";
 import { useInstallRecoveryHealth } from "./useInstallRecoveryHealth";
 
 export function InstallRecoveryGlobalAlert() {
-  const gameSetup = useGameSetup("mhw");
+  const gameSetup = useGameSetup();
   const recoveryHealth = useInstallRecoveryHealth({
     gameId: "mhw",
     enabled: gameSetup.status.kind === "configured",

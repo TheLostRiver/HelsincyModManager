@@ -72,7 +72,9 @@ fn launch_game_uses_configured_instance_and_launcher_port() {
     let launcher = Arc::new(FakeGameLauncher::default());
     let service = GameLaunchService::new(
         vec![launcher.clone()],
-        Arc::new(FakeGameConfigRepository::with_instance(configured_mhw_instance())),
+        Arc::new(FakeGameConfigRepository::with_instance(
+            configured_mhw_instance(),
+        )),
     );
 
     let receipt = service
@@ -82,7 +84,11 @@ fn launch_game_uses_configured_instance_and_launcher_port() {
     assert_eq!(receipt.game_id, GameId::mhw());
     assert_eq!(receipt.method, GameLaunchMethod::SteamProtocol);
     assert_eq!(
-        launcher.launched_instances.lock().expect("launcher lock").as_slice(),
+        launcher
+            .launched_instances
+            .lock()
+            .expect("launcher lock")
+            .as_slice(),
         ["mhw-default"]
     );
 }

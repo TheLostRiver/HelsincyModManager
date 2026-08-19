@@ -5,8 +5,8 @@ use hmm_core::{
     SteamAccountDisplaySummary,
 };
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, ProfileRepository,
-    CrossProcessWriteAdmissionError, ProfileSaveSettingsRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
+    CrossProcessWriteAdmissionError, ProfileRepository, ProfileSaveSettingsRepository,
     SaveBackupCenterRepositoryQuery, SaveBackupRepository,
 };
 use std::collections::{BTreeMap, HashMap};

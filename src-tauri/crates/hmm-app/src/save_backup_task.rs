@@ -375,12 +375,7 @@ impl SaveBackupTaskRunner {
                 if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
                     return Ok(Vec::new());
                 }
-                return Err(self.fail_with_audit_code(
-                    task_id,
-                    &request,
-                    Vec::new(),
-                    error.code(),
-                ));
+                return Err(self.fail_with_audit_code(task_id, &request, Vec::new(), error.code()));
             }
         };
         let mut events = vec![

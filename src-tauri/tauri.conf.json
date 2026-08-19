@@ -13,10 +13,12 @@
     "windows": [
       {
         "title": "Helsincy Mod Manager",
-        "width": 1200,
-        "height": 780,
-        "minWidth": 960,
-        "minHeight": 640
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "center": true,
+        "preventOverflow": true
       }
     ],
     "security": {

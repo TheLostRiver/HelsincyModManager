@@ -125,6 +125,12 @@ else
 fi
 
 if [[ -f "Cargo.toml" ]]; then
+  echo "Running Rust format check..."
+  if ! cargo fmt --all --check; then
+    echo "Formatting drift detected. Run 'cargo fmt --all' and commit the result separately."
+    exit 1
+  fi
+
   echo "Running Rust tests..."
   cargo test --workspace
 

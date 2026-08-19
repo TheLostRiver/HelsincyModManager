@@ -14,13 +14,13 @@ use thiserror::Error;
 use crate::task_manager::{noop_task_progress_observer, observe_task_progress};
 use crate::{
     is_identity_replacement_binding, BuildImportedModInstallPlanRequest, CommitInstallPlanRequest,
-    GamePrerequisiteDecision, ImportedModInstallPreflight, ImportedModInstallPreflightService,
-    InstallCommitError, InstallCommitResult, InstallCommitService, InstallPlanningError,
-    InstallRecoveryActionError, InstallRecoveryActionKind, InstallRecoveryActionRequest,
-    InstallRecoveryActionResult, InstallRecoveryActionService, TaskKind, TaskManager,
-    TaskManagerError, TaskProgressEvent, TaskProgressObserver, TaskStarted, TaskStatus,
-    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
-    CrossProcessWriteAdmissionCoordinator,
+    CrossProcessWriteAdmissionCoordinator, GamePrerequisiteDecision, ImportedModInstallPreflight,
+    ImportedModInstallPreflightService, InstallCommitError, InstallCommitResult,
+    InstallCommitService, InstallPlanningError, InstallRecoveryActionError,
+    InstallRecoveryActionKind, InstallRecoveryActionRequest, InstallRecoveryActionResult,
+    InstallRecoveryActionService, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent,
+    TaskProgressObserver, TaskStarted, TaskStatus, UninstallModError, UninstallModRequest,
+    UninstallModResult, UninstallModService,
 };
 
 const INSTALL_PLAN_BUILDING_PHASE: &str = "install.plan.building";
@@ -1550,12 +1550,8 @@ impl GameProfileWriteLockRegistry {
         task_manager: &TaskManager,
         task_id: &str,
     ) -> CrossProcessWriteAdmissionResult<Box<dyn CrossProcessWriteGuard>> {
-        self.cross_process.acquire_game_profile_for_task(
-            game_id,
-            profile_id,
-            task_manager,
-            task_id,
-        )
+        self.cross_process
+            .acquire_game_profile_for_task(game_id, profile_id, task_manager, task_id)
     }
 
     pub fn acquire_cross_process(
@@ -1653,9 +1649,9 @@ mod tests {
         ReinstallRecoveryTransactionStatus,
     };
     use hmm_ports::{
-        AppClock, AuditLogEvent, AuditLogWriter, CancellationToken,
-        CrossProcessWriteAdmission, CrossProcessWriteAdmissionError,
-        CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, CrossProcessWriteScope,
+        AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmission,
+        CrossProcessWriteAdmissionError, CrossProcessWriteAdmissionResult, CrossProcessWriteGuard,
+        CrossProcessWriteScope,
     };
     use std::sync::{mpsc, Arc, Mutex};
     use std::thread;
@@ -1932,10 +1928,7 @@ mod tests {
             Some("install_failed:write_admission_busy")
         );
         assert_eq!(
-            audit_log
-                .take_event()
-                .expect("failure audit")
-                .fields["error_code"],
+            audit_log.take_event().expect("failure audit").fields["error_code"],
             "install_failed:write_admission_busy"
         );
     }

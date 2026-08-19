@@ -111,7 +111,13 @@
 
 .profile-workspace {
   display: grid;
-  grid-template-columns: minmax(290px, 350px) minmax(0, 1fr);
+  /*
+   * 配置卡包列刻意偏窄：绝大多数玩家只用一个默认配置档，这一列常态只放一个卡片
+   * 和一个新建按钮，但它占的宽度会一路传导下去——它和策略列各自的最小宽度叠加后，
+   * 右侧存档路径面板拿到的余量才决定那里会不会被挤到换行。
+   * 240px 足够容纳最长的"新建独立游戏配置档"（约 141px 加内边距）。
+   */
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
   gap: var(--layout-content-gap);
   min-width: 0;
 }

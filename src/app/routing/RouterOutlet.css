@@ -62,7 +62,13 @@
   }
 }
 
-@media (max-width: 1360px) {
+/*
+ * 断点取 1180 而非更高：aside 是 360px，加上 classic sidebar 240、页面内边距 56、
+ * 滚动条槽 10（scrollbar-gutter: stable 常驻占位）与 28 的列间距，
+ * 1181px 视口下主列仍有约 487px，够 Dashboard 的卡片网格排两列。
+ * 默认窗口宽 1440 因此开箱即在此断点之上，不会一启动就降级。
+ */
+@media (max-width: 1180px) {
   .route-transition__layer {
     grid-template-columns: 1fr;
     gap: var(--space-content-gap);

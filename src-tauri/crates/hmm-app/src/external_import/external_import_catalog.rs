@@ -87,7 +87,7 @@ impl CatalogIndex {
 }
 
 pub(super) fn normalize_display_name(value: &str) -> String {
-    value.trim().to_lowercase()
+    hmm_core::normalize_mod_display_name(value)
 }
 
 pub(super) struct PendingCatalogImport {

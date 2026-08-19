@@ -6,6 +6,7 @@ use crate::controlled_fs::{
 };
 use anyhow::{Context, Result};
 use cap_std::fs::Dir;
+use hmm_core::sanitize_mod_metadata_text;
 use hmm_ports::{
     CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
     DiagnosticPackageExporter, ModImportPackagePrepareReaderRequest,
@@ -19,7 +20,6 @@ use std::path::{Component, Path, PathBuf};
 
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METADATA_MAX_SCAN_DEPTH: usize = 2;
-const METADATA_MAX_DISPLAY_NAME_CHARS: usize = 80;
 const DEFAULT_ZIP_MAX_ENTRIES: usize = 16 * 1024;
 const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
@@ -433,7 +433,7 @@ fn read_manifest_string(
         object
             .get(*key)
             .and_then(|value| value.as_str())
-            .and_then(sanitize_metadata_text)
+            .and_then(sanitize_mod_metadata_text)
     })
 }
 
@@ -443,14 +443,14 @@ fn read_manifest_author(
 ) -> Option<String> {
     keys.iter().find_map(|key| {
         let value = object.get(*key)?;
-        if let Some(text) = value.as_str().and_then(sanitize_metadata_text) {
+        if let Some(text) = value.as_str().and_then(sanitize_mod_metadata_text) {
             return Some(text);
         }
 
         let authors = value.as_array()?;
         let authors = authors
             .iter()
-            .filter_map(|value| value.as_str().and_then(sanitize_metadata_text))
+            .filter_map(|value| value.as_str().and_then(sanitize_mod_metadata_text))
             .collect::<Vec<_>>();
 
         if authors.is_empty() {
@@ -471,14 +471,14 @@ fn read_manifest_string_list(
 }
 
 fn metadata_value_to_string_list(value: &serde_json::Value) -> Option<Vec<String>> {
-    if let Some(text) = value.as_str().and_then(sanitize_metadata_text) {
+    if let Some(text) = value.as_str().and_then(sanitize_mod_metadata_text) {
         return Some(vec![text]);
     }
 
     value.as_array().map(|values| {
         values
             .iter()
-            .filter_map(|value| value.as_str().and_then(sanitize_metadata_text))
+            .filter_map(|value| value.as_str().and_then(sanitize_mod_metadata_text))
             .collect()
     })
 }
@@ -506,30 +506,12 @@ fn read_readme_display_name(path: &Path) -> Result<Option<String>> {
             .map(|value| value.trim_start_matches('#').trim())
             .unwrap_or(trimmed);
 
-        if let Some(display_name) = sanitize_metadata_text(heading) {
+        if let Some(display_name) = sanitize_mod_metadata_text(heading) {
             return Ok(Some(display_name));
         }
     }
 
     Ok(None)
-}
-
-fn sanitize_metadata_text(value: &str) -> Option<String> {
-    let normalized = value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .filter(|character| !character.is_control())
-        .take(METADATA_MAX_DISPLAY_NAME_CHARS)
-        .collect::<String>();
-    let normalized = normalized.trim();
-
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized.to_owned())
-    }
 }
 
 fn validate_task_id_segment(task_id: &str) -> Result<()> {

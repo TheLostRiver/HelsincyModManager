@@ -151,16 +151,10 @@ impl DebugLogController {
         let day = i64::try_from(timestamp_unix_millis / MILLIS_PER_DAY)
             .context("debug log timestamp is out of range")?;
         let file_name = dated_log_file_name("debug-", day)?;
-        let directory = open_or_create_log_directory(
-            &self.app_data_root,
-            "debug",
-            "debug log directory",
-        )?;
-        let mut file = open_append_regular_file(
-            &directory,
-            OsStr::new(&file_name),
-            "debug log file",
-        )?;
+        let directory =
+            open_or_create_log_directory(&self.app_data_root, "debug", "debug log directory")?;
+        let mut file =
+            open_append_regular_file(&directory, OsStr::new(&file_name), "debug log file")?;
         let record = DebugLogRecord {
             schema_version: 1,
             timestamp_unix_millis,
@@ -215,9 +209,9 @@ struct DebugLogRecord {
 fn validate_code(label: &str, value: &str) -> Result<()> {
     if value.is_empty()
         || value.len() > MAX_CODE_LENGTH
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_.-".contains(&byte))
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_.-".contains(&byte)
+        })
         || contains_sensitive_text(value)
     {
         anyhow::bail!("debug log event contains invalid {label}");
@@ -341,6 +335,9 @@ mod tests {
         }
 
         assert!(!temp.path().join("logs/debug/debug-1970-01-02.log").exists());
-        assert_eq!(health.snapshot().debug_log_status, "debug_log_event_rejected");
+        assert_eq!(
+            health.snapshot().debug_log_status,
+            "debug_log_event_rejected"
+        );
     }
 }

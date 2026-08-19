@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use hmm_core::{BackupCadence, GameId, ProfileId, SaveBackupTrigger, SaveBackupWorkerHeartbeat};
 use hmm_ports::{
-    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, ProfileRepository, ProfileSaveSettingsRepository,
-    SaveBackupBackgroundSettingsRepository, SaveBackupSchedulerStateRepository,
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, ProfileRepository,
+    ProfileSaveSettingsRepository, SaveBackupBackgroundSettingsRepository,
+    SaveBackupSchedulerStateRepository,
 };
 use thiserror::Error;
 
@@ -288,12 +289,15 @@ impl SaveBackupBackgroundWorker {
             ),
             ("error_code".to_owned(), error_code.to_owned()),
         ]);
-        let _ = self.audit_log.record_with_policy(AuditLogEvent {
-            timestamp_unix_millis,
-            category: "save_backup".to_owned(),
-            operation: "background_worker".to_owned(),
-            result: "failure".to_owned(),
-            fields,
-        }, AuditWriteFailurePolicy::BestEffort);
+        let _ = self.audit_log.record_with_policy(
+            AuditLogEvent {
+                timestamp_unix_millis,
+                category: "save_backup".to_owned(),
+                operation: "background_worker".to_owned(),
+                result: "failure".to_owned(),
+                fields,
+            },
+            AuditWriteFailurePolicy::BestEffort,
+        );
     }
 }

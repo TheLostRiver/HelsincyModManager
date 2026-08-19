@@ -4,10 +4,10 @@ use crate::{
 };
 use hmm_app::{
     is_identity_replacement_binding, AppSettingsService, ApplicationExitGuard,
-    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest, GameLaunchService,
-    CrossProcessWriteAdmissionCoordinator,
-    GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry,
-    GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
+    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest,
+    CrossProcessWriteAdmissionCoordinator, GameLaunchService, GamePrerequisiteDecision,
+    GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
+    ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
@@ -68,8 +68,7 @@ use hmm_infra::{
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
     LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
-    PlatformSteamRootProvider,
-    RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
     RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
     SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
@@ -244,12 +243,11 @@ impl HmmRuntime {
         let db = hmm_infra::open_database(&db_path)
             .map_err(|error| format!("failed to open database: {error}"))?;
         let db = Arc::new(Mutex::new(db));
-        let cross_process_write_admission = Arc::new(
-            CrossProcessWriteAdmissionCoordinator::new(Arc::new(
+        let cross_process_write_admission =
+            Arc::new(CrossProcessWriteAdmissionCoordinator::new(Arc::new(
                 PlatformCrossProcessWriteAdmission::new(&app_data_dir)
                     .map_err(|error| error.code().to_owned())?,
-            )),
-        );
+            )));
         let mod_library_composition = ModLibraryComposition::new(&db, mod_import_results_path)?;
         let mod_metadata_repository = mod_library_composition.mod_metadata_repository();
         let category_repository = mod_library_composition.category_repository();
@@ -306,11 +304,15 @@ impl HmmRuntime {
             Arc::new(SqliteSaveBackupRepository::new(Arc::clone(&db)));
         let save_restore_transaction_repository: Arc<dyn SaveRestoreTransactionRepository> =
             Arc::new(SqliteSaveRestoreTransactionRepository::new(Arc::clone(&db)));
+        // 存档备份根刻意不在 app data 下：卸载器的"删除应用数据"选项会整个清掉那里，
+        // 而存档是不可恢复数据。详见 default_save_backup_root 的说明。
+        let save_backup_root = crate::default_save_backup_root(&app_data_dir);
         let save_restore_source_validator: Arc<dyn SaveRestoreSourceValidator> = Arc::new(
-            FileSystemSaveRestoreSourceValidator::new(app_data_dir.clone()),
+            FileSystemSaveRestoreSourceValidator::new(save_backup_root.clone()),
         );
-        let save_restore_file_system =
-            Arc::new(FileSystemSaveRestoreFileSystem::new(app_data_dir.clone()));
+        let save_restore_file_system = Arc::new(FileSystemSaveRestoreFileSystem::new(
+            save_backup_root.clone(),
+        ));
         let save_backup_scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository> =
             Arc::new(SqliteSaveBackupSchedulerStateRepository::new(Arc::clone(
                 &db,
@@ -323,14 +325,13 @@ impl HmmRuntime {
         let settings_for_worker: Arc<dyn SaveBackupBackgroundSettingsRepository> =
             save_backup_background_settings_repository;
         let save_backup_writer: Arc<dyn SaveBackupWriter> =
-            Arc::new(FileSystemSaveBackupWriter::new(app_data_dir.clone()));
+            Arc::new(FileSystemSaveBackupWriter::new(save_backup_root.clone()));
 
         let task_manager = Arc::new(TaskManager::new());
-        let install_write_locks = Arc::new(
-            GameProfileWriteLockRegistry::with_cross_process_admission(Arc::clone(
-                &cross_process_write_admission,
-            )),
-        );
+        let install_write_locks =
+            Arc::new(GameProfileWriteLockRegistry::with_cross_process_admission(
+                Arc::clone(&cross_process_write_admission),
+            ));
         let mhw_prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(JsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -855,7 +856,8 @@ impl HmmRuntime {
                 Arc::clone(&mod_import_result_repository),
             )
             .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance)
-            .with_app_settings_repository(app_settings_repository),
+            .with_app_settings_repository(app_settings_repository)
+            .with_metadata_repository(Arc::clone(&mod_metadata_repository)),
         );
         let state = Self {
             game_setup,

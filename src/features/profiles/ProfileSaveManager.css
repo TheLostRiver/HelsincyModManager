@@ -591,6 +591,11 @@
 }
 
 .profile-directory-console {
+  /*
+   * 按自身宽度重排而不是按视口：这个面板嵌在两层网格里（配置卡包列 + 策略列），
+   * 实际可用宽度取决于外层怎么分配，视口断点判断不出它什么时候真的变窄。
+   */
+  container-type: inline-size;
   position: relative;
   display: grid;
   gap: 12px;
@@ -692,11 +697,18 @@
 }
 
 .profile-directory-row__copy span {
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.04em;
+  /*
+   * 必须 nowrap：这一列是 minmax(0, 1fr)，右侧操作组挤占后它可以被压到接近零宽。
+   * 中文没有词边界，不禁止换行就会逐字竖排成一列，比截断难看得多。
+   */
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .profile-directory-row__path {
@@ -711,8 +723,42 @@
 .profile-directory-row__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   min-width: max-content;
+}
+
+/*
+ * 窄容器下把操作组挪到第二行。
+ *
+ * 操作组是 min-width: max-content（状态徽章 + 选择 + 自动检测，约 200px），
+ * 它不肯收缩，于是所有压力都落到中间那列文字上——路径被截成两三个字符、
+ * 标签被压到逐字换行。与其让两边都难看，不如整行换成两段式：
+ * 上行放图标与文字，下行放操作组，两者都拿到完整宽度。
+ *
+ * 380px 是按内容量估的：图标 26 + 间距 10 + 文字至少 120 + 间距 10 +
+ * 操作组 200 + 内边距 16 ≈ 382。低于这个宽度单行就必然要牺牲文字。
+ */
+@container (max-width: 380px) {
+  .profile-directory-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "icon copy"
+      "actions actions";
+    row-gap: 8px;
+  }
+
+  .profile-directory-row__icon {
+    grid-area: icon;
+  }
+
+  .profile-directory-row__copy {
+    grid-area: copy;
+  }
+
+  .profile-directory-row__actions {
+    grid-area: actions;
+  }
 }
 
 .profile-directory-row__status.profile-status-pill {

@@ -263,7 +263,8 @@ mod tests {
     fn save_update_preserves_mod_associations() {
         let repo = test_repo();
         repo.save(&sample_category("cat-1", "Original")).unwrap();
-        repo.set_mod_categories("mod-1", &["cat-1".to_owned()]).unwrap();
+        repo.set_mod_categories("mod-1", &["cat-1".to_owned()])
+            .unwrap();
 
         let mut updated = sample_category("cat-1", "Renamed");
         updated.color = Some("#FF0000".to_owned());

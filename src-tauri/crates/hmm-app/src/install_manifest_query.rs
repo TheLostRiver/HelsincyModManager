@@ -151,7 +151,10 @@ fn summary_for_mod(
             }
             (
                 entries.len(),
-                entries.iter().filter(|entry| entry.backup_ref.is_some()).count(),
+                entries
+                    .iter()
+                    .filter(|entry| entry.backup_ref.is_some())
+                    .count(),
                 revision_consistent.then_some(revision).flatten(),
             )
         })
@@ -265,7 +268,10 @@ mod tests {
             .expect("manifest query should succeed");
 
         assert_eq!(
-            summaries[0].installed_revision_id.as_ref().map(ModRevisionId::as_str),
+            summaries[0]
+                .installed_revision_id
+                .as_ref()
+                .map(ModRevisionId::as_str),
             Some("revision-v2")
         );
         assert_eq!(summaries[1].installed_revision_id, None);

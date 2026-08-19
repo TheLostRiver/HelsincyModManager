@@ -69,11 +69,7 @@ fn validator_rejects_archive_hash_drift_before_extracting() {
 fn validator_rejects_parent_path_in_manifest_and_zip() {
     let temp = tempfile::tempdir().expect("temp dir");
     let app_data = temp.path().join("app-data");
-    let backup_dir = app_data
-        .join("backups")
-        .join("saves")
-        .join("mhw")
-        .join("profile-default");
+    let backup_dir = app_data.join("saves").join("mhw").join("profile-default");
     fs::create_dir_all(&backup_dir).expect("create backup dir");
     let archive_name = "fixture.zip";
     let manifest_name = "fixture.manifest.json";
@@ -161,7 +157,6 @@ fn fixture_backup() -> (std::path::PathBuf, SaveBackupSummary, std::path::PathBu
         .expect("write fixture backup")
         .summary;
     let archive_path = app_data
-        .join("backups")
         .join("saves")
         .join("mhw")
         .join("profile-default")
@@ -186,7 +181,7 @@ fn default_selection() -> ProfileDirectorySelection {
         mode: ProfileDirectoryMode::Default,
         status: ProfileDirectoryStatus::Defaulted,
         directory: None,
-        path_label: Some("HelsincyModManager/backups".to_owned()),
+        path_label: Some("文档/HelsincyModManager/saves".to_owned()),
         messages: Vec::new(),
     }
 }

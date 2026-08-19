@@ -1,7 +1,10 @@
 use crate::mod_import_diagnostics::{
     preview_image_diagnostics_from_stored, PreviewImageDiagnosticsSummary,
 };
-use hmm_core::{CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason};
+use hmm_core::{
+    deduplicate_mod_display_name, mod_display_name_from_archive_path, normalize_mod_display_name,
+    CategoryLabel, ModId, ModRevisionId, PreviewImageRejectionReason,
+};
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, CategoryRepository, ModImportPackagePrepareRequest,
     ModImportPackagePreparer, ModImportResultRepository, ModImportSandboxLocator,
@@ -11,7 +14,7 @@ use hmm_ports::{
     StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
     ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,6 +53,11 @@ pub struct ModImportAnalysisRequest {
     pub task_id: String,
     pub package_id: String,
     pub sandbox_root: PathBuf,
+    /// 压缩包文件名派生出的展示名候选，仅在包内元数据没有声明名称时使用。
+    ///
+    /// 命名点出它的地位：这是 hint 而非权威来源。只有走归档路径的普通导入能提供，
+    /// reader 入口（外部导入）没有可用文件名，填 `None`。
+    pub archive_display_name_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +158,8 @@ pub struct ModImportTaskRunner {
     result_repository: Arc<dyn ModImportResultRepository>,
     thumbnail_cache_maintenance: Option<Arc<dyn ThumbnailCacheMaintenance>>,
     app_settings_repository: Option<Arc<dyn AppSettingsRepository>>,
+    /// 仅用于展示名去重时读取用户改名。缺省时按 catalog 名字去重。
+    metadata_repository: Option<Arc<dyn ModMetadataRepository>>,
 }
 
 enum ModImportCatalogTarget {
@@ -192,6 +202,7 @@ impl ModImportTaskRunner {
             result_repository,
             thumbnail_cache_maintenance: None,
             app_settings_repository: None,
+            metadata_repository: None,
         }
     }
 
@@ -208,6 +219,14 @@ impl ModImportTaskRunner {
         app_settings_repository: Arc<dyn AppSettingsRepository>,
     ) -> Self {
         self.app_settings_repository = Some(app_settings_repository);
+        self
+    }
+
+    pub fn with_metadata_repository(
+        mut self,
+        metadata_repository: Arc<dyn ModMetadataRepository>,
+    ) -> Self {
+        self.metadata_repository = Some(metadata_repository);
         self
     }
 
@@ -330,6 +349,11 @@ impl ModImportTaskRunner {
                 }
                 let save_result = match target {
                     ModImportCatalogTarget::NewLogicalMod => {
+                        // 只对新建 logical Mod 去重。revision 追加要么继承既有 Mod 的
+                        // 名字（上一段），要么沿用作者在元数据里声明的名字，
+                        // 两者都不该被追加序号——那会让同一个 Mod 每更新一版就改名。
+                        revision.display_name =
+                            self.deduplicated_display_name(&revision.display_name);
                         let logical_mod = StoredLogicalMod {
                             mod_id,
                             origin_revision_id: revision.revision_id.clone(),
@@ -397,6 +421,63 @@ impl ModImportTaskRunner {
 
     fn is_task_cancelled(&self, task_id: &str) -> bool {
         self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
+    }
+
+    /// 让新建 Mod 的展示名在库内唯一，与既有 Mod 冲突时追加序号。
+    ///
+    /// 展示名自从继承压缩包文件名后就不再天然唯一：同一个 Mod 的两个版本、或不同
+    /// 作者的同名作品，导入后在库里是两条无法区分的条目——卡片上除名字外只有版本号，
+    /// 而无元数据的包一律显示 v1.0.0。
+    ///
+    /// 读不到 catalog 时按原名写入。展示名只用于前端展示，不参与身份判定，
+    /// 为它中断一次已经解包完成的导入不划算；退化行为就是本次改动之前的样子。
+    ///
+    /// **尽力而为，不保证唯一。**本方法的快照读取与调用方的 `save_new_mod`
+    /// 之间没有共同的临界区，两个并发导入可能各自选中同一个名字。这是刻意的取舍：
+    /// 该竞态的最坏结果是库里出现两条同名条目，与本次改动之前的行为一致，
+    /// 既不丢数据也不会让导入失败——普通导入的落库路径（`save_new_mod`）只校验
+    /// `mod_id` 与 `revision_id`，展示名准入检查只作用于外部导入。
+    /// 为一个纯展示层的结果引入跨任务串行化，代价高于收益。
+    ///
+    /// 若日后展示名被赋予任何身份语义，这个假设就不再成立，届时必须改为
+    /// 由仓储提供"分配可用名称并落库"的原子操作。
+    fn deduplicated_display_name(&self, display_name: &str) -> String {
+        let Ok(snapshot) = self.result_repository.catalog_snapshot() else {
+            return display_name.to_owned();
+        };
+        // 必须按用户实际看到的名字比较，也就是 overlay 覆盖后的结果（见库查询里
+        // overlay.display_name 对 item.name 的覆写）。拿 catalog 名字去比会两头错：
+        // 用户改名造成的重复漏判，而对着一个已被改掉、界面上根本不存在的旧名字
+        // 又会凭空加出序号。
+        let renamed = self
+            .metadata_repository
+            .as_ref()
+            .and_then(|repository| repository.list_all().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|overlay| Some((overlay.mod_id, overlay.display_name?)))
+            .collect::<BTreeMap<_, _>>();
+        let revisions_by_id = snapshot
+            .revisions
+            .iter()
+            .map(|revision| (&revision.revision_id, revision))
+            .collect::<BTreeMap<_, _>>();
+        // 每个 logical Mod 只贡献一个名字，且只取当前展示的那条 revision：
+        // 历史 revision 的旧名字不出现在界面上，让它占用名字会凭空产生序号。
+        let taken = snapshot
+            .logical_mods
+            .iter()
+            .filter_map(|logical_mod| {
+                renamed.get(&logical_mod.mod_id).cloned().or_else(|| {
+                    revisions_by_id
+                        .get(&logical_mod.display_revision_id)
+                        .map(|revision| revision.display_name.clone())
+                })
+            })
+            .map(|name| normalize_mod_display_name(&name))
+            .collect::<BTreeSet<_>>();
+
+        deduplicate_mod_display_name(display_name, |candidate| taken.contains(candidate))
     }
 
     fn maintain_thumbnail_cache(&self) {
@@ -882,6 +963,9 @@ impl ModImportPrepareService {
                 task_id: request.task_id.clone(),
                 package_id: prepared_package.package_id,
                 sandbox_root: prepared_package.sandbox_root,
+                archive_display_name_hint: mod_display_name_from_archive_path(
+                    &request.archive_path,
+                ),
             },
             cancellation_token,
         )?;
@@ -911,6 +995,9 @@ impl ModImportPrepareService {
                 task_id,
                 package_id,
                 sandbox_root,
+                // 这条入口只拿到 package_id 与 sandbox，没有原始归档文件名。
+                // 外部导入走这里，它有更好的名称来源（适配器提供的元数据 hint）。
+                archive_display_name_hint: None,
             },
             cancellation_token,
         )
@@ -1032,9 +1119,18 @@ impl ModImportAnalysisService {
             .metadata_analyzer
             .analyze_metadata(&request.package_id, &request.sandbox_root)
             .unwrap_or_default();
+        // 三级优先：包内元数据声明的名称 → 压缩包文件名 → package_id。
+        //
+        // 只写 analysis.display_name，绝不回填 metadata.display_name：后者是 revision
+        // 继承的判据（见本文件 catalog 保存分支对 metadata.display_name.is_none() 的判断），
+        // 把文件名写进去会让 revision 导入用新压缩包的文件名重命名既有 logical Mod。
+        //
+        // 末端必须是 package_id 而非空串：投影仓储在 display_name 为空时会硬失败
+        // 整个写入，而文件名可能净化成 None（纯空白或非 UTF-8 的 stem）。
         let display_name = metadata
             .display_name
             .clone()
+            .or_else(|| request.archive_display_name_hint.clone())
             .unwrap_or_else(|| request.package_id.clone());
 
         Ok(ModImportAnalysisResult {
