@@ -316,9 +316,15 @@
   opacity: 0.62;
 }
 
-@media (max-width: 1360px) {
+/*
+ * 状态栏分两档降级。
+ *
+ * 1180 档只做文字层面的瘦身：非 compact 的 status pill（配置档名）先让位，
+ * 但保持三列，窗口工具组仍然可达。断点与 route aside 同值，视觉上一起变化。
+ */
+@media (max-width: 1180px) {
   .top-status-bar {
-    grid-template-columns: minmax(180px, 1fr) minmax(0, auto);
+    grid-template-columns: minmax(180px, 1fr) auto auto;
   }
 
   .status-actions {
@@ -328,6 +334,24 @@
 
   .status-pill:not(.compact) {
     display: none;
+  }
+}
+
+/*
+ * 1060 档才收成两列。
+ *
+ * 两列收缩与隐藏 .window-tools 必须写在同一个断点里：状态栏有三个 grid item，
+ * 只收列不隐藏会把窗口工具组挤到隐式第二行，而 .top-status-bar 是固定
+ * height: 64px，第二行直接溢出。这两条声明是一对，不能分开调整。
+ *
+ * 改动前它们同处 1360 档，导致主题菜单与设置齿轮在常见窗口尺寸下不可达
+ * （docs/TESTING.md 与 docs/PROJECT_TASK_STATUS.md 记录的已知缺陷）。
+ * 三列内容地板估算约 651px，可用宽为视口减 306 固定开销，
+ * 1060 处余量约 16%，留给字体度量误差。
+ */
+@media (max-width: 1060px) {
+  .top-status-bar {
+    grid-template-columns: minmax(180px, 1fr) minmax(0, auto);
   }
 
   .window-tools {
