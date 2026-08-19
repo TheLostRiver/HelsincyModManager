@@ -32,6 +32,7 @@
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: None,
             })
             .expect("analysis succeeds");
 
@@ -69,6 +70,7 @@
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: None,
             })
             .expect("analysis succeeds");
 
@@ -77,6 +79,93 @@
             stored_analysis_from_result(&ModId::new("logical-mod"), &result).display_name,
             "Better Mod Name"
         );
+    }
+
+    #[test]
+    fn analyze_sandbox_prefers_package_metadata_over_archive_file_name() {
+        let service = ModImportAnalysisService::new(
+            Box::new(FakePreviewImageProcessor {
+                result: PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::Missing,
+                ),
+            }),
+            Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer {
+                display_name: Some("Manifest Name".to_owned()),
+                ..FakeMetadataAnalyzer::default()
+            }),
+        );
+
+        let result = service
+            .analyze_sandbox(ModImportAnalysisRequest {
+                task_id: "task-1".to_owned(),
+                package_id: "pkg-1".to_owned(),
+                sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: Some("归档文件名".to_owned()),
+            })
+            .expect("analysis succeeds");
+
+        // 包内声明的名称是作者意图，优先于文件名——玩家可能随意重命名压缩包。
+        assert_eq!(result.display_name, "Manifest Name");
+    }
+
+    #[test]
+    fn analyze_sandbox_falls_back_to_archive_file_name_without_package_metadata() {
+        let service = ModImportAnalysisService::new(
+            Box::new(FakePreviewImageProcessor {
+                result: PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::Missing,
+                ),
+            }),
+            Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer::default()),
+        );
+
+        let result = service
+            .analyze_sandbox(ModImportAnalysisRequest {
+                task_id: "task-1".to_owned(),
+                package_id: "mod-import-1787138082375-0".to_owned(),
+                sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: Some("黑骑士大剑".to_owned()),
+            })
+            .expect("analysis succeeds");
+
+        assert_eq!(result.display_name, "黑骑士大剑");
+        assert_eq!(
+            stored_analysis_from_result(&ModId::new("logical-mod"), &result).display_name,
+            "黑骑士大剑"
+        );
+        // 文件名只影响展示名，不得回填 metadata.display_name——后者是 revision
+        // 继承的判据，污染它会让 revision 导入重命名既有 logical Mod。
+        assert_eq!(result.metadata.display_name, None);
+    }
+
+    #[test]
+    fn analyze_sandbox_falls_back_to_package_id_when_no_name_source_is_usable() {
+        let service = ModImportAnalysisService::new(
+            Box::new(FakePreviewImageProcessor {
+                result: PreviewImageProcessingResult::Fallback(
+                    PreviewImageRejectionReason::Missing,
+                ),
+            }),
+            Box::new(FakeThumbnailStore::default()),
+            Box::new(FakeMetadataAnalyzer::default()),
+        );
+
+        let result = service
+            .analyze_sandbox(ModImportAnalysisRequest {
+                task_id: "task-1".to_owned(),
+                package_id: "mod-import-1787138082375-0".to_owned(),
+                sandbox_root: Path::new("sandbox").to_path_buf(),
+                // 非 UTF-8 或纯空白的文件名会被净化成 None。
+                archive_display_name_hint: None,
+            })
+            .expect("analysis succeeds");
+
+        // 末端必须是 package_id 而非空串：投影仓储在 display_name 为空时
+        // 会硬失败整个写入。
+        assert_eq!(result.display_name, "mod-import-1787138082375-0");
+        assert!(!result.display_name.is_empty());
     }
 
     #[test]
@@ -103,6 +192,7 @@
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: None,
             })
             .expect("analysis succeeds");
         let stored = stored_analysis_from_result(&ModId::new("logical-mod"), &result);
@@ -149,6 +239,7 @@
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: None,
             })
             .expect("analysis succeeds");
 
@@ -178,6 +269,7 @@
                     task_id: "task-1".to_owned(),
                     package_id: "pkg-1".to_owned(),
                     sandbox_root: Path::new("sandbox").to_path_buf(),
+                    archive_display_name_hint: None,
                 },
                 &cancellation_token,
             )
@@ -207,6 +299,7 @@
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
                 sandbox_root: Path::new("sandbox").to_path_buf(),
+                archive_display_name_hint: None,
             })
             .expect("analysis succeeds");
 

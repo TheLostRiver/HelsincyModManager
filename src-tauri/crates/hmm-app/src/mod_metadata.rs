@@ -242,7 +242,9 @@ mod tests {
             mod_id: mod_id.to_owned(),
             task_id: "task-1".to_owned(),
             package_id: mod_id.to_owned(),
-            display_name: mod_id.to_owned(),
+            // 展示名刻意与 mod_id / package_id 取不同值：这些测试验证的是 overlay
+            // 的合并与回退，让三者相等会让断言看不出读到的究竟是哪个字段。
+            display_name: "Sample Mod".to_owned(),
             metadata: StoredModPackageMetadata {
                 version: Some("1.0.0".to_owned()),
                 author: Some("Author".to_owned()),
@@ -320,9 +322,10 @@ mod tests {
         let library = service.get_mod_library().unwrap();
         let detail = service.get_mod_detail("pkg-1").unwrap().unwrap();
 
-        assert_eq!(library[0].name, "pkg-1");
+        assert_eq!(library[0].id, "pkg-1");
+        assert_eq!(library[0].name, "Sample Mod");
         assert_eq!(library[0].author.as_deref(), Some("Author"));
-        assert_eq!(detail.name, "pkg-1");
+        assert_eq!(detail.name, "Sample Mod");
         assert!(detail.description.is_none());
         assert!(detail.nexus_mod_id.is_none());
     }
