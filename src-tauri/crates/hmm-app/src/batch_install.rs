@@ -1363,6 +1363,12 @@ fn classify_install_task_failure(
                     reason_code: "install_rollback_failed".to_owned(),
                 }
             }
+            // 单独给码：批量安装里这是唯一一个"关掉游戏再重试即可"的阻断原因，
+            // 混进 install_plan_blocked 会让用户去查计划冲突。
+            crate::InstallCommitError::GameRunning
+            | crate::InstallCommitError::GameRunningUnknown => BatchInstallItemExecution::Blocked {
+                reason_code: "install_blocked_game_running".to_owned(),
+            },
             crate::InstallCommitError::PlanHasBlockingConflicts
             | crate::InstallCommitError::PlanHasInvalidReplacementBindings
             | crate::InstallCommitError::PlanHasInvalidRevisionIdentity => {

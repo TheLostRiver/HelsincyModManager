@@ -169,6 +169,7 @@ fn commit_rejects_binding_profile_mismatch_before_any_io() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -212,6 +213,7 @@ fn commit_rejects_binding_revision_mismatch_before_any_io() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })

@@ -32,6 +32,7 @@ impl GamePrerequisiteDecisionStatus {
 pub enum GamePrerequisiteDecisionCode {
     GameNotConfigured,
     GameDirectoryInvalid,
+    GameDirectoryNotWritable,
     RulesUnavailable,
     RulesCorrupted,
     StorageUnavailable,
@@ -50,6 +51,7 @@ impl GamePrerequisiteDecisionCode {
         match self {
             Self::GameNotConfigured => "game_not_configured",
             Self::GameDirectoryInvalid => "game_directory_invalid",
+            Self::GameDirectoryNotWritable => "game_directory_not_writable",
             Self::RulesUnavailable => "rules_unavailable",
             Self::RulesCorrupted => "rules_corrupted",
             Self::StorageUnavailable => "storage_unavailable",
@@ -90,6 +92,10 @@ impl GamePrerequisiteDecision {
             GamePrerequisiteReportState::GameDirectoryInvalid => {
                 codes.insert(GamePrerequisiteDecisionCode::GameDirectoryInvalid);
                 insert_storage_code(&mut codes, report.error_code.as_ref());
+                GamePrerequisiteDecisionStatus::Blocked
+            }
+            GamePrerequisiteReportState::GameDirectoryNotWritable => {
+                codes.insert(GamePrerequisiteDecisionCode::GameDirectoryNotWritable);
                 GamePrerequisiteDecisionStatus::Blocked
             }
             GamePrerequisiteReportState::RulesUnavailable => {
@@ -305,6 +311,29 @@ fn insert_storage_code(
 mod tests {
     use super::*;
     use hmm_ports::{GamePrerequisiteIssue, GamePrerequisiteItem, GamePrerequisiteItemStatus};
+
+    #[test]
+    fn unwritable_game_directory_blocks_before_anything_is_written() {
+        // 目录结构合法但写不进去时必须 Blocked，而不是等到 commit 建完 backup、
+        // 落完 Committing recovery、第一次真实写入才失败再走 rollback。
+        let decision = GamePrerequisiteDecision::from_report(
+            GamePrerequisiteReport::game_directory_not_writable(
+                GameId::mhw(),
+                "game directory is not writable",
+            ),
+        );
+
+        assert_eq!(decision.status, GamePrerequisiteDecisionStatus::Blocked);
+        assert!(decision.is_blocked());
+        assert_eq!(
+            decision.codes,
+            vec![GamePrerequisiteDecisionCode::GameDirectoryNotWritable]
+        );
+        // 与"目录无效"分开：用户要做的动作不同，不能混码。
+        assert!(!decision
+            .codes
+            .contains(&GamePrerequisiteDecisionCode::GameDirectoryInvalid));
+    }
 
     #[test]
     fn missing_required_file_is_a_versioned_blocking_decision() {
