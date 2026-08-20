@@ -999,10 +999,17 @@ Tauri 188 passed / 1 ignored。Sandbox task 为 initial install `install-1785952
 manifest entries/bindings 与 recovery/staging 为空，10 文件/316 bytes 的路径、大小和 SHA-256 baseline
 差异均为 0。light 覆盖四个固定 viewport，dark 覆盖 1280x800/480x800，system 覆盖 1366x768。
 
-本次认证保留以下非阻断残余风险：空
-NexusMods ID 显示 `null`、`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口。
-后续相关修复应补聚焦 UI/
-contract 测试；这些缺陷不改变本次已验证的 replacement modal 层级、滚动、路径脱敏和生命周期结果。
+本次认证当时保留的三项非阻断残余风险（空 NexusMods ID 显示 `null`、
+`weapon_binary_pair_incompatible` 的通用错误投影、设置页缺少主题入口）已在 Gate D 之后全部修复，
+并按要求补齐了聚焦测试：`replacementErrorText.test.mjs` 覆盖 22 个武器稳定码的具体文案、诊断码
+附带规则与脱敏断言（含一条反向用例，防止脱敏模式表退化成永真断言）；`modDetailDialog.test.mjs`
+覆盖空值往返；`replacementDetailUi.test.mjs` 改为断言面板已委派给错误文案模块；Rust 侧新增
+`hmm-games-mhw/tests/weapon_error_code_contract.rs` 冻结码表（只保证 Rust 内部穷尽与不改名）；
+跨语言契约由 `replacementErrorCodeContract.test.mjs` 承担：它解析 `WeaponAnalysisError` /
+`WeaponBinaryError` 的 `code()` 与前端码表做集合相等断言，并扫描 `replacement_commands.rs`
+的通用码覆盖率。已按四个方向做变异验证（后端加码、后端改名、后端加通配 arm、前端加幽灵码）
+确认均会转红。
+这些修复不改变本次已验证的 replacement modal 层级、滚动、路径脱敏和生命周期结果。
 
 > 原列于此的两项已在 `0.1.0-alpha.0` 真机验收后修复：无元数据 Mod 的技术型 fallback 名称
 > （改为继承压缩包文件名），以及 `max-width: 1360px` 下 `.window-tools` 被隐藏导致窄屏主题菜单

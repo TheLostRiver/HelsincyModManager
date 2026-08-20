@@ -70,3 +70,6 @@ lcov.info
 
 # Subagent execution ledger
 .superpowers/
+
+# Local agent task metadata
+.pi/
