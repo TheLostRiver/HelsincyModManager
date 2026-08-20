@@ -128,7 +128,16 @@ jobs:
             $hash = (Get-FileHash $file.Name -Algorithm SHA256).Hash.ToLower()
             "$hash  $($file.Name)"
           }
-          $lines | Set-Content -Path "SHA256SUMS-$version.txt" -Encoding ascii
+          # 必须写 LF：Set-Content 在 Windows runner 上默认写 CRLF，会让文件名末尾
+          # 带上 \r，`sha256sum -c` 于是去找一个不存在的文件并报 FAILED——玩家照着
+          # release notes 校验，会以为安装包被篡改，而文件其实完好。
+          # 比不提供校验和更糟，所以这里绕开 Set-Content 自己拼字节。
+          $content = ($lines -join "`n") + "`n"
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD "SHA256SUMS-$version.txt"),
+            $content,
+            [System.Text.UTF8Encoding]::new($false)
+          )
           Get-Content "SHA256SUMS-$version.txt"
           Pop-Location
 
@@ -194,6 +203,17 @@ jobs:
             # 已发布 = 人工已按验收清单确认过，此时只能新开版本，不能就地覆盖。
             if (-not $release.isDraft) {
               throw "release $tag 已发布，拒绝覆盖其资产。要重新发布请改用新版本号。"
+            }
+
+            # tag 与产物必须同源。--target 只在创建时生效，重跑时草稿仍钉在旧提交，
+            # 而资产会被换成新构建——正是 create 路径要避免的问题在这里复现。
+            # 草稿尚未建 tag，改 target 是安全的；改完再传，两者才对得上。
+            if ($release.targetCommitish -ne $env:GITHUB_SHA) {
+              Write-Host "草稿 target 从 $($release.targetCommitish) 更新到 $env:GITHUB_SHA"
+              gh release edit $tag --target $env:GITHUB_SHA
+              if ($LASTEXITCODE -ne 0) {
+                throw "无法把 draft release $tag 重新指向本次构建的提交"
+              }
             }
 
             Write-Host "draft release $tag 已存在，仅上传产物"
