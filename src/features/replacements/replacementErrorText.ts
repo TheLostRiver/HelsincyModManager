@@ -6,10 +6,12 @@
  * 因此前端必须覆盖 hmm-games-mhw 侧 WeaponAnalysisError / WeaponBinaryError 的全部码，
  * 否则用户只会看到无信息量的兜底文案。
  *
- * WEAPON_REPLACEMENT_ERROR_CODES 与 weaponErrorCopy 的 Record 组合是编译期闸门：
- * 新增一个码而没有补文案时 tsc 直接失败。Rust 侧由
- * hmm-games-mhw/tests/weapon_error_code_contract.rs 冻结同一份集合，
- * 两边任意一侧新增都会先失败，再由人补齐另一侧。
+ * 三层闸门共同防止新码悄悄退回兜底提示：
+ * 1. 本文件的 Record<WeaponReplacementErrorCode, ErrorCopy> —— 码表里有码却没写文案时 tsc 失败。
+ * 2. hmm-games-mhw/tests/weapon_error_code_contract.rs —— Rust 枚举新增变体时编译失败。
+ * 3. replacementErrorCodeContract.test.mjs —— 跨语言比对 Rust `code()` 与本文件码表的集合，
+ *    并检查 replacement_commands.rs 吐出的通用码都有文案。
+ *    只有第 3 层能挡住"补了 Rust 却没补前端文案"，前两层各自只管本语言内部。
  *
  * 文案约束沿用 docs/WEAPON_RETARGET_DESIGN.md 的脱敏要求：
  * 只出现稳定码、聚合描述与可执行建议，不回显路径、offset、material 名或二进制内容。
@@ -155,7 +157,13 @@ const weaponErrorCopy: Record<WeaponReplacementErrorCode, ErrorCopy> = {
   },
 };
 
-/** 通用替换流程错误，不属于武器二进制链路，因此不展示诊断码。 */
+/**
+ * 通用替换流程错误，不属于武器二进制链路，因此不展示诊断码。
+ *
+ * 这些码是 replacement_commands.rs 里散落的字面量，没有单一枚举可以穷尽，
+ * 所以拿不到武器码那样的编译期闸门。覆盖率由 replacementErrorCodeContract.test.mjs
+ * 按命名约定扫描该文件来兜底。
+ */
 const genericErrorCopy: Record<string, ErrorCopy> = {
   replacement_mod_not_found: { message: "未找到已导入的 Mod。" },
   replacement_package_unavailable: { message: "导入包当前不可用。" },
@@ -181,6 +189,27 @@ const genericErrorCopy: Record<string, ErrorCopy> = {
   },
   replacement_target_already_selected: { message: "当前目标已安装。" },
   replacement_preview_unavailable: { message: "替换预览暂不可用。" },
+  replacement_reinstall_preview_unavailable: {
+    message: "无法读取目标切换预览的完整信息。",
+    hint: "请刷新后重试；若持续出现，请连同当前 Mod 与目标一起反馈。",
+  },
+  // 入参校验：正常操作不会触发，出现时多半是列表或选择状态已过期。
+  replacement_mod_id_invalid: {
+    message: "Mod 标识无效，无法定位该 Mod。",
+    hint: "请刷新 Mod 列表后重试。",
+  },
+  replacement_profile_id_invalid: {
+    message: "Profile 标识无效。",
+    hint: "请重新选择 Profile 后重试。",
+  },
+  replacement_target_id_invalid: {
+    message: "替换目标标识无效。",
+    hint: "请重新选择目标后重试。",
+  },
+  replacement_layer_invalid: {
+    message: "安装层参数无效，已阻止本次操作。",
+    hint: "请刷新后重试；若持续出现，请反馈。",
+  },
   plan_token_invalid: {
     message: "目标切换预览已失效。",
     hint: "请重新生成预览。",

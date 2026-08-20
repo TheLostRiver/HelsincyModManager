@@ -584,8 +584,10 @@ Windows Sandbox Gate D 均已完成。
   `hmm-wr04-gated-20260805-2315`，保存在仓库外，不提交截图、日志、人工 archive 或 AppData。
 - Gate D 记录的三项非阻断 UI/诊断缺陷已在 `0.1.0-alpha.0` 之后关闭：空 NexusMods ID 显示 `null`
   已修为可空契约 + 统一空值填充；二进制不兼容错误已按"发生了什么 + 可执行建议"分组映射为具体
-  文案并附可复制诊断码，前端 `Record<WeaponReplacementErrorCode, _>` 与
-  `hmm-games-mhw/tests/weapon_error_code_contract.rs` 冻结码表构成双向编译期闸门；主题入口已下沉到
+  文案并附可复制诊断码。前端 `Record<WeaponReplacementErrorCode, _>` 与
+  `hmm-games-mhw/tests/weapon_error_code_contract.rs` 各自只做单语言内的穷尽检查，真正的跨语言
+  集合契约在 `src/features/replacements/replacementErrorCodeContract.test.mjs`：它解析本 crate
+  `code()` 的实际输出并与前端码表做集合相等断言，两侧任一处新增、删除或改名都会先红；主题入口已下沉到
   设置页"界面偏好"，顶栏保留 ≥1200px 才显示文字标签的快捷方式，未改动 1060px 成对断点。
   原列于此的"技术型 Mod fallback 名称"与"宽度不超过 1360px 时 `.window-tools` 被隐藏"两项
   同样已修复。Gate D 本身只认证 replacement 主链与既定视觉检查。
