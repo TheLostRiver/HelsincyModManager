@@ -30,6 +30,7 @@ import {
   startRetargetInstallTask,
   startRetargetReinstallTask,
 } from "./replacementApi";
+import { replacementErrorMessage } from "./replacementErrorText";
 import type {
   InitialRetargetInstallPreview,
   ReplacementAnalysis,
@@ -89,54 +90,6 @@ const warningLabels: Record<ReplacementWarning, string> = {
   source_matches_target: "源槽位与目标槽位相同",
   weapon_partial_part_set: "武器包只包含部分可选部件，将仅处理已检测到的完整文件对",
 };
-
-function replacementErrorMessage(error: unknown, fallback: string) {
-  const code =
-    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-      ? error.code
-      : null;
-  switch (code) {
-    case "replacement_mod_not_found":
-      return "未找到已导入的 Mod";
-    case "replacement_package_unavailable":
-      return "导入包当前不可用";
-    case "replacement_source_not_retargetable":
-      return "该 Mod 不是当前可自动处理的单源外观包";
-    case "replacement_target_catalog_unavailable":
-      return "替换目标目录暂不可用";
-    case "weapon_developer_seed_unavailable":
-      return "武器替换仅在受控开发 Sandbox 中可用";
-    case "weapon_source_content_unavailable":
-      return "无法读取受控武器资源，请重新导入该 Mod";
-    case "weapon_cross_family_target":
-      return "所选目标与武器类型不兼容";
-    case "replacement_target_not_found":
-      return "所选替换目标已不存在";
-    case "replacement_install_state_unavailable":
-      return "无法确认当前安装状态";
-    case "replacement_initial_install_blocked":
-      return "当前安装或恢复状态不允许首次替换安装";
-    case "replacement_installed_binding_unavailable":
-      return "无法确认当前已安装的替换目标";
-    case "replacement_target_already_selected":
-      return "当前目标已安装";
-    case "plan_token_invalid":
-      return "目标切换预览已失效，请重新生成";
-    case "task_cannot_be_cancelled":
-      return "任务已进入提交阶段，请等待执行结果";
-    case "task_not_found":
-      return "无法确认当前任务，请刷新状态";
-    case "reinstall_catalog_unavailable":
-    case "reinstall_manifest_unavailable":
-    case "reinstall_recovery_unavailable":
-    case "reinstall_candidate_plan_unavailable":
-      return "目标切换预览暂不可用";
-    case "replacement_unsupported_game":
-      return "当前游戏不支持替换目标";
-    default:
-      return fallback;
-  }
-}
 
 function installBlockMessage(
   profileId: string | null,

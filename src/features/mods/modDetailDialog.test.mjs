@@ -11,6 +11,8 @@ import {
   preserveItemsOnRefreshFailure,
 } from "./modLibraryRefresh.ts";
 import {
+  formFieldFromOptional,
+  formFromDetail,
   parseNexusModId,
   saveModDetailChanges,
   selectedIdsFromCategories,
@@ -144,6 +146,46 @@ test("parseNexusModId accepts empty values and positive integers only", () => {
   assert.equal(parseNexusModId(" 42 "), 42);
   assert.equal(parseNexusModId("0"), null);
   assert.equal(parseNexusModId("abc"), null);
+});
+
+test("formFieldFromOptional turns both null and undefined into an empty field", () => {
+  // 后端 Option<u64> 序列化成 null，不是缺席字段；曾经的 === undefined 判断让表单显示 "null"。
+  assert.equal(formFieldFromOptional(null), "");
+  assert.equal(formFieldFromOptional(undefined), "");
+  assert.equal(formFieldFromOptional(0), "0");
+  assert.equal(formFieldFromOptional(42), "42");
+  assert.equal(formFieldFromOptional(""), "");
+});
+
+test("formFromDetail leaves an absent NexusMods ID blank instead of literal null", () => {
+  const detail = {
+    id: "mod-a",
+    name: "Alpha",
+    packageId: "pkg-a",
+    metadata: { tags: [], dependencies: [] },
+    nexusModId: null,
+  };
+
+  const form = formFromDetail(detail, null);
+  assert.equal(form.nexusModId, "");
+  // 空值必须能原样存回：parseNexusModId("") 是合法的"未填写"，"null" 会被判成非法输入。
+  assert.equal(parseNexusModId(form.nexusModId), undefined);
+});
+
+test("formFromDetail keeps a real NexusMods ID round-trippable", () => {
+  const form = formFromDetail(
+    {
+      id: "mod-a",
+      name: "Alpha",
+      packageId: "pkg-a",
+      metadata: { tags: [], dependencies: [] },
+      nexusModId: 42,
+    },
+    null,
+  );
+
+  assert.equal(form.nexusModId, "42");
+  assert.equal(parseNexusModId(form.nexusModId), 42);
 });
 
 test("getTrappedFocusIndex wraps keyboard focus inside the dialog", () => {

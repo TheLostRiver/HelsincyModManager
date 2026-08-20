@@ -524,9 +524,14 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
   worker 就标记完成。
 - Profile 删除的破坏性确认目前在卡片内联展开，而非共享悬浮确认层；这是非阻断 UX 债务。SAVE-04
   存档恢复已经使用统一 Modal，并默认先创建独立 `pre-restore/` 安全备份，不能据此视为该旧债务已解决。
-- WR-04 仍有不阻断 Gate D 的 UI/诊断缺陷：空 NexusMods ID 显示 `null`、
-  `weapon_binary_pair_incompatible` 仅投影为通用失败、主题入口不在设置页。
-  其中"无元数据 Mod 名称回退为 `mod-import-*`"与"宽度不超过 1360px 时 `.window-tools` 被隐藏"
+- WR-04 遗留的 UI/诊断缺陷已全部关闭：空 NexusMods ID 显示 `null` 已修（`ModDetail.nexusModId`
+  改为显式可空，表单统一走 `formFieldFromOptional`，并补空值往返回归测试）；
+  `weapon_binary_pair_incompatible` 等 22 个武器稳定码已在
+  `src/features/replacements/replacementErrorText.ts` 按可执行行动分组映射为具体文案并附诊断码，
+  前端 `Record` 穷尽映射与 `hmm-games-mhw/tests/weapon_error_code_contract.rs` 冻结码表互为闸门，
+  任一侧新增码都会先失败；主题入口已加入设置页"界面偏好"，顶栏文字标签限 ≥1200px 显示以避开
+  1060px 成对断点的余量。
+  更早的"无元数据 Mod 名称回退为 `mod-import-*`"与"宽度不超过 1360px 时 `.window-tools` 被隐藏"
   两项已在 `0.1.0-alpha.0` 真机验收后修复：前者改为继承压缩包文件名（净化规则上提到 `hmm-core`
   与元数据路径共用），后者把隐藏阈值下调到 1060px 并要求与状态栏两列收缩同断点。
 - GOV-01 至 GOV-04 已完成；后续变更需保留对应文件大小、secret、CODEOWNERS 和 Tauri

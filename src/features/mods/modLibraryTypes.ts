@@ -73,7 +73,12 @@ export type ModDetail = {
   packageId: string;
   metadata: ModPackageMetadata;
   description?: string;
-  nexusModId?: number;
+  /**
+   * 后端 `Option<u64>`（src-tauri/src/dto.rs 的 ModDetailDto）在 serde 下序列化为
+   * `null` 而不是缺席字段，所以这里必须显式允许 null。
+   * 曾经只声明 `?: number`，导致表单把 `null` 直接 String() 成 "null"。
+   */
+  nexusModId?: number | null;
   previewImage: PreviewImage;
 };
 

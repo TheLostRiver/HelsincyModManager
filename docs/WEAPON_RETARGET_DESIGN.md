@@ -1,9 +1,12 @@
 # MHW:I 武器重定向设计
 
-> 状态（2026-08-05）：WR-01 `design-complete`，WR-02A 与 WR-03A `completed`。14 类 family/part
-> registry、source/target/model path parser、source closure、纯内存 catalog-source validator、
-> 有界 MOD3/MRL3 preflight/pair compatibility 和纯 MRL3 transformer 已在 `hmm-games-mhw` 落地。
-> 完整 bundled catalog、staging、InstallPlan/manifest 集成和 UI 仍未完成。
+> 状态（2026-08-06）：WR-01 `design-complete`，WR-02A、WR-03A 与 WR-03B `completed`，WR-04
+> `certified`。14 类 family/part registry、source/target/model path parser、source closure、纯内存
+> catalog-source validator、有界 MOD3/MRL3 preflight/pair compatibility、纯 MRL3 transformer、
+> versioned transformer registry、transform-aware sibling `.partial` staging、InstallPlan/manifest/
+> recovery/Audit facts 与受控 Tauri/UI 均已落地，并通过 Windows Sandbox Gate D。
+> 唯一未完成项是 WR-02B 完整 bundled catalog，状态 `blocked-external-data`：Production 保持
+> Armor-only，武器目标仅在显式 Sandbox 下使用人工最小 seed。
 
 ## 背景
 
@@ -579,10 +582,13 @@ Windows Sandbox Gate D 均已完成。
 - light 主题覆盖 1440x900、1366x768、1280x800、480x800；dark 覆盖 1280x800、480x800；system
   覆盖 1366x768。modal 层级、窄屏滚动、warning、按钮与路径脱敏通过。证据 bundle 名为
   `hmm-wr04-gated-20260805-2315`，保存在仓库外，不提交截图、日志、人工 archive 或 AppData。
-- 已知非阻断缺陷包括：空 NexusMods ID 显示 `null`、
-  二进制不兼容错误未映射为具体文案、主题入口可发现性弱。Gate D 只认证 replacement 主链与既定
-  视觉检查，不表示这些 UI 缺陷已关闭。原列于此的"技术型 Mod fallback 名称"与"宽度不超过
-  1360px 时 `.window-tools` 被隐藏"两项已在 `0.1.0-alpha.0` 真机验收后修复。
+- Gate D 记录的三项非阻断 UI/诊断缺陷已在 `0.1.0-alpha.0` 之后关闭：空 NexusMods ID 显示 `null`
+  已修为可空契约 + 统一空值填充；二进制不兼容错误已按"发生了什么 + 可执行建议"分组映射为具体
+  文案并附可复制诊断码，前端 `Record<WeaponReplacementErrorCode, _>` 与
+  `hmm-games-mhw/tests/weapon_error_code_contract.rs` 冻结码表构成双向编译期闸门；主题入口已下沉到
+  设置页"界面偏好"，顶栏保留 ≥1200px 才显示文字标签的快捷方式，未改动 1060px 成对断点。
+  原列于此的"技术型 Mod fallback 名称"与"宽度不超过 1360px 时 `.window-tools` 被隐藏"两项
+  同样已修复。Gate D 本身只认证 replacement 主链与既定视觉检查。
 
 ## 停止条件与开放问题
 

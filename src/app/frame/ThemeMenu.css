@@ -22,6 +22,33 @@
     box-shadow 140ms ease;
 }
 
+/*
+ * 文字标签只在宽屏出现，用于提升入口可发现性。
+ * 断点定在 1200px 而不是 1060px：AppFrame.css 里 .top-status-bar 收两列并隐藏
+ * .window-tools 的断点是 1060px，三列内容地板估算约 651px。标签额外占约 30px，
+ * 若一路显示到 1060px 会吃掉那份余量，把窗口工具挤到隐式第二行、撑破固定 64px 行高。
+ * 1200 与 1060 之间的 140px 就是留给这个标签的安全带。
+ */
+.theme-menu__trigger-label {
+  display: none;
+  padding-inline-start: 1px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (min-width: 1200px) {
+  .theme-menu__trigger-label {
+    display: inline;
+  }
+
+  .theme-menu__trigger {
+    padding-inline-end: 10px;
+  }
+}
+
 .theme-menu__trigger:hover {
   background: var(--color-surface-muted);
   border-color: var(--color-border);
