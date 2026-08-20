@@ -737,6 +737,14 @@
   font-weight: 600;
 }
 
+/* legend 与选项之间的补充说明；grid gap 已给出间距，这里只压掉默认 margin。 */
+.setting-choice-group__hint {
+  margin: -2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .setting-choice-group__options {
   display: flex;
   flex-wrap: wrap;

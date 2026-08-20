@@ -1,5 +1,7 @@
 import { Bell, Check, Database, FileArchive, MonitorCog, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
+import type { ColorSchemePreference } from "../../app/appearance/colorSchemeTypes";
+import { useColorScheme } from "../../app/appearance/useColorScheme";
 import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
 import {
@@ -40,6 +42,8 @@ const initialSettings: SettingsState = {
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
+  const { preference: colorSchemePreference, setPreference: setColorSchemePreference } =
+    useColorScheme();
   const prerequisites = useGamePrerequisites("mhw");
   const [windowClosePreference, setWindowClosePreference] = useState<WindowClosePreference>(() =>
     typeof window === "undefined" ? "ask" : loadWindowClosePreference(),
@@ -104,6 +108,22 @@ export function SettingsPage() {
           icon={SlidersHorizontal}
           tourId="settings.appearance"
         >
+          {/*
+           * 主题的唯一常驻入口在这里。顶栏 ThemeMenu 只是纯图标快捷方式，
+           * 且视口 <=1060px 时整个 .window-tools 会被隐藏（见 AppFrame.css 的成对断点），
+           * 那时设置页是够得到主题的唯一位置。
+           */}
+          <ChoiceGroup<ColorSchemePreference>
+            label="主题模式"
+            hint="立即生效并长期保存，不受下方预览选项的重置影响。"
+            value={colorSchemePreference}
+            options={[
+              { value: "light", label: "浅色模式" },
+              { value: "dark", label: "深色模式" },
+              { value: "system", label: "跟随系统" },
+            ]}
+            onChange={setColorSchemePreference}
+          />
           <ToggleRow
             title="紧凑面板"
             description="减少卡片内边距，适合小窗口或 Steam Deck 桌面模式。"
@@ -256,11 +276,13 @@ function ToggleRow({
 
 function ChoiceGroup<TValue extends string>({
   label,
+  hint,
   value,
   options,
   onChange,
 }: {
   label: string;
+  hint?: string;
   value: TValue;
   options: { value: TValue; label: string }[];
   onChange: (value: TValue) => void;
@@ -268,6 +290,7 @@ function ChoiceGroup<TValue extends string>({
   return (
     <fieldset className="setting-choice-group">
       <legend>{label}</legend>
+      {hint === undefined ? null : <p className="setting-choice-group__hint">{hint}</p>}
       <div className="setting-choice-group__options">
         {options.map((option) => (
           <button

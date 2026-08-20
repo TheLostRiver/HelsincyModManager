@@ -75,6 +75,11 @@ export function ThemeMenu() {
         <span className={`theme-menu__icon-circle theme-menu__icon-circle--${effective}`}>
           <EffectiveIcon size={14} strokeWidth={2.25} aria-hidden="true" />
         </span>
+        {/*
+         * 纯图标 + 箭头的可发现性太弱（Gate D 记录的已知缺陷）。宽屏补一个文字标签，
+         * 窄屏由 CSS 收回纯图标形态；主入口在设置页 -> 界面偏好 -> 主题模式。
+         */}
+        <span className="theme-menu__trigger-label">主题</span>
         <ChevronDown
           size={14}
           className="theme-menu__chevron"
