@@ -1,5 +1,5 @@
 import { Bell, Check, Database, FileArchive, MonitorCog, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useId, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import type { ColorSchemePreference } from "../../app/appearance/colorSchemeTypes";
 import { useColorScheme } from "../../app/appearance/useColorScheme";
 import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
@@ -104,7 +104,7 @@ export function SettingsPage() {
       <div className="settings-sections">
         <SettingsSection
           title="界面偏好"
-          description="控制工作台和列表页的显示密度。正式保存前不会写入配置文件。"
+          description="主题模式会立即保存并长期生效；其余显示密度类选项只是本次会话的预览，正式保存前不写入配置文件。"
           icon={SlidersHorizontal}
           tourId="settings.appearance"
         >
@@ -287,10 +287,21 @@ function ChoiceGroup<TValue extends string>({
   options: { value: TValue; label: string }[];
   onChange: (value: TValue) => void;
 }) {
+  // hint 承载"立即生效并长期保存"这类关键语义，必须和选项组建立可编程关联，
+  // 否则读屏用户只听得到 legend。
+  const hintId = useId();
+
   return (
-    <fieldset className="setting-choice-group">
+    <fieldset
+      className="setting-choice-group"
+      aria-describedby={hint === undefined ? undefined : hintId}
+    >
       <legend>{label}</legend>
-      {hint === undefined ? null : <p className="setting-choice-group__hint">{hint}</p>}
+      {hint === undefined ? null : (
+        <p className="setting-choice-group__hint" id={hintId}>
+          {hint}
+        </p>
+      )}
       <div className="setting-choice-group__options">
         {options.map((option) => (
           <button

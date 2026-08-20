@@ -8,7 +8,11 @@
 //!
 //! 下面两个 `match` 是编译期闸门：新增枚举变体会直接编译失败；
 //! `EXPECTED_*_CODES` 断言则保证码字符串本身不被悄悄改名。
-//! 任一处失败时，必须同步更新前端文案表，否则用户会退回无信息量的兜底提示。
+//!
+//! 注意本文件只管 Rust 这一侧：即使这里全绿，前端也可能没补对应文案，
+//! 那时用户会退回无信息量的兜底提示。跨语言的集合相等断言在
+//! `src/features/replacements/replacementErrorCodeContract.test.mjs`——
+//! 它直接解析本 crate 的 `code()` 并与前端码表比对，改动任一侧都会让它先红。
 
 use hmm_games_mhw::{WeaponAnalysisError, WeaponBinaryError};
 

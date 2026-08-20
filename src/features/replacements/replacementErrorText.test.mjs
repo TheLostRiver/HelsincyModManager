@@ -27,11 +27,44 @@ test("武器码附带可复制的诊断码，通用流程错误不附带", () =>
   assert.equal(generic, "当前目标已安装。");
 });
 
+/**
+ * 脱敏要求见 docs/WEAPON_RETARGET_DESIGN.md：不回显路径、offset、material 名或二进制内容。
+ *
+ * `nativePC/wp` 这类固定结构约定是允许的——它对每个 Mod 都一样，不携带任何用户数据；
+ * 被禁的是能定位到具体文件或具体武器的东西，所以下面按形态而不是按字面量断言。
+ */
+const FORBIDDEN_DETAIL_PATTERNS = [
+  { pattern: /[A-Za-z]:[\\/]/, label: "Windows 绝对路径" },
+  { pattern: /\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/, label: "多级资源路径" },
+  { pattern: /\bwp\/w\d/i, label: "具体武器目录" },
+  { pattern: /0x[0-9a-f]+/i, label: "偏移或魔数" },
+  { pattern: /\b[0-9a-f]{16,}\b/i, label: "哈希或二进制摘要" },
+  { pattern: /\b(?:offset|sha256|material|AppData|Users)\b/i, label: "内部字段或系统路径片段" },
+];
+
 test("文案不回显路径、offset 或二进制内部字段", () => {
   for (const code of WEAPON_REPLACEMENT_ERROR_CODES) {
     const message = replacementErrorMessage({ code }, FALLBACK);
-    assert.ok(!message.includes("nativePC/wp/"), `${code} 回显了资源路径`);
-    assert.ok(!/0x[0-9a-f]+/i.test(message), `${code} 回显了偏移或魔数`);
+    for (const { pattern, label } of FORBIDDEN_DETAIL_PATTERNS) {
+      assert.ok(!pattern.test(message), `${code} 回显了${label}：${message}`);
+    }
+  }
+});
+
+test("脱敏断言本身有效——真回显了细节就会红", () => {
+  // 防止上面的模式表退化成永远为真的空断言。
+  const leaks = [
+    "读取 D:\\Games\\MHW\\nativePC\\wp\\w01 失败。",
+    "nativePC/wp/w01/w01.mod3 解析失败。",
+    "material 校验在 offset 0x1f40 处失败。",
+    "文件 sha256 为 9f2c4b1ae7d05631 的资源不匹配。",
+  ];
+
+  for (const leak of leaks) {
+    assert.ok(
+      FORBIDDEN_DETAIL_PATTERNS.some(({ pattern }) => pattern.test(leak)),
+      `脱敏模式表没能识别泄漏样本：${leak}`,
+    );
   }
 });
 
