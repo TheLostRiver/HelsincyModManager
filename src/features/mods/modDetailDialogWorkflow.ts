@@ -38,13 +38,23 @@ function versionFromLabel(versionLabel: string | undefined) {
   return versionLabel?.replace(/^v/i, "") ?? "";
 }
 
+/**
+ * 把可空的后端字段填进受控输入框。
+ * 后端 `Option<T>` 序列化后是 `null` 而非缺席字段，直接 String() 会得到 "null"，
+ * 既污染表单又会被 parseNexusModId 判成"只能填写正整数"。
+ * 这里用宽松相等一次性吃掉 null 与 undefined。
+ */
+export function formFieldFromOptional(value: string | number | null | undefined) {
+  return value == null ? "" : String(value);
+}
+
 export function formFromDetail(detail: ModDetail | null, fallbackItem: ModLibraryItem | null | undefined): FormState {
   return {
     displayName: detail?.name ?? fallbackItem?.name ?? "",
     author: detail?.metadata.author ?? fallbackItem?.author ?? "",
     version: detail?.metadata.version ?? versionFromLabel(fallbackItem?.versionLabel),
     description: detail?.description ?? "",
-    nexusModId: detail?.nexusModId === undefined ? "" : String(detail.nexusModId),
+    nexusModId: formFieldFromOptional(detail?.nexusModId),
   };
 }
 
