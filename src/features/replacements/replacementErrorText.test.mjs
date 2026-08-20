@@ -35,8 +35,10 @@ test("武器码附带可复制的诊断码，通用流程错误不附带", () =>
  */
 const FORBIDDEN_DETAIL_PATTERNS = [
   { pattern: /[A-Za-z]:[\\/]/, label: "Windows 绝对路径" },
-  { pattern: /\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/, label: "多级资源路径" },
-  { pattern: /\bwp\/w\d/i, label: "具体武器目录" },
+  // 分隔符必须同时认 / 和 \：Windows 侧的相对资源路径用反斜杠，且不带盘符，
+  // 只认 / 的话 nativePC\wp\... 会整条漏过去。
+  { pattern: /[\\/][A-Za-z0-9_.-]+[\\/][A-Za-z0-9_.-]+/, label: "多级资源路径" },
+  { pattern: /\bwp[\\/][A-Za-z0-9_.-]+/i, label: "具体武器目录" },
   { pattern: /0x[0-9a-f]+/i, label: "偏移或魔数" },
   { pattern: /\b[0-9a-f]{16,}\b/i, label: "哈希或二进制摘要" },
   { pattern: /\b(?:offset|sha256|material|AppData|Users)\b/i, label: "内部字段或系统路径片段" },
@@ -56,6 +58,9 @@ test("脱敏断言本身有效——真回显了细节就会红", () => {
   const leaks = [
     "读取 D:\\Games\\MHW\\nativePC\\wp\\w01 失败。",
     "nativePC/wp/w01/w01.mod3 解析失败。",
+    // 无盘符的相对反斜杠路径：上面那条 D:\ 样本是被盘符规则抓住的，
+    // 掩盖了"多级路径规则只认正斜杠"这个洞。
+    "nativePC\\wp\\one\\one001\\mod\\one001.mrl3 解析失败。",
     "material 校验在 offset 0x1f40 处失败。",
     "文件 sha256 为 9f2c4b1ae7d05631 的资源不匹配。",
   ];
