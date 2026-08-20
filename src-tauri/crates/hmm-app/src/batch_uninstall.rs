@@ -335,6 +335,12 @@ fn classify_uninstall_task_failure(error: &UninstallTaskRunError) -> BatchInstal
                 reason_code: "uninstall_rollback_failed".to_owned(),
             }
         }
+        // 与批量安装同构：关掉游戏再重试即可，不该混进 plan stale。
+        Some(UninstallModError::GameRunning | UninstallModError::GameRunningUnknown) => {
+            BatchInstallItemExecution::Blocked {
+                reason_code: "uninstall_blocked_game_running".to_owned(),
+            }
+        }
         Some(
             UninstallModError::ModNotInstalled
             | UninstallModError::InstalledRevisionMismatch

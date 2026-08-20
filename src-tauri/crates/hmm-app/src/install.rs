@@ -6,9 +6,10 @@ use hmm_core::{
     INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 use hmm_ports::{
-    GameAdapter, InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    InstallRecoveryRecordRepository, InstallSourceFileReader, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    GameAdapter, GameRunningDetector, GameRunningStatus, InstallBackupStore, InstallGameFileSystem,
+    InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanRequest,
+    ModPackageInstallFileScanner,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -41,6 +42,9 @@ pub struct InstallPlanFile {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitInstallPlanRequest {
+    /// 供游戏运行中闸门使用。写入玩家文件的请求必须指明目标游戏，
+    /// 否则无法在动任何文件之前判断该游戏是否正在运行。
+    pub game_id: GameId,
     pub profile_id: ProfileId,
     pub plan: InstallPlan,
 }
@@ -52,6 +56,8 @@ pub struct InstallCommitResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UninstallModRequest {
+    /// 同 [`CommitInstallPlanRequest::game_id`]：卸载同样会删除和还原玩家文件。
+    pub game_id: GameId,
     pub profile_id: ProfileId,
     pub mod_id: ModId,
 }
@@ -75,6 +81,10 @@ pub enum InstallCommitPhase {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InstallCommitError {
+    #[error("game is running")]
+    GameRunning,
+    #[error("game running state is unknown")]
+    GameRunningUnknown,
     #[error("install plan has blocking conflicts")]
     PlanHasBlockingConflicts,
     #[error("install plan replacement bindings are invalid")]
@@ -91,6 +101,10 @@ pub enum InstallCommitError {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum UninstallModError {
+    #[error("game is running")]
+    GameRunning,
+    #[error("game running state is unknown")]
+    GameRunningUnknown,
     #[error("game instance is unavailable")]
     GameInstanceUnavailable,
     #[error("install manifest is unavailable")]
@@ -166,6 +180,7 @@ pub struct InstallCommitService {
     backup_store: Arc<dyn InstallBackupStore>,
     manifest_repository: Arc<dyn InstallManifestRepository>,
     recovery_record_repository: Option<Arc<dyn InstallRecoveryRecordRepository>>,
+    game_running_detector: Option<Arc<dyn GameRunningDetector>>,
 }
 
 #[derive(Clone)]
@@ -173,6 +188,37 @@ pub struct UninstallModService {
     game_files: Arc<dyn InstallGameFileSystem>,
     backup_store: Arc<dyn InstallBackupStore>,
     manifest_repository: Arc<dyn InstallManifestRepository>,
+    game_running_detector: Option<Arc<dyn GameRunningDetector>>,
+}
+
+/// 游戏运行中不得写入玩家文件。
+///
+/// MHW:I 运行时持有 `nativePC` 下的文件句柄，写入会触发 sharing violation，
+/// 而随后的 rollback 要写回同一批仍被锁的文件、同样会失败，把一次普通的安装失败
+/// 升级成需要人工恢复的 `RollbackRequired`。因此这里必须在建立任何 backup 或
+/// recovery 记录之前 fail closed。
+///
+/// `Unknown` 与 `Running` 同样拒绝：判定不出来时不能假设游戏没开。
+/// 与 `save_restore.rs` 的存档恢复闸门保持同一语义。
+///
+/// detector 缺席时放行，让大量只用 fake 文件系统的单元测试不必各自装配 detector。
+/// 这一层因此是 fail-open 的，真正的强制不在类型上，而在
+/// `hmm-runtime` 的生产装配测试：它断言 composition 构造出来的 install/uninstall
+/// 服务在游戏运行时确实拒绝写入。改动装配时那个测试会先红。
+fn ensure_game_not_running<E>(
+    detector: Option<&Arc<dyn GameRunningDetector>>,
+    game_id: &GameId,
+    running: E,
+    unknown: E,
+) -> Result<(), E> {
+    match detector {
+        Some(detector) => match detector.game_running_status(game_id) {
+            GameRunningStatus::Running => Err(running),
+            GameRunningStatus::Unknown => Err(unknown),
+            GameRunningStatus::NotRunning => Ok(()),
+        },
+        None => Ok(()),
+    }
 }
 
 #[derive(Clone)]
@@ -214,7 +260,18 @@ impl InstallCommitService {
             backup_store,
             manifest_repository,
             recovery_record_repository: None,
+            game_running_detector: None,
         }
+    }
+
+    /// 接入游戏运行中闸门。生产装配必须调用；缺失时由 hmm-runtime 的装配测试兜底。
+    #[must_use]
+    pub fn with_game_running_detector(
+        mut self,
+        game_running_detector: Arc<dyn GameRunningDetector>,
+    ) -> Self {
+        self.game_running_detector = Some(game_running_detector);
+        self
     }
 
     pub fn new_with_recovery_records(
@@ -230,6 +287,7 @@ impl InstallCommitService {
             backup_store,
             manifest_repository,
             recovery_record_repository: Some(recovery_record_repository),
+            game_running_detector: None,
         }
     }
 
@@ -254,7 +312,20 @@ impl InstallCommitService {
         request: CommitInstallPlanRequest,
         expected_revision: Option<(ModId, ModRevisionId)>,
     ) -> Result<InstallCommitResult, InstallCommitError> {
-        let CommitInstallPlanRequest { profile_id, plan } = request;
+        let CommitInstallPlanRequest {
+            game_id,
+            profile_id,
+            plan,
+        } = request;
+
+        // 必须是本函数的第一件事：此时还没读 manifest、没建 backup、
+        // 没写 recovery 记录，拒绝是完全无副作用的。
+        ensure_game_not_running(
+            self.game_running_detector.as_ref(),
+            &game_id,
+            InstallCommitError::GameRunning,
+            InstallCommitError::GameRunningUnknown,
+        )?;
 
         if plan.has_blocking_conflicts() {
             return Err(InstallCommitError::PlanHasBlockingConflicts);
@@ -735,7 +806,18 @@ impl UninstallModService {
             game_files,
             backup_store,
             manifest_repository,
+            game_running_detector: None,
         }
+    }
+
+    /// 接入游戏运行中闸门。生产装配必须调用；缺失时由 hmm-runtime 的装配测试兜底。
+    #[must_use]
+    pub fn with_game_running_detector(
+        mut self,
+        game_running_detector: Arc<dyn GameRunningDetector>,
+    ) -> Self {
+        self.game_running_detector = Some(game_running_detector);
+        self
     }
 
     pub fn uninstall_mod(
@@ -772,6 +854,14 @@ impl UninstallModService {
         expected_installed_revision_id: Option<&ModRevisionId>,
         expected_manifest_digest: Option<&str>,
     ) -> Result<UninstallModResult, UninstallModError> {
+        // 必须先于 manifest 读取与任何删除/还原动作。
+        ensure_game_not_running(
+            self.game_running_detector.as_ref(),
+            &request.game_id,
+            UninstallModError::GameRunning,
+            UninstallModError::GameRunningUnknown,
+        )?;
+
         let manifest = self
             .manifest_repository
             .load_manifest(&request.profile_id)

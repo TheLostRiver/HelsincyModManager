@@ -416,6 +416,7 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
     )
     .commit_plan_for_revision(
         CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: profile_id.clone(),
             plan: initial_plan,
         },
@@ -570,6 +571,7 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
     )
     .uninstall_mod_for_revision(
         UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: profile_id.clone(),
             mod_id: mod_id.clone(),
         },

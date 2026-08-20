@@ -686,6 +686,7 @@ fn revision_bound_transactions_preserve_prior_success_and_unowned_files() {
     service
         .uninstall_mod_for_revision(
             UninstallModRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 mod_id: ModId::new("a"),
             },
@@ -695,6 +696,7 @@ fn revision_bound_transactions_preserve_prior_success_and_unowned_files() {
     let error = service
         .uninstall_mod_for_revision(
             UninstallModRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 mod_id: ModId::new("b"),
             },

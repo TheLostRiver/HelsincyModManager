@@ -749,16 +749,20 @@ impl HmmRuntime {
                 app_data_dir.clone(),
                 Arc::clone(&install_write_locks),
             ));
+        // 安装、卸载与存档侧共用同一个探测器：游戏在跑时不得写玩家文件。
+        let install_game_running_detector = game_running_detector_for_platform(&game_adapters);
         let install_committer: Arc<dyn InstallPlanCommitter> =
             Arc::new(ConfiguredInstallCommitter::new(
                 Arc::clone(&game_config_repository),
                 Arc::clone(&mod_import_result_repository),
                 Arc::clone(&mod_import_sandbox_locator),
                 app_data_dir.clone(),
+                Arc::clone(&install_game_running_detector),
             ));
         let mod_uninstaller = crate::uninstall::mod_uninstaller(
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
+            Arc::clone(&install_game_running_detector),
         );
         let recovery_action_executor: Arc<dyn InstallRecoveryActionExecutor> =
             Arc::new(ConfiguredInstallRecoveryActionExecutor::new(
@@ -1827,6 +1831,7 @@ struct ConfiguredInstallCommitter {
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
     mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     app_data_dir: PathBuf,
+    game_running_detector: Arc<dyn GameRunningDetector>,
 }
 
 struct ConfiguredInitialRetargetInstallPlanner {
@@ -1972,12 +1977,14 @@ impl ConfiguredInstallCommitter {
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
         mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         app_data_dir: PathBuf,
+        game_running_detector: Arc<dyn GameRunningDetector>,
     ) -> Self {
         Self {
             game_config_repository,
             mod_import_result_repository,
             mod_import_sandbox_locator,
             app_data_dir,
+            game_running_detector,
         }
     }
 }
@@ -2054,9 +2061,11 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             Arc::new(JsonInstallRecoveryRecordRepository::new(
                 self.app_data_dir.join("install").join("recovery"),
             )),
-        );
+        )
+        .with_game_running_detector(Arc::clone(&self.game_running_detector));
 
         let commit_request = CommitInstallPlanRequest {
+            game_id: request.game_id,
             profile_id: request.profile_id,
             plan: request.plan,
         };
