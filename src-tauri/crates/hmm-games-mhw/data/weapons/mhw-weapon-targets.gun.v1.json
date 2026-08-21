@@ -1,0 +1,1781 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:e4a2191d159556db80200bede2dd23109f17c3f0855505fee43ecd110d2c8694",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun001",
+      "internal_id": "bs_gun001",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铁铳枪1",
+          "aliases": [
+            "铁铳枪2",
+            "铁铳枪3",
+            "钢铁铳枪1",
+            "钢铁铳枪2",
+            "钢铁铳枪3",
+            "铬钢铳枪1",
+            "铬钢铳枪2",
+            "灭尽龙的颤抖",
+            "脉冲铳枪1",
+            "脉冲铳枪2",
+            "脉冲铳枪3",
+            "火龙铳枪1",
+            "火龙铳枪2",
+            "泥岩铳枪1",
+            "泥岩铳枪2",
+            "泥岩铳枪3",
+            "优雅铳枪1",
+            "优雅铳枪2",
+            "黑钢铳枪1",
+            "黑钢铳枪2"
+          ]
+        },
+        "en": {
+          "display_name": "Iron Gunlance I",
+          "aliases": [
+            "Iron Gunlance II",
+            "Iron Gunlance III",
+            "Steel Gunlance I",
+            "Steel Gunlance II",
+            "Steel Gunlance III",
+            "Chrome Gunlance I",
+            "Chrome Gunlance II",
+            "Nergal Ram",
+            "Pulsar Gunlance I",
+            "Pulsar Gunlance II",
+            "Pulsar Gunlance III",
+            "Rath Gunlance I",
+            "Rath Gunlance II",
+            "Madness Gunlance I",
+            "Madness Gunlance II",
+            "Madness Gunlance III",
+            "Glacial Gunlance I",
+            "Glacial Gunlance II",
+            "Blacksteel Gunlance I",
+            "Blacksteel Gunlance II"
+          ]
+        },
+        "ja": {
+          "display_name": "アイアンガンランスⅠ",
+          "aliases": [
+            "アイアンガンランスⅡ",
+            "アイアンガンランスⅢ",
+            "スティールガンランスⅠ",
+            "スティールガンランスⅡ",
+            "スティールガンランスⅢ",
+            "クロムガンランスⅠ",
+            "クロムガンランスⅡ",
+            "ネルガルクランブル",
+            "パルサーガンランスⅠ",
+            "パルサーガンランスⅡ",
+            "パルサーガンランスⅢ",
+            "火竜銃槍Ⅰ",
+            "火竜銃槍Ⅱ",
+            "マッドガンランスⅠ",
+            "マッドガンランスⅡ",
+            "マッドガンランスⅢ",
+            "グレイスガンランスⅠ",
+            "グレイスガンランスⅡ",
+            "黒鋼の銃槍Ⅰ",
+            "黒鋼の銃槍Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:51dabae333d3634ec2db749323e44a12e3005cbd3fb1f2b60fffabc53a6aa95b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun002",
+      "internal_id": "bs_gun002",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑羽铳枪1",
+          "aliases": [
+            "泥鱼龙铳枪1",
+            "泥鱼龙铳枪2",
+            "泥鱼龙铳枪3",
+            "黑羽铳枪2",
+            "隐密加农炮1",
+            "隐密加农炮2"
+          ]
+        },
+        "en": {
+          "display_name": "Blackwing Gunlance I",
+          "aliases": [
+            "Jyura Buster I",
+            "Jyura Buster II",
+            "Jyura Buster III",
+            "Blackwing Gunlance II",
+            "Hidden Cannon I",
+            "Hidden Cannon II"
+          ]
+        },
+        "ja": {
+          "display_name": "黒羽の銃槍Ⅰ",
+          "aliases": [
+            "シュラムバスターⅠ",
+            "シュラムバスターⅡ",
+            "シュラムバスターⅢ",
+            "黒羽の銃槍Ⅱ",
+            "ヒドゥンキャノンⅠ",
+            "ヒドゥンキャノンⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:380542f1016b7b1bb265e63f07518940896ef9f42a64fd7a507821d0b0422716",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun003",
+      "internal_id": "bs_gun003",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冥灯龙铳枪",
+          "aliases": [
+            "风漂龙加农炮1",
+            "风漂龙加农炮2",
+            "防卫队改良型铳枪1",
+            "防卫队改良型铳枪2",
+            "防卫队改良型铳枪3",
+            "防卫队改良型铳枪4",
+            "防卫队改良型铳枪5",
+            "风漂龙加农炮3",
+            "霜漂加农炮",
+            "冥灯龙铳枪改"
+          ]
+        },
+        "en": {
+          "display_name": "Xeno Hemta",
+          "aliases": [
+            "Legiana Cannon I",
+            "Legiana Cannon II",
+            "Defender Gunlance I",
+            "Defender Gunlance II",
+            "Defender Gunlance III",
+            "Defender Gunlance IV",
+            "Defender Gunlance V",
+            "Legiana Cannon III",
+            "Hoarcry Cannon",
+            "Xeno Hemta+"
+          ]
+        },
+        "ja": {
+          "display_name": "ゼノ＝ヘムタ",
+          "aliases": [
+            "ギエナキャノンⅠ",
+            "ギエナキャノンⅡ",
+            "防衛隊改良型銃槍Ⅰ",
+            "防衛隊改良型銃槍Ⅱ",
+            "防衛隊改良型銃槍Ⅲ",
+            "防衛隊改良型銃槍Ⅳ",
+            "防衛隊改良型銃槍Ⅴ",
+            "ギエナキャノンⅢ",
+            "ブリーナキャノン",
+            "ゼノ＝ヘムタ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e3c240cd934b227588c37bdf1fdc891796a89b899648655c4ee2beb67895fb9c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun004",
+      "internal_id": "bs_gun004",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "骨铳枪",
+          "aliases": [
+            "骨铳枪1",
+            "骨铳枪2",
+            "骨铳枪3",
+            "大骨铳枪1",
+            "大骨铳枪2",
+            "大骨铳枪3",
+            "大骨铳枪【龙尾】1",
+            "大骨铳枪【龙尾】2",
+            "爆鳞龙铳枪1",
+            "爆鳞龙铳枪2",
+            "牙龙铳枪1",
+            "牙龙铳枪2",
+            "牙龙铳枪3",
+            "牙龙铳枪【黄牙】1",
+            "牙龙铳枪【黄牙】2",
+            "土砂龙铳枪1",
+            "土砂龙铳枪2",
+            "土砂龙铳枪3",
+            "火炎铳枪1",
+            "火炎铳枪2",
+            "龙骨铳枪1",
+            "龙骨铳枪2",
+            "龙骨铳枪3",
+            "爆鳞龙自尊"
+          ]
+        },
+        "en": {
+          "display_name": "Bone Gunlance",
+          "aliases": [
+            "Bone Gunlance I",
+            "Bone Gunlance II",
+            "Bone Gunlance III",
+            "Bone Cannon I",
+            "Bone Cannon II",
+            "Bone Cannon III",
+            "Great Bone Gunlance I",
+            "Great Bone Gunlance II",
+            "Bazel Buster I",
+            "Bazel Buster II",
+            "Jagras Gunlance I",
+            "Jagras Gunlance II",
+            "Jagras Gunlance III",
+            "Girros Gunlance I",
+            "Girros Gunlance II",
+            "Carapace Cannon I",
+            "Carapace Cannon II",
+            "Carapace Cannon III",
+            "Blazing Gunlance I",
+            "Blazing Gunlance II",
+            "Dragonbone Gunlance I",
+            "Dragonbone Gunlance II",
+            "Dragonbone Gunlance III",
+            "Bazelpride"
+          ]
+        },
+        "ja": {
+          "display_name": "骨銃槍",
+          "aliases": [
+            "骨銃槍Ⅰ",
+            "骨銃槍Ⅱ",
+            "骨銃槍Ⅲ",
+            "大骨銃槍Ⅰ",
+            "大骨銃槍Ⅱ",
+            "大骨銃槍Ⅲ",
+            "大骨銃槍【竜尾】Ⅰ",
+            "大骨銃槍【竜尾】Ⅱ",
+            "バゼルバスターⅠ",
+            "バゼルバスターⅡ",
+            "牙竜銃槍Ⅰ",
+            "牙竜銃槍Ⅱ",
+            "牙竜銃槍Ⅲ",
+            "牙竜銃槍【黄牙】Ⅰ",
+            "牙竜銃槍【黄牙】Ⅱ",
+            "ドラグロガンランスⅠ",
+            "ドラグロガンランスⅡ",
+            "ドラグロガンランスⅢ",
+            "ブレイズガンランスⅠ",
+            "ブレイズガンランスⅡ",
+            "龍骨銃槍Ⅰ",
+            "龍骨銃槍Ⅱ",
+            "龍骨銃槍Ⅲ",
+            "バゼルプライド"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:939ddcd3a1f01d604f4c2c1f92d07ff20ecc8aa2bdc661475d4727e43123c55b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun005",
+      "internal_id": "bs_gun005",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "罪罚铳枪1",
+          "aliases": [
+            "牙龙铳枪【大喰】1",
+            "牙龙铳枪【大喰】2",
+            "牙龙铳枪【大喰】3",
+            "土砂龙破坏炮1",
+            "土砂龙破坏炮2",
+            "土砂龙破坏炮3",
+            "痹贼铳枪【暗头巾】1",
+            "痹贼铳枪【暗头巾】2",
+            "斩龙破坏炮1",
+            "斩龙破坏炮2",
+            "罪罚铳枪2",
+            "碎龙破坏炮1",
+            "碎龙破坏炮2"
+          ]
+        },
+        "en": {
+          "display_name": "Acid Buster I",
+          "aliases": [
+            "Glutton Gunlance I",
+            "Glutton Gunlance II",
+            "Glutton Gunlance III",
+            "Barroth Blaster I",
+            "Barroth Blaster II",
+            "Barroth Blaster III",
+            "Nightveil Gunlance I",
+            "Nightveil Gunlance II",
+            "Glavenus Buster I",
+            "Glavenus Buster II",
+            "Acid Buster II",
+            "Brachydios Buster I",
+            "Brachydios Buster II"
+          ]
+        },
+        "ja": {
+          "display_name": "ザルファバスターⅠ",
+          "aliases": [
+            "牙竜銃槍【大喰】Ⅰ",
+            "牙竜銃槍【大喰】Ⅱ",
+            "牙竜銃槍【大喰】Ⅲ",
+            "ボルボバスターⅠ",
+            "ボルボバスターⅡ",
+            "ボルボバスターⅢ",
+            "痺賊銃槍【闇頭巾】Ⅰ",
+            "痺賊銃槍【闇頭巾】Ⅱ",
+            "ディノバスターⅠ",
+            "ディノバスターⅡ",
+            "ザルファバスターⅡ",
+            "ディオスバスターⅠ",
+            "ディオスバスターⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9a36294b40869ffbfafe4ca9e18f9740d3f7c61839964e60174fc6a408746aa3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun006",
+      "internal_id": "bs_gun006",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "腾跃雷颚1",
+          "aliases": [
+            "牙龙铳枪【黑头巾】1",
+            "牙龙铳枪【黑头巾】2",
+            "牙龙铳枪【黑头巾】3",
+            "尸套龙火枪1",
+            "尸套龙火枪2",
+            "蛮颚龙加农炮1",
+            "蛮颚龙加农炮2",
+            "蛮颚龙加农炮3",
+            "巨牛大铳枪1",
+            "巨牛大铳枪2",
+            "死灭烟火尸铳枪",
+            "腾跃雷颚2"
+          ]
+        },
+        "en": {
+          "display_name": "Ending Fulgur I",
+          "aliases": [
+            "Deathfang Gunlance I",
+            "Deathfang Gunlance II",
+            "Deathfang Gunlance III",
+            "Hazak Spysa I",
+            "Hazak Spysa II",
+            "Anja Cannon I",
+            "Anja Cannon II",
+            "Anja Cannon III",
+            "Mammoth Gunlance I",
+            "Mammoth Gunlance II",
+            "Deathlance Vaal Spysa",
+            "Ending Fulgur II"
+          ]
+        },
+        "ja": {
+          "display_name": "ハルマ＝ジャナールⅠ",
+          "aliases": [
+            "牙竜銃槍【黒頭巾】Ⅰ",
+            "牙竜銃槍【黒頭巾】Ⅱ",
+            "牙竜銃槍【黒頭巾】Ⅲ",
+            "ハザクスピサⅠ",
+            "ハザクスピサⅡ",
+            "ジャナフキャノンⅠ",
+            "ジャナフキャノンⅡ",
+            "ジャナフキャノンⅢ",
+            "巨牛の大銃槍Ⅰ",
+            "巨牛の大銃槍Ⅱ",
+            "屍銃槍ヴァルスピサ",
+            "ハルマ＝ジャナールⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e43f1ace5b1eb183e2a7de6921f48c260cc1bdaf799ff2305076f0b559752d0b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun007",
+      "internal_id": "bs_gun007",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的铳枪·毒",
+          "aliases": [
+            "金色的铳枪·水",
+            "金色的铳枪·睡眠",
+            "金色的铳枪·贼",
+            "金色的铳枪·泥鱼",
+            "金色的铳枪·土砂",
+            "金色的铳枪·飞雷",
+            "金色的铳枪·蛮颚",
+            "金色的铳枪·痹贼",
+            "金色的铳枪·风漂",
+            "金色的铳枪·尸套",
+            "金色的铳枪·王",
+            "金色的铳枪·爆鳞"
+          ]
+        },
+        "en": {
+          "display_name": "Gold Poison Exploder",
+          "aliases": [
+            "Gold Water Exploder",
+            "Gold Sleep Exploder",
+            "Glutton Gold Exploder",
+            "Mire Gold Exploder",
+            "Mud Gold Exploder",
+            "Spark Gold Exploder",
+            "Rage Gold Exploder",
+            "Numb Gold Exploder",
+            "Stream Gold Exploder",
+            "Decay Gold Exploder",
+            "King Gold Exploder",
+            "Bomber Gold Exploder"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の銃槍・毒",
+          "aliases": [
+            "金色の銃槍・水",
+            "金色の銃槍・睡眠",
+            "金色の銃槍・賊",
+            "金色の銃槍・泥魚",
+            "金色の銃槍・土砂",
+            "金色の銃槍・飛雷",
+            "金色の銃槍・蛮顎",
+            "金色の銃槍・痺賊",
+            "金色の銃槍・風漂",
+            "金色の銃槍・屍套",
+            "金色の銃槍・王",
+            "金色の銃槍・爆鱗"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:279962f9af5037270adc802f5b5f766dd2db074d022f43e0f0e692b7bbc4b0b6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun008",
+      "internal_id": "bs_gun008",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗铳枪·冰",
+          "aliases": [
+            "铠罗铳枪·贼",
+            "铠罗铳枪·泥鱼",
+            "铠罗铳枪·土砂",
+            "铠罗铳枪·飞雷",
+            "铠罗铳枪·蛮颚",
+            "铠罗铳枪·痹贼",
+            "铠罗铳枪·风漂",
+            "铠罗铳枪·尸套",
+            "铠罗铳枪·王",
+            "铠罗铳枪·爆鳞",
+            "铠罗铳枪·水",
+            "铠罗铳枪·毒",
+            "铠罗铳枪·睡眠"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Buster \"Ice\"",
+          "aliases": [
+            "Taroth Buster \"Glutton\"",
+            "Taroth Buster \"Mire\"",
+            "Taroth Buster \"Mud\"",
+            "Taroth Buster \"Spark\"",
+            "Taroth Buster \"Rage\"",
+            "Taroth Buster \"Numb\"",
+            "Taroth Buster \"Stream\"",
+            "Taroth Buster \"Decay\"",
+            "Taroth Buster \"King\"",
+            "Taroth Buster \"Bomber\"",
+            "Taroth Buster \"Water\"",
+            "Taroth Buster \"Poison\"",
+            "Taroth Buster \"Sleep\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラバスター・氷",
+          "aliases": [
+            "ガイラバスター・賊",
+            "ガイラバスター・泥魚",
+            "ガイラバスター・土砂",
+            "ガイラバスター・飛雷",
+            "ガイラバスター・蛮顎",
+            "ガイラバスター・痺賊",
+            "ガイラバスター・風漂",
+            "ガイラバスター・屍套",
+            "ガイラバスター・王",
+            "ガイラバスター・爆鱗",
+            "ガイラバスター・水",
+            "ガイラバスター・毒",
+            "ガイラバスター・睡眠"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:727dc1ffb89cb88fa16ce7f101a67995c64af519a1bfedfa67b03e7d257026cc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun009",
+      "internal_id": "bs_gun009",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后牙杖",
+          "aliases": [
+            "皇后牙杖·炎妃",
+            "皇后牙杖·灭尽",
+            "皇后牙杖·冥灯",
+            "魂焰铳枪·炎妃",
+            "魂焰铳枪·灭尽",
+            "魂焰铳枪·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Howl",
+          "aliases": [
+            "Empress Howl \"Blaze\"",
+            "Empress Howl \"Ruin\"",
+            "Empress Howl \"Styx\"",
+            "Soulfire Talon \"Blaze\"",
+            "Soulfire Talon \"Ruin\"",
+            "Soulfire Talon \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスハウル",
+          "aliases": [
+            "エンプレスハウル・炎妃",
+            "エンプレスハウル・滅尽",
+            "エンプレスハウル・冥灯",
+            "魂焔の銃槍・炎妃",
+            "魂焔の銃槍・滅尽",
+            "魂焔の銃槍・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f104dbe019ab6627c82694b56f53d12e76c8c95d40c284988a6cfd07432f0bde",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun010",
+      "internal_id": "bs_gun010",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铬钢镰枪1",
+          "aliases": [
+            "铬钢镰枪2",
+            "铬钢镰枪3",
+            "泥岩龙异兽1",
+            "泥岩龙异兽2"
+          ]
+        },
+        "en": {
+          "display_name": "Chrome Halberd I",
+          "aliases": [
+            "Chrome Halberd II",
+            "Chrome Halberd III",
+            "Jyura Demolisher I",
+            "Jyura Demolisher II"
+          ]
+        },
+        "ja": {
+          "display_name": "クロムハルベルトⅠ",
+          "aliases": [
+            "クロムハルベルトⅡ",
+            "クロムハルベルトⅢ",
+            "シュラムベムスターⅠ",
+            "シュラムベムスターⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:78adcf7a28bf2269c8b6804659b75a3d64190bb9dcac35788666f5be5266b3c9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun011",
+      "internal_id": "bs_gun011",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙铳枪1",
+          "aliases": [
+            "龙骨铳枪【烈震】1",
+            "龙骨铳枪【烈震】2",
+            "龙骨铳枪【烈震】3",
+            "牙龙铳枪【大胃王】1",
+            "牙龙铳枪【大胃王】2",
+            "土砂龙断崖1",
+            "土砂龙断崖2",
+            "蛮颚龙之炎铳枪1",
+            "蛮颚龙之炎铳枪2",
+            "封龙铳枪2"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonseal Gunlance I",
+          "aliases": [
+            "Dragonpike \"Quake\" I",
+            "Dragonpike \"Quake\" II",
+            "Dragonpike \"Quake\" III",
+            "Glutton's Fang I",
+            "Glutton's Fang II",
+            "Barroth Bluff I",
+            "Barroth Bluff II",
+            "Anjanath Flamelance I",
+            "Anjanath Flamelance II",
+            "Dragonseal Gunlance II"
+          ]
+        },
+        "ja": {
+          "display_name": "龍封じの銃槍Ⅰ",
+          "aliases": [
+            "竜骨銃槍【烈震】Ⅰ",
+            "竜骨銃槍【烈震】Ⅱ",
+            "竜骨銃槍【烈震】Ⅲ",
+            "牙竜銃槍【大喰王】Ⅰ",
+            "牙竜銃槍【大喰王】Ⅱ",
+            "ボロスグレモスⅠ",
+            "ボロスグレモスⅡ",
+            "蛮顎竜ノ炎銃槍Ⅰ",
+            "蛮顎竜ノ炎銃槍Ⅱ",
+            "龍封じの銃槍Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:adf5f63211100e95bd351586bcf1c091d4abf5f9d5dfa717a6c19b5c7aaf6adb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun012",
+      "internal_id": "bs_gun012",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰砦血仇",
+          "aliases": [
+            "严冰骑士"
+          ]
+        },
+        "en": {
+          "display_name": "Vorpal Icefort",
+          "aliases": [
+            "Eisritter"
+          ]
+        },
+        "ja": {
+          "display_name": "氷砦ヴォーパル",
+          "aliases": [
+            "アイスリッター"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f21f2316d9d325e6b63d41306dda6bf78ecca4d1cfc8fa9e09e1013a517f6fb2",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun013",
+      "internal_id": "bs_gun013",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金铳枪·王",
+          "aliases": [
+            "皇金铳枪·风漂",
+            "皇金铳枪·尸套",
+            "皇金铳枪·爆鳞",
+            "皇金铳枪·飞雷"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Buster \"King\"",
+          "aliases": [
+            "Kjárr Buster \"Stream\"",
+            "Kjárr Buster \"Decay\"",
+            "Kjárr Buster \"Bomber\"",
+            "Kjárr Buster \"Spark\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の銃槍・王",
+          "aliases": [
+            "皇金の銃槍・風漂",
+            "皇金の銃槍・屍套",
+            "皇金の銃槍・爆鱗",
+            "皇金の銃槍・飛雷"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dc692e7e7b522dff6347d2e93fb43932c595aaa72fd1d49a76122dec7a95f2a5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/bs_gun014",
+      "internal_id": "bs_gun014",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金铳枪·水",
+          "aliases": [
+            "皇金铳枪·麻痹"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Buster \"Water\"",
+          "aliases": [
+            "Kjárr Buster \"Paralysis\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の銃槍・水",
+          "aliases": [
+            "皇金の銃槍・麻痺"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:944d1884b842596b7298ce87e5094fedd33dc31cebaa98f6331efc826b4ad196",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun001",
+      "internal_id": "gun001",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公主铳枪",
+          "aliases": [
+            "公主铳枪改"
+          ]
+        },
+        "en": {
+          "display_name": "Princess Panoply",
+          "aliases": [
+            "Princess Panoply+"
+          ]
+        },
+        "ja": {
+          "display_name": "プリンセスバースト",
+          "aliases": [
+            "プリンセスバースト改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c8e0cc619f1dcdddaab4242362472364069c5b199b41a7f5725ac486304f420e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun002",
+      "internal_id": "gun002",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "红色城塔",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Red Rook",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "レッドルーク",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4c55a6f2fc3075c2b5bb4f3f41b3ffad31655b20e229b00ddfe7241afdc04d41",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun003",
+      "internal_id": "gun003",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢冰铳枪",
+          "aliases": [
+            "钢龙爪铳枪",
+            "钢龙暴风雨"
+          ]
+        },
+        "en": {
+          "display_name": "Icesteel Gunlance",
+          "aliases": [
+            "Daora's Brigia",
+            "Daora's Tempest"
+          ]
+        },
+        "ja": {
+          "display_name": "鋼氷銃槍",
+          "aliases": [
+            "ダオラ＝ブリジア",
+            "ダオラ＝テンペスタ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8f81b53bf49b6276ea4b55e56b8ed1f0f29ee951c4c1005f69b3dd75d28cd7ff",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun004",
+      "internal_id": "gun004",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "烧灭种火",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Eradication Flame",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "焼滅の種火",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f426cc5a51379fe2bf4a6dfad3cd48037bbc31e6f3067759c2d4a957d9f319ba",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun005",
+      "internal_id": "gun005",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "飞雷铳枪铁飞蛇",
+          "aliases": [
+            "飞雷铳枪铁飞蛇改",
+            "飞雷铳枪【蜻蜓切】",
+            "飞雷铳枪【蜻蛉切】·改",
+            "万雷铳枪【蜻蛉切】"
+          ]
+        },
+        "en": {
+          "display_name": "Kadachi Striker",
+          "aliases": [
+            "Kadachi Striker+",
+            "Mythic Kadachi Striker",
+            "Mythic Kadachi Striker+",
+            "Thundering Striker"
+          ]
+        },
+        "ja": {
+          "display_name": "飛雷銃槍テツカガチ",
+          "aliases": [
+            "飛雷銃槍テツカガチ改",
+            "飛雷銃槍【蜻蛉切】",
+            "飛雷銃槍【蜻蛉切】改",
+            "万雷銃槍【蜻蛉切】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:411790fb92db91a09dec1def226ffda2427e93835fd1c084c20953a0cfa9fce6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun006",
+      "internal_id": "gun006",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "熔山龙铳枪",
+          "aliases": [
+            "惊天动地熔山龙铳枪",
+            "真·惊天动地熔山龙铳枪"
+          ]
+        },
+        "en": {
+          "display_name": "Magda Lahat",
+          "aliases": [
+            "Earthshaker Magda Lahat",
+            "Magda Lahat Reforged"
+          ]
+        },
+        "ja": {
+          "display_name": "マグダ・ラハト",
+          "aliases": [
+            "驚天動地マグラハト",
+            "真・驚天動地マグラハ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:00b2369cb18f1090db525cfbade1334fa7350128f39b5013f01251b6391758f5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun007",
+      "internal_id": "gun007",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇家铳枪",
+          "aliases": [
+            "蔷薇铳枪",
+            "皇家铳枪·改",
+            "君王爆破铳枪"
+          ]
+        },
+        "en": {
+          "display_name": "Royal Burst",
+          "aliases": [
+            "Rose Burst",
+            "Royal Burst+",
+            "Highness's Fury"
+          ]
+        },
+        "ja": {
+          "display_name": "ロイヤルバースト",
+          "aliases": [
+            "ローゼスバースト",
+            "ロイヤルバースト改",
+            "ハイネスバースト"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:109a6cb38e58a3d76e10833604c6115b8488c685b2c418c09ed421726c4a740b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun008",
+      "internal_id": "gun008",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "蓝色城塔",
+          "aliases": [
+            "蓝色战车",
+            "蓝色战车·改",
+            "元神战车"
+          ]
+        },
+        "en": {
+          "display_name": "Blue Rook",
+          "aliases": [
+            "Blue Chariot",
+            "Blue Chariot+",
+            "Soul Chariot"
+          ]
+        },
+        "ja": {
+          "display_name": "ブルールーク",
+          "aliases": [
+            "ブルーチャリオット",
+            "ブルーチャリオット改",
+            "ソウルチャリオット"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fdec3e302f09af07fa10c60b9f4ba3a120132504a5e0f4e3b12c58ac5a3efc8d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun009",
+      "internal_id": "gun009",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "愚欲铳枪",
+          "aliases": [
+            "暴铳枪格拉古利德"
+          ]
+        },
+        "en": {
+          "display_name": "Ravenous Gunlance",
+          "aliases": [
+            "Insatiable Gunlance"
+          ]
+        },
+        "ja": {
+          "display_name": "愚欲の銃槍",
+          "aliases": [
+            "暴銃槍グラグリード"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7a9ef634fa2e4774ba94a8ff6f1402fa2c7067481271fc096a85c8be2c67a17c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun010",
+      "internal_id": "gun010",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "飞毒铳枪红火花",
+          "aliases": [
+            "飞毒铳枪红火花·改",
+            "飞毒铳枪【红火蜂】"
+          ]
+        },
+        "en": {
+          "display_name": "Crimson Ember",
+          "aliases": [
+            "Crimson Ember+",
+            "Crimson Hornet"
+          ]
+        },
+        "ja": {
+          "display_name": "飛毒銃槍ベニヒバナ",
+          "aliases": [
+            "飛毒銃槍ベニヒバナ改",
+            "飛毒銃槍【紅火蜂】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:66f87168d6abbd22e3aabe914e9265c63cb6da4f72103c0ff8b0e125ed3ac6ce",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun012",
+      "internal_id": "gun012",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "烧灭种火【祸】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Eradication",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "焼滅の種火【禍】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6038f03de819b51b13143f3ed8aa06147837235bb3d64870fc51cbeb8063d30f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun013",
+      "internal_id": "gun013",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "琥珀行军",
+          "aliases": [
+            "双斗冰牙",
+            "双斗冰牙·改"
+          ]
+        },
+        "en": {
+          "display_name": "Ambermarch",
+          "aliases": [
+            "Twinfang",
+            "Twinfang+"
+          ]
+        },
+        "ja": {
+          "display_name": "アンバーマーチ",
+          "aliases": [
+            "デュアルトゥース",
+            "デュアルトゥース改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:271354d3abdf051e936e56d0f9b3a1ff65a9db90110ba4739cdd11b44699bdd8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun014",
+      "internal_id": "gun014",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "轰龙爆破铳枪",
+          "aliases": [
+            "轰龙爆破铳枪·改",
+            "轰铳枪【虎炮】"
+          ]
+        },
+        "en": {
+          "display_name": "Tiger Blast",
+          "aliases": [
+            "Tiger Blast+",
+            "Tigrex Gunlance"
+          ]
+        },
+        "ja": {
+          "display_name": "ティガバースト",
+          "aliases": [
+            "ティガバースト改",
+            "轟銃槍【虎砲】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d692d5fcfe7e00c97e91847948bfb46d5828feda357cb3a5dc4de8e23ac41d15",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun015",
+      "internal_id": "gun015",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君·水碟",
+          "aliases": [
+            "水螅·水碟"
+          ]
+        },
+        "en": {
+          "display_name": "Black Ephyra",
+          "aliases": [
+            "Hydra Ephyra"
+          ]
+        },
+        "ja": {
+          "display_name": "ネロ・エフィーラ",
+          "aliases": [
+            "ヒドラ・エフィーラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:00646d5c97c6c7bac412a8cefa261f21952a50025b83f046755d7da0e8d9d6af",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun016",
+      "internal_id": "gun016",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金刚宝塔－寂灭－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Broken Silence",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "金剛宝塔－寂滅－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f9691c1547934034c4a6dc8c297484cc734a686cb6908e7ad8c057bdcc578ad1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun017",
+      "internal_id": "gun017",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业铳枪暴食",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Consummate Gunlance",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業銃槍ディグラトニ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:846b16a969c759f5ed2bcb03823051a55848ea1eb2295477d0c7b0093ca84da4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun018",
+      "internal_id": "gun018",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王铳枪豪雷",
+          "aliases": [
+            "王铳枪豪雷·改",
+            "王牙铳枪【火雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Roar",
+          "aliases": [
+            "Usurper's Roar+",
+            "Despot's Phlogiston"
+          ]
+        },
+        "ja": {
+          "display_name": "王銃槍ゴウライ",
+          "aliases": [
+            "王銃槍ゴウライ改",
+            "王牙銃槍【火雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:47dd3802fbab3d7f706f29400a2d33989697894202bd64c191df9eb36f51ee81",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun019",
+      "internal_id": "gun019",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱铳枪龙血",
+          "aliases": [
+            "狼牙铳枪【贪狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakeblood",
+          "aliases": [
+            "Stygian Avaritia"
+          ]
+        },
+        "ja": {
+          "display_name": "獄銃槍リュウケツ",
+          "aliases": [
+            "狼牙銃槍【貪獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2fc931a5068f4c815d06f0a96fe4b3e47c11a5edb41356e92d786c0a6b930a35",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun020",
+      "internal_id": "gun020",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "女王爆裂铳枪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Queen's Panoply",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "クイーンバースト",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ae0bd4b8cdeab8699c115ea7f0c3b23cd3d3dea02d263d4cffe61ba7cd57ba53",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun021",
+      "internal_id": "gun021",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "古战车铳枪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Chariot Gun",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ガンチャリオット",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a900fb9622df8c01e0cc0513247e248923ab158b6b354b7a2cc60b59b797ad3e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun022",
+      "internal_id": "gun022",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼铳枪",
+          "aliases": [
+            "雷鬼铳枪德拉冈"
+          ]
+        },
+        "en": {
+          "display_name": "Demon Gunlance",
+          "aliases": [
+            "Great Demon Gunlance"
+          ]
+        },
+        "ja": {
+          "display_name": "鬼銃槍",
+          "aliases": [
+            "雷鬼銃槍ドラガン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:68f6b2405e8e6bd8f4ff1e4ad333c4fe15a8dd222e0b0c0afc7d03179d6a4ee0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun023",
+      "internal_id": "gun023",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神铳枪猛狮",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Gunlance",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神銃槍ドラギガン",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ea80980edd1030bff05a3915966d7b2b632425533fbe461b246a491f58626dd1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun025",
+      "internal_id": "gun025",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑破铳枪",
+          "aliases": [
+            "煌黑铳枪之灭"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Gunlance",
+          "aliases": [
+            "Alatreon Melt"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の破銃槍",
+          "aliases": [
+            "煌黒銃槍アルメルト"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:83455fe5e33be1d0e8819564b009959d53f3fbf9aec41533f1c62d2234833b5e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun026",
+      "internal_id": "gun026",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "奇面族的突火枪",
+          "aliases": [
+            "奇面手筒【火祭】"
+          ]
+        },
+        "en": {
+          "display_name": "Gajalaka Firestabber",
+          "aliases": [
+            "Gajalaka Firepike"
+          ]
+        },
+        "ja": {
+          "display_name": "奇面族の突火槍",
+          "aliases": [
+            "奇面手筒【火祭】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5a72203601b586956972b9eb7a6757b9e3641e471d147a32b3633366e14f60f1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun027",
+      "internal_id": "gun027",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿守序者",
+          "aliases": [
+            "宫廷铳枪【护星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Order",
+          "aliases": [
+            "Royal Guard Striker"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスオーダー",
+          "aliases": [
+            "宮廷銃槍【護星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b79850284b28814ca5752a4a6054f1626da1c04905c2f6a2b9798d39f14d96cc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun028",
+      "internal_id": "gun028",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "劫难爆破铳枪",
+          "aliases": [
+            "吼铳枪【焰咬】"
+          ]
+        },
+        "en": {
+          "display_name": "Accursed Blast",
+          "aliases": [
+            "Flamebite"
+          ]
+        },
+        "ja": {
+          "display_name": "カーサスバースト",
+          "aliases": [
+            "吼銃槍【焔咬】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7a3932833b13dfc32c467863bdd7ccce75ca641c9da03a96eed0e68ce3d1ba6d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun029",
+      "internal_id": "gun029",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "白昼之夜",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "White Night",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ホワイトナイツ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:82a64508f857d74ab829f6ac92e9d67058cf2000f9a1e3075e99b598ebc8c96e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun030",
+      "internal_id": "gun030",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙铳枪",
+          "aliases": [
+            "真·黑龙铳枪"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Gunlance",
+          "aliases": [
+            "True Fatalis Gunlance"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍銃槍",
+          "aliases": [
+            "真・黒龍銃槍"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7221a69e10f46f0be4456669b45272eb4fc1a4d7d7ac7f2fae2c827e61d68ab6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun031",
+      "internal_id": "gun031",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙击破枪·冰",
+          "aliases": [
+            "赤龙击破枪·火",
+            "赤龙击破枪·水",
+            "赤龙击破枪·雷",
+            "赤龙击破枪·龙",
+            "赤龙击破枪·毒",
+            "赤龙击破枪·麻痹",
+            "赤龙击破枪·睡眠",
+            "赤龙击破枪·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostbuster",
+          "aliases": [
+            "Safi's Hellbuster",
+            "Safi's Aquabuster",
+            "Safi's Boltbuster",
+            "Safi's Drakbuster",
+            "Safi's Venombuster",
+            "Safi's Bindbuster",
+            "Safi's Dreambuster",
+            "Safi's Shatterbuster"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ破ル槍・氷",
+          "aliases": [
+            "赤龍ノ破ル槍・火",
+            "赤龍ノ破ル槍・水",
+            "赤龍ノ破ル槍・雷",
+            "赤龍ノ破ル槍・龍",
+            "赤龍ノ破ル槍・毒",
+            "赤龍ノ破ル槍・麻痺",
+            "赤龍ノ破ル槍・睡眠",
+            "赤龍ノ破ル槍・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:65776f24254131c9db1a1d57d3462020b94532cfd849c7bb99eef9386921cd50",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/gun/gun032",
+      "internal_id": "gun032",
+      "metadata": {
+        "family": "gun",
+        "path_family": "wp/gun"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之铳枪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Gunlance",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の銃槍",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

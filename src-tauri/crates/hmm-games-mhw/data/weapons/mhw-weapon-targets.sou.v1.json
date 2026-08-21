@@ -1,0 +1,1962 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:2efb7266e4045ad80e6e308fbf231b72b0070053f0c41d3f3cc9b9097980b930",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou001",
+      "internal_id": "bs_sou001",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "双刀1",
+          "aliases": [
+            "双刀2",
+            "双刀3",
+            "决斗双刀1",
+            "决斗双刀2",
+            "决斗双刀3",
+            "铬钢双刀1",
+            "铬钢双刀2",
+            "灭尽龙裂痕",
+            "闪耀小刀1",
+            "闪耀小刀2",
+            "冰结小刀1",
+            "冰结小刀2",
+            "钉钩匕首1",
+            "钉钩匕首2",
+            "钉钩匕首3",
+            "黑钢双剑1",
+            "黑钢双剑2",
+            "冥灯龙双剑",
+            "冥灯龙双剑改"
+          ]
+        },
+        "en": {
+          "display_name": "Matched Slicers I",
+          "aliases": [
+            "Matched Slicers II",
+            "Matched Slicers III",
+            "Dual Slicers I",
+            "Dual Slicers II",
+            "Dual Slicers III",
+            "Chrome Slicers I",
+            "Chrome Slicers II",
+            "Nergal Gouge",
+            "Luminous Daggers I",
+            "Luminous Daggers II",
+            "Freeze Daggers I",
+            "Freeze Daggers II",
+            "Rending Beaks I",
+            "Rending Beaks II",
+            "Rending Beaks III",
+            "Blacksteel Twins I",
+            "Blacksteel Twins II",
+            "Xeno Raqs",
+            "Xeno Raqs+"
+          ]
+        },
+        "ja": {
+          "display_name": "ツインダガーⅠ",
+          "aliases": [
+            "ツインダガーⅡ",
+            "ツインダガーⅢ",
+            "デュエルツインダガーⅠ",
+            "デュエルツインダガーⅡ",
+            "デュエルツインダガーⅢ",
+            "クロムツインダガーⅠ",
+            "クロムツインダガーⅡ",
+            "ネルガルガウジ",
+            "イルミナルダガーⅠ",
+            "イルミナルダガーⅡ",
+            "フリーズダガーⅠ",
+            "フリーズダガーⅡ",
+            "ビークダガーⅠ",
+            "ビークダガーⅡ",
+            "ビークダガーⅢ",
+            "黒鋼の双剣Ⅰ",
+            "黒鋼の双剣Ⅱ",
+            "ゼノ＝ラクス",
+            "ゼノ＝ラクス改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:cea6fd50f38036277f88012b2c517921148d8170c179d2113a54b469f6058666",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou002",
+      "internal_id": "bs_sou002",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "奥秘双剑1",
+          "aliases": [
+            "决斗者对剑1",
+            "决斗者对剑2",
+            "决斗者对剑3",
+            "奥秘双剑2",
+            "奥秘双剑3",
+            "隐密直柄斧1",
+            "隐密直柄斧2"
+          ]
+        },
+        "en": {
+          "display_name": "Arcanaria I",
+          "aliases": [
+            "Dual Destroyers I",
+            "Dual Destroyers II",
+            "Dual Destroyers III",
+            "Arcanaria II",
+            "Arcanaria III",
+            "Hidden Tomahawk I",
+            "Hidden Tomahawk II"
+          ]
+        },
+        "ja": {
+          "display_name": "アルカナリアⅠ",
+          "aliases": [
+            "デュエルデステリオⅠ",
+            "デュエルデステリオⅡ",
+            "デュエルデステリオⅢ",
+            "アルカナリアⅡ",
+            "アルカナリアⅢ",
+            "ヒドゥントマホークⅠ",
+            "ヒドゥントマホークⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:986236d103b4b0c26dca8749528003d2b81c9bba26519822a0d009b5e002e1dc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou003",
+      "internal_id": "bs_sou003",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰结链剑1",
+          "aliases": [
+            "冰结链剑2",
+            "防卫队机械式双锯1",
+            "防卫队机械式双锯2",
+            "防卫队机械式双锯3",
+            "防卫队机械式双锯4",
+            "防卫队机械式双锯5",
+            "轰龙链剑1",
+            "轰龙链剑2",
+            "劫难链剑"
+          ]
+        },
+        "en": {
+          "display_name": "Freeze Chain I",
+          "aliases": [
+            "Freeze Chain II",
+            "Defender Chainsaws I",
+            "Defender Chainsaws II",
+            "Defender Chainsaws III",
+            "Defender Chainsaws IV",
+            "Defender Chainsaws V",
+            "Rex Chain I",
+            "Rex Chain II",
+            "Accursed Chain"
+          ]
+        },
+        "ja": {
+          "display_name": "フリーズチェーンⅠ",
+          "aliases": [
+            "フリーズチェーンⅡ",
+            "防衛隊機械式双鋸Ⅰ",
+            "防衛隊機械式双鋸Ⅱ",
+            "防衛隊機械式双鋸Ⅲ",
+            "防衛隊機械式双鋸Ⅳ",
+            "防衛隊機械式双鋸Ⅴ",
+            "レックスチェーンⅠ",
+            "レックスチェーンⅡ",
+            "カーサスチェーン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:72ab61cf24c61f89c22aafdc1bae7e96adf64368f2251914a0395c7cc2d76ff6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou004",
+      "internal_id": "bs_sou004",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "熔岩飓风1",
+          "aliases": [
+            "蛮颚龙飓风1",
+            "蛮颚龙飓风2",
+            "蛮颚龙飓风3",
+            "熔岩飓风2",
+            "飞雷龙之爪1",
+            "飞雷龙之爪2",
+            "飞雷龙之爪3",
+            "熔山龙钩爪1",
+            "熔山龙钩爪2",
+            "旋风雷颚1",
+            "旋风雷颚2",
+            "朱赤毒之爪1",
+            "朱赤毒之爪2"
+          ]
+        },
+        "en": {
+          "display_name": "Lava Cyclone I",
+          "aliases": [
+            "Anja Cyclone I",
+            "Anja Cyclone II",
+            "Anja Cyclone III",
+            "Lava Cyclone II",
+            "Kadachi Claws I",
+            "Kadachi Claws II",
+            "Kadachi Claws III",
+            "Magda Ungulae I",
+            "Magda Ungulae II",
+            "Fulguring Tornado I",
+            "Fulguring Tornado II",
+            "Crimson Viperclaws I",
+            "Crimson Viperclaws II"
+          ]
+        },
+        "ja": {
+          "display_name": "ラヴァサイクロンⅠ",
+          "aliases": [
+            "ジャナフサイクロンⅠ",
+            "ジャナフサイクロンⅡ",
+            "ジャナフサイクロンⅢ",
+            "ラヴァサイクロンⅡ",
+            "カガチノツメⅠ",
+            "カガチノツメⅡ",
+            "カガチノツメⅢ",
+            "マグダ・ウングラⅠ",
+            "マグダ・ウングラⅡ",
+            "トルネ＝ジャナールⅠ",
+            "トルネ＝ジャナールⅡ",
+            "ベニカガチノドクヅメⅠ",
+            "ベニカガチノドクヅメⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:195eb7d088f379a87030861b45c125251bd79bba0d5d5d63d0037d67d9af0286",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou005",
+      "internal_id": "bs_sou005",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "骨斧1",
+          "aliases": [
+            "骨斧2",
+            "骨斧3",
+            "狂野战斧1",
+            "狂野战斧2",
+            "狂野战斧3",
+            "强斧1",
+            "强斧2",
+            "火炎战斧1",
+            "火炎战斧2",
+            "爆锤战斧1",
+            "爆锤战斧2",
+            "泥鱼龙战斧1",
+            "泥鱼龙战斧2",
+            "泥鱼龙战斧3",
+            "黑色死神1",
+            "黑色死神2",
+            "黑色死神3",
+            "脉冲战斧1",
+            "脉冲战斧2",
+            "脉冲战斧3",
+            "惨爪战斧1",
+            "惨爪战斧2",
+            "龙骨双刀1",
+            "龙骨双刀2",
+            "冰鱼龙战斧1",
+            "冰鱼龙战斧2",
+            "火碎双刃1",
+            "火碎双刃2"
+          ]
+        },
+        "en": {
+          "display_name": "Bone Hatchets I",
+          "aliases": [
+            "Bone Hatchets II",
+            "Bone Hatchets III",
+            "Wild Hatchets I",
+            "Wild Hatchets II",
+            "Wild Hatchets III",
+            "Strong Hatchets I",
+            "Strong Hatchets II",
+            "Blazing Hatchets I",
+            "Blazing Hatchets II",
+            "Diablos Hatchets I",
+            "Diablos Hatchets II",
+            "Jyura Hatchets I",
+            "Jyura Hatchets II",
+            "Jyura Hatchets III",
+            "Dark Ripper I",
+            "Dark Ripper II",
+            "Dark Ripper III",
+            "Pulsar Hatchets I",
+            "Pulsar Hatchets II",
+            "Pulsar Hatchets III",
+            "Garon Hatchets I",
+            "Garon Hatchets II",
+            "Dragonbone Twinblades I",
+            "Dragonbone Twinblades II",
+            "Beo Hatchets I",
+            "Beo Hatchets II",
+            "Shattering Flames I",
+            "Shattering Flames II"
+          ]
+        },
+        "ja": {
+          "display_name": "ボーンハチェットⅠ",
+          "aliases": [
+            "ボーンハチェットⅡ",
+            "ボーンハチェットⅢ",
+            "ワイルドハチェットⅠ",
+            "ワイルドハチェットⅡ",
+            "ワイルドハチェットⅢ",
+            "ストロングハチェットⅠ",
+            "ストロングハチェットⅡ",
+            "ブレイズハチェットⅠ",
+            "ブレイズハチェットⅡ",
+            "ブロスハチェットⅠ",
+            "ブロスハチェットⅡ",
+            "シュラムハチェットⅠ",
+            "シュラムハチェットⅡ",
+            "シュラムハチェットⅢ",
+            "ダークリッパーⅠ",
+            "ダークリッパーⅡ",
+            "ダークリッパーⅢ",
+            "パルサーハチェットⅠ",
+            "パルサーハチェットⅡ",
+            "パルサーハチェットⅢ",
+            "ガロンハチェットⅠ",
+            "ガロンハチェットⅡ",
+            "龍骨双刃Ⅰ",
+            "龍骨双刃Ⅱ",
+            "ブランハチェットⅠ",
+            "ブランハチェットⅡ",
+            "火砕双刃Ⅰ",
+            "火砕双刃Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7f2aa2add96f5d6694041eaf321d5c082fe936604fbcb40aff2bb6cfc78499c5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou006",
+      "internal_id": "bs_sou006",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆锤棍棒1",
+          "aliases": [
+            "爆锤棍棒2",
+            "泥岩利剑1",
+            "泥岩利剑2",
+            "泥岩利剑3",
+            "巨甲虫利剑1",
+            "巨甲虫利剑2",
+            "爆锤棍棒3",
+            "命运棍棒",
+            "巨牛大骨1",
+            "巨牛大骨2",
+            "碎龙利剑1",
+            "碎龙利剑2"
+          ]
+        },
+        "en": {
+          "display_name": "Diablos Clubs I",
+          "aliases": [
+            "Diablos Clubs II",
+            "Madness Pangas I",
+            "Madness Pangas II",
+            "Madness Pangas III",
+            "Taurus Pangas I",
+            "Taurus Pangas II",
+            "Diablos Clubs III",
+            "Thanatos Mauls",
+            "Mammoth Direbones I",
+            "Mammoth Direbones II",
+            "Brachydios Blasters I",
+            "Brachydios Blasters II"
+          ]
+        },
+        "ja": {
+          "display_name": "ブロスクラブⅠ",
+          "aliases": [
+            "ブロスクラブⅡ",
+            "マッドバンガーⅠ",
+            "マッドバンガーⅡ",
+            "マッドバンガーⅢ",
+            "タロスバンガーⅠ",
+            "タロスバンガーⅡ",
+            "ブロスクラブⅢ",
+            "タナトスクラブ",
+            "巨牛の大骨Ⅰ",
+            "巨牛の大骨Ⅱ",
+            "ディオスバンガーⅠ",
+            "ディオスバンガーⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:277702f756d747b55d73388bcede898d90c4d37e253df3a49548686b4e924854",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou007",
+      "internal_id": "bs_sou007",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的双剑·冰",
+          "aliases": [
+            "金色的双剑·水",
+            "金色的双剑·毒",
+            "金色的双剑·搔",
+            "金色的双剑·泥鱼",
+            "金色的双剑·飞雷",
+            "金色的双剑·蛮颚",
+            "金色的双剑·黑甲",
+            "金色的双剑·眩",
+            "金色的双剑·惨爪",
+            "金色的双剑·角",
+            "金色的双剑·熔岩",
+            "金色的双剑·熔山"
+          ]
+        },
+        "en": {
+          "display_name": "Gold Ice Twinblades",
+          "aliases": [
+            "Gold Water Twinblades",
+            "Gold Poison Twinblades",
+            "Thief Gold Twinblades",
+            "Mire Gold Twinblades",
+            "Spark Gold Twinblades",
+            "Rage Gold Twinblades",
+            "Lurk Gold Twinblades",
+            "Flash Gold Twinblades",
+            "Claw Gold Twinblades",
+            "Horn Gold Twinblades",
+            "Erupter Gold Twinblades",
+            "Magma Gold Twinblades"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の双剣・氷",
+          "aliases": [
+            "金色の双剣・水",
+            "金色の双剣・毒",
+            "金色の双剣・掻",
+            "金色の双剣・泥魚",
+            "金色の双剣・飛雷",
+            "金色の双剣・蛮顎",
+            "金色の双剣・黒甲",
+            "金色の双剣・眩",
+            "金色の双剣・惨爪",
+            "金色の双剣・角",
+            "金色の双剣・溶岩",
+            "金色の双剣・熔山"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a64cf6e06d888da1d04298356b131ea3fc4cc4f8c99b774d0d4343367a39e47d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou008",
+      "internal_id": "bs_sou008",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗小刀·冰",
+          "aliases": [
+            "铠罗小刀·搔",
+            "铠罗小刀·泥鱼",
+            "铠罗小刀·飞雷",
+            "铠罗小刀·蛮颚",
+            "铠罗小刀·黑甲",
+            "铠罗小刀·眩",
+            "铠罗小刀·惨爪",
+            "铠罗小刀·角",
+            "铠罗小刀·熔岩",
+            "铠罗小刀·熔山",
+            "铠罗小刀·水",
+            "铠罗小刀·毒",
+            "铠罗小刀·火"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Daggers \"Ice\"",
+          "aliases": [
+            "Taroth Daggers \"Thief\"",
+            "Taroth Daggers \"Mire\"",
+            "Taroth Daggers \"Spark\"",
+            "Taroth Daggers \"Rage\"",
+            "Taroth Daggers \"Lurk\"",
+            "Taroth Daggers \"Flash\"",
+            "Taroth Daggers \"Claw\"",
+            "Taroth Daggers \"Horn\"",
+            "Taroth Daggers \"Erupter\"",
+            "Taroth Daggers \"Magma\"",
+            "Taroth Daggers \"Water\"",
+            "Taroth Daggers \"Poison\"",
+            "Taroth Daggers \"Fire\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラダガー・氷",
+          "aliases": [
+            "ガイラダガー・掻",
+            "ガイラダガー・泥魚",
+            "ガイラダガー・飛雷",
+            "ガイラダガー・蛮顎",
+            "ガイラダガー・黒甲",
+            "ガイラダガー・眩",
+            "ガイラダガー・惨爪",
+            "ガイラダガー・角",
+            "ガイラダガー・溶岩",
+            "ガイラダガー・熔山",
+            "ガイラダガー・水",
+            "ガイラダガー・毒",
+            "ガイラダガー・火"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:11e2cc8210eae02e331e43ad47051e640b3df05d4ec2ba36066e47462c002903",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou009",
+      "internal_id": "bs_sou009",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后短剑",
+          "aliases": [
+            "皇后短剑·炎妃",
+            "皇后短剑·灭尽",
+            "皇后短剑·冥灯",
+            "魂焰双刃·炎妃",
+            "魂焰双刃·灭尽",
+            "魂焰双刃·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Daggers",
+          "aliases": [
+            "Empress Daggers \"Blaze\"",
+            "Empress Daggers \"Ruin\"",
+            "Empress Daggers \"Styx\"",
+            "Soulfire Fangs \"Blaze\"",
+            "Soulfire Fangs \"Ruin\"",
+            "Soulfire Fangs \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスダガー",
+          "aliases": [
+            "エンプレスダガー・炎妃",
+            "エンプレスダガー・滅尽",
+            "エンプレスダガー・冥灯",
+            "魂焔の双刃・炎妃",
+            "魂焔の双刃・滅尽",
+            "魂焔の双刃・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:281c79153437d0a9ad672f4f94ac1658ef9b3fb904cb6ac6b5d1855c9a5e0ebc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou010",
+      "internal_id": "bs_sou010",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巢穴暴风1",
+          "aliases": [
+            "铬钢十字1",
+            "铬钢十字2",
+            "铬钢十字3",
+            "十字对剑1",
+            "十字对剑2",
+            "巢穴暴风2"
+          ]
+        },
+        "en": {
+          "display_name": "Asefar al-Nasr I",
+          "aliases": [
+            "Chrome Cross I",
+            "Chrome Cross II",
+            "Chrome Cross III",
+            "Cross Destroyers I",
+            "Cross Destroyers II",
+            "Asefar al-Nasr II"
+          ]
+        },
+        "ja": {
+          "display_name": "ネスルアーセファーⅠ",
+          "aliases": [
+            "クロムクロスⅠ",
+            "クロムクロスⅡ",
+            "クロムクロスⅢ",
+            "クロス＝デステリオⅠ",
+            "クロス＝デステリオⅡ",
+            "ネスルアーセファーⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:85b2e0f88c5ec9eea1d9fb505398325aca42558876f27a47cb66c3b603bb506f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou011",
+      "internal_id": "bs_sou011",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "厚实砍刀1",
+          "aliases": [
+            "厚实砍刀2",
+            "厚实砍刀3",
+            "蛮颚龙之烈爪1",
+            "蛮颚龙之烈爪2",
+            "泥岩龙密丛1",
+            "泥岩龙密丛2",
+            "深黑噬者1",
+            "深黑噬者2",
+            "飞雷龙锲刀1",
+            "飞雷龙锲刀2",
+            "岩浆利爪熔山双剑"
+          ]
+        },
+        "en": {
+          "display_name": "Hulking Choppers I",
+          "aliases": [
+            "Hulking Choppers II",
+            "Hulking Choppers III",
+            "Anja Twinrippers I",
+            "Anja Twinrippers II",
+            "Jyura Keenblades I",
+            "Jyura Keenblades II",
+            "Abyss Eaters I",
+            "Abyss Eaters II",
+            "Kadachi Greathawks I",
+            "Kadachi Greathawks II",
+            "Magdaros Volcancross"
+          ]
+        },
+        "ja": {
+          "display_name": "マッシブチョッパーⅠ",
+          "aliases": [
+            "マッシブチョッパーⅡ",
+            "マッシブチョッパーⅢ",
+            "蛮顎竜ノ烈爪Ⅰ",
+            "蛮顎竜ノ烈爪Ⅱ",
+            "シュラムグローヴⅠ",
+            "シュラムグローヴⅡ",
+            "ダークネスイーターⅠ",
+            "ダークネスイーターⅡ",
+            "カガチノオオナタⅠ",
+            "カガチノオオナタⅡ",
+            "熔山双剣マグダウング"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:034d0d4d548d36961dfe34a1088d7615b6d5c8c413fbe8faff25d934630522d7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou012",
+      "internal_id": "bs_sou012",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰圣幽冥",
+          "aliases": [
+            "严冰羽翎"
+          ]
+        },
+        "en": {
+          "display_name": "Untouched Hel",
+          "aliases": [
+            "Icefeather"
+          ]
+        },
+        "ja": {
+          "display_name": "氷聖ヘル",
+          "aliases": [
+            "アイスフェザー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ff7249ae8f7abfa351492c528481f1cf2b0f4fce4956dae05dd6ba6fa0479129",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou013",
+      "internal_id": "bs_sou013",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金双剑·飞雷",
+          "aliases": [
+            "皇金双剑·蛮颚",
+            "皇金双剑·熔山",
+            "皇金双剑·黑甲"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Daggers \"Spark\"",
+          "aliases": [
+            "Kjárr Daggers \"Rage\"",
+            "Kjárr Daggers \"Magma\"",
+            "Kjárr Daggers \"Lurk\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の双剣・飛雷",
+          "aliases": [
+            "皇金の双剣・蛮顎",
+            "皇金の双剣・熔山",
+            "皇金の双剣・黒甲"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9f62b8aaa7ae00735a5ab3e6e3c32c10ba247a25d9953dae4f87471005fbaa10",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/bs_sou014",
+      "internal_id": "bs_sou014",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金双剑·冰",
+          "aliases": [
+            "皇金双剑·水",
+            "皇金双剑·龙"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Daggers \"Ice\"",
+          "aliases": [
+            "Kjárr Daggers \"Water\"",
+            "Kjárr Daggers \"Dragon\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の双剣・氷",
+          "aliases": [
+            "皇金の双剣・水",
+            "皇金の双剣・龍"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6af0b858b4c63af21de7c0d4341df431160ddb36fcca43f7f9ee34e088a517c8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou001",
+      "internal_id": "sou001",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "双爪刀",
+          "aliases": [
+            "冰炎剑维尔玛闪焰",
+            "冰炎魔剑极限"
+          ]
+        },
+        "en": {
+          "display_name": "Twin Nails",
+          "aliases": [
+            "Fire and Ice",
+            "Blizzard and Blaze"
+          ]
+        },
+        "ja": {
+          "display_name": "ツインネイル",
+          "aliases": [
+            "氷炎剣ヴィルマフレア",
+            "氷炎魔剣ヴィルマクス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7cc836133b40b3273d95264f8c635a7e9035d84a2904fd5c563887a2b4a26e2e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou002",
+      "internal_id": "sou002",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "迅雷",
+          "aliases": [
+            "双雷剑麒麟",
+            "双雷剑麒麟改",
+            "双雷宝剑【麒麟儿】"
+          ]
+        },
+        "en": {
+          "display_name": "Monarch",
+          "aliases": [
+            "Kirin Bolts",
+            "Kirin Bolts+",
+            "Wunderkirins"
+          ]
+        },
+        "ja": {
+          "display_name": "迅雷",
+          "aliases": [
+            "双雷剣キリン",
+            "双雷剣キリン改",
+            "双雷宝剣【麒麟児】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:84a4b711b1bb026e4d2dfc44a1ded45db894537f0f587bfdc3bb12dda587a41c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou003",
+      "internal_id": "sou003",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "神圣佩剑",
+          "aliases": [
+            "秩序刺剑",
+            "秩序刺剑改"
+          ]
+        },
+        "en": {
+          "display_name": "Holy Sabers",
+          "aliases": [
+            "Sworn Rapiers",
+            "Sworn Rapiers+"
+          ]
+        },
+        "ja": {
+          "display_name": "ホーリーセーバー",
+          "aliases": [
+            "オーダーレイピア",
+            "オーダーレイピア改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:440093bac7b8ac26713c1940f10ddbfc4fc4e0d54ca46965930cb47cdf0e1154",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou004",
+      "internal_id": "sou004",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "残灭之爪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Decimation Claws",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "残滅の爪",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:cc5a93c56a53079467f90d9031a0d95c4678566e592d4ee08b305f28f124e1fb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou005",
+      "internal_id": "sou005",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暗红锁镰",
+          "aliases": [
+            "罪【真】",
+            "罪【真】·改",
+            "罪恶【劣行】"
+          ]
+        },
+        "en": {
+          "display_name": "Blood-drinker Chainblade",
+          "aliases": [
+            "Sin",
+            "Sin+",
+            "Crime"
+          ]
+        },
+        "ja": {
+          "display_name": "血吸いの鎖鎌",
+          "aliases": [
+            "罪【シン】",
+            "罪【シン】改",
+            "罪悪【クライム】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fd2e1ee28952e646483e5720961512e366565c7a960c37e0790da58fc55d4598",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou006",
+      "internal_id": "sou006",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆鳞手斧",
+          "aliases": [
+            "爆鳞双斧赤红巨星"
+          ]
+        },
+        "en": {
+          "display_name": "Rookslayer Handaxes",
+          "aliases": [
+            "Bazelhawk Rookslayer"
+          ]
+        },
+        "ja": {
+          "display_name": "爆鱗の手斧",
+          "aliases": [
+            "爆鱗双斧バゼルホーク"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:138a75beec1f5dd29124373df40a1618e0693a3a7c19fcb8d968268920393b70",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou007",
+      "internal_id": "sou007",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙剑【超绝一门】",
+          "aliases": [
+            "封龙剑【真绝一门】",
+            "封龙剑【极绝一门】"
+          ]
+        },
+        "en": {
+          "display_name": "Enduring Schism",
+          "aliases": [
+            "Enduring Sacrifice",
+            "Enduring Surrender"
+          ]
+        },
+        "ja": {
+          "display_name": "封龍剣【超絶一門】",
+          "aliases": [
+            "封龍剣【真絶一門】",
+            "封龍剣【極絶一門】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e196d6dcebe28a2ce687a78503fa43a9a84afca01856057338fc1f1a63dc089f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou008",
+      "internal_id": "sou008",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "愤怒双刃",
+          "aliases": [
+            "愤怒捕食者"
+          ]
+        },
+        "en": {
+          "display_name": "Wrath & Rancor",
+          "aliases": [
+            "Wrathful Predation"
+          ]
+        },
+        "ja": {
+          "display_name": "憤怒の双刃",
+          "aliases": [
+            "ラースプレデター"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:91dc1f21172dc8fb835de53f580d5ecb0fbc80053a2bbe7ecc597f379a8609a8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou009",
+      "internal_id": "sou009",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冥府锁镰",
+          "aliases": [
+            "死罪【刑罚】"
+          ]
+        },
+        "en": {
+          "display_name": "Nether Chainblades",
+          "aliases": [
+            "Death Row"
+          ]
+        },
+        "ja": {
+          "display_name": "冥府の鎖鎌",
+          "aliases": [
+            "死罪【デスロウ】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1be813f7bd9f348c9347b287dce3543c18e45d65180d768cdbff969bf46de939",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou010",
+      "internal_id": "sou010",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆炎双战斧",
+          "aliases": [
+            "爆炎双斧燋烁"
+          ]
+        },
+        "en": {
+          "display_name": "Blazing Warhawks",
+          "aliases": [
+            "Bazel Bombers"
+          ]
+        },
+        "ja": {
+          "display_name": "爆炎の双戦斧",
+          "aliases": [
+            "爆炎双斧バゼルボンバー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2244a0ac5a14f4349641258f9dd1ef50c06d4666123edf4fec968562afaccc0e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou011",
+      "internal_id": "sou011",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "残灭之爪【鬼】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Decimation",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "残滅の爪【鬼】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:03f3625191a1b7ed79062fdf849096aa46f2e093006b79c0573530c1d42f4c36",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou012",
+      "internal_id": "sou012",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暗雾蕴剑",
+          "aliases": [
+            "暗雾蕴剑·改",
+            "寒霜暴风剑"
+          ]
+        },
+        "en": {
+          "display_name": "Blizzarioths",
+          "aliases": [
+            "Blizzarioths+",
+            "Mountain Blizzarioths"
+          ]
+        },
+        "ja": {
+          "display_name": "ニヴルブリザード",
+          "aliases": [
+            "ニヴルブリザード改",
+            "ベルゲルブリザード"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:70bb55f9ea6aff4956b3f38321f10887a45df60f91164d84e0caf9204da46e1d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou013",
+      "internal_id": "sou013",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斩龙双刃光耀",
+          "aliases": [
+            "灼炎之保存者",
+            "灼炎之保存者·改"
+          ]
+        },
+        "en": {
+          "display_name": "Smoldering Kingdoms",
+          "aliases": [
+            "Smoldering Cities",
+            "Smoldering Cities+"
+          ]
+        },
+        "ja": {
+          "display_name": "斬竜双刃エタンゼル",
+          "aliases": [
+            "灼炎のロガー",
+            "灼炎のロガー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:50670dfb4375b6188c920224114e1ecd58f88314cf00b3db9cec67e801c3b27b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou014",
+      "internal_id": "sou014",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "硫铁结契",
+          "aliases": [
+            "岩窟硫斩双刃"
+          ]
+        },
+        "en": {
+          "display_name": "Sulfurteinn Ortho",
+          "aliases": [
+            "The Stripping Shears"
+          ]
+        },
+        "ja": {
+          "display_name": "硫鉄のオルト",
+          "aliases": [
+            "硫斬双刃ソンドン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:cf51f42aca519dc6344f7eee77d83f5c4ae703eafdf5d54dd7c967aa107fc52d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou015",
+      "internal_id": "sou015",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "邪鬼雾散－慧眼－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Boundless Farsight",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "邪鬼霧散－慧眼－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:88d7ef0f38e28c07add98bd56219e5f7ccb0a6acedb0cbb38479a73d5e8c4a0d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou016",
+      "internal_id": "sou016",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业双刃冲动",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Consummate Pair",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業双刃ベガモラルタ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5abbb9107868be72b43c3a19cbe26402b8500c2b6f80e46db41fd8776b897504",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou017",
+      "internal_id": "sou017",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "松软天国",
+          "aliases": [
+            "松软的羽毛扫把",
+            "松软的慈爱"
+          ]
+        },
+        "en": {
+          "display_name": "Downy Paradise",
+          "aliases": [
+            "Downy Crake Brooms",
+            "Downy Crake Love"
+          ]
+        },
+        "ja": {
+          "display_name": "フワフワ天国",
+          "aliases": [
+            "フワフワの羽根箒",
+            "フワフワの慈愛"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:52ff9541d815d5c1dd004826052ae7f7dd4983498be636c47fe4dc6dfaf03c0d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou018",
+      "internal_id": "sou018",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王双刃雷神",
+          "aliases": [
+            "王双刃雷神·改",
+            "王牙双刃【土雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Fulgur",
+          "aliases": [
+            "Usurper's Fulgur+",
+            "Despot's Blitz"
+          ]
+        },
+        "ja": {
+          "display_name": "王双刃ハタタカミ",
+          "aliases": [
+            "王双刃ハタタカミ改",
+            "王牙双刃【土雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ea496da18a5671043af73560e90e68119b5c1567a6e55eb86a910cc560a33184",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou019",
+      "internal_id": "sou019",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "龙气狱爪",
+          "aliases": [
+            "狼牙双爪【血狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Drakespirit Hellclaws",
+          "aliases": [
+            "Stygian Bloodclaws"
+          ]
+        },
+        "ja": {
+          "display_name": "獄爪リュウキ",
+          "aliases": [
+            "狼牙双爪【血獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:496aeeabfd60bf5d5c4845e05cc150d530e3a56e298f02c868640e17d4c1e244",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou020",
+      "internal_id": "sou020",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铁扇【狼】",
+          "aliases": [
+            "铁扇【乌】"
+          ]
+        },
+        "en": {
+          "display_name": "Wolf Tessen",
+          "aliases": [
+            "Raven Tessen"
+          ]
+        },
+        "ja": {
+          "display_name": "テッセン【狼】",
+          "aliases": [
+            "テッセン【烏】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7a67aa99036909e676ce82b359866da850c9165d13c1949c8b7532ab1b787f5c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou021",
+      "internal_id": "sou021",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雌雄双剑",
+          "aliases": [
+            "雌雄焰刀"
+          ]
+        },
+        "en": {
+          "display_name": "Wyvern Lovers",
+          "aliases": [
+            "Twin Flames"
+          ]
+        },
+        "ja": {
+          "display_name": "双剣リュウノツガイ",
+          "aliases": [
+            "ツインフレイム"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d908606e23a851cb73310a827f682e9b6769cb6e8ae6aa9c215198c34db2d799",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou022",
+      "internal_id": "sou022",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金银龙对剑",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Wyvern Strife",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ゲキリュウノツガイ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:56f7e06e132efbbb960a9d984818746b5cd22b0188c94053b2565f1a7df4f3bb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou023",
+      "internal_id": "sou023",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斗鬼【高丸】",
+          "aliases": [
+            "斗神鬼【大岳丸】"
+          ]
+        },
+        "en": {
+          "display_name": "Suzuka Takamaru",
+          "aliases": [
+            "Suzuka Otakemaru"
+          ]
+        },
+        "ja": {
+          "display_name": "闘鬼【高丸】",
+          "aliases": [
+            "闘神鬼【大嶽丸】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5e8ee283fc606cbc7206cc107c3b1518aeae1f12920c519437161e2efdb11e0f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou024",
+      "internal_id": "sou024",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神斗拳【狱杀】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Hellfists",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神闘拳【獄殺】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dcd2f216b129e61a4104b0fb25fac993931b4b3ba8a3802a05df1fdf1910c849",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou026",
+      "internal_id": "sou026",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑双剑",
+          "aliases": [
+            "煌黑双剑烈狂"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Dual Blades",
+          "aliases": [
+            "Alatreon Madness"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の双剣",
+          "aliases": [
+            "煌黒双剣アルブレ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:33cb2da368b35f45c56b1498e957c10559d358122b7fd3dded8dc88524af432a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou027",
+      "internal_id": "sou027",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "大师军刀",
+          "aliases": [
+            "公会骑士军刀",
+            "双圣剑公会骑士"
+          ]
+        },
+        "en": {
+          "display_name": "Master Sabers",
+          "aliases": [
+            "Guild Knight Sabers",
+            "Holy Guild Knight"
+          ]
+        },
+        "ja": {
+          "display_name": "マスターセーバー",
+          "aliases": [
+            "ギルドナイトセーバー",
+            "双聖剣ギルドナイト"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:da75bb469fe4cbdd8e98add10dc2cfc7175b2278433d3ac79f6a68795b1759d7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou028",
+      "internal_id": "sou028",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "锋利锐刃",
+          "aliases": [
+            "锋利锐刃·改"
+          ]
+        },
+        "en": {
+          "display_name": "Whetfish Sabers",
+          "aliases": [
+            "Whetfish Sabers+"
+          ]
+        },
+        "ja": {
+          "display_name": "キレアジセーバー",
+          "aliases": [
+            "キレアジセーバー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4408701d972a33990fdc6afbfd3a7abed6fcf6ee246d0bd1504402994ab98f42",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou029",
+      "internal_id": "sou029",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "吉薇艾儿",
+          "aliases": [
+            "吉薇艾儿＋"
+          ]
+        },
+        "en": {
+          "display_name": "Zireael",
+          "aliases": [
+            "Zireael+"
+          ]
+        },
+        "ja": {
+          "display_name": "ジルエアエル",
+          "aliases": [
+            "ジルエアエル＋"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:11e7451275c62c744b1cba0da7c867e70555c414baca84c2ac98d74d5904584d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou030",
+      "internal_id": "sou030",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿军刀",
+          "aliases": [
+            "宫廷双骑【救星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Sabers",
+          "aliases": [
+            "Royal Savior Daggers"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスセ－バー",
+          "aliases": [
+            "宮廷双騎【救星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0f03f72ea5e3a075b0772bd05c6b6026e47969dd2439fe8523bf171bbfe0f155",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou031",
+      "internal_id": "sou031",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "贝古特拉",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Bergel Vetra",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ベルゲルヴァトラ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3d7204122ceb281202ab4c78dcdbd99ee3dff70c0c6b91d099dd827ca6c8baf7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou032",
+      "internal_id": "sou032",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙双刃",
+          "aliases": [
+            "黑龙双刃【二天】"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Dual Blades",
+          "aliases": [
+            "Fatalis Dual Skies"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍双刃",
+          "aliases": [
+            "黒龍双刃【二天】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:194d2e2c13b993eb565faa6e6907d56b35302ed051b5c06cd69538d0c3df3f45",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou033",
+      "internal_id": "sou033",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "酩酊大醉啤酒剑",
+          "aliases": [
+            "飘飘欲仙啤酒剑"
+          ]
+        },
+        "en": {
+          "display_name": "Master Ale",
+          "aliases": [
+            "Strong Ale"
+          ]
+        },
+        "ja": {
+          "display_name": "へべれけビーア",
+          "aliases": [
+            "べろべろビーア"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:59b59b0c2031e50ebc6a28656b5f6638e4f4a1f21fd94368e6a5a4900ac2b091",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou034",
+      "internal_id": "sou034",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙舞爪·冰",
+          "aliases": [
+            "赤龙舞爪·火",
+            "赤龙舞爪·水",
+            "赤龙舞爪·雷",
+            "赤龙舞爪·龙",
+            "赤龙舞爪·毒",
+            "赤龙舞爪·麻痹",
+            "赤龙舞爪·睡眠",
+            "赤龙舞爪·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostclaws",
+          "aliases": [
+            "Safi's Hellclaws",
+            "Safi's Aquaclaws",
+            "Safi's Boltclaws",
+            "Safi's Drakclaws",
+            "Safi's Venomclaws",
+            "Safi's Bindclaws",
+            "Safi's Dreamclaws",
+            "Safi's Shatterclaws"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ舞ウ爪・氷",
+          "aliases": [
+            "赤龍ノ舞ウ爪・火",
+            "赤龍ノ舞ウ爪・水",
+            "赤龍ノ舞ウ爪・雷",
+            "赤龍ノ舞ウ爪・龍",
+            "赤龍ノ舞ウ爪・毒",
+            "赤龍ノ舞ウ爪・麻痺",
+            "赤龍ノ舞ウ爪・睡眠",
+            "赤龍ノ舞ウ爪・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:668375360c53db146a1d81a0a7311c8c7563d45506578ffc0ae83953460e4851",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou035",
+      "internal_id": "sou035",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之双闪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Twins",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の双閃",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f0db82207bcfa06083a1b3b62be3e792f1914242cd5903d81f6701948c29bde6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/sou/sou036",
+      "internal_id": "sou036",
+      "metadata": {
+        "family": "sou",
+        "path_family": "wp/sou"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "阿尔忒弥斯的双剑",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Artemis's Dual Blades",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "アルテミスの双剣",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

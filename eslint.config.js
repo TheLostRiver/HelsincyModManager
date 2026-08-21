@@ -33,6 +33,15 @@ export default tseslint.config(
     },
   },
   {
-    ignores: [".claude", ".vite", ".worktrees", "dist", "src-tauri/target", "target"],
+    // armor-data 是本地候选数据与抓取工具，不纳入版本管理，也不该被 lint。
+    ignores: [
+      ".claude",
+      ".vite",
+      ".worktrees",
+      "armor-data",
+      "dist",
+      "src-tauri/target",
+      "target",
+    ],
   },
 );
