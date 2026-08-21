@@ -120,9 +120,37 @@ Alpha/Beta 条目。
 - `restricted`：候选可通过语义审计，但产生 `license_restricted` blocker。
 - `redistributable`：还必须提供非空 SPDX expression、HTTPS evidence URL、attribution、
   `reviewed_by` 和有效日历日期的 `reviewed_at`；缺任一字段即候选无效。
+- `game_terminology`：第三方游戏术语（装备/武器名）。必须提供 `rights_holder`、
+  `usage: "nominative"`、attribution、`reviewed_by` 和有效日历日期的 `reviewed_at`；
+  缺任一字段即候选无效。**不要求** SPDX expression 与 evidence URL。
 
 validator 不联网，也不判断网页内容或法律结论是否真实。`redistributable` 只能由实际核对授权证据的
 reviewer 设置；技术门禁保证审核声明完整、可追踪，并对未知状态 fail closed。
+
+### 关于 `game_terminology` 的政策决定（2026-08-21）
+
+装备与武器名称属于游戏发行方，不存在可指向的授权页。早期门禁只有
+`unknown` / `restricted` / `redistributable` 三档，导致这类数据唯一的"通过"方式是标成
+`redistributable` 并为 SPDX 与 evidence URL 填入并不存在的值——门禁会放行，但元数据是假的，
+审计链失去意义。`game_terminology` 就是为了让这类来源**如实描述自己**而存在。
+
+维护者决定：游戏术语名称可以随项目分发，依据是
+
+- 单个短名称在多数法域达不到独创性门槛，不构成可版权作品；
+- 用游戏自己的叫法指称目标属于功能性、指称性使用，不是挪用创作内容；
+- 这是 Mod 生态的既有惯例，同类管理器与工具普遍内置游戏术语数据。
+
+边界（这几条是决定的一部分，不是建议）：
+
+- 名称只作为**绑定在 retarget catalog 上的功能性标识**分发，用于把 Mod 资源对上官方槽位。
+  不得把它单独抽出来做成可独立浏览、可导出的"装备名称数据库"产品——那更接近替代品而不是互操作。
+- `rights_holder` 必须写明真实权利人，项目不对这些名称主张任何权利。
+- 分发物必须带署名声明。
+- 本决定只覆盖**名称文本**。图标、模型、贴图、剧情文本或任何其他游戏资产都不适用，
+  仍然走 `unknown` / `restricted` fail closed。
+
+以上不构成法律意见。这是维护者在知悉风险后作出的项目政策决定，记录于此以便追溯；
+如需变更，改本节而不是给字段填值绕过。
 
 ## 只读验证
 
@@ -155,7 +183,8 @@ cargo clippy -p hmm-games-mhw --all-targets -- -D warnings
 重复 display name、错误 path family、dummy/hidden、许可门禁和报告脱敏。不得以真实游戏目录、
 第三方 Mod、玩家数据或来源未明 catalog 作为自动测试输入。
 
-CAT-01 完成后：AR6 可以在获得明确再分发权后扩展 armor runtime catalog；WR-01 已基于同一候选
-身份/名称/许可契约完成 14 类 weapon 设计。WR-02A 可使用人工最小 catalog 实现 parser，WR-02B 的
-完整 catalog 仍等待可再分发的审计输入。两者都不得绕过本门禁或把 MHW 路径规则移入 core、Tauri
-或前端。
+CAT-01 完成后：AR6 可以在满足许可门禁后扩展 armor runtime catalog；WR-01 已基于同一候选
+身份/名称/许可契约完成 14 类 weapon 设计。WR-02A 可使用人工最小 catalog 实现 parser。
+2026-08-21 新增 `game_terminology` 状态后，AR6 与 WR-02B 不再受"找不到可再分发授权"阻塞，
+但仍须逐条满足该状态的必填字段、`dummy` 清理和上述边界。两者都不得绕过本门禁或把 MHW 路径规则
+移入 core、Tauri 或前端。

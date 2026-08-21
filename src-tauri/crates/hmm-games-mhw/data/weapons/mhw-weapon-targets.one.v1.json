@@ -1,0 +1,1936 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:6620024f259a1ddc10b797fed913aff68265b3b8fce284f927e013eecf914650",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one001",
+      "internal_id": "bs_one001",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢铁匕首1",
+          "aliases": [
+            "猎人匕首1",
+            "猎人匕首2",
+            "猎人匕首3",
+            "钢铁匕首2",
+            "钢铁匕首3",
+            "铬钢切刀1",
+            "铬钢切刀2",
+            "火炎匕首1",
+            "火炎匕首2",
+            "水流小刀1",
+            "水流小刀2",
+            "水流小刀3",
+            "优雅斗士1",
+            "优雅斗士2",
+            "浮空龙匕首1",
+            "浮空龙匕首2",
+            "鲜花匕首1",
+            "鲜花匕首2",
+            "鲜花匕首3",
+            "痹贼龙匕首1",
+            "痹贼龙匕首2",
+            "冥灯龙剑",
+            "冥灯龙剑改",
+            "猎人匕首"
+          ]
+        },
+        "en": {
+          "display_name": "Steel Knife I",
+          "aliases": [
+            "Hunter's Knife I",
+            "Hunter's Knife II",
+            "Hunter's Knife III",
+            "Steel Knife II",
+            "Steel Knife III",
+            "Chrome Slicer I",
+            "Chrome Slicer II",
+            "Flame Knife I",
+            "Flame Knife II",
+            "Aqua Messer I",
+            "Aqua Messer II",
+            "Aqua Messer III",
+            "Glacial Grace I",
+            "Glacial Grace II",
+            "Lumu Knife I",
+            "Lumu Knife II",
+            "Blooming Knife I",
+            "Blooming Knife II",
+            "Blooming Knife III",
+            "Girros Knife I",
+            "Girros Knife II",
+            "Xeno Mabura",
+            "Xeno Mabura+",
+            "Hunter's Knife"
+          ]
+        },
+        "ja": {
+          "display_name": "スティールナイフⅠ",
+          "aliases": [
+            "ハンターナイフⅠ",
+            "ハンターナイフⅡ",
+            "ハンターナイフⅢ",
+            "スティールナイフⅡ",
+            "スティールナイフⅢ",
+            "クロムスライサーⅠ",
+            "クロムスライサーⅡ",
+            "フレイムナイフⅠ",
+            "フレイムナイフⅡ",
+            "アクアメッサーⅠ",
+            "アクアメッサーⅡ",
+            "アクアメッサーⅢ",
+            "グレイスファイターⅠ",
+            "グレイスファイターⅡ",
+            "ウルムーナイフⅠ",
+            "ウルムーナイフⅡ",
+            "ブルームナイフⅠ",
+            "ブルームナイフⅡ",
+            "ブルームナイフⅢ",
+            "ギルオスナイフⅠ",
+            "ギルオスナイフⅡ",
+            "ゼノ＝マブーラー",
+            "ゼノ＝マブーラー改",
+            "ハンターナイフ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0ae9638963bbd44aa06e464c72497272d78c4a8bc092d3bae198bb968b8c5215",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one002",
+      "internal_id": "bs_one002",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑钢剑1",
+          "aliases": [
+            "汹涌奔流1",
+            "汹涌奔流2",
+            "汹涌奔流3",
+            "盛开曼陀罗1",
+            "盛开曼陀罗2",
+            "盛开曼陀罗3",
+            "黑钢剑2",
+            "汹涌奔流4",
+            "舄湖盛开1",
+            "舄湖盛开2"
+          ]
+        },
+        "en": {
+          "display_name": "Blacksteel Sword I",
+          "aliases": [
+            "Rogue Wave I",
+            "Rogue Wave II",
+            "Rogue Wave III",
+            "Datura Blossom I",
+            "Datura Blossom II",
+            "Datura Blossom III",
+            "Blacksteel Sword II",
+            "Rogue Wave IV",
+            "Laguna Blossom I",
+            "Laguna Blossom II"
+          ]
+        },
+        "ja": {
+          "display_name": "黒鋼の剣Ⅰ",
+          "aliases": [
+            "フラッドウェイブⅠ",
+            "フラッドウェイブⅡ",
+            "フラッドウェイブⅢ",
+            "ダチュラブロッサムⅠ",
+            "ダチュラブロッサムⅡ",
+            "ダチュラブロッサムⅢ",
+            "黒鋼の剣Ⅱ",
+            "フラッドウェイブⅣ",
+            "ラグーナブロッサムⅠ",
+            "ラグーナブロッサムⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3aba621b0e4dbd0b7c9c5e6aef7815834d1d66dc7a278497e2960ff4b526591c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one003",
+      "internal_id": "bs_one003",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "夜神战斧1",
+          "aliases": [
+            "灭尽龙片手剑",
+            "浮空龙战斧1",
+            "浮空龙战斧2",
+            "浮空龙战斧3",
+            "马拉多战斧1",
+            "马拉多战斧2",
+            "马拉多战斧3",
+            "防卫队战斧型击剑1",
+            "防卫队战斧型击剑2",
+            "防卫队战斧型击剑3",
+            "防卫队战斧型击剑4",
+            "防卫队战斧型击剑5",
+            "夜神战斧2",
+            "曼陀罗满开1",
+            "曼陀罗满开2"
+          ]
+        },
+        "en": {
+          "display_name": "Nyx Tabar I",
+          "aliases": [
+            "Nergal Jack",
+            "Lumu Tabar I",
+            "Lumu Tabar II",
+            "Lumu Tabar III",
+            "Malady's Tabar I",
+            "Malady's Tabar II",
+            "Malady's Tabar III",
+            "Defender Warhatchet I",
+            "Defender Warhatchet II",
+            "Defender Warhatchet III",
+            "Defender Warhatchet IV",
+            "Defender Warhatchet V",
+            "Nyx Tabar II",
+            "Datura Florescence I",
+            "Datura Florescence II"
+          ]
+        },
+        "ja": {
+          "display_name": "ニュクスタバールⅠ",
+          "aliases": [
+            "ネルガルジャック",
+            "ウルムータバールⅠ",
+            "ウルムータバールⅡ",
+            "ウルムータバールⅢ",
+            "マラドタバールⅠ",
+            "マラドタバールⅡ",
+            "マラドタバールⅢ",
+            "防衛隊戦斧型撃剣Ⅰ",
+            "防衛隊戦斧型撃剣Ⅱ",
+            "防衛隊戦斧型撃剣Ⅲ",
+            "防衛隊戦斧型撃剣Ⅳ",
+            "防衛隊戦斧型撃剣Ⅴ",
+            "ニュクスタバールⅡ",
+            "ダチュラフルブルームⅠ",
+            "ダチュラフルブルームⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f13725d0851ee8b63f311bfd38c92f3268dde32dc859647cc670cd53eb9c4f3d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one004",
+      "internal_id": "bs_one004",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷刀",
+          "aliases": [
+            "骨制曲刀1",
+            "骨制曲刀2",
+            "骨制曲刀3",
+            "酋长曲刀1",
+            "酋长曲刀2",
+            "酋长曲刀3",
+            "尖刺锐剑1",
+            "尖刺锐剑2",
+            "贼龙锐剑1",
+            "贼龙锐剑2",
+            "贼龙锐剑3",
+            "闪雷锐剑1",
+            "闪雷锐剑2",
+            "土砂龙锐剑1",
+            "土砂龙锐剑2",
+            "土砂龙锐剑3",
+            "火炎锐剑1",
+            "火炎锐剑2",
+            "龙骨剑1",
+            "龙骨剑2",
+            "龙骨剑3"
+          ]
+        },
+        "en": {
+          "display_name": "Fulminator",
+          "aliases": [
+            "Bone Kukri I",
+            "Bone Kukri II",
+            "Bone Kukri III",
+            "Chief Kukri I",
+            "Chief Kukri II",
+            "Chief Kukri III",
+            "Spiked Edge I",
+            "Spiked Edge II",
+            "Jagras Edge I",
+            "Jagras Edge II",
+            "Jagras Edge III",
+            "Thunder Edge I",
+            "Thunder Edge II",
+            "Carapace Edge I",
+            "Carapace Edge II",
+            "Carapace Edge III",
+            "Blazing Edge I",
+            "Blazing Edge II",
+            "Dragonbone Sword I",
+            "Dragonbone Sword II",
+            "Dragonbone Sword III"
+          ]
+        },
+        "ja": {
+          "display_name": "雷刃",
+          "aliases": [
+            "ボーンククリⅠ",
+            "ボーンククリⅡ",
+            "ボーンククリⅢ",
+            "チーフククリⅠ",
+            "チーフククリⅡ",
+            "チーフククリⅢ",
+            "スパイクエッジⅠ",
+            "スパイクエッジⅡ",
+            "ジャグラスエッジⅠ",
+            "ジャグラスエッジⅡ",
+            "ジャグラスエッジⅢ",
+            "サンダーエッジⅠ",
+            "サンダーエッジⅡ",
+            "ドラグロエッジⅠ",
+            "ドラグロエッジⅡ",
+            "ドラグロエッジⅢ",
+            "ブレイズエッジⅠ",
+            "ブレイズエッジⅡ",
+            "龍骨剣Ⅰ",
+            "龍骨剣Ⅱ",
+            "龍骨剣Ⅲ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5c583fc1df14ed4e4f450d3346756bf0d0f3efc424e6acfa34b4b1e02fcd7375",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one005",
+      "internal_id": "bs_one005",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷光刀1",
+          "aliases": [
+            "大地巴龙刀1",
+            "大地巴龙刀2",
+            "雷光战狂1",
+            "雷光战狂2",
+            "雷光战狂3",
+            "雷光刀2",
+            "罪罚战狂1",
+            "罪罚战狂2",
+            "牙龙剑【恶噬】1",
+            "牙龙剑【恶噬】2",
+            "雷光战狂4",
+            "斩龙战狂1",
+            "斩龙战狂2",
+            "水蛇冲突"
+          ]
+        },
+        "en": {
+          "display_name": "Thunderbolt Sword I",
+          "aliases": [
+            "Grand Barong I",
+            "Grand Barong II",
+            "Lightning Nemesis I",
+            "Lightning Nemesis II",
+            "Lightning Nemesis III",
+            "Thunderbolt Sword II",
+            "Acid Razor I",
+            "Acid Razor II",
+            "Saber's Gullet I",
+            "Saber's Gullet II",
+            "Lightning Nemesis IV",
+            "Glavenus Razor I",
+            "Glavenus Razor II",
+            "Hydros Discus"
+          ]
+        },
+        "ja": {
+          "display_name": "雷光刃Ⅰ",
+          "aliases": [
+            "グランドバロングⅠ",
+            "グランドバロングⅡ",
+            "ライトニングバトラーⅠ",
+            "ライトニングバトラーⅡ",
+            "ライトニングバトラーⅢ",
+            "雷光刃Ⅱ",
+            "ザルファバトラーⅠ",
+            "ザルファバトラーⅡ",
+            "牙竜剣【悪喰】Ⅰ",
+            "牙竜剣【悪喰】Ⅱ",
+            "ライトニングバトラーⅣ",
+            "ディノバトラーⅠ",
+            "ディノバトラーⅡ",
+            "ヒュドロスディスク"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f19ded79fcbbd9817d57457cfc07a5fa1dabeda290192ce53591c28636f16f6e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one006",
+      "internal_id": "bs_one006",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "贼龙棍棒1",
+          "aliases": [
+            "骨锤龙棍棒1",
+            "骨锤龙棍棒2",
+            "骨锤龙棍棒3",
+            "贼龙棍棒2",
+            "贼龙棍棒3",
+            "土砂龙棍棒1",
+            "土砂龙棍棒2",
+            "土砂龙棍棒3",
+            "暴戾骨锤剑1",
+            "暴戾骨锤剑2"
+          ]
+        },
+        "en": {
+          "display_name": "Jagras Garotte I",
+          "aliases": [
+            "Baan Claw I",
+            "Baan Claw II",
+            "Baan Claw III",
+            "Jagras Garotte II",
+            "Jagras Garotte III",
+            "Barroth Club I",
+            "Barroth Club II",
+            "Barroth Club III",
+            "Radobaan Osseus I",
+            "Radobaan Osseus II"
+          ]
+        },
+        "ja": {
+          "display_name": "ジャグラスガロテⅠ",
+          "aliases": [
+            "バルキンガロテⅠ",
+            "バルキンガロテⅡ",
+            "バルキンガロテⅢ",
+            "ジャグラスガロテⅡ",
+            "ジャグラスガロテⅢ",
+            "ボルボクラブⅠ",
+            "ボルボクラブⅡ",
+            "ボルボクラブⅢ",
+            "ラグドスバルキンⅠ",
+            "ラグドスバルキンⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c37a93cdcec70d7d93526f18e8b2fdb60728f8eee58d222723ac13836cd3cbcc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one007",
+      "internal_id": "bs_one007",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的剑·幻",
+          "aliases": [
+            "金色的剑·水",
+            "金色的剑·龙",
+            "金色的剑·爆破",
+            "金色的剑·贼",
+            "金色的剑·毒妖",
+            "金色的剑·土砂",
+            "金色的剑·蛮颚",
+            "金色的剑·痹贼",
+            "金色的剑·浮空",
+            "金色的剑·风漂",
+            "金色的剑·骨锤",
+            "金色的剑·王"
+          ]
+        },
+        "en": {
+          "display_name": "Myth Gold Scimitar",
+          "aliases": [
+            "Gold Water Scimitar",
+            "Gold Dragon Scimitar",
+            "Gold Blast Scimitar",
+            "Glutton Gold Scimitar",
+            "Spew Gold Scimitar",
+            "Mud Gold Scimitar",
+            "Rage Gold Scimitar",
+            "Numb Gold Scimitar",
+            "Drifter Gold Scimitar",
+            "Stream Gold Scimitar",
+            "Tar Gold Scimitar",
+            "King Gold Scimitar"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の剣・幻",
+          "aliases": [
+            "金色の剣・水",
+            "金色の剣・龍",
+            "金色の剣・爆破",
+            "金色の剣・賊",
+            "金色の剣・毒妖",
+            "金色の剣・土砂",
+            "金色の剣・蛮顎",
+            "金色の剣・痺賊",
+            "金色の剣・浮空",
+            "金色の剣・風漂",
+            "金色の剣・骨鎚",
+            "金色の剣・王"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:038b489d7b06251d091b7b2cbdcf21ccde648a3955a6fc29daac57b8f8bdc5a2",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one008",
+      "internal_id": "bs_one008",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗切刀·幻",
+          "aliases": [
+            "铠罗切刀·贼",
+            "铠罗切刀·毒妖",
+            "铠罗切刀·土砂",
+            "铠罗切刀·蛮颚",
+            "铠罗切刀·痹贼",
+            "铠罗切刀·浮空",
+            "铠罗切刀·风漂",
+            "铠罗切刀·骨锤",
+            "铠罗切刀·王",
+            "铠罗切刀·水",
+            "铠罗切刀·龙",
+            "铠罗切刀·爆破",
+            "铠罗切刀·火"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Slicer \"Myth\"",
+          "aliases": [
+            "Taroth Slicer \"Glutton\"",
+            "Taroth Slicer \"Spew\"",
+            "Taroth Slicer \"Mud\"",
+            "Taroth Slicer \"Rage\"",
+            "Taroth Slicer \"Numb\"",
+            "Taroth Slicer \"Drifter\"",
+            "Taroth Slicer \"Stream\"",
+            "Taroth Slicer \"Tar\"",
+            "Taroth Slicer \"King\"",
+            "Taroth Slicer \"Water\"",
+            "Taroth Slicer \"Dragon\"",
+            "Taroth Slicer \"Blast\"",
+            "Taroth Slicer \"Fire\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラスライサー・幻",
+          "aliases": [
+            "ガイラスライサー・賊",
+            "ガイラスライサー・毒妖",
+            "ガイラスライサー・土砂",
+            "ガイラスライサー・蛮顎",
+            "ガイラスライサー・痺賊",
+            "ガイラスライサー・浮空",
+            "ガイラスライサー・風漂",
+            "ガイラスライサー・骨鎚",
+            "ガイラスライサー・王",
+            "ガイラスライサー・水",
+            "ガイラスライサー・龍",
+            "ガイラスライサー・爆破",
+            "ガイラスライサー・火"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1a6211f1139ad2db46db837054efa31514b393988606bf214a0bc43040e2b1ca",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one009",
+      "internal_id": "bs_one009",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后锐剑",
+          "aliases": [
+            "皇后锐剑·炎妃",
+            "皇后锐剑·灭尽",
+            "皇后锐剑·冥灯",
+            "魂焰龙剑·炎妃",
+            "魂焰龙剑·灭尽",
+            "魂焰龙剑·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Edge",
+          "aliases": [
+            "Empress Edge \"Blaze\"",
+            "Empress Edge \"Ruin\"",
+            "Empress Edge \"Styx\"",
+            "Soulfire Barb \"Blaze\"",
+            "Soulfire Barb \"Ruin\"",
+            "Soulfire Barb \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスエッジ",
+          "aliases": [
+            "エンプレスエッジ・炎妃",
+            "エンプレスエッジ・滅尽",
+            "エンプレスエッジ・冥灯",
+            "魂焔の龍剣・炎妃",
+            "魂焔の龍剣・滅尽",
+            "魂焔の龍剣・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:95bc3019c7bdacaa2021f9da63e6f69f5a3a8b22258cf0f8a66fcb8eee8bdc97",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one010",
+      "internal_id": "bs_one010",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "蛇神直刀1",
+          "aliases": [
+            "铬钢骑士剑1",
+            "铬钢骑士剑2",
+            "铬钢骑士剑3",
+            "浮空龙雄兵1",
+            "浮空龙雄兵2",
+            "蛇神直刀2"
+          ]
+        },
+        "en": {
+          "display_name": "Naaga Seax I",
+          "aliases": [
+            "Chrome Knight Sword I",
+            "Chrome Knight Sword II",
+            "Chrome Knight Sword III",
+            "Lumu Nightmare I",
+            "Lumu Nightmare II",
+            "Naaga Seax II"
+          ]
+        },
+        "ja": {
+          "display_name": "ナーガ＝サクスⅠ",
+          "aliases": [
+            "クロムナイトソードⅠ",
+            "クロムナイトソードⅡ",
+            "クロムナイトソードⅢ",
+            "ウルムーアーミンⅠ",
+            "ウルムーアーミンⅡ",
+            "ナーガ＝サクスⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f75a4a085c4d03f22b2fbfd4ec93c727096c0d26c003a34682be985482a099da",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one011",
+      "internal_id": "bs_one011",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "幻雷刃",
+          "aliases": [
+            "暴戾灰烬1",
+            "暴戾灰烬2",
+            "暴戾灰烬3",
+            "土砂龙混乱1",
+            "土砂龙混乱2",
+            "封龙古剑1",
+            "封龙古剑2"
+          ]
+        },
+        "en": {
+          "display_name": "Ephemeral Fulminator",
+          "aliases": [
+            "Radobaan Os I",
+            "Radobaan Os II",
+            "Radobaan Os III",
+            "Barroth Slicer I",
+            "Barroth Slicer II",
+            "Dragonseal Aldsword I",
+            "Dragonseal Aldsword II"
+          ]
+        },
+        "ja": {
+          "display_name": "幻雷刃",
+          "aliases": [
+            "ラグドスアッシュⅠ",
+            "ラグドスアッシュⅡ",
+            "ラグドスアッシュⅢ",
+            "ボルボスクランブルⅠ",
+            "ボルボスクランブルⅡ",
+            "龍封じの古剣Ⅰ",
+            "龍封じの古剣Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:910fcb2447aa4491854ef30e75e82472b1d3cae971f2473969f8f281fae55381",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one012",
+      "internal_id": "bs_one012",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰帝穹宫",
+          "aliases": [
+            "严冰微风"
+          ]
+        },
+        "en": {
+          "display_name": "Noble Ana Palas",
+          "aliases": [
+            "Icegale"
+          ]
+        },
+        "ja": {
+          "display_name": "氷帝アンナパレス",
+          "aliases": [
+            "アイスブリーゼ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:83ba2c27ec520aa492aad38a9fb441bc99a636cab047c09985fae65f97758a8a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one013",
+      "internal_id": "bs_one013",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金剑·幻",
+          "aliases": [
+            "皇金剑·痹贼",
+            "皇金剑·风漂",
+            "皇金剑·王"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Slicer \"Myth\"",
+          "aliases": [
+            "Kjárr Slicer \"Numb\"",
+            "Kjárr Slicer \"Stream\"",
+            "Kjárr Slicer \"King\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の剣・幻",
+          "aliases": [
+            "皇金の剣・痺賊",
+            "皇金の剣・風漂",
+            "皇金の剣・王"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1bb5623fd8a706f6ab7aad2da1566bd7457b34ff19461070c4fdb62d9bdec7e4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/bs_one014",
+      "internal_id": "bs_one014",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金剑·龙",
+          "aliases": [
+            "皇金剑·水",
+            "皇金剑·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Slicer \"Dragon\"",
+          "aliases": [
+            "Kjárr Slicer \"Water\"",
+            "Kjárr Slicer \"Blast\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の剣・龍",
+          "aliases": [
+            "皇金の剣・水",
+            "皇金の剣・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8b2e179c065aa2622d8f3903ec6c73628a30413d50f3f359093018c3ab83165f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one001",
+      "internal_id": "one001",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "炎王纹章",
+          "aliases": [
+            "炎王之剑",
+            "炎王绯色荣耀"
+          ]
+        },
+        "en": {
+          "display_name": "Teostra's Emblem",
+          "aliases": [
+            "Teostra's Spada",
+            "Teostra's Medal"
+          ]
+        },
+        "ja": {
+          "display_name": "テオ＝エンブレム",
+          "aliases": [
+            "テオ＝スパーダ",
+            "テスカ・デル・メダリ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0784b06e3b1e031bee9d1da31deeb995cba0d35dca4f7583f1cd8a019c5facc1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one002",
+      "internal_id": "one002",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "日冕短剑",
+          "aliases": [
+            "炙热锐剑",
+            "日冕短剑·改"
+          ]
+        },
+        "en": {
+          "display_name": "Corona",
+          "aliases": [
+            "Heat Edge",
+            "Corona+"
+          ]
+        },
+        "ja": {
+          "display_name": "コロナ",
+          "aliases": [
+            "ヒートエッジ",
+            "コロナ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7cbf96f0ae6e4b94074d3485bd7fbfdf27766cecb84fde61265e4dd5bb2b0552",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one003",
+      "internal_id": "one003",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公主刺剑",
+          "aliases": [
+            "女王刺剑"
+          ]
+        },
+        "en": {
+          "display_name": "Princess Rapier",
+          "aliases": [
+            "Queen Rapier"
+          ]
+        },
+        "ja": {
+          "display_name": "プリンセスレイピア",
+          "aliases": [
+            "クイーンレイピア"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e73200f1e6d029190cc129c734da3221b319c6899ff4ea689a406e738302687c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one004",
+      "internal_id": "one004",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "歼灭之尖兵",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Eradication Vanguard",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "討滅の尖兵",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:924bdce9bca073037fc2bd531b9dafa85237ff53014aeddbf4724b5c31ffbeee",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one005",
+      "internal_id": "one005",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "三星剑",
+          "aliases": [
+            "冰凌三星剑",
+            "冰凌三星剑·改"
+          ]
+        },
+        "en": {
+          "display_name": "Rimespire",
+          "aliases": [
+            "Legia Rimespire",
+            "Legia Rimespire+"
+          ]
+        },
+        "ja": {
+          "display_name": "トリアングラー",
+          "aliases": [
+            "レイ＝トリアングラー",
+            "レイ＝トリアングラー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:750df5cf5ae98cdaf4115ff6b84cbe41314b14a3851c3c8a94ff07482e59ceb5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one006",
+      "internal_id": "one006",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "蛮颚龙剑",
+          "aliases": [
+            "蛮颚剑追寻者",
+            "蛮颚剑追寻者·改",
+            "追寻者蛮炎剑"
+          ]
+        },
+        "en": {
+          "display_name": "Flammensucher",
+          "aliases": [
+            "Gnashing Flammensucher",
+            "Gnashing Flammensucher+",
+            "Lohensieger"
+          ]
+        },
+        "ja": {
+          "display_name": "フラムエルシーカ",
+          "aliases": [
+            "蛮顎剣フラムシーカ",
+            "蛮顎剣フラムシーカ改",
+            "蛮炎剣ロギンシーカ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:92c3acca05b8c1f57b6eea55b851393fd00ced9aed17980b1f64e9dffc0c2044",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one007",
+      "internal_id": "one007",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "至尊剑",
+          "aliases": [
+            "重铁剑",
+            "重铁剑改"
+          ]
+        },
+        "en": {
+          "display_name": "Master Bang",
+          "aliases": [
+            "Heavy Bang",
+            "Heavy Bang+"
+          ]
+        },
+        "ja": {
+          "display_name": "マスターバング",
+          "aliases": [
+            "ヘビィバング",
+            "ヘビィバング改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a4e47f9dd3f4e5b218050357ebcedc98ca52342c5393f7b16de9381816149a5d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one008",
+      "internal_id": "one008",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇家蔷薇",
+          "aliases": [
+            "女王蔷薇",
+            "皇家蔷薇·改",
+            "君王蔷薇"
+          ]
+        },
+        "en": {
+          "display_name": "Royal Rose",
+          "aliases": [
+            "Queen Rose",
+            "Royal Rose+",
+            "Rose Highness"
+          ]
+        },
+        "ja": {
+          "display_name": "ロイヤルローズ",
+          "aliases": [
+            "クイーンローズ",
+            "ロイヤルローズ改",
+            "ハイネスローズ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:87f703db40afb0d235bc52de04df43ffd9eb84207db5f4f4ec21b74272669a7f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one009",
+      "internal_id": "one009",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "致命暴龙",
+          "aliases": [
+            "致命宽剑"
+          ]
+        },
+        "en": {
+          "display_name": "Fatal Jho",
+          "aliases": [
+            "Fatal Bite"
+          ]
+        },
+        "ja": {
+          "display_name": "フェイタルジョー",
+          "aliases": [
+            "フェイタルヴァイト"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9926d309bdbc494915d929e4c40e7a47b22c632ea243122abd9033b638d7fe2c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one010",
+      "internal_id": "one010",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "轰龙爪",
+          "aliases": [
+            "轰龙爪·改",
+            "轰剑【虎眼】"
+          ]
+        },
+        "en": {
+          "display_name": "Rex Talon",
+          "aliases": [
+            "Rex Talon+",
+            "Tigrex Sword"
+          ]
+        },
+        "ja": {
+          "display_name": "レックスクロウ",
+          "aliases": [
+            "レックスクロウ改",
+            "轟剣【虎眼】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dbd9a59852ae5e3d6f0dca290ff6de3e4ea300c7ab480cdac5078739249ab064",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one011",
+      "internal_id": "one011",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "追寻者雷颚剑",
+          "aliases": [
+            "追寻者雷颚剑·改",
+            "追寻者蛮雷剑"
+          ]
+        },
+        "en": {
+          "display_name": "Donnersieger",
+          "aliases": [
+            "Donnersieger+",
+            "Fulguration's Talon"
+          ]
+        },
+        "ja": {
+          "display_name": "雷顎剣ドネルシーカ",
+          "aliases": [
+            "雷顎剣ドネルシーカ改",
+            "蛮雷剣カーリシーカ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f1661d108f82c54760338298ec332db1c930af83346898c39f91398239c8def4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one012",
+      "internal_id": "one012",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "凌冽冰川",
+          "aliases": [
+            "霜漂三星剑"
+          ]
+        },
+        "en": {
+          "display_name": "Nephilim Glacia",
+          "aliases": [
+            "Hoarcry Rimespire"
+          ]
+        },
+        "ja": {
+          "display_name": "ネフ＝グレイシア",
+          "aliases": [
+            "ブリーナ＝トリアングラー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0be6264e1432741d415179b20da4d3cb0f7d87e95c190d01b12a08185f0601fc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one013",
+      "internal_id": "one013",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "歼灭之尖兵【狂】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Madness",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "討滅の尖兵【狂】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7c5174e957432ed8109bc4810ac4d173d45ccc95e23f02f4a824ffb4822f02b3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one014",
+      "internal_id": "one014",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "隐密锐剑",
+          "aliases": [
+            "隐密锐剑·改",
+            "暗夜剑【昏冥】"
+          ]
+        },
+        "en": {
+          "display_name": "Hidden Edge",
+          "aliases": [
+            "Hidden Edge+",
+            "Flash in the Night"
+          ]
+        },
+        "ja": {
+          "display_name": "ヒドゥンエッジ",
+          "aliases": [
+            "ヒドゥンエッジ改",
+            "闇夜剣【昏冥】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4a8b4b7fa81407f7620166b30e95ddb9f71527ef23dcf2754e5cd6f128b8628e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one015",
+      "internal_id": "one015",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎龙锐剑",
+          "aliases": [
+            "爆剑战火之刀"
+          ]
+        },
+        "en": {
+          "display_name": "Dios Edge",
+          "aliases": [
+            "Booming Barrage"
+          ]
+        },
+        "ja": {
+          "display_name": "ディオスエッジ",
+          "aliases": [
+            "爆剣サーモバレッジ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:982bdb178e516142f730181ce83ab6750404ec63b829910280f6d4aa54858352",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one016",
+      "internal_id": "one016",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "妙法应身－莲华－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Manifested Lotus",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "妙法応身－蓮華－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:322a2946236b60d21c58884882871bd904fa5a2e064d669e23f8111d0515cd0c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one017",
+      "internal_id": "one017",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业铊渴望",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fate's Shear",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業鉈アングラム",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:890bdfd988bc440c2370bed7b883899194108f2b7c0d538e580548a8fc4c6d82",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one018",
+      "internal_id": "one018",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰尖利刃",
+          "aliases": [
+            "冰尖利刃·改",
+            "冰牙锐爪"
+          ]
+        },
+        "en": {
+          "display_name": "Icicle Spike",
+          "aliases": [
+            "Icicle Spike+",
+            "Nardebosche"
+          ]
+        },
+        "ja": {
+          "display_name": "アイシクルスパイク",
+          "aliases": [
+            "アイシクルスパイク改",
+            "ナールドボッシェ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4d03c39584f664f1c3405db60e465ccaca6f8312bac834fbbf8991089ef33fd1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one019",
+      "internal_id": "one019",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王剑疾雷",
+          "aliases": [
+            "王剑疾雷·改",
+            "王牙剑【折雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Firebolt",
+          "aliases": [
+            "Usurper's Firebolt+",
+            "Despot's Crookbolt"
+          ]
+        },
+        "ja": {
+          "display_name": "王剣シツライ",
+          "aliases": [
+            "王剣シツライ改",
+            "王牙剣【折雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d01f8f268b38d23d6fec3dfd61173ddcd8004a97406ae96ac839c8df427bec32",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one020",
+      "internal_id": "one020",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱剑龙鳞",
+          "aliases": [
+            "狼牙剑【欲狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakescale",
+          "aliases": [
+            "Stygian Luxuria"
+          ]
+        },
+        "ja": {
+          "display_name": "獄剣リュウリン",
+          "aliases": [
+            "狼牙剣【欲獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3f2b9b5d0c123cef58fc9b81c30346b640c483dae09baf3ef280713c621890df",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one021",
+      "internal_id": "one021",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "疯狂玫瑰",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lunatic Rose",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ルナティックローズ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b3de11c06f3e6362301c78e1466f526e50066ed632dc7abb4b8fc62c0194e463",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one022",
+      "internal_id": "one022",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "白金黎明",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Platinum Dawn",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "プラチナムドーン",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:605adf865a1b44b25ed90855145bc91d7308d4aa28d38562a9259bd9b7648697",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one023",
+      "internal_id": "one023",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金兽棍",
+          "aliases": [
+            "金兽棍【禁忌】"
+          ]
+        },
+        "en": {
+          "display_name": "Rajang Club",
+          "aliases": [
+            "Banned Rajang Club"
+          ]
+        },
+        "ja": {
+          "display_name": "金獣棍",
+          "aliases": [
+            "金獣棍【禁忌】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5c137c3b90fcc4377a1c36f7dd7b7d53fc7684319c29f5a64ab15c3027c71efb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one024",
+      "internal_id": "one024",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神棍豪猩",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Mace",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神棍グランジャ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0f5b9765ceddd37d48fde104e96bb53ee3a16bb2b5760c1e3db8d1ee41b7d893",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one025",
+      "internal_id": "one025",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之恒剑",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Sword",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の恒剣",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4a0c0d0bd7632cae0c1595b459e1e2060dca921d45dd6420d2bdfabc42dca11e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one027",
+      "internal_id": "one027",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑之剑",
+          "aliases": [
+            "煌黑剑双影"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Sword",
+          "aliases": [
+            "Alatreon Star"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の剣",
+          "aliases": [
+            "煌黒剣アルスタ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9479cb6ac9a82c15abaf34f60a1f578704d98f50bc12f25ea709dd3a200dd163",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one028",
+      "internal_id": "one028",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "传说之剑",
+          "aliases": [
+            "遗产之剑"
+          ]
+        },
+        "en": {
+          "display_name": "Legendary Bang",
+          "aliases": [
+            "Legacy Bang"
+          ]
+        },
+        "ja": {
+          "display_name": "レジェンドバング",
+          "aliases": [
+            "レガシーバング"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d852a74f3cd83046e6978faa95bc2169e2785a3690333412b532defbafc8e14f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one029",
+      "internal_id": "one029",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "苍色日冕短剑",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Blue Corona",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ブルーコロナ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0512954c1c9cefe6805f0ca24d29db222b73173c0db260142e34dd8dd84d9cc0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one030",
+      "internal_id": "one030",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "猎魔人的银剑",
+          "aliases": [
+            "猎魔人的银剑＋",
+            "猎魔人的银剑＋＋"
+          ]
+        },
+        "en": {
+          "display_name": "Witcher's Silver Sword",
+          "aliases": [
+            "Witcher's Silver Sword+",
+            "Witcher's Silver Sword++"
+          ]
+        },
+        "ja": {
+          "display_name": "ウィッチャーの銀の剣",
+          "aliases": [
+            "ウィッチャーの銀の剣＋",
+            "ウィッチャーの銀の剣＋＋"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5790f6d82f2a02f3b179263e21a7bc8eb01102a35e7096b2de0fa471456476af",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one031",
+      "internal_id": "one031",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿利剑",
+          "aliases": [
+            "宫廷继剑【新星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Sword",
+          "aliases": [
+            "Royal Nova Sword"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスソード",
+          "aliases": [
+            "宮廷継剣【新星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:57cd5c7e9289802e6ec34f59ce8d037aa7350d83e6a84365f6e9547d32cda39a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one032",
+      "internal_id": "one032",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "劫难爪",
+          "aliases": [
+            "吼剑【地咬】"
+          ]
+        },
+        "en": {
+          "display_name": "Accursed Claw",
+          "aliases": [
+            "Stonebite"
+          ]
+        },
+        "ja": {
+          "display_name": "カーサスクロウ",
+          "aliases": [
+            "吼剣【地咬】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5bb9fd81b4d790f3f55f9f6556da07bf61eb0fb7c07676d800be78be4b3bf518",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one033",
+      "internal_id": "one033",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "银白雪波",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Silverbosche",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "シルバーボッシュ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7480c7baaa622830ee2013ce613afda0817249215e6db2f674a307f1e0be9527",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one034",
+      "internal_id": "one034",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙剑",
+          "aliases": [
+            "真·黑龙剑"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Sword",
+          "aliases": [
+            "True Fatalis Sword"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍剣",
+          "aliases": [
+            "真・黒龍剣"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a8c8486f0855091c409465e2e4ebbbf1758c19bb15565e3faa784f303ea1e743",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/one/one035",
+      "internal_id": "one035",
+      "metadata": {
+        "family": "one",
+        "path_family": "wp/one"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙撕裂牙·冰",
+          "aliases": [
+            "赤龙撕裂牙·火",
+            "赤龙撕裂牙·水",
+            "赤龙撕裂牙·雷",
+            "赤龙撕裂牙·龙",
+            "赤龙撕裂牙·毒",
+            "赤龙撕裂牙·麻痹",
+            "赤龙撕裂牙·睡眠",
+            "赤龙撕裂牙·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostfang",
+          "aliases": [
+            "Safi's Hellfang",
+            "Safi's Aquafang",
+            "Safi's Boltfang",
+            "Safi's Drakfang",
+            "Safi's Venomfang",
+            "Safi's Bindfang",
+            "Safi's Dreamfang",
+            "Safi's Shatterfang"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ裂ク牙・氷",
+          "aliases": [
+            "赤龍ノ裂ク牙・火",
+            "赤龍ノ裂ク牙・水",
+            "赤龍ノ裂ク牙・雷",
+            "赤龍ノ裂ク牙・龍",
+            "赤龍ノ裂ク牙・毒",
+            "赤龍ノ裂ク牙・麻痺",
+            "赤龍ノ裂ク牙・睡眠",
+            "赤龍ノ裂ク牙・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

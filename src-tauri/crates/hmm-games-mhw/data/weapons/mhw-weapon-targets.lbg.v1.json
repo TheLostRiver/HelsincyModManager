@@ -1,0 +1,1547 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:4f1271c5e279fb4dbd1e4ffa1b2676826d62522544aa4d1035066b2c0232b497",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg001",
+      "internal_id": "bs_lbg001",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑钢弩1",
+          "aliases": [
+            "迅击炼弩1",
+            "迅击炼弩2",
+            "迅击炼弩3",
+            "高能迅击炼弩1",
+            "高能迅击炼弩2",
+            "高能迅击炼弩3",
+            "铬钢迅击弩1",
+            "铬钢迅击弩2",
+            "灭尽龙轻弩炮",
+            "浮空龙迅击弩1",
+            "浮空龙迅击弩2",
+            "浮空龙飓风炮1",
+            "浮空龙飓风炮2",
+            "浮空龙飓风炮3",
+            "爆鳞龙台风炮1",
+            "爆鳞龙台风炮2",
+            "贼龙迅击弩1",
+            "贼龙迅击弩2",
+            "贼龙迅击弩3",
+            "贼龙火炮1",
+            "贼龙火炮2",
+            "贼龙火炮3",
+            "火炎迅击弩1",
+            "火炎迅击弩2",
+            "火龙破坏炮1",
+            "火龙破坏炮2",
+            "闪电迅击弩1",
+            "闪电迅击弩2",
+            "雷光迅击弩1",
+            "雷光迅击弩2",
+            "雷光迅击弩3",
+            "冰雪迅击弩1",
+            "冰雪迅击弩2",
+            "寒霜迅击弩1",
+            "寒霜迅击弩2",
+            "黑钢弩2",
+            "冥灯龙轻弩炮",
+            "防卫队连装式轻弩1",
+            "防卫队连装式轻弩2",
+            "防卫队连装式轻弩3",
+            "防卫队连装式轻弩4",
+            "防卫队连装式轻弩5",
+            "浮空龙飓风炮4",
+            "火龙破坏炮3",
+            "雷光迅击弩4",
+            "寒霜迅击弩3",
+            "迅击炼弩"
+          ]
+        },
+        "en": {
+          "display_name": "Blacksteel Crossbow I",
+          "aliases": [
+            "Chain Blitz I",
+            "Chain Blitz II",
+            "Chain Blitz III",
+            "High Chain Blitz I",
+            "High Chain Blitz II",
+            "High Chain Blitz III",
+            "Cross Blitz I",
+            "Cross Blitz II",
+            "Nergal Spitter",
+            "Lumu Blitz I",
+            "Lumu Blitz II",
+            "Lumu Typhon I",
+            "Lumu Typhon II",
+            "Lumu Typhon III",
+            "Bazel Typhoon I",
+            "Bazel Typhoon II",
+            "Jagras Blitz I",
+            "Jagras Blitz II",
+            "Jagras Blitz III",
+            "Jagras Fire I",
+            "Jagras Fire II",
+            "Jagras Fire III",
+            "Flame Blitz I",
+            "Flame Blitz II",
+            "Rathbuster I",
+            "Rathbuster II",
+            "Thunder Blitz I",
+            "Thunder Blitz II",
+            "Lightning Blitz I",
+            "Lightning Blitz II",
+            "Lightning Blitz III",
+            "Snow Blitz I",
+            "Snow Blitz II",
+            "Frost Blitz I",
+            "Frost Blitz II",
+            "Blacksteel Crossbow II",
+            "Xeno Neqiina",
+            "Defender Light Bowgun I",
+            "Defender Light Bowgun II",
+            "Defender Light Bowgun III",
+            "Defender Light Bowgun IV",
+            "Defender Light Bowgun V",
+            "Lumu Typhon IV",
+            "Rathbuster III",
+            "Lightning Blitz IV",
+            "Frost Blitz III",
+            "Chain Blitz"
+          ]
+        },
+        "ja": {
+          "display_name": "黒鋼の弩Ⅰ",
+          "aliases": [
+            "チェーンブリッツⅠ",
+            "チェーンブリッツⅡ",
+            "チェーンブリッツⅢ",
+            "ハイチェーンブリッツⅠ",
+            "ハイチェーンブリッツⅡ",
+            "ハイチェーンブリッツⅢ",
+            "クロスブリッツⅠ",
+            "クロスブリッツⅡ",
+            "ネルガルツィエル",
+            "ウルムーブリッツⅠ",
+            "ウルムーブリッツⅡ",
+            "ウルムーティフォンⅠ",
+            "ウルムーティフォンⅡ",
+            "ウルムーティフォンⅢ",
+            "バゼルタイフーンⅠ",
+            "バゼルタイフーンⅡ",
+            "ジャグラスブリッツⅠ",
+            "ジャグラスブリッツⅡ",
+            "ジャグラスブリッツⅢ",
+            "ジャグラスファイアⅠ",
+            "ジャグラスファイアⅡ",
+            "ジャグラスファイアⅢ",
+            "フレイムブリッツⅠ",
+            "フレイムブリッツⅡ",
+            "レウスバスターⅠ",
+            "レウスバスターⅡ",
+            "サンダーブリッツⅠ",
+            "サンダーブリッツⅡ",
+            "ライトニングブリッツⅠ",
+            "ライトニングブリッツⅡ",
+            "ライトニングブリッツⅢ",
+            "スノウブリッツⅠ",
+            "スノウブリッツⅡ",
+            "フロストブリッツⅠ",
+            "フロストブリッツⅡ",
+            "黒鋼の弩Ⅱ",
+            "ゼノ＝ネキーナ",
+            "防衛隊連装式軽弩Ⅰ",
+            "防衛隊連装式軽弩Ⅱ",
+            "防衛隊連装式軽弩Ⅲ",
+            "防衛隊連装式軽弩Ⅳ",
+            "防衛隊連装式軽弩Ⅴ",
+            "ウルムーティフォンⅣ",
+            "レウスバスターⅢ",
+            "ライトニングブリッツⅣ",
+            "フロストブリッツⅢ",
+            "チェーンブリッツ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8ee62f893f9fef31bdbd5690e7e826bd43b0ec045c504b9f96fd594949ecd739",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg002",
+      "internal_id": "bs_lbg002",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "龙骨弩1",
+          "aliases": [
+            "猎人步枪1",
+            "猎人步枪2",
+            "猎人步枪3",
+            "能量步枪1",
+            "能量步枪2",
+            "能量步枪3",
+            "狙击射手1",
+            "狙击射手2",
+            "尸套龙轻弩",
+            "火炎步枪1",
+            "火炎步枪2",
+            "蛮颚龙破坏炮1",
+            "蛮颚龙破坏炮2",
+            "蛮颚龙破坏炮3",
+            "泥岩步枪1",
+            "泥岩步枪2",
+            "泥岩步枪3",
+            "泥鱼龙子弹弩1",
+            "泥鱼龙子弹弩2",
+            "泥鱼龙子弹弩3",
+            "熔岩子弹弩1",
+            "熔岩子弹弩2",
+            "土砂龙步枪1",
+            "土砂龙步枪2",
+            "土砂龙步枪3",
+            "土砂龙射手1",
+            "土砂龙射手2",
+            "土砂龙射手3",
+            "惨爪步枪1",
+            "惨爪步枪2",
+            "龙骨弩2",
+            "龙骨弩3",
+            "蛮颚龙破坏炮4",
+            "泥鱼龙子弹弩4"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonbone Bowgun I",
+          "aliases": [
+            "Hunter's Rifle I",
+            "Hunter's Rifle II",
+            "Hunter's Rifle III",
+            "Power Rifle I",
+            "Power Rifle II",
+            "Power Rifle III",
+            "Sniper Shot I",
+            "Sniper Shot II",
+            "Hazak Ereipia",
+            "Blazing Rifle I",
+            "Blazing Rifle II",
+            "Anja Buster I",
+            "Anja Buster II",
+            "Anja Buster III",
+            "Madness Rifle I",
+            "Madness Rifle II",
+            "Madness Rifle III",
+            "Jyura Bullet I",
+            "Jyura Bullet II",
+            "Jyura Bullet III",
+            "Lava Bullet I",
+            "Lava Bullet II",
+            "Carapace Rifle I",
+            "Carapace Rifle II",
+            "Carapace Rifle III",
+            "Barroth Shot I",
+            "Barroth Shot II",
+            "Barroth Shot III",
+            "Garon Rifle I",
+            "Garon Rifle II",
+            "Dragonbone Bowgun II",
+            "Dragonbone Bowgun III",
+            "Anja Buster IV",
+            "Jyura Bullet IV"
+          ]
+        },
+        "ja": {
+          "display_name": "龍骨弩Ⅰ",
+          "aliases": [
+            "ハンターライフルⅠ",
+            "ハンターライフルⅡ",
+            "ハンターライフルⅢ",
+            "パワーライフルⅠ",
+            "パワーライフルⅡ",
+            "パワーライフルⅢ",
+            "スナイプシューターⅠ",
+            "スナイプシューターⅡ",
+            "ハザクエリピア",
+            "ブレイズライフルⅠ",
+            "ブレイズライフルⅡ",
+            "ジャナフバスターⅠ",
+            "ジャナフバスターⅡ",
+            "ジャナフバスターⅢ",
+            "マッドライフルⅠ",
+            "マッドライフルⅡ",
+            "マッドライフルⅢ",
+            "シュラムバレットⅠ",
+            "シュラムバレットⅡ",
+            "シュラムバレットⅢ",
+            "ラヴァバレットⅠ",
+            "ラヴァバレットⅡ",
+            "ドラグロライフルⅠ",
+            "ドラグロライフルⅡ",
+            "ドラグロライフルⅢ",
+            "ボルボショットⅠ",
+            "ボルボショットⅡ",
+            "ボルボショットⅢ",
+            "ガロンライフルⅠ",
+            "ガロンライフルⅡ",
+            "龍骨弩Ⅱ",
+            "龍骨弩Ⅲ",
+            "ジャナフバスターⅣ",
+            "シュラムバレットⅣ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0f453554bdb2bb2f43a8544470e263bcb1f017fa872d35e31f1bfadffe71d4b0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg003",
+      "internal_id": "bs_lbg003",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的弩·王",
+          "aliases": [
+            "金色的弩·狙击",
+            "金色的弩·迫击",
+            "金色的弩·射击",
+            "金色的弩·贼",
+            "金色的弩·泥鱼",
+            "金色的弩·土砂",
+            "金色的弩·蛮颚",
+            "金色的弩·浮空",
+            "金色的弩·惨爪",
+            "金色的弩·尸套",
+            "金色的弩·熔岩",
+            "金色的弩·爆鳞"
+          ]
+        },
+        "en": {
+          "display_name": "King Gold Razer",
+          "aliases": [
+            "Gold Pierce Razer",
+            "Gold Spread Razer",
+            "Gold Shot Razer",
+            "Glutton Gold Razer",
+            "Mire Gold Razer",
+            "Mud Gold Razer",
+            "Rage Gold Razer",
+            "Drifter Gold Razer",
+            "Claw Gold Razer",
+            "Decay Gold Razer",
+            "Erupter Gold Razer",
+            "Bomber Gold Razer"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の弩・王",
+          "aliases": [
+            "金色の弩・狙撃",
+            "金色の弩・迫撃",
+            "金色の弩・射撃",
+            "金色の弩・賊",
+            "金色の弩・泥魚",
+            "金色の弩・土砂",
+            "金色の弩・蛮顎",
+            "金色の弩・浮空",
+            "金色の弩・惨爪",
+            "金色の弩・屍套",
+            "金色の弩・溶岩",
+            "金色の弩・爆鱗"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:facaf74877d470a6af3acb5147a5ef874b107a50f6c5e1d82a63dbfc9bada667",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg004",
+      "internal_id": "bs_lbg004",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗迅击弩·王",
+          "aliases": [
+            "铠罗迅击弩·贼",
+            "铠罗迅击弩·泥鱼",
+            "铠罗迅击弩·土砂",
+            "铠罗迅击弩·蛮颚",
+            "铠罗迅击弩·浮空",
+            "铠罗迅击弩·惨爪",
+            "铠罗迅击弩·尸套",
+            "铠罗迅击弩·熔岩",
+            "铠罗迅击弩·爆鳞",
+            "铠罗迅击弩·狙击",
+            "铠罗迅击弩·迫击",
+            "铠罗迅击弩·射击",
+            "铠罗迅击弩·援击"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Blitz \"King\"",
+          "aliases": [
+            "Taroth Blitz \"Glutton\"",
+            "Taroth Blitz \"Mire\"",
+            "Taroth Blitz \"Mud\"",
+            "Taroth Blitz \"Rage\"",
+            "Taroth Blitz \"Drifter\"",
+            "Taroth Blitz \"Claw\"",
+            "Taroth Blitz \"Decay\"",
+            "Taroth Blitz \"Erupter\"",
+            "Taroth Blitz \"Bomber\"",
+            "Taroth Blitz \"Pierce\"",
+            "Taroth Blitz \"Spread\"",
+            "Taroth Blitz \"Shot\"",
+            "Taroth Blitz \"Support\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラブリッツ・王",
+          "aliases": [
+            "ガイラブリッツ・賊",
+            "ガイラブリッツ・泥魚",
+            "ガイラブリッツ・土砂",
+            "ガイラブリッツ・蛮顎",
+            "ガイラブリッツ・浮空",
+            "ガイラブリッツ・惨爪",
+            "ガイラブリッツ・屍套",
+            "ガイラブリッツ・溶岩",
+            "ガイラブリッツ・爆鱗",
+            "ガイラブリッツ・狙撃",
+            "ガイラブリッツ・迫撃",
+            "ガイラブリッツ・射撃",
+            "ガイラブリッツ・援撃"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e0fcf6d57e6675085742739a4c223a3099c68b3c4c3e6ccba0d19fd9b4bcafbe",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg005",
+      "internal_id": "bs_lbg005",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后甲壳",
+          "aliases": [
+            "皇后甲壳·炎妃",
+            "皇后甲壳·灭尽",
+            "皇后甲壳·冥灯",
+            "魂焰龙弩·炎妃",
+            "魂焰龙弩·灭尽",
+            "魂焰龙弩·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Shell",
+          "aliases": [
+            "Empress Shell \"Blaze\"",
+            "Empress Shell \"Ruin\"",
+            "Empress Shell \"Styx\"",
+            "Soulfire Rasp \"Blaze\"",
+            "Soulfire Rasp \"Ruin\"",
+            "Soulfire Rasp \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスシェル",
+          "aliases": [
+            "エンプレスシェル・炎妃",
+            "エンプレスシェル・滅尽",
+            "エンプレスシェル・冥灯",
+            "魂焔の龍弩・炎妃",
+            "魂焔の龍弩・滅尽",
+            "魂焔の龍弩・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fea0317538e1ae2f97defaba617bb543225f2f868c7ba50732b1d49d781ac51f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg006",
+      "internal_id": "bs_lbg006",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑羽弩1",
+          "aliases": [
+            "十字猛击弩1",
+            "十字猛击弩2",
+            "十字猛击弩3",
+            "黑羽弩2",
+            "梦魇种子1",
+            "梦魇种子2",
+            "斩龙迅击弩",
+            "罪罚迅击弩1",
+            "罪罚迅击弩2",
+            "爆鳞龙核心",
+            "隐密子弹弩1",
+            "隐密子弹弩2",
+            "牙龙弩【风噬】1",
+            "牙龙弩【风噬】2",
+            "轰龙火炮1",
+            "轰龙火炮2",
+            "魂魄炮苍炎弩",
+            "银光煌龙弩",
+            "舄湖迅击弩1",
+            "舄湖迅击弩2",
+            "冥灯龙轻弩炮改",
+            "劫难火炮"
+          ]
+        },
+        "en": {
+          "display_name": "Blackwing Bowgun I",
+          "aliases": [
+            "Crossblitzer I",
+            "Crossblitzer II",
+            "Crossblitzer III",
+            "Blackwing Bowgun II",
+            "Nightmare's Seed I",
+            "Nightmare's Seed II",
+            "Glavenus Blitz",
+            "Acid Blitz I",
+            "Acid Blitz II",
+            "Bazelcore",
+            "Hidden Bullet I",
+            "Hidden Bullet II",
+            "Saber's Howl I",
+            "Saber's Howl II",
+            "Rex Fusillade I",
+            "Rex Fusillade II",
+            "Azure Soulscorcher",
+            "Argent Ray",
+            "Laguna Blitz I",
+            "Laguna Blitz II",
+            "Xeno Neqiina+",
+            "Accursed Fire"
+          ]
+        },
+        "ja": {
+          "display_name": "黒羽の弩Ⅰ",
+          "aliases": [
+            "クロスブリッツァⅠ",
+            "クロスブリッツァⅡ",
+            "クロスブリッツァⅢ",
+            "黒羽の弩Ⅱ",
+            "ナイトメアシードⅠ",
+            "ナイトメアシードⅡ",
+            "ディノブリッツ",
+            "ザルファブリッツⅠ",
+            "ザルファブリッツⅡ",
+            "バゼルコア",
+            "ヒドゥンバレットⅠ",
+            "ヒドゥンバレットⅡ",
+            "牙竜弩【風喰】Ⅰ",
+            "牙竜弩【風喰】Ⅱ",
+            "レックスファイアⅠ",
+            "レックスファイアⅡ",
+            "蒼炎弩ソウルバスター",
+            "煌竜弩シルバーレイ",
+            "ラグーナブリッツⅠ",
+            "ラグーナブリッツⅡ",
+            "ゼノ＝ネキーナ改",
+            "カーサスファイア"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e0e02435fa1213ba284b152f450b2f7305827ac481e1141f4468949e0565deff",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg007",
+      "internal_id": "bs_lbg007",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙弩1",
+          "aliases": [
+            "破碎发射器1",
+            "破碎发射器2",
+            "破碎发射器3",
+            "晃射雷颚1",
+            "晃射雷颚2",
+            "冰鱼龙发射器1",
+            "冰鱼龙发射器2",
+            "火碎铳1",
+            "火碎铳2",
+            "巨牛大弩1",
+            "巨牛大弩2",
+            "土砂龙坍崩1",
+            "土砂龙坍崩2",
+            "碎龙射手1",
+            "碎龙射手2",
+            "封龙弩2"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonseal Bowgun I",
+          "aliases": [
+            "Breakshot I",
+            "Breakshot II",
+            "Breakshot III",
+            "Fulgurshot I",
+            "Fulgurshot II",
+            "Beo Shooter I",
+            "Beo Shooter II",
+            "Fireshatter I",
+            "Fireshatter II",
+            "Mammoth Bowgun I",
+            "Mammoth Bowgun II",
+            "Barroth Bazooka I",
+            "Barroth Bazooka II",
+            "Brachydios Shot I",
+            "Brachydios Shot II",
+            "Dragonseal Bowgun II"
+          ]
+        },
+        "ja": {
+          "display_name": "龍封じの弩Ⅰ",
+          "aliases": [
+            "ブレイクシューターⅠ",
+            "ブレイクシューターⅡ",
+            "ブレイクシューターⅢ",
+            "バル＝ジャナールⅠ",
+            "バル＝ジャナールⅡ",
+            "ブランシューターⅠ",
+            "ブランシューターⅡ",
+            "火砕銃Ⅰ",
+            "火砕銃Ⅱ",
+            "巨牛の大弩Ⅰ",
+            "巨牛の大弩Ⅱ",
+            "ボロスボローカⅠ",
+            "ボロスボローカⅡ",
+            "ディオスショットⅠ",
+            "ディオスショットⅡ",
+            "龍封じの弩Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:21f96fe7f9969fdf25b3b6f3ebf0ed56153e6568a91058d41c5851bf9ba6bbb5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg008",
+      "internal_id": "bs_lbg008",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰姬隼击",
+          "aliases": [
+            "严冰飞鹰"
+          ]
+        },
+        "en": {
+          "display_name": "Graceful Almaria",
+          "aliases": [
+            "Icehawk"
+          ]
+        },
+        "ja": {
+          "display_name": "氷姫アルマリア",
+          "aliases": [
+            "アイスイーグル"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e568b4b54c3649e83e2eab071a5083468801c122b0b8aae694715d12366ab80c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg009",
+      "internal_id": "bs_lbg009",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金弩·王",
+          "aliases": [
+            "皇金弩·爆鳞",
+            "皇金弩·惨爪",
+            "皇金弩·尸套"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Blitz \"King\"",
+          "aliases": [
+            "Kjárr Blitz \"Bomber\"",
+            "Kjárr Blitz \"Claw\"",
+            "Kjárr Blitz \"Decay\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の弩・王",
+          "aliases": [
+            "皇金の弩・爆鱗",
+            "皇金の弩・惨爪",
+            "皇金の弩・屍套"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d998dbe1a8110ac74b224f2d0c569417e78891b3709ce92a1689e06a7d362f63",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/bs_lbg010",
+      "internal_id": "bs_lbg010",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金弩·冰",
+          "aliases": [
+            "皇金弩·雷"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Blitz \"Ice\"",
+          "aliases": [
+            "Kjárr Blitz \"Thunder\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の弩・氷",
+          "aliases": [
+            "皇金の弩・雷"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5539b500997a197210cc2e3e3f42bff80fcf430497511ae44b6f1b6d6fa75034",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg001",
+      "internal_id": "lbg001",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼岛",
+          "aliases": [
+            "大鬼岛",
+            "神岛"
+          ]
+        },
+        "en": {
+          "display_name": "Onigashima",
+          "aliases": [
+            "Dai-Onigashima",
+            "God's Isle"
+          ]
+        },
+        "ja": {
+          "display_name": "鬼ヶ島",
+          "aliases": [
+            "大鬼ヶ島",
+            "神ヶ島"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d36d5e536c7d0db6ed6ca4de4b976bbf24f1d651c6be2232827cda5419a8ce70",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg002",
+      "internal_id": "lbg002",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "幻兽筒",
+          "aliases": [
+            "幻兽筒改",
+            "幻兽筒【三角】",
+            "麒麟筒【三界三祸】"
+          ]
+        },
+        "en": {
+          "display_name": "Mythical Horn",
+          "aliases": [
+            "Mythical Horn+",
+            "Mythical Three-Horn",
+            "Mythical Three-Evils"
+          ]
+        },
+        "ja": {
+          "display_name": "幻獣筒",
+          "aliases": [
+            "幻獣筒改",
+            "幻獣筒【三ツ角】",
+            "幻獣筒【三界三禍】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:902bea0d1770926c7e437d0b590fa8c2421abb722ac60b41ba621483eeecbe39",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg003",
+      "internal_id": "lbg003",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢冰蜂弩",
+          "aliases": [
+            "钢龙冰蜂弩",
+            "钢龙冰蜂寒弩"
+          ]
+        },
+        "en": {
+          "display_name": "Icesteel Wasp",
+          "aliases": [
+            "Daora's Hornet",
+            "Daora's Yellowjacket"
+          ]
+        },
+        "ja": {
+          "display_name": "鋼氷蜂弩",
+          "aliases": [
+            "ホーネス＝ダオラ",
+            "ザンブル＝ダオラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5184290a3761bb69e72955b8525b94fc2ce29245a16ba33c70075bb72a736be9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg004",
+      "internal_id": "lbg004",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "毁灭的契机",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Cataclysm's Trigger",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "破滅の引金",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3844acd8121aee9a18493f6527ac755d33cc1ffab7435bdcbed9eddcf12a5d0f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg005",
+      "internal_id": "lbg005",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "骷髅的呐喊",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Gulgoleth's Wail",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "グルゴレットの叫喚",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:257955bb154db8265aea1f74ccc4656beb60be5c7561a9b18c6fb57279b936d0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg006",
+      "internal_id": "lbg006",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "宿命之火",
+          "aliases": [
+            "业【羯磨】",
+            "业【羯磨】·改"
+          ]
+        },
+        "en": {
+          "display_name": "Fate's Ember",
+          "aliases": [
+            "Karma",
+            "Karma+"
+          ]
+        },
+        "ja": {
+          "display_name": "宿命の火",
+          "aliases": [
+            "業【カルマ】",
+            "業【カルマ】改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4b5019b39dd676f82190b28242cd619f77967cb4e3508b0f70a98995c7e63bcd",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg007",
+      "internal_id": "lbg007",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "十字弩炮",
+          "aliases": [
+            "巨型十字弩炮",
+            "新·十字弩炮"
+          ]
+        },
+        "en": {
+          "display_name": "Cross Bowgun",
+          "aliases": [
+            "Great Bowgun",
+            "Neo Cross Bowgun"
+          ]
+        },
+        "ja": {
+          "display_name": "クロスボウガン",
+          "aliases": [
+            "グレイトボウガン",
+            "ネオ・クロスボウガン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:02b82f3af70eacf0eb56254349bc3c98c36f8e105eabd76d7b597632f4985584",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg008",
+      "internal_id": "lbg008",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "疯狂悲叹",
+          "aliases": [
+            "恐怖机械"
+          ]
+        },
+        "en": {
+          "display_name": "Devil's Madness",
+          "aliases": [
+            "Devil's Grin"
+          ]
+        },
+        "ja": {
+          "display_name": "マッドネスグリーフ",
+          "aliases": [
+            "イビルマシーン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:66eec252cc74a65d6a9880eac99bc92673500190f24f05bf12f186acf8496d12",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg009",
+      "internal_id": "lbg009",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冥府铳火",
+          "aliases": [
+            "死灵【冤魂】"
+          ]
+        },
+        "en": {
+          "display_name": "Nether Salvo",
+          "aliases": [
+            "Ghost"
+          ]
+        },
+        "ja": {
+          "display_name": "冥府の銃火",
+          "aliases": [
+            "死霊【ゴースト】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8590d01a75d1806440af663006534a03029322c65dadd25aad4bcf94d4dd4dc9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg010",
+      "internal_id": "lbg010",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "灾厄骷髅",
+          "aliases": [
+            "骷髅的绝望"
+          ]
+        },
+        "en": {
+          "display_name": "Gulgoleth's Ruin",
+          "aliases": [
+            "Gulgoleth's Despair"
+          ]
+        },
+        "ja": {
+          "display_name": "ディザ＝グルゴレット",
+          "aliases": [
+            "グルゴレットの絶望"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1abf978f0bc9a3e898f81aeb689187d696fe18f11394f112d19bd73ab1d78bc1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg011",
+      "internal_id": "lbg011",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "毁灭的契机【悲】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Cataclysm",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "破滅の引金【悲】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ff364c906865e4facbbbb38e89f7c2da4c4d5b6a64a7688b9961fe957ff8a1ad",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg012",
+      "internal_id": "lbg012",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴风雹弩",
+          "aliases": [
+            "暴风加农",
+            "暴风加农·改"
+          ]
+        },
+        "en": {
+          "display_name": "Blizzard Volley",
+          "aliases": [
+            "Blizzard Cannon",
+            "Blizzard Cannon+"
+          ]
+        },
+        "ja": {
+          "display_name": "ブリザードヘイル",
+          "aliases": [
+            "ブリザードカノン",
+            "ブリザードカノン改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:011bae24fa115f4a1c2e338826ca0e739993663c213b76e42d8d49862e051fba",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg013",
+      "internal_id": "lbg013",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君·刺胞",
+          "aliases": [
+            "水螅·刺胞"
+          ]
+        },
+        "en": {
+          "display_name": "Black Actinula",
+          "aliases": [
+            "Hydra Actinula"
+          ]
+        },
+        "ja": {
+          "display_name": "ネロ・アクチヌラ",
+          "aliases": [
+            "ヒドラ・アクチヌラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:363d00b674b86022e1ac8caf95235f0b2e8d51f73a31f69210f4cefe8b29f700",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg014",
+      "internal_id": "lbg014",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "盛者必衰－散华－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fading Blossom",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "盛者必衰－散華－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f957df9d07b721d3dcb3265a6dd560a2dae52ea639b8d72a5154ea8d85396904",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg015",
+      "internal_id": "lbg015",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业弩暗黑狂乱",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Diregun \"Dementia\"",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業弩ダークデメント",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c271e01f1210139e38a7bc04c9af687cf4d47809ca937c66830611e715c5e4d7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg016",
+      "internal_id": "lbg016",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王弩雷管",
+          "aliases": [
+            "王弩雷管·改",
+            "王牙弩【野雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Crime",
+          "aliases": [
+            "Usurper's Crime+",
+            "Despot's Wildfire"
+          ]
+        },
+        "ja": {
+          "display_name": "王弩ライカン",
+          "aliases": [
+            "王弩ライカン改",
+            "王牙弩【野雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7c068147cb5d866571de3565215044e17c163d40e869a7451929dd9bbc1f4c4c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg017",
+      "internal_id": "lbg017",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱弩龙舌",
+          "aliases": [
+            "狱弩龙心"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakevow",
+          "aliases": [
+            "Brimstren Drakekiss"
+          ]
+        },
+        "ja": {
+          "display_name": "獄弩リュウゼツ",
+          "aliases": [
+            "獄弩リュウシン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ac3f72e01b734bae92f96609205fb0c24e5aacfe99b136e8a2ef6b8bd6c8617a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg018",
+      "internal_id": "lbg018",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金狮子弩",
+          "aliases": [
+            "金狮子筒【万雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Rajang Barrage",
+          "aliases": [
+            "Ten Thousand Volts"
+          ]
+        },
+        "ja": {
+          "display_name": "ラージャンデグ",
+          "aliases": [
+            "金獅子筒【万雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1b9e342451684b5b0929e81ef8fdb494dc466793c5b93a3e0ad261011b0aeb40",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg019",
+      "internal_id": "lbg019",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神筒【雷天】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Cannon",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神筒【雷天】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8daee3859559a7a769569e3695fa77515d0495b0141a0884a7e287a293cc6397",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg021",
+      "internal_id": "lbg021",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑烈弩",
+          "aliases": [
+            "煌黑弩终结者"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Razer",
+          "aliases": [
+            "Alatreon Dominator"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の烈弩",
+          "aliases": [
+            "煌黒弩アルドミナ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e34dcb652b2a0468b3d1977a3f3067b651a0a25000ba7dc9380dda1b31d45ee3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg022",
+      "internal_id": "lbg022",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿弩枪",
+          "aliases": [
+            "宫廷警弩【狙星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Bowgun",
+          "aliases": [
+            "Royal Surefire Shot"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスボウガン",
+          "aliases": [
+            "宮廷警弩【狙星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:531ccc02afa4eb0cc429dfb3c34c4dab7df118115799321bcd13c23030d466a3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg023",
+      "internal_id": "lbg023",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴风突击",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Blizzard Gust",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ブリザードガスト",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:db3d17c2669cd1e59cd6ed25e0718c51318ffba0f68d6fb32f9e3181a95724c7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg025",
+      "internal_id": "lbg025",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙翼弩",
+          "aliases": [
+            "真·黑龙翼弩"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Pit",
+          "aliases": [
+            "Fatalis Depths"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍翼弩",
+          "aliases": [
+            "真・黒龍翼弩"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8d58c22c6ef5c98293f683f22a0f82649d51e8994d9f174c818aae647967cc0c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg026",
+      "internal_id": "lbg026",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙狙击弩·冰",
+          "aliases": [
+            "赤龙狙击弩·火",
+            "赤龙狙击弩·雷",
+            "赤龙狙击弩·水",
+            "赤龙狙击弩·龙"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostshot",
+          "aliases": [
+            "Safi's Hellshot",
+            "Safi's Boltshot",
+            "Safi's Aquashot",
+            "Safi's Drakshot"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ狙ウ弩・氷",
+          "aliases": [
+            "赤龍ノ狙ウ弩・火",
+            "赤龍ノ狙ウ弩・雷",
+            "赤龍ノ狙ウ弩・水",
+            "赤龍ノ狙ウ弩・龍"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f75f9963609e9113250dce461d9ca4734dfdb66742c52bff6ac225c17b6292c8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lbg/lbg027",
+      "internal_id": "lbg027",
+      "metadata": {
+        "family": "lbg",
+        "path_family": "wp/lbg"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之辉弩",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Gun",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の輝弩",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

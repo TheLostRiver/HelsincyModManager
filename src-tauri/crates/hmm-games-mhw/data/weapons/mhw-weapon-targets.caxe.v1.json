@@ -1,0 +1,1728 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:d114db6ea3bc3965bf079340a2d2c6999305b2a8577fb77387a0d670257ba416",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe001",
+      "internal_id": "bs_caxe001",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰结盾斧1",
+          "aliases": [
+            "调查团试作盾斧1",
+            "调查团试作盾斧2",
+            "调查团试作盾斧3",
+            "精锐调查团盾斧1",
+            "精锐调查团盾斧2",
+            "精锐调查团盾斧3",
+            "铬铁守护者1",
+            "铬铁守护者2",
+            "灭尽龙的挥击",
+            "火龙盾斧1",
+            "火龙盾斧2",
+            "泥流盾斧1",
+            "泥流盾斧2",
+            "泥流盾斧3",
+            "冰结盾斧2",
+            "黑钢盾斧1",
+            "黑钢盾斧2",
+            "冥灯龙盾斧",
+            "隐密守护者1",
+            "隐密守护者2",
+            "冥灯龙盾斧改"
+          ]
+        },
+        "en": {
+          "display_name": "Everfrost Blade I",
+          "aliases": [
+            "Proto Commission Axe I",
+            "Proto Commission Axe II",
+            "Proto Commission Axe III",
+            "Elite Commission Axe I",
+            "Elite Commission Axe II",
+            "Elite Commission Axe III",
+            "Chrome Guardian I",
+            "Chrome Guardian II",
+            "Nergal Lacerator",
+            "Rathsblade I",
+            "Rathsblade II",
+            "Mudslide Blade I",
+            "Mudslide Blade II",
+            "Mudslide Blade III",
+            "Everfrost Blade II",
+            "Blacksteel Charger I",
+            "Blacksteel Charger II",
+            "Xeno Ra'atz",
+            "Hidden Guardian I",
+            "Hidden Guardian II",
+            "Xeno Ra'atz+"
+          ]
+        },
+        "ja": {
+          "display_name": "氷結の盾斧Ⅰ",
+          "aliases": [
+            "調査団試作盾斧Ⅰ",
+            "調査団試作盾斧Ⅱ",
+            "調査団試作盾斧Ⅲ",
+            "精鋭調査団盾斧Ⅰ",
+            "精鋭調査団盾斧Ⅱ",
+            "精鋭調査団盾斧Ⅲ",
+            "クロムガーディアンⅠ",
+            "クロムガーディアンⅡ",
+            "ネルガルスイング",
+            "火竜の盾斧Ⅰ",
+            "火竜の盾斧Ⅱ",
+            "泥流の盾斧Ⅰ",
+            "泥流の盾斧Ⅱ",
+            "泥流の盾斧Ⅲ",
+            "氷結の盾斧Ⅱ",
+            "黒鋼の盾斧Ⅰ",
+            "黒鋼の盾斧Ⅱ",
+            "ゼノ＝ラーツ",
+            "ヒドゥンガーディアンⅠ",
+            "ヒドゥンガーディアンⅡ",
+            "ゼノ＝ラーツ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:184d34196752574690fea4396862eabd4b8cdd69d70cda163ccb02cf27137681",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe002",
+      "internal_id": "bs_caxe002",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "寒霜巨人1",
+          "aliases": [
+            "深沉泥鱼1",
+            "深沉泥鱼2",
+            "深沉泥鱼3",
+            "寒霜巨人2",
+            "防卫队合体式盾斧1",
+            "防卫队合体式盾斧2",
+            "防卫队合体式盾斧3",
+            "防卫队合体式盾斧4",
+            "防卫队合体式盾斧5",
+            "深沉霜雪1",
+            "深沉霜雪2",
+            "寒霜巨人3"
+          ]
+        },
+        "en": {
+          "display_name": "Gigafrost I",
+          "aliases": [
+            "Jyura Depth I",
+            "Jyura Depth II",
+            "Jyura Depth III",
+            "Gigafrost II",
+            "Defender Shield I",
+            "Defender Shield II",
+            "Defender Shield III",
+            "Defender Shield IV",
+            "Defender Shield V",
+            "Deep Schnegel I",
+            "Deep Schnegel II",
+            "Gigafrost III"
+          ]
+        },
+        "ja": {
+          "display_name": "ギガフロストⅠ",
+          "aliases": [
+            "ディープシュラムⅠ",
+            "ディープシュラムⅡ",
+            "ディープシュラムⅢ",
+            "ギガフロストⅡ",
+            "防衛隊合体式盾斧Ⅰ",
+            "防衛隊合体式盾斧Ⅱ",
+            "防衛隊合体式盾斧Ⅲ",
+            "防衛隊合体式盾斧Ⅳ",
+            "防衛隊合体式盾斧Ⅴ",
+            "ディープシュネーゲルⅠ",
+            "ディープシュネーゲルⅡ",
+            "ギガフロストⅢ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9c65b13c3a8e3cd869d976153e109cbd897a87da8266c374e6767f004c836542",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe003",
+      "internal_id": "bs_caxe003",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆锤盾墙1",
+          "aliases": [
+            "骨制兵装1",
+            "骨制兵装2",
+            "骨制兵装3",
+            "硬骨兵装1",
+            "硬骨兵装2",
+            "硬骨兵装3",
+            "强骨兵装1",
+            "强骨兵装2",
+            "爆锤盾墙2",
+            "岩贼龙盾1",
+            "岩贼龙盾2",
+            "痹贼龙盾斧1",
+            "痹贼龙盾斧2",
+            "痹贼龙盾斧3",
+            "脉冲兵装1",
+            "脉冲兵装2",
+            "脉冲兵装3",
+            "惨爪兵装1",
+            "惨爪兵装2",
+            "龙骨盾斧1",
+            "龙骨盾斧2",
+            "龙骨盾斧3",
+            "水蛇悠远",
+            "轰龙兵装1",
+            "轰龙兵装2",
+            "劫难兵装",
+            "骨制兵装"
+          ]
+        },
+        "en": {
+          "display_name": "Diablos Wall I",
+          "aliases": [
+            "Bone Strongarm I",
+            "Bone Strongarm II",
+            "Bone Strongarm III",
+            "Hard Bone Strongarm I",
+            "Hard Bone Strongarm II",
+            "Hard Bone Strongarm III",
+            "Mighty Strongarm I",
+            "Mighty Strongarm II",
+            "Diablos Wall II",
+            "Gama Silt I",
+            "Gama Silt II",
+            "Girros Nadja I",
+            "Girros Nadja II",
+            "Girros Nadja III",
+            "Pulsar Strongarm I",
+            "Pulsar Strongarm II",
+            "Pulsar Strongarm III",
+            "Garon Strongarm I",
+            "Garon Strongarm II",
+            "Dragonbone Cutter I",
+            "Dragonbone Cutter II",
+            "Dragonbone Cutter III",
+            "Hydros Kardia",
+            "Rex Arms I",
+            "Rex Arms II",
+            "Accursed Arms",
+            "Bone Strongarm"
+          ]
+        },
+        "ja": {
+          "display_name": "ブロスウォールⅠ",
+          "aliases": [
+            "ボーンアームズⅠ",
+            "ボーンアームズⅡ",
+            "ボーンアームズⅢ",
+            "ハードボーンアームズⅠ",
+            "ハードボーンアームズⅡ",
+            "ハードボーンアームズⅢ",
+            "ストロングアームズⅠ",
+            "ストロングアームズⅡ",
+            "ブロスウォールⅡ",
+            "ガマルシルトⅠ",
+            "ガマルシルトⅡ",
+            "ギルオスナージャⅠ",
+            "ギルオスナージャⅡ",
+            "ギルオスナージャⅢ",
+            "パルサーアームズⅠ",
+            "パルサーアームズⅡ",
+            "パルサーアームズⅢ",
+            "ガロンアームズⅠ",
+            "ガロンアームズⅡ",
+            "龍骨盾斧Ⅰ",
+            "龍骨盾斧Ⅱ",
+            "龍骨盾斧Ⅲ",
+            "ヒュドロスカルディア",
+            "レックスアームズⅠ",
+            "レックスアームズⅡ",
+            "カーサスアームズ",
+            "ボーンアームズ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:77c927d72b1058472bb5002fd38046e0667e4fe53d615a57f7a09ebe3a9d69ec",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe004",
+      "internal_id": "bs_caxe004",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君铜盾1",
+          "aliases": [
+            "暴君铜盾2",
+            "贼龙兵装1",
+            "贼龙兵装2",
+            "贼龙兵装3",
+            "贼龙盾斧1",
+            "贼龙盾斧2",
+            "贼龙盾斧3",
+            "痹贼龙兵装1",
+            "痹贼龙兵装2",
+            "尸套龙盾斧1",
+            "尸套龙盾斧2",
+            "飞雷龙之腕1",
+            "飞雷龙之腕2",
+            "飞雷龙之腕3",
+            "暴君铜盾3",
+            "命运武力",
+            "岩贼龙盾斧1",
+            "岩贼龙盾斧2",
+            "死灭障尸盾斧",
+            "朱赤毒之腕1",
+            "朱赤毒之腕2"
+          ]
+        },
+        "en": {
+          "display_name": "Diablos Tyrannis I",
+          "aliases": [
+            "Diablos Tyrannis II",
+            "Jagras Strongarm I",
+            "Jagras Strongarm II",
+            "Jagras Strongarm III",
+            "Jagras Escudo I",
+            "Jagras Escudo II",
+            "Jagras Escudo III",
+            "Girros Strongarm I",
+            "Girros Strongarm II",
+            "Hazak Aspida I",
+            "Hazak Aspida II",
+            "Kadachi Kaina I",
+            "Kadachi Kaina II",
+            "Kadachi Kaina III",
+            "Diablos Tyrannis III",
+            "Thanatos Force",
+            "Gama Escudo I",
+            "Gama Escudo II",
+            "Deathaxe Vaal Aspida",
+            "Viper's Venom I",
+            "Viper's Venom II"
+          ]
+        },
+        "ja": {
+          "display_name": "タイラントブロスⅠ",
+          "aliases": [
+            "タイラントブロスⅡ",
+            "ジャグラスアームズⅠ",
+            "ジャグラスアームズⅡ",
+            "ジャグラスアームズⅢ",
+            "ジャグラスエスクードⅠ",
+            "ジャグラスエスクードⅡ",
+            "ジャグラスエスクードⅢ",
+            "ギルオスアームズⅠ",
+            "ギルオスアームズⅡ",
+            "ハザクアスピダⅠ",
+            "ハザクアスピダⅡ",
+            "カガチノカイナⅠ",
+            "カガチノカイナⅡ",
+            "カガチノカイナⅢ",
+            "タイラントブロスⅢ",
+            "タナトスフォース",
+            "ガマルエスクードⅠ",
+            "ガマルエスクードⅡ",
+            "屍盾斧ヴァルアスピダ",
+            "ベニカガチノドクシュⅠ",
+            "ベニカガチノドクシュⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:68b2f79745e4223062dc39a9750411be9af22e8d876c6d9ef85b51b44c0680b3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe005",
+      "internal_id": "bs_caxe005",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的盾斧·冰",
+          "aliases": [
+            "金色的盾斧·雷",
+            "金色的盾斧·睡眠",
+            "金色的盾斧·贼",
+            "金色的盾斧·泥鱼",
+            "金色的盾斧·飞雷",
+            "金色的盾斧·痹贼",
+            "金色的盾斧·惨爪",
+            "金色的盾斧·尸套",
+            "金色的盾斧·王",
+            "金色的盾斧·角",
+            "金色的盾斧·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Gold Ice Cutter",
+          "aliases": [
+            "Gold Thunder Cutter",
+            "Gold Sleep Cutter",
+            "Glutton Gold Cutter",
+            "Mire Gold Cutter",
+            "Spark Gold Cutter",
+            "Numb Gold Cutter",
+            "Claw Gold Cutter",
+            "Decay Gold Cutter",
+            "King Gold Cutter",
+            "Horn Gold Cutter",
+            "Crusher Gold Cutter"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の盾斧・氷",
+          "aliases": [
+            "金色の盾斧・雷",
+            "金色の盾斧・睡眠",
+            "金色の盾斧・賊",
+            "金色の盾斧・泥魚",
+            "金色の盾斧・飛雷",
+            "金色の盾斧・痺賊",
+            "金色の盾斧・惨爪",
+            "金色の盾斧・屍套",
+            "金色の盾斧・王",
+            "金色の盾斧・角",
+            "金色の盾斧・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fc225627aeea4a3df80987baeef52bc8fa444cd00b2d308adcc7ba087f8cd4d3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe006",
+      "internal_id": "bs_caxe006",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗兵装·冰",
+          "aliases": [
+            "铠罗兵装·贼",
+            "铠罗兵装·泥鱼",
+            "铠罗兵装·飞雷",
+            "铠罗兵装·痹贼",
+            "铠罗兵装·惨爪",
+            "铠罗兵装·尸套",
+            "铠罗兵装·王",
+            "铠罗兵装·角",
+            "铠罗兵装·岩贼",
+            "铠罗兵装·雷",
+            "铠罗兵装·睡眠",
+            "铠罗兵装·水"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Strongarm \"Ice\"",
+          "aliases": [
+            "Taroth Strongarm \"Glutton\"",
+            "Taroth Strongarm \"Mire\"",
+            "Taroth Strongarm \"Spark\"",
+            "Taroth Strongarm \"Numb\"",
+            "Taroth Strongarm \"Claw\"",
+            "Taroth Strongarm \"Decay\"",
+            "Taroth Strongarm \"King\"",
+            "Taroth Strongarm \"Horn\"",
+            "Taroth Strongarm \"Crusher\"",
+            "Taroth Strongarm \"Thunder\"",
+            "Taroth Strongarm \"Sleep\"",
+            "Taroth Strongarm \"Water\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラアームズ・氷",
+          "aliases": [
+            "ガイラアームズ・賊",
+            "ガイラアームズ・泥魚",
+            "ガイラアームズ・飛雷",
+            "ガイラアームズ・痺賊",
+            "ガイラアームズ・惨爪",
+            "ガイラアームズ・屍套",
+            "ガイラアームズ・王",
+            "ガイラアームズ・角",
+            "ガイラアームズ・岩賊",
+            "ガイラアームズ・雷",
+            "ガイラアームズ・睡眠",
+            "ガイラアームズ・水"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7c54f2f7b48410e079179d13ba57966ee753e91eaa4d204cace7835dd3459394",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe007",
+      "internal_id": "bs_caxe007",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后武装",
+          "aliases": [
+            "皇后武装·炎妃",
+            "皇后武装·灭尽",
+            "皇后武装·冥灯",
+            "魂焰盾斧·炎妃",
+            "魂焰盾斧·灭尽",
+            "魂焰盾斧·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Alma",
+          "aliases": [
+            "Empress Alma \"Blaze\"",
+            "Empress Alma \"Ruin\"",
+            "Empress Alma \"Styx\"",
+            "Soulfire Brand \"Blaze\"",
+            "Soulfire Brand \"Ruin\"",
+            "Soulfire Brand \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスアルマ",
+          "aliases": [
+            "エンプレスアルマ・炎妃",
+            "エンプレスアルマ・滅尽",
+            "エンプレスアルマ・冥灯",
+            "魂焔の盾斧・炎妃",
+            "魂焔の盾斧・滅尽",
+            "魂焔の盾斧・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:283883fa882106ebdfbbecf8481d3675deb89ab71c017a21de861f9bac3d555c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe008",
+      "internal_id": "bs_caxe008",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铬钢堡垒1",
+          "aliases": [
+            "铬钢堡垒2",
+            "铬钢堡垒3",
+            "深沉风土1",
+            "深沉风土2"
+          ]
+        },
+        "en": {
+          "display_name": "Chrome Fortress I",
+          "aliases": [
+            "Chrome Fortress II",
+            "Chrome Fortress III",
+            "Deep Terroir I",
+            "Deep Terroir II"
+          ]
+        },
+        "ja": {
+          "display_name": "クロムフォートⅠ",
+          "aliases": [
+            "クロムフォートⅡ",
+            "クロムフォートⅢ",
+            "ディープテロワールⅠ",
+            "ディープテロワールⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:30ee80ab91e5e9f3fd58123cb0efb2e370d7f5963d823f95042b139dcd7285dd",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe009",
+      "internal_id": "bs_caxe009",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙盾斧1",
+          "aliases": [
+            "狂野武力1",
+            "狂野武力2",
+            "狂野武力3",
+            "牙龙盾斧【荒噬】1",
+            "牙龙盾斧【荒噬】2",
+            "蛇神震怒1",
+            "蛇神震怒2",
+            "飞雷龙御灵1",
+            "飞雷龙御灵2",
+            "封龙盾斧2"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonseal Blade I",
+          "aliases": [
+            "Wild Force I",
+            "Wild Force II",
+            "Wild Force III",
+            "Saber's Maw I",
+            "Saber's Maw II",
+            "Naaga Ghadab I",
+            "Naaga Ghadab II",
+            "Kadachi Soul I",
+            "Kadachi Soul II",
+            "Dragonseal Blade II"
+          ]
+        },
+        "ja": {
+          "display_name": "龍封じの盾斧Ⅰ",
+          "aliases": [
+            "ワイルドフォースⅠ",
+            "ワイルドフォースⅡ",
+            "ワイルドフォースⅢ",
+            "牙竜盾斧【荒喰】Ⅰ",
+            "牙竜盾斧【荒喰】Ⅱ",
+            "ナーガ＝ガダブⅠ",
+            "ナーガ＝ガダブⅡ",
+            "カガチノミタマⅠ",
+            "カガチノミタマⅡ",
+            "龍封じの盾斧Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3e9f7a0734f838931518601727b9993be01aab91ef51c32c4855d8b11b600473",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe010",
+      "internal_id": "bs_caxe010",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰臣壁垒",
+          "aliases": [
+            "严冰守护者"
+          ]
+        },
+        "en": {
+          "display_name": "Regal Daruq",
+          "aliases": [
+            "Ice Guardian"
+          ]
+        },
+        "ja": {
+          "display_name": "氷臣ダルク",
+          "aliases": [
+            "アイスガーディアン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d90b881e3c1b033291be086e0480ae1dff6819dcf59bcf332af622e241128f0a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe011",
+      "internal_id": "bs_caxe011",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金盾斧·王",
+          "aliases": [
+            "皇金盾斧·飞雷",
+            "皇金盾斧·痹贼",
+            "皇金盾斧·尸套",
+            "皇金盾斧·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Strongarm \"King\"",
+          "aliases": [
+            "Kjárr Strongarm \"Spark\"",
+            "Kjárr Strongarm \"Numb\"",
+            "Kjárr Strongarm \"Decay\"",
+            "Kjárr Strongarm \"Crusher\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の盾斧・王",
+          "aliases": [
+            "皇金の盾斧・飛雷",
+            "皇金の盾斧・痺賊",
+            "皇金の盾斧・屍套",
+            "皇金の盾斧・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:230e85d2ca10e182303d614231d067f67156d8d3f9669907cc176fa481f99388",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/bs_caxe012",
+      "internal_id": "bs_caxe012",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金盾斧·冰",
+          "aliases": [
+            "皇金盾斧·水"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Strongarm \"Ice\"",
+          "aliases": [
+            "Kjárr Strongarm \"Water\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の盾斧・氷",
+          "aliases": [
+            "皇金の盾斧・水"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0e478b48b800318aba76e608ee4a6d3416de9b1265cf2fd1358113743243a180",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe001",
+      "internal_id": "caxe001",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢龙冰盾",
+          "aliases": [
+            "钢龙幻梦",
+            "钢龙白日梦"
+          ]
+        },
+        "en": {
+          "display_name": "Daora's Casca",
+          "aliases": [
+            "Daora's Thwartoise",
+            "Daora's Worldbearer"
+          ]
+        },
+        "ja": {
+          "display_name": "ダオラ＝カスカ",
+          "aliases": [
+            "ダオラ＝ゲンム",
+            "ダオラ＝アクパーラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:77a774f53324935b40ed6b6f78f2fbb9d3e2df94beb8db3267b3926d4e08c846",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe002",
+      "internal_id": "caxe002",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雌火盾斧",
+          "aliases": [
+            "焰火盾斧"
+          ]
+        },
+        "en": {
+          "display_name": "Dear Lutemia",
+          "aliases": [
+            "Dear Lutemis"
+          ]
+        },
+        "ja": {
+          "display_name": "ディア＝ルテミア",
+          "aliases": [
+            "ディア＝ルテミス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5af53ef91d7259e839e11f7c9b4f97fd8eca76f804c66f26a524ba960fccbf85",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe003",
+      "internal_id": "caxe003",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "炎斧蛇王",
+          "aliases": [
+            "焰斧鹤王",
+            "焰斧鹤王·改"
+          ]
+        },
+        "en": {
+          "display_name": "Axelion Blade",
+          "aliases": [
+            "Halberion Blade",
+            "Halberion Blade+"
+          ]
+        },
+        "ja": {
+          "display_name": "炎斧アクセリオン",
+          "aliases": [
+            "焔斧ハルバリオン",
+            "焔斧ハルバリオン改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:68c41512ab7e1851efb83c43de3da908c82f1663b62de9a1d62fde5097595e96",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe004",
+      "internal_id": "caxe004",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "坏灭之一束",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Devastation's Thorns",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "壊滅の一束",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8b6054c8fb37af989fb0066cf0f5d0df41223c86984a838e13041c334a665010",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe005",
+      "internal_id": "caxe005",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "憎【忿恨】",
+          "aliases": [
+            "憎恨的火炎",
+            "憎【忿恨】·改",
+            "憎恶【精神】"
+          ]
+        },
+        "en": {
+          "display_name": "Odium",
+          "aliases": [
+            "Hate's Undying Flame",
+            "Odium+",
+            "Animus"
+          ]
+        },
+        "ja": {
+          "display_name": "憎【オディウム】",
+          "aliases": [
+            "憎しみの炎",
+            "憎【オディウム】改",
+            "憎悪【アニムス】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0502611456667b5b36bfa645e75bc8d806f95d93c502216726502128625ca314",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe006",
+      "internal_id": "caxe006",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "熔山龙盾斧",
+          "aliases": [
+            "卷土重来熔山龙盾斧",
+            "真·卷土重来熔山龙盾斧"
+          ]
+        },
+        "en": {
+          "display_name": "Magda Manus",
+          "aliases": [
+            "Avenging Magda Manus",
+            "Magda Manus Reforged"
+          ]
+        },
+        "ja": {
+          "display_name": "マグダ・マヌス",
+          "aliases": [
+            "捲土重来マグマヌス",
+            "真・捲土重来マグマス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3e3b41f0a6b2d1dbbd302d8fa308efec0fd673876c55499d378a718806c63afa",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe007",
+      "internal_id": "caxe007",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "火铠盾斧",
+          "aliases": [
+            "樱火盾斧",
+            "艳炎盾斧",
+            "艳者盾斧"
+          ]
+        },
+        "en": {
+          "display_name": "Dear Hecatelia",
+          "aliases": [
+            "Dear Hecatel",
+            "Dear Rose",
+            "Dear Rosetta"
+          ]
+        },
+        "ja": {
+          "display_name": "ディア＝ヘカテリア",
+          "aliases": [
+            "ディア＝ヘカテル",
+            "ディア＝ロゼ",
+            "ディア＝ロゼッタ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:efce6a0e434994d7c6fa4c608e2156b8b8064ac233b8cdf6092cfb6cac5fc619",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe008",
+      "internal_id": "caxe008",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴虐盾斧",
+          "aliases": [
+            "德斯特涅塔"
+          ]
+        },
+        "en": {
+          "display_name": "Tyrant's Charge Blade",
+          "aliases": [
+            "Oppressor's Charge Blade"
+          ]
+        },
+        "ja": {
+          "display_name": "暴虐の盾斧",
+          "aliases": [
+            "デストネーター"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2e96fac6dc4130dd8da493186777c5314d1618779e9a72d16836b1dd326247d5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe009",
+      "internal_id": "caxe009",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "但丁的魔剑",
+          "aliases": [
+            "但丁的魔剑·改"
+          ]
+        },
+        "en": {
+          "display_name": "Dante's Devil Sword",
+          "aliases": [
+            "Dante's Devil Sword+"
+          ]
+        },
+        "ja": {
+          "display_name": "ダンテの魔剣",
+          "aliases": [
+            "ダンテの魔剣・改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:14ef8d3ae1a763d1798184b62b30579d73bcbbb82f4748486116e45c7980c67d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe010",
+      "internal_id": "caxe010",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冥府之炎",
+          "aliases": [
+            "死怨【厌恨】"
+          ]
+        },
+        "en": {
+          "display_name": "Nether Candle",
+          "aliases": [
+            "Grudge"
+          ]
+        },
+        "ja": {
+          "display_name": "冥府の炎",
+          "aliases": [
+            "死怨【グラッジ】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8c562a3639f2ff1aafa69ae3164ad1df6a2a7e694a0cce01e5e2757e890a6a3d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe011",
+      "internal_id": "caxe011",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "坏灭一束【裂】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Devastation",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "壊滅の一束【裂】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fb52ac1219f2d6a4c949ca129aa1c47bcf212c0682f064c5d5f1fc9288aeb0cc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe012",
+      "internal_id": "caxe012",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "纯白骑士",
+          "aliases": [
+            "纯白骑士·改",
+            "悍怒之狼"
+          ]
+        },
+        "en": {
+          "display_name": "Weissritter",
+          "aliases": [
+            "Weissritter+",
+            "Elder Wolf Fang"
+          ]
+        },
+        "ja": {
+          "display_name": "ヴァイスリッタ－",
+          "aliases": [
+            "ヴァイスリッタ－改",
+            "エルガーヴォルフ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ae6b3eb20937eb53942756c22040b6c47c3bf0d11129c0f71fa607cf5177963c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe013",
+      "internal_id": "caxe013",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎龙兵装",
+          "aliases": [
+            "爆盾斧地堡之震"
+          ]
+        },
+        "en": {
+          "display_name": "Dios Strongarm",
+          "aliases": [
+            "Volatile Blade"
+          ]
+        },
+        "ja": {
+          "display_name": "ディオスアームズ",
+          "aliases": [
+            "爆盾斧バンカームズ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:814bed18c3b22e692397ddc99820923dc353d89c527804c346f2d9e9b9b12e7a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe014",
+      "internal_id": "caxe014",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斩龙合刃炽火",
+          "aliases": [
+            "灼炎之索求者",
+            "灼炎之索求者·改"
+          ]
+        },
+        "en": {
+          "display_name": "Glavenus Bardred",
+          "aliases": [
+            "Scorching Demander",
+            "Scorching Demander+"
+          ]
+        },
+        "ja": {
+          "display_name": "斬竜合刃バルドレッド",
+          "aliases": [
+            "灼炎のディマンダー",
+            "灼炎のディマンダー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8ecc284190fab8e74d8781fb7add1425d7100c53c131739c45dd24c023cee0c0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe015",
+      "internal_id": "caxe015",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "硫铁感应",
+          "aliases": [
+            "窟垒硫斩合刃"
+          ]
+        },
+        "en": {
+          "display_name": "Sulfurteinn Machmar",
+          "aliases": [
+            "The Melting Grasp"
+          ]
+        },
+        "ja": {
+          "display_name": "硫鉄のマクマリー",
+          "aliases": [
+            "硫斬合刃メリッサーニ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:471e9e8591934b15671bd6ce1f68bfa1757b612e1085abae8bf013151d57f870",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe016",
+      "internal_id": "caxe016",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业力不灭－阎王－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Inescapable Karma",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業力不滅－閻王－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0036a2a8440f6293888c2d51a83e1dbf2bc065c175ee0b9d7a73e03a2fbc4994",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe017",
+      "internal_id": "caxe017",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业盾赤婪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fate's Curtain",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業盾グルドレッド",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0507a28ffe70ce02d36767e2e5a221228f6b7747fe428999a8e2ea6206be268b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe018",
+      "internal_id": "caxe018",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王盾斧雷纹",
+          "aliases": [
+            "王盾斧雷纹·改",
+            "王牙盾斧【风雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Lightning",
+          "aliases": [
+            "Usurper's Lightning+",
+            "Despot's Thundergale"
+          ]
+        },
+        "ja": {
+          "display_name": "王盾斧ライモン",
+          "aliases": [
+            "王盾斧ライモン改",
+            "王牙盾斧【風雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e654b3c80373737d06e807d88b541b881873e30ad537aa2965b7c0f695dae545",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe019",
+      "internal_id": "caxe019",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱盾斧龙拳",
+          "aliases": [
+            "狼牙盾斧【呪狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakeclaw",
+          "aliases": [
+            "Stygian Maledicta"
+          ]
+        },
+        "ja": {
+          "display_name": "獄盾斧リュウケン",
+          "aliases": [
+            "狼牙盾斧【呪獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2130a7c21e50d942c40c9ff7bef1332b232caca8c9457c214e8d08fd56453bc0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe020",
+      "internal_id": "caxe020",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "月神金盾",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Luna Eostre",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ルナ＝エストオレ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:bf927f21cb107fdd5f3ff8acd44a73974aa7f7ee16bc47b59c3e305e0804a459",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe021",
+      "internal_id": "caxe021",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业火斧狱雷",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Hellsire Blade",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業火斧ヘルメスレイ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ccbe1e2b4f70d9d965198b06d75cacd366965eded03a0a9eacad07982556f9b4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe022",
+      "internal_id": "caxe022",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金刚盾斧",
+          "aliases": [
+            "金刚盾斧雷霆"
+          ]
+        },
+        "en": {
+          "display_name": "Rajang Beastblade",
+          "aliases": [
+            "Rajang Beastblade Ikazuchi"
+          ]
+        },
+        "ja": {
+          "display_name": "金剛盾斧",
+          "aliases": [
+            "金剛盾斧イカヅチ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:18bf5eda1b255dbbff222c814035e3d898d8d4d9040bf9eed0163c519394c666",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe023",
+      "internal_id": "caxe023",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神盾斧【夜叉】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Blade",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神盾斧【夜叉】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7caca84e1e5c1309d10d77c0fb5b8fae1cca8f0e574344ba3e942b67c5d7f13c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe024",
+      "internal_id": "caxe024",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之盾斧",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Charge Blade",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の盾斧",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ad348c57aee8ac92f79a00bb9d86a195096eb5222f5da9a40cd9a2e7d15d1eef",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe026",
+      "internal_id": "caxe026",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑之盾斧",
+          "aliases": [
+            "煌黑漆黑盾斧"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Edge",
+          "aliases": [
+            "Alatreon Morphblade"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の盾斧",
+          "aliases": [
+            "煌黒盾斧アルプルガ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c578cd5660dc1a3265a2639a18a76fad59302de067edd55068cd3791c5d20f79",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe027",
+      "internal_id": "caxe027",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "魂魄斩苍炎斧",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Azure Soulbrand",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "蒼炎斧ソウルクラトス",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d783a84d68f7924e124cd049865fc1097147fb115184ef1e98c49f814b0c65b3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe028",
+      "internal_id": "caxe028",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿碟斧",
+          "aliases": [
+            "宫廷镜盾【机星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Disc",
+          "aliases": [
+            "Royal Star Shield"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスディスク",
+          "aliases": [
+            "宮廷鏡盾【機星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6a010965f21c44fa6c153e36b60a3f61504302b6989ab5a97ee4fdc07bda42ae",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe029",
+      "internal_id": "caxe029",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "愤怒之狼",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Raging Wolf Fang",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "レイジングヴォルフ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1f5612276dd84482565113cad16adb2db356676e5b95bb696cfe83b565ef3f05",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe030",
+      "internal_id": "caxe030",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑鹰",
+          "aliases": [
+            "雷光黑鹰"
+          ]
+        },
+        "en": {
+          "display_name": "Black Eagle",
+          "aliases": [
+            "Black Lightning Eagle"
+          ]
+        },
+        "ja": {
+          "display_name": "ダークイーグル",
+          "aliases": [
+            "雷光のダークイーグル"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4320812062836aebb66948d704e8921ff1b08d43f4330fdd8074f8bb6350b2f1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe031",
+      "internal_id": "caxe031",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙盾斧",
+          "aliases": [
+            "真·黑龙盾斧"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Charger",
+          "aliases": [
+            "True Fatalis Charger"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍盾斧",
+          "aliases": [
+            "真・黒龍盾斧"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9682829dd2e12fe783e266c619750c2e30b533e2397965f74d37209c8bf9acc0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/caxe/caxe032",
+      "internal_id": "caxe032",
+      "metadata": {
+        "family": "caxe",
+        "path_family": "wp/caxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙守护盾斧·冰",
+          "aliases": [
+            "赤龙守护盾斧·火",
+            "赤龙守护盾斧·水",
+            "赤龙守护盾斧·雷",
+            "赤龙守护盾斧·龙",
+            "赤龙守护盾斧·毒",
+            "赤龙守护盾斧·麻痹",
+            "赤龙守护盾斧·睡眠",
+            "赤龙守护盾斧·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostshield",
+          "aliases": [
+            "Safi's Hellshield",
+            "Safi's Aquashield",
+            "Safi's Boltshield",
+            "Safi's Drakshield",
+            "Safi's Venomshield",
+            "Safi's Bindshield",
+            "Safi's Dreamshield",
+            "Safi's Shattershield"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ護ル盾斧・氷",
+          "aliases": [
+            "赤龍ノ護ル盾斧・火",
+            "赤龍ノ護ル盾斧・水",
+            "赤龍ノ護ル盾斧・雷",
+            "赤龍ノ護ル盾斧・龍",
+            "赤龍ノ護ル盾斧・毒",
+            "赤龍ノ護ル盾斧・麻痺",
+            "赤龍ノ護ル盾斧・睡眠",
+            "赤龍ノ護ル盾斧・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

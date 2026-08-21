@@ -1,78 +1,5700 @@
 {
   "schema_version": 1,
-  "catalog_version": "mhw-armor-v1",
+  "catalog_version": "mhw-armor-v2",
   "game_id": "mhw",
   "targets": [
     {
-      "id": "mhw:armor:guardian-alpha",
+      "id": "mhw:armor:67663de427bb57b42d289ea193d8e865bb949ffaeee8a9e9caecdc1ee54662eb",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "【守护者α】服装",
-        "en": "Guardian Alpha"
+        "zh_cn": "【皮制】服装",
+        "en": "Leather",
+        "ja": "【レザー】衣装"
       },
-      "aliases": ["守护者", "守护者α", "Guardian", "Guardian Alpha"],
+      "aliases": [],
+      "internal_id": "pl001_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:6eafba0adb1fc684dc27f2b6f236d48ad152013a84aabec83293acd2af19bd36",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【猎人阿尔法】服装",
+        "en": "Hunter α",
+        "ja": "【ハンターα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl002_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:74e001ed2528a92c4851e0480f1d6a8aac8c725303a091323b6137baef224761",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【蛮颚龙阿尔法】服装",
+        "en": "Anjanath α",
+        "ja": "【ジャナフα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl020_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:df1affafb8009944ea78c9f075f7929a5dbdd82a9a21f6da3ce9027b37351cbb",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【贼龙】服装",
+        "en": "Jagras",
+        "ja": "【ジャグラス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl008_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9cde4e87c352f2f0a6b9ca9f557d337ebcd16ca78b731868de24e7eb90ea1c0e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【骨制】服装",
+        "en": "Bone",
+        "ja": "【ボーン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl003_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:85e32052700b72252f3bdc607e8f925402c9389311ce5b64c84048cab1a3d8cf",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【合金】服装",
+        "en": "Alloy",
+        "ja": "【アロイ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl004_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d7f77fdbd7b51822c707e78dba5445ac1a623132e6435bfe737a3d28b0dac614",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【冠突龙】服装",
+        "en": "Kestodon",
+        "ja": "【ケスト】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl005_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "arms"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:2aff91891c8afb0d086dec4f65cd3b548c05b7d27ea428f403d2dba33714a712",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【咬鱼】服装",
+        "en": "Gajau",
+        "ja": "【ガライー】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl006_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c442b586f07b1695e907d5a0f7f84e4f9f3737003471891e37d80f368eab6582",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【巨蜂】服装",
+        "en": "Vespoid",
+        "ja": "【ランゴ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl007_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:926bdc1183d543bbb94c0875673510eaf1fb77f98fa1524fb72b63db0a23dc1a",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【搔鸟】服装",
+        "en": "Kulu-Ya-Ku",
+        "ja": "【クルル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl009_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7bb95d23ccf2c4ef1efe242709637a3847f2fc34287fcac76b8889a74daab02e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【毒妖鸟阿尔法】服装",
+        "en": "Pukei-Pukei α",
+        "ja": "【プケプケα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl010_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:26d3baeef9a71524c448c07de86b08f6fff8fa23d42948dc212bb1cde687d752",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【泥鱼龙】服装",
+        "en": "Jyuratodus",
+        "ja": "【ジュラ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl011_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:55546782ffa44aa432e321e6c5fb1a5e21fde454c7c4e090b6f2fa6035a5bb42",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【土砂龙】服装",
+        "en": "Barroth",
+        "ja": "【ボロス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl012_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:bbc452d799b87ff0bd0132e2f38f6b3321c1129fc50978bc9b2d9f6770eecbf2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【飞雷龙】服装",
+        "en": "Tobi-Kadachi",
+        "ja": "【カガチ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl013_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:97f15baec00a3b528c3c4f3bb8c88f7bb3c32af98ad4c791f519b7a763e45e3d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【锁甲】服装",
+        "en": "Chain",
+        "ja": "【チェーン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl014_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e3953d212525afc73ed84bfab88d7463b08be1c2810e22e9e05f63a8c68590e1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【巨甲】服装",
+        "en": "Hornetaur",
+        "ja": "【タロス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl017_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:93c339cad8c90a98d7a3fc5d07fee7b9b7beacf4860764ac40b477da13811955",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "燕尾蝶贝塔"
+      },
+      "aliases": [],
+      "internal_id": "pl019_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta"
+      }
+    },
+    {
+      "id": "mhw:armor:5c5e72c69e6b7968916c104d2368d78b892d8818d27acd39790a7c0ce3b2fea4",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【雌火龙阿尔法】服装",
+        "en": "Rathian α",
+        "ja": "【レイアα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0db93502207814d2ec83897b9cbbb8ea893c94b7a938d7bb8b2b78d96ea84d84",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【痹贼龙】服装",
+        "en": "Great Girros",
+        "ja": "【ギルオス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl022_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1171d2046eda89f6603ae12d427361a4d5c17e517475ca76d358e6ad915dc6f7",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【眩鸟】服装",
+        "en": "Tzitzi-Ya-Ku",
+        "ja": "【ツィツィ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl023_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7d5aee864bf551f131d587b615a6e6755297dbbe4f03bfbb8db57f47c947b3b5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【浮空龙】服装",
+        "en": "Paolumu",
+        "ja": "【ウルムー】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl024_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1aafc350894ad4e3e50547fe854aac0bece669259f85bb8e842aa8b99126e1ed",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【矿石】服装",
+        "en": "High Metal",
+        "ja": "【ハイメタ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl025_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9ebd6f3b36285a44c0133a1a96066a0f320db747576f2b232d788264bf5e2d3c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【死神】服装",
+        "en": "Death Stench",
+        "ja": "【デスギア】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl026_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3b6f8b59ad5e4e5ffd5a49fcdb5df7bfabbfe40f2a51bd26b831e224e3375d19",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【风漂龙阿尔法】服装",
+        "en": "Legiana α",
+        "ja": "【ギエナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl027_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8b4dea1d1ddb1d012f5a648d13f8d92aa3fb52df48e1da141c57f0db3c59abef",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【骨锤龙阿尔法】服装",
+        "en": "Radobaan α",
+        "ja": "【バルキンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl028_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:178c593bc81be8ee5fc10069bfac23a9ef5c450be523ea4bcba230d9673ffd00",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【惨爪龙阿尔法】服装",
+        "en": "Odogaron α",
+        "ja": "【ガロンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl029_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:218b6be430a3acee022fdda42151158378b2a50580f334203d08cc686a915d6f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【铸铁】服装",
+        "en": "Ingot",
+        "ja": "【インゴット】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl031_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d43912bdf47b5a3b99e37ab730293b45e2d24dc5255c08f9d35eb7a49f8a7c8b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【火龙阿尔法】服装",
+        "en": "Rathalos α",
+        "ja": "【レウスα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8e22626186bc9ac2772face2e665af739cb3bbe1350ad4ea3444e52e3387d8c5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【角龙阿尔法】服装",
+        "en": "Diablos α",
+        "ja": "【ディアブロα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3957c81cc8b7e2f97a72faf641ea42ed7cff62f537d5b39e89063f025566d2e5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【麒麟阿尔法】服装",
+        "en": "Kirin α",
+        "ja": "【キリンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl035_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:6b3d0a32f25d5f7b56ecc3985226f4fac6d236c2f73a5549d368636ded30dcac",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【旅团】服装",
+        "en": "Brigade",
+        "ja": "【ブリゲイド】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl036_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:94880601fbc841f215bdb2879517b49d37bd40d233d120c5a996920576a912c8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【羽毛装饰】服装",
+        "en": "Pulverizing Feather",
+        "ja": "【羽根飾り】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl037_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f78473a08f29db1744425d289329713217c936af8898a4406bab230659dfc1ee",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【猎人贝塔】服装",
+        "en": "Hunter β",
+        "ja": "【ハンターβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl002_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9065d92effc8861fe554d9b87646032167c47c473be021bd64c6e9ed38614f1c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【突击龙】服装",
+        "en": "Gastodon",
+        "ja": "【ガスト】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl015_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:173d9197752d1641e5b8422e30a224c6e48bb8f07bd7c0b3cc58d76b987720a5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【酸翼龙】服装",
+        "en": "Barnos",
+        "ja": "【バルノス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl016_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "body"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:36f7f437d66bbb305b3e3dcfdec419de5719080988421b113c80e1094e242004",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【毒妖鸟贝塔】服装",
+        "en": "Pukei-Pukei β",
+        "ja": "【プケプケβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl010_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:12e78d5c20e65bac69750fb9903c428353baa8e303df4d0180f11e040d44c1fb",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【雌火龙贝塔】服装",
+        "en": "Rathian β",
+        "ja": "【レイアβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e8df7b0619c12533fa6d7beb310a378d3a6db9f1b58568f65c536c52fb8832c5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【惨爪龙贝塔】服装",
+        "en": "Odogaron β",
+        "ja": "【ガロンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl029_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:54488775662cb20037beaf19728a767de5692810544a9c85bce1a74e1100c6bf",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【岩贼龙】服装",
+        "en": "Dodogama",
+        "ja": "【ガマル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl039_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8c6b7d5a1dec39530f401dfa4690d2b66e0d184607b6c4b80335c52d09098dc6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【熔岩龙阿尔法】服装",
+        "en": "Lavasioth α",
+        "ja": "【ラヴァα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl040_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:a134d7e70bcb651bb7ebb3d2d8020f8b67cb97dd9a5a37dc71a7f95da3c43b7b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【熔岩龙贝塔】服装",
+        "en": "Lavasioth β",
+        "ja": "【ラヴァβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl040_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:bbb3364f9b45fced53ff7ddb1b77e5826dd9355d1aabb9e12b0cdb9e0565b05d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【火龙心阿尔法】服装",
+        "en": "Rath Heart α",
+        "ja": "【リオハートα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0100",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:4839bb38b7b4c859d7aebe131398fcbac4e6d97bca9604722d31370300baa28f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【火龙心贝塔】服装",
+        "en": "Rath Heart β",
+        "ja": "【リオハートβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0110",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1517ce0090acf687cd956eb8a412dd6568ef83bb691bea4bbb63d76fb2f02d4b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【蛮颚龙贝塔】服装",
+        "en": "Anjanath β",
+        "ja": "【ジャナフβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl020_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:a25f06d63ce5efd7cf4049c1960f575deb02dec1c8241bf67c97f3cacdf264fa",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【骨锤龙贝塔】服装",
+        "en": "Radobaan β",
+        "ja": "【バルキンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl028_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3fc99f1b435d2309013436004532d1230cf098d36eece14876ce843181148e7e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【乌尔德阿尔法】服装",
+        "en": "Vaal Hazak α",
+        "ja": "【ウルズα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl032_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:63c8cd9232210fcf79a946eb85f09f2bcb1b62e432baced1f317a5f663e8c86f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【乌尔德贝塔】服装",
+        "en": "Vaal Hazak β",
+        "ja": "【ウルズβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl032_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c0b481b387369d6e80273686d9ea0b2dd3329d59105fbb75235526163910293d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【火龙贝塔】服装",
+        "en": "Rathalos β",
+        "ja": "【レウスβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0577931eae20e6d99ca658f097fd4f2d69ab519c0538444541893acbe7fd43e0",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【角龙贝塔】服装",
+        "en": "Diablos β",
+        "ja": "【ディアブロβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:48c5e1ffe4f034e00578dc91d8d2c76e28b73cd5a188084cfe6067bc57bb1ab8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【麒麟贝塔】服装",
+        "en": "Kirin β",
+        "ja": "【キリンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl035_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c3151b58ae341348391429068b73b29eeb4256b05203bc6eaf8103be0731e0be",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【战纹阿尔法】服装",
+        "en": "Nergigante α",
+        "ja": "【オーグα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl030_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8c5348b2ec38703adef82fb0ee611aadcc58d660e8eb94813eb56e2e88794255",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【战纹贝塔】服装",
+        "en": "Nergigante β",
+        "ja": "【オーグβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl030_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7ec09178ca09d2d9d2a24062cf5bd9b0bf12838e619e5e0da1987b50d20994c8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【爆锤龙阿尔法】服装",
+        "en": "Uragaan α",
+        "ja": "【ガンキンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl041_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b4c322b9488b2ed57e93c9f1aa1c7a8efc401f6f496acff6bbd60e593971ab6a",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【爆锤龙贝塔】服装",
+        "en": "Uragaan β",
+        "ja": "【ガンキンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl041_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:645369a07effb7edac540d5dd4701f126a7505ff5dfff3fdf6da7b246e04dcca",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【火龙魂阿尔法】服装",
+        "en": "Rath Soul α",
+        "ja": "【リオソウルα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0100",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0ae5edd7fd11f4d485dfdb245df8bd39a670deff7afb5dc940f6ea72fa5437c2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【火龙魂贝塔】服装",
+        "en": "Rath Soul β",
+        "ja": "【リオソウルβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0110",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1d65a9a73becc7680886057324936ec98c013a8bc1772e98ea4e60cdc869253e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【暴君角龙阿尔法】服装",
+        "en": "Diablos Nero α",
+        "ja": "【ディアネロα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0100",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:6931a3d262e61c363f0b0832321d487f4f7c0cb818bab78e05161e0139f139d7",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【暴君角龙贝塔】服装",
+        "en": "Diablos Nero β",
+        "ja": "【ディアネロβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0110",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0265b01132b6b1a527fa62a861ded0d770609a402d06d1dcf99910213743d670",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【爆鳞龙阿尔法】服装",
+        "en": "Bazelgeuse α",
+        "ja": "【バゼルα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl042_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:fb63c090afae939596bae5b68c2f92f58ce10de8dd6f881a9bc6fb10399a6b2b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【爆鳞龙贝塔】服装",
+        "en": "Bazelgeuse β",
+        "ja": "【バゼルβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl042_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f55364dc14d66dbb6461ee96c542c7559f23db31fb40405a9785a1d3fe4bf742",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【大马士革阿尔法】服装",
+        "en": "Damascus α",
+        "ja": "【ダマスクα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl043_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:05d9e6d91dd07bdbe9cafe2e988fea5c15e13888d95207d33166cc2f75b445a5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【大马士革贝塔】服装",
+        "en": "Damascus β",
+        "ja": "【ダマスクβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl043_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e87f92d3e78335e77e3cd672cb535a4e66ede8dde790a7523535d74f03fc679c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【杜宾贝塔】服装",
+        "en": "Dober β",
+        "ja": "【ドーベルβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl044_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ef3bbd37b5253c240a2f71af8c2c7df435cfd46b87923c92a854d55724e3839c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【冥灯幽火阿尔法】服装",
+        "en": "Xeno α",
+        "ja": "【ゼノラージα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl045_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ca83e56ce6a4ea965bfdae8ae0a441c7290a516c58cc11e6634d269a698524a6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【冥灯幽火贝塔】服装",
+        "en": "Xeno β",
+        "ja": "【ゼノラージβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl045_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:bda566fa8b8cd41b035392196e1e7ff1ce14f8e835eae34fe4cd05aabe30429d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【帝王阿尔法】服装",
+        "en": "Teostra α",
+        "ja": "【カイザーα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl046_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:37e44bf99301679e693f3e67fd37685d0ae54c5f7875282c301b7567d87583c6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【帝王贝塔】服装",
+        "en": "Teostra β",
+        "ja": "【カイザーβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl046_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:800f1b9fb3c81ea8b56b4f75617ec9aee4d60af306d1d5a1f4aef10819f799f9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【钢龙阿尔法】服装",
+        "en": "Kushala α",
+        "ja": "【クシャナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl047_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9dcdaf34257d74f18dbc7ccbee957854bb04448688d96b5c1a2815b153fa9a35",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【钢龙贝塔】服装",
+        "en": "Kushala β",
+        "ja": "【クシャナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl047_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0fa93a27b740f3413cae98c2a3bf67992981591dbeaa2bef78ab18c1ac80bc35",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【骷髅面罩】服装",
+        "en": "Skull Mask",
+        "ja": "【スカルフェイス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl054_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:4e87a9a6aad812917096e1a403a578afdb66f56fb3820c735862e1b3c1034e4e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【公会十字】服装",
+        "en": "Guild Cross",
+        "ja": "【ギルドクロス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl048_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5d2e1f11d6caeb6b3174d587909bcd790e6a5eb84a6a93f613898705dd50cc6f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【铸岛熔岩阿尔法】服装",
+        "en": "Zorah α",
+        "ja": "【ゾラマグナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl038_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:452cd8070de258d28ad7de49baa5688a6c3a64dfb2103b05e88637bbbfa5148b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【铸岛熔岩贝塔】服装",
+        "en": "Zorah β",
+        "ja": "【ゾラマグナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl038_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:98630bf7241185d736de1f960da9ef8f7b88230b6da929ef4efb9b775924accc",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【追踪者】服装",
+        "en": "Commission",
+        "ja": "【シーカー】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl053_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:780b0c6074608a1fb845b1ef2fee91b7dd392fbe45221a58d0c8e6053b4eb0a7",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "盛开阿尔法",
+        "en": "Blossom α",
+        "ja": "ブロッサムα"
+      },
+      "aliases": [],
+      "internal_id": "pl074_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:acc6ffd12ea73358ea502918f3f9b308174b544e48e478ae796a42ef60266038",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "潜水员阿尔法",
+        "en": "Diver α",
+        "ja": "ダイバーα"
+      },
+      "aliases": [],
+      "internal_id": "pl075_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9f04c4e88995348ebddbfbae6e748d5f991d071e04ada0157af0a563c4f8160f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "收获阿尔法",
+        "en": "Harvest α",
+        "ja": "ハーベストα"
+      },
+      "aliases": [],
+      "internal_id": "pl076_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:dcc305d6122038b1d341ed14e1a30cdf85e0f26fe023675fb6a1515418112c73",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "猎户星阿尔法",
+        "en": "Orion α",
+        "ja": "オリオンα"
+      },
+      "aliases": [],
+      "internal_id": "pl077_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:abfd29f948d1c4a003f66a0004e02f44b65064010fb69eedbd201616710f4104",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【艾露猫头套】服装",
+        "en": "Faux Felyne",
+        "ja": "【アイルーフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl055_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e9fa6411f3245e209ba793b672f10943312e2ead984a93e3a2e82f87ee4309de",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【蘑菇猪头套】服装",
+        "en": "Mosswine Mask",
+        "ja": "【モスフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl056_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:18c85ce903978ce13fcc46ccde8aef5a97d9c27e677d9c87c91d3be7ca18616d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "盛装阿尔法",
+        "en": "Gala Suit α",
+        "ja": "フルドレスα"
+      },
+      "aliases": [],
+      "internal_id": "pl078_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:edd5b270497cdc45b7f533c03f7ae2766e6a346a7b750d228ef530f20cb4935c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "隆阿尔法",
+        "en": "Ryu α",
+        "ja": "リュウα"
+      },
+      "aliases": [],
+      "internal_id": "pl069_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7ef4d5167d9f9a40b9035c79252f515cf8af4d4dfce5157e92227ba01466aeda",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "樱阿尔法",
+        "en": "Sakura α",
+        "ja": "さくらα"
+      },
+      "aliases": [],
+      "internal_id": "pl070_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:edd3229937b00c06235996be0bc75c758ea51f180477ce2a8bfb36d747d6de61",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【巴耶克】服装",
+        "en": "Bayek",
+        "ja": "【バエク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl120_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d18a12323678d5d386e8117065626b2ff1a276643bff1f0f9c7d2af5ddebf1cd",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【猫蜥龙】服装",
+        "en": "Shamos",
+        "ja": "【シャム】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl058_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f331680b93872a7aa8471bc9206717107dc2ca54f0db0b00c1ca41c0d128af8b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【原型】服装",
+        "en": "Origin",
+        "ja": "【オリジン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl018_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b7da343ddcc9692606be39acfdb9dfece1788adf299c3171dfccae4bedae077d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【水晶耳环】服装",
+        "en": "Crystal Earring",
+        "ja": "【水晶のピアス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl059_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c8f2c4b0d55ee709e0a72122714b02af27f97c5b40de641fe8494874bc2c5972",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【知性眼镜】服装",
+        "en": "Strategist Spectacles",
+        "ja": "【知略の眼鏡】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl060_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9eee230dc1bd17caf6f63a8fde14854961d7b69357ab5bb786166e9a69de68b9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【龙王的独眼】服装",
+        "en": "Dragonking Eyepatch",
+        "ja": "【竜王の隻眼】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl061_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7fc6120781c5e802482fbdd01d374ed2754a2a90f9c25ef602faf6bc2cbe1320",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【绚辉龙铠罗阿尔法】服装",
+        "en": "Kulve α",
+        "ja": "【マムガイラα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl049_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:74f8ba97eccd2addbedcb80edb05a21055e91ed07fb2f8c002398966d62482df",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【绚辉龙铠罗贝塔】服装",
+        "en": "Kulve β",
+        "ja": "【マムガイラβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl049_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:216d3a417128829d78ff556b3f80a644a2ad410257fda12e9724a315d960cdac",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "铠武者",
+        "en": "Samurai",
+        "ja": "鎧武者"
+      },
+      "aliases": [],
+      "internal_id": "pl067_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c3ed6a38df14fa4e15c75ad2c76dd61fdb210f1cbb4d9bc71a6c5758443bd789",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【残虐阿尔法】服装",
+        "en": "Deviljho α",
+        "ja": "【バンギスα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl050_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:58ad12092dd12301286e8472062ab0526b1affe2bcf387cdc1443255993e881d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【残虐贝塔】服装",
+        "en": "Deviljho β",
+        "ja": "【バンギスβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl050_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e5eac241167c48ed7e028851fe1c052ffed68470e3da4e8cf9db439b8bafe3f8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "黎明武士【寂】",
+        "en": "\"Bushi \"\"Sabi\"\"\"",
+        "ja": "暁ノ武士【寂】"
+      },
+      "aliases": [],
+      "internal_id": "pl066_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3d6f9c9da5534c78279c9f634230e81fa4f60672311eefb93461980185cc6088",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "黎明武士【誉】",
+        "en": "\"Bushi \"\"Homare\"\"\"",
+        "ja": "暁ノ武士【誉】"
+      },
+      "aliases": [],
+      "internal_id": "pl066_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f6b3cfa20b8a9b813e73d5a7dfb8f4fda6d1ac7c333aa4499a00b3599ec3ec0d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【腾龙】服装",
+        "en": "Drachen",
+        "ja": "【ドラケン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl073_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:54ff0e6b308c41e65fcaeceb984e2f9c0e57b34837b85ad21e7880571df30eb6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "独角仙后贝塔"
+      },
+      "aliases": [],
+      "internal_id": "pl057_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta"
+      }
+    },
+    {
+      "id": "mhw:armor:29346edaee99dc9a60396ea8231bae8d79432b736862a2671919989d8b5f00b0",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "燕尾蝶男贝塔"
+      },
+      "aliases": [],
+      "internal_id": "pl057_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta"
+      }
+    },
+    {
+      "id": "mhw:armor:9184eb3b2cd043a9c2e78b22fd85f8a81394d17cecd7bdbe3f8513d638813f31",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【乌尔德伽马】服装",
+        "en": "Vaal Hazak γ",
+        "ja": "【ウルズγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl032_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0d4617ad271486d2594b46dac24084f0b86fda7045331e1f50b9ea31a345c721",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【麒麟伽马】服装",
+        "en": "Kirin γ",
+        "ja": "【キリンγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl035_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0735e8c1670f2ecd6fd5eb9f36dffb7475d3aa1f85ba88002cf3c0bf95f5ba33",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【帝王伽马】服装",
+        "en": "Teostra γ",
+        "ja": "【カイザーγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl046_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c7b630bf087e0def8dfbf9cfa0cb15ca548a320748207de59c898a27a9ba4d34",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【钢龙伽马】服装",
+        "en": "Kushala γ",
+        "ja": "【クシャナγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl047_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f291ee6254b0cba94e813ad8166c90883960b66c22acf4907dce1dd33601d6cb",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【战纹伽马】服装",
+        "en": "Nergigante γ",
+        "ja": "【オーグγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl030_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5b470434f02e14a9e13ad5882d329d1622fc1e023fa03eec9e31d6ef1eed202d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【铸岛熔岩伽马】服装",
+        "en": "Zorah γ",
+        "ja": "【ゾラマグナγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl038_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:fb10b7023206a9b42744e17c38ab479a9fe130a105f23b14bb327c0aa87263ab",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【冥灯幽火伽马】服装",
+        "en": "Xeno γ",
+        "ja": "【ゼノラージγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl045_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:830bbcdf025873e1978b572030d4cf9c42fa6ddce93aaba321a31b5e0cbc0151",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【苍星之将】服装",
+        "en": "Azure Starlord",
+        "ja": "【蒼星ノ将】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl072_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f4ac625527fd74b74df8c7622ff52324b0234a81d1cbb9e86692f44cdf03a003",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【但丁】服装",
+        "en": "Dante",
+        "ja": "【ダンテ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl071_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c536e94aeebbfe35428cbd1872fb7ce0814c4cd52509cc511be46a794490b4c9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【皇后阿尔法】服装",
+        "en": "Lunastra α",
+        "ja": "【エンプレスα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl051_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f396f4b2e5a621910ea0c4763b20544b502c321b7b81b69cf79fe61297a57c1d",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【皇后贝塔】服装",
+        "en": "Lunastra β",
+        "ja": "【エンプレスβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl051_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:14a11320023f8b6b27824cfb576c39d5826ce53286611d53d9ac436fd9dc907c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【封印的眼罩】服装",
+        "en": "Sealed Eyepatch",
+        "ja": "【封印の眼帯】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl063_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c5e928f47698a76134170219805da4fccc31f8e13a1107d35f196398b884e09a",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【墨镜】服装",
+        "en": "Shadow Shades",
+        "ja": "【シャドウアイ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl062_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:fa1b073d91d249dc72d171502f215215f335c56b1436919a39a1cd8d5bca65ec",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【扒手龙头套】服装",
+        "en": "Kulu-Ya-Ku Head",
+        "ja": "【クルルフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl065_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:862aa74f50ec23c7ae7e566112dee24b67e6ab04e786e135773ecd5747b2c59c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【摇曳鳗头套】服装",
+        "en": "Wiggler Head",
+        "ja": "【ユラユラフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl064_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e40ad9be2d164032694eba38f93fcf890ac86ca0d3d3fbb596f58b043f40f949",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【蝴蝶】服装",
+        "en": "Butterfly",
+        "ja": "【パピヨン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl117_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:6f99e7d7e4f3b3c3ef077e322bf105c7037178d8a181226d8add0cea39dfdc4c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【甲虫】服装",
+        "en": "Beetle",
+        "ja": "【ビートル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl116_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c10eb84ab41261aeff579de5ae5bb51ed986ace30dca997677d79ef1a03fa5e2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【皇后伽马】服装",
+        "en": "Lunastra γ",
+        "ja": "【エンプレスγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl051_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ea9aa59ddba2ba533cc0236257e5bd835f7e1db079ee524dfa992e4c3eae9b9f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【杰洛特】服装",
+        "en": "Geralt of Rivia",
+        "ja": "【ゲラルト】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl118_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3caf8b8b78f96a8eba1b14aafa098db9240a727b8921c6299341c8f964be9392",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【希里】服装",
+        "en": "Ciri",
+        "ja": "【シリ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl119_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:38cb9658c67c93ff1ed86bba1b84723afb33be96f5b8cbeed881498bf52ea907",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【绚辉龙铠罗伽马】服装",
+        "en": "Kulve γ",
+        "ja": "【マムガイラγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl049_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9a88b5e757b404a4613df530b00eb8f603f3772b8957b8b0370e24fdc554e629",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【守护者】服装",
+        "en": "Guardian",
+        "ja": "【ガーディアン】衣装"
+      },
+      "aliases": [
+        "【守护者α】服装",
+        "守护者",
+        "守护者α",
+        "Guardian Alpha"
+      ],
       "internal_id": "pl121_0000",
       "metadata": {
         "path_family": "pl/f_equip",
         "monster": "guardian",
         "rank": "high",
-        "variant": "alpha",
         "is_full_body": false,
-        "parts": ["head", "body", "arms", "waist", "legs"]
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ],
+        "legacy_ids": [
+          "mhw:armor:guardian-alpha"
+        ]
       }
     },
     {
-      "id": "mhw:armor:fatalis-alpha",
+      "id": "mhw:armor:78696a1287c77004749befb282e348277d29c5d48424086aa17efee0d004bcb4",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "【精英‧龙α】服装",
-        "en": "Fatalis Alpha +"
+        "zh_cn": "【冰狼】服装",
+        "en": "Direwolf+",
+        "ja": "【ウルファ】衣装"
       },
-      "aliases": ["黑龙", "黑龙α", "Fatalis", "Fatalis Alpha", "Fatalis α"],
-      "internal_id": "pl129_0000",
+      "aliases": [],
+      "internal_id": "pl105_0000",
       "metadata": {
         "path_family": "pl/f_equip",
-        "monster": "fatalis",
-        "rank": "master",
-        "variant": "alpha",
-        "is_full_body": false,
-        "parts": ["head", "body", "arms", "waist", "legs"]
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
       }
     },
     {
-      "id": "mhw:armor:fatalis-beta",
+      "id": "mhw:armor:fdee5980397427173dc8833e48b6815d50db2b3c8b4d79dfe6978430788248cc",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "【精英‧龙β】服装",
-        "en": "Fatalis Beta +"
+        "zh_cn": "【精英·巨蜂】服装",
+        "en": "Vespoid+",
+        "ja": "【EXランゴ】衣装"
       },
-      "aliases": ["黑龙", "黑龙β", "Fatalis", "Fatalis Beta", "Fatalis β"],
-      "internal_id": "pl129_0010",
+      "aliases": [],
+      "internal_id": "pl007_0001",
       "metadata": {
         "path_family": "pl/f_equip",
-        "monster": "fatalis",
-        "rank": "master",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e1382af3c7f2d7e887e4409a1b8d843f5d8f6737a64fc57f17b0172a08eaa7f2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·巨甲虫】服装",
+        "en": "Hornetaur+",
+        "ja": "【EXタロス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl017_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:28138783e95ffac640572457a7f5c542995a3982b1e7f3727b12e9cc85881812",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·冰豺龙】服装",
+        "en": "Wulg+",
+        "ja": "【EXウルグ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl102_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b583588987e8ac75e17dd6b366111548bb6db8ec32228a1d0fdd0c774ebcb764",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·冬翼龙】服装",
+        "en": "Cortos+",
+        "ja": "【EXコルトス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl103_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "body"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ac7b457e0e352b89688e5a735843075e16a99c433465ef842cea05843683e552",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·贼龙】服装",
+        "en": "Jagras+",
+        "ja": "【EXジャグラス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl008_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:08dd7cb9220e8ad017a40a35b8ced0d4639dde98363f727ee17b9b2258a58d65",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·眩鸟】服装",
+        "en": "Tzitzi-Ya-Ku+",
+        "ja": "【EXツィツィ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl023_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:15673c7a7210515429a41ed526d80c6e94eef93d7b017f27af2d13db14b046d8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·痹贼龙】服装",
+        "en": "Great Girros+",
+        "ja": "【EXギルオス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl022_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0ddacfa13229e16d6d29549530671390321ed34cd9f970a757278ad28b9ab61b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·岩贼龙】服装",
+        "en": "Dodogama+",
+        "ja": "【EXガマル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl039_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c3c3f4717a352b0f855f88423a6d1dcfb89da0d05c865f56ee52c55882a45173",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·搔鸟】服装",
+        "en": "Kulu-Ya-Ku+",
+        "ja": "【EXクルル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl009_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:56860f98f82f8c440277b0bc5465ee163211e23da94083b83272a9ae3dda2a29",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·毒妖鸟】服装",
+        "en": "Pukei-Pukei+",
+        "ja": "【EXプケプケ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl010_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:69c5c71186b84755645a6e306d407fbdc43871ef83f37d7f1fb42afb2358e2f0",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·土砂龙】服装",
+        "en": "Barroth+",
+        "ja": "【EXボロス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl012_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:85738482939037ddc924ee1b964428e0777b55e55371cbc17324601446bb11c3",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·泥鱼龙】服装",
+        "en": "Jyuratodus+",
+        "ja": "【EXジュラ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl011_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e67a6bf8622d1ffe7119d52a9ae19b34f3edf4759689b89c6e64d805d3ffc7f2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·冰鱼龙】服装",
+        "en": "Beotodus+",
+        "ja": "【EXブラン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl110_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:93a49717afdd29534f92eeca9df4cb5e1a6c5f7e557785327fbef787be65b77c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·飞雷龙】服装",
+        "en": "Tobi-Kadachi+",
+        "ja": "【EXカガチ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl013_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b150401ce1c029e14203b1f52ae8551af52718e434cb6f437e47bc386a540d66",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·猛牛龙阿尔法】服装",
+        "en": "Banbaro α+",
+        "ja": "【EXバフバロα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl084_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:87ce1ff56c22f11f8c1da246b3716e1e1775ca115c073605fdc2c01c4eb3c0d3",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·猛牛龙贝塔】服装",
+        "en": "Banbaro β+",
+        "ja": "【EXバフバロβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl084_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
         "variant": "beta",
-        "is_full_body": false,
-        "parts": ["head", "body", "arms", "waist", "legs"]
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
       }
     },
     {
-      "id": "mhw:armor:alatreon-alpha",
+      "id": "mhw:armor:342485ae98c0995c704d063007b05e852b7931381f7d6ce7260b78aea796d6d4",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "【精英·煌黑龙α】服装",
-        "en": "Alatreon Alpha +"
+        "zh_cn": "【精英·蛮颚龙阿尔法】服装",
+        "en": "Anjanath α+",
+        "ja": "【EXジャナフα】衣装"
       },
-      "aliases": ["煌黑龙", "煌黑龙α", "Alatreon", "Alatreon Alpha", "Alatreon α"],
+      "aliases": [],
+      "internal_id": "pl020_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8d34a60bde3e9ee5c5f37ccb6cbde31fcd18b3db51486871393d61fcd75d19f2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·蛮颚龙贝塔】服装",
+        "en": "Anjanath β+",
+        "ja": "【EXジャナフβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl020_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:67b70638ce16f4731eba4f89cf401fefb326e3652b13edde8f32d1e4e84a2fad",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雌火龙阿尔法】服装",
+        "en": "Rathian α+",
+        "ja": "【EXレイアα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f3815fe4e4d667483561b543eb10173b1ebf9904cb5b76605fe64ff0d4e31e04",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雌火龙贝塔】服装",
+        "en": "Rathian β+",
+        "ja": "【EXレイアβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:050aa73ceafe191b28d92c8250f537fa93200d52f7607a9210b4d3930563d9d4",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·火龙心阿尔法】服装",
+        "en": "Rath Heart α+",
+        "ja": "【EXリオハートα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:72c75c17fbfe48d86fbe3b42c30940e3eb3eb1a91f548e7dd9936b17b7dd8eaf",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·火龙心贝塔】服装",
+        "en": "Rath Heart β+",
+        "ja": "【EXリオハートβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0111",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f24844dfa121c4ce007799b951767a649820423b05b85b0fa5d861ddcde9a98f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·浮空龙】服装",
+        "en": "Paolumu+",
+        "ja": "【EXウルムー】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl024_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:aab14e0c0c5f23aa51ffe7398109f41bbfa28d3ff806a9205948315d690deea8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·浮梦】服装",
+        "en": "Lumu Phantasm+",
+        "ja": "【EXウルムメア】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl024_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:02b4b770f72d433f342536db33181b169f5c1be45688180e7234af8cc3f144a3",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·妖水】服装",
+        "en": "Coral Pukei+",
+        "ja": "【EXプケラグーナ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl010_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d81d76c7abe7da3c04d0428099dc5445d3feab1cc27fd59966f77d2774d2907b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·朱毒】服装",
+        "en": "Viper Kadachi+",
+        "ja": "【EXベニカガチ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl013_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:42a0782b943a85ebccbf356cb35c5d6af0a1382bcc35073ba061cd93ddf25be9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·骨锤龙】服装",
+        "en": "Radobaan+",
+        "ja": "【EXバルキン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl028_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5c02c97498c0f0894eca6e6741c02cdebf2710006835fc2fdde13d8f3fa747b0",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【敏捷耳饰】服装",
+        "en": "Acrobat",
+        "ja": "【身軽さの耳飾り】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl095_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:2c93e11fd81b9d0597dfe40f14fc05c6ef68c410d7353231cff9bc9a293e0477",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【温泉金猴】服装",
+        "en": "Goldspring Macaque",
+        "ja": "【キンセンザル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl113_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:430365c258c1a302a43d08aefb0b1d73e0fae916a3e63e6ae8da4bbc14925882",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精灵鹿头套】服装",
+        "en": "Faux Kelbi",
+        "ja": "【ケルビフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl096_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c25d9c1550d5455225c937182985def696cc431b8ed53d7cc5333208834f78c5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·冰牙龙阿尔法】服装",
+        "en": "Barioth α+",
+        "ja": "【EXベリオα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl089_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:bb7e18701c3c7942e88b4684453c1599fd37f7f8aa4f895941a923406cdd9bf3",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·冰牙龙贝塔】服装",
+        "en": "Barioth β+",
+        "ja": "【EXベリオβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl089_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d13ccfab06711842fe85c6e8f60af070a0a9c9efe30d0bbf71f303ade8762fff",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·火龙阿尔法】服装",
+        "en": "Rathalos α+",
+        "ja": "【EXレウスα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:357483f71f287b926d506d8dce711f94271146856e71c0e1e2005dcdd9f34859",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·火龙贝塔】服装",
+        "en": "Rathalos β+",
+        "ja": "【EXレウスβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:31abf30a2f99c9cee0dddc5746011d2be1a66c632a48bdbe5a6d29acdeec3c5c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·角龙阿尔法】服装",
+        "en": "Diablos α+",
+        "ja": "【EXディアブロα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5fd6a9e8890eac3422e006dfeaa08f4797ef218a13d14f9d8e8fd44d927f93fd",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·角龙贝塔】服装",
+        "en": "Diablos β+",
+        "ja": "【EXディアブロβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c76645f70c147ec19cde36d2bbc3a5fbb8897ea1dc4c71bfd668a07020023e57",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·风漂龙阿尔法】服装",
+        "en": "Legiana α+",
+        "ja": "【EXギエナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl027_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:546f001bf5426758aa742ff40c04360cb75cfe1e76c11e157c3ab0abc4230723",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·风漂龙贝塔】服装",
+        "en": "Legiana β+",
+        "ja": "【EXギエナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl027_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e093a121f4561bd83715689de45ecc78727099961c3bc6ed38d393f0a22ea485",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·惨爪阿尔法】服装",
+        "en": "Odogaron α+",
+        "ja": "【EXガロンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl029_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f1a009f3d8f5d677cb9f48a3375053cf06a09108d47221df697ba701b17d11ec",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·惨爪贝塔】服装",
+        "en": "Odogaron β+",
+        "ja": "【EXガロンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl029_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:4ff18596f7942362479673e5e2f100f2029cdef7c5ac5cd0aaa1f7942dcba9d1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·熔岩龙】服装",
+        "en": "Lavasioth+",
+        "ja": "【EXラヴァ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl040_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:82f2762e31d1e8c7424448fcba3b27bbf4bb3d4644da37a5f762fe043771be55",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·爆锤龙】服装",
+        "en": "Uragaan+",
+        "ja": "【EXガンキン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl041_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c46a53c0cb73de35c3a4c9689b78f8f3e66e6f4d6804a30fd07649e82046dc1e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·迅龙阿尔法】服装",
+        "en": "Nargacuga α+",
+        "ja": "【EXナルガα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl080_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:defb42a30b73ccddb97cb2ba2ee2aee8642249450bee0837cdd071104df6f2d4",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·迅龙贝塔】服装",
+        "en": "Nargacuga β+",
+        "ja": "【EXナルガβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl080_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:655783f6457ab1cf0a06bf97c2ef609ed520ace5d3ec1d053f05bf89100babf8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·斩龙阿尔法】服装",
+        "en": "Glavenus α+",
+        "ja": "【EXディノα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl081_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f4cdcac84af4380d87eb445311207b27997650dbdf487fd21ec3892623b2fdb8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·斩龙贝塔】服装",
+        "en": "Glavenus β+",
+        "ja": "【EXディノβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl081_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ab21fd9643bd48d58e2213cc0d590ef135332d03f7dce78b77c7105d1259be62",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·碎龙阿尔法】服装",
+        "en": "Brachydios α+",
+        "ja": "【EXブラキα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl082_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:37ad7ca0645066ebb7decd23a2254c41f2cd7d4bd1f0f1d425353baf5e83b881",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·碎龙贝塔】服装",
+        "en": "Brachydios β+",
+        "ja": "【EXブラキβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl082_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7ac4db5742b786cd154d42d1df65a6a19d234a35ab4850a9c8d8625006019452",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·轰龙阿尔法】服装",
+        "en": "Tigrex α+",
+        "ja": "【EXレックスα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl083_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1147354b843032d7e0cea276bfd7071ea5d50dcc02010df3f0acb7b92360ac23",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·轰龙贝塔】服装",
+        "en": "Tigrex β+",
+        "ja": "【EXレックスβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl083_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d510986e89482bac07b9bb42228b29b5e5a594271fefb6b5261497751fd1c6c6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雷颚阿尔法】服装",
+        "en": "Fulgur Anja α+",
+        "ja": "【EXジャナールα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl020_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f79469517a28c1011ce663b61c8dcbc3615e157f9c934d57bde29f411c175f79",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雷颚贝塔】服装",
+        "en": "Fulgur Anja β+",
+        "ja": "【EXジャナールβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl020_0111",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7c087ea2d88076c9cec73d2ac377393a7b89256c814593887ae6820897538e54",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【黑带】服装",
+        "en": "Black Belt",
+        "ja": "【クロオビ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl093_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e4d6c0b18498ac30f4075215a67592ab2f431fa60715789607e2301ea6b555d8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·霜漂阿尔法】服装",
+        "en": "Shrieking Legia α+",
+        "ja": "【EXブリーナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl027_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:91523af40000e4b235fedfb09817f3d812789f9dcb8dd60396897639b516b227",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·霜漂贝塔】服装",
+        "en": "Shrieking Legia β+",
+        "ja": "【EXブリーナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl027_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:4f746dbdbfd9cb1acffdc101d353b73b84ddd394d4c251adc0022eaec4d5a335",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·火龙魂阿尔法】服装",
+        "en": "Rath Soul α+",
+        "ja": "【EXリオソウルα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:81ff5c8aabfbf074cf4d1ef1b3b391718563833e7c56a244e5f82e161f6b432f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·火龙魂贝塔】服装",
+        "en": "Rath Soul β+",
+        "ja": "【EXリオソウルβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0111",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:468e00b49780499a0336311c435e63094066e19f9a67ecaee1aa2e7a745a1072",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·暴君角龙阿尔法】服装",
+        "en": "Diablos Nero α+",
+        "ja": "【EXディアネロα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:46583900f44dc0dc695fa0dfa03dc79db813c4fdddd3e9fa9560cee91f5ce161",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·暴君角龙贝塔】服装",
+        "en": "Diablos Nero β+",
+        "ja": "【EXディアネロβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl034_0111",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8fdf8cc9527e8d63e52fcabedac6c7f984f8b03ae0d3dd4c7ac513bb9fc460a9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·亡爪阿尔法】服装",
+        "en": "Death Garon α+",
+        "ja": "【EXデスガロンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl029_0101",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:dd5ec116526fa0357b6a46f15ed32d66784d1dd336d3e01af9e65b51fe275cd6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·亡爪贝塔】服装",
+        "en": "Death Garon β+",
+        "ja": "【EXデスガロンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl029_0111",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:632309202f073ff3b6c0bca529e966e65bc0b61f2dfc31688868f301b110aa75",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·斩黄阿尔法】服装",
+        "en": "Acidic Glavenus α+",
+        "ja": "【EXディノイエロα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl081_0100",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b5e1c8ac16e1a2555b5f9dc417779353e6c0c53d812c5424acee05f7211c9c47",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·斩黄贝塔】服装",
+        "en": "Acidic Glavenus β+",
+        "ja": "【EXディノイエロβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl081_0110",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3d6e5aa60edc39bfd48ee3f6fc0f7f2889ec92c7263b21c44f708ca661793486",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【机械】服装",
+        "en": "Artian",
+        "ja": "【アーティア】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl091_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f97747a978cc5796ed0a3f9fe242a8cb39f69c3c40c974334717857c47d1f4f2",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【骷髅方巾】服装",
+        "en": "Skull Scarf",
+        "ja": "【スカルスカーフ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl099_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1e0789afad3f670120be0a2a954bfb4134639322f39c0f58ca8dc7cbbb208454",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雪崩阿尔法】服装",
+        "en": "Velkhana α+",
+        "ja": "【EXラヴィーナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl085_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:2308c49d48de5c2ec35506b26c46531284adb6c80eab90d74e50bd8ace31ed2b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雪崩贝塔】服装",
+        "en": "Velkhana β+",
+        "ja": "【EXラヴィーナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl085_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:254c487af818f9a6fab5f8f7982453e036036cd7a2a391452e473a8226393a6c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·矜持阿尔法】服装",
+        "en": "Seething Bazel α+",
+        "ja": "【EXプライドα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl042_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b6b3fac073bf849d62869d81535f38fa65730d8e1724b6104fe1e511afbe4166",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·矜持贝塔】服装",
+        "en": "Seething Bazel β+",
+        "ja": "【EXプライドβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl042_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7336242bb5e2d98f758159ded03803e0d036424540d75514439dca2bfa088b8b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·死灭阿尔法】服装",
+        "en": "Blackveil Hazak α+",
+        "ja": "【EXヴァルファーα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl032_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5f5054a5a21916eccf76a79dcf1f60b5ce2e20f06806633d801a9937fc9c3091",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·死灭贝塔】服装",
+        "en": "Blackveil Hazak β+",
+        "ja": "【EXヴァルファーβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl032_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:6b684b32952a2e774ea1a936c4d052fd40975f70154de039257ac8654064e578",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·帝王阿尔法】服装",
+        "en": "Teostra α+",
+        "ja": "【EXカイザーα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl046_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d0184bf9b6d467880e8c8a005f3cd2a5bbd73f49f37b6accf1094184c363ee6c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·帝王贝塔】服装",
+        "en": "Teostra β+",
+        "ja": "【EXカイザーβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl046_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:a181c5ecd4ba89cd03f77e305a6e9b85093c3eab253e71a50e54b91f55a5f759",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·钢龙阿尔法】服装",
+        "en": "Kushala α+",
+        "ja": "【EXクシャナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl047_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d0efa3abf901a365597857ff53b8d9cfc3c99d05a457bae196cc1a8f2bf6093b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·钢龙贝塔】服装",
+        "en": "Kushala β+",
+        "ja": "【EXクシャナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl047_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d83a3389453b08f75a922358fc7daf9c1d72a4df18704039b5fe7a741cc3f383",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·麒麟阿尔法】服装",
+        "en": "Kirin α+",
+        "ja": "【EXキリンα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl035_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:d55125f6fa31c0768cedfd663dd6f6cc164723cd38507284fa45dcc39571cc84",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·麒麟贝塔】服装",
+        "en": "Kirin β+",
+        "ja": "【EXキリンβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl035_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e579fae2f063757f755417b61dd09c658c2aefdbe89f39f68ab3983e8acb8eed",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·触角阿尔法】服装",
+        "en": "Namielle α+",
+        "ja": "【EXテンタクルα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl086_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:47fb473d8fb2b8c78c23b323aa99f0dcf420aa4550b3a6310795eb546712f049",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·触角贝塔】服装",
+        "en": "Namielle β+",
+        "ja": "【EXテンタクルβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl086_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:923bee240c9459da8ce61de5e0f284675b09ab796842f8450ac381ac2587ee48",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【蒸汽贵族贝塔】服装",
+        "en": "Clockwork β+",
+        "ja": "【アークロックβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl104_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:957ed4f5f2a1f36798ac4a6a3110742a349c1299634e056c761f2bf9b0e3cd8e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【公会宫殿】服装",
+        "en": "Guild Palace+",
+        "ja": "【ギルドパレス】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl094_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e2fe8739dda871e8a96097921ea2f7c5c2f4550243c2836e76d6b90111fa3232",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·狂纹阿尔法】服装",
+        "en": "Ruiner Nergi α+",
+        "ja": "【EXゾークα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl030_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:7bc1d8ea838eabab16a1703f217256b5e2a8eb98d730d1aada9c19dc076a9fd1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·狂纹贝塔】服装",
+        "en": "Ruiner Nergi β+",
+        "ja": "【EXゾークβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl030_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e0b50619fa856efd746fc4c84abcd86f898e0a354036dff406a0d81b2b72e89a",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·迦楼罗阿尔法】服装",
+        "en": "Shara Ishvalda α+",
+        "ja": "【EXアンガルダα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl088_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:725814e536b379d0893f080c3466b633ea2f4e318973ca6b51b11938a5b67fac",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·迦楼罗贝塔】服装",
+        "en": "Shara Ishvalda β+",
+        "ja": "【EXアンガルダβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl088_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:263d7efa5bc0aee91a7d917cc8cb275d01f897b1bcc955cdf6e6a909de256e1c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·贪欲阿尔法】服装",
+        "en": "Savage Jho α+",
+        "ja": "【EXグリードα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl050_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:6f9a108a854d36a1fdf66db62c1fbc931541a5ca11b92ef18875dfe51b777a13",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·贪欲贝塔】服装",
+        "en": "Savage Jho β+",
+        "ja": "【EXグリードβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl050_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b2e1f8d0ae133d45ee4e19b422bc2b129be94a4265b2e63ed7aef8c05de146a8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【公会成果】服装",
+        "en": "Guildwork+",
+        "ja": "【ギルドワーク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl092_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:093ae2c6e1694589a17ef02714a4cb30c13c06ca0ee9c5b54b16f6db7749f049",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·金黄澄月阿尔法】服装",
+        "en": "Golden Lune α+",
+        "ja": "【EXゴールドルナα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0200",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f323cef80b2562f0c310b0c17da35fa159137b766b0697af8e8e4b3a260c4be8",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·金黄澄月贝塔】服装",
+        "en": "Golden Lune β+",
+        "ja": "【EXゴールドルナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl021_0210",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9ed8dfbab4d2f2e5e44f640fe0bf63dbc58ea795cac1d5d9dd9acc62667de056",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·银白耀日阿尔法】服装",
+        "en": "Silver Sol α+",
+        "ja": "【EXシルバーソルα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0200",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:17e86778a88ad2c8f73a242d10c5df85603a24d6e3e14a3062e28b3385be6fcf",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·银白耀日贝塔】服装",
+        "en": "Silver Sol β+",
+        "ja": "【EXシルバーソルβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl033_0210",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ed3d16a41f679d65d804b66aa818ae071530f8d47e41619f8144576c5b0b2660",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雷狼龙阿尔法】服装",
+        "en": "Zinogre α+",
+        "ja": "【EXジンオウα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl107_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:97e8cf1ca1a94a2ed3cc14630b65610a893610ff21602bb26664a8d961163761",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雷狼龙贝塔】服装",
+        "en": "Zinogre β+",
+        "ja": "【EXジンオウβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl107_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:76f5b0e8307ff1c8d114dc8e19b56745703198baf0d49235587f104ba33e1028",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·狱狼龙阿尔法】服装",
+        "en": "Stygian Zin α+",
+        "ja": "【EXゴクオウα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl107_0100",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c08b170475c7f8d30962527ba1a034a6615a4d1a3cecc35c8b662579210d9ea6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·狱狼龙贝塔】服装",
+        "en": "Stygian Zin β+",
+        "ja": "【EXゴクオウβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl107_0110",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9b3479f486c3ddccfa51cdda971f19702316839aa82d69d6e8cdb0e51b0f1748",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·黑狼鸟阿尔法】服装",
+        "en": "Yian Garuga α+",
+        "ja": "【EXガルルガα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl108_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:22cd1230cb33b98ac84b6675757c39b595a179bbc11b6674fe56da0fbece0d76",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·黑狼鸟贝塔】服装",
+        "en": "Yian Garuga β+",
+        "ja": "【EXガルルガβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl108_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:739c46948289fb8bb7dbdc2ae0ae37189c66ef3f2586c27057202e4c4b16ff59",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·金色阿尔法】服装",
+        "en": "Rajang α+",
+        "ja": "【EX金色α】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl109_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8d59d78ff1593f9e5dc634e62b0ff1547f0dc1d339c9826da2dc5e8c1ffa9e2a",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·金色贝塔】服装",
+        "en": "Rajang β+",
+        "ja": "【EX金色β】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl109_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c2a8dc01a38ccc108bdb934f5ad9579b64d411c864990d649a1ca3ad38a231d9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·齐天阿尔法】服装",
+        "en": "Furious Rajang α+",
+        "ja": "【EX斉天α】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl109_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c65240ddb31ae1de0f3ab1f1026e57eb4159ff00326b6b1c56bf0d78691d3efe",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·齐天贝塔】服装",
+        "en": "Furious Rajang β+",
+        "ja": "【EX斉天β】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl109_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5ff72b1a09a952fc0d13315553dc8760a6cc9bc3f05ea1cbdbb580833b715360",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·铁腕阿尔法】服装",
+        "en": "Raging Brachy α+",
+        "ja": "【EXブラキウムα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl082_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5cd11ad707d7c73b7b2b4389aac90cb7f35a54c8f5ff431c8cf7f43baf944313",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·铁腕贝塔】服装",
+        "en": "Raging Brachy β+",
+        "ja": "【EXブラキウムβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl082_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:fc415777abf57a3c2733927c3309ea1fe619a88d47db8a89a9d0a0e44eb8d2c4",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·龙纹阿尔法】服装",
+        "en": "Safi'jiiva α+",
+        "ja": "【EX龍紋α】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl087_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:877abd16e45840116a2e889227442b8d0519b846cdec7fc731b040f323a42e5a",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·龙纹贝塔】服装",
+        "en": "Safi'jiiva β+",
+        "ja": "【EX龍紋β】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl087_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9c0ff242e7b5887e929d3f9d1224259fb9a613655529773a701ac6a84a4fa094",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·煌黑龙阿尔法】服装",
+        "en": "Alatreon α+",
+        "ja": "【EXエスカドラα】衣装"
+      },
+      "aliases": [
+        "【精英·煌黑龙α】服装",
+        "煌黑龙",
+        "煌黑龙α",
+        "Alatreon Alpha +",
+        "Alatreon",
+        "Alatreon Alpha",
+        "Alatreon α"
+      ],
       "internal_id": "pl052_0000",
       "metadata": {
         "path_family": "pl/f_equip",
         "monster": "alatreon",
         "rank": "master",
-        "variant": "alpha",
         "is_full_body": false,
-        "parts": ["head", "body", "arms", "waist", "legs"]
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ],
+        "legacy_ids": [
+          "mhw:armor:alatreon-alpha"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9b92367ff0e0392cf99b03f0cce9629a72de4d44cb34237f3f01e418c9e4f343",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·煌黑龙贝塔】服装",
+        "en": "Alatreon β+",
+        "ja": "【EXエスカドラβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl052_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:79999c8cc26d364db8bfd08f30121f817d67ab9ecee3d827793f16136eb729a6",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【封印的龙骸布】服装",
+        "en": "Sealed Dragon Cloth",
+        "ja": "【封印の龍骸布】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl100_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:dbf30bab8b65b5b0fad667a848cfceb4a71767ac7cf5068bd4fcc7e227a52649",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【龙人族之耳】服装",
+        "en": "Wyverian Ears",
+        "ja": "【竜人族の耳】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl101_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:81bd30eec947c0c5b6dcf7c97ff8f9884aebc7ed15255163a5a545706cd81e26",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【草食龙头套】服装",
+        "en": "Faux Aptonoth",
+        "ja": "【アプトフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl097_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:fb24d2b4ee3beecaa2456c718301e07252b89e51e7c41cbd3b1a480cd19b1e4f",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【企鹅头套】服装",
+        "en": "Duffel Penguin+",
+        "ja": "【キブクレフェイク】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl098_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:0decddf565c9d049edeea1a225027345bc3197794385c93658f4f7014856546e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·皇后阿尔法】服装",
+        "en": "Lunastra α+",
+        "ja": "【EXエンプレスα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl051_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:a0d89bb45236b6ccc359aa36bd8f876234947f051b35578f9214120213ee6fbd",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·皇后贝塔】服装",
+        "en": "Lunastra β+",
+        "ja": "【EXエンプレスβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl051_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e45bc0cf751b778b364c811d0bc331519767340590c6c179ba163d93f66da9f5",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·绚辉龙铠罗阿尔法】服装",
+        "en": "Kulve Taroth α+",
+        "ja": "【EXマムガイラα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl049_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:628a3a81ac91ff2ed5ff8a89efb37f5f499dd85384322a564f138cc7b32b6ce1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·绚辉龙铠罗贝塔】服装",
+        "en": "Kulve Taroth β+",
+        "ja": "【EXマムガイラβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl049_0011",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:a6a492e7208931d0e5610771b4470f2c176f2c7b46e097648efab60d42008450",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【蔷薇】服装",
+        "en": "Rose",
+        "ja": "【ローゼ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl124_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:039889e92c7b8a63bf4d7cdcaa009212bfbdf6d478ea28863f24c9551e93e0e9",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【热情】服装",
+        "en": "Passion",
+        "ja": "【パッション】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl125_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:4da91519469364a8f09dd1c4e4aa2bc0faf789db6fc28f49ea172b5f8b736832",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【魔界之主】服装",
+        "en": "Demonlord",
+        "ja": "【魔界ノ主】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl126_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:33f4ac8a02f21e1dcf587c6d6815f65a369440ec364efa17680490923a9d46ed",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【风火轮】服装",
+        "en": "Oolong",
+        "ja": "【ウーロン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl127_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:8de8746c1bf7d2f35e4fa90ff80516d7bb423051757a0a65c3274b66fc9d982c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【阿斯特拉】服装",
+        "en": "Astral",
+        "ja": "【アストラ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl128_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1d992148894d326fe5aca184b19fb674bbcca8ba0d7a01604ffaa701137b0586",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【浴场】服装",
+        "en": "Thermae",
+        "ja": "【テルマエ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl106_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1258668e2fc1092008f12c653d3c7f0e4729710c49e6d42b3510c48f813758b1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【兔耳朵】服装",
+        "en": "Hare Band",
+        "ja": "【ウサミミバンド】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl111_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:1bbfdadd5c4963a07fa757363ae4cd9498d90bd77344c45d2c6d7944b0b07971",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【柔毛秧鸡】服装",
+        "en": "Downy Crake",
+        "ja": "【フワフワクイナ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl112_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:9a5c3090df117db9e52977f8401c97d8f7f6d6cc72d2c5ff72e33d9098ea9f8c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【温泉银猴】服装",
+        "en": "Pearlspring+",
+        "ja": "【ギンセンザル】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl113_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b026612a5f0b5c5ea88074daf9e20a34b15d9d56ac808aee3963641ca66303e1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【飞雷龙围巾】服装",
+        "en": "Kadachi Scarf",
+        "ja": "【カガチのエリマキ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl114_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:4dfd2ef5f0dd87d84ed10918a4504217557d3794e9cbb8b7718b31fed3699745",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【健美阿尔法】服装",
+        "en": "Buff Body α+",
+        "ja": "【マッスルα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl115_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:17cb02a4fa8debdd3b9e1a5463469249d5d9859100c832580ebff599c6686463",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·轰吼阿尔法】服装",
+        "en": "Brute Tigrex α+",
+        "ja": "【EXレックスロアα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl083_0100",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ce45d4515d84b33b821a56e0285dfd157c577d42e42580bee5af397b3372d4bb",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·轰吼贝塔】服装",
+        "en": "Brute Tigrex β+",
+        "ja": "【EXレックスロアβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl083_0110",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:a7558e53716e91b3b2ae92f2b4dc6b7d674526fd8b9dbd123a2c8dc36c6b89fc",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【结云】服装",
+        "en": "Yukumo",
+        "ja": "【ユクモノ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl122_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:ae956b7e0aba56ca470d9ba9f3b00ffd793bab7b78d87137ee75d8604b63f4b1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【银骑士】服装",
+        "en": "Silver Knight",
+        "ja": "【銀騎士】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl123_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:f4a2d115052bc35781a8fe3912b1314d6124fc0adf1e417f13c6e321157754de",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·触角伽马】服装",
+        "en": "Namielle γ+",
+        "ja": "【EXテンタクルγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl086_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:cfc0390a17886fea28638ca5d5c1464db2d629b46215a5acd09225fad4271da1",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【苍世武士】服装",
+        "en": "Azure Age",
+        "ja": "【蒼世ノ侍】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl072_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:faf02886c82bb225790458c930442c7ddc524e2f5d31e3590044859d0c80e26c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·雪崩伽马】服装",
+        "en": "Velkhana γ+",
+        "ja": "【EXラヴィーナγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl085_0020",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:34e2fe2a3fa68d5df2e861e5a6b6b1dd7c803eb05ca0131b65eefd6e1f98720e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·霜刃冰牙龙阿尔法】服装",
+        "en": "Frostfang Barioth α+",
+        "ja": "【EXオルムングα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl089_0500",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:51054cb241213a7ab0ecfe54b7bd9ddd81becb358fc25d49994b0cfd3170e943",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·霜刃冰牙龙贝塔】服装",
+        "en": "Frostfang Barioth β+",
+        "ja": "【EXオルムングβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl089_0510",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:fe8fc323f67c892b242a3449622b1e61a231a3861390ff6e074a94a536dc247e",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·龙阿尔法】服装",
+        "en": "Fatalis α+",
+        "ja": "【EXドラゴンα】衣装"
+      },
+      "aliases": [
+        "【精英‧龙α】服装",
+        "黑龙",
+        "黑龙α",
+        "Fatalis Alpha +",
+        "Fatalis",
+        "Fatalis Alpha",
+        "Fatalis α"
+      ],
+      "internal_id": "pl129_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "monster": "fatalis",
+        "rank": "master",
+        "is_full_body": false,
+        "variant": "alpha",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ],
+        "legacy_ids": [
+          "mhw:armor:fatalis-alpha"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:535425ce72e471eb93d8e72c98ff5cfc52695723434f4ca6f80086003de9d1a0",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【精英·龙贝塔】服装",
+        "en": "Fatalis β+",
+        "ja": "【EXドラゴンβ】衣装"
+      },
+      "aliases": [
+        "【精英‧龙β】服装",
+        "黑龙",
+        "黑龙β",
+        "Fatalis Beta +",
+        "Fatalis",
+        "Fatalis Beta",
+        "Fatalis β"
+      ],
+      "internal_id": "pl129_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "monster": "fatalis",
+        "rank": "master",
+        "is_full_body": false,
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ],
+        "legacy_ids": [
+          "mhw:armor:fatalis-beta"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:5d60a4f9ff20866758e8e4c259322f1aaebae38310ae198c02b15aedf72150ee",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【里昂】服装",
+        "en": "Leon+",
+        "ja": "【レオン】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl130_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:e2229f3e91e08c468de811f43250d21bc01b9d1db44ae40a4f296b63b68b0d61",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【克莱尔】服装",
+        "en": "Claire+",
+        "ja": "【クレア】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl131_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:3b2560cca08cf762001dc3af09b731d3e31a32f9a4e5127e4f6d6d7d6554a743",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【风漂龙贝塔】服装",
+        "en": "Legiana β",
+        "ja": "【ギエナβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl027_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "head",
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:b9af8bc856acd70f8325b6f2e5741455ffd1043caec2b387ff55365526a770a3",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【佯动耳饰】服装",
+        "en": "Showman",
+        "ja": "【陽動の耳飾り】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl095_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "parts": [
+          "head"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:11bf4bc60b87c5081d0b5eb5b1f281d6809e5ee6f0313dd67a0f1c86e7ddbe8b",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【健美伽马】服装",
+        "en": "Buff Body γ+",
+        "ja": "【マッスルγ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl115_0001",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "gamma",
+        "parts": [
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:edbfd541e5252e0a1a2cc3a6eb89b3dc745ecd0628a6c36dca982f4625bf30bb",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【内衣阿尔法】服装",
+        "en": "Innerwear α",
+        "ja": "【インナーα】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl500_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha",
+        "parts": [
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:c38c035f5bac908c6009b671622b96a003d08518bed030e72aa304a54a1083de",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【内衣贝塔】服装",
+        "en": "Innerwear β",
+        "ja": "【インナーβ】衣装"
+      },
+      "aliases": [],
+      "internal_id": "pl501_0000",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "beta",
+        "parts": [
+          "body",
+          "arms",
+          "waist",
+          "legs"
+        ]
+      }
+    },
+    {
+      "id": "mhw:armor:076a75371534ac5b97398b479edc9186ac7c6e720aa078cb098beaa983030b1c",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "【狩猎女神】服装"
+      },
+      "aliases": [],
+      "internal_id": "pl133_0000",
+      "metadata": {
+        "path_family": "pl/f_equip"
+      }
+    },
+    {
+      "id": "mhw:armor:2b14c6c6e21665019201feab566e2b7c99c6dcc8c4399639b178909ccae3c864",
+      "target_type": "armor",
+      "display_name": {
+        "zh_cn": "精英·阿尔忒弥斯阿尔法"
+      },
+      "aliases": [],
+      "internal_id": "pl132_0010",
+      "metadata": {
+        "path_family": "pl/f_equip",
+        "variant": "alpha"
       }
     }
   ]

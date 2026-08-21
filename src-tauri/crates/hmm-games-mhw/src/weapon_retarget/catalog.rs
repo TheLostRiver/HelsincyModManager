@@ -145,6 +145,16 @@ impl MhwWeaponCatalogSource {
         parse_catalog_source(source)
     }
 
+    /// 解析按 family 分片的 catalog。
+    ///
+    /// 全量武器 catalog 有 601 条目、7566 条别名，单文件会超出 policy 的体积硬限，
+    /// 因此按 family 拆分——family 本来就是领域边界（跨 family 重定向被禁）。
+    /// 校验与单文件完全一致：分片先合并再走同一条校验路径，
+    /// 跨分片的 stable_id / legacy_id / 展示名 / 路径碰撞检查一条不漏。
+    pub fn parse_sharded(sources: &[&str]) -> Result<Self, WeaponCatalogSourceError> {
+        validate_catalog_wire(merge_catalog_wires(sources)?)
+    }
+
     pub fn catalog_version(&self) -> &str {
         &self.catalog_version
     }
@@ -223,7 +233,7 @@ struct LocalizedNamesWire {
     aliases: Vec<String>,
 }
 
-fn parse_catalog_source(source: &str) -> Result<MhwWeaponCatalogSource, WeaponCatalogSourceError> {
+fn parse_catalog_wire(source: &str) -> Result<CatalogSourceWire, WeaponCatalogSourceError> {
     let envelope: CatalogEnvelope =
         serde_json::from_str(source).map_err(|_| WeaponCatalogSourceError::InvalidJson)?;
     if envelope.schema_version != MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION {
@@ -232,13 +242,46 @@ fn parse_catalog_source(source: &str) -> Result<MhwWeaponCatalogSource, WeaponCa
         });
     }
 
-    let mut raw: CatalogSourceWire =
+    let raw: CatalogSourceWire =
         serde_json::from_str(source).map_err(|_| WeaponCatalogSourceError::InvalidJson)?;
     if raw.schema_version != MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION {
         return Err(WeaponCatalogSourceError::UnsupportedSchemaVersion {
             schema_version: raw.schema_version,
         });
     }
+    Ok(raw)
+}
+
+/// 把若干分片合并成一份 wire 再走同一条校验路径。
+///
+/// 关键：**不能**各自 parse 完再拼 target 列表——stable_id 唯一性、
+/// legacy_id 歧义、展示名唯一性和资源路径碰撞都是在单次校验内累积判定的，
+/// 分开校验等于把这些保证降级成"每个分片内部唯一"。合并后单次校验则一条不漏。
+fn merge_catalog_wires(sources: &[&str]) -> Result<CatalogSourceWire, WeaponCatalogSourceError> {
+    let mut merged: Option<CatalogSourceWire> = None;
+    for source in sources {
+        let wire = parse_catalog_wire(source)?;
+        match merged.as_mut() {
+            None => merged = Some(wire),
+            Some(base) => {
+                // 分片必须同属一份 catalog，否则合出来的是个拼接怪物。
+                if base.catalog_version != wire.catalog_version || base.game_id != wire.game_id {
+                    return Err(WeaponCatalogSourceError::InvalidCatalogVersion);
+                }
+                base.targets.extend(wire.targets);
+            }
+        }
+    }
+    merged.ok_or(WeaponCatalogSourceError::EmptyCatalog)
+}
+
+fn parse_catalog_source(source: &str) -> Result<MhwWeaponCatalogSource, WeaponCatalogSourceError> {
+    validate_catalog_wire(parse_catalog_wire(source)?)
+}
+
+fn validate_catalog_wire(
+    mut raw: CatalogSourceWire,
+) -> Result<MhwWeaponCatalogSource, WeaponCatalogSourceError> {
     if !is_safe_slug(&raw.catalog_version) {
         return Err(WeaponCatalogSourceError::InvalidCatalogVersion);
     }

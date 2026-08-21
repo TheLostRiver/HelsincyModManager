@@ -3,26 +3,79 @@ use hmm_ports::ReplacementCatalogProvider;
 use std::collections::BTreeSet;
 
 #[test]
-fn armor_catalog_is_versioned_and_contains_stable_seed_targets() {
+fn armor_catalog_is_versioned_and_uses_stable_hash_ids() {
     let provider = MhwArmorCatalog;
     let catalog = provider.replacement_catalog().expect("armor catalog");
 
-    assert_eq!(catalog.version().as_str(), "mhw-armor-v1");
+    assert_eq!(catalog.version().as_str(), "mhw-armor-v2");
     assert_eq!(catalog.game_id().as_str(), "mhw");
-    assert_eq!(catalog.targets().len(), 4);
+    assert_eq!(catalog.targets().len(), 269);
+
+    // AR6 之后全部使用 64 位 hex stable ID，不再有人类 slug——
+    // slug 会把不同路径压成同一 ID，见 EQUIPMENT_CATALOG_GOVERNANCE.md。
+    for target in catalog.targets() {
+        let slug = target
+            .id()
+            .as_str()
+            .strip_prefix("mhw:armor:")
+            .expect("armor target id prefix");
+        assert!(
+            slug.len() == 64
+                && slug
+                    .chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+            "{} 不是小写 64 位 hex stable ID",
+            target.id().as_str()
+        );
+    }
+
+    // internal_id 必须唯一：它是改写目标槽位的实际依据。
     assert_eq!(
         catalog
             .targets()
             .iter()
-            .map(|target| target.id().as_str())
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "mhw:armor:alatreon-alpha",
-            "mhw:armor:fatalis-alpha",
-            "mhw:armor:fatalis-beta",
-            "mhw:armor:guardian-alpha",
-        ])
+            .map(|target| target.internal_id())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        269
     );
+}
+
+#[test]
+fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
+    let provider = MhwArmorCatalog;
+    let catalog = provider.replacement_catalog().expect("armor catalog");
+
+    // AR1 的四个槽位在扩容后必须仍然在（旧 ID 的解析另见 legacy 回归）。
+    for internal_id in ["pl121_0000", "pl129_0000", "pl129_0010", "pl052_0000"] {
+        assert!(
+            catalog
+                .targets()
+                .iter()
+                .any(|target| target.internal_id() == internal_id),
+            "扩容后丢失了原有槽位 {internal_id}"
+        );
+    }
+
+    let with_three_locales = catalog
+        .targets()
+        .iter()
+        .filter(|target| {
+            ["zh_cn", "en", "ja"]
+                .iter()
+                .all(|locale| target.display_name().get(locale).is_some())
+        })
+        .count();
+    assert_eq!(with_three_locales, 264, "中英日三语覆盖数量变了");
+
+    // 其余条目至少要有中文名，否则 UI 会显示空白。
+    for target in catalog.targets() {
+        assert!(
+            target.display_name().get("zh_cn").is_some(),
+            "{} 缺少中文名",
+            target.internal_id()
+        );
+    }
 }
 
 #[test]
@@ -94,4 +147,49 @@ fn armor_catalog_validates_mhw_internal_ids_and_path_family_in_adapter() {
             Some("pl/f_equip")
         );
     }
+}
+
+#[test]
+fn legacy_binding_ids_still_resolve_after_catalog_expansion() {
+    // AR6 把 catalog 从四条手工 slug ID 扩到全量 hash stable ID。
+    // 玩家已安装的 manifest / binding snapshot 里存的是旧 slug——
+    // 解析不了就等于碰坏他们已有的安装，所以这条回归必须一直绿。
+    let provider = MhwArmorCatalog;
+    let catalog = provider.replacement_catalog().expect("armor catalog");
+
+    for target in catalog.targets() {
+        let legacy_ids = target
+            .metadata()
+            .get("legacy_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        for legacy_id in legacy_ids {
+            let parsed = hmm_core::ReplacementTargetId::parse(legacy_id)
+                .expect("legacy id should be a parseable target id");
+            let resolved = provider
+                .find_replacement_target(&parsed)
+                .unwrap_or_else(|error| panic!("旧绑定 {legacy_id} 解析失败: {error:?}"));
+            assert_eq!(
+                resolved.internal_id(),
+                target.internal_id(),
+                "旧绑定 {legacy_id} 必须解析回同一个槽位"
+            );
+        }
+    }
+}
+
+#[test]
+fn unknown_target_ids_still_fail_closed() {
+    // 回落不能变成"什么都能解析"：未知 ID 必须继续报 TargetNotFound。
+    let provider = MhwArmorCatalog;
+    let unknown = hmm_core::ReplacementTargetId::parse("mhw:armor:does-not-exist")
+        .expect("parseable target id");
+
+    assert!(provider.find_replacement_target(&unknown).is_err());
 }

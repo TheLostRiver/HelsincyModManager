@@ -19,6 +19,14 @@ fn source(license_status: &str) -> Value {
             "reviewed_by": "fixture-reviewer",
             "reviewed_at": "2026-08-05"
         }),
+        "game_terminology" => json!({
+            "status": "game_terminology",
+            "rights_holder": "Fixture Publisher Co., Ltd.",
+            "usage": "nominative",
+            "attribution": "Artificial test fixture",
+            "reviewed_by": "fixture-reviewer",
+            "reviewed_at": "2026-08-21"
+        }),
         status => json!({ "status": status }),
     };
 
@@ -326,6 +334,94 @@ fn rejects_redistributable_status_without_complete_license_evidence() {
         .issues
         .iter()
         .any(|issue| issue.code == "incomplete_redistributable_license"));
+}
+
+#[test]
+fn game_terminology_status_is_bundle_eligible_without_spdx_or_evidence_url() {
+    // 游戏术语没有授权页可指。要求 SPDX/evidence_url 只会逼人填假值，
+    // 所以这一类改为强制说清权利归属与审核人，见 docs/EQUIPMENT_CATALOG_GOVERNANCE.md。
+    let candidate = catalog(
+        vec![source("game_terminology")],
+        vec![target(
+            EquipmentCandidateTargetKind::Armor,
+            "pl/f_equip",
+            "nativePC/pl/f_equip/pl912_0000",
+            "Game Terminology Armor",
+            "active",
+        )],
+    );
+
+    let report =
+        validate_mhw_equipment_candidate_catalog(&candidate).expect("candidate should parse");
+    assert!(report.valid, "issues: {:?}", report.issues);
+    assert!(
+        report.bundled_eligible,
+        "blockers: {:?}",
+        report.bundle_blockers
+    );
+}
+
+#[test]
+fn rejects_game_terminology_status_without_rights_holder_or_review_facts() {
+    // 逐字段拆掉，确认每一个必填项都真的在把关——避免"只要状态对就放行"的假绿。
+    for missing in [
+        "rights_holder",
+        "usage",
+        "attribution",
+        "reviewed_by",
+        "reviewed_at",
+    ] {
+        let mut incomplete_source = source("game_terminology");
+        incomplete_source["license"]
+            .as_object_mut()
+            .expect("license object")
+            .remove(missing);
+        let candidate = catalog(
+            vec![incomplete_source],
+            vec![target(
+                EquipmentCandidateTargetKind::Armor,
+                "pl/f_equip",
+                "nativePC/pl/f_equip/pl913_0000",
+                "Incomplete Terminology Armor",
+                "active",
+            )],
+        );
+
+        let report =
+            validate_mhw_equipment_candidate_catalog(&candidate).expect("candidate should parse");
+        assert!(!report.valid, "缺 {missing} 时不应通过");
+        assert!(!report.bundled_eligible, "缺 {missing} 时不应可 bundle");
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "incomplete_game_terminology_license"),
+            "缺 {missing} 时应给出 incomplete_game_terminology_license"
+        );
+    }
+}
+
+#[test]
+fn game_terminology_status_still_fails_closed_on_dummy_targets() {
+    // 许可放宽不等于其他门禁一并放宽：dummy 仍然阻断整份文档。
+    let candidate = catalog(
+        vec![source("game_terminology")],
+        vec![target(
+            EquipmentCandidateTargetKind::Armor,
+            "pl/f_equip",
+            "nativePC/pl/f_equip/pl914_0000",
+            "Dummy Terminology Armor",
+            "dummy",
+        )],
+    );
+
+    let report =
+        validate_mhw_equipment_candidate_catalog(&candidate).expect("candidate should parse");
+    assert!(
+        !report.bundled_eligible,
+        "dummy 目标必须继续阻断 bundling: {:?}",
+        report.bundle_blockers
+    );
 }
 
 #[test]
