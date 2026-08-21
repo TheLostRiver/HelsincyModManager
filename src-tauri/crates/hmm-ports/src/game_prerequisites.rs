@@ -8,6 +8,9 @@ use thiserror::Error;
 pub enum GamePrerequisiteReportState {
     NotConfigured,
     GameDirectoryInvalid,
+    /// 目录结构合法但当前写不进去（权限、只读、被安全软件占用）。
+    /// 与 `GameDirectoryInvalid` 分开：用户要做的动作完全不同。
+    GameDirectoryNotWritable,
     RulesUnavailable,
     Ready,
 }
@@ -118,6 +121,18 @@ impl GamePrerequisiteReport {
             summary_status: None,
             items: Vec::new(),
             error_code: Some(error_code),
+            message: Some(message.into()),
+        }
+    }
+
+    pub fn game_directory_not_writable(game_id: GameId, message: impl Into<String>) -> Self {
+        Self {
+            game_id,
+            state: GamePrerequisiteReportState::GameDirectoryNotWritable,
+            rules_version: None,
+            summary_status: None,
+            items: Vec::new(),
+            error_code: None,
             message: Some(message.into()),
         }
     }

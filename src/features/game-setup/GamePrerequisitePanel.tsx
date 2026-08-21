@@ -65,9 +65,11 @@ export function GamePrerequisitePanel({
           </div>
         ) : null}
 
-        {state.status === "game_directory_invalid" || state.status === "rules_unavailable" ? (
+        {state.status === "game_directory_invalid" ||
+        state.status === "game_directory_not_writable" ||
+        state.status === "rules_unavailable" ? (
           <div className={`game-prerequisite-note ${summary.tone}`} role="status">
-            <strong>{state.status === "rules_unavailable" ? "暂时无法读取前置规则。" : "游戏目录当前不可用。"}</strong>
+            <strong>{prerequisiteNoteHeading(state.status)}</strong>
             <span>{state.message}</span>
           </div>
         ) : null}
@@ -136,6 +138,16 @@ function summaryCopyForState(state: GamePrerequisiteLoadState) {
     };
   }
 
+  if (state.status === "game_directory_not_writable") {
+    // 目录本身是对的，别复用"目录失效"让用户去重选目录。
+    return {
+      label: "目录不可写",
+      description: "游戏目录存在但当前写不进去，安装会被阻止。请先关闭游戏再重试。",
+      tone: "is-error",
+      icon: AlertTriangle,
+    };
+  }
+
   return {
     label: "等待配置",
     description: "配置游戏目录后即可检查 Stracker's Loader 和 CRCBypass。",
@@ -167,6 +179,20 @@ function summaryCopyForReadyState(summaryStatus: GamePrerequisiteSummaryStatus) 
         tone: "is-error",
         icon: AlertTriangle,
       };
+  }
+}
+
+/** 三种阻断状态的标题各不相同：目录坏了 / 目录写不进去 / 规则读不到，用户要做的事不一样。 */
+function prerequisiteNoteHeading(
+  status: "game_directory_invalid" | "game_directory_not_writable" | "rules_unavailable",
+) {
+  switch (status) {
+    case "rules_unavailable":
+      return "暂时无法读取前置规则。";
+    case "game_directory_not_writable":
+      return "游戏目录当前不可写。";
+    case "game_directory_invalid":
+      return "游戏目录当前不可用。";
   }
 }
 

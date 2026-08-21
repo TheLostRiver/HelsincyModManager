@@ -21,6 +21,17 @@ pub trait GameDirectoryProbe: Send + Sync {
     fn is_dir(&self, relative_path: &str) -> bool;
     fn read_text_file(&self, relative_path: &str) -> anyhow::Result<String>;
     fn sha256_hex(&self, relative_path: &str) -> anyhow::Result<String>;
+
+    /// 游戏根目录当前是否可写。
+    ///
+    /// 安装链会覆盖玩家文件，不可写必须在 preflight 就 fail closed，
+    /// 而不是等建完 backup、写完 Committing recovery，到第一次真实写入才失败。
+    ///
+    /// 默认 `true`：只有真实文件系统探针需要回答这个问题，
+    /// 纯内存的 fake probe 不受可写性影响。
+    fn root_writable(&self) -> bool {
+        true
+    }
 }
 
 pub trait GameDirectoryProbeFactory: Send + Sync {

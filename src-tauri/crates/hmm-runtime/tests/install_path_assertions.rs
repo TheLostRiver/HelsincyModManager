@@ -15,7 +15,8 @@ use hmm_app::{
     CommitInstallPlanRequest, InstallCommitService, UninstallModRequest, UninstallModService,
 };
 use hmm_core::{
-    FileLayer, InstallFileProvider, InstallPlan, InstallTargetPath, ModId, PackageFileId, ProfileId,
+    FileLayer, GameId, InstallFileProvider, InstallPlan, InstallTargetPath, ModId, PackageFileId,
+    ProfileId,
 };
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
@@ -146,6 +147,7 @@ fn install_writes_exactly_the_declared_target_paths_on_a_real_filesystem() {
     fixture
         .commit
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan: plan_for("mod-a", &targets),
         })
@@ -185,6 +187,7 @@ fn uninstall_restores_the_game_directory_to_its_exact_initial_state() {
     fixture
         .commit
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan: plan_for("mod-a", &targets),
         })
@@ -198,6 +201,7 @@ fn uninstall_restores_the_game_directory_to_its_exact_initial_state() {
     fixture
         .uninstall
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -218,6 +222,7 @@ fn install_leaves_no_temporary_artifacts_in_the_game_directory() {
     fixture
         .commit
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan: plan_for("mod-a", &[target]),
         })
@@ -249,6 +254,7 @@ fn install_target_paths_are_not_flattened_or_case_folded() {
     fixture
         .commit
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan: plan_for("mod-a", &targets),
         })

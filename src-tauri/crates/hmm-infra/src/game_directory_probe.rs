@@ -46,6 +46,50 @@ impl GameDirectoryProbe for RealGameDirectoryProbe {
         let digest = Sha256::digest(bytes);
         Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
     }
+
+    /// Windows 上只看只读属性判断不出可写性——真正决定权限的是 ACL、
+    /// 目录所有权和安全软件的锁。唯一可靠的办法是实际试写一次。
+    ///
+    /// 这个探针刻意做到不可能破坏玩家数据：
+    /// - 文件名带纳秒时间戳，且用 `create_new`，已存在就失败而不是覆盖；
+    /// - 只写在游戏根目录下，不进 `nativePC`；
+    /// - **只删除本次确实创建出来的文件**。创建失败时该路径可能是遗留文件或
+    ///   并发探针的产物，删它等于删一个不属于本次探测的文件。
+    ///
+    /// 删除失败同样判定为不可写：安装链覆盖前要备份、卸载要移除，都需要删除权限。
+    /// 能建不能删的目录若放行，只会把失败推迟到已经动过玩家文件之后。
+    fn root_writable(&self) -> bool {
+        if !self.root_exists() {
+            return false;
+        }
+
+        let probe_path = self.root_dir.join(format!(
+            ".hmm-write-probe-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default()
+        ));
+
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe_path)
+        {
+            Ok(file) => {
+                drop(file);
+                // 只删本次确实创建出来的文件。
+                //
+                // 删除成败即结论：能建不能删的目录对安装链没有意义——覆盖前要备份、
+                // 卸载要移除，两者都需要删除权限。这时返回 true 只会让失败推迟到
+                // 已经动过玩家文件之后，正是这道 preflight 要避免的。
+                std::fs::remove_file(&probe_path).is_ok()
+            }
+            // 创建失败时绝不碰这个路径：同名遗留文件或并发探针都会走到这里，
+            // 无条件删除等于删掉一个不属于本次探测的文件。
+            Err(_) => false,
+        }
+    }
 }
 
 pub struct RealGameDirectoryProbeFactory;
@@ -78,6 +122,49 @@ mod tests {
         assert!(probe.root_exists());
         assert!(probe.is_file("MonsterHunterWorld.exe"));
         assert!(probe.is_dir("nativePC"));
+    }
+
+    #[test]
+    fn writable_probe_reports_true_and_leaves_no_residue() {
+        let root = std::env::temp_dir().join(format!(
+            "hmm-probe-writable-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create dir");
+        fs::write(root.join("keep.txt"), "keep").expect("write sentinel");
+
+        let probe = RealGameDirectoryProbe::new(root.clone());
+        assert!(probe.root_writable());
+
+        // 探针必须清理干净：只留下原本就有的文件。
+        let remaining = fs::read_dir(&root)
+            .expect("read dir")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(remaining, vec!["keep.txt".to_owned()]);
+    }
+
+    #[test]
+    fn writable_probe_reports_false_for_a_missing_root() {
+        // 目录不存在时必须 fail closed，不能因为"试写失败原因不明"而放行。
+        let missing = std::env::temp_dir().join(format!(
+            "hmm-probe-missing-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+
+        assert!(!RealGameDirectoryProbe::new(missing).root_writable());
     }
 
     #[test]
