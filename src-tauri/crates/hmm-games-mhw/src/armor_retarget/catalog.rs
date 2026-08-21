@@ -45,6 +45,13 @@ impl ReplacementCatalogProvider for MhwArmorCatalog {
         parse_armor_catalog(BUNDLED_ARMOR_CATALOG)
     }
 
+    fn find_replacement_target(
+        &self,
+        target_id: &ReplacementTargetId,
+    ) -> ReplacementCatalogResult<ReplacementTarget> {
+        resolve_target_allowing_legacy_ids(&self.replacement_catalog()?, target_id)
+    }
+
     fn search_replacement_targets(
         &self,
         query: &str,
@@ -150,12 +157,16 @@ fn build_target(
         .map(|alias| normalize_armor_display_text(&alias))
         .collect();
     let mut metadata = raw.metadata;
+    // 这三个字段可选（见 validate_armor_metadata）；出现时仍然归一化，
+    // 保证 monster 进搜索词时与 display name 走同一套比较规则。
     for field in ["monster", "rank", "variant"] {
-        let normalized = metadata
+        let Some(normalized) = metadata
             .get(field)
             .and_then(Value::as_str)
             .map(normalize_armor_search_text)
-            .ok_or(ReplacementCatalogError::CatalogInvalid)?;
+        else {
+            continue;
+        };
         metadata.insert(field.to_owned(), Value::String(normalized));
     }
 
@@ -172,6 +183,46 @@ fn build_target(
     .map_err(|_| ReplacementCatalogError::CatalogInvalid)
 }
 
+/// 按 target ID 查找，找不到时回落到 `metadata.legacy_ids`。
+///
+/// AR6 把 catalog 从四条手工 slug ID 扩到全量 hash stable ID。玩家**已安装**的
+/// manifest 与 binding snapshot 里存的是旧 slug（如 `mhw:armor:fatalis-alpha`），
+/// 不做这层回落，升级后这些绑定会直接指向不存在的目标——等于碰坏玩家已有安装。
+///
+/// 回落只读 metadata，且只在游戏适配器里做：`hmm-core` 不对 metadata 内字段值
+/// 做分支判断（见 docs/ARMOR_RETARGET_DESIGN.md 的核心层边界）。
+///
+/// `legacy_ids` 不是新的 stable identity，只用于解析旧绑定；
+/// 治理契约见 docs/EQUIPMENT_CATALOG_GOVERNANCE.md。
+pub(crate) fn resolve_target_allowing_legacy_ids(
+    catalog: &ReplacementCatalog,
+    target_id: &ReplacementTargetId,
+) -> ReplacementCatalogResult<ReplacementTarget> {
+    if let Some(target) = catalog.find(target_id) {
+        return Ok(target.clone());
+    }
+
+    catalog
+        .targets()
+        .iter()
+        .find(|target| {
+            target
+                .metadata()
+                .get("legacy_ids")
+                .and_then(Value::as_array)
+                .is_some_and(|legacy| {
+                    legacy
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|legacy_id| legacy_id == target_id.as_str())
+                })
+        })
+        .cloned()
+        .ok_or_else(|| ReplacementCatalogError::TargetNotFound {
+            target_id: target_id.clone(),
+        })
+}
+
 fn metadata_text<'a>(
     metadata: &'a BTreeMap<String, Value>,
     field: &str,
@@ -183,32 +234,60 @@ fn metadata_text<'a>(
         .ok_or(ReplacementCatalogError::CatalogInvalid)
 }
 
+/// `path_family` 是唯一必填项——它参与 source/target 家族匹配，缺了会改变改写行为。
+///
+/// `monster` / `rank` / `variant` / `is_full_body` / `parts` 改为可选：
+/// 这套必填要求是给 AR1 的四条手工条目设计的，扩容到全量防具后无法逐条诚实推导
+/// （「【皮制】服装」推不出怪物）。而除 `monster` 会进搜索词外（见 target_terms），
+/// 其余四个字段全仓库只被本函数校验、没有任何消费者。
+///
+/// 关键取舍：可选不等于不校验。字段**出现**时形状仍然必须正确，
+/// 否则错误数据会静默混进 catalog——这正是留着必填想防的事。
 fn validate_armor_metadata(metadata: &BTreeMap<String, Value>) -> ReplacementCatalogResult<&str> {
     let path_family = metadata_text(metadata, "path_family")?;
     if path_family != "pl/f_equip" {
         return Err(ReplacementCatalogError::CatalogInvalid);
     }
-    for required in ["monster", "rank", "variant"] {
-        metadata_text(metadata, required)?;
+    for optional_text in ["monster", "rank", "variant"] {
+        if metadata.contains_key(optional_text) {
+            metadata_text(metadata, optional_text)?;
+        }
     }
-    if metadata
-        .get("is_full_body")
-        .and_then(Value::as_bool)
-        .is_none()
+    if metadata.contains_key("is_full_body")
+        && metadata
+            .get("is_full_body")
+            .and_then(Value::as_bool)
+            .is_none()
     {
         return Err(ReplacementCatalogError::CatalogInvalid);
     }
 
-    let parts = metadata
-        .get("parts")
-        .and_then(Value::as_array)
-        .filter(|parts| !parts.is_empty())
-        .ok_or(ReplacementCatalogError::CatalogInvalid)?;
-    if !parts
-        .iter()
-        .all(|part| part.as_str().is_some_and(|part| !part.trim().is_empty()))
-    {
-        return Err(ReplacementCatalogError::CatalogInvalid);
+    // legacy_ids 决定旧绑定能不能解析，形状错了会静默失去回落能力。
+    if metadata.contains_key("legacy_ids") {
+        let legacy_ids = metadata
+            .get("legacy_ids")
+            .and_then(Value::as_array)
+            .ok_or(ReplacementCatalogError::CatalogInvalid)?;
+        if !legacy_ids
+            .iter()
+            .all(|id| id.as_str().is_some_and(|id| !id.trim().is_empty()))
+        {
+            return Err(ReplacementCatalogError::CatalogInvalid);
+        }
+    }
+
+    if metadata.contains_key("parts") {
+        let parts = metadata
+            .get("parts")
+            .and_then(Value::as_array)
+            .filter(|parts| !parts.is_empty())
+            .ok_or(ReplacementCatalogError::CatalogInvalid)?;
+        if !parts
+            .iter()
+            .all(|part| part.as_str().is_some_and(|part| !part.trim().is_empty()))
+        {
+            return Err(ReplacementCatalogError::CatalogInvalid);
+        }
     }
 
     Ok(path_family)
@@ -261,6 +340,50 @@ mod tests {
         assert!(!is_valid_armor_internal_id("weapon-129"));
         assert!(!is_valid_armor_internal_id("pl12_0000"));
         assert!(!is_valid_armor_internal_id("pl129-0000"));
+    }
+
+    #[test]
+    fn resolves_legacy_ids_and_still_fails_closed_on_unknown_ids() {
+        // AR6 扩容后旧绑定必须还能解析；同时回落不能退化成"什么都能解析"。
+        let mut target = valid_target("mhw:armor:new-stable-id", "pl129_0000");
+        target["metadata"]["legacy_ids"] = json!(["mhw:armor:fatalis-alpha"]);
+        let catalog = parse_armor_catalog(&catalog_source(vec![target])).expect("catalog");
+
+        let legacy = ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("legacy id");
+        let resolved =
+            resolve_target_allowing_legacy_ids(&catalog, &legacy).expect("legacy id must resolve");
+        assert_eq!(resolved.id().as_str(), "mhw:armor:new-stable-id");
+        assert_eq!(resolved.internal_id(), "pl129_0000");
+
+        let current = ReplacementTargetId::parse("mhw:armor:new-stable-id").expect("current id");
+        assert!(resolve_target_allowing_legacy_ids(&catalog, &current).is_ok());
+
+        let unknown = ReplacementTargetId::parse("mhw:armor:nope").expect("unknown id");
+        assert!(resolve_target_allowing_legacy_ids(&catalog, &unknown).is_err());
+    }
+
+    #[test]
+    fn metadata_beyond_path_family_is_optional_but_still_shape_checked() {
+        // 只留 path_family 应当通过（AR6 生成条目推不出 monster/rank）。
+        let mut minimal = valid_target("mhw:armor:minimal", "pl130_0000");
+        minimal["metadata"] = json!({ "path_family": "pl/f_equip" });
+        assert!(parse_armor_catalog(&catalog_source(vec![minimal])).is_ok());
+
+        // 但字段出现时形状错了仍须拒绝，否则等于取消了校验。
+        for (field, bad) in [
+            ("monster", json!("")),
+            ("is_full_body", json!("false")),
+            ("parts", json!([])),
+            ("legacy_ids", json!("mhw:armor:fatalis-alpha")),
+            ("legacy_ids", json!([""])),
+        ] {
+            let mut invalid = valid_target("mhw:armor:bad-shape", "pl131_0000");
+            invalid["metadata"][field] = bad.clone();
+            assert!(
+                parse_armor_catalog(&catalog_source(vec![invalid])).is_err(),
+                "{field} = {bad} 形状非法时必须拒绝"
+            );
+        }
     }
 
     fn valid_target(id: &str, internal_id: &str) -> Value {

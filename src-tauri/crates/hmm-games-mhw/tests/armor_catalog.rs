@@ -95,3 +95,48 @@ fn armor_catalog_validates_mhw_internal_ids_and_path_family_in_adapter() {
         );
     }
 }
+
+#[test]
+fn legacy_binding_ids_still_resolve_after_catalog_expansion() {
+    // AR6 把 catalog 从四条手工 slug ID 扩到全量 hash stable ID。
+    // 玩家已安装的 manifest / binding snapshot 里存的是旧 slug——
+    // 解析不了就等于碰坏他们已有的安装，所以这条回归必须一直绿。
+    let provider = MhwArmorCatalog;
+    let catalog = provider.replacement_catalog().expect("armor catalog");
+
+    for target in catalog.targets() {
+        let legacy_ids = target
+            .metadata()
+            .get("legacy_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        for legacy_id in legacy_ids {
+            let parsed = hmm_core::ReplacementTargetId::parse(legacy_id)
+                .expect("legacy id should be a parseable target id");
+            let resolved = provider
+                .find_replacement_target(&parsed)
+                .unwrap_or_else(|error| panic!("旧绑定 {legacy_id} 解析失败: {error:?}"));
+            assert_eq!(
+                resolved.internal_id(),
+                target.internal_id(),
+                "旧绑定 {legacy_id} 必须解析回同一个槽位"
+            );
+        }
+    }
+}
+
+#[test]
+fn unknown_target_ids_still_fail_closed() {
+    // 回落不能变成"什么都能解析"：未知 ID 必须继续报 TargetNotFound。
+    let provider = MhwArmorCatalog;
+    let unknown = hmm_core::ReplacementTargetId::parse("mhw:armor:does-not-exist")
+        .expect("parseable target id");
+
+    assert!(provider.find_replacement_target(&unknown).is_err());
+}
