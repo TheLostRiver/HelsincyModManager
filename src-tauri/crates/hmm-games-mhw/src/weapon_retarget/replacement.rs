@@ -4,7 +4,9 @@ use super::{
     WeaponTargetMetadata, WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES,
     MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
-use crate::armor_retarget::{MhwArmorCatalog, MhwArmorReplacementAdapter};
+use crate::armor_retarget::{
+    resolve_target_allowing_legacy_ids, MhwArmorCatalog, MhwArmorReplacementAdapter,
+};
 use hmm_core::{
     ContentTransformerIdentity, GameId, LocalizedText, ReplacementAdapterFacts,
     ReplacementAnalysis, ReplacementCatalog, ReplacementCatalogVersion, ReplacementSource,
@@ -72,6 +74,15 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
             targets,
         )
         .map_err(|_| ReplacementCatalogError::CatalogInvalid)
+    }
+
+    fn find_replacement_target(
+        &self,
+        target_id: &hmm_core::ReplacementTargetId,
+    ) -> ReplacementCatalogResult<ReplacementTarget> {
+        // 与 MhwArmorCatalog 同一套回落：玩家已安装 manifest 里存的可能是
+        // AR6 扩容前的旧 slug ID，不解析会碰坏他们已有的绑定。
+        resolve_target_allowing_legacy_ids(&self.replacement_catalog()?, target_id)
     }
 
     fn search_replacement_targets(
