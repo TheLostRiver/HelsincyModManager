@@ -1,0 +1,1837 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:3b79a1fbc621e31b3b5ceeee821ef9024e36e476b7cec2636e34605b15f312ec",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham001",
+      "internal_id": "bs_ham001",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铁锤",
+          "aliases": [
+            "铁锤1",
+            "铁锤2",
+            "铁锤3",
+            "灭尽龙粉碎者",
+            "激流强锤1",
+            "激流强锤2",
+            "激流强锤3",
+            "马拉多战锤1",
+            "马拉多战锤2",
+            "马拉多战锤3",
+            "花朵锤1",
+            "花朵锤2",
+            "花朵锤3",
+            "闪电锤1",
+            "闪电锤2",
+            "冥灯龙大锤",
+            "激流强锤4",
+            "冰尖强锤1",
+            "冰尖强锤2",
+            "夜神大锤1",
+            "夜神大锤2",
+            "冥灯龙大锤改"
+          ]
+        },
+        "en": {
+          "display_name": "Iron Hammer",
+          "aliases": [
+            "Iron Hammer I",
+            "Iron Hammer II",
+            "Iron Hammer III",
+            "Nergal Crusher",
+            "Water Basher I",
+            "Water Basher II",
+            "Water Basher III",
+            "Malady's Fist I",
+            "Malady's Fist II",
+            "Malady's Fist III",
+            "Blooming Hammer I",
+            "Blooming Hammer II",
+            "Blooming Hammer III",
+            "Thunder Hammer I",
+            "Thunder Hammer II",
+            "Xeno Maph'agarna",
+            "Water Basher IV",
+            "Glacial Bash I",
+            "Glacial Bash II",
+            "Nyx Hammer I",
+            "Nyx Hammer II",
+            "Xeno Maph'agarna+"
+          ]
+        },
+        "ja": {
+          "display_name": "アイアンハンマー",
+          "aliases": [
+            "アイアンハンマーⅠ",
+            "アイアンハンマーⅡ",
+            "アイアンハンマーⅢ",
+            "ネルガルクラッシュ",
+            "ウォーターバッシュⅠ",
+            "ウォーターバッシュⅡ",
+            "ウォーターバッシュⅢ",
+            "マラドマトラカⅠ",
+            "マラドマトラカⅡ",
+            "マラドマトラカⅢ",
+            "ブルームハンマーⅠ",
+            "ブルームハンマーⅡ",
+            "ブルームハンマーⅢ",
+            "サンダーハンマーⅠ",
+            "サンダーハンマーⅡ",
+            "ゼノ＝マファガルナ",
+            "ウォーターバッシュⅣ",
+            "アイシクルバッシュⅠ",
+            "アイシクルバッシュⅡ",
+            "ニュクスハンマーⅠ",
+            "ニュクスハンマーⅡ",
+            "ゼノ＝マファガルナ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9e885a7e852c00b2eaf91939fea78fb83f3b0a61344958a3626c9a4b5b76ec94",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham002",
+      "internal_id": "bs_ham002",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼铁1",
+          "aliases": [
+            "鬼铁2",
+            "鬼铁3",
+            "大鬼铁1",
+            "大鬼铁2",
+            "水流锤1",
+            "水流锤2",
+            "水流锤3",
+            "痹贼龙锤1",
+            "痹贼龙锤2",
+            "雷光强锤1",
+            "雷光强锤2",
+            "雷光强锤3",
+            "黑钢锤1",
+            "黑钢锤2",
+            "防卫队钢铁制战锤1",
+            "防卫队钢铁制战锤2",
+            "防卫队钢铁制战锤3",
+            "防卫队钢铁制战锤4",
+            "防卫队钢铁制战锤5",
+            "黑铁1",
+            "黑铁2",
+            "黑铁3",
+            "雷光强锤4"
+          ]
+        },
+        "en": {
+          "display_name": "Iron Demon I",
+          "aliases": [
+            "Iron Demon II",
+            "Iron Demon III",
+            "Iron Archdemon I",
+            "Iron Archdemon II",
+            "Aqua Hammer I",
+            "Aqua Hammer II",
+            "Aqua Hammer III",
+            "Girros Hammer I",
+            "Girros Hammer II",
+            "Lightning Bash I",
+            "Lightning Bash II",
+            "Lightning Bash III",
+            "Blacksteel Hammer I",
+            "Blacksteel Hammer II",
+            "Defender Warhammer I",
+            "Defender Warhammer II",
+            "Defender Warhammer III",
+            "Defender Warhammer IV",
+            "Defender Warhammer V",
+            "Kurogane I",
+            "Kurogane II",
+            "Kurogane III",
+            "Lightning Bash IV"
+          ]
+        },
+        "ja": {
+          "display_name": "鬼鉄Ⅰ",
+          "aliases": [
+            "鬼鉄Ⅱ",
+            "鬼鉄Ⅲ",
+            "大鬼鉄Ⅰ",
+            "大鬼鉄Ⅱ",
+            "アクアハンマーⅠ",
+            "アクアハンマーⅡ",
+            "アクアハンマーⅢ",
+            "ギルオスハンマーⅠ",
+            "ギルオスハンマーⅡ",
+            "ライトニングバッシュⅠ",
+            "ライトニングバッシュⅡ",
+            "ライトニングバッシュⅢ",
+            "黒鋼の鎚Ⅰ",
+            "黒鋼の鎚Ⅱ",
+            "防衛隊鋼鉄製戦鎚Ⅰ",
+            "防衛隊鋼鉄製戦鎚Ⅱ",
+            "防衛隊鋼鉄製戦鎚Ⅲ",
+            "防衛隊鋼鉄製戦鎚Ⅳ",
+            "防衛隊鋼鉄製戦鎚Ⅴ",
+            "クロガネⅠ",
+            "クロガネⅡ",
+            "クロガネⅢ",
+            "ライトニングバッシュⅣ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ef3f9ed5e2096b63398660b4d56a39e6728c3378e2f1387789312544d4d5ea62",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham003",
+      "internal_id": "bs_ham003",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铜头锤1",
+          "aliases": [
+            "岩骨锤1",
+            "岩骨锤2",
+            "岩骨锤3",
+            "重岩骨锤1",
+            "重岩骨锤2",
+            "重岩骨锤3",
+            "大地之岩1",
+            "大地之岩2",
+            "尸套龙大锤",
+            "骨锤龙击锤1",
+            "骨锤龙击锤2",
+            "骨锤龙击锤3",
+            "爆锤破坏者1",
+            "爆锤破坏者2",
+            "搔鸟钉锤1",
+            "搔鸟钉锤2",
+            "搔鸟钉锤3",
+            "铜头锤2",
+            "土砂龙链枷1",
+            "土砂龙链枷2",
+            "土砂龙链枷3",
+            "火炎战锤1",
+            "火炎战锤2",
+            "龙骨大锤1",
+            "龙骨大锤2",
+            "龙骨大锤3"
+          ]
+        },
+        "en": {
+          "display_name": "Diablos Sledge I",
+          "aliases": [
+            "Bone Bludgeon I",
+            "Bone Bludgeon II",
+            "Bone Bludgeon III",
+            "Fossil Bludgeon I",
+            "Fossil Bludgeon II",
+            "Fossil Bludgeon III",
+            "Grandrock I",
+            "Grandrock II",
+            "Hazak Vlafos",
+            "Baan Strike I",
+            "Baan Strike II",
+            "Baan Strike III",
+            "Brazenbreak I",
+            "Brazenbreak II",
+            "Kulu Beak I",
+            "Kulu Beak II",
+            "Kulu Beak III",
+            "Diablos Sledge II",
+            "Carapace Sledge I",
+            "Carapace Sledge II",
+            "Carapace Sledge III",
+            "Blazing Hammer I",
+            "Blazing Hammer II",
+            "Dragonbone Basher I",
+            "Dragonbone Basher II",
+            "Dragonbone Basher III"
+          ]
+        },
+        "ja": {
+          "display_name": "ブロスヘッドⅠ",
+          "aliases": [
+            "ロックボーンⅠ",
+            "ロックボーンⅡ",
+            "ロックボーンⅢ",
+            "ヘヴィロックボーンⅠ",
+            "ヘヴィロックボーンⅡ",
+            "ヘヴィロックボーンⅢ",
+            "グランドロックⅠ",
+            "グランドロックⅡ",
+            "ハザクヴラフォス",
+            "バルキンストライクⅠ",
+            "バルキンストライクⅡ",
+            "バルキンストライクⅢ",
+            "ブラスブレイカーⅠ",
+            "ブラスブレイカーⅡ",
+            "クルルビークⅠ",
+            "クルルビークⅡ",
+            "クルルビークⅢ",
+            "ブロスヘッドⅡ",
+            "ドラグロフレームⅠ",
+            "ドラグロフレームⅡ",
+            "ドラグロフレームⅢ",
+            "ブレイズハンマーⅠ",
+            "ブレイズハンマーⅡ",
+            "龍骨大槌Ⅰ",
+            "龍骨大槌Ⅱ",
+            "龍骨大槌Ⅲ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:973f2d94bfbabdab4340bb1fb8e05836d72cdf21b13ca9dac99250085d1178be",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham004",
+      "internal_id": "bs_ham004",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "锐骨锤1",
+          "aliases": [
+            "锐骨锤2",
+            "冲击钉锤1",
+            "冲击钉锤2",
+            "冲击钉锤3",
+            "爆锤战锤1",
+            "爆锤战锤2",
+            "土砂龙破坏者1",
+            "土砂龙破坏者2",
+            "土砂龙破坏者3",
+            "蛮颚龙战锤1",
+            "蛮颚龙战锤2",
+            "蛮颚龙战锤3",
+            "重甲锤爆锤龙1",
+            "重甲锤爆锤龙2",
+            "巨牛大蹄1",
+            "巨牛大蹄2",
+            "爆锤战锤3",
+            "混沌战锤",
+            "自由雷颚1",
+            "自由雷颚2"
+          ]
+        },
+        "en": {
+          "display_name": "Bone Spike I",
+          "aliases": [
+            "Bone Spike II",
+            "Crushing Beak I",
+            "Crushing Beak II",
+            "Crushing Beak III",
+            "Diablos Shatterer I",
+            "Diablos Shatterer II",
+            "Barroth Breaker I",
+            "Barroth Breaker II",
+            "Barroth Breaker III",
+            "Anja Striker I",
+            "Anja Striker II",
+            "Anja Striker III",
+            "Uragaan Hammer I",
+            "Uragaan Hammer II",
+            "Mammoth Hoof I",
+            "Mammoth Hoof II",
+            "Diablos Shatterer III",
+            "Chaos Shatterer",
+            "Grinding Fulgur I",
+            "Grinding Fulgur II"
+          ]
+        },
+        "ja": {
+          "display_name": "ボーンスパイクⅠ",
+          "aliases": [
+            "ボーンスパイクⅡ",
+            "ビークインパクトⅠ",
+            "ビークインパクトⅡ",
+            "ビークインパクトⅢ",
+            "ブロスシャッターⅠ",
+            "ブロスシャッターⅡ",
+            "ボルボブレイカーⅠ",
+            "ボルボブレイカーⅡ",
+            "ボルボブレイカーⅢ",
+            "ジャナフストライクⅠ",
+            "ジャナフストライクⅡ",
+            "ジャナフストライクⅢ",
+            "重甲鎚ガンキンⅠ",
+            "重甲鎚ガンキンⅡ",
+            "巨牛の大蹄Ⅰ",
+            "巨牛の大蹄Ⅱ",
+            "ブロスシャッターⅢ",
+            "カオスシャッター",
+            "ドンナ＝ジャナールⅠ",
+            "ドンナ＝ジャナールⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1421b35e4680d0d90c62706f86209f4ca9626f708bff890bc72be4d0facce04e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham005",
+      "internal_id": "bs_ham005",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的锤子·冰",
+          "aliases": [
+            "金色的锤子·水",
+            "金色的锤子·雷",
+            "金色的锤子·搔",
+            "金色的锤子·毒妖",
+            "金色的锤子·土砂",
+            "金色的锤子·蛮颚",
+            "金色的锤子·痹贼",
+            "金色的锤子·骨锤",
+            "金色的锤子·尸套",
+            "金色的锤子·角",
+            "金色的锤子·爆锤"
+          ]
+        },
+        "en": {
+          "display_name": "Gold Ice Bludgeon",
+          "aliases": [
+            "Gold Water Bludgeon",
+            "Gold Thunder Bludgeon",
+            "Thief Gold Bludgeon",
+            "Spew Gold Bludgeon",
+            "Mud Gold Bludgeon",
+            "Rage Gold Bludgeon",
+            "Numb Gold Bludgeon",
+            "Tar Gold Bludgeon",
+            "Decay Gold Bludgeon",
+            "Horn Gold Bludgeon",
+            "Gyre Gold Bludgeon"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の鎚・氷",
+          "aliases": [
+            "金色の鎚・水",
+            "金色の鎚・雷",
+            "金色の鎚・掻",
+            "金色の鎚・毒妖",
+            "金色の鎚・土砂",
+            "金色の鎚・蛮顎",
+            "金色の鎚・痺賊",
+            "金色の鎚・骨鎚",
+            "金色の鎚・屍套",
+            "金色の鎚・角",
+            "金色の鎚・爆鎚"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7babb3f3c0f9fd7cca0540f6da47c9eab07cf742abd21fe1f280e1259780c04f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham006",
+      "internal_id": "bs_ham006",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗大锤·冰",
+          "aliases": [
+            "铠罗大锤·搔",
+            "铠罗大锤·毒妖",
+            "铠罗大锤·土砂",
+            "铠罗大锤·蛮颚",
+            "铠罗大锤·痹贼",
+            "铠罗大锤·骨锤",
+            "铠罗大锤·尸套",
+            "铠罗大锤·角",
+            "铠罗大锤·爆锤",
+            "铠罗大锤·水",
+            "铠罗大锤·雷",
+            "铠罗大锤·睡眠"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Hammer \"Ice\"",
+          "aliases": [
+            "Taroth Hammer \"Thief\"",
+            "Taroth Hammer \"Spew\"",
+            "Taroth Hammer \"Mud\"",
+            "Taroth Hammer \"Rage\"",
+            "Taroth Hammer \"Numb\"",
+            "Taroth Hammer \"Tar\"",
+            "Taroth Hammer \"Decay\"",
+            "Taroth Hammer \"Horn\"",
+            "Taroth Hammer \"Gyre\"",
+            "Taroth Hammer \"Water\"",
+            "Taroth Hammer \"Thunder\"",
+            "Taroth Hammer \"Sleep\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラハンマー・氷",
+          "aliases": [
+            "ガイラハンマー・掻",
+            "ガイラハンマー・毒妖",
+            "ガイラハンマー・土砂",
+            "ガイラハンマー・蛮顎",
+            "ガイラハンマー・痺賊",
+            "ガイラハンマー・骨鎚",
+            "ガイラハンマー・屍套",
+            "ガイラハンマー・角",
+            "ガイラハンマー・爆鎚",
+            "ガイラハンマー・水",
+            "ガイラハンマー・雷",
+            "ガイラハンマー・睡眠"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a4f0bcb31a79aff9e8c3cfd96b8a8f68d79e2390a6a5fd5b90f51b9cbfcf5c9a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham007",
+      "internal_id": "bs_ham007",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后链锤",
+          "aliases": [
+            "皇后链锤·炎妃",
+            "皇后链锤·灭尽",
+            "皇后链锤·冥灯",
+            "魂焰刚锤·炎妃",
+            "魂焰刚锤·灭尽",
+            "魂焰刚锤·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Mace",
+          "aliases": [
+            "Empress Mace \"Blaze\"",
+            "Empress Mace \"Ruin\"",
+            "Empress Mace \"Styx\"",
+            "Soulfire Heel \"Blaze\"",
+            "Soulfire Heel \"Ruin\"",
+            "Soulfire Heel \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスメイス",
+          "aliases": [
+            "エンプレスメイス・炎妃",
+            "エンプレスメイス・滅尽",
+            "エンプレスメイス・冥灯",
+            "魂焔の剛鎚・炎妃",
+            "魂焔の剛鎚・滅尽",
+            "魂焔の剛鎚・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:692ee980003a7142fcaa74664017b28a9aea773192595405ca534d13add01c58",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham008",
+      "internal_id": "bs_ham008",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "蛇神战锤1",
+          "aliases": [
+            "蛇神战锤2"
+          ]
+        },
+        "en": {
+          "display_name": "Naaga Matraca I",
+          "aliases": [
+            "Naaga Matraca II"
+          ]
+        },
+        "ja": {
+          "display_name": "ナーガ＝マトラカⅠ",
+          "aliases": [
+            "ナーガ＝マトラカⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2092a6153f4eac410f772ec32a004a4c51de61fdc737b4f4af42ada235e9cf4d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham009",
+      "internal_id": "bs_ham009",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巢穴钩爪1",
+          "aliases": [
+            "盖亚终结者 1",
+            "盖亚终结者 2",
+            "盖亚终结者 3",
+            "骨锤龙终结者 1",
+            "骨锤龙终结者 2",
+            "巢穴钩爪2",
+            "土砂龙冲击1",
+            "土砂龙冲击2",
+            "蛮颚龙之猛槌1",
+            "蛮颚龙之猛槌2",
+            "封龙大槌1",
+            "封龙大槌2",
+            "黑羽凶槌1",
+            "黑羽凶槌2"
+          ]
+        },
+        "en": {
+          "display_name": "Makhlab al-Nasr I",
+          "aliases": [
+            "Earth Ender I",
+            "Earth Ender II",
+            "Earth Ender III",
+            "Baan Gavel I",
+            "Baan Gavel II",
+            "Makhlab al-Nasr II",
+            "Barroth Crusher I",
+            "Barroth Crusher II",
+            "Anja Fiercemaul I",
+            "Anja Fiercemaul II",
+            "Dragonseal Basher I",
+            "Dragonseal Hammer II",
+            "Blackwing Deathblow I",
+            "Blackwing Deathblow II"
+          ]
+        },
+        "ja": {
+          "display_name": "ネスルマクラブⅠ",
+          "aliases": [
+            "ガイアクローザーⅠ",
+            "ガイアクローザーⅡ",
+            "ガイアクローザーⅢ",
+            "バルキンクローザーⅠ",
+            "バルキンクローザーⅡ",
+            "ネスルマクラブⅡ",
+            "ボルボインパクトⅠ",
+            "ボルボインパクトⅡ",
+            "蛮顎竜ノ猛槌Ⅰ",
+            "蛮顎竜ノ猛槌Ⅱ",
+            "龍封じの大槌Ⅰ",
+            "龍封じの大槌Ⅱ",
+            "黒羽の凶槌Ⅰ",
+            "黒羽の凶槌Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5c9360c0ed2476f5e1150a5d80c97c9e78bcc290b080f55045c0d69b660ea08b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham010",
+      "internal_id": "bs_ham010",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰军极地",
+          "aliases": [
+            "严冰风云者"
+          ]
+        },
+        "en": {
+          "display_name": "Victorious Northlein",
+          "aliases": [
+            "Iceshaker"
+          ]
+        },
+        "ja": {
+          "display_name": "氷軍ノースライン",
+          "aliases": [
+            "アイスシェイカー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:44dc32d3a9099c6aa73d82cfb09d8fc2f709ae98068b98bfc5693453622084fc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham011",
+      "internal_id": "bs_ham011",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金锤·爆锤",
+          "aliases": [
+            "皇金锤·痹贼",
+            "皇金锤·尸套"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Hammer \"Gyre\"",
+          "aliases": [
+            "Kjárr Hammer \"Numb\"",
+            "Kjárr Hammer \"Decay\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の鎚・爆鎚",
+          "aliases": [
+            "皇金の鎚・痺賊",
+            "皇金の鎚・屍套"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1a0a073d191480e209f3e33476c8c4525742586a365cb7bb55761f9cfa55b40e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/bs_ham012",
+      "internal_id": "bs_ham012",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金锤·冰",
+          "aliases": [
+            "皇金锤·水",
+            "皇金锤·雷",
+            "皇金锤·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Hammer \"Ice\"",
+          "aliases": [
+            "Kjárr Hammer \"Water\"",
+            "Kjárr Hammer \"Thunder\"",
+            "Kjárr Hammer \"Blast\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の鎚・氷",
+          "aliases": [
+            "皇金の鎚・水",
+            "皇金の鎚・雷",
+            "皇金の鎚・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2ddc618773a313adfb40d7c65851980b0a8bc2d56694e1c201d9a431e92cfa0f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham001",
+      "internal_id": "ham001",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢冰棍",
+          "aliases": [
+            "巨大钢龙锤",
+            "超越钢龙锤"
+          ]
+        },
+        "en": {
+          "display_name": "Icesteel Hammer",
+          "aliases": [
+            "Daora's Colossus",
+            "Daora's Hyperborea"
+          ]
+        },
+        "ja": {
+          "display_name": "鋼氷棍",
+          "aliases": [
+            "コロサル＝ダオラ",
+            "ヒュペル＝ダオラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a0d15c3ba2866d97be50678c3cece6bb530276a32dd6912c0229d0cb880da0df",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham002",
+      "internal_id": "ham002",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "花之女神",
+          "aliases": [
+            "鲜艳花朵",
+            "花之女神·改",
+            "圣地花神"
+          ]
+        },
+        "en": {
+          "display_name": "Buona Flora",
+          "aliases": [
+            "Buon Fiore",
+            "Buona Flora+",
+            "Buona Florescenza"
+          ]
+        },
+        "ja": {
+          "display_name": "ベネ・フローラ",
+          "aliases": [
+            "ベネ・フロル",
+            "ベネ・フローラ改",
+            "ベネ・フローレス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5e7c5c67972b28227fecc7af4ec4a361c16dbdb91fb403d504d44d9dc6771b00",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham003",
+      "internal_id": "ham003",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "电击锤",
+          "aliases": [
+            "牢狱锤",
+            "拘束之棺"
+          ]
+        },
+        "en": {
+          "display_name": "Binder Mace",
+          "aliases": [
+            "Jail Hammer",
+            "Binding Coffin"
+          ]
+        },
+        "ja": {
+          "display_name": "バインドキューブ",
+          "aliases": [
+            "ジェイルハンマー",
+            "バインドコフィン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ccbedd9cb53b0bfd47bbd34340dc9f39030e87bc4145f3033886fd226d2d5f1e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham004",
+      "internal_id": "ham004",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "溃灭一击",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Obliteration's Footfall",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "潰滅の一撃",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5e86162b3c2859287f77d828b72321203fe5ee44abb45a2ee25116e04bcbe587",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham005",
+      "internal_id": "ham005",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "恶灵祸根",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Pandemonium's Root",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "デモナスの禍根",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dc79a93c21ce251ad06a52c6e30f8deea83a16eb7c4f068f8e0a2326cca07d01",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham006",
+      "internal_id": "ham006",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "熔山龙爆锤",
+          "aliases": [
+            "活火激发熔山龙爆锤",
+            "真·活火激发熔山龙爆锤"
+          ]
+        },
+        "en": {
+          "display_name": "Magda Floga",
+          "aliases": [
+            "Ragefire Magda Floga",
+            "Magda Floga Reforged"
+          ]
+        },
+        "ja": {
+          "display_name": "マグダ・フロガ",
+          "aliases": [
+            "活火激発マグフロガ",
+            "真・活火激発マグロガ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6d8468ea83a6fb319c8e056fd2ada91dcff8b5f85eeb096e85ff8b68ad1b060e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham007",
+      "internal_id": "ham007",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰霜核心",
+          "aliases": [
+            "冰霜核心改",
+            "恸泣冰河",
+            "恸泣冰河·改",
+            "冰铁毁坏"
+          ]
+        },
+        "en": {
+          "display_name": "Frozen Core",
+          "aliases": [
+            "Frozen Core+",
+            "Cocytus",
+            "Cocytus+",
+            "Pykrete Punisher"
+          ]
+        },
+        "ja": {
+          "display_name": "フローズンコア",
+          "aliases": [
+            "フローズンコア改",
+            "コキュートス",
+            "コキュートス改",
+            "氷鉄ハバク"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0c80bc4cb144f6f9e0b3e055dcf9338b923f835d1adfba448aa1cd374a58ad49",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham008",
+      "internal_id": "ham008",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "混沌猛击",
+          "aliases": [
+            "混沌之锤"
+          ]
+        },
+        "en": {
+          "display_name": "Devil's Crush",
+          "aliases": [
+            "Devil's Due"
+          ]
+        },
+        "ja": {
+          "display_name": "カオスラッシュ",
+          "aliases": [
+            "混沌の鎚"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9c6795d6e24561805f4e58651e9afb699ab26d1bd09822c96b81855764f7c4c2",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham009",
+      "internal_id": "ham009",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "水流花神",
+          "aliases": [
+            "水流花仙",
+            "水流花仙·改"
+          ]
+        },
+        "en": {
+          "display_name": "Aqua Florescence",
+          "aliases": [
+            "Aqua Flora",
+            "Aqua Flora+"
+          ]
+        },
+        "ja": {
+          "display_name": "アクア・フローレス",
+          "aliases": [
+            "アクア・フローラ",
+            "アクア・フローラ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:94cbc1f48b71856a9e5c51b03dc159b3dfec0f4ab69520871f9228bb7d5e3984",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham010",
+      "internal_id": "ham010",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "渊薮恶灵",
+          "aliases": [
+            "恶灵的复仇"
+          ]
+        },
+        "en": {
+          "display_name": "Pandemonium Unleashed",
+          "aliases": [
+            "Pandemonium's Wrath"
+          ]
+        },
+        "ja": {
+          "display_name": "グラド＝デモナス",
+          "aliases": [
+            "デモナスの復讐"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:16818f4c66fa57c27b6fae441ba19f729aec59ecc2f119395b15a21e30646f10",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham011",
+      "internal_id": "ham011",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "溃灭一击【坏】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Obliteration",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "潰滅の一撃【壊】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:eb4817de0637b1fc2f6c874aab83b39012758bcff2996d0007295059a5f934d9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham012",
+      "internal_id": "ham012",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "隐密破击者",
+          "aliases": [
+            "隐密破击者·改",
+            "夜行锤【常暗】"
+          ]
+        },
+        "en": {
+          "display_name": "Hidden Breaker",
+          "aliases": [
+            "Hidden Breaker+",
+            "Night Eternal"
+          ]
+        },
+        "ja": {
+          "display_name": "ヒドゥンブレイカー",
+          "aliases": [
+            "ヒドゥンブレイカー改",
+            "夜行槌【常闇】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:782ae13ff62c0bbcac56354a39572be6825f0659ebe90ec1d45d5ffa26c575f8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham013",
+      "internal_id": "ham013",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎龙之尾",
+          "aliases": [
+            "爆锤月之尾"
+          ]
+        },
+        "en": {
+          "display_name": "Dios Tailhammer",
+          "aliases": [
+            "Brachy Tailhammer"
+          ]
+        },
+        "ja": {
+          "display_name": "ディオステイル",
+          "aliases": [
+            "爆鎚ズーニーテイル"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:21f8be3adb6fb9c8c2116ce012ad80166226abffefca5a3e1ebd15b20b445ceb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham014",
+      "internal_id": "ham014",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斩龙锤能源",
+          "aliases": [
+            "灼炎之吞噬者",
+            "灼炎之吞噬者·改"
+          ]
+        },
+        "en": {
+          "display_name": "Glavenus's Uruga",
+          "aliases": [
+            "Scorching Isshata",
+            "Scorching Isshata+"
+          ]
+        },
+        "ja": {
+          "display_name": "斬竜鎚ウルガ",
+          "aliases": [
+            "灼炎のイシャター",
+            "灼炎のイシャター改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1e3554f9a07b7a861a77af50510ccb0ed31ddb27e439ab0a04a9a54cfae0eed4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham015",
+      "internal_id": "ham015",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "硫铁合交",
+          "aliases": [
+            "暗穴硫斩锤"
+          ]
+        },
+        "en": {
+          "display_name": "Sulfurteinn Alcan",
+          "aliases": [
+            "The Grinding Mallet"
+          ]
+        },
+        "ja": {
+          "display_name": "硫鉄のアルカン",
+          "aliases": [
+            "硫斬鎚アルタミラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:23407ac11f55d285ccf3eadf4753c52edc292ac19ed0df0c5121542eb92bbb8c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham016",
+      "internal_id": "ham016",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "明珠在掌－降魔－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Dawning Tranquility",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "明珠在掌－降魔－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1e5f9d05ab8ed39f5d5c5ca31d0eb742a3e98fef25de89a39f8c647a27032f3a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham017",
+      "internal_id": "ham017",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业锤食欲",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Consummate Hammer",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業鎚ダグザ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:938b7cb29a51530a7668cc97a37c727f3921015631bd442945808b5f1112da21",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham018",
+      "internal_id": "ham018",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢针锤",
+          "aliases": [
+            "硬梆梆的怨气",
+            "硬梆梆地狱"
+          ]
+        },
+        "en": {
+          "display_name": "Bristly Pincushion",
+          "aliases": [
+            "Bristly Grudge",
+            "Bristly Inferno"
+          ]
+        },
+        "ja": {
+          "display_name": "ゴワゴワの針山",
+          "aliases": [
+            "ゴワゴワの怨念",
+            "ゴワゴワ地獄"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0f52784bdf42765b74405ade9003daee00ec353c0d1799b2751e14ea21a98ca6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham019",
+      "internal_id": "ham019",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "轰龙纹锤",
+          "aliases": [
+            "轰龙纹锤·改",
+            "轰锤【虎丸】"
+          ]
+        },
+        "en": {
+          "display_name": "Striped Striker",
+          "aliases": [
+            "Striped Striker+",
+            "Tigrex Hammer"
+          ]
+        },
+        "ja": {
+          "display_name": "ストライプストライク",
+          "aliases": [
+            "ストライプストライク改",
+            "轟槌【虎丸】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8ac8fc283df2948bfcf40e1ad6b76e9178e9531effa28e1a71c07be5618b76c6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham020",
+      "internal_id": "ham020",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王锤神雷",
+          "aliases": [
+            "王锤神雷·改",
+            "王牙锤【大雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Thunder",
+          "aliases": [
+            "Usurper's Thunder+",
+            "Despot's Crackle"
+          ]
+        },
+        "ja": {
+          "display_name": "王鎚カミナリ",
+          "aliases": [
+            "王鎚カミナリ改",
+            "王牙鎚【大雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:342fc1606214515917847caea6b12a3e28885d128a6364c299623ab986a6be70",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham021",
+      "internal_id": "ham021",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱锤龙额",
+          "aliases": [
+            "狼牙锤【食狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakemaw",
+          "aliases": [
+            "Stygian Industria"
+          ]
+        },
+        "ja": {
+          "display_name": "獄鎚リュウガク",
+          "aliases": [
+            "狼牙鎚【食獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:50d4d63fd8fccac51db9f0f126f91c96c760f566ac154afa0eee6feebcfd17f5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham022",
+      "internal_id": "ham022",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "红色冲击",
+          "aliases": [
+            "火龙碎弗拉冈"
+          ]
+        },
+        "en": {
+          "display_name": "Red Bludgeon",
+          "aliases": [
+            "Huracan Hammer"
+          ]
+        },
+        "ja": {
+          "display_name": "レッドビート",
+          "aliases": [
+            "火竜砕フラカン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8ebc05271e1175e6b4444a31b30857b722764a3b848ef084735428a7f5735a86",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham023",
+      "internal_id": "ham023",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "星碎陨落",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Leonid Starcrusher",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "星砕きプロメテオル",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d1b9894ea8c5481e7439fbf1ac6c24538aee4c8dfd77589cc5471f024fef1e52",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham024",
+      "internal_id": "ham024",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "怒发锤",
+          "aliases": [
+            "怒发豪大金狮"
+          ]
+        },
+        "en": {
+          "display_name": "Mane Malice",
+          "aliases": [
+            "Mane Malice Rajang"
+          ]
+        },
+        "ja": {
+          "display_name": "怒髪鎚",
+          "aliases": [
+            "怒髪豪ダイラージャン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:709d895d6b2bfe5ee4d9467f33611373ee4d4982d6a192e5c1cba8fe1d753f1b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham025",
+      "internal_id": "ham025",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神锤【金鬼】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Sledge",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神鎚【金鬼】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c770a766daa0664b810a030a9e2a011c2e1e3e11f7f4338171ae9ac325124b8a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham026",
+      "internal_id": "ham026",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之灭锤",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Hammer",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の滅鎚",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:474806b5174572a15de7066c4a0375ba6c7c8abeb62bcd88a46ab61f04598521",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham028",
+      "internal_id": "ham028",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑之坚锤",
+          "aliases": [
+            "煌黑坚锤破毁"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Hammer",
+          "aliases": [
+            "Alatreon Metamorph"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の堅鎚",
+          "aliases": [
+            "煌黒堅鎚アルメタ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:50e26d2bdd9065cc10352857e778e885def44ec2f979ecd57d40c0f7edcc4c03",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham029",
+      "internal_id": "ham029",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "全熟肉【特选】",
+          "aliases": [
+            "超全熟肉【顶级】"
+          ]
+        },
+        "en": {
+          "display_name": "Well-done Hammer",
+          "aliases": [
+            "Juicy Well-done Hammer"
+          ]
+        },
+        "ja": {
+          "display_name": "こんがり肉【特選】",
+          "aliases": [
+            "超こんがり肉【極上】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1cac1d5cd1c4b742dc46fcf60de7aeaca369c5ae3b0385a633b76de6a80d87aa",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham030",
+      "internal_id": "ham030",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "宇宙征服！超级8！",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Space Lord! Super-8",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "宇宙征服！スーパーエイト",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:00f707e83b8f4e09dce1b05001d0c0c57b81f3838cc0f4d3a9dddc235fcea6cd",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham031",
+      "internal_id": "ham031",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿链锤",
+          "aliases": [
+            "宫廷十字锤【锻星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Mace",
+          "aliases": [
+            "Royal Cross Mace"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスメイス",
+          "aliases": [
+            "宮廷十字鎚【鍛星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b8ba44e4dcbbf6ee34be2ba545ee3770b21262a4d7436714cfaeb78aa3f423dc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham032",
+      "internal_id": "ham032",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "北极星重击",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Polaris Bash",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ポラリスバッシュ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d62082a42ed4d6735cfa8baf4a32124511174b73f8797ea7b8646a57a6362362",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham033",
+      "internal_id": "ham033",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙灭锤",
+          "aliases": [
+            "黑龙歼灭锤"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Buster",
+          "aliases": [
+            "Fatalis Demolisher"
+          ]
+        },
+        "ja": {
+          "display_name": "ミラバスター",
+          "aliases": [
+            "ミラデモリッシャー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:993d0a004ab2b26a9db9b56aa148e5c20bf1ce111535527c6012cd71aaafed74",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/ham/ham034",
+      "internal_id": "ham034",
+      "metadata": {
+        "family": "ham",
+        "path_family": "wp/ham"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙攫获锤·冰",
+          "aliases": [
+            "赤龙攫获锤·火",
+            "赤龙攫获锤·水",
+            "赤龙攫获锤·雷",
+            "赤龙攫获锤·龙",
+            "赤龙攫获锤·毒",
+            "赤龙攫获锤·麻痹",
+            "赤龙攫获锤·睡眠",
+            "赤龙攫获锤·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostcrusher",
+          "aliases": [
+            "Safi's Hellcrusher",
+            "Safi's Aquacrusher",
+            "Safi's Boltcrusher",
+            "Safi's Drakcrusher",
+            "Safi's Venomcrusher",
+            "Safi's Bindcrusher",
+            "Safi's Dreamcrusher",
+            "Safi's Shattercrusher"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ掴ム鎚・氷",
+          "aliases": [
+            "赤龍ノ掴ム鎚・火",
+            "赤龍ノ掴ム鎚・水",
+            "赤龍ノ掴ム鎚・雷",
+            "赤龍ノ掴ム鎚・龍",
+            "赤龍ノ掴ム鎚・毒",
+            "赤龍ノ掴ム鎚・麻痺",
+            "赤龍ノ掴ム鎚・睡眠",
+            "赤龍ノ掴ム鎚・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

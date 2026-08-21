@@ -1,0 +1,1715 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:159631c8a6946edef135ad4b78f1d5ff6034bb6b5d92f99a4794c0ef38948bf7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod001",
+      "internal_id": "bs_rod001",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰霜长刀1",
+          "aliases": [
+            "铁制长刀1",
+            "铁制长刀2",
+            "铁制长刀3",
+            "钢铁长刀1",
+            "钢铁长刀2",
+            "钢铁长刀3",
+            "铬钢长刀1",
+            "铬钢长刀2",
+            "灭尽龙的沉静",
+            "火炎长刀1",
+            "火炎长刀2",
+            "搔鸟长刀1",
+            "搔鸟长刀2",
+            "搔鸟长刀3",
+            "星空长刀1",
+            "星空长刀2",
+            "星空长刀3",
+            "闪耀长刀1",
+            "闪耀长刀2",
+            "冰霜长刀2",
+            "花朵之刀1",
+            "花朵之刀2",
+            "花朵之刀3",
+            "曼陀罗长刀1",
+            "曼陀罗长刀2",
+            "曼陀罗长刀3",
+            "黑钢长刀1",
+            "黑钢长刀2",
+            "防卫队两刃型操虫棍1",
+            "防卫队两刃型操虫棍2",
+            "防卫队两刃型操虫棍3",
+            "防卫队两刃型操虫棍4",
+            "防卫队两刃型操虫棍5",
+            "夜神长刀1",
+            "夜神长刀2",
+            "铁制长刀"
+          ]
+        },
+        "en": {
+          "display_name": "Frost Blade I",
+          "aliases": [
+            "Iron Blade I",
+            "Iron Blade II",
+            "Iron Blade III",
+            "Steel Blade I",
+            "Steel Blade II",
+            "Steel Blade III",
+            "Chrome Blade I",
+            "Chrome Blade II",
+            "Nergal Reaper",
+            "Flame Glaive I",
+            "Flame Glaive II",
+            "Kulu Blade I",
+            "Kulu Blade II",
+            "Kulu Blade III",
+            "Ya-Ku Wrath I",
+            "Ya-Ku Wrath II",
+            "Ya-Ku Wrath III",
+            "Luminous Blade I",
+            "Luminous Blade II",
+            "Frost Blade II",
+            "Blooming Glaive I",
+            "Blooming Glaive II",
+            "Blooming Glaive III",
+            "Datura Blade I",
+            "Datura Blade II",
+            "Datura Blade III",
+            "Blacksteel Glaive I",
+            "Blacksteel Glaive II",
+            "Defender Glaive I",
+            "Defender Glaive II",
+            "Defender Glaive III",
+            "Defender Glaive IV",
+            "Defender Glaive V",
+            "Nyx Blade I",
+            "Nyx Blade II",
+            "Iron Blade"
+          ]
+        },
+        "ja": {
+          "display_name": "フロストブレードⅠ",
+          "aliases": [
+            "アイアンブレードⅠ",
+            "アイアンブレードⅡ",
+            "アイアンブレードⅢ",
+            "スティールブレードⅠ",
+            "スティールブレードⅡ",
+            "スティールブレードⅢ",
+            "クロムブレードⅠ",
+            "クロムブレードⅡ",
+            "ネルガルハッシュ",
+            "フレイムブレードⅠ",
+            "フレイムブレードⅡ",
+            "クルルブレードⅠ",
+            "クルルブレードⅡ",
+            "クルルブレードⅢ",
+            "アルノーラスⅠ",
+            "アルノーラスⅡ",
+            "アルノーラスⅢ",
+            "イルミナルブレードⅠ",
+            "イルミナルブレードⅡ",
+            "フロストブレードⅡ",
+            "ブルームブレードⅠ",
+            "ブルームブレードⅡ",
+            "ブルームブレードⅢ",
+            "ダチュラブレードⅠ",
+            "ダチュラブレードⅡ",
+            "ダチュラブレードⅢ",
+            "黒鋼の長刀Ⅰ",
+            "黒鋼の長刀Ⅱ",
+            "防衛隊両刃型操虫棍Ⅰ",
+            "防衛隊両刃型操虫棍Ⅱ",
+            "防衛隊両刃型操虫棍Ⅲ",
+            "防衛隊両刃型操虫棍Ⅳ",
+            "防衛隊両刃型操虫棍Ⅴ",
+            "ニュクスブレードⅠ",
+            "ニュクスブレードⅡ",
+            "アイアンブレード"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f3aef8f897565ea5a205c979a328b552dc3d6b4f2089c810a9a4e21117d66bea",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod002",
+      "internal_id": "bs_rod002",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巢穴飞跃1",
+          "aliases": [
+            "利刃长刀1",
+            "利刃长刀2",
+            "利刃长刀3",
+            "冻寒疾风刀1",
+            "冻寒疾风刀2",
+            "岩贼龙长鞭1",
+            "岩贼龙长鞭2",
+            "冥灯龙长刀",
+            "巢穴飞跃2",
+            "隐密长鞭1",
+            "隐密长鞭2",
+            "冻寒疾风刀3",
+            "曼陀罗暴风雨1",
+            "曼陀罗暴风雨2",
+            "冥灯龙长刀改"
+          ]
+        },
+        "en": {
+          "display_name": "Yatir al-Nasr I",
+          "aliases": [
+            "Destroyer Bo I",
+            "Destroyer Bo II",
+            "Destroyer Bo III",
+            "Freeze Gale I",
+            "Freeze Gale II",
+            "Gama Cane I",
+            "Gama Cane II",
+            "Xeno Shmaena",
+            "Yatir al-Nasr II",
+            "Hidden Cane I",
+            "Hidden Cane II",
+            "Freeze Gale III",
+            "Datura Storm I",
+            "Datura Storm II",
+            "Xeno Shmaena+"
+          ]
+        },
+        "ja": {
+          "display_name": "ネスルヤティールⅠ",
+          "aliases": [
+            "デステリオバーラⅠ",
+            "デステリオバーラⅡ",
+            "デステリオバーラⅢ",
+            "フリーズゲイルⅠ",
+            "フリーズゲイルⅡ",
+            "ガマルケインⅠ",
+            "ガマルケインⅡ",
+            "ゼノ＝シュマイナ",
+            "ネスルヤティールⅡ",
+            "ヒドゥンケインⅠ",
+            "ヒドゥンケインⅡ",
+            "フリーズゲイルⅢ",
+            "ダチュラストームⅠ",
+            "ダチュラストームⅡ",
+            "ゼノ＝シュマイナ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:bcd7c1214c4064cb14df708ecee84214b2e4e401db4b6ff500cf97ab0ffd2352",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod003",
+      "internal_id": "bs_rod003",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "骨棍1",
+          "aliases": [
+            "骨棍2",
+            "骨棍3",
+            "硬骨棍1",
+            "硬骨棍2",
+            "硬骨棍3",
+            "飞空棍1",
+            "飞空棍2",
+            "尸套龙操虫棍1",
+            "尸套龙操虫棍2",
+            "水流棍1",
+            "水流棍2",
+            "水流棍3",
+            "爆锤棍1",
+            "爆锤棍2",
+            "脉冲长棍1",
+            "脉冲长棍2",
+            "脉冲长棍3",
+            "飞雷龙之柱1",
+            "飞雷龙之柱2",
+            "飞雷龙之柱3",
+            "惨爪长棍1",
+            "惨爪长棍2",
+            "龙骨棍1",
+            "龙骨棍2",
+            "龙骨棍3",
+            "轰龙长棍1",
+            "轰龙长棍2",
+            "朱赤痹之柱1",
+            "朱赤痹之柱2",
+            "劫难长棍"
+          ]
+        },
+        "en": {
+          "display_name": "Bone Rod I",
+          "aliases": [
+            "Bone Rod II",
+            "Bone Rod III",
+            "Hard Bone Rod I",
+            "Hard Bone Rod II",
+            "Hard Bone Rod III",
+            "Aerial Rod I",
+            "Aerial Rod II",
+            "Hazak Entoma I",
+            "Hazak Entoma II",
+            "Aqua Rod I",
+            "Aqua Rod II",
+            "Aqua Rod III",
+            "Diablos Rod I",
+            "Diablos Rod II",
+            "Pulsar Rod I",
+            "Pulsar Rod II",
+            "Pulsar Rod III",
+            "Kadachi Pillar I",
+            "Kadachi Pillar II",
+            "Kadachi Pillar III",
+            "Garon Rod I",
+            "Garon Rod II",
+            "Dragonbone Glaive I",
+            "Dragonbone Glaive II",
+            "Dragonbone Glaive III",
+            "Rex Rod I",
+            "Rex Rod II",
+            "Kadachi Vipertail I",
+            "Kadachi Vipertail II",
+            "Accursed Rod"
+          ]
+        },
+        "ja": {
+          "display_name": "ボーンロッドⅠ",
+          "aliases": [
+            "ボーンロッドⅡ",
+            "ボーンロッドⅢ",
+            "ハードボーンロッドⅠ",
+            "ハードボーンロッドⅡ",
+            "ハードボーンロッドⅢ",
+            "エアリアルロッドⅠ",
+            "エアリアルロッドⅡ",
+            "ハザクエントマⅠ",
+            "ハザクエントマⅡ",
+            "アクアロッドⅠ",
+            "アクアロッドⅡ",
+            "アクアロッドⅢ",
+            "ブロスロッドⅠ",
+            "ブロスロッドⅡ",
+            "パルサーロッドⅠ",
+            "パルサーロッドⅡ",
+            "パルサーロッドⅢ",
+            "カガチノハシラⅠ",
+            "カガチノハシラⅡ",
+            "カガチノハシラⅢ",
+            "ガロンロッドⅠ",
+            "ガロンロッドⅡ",
+            "龍骨棍Ⅰ",
+            "龍骨棍Ⅱ",
+            "龍骨棍Ⅲ",
+            "レックスロッドⅠ",
+            "レックスロッドⅡ",
+            "ベニカガチノマヒバシラⅠ",
+            "ベニカガチノマヒバシラⅡ",
+            "カーサスロッド"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4834f456ec2fa4de109101a543b140f7bd8c4bc6062761a8fe5bd60355b93799",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod004",
+      "internal_id": "bs_rod004",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君长刀1",
+          "aliases": [
+            "激流长刀1",
+            "激流长刀2",
+            "激流长刀3",
+            "暴君长刀2",
+            "舄湖长刀1",
+            "舄湖长刀2",
+            "激流长刀4",
+            "暴君长刀3",
+            "命运长刀",
+            "冰鱼龙长柄刀1",
+            "冰鱼龙长柄刀2"
+          ]
+        },
+        "en": {
+          "display_name": "Tyrannis Glaive I",
+          "aliases": [
+            "Water Glaive I",
+            "Water Glaive II",
+            "Water Glaive III",
+            "Tyrannis Glaive II",
+            "Laguna Glaive I",
+            "Laguna Glaive II",
+            "Water Glaive IV",
+            "Tyrannis Glaive III",
+            "Thanatos Glaive",
+            "Beo Glaive I",
+            "Beo Glaive II"
+          ]
+        },
+        "ja": {
+          "display_name": "タイラントグレイブⅠ",
+          "aliases": [
+            "ウォーターグレイブⅠ",
+            "ウォーターグレイブⅡ",
+            "ウォーターグレイブⅢ",
+            "タイラントグレイブⅡ",
+            "ラグーナグレイブⅠ",
+            "ラグーナグレイブⅡ",
+            "ウォーターグレイブⅣ",
+            "タイラントグレイブⅢ",
+            "タナトスグレイブ",
+            "ブラングレイヴⅠ",
+            "ブラングレイヴⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:341910a962f83d860f369be5ed3232edf66d8718580f5587d422fc299d4c83e1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod005",
+      "internal_id": "bs_rod005",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的长刀·冰",
+          "aliases": [
+            "金色的长刀·水",
+            "金色的长刀·麻痹",
+            "金色的长刀·搔",
+            "金色的长刀·毒妖",
+            "金色的长刀·飞雷",
+            "金色的长刀·眩",
+            "金色的长刀·惨爪",
+            "金色的长刀·尸套",
+            "金色的长刀·王",
+            "金色的长刀·角",
+            "金色的长刀·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Gold Ice Naginata",
+          "aliases": [
+            "Gold Water Naginata",
+            "Gold Paralysis Naginata",
+            "Thief Gold Naginata",
+            "Spew Gold Naginata",
+            "Spark Gold Naginata",
+            "Flash Gold Naginata",
+            "Claw Gold Naginata",
+            "Decay Gold Naginata",
+            "King Gold Naginata",
+            "Horn Gold Naginata",
+            "Crusher Gold Naginata"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の長刀・氷",
+          "aliases": [
+            "金色の長刀・水",
+            "金色の長刀・麻痺",
+            "金色の長刀・掻",
+            "金色の長刀・毒妖",
+            "金色の長刀・飛雷",
+            "金色の長刀・眩",
+            "金色の長刀・惨爪",
+            "金色の長刀・屍套",
+            "金色の長刀・王",
+            "金色の長刀・角",
+            "金色の長刀・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:24cb8a158b168e1bb324ce25f70d71eb50ddf645b6ddfe15de6d363072f91d3f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod006",
+      "internal_id": "bs_rod006",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗长刀·冰",
+          "aliases": [
+            "铠罗长刀·搔",
+            "铠罗长刀·毒妖",
+            "铠罗长刀·飞雷",
+            "铠罗长刀·眩",
+            "铠罗长刀·惨爪",
+            "铠罗长刀·尸套",
+            "铠罗长刀·王",
+            "铠罗长刀·角",
+            "铠罗长刀·岩贼",
+            "铠罗长刀·水",
+            "铠罗长刀·麻痹",
+            "铠罗长刀·睡眠"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Glaive \"Ice\"",
+          "aliases": [
+            "Taroth Glaive \"Thief\"",
+            "Taroth Glaive \"Spew\"",
+            "Taroth Glaive \"Spark\"",
+            "Taroth Glaive \"Flash\"",
+            "Taroth Glaive \"Claw\"",
+            "Taroth Glaive \"Decay\"",
+            "Taroth Glaive \"King\"",
+            "Taroth Glaive \"Horn\"",
+            "Taroth Glaive \"Crusher\"",
+            "Taroth Glaive \"Water\"",
+            "Taroth Glaive \"Paralysis\"",
+            "Taroth Glaive \"Sleep\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラブレード・氷",
+          "aliases": [
+            "ガイラブレード・掻",
+            "ガイラブレード・毒妖",
+            "ガイラブレード・飛雷",
+            "ガイラブレード・眩",
+            "ガイラブレード・惨爪",
+            "ガイラブレード・屍套",
+            "ガイラブレード・王",
+            "ガイラブレード・角",
+            "ガイラブレード・岩賊",
+            "ガイラブレード・水",
+            "ガイラブレード・麻痺",
+            "ガイラブレード・睡眠"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:13f3c915168e6a21170540fbfbdab461f0abf3ff38059f252d5c4361c66a46be",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod007",
+      "internal_id": "bs_rod007",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后长鞭",
+          "aliases": [
+            "皇后长鞭·炎妃",
+            "皇后长鞭·灭尽",
+            "皇后长鞭·冥灯",
+            "魂焰龙戟·炎妃",
+            "魂焰龙戟·灭尽",
+            "魂焰龙戟·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Cane",
+          "aliases": [
+            "Empress Cane \"Blaze\"",
+            "Empress Cane \"Ruin\"",
+            "Empress Cane \"Styx\"",
+            "Soulfire Reach \"Blaze\"",
+            "Soulfire Reach \"Ruin\"",
+            "Soulfire Reach \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスケイン",
+          "aliases": [
+            "エンプレスケイン・炎妃",
+            "エンプレスケイン・滅尽",
+            "エンプレスケイン・冥灯",
+            "魂焔の龍戟・炎妃",
+            "魂焔の龍戟・滅尽",
+            "魂焔の龍戟・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1c4d627e532279963e63c298b4eccbb5d96650f777019e32bccf28f9d06c9b7f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod008",
+      "internal_id": "bs_rod008",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铬钢三叉1",
+          "aliases": [
+            "铬钢三叉2",
+            "铬钢三叉3",
+            "下潜长刀1",
+            "下潜长刀2",
+            "岩贼龙巫师1",
+            "岩贼龙巫师2"
+          ]
+        },
+        "en": {
+          "display_name": "Chrome Trident I",
+          "aliases": [
+            "Chrome Trident II",
+            "Chrome Trident III",
+            "Diving Destroyer I",
+            "Diving Destroyer II",
+            "Gama Magus I",
+            "Gama Magus II"
+          ]
+        },
+        "ja": {
+          "display_name": "クロムトライデントⅠ",
+          "aliases": [
+            "クロムトライデントⅡ",
+            "クロムトライデントⅢ",
+            "ダイヴ＝デステリオⅠ",
+            "ダイヴ＝デステリオⅡ",
+            "ガマルウィザードⅠ",
+            "ガマルウィザードⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5107dbea14585f828496eb58e2765c3b908480ed570fc6c8eb01cd53928fd64d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod009",
+      "internal_id": "bs_rod009",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "飞空巫师1",
+          "aliases": [
+            "飞空巫师2",
+            "飞空巫师3",
+            "死灭虫尸杖",
+            "水蛇奥秘",
+            "飞雷龙之锚1",
+            "飞雷龙之锚2",
+            "封龙古杖1",
+            "封龙古杖2"
+          ]
+        },
+        "en": {
+          "display_name": "Aerial Magus I",
+          "aliases": [
+            "Aerial Magus II",
+            "Aerial Magus III",
+            "Deathstaff Vaal Entoma",
+            "Hydros Arcana",
+            "Kadachi Fury I",
+            "Kadachi Fury II",
+            "Dragonseal Aldstaff I",
+            "Dragonseal Aldstaff II"
+          ]
+        },
+        "ja": {
+          "display_name": "エアリアルウィザードⅠ",
+          "aliases": [
+            "エアリアルウィザードⅡ",
+            "エアリアルウィザードⅢ",
+            "屍杖ヴァルエントマ",
+            "ヒュドロスアーケーン",
+            "カガチノイカリⅠ",
+            "カガチノイカリⅡ",
+            "龍封じの古杖Ⅰ",
+            "龍封じの古杖Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2313b05b9a3d5ea8ed6c777fa6014447302698f8f9d9f434ff4a4d31e1a4af5b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod010",
+      "internal_id": "bs_rod010",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰贤友爱",
+          "aliases": [
+            "严冰权杖"
+          ]
+        },
+        "en": {
+          "display_name": "Wise Fylos",
+          "aliases": [
+            "Icescepter"
+          ]
+        },
+        "ja": {
+          "display_name": "氷賢フィロス",
+          "aliases": [
+            "アイスセプター"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d77394169d1a0231fb4cb64dfc030c11f367e90249a4f69164655664cd8519d9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod011",
+      "internal_id": "bs_rod011",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金长刀·王",
+          "aliases": [
+            "皇金长刀·飞雷",
+            "皇金长刀·尸套",
+            "皇金长刀·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Glaive \"King\"",
+          "aliases": [
+            "Kjárr Glaive \"Spark\"",
+            "Kjárr Glaive \"Decay\"",
+            "Kjárr Glaive \"Crusher\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の長刀・王",
+          "aliases": [
+            "皇金の長刀・飛雷",
+            "皇金の長刀・屍套",
+            "皇金の長刀・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:586365941a8373408f0256f9729eef2a2e9a9994e61e96bf9a2571f7981c9ed6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/bs_rod012",
+      "internal_id": "bs_rod012",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金长刀·冰",
+          "aliases": [
+            "皇金长刀·水",
+            "皇金长刀·麻痹"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Glaive \"Ice\"",
+          "aliases": [
+            "Kjárr Glaive \"Water\"",
+            "Kjárr Glaive \"Paralysis\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の長刀・氷",
+          "aliases": [
+            "皇金の長刀・水",
+            "皇金の長刀・麻痺"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c5c6bb042a0778342a4b3a09cd4cf763e24ce907c507a22613a965ca10c317cb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod001",
+      "internal_id": "rod001",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碧绿神鸣",
+          "aliases": [
+            "深蓝电光",
+            "苍蓝电魂",
+            "天之幻雷"
+          ]
+        },
+        "en": {
+          "display_name": "Verdant Levin",
+          "aliases": [
+            "Indigo Flash",
+            "Azure Bolt",
+            "Celestial Spire"
+          ]
+        },
+        "ja": {
+          "display_name": "碧の神鳴",
+          "aliases": [
+            "藍の稲光",
+            "蒼の稲魂",
+            "天の幻雷"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ff8a670914626b2bf12a750312da32a1f90744e08fbeddc84285ce7ef56ed674",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod002",
+      "internal_id": "rod002",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰体钢龙棍",
+          "aliases": [
+            "灵魂钢龙棍",
+            "锈冰钢龙棍"
+          ]
+        },
+        "en": {
+          "display_name": "Daora's Tethidine",
+          "aliases": [
+            "Daora's Entom",
+            "Daora's Samudra"
+          ]
+        },
+        "ja": {
+          "display_name": "クイド＝ダオラ",
+          "aliases": [
+            "ウルス＝ダオラ",
+            "サムドラ＝ダオラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0d6a2b4dc7fe57e1caa2b246eb44cdffaf587c3a13a55cc821c85731ae5840ab",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod003",
+      "internal_id": "rod003",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "火龙棍",
+          "aliases": [
+            "火龙棍【炎舞】",
+            "火龙棍【炎舞】·改"
+          ]
+        },
+        "en": {
+          "display_name": "Rathmaul",
+          "aliases": [
+            "Firedance Rathmaul",
+            "Firedance Rathmaul+"
+          ]
+        },
+        "ja": {
+          "display_name": "火竜棍",
+          "aliases": [
+            "火竜棍【炎舞】",
+            "火竜棍【炎舞】改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:18a51f500f20c9a14eaf0932910d5e9b3a2912274d53306871b8e3839fc06cb9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod004",
+      "internal_id": "rod004",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "扑灭导灯",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Catastrophe's Light",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "撲滅の導灯",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0108726cc9222bdd8208eff93efcb12a244d0311800c5a8a98002891171604ee",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod005",
+      "internal_id": "rod005",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "蛮颚龙杆刀",
+          "aliases": [
+            "蛮颚龙杆刀改",
+            "蛮颚棍翼龙杆刀",
+            "蛮颚棍翼龙杆刀·改",
+            "直杆蛮炎棍"
+          ]
+        },
+        "en": {
+          "display_name": "Flammenkaefer",
+          "aliases": [
+            "Flammenkaefer+",
+            "Gnashing Flammenkaefer",
+            "Gnashing Flammenkaefer+",
+            "Lohenspire"
+          ]
+        },
+        "ja": {
+          "display_name": "フラムエルカラモス",
+          "aliases": [
+            "フラムエルカラモス改",
+            "蛮顎棍フラムカラモス",
+            "蛮顎棍フラムカラモス改",
+            "蛮炎棍ロギンカラモス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:01a83e532a433214ff7230ac3bb5eed2d99acab6c1cb0b43277a8758da2d676f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod006",
+      "internal_id": "rod006",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "恶【罪恶】",
+          "aliases": [
+            "魅惑三钴杵",
+            "恶【罪恶】·改",
+            "凶恶【残虐】"
+          ]
+        },
+        "en": {
+          "display_name": "Vice",
+          "aliases": [
+            "Temptation's Trident",
+            "Vice+",
+            "Cruelty"
+          ]
+        },
+        "ja": {
+          "display_name": "悪【ヴァイス】",
+          "aliases": [
+            "惑いの三鈷杵",
+            "悪【ヴァイス】改",
+            "凶悪【ビシャス】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:15b39ad3501066238e1fa482ecd20aa1ce56edc06c67bcd04f6a78c52144bd21",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod007",
+      "internal_id": "rod007",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "邪恶之翼",
+          "aliases": [
+            "污秽暴风雨"
+          ]
+        },
+        "en": {
+          "display_name": "Bad Wing",
+          "aliases": [
+            "Grunge Storm"
+          ]
+        },
+        "ja": {
+          "display_name": "バッドウィング",
+          "aliases": [
+            "グランジストーム"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2d8bd024d5476f4bdbcf1e4dc76f7fc0fc863966f287a80bef37257fdcd1ecb7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod008",
+      "internal_id": "rod008",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "穿心枪盖博尔格",
+          "aliases": [
+            "穿心枪盖博尔格·真",
+            "穿心枪盖博尔格·极"
+          ]
+        },
+        "en": {
+          "display_name": "Gae Bolg",
+          "aliases": [
+            "True Gae Bolg",
+            "Nexus Gae Bolg"
+          ]
+        },
+        "ja": {
+          "display_name": "ゲイボルグ",
+          "aliases": [
+            "ゲイボルグ・真",
+            "ゲイボルグ・極"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e466ddca8aa444f54cace75a3b7de7f79aa04119c01b86fdf556d23db3866b54",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod009",
+      "internal_id": "rod009",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "直杆雷颚棍",
+          "aliases": [
+            "直杆雷颚棍·改",
+            "直杆蛮雷棍"
+          ]
+        },
+        "en": {
+          "display_name": "Donnerspitze",
+          "aliases": [
+            "Donnerspitze+",
+            "Fulguration's Tower"
+          ]
+        },
+        "ja": {
+          "display_name": "雷顎棍ドネルカラモス",
+          "aliases": [
+            "雷顎棍ドネルカラモス改",
+            "蛮雷棍カーリカラモス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dd07e03dc5a57a06f41051b5b5ea80d04ff7547933fd3374a7d3e1e6800f2991",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod010",
+      "internal_id": "rod010",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冥府三钴杵",
+          "aliases": [
+            "死线【亡期】"
+          ]
+        },
+        "en": {
+          "display_name": "Nether Vajra",
+          "aliases": [
+            "Deadline"
+          ]
+        },
+        "ja": {
+          "display_name": "冥府の三鈷杵",
+          "aliases": [
+            "死線【デッドライン】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:471efcd817472f476c39b067391904e7ca2cdf3e095a39295156d72bb9cb863f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod011",
+      "internal_id": "rod011",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "扑灭导灯【暗】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Catastrophe",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "撲滅の導灯【闇】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f820ad03e3ae1c696e20aecb7241263a0da84ffca20313c8bbd3b3f2ac84f30e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod012",
+      "internal_id": "rod012",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "琥珀曲棍",
+          "aliases": [
+            "琥珀曲棍·改",
+            "巨狼暴风雨"
+          ]
+        },
+        "en": {
+          "display_name": "Amber Piton",
+          "aliases": [
+            "Amber Piton+",
+            "Fenrir Storm"
+          ]
+        },
+        "ja": {
+          "display_name": "アンバーハーケン",
+          "aliases": [
+            "アンバーハーケン改",
+            "フェンリルストーム"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6645984355b4f109299c6fb78d44e13d5c5efcca132a0bc0e9c1536dafb19ec0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod013",
+      "internal_id": "rod013",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎龙长棍",
+          "aliases": [
+            "爆棍一柱擎天"
+          ]
+        },
+        "en": {
+          "display_name": "Dios Rod",
+          "aliases": [
+            "Electrorod"
+          ]
+        },
+        "ja": {
+          "display_name": "ディオスロッド",
+          "aliases": [
+            "爆棍エレクトロッド"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:305f9eb01ef8fa6fc9323a69beb7e5d4f67a618ed839c1722847524305120112",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod014",
+      "internal_id": "rod014",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斩龙旋狱棍",
+          "aliases": [
+            "灼炎之奔流",
+            "灼炎之奔流·改"
+          ]
+        },
+        "en": {
+          "display_name": "Glavenus Helldait",
+          "aliases": [
+            "Flaming Teuza",
+            "Flaming Teuza+"
+          ]
+        },
+        "ja": {
+          "display_name": "斬竜旋ヘルダイト",
+          "aliases": [
+            "灼炎のテウザー",
+            "灼炎のテウザー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3fa92ab3c4aa8135f18e963b3f1786ff0fd608f2f2edd80017ce0b1199646c07",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod015",
+      "internal_id": "rod015",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "硫铁环连",
+          "aliases": [
+            "穴地硫斩旋"
+          ]
+        },
+        "en": {
+          "display_name": "Sulfurteinn Spiran",
+          "aliases": [
+            "The Trickling Spiral"
+          ]
+        },
+        "ja": {
+          "display_name": "硫鉄のスピラン",
+          "aliases": [
+            "硫斬旋フォーニャ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dae9653dc27414b85201e85a4ab4fd9352fe0acb12db18dbdecc5ab018ef5b94",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod016",
+      "internal_id": "rod016",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "三世十方－智慧－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Infinite Wisdom",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "三世十方－智慧－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f1d7159e3bab7b6c494d82cd712862b74aee0054189a43f9fa19e2aca4be933d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod017",
+      "internal_id": "rod017",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业翼躁狂",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fate's Wing",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業翼ダムドヴィング",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:830afbf037061a25db38164c98bfadb1efc1d609f5d180471732dbd45836f95f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod018",
+      "internal_id": "rod018",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王棍雷电",
+          "aliases": [
+            "王棍雷电·改",
+            "王牙棍【别雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Royal Bolt Scepter",
+          "aliases": [
+            "Royal Bolt Scepter+",
+            "Despot's Twinbolt"
+          ]
+        },
+        "ja": {
+          "display_name": "王棍イナズマ",
+          "aliases": [
+            "王棍イナズマ改",
+            "王牙棍【別雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c7d7f2b752ae202cff726405bdf425b6c491faca35c426b03c4197e52f7a06c3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod019",
+      "internal_id": "rod019",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱棍龙鸣",
+          "aliases": [
+            "狼牙棍【亡狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakerod",
+          "aliases": [
+            "Stygian Oblivia"
+          ]
+        },
+        "ja": {
+          "display_name": "獄棍リュウメイ",
+          "aliases": [
+            "狼牙棍【亡獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7c7dd3808c55c1e49f2020208ded9a66b3d1a1d1720e3c86d5befbe11683294d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod020",
+      "internal_id": "rod020",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "缭乱辉龙棍",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Blossomajesty",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "繚乱の輝竜戟",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:08053c522a0208f71d3c3fe74fc854eb05fd7f7b3862453088a0cecebd1ac6d8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod021",
+      "internal_id": "rod021",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金碎棍棒",
+          "aliases": [
+            "金碎棍豪电雷"
+          ]
+        },
+        "en": {
+          "display_name": "Metal Mauler",
+          "aliases": [
+            "Metalmangler"
+          ]
+        },
+        "ja": {
+          "display_name": "金砕棍棒",
+          "aliases": [
+            "金砕棍ゴーデンライ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1128619327d9c6765c4635d9b77dea446b1cdcf6f088f141b975d26e003f2923",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod022",
+      "internal_id": "rod022",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神棍【猿王】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Cudgel",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神棍【猿王】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2d03c184b4c0c77b9c5cf63f83576d53047f8093a45dc80474f9ead0f92da7b5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod023",
+      "internal_id": "rod023",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之黑曜杵",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Press",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の黒曜杵",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a297a7deedbf817683f8b540a4062fd2045861880f208b206b3a5e38ca4274da",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod025",
+      "internal_id": "rod025",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑之龙棍",
+          "aliases": [
+            "煌黑龙棍殒命"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Dragonspire",
+          "aliases": [
+            "Alatreon Embrace"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の龍棍",
+          "aliases": [
+            "煌黒龍棍アルイノ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a2e38ee33f0a1e243f60658b3ee29a2633ee81eefa0ebe894c5488f86ecfa328",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod026",
+      "internal_id": "rod026",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "苍炎棍【飞翔】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Azure Flightmaster",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "蒼炎棍【飛翔】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3e4091e531a1d4bc513623a4b216e8d33e4303f8e88e1406811230aef07b0272",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod027",
+      "internal_id": "rod027",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿权杖",
+          "aliases": [
+            "宫廷旗杖【巡星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Rod",
+          "aliases": [
+            "Royal March Banner"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスロッド",
+          "aliases": [
+            "宮廷旗杖【巡星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c5c0d2ade3cca26bdea38d6857996e9c291db7c6ade9254b9b02d76b4b6aeaef",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod028",
+      "internal_id": "rod028",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巨狼霜冻",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fenrir Rose",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "フェンリルフローズ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e9d02242956a6ade09c2713d38da478a199137505fbdfcfdb3e60b0db0b53b9a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod029",
+      "internal_id": "rod029",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙棍",
+          "aliases": [
+            "真·黑龙棍"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Glaive",
+          "aliases": [
+            "True Fatalis Dyaus"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍棍",
+          "aliases": [
+            "真・黒龍棍"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c3c27b17fb96a5c00d703c9ff502d146af88d359f332037446f3370b83166795",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/rod/rod030",
+      "internal_id": "rod030",
+      "metadata": {
+        "family": "rod",
+        "path_family": "wp/rod"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙降伏锚·冰",
+          "aliases": [
+            "赤龙降伏锚·火",
+            "赤龙降伏锚·水",
+            "赤龙降伏锚·雷",
+            "赤龙降伏锚·龙",
+            "赤龙降伏锚·毒",
+            "赤龙降伏锚·麻痹",
+            "赤龙降伏锚·睡眠",
+            "赤龙降伏锚·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostspear",
+          "aliases": [
+            "Safi's Hellspear",
+            "Safi's Aquaspear",
+            "Safi's Boltspear",
+            "Safi's Drakspear",
+            "Safi's Venomspear",
+            "Safi's Bindspear",
+            "Safi's Dreamspear",
+            "Safi's Shatterspear"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ降ス碇・氷",
+          "aliases": [
+            "赤龍ノ降ス碇・火",
+            "赤龍ノ降ス碇・水",
+            "赤龍ノ降ス碇・雷",
+            "赤龍ノ降ス碇・龍",
+            "赤龍ノ降ス碇・毒",
+            "赤龍ノ降ス碇・麻痺",
+            "赤龍ノ降ス碇・睡眠",
+            "赤龍ノ降ス碇・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

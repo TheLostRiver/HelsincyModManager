@@ -526,3 +526,97 @@ fn public_errors_expose_stable_codes_without_echoing_candidate_values() {
         "weapon_partial_part_set"
     );
 }
+
+/// WR-02B 生成的 production 武器 catalog 必须能被真正的解析器接受。
+///
+/// 这个解析器比候选 validator 更严：它会重算每条 stable_id、要求 resource_path
+/// 已是规范形式、要求 metadata.family 与路径解析出的 family 一致、并拒绝重复
+/// 展示名与 dummy 条目。artifact 是脚本生成的，任何一条不合规都必须在这里红，
+/// 而不是等到运行时 catalog 加载失败。
+#[test]
+fn production_weapon_catalog_artifact_parses_and_covers_all_families() {
+    const SHARDS: [&str; 14] = [
+        include_str!("../data/weapons/mhw-weapon-targets.bow.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.caxe.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.gun.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.ham.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.hbg.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.hue.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.lan.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.lbg.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.one.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.rod.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.saxe.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.sou.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.swo.v1.json"),
+        include_str!("../data/weapons/mhw-weapon-targets.two.v1.json"),
+    ];
+
+    // 用 parse_sharded 而不是逐份 parse：跨分片的 stable_id / 展示名 / 路径碰撞
+    // 校验只有合并后单次校验才成立，逐份 parse 会把它降级成分片内唯一。
+    let catalog =
+        MhwWeaponCatalogSource::parse_sharded(&SHARDS).expect("production weapon catalog");
+
+    assert_eq!(catalog.catalog_version(), "mhw-weapon-v1");
+    assert_eq!(catalog.targets().len(), 601);
+
+    // 14 类武器一个都不能少：少一类等于那类武器的重定向目标整体消失。
+    let families = catalog
+        .targets()
+        .iter()
+        .map(|target| target.family().as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(families.len(), 14, "families: {families:?}");
+
+    // 展示名三语齐全，否则英日界面会露出中文或空白。
+    for target in catalog.targets() {
+        for locale in ["zh_cn", "en", "ja"] {
+            assert!(
+                !target.display_name(locale).trim().is_empty(),
+                "{} 缺少 {locale} 展示名",
+                target.id().as_str()
+            );
+        }
+    }
+}
+
+/// 分片合并不得削弱任何一道校验。
+///
+/// 单文件时 stable_id 唯一性、legacy_id 歧义、展示名唯一性和资源路径碰撞都是在
+/// 单次校验里累积判定的。如果 parse_sharded 只是逐份 parse 再拼列表，这些保证会
+/// 悄悄降级成「每个分片内部唯一」——两份各自合法、合起来冲突的分片就会被放行。
+/// 下面每条都是「单独合法、合并冲突」，必须全部被拒。
+#[test]
+fn sharded_parse_still_rejects_conflicts_that_span_shards() {
+    let shard_a = catalog_json(vec![catalog_target(WeaponFamily::GreatSword, 1, "active")]);
+
+    // 同一条目出现在两份分片里：stable_id、legacy_id、展示名、资源路径全部撞车。
+    let duplicate = catalog_json(vec![catalog_target(WeaponFamily::GreatSword, 1, "active")]);
+    assert!(
+        MhwWeaponCatalogSource::parse_sharded(&[&shard_a, &duplicate]).is_err(),
+        "跨分片重复条目必须被拒"
+    );
+
+    // 展示名撞车：不同资源路径、不同 stable_id，但展示名相同。
+    let mut clashing_name = catalog_target(WeaponFamily::GreatSword, 2, "active");
+    clashing_name["names"]["en"]["display_name"] = json!("Artificial two target");
+    clashing_name["legacy_ids"] = json!(["mhw:weapon:fixture-two-alt"]);
+    let shard_b = catalog_json(vec![clashing_name]);
+    assert!(
+        MhwWeaponCatalogSource::parse_sharded(&[&shard_a, &shard_b]).is_err(),
+        "跨分片重复展示名必须被拒"
+    );
+
+    // 对照组：真正不冲突的两份分片必须能合并，否则上面的断言可能只是"什么都拒"。
+    let shard_ok = catalog_json(vec![catalog_target(WeaponFamily::LongSword, 1, "active")]);
+    let merged = MhwWeaponCatalogSource::parse_sharded(&[&shard_a, &shard_ok])
+        .expect("互不冲突的分片应当合并成功");
+    assert_eq!(merged.targets().len(), 2);
+
+    // 分片必须同属一份 catalog：catalog_version 不同要拒，否则合出来是拼接怪物。
+    let foreign = shard_ok.replace("artificial-weapon-v1", "artificial-weapon-v2");
+    assert!(
+        MhwWeaponCatalogSource::parse_sharded(&[&shard_a, &foreign]).is_err(),
+        "catalog_version 不一致的分片必须被拒"
+    );
+}

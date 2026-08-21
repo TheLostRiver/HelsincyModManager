@@ -1,0 +1,1744 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:3f417f3a7d4d87029c213843f10360af54c6fd6256ffe3e1bf451874002a3599",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue001",
+      "internal_id": "bs_hue001",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑钢龙笛1",
+          "aliases": [
+            "金属风笛1",
+            "金属风笛2",
+            "金属风笛3",
+            "巨型风笛1",
+            "巨型风笛2",
+            "巨型风笛3",
+            "威猛风笛1",
+            "威猛风笛2",
+            "闪电风笛1",
+            "闪电风笛2",
+            "搔鸟风笛1",
+            "搔鸟风笛2",
+            "搔鸟风笛3",
+            "水流风笛1",
+            "水流风笛2",
+            "水流风笛3",
+            "优雅风笛1",
+            "优雅风笛2",
+            "黑钢龙笛2",
+            "威力轻曲1",
+            "威力轻曲2",
+            "威力轻曲3"
+          ]
+        },
+        "en": {
+          "display_name": "Blacksteel Dragonhorn I",
+          "aliases": [
+            "Metal Bagpipe I",
+            "Metal Bagpipe II",
+            "Metal Bagpipe III",
+            "Great Bagpipe I",
+            "Great Bagpipe II",
+            "Great Bagpipe III",
+            "Fortissimo I",
+            "Fortissimo II",
+            "Thunder Gaida I",
+            "Thunder Gaida II",
+            "Kulu Duda I",
+            "Kulu Duda II",
+            "Kulu Duda III",
+            "Aqua Bagpipe I",
+            "Aqua Bagpipe II",
+            "Aqua Bagpipe III",
+            "Glacial Bagpipe I",
+            "Glacial Bagpipe II",
+            "Blacksteel Dragonhorn II",
+            "Sforzando I",
+            "Sforzando II",
+            "Sforzando III"
+          ]
+        },
+        "ja": {
+          "display_name": "黒鋼の龍笛Ⅰ",
+          "aliases": [
+            "メタルバグパイプⅠ",
+            "メタルバグパイプⅡ",
+            "メタルバグパイプⅢ",
+            "グレートバグパイプⅠ",
+            "グレートバグパイプⅡ",
+            "グレートバグパイプⅢ",
+            "フォルティッシモⅠ",
+            "フォルティッシモⅡ",
+            "サンダーガイダⅠ",
+            "サンダーガイダⅡ",
+            "クルルドゥダⅠ",
+            "クルルドゥダⅡ",
+            "クルルドゥダⅢ",
+            "アクアバグパイプⅠ",
+            "アクアバグパイプⅡ",
+            "アクアバグパイプⅢ",
+            "グレイスバグパイプⅠ",
+            "グレイスバグパイプⅡ",
+            "黒鋼の龍笛Ⅱ",
+            "スフォルツァンドⅠ",
+            "スフォルツァンドⅡ",
+            "スフォルツァンドⅢ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4c03d60e34fba73fc595908003abbc6bf24de9fe84d4fb8b0d5be3eef1a67003",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue002",
+      "internal_id": "bs_hue002",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷鼓1",
+          "aliases": [
+            "灭尽龙旋律",
+            "雷鼓2",
+            "雷鼓3",
+            "星空皮鼓1",
+            "星空皮鼓2",
+            "星空皮鼓3",
+            "激流铜锣1",
+            "激流铜锣2",
+            "激流铜锣3",
+            "冥灯龙狩猎笛",
+            "防卫队支援型大鼓1",
+            "防卫队支援型大鼓2",
+            "防卫队支援型大鼓3",
+            "防卫队支援型大鼓4",
+            "防卫队支援型大鼓5",
+            "雷鼓4",
+            "激流铜锣4",
+            "舄湖鼓1",
+            "舄湖鼓2",
+            "冥灯龙狩猎笛改"
+          ]
+        },
+        "en": {
+          "display_name": "Lightning Drum I",
+          "aliases": [
+            "Nergal Groove",
+            "Lightning Drum II",
+            "Lightning Drum III",
+            "Dancing Davul I",
+            "Dancing Davul II",
+            "Dancing Davul III",
+            "Water Tamtam I",
+            "Water Tamtam II",
+            "Water Tamtam III",
+            "Xeno Manasheena",
+            "Defender Rally Horn I",
+            "Defender Rally Horn II",
+            "Defender Rally Horn III",
+            "Defender Rally Horn IV",
+            "Defender Rally Horn V",
+            "Lightning Drum IV",
+            "Water Tamtam IV",
+            "Laguna Drum I",
+            "Laguna Drum II",
+            "Xeno Manasheena+"
+          ]
+        },
+        "ja": {
+          "display_name": "ライトニングドラムⅠ",
+          "aliases": [
+            "ネルガルグルーヴ",
+            "ライトニングドラムⅡ",
+            "ライトニングドラムⅢ",
+            "リーシャタブルⅠ",
+            "リーシャタブルⅡ",
+            "リーシャタブルⅢ",
+            "ウォータータムタムⅠ",
+            "ウォータータムタムⅡ",
+            "ウォータータムタムⅢ",
+            "ゼノ＝マナシーナ",
+            "防衛隊支援型大鼓Ⅰ",
+            "防衛隊支援型大鼓Ⅱ",
+            "防衛隊支援型大鼓Ⅲ",
+            "防衛隊支援型大鼓Ⅳ",
+            "防衛隊支援型大鼓Ⅴ",
+            "ライトニングドラムⅣ",
+            "ウォータータムタムⅣ",
+            "ラグーナドラムⅠ",
+            "ラグーナドラムⅡ",
+            "ゼノ＝マナシーナ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8f15d59ac16a2543cbcade80881dd2ee15158bc0722f51b4326e7b75898e9463",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue003",
+      "internal_id": "bs_hue003",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷鸣笛",
+          "aliases": [
+            "骨制号角1",
+            "骨制号角2",
+            "骨制号角3",
+            "硬骨号角1",
+            "硬骨号角2",
+            "硬骨号角3",
+            "坚骨号角1",
+            "坚骨号角2",
+            "岩贼龙号角1",
+            "岩贼龙号角2",
+            "火炎号角1",
+            "火炎号角2",
+            "花朵号角1",
+            "花朵号角2",
+            "花朵号角3",
+            "曼陀罗号角1",
+            "曼陀罗号角2",
+            "曼陀罗号角3",
+            "浮空龙号角1",
+            "浮空龙号角2",
+            "骨锤龙号角1",
+            "骨锤龙号角2",
+            "骨锤龙号角3",
+            "龙骨古笛1",
+            "龙骨古笛2",
+            "龙骨古笛3",
+            "岩贼龙和鸣1",
+            "岩贼龙和鸣2",
+            "曼陀罗巨匠1",
+            "曼陀罗巨匠2",
+            "冰尖号角1",
+            "冰尖号角2",
+            "碎龙号角1",
+            "碎龙号角2",
+            "骨制号角"
+          ]
+        },
+        "en": {
+          "display_name": "Thundercry Horn",
+          "aliases": [
+            "Bone Horn I",
+            "Bone Horn II",
+            "Bone Horn III",
+            "Hard Bone Horn I",
+            "Hard Bone Horn II",
+            "Hard Bone Horn III",
+            "Heavy Bone Horn I",
+            "Heavy Bone Horn II",
+            "Gama Horn I",
+            "Gama Horn II",
+            "Blazing Horn I",
+            "Blazing Horn II",
+            "Blooming Horn I",
+            "Blooming Horn II",
+            "Blooming Horn III",
+            "Datura Horn I",
+            "Datura Horn II",
+            "Datura Horn III",
+            "Lumu Horn I",
+            "Lumu Horn II",
+            "Baan Horn I",
+            "Baan Horn II",
+            "Baan Horn III",
+            "Dragonbone Auldhorn I",
+            "Dragonbone Auldhorn II",
+            "Dragonbone Auldhorn III",
+            "Gama Chorus I",
+            "Gama Chorus II",
+            "Datura Maestro I",
+            "Datura Maestro II",
+            "Icicle Horn I",
+            "Icicle Horn II",
+            "Brachydios Horn I",
+            "Brachydios Horn II",
+            "Bone Horn"
+          ]
+        },
+        "ja": {
+          "display_name": "雷鳴ノ笛",
+          "aliases": [
+            "ボーンホルンⅠ",
+            "ボーンホルンⅡ",
+            "ボーンホルンⅢ",
+            "ハードボーンホルンⅠ",
+            "ハードボーンホルンⅡ",
+            "ハードボーンホルンⅢ",
+            "ヘビィボーンホルンⅠ",
+            "ヘビィボーンホルンⅡ",
+            "ガマルホルンⅠ",
+            "ガマルホルンⅡ",
+            "ブレイズホルンⅠ",
+            "ブレイズホルンⅡ",
+            "ブルームホルンⅠ",
+            "ブルームホルンⅡ",
+            "ブルームホルンⅢ",
+            "ダチュラホルンⅠ",
+            "ダチュラホルンⅡ",
+            "ダチュラホルンⅢ",
+            "ウルムーホルンⅠ",
+            "ウルムーホルンⅡ",
+            "バルキンホルンⅠ",
+            "バルキンホルンⅡ",
+            "バルキンホルンⅢ",
+            "龍骨古笛Ⅰ",
+            "龍骨古笛Ⅱ",
+            "龍骨古笛Ⅲ",
+            "ガマルコーラスⅠ",
+            "ガマルコーラスⅡ",
+            "ダチュラマエストロⅠ",
+            "ダチュラマエストロⅡ",
+            "アイシクルホルンⅠ",
+            "アイシクルホルンⅡ",
+            "ディオスホルンⅠ",
+            "ディオスホルンⅡ",
+            "ボーンホルン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8978bf5fea03d92b1f160b05111493265ca8b20800285aea42c535dd613c4ebe",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue004",
+      "internal_id": "bs_hue004",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷光笛1",
+          "aliases": [
+            "蛮颚龙长号1",
+            "蛮颚龙长号2",
+            "蛮颚龙长号3",
+            "浮空龙长号1",
+            "浮空龙长号2",
+            "浮空龙长号3",
+            "音速号角1",
+            "音速号角2",
+            "音速号角3",
+            "尖刺号角1",
+            "尖刺号角2",
+            "雷光笛2",
+            "夜神长号1",
+            "夜神长号2"
+          ]
+        },
+        "en": {
+          "display_name": "Thunderbolt Horn I",
+          "aliases": [
+            "Anja Barone I",
+            "Anja Barone II",
+            "Anja Barone III",
+            "Lumu Barone I",
+            "Lumu Barone II",
+            "Lumu Barone III",
+            "Sonic Horn I",
+            "Sonic Horn II",
+            "Sonic Horn III",
+            "Spiked Horn I",
+            "Spiked Horn II",
+            "Thunderbolt Horn II",
+            "Nyx Barone I",
+            "Nyx Barone II"
+          ]
+        },
+        "ja": {
+          "display_name": "雷光ノ笛Ⅰ",
+          "aliases": [
+            "ジャナフバローネⅠ",
+            "ジャナフバローネⅡ",
+            "ジャナフバローネⅢ",
+            "ウルムーバローネⅠ",
+            "ウルムーバローネⅡ",
+            "ウルムーバローネⅢ",
+            "ソニックホルンⅠ",
+            "ソニックホルンⅡ",
+            "ソニックホルンⅢ",
+            "スパイクホルンⅠ",
+            "スパイクホルンⅡ",
+            "雷光ノ笛Ⅱ",
+            "ニュクスバローネⅠ",
+            "ニュクスバローネⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7729d560f245be8fbfc6d1dec9ce372730ad19e2142aadcee8655190897f3a89",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue005",
+      "internal_id": "bs_hue005",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的龙笛·幻",
+          "aliases": [
+            "金色的龙笛·水",
+            "金色的龙笛·龙",
+            "金色的龙笛·麻痹",
+            "金色的龙笛·飞甲",
+            "金色的龙笛·搔",
+            "金色的龙笛·毒妖",
+            "金色的龙笛·蛮颚",
+            "金色的龙笛·浮空",
+            "金色的龙笛·风漂",
+            "金色的龙笛·骨锤",
+            "金色的龙笛·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Myth Gold Flute",
+          "aliases": [
+            "Gold Water Flute",
+            "Gold Dragon Flute",
+            "Gold Paralysis Flute",
+            "Buzzer Gold Flute",
+            "Thief Gold Flute",
+            "Spew Gold Flute",
+            "Rage Gold Flute",
+            "Drifter Gold Flute",
+            "Stream Gold Flute",
+            "Tar Gold Flute",
+            "Crusher Gold Flute"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の龍笛・幻",
+          "aliases": [
+            "金色の龍笛・水",
+            "金色の龍笛・龍",
+            "金色の龍笛・麻痺",
+            "金色の龍笛・飛甲",
+            "金色の龍笛・掻",
+            "金色の龍笛・毒妖",
+            "金色の龍笛・蛮顎",
+            "金色の龍笛・浮空",
+            "金色の龍笛・風漂",
+            "金色の龍笛・骨鎚",
+            "金色の龍笛・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d69aedd89f774b8c490ae073058ec74a614d012413137fddbbf36d38c04f535c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue006",
+      "internal_id": "bs_hue006",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗风笛·幻",
+          "aliases": [
+            "铠罗风笛·飞甲",
+            "铠罗风笛·搔",
+            "铠罗风笛·毒妖",
+            "铠罗风笛·蛮颚",
+            "铠罗风笛·浮空",
+            "铠罗风笛·风漂",
+            "铠罗风笛·骨锤",
+            "铠罗风笛·岩贼",
+            "铠罗风笛·水",
+            "铠罗风笛·龙",
+            "铠罗风笛·麻痹",
+            "铠罗风笛·睡眠"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Pipe \"Myth\"",
+          "aliases": [
+            "Taroth Pipe \"Buzzer\"",
+            "Taroth Pipe \"Thief\"",
+            "Taroth Pipe \"Spew\"",
+            "Taroth Pipe \"Rage\"",
+            "Taroth Pipe \"Drifter\"",
+            "Taroth Pipe \"Stream\"",
+            "Taroth Pipe \"Tar\"",
+            "Taroth Pipe \"Crusher\"",
+            "Taroth Pipe \"Water\"",
+            "Taroth Pipe \"Dragon\"",
+            "Taroth Pipe \"Paralysis\"",
+            "Taroth Pipe \"Sleep\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラパイプ・幻",
+          "aliases": [
+            "ガイラパイプ・飛甲",
+            "ガイラパイプ・掻",
+            "ガイラパイプ・毒妖",
+            "ガイラパイプ・蛮顎",
+            "ガイラパイプ・浮空",
+            "ガイラパイプ・風漂",
+            "ガイラパイプ・骨鎚",
+            "ガイラパイプ・岩賊",
+            "ガイラパイプ・水",
+            "ガイラパイプ・龍",
+            "ガイラパイプ・麻痺",
+            "ガイラパイプ・睡眠"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:510fb030c293eb64c2062a6215f038127b748c5000a08fb20dd14db4910752fc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue007",
+      "internal_id": "bs_hue007",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后鼓",
+          "aliases": [
+            "皇后鼓·炎妃",
+            "皇后鼓·灭尽",
+            "皇后鼓·冥灯",
+            "魂焰龙笛·炎妃",
+            "魂焰龙笛·灭尽",
+            "魂焰龙笛·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Roar",
+          "aliases": [
+            "Empress Roar \"Blaze\"",
+            "Empress Roar \"Ruin\"",
+            "Empress Roar \"Styx\"",
+            "Soulfire Chorus \"Blaze\"",
+            "Soulfire Chorus \"Ruin\"",
+            "Soulfire Chorus \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスドラム",
+          "aliases": [
+            "エンプレスドラム・炎妃",
+            "エンプレスドラム・滅尽",
+            "エンプレスドラム・冥灯",
+            "魂焔の龍笛・炎妃",
+            "魂焔の龍笛・滅尽",
+            "魂焔の龍笛・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dc2eb4890df1a2c8e5e377692641969ca3244abaef914d5cae6a5fd7d0c987a2",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue008",
+      "internal_id": "bs_hue008",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巢穴玉振1",
+          "aliases": [
+            "巢穴玉振2"
+          ]
+        },
+        "en": {
+          "display_name": "Taghrid al-Nasr I",
+          "aliases": [
+            "Taghrid al-Nasr II"
+          ]
+        },
+        "ja": {
+          "display_name": "ネスルジェレサⅠ",
+          "aliases": [
+            "ネスルジェレサⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ff1e0811b3eabda08bf2bc9254fab2370bf82a90b1cbd327b9ded99349215c46",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue009",
+      "internal_id": "bs_hue009",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙古笛1",
+          "aliases": [
+            "狂骨号角1",
+            "狂骨号角2",
+            "狂骨号角3",
+            "蛮颚龙之哼歌1",
+            "蛮颚龙之哼歌2",
+            "管乐雷颚1",
+            "管乐雷颚2",
+            "浮空龙鸣音1",
+            "浮空龙鸣音2",
+            "骨锤龙振响1",
+            "骨锤龙振响2",
+            "封龙古笛2",
+            "幻雷魔笛",
+            "水蛇号角"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonseal Aldhorn I",
+          "aliases": [
+            "Mad Bone Horn I",
+            "Mad Bone Horn II",
+            "Mad Bone Horn III",
+            "Anjanath Hum I",
+            "Anjanath Hum II",
+            "Fulguring Horn I",
+            "Fulguring Horn II",
+            "Lumu Drone I",
+            "Lumu Drone II",
+            "Baan Rattle I",
+            "Baan Rattle II",
+            "Dragonseal Aldhorn II",
+            "Thunderwail Feyhorn",
+            "Hydros Horn"
+          ]
+        },
+        "ja": {
+          "display_name": "龍封じの古笛Ⅰ",
+          "aliases": [
+            "マッドボーンホルンⅠ",
+            "マッドボーンホルンⅡ",
+            "マッドボーンホルンⅢ",
+            "蛮顎竜ノ鼻唄Ⅰ",
+            "蛮顎竜ノ鼻唄Ⅱ",
+            "ホーン＝ジャナールⅠ",
+            "ホーン＝ジャナールⅡ",
+            "ウルムーハミングⅠ",
+            "ウルムーハミングⅡ",
+            "バルキンラトリングⅠ",
+            "バルキンラトリングⅡ",
+            "龍封じの古笛Ⅱ",
+            "幻雷ノ魔笛",
+            "ヒュドロスホルン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:56fd99695e4040f3a1fb4e66417ef249807cee9ed925fa614462860dd3f483aa",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue010",
+      "internal_id": "bs_hue010",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰琴冻土",
+          "aliases": [
+            "严冰钟琴"
+          ]
+        },
+        "en": {
+          "display_name": "Sonorous Eisfyl",
+          "aliases": [
+            "Icespiel"
+          ]
+        },
+        "ja": {
+          "display_name": "氷琴アイスフィール",
+          "aliases": [
+            "アイスシュピール"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e6488012b162db9f806dc0ac5e9399c7aecd61800eda435c9ebedffbc63b794b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue011",
+      "internal_id": "bs_hue011",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金龙笛·幻",
+          "aliases": [
+            "皇金龙笛·蛮颚",
+            "皇金龙笛·岩贼",
+            "皇金龙笛·风漂"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Pipe \"Myth\"",
+          "aliases": [
+            "Kjárr Pipe \"Rage\"",
+            "Kjárr Pipe \"Crusher\"",
+            "Kjárr Pipe \"Stream\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の龍笛・幻",
+          "aliases": [
+            "皇金の龍笛・蛮顎",
+            "皇金の龍笛・岩賊",
+            "皇金の龍笛・風漂"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a3b3525a06262a956e8eae8967b44d475cba68f59f0740da6897393750e669e0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/bs_hue012",
+      "internal_id": "bs_hue012",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金龙笛·龙",
+          "aliases": [
+            "皇金龙笛·麻痹",
+            "皇金龙笛·水"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Pipe \"Dragon\"",
+          "aliases": [
+            "Kjárr Pipe \"Paralysis\"",
+            "Kjárr Pipe \"Water\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の龍笛・龍",
+          "aliases": [
+            "皇金の龍笛・麻痺",
+            "皇金の龍笛・水"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:798e27ea996599dfe488d7a081031f8fc85f5adc7b877880f28f87326ffc184b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue001",
+      "internal_id": "hue001",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "炎王琴",
+          "aliases": [
+            "炎王竖琴",
+            "炎王红莲琴笛"
+          ]
+        },
+        "en": {
+          "display_name": "Teostra's Tiple",
+          "aliases": [
+            "Teostra's Orphée",
+            "Teostra's Musica"
+          ]
+        },
+        "ja": {
+          "display_name": "テオ＝クエルダ",
+          "aliases": [
+            "テオ＝オルフェス",
+            "テスカ・デル・ムシカ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:368809e0c6a4b48e9ac389becea52abdbf4293e62e5cc9d0c14cd84f809d6bed",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue002",
+      "internal_id": "hue002",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "女武神战铃",
+          "aliases": [
+            "女武神之笛"
+          ]
+        },
+        "en": {
+          "display_name": "Valkyrie Chordmaker",
+          "aliases": [
+            "Queen Chordmaker"
+          ]
+        },
+        "ja": {
+          "display_name": "ヴァルキリコーダー",
+          "aliases": [
+            "クイーンリコーダー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4ad025b4fd8930fce94ed96c2727095d5b58e8d6bb159cd758f7b70e5bb3d967",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue003",
+      "internal_id": "hue003",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇家琉璃铃",
+          "aliases": [
+            "皇家琉璃铃改",
+            "女王笛巨蜂",
+            "女王笛巨蜂·改",
+            "女王笛巨蜂2世"
+          ]
+        },
+        "en": {
+          "display_name": "Glass Royale",
+          "aliases": [
+            "Glass Royale+",
+            "Queen Vespoid Horn",
+            "Queen Vespoid Horn+",
+            "Queen's Flute II"
+          ]
+        },
+        "ja": {
+          "display_name": "ロイヤルビードロー",
+          "aliases": [
+            "ロイヤルビードロー改",
+            "女王笛ランゴスタ",
+            "女王笛ランゴスタ改",
+            "女王笛ランゴスタⅡ世"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4491b383f888192ccf33b7d7fe9e7cdeb214105f6b3ada5477b526710089fe1e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue004",
+      "internal_id": "hue004",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "寂灭的章节",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Desolation's Overture",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "寂滅の一節",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1a4499f6fc096acb821db2fa0906841aaf34528d3a56ffc1ace76f36a7e9287c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue005",
+      "internal_id": "hue005",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "琴弦",
+          "aliases": [
+            "冰凌琴弦",
+            "冰凌琴弦·改"
+          ]
+        },
+        "en": {
+          "display_name": "Sectored",
+          "aliases": [
+            "Legia Sectored",
+            "Legia Sectored+"
+          ]
+        },
+        "ja": {
+          "display_name": "セクタード",
+          "aliases": [
+            "レイ＝セクタード",
+            "レイ＝セクタード改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:51cae90e07675af720751fc7dc7d94e055a715038d9451c864f9f791ba09fa3b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue006",
+      "internal_id": "hue006",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆鳞太鼓",
+          "aliases": [
+            "爆鳞鼓赤红星光"
+          ]
+        },
+        "en": {
+          "display_name": "Rookslayer Drum",
+          "aliases": [
+            "Bazelreid Rookslayer"
+          ]
+        },
+        "ja": {
+          "display_name": "爆鱗の太鼓",
+          "aliases": [
+            "爆鱗鼓バゼルライド"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4a103e34b0a17826999e1ad030cc1baf9599fee1f7a888e138ce0b1c18e82058",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue007",
+      "internal_id": "hue007",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "樱战铃",
+          "aliases": [
+            "皇家战笛",
+            "皇家战笛·改",
+            "君王战笛"
+          ]
+        },
+        "en": {
+          "display_name": "Coral Chordmaker",
+          "aliases": [
+            "Royal Chordmaker",
+            "Royal Chordmaker+",
+            "Regal Flute"
+          ]
+        },
+        "ja": {
+          "display_name": "サクラノリコーダー",
+          "aliases": [
+            "ロイヤルリコーダー",
+            "ロイヤルリコーダー改",
+            "ハイネスリコーダー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:79e892af6658382f5e7f8d328d2f98d90293e5f7022c9bffbff6cd0b3323cdf8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue008",
+      "internal_id": "hue008",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "深邃之锁",
+          "aliases": [
+            "锁缚的暴龙"
+          ]
+        },
+        "en": {
+          "display_name": "Deep Vero",
+          "aliases": [
+            "Devil's Maestro"
+          ]
+        },
+        "ja": {
+          "display_name": "ディープヴェロウ",
+          "aliases": [
+            "鎖縛の暴竜"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c1d163a6ba3a196b06b31514ca8600c1994dac330c331a77abd85276132c8f3d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue009",
+      "internal_id": "hue009",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "高峰冰川",
+          "aliases": [
+            "霜漂琴弦"
+          ]
+        },
+        "en": {
+          "display_name": "Lilim Glacia",
+          "aliases": [
+            "Hoarcry Sectored"
+          ]
+        },
+        "ja": {
+          "display_name": "リルン＝グレイシア",
+          "aliases": [
+            "ブリーナ＝セクタード"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:bd233c157313fbd6c2e4d28dcaacfed680db0eaf314dbf4606548a6334c0ba96",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue010",
+      "internal_id": "hue010",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆炎太鼓",
+          "aliases": [
+            "炸裂星火爆炎鼓"
+          ]
+        },
+        "en": {
+          "display_name": "Rooksearer Drum",
+          "aliases": [
+            "Bazel Valdi Rooksearer"
+          ]
+        },
+        "ja": {
+          "display_name": "爆炎の太鼓",
+          "aliases": [
+            "爆炎鼓バゼルバルディ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:27c5320769f5fb3150190b231e6b758b587868ec570fb02c71a2ca78d3cedc61",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue011",
+      "internal_id": "hue011",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "寂灭的章节【魂】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Desolation",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "寂滅の一節【魂】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c16aa8a12c43f4a9c167443bb9271722113ac61500121653029ffae4605b27f7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue012",
+      "internal_id": "hue012",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "轰龙纹笛",
+          "aliases": [
+            "轰龙纹笛·改",
+            "轰鼓【虎钟】"
+          ]
+        },
+        "en": {
+          "display_name": "Striped Dragonga",
+          "aliases": [
+            "Striped Dragonga+",
+            "Tigrex Horn"
+          ]
+        },
+        "ja": {
+          "display_name": "ストライプドラゴング",
+          "aliases": [
+            "ストライプドラゴング改",
+            "轟鼓【虎鐘】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fd9b53d9662f17561020cb0990317b2e5817e2f8057842f557f1e422ccd74e84",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue013",
+      "internal_id": "hue013",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "隐密音调",
+          "aliases": [
+            "隐密音调·改",
+            "夜笛【逢魔】"
+          ]
+        },
+        "en": {
+          "display_name": "Hidden Harmonic",
+          "aliases": [
+            "Hidden Harmonic+",
+            "Cry in the Night"
+          ]
+        },
+        "ja": {
+          "display_name": "ヒドゥントーン",
+          "aliases": [
+            "ヒドゥントーン改",
+            "夜笛【逢魔】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:98b3f62039ea3dce820b5bbd0b9872d296e91d40118ae2ece0fc712b24f8fe52",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue014",
+      "internal_id": "hue014",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斩龙笛陶醉",
+          "aliases": [
+            "灼炎之火灵",
+            "灼炎之火灵·改"
+          ]
+        },
+        "en": {
+          "display_name": "Glavenus Horn",
+          "aliases": [
+            "Hell Horn",
+            "Hell Horn+"
+          ]
+        },
+        "ja": {
+          "display_name": "斬竜笛イブレス",
+          "aliases": [
+            "灼炎のフランアニマー",
+            "灼炎のフランアニマー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:51a64c86b701b5dcc45ce4f6d0f3be6faf7cd27adc6781a45d3be5b18a2487e5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue015",
+      "internal_id": "hue015",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "硫铁辉矿",
+          "aliases": [
+            "荫坑硫斩笛"
+          ]
+        },
+        "en": {
+          "display_name": "Sulfurteinn Svild",
+          "aliases": [
+            "The Rasping Ballad"
+          ]
+        },
+        "ja": {
+          "display_name": "硫鉄のスフィルド",
+          "aliases": [
+            "硫斬笛パラドーラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3e19d03987b0f5b374e3b454d2d5e5f52773a1bfe8cf5c09bf8048c21c045b40",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue016",
+      "internal_id": "hue016",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "极乐净土－华严－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Austere Paradise",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "極楽浄土－華厳－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:582fc284261b6c9e954fef35a8ac95e5c38b281b4fb7e252c69bf919fdf73fae",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue017",
+      "internal_id": "hue017",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业奏缚狼锁",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fate's Dirge",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業奏グレイプニール",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a527d73dbf7d653928522849605a91f491417f788741eb37c7dbee433617e682",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue018",
+      "internal_id": "hue018",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王琴轰雷",
+          "aliases": [
+            "王琴轰雷·改",
+            "王牙琴【鸣雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Growl",
+          "aliases": [
+            "Usurper's Growl+",
+            "Despot's Thunderclap"
+          ]
+        },
+        "ja": {
+          "display_name": "王琴トドロキ",
+          "aliases": [
+            "王琴トドロキ改",
+            "王牙琴【鳴雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f8c9a40631003cf479ca4de0ba08fadc47bd4a85ca1d110d019323e716930bdd",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue019",
+      "internal_id": "hue019",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱琴龙背",
+          "aliases": [
+            "狼牙琴【异狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakesong",
+          "aliases": [
+            "Stygian Tristitia"
+          ]
+        },
+        "ja": {
+          "display_name": "獄琴リュウセイ",
+          "aliases": [
+            "狼牙琴【異獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:187b35c12c4239c0f3f31a53d7bb82caed7b5aac1bcbce34cbe0af885705af10",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue020",
+      "internal_id": "hue020",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "三味线【狼】",
+          "aliases": [
+            "三味线【乌】"
+          ]
+        },
+        "en": {
+          "display_name": "Wolf Shamisen",
+          "aliases": [
+            "Raven Shamisen"
+          ]
+        },
+        "ja": {
+          "display_name": "シャミセン【狼】",
+          "aliases": [
+            "シャミセン【烏】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:69b2391218da27dcc173f8ad822679ad7d486ba1cd2670707cece87fabdc6e09",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue021",
+      "internal_id": "hue021",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金猎笛",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Gold Chordmaker",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ゴルトリコーダー",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b97e51775282c3dfb17fddbd55a16bc30a4e5149e320fd43cab71e4e85998588",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue022",
+      "internal_id": "hue022",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "电电太鼓",
+          "aliases": [
+            "电电太鼓【雷轰】"
+          ]
+        },
+        "en": {
+          "display_name": "Denden Daiko",
+          "aliases": [
+            "Denden Doomsounder"
+          ]
+        },
+        "ja": {
+          "display_name": "電電太鼓",
+          "aliases": [
+            "電電太鼓【雷轟】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:bfee14be500ae3d2ba3af9c3ae3d5f9a040c593ef1b7c793880cff95cc0c3663",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue023",
+      "internal_id": "hue023",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神电鼓【绯之魂】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Wardrum",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神電鼓【緋ノ魂】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1ec99751dc1e8d175c61bfc38aeb243a14b9765cde351b1e56d0f59f398f1fa3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue025",
+      "internal_id": "hue025",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑风琴",
+          "aliases": [
+            "煌黑琴雅烈婕"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Harmony",
+          "aliases": [
+            "Alatreon Revival"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒の風琴",
+          "aliases": [
+            "煌黒琴アルリゼ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2ba3457a01585ca95e83d2a0a259038040317bd67409d029a75a72eb89a47a7b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue026",
+      "internal_id": "hue026",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿吟游者",
+          "aliases": [
+            "宫廷奏琴【响星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Bard",
+          "aliases": [
+            "Royal Song Symphony"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスバード",
+          "aliases": [
+            "宮廷奏琴【響星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ef991f42b10357e34696406ea8dbdc9fadf38a8b2a73c0573421667d27707d11",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue027",
+      "internal_id": "hue027",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "劫难纹笛",
+          "aliases": [
+            "吼鼓【鬼咬】"
+          ]
+        },
+        "en": {
+          "display_name": "Accursed Wail",
+          "aliases": [
+            "Ogrebite"
+          ]
+        },
+        "ja": {
+          "display_name": "カーサスドラゴング",
+          "aliases": [
+            "吼鼓【鬼咬】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:dae8ae50e09f757c78ce26c5fba00b19c3a1a01ca521d709753bd311e7cf9500",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue028",
+      "internal_id": "hue028",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "瑰丽雪霜",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Bringuiro",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "グィラキエース",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ef5e5907875214cd0b2b5a4d72a7e3c20bd30d435353f9083de506286e19bb7f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue029",
+      "internal_id": "hue029",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙威胁",
+          "aliases": [
+            "黑龙绝望琴"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Menace",
+          "aliases": [
+            "Fatalis Menace Wailer"
+          ]
+        },
+        "ja": {
+          "display_name": "ミラメノス",
+          "aliases": [
+            "ミラメノスアギカ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c66cba452376a56f6a41d0d08f02fa3e4f487b7155e16d06c15676e7375fa255",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue030",
+      "internal_id": "hue030",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙咒笛·冰",
+          "aliases": [
+            "赤龙咒笛·火",
+            "赤龙咒笛·水",
+            "赤龙咒笛·雷",
+            "赤龙咒笛·龙",
+            "赤龙咒笛·毒",
+            "赤龙咒笛·麻痹",
+            "赤龙咒笛·睡眠",
+            "赤龙咒笛·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frosthorn",
+          "aliases": [
+            "Safi's Hellhorn",
+            "Safi's Aquahorn",
+            "Safi's Bolthorn",
+            "Safi's Drakhorn",
+            "Safi's Venomhorn",
+            "Safi's Bindhorn",
+            "Safi's Dreamhorn",
+            "Safi's Shatterhorn"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ呪ウ笛・氷",
+          "aliases": [
+            "赤龍ノ呪ウ笛・火",
+            "赤龍ノ呪ウ笛・水",
+            "赤龍ノ呪ウ笛・雷",
+            "赤龍ノ呪ウ笛・龍",
+            "赤龍ノ呪ウ笛・毒",
+            "赤龍ノ呪ウ笛・麻痺",
+            "赤龍ノ呪ウ笛・睡眠",
+            "赤龍ノ呪ウ笛・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:604412f8de19f27623536e3e373c54fb9de0954fd980d25c75eb28ca9e2aa6c9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/hue/hue031",
+      "internal_id": "hue031",
+      "metadata": {
+        "family": "hue",
+        "path_family": "wp/hue"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之阳铃",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Timbre",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の陽鈴",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}
