@@ -89,7 +89,12 @@ fn assert_nothing_touched(fixture: &CommitFixture) {
         fixture.manifests.take_manifest().is_none(),
         "闸门拒绝后不得保存 manifest"
     );
-    let _ = &fixture.backups;
+    // 这条是四项里最容易漏的：目标位置本来就有官方文件，正常路径必然会先备份。
+    // 少了它，闸门被挪到 backup 之后仍能全绿，却已经留下持久化副作用。
+    assert!(
+        fixture.backups.store_attempts().is_empty(),
+        "闸门拒绝后不得创建 backup"
+    );
 }
 
 #[test]
@@ -154,10 +159,12 @@ fn uninstall_is_rejected_while_the_game_runs() {
         "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3",
         b"installed armor".as_slice(),
     )]));
+    // 用读取即失败的 manifest repository：闸门若被挪到 load_manifest 之后，
+    // 这里会拿到 ManifestUnavailable 而不是 GameRunning。空 repo 证不到这一点。
     let service = UninstallModService::new(
         game_files.clone(),
         Arc::new(RecordingInstallBackupStore::default()),
-        Arc::new(RecordingInstallManifestRepository::default()),
+        Arc::new(RecordingInstallManifestRepository::failing_load()),
     )
     .with_game_running_detector(Arc::new(StubGameRunningDetector(
         GameRunningStatus::Running,

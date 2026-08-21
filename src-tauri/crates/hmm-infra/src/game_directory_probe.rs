@@ -53,7 +53,11 @@ impl GameDirectoryProbe for RealGameDirectoryProbe {
     /// 这个探针刻意做到不可能破坏玩家数据：
     /// - 文件名带纳秒时间戳，且用 `create_new`，已存在就失败而不是覆盖；
     /// - 只写在游戏根目录下，不进 `nativePC`；
-    /// - 无论成功失败都立即删除。
+    /// - **只删除本次确实创建出来的文件**。创建失败时该路径可能是遗留文件或
+    ///   并发探针的产物，删它等于删一个不属于本次探测的文件。
+    ///
+    /// 删除失败同样判定为不可写：安装链覆盖前要备份、卸载要移除，都需要删除权限。
+    /// 能建不能删的目录若放行，只会把失败推迟到已经动过玩家文件之后。
     fn root_writable(&self) -> bool {
         if !self.root_exists() {
             return false;
@@ -67,16 +71,24 @@ impl GameDirectoryProbe for RealGameDirectoryProbe {
                 .unwrap_or_default()
         ));
 
-        let created = std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&probe_path);
-        let writable = created.is_ok();
-        drop(created);
-        // 试写成功就必须清理干净，不给玩家目录留垃圾。
-        let _ = std::fs::remove_file(&probe_path);
-
-        writable
+            .open(&probe_path)
+        {
+            Ok(file) => {
+                drop(file);
+                // 只删本次确实创建出来的文件。
+                //
+                // 删除成败即结论：能建不能删的目录对安装链没有意义——覆盖前要备份、
+                // 卸载要移除，两者都需要删除权限。这时返回 true 只会让失败推迟到
+                // 已经动过玩家文件之后，正是这道 preflight 要避免的。
+                std::fs::remove_file(&probe_path).is_ok()
+            }
+            // 创建失败时绝不碰这个路径：同名遗留文件或并发探针都会走到这里，
+            // 无条件删除等于删掉一个不属于本次探测的文件。
+            Err(_) => false,
+        }
     }
 }
 

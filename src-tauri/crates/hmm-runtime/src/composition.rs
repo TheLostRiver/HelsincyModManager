@@ -1826,6 +1826,22 @@ impl InstallRecoveryActionExecutor for ConfiguredInstallRecoveryActionExecutor {
     }
 }
 
+/// 提交结束后是否清理 retarget staging。
+///
+/// 游戏运行中闸门是在**任何写入之前**拒绝的，这类拒绝可重试（关掉游戏再来）。
+/// 此时删掉已 staged 的内容会逼用户重跑一遍 transform/物化，而且直接重试提交
+/// 还会因为 staging 不在了再失败一次。孤儿 staging 有 `RetargetStagingCleanup` 兜底。
+///
+/// 其余任何结果——成功、写入中途失败、回滚失败——都可能已经动过文件，
+/// 必须维持原来的清理行为，绝不能因为"是个 Err"就一并保留。
+// 对成功类型泛型：判定只看错误变体，测试因此不必构造一个真 manifest。
+fn should_clean_up_staging<T>(result: &Result<T, InstallCommitError>) -> bool {
+    !matches!(
+        result,
+        Err(InstallCommitError::GameRunning | InstallCommitError::GameRunningUnknown)
+    )
+}
+
 struct ConfiguredInstallCommitter {
     game_config_repository: Arc<dyn GameConfigRepository>,
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
@@ -2075,7 +2091,7 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             }
             None => service.commit_plan(commit_request),
         };
-        if let Some(staging_root) = staging_root {
+        if let Some(staging_root) = staging_root.filter(|_| should_clean_up_staging(&result)) {
             if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
                 record_runtime_warning(
                     "retarget.staging_cleanup_failed",
@@ -2333,6 +2349,47 @@ mod tests {
         assert_eq!(
             rejected.ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default")),
             Err(InstallWriteAdmissionError::SafetyRejected)
+        );
+    }
+
+    #[test]
+    fn staging_is_preserved_only_when_the_gate_rejected_before_any_write() {
+        use hmm_app::InstallCommitPhase;
+
+        // 写入前被拒 -> 保留 staging，让用户关掉游戏后能直接重试。
+        for rejected in [
+            InstallCommitError::GameRunning,
+            InstallCommitError::GameRunningUnknown,
+        ] {
+            assert!(
+                !should_clean_up_staging(&Err::<(), _>(rejected.clone())),
+                "{rejected:?} 是写入前拒绝，不应删除已 staged 的内容"
+            );
+        }
+
+        // 其余结果都可能已经动过文件，必须维持原有清理行为——
+        // 不能因为"是个 Err"就一并保留，那会把真正的失败留下垃圾。
+        for proceeded in [
+            InstallCommitError::PlanHasBlockingConflicts,
+            InstallCommitError::Failed {
+                phase: InstallCommitPhase::Write,
+            },
+            InstallCommitError::RollbackSucceeded {
+                failed_phase: InstallCommitPhase::Write,
+            },
+            InstallCommitError::RollbackFailed {
+                failed_phase: InstallCommitPhase::Write,
+            },
+        ] {
+            assert!(
+                should_clean_up_staging(&Err::<(), _>(proceeded.clone())),
+                "{proceeded:?} 之后必须照常清理 staging"
+            );
+        }
+
+        assert!(
+            should_clean_up_staging(&Ok::<(), InstallCommitError>(())),
+            "提交成功后必须清理 staging"
         );
     }
 
