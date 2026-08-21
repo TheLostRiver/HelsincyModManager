@@ -19,6 +19,8 @@ mod install_replacement_tests;
 #[path = "install_rollback_tests.rs"]
 mod install_rollback_tests;
 use install_replacement_tests::replacement_snapshot;
+#[path = "install_game_running_tests.rs"]
+mod install_game_running_tests;
 #[path = "install_uninstall_tests.rs"]
 mod install_uninstall_tests;
 
@@ -48,6 +50,7 @@ fn commit_plan_for_hash_test(plan: InstallPlan) -> InstallManifest {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -335,6 +338,7 @@ fn commit_plan_writes_new_files_and_persists_manifest() {
 
     let result = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -404,6 +408,7 @@ fn commit_plan_for_revision_persists_exact_revision_in_schema_v2_manifest() {
     service
         .commit_plan_for_revision(
             CommitInstallPlanRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 plan,
             },
@@ -468,6 +473,7 @@ fn commit_plan_for_revision_preserves_other_mod_legacy_entries_in_schema_v2_mani
     service
         .commit_plan_for_revision(
             CommitInstallPlanRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 plan,
             },
@@ -552,6 +558,7 @@ fn assert_revisioned_commit_rejects_existing_manifest(existing_revision: Option<
     assert_eq!(
         service.commit_plan_for_revision(
             CommitInstallPlanRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 plan,
             },
@@ -657,6 +664,7 @@ fn commit_plan_persists_then_removes_recovery_record_when_commit_succeeds() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -747,6 +755,7 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -823,6 +832,7 @@ fn commit_plan_preserves_non_completed_manifest_status_when_merging_entries() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -876,6 +886,7 @@ fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -944,6 +955,7 @@ fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -980,6 +992,7 @@ fn commit_plan_aborts_before_writes_when_manifest_load_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1033,6 +1046,7 @@ fn commit_plan_aborts_without_writes_when_source_read_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1110,6 +1124,7 @@ fn commit_plan_aborts_before_target_write_when_backup_store_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1177,6 +1192,7 @@ fn commit_plan_backs_up_overwritten_files_before_writing_manifest() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1239,6 +1255,7 @@ fn commit_plan_applies_layered_same_target_actions_in_priority_order() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1310,6 +1327,7 @@ fn commit_plan_rolls_back_written_files_when_manifest_save_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1361,6 +1379,7 @@ fn commit_plan_marks_recovery_record_rollback_required_when_rollback_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1468,6 +1487,7 @@ fn commit_plan_rollback_record_retains_only_unresolved_changes() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1555,6 +1575,7 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
 
     service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1623,6 +1644,7 @@ fn commit_plan_removes_recovery_record_when_rollback_succeeds() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1683,6 +1705,7 @@ fn commit_plan_cleans_pending_backup_when_write_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1736,6 +1759,7 @@ fn commit_plan_rolls_back_current_change_when_write_fails_after_mutation() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1794,6 +1818,7 @@ fn commit_plan_preserves_backup_and_recovery_when_current_change_rollback_fails(
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })
@@ -1869,6 +1894,7 @@ fn commit_plan_restores_all_files_even_when_backup_cleanup_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })

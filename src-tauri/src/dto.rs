@@ -229,6 +229,7 @@ pub enum GamePrerequisiteDecisionStatusDto {
 pub enum GamePrerequisiteDecisionCodeDto {
     GameNotConfigured,
     GameDirectoryInvalid,
+    GameDirectoryNotWritable,
     RulesUnavailable,
     RulesCorrupted,
     StorageUnavailable,
@@ -422,6 +423,9 @@ impl From<GamePrerequisiteDecisionCode> for GamePrerequisiteDecisionCodeDto {
         match code {
             GamePrerequisiteDecisionCode::GameNotConfigured => Self::GameNotConfigured,
             GamePrerequisiteDecisionCode::GameDirectoryInvalid => Self::GameDirectoryInvalid,
+            GamePrerequisiteDecisionCode::GameDirectoryNotWritable => {
+                Self::GameDirectoryNotWritable
+            }
             GamePrerequisiteDecisionCode::RulesUnavailable => Self::RulesUnavailable,
             GamePrerequisiteDecisionCode::RulesCorrupted => Self::RulesCorrupted,
             GamePrerequisiteDecisionCode::StorageUnavailable => Self::StorageUnavailable,

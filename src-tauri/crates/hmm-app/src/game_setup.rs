@@ -137,6 +137,15 @@ impl GameSetupService {
         }
 
         let probe = self.probe_factory.create(directory);
+        // 安装链会覆盖玩家文件。不可写必须在这里 fail closed，
+        // 否则要等到已经建完 backup、写完 Committing recovery 记录、
+        // 真正落盘的那一刻才失败，然后走进 rollback。
+        if !probe.root_writable() {
+            return Ok(GamePrerequisiteReport::game_directory_not_writable(
+                game_id,
+                "game directory is not writable",
+            ));
+        }
         Ok(adapter.inspect_prerequisites(probe.as_ref()))
     }
 

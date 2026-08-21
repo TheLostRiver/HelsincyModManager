@@ -3,6 +3,7 @@ import type { GameId, GameSetupErrorCode } from "./gameSetupTypes";
 export type GamePrerequisiteReportState =
   | "not_configured"
   | "game_directory_invalid"
+  | "game_directory_not_writable"
   | "rules_unavailable"
   | "ready";
 
@@ -48,6 +49,7 @@ export type GamePrerequisiteLoadState =
   | { status: "loading" }
   | { status: "not_configured" }
   | { status: "game_directory_invalid"; errorCode: GameSetupErrorCode; message: string }
+  | { status: "game_directory_not_writable"; message: string }
   | { status: "rules_unavailable"; errorCode: GameSetupErrorCode; message: string }
   | {
       status: "ready";

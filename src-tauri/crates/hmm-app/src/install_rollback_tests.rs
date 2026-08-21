@@ -48,6 +48,7 @@ fn commit_plan_prunes_restored_entries_when_another_rollback_entry_fails() {
 
     let error = service
         .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             plan,
         })

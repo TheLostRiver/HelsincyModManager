@@ -147,6 +147,7 @@ export type GamePrerequisiteDecisionStatus = "ready" | "warning" | "blocked";
 export type GamePrerequisiteDecisionCode =
   | "game_not_configured"
   | "game_directory_invalid"
+  | "game_directory_not_writable"
   | "rules_unavailable"
   | "rules_corrupted"
   | "storage_unavailable"

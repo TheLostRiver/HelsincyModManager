@@ -6,6 +6,7 @@ import type {
 const prerequisiteCodeLabels: Record<GamePrerequisiteDecisionCode, string> = {
   game_not_configured: "尚未配置游戏目录",
   game_directory_invalid: "游戏目录校验失败",
+  game_directory_not_writable: "游戏目录当前不可写，请关闭游戏与相关程序，或用管理员身份运行后重试",
   rules_unavailable: "前置规则不可用",
   rules_corrupted: "前置规则已损坏",
   storage_unavailable: "前置状态存储不可用",

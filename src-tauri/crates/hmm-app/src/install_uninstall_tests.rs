@@ -28,6 +28,7 @@ fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
 
     let result = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -75,6 +76,7 @@ fn revision_bound_uninstall_rejects_manifest_drift_before_writing() {
     let error = service
         .uninstall_mod_for_revision(
             UninstallModRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 mod_id: ModId::new("mod-a"),
             },
@@ -142,6 +144,7 @@ fn manifest_bound_uninstall_rejects_same_revision_binding_drift_before_writing()
     let error = service
         .uninstall_mod_for_revision_and_manifest(
             UninstallModRequest {
+                game_id: GameId::mhw(),
                 profile_id: ProfileId::new("default"),
                 mod_id: ModId::new("mod-a"),
             },
@@ -191,6 +194,7 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
 
     let result = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -261,6 +265,7 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
 
     service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -329,6 +334,7 @@ fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries()
 
     service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -368,6 +374,7 @@ fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
 
     let error = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -413,6 +420,7 @@ fn uninstall_mod_revalidates_target_before_removing_new_file() {
 
     let error = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -455,6 +463,7 @@ fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
 
     let error = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -497,6 +506,7 @@ fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
 
     let error = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -539,6 +549,7 @@ fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
 
     let error = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -581,6 +592,7 @@ fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
 
     let error = service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })
@@ -655,6 +667,7 @@ fn uninstall_mod_removes_only_the_requested_mod_replacement_snapshot() {
 
     service
         .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
         })

@@ -157,6 +157,7 @@ impl InstallPlanCommitter for InstallCommitService {
         request: ImportedModInstallCommitRequest,
     ) -> Result<InstallCommitResult, InstallCommitError> {
         let commit_request = CommitInstallPlanRequest {
+            game_id: request.game_id,
             profile_id: request.profile_id,
             plan: request.plan,
         };
@@ -197,6 +198,7 @@ impl ModUninstaller for UninstallModService {
         UninstallModService::uninstall_mod(
             self,
             UninstallModRequest {
+                game_id: request.game_id,
                 profile_id: request.profile_id,
                 mod_id: request.mod_id,
             },
@@ -211,6 +213,7 @@ impl ModUninstaller for UninstallModService {
         UninstallModService::uninstall_mod_for_revision(
             self,
             UninstallModRequest {
+                game_id: request.game_id,
                 profile_id: request.profile_id,
                 mod_id: request.mod_id,
             },
@@ -227,6 +230,7 @@ impl ModUninstaller for UninstallModService {
         UninstallModService::uninstall_mod_for_revision_and_manifest(
             self,
             UninstallModRequest {
+                game_id: request.game_id,
                 profile_id: request.profile_id,
                 mod_id: request.mod_id,
             },
@@ -804,7 +808,10 @@ impl InstallTaskRunner {
         let rollback_result = match &commit_error {
             InstallCommitError::RollbackSucceeded { .. } => "rollback_succeeded",
             InstallCommitError::RollbackFailed { .. } => "rollback_failed",
-            InstallCommitError::PlanHasBlockingConflicts
+            // 游戏运行中在写入前就被拒，没有任何文件被改，因此不存在待回滚状态。
+            InstallCommitError::GameRunning
+            | InstallCommitError::GameRunningUnknown
+            | InstallCommitError::PlanHasBlockingConflicts
             | InstallCommitError::PlanHasInvalidReplacementBindings
             | InstallCommitError::PlanHasInvalidRevisionIdentity
             | InstallCommitError::Failed { .. } => "not_attempted",

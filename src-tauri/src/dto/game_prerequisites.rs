@@ -55,6 +55,7 @@ fn prerequisite_report_state_to_string(state: GamePrerequisiteReportState) -> St
     match state {
         GamePrerequisiteReportState::NotConfigured => "not_configured",
         GamePrerequisiteReportState::GameDirectoryInvalid => "game_directory_invalid",
+        GamePrerequisiteReportState::GameDirectoryNotWritable => "game_directory_not_writable",
         GamePrerequisiteReportState::RulesUnavailable => "rules_unavailable",
         GamePrerequisiteReportState::Ready => "ready",
     }
