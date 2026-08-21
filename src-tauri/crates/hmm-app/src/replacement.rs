@@ -161,6 +161,12 @@ impl PlannedRetargetReinstall {
     pub fn binding_id(&self) -> &ReplacementBindingId {
         self.retarget_plan.binding().id()
     }
+
+    /// catalog 解析出的规范目标。调用方要做身份校验时必须比对它，
+    /// 而不是请求里那个原样字符串——请求可能带的是 legacy_ids 里的旧 slug。
+    pub fn target(&self) -> &ReplacementTarget {
+        &self.target
+    }
 }
 
 impl PlannedInitialRetargetInstall {

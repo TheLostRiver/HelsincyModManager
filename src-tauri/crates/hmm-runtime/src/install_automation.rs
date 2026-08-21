@@ -905,11 +905,15 @@ impl ReadOnlyInstallAutomation {
         let [binding] = planned.install_plan().replacement_bindings.as_slice() else {
             anyhow::bail!("replacement plan has an invalid binding snapshot");
         };
+        // 比对 catalog 解析出的规范目标，而不是请求里那个原样字符串。
+        // 请求可能带的是 legacy_ids 里的旧 slug（玩家已安装 manifest 或既有脚本里
+        // 存的就是它），解析后 binding 记录的必然是规范 ID，直接比原串会必错。
+        // 校验强度不变：仍然确认拿回来的计划就是所请求目标的计划。
         anyhow::ensure!(
             binding.mod_id() == &input.mod_id
                 && binding.profile_id() == profile_id
                 && binding.revision_id() == Some(&input.installed_revision_id)
-                && binding.binding().target_id() == target_id,
+                && binding.binding().target_id() == planned.target().id(),
             "replacement binding does not match the requested identity"
         );
         Ok(binding.clone())
