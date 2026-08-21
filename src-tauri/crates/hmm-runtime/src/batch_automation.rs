@@ -1115,6 +1115,8 @@ mod tests {
         GameId, InstallBatchItemInput, InstallManifest, ModId, ModRevisionId, ProfileId,
         ReinstallBatchItemInput, BATCH_PLAN_SCHEMA_VERSION,
     };
+    use hmm_games_mhw::MhwArmorCatalog;
+    use hmm_ports::ReplacementCatalogProvider;
     use std::collections::BTreeMap;
 
     #[test]
@@ -1387,10 +1389,19 @@ mod tests {
             .replacement_binding_snapshot
             .as_ref()
             .expect("canonical source binding");
+        // AR6 之后 binding 记录的是 catalog 的规范 hash ID；请求里用的旧 slug
+        // 经 legacy_ids 解析到同一槽位。这里断言解析关系而不是硬编码 hash：
+        // 硬编码既不可读，catalog 一动就得改一遍。
+        let resolved_source_target = MhwArmorCatalog
+            .find_replacement_target(
+                &ReplacementTargetId::parse("mhw:armor:guardian-alpha").expect("legacy target id"),
+            )
+            .expect("legacy slug must resolve after AR6 expansion");
         assert_eq!(
-            source_binding.binding().target_id().as_str(),
-            "mhw:armor:guardian-alpha"
+            source_binding.binding().target_id(),
+            resolved_source_target.id()
         );
+        assert_eq!(resolved_source_target.internal_id(), "pl121_0000");
         assert_eq!(source_binding.source_internal_id(), "pl121_0000");
         assert_eq!(source_binding.target_internal_id(), "pl121_0000");
 
@@ -1416,12 +1427,12 @@ mod tests {
             serde_json::from_slice(&fs::read(&manifest_path).expect("read installed manifest"))
                 .expect("parse installed manifest");
         assert_eq!(installed_manifest.replacement_bindings.len(), 1);
+        // 落盘 manifest 同样记录规范 ID，与上面 binding snapshot 一致。
         assert_eq!(
             installed_manifest.replacement_bindings[0]
                 .binding()
-                .target_id()
-                .as_str(),
-            "mhw:armor:guardian-alpha"
+                .target_id(),
+            resolved_source_target.id()
         );
 
         let switch_preview = SandboxBatchInstallAutomation::preview_request(
@@ -1461,13 +1472,19 @@ mod tests {
             serde_json::from_slice(&fs::read(manifest_path).expect("read switched manifest"))
                 .expect("parse switched manifest");
         assert_eq!(switched_manifest.replacement_bindings.len(), 1);
+        // 切换后的绑定同样记录规范 ID。
+        let resolved_switch_target = MhwArmorCatalog
+            .find_replacement_target(
+                &ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("legacy target id"),
+            )
+            .expect("legacy slug must resolve after AR6 expansion");
         assert_eq!(
             switched_manifest.replacement_bindings[0]
                 .binding()
-                .target_id()
-                .as_str(),
-            "mhw:armor:fatalis-alpha"
+                .target_id(),
+            resolved_switch_target.id()
         );
+        assert_eq!(resolved_switch_target.internal_id(), "pl129_0000");
     }
 
     #[test]
