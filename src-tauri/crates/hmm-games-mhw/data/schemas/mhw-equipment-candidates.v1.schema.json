@@ -64,7 +64,7 @@
       "required": ["status"],
       "properties": {
         "status": {
-          "enum": ["unknown", "restricted", "redistributable"]
+          "enum": ["unknown", "restricted", "redistributable", "game_terminology"]
         },
         "spdx_expression": {
           "type": "string",
@@ -77,6 +77,13 @@
         "attribution": {
           "type": "string",
           "minLength": 1
+        },
+        "rights_holder": {
+          "type": "string",
+          "minLength": 1
+        },
+        "usage": {
+          "enum": ["nominative"]
         },
         "reviewed_by": {
           "type": "string",

@@ -1,0 +1,1656 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:6f8d1db8da5aa584e04b4dc4087898effc89f7a6f740a3dbe558e5b87aae13c8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow001",
+      "internal_id": "bow001",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢冰马弓",
+          "aliases": [
+            "钢龙强弓",
+            "钢龙射手弓"
+          ]
+        },
+        "en": {
+          "display_name": "Icesteel Bow",
+          "aliases": [
+            "Daora's Sagittarii",
+            "Daora's Toxotes"
+          ]
+        },
+        "ja": {
+          "display_name": "鋼氷馬弓",
+          "aliases": [
+            "アルナス＝ダオラ",
+            "サジタル＝ダオラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5a9dacb922676810a6edf2d08515e3604dfcb5f7266bc23cd779992a59cea565",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow002",
+      "internal_id": "bow002",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆锤角弓",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Diablos Coilbender",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ブロスホーンボウ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d49bfb302a1adaea5c77d7d142ee01b1e79298618680fbfdd324d2f180b68ed8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow003",
+      "internal_id": "bow003",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆锤震弓",
+          "aliases": [
+            "重弓巨灵勇士",
+            "重弓巨灵勇士·改",
+            "刚重弓巨人核心"
+          ]
+        },
+        "en": {
+          "display_name": "Brazencord",
+          "aliases": [
+            "Gigacles",
+            "Gigacles+",
+            "Gigantomachy"
+          ]
+        },
+        "ja": {
+          "display_name": "ブラスコルダ",
+          "aliases": [
+            "重弓ヘラギガス",
+            "重弓ヘラギガス改",
+            "剛重弓ギガントマキア"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e1d9387adda1ae7dd316dc317a3327aa24135928ab811e363a4420cb3c0f4e8d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow004",
+      "internal_id": "bow004",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "必灭一矢",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Doom's Shaft",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "必滅の一矢",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7694378a7521692152ac2e5e8268254064e44135c490b8886c9029d2a1110536",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow005",
+      "internal_id": "bow005",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "银蕨",
+          "aliases": [
+            "冰凌银蕨",
+            "冰凌银蕨·改"
+          ]
+        },
+        "en": {
+          "display_name": "Snowfletcher",
+          "aliases": [
+            "Legia Snowfletcher",
+            "Legia Snowfletcher+"
+          ]
+        },
+        "ja": {
+          "display_name": "ファーンライク",
+          "aliases": [
+            "レイ＝ファーンライク",
+            "レイ＝ファーンライク改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fa608053ebc7367433d86963e05ebcec89931f777c8d2f5bb3f0a1cefec17a87",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow006",
+      "internal_id": "bow006",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "飞雷弓射手大蛇",
+          "aliases": [
+            "飞雷弓【羽羽矢】",
+            "飞雷弓【羽羽矢】·改",
+            "万雷弓【羽羽矢】"
+          ]
+        },
+        "en": {
+          "display_name": "Kadachi Strikebow",
+          "aliases": [
+            "Flying Kadachi Strikebow",
+            "Flying Kadachi Strikebow+",
+            "Thundering Strikebow"
+          ]
+        },
+        "ja": {
+          "display_name": "飛雷弓イテカガチ",
+          "aliases": [
+            "飛雷弓【羽々矢】",
+            "飛雷弓【羽々矢】改",
+            "万雷弓【羽々矢】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:770417c179c7d700e8bdbc131b1e57075e3596ae6db383ad0f52bb2645a25f87",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow007",
+      "internal_id": "bow007",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "猎弓",
+          "aliases": [
+            "十字猎弓",
+            "巨型猎弓",
+            "新·猎弓"
+          ]
+        },
+        "en": {
+          "display_name": "Hunter's Bow",
+          "aliases": [
+            "Cross Hunter's Bow",
+            "Great Hunter's Bow",
+            "Neo Hunter Bow"
+          ]
+        },
+        "ja": {
+          "display_name": "ハンターボウ",
+          "aliases": [
+            "クロスハンターボウ",
+            "グレイトハンターボウ",
+            "ネオ・ハンターボウ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:db1877adb33e3f8c3760f2c83782c2e2f0fd1ceea04d2a3a47d07507b5f58276",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow008",
+      "internal_id": "bow008",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "疾风角弓",
+          "aliases": [
+            "角王弓疾风",
+            "角王弓疾风·改",
+            "刚角王弓狂风"
+          ]
+        },
+        "en": {
+          "display_name": "Galebender",
+          "aliases": [
+            "Cera Coilbender",
+            "Cera Coilbender+",
+            "Cera Cyclord"
+          ]
+        },
+        "ja": {
+          "display_name": "ゲイルホーンボウ",
+          "aliases": [
+            "角王弓ゲイルホーン",
+            "角王弓ゲイルホーン改",
+            "剛角王弓ディアホーン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:00615b351eb6bc16a78f0bbccbd4ec4f1cfa75e659ba5b3a4b41b3c01b3134ec",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow009",
+      "internal_id": "bow009",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴徒凶弓",
+          "aliases": [
+            "恶棍之弓"
+          ]
+        },
+        "en": {
+          "display_name": "Insurgent's Bow",
+          "aliases": [
+            "Villainous Brace"
+          ]
+        },
+        "ja": {
+          "display_name": "暴徒の凶弓",
+          "aliases": [
+            "ヴィランブレイス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:eb5ae3efbc76811b1593a02750898f0051f47b0bda27dafc6dccbee9eef2a4d1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow011",
+      "internal_id": "bow011",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "飞毒弓朱岚",
+          "aliases": [
+            "飞毒弓朱岚·改",
+            "飞毒弓【红时雨】"
+          ]
+        },
+        "en": {
+          "display_name": "Fellbow Crimson Hail",
+          "aliases": [
+            "Fellbow Crimson Hail+",
+            "Fellbow Crimson Storm"
+          ]
+        },
+        "ja": {
+          "display_name": "飛毒弓ベニアラシ",
+          "aliases": [
+            "飛毒弓ベニアラシ改",
+            "飛毒弓【紅時雨】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ee941228bc0cd303627b96fdf447ada470641e32eb0a4fb6ef1912c5e5da11d9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow012",
+      "internal_id": "bow012",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "迷雾冰川",
+          "aliases": [
+            "霜漂银蕨"
+          ]
+        },
+        "en": {
+          "display_name": "Mist Glacia",
+          "aliases": [
+            "Hoarcry Snowfletcher"
+          ]
+        },
+        "ja": {
+          "display_name": "ミスト＝グレイシア",
+          "aliases": [
+            "ブリーナ＝ファーン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6096785c065d2d49965993eb52bd9d7b9e7db36c1112577e66aefdee2e64239b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow013",
+      "internal_id": "bow013",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "必灭一矢【烈】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Doom",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "必滅の一矢【烈】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2c744256ba9b85e2d708df33d724ab6ee371f904a39b425633df66c458b64700",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow014",
+      "internal_id": "bow014",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "隐密长弓",
+          "aliases": [
+            "隐密长弓·改",
+            "暗夜弓【影缝】"
+          ]
+        },
+        "en": {
+          "display_name": "Hidden Bow",
+          "aliases": [
+            "Hidden Bow+",
+            "Night Flight"
+          ]
+        },
+        "ja": {
+          "display_name": "ヒドゥンボウ",
+          "aliases": [
+            "ヒドゥンボウ改",
+            "闇夜弓【影縫】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:418f2ba840d2698108f14dfa3378093066da55f3aa44962a940b09fa13a2059a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow015",
+      "internal_id": "bow015",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎龙弓",
+          "aliases": [
+            "爆弓沙皇之箭"
+          ]
+        },
+        "en": {
+          "display_name": "Dios Flier",
+          "aliases": [
+            "Tsali Flier"
+          ]
+        },
+        "ja": {
+          "display_name": "ディオスアロー",
+          "aliases": [
+            "爆弓ツァーリアロー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:312ada9f8fe30aee17c5581026e45d49eb1ef782b7708453afe8664a60ce4184",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow016",
+      "internal_id": "bow016",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君·浮浪",
+          "aliases": [
+            "水螅·浮浪"
+          ]
+        },
+        "en": {
+          "display_name": "Black Planula",
+          "aliases": [
+            "Hydra Planula"
+          ]
+        },
+        "ja": {
+          "display_name": "ネロ・プラヌラ",
+          "aliases": [
+            "ヒドラ・プラヌラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2118620cc9cdd37ecf5ac0c6a3e7f45313c372e37680f97a20d42fcdb6345f56",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow017",
+      "internal_id": "bow017",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "三界双树－光明－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Dawning Insight",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "三界双樹－光明－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ffda962fd1711c385d53608bd6f73a9fc2791f37ebebbbd90d2b16fcc30364a1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow018",
+      "internal_id": "bow018",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业弓巨人",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fate's Thread",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業弓ジャールート",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:cb28ffcec9efc160250acbe77f04c6089b35af96a45fb465250fe63761cd6550",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow019",
+      "internal_id": "bow019",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "王弓远雷",
+          "aliases": [
+            "王弓远雷改",
+            "王牙弓【稚雷】"
+          ]
+        },
+        "en": {
+          "display_name": "Usurper's Rumble",
+          "aliases": [
+            "Usurper's Rumble+",
+            "Despot's Earlybolt"
+          ]
+        },
+        "ja": {
+          "display_name": "王弓エンライ",
+          "aliases": [
+            "王弓エンライ改",
+            "王牙弓【稚雷】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:656016962544c5146f0e3de8955028bf5c5fe102bb0425be204a48b76700f0df",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow020",
+      "internal_id": "bow020",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "狱弓龙岩",
+          "aliases": [
+            "狼牙弓【邪狱】"
+          ]
+        },
+        "en": {
+          "display_name": "Brimstren Drakesight",
+          "aliases": [
+            "Stygian Patientia"
+          ]
+        },
+        "ja": {
+          "display_name": "獄弓リュウガン",
+          "aliases": [
+            "狼牙弓【邪獄】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f2a00777f9e9f3c5206dcc6563b7d631e7b082ee1d7b1fea7cfcb6ce845e31b9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow021",
+      "internal_id": "bow021",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷弓【兽王】",
+          "aliases": [
+            "雷弓【百兽王】"
+          ]
+        },
+        "en": {
+          "display_name": "Beast Thunderbow",
+          "aliases": [
+            "Beastking Thunderbow"
+          ]
+        },
+        "ja": {
+          "display_name": "雷弓【獣王】",
+          "aliases": [
+            "雷弓【百獣王】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:321c05ab4e18a84861e51479be1e9aaea9f5033506d075a79b8e3e4ff79aa56e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow022",
+      "internal_id": "bow022",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷公弓【大圣】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Archbeast Paragon",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "雷公弓【大聖】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9a2eaa52b1e811818e58763fd9192bc00ac1cab994b51f1836e2228297572474",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow023",
+      "internal_id": "bow023",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之闪箭",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Bow",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の閃矢",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e4ae9aa882a6d2a77de4a292f7d2168bb8f8bfbe66ec59773e455d5123f54e96",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow025",
+      "internal_id": "bow025",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑弓神秘",
+          "aliases": [
+            "煌黑之强弓"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Commandment",
+          "aliases": [
+            "Alatreon Bow"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒弓アルカニス",
+          "aliases": [
+            "煌黒の強弓"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:51a37e4b29d40e9c4b7858b480f74c0fc204f0162ff9ec6de80faa3b4cd664b4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow026",
+      "internal_id": "bow026",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿弧弓",
+          "aliases": [
+            "宫廷翼弓【极星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Arc",
+          "aliases": [
+            "Royal North Wing"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスアーク",
+          "aliases": [
+            "宮廷翼弓【極星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3040375b4f100831c16872080c789da8f59a493c2c43e2329bc424392067405a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow027",
+      "internal_id": "bow027",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "高贵邪神",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Edelescha",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "エーデルエスタ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9cfdb235b8875b7aaaee027d57e6d5f85b1f323690065658776c385789c5a01e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow028",
+      "internal_id": "bow028",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "苍世龙弓【天翔】",
+          "aliases": [
+            "真·苍世龙弓【天翔】"
+          ]
+        },
+        "en": {
+          "display_name": "Azure Era \"Soaring Dragon\"",
+          "aliases": [
+            "Azure Era \"Soaring Dragon\"+"
+          ]
+        },
+        "ja": {
+          "display_name": "蒼世ノ龍弓【天翔】",
+          "aliases": [
+            "真・蒼世ノ龍弓【天翔】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:78b214e0c8e0ff625a8b83958e519129e10c8a1099c472438401d471e3d3e5c9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow029",
+      "internal_id": "bow029",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "破坏歼灭之刚弓",
+          "aliases": [
+            "断灭崩坏之刚烈弓"
+          ]
+        },
+        "en": {
+          "display_name": "Bow of Rack & Ruin",
+          "aliases": [
+            "Bow of Vice & Violence"
+          ]
+        },
+        "ja": {
+          "display_name": "殲滅と破壊の剛弓",
+          "aliases": [
+            "断滅と崩壊の剛烈弓"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:da485810195e9fdcfc61fb43e240a48a6b26ed8047bec02105b7c95485855462",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bow030",
+      "internal_id": "bow030",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙穿心箭·冰",
+          "aliases": [
+            "赤龙穿心箭·火",
+            "赤龙穿心箭·水",
+            "赤龙穿心箭·雷",
+            "赤龙穿心箭·龙",
+            "赤龙穿心箭·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostbow",
+          "aliases": [
+            "Safi's Hellbow",
+            "Safi's Aquabow",
+            "Safi's Boltbow",
+            "Safi's Drakbow",
+            "Safi's Shatterbow"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ穿ツ矢・氷",
+          "aliases": [
+            "赤龍ノ穿ツ矢・火",
+            "赤龍ノ穿ツ矢・水",
+            "赤龍ノ穿ツ矢・雷",
+            "赤龍ノ穿ツ矢・龍",
+            "赤龍ノ穿ツ矢・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:26d2955dbaf42d38f505c66826800861e5c70b15af5db8fa94fb2a01eef8666d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow001",
+      "internal_id": "bs_bow001",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铁弓1",
+          "aliases": [
+            "铁弓2",
+            "铁弓3",
+            "钢铁弓1",
+            "钢铁弓2",
+            "钢铁弓3",
+            "合金弓1",
+            "合金弓2",
+            "灭尽龙大弓",
+            "搔鸟弓1",
+            "搔鸟弓2",
+            "搔鸟弓3",
+            "公主弓矢1",
+            "公主弓矢2",
+            "公主弓矢3",
+            "水流弓1",
+            "水流弓2",
+            "水流弓3",
+            "优雅长弓1",
+            "优雅长弓2",
+            "冥灯龙大弓",
+            "公主弓矢4",
+            "蔷薇弓",
+            "疯狂弓",
+            "冥灯龙大弓改"
+          ]
+        },
+        "en": {
+          "display_name": "Iron Bow I",
+          "aliases": [
+            "Iron Bow II",
+            "Iron Bow III",
+            "Steel Bow I",
+            "Steel Bow II",
+            "Steel Bow III",
+            "Alloy Bow I",
+            "Alloy Bow II",
+            "Nergal Whisper",
+            "Kulu Arrow I",
+            "Kulu Arrow II",
+            "Kulu Arrow III",
+            "Princess Arrow I",
+            "Princess Arrow II",
+            "Princess Arrow III",
+            "Aqua Arrow I",
+            "Aqua Arrow II",
+            "Aqua Arrow III",
+            "Glacial Arrow I",
+            "Glacial Arrow II",
+            "Xeno Metora",
+            "Princess Arrow IV",
+            "Rosen Arrow",
+            "Lunatic Arrow",
+            "Xeno Metora+"
+          ]
+        },
+        "ja": {
+          "display_name": "鉄弓Ⅰ",
+          "aliases": [
+            "鉄弓Ⅱ",
+            "鉄弓Ⅲ",
+            "鋼鉄弓Ⅰ",
+            "鋼鉄弓Ⅱ",
+            "鋼鉄弓Ⅲ",
+            "合金弓Ⅰ",
+            "合金弓Ⅱ",
+            "ネルガルファウル",
+            "クルルアローⅠ",
+            "クルルアローⅡ",
+            "クルルアローⅢ",
+            "プリンセスアローⅠ",
+            "プリンセスアローⅡ",
+            "プリンセスアローⅢ",
+            "アクアアローⅠ",
+            "アクアアローⅡ",
+            "アクアアローⅢ",
+            "グレイスアローⅠ",
+            "グレイスアローⅡ",
+            "ゼノ＝メートラ",
+            "プリンセスアローⅣ",
+            "ローゼスアロー",
+            "ルナティックアロー",
+            "ゼノ＝メートラ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c45e82b5344dcca139e9c37cd1e3d98a14e745488221b5eb6d41e74916c1beff",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow002",
+      "internal_id": "bs_bow002",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑钢弓1",
+          "aliases": [
+            "星空迅击弓1",
+            "星空迅击弓2",
+            "星空迅击弓3",
+            "火龙强弓1",
+            "火龙强弓2",
+            "火龙强弓3",
+            "激流射手1",
+            "激流射手2",
+            "激流射手3",
+            "黑钢弓2",
+            "防卫队迎击用强弓1",
+            "防卫队迎击用强弓2",
+            "防卫队迎击用强弓3",
+            "防卫队迎击用强弓4",
+            "防卫队迎击用强弓5",
+            "龙穿弓1",
+            "龙穿弓2",
+            "龙穿弓3",
+            "火龙强弓4",
+            "苍火龙刚弓",
+            "银火龙烈弓",
+            "轰龙弓1",
+            "轰龙弓2",
+            "激流射手4",
+            "舄湖射手1",
+            "舄湖射手2",
+            "劫难弧弓"
+          ]
+        },
+        "en": {
+          "display_name": "Blacksteel Bow I",
+          "aliases": [
+            "Archer's Dance I",
+            "Archer's Dance II",
+            "Archer's Dance III",
+            "Rathslinger I",
+            "Rathslinger II",
+            "Rathslinger III",
+            "Water Shot I",
+            "Water Shot II",
+            "Water Shot III",
+            "Blacksteel Bow II",
+            "Defender Powerbow I",
+            "Defender Powerbow II",
+            "Defender Powerbow III",
+            "Defender Powerbow IV",
+            "Defender Powerbow V",
+            "Dragon Perforator I",
+            "Dragon Perforator II",
+            "Dragon Perforator III",
+            "Rathslinger IV",
+            "Azure Mightbow",
+            "Silver Wrathbow",
+            "Rex Bow I",
+            "Rex Bow II",
+            "Water Shot IV",
+            "Laguna Shot I",
+            "Laguna Shot II",
+            "Accursed Arc"
+          ]
+        },
+        "ja": {
+          "display_name": "黒鋼の弓Ⅰ",
+          "aliases": [
+            "リーシャアルサクルⅠ",
+            "リーシャアルサクルⅡ",
+            "リーシャアルサクルⅢ",
+            "火竜の強弓Ⅰ",
+            "火竜の強弓Ⅱ",
+            "火竜の強弓Ⅲ",
+            "ウォーターシュート Ⅰ",
+            "ウォーターシュート Ⅱ",
+            "ウォーターシュート Ⅲ",
+            "黒鋼の弓Ⅱ",
+            "防衛隊迎撃用強弓Ⅰ",
+            "防衛隊迎撃用強弓Ⅱ",
+            "防衛隊迎撃用強弓Ⅲ",
+            "防衛隊迎撃用強弓Ⅳ",
+            "防衛隊迎撃用強弓Ⅴ",
+            "竜穿弓Ⅰ",
+            "竜穿弓Ⅱ",
+            "竜穿弓Ⅲ",
+            "火竜の強弓Ⅳ",
+            "蒼火竜の剛弓",
+            "銀火竜の烈弓",
+            "レックスボウⅠ",
+            "レックスボウⅡ",
+            "ウォーターシュートⅣ",
+            "ラグーナシュートⅠ",
+            "ラグーナシュートⅡ",
+            "カーサスアーク"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c6ea9a1bfdf36b6db32fc3d5052fe1c0b31223a00c31d8cc922302bc27e3dd36",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow003",
+      "internal_id": "bs_bow003",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "猎弓1",
+          "aliases": [
+            "猎弓2",
+            "猎弓3",
+            "能量猎弓1",
+            "能量猎弓2",
+            "能量猎弓3",
+            "勇气猎弓1",
+            "勇气猎弓2",
+            "尸套龙弓1",
+            "尸套龙弓2",
+            "爆锤大弓1",
+            "爆锤大弓2",
+            "花朵弓1",
+            "花朵弓2",
+            "花朵弓3",
+            "火炎弓1",
+            "火炎弓2",
+            "脉冲弓1",
+            "脉冲弓2",
+            "脉冲弓3",
+            "龙骨弓1",
+            "龙骨弓2",
+            "龙骨弓3",
+            "睿智猎弓1",
+            "睿智猎弓2",
+            "睿智猎弓3",
+            "斩龙弓1",
+            "斩龙弓2",
+            "罪罚弓1",
+            "罪罚弓2"
+          ]
+        },
+        "en": {
+          "display_name": "Hunter's Bow I",
+          "aliases": [
+            "Hunter's Bow II",
+            "Hunter's Bow III",
+            "Hunter's Stoutbow I",
+            "Hunter's Stoutbow II",
+            "Hunter's Stoutbow III",
+            "Hunter's Proudbow I",
+            "Hunter's Proudbow II",
+            "Hazak Velos I",
+            "Hazak Velos II",
+            "Diablos Bow I",
+            "Diablos Bow II",
+            "Blooming Arch I",
+            "Blooming Arch II",
+            "Blooming Arch III",
+            "Blazing Bow I",
+            "Blazing Bow II",
+            "Pulsar Bow I",
+            "Pulsar Bow II",
+            "Pulsar Bow III",
+            "Dragonbone Bow I",
+            "Dragonbone Bow II",
+            "Dragonbone Bow III",
+            "Hunter's Bravebow I",
+            "Hunter's Bravebow II",
+            "Hunter's Bravebow III",
+            "Glavenus Arrow I",
+            "Glavenus Arrow II",
+            "Acidic Arrow I",
+            "Acidic Arrow II"
+          ]
+        },
+        "ja": {
+          "display_name": "ハンターボウⅠ",
+          "aliases": [
+            "ハンターボウⅡ",
+            "ハンターボウⅢ",
+            "パワーハンターボウⅠ",
+            "パワーハンターボウⅡ",
+            "パワーハンターボウⅢ",
+            "ブレイブハンターボウⅠ",
+            "ブレイブハンターボウⅡ",
+            "ハザクヴェロスⅠ",
+            "ハザクヴェロスⅡ",
+            "ブロスボウⅠ",
+            "ブロスボウⅡ",
+            "ブルームアーチⅠ",
+            "ブルームアーチⅡ",
+            "ブルームアーチⅢ",
+            "ブレイズボウⅠ",
+            "ブレイズボウⅡ",
+            "パルサーボウⅠ",
+            "パルサーボウⅡ",
+            "パルサーボウⅢ",
+            "龍骨弓Ⅰ",
+            "龍骨弓Ⅱ",
+            "龍骨弓Ⅲ",
+            "ワイズハンターボウⅠ",
+            "ワイズハンターボウⅡ",
+            "ワイズハンターボウⅢ",
+            "ディノアローⅠ",
+            "ディノアローⅡ",
+            "ザルファーアローⅠ",
+            "ザルファーアローⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e601ec6286fce165912e409efb88ba1912ebaeb3ab4aff186fa79fb94763d25f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow004",
+      "internal_id": "bs_bow004",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "梦魇弓1",
+          "aliases": [
+            "曼陀罗弓1",
+            "曼陀罗弓2",
+            "曼陀罗弓3",
+            "蛮颚龙射手1",
+            "蛮颚龙射手2",
+            "蛮颚龙射手3",
+            "梦魇弓2",
+            "风色雷颚1",
+            "风色雷颚2"
+          ]
+        },
+        "en": {
+          "display_name": "Nightmare String I",
+          "aliases": [
+            "Datura String I",
+            "Datura String II",
+            "Datura String III",
+            "Anja Arch I",
+            "Anja Arch II",
+            "Anja Arch III",
+            "Nightmare String II",
+            "Fulguring Bow I",
+            "Fulguring Bow II"
+          ]
+        },
+        "ja": {
+          "display_name": "ナイトメアストリングⅠ",
+          "aliases": [
+            "ダチュラストリングⅠ",
+            "ダチュラストリングⅡ",
+            "ダチュラストリングⅢ",
+            "ジャナフアルカウスⅠ",
+            "ジャナフアルカウスⅡ",
+            "ジャナフアルカウスⅢ",
+            "ナイトメアストリングⅡ",
+            "レラ＝ジャナールⅠ",
+            "レラ＝ジャナールⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:819056c4538ac2bcc8087e6a871218549abc2757d1c9e70681b12bb372bb3da4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow005",
+      "internal_id": "bs_bow005",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的弓·角",
+          "aliases": [
+            "金色的弓·水",
+            "金色的弓·雷",
+            "金色的弓·爆破",
+            "金色的弓·搔",
+            "金色的弓·毒妖",
+            "金色的弓·飞雷",
+            "金色的弓·蛮颚",
+            "金色的弓·女王",
+            "金色的弓·风漂",
+            "金色的弓·尸套",
+            "金色的弓·王"
+          ]
+        },
+        "en": {
+          "display_name": "Horn Gold Piercer",
+          "aliases": [
+            "Gold Water Piercer",
+            "Gold Thunder Piercer",
+            "Gold Blast Piercer",
+            "Thief Gold Piercer",
+            "Spew Gold Piercer",
+            "Spark Gold Piercer",
+            "Rage Gold Piercer",
+            "Queen Gold Piercer",
+            "Stream Gold Piercer",
+            "Decay Gold Piercer",
+            "King Gold Piercer"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の弓・角",
+          "aliases": [
+            "金色の弓・水",
+            "金色の弓・雷",
+            "金色の弓・爆破",
+            "金色の弓・掻",
+            "金色の弓・毒妖",
+            "金色の弓・飛雷",
+            "金色の弓・蛮顎",
+            "金色の弓・女王",
+            "金色の弓・風漂",
+            "金色の弓・屍套",
+            "金色の弓・王"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9f8c5d3c57b2a1cabb69688865b390fa1a181c9989e413c4b433ed85e5d29ad1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow006",
+      "internal_id": "bs_bow006",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗弓·火",
+          "aliases": [
+            "铠罗弓·搔",
+            "铠罗弓·毒妖",
+            "铠罗弓·飞雷",
+            "铠罗弓·蛮颚",
+            "铠罗弓·女王",
+            "铠罗弓·风漂",
+            "铠罗弓·尸套",
+            "铠罗弓·王",
+            "铠罗弓·角",
+            "铠罗弓·水",
+            "铠罗弓·雷",
+            "铠罗弓·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Arrow \"Fire\"",
+          "aliases": [
+            "Taroth Arrow \"Thief\"",
+            "Taroth Arrow \"Spew\"",
+            "Taroth Arrow \"Spark\"",
+            "Taroth Arrow \"Rage\"",
+            "Taroth Arrow \"Queen\"",
+            "Taroth Arrow \"Stream\"",
+            "Taroth Arrow \"Decay\"",
+            "Taroth Arrow \"King\"",
+            "Taroth Arrow \"Horn\"",
+            "Taroth Arrow \"Water\"",
+            "Taroth Arrow \"Thunder\"",
+            "Taroth Arrow \"Blast\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラアロー・火",
+          "aliases": [
+            "ガイラアロー・掻",
+            "ガイラアロー・毒妖",
+            "ガイラアロー・飛雷",
+            "ガイラアロー・蛮顎",
+            "ガイラアロー・女王",
+            "ガイラアロー・風漂",
+            "ガイラアロー・屍套",
+            "ガイラアロー・王",
+            "ガイラアロー・角",
+            "ガイラアロー・水",
+            "ガイラアロー・雷",
+            "ガイラアロー・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c07c8a990f4bf75d74304daf3ff6f3947837068d4060997518201ea42fdead21",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow007",
+      "internal_id": "bs_bow007",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后弓",
+          "aliases": [
+            "皇后弓·炎妃",
+            "皇后弓·灭尽",
+            "皇后弓·冥灯",
+            "魂焰龙弓·炎妃",
+            "魂焰龙弓·灭尽",
+            "魂焰龙弓·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Arrow",
+          "aliases": [
+            "Empress Arrow \"Blaze\"",
+            "Empress Arrow \"Ruin\"",
+            "Empress Arrow \"Styx\"",
+            "Soulfire Arch \"Blaze\"",
+            "Soulfire Arch \"Ruin\"",
+            "Soulfire Arch \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスアロー",
+          "aliases": [
+            "エンプレスアロー・炎妃",
+            "エンプレスアロー・滅尽",
+            "エンプレスアロー・冥灯",
+            "魂焔の龍弓・炎妃",
+            "魂焔の龍弓・滅尽",
+            "魂焔の龍弓・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2191f98e9ed2a0a22680bf79048962dc3da9bc041f669770a7ee3156fe44dbd5",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow008",
+      "internal_id": "bs_bow008",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰尖暴风1",
+          "aliases": [
+            "巢穴射手1",
+            "巢穴射手2",
+            "冰尖暴风2"
+          ]
+        },
+        "en": {
+          "display_name": "Icicle Blizzard I",
+          "aliases": [
+            "Alqaws al-Nasr I",
+            "Alqaws al-Nasr II",
+            "Icicle Blizzard II"
+          ]
+        },
+        "ja": {
+          "display_name": "アイシクルブリザードⅠ",
+          "aliases": [
+            "ネスルアルカウスⅠ",
+            "ネスルアルカウスⅡ",
+            "アイシクルブリザードⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2009d2704e66c143a5e1b8dc5c0b5a765dcd214c9eb535eba96b5e27b3164e79",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow009",
+      "internal_id": "bs_bow009",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙古弓1",
+          "aliases": [
+            "死灭矢尸弓",
+            "曼陀罗骤雨1",
+            "曼陀罗骤雨2",
+            "蛮颚龙之火矢1",
+            "蛮颚龙之火矢2",
+            "封龙古弓2",
+            "巨牛大弓1",
+            "巨牛大弓2"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonseal Aldbow I",
+          "aliases": [
+            "Deathbow Vaal Velos",
+            "Datura Squall I",
+            "Datura Squall II",
+            "Anjanath Flamebow I",
+            "Anjanath Flamebow II",
+            "Dragonseal Aldbow II",
+            "Mammoth Greatbow I",
+            "Mammoth Greatbow II"
+          ]
+        },
+        "ja": {
+          "display_name": "龍封じの古弓Ⅰ",
+          "aliases": [
+            "屍弓ヴァルヴェロス",
+            "ダチュラスコールⅠ",
+            "ダチュラスコールⅡ",
+            "蛮顎竜ノ火矢Ⅰ",
+            "蛮顎竜ノ火矢Ⅱ",
+            "龍封じの古弓Ⅱ",
+            "巨牛の大弓Ⅰ",
+            "巨牛の大弓Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5587a9000b06b7ba43907ceffd2195806e56b5f9c0cc6dfd4a42b786b941e604",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow010",
+      "internal_id": "bs_bow010",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰妖艳射",
+          "aliases": [
+            "严冰雷击"
+          ]
+        },
+        "en": {
+          "display_name": "Alluring Evelia",
+          "aliases": [
+            "Iceflinger"
+          ]
+        },
+        "ja": {
+          "display_name": "氷妖イヴェリア",
+          "aliases": [
+            "アイスライザー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:460a5c3f7915f1dd1c243226eef575055567c8416639e3b17dd549cb6ee64d0e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow011",
+      "internal_id": "bs_bow011",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金弓·王",
+          "aliases": [
+            "皇金弓·飞雷",
+            "皇金弓·风漂",
+            "皇金弓·尸套"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Bow \"King\"",
+          "aliases": [
+            "Kjárr Bow \"Spark\"",
+            "Kjárr Bow \"Stream\"",
+            "Kjárr Bow \"Decay\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の弓・王",
+          "aliases": [
+            "皇金の弓・飛雷",
+            "皇金の弓・風漂",
+            "皇金の弓・屍套"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1250a8ab4f09b1e7938a410ca627aeeda690322aca43e7e9b1bdc5faf986ea7b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/bow/bs_bow012",
+      "internal_id": "bs_bow012",
+      "metadata": {
+        "family": "bow",
+        "path_family": "wp/bow"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金弓·水",
+          "aliases": [
+            "皇金弓·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Bow \"Water\"",
+          "aliases": [
+            "Kjárr Bow \"Blast\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の弓・水",
+          "aliases": [
+            "皇金の弓・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

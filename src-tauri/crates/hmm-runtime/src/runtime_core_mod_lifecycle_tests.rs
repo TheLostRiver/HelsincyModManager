@@ -11,7 +11,9 @@ use hmm_core::{
     FileLayer, GameDirectoryStatus, GameId, InstallManifest, ModId, ModRevisionId, ProfileId,
     ReplacementTargetId,
 };
+use hmm_games_mhw::MhwArmorCatalog;
 use hmm_infra::{FileSystemAuditLogWriter, JsonInstallManifestRepository};
+use hmm_ports::ReplacementCatalogProvider;
 use hmm_ports::{AuditLogEvent, AuditLogReadRequest, AuditLogReader, InstallManifestRepository};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -265,7 +267,13 @@ fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot(
     assert_eq!(snapshot.mod_id(), &mod_id);
     assert_eq!(
         snapshot.binding().target_id().as_str(),
-        "mhw:armor:fatalis-alpha"
+        MhwArmorCatalog
+            .find_replacement_target(
+                &ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("legacy target id"),
+            )
+            .expect("legacy slug must resolve after AR6 expansion")
+            .id()
+            .as_str()
     );
     assert_eq!(snapshot.source_internal_id(), "pl121_0000");
     assert_eq!(snapshot.target_internal_id(), "pl129_0000");
@@ -488,7 +496,13 @@ fn headless_composition_switches_retarget_with_true_reinstall_and_uninstalls_to_
     let switched_binding = &switched_manifest.replacement_bindings[0];
     assert_eq!(
         switched_binding.binding().target_id().as_str(),
-        "mhw:armor:fatalis-beta"
+        MhwArmorCatalog
+            .find_replacement_target(
+                &ReplacementTargetId::parse("mhw:armor:fatalis-beta").expect("legacy target id"),
+            )
+            .expect("legacy slug must resolve after AR6 expansion")
+            .id()
+            .as_str()
     );
     assert_eq!(switched_binding.target_internal_id(), "pl129_0010");
     assert_eq!(

@@ -1,0 +1,1828 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:0558787d286f4abf40cca8603cc6aec12fda97e8521f8b66f760ca2c375e81d8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan001",
+      "internal_id": "bs_lan001",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铁枪",
+          "aliases": [
+            "铁枪1",
+            "铁枪2",
+            "铁枪3",
+            "钢铁枪1",
+            "钢铁枪2",
+            "钢铁枪3",
+            "优雅长枪1",
+            "优雅长枪2",
+            "风漂龙斧枪1",
+            "风漂龙斧枪2",
+            "搔鸟长枪1",
+            "搔鸟长枪2",
+            "搔鸟长枪3",
+            "闪电长枪1",
+            "闪电长枪2",
+            "花朵长枪1",
+            "花朵长枪2",
+            "花朵长枪3",
+            "火炎长枪1",
+            "火炎长枪2",
+            "黑钢枪1",
+            "黑钢枪2",
+            "风漂龙斧枪3",
+            "霜漂斧枪",
+            "夜神斧枪1",
+            "夜神斧枪2"
+          ]
+        },
+        "en": {
+          "display_name": "Iron Lance",
+          "aliases": [
+            "Iron Lance I",
+            "Iron Lance II",
+            "Iron Lance III",
+            "Steel Lance I",
+            "Steel Lance II",
+            "Steel Lance III",
+            "Glacial Lance I",
+            "Glacial Lance II",
+            "Legiana Halberd I",
+            "Legiana Halberd II",
+            "Kulu Lance I",
+            "Kulu Lance II",
+            "Kulu Lance III",
+            "Thunder Lance I",
+            "Thunder Lance II",
+            "Blooming Lance I",
+            "Blooming Lance II",
+            "Blooming Lance III",
+            "Flame Lance I",
+            "Flame Lance II",
+            "Blacksteel Lance I",
+            "Blacksteel Lance II",
+            "Legiana Halberd III",
+            "Hoarcry Halberd",
+            "Nyx Halberd I",
+            "Nyx Halberd II"
+          ]
+        },
+        "ja": {
+          "display_name": "アイアンランス",
+          "aliases": [
+            "アイアンランスⅠ",
+            "アイアンランスⅡ",
+            "アイアンランスⅢ",
+            "スティールランスⅠ",
+            "スティールランスⅡ",
+            "スティールランスⅢ",
+            "グレイスランサーⅠ",
+            "グレイスランサーⅡ",
+            "ギエナハルバⅠ",
+            "ギエナハルバⅡ",
+            "クルルランスⅠ",
+            "クルルランスⅡ",
+            "クルルランスⅢ",
+            "サンダーランスⅠ",
+            "サンダーランスⅡ",
+            "ブルームランスⅠ",
+            "ブルームランスⅡ",
+            "ブルームランスⅢ",
+            "フレイムランスⅠ",
+            "フレイムランスⅡ",
+            "黒鋼の槍Ⅰ",
+            "黒鋼の槍Ⅱ",
+            "ギエナハルバⅢ",
+            "ブリーナハルバ",
+            "ニュクスハルバⅠ",
+            "ニュクスハルバⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a84e041eef36b500df7ada1e8cdbf5f9b4e4eed54828f92f70838298bbd432ce",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan002",
+      "internal_id": "bs_lan002",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "搔鸟尖枪1",
+          "aliases": [
+            "搔鸟尖枪2",
+            "搔鸟尖枪3",
+            "曼陀罗长矛1",
+            "曼陀罗长矛2",
+            "曼陀罗长矛3",
+            "防卫队广刃型长枪1",
+            "防卫队广刃型长枪2",
+            "防卫队广刃型长枪3",
+            "防卫队广刃型长枪4",
+            "防卫队广刃型长枪5",
+            "隐密尖枪1",
+            "隐密尖枪2",
+            "舄湖尖刺1",
+            "舄湖尖刺2"
+          ]
+        },
+        "en": {
+          "display_name": "Kulu Hasta I",
+          "aliases": [
+            "Kulu Hasta II",
+            "Kulu Hasta III",
+            "Datura Pike I",
+            "Datura Pike II",
+            "Datura Pike III",
+            "Defender Lance I",
+            "Defender Lance II",
+            "Defender Lance III",
+            "Defender Lance IV",
+            "Defender Lance V",
+            "Hidden Hastur I",
+            "Hidden Hastur II",
+            "Laguna Pike I",
+            "Laguna Pike II"
+          ]
+        },
+        "ja": {
+          "display_name": "クルルハスターⅠ",
+          "aliases": [
+            "クルルハスターⅡ",
+            "クルルハスターⅢ",
+            "ダチュラパイクⅠ",
+            "ダチュラパイクⅡ",
+            "ダチュラパイクⅢ",
+            "防衛隊広刃型長槍Ⅰ",
+            "防衛隊広刃型長槍Ⅱ",
+            "防衛隊広刃型長槍Ⅲ",
+            "防衛隊広刃型長槍Ⅳ",
+            "防衛隊広刃型長槍Ⅴ",
+            "ヒドゥンハスターⅠ",
+            "ヒドゥンハスターⅡ",
+            "ラグーナパイクⅠ",
+            "ラグーナパイクⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c2103ddd3049001fd509f9ee4eb66d278ead5ff74212e8e4d277dc0686bed7f6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan003",
+      "internal_id": "bs_lan003",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巢穴鸟喙1",
+          "aliases": [
+            "铬钢长枪1",
+            "铬钢长枪2",
+            "灭尽龙长枪",
+            "岩贼龙刺针1",
+            "岩贼龙刺针2",
+            "雷光长枪1",
+            "雷光长枪2",
+            "雷光长枪3",
+            "冥灯龙长枪",
+            "巢穴鸟喙2",
+            "曼陀罗新芽1",
+            "曼陀罗新芽2",
+            "冥灯龙长枪改"
+          ]
+        },
+        "en": {
+          "display_name": "Minqar al-Nasr I",
+          "aliases": [
+            "Chrome Lance I",
+            "Chrome Lance II",
+            "Nergal Impaler",
+            "Gama Pilebunker I",
+            "Gama Pilebunker II",
+            "Lightning Spire I",
+            "Lightning Spire II",
+            "Lightning Spire III",
+            "Xeno Zauta",
+            "Minqar al-Nasr II",
+            "Datura Stalk I",
+            "Datura Stalk II",
+            "Xeno Zauta+"
+          ]
+        },
+        "ja": {
+          "display_name": "ネスルメンカールⅠ",
+          "aliases": [
+            "クロムランツェⅠ",
+            "クロムランツェⅡ",
+            "ネルガルカルガ",
+            "ガマルパイルⅠ",
+            "ガマルパイルⅡ",
+            "ライトニングパイルⅠ",
+            "ライトニングパイルⅡ",
+            "ライトニングパイルⅢ",
+            "ゼノ＝ザウータ",
+            "ネスルメンカールⅡ",
+            "ダチュラスプラウトⅠ",
+            "ダチュラスプラウトⅡ",
+            "ゼノ＝ザウータ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:83189faea4ced41b80527a9d4b7f6f0fb3236e8bf88dc00b9844133b3ee03986",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan004",
+      "internal_id": "bs_lan004",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "骨枪1",
+          "aliases": [
+            "骨枪2",
+            "骨枪3",
+            "硬骨长枪1",
+            "硬骨长枪2",
+            "硬骨长枪3",
+            "坚骨枪1",
+            "坚骨枪2",
+            "尸套龙长枪",
+            "巨甲虫长枪1",
+            "巨甲虫长枪2",
+            "土砂龙长枪1",
+            "土砂龙长枪2",
+            "土砂龙长枪3",
+            "惨爪长枪1",
+            "惨爪长枪2",
+            "水流骨枪1",
+            "水流骨枪2",
+            "水流骨枪3",
+            "龙骨枪1",
+            "龙骨枪2",
+            "龙骨枪3"
+          ]
+        },
+        "en": {
+          "display_name": "Bone Lance I",
+          "aliases": [
+            "Bone Lance II",
+            "Bone Lance III",
+            "Hard Bone Lance I",
+            "Hard Bone Lance II",
+            "Hard Bone Lance III",
+            "Heavy Bone Lance I",
+            "Heavy Bone Lance II",
+            "Hazak Wächter",
+            "Taurus Lance I",
+            "Taurus Lance II",
+            "Carapace Lance I",
+            "Carapace Lance II",
+            "Carapace Lance III",
+            "Garon Lance I",
+            "Garon Lance II",
+            "Aqua Horn I",
+            "Aqua Horn II",
+            "Aqua Horn III",
+            "Dragonbone Lance I",
+            "Dragonbone Lance II",
+            "Dragonbone Lance III"
+          ]
+        },
+        "ja": {
+          "display_name": "ボーンランスⅠ",
+          "aliases": [
+            "ボーンランスⅡ",
+            "ボーンランスⅢ",
+            "ハードボーンランスⅠ",
+            "ハードボーンランスⅡ",
+            "ハードボーンランスⅢ",
+            "ヘビィボーンランスⅠ",
+            "ヘビィボーンランスⅡ",
+            "ハザクヴェヒター",
+            "タロスランスⅠ",
+            "タロスランスⅡ",
+            "ドラグロランスⅠ",
+            "ドラグロランスⅡ",
+            "ドラグロランスⅢ",
+            "ガロンランスⅠ",
+            "ガロンランスⅡ",
+            "アクアホーンⅠ",
+            "アクアホーンⅡ",
+            "アクアホーンⅢ",
+            "龍骨槍Ⅰ",
+            "龍骨槍Ⅱ",
+            "龍骨槍Ⅲ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:de3d9befd4c26998d4809aa52527018fc253c22a913ef7933b84511a6b717ce0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan005",
+      "internal_id": "bs_lan005",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "惨爪刺针1",
+          "aliases": [
+            "惨爪刺针2",
+            "激流尖刺1",
+            "激流尖刺2",
+            "激流尖刺3",
+            "凶枪亡爪",
+            "激流尖刺4",
+            "水蛇赞叹"
+          ]
+        },
+        "en": {
+          "display_name": "Garon Dhara I",
+          "aliases": [
+            "Garon Dhara II",
+            "Water Spike I",
+            "Water Spike II",
+            "Water Spike III",
+            "Death Garon Lance",
+            "Water Spike IV",
+            "Hydros Ullr"
+          ]
+        },
+        "ja": {
+          "display_name": "ガロンダーラⅠ",
+          "aliases": [
+            "ガロンダーラⅡ",
+            "ウォータースパイクⅠ",
+            "ウォータースパイクⅡ",
+            "ウォータースパイクⅢ",
+            "兇槍デスガロン",
+            "ウォータースパイクⅣ",
+            "ヒュドロスウーラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:bdeef7dd97a8a5a3b1d0653e668fc9a097b047d2c6ee176178ba96ce7168b732",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan006",
+      "internal_id": "bs_lan006",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑色刺针1",
+          "aliases": [
+            "黑色刺针2",
+            "黑色刺针3",
+            "土砂龙刺针1",
+            "土砂龙刺针2",
+            "土砂龙刺针3",
+            "深黑侵略者1",
+            "深黑侵略者2"
+          ]
+        },
+        "en": {
+          "display_name": "Dark Stinger I",
+          "aliases": [
+            "Dark Stinger II",
+            "Dark Stinger III",
+            "Barroth Stinger I",
+            "Barroth Stinger II",
+            "Barroth Stinger III",
+            "Abyss Aggressor I",
+            "Abyss Aggressor II"
+          ]
+        },
+        "ja": {
+          "display_name": "ダークスティンガーⅠ",
+          "aliases": [
+            "ダークスティンガーⅡ",
+            "ダークスティンガーⅢ",
+            "ボロススティンガーⅠ",
+            "ボロススティンガーⅡ",
+            "ボロススティンガーⅢ",
+            "ダークネスアグレッサⅠ",
+            "ダークネスアグレッサⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:0bb01d23b101f4c99592e9cf916b6824ce07715f6ea731d3672ed08f6370a92b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan007",
+      "internal_id": "bs_lan007",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的长枪·雷",
+          "aliases": [
+            "金色的长枪·水",
+            "金色的长枪·睡眠",
+            "金色的长枪·搔",
+            "金色的长枪·毒妖",
+            "金色的长枪·土砂",
+            "金色的长枪·黑甲",
+            "金色的长枪·风漂",
+            "金色的长枪·惨爪",
+            "金色的长枪·尸套",
+            "金色的长枪·王",
+            "金色的长枪·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Gold Thunder Defender",
+          "aliases": [
+            "Gold Water Defender",
+            "Gold Sleep Defender",
+            "Thief Gold Defender",
+            "Spew Gold Defender",
+            "Mud Gold Defender",
+            "Lurk Gold Defender",
+            "Stream Gold Defender",
+            "Claw Gold Defender",
+            "Decay Gold Defender",
+            "King Gold Defender",
+            "Crusher Gold Defender"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の槍・雷",
+          "aliases": [
+            "金色の槍・水",
+            "金色の槍・睡眠",
+            "金色の槍・掻",
+            "金色の槍・毒妖",
+            "金色の槍・土砂",
+            "金色の槍・黒甲",
+            "金色の槍・風漂",
+            "金色の槍・惨爪",
+            "金色の槍・屍套",
+            "金色の槍・王",
+            "金色の槍・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d9a0d7835815909f58e0196d64661200a38f87d9d2e471f87c03b31ff54ca65a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan008",
+      "internal_id": "bs_lan008",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗之尖·毒",
+          "aliases": [
+            "铠罗之尖·搔",
+            "铠罗之尖·毒妖",
+            "铠罗之尖·土砂",
+            "铠罗之尖·黑甲",
+            "铠罗之尖·风漂",
+            "铠罗之尖·惨爪",
+            "铠罗之尖·尸套",
+            "铠罗之尖·王",
+            "铠罗之尖·岩贼",
+            "铠罗之尖·水",
+            "铠罗之尖·雷",
+            "铠罗之尖·睡眠"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Crest \"Poison\"",
+          "aliases": [
+            "Taroth Crest \"Thief\"",
+            "Taroth Crest \"Spew\"",
+            "Taroth Crest \"Mud\"",
+            "Taroth Crest \"Lurk\"",
+            "Taroth Crest \"Stream\"",
+            "Taroth Crest \"Claw\"",
+            "Taroth Crest \"Decay\"",
+            "Taroth Crest \"King\"",
+            "Taroth Crest \"Crusher\"",
+            "Taroth Crest \"Water\"",
+            "Taroth Crest \"Thunder\"",
+            "Taroth Crest \"Sleep\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラクレスト・毒",
+          "aliases": [
+            "ガイラクレスト・掻",
+            "ガイラクレスト・毒妖",
+            "ガイラクレスト・土砂",
+            "ガイラクレスト・黒甲",
+            "ガイラクレスト・風漂",
+            "ガイラクレスト・惨爪",
+            "ガイラクレスト・屍套",
+            "ガイラクレスト・王",
+            "ガイラクレスト・岩賊",
+            "ガイラクレスト・水",
+            "ガイラクレスト・雷",
+            "ガイラクレスト・睡眠"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:945580a3a0a826acfffdcba28db3e8ed9fa7b9ee3668b4afde01b4d201f6d560",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan009",
+      "internal_id": "bs_lan009",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后长枪",
+          "aliases": [
+            "皇后长枪·炎妃",
+            "皇后长枪·灭尽",
+            "皇后长枪·冥灯",
+            "魂焰龙枪·炎妃",
+            "魂焰龙枪·灭尽",
+            "魂焰龙枪·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Lance",
+          "aliases": [
+            "Empress Lance \"Blaze\"",
+            "Empress Lance \"Ruin\"",
+            "Empress Lance \"Styx\"",
+            "Soulfire Spike \"Blaze\"",
+            "Soulfire Spike \"Ruin\"",
+            "Soulfire Spike \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスランス",
+          "aliases": [
+            "エンプレスランス・炎妃",
+            "エンプレスランス・滅尽",
+            "エンプレスランス・冥灯",
+            "魂焔の龍槍・炎妃",
+            "魂焔の龍槍・滅尽",
+            "魂焔の龍槍・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2c937b5cdc7ffdf3836cafeab6350e2ecf2cd57a20c092d5a3a255b919e0025b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan010",
+      "internal_id": "bs_lan010",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铬钢螺杆1",
+          "aliases": [
+            "铬钢螺杆2",
+            "铬钢螺杆3",
+            "岩贼龙螺杆1",
+            "岩贼龙螺杆2",
+            "轰雷长枪1",
+            "迅雷疾枪1",
+            "迅雷疾枪2",
+            "狱界战枪",
+            "轰雷长枪2",
+            "狱界战枪改"
+          ]
+        },
+        "en": {
+          "display_name": "Chrome Drill I",
+          "aliases": [
+            "Chrome Drill II",
+            "Chrome Drill III",
+            "Gama Drill I",
+            "Gama Drill II",
+            "Lightning Bolt I",
+            "Thunderpierce I",
+            "Thunderpierce II",
+            "Infernal Warlance",
+            "Lightning Bolt II",
+            "Infernal Warlance+"
+          ]
+        },
+        "ja": {
+          "display_name": "クロムスクリューⅠ",
+          "aliases": [
+            "クロムスクリューⅡ",
+            "クロムスクリューⅢ",
+            "ガマルスクリューⅠ",
+            "ガマルスクリューⅡ",
+            "ライトニングボルトⅠ",
+            "迅雷の疾槍Ⅰ",
+            "迅雷の疾槍Ⅱ",
+            "獄界の戦槍",
+            "ライトニングボルトⅡ",
+            "獄界の戦槍改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a9e0fe307484253efff76aaf7d5a76bca577841e8f2371b97d36712371baf23f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan011",
+      "internal_id": "bs_lan011",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "大地枪戟1",
+          "aliases": [
+            "大地枪戟2",
+            "大地枪戟3",
+            "土砂龙枪戟1",
+            "土砂龙枪戟2",
+            "碎龙枪戟1",
+            "碎龙枪戟2",
+            "惨枪惨爪龙1",
+            "惨枪惨爪龙2",
+            "封龙古枪1",
+            "封龙古枪2"
+          ]
+        },
+        "en": {
+          "display_name": "Grand Halberd I",
+          "aliases": [
+            "Grand Halberd II",
+            "Grand Halberd III",
+            "Barroth Halberd I",
+            "Barroth Halberd II",
+            "Dios Halberd I",
+            "Dios Halberd II",
+            "Odogaron's Misery I",
+            "Odogaron's Misery II",
+            "Dragonseal Aldspear I",
+            "Dragonseal Aldspear II"
+          ]
+        },
+        "ja": {
+          "display_name": "グランドハルバードⅠ",
+          "aliases": [
+            "グランドハルバードⅡ",
+            "グランドハルバードⅢ",
+            "ボロスハルバードⅠ",
+            "ボロスハルバードⅡ",
+            "ディオスハルバードⅠ",
+            "ディオスハルバードⅡ",
+            "惨槍オドガロンⅠ",
+            "惨槍オドガロンⅡ",
+            "龍封じの古槍Ⅰ",
+            "龍封じの古槍Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a132cd8e7939ccee9c7a4216d6159dc9e9a16370e561200abea781af11015cd7",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan012",
+      "internal_id": "bs_lan012",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰骑抗兵",
+          "aliases": [
+            "严冰枪骑兵"
+          ]
+        },
+        "en": {
+          "display_name": "Knightly Ectis",
+          "aliases": [
+            "Iceborer"
+          ]
+        },
+        "ja": {
+          "display_name": "氷騎エクティス",
+          "aliases": [
+            "アイスランサー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b02b937894966846f1c2c9609c63089551bf6188babcf6eb19ad5c987f1b534b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan013",
+      "internal_id": "bs_lan013",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金枪·王",
+          "aliases": [
+            "皇金枪·风漂",
+            "皇金枪·尸套",
+            "皇金枪·岩贼"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Crest \"King\"",
+          "aliases": [
+            "Kjárr Crest \"Stream\"",
+            "Kjárr Crest \"Decay\"",
+            "Kjárr Crest \"Crusher\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の槍・王",
+          "aliases": [
+            "皇金の槍・風漂",
+            "皇金の槍・屍套",
+            "皇金の槍・岩賊"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:24a051cf6d819b78d4b3389802a612d5391e14dd744ca81e5aa39d4072da1515",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/bs_lan014",
+      "internal_id": "bs_lan014",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金枪·雷",
+          "aliases": [
+            "皇金枪·麻痹",
+            "皇金枪·水"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Crest \"Thunder\"",
+          "aliases": [
+            "Kjárr Crest \"Paralysis\"",
+            "Kjárr Crest \"Water\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の槍・雷",
+          "aliases": [
+            "皇金の槍・麻痺",
+            "皇金の槍・水"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4d7fd8d16315e870312d0fa67bbf90f8eceade6e2124724b76ebbb84835d3c29",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan001",
+      "internal_id": "lan001",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤尾长枪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Red Tail",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "レッドテイル",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:557c3349d1ace0be32bf9101edaf17c8b4d1c03df754dbc9d3795d3e8e0e96e4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan002",
+      "internal_id": "lan002",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "钢冰枪",
+          "aliases": [
+            "祈愿钢龙枪",
+            "王者钢龙枪"
+          ]
+        },
+        "en": {
+          "display_name": "Icesteel Spear",
+          "aliases": [
+            "Daora's Fang",
+            "Daora's Regulus"
+          ]
+        },
+        "ja": {
+          "display_name": "鋼氷槍",
+          "aliases": [
+            "テリオス＝ダオラ",
+            "レグルス＝ダオラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b495c298d1261ff89a8d29fdbd9fbcf56c905b091b024d5d728b99050aec7ecb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan003",
+      "internal_id": "lan003",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷枪",
+          "aliases": [
+            "雷枪【霆】",
+            "雷枪【建御雷】",
+            "雷枪【鸣神】"
+          ]
+        },
+        "en": {
+          "display_name": "Thunderpike",
+          "aliases": [
+            "Thunderspear",
+            "Thunderpiercer",
+            "Naar Thunderlance"
+          ]
+        },
+        "ja": {
+          "display_name": "雷槍",
+          "aliases": [
+            "雷槍【イカズチ】",
+            "雷槍【タケミカヅチ】",
+            "雷槍【ナルカミ】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:191e6924990c05cd02d14ac57ab6031893777a1a3deed5a2ff98d74e9d60704d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan004",
+      "internal_id": "lan004",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "灭亡之腕",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Perdition's Hand",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "亡滅の腕",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:2f84e876c2f528c24f59cb763782a062e8cbe42f4a85dfdeb856be4a0c67a470",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan005",
+      "internal_id": "lan005",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "死神的哀愁",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Love's Sorrow",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ラ・モールの哀愁",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:27a9a50a88f006f5257940919dfe3bce1e25640d8d4c33566d7f84cf0b49f6f3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan006",
+      "internal_id": "lan006",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆鳞突击枪",
+          "aliases": [
+            "爆鳞枪赤红巨星"
+          ]
+        },
+        "en": {
+          "display_name": "Rookslayer Lance",
+          "aliases": [
+            "Bazel Myniad Rookslayer"
+          ]
+        },
+        "ja": {
+          "display_name": "爆鱗の突撃槍",
+          "aliases": [
+            "爆鱗槍バゼルミニアド"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6e76f84f564267aaaf46c9825e952dbaa1273c09d0592f519fbbc65155a7ae2e",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan007",
+      "internal_id": "lan007",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "巴别塔",
+          "aliases": [
+            "远古巴别塔",
+            "失落巴别塔"
+          ]
+        },
+        "en": {
+          "display_name": "Babel Spear",
+          "aliases": [
+            "Elder Babel Spear",
+            "Lost Babel"
+          ]
+        },
+        "ja": {
+          "display_name": "バベル",
+          "aliases": [
+            "エルダーバベル",
+            "ロストバベル"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:64eedf262b0205cede9d58865c0a9e201cc770eaf21c0d1beb5143244dda89d6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan008",
+      "internal_id": "lan008",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "苍色日珥",
+          "aliases": [
+            "苍尾长枪",
+            "苍色日珥·改",
+            "元神日珥"
+          ]
+        },
+        "en": {
+          "display_name": "Blue Prominence",
+          "aliases": [
+            "Blue Tail",
+            "Blue Prominence+",
+            "Soul Prominence"
+          ]
+        },
+        "ja": {
+          "display_name": "ブループロミネンス",
+          "aliases": [
+            "ブルーテイル",
+            "ブループロミネンス改",
+            "ソウルプロミネンス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:278fb7696f15fe3df464e9eb15985576cabfbb61c207d84091ba3a5a1619ff9b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan009",
+      "internal_id": "lan009",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "悲哀重枪",
+          "aliases": [
+            "亚特罗西斯塔"
+          ]
+        },
+        "en": {
+          "display_name": "Grief Lance",
+          "aliases": [
+            "Fiendish Tower"
+          ]
+        },
+        "ja": {
+          "display_name": "悲哀の重鎗",
+          "aliases": [
+            "アトロシスタワー"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d06afb3351acfb8ab7e99531f1d9a04befd817951df6977ab511b3ae6bdc8cfc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan010",
+      "internal_id": "lan010",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "凄惶死神",
+          "aliases": [
+            "死神的悲剧"
+          ]
+        },
+        "en": {
+          "display_name": "Love's End",
+          "aliases": [
+            "Love's Tragedy"
+          ]
+        },
+        "ja": {
+          "display_name": "ブレイン＝ラ・モール",
+          "aliases": [
+            "ラ・モールの悲劇"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:6f999dbb4dd03fe013ad5987f5120b9f561a71cf50bd53c96797e11bcf6af237",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan011",
+      "internal_id": "lan011",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆炎突击枪",
+          "aliases": [
+            "炸裂火箭爆炎枪"
+          ]
+        },
+        "en": {
+          "display_name": "Blasting Siegespear",
+          "aliases": [
+            "Bazel Rocket Rooksearer"
+          ]
+        },
+        "ja": {
+          "display_name": "爆炎の突撃槍",
+          "aliases": [
+            "爆炎槍バゼルロケット"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7b72db4440ffe6942e9206ac54a982c28fad87fc27ed7f990297a000f22c1583",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan012",
+      "internal_id": "lan012",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "亡灭之腕【邪】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Perdition",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "亡滅の腕【邪】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f2d89cae3444730bfb2ff6983b8c211a706b95dc61c87a24e59af0af3ea54f84",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan013",
+      "internal_id": "lan013",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "轰龙之刺",
+          "aliases": [
+            "轰龙之刺·改",
+            "轰枪【独虎】"
+          ]
+        },
+        "en": {
+          "display_name": "Tiger Stinger",
+          "aliases": [
+            "Tiger Stinger+",
+            "Tigrex Lance"
+          ]
+        },
+        "ja": {
+          "display_name": "ティガスティンガー",
+          "aliases": [
+            "ティガスティンガー改",
+            "轟槍【独虎】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3e4f40d18cbec0e53e0a4aa913b92fd9c257d2e3451792c4d14153982a0fc21d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan014",
+      "internal_id": "lan014",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "斩龙枪坚石",
+          "aliases": [
+            "灼炎之神牙",
+            "灼炎之神牙·改"
+          ]
+        },
+        "en": {
+          "display_name": "Glavenus Granat",
+          "aliases": [
+            "Svarog Blazer",
+            "Svarog Blazer+"
+          ]
+        },
+        "ja": {
+          "display_name": "斬竜槍グラナト",
+          "aliases": [
+            "灼炎のスヴァロー",
+            "灼炎のスヴァロー改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8e36cbd99bb0dd991393191f6d1700d6971873086961bc19816e048fea1d254d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan015",
+      "internal_id": "lan015",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "硫铁化合",
+          "aliases": [
+            "深洼硫斩枪"
+          ]
+        },
+        "en": {
+          "display_name": "Sulfurteinn Keton",
+          "aliases": [
+            "The Solvent Spindle"
+          ]
+        },
+        "ja": {
+          "display_name": "硫鉄のケトン",
+          "aliases": [
+            "硫斬槍ドリーネ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ce6338e717c3f05434fdc17b3f87b6588e41331401e8f1bf6c1e115f882dadaf",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan016",
+      "internal_id": "lan016",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金刚轮宝－仁王－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Unblinking Gatekeeper",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "金剛輪宝－仁王－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:8087231ad39b41f65a3534694d6c70c57e0824367c27f0954142cc686a4f9246",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan017",
+      "internal_id": "lan017",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业枪嗜欲",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Fate's Spindle",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業鎗ベルゼベリスク",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4a64b70d53c7bd0214558325a6e71e779f7a382acc47632acfa4babc9a5a1ffd",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan018",
+      "internal_id": "lan018",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "团旗长枪【流星】",
+          "aliases": [
+            "团旗长枪【指引之星】",
+            "继承团旗长枪【辉星】"
+          ]
+        },
+        "en": {
+          "display_name": "Shooting Star Lance",
+          "aliases": [
+            "Sapphire Star Lance",
+            "Shining Star Lance"
+          ]
+        },
+        "ja": {
+          "display_name": "団旗槍【流星】",
+          "aliases": [
+            "団旗槍【導きの星】",
+            "継承の団旗槍【輝星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4e7570efb5b7ab688751598d7b633150c28df519cd75ad0f99596c988a2c252a",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan019",
+      "internal_id": "lan019",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "团旗长枪【顺风】",
+          "aliases": [
+            "团旗长枪【一帆风顺】",
+            "羁绊团旗长枪【疾风】"
+          ]
+        },
+        "en": {
+          "display_name": "Fair Wind Lance",
+          "aliases": [
+            "White Wind Lance",
+            "Sweeping Gale Lance"
+          ]
+        },
+        "ja": {
+          "display_name": "団旗槍【順風】",
+          "aliases": [
+            "団旗槍【順風満帆】",
+            "絆の団旗槍【疾風】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:126ec31ccc7682b9e0a2d9e51c531cd30f19939dddee409b673cf50651995619",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan020",
+      "internal_id": "lan020",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰牙刀锋",
+          "aliases": [
+            "冰牙长枪",
+            "冰牙长枪·改"
+          ]
+        },
+        "en": {
+          "display_name": "Sabertooth",
+          "aliases": [
+            "Tusk Lance",
+            "Tusk Lance+"
+          ]
+        },
+        "ja": {
+          "display_name": "セイバートゥース",
+          "aliases": [
+            "トゥースランス",
+            "トゥースランス改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:34af9d7afa2bda5095d089c8e714645855fddaf79cf67c3d423b793d3c29ced2",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan021",
+      "internal_id": "lan021",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "方天戟【狼】",
+          "aliases": [
+            "方天戟【乌】"
+          ]
+        },
+        "en": {
+          "display_name": "Incessant Wolf",
+          "aliases": [
+            "Incessant Raven"
+          ]
+        },
+        "ja": {
+          "display_name": "ホウテンゲキ【狼】",
+          "aliases": [
+            "ホウテンゲキ【烏】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:edcab149000fb5043e633b16b6212a8082cfb1614bffb30890e890294fa6de9b",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan022",
+      "internal_id": "lan022",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "银白日珥",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Silver Prominence",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "シルバープロミネンス",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a8b6f3649c27f0f35961e9f2729b92fd2dde35d30a48742d80be6319340ba428",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan023",
+      "internal_id": "lan023",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼枪金狮子",
+          "aliases": [
+            "大鬼枪金狮子"
+          ]
+        },
+        "en": {
+          "display_name": "Demon Lance",
+          "aliases": [
+            "Great Demon Lance"
+          ]
+        },
+        "ja": {
+          "display_name": "鬼槍ラージャン",
+          "aliases": [
+            "大鬼槍ラージャン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:66ae86403028207bcc22152099fef04aa4ebe3994b4daea2e13c671230f62488",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan024",
+      "internal_id": "lan024",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神天枪金狮子",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Rajang",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神天槍ラージャン",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4696e02797736c2caceb65bcfc13ca77b3eccc3160db043bb5de20ead34135f9",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan026",
+      "internal_id": "lan026",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌黑枪致命",
+          "aliases": [
+            "煌黑之锐枪"
+          ]
+        },
+        "en": {
+          "display_name": "Alatreon Gleam",
+          "aliases": [
+            "Alatreon Lance"
+          ]
+        },
+        "ja": {
+          "display_name": "煌黒槍アルトラス",
+          "aliases": [
+            "煌黒の鋭槍"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:901ec91fde05a02c8f01c7ae0d0346e024472f48007adb95b60f4290e1af1bd8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan027",
+      "internal_id": "lan027",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "劫难之刺",
+          "aliases": [
+            "吼枪【逆咬】"
+          ]
+        },
+        "en": {
+          "display_name": "Accursed Stinger",
+          "aliases": [
+            "Backbite"
+          ]
+        },
+        "ja": {
+          "display_name": "カーサススティンガー",
+          "aliases": [
+            "吼槍【逆咬】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:e860b4a16b65a813d7c372edcdf9c0d3372feb34db1056dc97b76ee928c52305",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan028",
+      "internal_id": "lan028",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿高塔",
+          "aliases": [
+            "宫廷丽枪【贤星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Tower",
+          "aliases": [
+            "Royal Grace Pike"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスタワー",
+          "aliases": [
+            "宮廷麗槍【賢星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:83687b6f7233291a40146fca084bf0f927c85ff3bf73f5a905160e50d110813c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan029",
+      "internal_id": "lan029",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "骑兵罗德斯",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Saber Fang",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "セイバーロドス",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9a5356fad424b7e4861e7e42cae0a6cb2e7de32c67dda6ff07a9503619c9bd10",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan030",
+      "internal_id": "lan030",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙枪",
+          "aliases": [
+            "真·黑龙枪"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis Lance",
+          "aliases": [
+            "True Fatalis Lance"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍槍",
+          "aliases": [
+            "真・黒龍槍"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:84868f94c315a66bc0ca007db8f95eafc2351656ba0fdec05a25d151c68eab6d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan031",
+      "internal_id": "lan031",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙贯穿角·冰",
+          "aliases": [
+            "赤龙贯穿角·火",
+            "赤龙贯穿角·水",
+            "赤龙贯穿角·雷",
+            "赤龙贯穿角·龙",
+            "赤龙贯穿角·毒",
+            "赤龙贯穿角·麻痹",
+            "赤龙贯穿角·睡眠",
+            "赤龙贯穿角·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostsnout",
+          "aliases": [
+            "Safi's Hellsnout",
+            "Safi's Aquasnout",
+            "Safi's Boltsnout",
+            "Safi's Draksnout",
+            "Safi's Venomsnout",
+            "Safi's Bindsnout",
+            "Safi's Dreamsnout",
+            "Safi's Shattersnout"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ貫ク角・氷",
+          "aliases": [
+            "赤龍ノ貫ク角・火",
+            "赤龍ノ貫ク角・水",
+            "赤龍ノ貫ク角・雷",
+            "赤龍ノ貫ク角・龍",
+            "赤龍ノ貫ク角・毒",
+            "赤龍ノ貫ク角・麻痺",
+            "赤龍ノ貫ク角・睡眠",
+            "赤龍ノ貫ク角・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:fee90433ffe8d12c5a15b541304460952303617f9df3cc5bac22e16e91191024",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/lan/lan032",
+      "internal_id": "lan032",
+      "metadata": {
+        "family": "lan",
+        "path_family": "wp/lan"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之喷枪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Lance",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の噴槍",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

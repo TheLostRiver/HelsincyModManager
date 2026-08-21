@@ -1,0 +1,1640 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-weapon-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:weapon:2735c06f7f128a5f440c2d43c6b3546f102b81a4c3104134a6ebeae6f46f36ca",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe001",
+      "internal_id": "bs_saxe001",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "闪电斧1",
+          "aliases": [
+            "铁制试作剑斧1",
+            "铁制试作剑斧2",
+            "铁制试作剑斧3",
+            "钢铁制改良剑斧1",
+            "钢铁制改良剑斧2",
+            "钢铁制改良剑斧3",
+            "合金制完成剑斧1",
+            "合金制完成剑斧2",
+            "灭尽龙斩斧",
+            "优雅战斧1",
+            "优雅战斧2",
+            "闪电斧2",
+            "贼龙剑斧1",
+            "贼龙剑斧2",
+            "贼龙剑斧3",
+            "火龙剑斧1",
+            "火龙剑斧2",
+            "黑钢剑斧1",
+            "黑钢剑斧2",
+            "黑羽剑斧1",
+            "黑羽剑斧2",
+            "曼陀罗花园1",
+            "曼陀罗花园2",
+            "涌湍礁湖1",
+            "涌湍礁湖2"
+          ]
+        },
+        "en": {
+          "display_name": "Thunder Axe I",
+          "aliases": [
+            "Proto Iron Axe I",
+            "Proto Iron Axe II",
+            "Proto Iron Axe III",
+            "Improved Steel Axe I",
+            "Improved Steel Axe II",
+            "Improved Steel Axe III",
+            "Perfected Alloy Axe I",
+            "Perfected Alloy Axe II",
+            "Nergal Gash",
+            "Glacial Axe I",
+            "Glacial Axe II",
+            "Thunder Axe II",
+            "Jagras Axe I",
+            "Jagras Axe II",
+            "Jagras Axe III",
+            "Rathalos Axe I",
+            "Rathalos Axe II",
+            "Blacksteel Switch Axe I",
+            "Blacksteel Switch Axe II",
+            "Blackwing Switch Axe I",
+            "Blackwing Switch Axe II",
+            "Datura Garden I",
+            "Datura Garden II",
+            "Deep Lagoon I",
+            "Deep Lagoon II"
+          ]
+        },
+        "ja": {
+          "display_name": "サンダーアックスⅠ",
+          "aliases": [
+            "鉄製試作剣斧Ⅰ",
+            "鉄製試作剣斧Ⅱ",
+            "鉄製試作剣斧Ⅲ",
+            "鋼鉄製改良剣斧Ⅰ",
+            "鋼鉄製改良剣斧Ⅱ",
+            "鋼鉄製改良剣斧Ⅲ",
+            "合金製完成剣斧Ⅰ",
+            "合金製完成剣斧Ⅱ",
+            "ネルガルガッシュ",
+            "グレイスアックスⅠ",
+            "グレイスアックスⅡ",
+            "サンダーアックスⅡ",
+            "ジャグラスアックスⅠ",
+            "ジャグラスアックスⅡ",
+            "ジャグラスアックスⅢ",
+            "火竜の剣斧Ⅰ",
+            "火竜の剣斧Ⅱ",
+            "黒鋼の剣斧Ⅰ",
+            "黒鋼の剣斧Ⅱ",
+            "黒羽の剣斧Ⅰ",
+            "黒羽の剣斧Ⅱ",
+            "ダチュラガーデンⅠ",
+            "ダチュラガーデンⅡ",
+            "ルブラルラグーンⅠ",
+            "ルブラルラグーンⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:74b26bc264280391362fc8a19d681eaeb7d0db759bde86e1094d767e6955f6e8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe002",
+      "internal_id": "bs_saxe002",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆鳞龙心",
+          "aliases": [
+            "雷光迅斧1",
+            "雷光迅斧2",
+            "雷光迅斧3",
+            "动力迅斧1",
+            "动力迅斧2",
+            "贼龙掠夺者1",
+            "贼龙掠夺者2",
+            "贼龙掠夺者3",
+            "爆鳞龙剑斧1",
+            "爆鳞龙剑斧2",
+            "火龙斧飞龙牙1",
+            "火龙斧飞龙牙2",
+            "冥灯龙剑斧",
+            "防卫队变形式剑斧1",
+            "防卫队变形式剑斧2",
+            "防卫队变形式剑斧3",
+            "防卫队变形式剑斧4",
+            "防卫队变形式剑斧5",
+            "雷光迅斧4",
+            "迅雷剑斧1",
+            "迅雷剑斧2",
+            "狱界斩裂斧",
+            "重机巨动力1",
+            "重机巨动力2",
+            "轰龙掠夺者1",
+            "轰龙掠夺者2",
+            "火龙斧飞龙牙3",
+            "蓝牙苍炎斧",
+            "银牙煌龙斧",
+            "冥灯龙剑斧改",
+            "劫难掠夺者",
+            "狱界斩裂斧改"
+          ]
+        },
+        "en": {
+          "display_name": "Bazelheart",
+          "aliases": [
+            "Lightning Chopper I",
+            "Lightning Chopper II",
+            "Lightning Chopper III",
+            "Motor Chopper I",
+            "Motor Chopper II",
+            "Jagras Raider I",
+            "Jagras Raider II",
+            "Jagras Raider III",
+            "Bazel Raider I",
+            "Bazel Raider II",
+            "Rathbringer Axe I",
+            "Rathbringer Axe II",
+            "Xeno Martshu",
+            "Defender Switch Axe I",
+            "Defender Switch Axe II",
+            "Defender Switch Axe III",
+            "Defender Switch Axe IV",
+            "Defender Switch Axe V",
+            "Lightning Chopper IV",
+            "Thundercleave I",
+            "Thundercleave II",
+            "Infernal Cleave-axe",
+            "Gigan Motor I",
+            "Gigan Motor II",
+            "Rex Raider I",
+            "Rex Raider II",
+            "Rathbringer Axe III",
+            "Azure Rathbringer",
+            "Silver Rathbringer",
+            "Xeno Martshu+",
+            "Accursed Raider",
+            "Infernal Cleave-axe+"
+          ]
+        },
+        "ja": {
+          "display_name": "バゼルハート",
+          "aliases": [
+            "ライトニングアクセルⅠ",
+            "ライトニングアクセルⅡ",
+            "ライトニングアクセルⅢ",
+            "モーターアクセルⅠ",
+            "モーターアクセルⅡ",
+            "ジャグラスレイダーⅠ",
+            "ジャグラスレイダーⅡ",
+            "ジャグラスレイダーⅢ",
+            "バゼルレイダーⅠ",
+            "バゼルレイダーⅡ",
+            "火竜斧レウスギアⅠ",
+            "火竜斧レウスギアⅡ",
+            "ゼノ＝マルトーシュ",
+            "防衛隊変形式剣斧Ⅰ",
+            "防衛隊変形式剣斧Ⅱ",
+            "防衛隊変形式剣斧Ⅲ",
+            "防衛隊変形式剣斧Ⅳ",
+            "防衛隊変形式剣斧Ⅴ",
+            "ライトニングアクセルⅣ",
+            "迅雷の剣斧Ⅰ",
+            "迅雷の剣斧Ⅱ",
+            "獄界の斬裂斧",
+            "重機ギガントモーターⅠ",
+            "重機ギガントモーターⅡ",
+            "レックスレイダーⅠ",
+            "レックスレイダーⅡ",
+            "火竜斧レウスギアⅢ",
+            "蒼炎斧ブルーギア",
+            "煌竜斧シルバーギア",
+            "ゼノ＝マルトーシュ改",
+            "カーサスレイダー",
+            "獄界の斬裂斧改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:08d21ff5f6c32bbfddf7dece23b05a960713e46d216fc9e8fefc0a3dfcd61609",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe003",
+      "internal_id": "bs_saxe003",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爆锤斧1",
+          "aliases": [
+            "骨制剑斧1",
+            "骨制剑斧2",
+            "骨制剑斧3",
+            "骨制斩斧1",
+            "骨制斩斧2",
+            "骨制斩斧3",
+            "重击斩斧1",
+            "重击斩斧2",
+            "尸套龙剑斧1",
+            "尸套龙剑斧2",
+            "泥岩斧1",
+            "泥岩斧2",
+            "泥岩斧3",
+            "浮空龙大斧1",
+            "浮空龙大斧2",
+            "浮空龙斩斧1",
+            "浮空龙斩斧2",
+            "浮空龙斩斧3",
+            "土砂龙斧1",
+            "土砂龙斧2",
+            "土砂龙斧3",
+            "爆锤斧2",
+            "龙骨剑斧1",
+            "龙骨剑斧2",
+            "龙骨剑斧3",
+            "罪罚斩斧1",
+            "罪罚斩斧2",
+            "斩龙斩斧1",
+            "斩龙斩斧2",
+            "夜神斩斧1",
+            "夜神斩斧2",
+            "骨制剑斧"
+          ]
+        },
+        "en": {
+          "display_name": "Diablos Axe I",
+          "aliases": [
+            "Bone Axe I",
+            "Bone Axe II",
+            "Bone Axe III",
+            "Bone Smasher I",
+            "Bone Smasher II",
+            "Bone Smasher III",
+            "Power Smasher I",
+            "Power Smasher II",
+            "Hazak Demios I",
+            "Hazak Demios II",
+            "Madness Axe I",
+            "Madness Axe II",
+            "Madness Axe III",
+            "Lumu Axe I",
+            "Lumu Axe II",
+            "Lumu Smasher I",
+            "Lumu Smasher II",
+            "Lumu Smasher III",
+            "Carapace Axe I",
+            "Carapace Axe II",
+            "Carapace Axe III",
+            "Diablos Axe II",
+            "Dragonbone Slicer I",
+            "Dragonbone Slicer II",
+            "Dragonbone Slicer III",
+            "Acid Smasher I",
+            "Acid Smasher II",
+            "Glavenus Smasher I",
+            "Glavenus Smasher II",
+            "Nyx Smasher I",
+            "Nyx Smasher II",
+            "Bone Axe"
+          ]
+        },
+        "ja": {
+          "display_name": "ブロスアックスⅠ",
+          "aliases": [
+            "ボーンアックスⅠ",
+            "ボーンアックスⅡ",
+            "ボーンアックスⅢ",
+            "ボーンスマッシャーⅠ",
+            "ボーンスマッシャーⅡ",
+            "ボーンスマッシャーⅢ",
+            "パワースマッシャーⅠ",
+            "パワースマッシャーⅡ",
+            "ハザクデミオスⅠ",
+            "ハザクデミオスⅡ",
+            "マッドアックスⅠ",
+            "マッドアックスⅡ",
+            "マッドアックスⅢ",
+            "ウルムーアックスⅠ",
+            "ウルムーアックスⅡ",
+            "ウルムースマッシャーⅠ",
+            "ウルムースマッシャーⅡ",
+            "ウルムースマッシャーⅢ",
+            "ドラグロアックスⅠ",
+            "ドラグロアックスⅡ",
+            "ドラグロアックスⅢ",
+            "ブロスアックスⅡ",
+            "龍骨剣斧Ⅰ",
+            "龍骨剣斧Ⅱ",
+            "龍骨剣斧Ⅲ",
+            "ザルファスマッシャーⅠ",
+            "ザルファスマッシャーⅡ",
+            "ディノスマッシャーⅠ",
+            "ディノスマッシャーⅡ",
+            "ニュクススマッシャーⅠ",
+            "ニュクススマッシャーⅡ",
+            "ボーンアックス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7f64eada6e8191f9e9e8ae3f7c615c99ce7a7a37e9a610adb8e86fb2c5bb9c25",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe004",
+      "internal_id": "bs_saxe004",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎龙斩斧1",
+          "aliases": [
+            "泥鱼龙剑斧1",
+            "泥鱼龙剑斧2",
+            "泥鱼龙剑斧3",
+            "土砂龙剑斧1",
+            "土砂龙剑斧2",
+            "土砂龙剑斧3",
+            "狞悍浮空龙1",
+            "狞悍浮空龙2",
+            "碎龙斩斧2"
+          ]
+        },
+        "en": {
+          "display_name": "Dios Smasher I",
+          "aliases": [
+            "Jyura Drought I",
+            "Jyura Drought II",
+            "Jyura Drought III",
+            "Barroth Grinder I",
+            "Barroth Grinder II",
+            "Barroth Grinder III",
+            "Mechanical Lumu I",
+            "Mechanical Lumu II",
+            "Dios Smasher II"
+          ]
+        },
+        "ja": {
+          "display_name": "ディオススマッシャーⅠ",
+          "aliases": [
+            "シュラムドラウトⅠ",
+            "シュラムドラウトⅡ",
+            "シュラムドラウトⅢ",
+            "ボルボグランダーⅠ",
+            "ボルボグランダーⅡ",
+            "ボルボグランダーⅢ",
+            "カラクルウルムーⅠ",
+            "カラクルウルムーⅡ",
+            "ディオススマッシャーⅡ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:20c1cf37aaa91f5612641a16c36b1de4c60d23531046f570656fd2929ad59c12",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe005",
+      "internal_id": "bs_saxe005",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金色的剑斧·角",
+          "aliases": [
+            "金色的剑斧·雷",
+            "金色的剑斧·麻痹",
+            "金色的剑斧·睡眠",
+            "金色的剑斧·贼",
+            "金色的剑斧·泥鱼",
+            "金色的剑斧·土砂",
+            "金色的剑斧·浮空",
+            "金色的剑斧·风漂",
+            "金色的剑斧·尸套",
+            "金色的剑斧·王",
+            "金色的剑斧·爆锤",
+            "金色的剑斧·爆鳞"
+          ]
+        },
+        "en": {
+          "display_name": "Horn Gold Chopper",
+          "aliases": [
+            "Gold Thunder Chopper",
+            "Gold Paralysis Chopper",
+            "Gold Sleep Chopper",
+            "Glutton Gold Chopper",
+            "Mire Gold Chopper",
+            "Mud Gold Chopper",
+            "Drifter Gold Chopper",
+            "Stream Gold Chopper",
+            "Decay Gold Chopper",
+            "King Gold Chopper",
+            "Gyre Gold Chopper",
+            "Bomber Gold Chopper"
+          ]
+        },
+        "ja": {
+          "display_name": "金色の剣斧・角",
+          "aliases": [
+            "金色の剣斧・雷",
+            "金色の剣斧・麻痺",
+            "金色の剣斧・睡眠",
+            "金色の剣斧・賊",
+            "金色の剣斧・泥魚",
+            "金色の剣斧・土砂",
+            "金色の剣斧・浮空",
+            "金色の剣斧・風漂",
+            "金色の剣斧・屍套",
+            "金色の剣斧・王",
+            "金色の剣斧・爆鎚",
+            "金色の剣斧・爆鱗"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:94b27c55fb043bebb41cab62702ca3c6ef77bd82e95312382034aaa6cff23bdb",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe006",
+      "internal_id": "bs_saxe006",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铠罗剑斧·角",
+          "aliases": [
+            "铠罗剑斧·贼",
+            "铠罗剑斧·泥鱼",
+            "铠罗剑斧·土砂",
+            "铠罗剑斧·浮空",
+            "铠罗剑斧·风漂",
+            "铠罗剑斧·尸套",
+            "铠罗剑斧·王",
+            "铠罗剑斧·爆锤",
+            "铠罗剑斧·爆鳞",
+            "铠罗剑斧·雷",
+            "铠罗剑斧·麻痹",
+            "铠罗剑斧·睡眠",
+            "铠罗剑斧·水"
+          ]
+        },
+        "en": {
+          "display_name": "Taroth Axe \"Horn\"",
+          "aliases": [
+            "Taroth Axe \"Glutton\"",
+            "Taroth Axe \"Mire\"",
+            "Taroth Axe \"Mud\"",
+            "Taroth Axe \"Drifter\"",
+            "Taroth Axe \"Stream\"",
+            "Taroth Axe \"Decay\"",
+            "Taroth Axe \"King\"",
+            "Taroth Axe \"Gyre\"",
+            "Taroth Axe \"Bomber\"",
+            "Taroth Axe \"Thunder\"",
+            "Taroth Axe \"Paralysis\"",
+            "Taroth Axe \"Sleep\"",
+            "Taroth Axe \"Water\""
+          ]
+        },
+        "ja": {
+          "display_name": "ガイラアックス・角",
+          "aliases": [
+            "ガイラアックス・賊",
+            "ガイラアックス・泥魚",
+            "ガイラアックス・土砂",
+            "ガイラアックス・浮空",
+            "ガイラアックス・風漂",
+            "ガイラアックス・屍套",
+            "ガイラアックス・王",
+            "ガイラアックス・爆鎚",
+            "ガイラアックス・爆鱗",
+            "ガイラアックス・雷",
+            "ガイラアックス・麻痺",
+            "ガイラアックス・睡眠",
+            "ガイラアックス・水"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:aff87e43c780092d16c0e1e5c15092a2b652081c0da4edd456ad0d8a1a2c0352",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe007",
+      "internal_id": "bs_saxe007",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇后斧",
+          "aliases": [
+            "皇后斧·炎妃",
+            "皇后斧·灭尽",
+            "皇后斧·冥灯",
+            "魂焰剑斧·炎妃",
+            "魂焰剑斧·灭尽",
+            "魂焰剑斧·冥灯"
+          ]
+        },
+        "en": {
+          "display_name": "Empress Axe",
+          "aliases": [
+            "Empress Axe \"Blaze\"",
+            "Empress Axe \"Ruin\"",
+            "Empress Axe \"Styx\"",
+            "Soulfire Scourge \"Blaze\"",
+            "Soulfire Scourge \"Ruin\"",
+            "Soulfire Scourge \"Styx\""
+          ]
+        },
+        "ja": {
+          "display_name": "エンプレスアクス",
+          "aliases": [
+            "エンプレスアクス・炎妃",
+            "エンプレスアクス・滅尽",
+            "エンプレスアクス・冥灯",
+            "魂焔の剣斧・炎妃",
+            "魂焔の剣斧・滅尽",
+            "魂焔の剣斧・冥灯"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:47d64578c4a703b76381e7d76eb8cc8eae0e64d81128fc840a8891c0f32166a1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe008",
+      "internal_id": "bs_saxe008",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "铬钢救星1",
+          "aliases": [
+            "铬钢救星2",
+            "铬钢救星3",
+            "牙龙剑斧【噬裂】1",
+            "牙龙剑斧【噬裂】2"
+          ]
+        },
+        "en": {
+          "display_name": "Chrome Machina I",
+          "aliases": [
+            "Chrome Machina II",
+            "Chrome Machina III",
+            "Saber's Bite I",
+            "Saber's Bite II"
+          ]
+        },
+        "ja": {
+          "display_name": "クロムデスマキナⅠ",
+          "aliases": [
+            "クロムデスマキナⅡ",
+            "クロムデスマキナⅢ",
+            "牙竜剣斧【喰裂】Ⅰ",
+            "牙竜剣斧【喰裂】Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:1be46951263e7b00fb68b898025016d35bd4f7bfc913be6536b0d74a229d5daf",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe009",
+      "internal_id": "bs_saxe009",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "封龙剑斧1",
+          "aliases": [
+            "威武獠牙1",
+            "威武獠牙2",
+            "威武獠牙3",
+            "死灭处刑者尸剑斧",
+            "泥岩龙腐海1",
+            "泥岩龙腐海2",
+            "巨牛大剑斧1",
+            "巨牛大剑斧2",
+            "土砂龙掘削1",
+            "土砂龙掘削2",
+            "封龙剑斧2"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonseal Axe I",
+          "aliases": [
+            "Mighty Gear I",
+            "Mighty Gear II",
+            "Mighty Gear III",
+            "Deathedge Vaal Demios",
+            "Jyura Cataclysm I",
+            "Jyura Cataclysm II",
+            "Mammoth Halberd I",
+            "Mammoth Halberd II",
+            "Barroth Dozer I",
+            "Barroth Dozer II",
+            "Dragonseal Axe II"
+          ]
+        },
+        "ja": {
+          "display_name": "龍封じの剣斧Ⅰ",
+          "aliases": [
+            "マイティ＝ギアⅠ",
+            "マイティ＝ギアⅡ",
+            "マイティ＝ギアⅢ",
+            "屍剣斧ヴァルデミオス",
+            "シュラムスヴァーシュⅠ",
+            "シュラムスヴァーシュⅡ",
+            "巨牛の大剣斧Ⅰ",
+            "巨牛の大剣斧Ⅱ",
+            "ボルボドーザーⅠ",
+            "ボルボドーザーⅡ",
+            "龍封じの剣斧Ⅱ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7fb500ddd5c8ea500845e0bdb1d2aab73621e86e51312f265598e778a81fcb41",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe010",
+      "internal_id": "bs_saxe010",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰魔扬军",
+          "aliases": [
+            "严冰犷野"
+          ]
+        },
+        "en": {
+          "display_name": "Wicked Niddoq",
+          "aliases": [
+            "Icerood"
+          ]
+        },
+        "ja": {
+          "display_name": "氷魔ニーズウォック",
+          "aliases": [
+            "アイスルード"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:760c90f85efb1dab6897216488b25f7e972f28a81f2b0f04bdbacc5c23210e10",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe011",
+      "internal_id": "bs_saxe011",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金剑斧·王",
+          "aliases": [
+            "皇金剑斧·风漂",
+            "皇金剑斧·尸套",
+            "皇金剑斧·爆鳞"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Axe \"King\"",
+          "aliases": [
+            "Kjárr Axe \"Stream\"",
+            "Kjárr Axe \"Decay\"",
+            "Kjárr Axe \"Bomber\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の剣斧・王",
+          "aliases": [
+            "皇金の剣斧・風漂",
+            "皇金の剣斧・屍套",
+            "皇金の剣斧・爆鱗"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:b7854ff1ce5bbdf7a57a22ae49c7aed009986e85549a0592844efb4d28a466fc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/bs_saxe012",
+      "internal_id": "bs_saxe012",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "皇金剑斧·雷",
+          "aliases": [
+            "皇金剑斧·水",
+            "皇金剑斧·麻痹"
+          ]
+        },
+        "en": {
+          "display_name": "Kjárr Axe \"Thunder\"",
+          "aliases": [
+            "Kjárr Axe \"Water\"",
+            "Kjárr Axe \"Paralysis\""
+          ]
+        },
+        "ja": {
+          "display_name": "皇金の剣斧・雷",
+          "aliases": [
+            "皇金の剣斧・水",
+            "皇金の剣斧・麻痺"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:72dba2dfc86925842ee41d725e404eb4c50d0988194dd391b57aa05b9a9c178f",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe001",
+      "internal_id": "saxe001",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "炎王城塞",
+          "aliases": [
+            "炎王剑斧",
+            "炎王朱炎宝座"
+          ]
+        },
+        "en": {
+          "display_name": "Teostra's Castle",
+          "aliases": [
+            "Teostra's Arx",
+            "Teostra's Hellebarde"
+          ]
+        },
+        "ja": {
+          "display_name": "テオ＝キャッスル",
+          "aliases": [
+            "テオ＝アルクス",
+            "テスカ・デル・バルテ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9302d712d5c5f10a4b088cdc9fe7d4e3a2d4c014433b0f9f24530bbcf56e0d0c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe002",
+      "internal_id": "saxe002",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "雷斧",
+          "aliases": [
+            "雷斧改",
+            "断雷斧麒麟",
+            "雷公宝斧【麒麟】"
+          ]
+        },
+        "en": {
+          "display_name": "Peal",
+          "aliases": [
+            "Peal+",
+            "Kirin Thunderpeal",
+            "Archbeast Kirin"
+          ]
+        },
+        "ja": {
+          "display_name": "雷斧",
+          "aliases": [
+            "雷斧改",
+            "断雷斧キリン",
+            "雷公宝斧キリン"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:c3dd04ddbf199fccbd16fd4c82115f88ba2eef25f914f89394b89f688515e7d4",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe003",
+      "internal_id": "saxe003",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君斧",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Axe Semper Tyrannis",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "タイラントアックス",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:74a7ef71fe53d8141cc11b782ebdb89719e9537d874dadb4c7cfd467c5e8e1cc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe004",
+      "internal_id": "saxe004",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "断灭的一闪",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Dying Light",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "断滅の一閃",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:369ea4b4f16079f1fca01926b92f51d3a52313672400d7fad559d518017036e1",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe005",
+      "internal_id": "saxe005",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "蛮颚剑斧",
+          "aliases": [
+            "蛮颚龙斩斧",
+            "蛮颚龙斩斧改",
+            "蛮颚剑斧·改",
+            "破军蛮炎剑斧"
+          ]
+        },
+        "en": {
+          "display_name": "Gnashing Flammenbeil",
+          "aliases": [
+            "Flammenbeil",
+            "Flammenbeil+",
+            "Gnashing Flammenbeil+",
+            "Lohenbeil"
+          ]
+        },
+        "ja": {
+          "display_name": "蛮顎剣斧フラムシスカ",
+          "aliases": [
+            "フラムエルシスカ",
+            "フラムエルシスカ改",
+            "蛮顎剣斧フラムシスカ改",
+            "蛮炎剣斧ロギンシスカ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:7ffa52fc78ef3e6b1b71d134af48db8e87cc1240515e33fc83d72bff2bfd52e8",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe006",
+      "internal_id": "saxe006",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "亡灵之柱",
+          "aliases": [
+            "凶灵之柱",
+            "冰凌亡灵·改"
+          ]
+        },
+        "en": {
+          "display_name": "Frostreaver",
+          "aliases": [
+            "Legia Frostreaver",
+            "Legia Frostreaver+"
+          ]
+        },
+        "ja": {
+          "display_name": "ホロウコラム",
+          "aliases": [
+            "レイ＝ホロウコラム",
+            "レイ＝ホロウコラム改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:04e1f9117047a22694f182168d6490ce9f4955765d444af0f4aeb42ded3b73a0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe007",
+      "internal_id": "saxe007",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "恶灵",
+          "aliases": [
+            "塔纳托斯剑斧",
+            "恶灵·改",
+            "冥王"
+          ]
+        },
+        "en": {
+          "display_name": "Axe of Demons",
+          "aliases": [
+            "Axe of Thanatos",
+            "Axe of Demons+",
+            "Axe of Hades"
+          ]
+        },
+        "ja": {
+          "display_name": "デモン",
+          "aliases": [
+            "タナトスアックス",
+            "デモン改",
+            "ハデス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5ffe5f4b61c8a1e1b59fe5e25f2d75795c46b566985cf884b90eed8591928e55",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe008",
+      "internal_id": "saxe008",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君",
+          "aliases": [
+            "恐怖暴君"
+          ]
+        },
+        "en": {
+          "display_name": "Tyrannos",
+          "aliases": [
+            "Terror Tyrannos"
+          ]
+        },
+        "ja": {
+          "display_name": "テュランノス",
+          "aliases": [
+            "テラーテュランノス"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:f45d8b0a42880e465183d5fd792eeee6546eac5a7f13625eeb863e56be5ba083",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe009",
+      "internal_id": "saxe009",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "破军雷颚剑斧",
+          "aliases": [
+            "破军雷颚剑斧·改",
+            "破军蛮雷剑斧"
+          ]
+        },
+        "en": {
+          "display_name": "Donnerbeil",
+          "aliases": [
+            "Donnerbeil+",
+            "Fulguration's Bite"
+          ]
+        },
+        "ja": {
+          "display_name": "雷顎剣斧ドネルシスカ",
+          "aliases": [
+            "雷顎剣斧ドネルシスカ改",
+            "蛮雷剣斧カーリシスカ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:d0113110f53eeb33dfc098745a40df20e7880a4edb077e388482e206d040671d",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe010",
+      "internal_id": "saxe010",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "霜漂亡灵",
+          "aliases": [
+            "勇士冰川"
+          ]
+        },
+        "en": {
+          "display_name": "Hoarcry Frostreaver",
+          "aliases": [
+            "Hector Glacia"
+          ]
+        },
+        "ja": {
+          "display_name": "ブリーナ＝ホロウコラム",
+          "aliases": [
+            "ヘクター＝グレイシア"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3a67ecabb2751579139ed886ab969b7eec84ba8bc1ad5b8f1802f2057f2843a6",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe011",
+      "internal_id": "saxe011",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "断灭的一闪【破】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Ruinous Light",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "断滅の一閃【破】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:155de8d8d578409382a7e674579adc698e1934b9fcc83ddf2618c5119b3e2658",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe012",
+      "internal_id": "saxe012",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰霜琥珀",
+          "aliases": [
+            "琥珀碎断",
+            "琥珀碎断·改"
+          ]
+        },
+        "en": {
+          "display_name": "Amber Hoarfrost",
+          "aliases": [
+            "Amber Slash",
+            "Amber Slash+"
+          ]
+        },
+        "ja": {
+          "display_name": "ゴアフロストアンバー",
+          "aliases": [
+            "アンバースラッシュ",
+            "アンバースラッシュ改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:82ea28bde886128e18c411401110de7a03bfd9425f95dd074e4454856060324c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe013",
+      "internal_id": "saxe013",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "隐密战斧",
+          "aliases": [
+            "隐密战斧·改",
+            "暗夜斩击斧【弦月】"
+          ]
+        },
+        "en": {
+          "display_name": "Hidden Axe",
+          "aliases": [
+            "Hidden Axe+",
+            "Night's Crescent"
+          ]
+        },
+        "ja": {
+          "display_name": "ヒドゥンアックス",
+          "aliases": [
+            "ヒドゥンアックス改",
+            "闇夜剣斧【弦月】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:520e21b64ecf80ad3d76cc2ba5f06f9f0244bed0ba411af349667305129dab10",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe014",
+      "internal_id": "saxe014",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "暴君·横裂",
+          "aliases": [
+            "水螅·横裂"
+          ]
+        },
+        "en": {
+          "display_name": "Black Strobila",
+          "aliases": [
+            "Hydra Strobila"
+          ]
+        },
+        "ja": {
+          "display_name": "ネロ・ストロビラ",
+          "aliases": [
+            "ヒドラ・ストロビラ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:49dd9c8a9f56882e05c3864277f8d85a2598a9afc6268a7a57417aa097e9d65c",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe015",
+      "internal_id": "saxe015",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "诸行无常－灯笼－",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Evanescent Glow",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "諸行無常－灯籠－",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9759a426e9a191d2dc4165adba4c18e042600ac1f78c29f242dc181d4d0928bc",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe016",
+      "internal_id": "saxe016",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "业斧暴食强欲",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Saligia Vileaxe",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "業斧グラバリタ",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:9687c0f471b27d24f5f3d8800efa208acacfaf62f1501e638fc854efc705c967",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe017",
+      "internal_id": "saxe017",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "龙姬的剑斧",
+          "aliases": [
+            "龙姬的剑斧·改"
+          ]
+        },
+        "en": {
+          "display_name": "Dragonmaiden Axe",
+          "aliases": [
+            "Dragonmaiden Axe+"
+          ]
+        },
+        "ja": {
+          "display_name": "竜姫の剣斧",
+          "aliases": [
+            "竜姫の剣斧改"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:61505f885153c72bfce72d63efc5ac0ad0b1a428d29339107448485e5e29bb18",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe018",
+      "internal_id": "saxe018",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "煌战之金剑斧",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Golden Crescent",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "煌戦の金剣斧",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:a36e991175ae67c2cd5f6ca51cf3ab967f827acb9a90086c93c2b0b5d6b5e5b3",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe019",
+      "internal_id": "saxe019",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金刚角斧",
+          "aliases": [
+            "金刚角斧雷鸣"
+          ]
+        },
+        "en": {
+          "display_name": "Undying Axe",
+          "aliases": [
+            "Undying Light"
+          ]
+        },
+        "ja": {
+          "display_name": "金剛角斧",
+          "aliases": [
+            "金剛角斧カンナリ"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:be6ef4ecbdab3201001e460e8a60031d526c3683f0106316da06c7dee12ac417",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe020",
+      "internal_id": "saxe020",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "鬼神角斧【雷火丰】",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Demonlord Edge",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "鬼神角斧【雷火豊】",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:ac79caf741d6783d078ad8ad4e8a9943193d0b5c7df2136a199ba2ca289fd4ac",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe022",
+      "internal_id": "saxe022",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑之剑斧",
+          "aliases": [
+            "漆黑收获"
+          ]
+        },
+        "en": {
+          "display_name": "Dark Switch Axe",
+          "aliases": [
+            "Black Harvest"
+          ]
+        },
+        "ja": {
+          "display_name": "黒の剣斧",
+          "aliases": [
+            "ブラックハーベスト"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:4ec1de512c8764243bc6e43f0530159c915643299239a2819d8e79d5309f5bde",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe023",
+      "internal_id": "saxe023",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "公会宫殿剑斧",
+          "aliases": [
+            "宫廷卫剑斧【巨星】"
+          ]
+        },
+        "en": {
+          "display_name": "Guild Palace Cleaver",
+          "aliases": [
+            "Royal Titan Axe"
+          ]
+        },
+        "ja": {
+          "display_name": "ギルドパレスクライヴ",
+          "aliases": [
+            "宮廷衛剣斧【巨星】"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:3d1fc280cfd30cd94ccd96f6280db199c63df894d0b8812179ba91f214234fbd",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe024",
+      "internal_id": "saxe024",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "冰霜奥拉烈",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Moonstone Hoarfrost",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "ゴアフロストオラリア",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:874fa7a9253b0585611ae0b666fd1b5f3a2ac7f2e73f8a12651253f63a544c73",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe025",
+      "internal_id": "saxe025",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "黑龙剑斧",
+          "aliases": [
+            "真·黑龙剑斧"
+          ]
+        },
+        "en": {
+          "display_name": "Fatalis End",
+          "aliases": [
+            "True Fatalis End"
+          ]
+        },
+        "ja": {
+          "display_name": "黒龍剣斧",
+          "aliases": [
+            "真・黒龍剣斧"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:5b4694eb3a0627b99604b3742175ebd339938600b166d9ebdb6e4c8a970ee241",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe026",
+      "internal_id": "saxe026",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "赤龙讨伐剑斧·冰",
+          "aliases": [
+            "赤龙讨伐剑斧·火",
+            "赤龙讨伐剑斧·水",
+            "赤龙讨伐剑斧·雷",
+            "赤龙讨伐剑斧·龙",
+            "赤龙讨伐剑斧·毒",
+            "赤龙讨伐剑斧·麻痹",
+            "赤龙讨伐剑斧·睡眠",
+            "赤龙讨伐剑斧·爆破"
+          ]
+        },
+        "en": {
+          "display_name": "Safi's Frostaxe",
+          "aliases": [
+            "Safi's Hellaxe",
+            "Safi's Aquaaxe",
+            "Safi's Boltaxe",
+            "Safi's Drakaxe",
+            "Safi's Venomaxe",
+            "Safi's Bindaxe",
+            "Safi's Dreamaxe",
+            "Safi's Shatteraxe"
+          ]
+        },
+        "ja": {
+          "display_name": "赤龍ノ討ツ剣斧・氷",
+          "aliases": [
+            "赤龍ノ討ツ剣斧・火",
+            "赤龍ノ討ツ剣斧・水",
+            "赤龍ノ討ツ剣斧・雷",
+            "赤龍ノ討ツ剣斧・龍",
+            "赤龍ノ討ツ剣斧・毒",
+            "赤龍ノ討ツ剣斧・麻痺",
+            "赤龍ノ討ツ剣斧・睡眠",
+            "赤龍ノ討ツ剣斧・爆破"
+          ]
+        }
+      },
+      "legacy_ids": []
+    },
+    {
+      "stable_id": "mhw:weapon:220a00596a70de5e57c62100d7bb74e34617c2f54462aa09ebb770f32aec63c0",
+      "target_type": "weapon",
+      "resource_path": "nativePC/wp/saxe/saxe027",
+      "internal_id": "saxe027",
+      "metadata": {
+        "family": "saxe",
+        "path_family": "wp/saxe"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "碎光之剑斧",
+          "aliases": []
+        },
+        "en": {
+          "display_name": "Lightbreak Axe",
+          "aliases": []
+        },
+        "ja": {
+          "display_name": "砕光の剣斧",
+          "aliases": []
+        }
+      },
+      "legacy_ids": []
+    }
+  ]
+}

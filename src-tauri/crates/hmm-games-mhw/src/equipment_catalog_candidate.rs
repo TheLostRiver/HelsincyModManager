@@ -131,6 +131,8 @@ struct CandidateLicense {
     spdx_expression: Option<String>,
     evidence_url: Option<String>,
     attribution: Option<String>,
+    rights_holder: Option<String>,
+    usage: Option<CandidateLicenseUsage>,
     reviewed_by: Option<String>,
     reviewed_at: Option<String>,
 }
@@ -141,6 +143,19 @@ enum CandidateLicenseStatus {
     Unknown,
     Restricted,
     Redistributable,
+    /// 第三方游戏术语（装备/武器名）。权利归游戏发行方，本项目不主张任何权利，
+    /// 仅作为绑定在 retarget catalog 上的功能性标识指称使用。
+    ///
+    /// 这类来源拿不到 SPDX 或授权 evidence URL——不存在这样的授权页，
+    /// 强行要求只会逼人填假值。因此改为要求把权利人、署名与审核人如实写清，
+    /// 政策依据见 docs/EQUIPMENT_CATALOG_GOVERNANCE.md。
+    GameTerminology,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum CandidateLicenseUsage {
+    Nominative,
 }
 
 #[derive(Debug, Deserialize)]
@@ -313,6 +328,39 @@ fn validate_candidate_catalog(catalog: CandidateCatalog) -> EquipmentCandidateVa
                     push_issue(
                         &mut issues,
                         "incomplete_redistributable_license",
+                        format!("{scope}.license"),
+                    );
+                }
+            }
+            CandidateLicenseStatus::GameTerminology => {
+                // 不要求 SPDX 与 evidence_url：游戏术语没有这样的授权页，
+                // 要求它们只会得到伪造的字段。改为强制说清权利归属与审核人，
+                // 让"这批名字属于谁、谁批准的、什么时候"始终可追溯。
+                let complete = source
+                    .license
+                    .rights_holder
+                    .as_deref()
+                    .is_some_and(is_non_blank)
+                    && source.license.usage == Some(CandidateLicenseUsage::Nominative)
+                    && source
+                        .license
+                        .attribution
+                        .as_deref()
+                        .is_some_and(is_non_blank)
+                    && source
+                        .license
+                        .reviewed_by
+                        .as_deref()
+                        .is_some_and(is_non_blank)
+                    && source
+                        .license
+                        .reviewed_at
+                        .as_deref()
+                        .is_some_and(is_calendar_date_shape);
+                if !complete {
+                    push_issue(
+                        &mut issues,
+                        "incomplete_game_terminology_license",
                         format!("{scope}.license"),
                     );
                 }
