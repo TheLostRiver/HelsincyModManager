@@ -68,6 +68,30 @@ fn detect_registered_processes(
 
 #[cfg(target_os = "windows")]
 fn query_process_running(image_name: &str) -> GameRunningStatus {
+    query_process_running_with_retries(image_name, query_tasklist_once)
+}
+
+/// tasklist spawn 在高并发/杀毒扫描负载下可能瞬态失败。直接把瞬态失败
+/// 报成 `Unknown` 会让安装闸门在真实可判定的时刻误拒，因此做有界重试；
+/// 只有连续 `TASKLIST_QUERY_ATTEMPTS` 次都失败才落到 `Unknown`。
+#[cfg(any(target_os = "windows", test))]
+const TASKLIST_QUERY_ATTEMPTS: usize = 3;
+
+#[cfg(any(target_os = "windows", test))]
+fn query_process_running_with_retries<F>(image_name: &str, query_once: F) -> GameRunningStatus
+where
+    F: Fn(&str) -> Option<GameRunningStatus>,
+{
+    for _ in 0..TASKLIST_QUERY_ATTEMPTS {
+        if let Some(status) = query_once(image_name) {
+            return status;
+        }
+    }
+    GameRunningStatus::Unknown
+}
+
+#[cfg(target_os = "windows")]
+fn query_tasklist_once(image_name: &str) -> Option<GameRunningStatus> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
@@ -85,9 +109,9 @@ fn query_process_running(image_name: &str) -> GameRunningStatus {
     match output {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            tasklist_output_contains_image(&stdout, image_name)
+            Some(tasklist_output_contains_image(&stdout, image_name))
         }
-        _ => GameRunningStatus::Unknown,
+        _ => None,
     }
 }
 
@@ -209,6 +233,52 @@ mod tests {
             detector.game_running_status(&GameId::mhw()),
             GameRunningStatus::Unknown
         );
+    }
+
+    #[test]
+    fn transient_tasklist_failure_is_retried_before_reporting_unknown() {
+        let attempts = std::cell::Cell::new(0u32);
+        let flaky_once = |_: &str| {
+            attempts.set(attempts.get() + 1);
+            if attempts.get() == 1 {
+                None
+            } else {
+                Some(GameRunningStatus::NotRunning)
+            }
+        };
+        assert_eq!(
+            query_process_running_with_retries("MonsterHunterWorld.exe", flaky_once),
+            GameRunningStatus::NotRunning
+        );
+        assert_eq!(attempts.get(), 2);
+    }
+
+    #[test]
+    fn persistent_tasklist_failure_still_reports_unknown() {
+        let attempts = std::cell::Cell::new(0u32);
+        let always_failing = |_: &str| {
+            attempts.set(attempts.get() + 1);
+            None
+        };
+        assert_eq!(
+            query_process_running_with_retries("MonsterHunterWorld.exe", always_failing),
+            GameRunningStatus::Unknown
+        );
+        assert_eq!(attempts.get(), TASKLIST_QUERY_ATTEMPTS as u32);
+    }
+
+    #[test]
+    fn running_status_is_returned_immediately_without_retry() {
+        let attempts = std::cell::Cell::new(0u32);
+        let running_once = |_: &str| {
+            attempts.set(attempts.get() + 1);
+            Some(GameRunningStatus::Running)
+        };
+        assert_eq!(
+            query_process_running_with_retries("MonsterHunterWorld.exe", running_once),
+            GameRunningStatus::Running
+        );
+        assert_eq!(attempts.get(), 1);
     }
 
     #[test]
