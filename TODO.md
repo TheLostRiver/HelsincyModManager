@@ -2,10 +2,11 @@
 
 创建时间：2026-06-27
 基于 HEAD：`09ceef6` (`hy/post-gate-logical-commits`)
-最近同步：2026-08-16，T13 Slice A-D 与 WR-04 已完成；Gate C、Gate D 均为 `certified`；LOG-01
-Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完成；SAVE-02 安装态后台保护验收已
-`certified`；SAVE-03 installer ownership cleanup、SAVE-04 玩家存档恢复与 SAVE-05 retention/备份中心
-均已 `certified`；AR6/WR-02B 继续等待已授权数据，下一 `ready` 单元为 CLI-3A 跨进程 admission
+最近同步：2026-08-23，AR6 防具 catalog 扩容（269 条三语）与 WR-02B 完整武器 catalog（601 条三语）
+已于 2026-08-21 入库；WR-05 已完成 Production catalog 接线（PR #236）与门禁翻转（PR #238，
+developer seed 退役，武器重定向对 Production 开放）；发版前置为 `game_terminology` 许可签核与
+Sandbox Gate 复验。此前：T13/Gate C、WR-04/Gate D、SAVE-02~05 均 `certified`，LOG-01~03 已完成，
+下一 `ready` 单元为 CLI-3A 跨进程 admission
 
 ---
 
@@ -109,6 +110,9 @@ Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log 已完�
   -> WR-03A 人工 MOD3/MRL3 binary parser + 纯 transformer [completed]
   -> WR-03B 武器 staging/InstallPlan/manifest [completed]
   -> WR-04 武器 Tauri/UI/Gate D [certified；仅人工 developer/Sandbox seed]
+  -> AR6 防具 catalog 扩容 [completed，269 条三语，2026-08-21]
+  -> WR-02B 完整武器 catalog [completed，601 条三语分片，2026-08-21]
+  -> WR-05 Production catalog 接线 + 门禁翻转 [in-progress；2026-08-22 seed 退役，发版前置未清]
   -> LOG-01 Task/Audit retention [completed]
   -> LOG-02 日志总空间上限 [completed]
   -> LOG-03 Debug Log [completed]
@@ -629,11 +633,13 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> completed: WR-03A 人工 MOD3/MRL3 binary parser + 纯 transformer
   -> completed: WR-03B 武器 staging/InstallPlan/manifest
   -> certified: WR-04 武器 Tauri/UI/Gate D（仅人工 developer/Sandbox seed）
+  -> completed: AR6 防具 catalog 扩容（269 条中英日三语，2026-08-21）
+  -> completed: WR-02B 完整武器 catalog（601 条三语、14 family 分片，2026-08-21）
+  -> in-progress: WR-05 catalog 接线 + 门禁翻转（2026-08-22，seed 退役；发版前置：许可签核、Sandbox Gate 复验）
   -> completed: LOG-01 Task/Audit retention
   -> completed: LOG-02 日志总空间上限
   -> completed: LOG-03 Debug Log（默认关闭、持久化开关、7 日 retention、诊断/export、runtime 重启和 no-follow 负测）
-  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）；ready: CLI-3A 跨进程 admission；AR6/WR-02B 等待授权数据
-  -> blocked-external-data: 防具/完整武器 catalog 扩容
+  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）；ready: CLI-3A 跨进程 admission
   -> Windows 存档后台发布加固、后续日志治理和 Production CLI admission
 ```
 
@@ -665,13 +671,14 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | QG-01 CI 质量门禁 | P0 治理 | 已完成 | #215 |
 | GOV-01 至 GOV-04 工程治理 | P3 治理 | 已完成 | #211 / #212 / #213 / #214 |
 | CAT-01 装备数据治理 | P1 | 已完成；完整 catalog 仍需许可审核 | |
-| AR6 防具 Catalog 扩容 | P1 | blocked-external-data | |
+| AR6 防具 Catalog 扩容 | P1 | completed | 269 条中英日三语（2026-08-21） |
 | WR-01 武器重定向设计 | P1 | design-complete | |
 | WR-02A 武器 family/parser | P1 | completed | |
-| WR-02B 完整武器 Catalog | P1 | blocked-external-data | |
+| WR-02B 完整武器 Catalog | P1 | completed | 601 条三语、14 family 分片（2026-08-21） |
 | WR-03A 武器 binary parser/transformer | P1 | completed | |
 | WR-03B 武器 staging/InstallPlan/manifest | P1 | completed | |
-| WR-04 武器 Tauri/UI/Gate D | P1 | certified（仅人工 developer/Sandbox seed；production catalog 受 WR-02B 门禁） | |
+| WR-04 武器 Tauri/UI/Gate D | P1 | certified | 人工 seed 认证；seed 已随 WR-05 退役 |
+| WR-05 catalog 接线与门禁翻转 | P1 | in-progress | 接线（PR #236）与翻转（PR #238）完成；发版前置：许可签核、Sandbox Gate 复验 |
 | LOG-01 Task/Audit retention | P2 | completed | |
 | LOG-02 日志总空间上限 | P2 | completed | |
 | LOG-03 Debug Log | P2 | 已完成 | 默认关闭、持久化开关、受控 writer/reader、7 天 retention、诊断/export 和安全负测 |
