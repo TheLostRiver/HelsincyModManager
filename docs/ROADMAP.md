@@ -46,8 +46,9 @@
    `game_terminology` 许可边界入库（治理决定见 EQUIPMENT_CATALOG_GOVERNANCE.md）；WR-05 已完成
    Production catalog 接线与门禁翻转（2026-08-22）：developer seed 退役，Production 与 Sandbox
    共用同一聚合 catalog（armor 269 + weapon 601，`mhw-replacement-v1`），武器重定向对 Production
-   开放；WR-05 整体仍为 `in-progress`，发版前置为 `game_terminology` 许可签核与全量 catalog
-   Sandbox Gate 复验。LOG-01 Task/Audit retention、LOG-02 日志总空间
+   开放；WR-05 整体仍为 `in-progress`，`game_terminology` 许可签核已于 2026-08-23 完成
+   （见 GAME_TERMINOLOGY_SIGNOFF.md），发版前置仅剩全量 catalog Sandbox Gate 复验。
+   LOG-01 Task/Audit retention、LOG-02 日志总空间
    上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
    2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 已于 2026-08-14 标记为
@@ -58,9 +59,9 @@
    payload；回到 Ready 后使用正常 NSIS wrapper 完整删除安装目录和 owned task，synthetic save、ZIP 与
    manifest 保留。`_?=` 已限定为 blocked 诊断，不再用于成功卸载验收。应用内用户 SID 与 Scheduled
    Task 只读检查改走原生 Windows token/COM，mutation 继续使用受控 PowerShell 安全链。
-   发版前置仍未清：`game_terminology` 许可声明独立签核、Sandbox Gate 换全量 catalog 复验
-   （WR-04 Gate D 的真机证据基于已退役的人工 seed，catalog 形态已变）。防具 AR1-AR5 与 WR-04
-   的认证不等于真机全量验收已完成。
+   `game_terminology` 许可声明独立签核已于 2026-08-23 完成（GAME_TERMINOLOGY_SIGNOFF.md）；
+   发版前置仍未清：Sandbox Gate 换全量 catalog 复验（WR-04 Gate D 的真机证据基于已退役的
+   人工 seed，catalog 形态已变）。防具 AR1-AR5 与 WR-04 的认证不等于真机全量验收已完成。
 8. SAVE-04 玩家存档恢复已于 2026-08-15 在 disposable Windows Sandbox 完成人工验收并标记为
    `certified`。实现使用统一悬浮确认、5 分钟 preview token、独立 `TaskKind::SaveRestore`、默认开启且
    按 Profile 持久化的 pre-restore 安全备份、独立 `pre-restore/` 目录、共享 game/profile 写锁、目录交换、
