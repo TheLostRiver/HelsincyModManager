@@ -286,6 +286,19 @@ mod tests {
         fs::remove_dir_all(&root).expect("cleanup");
     }
 
+    /// 真正不可写的目录：create 每次都被拒，必须耗尽全部 attempt 后
+    /// fail closed——重试的存在不能让只读目录被放行。
+    #[test]
+    fn create_denied_exhausts_attempts_and_fails_closed() {
+        let attempts = std::cell::Cell::new(0u32);
+        let always_denied = || {
+            attempts.set(attempts.get() + 1);
+            WritableProbeOutcome::CreateDenied
+        };
+        assert!(!writable_with_retries(always_denied));
+        assert_eq!(attempts.get(), WRITABLE_PROBE_ATTEMPTS as u32);
+    }
+
     /// 所有 attempt 都被挡住时必须 fail closed，且不再动被挡住的路径
     /// （此刻它们仍可能被外部句柄持有）。
     #[test]
