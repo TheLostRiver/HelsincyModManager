@@ -173,15 +173,20 @@ test("settings hosts the persisted panel outside session preview state", () => {
   const css = readProjectFile(SETTINGS_CSS_PATH);
 
   assert.match(page, /import \{ BackgroundProtectionPanel \} from "\.\/BackgroundProtectionPanel"/);
+  // I18N-01 起设置页文案收敛到 settingsPageCopy："哪些设置会正式保存"的声明钉在 zh_cn 字典，
+  // 页面只允许经 copy.hero.description 渲染，不得回退为硬编码字面量。
+  const copyModule = readProjectFile("src/features/settings/settingsPageCopy.ts");
   assert.match(
-    page,
+    copyModule,
     /后台保护与窗口关闭偏好会正式保存；其余标记为预览的选项只在当前会话中生效。/,
   );
+  assert.match(page, /\{copy\.hero\.description\}/);
   assert.doesNotMatch(page, /当前真正后台守护尚未落地/);
+  assert.doesNotMatch(copyModule, /当前真正后台守护尚未落地/);
 
-  const backupSectionIndex = page.indexOf('title="存档备份"');
+  const backupSectionIndex = page.indexOf("title={copy.saveBackup.title}");
   const panelIndex = page.indexOf("<BackgroundProtectionPanel />");
-  const previewReminderIndex = page.indexOf('title="安装前提醒备份"');
+  const previewReminderIndex = page.indexOf("title={copy.saveBackup.backupReminder.title}");
   assert.ok(backupSectionIndex >= 0);
   assert.ok(panelIndex > backupSectionIndex);
   assert.ok(previewReminderIndex > panelIndex);

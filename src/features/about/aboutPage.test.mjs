@@ -19,8 +19,12 @@ test("about page is an enabled route with fixed project links", () => {
   assert.match(nav, /id:\s*"about"[\s\S]*?label:\s*"关于"[\s\S]*?placement:\s*"utility"/);
   assert.match(page, /getVersion\(\)/);
   assert.match(page, /packageMetadata\.version/);
-  assert.match(page, /openUrl\(link\.href\)/);
-  assert.match(page, /当前尚未启用应用内自动更新/);
+  assert.match(page, /openUrl\(ABOUT_LINK_HREFS\[linkId\]\)/);
+  // I18N-01 起页面文案收敛到 aboutPageCopy；"未启用自动更新"的事实钉在 zh_cn 字典，
+  // 页面只允许经 copy.release.description 渲染。
+  const aboutCopy = read("src/features/about/aboutPageCopy.ts");
+  assert.match(aboutCopy, /当前尚未启用应用内自动更新/);
+  assert.match(page, /\{copy\.release\.description\}/);
   assert.match(page, /https:\/\/github\.com\/TheLostRiver\/HelsincyModManager\/releases/);
   assert.match(page, /https:\/\/github\.com\/TheLostRiver\/HelsincyModManager\/issues/);
   assert.match(page, /data-tour-id="about\.release"/);
