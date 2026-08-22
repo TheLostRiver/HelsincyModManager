@@ -685,4 +685,4 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | LOG-01 Task/Audit retention | P2 | completed | |
 | LOG-02 日志总空间上限 | P2 | completed | |
 | LOG-03 Debug Log | P2 | 已完成 | 默认关闭、持久化开关、受控 writer/reader、7 天 retention、诊断/export 和安全负测 |
-| I18N-00 界面三语本地化设计 | P2 | design-in-review | 设计见 [界面中英日本地化设计](docs/I18N_DESIGN.md)：UI 文案 zh_cn/en/ja、语言切换持久化、catalog 名称 locale 对齐（I18N-08 需契约演进）；切片 I18N-01~08，与 Sandbox Gate 复验、CLI-3B 并行，不进入当前发版判断 |
+| I18N-00 界面三语本地化设计 | P2 | design-in-review | 设计见 [界面中英日本地化设计](docs/I18N_DESIGN.md)：UI 文案 zh_cn/en/ja、设置页语言切换持久化、catalog 名称 locale 对齐（I18N-08 需契约演进）；含扩展性前提（更多语言 fallback 链、多游戏 per-game 名称 locale 能力声明）；切片 I18N-01~08，与 Sandbox Gate 复验、CLI-3B 并行，不进入当前发版判断 |
