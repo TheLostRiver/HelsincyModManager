@@ -50,6 +50,7 @@ backups/
 !src/features/backups/
 !src/features/backups/**
 .tmp/
+.tmp-token-usage.py
 
 # Test coverage
 coverage/

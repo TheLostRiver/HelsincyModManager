@@ -1,12 +1,14 @@
 # MHW:I 武器重定向设计
 
-> 状态（2026-08-06）：WR-01 `design-complete`，WR-02A、WR-03A 与 WR-03B `completed`，WR-04
-> `certified`。14 类 family/part registry、source/target/model path parser、source closure、纯内存
-> catalog-source validator、有界 MOD3/MRL3 preflight/pair compatibility、纯 MRL3 transformer、
-> versioned transformer registry、transform-aware sibling `.partial` staging、InstallPlan/manifest/
-> recovery/Audit facts 与受控 Tauri/UI 均已落地，并通过 Windows Sandbox Gate D。
-> 唯一未完成项是 WR-02B 完整 bundled catalog，状态 `blocked-external-data`：Production 保持
-> Armor-only，武器目标仅在显式 Sandbox 下使用人工最小 seed。
+> 状态（2026-08-22）：WR-01 `design-complete`，WR-02A、WR-02B、WR-03A 与 WR-03B `completed`，
+> WR-04 `certified`，WR-05 `in-progress`（catalog 已接线，门禁未开）。14 类 family/part registry、
+> source/target/model path parser、source closure、有界 MOD3/MRL3 preflight/pair compatibility、纯 MRL3
+> transformer、versioned transformer registry、transform-aware sibling `.partial` staging、InstallPlan/
+> manifest/recovery/Audit facts 与受控 Tauri/UI 均已落地，并通过 Windows Sandbox Gate D。
+> WR-02B 全量 bundled catalog 已入库（601 目标、中英日三语、dummy 已剔除，`game_terminology` 许可
+> 边界见 EQUIPMENT_CATALOG_GOVERNANCE.md），并经 WR-05 接入 Production 聚合 catalog
+> （`mhw-replacement-v1`）。`developer_weapon_seed` 门禁尚未翻转：武器 plan 在 Production 仍被
+> `weapon_developer_seed_unavailable` 拒绝，Sandbox 继续只用人工最小 seed。
 
 ## 背景
 
@@ -508,13 +510,42 @@ all-targets clippy 均通过。完成不代表 603 个目标 catalog 已 bundled
 
 ### WR-02B: 经过许可审核的完整 Catalog
 
-只有候选输入满足 CAT-01 `bundled_eligible` 且 reviewer 实际核对证据后才可实施：
+状态：`completed`（数据入库，2026-08-21）。`game_terminology` 许可状态确立后（见
+EQUIPMENT_CATALOG_GOVERNANCE.md），601 个唯一目标根（14 family、中英日三语、HARDUMMY 已剔除）
+以按 family 分片的 `data/weapons/mhw-weapon-targets.<family>.v1.json` 入库，`catalog_version`
+为 `mhw-weapon-v1`；跨分片合并校验（stable_id/legacy_id/展示名/路径碰撞不因分片降级）由
+`MhwWeaponCatalogSource::parse_sharded` 承担。原 `blocked-external-data` 停止条件由治理决定解除。
+
+原始验收约束（已满足）：
 
 - 合并同路径多名称。
 - 生成 versioned runtime artifact。
 - 603 唯一路径、大小写唯一、legacy id、搜索隔离和加载性能测试。
 
-在此之前保持 `blocked-external-data`，不得用私有 JSON 临时代替。
+在此之前保持 `blocked-external-data`，不得用私有 JSON 临时代替。（该阻断已于 2026-08-21 由
+治理决定解除，见本节开头状态。）
+
+### WR-05: Production Catalog 接线与门禁开放
+
+状态：`in-progress`。第一步（Production catalog 接线）已完成，2026-08-22：
+
+- `MhwReplacementCatalog` 的 Production 分支装载 WR-02B 全量 14 分片（`parse_sharded`，
+  Active 目标 601 条），聚合版本号 `mhw-replacement-v1`；armor 部分与独立
+  `mhw-armor-v2` catalog 完全一致（269 条不变）。
+- Production 武器目标携带 `family`/`path_family` metadata（`list_compatible_targets` 的
+  过滤键，缺失等于目标不可见），不携带 `catalog_scope` 标记（DTO 侧默认 `production`）。
+- Sandbox 聚合 catalog 刻意保持 WR-04 认证形态（armor + 2 条人工 seed，
+  `mhw-wr04-developer-v1`）：plan 阶段目标解析仍走 `developer_weapon_target`，混入全量
+  目标会让 Sandbox 里选中的目标以 `TargetCatalogMissing` 失败。Sandbox 换全量必须与
+  门禁翻转同一批完成。
+- `developer_weapon_seed` 门禁不变：Production 的武器 analysis/plan 仍被
+  `weapon_developer_seed_unavailable` 拒绝，武器目标对 Production 玩家不可见；本次只是
+  「数据先就位」，不改变任何写入能力。
+
+剩余步骤（开放 Production 武器写入的前置，缺一不可）：门禁翻转（runtime composition、
+install automation 与聚合 adapter 的拒绝路径）、plan 目标解析改走全量 catalog（含 legacy
+回落）、`game_terminology` 许可声明独立 review、Sandbox Gate 复验，以及 ROADMAP/TODO/
+PROJECT_TASK_STATUS 的状态同步。
 
 ### WR-03A: Binary Parser 与 Transformer
 
