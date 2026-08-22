@@ -4,9 +4,10 @@
 基于 HEAD：`09ceef6` (`hy/post-gate-logical-commits`)
 最近同步：2026-08-23，AR6 防具 catalog 扩容（269 条三语）与 WR-02B 完整武器 catalog（601 条三语）
 已于 2026-08-21 入库；WR-05 已完成 Production catalog 接线（PR #236）与门禁翻转（PR #238，
-developer seed 退役，武器重定向对 Production 开放）；发版前置为 `game_terminology` 许可签核与
-Sandbox Gate 复验。此前：T13/Gate C、WR-04/Gate D、SAVE-02~05 均 `certified`，LOG-01~03 已完成，
-下一 `ready` 单元为 CLI-3A 跨进程 admission
+developer seed 退役，武器重定向对 Production 开放），WR-05 整体仍 `in-progress`；发版前置为
+`game_terminology` 许可签核与全量 catalog Sandbox Gate 复验。此前：T13/Gate C、WR-04/Gate D、
+SAVE-02~05 与 CLI-3A 跨进程 admission（2026-08-16）均 `certified`，LOG-01~03 已完成，下一
+`ready` 单元为 CLI-3B Production command-level admission
 
 ---
 
@@ -68,7 +69,8 @@ Sandbox Gate 复验。此前：T13/Gate C、WR-04/Gate D、SAVE-02~05 均 `certi
    合并；T13-00 至 T13-08 已按独立批量领域设计完成，Gate C 于 2026-08-05 认证。CAT-01 数据治理、
    WR-01 武器设计、WR-02A 纯解析、WR-03A binary transformer、WR-03B staging/manifest 与 WR-04
    受控 Tauri/UI/Gate D 随后完成，Gate D 于 2026-08-06 认证；LOG-01、LOG-02、LOG-03 与 SAVE-02 至
-   SAVE-05 均已完成并认证；下一步进入 CLI-3A，仍不能把 T17 import-only 编排当成批量安装实现。
+   SAVE-05 均已完成并认证；CLI-3A 跨进程 admission 已于 2026-08-16 认证，下一步进入 CLI-3B
+   Production command-level admission，仍不能把 T17 import-only 编排当成批量安装实现。
 
 ---
 
@@ -635,11 +637,11 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> certified: WR-04 武器 Tauri/UI/Gate D（仅人工 developer/Sandbox seed）
   -> completed: AR6 防具 catalog 扩容（269 条中英日三语，2026-08-21）
   -> completed: WR-02B 完整武器 catalog（601 条三语、14 family 分片，2026-08-21）
-  -> in-progress: WR-05 catalog 接线 + 门禁翻转（2026-08-22，seed 退役；发版前置：许可签核、Sandbox Gate 复验）
+  -> in-progress: WR-05 catalog 接线 + 门禁翻转（2026-08-22，seed 退役；发版前置：许可签核、全量 catalog Sandbox Gate 复验）
   -> completed: LOG-01 Task/Audit retention
   -> completed: LOG-02 日志总空间上限
   -> completed: LOG-03 Debug Log（默认关闭、持久化开关、7 日 retention、诊断/export、runtime 重启和 no-follow 负测）
-  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）；ready: CLI-3A 跨进程 admission
+  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）、CLI-3A 跨进程 admission（2026-08-16）；ready: CLI-3B Production command-level admission
   -> Windows 存档后台发布加固、后续日志治理和 Production CLI admission
 ```
 
@@ -678,7 +680,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | WR-03A 武器 binary parser/transformer | P1 | completed | |
 | WR-03B 武器 staging/InstallPlan/manifest | P1 | completed | |
 | WR-04 武器 Tauri/UI/Gate D | P1 | certified | 人工 seed 认证；seed 已随 WR-05 退役 |
-| WR-05 catalog 接线与门禁翻转 | P1 | in-progress | 接线（PR #236）与翻转（PR #238）完成；发版前置：许可签核、Sandbox Gate 复验 |
+| WR-05 catalog 接线与门禁翻转 | P1 | in-progress | 接线（PR #236）与翻转（PR #238）完成；发版前置：许可签核、全量 catalog Sandbox Gate 复验 |
 | LOG-01 Task/Audit retention | P2 | completed | |
 | LOG-02 日志总空间上限 | P2 | completed | |
 | LOG-03 Debug Log | P2 | 已完成 | 默认关闭、持久化开关、受控 writer/reader、7 天 retention、诊断/export 和安全负测 |

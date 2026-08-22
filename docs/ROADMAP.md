@@ -46,7 +46,8 @@
    `game_terminology` 许可边界入库（治理决定见 EQUIPMENT_CATALOG_GOVERNANCE.md）；WR-05 已完成
    Production catalog 接线与门禁翻转（2026-08-22）：developer seed 退役，Production 与 Sandbox
    共用同一聚合 catalog（armor 269 + weapon 601，`mhw-replacement-v1`），武器重定向对 Production
-   开放。LOG-01 Task/Audit retention、LOG-02 日志总空间
+   开放；WR-05 整体仍为 `in-progress`，发版前置为 `game_terminology` 许可签核与全量 catalog
+   Sandbox Gate 复验。LOG-01 Task/Audit retention、LOG-02 日志总空间
    上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
    2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 已于 2026-08-14 标记为
@@ -156,10 +157,11 @@ Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C 与 T13 Slice A-D 均已完成�
 下开放；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
 CAT-01 装备数据治理、WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer 与
 WR-03B staging/InstallPlan/manifest 集成和 WR-04 受控 Tauri/UI/Gate D 均已完成，Gate D 为
-`certified`；AR6/WR-02B 等待可再分发的审计数据，LOG-01 Task/Audit retention、LOG-02 日志总空间
+`certified`；AR6/WR-02B 已于 2026-08-21 依 `game_terminology` 许可边界入库，LOG-01 Task/Audit
+retention、LOG-02 日志总空间
 上限和 LOG-03 Debug Log 均已完成；SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 均已 `certified`。SAVE-05
 已完成实现、完整自动化验证、全 diff 自审和 disposable Windows synthetic retention/备份中心人工验收；
-完整 catalog 未到位前只使用人工 developer/Sandbox seed。
+完整 catalog 已入库，developer seed 已随 WR-05 门禁翻转退役（2026-08-22）。
 
 新手引导 Phase 1 当前为 `implemented`：shared geometry/resolver/storage、App TourProvider、
 Floating UI popover、顶部全局入口、双侧栏导航锚点、8 个页面 route anchor、28 个关键功能区、
@@ -196,7 +198,8 @@ primary/fallback target、target-only blocker 和 route-change 推进已落地�
   admission。最终 artifact 已通过 contract/build/完整验证、light/dark/system 响应式 smoke，以及
   disposable Windows Sandbox 安装、两次重启、target switch、manifest 卸载、recovery 归零和 exact
   baseline，Gate D 已标记为 `certified`。
-- 完整 catalog、本地化筛选和其他资源类型已满足 Gate B 时间门禁，但仍需经过后续优先级复审。
+- 完整 armor/weapon catalog 已由 AR6/WR-02B 于 2026-08-21 入库；本地化筛选和其他资源类型已满足
+  Gate B 时间门禁，但仍需经过后续优先级复审。
 
 Gate B 后续范围：
 

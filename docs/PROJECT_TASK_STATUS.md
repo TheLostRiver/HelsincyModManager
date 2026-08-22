@@ -36,8 +36,8 @@ WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transforme
 staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均已完成；Gate D 于
 2026-08-06 标记为 `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log
 均已完成；AR6（269 条三语）与 WR-02B（601 条三语分片）已于 2026-08-21 入库；WR-05 已于
-2026-08-22 翻转门禁并退役 developer seed，武器重定向对 Production 开放（发版前置：许可签核、
-Sandbox Gate 复验）。
+2026-08-22 翻转门禁并退役 developer seed，武器重定向对 Production 开放（发版前置：
+`game_terminology` 许可签核、全量 catalog Sandbox Gate 复验）。
 Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成。
 SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 verify、findings-first review 和
 disposable Windows 人工验收均已完成并标记为 `certified`；SAVE-05 retention/备份中心也已完成实现、
@@ -64,7 +64,7 @@ command-level admission 与开放仍未完成。
 - PR #222 已完成 T13-05 install batch CLI 子集，Slice B/C 已补齐批量卸载、真正重装与
   same-revision Armor switch contract；T13-07 由 PR #225 合并，Slice D/Gate C 已认证。CAT-01 和
   WR-01/WR-02A/WR-03A/WR-03B/WR-04 已完成，Gate D 已认证；LOG-01、LOG-02 与 LOG-03 已完成；
-  AR6/WR-02B 仍等待已授权数据。
+  AR6/WR-02B 当时等待已授权数据，后已于 2026-08-21 入库（见上文概览与「装备重定向数据」）。
 
 ## 任务矩阵
 
@@ -81,7 +81,7 @@ command-level admission 与开放仍未完成。
 | T8 存档备份 | 已完成 / SAVE-02 至 SAVE-05 Certified | 备份、后台核心、安装态保护、installer cleanup、玩家恢复、时间/空间 retention 与独立备份中心均已认证 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
-| T11 装备 Retarget | Armor / Weapon 流程均 Certified；catalog 全量在册 | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01~03B 已完成；AR6（269 条三语）与 WR-02B（601 条三语）已入库，WR-05 已翻转门禁开放 Production（seed 退役）；发版前置：`game_terminology` 许可签核 + Sandbox Gate 复验 |
+| T11 装备 Retarget | Armor / Weapon 流程均 Certified；catalog 全量在册 | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01~03B 已完成；AR6（269 条三语）与 WR-02B（601 条三语）已入库，WR-05 已翻转门禁开放 Production（seed 退役）；发版前置：`game_terminology` 许可签核 + 全量 catalog Sandbox Gate 复验 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
 | T13 批量操作 | Certified（Gate C） | sealed plan/preview、batch runner、SQLite journal、retry、故障证据、Sandbox CLI、6 个窄 Tauri command（含 capability 投影）、typed API 与批量 UI 均已落地；4 viewport smoke、主链、受控 partial/retry、重启/recovery、批量卸载与 exact baseline 已验收 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
@@ -135,7 +135,8 @@ Armor Retarget 的流程认证与 catalog 完整度是两个状态：
 
 - AR1-AR5 已证明 armor source 分析、结构化 slot 改写、staging、InstallPlan、binding snapshot、
   真正重装 target switch、重启恢复和 manifest 卸载安全链。
-- 当前 bundled armor catalog 仍只有最小稳定 seed，不代表完整防具目标已经进入产品。
+- bundled armor catalog 已由 AR6 扩容至 269 条中英日三语（2026-08-21 入库，此前仅最小
+  稳定 seed）；catalog 在册不等于每个目标都已通过真机全量验收。
 - 本地候选防具数据有 272 条安全相对路径；display name 存在重复，因此名称不能作为稳定 ID。
 - 本地候选武器数据覆盖 14 类、3125 个展示名称，但只有 603 个唯一目标路径；同一路径最多对应
   48 个名称，必须建模为稳定 target + aliases，而不是重复安装目标。
@@ -365,8 +366,9 @@ alias/localization、dummy/隐藏条目策略、版本与 provenance/licensing �
 已交付 14-family/part registry、严格 path/source closure parser 和纯内存 catalog-source validator。
 WR-03A 已交付人工 MOD3/MRL3 有界 preflight、pair compatibility、纯 transformer 与脱敏 digest/error
 projection。WR-03B 已交付 versioned registry、transform-aware staging、InstallPlan/manifest/recovery/
-Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 因缺少明确可再分发的审计数据而 blocked；
-WR-04 受控 Tauri/UI/Gate D 已认证；完整 catalog 未到位前仍仅使用人工 Sandbox seed。LOG-01、LOG-02、
+Audit facts 与 temp-root exact-baseline 生命周期。AR6/WR-02B 已依 `game_terminology` 许可边界于
+2026-08-21 入库；WR-04 受控 Tauri/UI/Gate D 已认证；WR-05 已翻转门禁并退役人工 Sandbox seed
+（2026-08-22），发版前置为许可签核与全量 catalog Sandbox Gate 复验。LOG-01、LOG-02、
 LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证。CLI-3A 已实现
 `background-registration-write`、`save-profile-write` 与 `game-profile-write`，并接入 GUI、Sandbox CLI
 和固定 worker；本地完整验证、findings-first 全 diff 审查、Ubuntu required CI run `31910573714` 与
@@ -549,7 +551,9 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 1. 保持遗留非终态 `queued/running/stopping` attempt 的 fail-closed 门禁；如需自动 reconciliation，
   先单独完成安全设计和验收。
 2. 保持 CAT-01 provenance/licensing 门禁；未达到 `bundled_eligible` 且未经人审的数据不得提交为 catalog。
-3. WR-04 Gate D 已认证；完整 catalog 未到位前继续只使用人工最小 seed，AR6/WR-02B 在获得明确可再分发的审计数据后恢复。
+3. WR-04 Gate D 已认证（其 Sandbox 证据基于已退役的 developer seed）；AR6/WR-02B 全量 catalog
+   已入库，WR-05 已翻转门禁并退役 seed；发版前必须完成 `game_terminology` 许可签核，并使用
+   全量 catalog 复验 Sandbox Gate。
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
 5. LOG-01、LOG-02、LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证；继续保持完整
    verify、findings-first review 和人工 gate 证据可追溯。
