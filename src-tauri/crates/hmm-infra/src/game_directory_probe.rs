@@ -1,6 +1,13 @@
 use hmm_ports::{GameDirectoryProbe, GameDirectoryProbeFactory};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// 单次试写可能被杀毒/索引器的瞬时句柄干扰（尤其 remove 一步的 sharing violation），
+/// 把瞬态失败当成"不可写"会误拒真实可写的目录。有界重试下两类目录仍然快速失败：
+/// 真正只读的目录每次 attempt 都立刻失败；只有瞬态干扰会在后续 attempt 恢复。
+const WRITABLE_PROBE_ATTEMPTS: usize = 3;
+const WRITABLE_PROBE_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 pub struct RealGameDirectoryProbe {
     root_dir: PathBuf,
@@ -58,38 +65,82 @@ impl GameDirectoryProbe for RealGameDirectoryProbe {
     ///
     /// 删除失败同样判定为不可写：安装链覆盖前要备份、卸载要移除，都需要删除权限。
     /// 能建不能删的目录若放行，只会把失败推迟到已经动过玩家文件之后。
+    /// 单次删除失败可能只是安全软件的瞬时句柄，因此整体做有界重试，
+    /// 每次 attempt 用全新的探针文件。
     fn root_writable(&self) -> bool {
         if !self.root_exists() {
             return false;
         }
 
-        let probe_path = self.root_dir.join(format!(
-            ".hmm-write-probe-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_nanos())
-                .unwrap_or_default()
-        ));
+        writable_with_retries(|| probe_root_writable_once(&self.root_dir))
+    }
+}
 
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&probe_path)
-        {
-            Ok(file) => {
-                drop(file);
-                // 只删本次确实创建出来的文件。
-                //
-                // 删除成败即结论：能建不能删的目录对安装链没有意义——覆盖前要备份、
-                // 卸载要移除，两者都需要删除权限。这时返回 true 只会让失败推迟到
-                // 已经动过玩家文件之后，正是这道 preflight 要避免的。
-                std::fs::remove_file(&probe_path).is_ok()
+/// 单次探针的三种结局。`RemoveBlocked` 携带路径：这个文件确属本次探针创建，
+/// 只是删除被瞬时句柄挡住——后续 attempt 成功后要再回收它，否则瞬态干扰
+/// 会在游戏根目录留下 0 字节残留，破坏 sandbox 契约测试的精确 tree baseline。
+enum WritableProbeOutcome {
+    Writable,
+    CreateDenied,
+    RemoveBlocked(PathBuf),
+}
+
+fn writable_with_retries(mut probe_once: impl FnMut() -> WritableProbeOutcome) -> bool {
+    let mut blocked_paths: Vec<PathBuf> = Vec::new();
+    for attempt in 0..WRITABLE_PROBE_ATTEMPTS {
+        match probe_once() {
+            WritableProbeOutcome::Writable => {
+                for path in &blocked_paths {
+                    let _ = remove_probe_file(path);
+                }
+                return true;
             }
-            // 创建失败时绝不碰这个路径：同名遗留文件或并发探针都会走到这里，
-            // 无条件删除等于删掉一个不属于本次探测的文件。
-            Err(_) => false,
+            WritableProbeOutcome::CreateDenied => {}
+            WritableProbeOutcome::RemoveBlocked(path) => blocked_paths.push(path),
+        }
+        if attempt + 1 < WRITABLE_PROBE_ATTEMPTS {
+            std::thread::sleep(WRITABLE_PROBE_RETRY_DELAY);
         }
     }
+    false
+}
+
+fn probe_root_writable_once(root_dir: &Path) -> WritableProbeOutcome {
+    let probe_path = root_dir.join(format!(
+        ".hmm-write-probe-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default()
+    ));
+    if !create_probe_file(&probe_path) {
+        return WritableProbeOutcome::CreateDenied;
+    }
+    if remove_probe_file(&probe_path) {
+        WritableProbeOutcome::Writable
+    } else {
+        WritableProbeOutcome::RemoveBlocked(probe_path)
+    }
+}
+
+fn create_probe_file(probe_path: &Path) -> bool {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(probe_path)
+    {
+        Ok(file) => {
+            drop(file);
+            true
+        }
+        // 创建失败时绝不碰这个路径：同名遗留文件或并发探针都会走到这里，
+        // 无条件删除等于删掉一个不属于本次探测的文件。
+        Err(_) => false,
+    }
+}
+
+fn remove_probe_file(probe_path: &Path) -> bool {
+    std::fs::remove_file(probe_path).is_ok()
 }
 
 pub struct RealGameDirectoryProbeFactory;
@@ -165,6 +216,114 @@ mod tests {
         ));
 
         assert!(!RealGameDirectoryProbe::new(missing).root_writable());
+    }
+
+    /// 瞬态 remove 失败（安全软件句柄）不等于目录不可写：单次 probe 失败、
+    /// 整体 root_writable 仍应为 true。这是前置闸门在真机上不误拒的依据。
+    #[cfg(windows)]
+    #[test]
+    fn transient_remove_failure_does_not_fail_the_writable_probe() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "hmm-probe-transient-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create dir");
+
+        let held_path = root.join(".hmm-write-probe-held");
+        assert!(create_probe_file(&held_path));
+        // share_mode(0) 打开的句柄会拒绝一切并发访问，remove_file 必须
+        // 以 sharing violation 失败——这是"能建不能删"的瞬态形态。
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&held_path)
+            .expect("hold probe file");
+        assert!(
+            !remove_probe_file(&held_path),
+            "被 share_mode(0) 句柄持有的探针文件必须删不掉"
+        );
+        drop(held);
+        assert!(remove_probe_file(&held_path), "句柄释放后同一路径必须可删");
+
+        assert!(RealGameDirectoryProbe::new(root.clone()).root_writable());
+        fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    /// 瞬态 remove 失败留下的探针文件必须被后续成功的 attempt 回收，
+    /// 否则游戏根目录会多出 0 字节残留，破坏精确 tree baseline 对比。
+    #[test]
+    fn blocked_probe_files_are_reclaimed_after_a_successful_retry() {
+        let root = std::env::temp_dir().join(format!(
+            "hmm-probe-reclaim-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create dir");
+
+        let blocked = root.join(".hmm-write-probe-blocked");
+        fs::write(&blocked, b"").expect("write blocked probe residue");
+
+        let mut outcomes = [
+            WritableProbeOutcome::RemoveBlocked(blocked.clone()),
+            WritableProbeOutcome::Writable,
+        ]
+        .into_iter();
+        assert!(writable_with_retries(|| outcomes
+            .next()
+            .expect("planned outcomes")));
+
+        assert!(
+            !blocked.exists(),
+            "被句柄挡住的探针文件在重试成功后必须被回收"
+        );
+        fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    /// 真正不可写的目录：create 每次都被拒，必须耗尽全部 attempt 后
+    /// fail closed——重试的存在不能让只读目录被放行。
+    #[test]
+    fn create_denied_exhausts_attempts_and_fails_closed() {
+        let attempts = std::cell::Cell::new(0u32);
+        let always_denied = || {
+            attempts.set(attempts.get() + 1);
+            WritableProbeOutcome::CreateDenied
+        };
+        assert!(!writable_with_retries(always_denied));
+        assert_eq!(attempts.get(), WRITABLE_PROBE_ATTEMPTS as u32);
+    }
+
+    /// 所有 attempt 都被挡住时必须 fail closed，且不再动被挡住的路径
+    /// （此刻它们仍可能被外部句柄持有）。
+    #[test]
+    fn permanently_blocked_probes_fail_closed() {
+        let root = std::env::temp_dir().join(format!(
+            "hmm-probe-blocked-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create dir");
+        let blocked = root.join(".hmm-write-probe-stuck");
+        fs::write(&blocked, b"").expect("write stuck probe residue");
+
+        let attempts = std::cell::Cell::new(0u32);
+        let always_blocked = || {
+            attempts.set(attempts.get() + 1);
+            WritableProbeOutcome::RemoveBlocked(blocked.clone())
+        };
+        assert!(!writable_with_retries(always_blocked));
+        assert_eq!(attempts.get(), WRITABLE_PROBE_ATTEMPTS as u32);
+        assert!(blocked.exists(), "fail closed 时不得强行删除被挡路径");
+
+        fs::remove_dir_all(&root).expect("cleanup");
     }
 
     #[test]
