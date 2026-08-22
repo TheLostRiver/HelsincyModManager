@@ -65,7 +65,8 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   );
   assert.match(panel, /重试刷新/);
   assert.match(panel, /weapon_partial_part_set/);
-  assert.match(panel, /target\.catalogScope === "developer_sandbox"/);
+  // catalogScope 随 developer seed 退役（WR-05），面板不得再残留 scope 分支。
+  assert.doesNotMatch(panel, /catalogScope|developer_sandbox/);
   assert.doesNotMatch(panel, /source\.pathFamily/);
   assert.doesNotMatch(panel, /action\.sourceRelativePath|action\.targetRelativePath/);
   assert.doesNotMatch(

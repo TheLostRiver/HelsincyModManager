@@ -26,8 +26,6 @@ use crate::state::{AppState, ConfiguredRetargetReinstallError};
 use crate::task_events::{emit_task_progress, INSTALL_REINSTALL_QUEUED_PHASE};
 
 const RETARGET_QUEUED_PHASE: &str = "install.retarget.queued";
-const CATALOG_SCOPE_METADATA_KEY: &str = "catalog_scope";
-const DEVELOPER_SANDBOX_CATALOG_SCOPE: &str = "developer_sandbox";
 
 #[tauri::command]
 pub fn list_replacement_targets(
@@ -490,13 +488,6 @@ impl From<ReplacementTarget> for ReplacementTargetDto {
             secondary_name,
             aliases: target.aliases().to_vec(),
             internal_id: target.internal_id().to_owned(),
-            catalog_scope: target
-                .metadata()
-                .get(CATALOG_SCOPE_METADATA_KEY)
-                .and_then(serde_json::Value::as_str)
-                .filter(|scope| *scope == DEVELOPER_SANDBOX_CATALOG_SCOPE)
-                .unwrap_or("production")
-                .to_owned(),
         }
     }
 }
@@ -575,39 +566,30 @@ mod tests {
     use serde_json::json;
     use std::collections::BTreeMap;
 
+    /// WR-05 起 catalogScope 概念随 developer seed 退役：DTO 不得再出现该字段，
+    /// 防止后端悄悄把 scope 元数据带回前端契约。
     #[test]
-    fn target_scope_projection_uses_catalog_metadata_instead_of_target_kind() {
-        let make_target = |id: &str, metadata| {
-            ReplacementTarget::new(
-                ReplacementTargetId::parse(id).expect("target id"),
-                GameId::mhw(),
-                ReplacementTargetKind::parse("weapon").expect("weapon kind"),
-                LocalizedText::new(BTreeMap::from([(
-                    "en".to_owned(),
-                    "Artificial weapon".to_owned(),
-                )]))
-                .expect("display name"),
-                Vec::new(),
-                "one001",
-                metadata,
-            )
-            .expect("replacement target")
-        };
+    fn target_projection_does_not_carry_catalog_scope() {
+        let target = ReplacementTarget::new(
+            ReplacementTargetId::parse("mhw:weapon:scope-one001").expect("target id"),
+            GameId::mhw(),
+            ReplacementTargetKind::parse("weapon").expect("weapon kind"),
+            LocalizedText::new(BTreeMap::from([(
+                "en".to_owned(),
+                "Artificial weapon".to_owned(),
+            )]))
+            .expect("display name"),
+            Vec::new(),
+            "one001",
+            BTreeMap::from([("catalog_scope".to_owned(), json!("developer_sandbox"))]),
+        )
+        .expect("replacement target");
 
-        let production = ReplacementTargetDto::from(make_target(
-            "mhw:weapon:production-one001",
-            BTreeMap::new(),
-        ));
-        let developer = ReplacementTargetDto::from(make_target(
-            "mhw:weapon:developer-one001",
-            BTreeMap::from([(
-                CATALOG_SCOPE_METADATA_KEY.to_owned(),
-                json!(DEVELOPER_SANDBOX_CATALOG_SCOPE),
-            )]),
-        ));
-
-        assert_eq!(production.catalog_scope, "production");
-        assert_eq!(developer.catalog_scope, "developer_sandbox");
+        let value = serde_json::to_value(ReplacementTargetDto::from(target)).expect("dto json");
+        assert!(
+            value.get("catalogScope").is_none(),
+            "DTO 不应再投影 catalogScope"
+        );
     }
 
     #[test]

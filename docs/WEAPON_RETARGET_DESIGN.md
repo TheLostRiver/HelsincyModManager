@@ -1,14 +1,18 @@
 # MHW:I 武器重定向设计
 
 > 状态（2026-08-22）：WR-01 `design-complete`，WR-02A、WR-02B、WR-03A 与 WR-03B `completed`，
-> WR-04 `certified`，WR-05 `in-progress`（catalog 已接线，门禁未开）。14 类 family/part registry、
-> source/target/model path parser、source closure、有界 MOD3/MRL3 preflight/pair compatibility、纯 MRL3
-> transformer、versioned transformer registry、transform-aware sibling `.partial` staging、InstallPlan/
-> manifest/recovery/Audit facts 与受控 Tauri/UI 均已落地，并通过 Windows Sandbox Gate D。
-> WR-02B 全量 bundled catalog 已入库（601 目标、中英日三语、dummy 已剔除，`game_terminology` 许可
-> 边界见 EQUIPMENT_CATALOG_GOVERNANCE.md），并经 WR-05 接入 Production 聚合 catalog
-> （`mhw-replacement-v1`）。`developer_weapon_seed` 门禁尚未翻转：武器 plan 在 Production 仍被
-> `weapon_developer_seed_unavailable` 拒绝，Sandbox 继续只用人工最小 seed。
+> WR-04 `certified`，WR-05 `in-progress`（catalog 已接线，门禁已翻转，发版前置未清）。14 类
+> family/part registry、source/target/model path parser、source closure、有界 MOD3/MRL3
+> preflight/pair compatibility、纯 MRL3 transformer、versioned transformer registry、
+> transform-aware sibling `.partial` staging、InstallPlan/manifest/recovery/Audit facts 与受控
+> Tauri/UI 均已落地，并通过 Windows Sandbox Gate D。WR-02B 全量 bundled catalog 已入库（601
+> 目标、中英日三语、dummy 已剔除，`game_terminology` 许可边界见
+> EQUIPMENT_CATALOG_GOVERNANCE.md）。WR-05 已完成两步：Production 聚合 catalog 接入全量武器
+> 分片（`mhw-replacement-v1`），以及门禁翻转——developer seed 退役（其 one001/one002 与全量
+> catalog 的真实条目 stable_id 完全重合，无法共存），Production 与 Sandbox 共用同一聚合
+> adapter/catalog，`weapon_developer_seed_unavailable` 拒绝路径与 `catalogScope` 契约一并移除。
+> 发版前置仍未清：`game_terminology` 许可声明独立 review、Sandbox Gate 换全量 catalog 复验、
+> ROADMAP/TODO/PROJECT_TASK_STATUS 状态同步。
 
 ## 背景
 
@@ -547,6 +551,32 @@ install automation 与聚合 adapter 的拒绝路径）、plan 目标解析改�
 回落）、`game_terminology` 许可声明独立 review、Sandbox Gate 复验，以及 ROADMAP/TODO/
 PROJECT_TASK_STATUS 的状态同步。
 
+第二步（门禁翻转与 seed 退役）已完成，2026-08-22：
+
+- **developer seed 整体退役**：其 `one001`/`one002` 资源路径与 WR-02B 全量 catalog 的
+  真实条目完全重合（stable_id 相同），人工目标与真数据无法共存于一个 catalog
+  （`DuplicateStableId`/`DuplicateTargetId` 会拒绝合并）。seed JSON 删除，
+  `developer_weapon_seed` 标志、`with_developer_weapon_seed()` 构造器与
+  `developer_weapon_target()` 解析一并移除。
+- **聚合 adapter/catalog 回到无状态单元结构**：Production 与 Sandbox 共用同一份
+  （armor 269 + weapon 601，`mhw-replacement-v1`）。runtime composition 与 install
+  automation 不再按环境选择 seed 变体；sandbox environment 只保留 root admission 语义
+  （`with_sandbox_environment` 仍要求 Sandbox kind，报错文案去除 seed 措辞）。
+- **plan 目标解析改走全量 catalog**：`weapon_target()` 经
+  `MhwWeaponCatalogSource::resolve` 解析，stable_id 与 legacy_id 回落内建于 source 层。
+- **`weapon_developer_seed_unavailable` 稳定码删除**：前端文案表同步移除；该码原本就
+  不在 `WeaponAnalysisError`/`WeaponBinaryError` 枚举内，跨语言集合契约不受影响。
+- **`catalogScope` 契约移除**：该字段只为区分 sandbox seed 目标而存在（WR-04），seed
+  退役后无生产者。DTO 字段、`catalog_scope` metadata 注入、前端类型与「人工目录」徽章
+  一并删除；两侧各有 source 断言测试钉住「不得再出现」。
+- 测试形态：人工 fixture 的 plan 测试改用全量 catalog 的真实 `one002` 条目（stable_id
+  与原 seed 重合），并断言解析出的展示名不含 WR-04 人工命名——证明目标确实来自全量
+  catalog。
+
+发版前置（未清，不阻塞合码但阻塞 release）：`game_terminology` 许可声明独立 review、
+Sandbox Gate 换全量 catalog 复验（WR-04 Gate D 证据基于 seed，形态已变）、ROADMAP/TODO/
+PROJECT_TASK_STATUS 状态同步。
+
 ### WR-03A: Binary Parser 与 Transformer
 
 状态：`completed`，2026-08-05。该切片已实现：
@@ -639,8 +669,9 @@ Windows Sandbox Gate D 均已完成。
 - 是否有可再分发、可审计的完整 weapon target 数据源。
 - v1 之后哪些 extra part、patch model 或 texture payload 值得逐类支持。
 - 是否需要为旧 transformer version 保留只读 recovery implementation，还是提供显式受控迁移。
-- 完整 catalog 未到位时，继续只对人工最小 seed 开放 developer/Sandbox capability；Production 保持
-  Armor-only，直到 WR-02B 许可门禁完成并经过独立 review。
+- ~~完整 catalog 未到位时，继续只对人工最小 seed 开放 developer/Sandbox capability；Production 保持
+  Armor-only，直到 WR-02B 许可门禁完成并经过独立 review。~~（已解决：catalog 于 2026-08-21 入库、
+  门禁于 2026-08-22 翻转、seed 退役；`game_terminology` 独立 review 仍是发版前置，见 WR-05。）
 
 ## 固定参考
 

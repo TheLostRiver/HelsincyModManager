@@ -172,9 +172,6 @@ const genericErrorCopy: Record<string, ErrorCopy> = {
   },
   replacement_target_catalog_unavailable: { message: "替换目标目录暂不可用。" },
   replacement_analysis_unavailable: { message: "替换分析暂不可用。" },
-  weapon_developer_seed_unavailable: {
-    message: "武器替换仅在受控开发 Sandbox 中可用。",
-  },
   weapon_source_content_unavailable: {
     message: "无法读取受控武器资源。",
     hint: "请重新导入该 Mod。",

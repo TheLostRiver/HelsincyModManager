@@ -84,7 +84,8 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
     ],
   );
   assert.match(types, /export type ReplacementTarget/);
-  assert.match(types, /catalogScope:\s*"production" \| "developer_sandbox"/);
+  // catalogScope 随 developer seed 退役（WR-05），类型契约不得再包含 scope。
+  assert.doesNotMatch(types, /catalogScope|developer_sandbox/);
   assert.doesNotMatch(types, /metadata:\s*Record<string, unknown>/);
   assert.match(types, /weapon_partial_part_set/);
   assert.match(types, /export type ReplacementAnalysis/);
