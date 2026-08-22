@@ -41,8 +41,12 @@
    InstallPlan/manifest/recovery/Audit facts 与 temp-root exact-baseline 生命周期。WR-04 已完成窄 Tauri/
    typed API、Mod 详情目标工作流、4 viewport/theme smoke，并在全新 disposable Windows Sandbox 通过
    `one001` 安装 -> 重启 -> `one002` true reinstall target switch -> 重启 -> manifest 卸载 ->
-   10 文件/316 bytes exact baseline，Gate D 于 2026-08-06 标记为 `certified`。AR6 防具扩容和 WR-02B
-   完整武器 catalog 仍等待明确可再分发的审计数据；LOG-01 Task/Audit retention、LOG-02 日志总空间
+   10 文件/316 bytes exact baseline，Gate D 于 2026-08-06 标记为 `certified`。AR6 防具扩容（269 条
+   中英日三语）与 WR-02B 完整武器 catalog（601 条三语、14 family 分片）已于 2026-08-21 依
+   `game_terminology` 许可边界入库（治理决定见 EQUIPMENT_CATALOG_GOVERNANCE.md）；WR-05 已完成
+   Production catalog 接线与门禁翻转（2026-08-22）：developer seed 退役，Production 与 Sandbox
+   共用同一聚合 catalog（armor 269 + weapon 601，`mhw-replacement-v1`），武器重定向对 Production
+   开放。LOG-01 Task/Audit retention、LOG-02 日志总空间
    上限和 LOG-03 Debug Log 均已完成。SAVE-02 已在 disposable Windows Sandbox 完成安装态 sibling
    worker、真实 user Scheduled Task、人工触发、fresh heartbeat 与 ownership-checked 幂等 cleanup，并于
    2026-08-07 标记为 `certified`。SAVE-03 installer ownership cleanup 已于 2026-08-14 标记为
@@ -53,9 +57,9 @@
    payload；回到 Ready 后使用正常 NSIS wrapper 完整删除安装目录和 owned task，synthetic save、ZIP 与
    manifest 保留。`_?=` 已限定为 blocked 诊断，不再用于成功卸载验收。应用内用户 SID 与 Scheduled
    Task 只读检查改走原生 Windows token/COM，mutation 继续使用受控 PowerShell 安全链。
-   完整 catalog 未到位前仍只能使用人工最小 developer/Sandbox seed，不开放 Production 写入。
-   防具 AR1-AR5 已认证不等于完整防具
-   数据或完整武器链路已实现。
+   发版前置仍未清：`game_terminology` 许可声明独立签核、Sandbox Gate 换全量 catalog 复验
+   （WR-04 Gate D 的真机证据基于已退役的人工 seed，catalog 形态已变）。防具 AR1-AR5 与 WR-04
+   的认证不等于真机全量验收已完成。
 8. SAVE-04 玩家存档恢复已于 2026-08-15 在 disposable Windows Sandbox 完成人工验收并标记为
    `certified`。实现使用统一悬浮确认、5 分钟 preview token、独立 `TaskKind::SaveRestore`、默认开启且
    按 Profile 持久化的 pre-restore 安全备份、独立 `pre-restore/` 目录、共享 game/profile 写锁、目录交换、
@@ -196,7 +200,7 @@ primary/fallback target、target-only blocker 和 route-change 推进已落地�
 
 Gate B 后续范围：
 
-- 添加武器替换映射。
+- 武器替换映射：已由 WR-02A~WR-05 独立武器链路交付（不并入 Armor Gate B）。
 - 添加语音替换映射。
 - 添加感知绑定关系的冲突检测。
 - 扩展多 source、男体路径和更复杂 transformer。

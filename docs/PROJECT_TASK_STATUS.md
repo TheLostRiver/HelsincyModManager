@@ -35,8 +35,9 @@ Sandbox 完成主链和受控 partial failure -> retry 补充链，Gate C 为 `c
 WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer、WR-03B
 staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均已完成；Gate D 于
 2026-08-06 标记为 `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log
-均已完成；AR6/WR-02B 仍等待具有明确再分发权的审计数据。完整 catalog 未到位前只允许人工最小 developer/Sandbox seed；Sandbox
-认证不开放 Production 写入。
+均已完成；AR6（269 条三语）与 WR-02B（601 条三语分片）已于 2026-08-21 入库；WR-05 已于
+2026-08-22 翻转门禁并退役 developer seed，武器重定向对 Production 开放（发版前置：许可签核、
+Sandbox Gate 复验）。
 Windows 后台存档保障的 SAVE-02 与 installer ownership cleanup 的 SAVE-03 安装态验收均已完成。
 SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 verify、findings-first review 和
 disposable Windows 人工验收均已完成并标记为 `certified`；SAVE-05 retention/备份中心也已完成实现、
@@ -80,7 +81,7 @@ command-level admission 与开放仍未完成。
 | T8 存档备份 | 已完成 / SAVE-02 至 SAVE-05 Certified | 备份、后台核心、安装态保护、installer cleanup、玩家恢复、时间/空间 retention 与独立备份中心均已认证 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
-| T11 装备 Retarget | Armor / Weapon 流程均 Certified | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01、WR-02A、WR-03A、WR-03B 已完成；完整 bundled armor/weapon catalog 仍受 AR6/WR-02B 数据门禁 |
+| T11 装备 Retarget | Armor / Weapon 流程均 Certified；catalog 全量在册 | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01~03B 已完成；AR6（269 条三语）与 WR-02B（601 条三语）已入库，WR-05 已翻转门禁开放 Production（seed 退役）；发版前置：`game_terminology` 许可签核 + Sandbox Gate 复验 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需替换目标 Tab 已完成；完整扩展范围未恢复 |
 | T13 批量操作 | Certified（Gate C） | sealed plan/preview、batch runner、SQLite journal、retry、故障证据、Sandbox CLI、6 个窄 Tauri command（含 capability 投影）、typed API 与批量 UI 均已落地；4 viewport smoke、主链、受控 partial/retry、重启/recovery、批量卸载与 exact baseline 已验收 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
@@ -140,8 +141,11 @@ Armor Retarget 的流程认证与 catalog 完整度是两个状态：
   48 个名称，必须建模为稳定 target + aliases，而不是重复安装目标。
 - 武器目标属于独立的 MHW:I weapon catalog/path parser/adapter。不能塞进
   `MhwArmorReplacementAdapter`，也不能让前端解析 `nativePC/wp`。
-- WR-04 已认证人工 developer/Sandbox weapon seed 的 Tauri/UI 与完整生命周期；这不等于完整 production
-  weapon catalog 已获许可或开放，WR-02B 仍保持 `blocked-external-data`。
+- WR-04 曾以人工 developer/Sandbox weapon seed 认证 Tauri/UI 与完整生命周期；WR-02B 全量
+  catalog（601 条三语、14 family 分片）已于 2026-08-21 入库，WR-05 于 2026-08-22 翻转门禁并
+  退役 seed（seed 与全量 catalog 的 one001/one002 stable_id 完全重合，无法共存），武器重定向
+  已对 Production 开放。`game_terminology` 许可签核与 Sandbox Gate 换全量 catalog 复验仍是
+  发版前置。
 
 两份候选数据都不是运行时信任源。接入前必须完成 schema、路径安全、大小写碰撞、重复项、stable
 ID、alias/localization、dummy 条目、版本和可分发权利审计，再生成 versioned bundled artifact。
