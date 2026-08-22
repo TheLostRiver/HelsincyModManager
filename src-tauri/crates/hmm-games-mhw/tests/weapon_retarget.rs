@@ -621,16 +621,15 @@ fn sharded_parse_still_rejects_conflicts_that_span_shards() {
     );
 }
 
-/// WR-05：Production 聚合 catalog = armor v2 + WR-02B 全量武器分片。
+/// WR-05：聚合 catalog = armor v2 + WR-02B 全量武器分片，Production 与 Sandbox 共用。
 ///
-/// 武器 plan 门禁（`weapon_developer_seed_unavailable`）此时仍未打开，所以这些
-/// 目标还不会在 Production UI 出现——本测试固定的是「数据先就位」这个中间态：
-/// 门禁一翻（WR-05 后续），UI 与 reinstall 不能再缺目标。
+/// 这条测试固定门禁翻转后的 catalog 组成：armor 部分不变、武器全量在册、
+/// 元数据形状满足 `list_compatible_targets` 过滤与 plan 阶段 family 校验的需要。
 #[test]
-fn production_aggregate_catalog_exposes_full_weapon_targets() {
-    let catalog = MhwReplacementCatalog::production()
+fn aggregate_catalog_exposes_full_weapon_targets() {
+    let catalog = MhwReplacementCatalog
         .replacement_catalog()
-        .expect("production replacement catalog");
+        .expect("aggregate replacement catalog");
 
     assert_eq!(catalog.version().as_str(), "mhw-replacement-v1");
     let armor_count = catalog
@@ -647,8 +646,8 @@ fn production_aggregate_catalog_exposes_full_weapon_targets() {
     assert_eq!(weapon_targets.len(), 601, "WR-02B 全量武器目标必须整体在册");
 
     // path_family 是 list_compatible_targets 的过滤键（缺失等于目标不可见），
-    // family 是 plan 阶段跨 family 拒绝的依据；production 目标不得携带
-    // developer_sandbox scope 标记。
+    // family 是 plan 阶段跨 family 拒绝的依据。WR-05 起 seed 退役，
+    // catalog 不再有 scope 之分，任何目标都不得携带 catalog_scope 标记。
     for target in weapon_targets {
         let metadata = target.metadata();
         let main = WeaponMainId::parse(target.internal_id()).expect("weapon internal id parses");
@@ -670,38 +669,10 @@ fn production_aggregate_catalog_exposes_full_weapon_targets() {
     }
 }
 
-/// Sandbox 聚合 catalog 保持 WR-04 认证时的形态：armor + 2 条人工 seed。
-///
-/// plan 阶段的目标解析仍走 seed（`developer_weapon_target`），把全量目标混进
-/// Sandbox 会让选中的目标以 TargetCatalogMissing 失败；Sandbox 换全量属于门禁
-/// 翻转的一部分，必须连同 plan 解析一起改。
+/// 聚合查找必须能按精确 stable_id 解析 artifact 里的武器目标——reinstall/preview
+/// 流程依赖 `find_replacement_target`，而不是只看得到列表。
 #[test]
-fn sandbox_aggregate_catalog_stays_armor_plus_developer_seed() {
-    let catalog = MhwReplacementCatalog::with_developer_weapon_seed()
-        .replacement_catalog()
-        .expect("sandbox replacement catalog");
-
-    assert_eq!(catalog.version().as_str(), "mhw-wr04-developer-v1");
-    assert_eq!(catalog.targets().len(), 269 + 2);
-    let weapon_targets: Vec<_> = catalog
-        .targets()
-        .iter()
-        .filter(|target| target.target_type().as_str() == "weapon")
-        .collect();
-    assert_eq!(weapon_targets.len(), 2);
-    assert!(weapon_targets.iter().all(|target| {
-        target
-            .metadata()
-            .get("catalog_scope")
-            .and_then(Value::as_str)
-            == Some("developer_sandbox")
-    }));
-}
-
-/// 聚合查找必须能按精确 stable_id 解析 artifact 里的武器目标——门禁翻转后
-/// reinstall/preview 流程依赖 `find_replacement_target`，而不是只看得到列表。
-#[test]
-fn production_catalog_resolves_artifact_weapon_target_ids() {
+fn aggregate_catalog_resolves_artifact_weapon_target_ids() {
     let shard: Value = serde_json::from_str(include_str!(
         "../data/weapons/mhw-weapon-targets.one.v1.json"
     ))
@@ -711,9 +682,9 @@ fn production_catalog_resolves_artifact_weapon_target_ids() {
         .expect("stable id present");
     let target_id = ReplacementTargetId::parse(stable_id).expect("stable id parses");
 
-    let target = MhwReplacementCatalog::production()
+    let target = MhwReplacementCatalog
         .find_replacement_target(&target_id)
-        .expect("weapon target resolves from production catalog");
+        .expect("weapon target resolves from aggregate catalog");
     assert_eq!(target.id().as_str(), stable_id);
     assert_eq!(target.target_type().as_str(), "weapon");
 
@@ -722,7 +693,7 @@ fn production_catalog_resolves_artifact_weapon_target_ids() {
         "mhw:weapon:0000000000000000000000000000000000000000000000000000000000000000",
     )
     .expect("unknown id parses");
-    assert!(MhwReplacementCatalog::production()
+    assert!(MhwReplacementCatalog
         .find_replacement_target(&unknown)
         .is_err());
 }
