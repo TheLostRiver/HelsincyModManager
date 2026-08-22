@@ -75,7 +75,6 @@ pub struct ReplacementTargetDto {
     pub secondary_name: Option<String>,
     pub aliases: Vec<String>,
     pub internal_id: String,
-    pub catalog_scope: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -253,7 +252,6 @@ mod replacement_dto_tests {
             secondary_name: Some("Fatalis Alpha +".to_owned()),
             aliases: vec!["黑龙".to_owned()],
             internal_id: "pl129_0000".to_owned(),
-            catalog_scope: "production".to_owned(),
         };
         let analysis = ReplacementAnalysisDto {
             game_id: "mhw".to_owned(),
@@ -278,7 +276,8 @@ mod replacement_dto_tests {
         .expect("serialize action");
         assert_eq!(target_value["gameId"], "mhw");
         assert_eq!(target_value["secondaryName"], "Fatalis Alpha +");
-        assert_eq!(target_value["catalogScope"], "production");
+        // catalogScope 随 developer seed 退役（WR-05），不得再回到 DTO 契约。
+        assert!(target_value.get("catalogScope").is_none());
         assert!(target_value.get("metadata").is_none());
         assert_eq!(analysis_value["matchedAssetCount"], 1);
         assert_eq!(
@@ -355,7 +354,6 @@ mod replacement_dto_tests {
                 secondary_name: None,
                 aliases: Vec::new(),
                 internal_id: "pl129_0000".to_owned(),
-                catalog_scope: "production".to_owned(),
             },
             actions: Vec::new(),
             warnings: Vec::new(),

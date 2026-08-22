@@ -601,7 +601,6 @@ export function ReplacementTargetPanel({
                   </span>
                   <span className="replacement-panel__target-facts">
                     <code>{target.internalId}</code>
-                    {target.catalogScope === "developer_sandbox" ? <small>人工目录</small> : null}
                   </span>
                 </label>
               );

@@ -135,7 +135,9 @@ impl HmmRuntimeBuilder {
         environment: RuntimeEnvironment,
     ) -> Result<Self, String> {
         if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-            return Err("developer weapon seed requires a Sandbox environment".to_owned());
+            // Sandbox environment 控制的是 install/reinstall/uninstall/recovery 的
+            // root admission，与武器 catalog 无关（WR-05 起 seed 已退役）。
+            return Err("sandbox environment selection requires a Sandbox environment".to_owned());
         }
         self.sandbox_environment = Some(environment);
         Ok(self)
@@ -709,19 +711,12 @@ impl HmmRuntime {
         ));
         let initial_retarget_install_status: Arc<dyn InitialRetargetInstallStatusReader> =
             install_recovery_scanner.clone();
-        let developer_weapon_seed = sandbox_environment.is_some();
+        // WR-05 门禁翻转后武器与防具共用同一聚合 adapter/catalog；
+        // sandbox environment 只影响 root admission，不再选择 developer seed。
         let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
-            vec![Arc::new(if developer_weapon_seed {
-                MhwReplacementAdapter::with_developer_weapon_seed()
-            } else {
-                MhwReplacementAdapter::production()
-            })];
+            vec![Arc::new(MhwReplacementAdapter)];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
-            vec![Arc::new(if developer_weapon_seed {
-                MhwReplacementCatalog::with_developer_weapon_seed()
-            } else {
-                MhwReplacementCatalog::production()
-            })];
+            vec![Arc::new(MhwReplacementCatalog)];
         let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
             replacement_adapters,
             replacement_catalogs,
@@ -2394,7 +2389,7 @@ mod tests {
     }
 
     #[test]
-    fn developer_weapon_seed_builder_requires_a_sandbox_environment() {
+    fn sandbox_environment_builder_requires_a_sandbox_environment() {
         let production = RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
             .expect("production environment");
         assert!(
