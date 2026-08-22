@@ -1,12 +1,12 @@
-use hmm_core::PackageFileId;
+use hmm_core::{PackageFileId, ReplacementTargetId};
 use hmm_games_mhw::{
     analyze_mhw_weapon_assets, generate_mhw_equipment_stable_id, EquipmentCandidateTargetKind,
-    MhwWeaponCatalogSource, WeaponAnalysisError, WeaponAnalysisWarning, WeaponCatalogSourceError,
-    WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponModelAssetKind, WeaponModelAssetPath,
-    WeaponPartRole, WeaponPathError, WeaponResourceRoot, WeaponTargetStatus,
+    MhwReplacementCatalog, MhwWeaponCatalogSource, WeaponAnalysisError, WeaponAnalysisWarning,
+    WeaponCatalogSourceError, WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponModelAssetKind,
+    WeaponModelAssetPath, WeaponPartRole, WeaponPathError, WeaponResourceRoot, WeaponTargetStatus,
     MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION,
 };
-use hmm_ports::ReplacementAsset;
+use hmm_ports::{ReplacementAsset, ReplacementCatalogProvider};
 use serde_json::{json, Value};
 
 fn asset(id: &str, relative_path: &str) -> ReplacementAsset {
@@ -619,4 +619,110 @@ fn sharded_parse_still_rejects_conflicts_that_span_shards() {
         MhwWeaponCatalogSource::parse_sharded(&[&shard_a, &foreign]).is_err(),
         "catalog_version 不一致的分片必须被拒"
     );
+}
+
+/// WR-05：Production 聚合 catalog = armor v2 + WR-02B 全量武器分片。
+///
+/// 武器 plan 门禁（`weapon_developer_seed_unavailable`）此时仍未打开，所以这些
+/// 目标还不会在 Production UI 出现——本测试固定的是「数据先就位」这个中间态：
+/// 门禁一翻（WR-05 后续），UI 与 reinstall 不能再缺目标。
+#[test]
+fn production_aggregate_catalog_exposes_full_weapon_targets() {
+    let catalog = MhwReplacementCatalog::production()
+        .replacement_catalog()
+        .expect("production replacement catalog");
+
+    assert_eq!(catalog.version().as_str(), "mhw-replacement-v1");
+    let armor_count = catalog
+        .targets()
+        .iter()
+        .filter(|target| target.target_type().as_str() == "armor")
+        .count();
+    let weapon_targets: Vec<_> = catalog
+        .targets()
+        .iter()
+        .filter(|target| target.target_type().as_str() == "weapon")
+        .collect();
+    assert_eq!(armor_count, 269, "armor 目标不应被本次接线改动");
+    assert_eq!(weapon_targets.len(), 601, "WR-02B 全量武器目标必须整体在册");
+
+    // path_family 是 list_compatible_targets 的过滤键（缺失等于目标不可见），
+    // family 是 plan 阶段跨 family 拒绝的依据；production 目标不得携带
+    // developer_sandbox scope 标记。
+    for target in weapon_targets {
+        let metadata = target.metadata();
+        let main = WeaponMainId::parse(target.internal_id()).expect("weapon internal id parses");
+        assert_eq!(
+            metadata.get("path_family").and_then(Value::as_str),
+            Some(main.family().path_family()),
+            "{} 缺少 path_family",
+            target.id().as_str()
+        );
+        assert_eq!(
+            metadata.get("family").and_then(Value::as_str),
+            Some(main.family().as_str())
+        );
+        assert!(
+            metadata.get("catalog_scope").is_none(),
+            "{} 不应携带 catalog_scope",
+            target.id().as_str()
+        );
+    }
+}
+
+/// Sandbox 聚合 catalog 保持 WR-04 认证时的形态：armor + 2 条人工 seed。
+///
+/// plan 阶段的目标解析仍走 seed（`developer_weapon_target`），把全量目标混进
+/// Sandbox 会让选中的目标以 TargetCatalogMissing 失败；Sandbox 换全量属于门禁
+/// 翻转的一部分，必须连同 plan 解析一起改。
+#[test]
+fn sandbox_aggregate_catalog_stays_armor_plus_developer_seed() {
+    let catalog = MhwReplacementCatalog::with_developer_weapon_seed()
+        .replacement_catalog()
+        .expect("sandbox replacement catalog");
+
+    assert_eq!(catalog.version().as_str(), "mhw-wr04-developer-v1");
+    assert_eq!(catalog.targets().len(), 269 + 2);
+    let weapon_targets: Vec<_> = catalog
+        .targets()
+        .iter()
+        .filter(|target| target.target_type().as_str() == "weapon")
+        .collect();
+    assert_eq!(weapon_targets.len(), 2);
+    assert!(weapon_targets.iter().all(|target| {
+        target
+            .metadata()
+            .get("catalog_scope")
+            .and_then(Value::as_str)
+            == Some("developer_sandbox")
+    }));
+}
+
+/// 聚合查找必须能按精确 stable_id 解析 artifact 里的武器目标——门禁翻转后
+/// reinstall/preview 流程依赖 `find_replacement_target`，而不是只看得到列表。
+#[test]
+fn production_catalog_resolves_artifact_weapon_target_ids() {
+    let shard: Value = serde_json::from_str(include_str!(
+        "../data/weapons/mhw-weapon-targets.one.v1.json"
+    ))
+    .expect("one shard artifact parses");
+    let stable_id = shard["targets"][0]["stable_id"]
+        .as_str()
+        .expect("stable id present");
+    let target_id = ReplacementTargetId::parse(stable_id).expect("stable id parses");
+
+    let target = MhwReplacementCatalog::production()
+        .find_replacement_target(&target_id)
+        .expect("weapon target resolves from production catalog");
+    assert_eq!(target.id().as_str(), stable_id);
+    assert_eq!(target.target_type().as_str(), "weapon");
+
+    // 未知武器 ID 仍然 fail closed。
+    let unknown = ReplacementTargetId::parse(
+        "mhw:weapon:0000000000000000000000000000000000000000000000000000000000000000",
+    )
+    .expect("unknown id parses");
+    assert!(MhwReplacementCatalog::production()
+        .find_replacement_target(&unknown)
+        .is_err());
 }
