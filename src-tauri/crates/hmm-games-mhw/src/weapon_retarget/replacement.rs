@@ -22,13 +22,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-const DEVELOPER_WEAPON_CATALOG: &str =
-    include_str!("../../data/mhw-weapon-targets.developer.v1.json");
-const DEVELOPER_CATALOG_VERSION: &str = "mhw-wr04-developer-v1";
 /// WR-02B 全量武器 catalog 按 family 拆成 14 份分片（合并校验的约束见
 /// `MhwWeaponCatalogSource::parse_sharded`）。这里必须与 artifact 测试使用同一份清单：
-/// 少一份分片等于那一类武器的重定向目标在 Production 整体消失。
-const PRODUCTION_WEAPON_CATALOG_SHARDS: [&str; 14] = [
+/// 少一份分片等于那一类武器的重定向目标整体消失。
+const WEAPON_CATALOG_SHARDS: [&str; 14] = [
     include_str!("../../data/weapons/mhw-weapon-targets.bow.v1.json"),
     include_str!("../../data/weapons/mhw-weapon-targets.caxe.v1.json"),
     include_str!("../../data/weapons/mhw-weapon-targets.gun.v1.json"),
@@ -44,39 +41,21 @@ const PRODUCTION_WEAPON_CATALOG_SHARDS: [&str; 14] = [
     include_str!("../../data/weapons/mhw-weapon-targets.swo.v1.json"),
     include_str!("../../data/weapons/mhw-weapon-targets.two.v1.json"),
 ];
-/// Production 聚合 catalog（armor v2 + weapon v1）的独立版本号，与 armor、weapon
-/// 各自的 catalog_version 相互独立（治理契约见 EQUIPMENT_CATALOG_GOVERNANCE.md）。
-const PRODUCTION_CATALOG_VERSION: &str = "mhw-replacement-v1";
+/// 聚合 catalog（armor v2 + weapon v1）的版本号，Production 与 Sandbox 共用，
+/// 与 armor、weapon 各自的 catalog_version 相互独立（治理契约见
+/// EQUIPMENT_CATALOG_GOVERNANCE.md）。
+const REPLACEMENT_CATALOG_VERSION: &str = "mhw-replacement-v1";
 const WEAPON_ADAPTER_ID: &str = "mhw.weapon";
 const WEAPON_STRATEGY_ID: &str = "mrl3-texture-path";
 const WEAPON_STRATEGY_VERSION: u32 = 1;
-const CATALOG_SCOPE_METADATA_KEY: &str = "catalog_scope";
-const DEVELOPER_SANDBOX_CATALOG_SCOPE: &str = "developer_sandbox";
 
-#[derive(Debug, Clone, Copy)]
-pub struct MhwReplacementCatalog {
-    developer_weapon_seed: bool,
-}
-
-impl MhwReplacementCatalog {
-    pub const fn production() -> Self {
-        Self {
-            developer_weapon_seed: false,
-        }
-    }
-
-    pub const fn with_developer_weapon_seed() -> Self {
-        Self {
-            developer_weapon_seed: true,
-        }
-    }
-}
-
-impl Default for MhwReplacementCatalog {
-    fn default() -> Self {
-        Self::production()
-    }
-}
+/// WR-05 起 Production 与 Sandbox 共用同一份聚合 catalog。
+///
+/// 原来的 developer seed（WR-04 人工 one001/one002）已退役：这两个资源路径
+/// 与全量 catalog 的真实条目完全重合（stable_id 相同），人工目标与真数据
+/// 无法共存于一个 catalog——真数据入册后 seed 没有存在意义。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MhwReplacementCatalog;
 
 impl ReplacementCatalogProvider for MhwReplacementCatalog {
     fn game_id(&self) -> GameId {
@@ -85,21 +64,10 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
 
     fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog> {
         let mut targets = MhwArmorCatalog.replacement_catalog()?.targets().to_vec();
-        // Production 与 Sandbox 的武器目标来源刻意不同：Production 装载 WR-02B 全量
-        // 分片 catalog；Sandbox 只保留人工 seed——plan 阶段的目标解析仍走 seed
-        // （`developer_weapon_target`），把全量目标混进 Sandbox 会让玩家选中的目标
-        // 在 plan 阶段以 TargetCatalogMissing 失败。Sandbox 换全量是门禁翻转
-        // （WR-05 后续）的一部分，不在这里顺手改。
-        let version = if self.developer_weapon_seed {
-            targets.extend(developer_weapon_targets()?);
-            DEVELOPER_CATALOG_VERSION
-        } else {
-            targets.extend(production_weapon_targets()?);
-            PRODUCTION_CATALOG_VERSION
-        };
+        targets.extend(weapon_targets()?);
         targets.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
         ReplacementCatalog::new(
-            ReplacementCatalogVersion::parse(version)
+            ReplacementCatalogVersion::parse(REPLACEMENT_CATALOG_VERSION)
                 .map_err(|_| ReplacementCatalogError::CatalogInvalid)?,
             GameId::mhw(),
             targets,
@@ -134,38 +102,10 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MhwReplacementAdapter {
-    developer_weapon_seed: bool,
-}
-
-impl MhwReplacementAdapter {
-    pub const fn production() -> Self {
-        Self {
-            developer_weapon_seed: false,
-        }
-    }
-
-    pub const fn with_developer_weapon_seed() -> Self {
-        Self {
-            developer_weapon_seed: true,
-        }
-    }
-
-    fn weapon_adapter(&self) -> ReplacementAdapterResult<MhwWeaponReplacementAdapter> {
-        self.developer_weapon_seed
-            .then_some(MhwWeaponReplacementAdapter)
-            .ok_or(ReplacementAdapterError::AnalysisRejected {
-                code: "weapon_developer_seed_unavailable",
-            })
-    }
-}
-
-impl Default for MhwReplacementAdapter {
-    fn default() -> Self {
-        Self::production()
-    }
-}
+/// WR-05 门禁翻转后，武器 analysis/plan 在 Production 与 Sandbox 一视同仁；
+/// 原 `weapon_developer_seed_unavailable` 拒绝路径随 developer seed 一并退役。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MhwReplacementAdapter;
 
 impl ReplacementAdapter for MhwReplacementAdapter {
     fn game_id(&self) -> GameId {
@@ -177,7 +117,7 @@ impl ReplacementAdapter for MhwReplacementAdapter {
         request: ReplacementAnalysisRequest,
     ) -> ReplacementAdapterResult<ReplacementAnalysis> {
         if contains_weapon_candidate(&request) {
-            self.weapon_adapter()?.analyze_replacement_assets(request)
+            MhwWeaponReplacementAdapter.analyze_replacement_assets(request)
         } else {
             MhwArmorReplacementAdapter.analyze_replacement_assets(request)
         }
@@ -188,7 +128,7 @@ impl ReplacementAdapter for MhwReplacementAdapter {
         request: RetargetPlanRequest,
     ) -> ReplacementAdapterResult<RetargetPlan> {
         if contains_weapon_plan_candidate(&request) {
-            self.weapon_adapter()?.build_retarget_plan(request)
+            MhwWeaponReplacementAdapter.build_retarget_plan(request)
         } else {
             MhwArmorReplacementAdapter.build_retarget_plan(request)
         }
@@ -200,8 +140,7 @@ impl ReplacementAdapter for MhwReplacementAdapter {
         content_reader: &dyn ReplacementAssetContentReader,
     ) -> ReplacementAdapterResult<RetargetPlan> {
         if contains_weapon_plan_candidate(&request) {
-            self.weapon_adapter()?
-                .build_retarget_plan_with_content(request, content_reader)
+            MhwWeaponReplacementAdapter.build_retarget_plan_with_content(request, content_reader)
         } else {
             MhwArmorReplacementAdapter.build_retarget_plan(request)
         }
@@ -243,7 +182,7 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
             return Err(ReplacementAdapterError::SourceBindingMismatch);
         }
 
-        let target = developer_weapon_target(request.binding.target_id())?;
+        let target = weapon_target(request.binding.target_id())?;
         if target.target_type().as_str() != "weapon" {
             return Err(ReplacementAdapterError::UnsupportedReplacementTarget);
         }
@@ -449,59 +388,37 @@ fn map_binary_error(error: WeaponBinaryError) -> ReplacementAdapterError {
     ReplacementAdapterError::AnalysisRejected { code: error.code() }
 }
 
-fn developer_weapon_source() -> ReplacementCatalogResult<MhwWeaponCatalogSource> {
-    MhwWeaponCatalogSource::parse(DEVELOPER_WEAPON_CATALOG)
+fn weapon_catalog() -> ReplacementCatalogResult<MhwWeaponCatalogSource> {
+    MhwWeaponCatalogSource::parse_sharded(&WEAPON_CATALOG_SHARDS)
         .map_err(|_| ReplacementCatalogError::CatalogInvalid)
 }
 
-fn production_weapon_catalog() -> ReplacementCatalogResult<MhwWeaponCatalogSource> {
-    MhwWeaponCatalogSource::parse_sharded(&PRODUCTION_WEAPON_CATALOG_SHARDS)
-        .map_err(|_| ReplacementCatalogError::CatalogInvalid)
-}
-
-fn production_weapon_targets() -> ReplacementCatalogResult<Vec<ReplacementTarget>> {
-    production_weapon_catalog()?
+fn weapon_targets() -> ReplacementCatalogResult<Vec<ReplacementTarget>> {
+    weapon_catalog()?
         .targets()
         .iter()
         .filter(|target| target.status() == WeaponTargetStatus::Active)
-        .map(|target| weapon_target_from_metadata(target, WeaponCatalogScope::Production))
+        .map(weapon_target_from_metadata)
         .collect()
 }
 
-fn developer_weapon_targets() -> ReplacementCatalogResult<Vec<ReplacementTarget>> {
-    developer_weapon_source()?
-        .targets()
-        .iter()
-        .filter(|target| target.status() == WeaponTargetStatus::Active)
-        .map(|target| weapon_target_from_metadata(target, WeaponCatalogScope::DeveloperSandbox))
-        .collect()
-}
-
-fn developer_weapon_target(
+/// plan 阶段按 ID 解析武器目标。`MhwWeaponCatalogSource` 的 resolver 同时登记
+/// stable_id 与 legacy_id，legacy 回落内建于 source 层。
+fn weapon_target(
     target_id: &hmm_core::ReplacementTargetId,
 ) -> ReplacementAdapterResult<ReplacementTarget> {
-    let source =
-        developer_weapon_source().map_err(|_| ReplacementAdapterError::TargetCatalogUnavailable)?;
+    let source = weapon_catalog().map_err(|_| ReplacementAdapterError::TargetCatalogUnavailable)?;
     let target = source.resolve(target_id.as_str()).ok_or_else(|| {
         ReplacementAdapterError::TargetCatalogMissing {
             target_id: target_id.clone(),
         }
     })?;
-    weapon_target_from_metadata(target, WeaponCatalogScope::DeveloperSandbox)
+    weapon_target_from_metadata(target)
         .map_err(|_| ReplacementAdapterError::TargetCatalogUnavailable)
-}
-
-/// catalog 进入哪一层运行时：Production 目标不携带 scope 标记（DTO 侧默认
-/// `production`），Sandbox seed 目标显式标记 `developer_sandbox` 供 UI 区分。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WeaponCatalogScope {
-    Production,
-    DeveloperSandbox,
 }
 
 fn weapon_target_from_metadata(
     target: &WeaponTargetMetadata,
-    scope: WeaponCatalogScope,
 ) -> ReplacementCatalogResult<ReplacementTarget> {
     let aliases = target
         .aliases()
@@ -511,7 +428,7 @@ fn weapon_target_from_metadata(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let mut metadata = BTreeMap::from([
+    let metadata = BTreeMap::from([
         (
             "family".to_owned(),
             Value::String(target.family().as_str().to_owned()),
@@ -521,12 +438,6 @@ fn weapon_target_from_metadata(
             Value::String(target.root().path_family().to_owned()),
         ),
     ]);
-    if scope == WeaponCatalogScope::DeveloperSandbox {
-        metadata.insert(
-            CATALOG_SCOPE_METADATA_KEY.to_owned(),
-            Value::String(DEVELOPER_SANDBOX_CATALOG_SCOPE.to_owned()),
-        );
-    }
     ReplacementTarget::new(
         target.id().clone(),
         GameId::mhw(),
@@ -669,42 +580,23 @@ mod tests {
         ]
     }
 
+    /// WR-05 门禁翻转后，武器候选在聚合 router 上直接可用——这条测试同时
+    /// 钉住"拒绝路径已删除"：如果有人重建 developer 门禁，这里要显式改回来。
     #[test]
-    fn developer_catalog_contains_only_two_artificial_weapon_targets() {
-        let targets = developer_weapon_targets().expect("developer weapon targets");
-        assert_eq!(targets.len(), 2);
-        assert!(targets.iter().all(|target| {
-            target.target_type().as_str() == "weapon"
-                && target.internal_id().starts_with("one00")
-                && target
-                    .display_name()
-                    .values()
-                    .all(|name| name.contains("WR-04"))
-        }));
-    }
-
-    #[test]
-    fn production_router_rejects_weapon_candidate_with_stable_capability_code() {
-        let error = MhwReplacementAdapter::production()
+    fn router_accepts_weapon_candidate_without_developer_gate() {
+        let analysis = MhwReplacementAdapter
             .analyze_replacement_assets(ReplacementAnalysisRequest {
                 game_id: GameId::mhw(),
-                assets: vec![hmm_ports::ReplacementAsset::new(
-                    hmm_core::PackageFileId::new("model.mod3"),
-                    "nativePC/wp/one/one001/mod/one001.mod3",
-                )],
+                assets: artificial_weapon_assets(),
             })
-            .expect_err("production weapon seed must be unavailable");
-        assert_eq!(
-            error,
-            ReplacementAdapterError::AnalysisRejected {
-                code: "weapon_developer_seed_unavailable"
-            }
-        );
+            .expect("weapon analysis must not require a developer gate");
+        let source = analysis.single_source().expect("single weapon source");
+        assert_eq!(source.source_type().as_str(), "weapon");
     }
 
     #[test]
-    fn developer_router_builds_content_sealed_weapon_plan_from_artificial_bytes() {
-        let adapter = MhwReplacementAdapter::with_developer_weapon_seed();
+    fn router_builds_content_sealed_weapon_plan_from_artificial_bytes() {
+        let adapter = MhwReplacementAdapter;
         let assets = artificial_weapon_assets();
         let analysis = adapter
             .analyze_replacement_assets(ReplacementAnalysisRequest {
@@ -713,6 +605,8 @@ mod tests {
             })
             .expect("artificial weapon analysis");
         let source = analysis.single_source().expect("single weapon source");
+        // 这个 stable_id 与全量 catalog 的真实 one002 重合（WR-05 起 seed 退役，
+        // 人工 fixture 的目标解析走全量 catalog）。
         let binding = ReplacementBinding::new(
             ReplacementBindingId::parse("binding-weapon").expect("binding id"),
             ModId::new("weapon-mod"),
@@ -721,10 +615,18 @@ mod tests {
             hmm_core::ReplacementTargetId::parse(
                 "mhw:weapon:0784b06e3b1e031bee9d1da31deeb995cba0d35dca4f7583f1cd8a019c5facc1",
             )
-            .expect("developer target id"),
+            .expect("catalog target id"),
             1,
         )
         .expect("weapon binding");
+
+        // 解析出的必须是全量 catalog 的真实条目，不是退役 seed 的人工命名。
+        let resolved = weapon_target(binding.target_id()).expect("catalog weapon target");
+        assert_eq!(resolved.internal_id(), "one002");
+        assert!(resolved
+            .display_name()
+            .values()
+            .all(|name| !name.contains("WR-04")));
 
         let plan = adapter
             .build_retarget_plan_with_content(

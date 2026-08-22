@@ -1,5 +1,5 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
-use crate::{production_app_data_dir, RuntimeEnvironment, RuntimeEnvironmentKind};
+use crate::{production_app_data_dir, RuntimeEnvironment};
 use hmm_app::{
     is_identity_replacement_binding, BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest,
     BatchReinstallPlanFactsProvider, BatchUninstallPlanFactsProvider,
@@ -556,19 +556,12 @@ impl ReadOnlyInstallAutomation {
             Arc::new(JsonReinstallRecoveryTransactionRepository::new(
                 app_data_dir.join("install").join("reinstall-recovery"),
             ));
-        let developer_weapon_seed = environment.kind() == RuntimeEnvironmentKind::Sandbox;
+        // WR-05 门禁翻转后武器与防具共用同一聚合 adapter/catalog；
+        // environment 只影响 root admission，不再选择 developer seed。
         let replacement_adapters: Vec<Arc<dyn ReplacementAdapter>> =
-            vec![Arc::new(if developer_weapon_seed {
-                MhwReplacementAdapter::with_developer_weapon_seed()
-            } else {
-                MhwReplacementAdapter::production()
-            })];
+            vec![Arc::new(MhwReplacementAdapter)];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
-            vec![Arc::new(if developer_weapon_seed {
-                MhwReplacementCatalog::with_developer_weapon_seed()
-            } else {
-                MhwReplacementCatalog::production()
-            })];
+            vec![Arc::new(MhwReplacementCatalog)];
         let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
             replacement_adapters,
             replacement_catalogs,

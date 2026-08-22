@@ -47,7 +47,6 @@ export type ReplacementTarget = {
   secondaryName?: string;
   aliases: string[];
   internalId: string;
-  catalogScope: "production" | "developer_sandbox";
 };
 
 export type ReplacementSource = {
