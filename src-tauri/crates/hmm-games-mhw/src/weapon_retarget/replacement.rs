@@ -25,6 +25,28 @@ use std::collections::{BTreeMap, BTreeSet};
 const DEVELOPER_WEAPON_CATALOG: &str =
     include_str!("../../data/mhw-weapon-targets.developer.v1.json");
 const DEVELOPER_CATALOG_VERSION: &str = "mhw-wr04-developer-v1";
+/// WR-02B 全量武器 catalog 按 family 拆成 14 份分片（合并校验的约束见
+/// `MhwWeaponCatalogSource::parse_sharded`）。这里必须与 artifact 测试使用同一份清单：
+/// 少一份分片等于那一类武器的重定向目标在 Production 整体消失。
+const PRODUCTION_WEAPON_CATALOG_SHARDS: [&str; 14] = [
+    include_str!("../../data/weapons/mhw-weapon-targets.bow.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.caxe.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.gun.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.ham.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.hbg.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.hue.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.lan.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.lbg.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.one.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.rod.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.saxe.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.sou.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.swo.v1.json"),
+    include_str!("../../data/weapons/mhw-weapon-targets.two.v1.json"),
+];
+/// Production 聚合 catalog（armor v2 + weapon v1）的独立版本号，与 armor、weapon
+/// 各自的 catalog_version 相互独立（治理契约见 EQUIPMENT_CATALOG_GOVERNANCE.md）。
+const PRODUCTION_CATALOG_VERSION: &str = "mhw-replacement-v1";
 const WEAPON_ADAPTER_ID: &str = "mhw.weapon";
 const WEAPON_STRATEGY_ID: &str = "mrl3-texture-path";
 const WEAPON_STRATEGY_VERSION: u32 = 1;
@@ -63,12 +85,21 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
 
     fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog> {
         let mut targets = MhwArmorCatalog.replacement_catalog()?.targets().to_vec();
-        if self.developer_weapon_seed {
+        // Production 与 Sandbox 的武器目标来源刻意不同：Production 装载 WR-02B 全量
+        // 分片 catalog；Sandbox 只保留人工 seed——plan 阶段的目标解析仍走 seed
+        // （`developer_weapon_target`），把全量目标混进 Sandbox 会让玩家选中的目标
+        // 在 plan 阶段以 TargetCatalogMissing 失败。Sandbox 换全量是门禁翻转
+        // （WR-05 后续）的一部分，不在这里顺手改。
+        let version = if self.developer_weapon_seed {
             targets.extend(developer_weapon_targets()?);
-        }
+            DEVELOPER_CATALOG_VERSION
+        } else {
+            targets.extend(production_weapon_targets()?);
+            PRODUCTION_CATALOG_VERSION
+        };
         targets.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
         ReplacementCatalog::new(
-            ReplacementCatalogVersion::parse(DEVELOPER_CATALOG_VERSION)
+            ReplacementCatalogVersion::parse(version)
                 .map_err(|_| ReplacementCatalogError::CatalogInvalid)?,
             GameId::mhw(),
             targets,
@@ -423,12 +454,26 @@ fn developer_weapon_source() -> ReplacementCatalogResult<MhwWeaponCatalogSource>
         .map_err(|_| ReplacementCatalogError::CatalogInvalid)
 }
 
+fn production_weapon_catalog() -> ReplacementCatalogResult<MhwWeaponCatalogSource> {
+    MhwWeaponCatalogSource::parse_sharded(&PRODUCTION_WEAPON_CATALOG_SHARDS)
+        .map_err(|_| ReplacementCatalogError::CatalogInvalid)
+}
+
+fn production_weapon_targets() -> ReplacementCatalogResult<Vec<ReplacementTarget>> {
+    production_weapon_catalog()?
+        .targets()
+        .iter()
+        .filter(|target| target.status() == WeaponTargetStatus::Active)
+        .map(|target| weapon_target_from_metadata(target, WeaponCatalogScope::Production))
+        .collect()
+}
+
 fn developer_weapon_targets() -> ReplacementCatalogResult<Vec<ReplacementTarget>> {
     developer_weapon_source()?
         .targets()
         .iter()
         .filter(|target| target.status() == WeaponTargetStatus::Active)
-        .map(developer_weapon_target_from_metadata)
+        .map(|target| weapon_target_from_metadata(target, WeaponCatalogScope::DeveloperSandbox))
         .collect()
 }
 
@@ -442,12 +487,21 @@ fn developer_weapon_target(
             target_id: target_id.clone(),
         }
     })?;
-    developer_weapon_target_from_metadata(target)
+    weapon_target_from_metadata(target, WeaponCatalogScope::DeveloperSandbox)
         .map_err(|_| ReplacementAdapterError::TargetCatalogUnavailable)
 }
 
-fn developer_weapon_target_from_metadata(
+/// catalog 进入哪一层运行时：Production 目标不携带 scope 标记（DTO 侧默认
+/// `production`），Sandbox seed 目标显式标记 `developer_sandbox` 供 UI 区分。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WeaponCatalogScope {
+    Production,
+    DeveloperSandbox,
+}
+
+fn weapon_target_from_metadata(
     target: &WeaponTargetMetadata,
+    scope: WeaponCatalogScope,
 ) -> ReplacementCatalogResult<ReplacementTarget> {
     let aliases = target
         .aliases()
@@ -457,11 +511,7 @@ fn developer_weapon_target_from_metadata(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let metadata = BTreeMap::from([
-        (
-            CATALOG_SCOPE_METADATA_KEY.to_owned(),
-            Value::String(DEVELOPER_SANDBOX_CATALOG_SCOPE.to_owned()),
-        ),
+    let mut metadata = BTreeMap::from([
         (
             "family".to_owned(),
             Value::String(target.family().as_str().to_owned()),
@@ -471,6 +521,12 @@ fn developer_weapon_target_from_metadata(
             Value::String(target.root().path_family().to_owned()),
         ),
     ]);
+    if scope == WeaponCatalogScope::DeveloperSandbox {
+        metadata.insert(
+            CATALOG_SCOPE_METADATA_KEY.to_owned(),
+            Value::String(DEVELOPER_SANDBOX_CATALOG_SCOPE.to_owned()),
+        );
+    }
     ReplacementTarget::new(
         target.id().clone(),
         GameId::mhw(),
