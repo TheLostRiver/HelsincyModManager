@@ -55,9 +55,14 @@ test("toolbar icon controls use custom tooltips with explicit accessible names",
   assert.match(source, /<ModLibraryControlTooltip content=\{labelToggleTitle\} describeControl=\{false\}>/);
   assert.match(source, /aria-label=\{labelToggleTitle\}/);
 
+  // I18N-02 起视图名从 copy 取；tooltip 与 aria-label 必须共用同一个键。
+  const copySource = readSource("modLibraryCopy.ts");
+  for (const key of ["classicView", "gridView", "listView", "techView"]) {
+    assert.match(source, new RegExp(`<ModLibraryControlTooltip content=\\{copy\\.${key}\\} describeControl=\\{false\\}>`));
+    assert.match(source, new RegExp(`aria-label=\\{copy\\.${key}\\}`));
+  }
   for (const label of ["经典简约视图", "增强网格视图", "紧凑列表视图", "机能数据面板视图"]) {
-    assert.match(source, new RegExp(`<ModLibraryControlTooltip content="${label}" describeControl=\\{false\\}>`));
-    assert.match(source, new RegExp(`aria-label="${label}"`));
+    assert.match(copySource, new RegExp(label));
   }
 
   assert.doesNotMatch(source, /\btitle=/);

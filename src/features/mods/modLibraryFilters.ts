@@ -17,14 +17,23 @@ export type LibraryFilterChip = {
   disabledReason?: string;
 };
 
-const statusFilterChips: Array<{ label: string; status: InstallManifestStatus }> = [
-  { label: "已安装", status: "installed" },
-  { label: "未安装", status: "not_installed" },
+// 固定筛选的文本由调用方按当前界面语言传入（modLibraryCopy.filters）；
+// 本模块只保留筛选语义，不携带任何语言的文案。
+export type LibraryFilterLabels = {
+  all: string;
+  installed: string;
+  notInstalled: string;
+};
+
+const statusFilterChips: Array<{ labelKey: "installed" | "notInstalled"; status: InstallManifestStatus }> = [
+  { labelKey: "installed", status: "installed" },
+  { labelKey: "notInstalled", status: "not_installed" },
 ];
 
 type BuildLibraryFilterChipsOptions = {
   statusFiltersEnabled?: boolean;
   statusDisabledReason?: string;
+  filterLabels: LibraryFilterLabels;
 };
 
 export const allLibraryFilter: ModLibraryFilter = { kind: "all" };
@@ -48,8 +57,9 @@ export function buildLibraryFilterChips(
   categories: CategoryItem[],
   {
     statusFiltersEnabled = true,
-    statusDisabledReason = "选择配置档后可用",
-  }: BuildLibraryFilterChipsOptions = {},
+    statusDisabledReason,
+    filterLabels,
+  }: BuildLibraryFilterChipsOptions,
 ): LibraryFilterChip[] {
   const sortedCategories = categories
     .filter((category) => category.modCount > 0)
@@ -58,7 +68,7 @@ export function buildLibraryFilterChips(
   return [
     {
       key: libraryFilterKey(allLibraryFilter),
-      label: "全部",
+      label: filterLabels.all,
       kind: "all",
       filter: allLibraryFilter,
     },
@@ -66,7 +76,7 @@ export function buildLibraryFilterChips(
       const filter: ModLibraryFilter = { kind: "status", status: chip.status };
       return {
         key: libraryFilterKey(filter),
-        label: chip.label,
+        label: filterLabels[chip.labelKey],
         kind: "status" as const,
         filter,
         disabled: !statusFiltersEnabled,

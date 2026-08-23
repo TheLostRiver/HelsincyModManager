@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { externalImportCopy } from "./externalImportCopy.ts";
 import {
   getExternalImportScanErrorMessage,
   getExternalImportScanPhaseLabel,
   isExternalImportScanPhase,
   nextExternalImportScanTaskStateFromProgress,
 } from "./externalImportScanState.ts";
+
+const zhScan = externalImportCopy.zh_cn.scan;
 
 function progress(overrides = {}) {
   return {
@@ -27,7 +30,7 @@ test("external import scan phases use registered labels", () => {
   assert.equal(isExternalImportScanPhase("external_import.scan.fingerprinting"), true);
   assert.equal(isExternalImportScanPhase("mod_import.cancelled"), true);
   assert.equal(isExternalImportScanPhase("external_import.import.materializing"), false);
-  assert.equal(getExternalImportScanPhaseLabel("external_import.scan.discovering"), "正在发现候选");
+  assert.equal(getExternalImportScanPhaseLabel("external_import.scan.discovering", zhScan), "正在发现候选");
 });
 
 test("external import scan progress only accepts the owned task identity", () => {
@@ -77,7 +80,7 @@ test("external import scan terminal events remain redacted and fail closed", () 
     phase: "external_import.scan.failed",
     errorCode: "external_import_scan_failed",
   });
-  assert.doesNotMatch(getExternalImportScanErrorMessage(failed.errorCode), /private|untrusted/i);
+  assert.doesNotMatch(getExternalImportScanErrorMessage(failed.errorCode, zhScan), /private|untrusted/i);
 });
 
 test("unknown scan phases and invalid terminal status fail closed", () => {

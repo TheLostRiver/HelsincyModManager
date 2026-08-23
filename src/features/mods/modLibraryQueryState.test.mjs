@@ -20,7 +20,7 @@ const {
   MOD_LIBRARY_PAGE_SIZE_STORAGE_KEY,
   consumeOneShotQueryKey,
   createLatestRequestSequenceGate,
-  getModLibraryQueryErrorMessage,
+  normalizeModLibraryQueryErrorCode,
   isCommittedModLibraryQueryResponse,
   isPlainBrowserDevRuntime,
   mapModLibraryFilterToQueryFilter,
@@ -139,18 +139,25 @@ test("legacy display statuses never degrade into an all query", () => {
   }
 });
 
-test("stable query error codes map to short copy without displaying backend messages", () => {
-  assert.equal(getModLibraryQueryErrorMessage({ code: "mod_library_search_too_long" }), "搜索内容过长");
+test("stable query error codes normalize without leaking backend messages", () => {
+  // I18N-02 起文本在渲染层取词；本层只保证 code 归一化 + 未知错误不透传原文。
   assert.equal(
-    getModLibraryQueryErrorMessage({
+    normalizeModLibraryQueryErrorCode({ code: "mod_library_search_too_long" }),
+    "mod_library_search_too_long",
+  );
+  assert.equal(
+    normalizeModLibraryQueryErrorCode({
       code: "mod_library_profile_context_required",
       message: "C:/Users/private/profile.json",
     }),
-    "请先选择游戏配置",
+    "mod_library_profile_context_required",
   );
-  assert.equal(getModLibraryQueryErrorMessage("mod_library_status_unavailable"), "安装状态暂时不可用");
-  assert.equal(getModLibraryQueryErrorMessage({ code: "future_error", message: "secret" }), "Mod 列表加载失败，请稍后重试");
-  assert.equal(getModLibraryQueryErrorMessage(new Error("raw backend error")), "Mod 列表加载失败，请稍后重试");
+  assert.equal(
+    normalizeModLibraryQueryErrorCode("mod_library_status_unavailable"),
+    "mod_library_status_unavailable",
+  );
+  assert.equal(normalizeModLibraryQueryErrorCode({ code: "future_error", message: "secret" }), "unknown");
+  assert.equal(normalizeModLibraryQueryErrorCode(new Error("raw backend error")), "unknown");
 });
 
 test("latest request gate rejects responses from superseded and invalidated requests", () => {

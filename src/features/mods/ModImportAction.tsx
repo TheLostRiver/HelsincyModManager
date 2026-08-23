@@ -3,6 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { FileArchive, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { modImportCopy, type ModImportCopy } from "./modImportCopy";
 import { startImportModRevisionTask, startImportModTask } from "./modImportApi";
 import {
   TASK_PROGRESS_EVENT_NAME,
@@ -10,8 +12,10 @@ import {
 } from "./modImportTypes";
 import {
   consumeReconnectImportRequest,
+  getModImportFailedMessage,
   getModImportTaskPhaseLabel,
   nextModImportTaskStateFromProgress,
+  type ModImportFailedMessageKind,
   type ModImportTaskState,
 } from "./modImportTaskState";
 import "./ModImportAction.css";
@@ -25,16 +29,16 @@ type ModImportActionProps = {
   onImported: () => Promise<void> | void;
 };
 
-function startErrorMessage(error: unknown) {
+function startErrorMessageKind(error: unknown): ModImportFailedMessageKind {
   const code =
     typeof error === "object" && error !== null && "code" in error
       ? String(error.code)
       : "unknown";
 
   if (code === "archive_path_empty" || code === "archive_path_not_absolute") {
-    return "请选择有效的本地 ZIP 压缩包";
+    return "invalid-archive";
   }
-  return "无法启动导入任务";
+  return "start-failed";
 }
 
 function isImportTaskActive(state: ModImportTaskState) {
@@ -45,38 +49,43 @@ function isImportTaskTerminal(state: ModImportTaskState) {
   return state.status === "completed" || state.status === "cancelled" || state.status === "failed";
 }
 
-function importActionLabel(label: string, state: ModImportTaskState, mode: "new" | "revision") {
+function importActionLabel(
+  label: string,
+  state: ModImportTaskState,
+  mode: "new" | "revision",
+  copy: ModImportCopy,
+) {
   switch (state.status) {
     case "choosing":
-      return "选择压缩包...";
+      return copy.action.pickArchive;
     case "starting":
-      return "启动导入...";
+      return copy.action.starting;
     case "running":
-      return getModImportTaskPhaseLabel(state.phase);
+      return getModImportTaskPhaseLabel(state.phase, copy.phases);
     case "completed":
-      return mode === "revision" ? "继续导入新版本" : "继续导入 Mod";
+      return mode === "revision" ? copy.action.continueRevision : copy.action.continueImport;
     case "failed":
     case "cancelled":
-      return mode === "revision" ? "重试导入新版本" : "重试导入 Mod";
+      return mode === "revision" ? copy.action.retryRevision : copy.action.retryImport;
     default:
       return label;
   }
 }
 
-function importStatusText(state: ModImportTaskState, mode: "new" | "revision") {
+function importStatusText(state: ModImportTaskState, mode: "new" | "revision", copy: ModImportCopy) {
   switch (state.status) {
     case "choosing":
-      return "等待选择 ZIP 压缩包";
+      return copy.status.waitingArchive;
     case "starting":
-      return "正在创建导入任务";
+      return copy.status.creatingTask;
     case "running":
-      return getModImportTaskPhaseLabel(state.phase);
+      return getModImportTaskPhaseLabel(state.phase, copy.phases);
     case "completed":
-      return mode === "revision" ? "新版本导入完成，版本列表已更新" : "导入完成，Mod 列表将自动刷新";
+      return mode === "revision" ? copy.status.revisionDone : copy.status.importDone;
     case "cancelled":
-      return "导入已取消";
+      return copy.status.cancelled;
     case "failed":
-      return state.message;
+      return getModImportFailedMessage(state.messageKind, copy);
     default:
       return null;
   }
@@ -91,6 +100,8 @@ export function ModImportAction({
   onImported,
 }: ModImportActionProps) {
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
+  const { locale } = useI18n();
+  const copy = resolveCopy(modImportCopy, locale);
   const statusId = useId();
   const [listenerStatus, setListenerStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [listenerAttempt, setListenerAttempt] = useState(0);
@@ -122,19 +133,19 @@ export function ModImportAction({
         () => pushToast({
           eventKey: `mod-import.completed.${state.taskId}`,
           taskId: state.taskId,
-          title: mode === "revision" ? "新版本导入完成" : "Mod 导入完成",
-          message: mode === "revision" ? "版本列表已更新。" : "Mod 列表已更新。",
+          title: mode === "revision" ? copy.toasts.revisionDoneTitle : copy.toasts.importDoneTitle,
+          message: mode === "revision" ? copy.toasts.revisionDoneMessage : copy.toasts.importDoneMessage,
           tone: "success",
         }),
         () => pushToast({
           eventKey: `mod-import.refresh-failed.${state.taskId}`,
           taskId: state.taskId,
-          title: "导入完成，列表刷新失败",
-          message: "文件已导入，但当前列表未能刷新，请重新扫描或稍后重试。",
+          title: copy.toasts.refreshFailedTitle,
+          message: copy.toasts.refreshFailedMessage,
           tone: "warning",
         }),
       );
-  }, [mode, pushToast]);
+  }, [copy, mode, pushToast]);
 
   const applyProgressState = useCallback(
     (next: ModImportTaskState) => {
@@ -169,20 +180,20 @@ export function ModImportAction({
       pushToast({
         eventKey: `mod-import.failed.${taskState.taskId ?? taskState.phase}`,
         taskId: taskState.taskId ?? undefined,
-        title: "Mod 导入失败",
-        message: taskState.message,
+        title: copy.toasts.importFailedTitle,
+        message: getModImportFailedMessage(taskState.messageKind, copy),
         tone: "danger",
       });
     } else if (taskState.status === "cancelled") {
       pushToast({
         eventKey: `mod-import.cancelled.${taskState.taskId}`,
         taskId: taskState.taskId,
-        title: "Mod 导入已取消",
-        message: "未继续写入新的 Mod 版本。",
+        title: copy.toasts.importCancelledTitle,
+        message: copy.toasts.importCancelledMessage,
         tone: "neutral",
       });
     }
-  }, [pushToast, taskState]);
+  }, [copy, pushToast, taskState]);
 
   useEffect(() => {
     const previousTaskId = displayedTaskNoticeIdRef.current;
@@ -191,8 +202,8 @@ export function ModImportAction({
       displayedTaskNoticeIdRef.current = taskState.taskId;
       showTaskNotice({
         taskId: taskState.taskId,
-        title: mode === "revision" ? "正在导入新版本" : "正在导入 Mod",
-        message: importStatusText(taskState, mode) ?? "正在执行导入任务",
+        title: mode === "revision" ? copy.toasts.importingRevisionTitle : copy.toasts.importingTitle,
+        message: importStatusText(taskState, mode, copy) ?? copy.status.running,
         tone: "progress",
       });
       return;
@@ -201,7 +212,7 @@ export function ModImportAction({
       dismissTaskNotice(previousTaskId);
       displayedTaskNoticeIdRef.current = null;
     }
-  }, [dismissTaskNotice, mode, showTaskNotice, taskState]);
+  }, [copy, dismissTaskNotice, mode, showTaskNotice, taskState]);
 
   useEffect(() => () => {
     const taskId = displayedTaskNoticeIdRef.current;
@@ -247,7 +258,7 @@ export function ModImportAction({
             status: "failed",
             taskId: null,
             phase: "mod_import.listener.failed",
-            message: "导入任务状态不可用",
+            messageKind: "listener-unavailable",
           });
         }
       });
@@ -286,15 +297,15 @@ export function ModImportAction({
       selected = await open({
         directory: false,
         multiple: false,
-        title: mode === "revision" ? "选择新版本 ZIP 压缩包" : "选择 Mod ZIP 压缩包",
-        filters: [{ name: "ZIP 压缩包", extensions: ["zip"] }],
+        title: mode === "revision" ? copy.dialog.revisionTitle : copy.dialog.newTitle,
+        filters: [{ name: copy.dialog.zipFilterName, extensions: ["zip"] }],
       });
     } catch {
       setTrackedTaskState({
         status: "failed",
         taskId: null,
         phase: "mod_import.picker.failed",
-        message: "无法打开文件选择器",
+        messageKind: "picker-failed",
       });
       return;
     }
@@ -321,7 +332,7 @@ export function ModImportAction({
           status: "failed",
           taskId: null,
           phase: "mod_import.start.failed",
-          message: "导入任务返回了无效状态",
+          messageKind: "invalid-start-state",
         });
         return;
       }
@@ -345,14 +356,14 @@ export function ModImportAction({
         status: "failed",
         taskId: null,
         phase: "mod_import.start.failed",
-        message: startErrorMessage(error),
+        messageKind: startErrorMessageKind(error),
       });
     }
   }
 
   const taskActive = isImportTaskActive(taskState);
   const statusText = disabledReason ?? (listenerStatus === "failed"
-    ? "导入服务暂时不可用，点击后将自动重连并继续"
+    ? copy.status.listenerFailedHint
     : undefined);
   const listenerLoading = listenerStatus === "loading";
   const actionDisabled =
@@ -384,10 +395,10 @@ export function ModImportAction({
           )}
           <span className="compact-action__label">
             {listenerLoading
-              ? "准备导入..."
+              ? copy.action.preparing
               : listenerStatus === "failed"
-                ? mode === "revision" ? "导入新版本" : "导入 Mod"
-                : importActionLabel(label, taskState, mode)}
+                ? mode === "revision" ? copy.action.reconnectRevision : copy.action.reconnectImport
+                : importActionLabel(label, taskState, mode, copy)}
           </span>
         </span>
       </button>

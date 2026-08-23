@@ -16,26 +16,7 @@ import {
 const selectionStatuses = new Set(["editing", "sealed", "expired"]);
 const conflictResolutions = new Set(["keep_both", "ignore_invalid_metadata"]);
 
-const selectionErrorMessages: Readonly<Record<string, string>> = {
-  external_import_selection_unavailable: "候选选择不可用，请重新扫描",
-  external_import_batch_unavailable: "导入批次不可用，请重新扫描",
-  external_import_batch_not_startable: "当前批次不能启动，请重新扫描",
-  external_import_catalog_unavailable: "Mod 目录暂时不可用，请稍后重试",
-  external_import_category_unavailable: "分类不可用，请重新载入分类",
-  external_import_clock_unavailable: "选择状态不可用，请稍后重试",
-  selection_revision_conflict: "选择已发生变化，已重新载入",
-  selection_empty: "请至少选择一个候选",
-  selection_mutation_empty: "没有需要更新的候选",
-  selection_mutation_limit_exceeded: "本次选择变更过多，请分批操作",
-  selection_total_limit_exceeded: "选择数量超出批次限制",
-  selection_resource_limit_exceeded: "选择内容超出资源限制",
-  selection_candidate_invalid: "候选状态已变化，请重新载入",
-  selection_expired: "选择已过期，请重新扫描",
-  selection_closed: "选择已封存，不能继续修改",
-  external_import_selection_invalid: "选择数据不可识别，请重新扫描",
-  external_import_task_unavailable: "导入任务不可用，请重试",
-  external_import_progress_unrecognized: "导入状态不可识别，已停止继续操作",
-};
+import type { ExternalImportCopy } from "./externalImportCopy";
 
 function isResourceUsage(value: unknown): value is ExternalImportResourceUsageDto {
   return (
@@ -195,9 +176,9 @@ export function isExternalImportSelectionCategory(
   );
 }
 
-export function getExternalImportSelectionErrorMessage(errorCode: string) {
-  return (
-    selectionErrorMessages[errorCode] ??
-    "无法更新候选选择，请重新载入后重试"
-  );
+export function getExternalImportSelectionErrorMessage(
+  errorCode: string,
+  selection: ExternalImportCopy["selection"],
+) {
+  return selection.errors[errorCode] ?? selection.fallbackError;
 }

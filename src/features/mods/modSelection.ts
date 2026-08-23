@@ -17,10 +17,33 @@ export type ModSelectionNoticeCode =
   | "mod_selection_cleared"
   | "mod_selection_context_reset";
 
-export type ModSelectionNotice = {
-  code: ModSelectionNoticeCode;
-  message: string;
-};
+// I18N-02 起 notice 只携带语义码与参数，不携带渲染文本：文本在 UI 层按当前界面语言
+// 从 modLibraryCopy.selection 取词（renderModSelectionNotice），reducer 保持 locale 无关。
+export type ModSelectionResetReason =
+  | "query-changed"
+  | "filters-changed"
+  | "search-changed"
+  | "query-reset"
+  | "library-refreshed"
+  | "profile-changed"
+  | "batch-completed";
+
+export type ModSelectionNotice =
+  | { code: "mod_selection_limit_reached"; maxCount: number }
+  | {
+      code: "mod_selection_page_limit_exceeded";
+      variant: "select-page";
+      newCount: number;
+      remainingSlots: number;
+    }
+  | {
+      code: "mod_selection_page_limit_exceeded";
+      variant: "invert-page";
+      resultCount: number;
+      maxCount: number;
+    }
+  | { code: "mod_selection_cleared"; clearedCount: number; exitedBatch: boolean }
+  | { code: "mod_selection_context_reset"; reason: ModSelectionResetReason; clearedCount: number };
 
 export type ModLibrarySelectionState = {
   mode: ModSelectionMode;
@@ -34,7 +57,7 @@ export type ModSelectionAction =
   | { type: "exit-batch" }
   | { type: "clear-selection" }
   | { type: "dismiss-notice" }
-  | { type: "reset-context"; reason: string }
+  | { type: "reset-context"; reason: ModSelectionResetReason }
   | { type: "select-page"; modIds: readonly string[] }
   | { type: "invert-page"; modIds: readonly string[] };
 
@@ -75,14 +98,7 @@ function uniqueIds(modIds: readonly string[]) {
 function selectionLimitNotice(): ModSelectionNotice {
   return {
     code: "mod_selection_limit_reached",
-    message: `每批最多选择 ${MAX_MOD_SELECTION_COUNT} 个 Mod，取消一项后可继续添加。`,
-  };
-}
-
-function pageLimitNotice(message: string): ModSelectionNotice {
-  return {
-    code: "mod_selection_page_limit_exceeded",
-    message,
+    maxCount: MAX_MOD_SELECTION_COUNT,
   };
 }
 
@@ -130,9 +146,8 @@ export function reduceModSelection(
         selectedIds: new Set<string>(),
         notice: {
           code: "mod_selection_cleared",
-          message: selectedCount > 0
-            ? `已退出批量选择，并清空 ${selectedCount} 项选择。`
-            : "已退出批量选择。",
+          clearedCount: selectedCount,
+          exitedBatch: true,
         },
       };
     }
@@ -140,13 +155,13 @@ export function reduceModSelection(
       if (state.selectedIds.size === 0) {
         return state;
       }
-      const selectedCount = state.selectedIds.size;
       return {
         ...state,
         selectedIds: new Set<string>(),
         notice: {
           code: "mod_selection_cleared",
-          message: `已清空 ${selectedCount} 项选择。`,
+          clearedCount: state.selectedIds.size,
+          exitedBatch: false,
         },
       };
     }
@@ -163,9 +178,8 @@ export function reduceModSelection(
         selectedIds: new Set<string>(),
         notice: {
           code: "mod_selection_context_reset",
-          message: selectedCount > 0
-            ? `${action.reason}，已清空 ${selectedCount} 项选择。`
-            : `${action.reason}，已退出批量选择。`,
+          reason: action.reason,
+          clearedCount: selectedCount,
         },
       };
     }
@@ -179,9 +193,12 @@ export function reduceModSelection(
       if (newIds.length > remainingSlots) {
         return {
           ...state,
-          notice: pageLimitNotice(
-            `选择本页需要新增 ${newIds.length} 项，当前仅剩 ${remainingSlots} 个名额。`,
-          ),
+          notice: {
+            code: "mod_selection_page_limit_exceeded",
+            variant: "select-page",
+            newCount: newIds.length,
+            remainingSlots,
+          },
         };
       }
 
@@ -208,9 +225,12 @@ export function reduceModSelection(
       if (selectedIds.size > MAX_MOD_SELECTION_COUNT) {
         return {
           ...state,
-          notice: pageLimitNotice(
-            `反选本页后将选择 ${selectedIds.size} 项，超过每批 ${MAX_MOD_SELECTION_COUNT} 项上限。`,
-          ),
+          notice: {
+            code: "mod_selection_page_limit_exceeded",
+            variant: "invert-page",
+            resultCount: selectedIds.size,
+            maxCount: MAX_MOD_SELECTION_COUNT,
+          },
         };
       }
 

@@ -1,3 +1,4 @@
+import type { ModImportCopy } from "./modImportCopy";
 import type { TaskProgressEventDto } from "./modImportTypes";
 
 export type ModImportTaskState =
@@ -7,27 +8,58 @@ export type ModImportTaskState =
   | { status: "running"; taskId: string; phase: string }
   | { status: "completed"; taskId: string; phase: string }
   | { status: "cancelled"; taskId: string; phase: string }
-  | { status: "failed"; taskId: string | null; phase: string; message: string };
+  | { status: "failed"; taskId: string | null; phase: string; messageKind: ModImportFailedMessageKind };
 
-const modImportPhaseLabels: Readonly<Record<string, string>> = {
-  "mod_import.queued": "等待导入",
-  "mod_import.cancelled": "导入已取消",
-  "mod_import.unpack.started": "正在安全解包",
-  "mod_import.unpack.completed": "安全解包完成",
-  "mod_import.unpack.failed": "安全解包失败",
-  "mod_import.preview_image.processing": "正在处理预览图",
-  "mod_import.preview_image.fallback": "预览图已使用回退方案",
-  "mod_import.analyze.processing": "正在分析 Mod",
-  "mod_import.commit.processing": "正在保存导入结果",
-  "mod_import.prepare.completed": "导入完成",
+// 失败原因只存语义，渲染时经 getModImportFailedMessage 按当前界面语言取词；
+// 绝不把后端事件内容拼进用户可见消息（脱敏语义与语言无关）。
+export type ModImportFailedMessageKind =
+  | "retry-hint"
+  | "listener-unavailable"
+  | "picker-failed"
+  | "invalid-start-state"
+  | "invalid-archive"
+  | "start-failed";
+
+const modImportPhaseCopyKeys: Readonly<Record<string, keyof ModImportCopy["phases"]>> = {
+  "mod_import.queued": "queued",
+  "mod_import.cancelled": "cancelled",
+  "mod_import.unpack.started": "unpackStarted",
+  "mod_import.unpack.completed": "unpackCompleted",
+  "mod_import.unpack.failed": "unpackFailed",
+  "mod_import.preview_image.processing": "previewImageProcessing",
+  "mod_import.preview_image.fallback": "previewImageFallback",
+  "mod_import.analyze.processing": "analyzeProcessing",
+  "mod_import.commit.processing": "commitProcessing",
+  "mod_import.prepare.completed": "prepareCompleted",
 };
 
 export function isModImportTaskPhase(phase: string) {
-  return Object.hasOwn(modImportPhaseLabels, phase);
+  return Object.hasOwn(modImportPhaseCopyKeys, phase);
 }
 
-export function getModImportTaskPhaseLabel(phase: string) {
-  return modImportPhaseLabels[phase] ?? "正在导入";
+export function getModImportTaskPhaseLabel(phase: string, phases: ModImportCopy["phases"]) {
+  const key = modImportPhaseCopyKeys[phase];
+  return key === undefined ? phases.importing : phases[key];
+}
+
+export function getModImportFailedMessage(
+  kind: ModImportFailedMessageKind,
+  copy: ModImportCopy,
+): string {
+  switch (kind) {
+    case "retry-hint":
+      return copy.phases.failedRetryHint;
+    case "listener-unavailable":
+      return copy.status.unavailable;
+    case "picker-failed":
+      return copy.errors.pickerFailed;
+    case "invalid-start-state":
+      return copy.errors.invalidStartState;
+    case "invalid-archive":
+      return copy.errors.invalidArchive;
+    case "start-failed":
+      return copy.errors.startFailed;
+  }
 }
 
 export function consumeReconnectImportRequest(
@@ -74,7 +106,7 @@ export function nextModImportTaskStateFromProgress(
       status: "failed",
       taskId: event.taskId,
       phase: event.phase,
-      message: "导入失败，请检查压缩包后重试",
+      messageKind: "retry-hint",
     };
   }
 

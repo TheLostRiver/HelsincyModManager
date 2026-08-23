@@ -1,3 +1,5 @@
+import type { ModLibraryCopy } from "./modLibraryCopy";
+
 export type CompactLifecycleActionId = "preview-plan" | "install" | "reinstall" | "uninstall";
 
 type CompactActionAvailabilityInput = {
@@ -18,8 +20,6 @@ const lifecycleActions = new Set<CompactLifecycleActionId>([
   "uninstall",
 ]);
 
-export const MOD_LIBRARY_QUERY_BUSY_MESSAGE = "Mod 列表正在更新，请稍候";
-
 export function getCompactActionDisabledReason({
   actionId,
   selectedCount,
@@ -29,20 +29,20 @@ export function getCompactActionDisabledReason({
   canInstallSelection,
   canReinstallSelection,
   canUninstallSelection,
-}: CompactActionAvailabilityInput): string | undefined {
+}: CompactActionAvailabilityInput, compact: ModLibraryCopy["compact"]): string | undefined {
   if (
     libraryQueryBusy
     && (actionId === "select-all"
       || actionId === "invert"
       || lifecycleActions.has(actionId as CompactLifecycleActionId))
   ) {
-    return MOD_LIBRARY_QUERY_BUSY_MESSAGE;
+    return compact.queryBusy;
   }
   if (!lifecycleActions.has(actionId as CompactLifecycleActionId)) {
     return undefined;
   }
   if (selectedCount === 0) {
-    return "请先选择一个 MOD";
+    return compact.selectOneFirst;
   }
   if (selectedCount > 1) {
     // T13-07: multi-selection drives the batch mod lifecycle flow. Per-operation feasibility
@@ -50,27 +50,27 @@ export function getCompactActionDisabledReason({
     // are excluded inside the batch preview with stable reasons.
   }
   if (installTaskActive) {
-    return "请等待当前安装任务完成";
+    return compact.waitInstallTask;
   }
   if (!profileReady) {
     const actionLabel: Record<CompactLifecycleActionId, string> = {
-      "preview-plan": "预览安装计划",
-      install: "安装",
-      reinstall: "重装",
-      uninstall: "卸载",
+      "preview-plan": compact.actionLabels.previewPlan,
+      install: compact.actionLabels.install,
+      reinstall: compact.actionLabels.reinstall,
+      uninstall: compact.actionLabels.uninstall,
     };
-    return `选择配置档后可${actionLabel[actionId as CompactLifecycleActionId]}`;
+    return compact.selectProfileFor(actionLabel[actionId as CompactLifecycleActionId]);
   }
 
   switch (actionId) {
     case "preview-plan":
-      return canInstallSelection ? undefined : "仅未安装且状态安全的 MOD 可预览安装计划";
+      return canInstallSelection ? undefined : compact.previewNeedsInstallable;
     case "install":
-      return canInstallSelection ? undefined : "仅未安装且状态安全的 MOD 可安装";
+      return canInstallSelection ? undefined : compact.installNeedsInstallable;
     case "reinstall":
-      return canReinstallSelection ? undefined : "仅已安装且状态安全的 MOD 可重装";
+      return canReinstallSelection ? undefined : compact.reinstallNeedsInstalled;
     case "uninstall":
-      return canUninstallSelection ? undefined : "仅已安装且状态安全的 MOD 可卸载";
+      return canUninstallSelection ? undefined : compact.uninstallNeedsInstalled;
     default:
       return undefined;
   }

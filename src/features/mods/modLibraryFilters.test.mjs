@@ -9,6 +9,9 @@ import {
   normalizeLibraryFilter,
   visibleCategoryLabelsForCard,
 } from "./modLibraryFilters.ts";
+import { modLibraryCopy } from "./modLibraryCopy.ts";
+
+const zhFilters = modLibraryCopy.zh_cn.filters;
 
 const installedItem = {
   id: "installed-mod",
@@ -31,7 +34,7 @@ test("buildLibraryFilterChips keeps status filters and appends non-empty categor
     { id: "cat-empty", name: "空分类", color: "#94a3b8", sortOrder: 1, modCount: 0 },
     { id: "cat-weapon", name: "武器", color: "#2563eb", sortOrder: 5, modCount: 2 },
     { id: "cat-armor", name: "外观", color: "#db2777", sortOrder: 2, modCount: 4 },
-  ]);
+  ], { filterLabels: zhFilters });
 
   assert.deepEqual(
     chips.map((chip) => chip.label),
@@ -44,10 +47,11 @@ test("status filters stay selected but disabled without an active profile", () =
   const chips = buildLibraryFilterChips([], {
     statusFiltersEnabled: false,
     statusDisabledReason: "选择配置档后可用",
+    filterLabels: zhFilters,
   });
   const statusChips = chips.filter((chip) => chip.kind === "status");
 
-  assert.deepEqual(statusChips.map((chip) => chip.label), ["已安装", "未安装"]);
+  assert.deepEqual(statusChips.map((chip) => chip.label), ["已安装", "未安装"], { filterLabels: zhFilters });
   assert.ok(statusChips.every((chip) => chip.disabled));
   assert.ok(statusChips.every((chip) => chip.disabledReason === "选择配置档后可用"));
   assert.deepEqual(
@@ -59,7 +63,7 @@ test("status filters stay selected but disabled without an active profile", () =
 test("library category filters do not collide with status labels of the same name", () => {
   const chips = buildLibraryFilterChips([
     { id: "cat-installed", name: "已安装", color: "#ef4444", sortOrder: 0, modCount: 1 },
-  ]);
+  ], { filterLabels: zhFilters });
   const statusChip = chips.find((chip) => chip.kind === "status" && chip.label === "已安装");
   const categoryChip = chips.find((chip) => chip.kind === "category" && chip.label === "已安装");
 
@@ -75,7 +79,7 @@ test("library category filters do not collide with status labels of the same nam
 test("normalizeLibraryFilter refreshes renamed category filters from the current chip", () => {
   const chips = buildLibraryFilterChips([
     { id: "cat-weapons", name: "Weapons", color: "#2563eb", sortOrder: 0, modCount: 1 },
-  ]);
+  ], { filterLabels: zhFilters });
   const staleFilter = {
     kind: "category",
     categoryId: "cat-weapons",
@@ -100,7 +104,7 @@ test("normalizeLibraryFilter preserves references when rebuilt chips are semanti
   };
   const chips = buildLibraryFilterChips([
     { id: "cat-weapons", name: "Weapons", color: "#2563eb", sortOrder: 0, modCount: 1 },
-  ]);
+  ], { filterLabels: zhFilters });
 
   assert.strictEqual(normalizeLibraryFilter(statusFilter, chips), statusFilter);
   assert.strictEqual(normalizeLibraryFilter(categoryFilter, chips), categoryFilter);

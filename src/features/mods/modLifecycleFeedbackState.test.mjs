@@ -8,6 +8,9 @@ import {
   isManagedInstallTaskTerminal,
   shouldFailClosedManagedInstallTerminal,
 } from "./modLifecycleFeedbackState.ts";
+import { modLifecycleCopy } from "./modLifecycleCopy.ts";
+
+const zhToasts = modLifecycleCopy.zh_cn.terminalToasts;
 
 const completedInstall = {
   status: "completed",
@@ -49,7 +52,7 @@ test("managed install terminal states exclude starting and running tasks", () =>
 
 test("success toast requires a verified durable status matching the completed operation", () => {
   assert.deepEqual(
-    getManagedInstallTerminalToast(completedInstall, { verified: true, status: "installed" }),
+    getManagedInstallTerminalToast(completedInstall, { verified: true, status: "installed" }, zhToasts),
     {
       id: "task-install",
       title: "安装完成",
@@ -58,11 +61,11 @@ test("success toast requires a verified durable status matching the completed op
     },
   );
   assert.equal(
-    getManagedInstallTerminalToast(completedInstall, { verified: false, status: "installed" }),
+    getManagedInstallTerminalToast(completedInstall, { verified: false, status: "installed" }, zhToasts),
     null,
   );
   assert.equal(
-    getManagedInstallTerminalToast(completedInstall, { verified: true, status: "not_installed" }),
+    getManagedInstallTerminalToast(completedInstall, { verified: true, status: "not_installed" }, zhToasts),
     null,
   );
 });
@@ -83,14 +86,14 @@ test("ordinary failure toast is suppressed for every persistent recovery state",
     "unknown",
   ]) {
     assert.equal(
-      getManagedInstallTerminalToast(failedUninstall, { verified: true, status }),
+      getManagedInstallTerminalToast(failedUninstall, { verified: true, status }, zhToasts),
       null,
       status,
     );
   }
 
   assert.deepEqual(
-    getManagedInstallTerminalToast(failedUninstall, { verified: true, status: "installed" }),
+    getManagedInstallTerminalToast(failedUninstall, { verified: true, status: "installed" }, zhToasts),
     {
       id: "task-uninstall",
       title: "卸载失败",
@@ -112,11 +115,11 @@ test("cancelled install only becomes a toast after not-installed is verified", (
   };
 
   assert.equal(
-    getManagedInstallTerminalToast(cancelled, { verified: true, status: "installed" }),
+    getManagedInstallTerminalToast(cancelled, { verified: true, status: "installed" }, zhToasts),
     null,
   );
   assert.deepEqual(
-    getManagedInstallTerminalToast(cancelled, { verified: true, status: "not_installed" }),
+    getManagedInstallTerminalToast(cancelled, { verified: true, status: "not_installed" }, zhToasts),
     {
       id: "task-cancelled",
       title: "安装已取消",

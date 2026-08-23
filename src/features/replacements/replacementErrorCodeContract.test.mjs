@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import { replacementCopy } from "./replacementCopy.ts";
 import {
   WEAPON_REPLACEMENT_ERROR_CODES,
   replacementErrorMessage,
@@ -100,9 +101,10 @@ test("Rust 侧武器码全局唯一，前端才能按码做穷尽映射", () => 
   assert.equal(new Set(rustCodes).size, rustCodes.length, "武器稳定码跨枚举重复");
 });
 
-test("replacement_commands.rs 吐出的每个码都有前端文案", () => {
+test("replacement_commands.rs 吐出的每个码在三种语言下都有前端文案", () => {
   // 通用码是散落的字面量，没有单一枚举可穷尽，所以按命名约定抓。
   // 抓到非错误码的字符串时本测试会红，那时补 allowlist 即可——比静默漏码好。
+  // generic 表不像 weapon 表有 tsc 穷尽闸门，必须逐语言扫：漏写 en/ja 时这里先红。
   const source = readFileSync(REPLACEMENT_COMMANDS, "utf8");
   const codes = [
     ...new Set(
@@ -114,6 +116,15 @@ test("replacement_commands.rs 吐出的每个码都有前端文案", () => {
 
   assert.ok(codes.length > 0, `没有从 ${REPLACEMENT_COMMANDS} 解析出任何错误码`);
 
-  const uncovered = codes.filter((code) => replacementErrorMessage({ code }, FALLBACK) === FALLBACK);
-  assert.deepEqual(uncovered, [], "这些后端码会退回兜底提示，需要在 replacementErrorText.ts 补文案");
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const uncovered = codes.filter(
+      (code) =>
+        replacementErrorMessage({ code }, FALLBACK, replacementCopy[locale].errors) === FALLBACK,
+    );
+    assert.deepEqual(
+      uncovered,
+      [],
+      `这些后端码在 ${locale} 会退回兜底提示，需要在 replacementCopy.ts 补文案`,
+    );
+  }
 });

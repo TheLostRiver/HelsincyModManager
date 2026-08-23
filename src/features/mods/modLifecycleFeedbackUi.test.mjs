@@ -25,7 +25,7 @@ test("uninstall confirmation is an alert dialog with a safe close and focus poli
   assert.match(source, /role="alertdialog"/);
   assert.match(source, /closeOnBackdrop=\{false\}/);
   assert.match(source, /initialFocusRef=\{cancelButtonRef\}/);
-  assert.match(source, /ref=\{cancelButtonRef\}[^>]*>\s*取消/);
+  assert.match(source, /ref=\{cancelButtonRef\}[^>]*>\s*\{uninstallCopy\.cancel\}/);
   assert.match(source, /disabled=\{blockerMessage\s*!==\s*null\}/);
   assert.match(source, /state\.managedFileCount/);
   assert.match(source, /state\.backupCount/);
@@ -106,7 +106,7 @@ test("query refresh blocks already-open uninstall and reinstall write confirmati
 
   assert.match(
     page,
-    /const uninstallBlockerMessage = useMemo\(\(\) => \{[\s\S]*?if \(libraryQueryBusy\) \{\s*return MOD_LIBRARY_QUERY_BUSY_MESSAGE;/,
+    /const uninstallBlockerMessage = useMemo\(\(\) => \{[\s\S]*?if \(libraryQueryBusy\) \{\s*return copy\.page\.queryBusy;/,
   );
   assert.match(
     page,

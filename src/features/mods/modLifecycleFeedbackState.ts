@@ -1,5 +1,6 @@
 import type { ModInstallSummaryStatus, ModLibraryItem } from "./modLibraryTypes";
 import type { ManagedInstallTaskOperation, ManagedInstallTaskState } from "./modInstallTaskState";
+import type { ModLifecycleCopy } from "./modLifecycleCopy";
 
 export type ModLifecycleToast = {
   id: string;
@@ -62,6 +63,7 @@ export function shouldFailClosedManagedInstallTerminal(
 export function getManagedInstallTerminalToast(
   task: ManagedInstallTerminalTask,
   refresh: ManagedInstallTerminalRefresh,
+  toasts: ModLifecycleCopy["terminalToasts"],
 ): ModLifecycleToast | null {
   if (task.taskId === null || !refresh.verified || refresh.status === null || isPersistentRecoveryStatus(refresh.status)) {
     return null;
@@ -72,19 +74,19 @@ export function getManagedInstallTerminalToast(
       return null;
     }
 
-    const title = task.operation === "uninstall" ? "卸载完成" : "安装完成";
+    const title = task.operation === "uninstall" ? toasts.uninstallCompleted : toasts.installCompleted;
     return { id: task.taskId, title, message: task.modName, tone: "success" };
   }
 
   if (task.status === "cancelled") {
     return refresh.status === "not_installed"
-      ? { id: task.taskId, title: "安装已取消", message: task.modName, tone: "neutral" }
+      ? { id: task.taskId, title: toasts.installCancelled, message: task.modName, tone: "neutral" }
       : null;
   }
 
   return {
     id: task.taskId,
-    title: task.operation === "uninstall" ? "卸载失败" : "安装失败",
+    title: task.operation === "uninstall" ? toasts.uninstallFailed : toasts.installFailed,
     message: task.message,
     tone: "danger",
   };
