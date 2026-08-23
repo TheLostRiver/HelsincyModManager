@@ -1,22 +1,20 @@
 import { AlertTriangle, CircleHelp, Loader2, ShieldCheck } from "lucide-react";
-import type { InstallRecoveryIssue } from "../mods/modInstallPlanTypes";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { InstallRecoveryHealth, InstallRecoveryHealthStatus } from "../install-recovery/installRecoveryHealth";
+import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
 import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
+import { dashboardCopy, type DashboardCopy } from "./dashboardCopy";
 
 type InstallRecoveryHealthPanelProps = {
   state: InstallRecoveryHealthLoadState;
 };
 
-const issueLabels: Record<InstallRecoveryIssue, string> = {
-  missing_installed_file_summary: "摘要缺失",
-  target_missing: "目标缺失",
-  target_changed: "目标变更",
-  target_read_failed: "读取未知",
-  backup_missing: "备份缺失",
-  backup_read_failed: "备份未知",
-};
-
 export function InstallRecoveryHealthPanel({ state }: InstallRecoveryHealthPanelProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(dashboardCopy, locale).recoveryHealth;
+  // issue 标签与恢复中心共用同一张表，避免两处映射漂移。
+  const issueCopy = resolveCopy(recoveryCenterCopy, locale).issues;
+
   if (state.status === "idle") {
     return null;
   }
@@ -24,10 +22,10 @@ export function InstallRecoveryHealthPanel({ state }: InstallRecoveryHealthPanel
   if (state.status === "loading") {
     return (
       <section className="rail-section recovery-health" aria-labelledby="recovery-health-title">
-        <HealthHeader tone="loading" title="安装健康" label="检查中" />
+        <HealthHeader tone="loading" title={copy.title} label={copy.loadingBadge} />
         <div className="recovery-health-card is-loading" role="status">
           <Loader2 size={16} aria-hidden="true" />
-          <p>正在读取当前配置档的托管安装摘要。</p>
+          <p>{copy.loadingBody}</p>
         </div>
       </section>
     );
@@ -36,38 +34,38 @@ export function InstallRecoveryHealthPanel({ state }: InstallRecoveryHealthPanel
   if (state.status === "unavailable") {
     return (
       <section className="rail-section recovery-health" aria-labelledby="recovery-health-title">
-        <HealthHeader tone="unknown" title="安装健康" label="状态未知" />
+        <HealthHeader tone="unknown" title={copy.title} label={copy.unknownBadge} />
         <div className="recovery-health-card">
           <CircleHelp size={16} aria-hidden="true" />
-          <p>无法读取当前配置档的恢复摘要。</p>
+          <p>{copy.unavailableBody}</p>
         </div>
       </section>
     );
   }
 
-  const copy = healthCopy(state.health);
+  const healthView = healthCopy(state.health, copy);
 
   return (
     <section className="rail-section recovery-health" aria-labelledby="recovery-health-title">
-      <HealthHeader tone={state.health.status} title="安装健康" label={copy.label} />
+      <HealthHeader tone={state.health.status} title={copy.title} label={healthView.label} />
 
-      <div className={`recovery-health-card ${copy.cardClass}`}>
-        {copy.icon}
-        <p>{copy.description}</p>
+      <div className={`recovery-health-card ${healthView.cardClass}`}>
+        {healthView.icon}
+        <p>{healthView.description}</p>
       </div>
 
-      <div className="recovery-health-grid" aria-label="安装恢复摘要">
-        <HealthMetric label="扫描" value={`${state.health.scannedModCount}`} />
-        <HealthMetric label="需处理" value={`${state.health.attentionModCount}`} />
-        <HealthMetric label="未知" value={`${state.health.unknownModCount}`} />
-        <HealthMetric label="问题" value={`${state.health.issueCount}`} />
+      <div className="recovery-health-grid" aria-label={copy.metricsAria}>
+        <HealthMetric label={copy.metricScanned} value={`${state.health.scannedModCount}`} />
+        <HealthMetric label={copy.metricAttention} value={`${state.health.attentionModCount}`} />
+        <HealthMetric label={copy.metricUnknown} value={`${state.health.unknownModCount}`} />
+        <HealthMetric label={copy.metricIssues} value={`${state.health.issueCount}`} />
       </div>
 
       {state.health.issues.length > 0 ? (
-        <div className="recovery-issue-list" aria-label="恢复问题聚合">
+        <div className="recovery-issue-list" aria-label={copy.issuesAria}>
           {state.health.issues.map((issue) => (
             <span key={issue.issue}>
-              {issueLabels[issue.issue]} · {issue.count}
+              {issueCopy[issue.issue].label} · {issue.count}
             </span>
           ))}
         </div>
@@ -102,32 +100,32 @@ function HealthMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function healthCopy(health: InstallRecoveryHealth) {
+function healthCopy(health: InstallRecoveryHealth, copy: DashboardCopy["recoveryHealth"]) {
   if (health.status === "empty") {
     return {
-      label: "无托管记录",
+      label: copy.emptyBadge,
       cardClass: "is-empty",
-      description: "当前配置档没有托管安装记录。",
+      description: copy.emptyDescription,
       icon: <ShieldCheck size={16} aria-hidden="true" />,
     };
   }
 
   if (health.status === "attention") {
     return {
-      label: "需要处理",
+      label: copy.attentionBadge,
       cardClass: "is-attention",
       description:
         health.unknownModCount > 0
-          ? "存在无法确认的托管安装状态。"
-          : "存在需要修复的托管安装状态。",
+          ? copy.attentionDescriptionUnknown
+          : copy.attentionDescriptionRepair,
       icon: <AlertTriangle size={16} aria-hidden="true" />,
     };
   }
 
   return {
-    label: "正常",
+    label: copy.healthyBadge,
     cardClass: "is-healthy",
-    description: `${health.completedModCount} 个托管 Mod 状态一致。`,
+    description: copy.healthyDescription(health.completedModCount),
     icon: <ShieldCheck size={16} aria-hidden="true" />,
   };
 }

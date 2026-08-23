@@ -87,6 +87,9 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
     "src/features/profiles/saveBackupCopy.ts",
     "src/features/profiles/saveRestoreCopy.ts",
     "src/features/install-recovery/recoveryCenterCopy.ts",
+    "src/features/dashboard/dashboardCopy.ts",
+    "src/features/game-setup/gameSetupCopy.ts",
+    "src/features/game-launch/gameLaunchCopy.ts",
   ]) {
     const source = readSource(relativePath);
     for (const locale of ["zh_cn", "en", "ja"]) {
@@ -189,6 +192,26 @@ test("试点页与设置页内嵌面板去注释后不再包含硬编码中文�
     "src/features/install-recovery/useRecoveryCenterScan.ts",
     "src/features/install-recovery/useRecoveryDiagnosticsExport.ts",
     "src/features/install-recovery/useRecoveryRollback.ts",
+    "src/features/dashboard/DashboardPage.tsx",
+    "src/features/dashboard/DashboardHeroCard.tsx",
+    "src/features/dashboard/DashboardModulePreview.tsx",
+    "src/features/dashboard/SetupStatusPanel.tsx",
+    "src/features/dashboard/InstallRecoveryHealthPanel.tsx",
+    "src/features/dashboard/dashboardData.ts",
+    "src/features/dashboard/setupStatusSteps.ts",
+    "src/features/game-setup/GameDirectoryActions.tsx",
+    "src/features/game-setup/GameDirectoryCandidateList.tsx",
+    "src/features/game-setup/GameSetupProvider.tsx",
+    "src/features/game-setup/gameSetupApi.ts",
+    "src/features/game-setup/gameSetupTypes.ts",
+    "src/features/game-setup/gameSetupViewModel.ts",
+    "src/features/game-setup/useGameSetup.ts",
+    "src/features/game-setup/useGamePrerequisites.ts",
+    "src/features/game-setup/gamePrerequisiteApi.ts",
+    "src/features/game-setup/gamePrerequisiteTypes.ts",
+    "src/features/game-launch/useGameLaunch.ts",
+    "src/features/game-launch/gameLaunchApi.ts",
+    "src/features/game-launch/gameLaunchTypes.ts",
   ]) {
     const source = stripComments(readSource(relativePath));
     const hanMatches = source.match(/[一-鿿][^\n]{0,40}/gu) ?? [];

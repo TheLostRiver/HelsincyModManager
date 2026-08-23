@@ -1,5 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, Search } from "lucide-react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { gameSetupCopy } from "./gameSetupCopy";
 import { messageForError } from "./gameSetupViewModel";
 
 type GameDirectoryActionsProps = {
@@ -15,19 +17,22 @@ export function GameDirectoryActions({
   onActionError,
   onScanSteam,
 }: GameDirectoryActionsProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(gameSetupCopy, locale);
+
   async function handleManualSelect() {
     try {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "选择《怪物猎人：世界 冰原》游戏目录",
+        title: copy.actions.dialogTitle,
       });
 
       if (typeof selected === "string") {
         await onDirectorySelected(selected);
       }
     } catch {
-      onActionError(messageForError("unknown"));
+      onActionError(messageForError("unknown", copy.errors));
     }
   }
 
@@ -35,7 +40,7 @@ export function GameDirectoryActions({
     try {
       await onScanSteam();
     } catch {
-      onActionError(messageForError("unknown"));
+      onActionError(messageForError("unknown", copy.errors));
     }
   }
 
@@ -49,7 +54,7 @@ export function GameDirectoryActions({
         onClick={() => void handleSteamScan()}
       >
         <Search size={16} />
-        自动扫描 Steam
+        {copy.actions.scanSteam}
       </button>
       <button
         type="button"
@@ -59,7 +64,7 @@ export function GameDirectoryActions({
         onClick={() => void handleManualSelect()}
       >
         <FolderOpen size={16} />
-        手动选择游戏目录
+        {copy.actions.manualSelect}
       </button>
     </div>
   );
