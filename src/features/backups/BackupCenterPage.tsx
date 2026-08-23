@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog, useFeedback } from "../../shared/feedback";
+import { localeMeta, resolveCopy, useI18n, type Locale } from "../../shared/i18n";
 import { SaveRestoreDialog } from "../profiles/SaveRestoreDialog";
 import type { SaveBackupSummaryDto } from "../profiles/profileSaveBackupTypes";
 import {
@@ -24,6 +25,8 @@ import {
   runSaveBackupRetention,
   updateSaveBackupNote,
 } from "./backupCenterApi";
+import { backupCenterCopy, type BackupCenterCopy } from "./backupCenterCopy";
+import { createPreviewPage } from "./backupsPreviewData";
 import type {
   BackupCenterStatus,
   BackupCenterTrigger,
@@ -64,8 +67,8 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
 }
 
-function formatDate(timestamp: number) {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatDate(timestamp: number, locale: Locale) {
+  return new Intl.DateTimeFormat(localeMeta[locale].bcp47, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -101,24 +104,12 @@ function trustedSteamAvatarUrl(value: string | null) {
   }
 }
 
-function triggerLabel(trigger: BackupCenterTrigger) {
-  return {
-    manual: "手动",
-    auto: "自动",
-    pre_install: "安装前",
-    pre_restore: "恢复前保护",
-  }[trigger];
+function triggerLabel(trigger: BackupCenterTrigger, copy: BackupCenterCopy) {
+  return copy.triggers[trigger];
 }
 
-function statusLabel(status: BackupCenterStatus) {
-  return {
-    completed: "可恢复",
-    retention_pending: "整理中断",
-    retention_partial: "清理未完成",
-    deleted_by_retention: "已整理",
-    missing: "文件缺失",
-    invalid: "记录异常",
-  }[status];
+function statusLabel(status: BackupCenterStatus, copy: BackupCenterCopy) {
+  return copy.statuses[status];
 }
 
 function statusTone(status: BackupCenterStatus) {
@@ -128,116 +119,11 @@ function statusTone(status: BackupCenterStatus) {
   return "neutral";
 }
 
-function errorMessage(error: unknown) {
+function errorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error && "message" in error && typeof error.message === "string") {
     return error.message;
   }
-  return "备份中心暂时无法读取，请稍后重试。";
-}
-
-function createPreviewPage(query: QueryState): SaveBackupCenterPageDto {
-  const backups: SaveBackupSummaryDto[] = [
-    {
-      backupId: "mhw:default:20260815-120000:manual",
-      gameId: CURRENT_GAME_ID,
-      profileId: "default",
-      trigger: "manual",
-      status: "completed",
-      fileName: "20260815-120000_mhw_profile-default_manual.zip",
-      createdAt: Date.now() - 45 * 60_000,
-      sizeBytes: 18_482_944,
-      fileCount: 2,
-      sourcePathLabel: "synthetic save",
-      notes: "Fatalis 配装前",
-    },
-    {
-      backupId: "mhw:default:20260814-090000:pre_restore",
-      gameId: CURRENT_GAME_ID,
-      profileId: "default",
-      trigger: "pre_restore",
-      status: "completed",
-      fileName: "20260814-090000_mhw_profile-default_pre_restore.zip",
-      createdAt: Date.now() - 26 * 60 * 60_000,
-      sizeBytes: 17_965_120,
-      fileCount: 2,
-      sourcePathLabel: "synthetic save",
-      notes: "恢复前保护点",
-    },
-    {
-      backupId: "mhw:taichi:20260813-230000:auto",
-      gameId: CURRENT_GAME_ID,
-      profileId: "taichi",
-      trigger: "auto",
-      status: "retention_partial",
-      fileName: "20260813-230000_mhw_profile-taichi_auto.zip",
-      createdAt: Date.now() - 42 * 60 * 60_000,
-      sizeBytes: 20_125_696,
-      fileCount: 2,
-      sourcePathLabel: "synthetic save",
-      notes: "等待下次整理重试",
-    },
-  ];
-  const profiles: SaveBackupCenterProfileSummaryDto[] = [
-    {
-      profileId: "default",
-      profileName: "Default 配置档",
-      isActive: true,
-      steamAccount: {
-        accountName: "Synthetic Hunter",
-        avatarUrl: null,
-        accountLabel: "Steam 12****34",
-      },
-      retention: { maxCount: 20, maxAgeDays: 30, maxTotalBytes: null },
-      backupCount: 2,
-      archiveBytes: 36_448_064,
-      protectedCount: 1,
-      attentionCount: 0,
-      budgetSatisfied: true,
-    },
-    {
-      profileId: "taichi",
-      profileName: "太刀毕业档",
-      isActive: false,
-      steamAccount: {
-        accountName: null,
-        avatarUrl: null,
-        accountLabel: "Steam 56****78",
-      },
-      retention: { maxCount: 12, maxAgeDays: 14, maxTotalBytes: 64 * 1024 * 1024 },
-      backupCount: 1,
-      archiveBytes: 20_125_696,
-      protectedCount: 0,
-      attentionCount: 1,
-      budgetSatisfied: true,
-    },
-  ];
-  const filtered = backups.filter((backup) => {
-    if (query.profileId && backup.profileId !== query.profileId) return false;
-    if (query.trigger && backup.trigger !== query.trigger) return false;
-    if (query.status && backup.status !== query.status) return false;
-    if (query.search) {
-      const profile = profiles.find((item) => item.profileId === backup.profileId);
-      const haystack = `${profile?.profileName ?? ""} ${backup.notes ?? ""}`.toLowerCase();
-      if (!haystack.includes(query.search.toLowerCase())) return false;
-    }
-    return true;
-  });
-  return {
-    offset: query.offset,
-    limit: PAGE_LIMIT,
-    totalCount: filtered.length,
-    summary: {
-      backupCount: filtered.length,
-      archiveBytes: filtered.reduce((sum, backup) => sum + backup.sizeBytes, 0),
-      protectedCount: filtered.filter((backup) => backup.trigger === "pre_restore").length,
-      attentionCount: filtered.filter((backup) => backup.status === "retention_partial").length,
-    },
-    profiles,
-    items: filtered.slice(query.offset, query.offset + PAGE_LIMIT).map((backup) => ({
-      profileName: profiles.find((profile) => profile.profileId === backup.profileId)?.profileName ?? backup.profileId,
-      backup,
-    })),
-  };
+  return fallback;
 }
 
 function reportTone(report: SaveBackupRetentionReportDto) {
@@ -246,21 +132,18 @@ function reportTone(report: SaveBackupRetentionReportDto) {
   return report.outcome === "partial" || report.outcome === "blocked" ? "warning" : "success";
 }
 
-function reportLabel(report: SaveBackupRetentionReportDto) {
-  const label = report.outcome === "failed"
-    ? "整理失败，未删除备份"
-    : report.outcome === "blocked"
-      ? "整理被保护点阻断"
-      : report.outcome === "partial"
-        ? "整理部分完成，下次会继续重试"
-        : report.outcome === "within_policy"
-          ? "已符合保留策略"
-          : "整理完成";
-  return report.evidenceDegraded ? `${label}，但审计记录不可用` : label;
+function reportLabel(report: SaveBackupRetentionReportDto, copy: BackupCenterCopy) {
+  const label = copy.report.outcomes[report.outcome];
+  return report.evidenceDegraded ? `${label}${copy.report.evidenceDegradedSuffix}` : label;
 }
 
 export function BackupCenterPage() {
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const copy = resolveCopy(backupCenterCopy, locale);
+  // 数据加载 effect 经 ref 取词：copy 一旦进入 loadPage 依赖链，切换语言就会重拉后端。
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
   const previewMode = isPlainBrowserRuntime();
   const [query, setQuery] = useState<QueryState>({
     profileId: null,
@@ -298,7 +181,7 @@ export function BackupCenterPage() {
         if (!cancelled) setPageState({ status: "ready", page });
       })
       .catch((error: unknown) => {
-        if (!cancelled) setPageState((current) => ({ status: "error", page: current.page, message: errorMessage(error) }));
+        if (!cancelled) setPageState((current) => ({ status: "error", page: current.page, message: errorMessage(error, copyRef.current.errors.unavailableFallback) }));
       });
     return () => {
       cancelled = true;
@@ -370,17 +253,17 @@ export function BackupCenterPage() {
       pushToast({
         eventKey: `backup-center.retention.${profile.profileId}.${report.outcome}`,
         tone: reportTone(report),
-        title: reportLabel(report),
-        message: `已扫描 ${report.scannedCount} 条，删除 ${report.deletedCount} 条，耗时 ${formatElapsed(elapsedMs)}。${report.evidenceDegraded ? " 清理结果已生效，但本次审计证据不完整。" : ""}`,
+        title: reportLabel(report, copy),
+        message: `${copy.toasts.maintenanceMessage({ scannedCount: report.scannedCount, deletedCount: report.deletedCount, elapsed: formatElapsed(elapsedMs) })}${report.evidenceDegraded ? copy.toasts.maintenanceEvidenceSuffix : ""}`,
       });
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
-      setMaintenance((current) => ({ ...current, [profile.profileId]: { status: "error", elapsedMs, message: errorMessage(error) } }));
+      setMaintenance((current) => ({ ...current, [profile.profileId]: { status: "error", elapsedMs, message: errorMessage(error, copy.errors.unavailableFallback) } }));
       pushToast({
         eventKey: `backup-center.retention.error.${profile.profileId}`,
         tone: "danger",
-        title: "整理失败",
-        message: `${errorMessage(error)} 已耗时 ${formatElapsed(elapsedMs)}。`,
+        title: copy.toasts.maintenanceFailedTitle,
+        message: copy.toasts.maintenanceFailedMessage(errorMessage(error, copy.errors.unavailableFallback), formatElapsed(elapsedMs)),
       });
     }
   }
@@ -407,11 +290,11 @@ export function BackupCenterPage() {
       pushToast({
         eventKey: `backup-center.note.${backup.backupId}`,
         tone: "success",
-        title: "备注已保存",
-        message: note ? "备份记录已更新。" : "备份备注已清空。",
+        title: copy.toasts.noteSavedTitle,
+        message: note ? copy.toasts.noteSavedMessage : copy.toasts.noteClearedMessage,
       });
     } catch (error) {
-      pushToast({ eventKey: `backup-center.note.error.${backup.backupId}`, tone: "danger", title: "备注保存失败", message: errorMessage(error) });
+      pushToast({ eventKey: `backup-center.note.error.${backup.backupId}`, tone: "danger", title: copy.toasts.noteFailedTitle, message: errorMessage(error, copy.errors.unavailableFallback) });
     } finally {
       setSavingNoteId(null);
     }
@@ -427,68 +310,69 @@ export function BackupCenterPage() {
       <header className="backup-center-header">
         <div>
           <span className="backup-center-eyebrow"><Archive size={14} /> BACKUP CENTER</span>
-          <h1>备份整理</h1>
-          <p>跨配置档查看备份历史、保护点与整理状态。</p>
+          <h1>{copy.page.title}</h1>
+          <p>{copy.page.subtitle}</p>
         </div>
-        <button className="backup-icon-button" type="button" title="重新加载" aria-label="重新加载" aria-busy={pageState.status === "loading"} onClick={() => setRefreshToken((value) => value + 1)}>
+        <button className="backup-icon-button" type="button" title={copy.page.reloadAria} aria-label={copy.page.reloadAria} aria-busy={pageState.status === "loading"} onClick={() => setRefreshToken((value) => value + 1)}>
           <RefreshCw size={17} className={pageState.status === "loading" ? "backup-spin" : undefined} />
         </button>
       </header>
 
       {page ? (
-        <section className="backup-center-overview" aria-label="备份摘要">
-          <SummaryMetric label="备份记录" value={String(page.summary.backupCount)} icon={<Archive size={15} />} />
-          <SummaryMetric label="已知空间" value={formatBytes(page.summary.archiveBytes)} icon={<Save size={15} />} />
-          <SummaryMetric label="保护点" value={String(page.summary.protectedCount)} icon={<ShieldCheck size={15} />} />
-          <SummaryMetric label="需处理" value={String(page.summary.attentionCount)} icon={<CircleAlert size={15} />} tone={page.summary.attentionCount ? "warning" : "normal"} />
+        <section className="backup-center-overview" aria-label={copy.page.overviewAria}>
+          <SummaryMetric label={copy.page.metricBackups} value={String(page.summary.backupCount)} icon={<Archive size={15} />} />
+          <SummaryMetric label={copy.page.metricSpace} value={formatBytes(page.summary.archiveBytes)} icon={<Save size={15} />} />
+          <SummaryMetric label={copy.page.metricProtected} value={String(page.summary.protectedCount)} icon={<ShieldCheck size={15} />} />
+          <SummaryMetric label={copy.page.metricAttention} value={String(page.summary.attentionCount)} icon={<CircleAlert size={15} />} tone={page.summary.attentionCount ? "warning" : "normal"} />
         </section>
       ) : null}
 
-      <section className="backup-center-filters" aria-label="筛选备份" data-tour-id="backups.filters">
-        <div className="backup-filter-label"><Filter size={16} /> 筛选</div>
+      <section className="backup-center-filters" aria-label={copy.page.filtersAria} data-tour-id="backups.filters">
+        <div className="backup-filter-label"><Filter size={16} /> {copy.page.filterLabel}</div>
         <label>
-          <span>配置档</span>
+          <span>{copy.page.filterProfile}</span>
           <select value={query.profileId ?? ""} onChange={(event) => setFilter("profileId", event.target.value || null)}>
-            <option value="">全部配置档</option>
+            <option value="">{copy.page.filterAllProfiles}</option>
             {(page?.profiles ?? []).map((profile) => <option key={profile.profileId} value={profile.profileId}>{profile.profileName}</option>)}
           </select>
         </label>
         <label>
-          <span>来源</span>
+          <span>{copy.page.filterTrigger}</span>
           <select value={query.trigger ?? ""} onChange={(event) => setFilter("trigger", (event.target.value || null) as BackupCenterTrigger | null)}>
-            <option value="">全部来源</option>
-            <option value="manual">手动</option>
-            <option value="auto">自动</option>
-            <option value="pre_install">安装前</option>
-            <option value="pre_restore">恢复前保护</option>
+            <option value="">{copy.page.filterAllTriggers}</option>
+            <option value="manual">{copy.triggers.manual}</option>
+            <option value="auto">{copy.triggers.auto}</option>
+            <option value="pre_install">{copy.triggers.pre_install}</option>
+            <option value="pre_restore">{copy.triggers.pre_restore}</option>
           </select>
         </label>
         <label>
-          <span>状态</span>
+          <span>{copy.page.filterStatus}</span>
           <select value={query.status ?? ""} onChange={(event) => setFilter("status", (event.target.value || null) as BackupCenterStatus | null)}>
-            <option value="">全部状态</option>
-            <option value="completed">可恢复</option>
-            <option value="retention_partial">清理未完成</option>
-            <option value="retention_pending">整理中断</option>
-            <option value="missing">文件缺失</option>
-            <option value="invalid">记录异常</option>
-            <option value="deleted_by_retention">已整理</option>
+            <option value="">{copy.page.filterAllStatuses}</option>
+            <option value="completed">{copy.statuses.completed}</option>
+            <option value="retention_partial">{copy.statuses.retention_partial}</option>
+            <option value="retention_pending">{copy.statuses.retention_pending}</option>
+            <option value="missing">{copy.statuses.missing}</option>
+            <option value="invalid">{copy.statuses.invalid}</option>
+            <option value="deleted_by_retention">{copy.statuses.deleted_by_retention}</option>
           </select>
         </label>
         <label className="backup-search-control">
-          <span>搜索备注或配置档</span>
-          <span className="backup-search-input"><Search size={16} /><input value={query.search} maxLength={100} onChange={(event) => setFilter("search", event.target.value)} placeholder="输入关键词" /></span>
+          <span>{copy.page.filterSearch}</span>
+          <span className="backup-search-input"><Search size={16} /><input value={query.search} maxLength={100} onChange={(event) => setFilter("search", event.target.value)} placeholder={copy.page.filterSearchPlaceholder} /></span>
         </label>
       </section>
 
       {page ? (
         <section className="backup-center-workspace">
-          <aside className="backup-center-profiles" aria-label="配置档摘要" data-tour-id="backups.profiles">
-            <div className="backup-section-heading"><div><span className="backup-section-kicker">PROFILES</span><h2>配置档摘要</h2></div><span>{page.profiles.length} 个</span></div>
+          <aside className="backup-center-profiles" aria-label={copy.page.profilesAria} data-tour-id="backups.profiles">
+            <div className="backup-section-heading"><div><span className="backup-section-kicker">PROFILES</span><h2>{copy.page.profilesTitle}</h2></div><span>{copy.page.profilesCount(page.profiles.length)}</span></div>
             <div className="backup-profile-list">
               {page.profiles.map((profile) => (
                 <ProfileSummaryCard
                   key={profile.profileId}
+                  copy={copy}
                   profile={profile}
                   selected={query.profileId === profile.profileId}
                   maintenance={maintenance[profile.profileId] ?? { status: "idle" }}
@@ -499,14 +383,16 @@ export function BackupCenterPage() {
             </div>
           </aside>
 
-          <section className="backup-center-history" aria-label="备份历史" data-tour-id="backups.history">
-            <div className="backup-section-heading"><div><span className="backup-section-kicker">HISTORY</span><h2>备份历史</h2></div><span>{page.totalCount} 条</span></div>
+          <section className="backup-center-history" aria-label={copy.page.historyAria} data-tour-id="backups.history">
+            <div className="backup-section-heading"><div><span className="backup-section-kicker">HISTORY</span><h2>{copy.page.historyTitle}</h2></div><span>{copy.page.historyCount(page.totalCount)}</span></div>
             {pageState.status === "error" ? <div className="backup-center-alert is-danger"><CircleAlert size={18} /> {pageState.message}</div> : null}
-            {loading ? <LoadingRows /> : page.items.length === 0 ? <EmptyHistory /> : (
+            {loading ? <LoadingRows /> : page.items.length === 0 ? <EmptyHistory copy={copy} /> : (
               <div className="backup-history-list">
                 {page.items.map(({ backup, profileName }) => (
                   <BackupHistoryRow
                     key={backup.backupId}
+                    copy={copy}
+                    locale={locale}
                     backup={backup}
                     profileName={profileName}
                     editing={editingNoteId === backup.backupId}
@@ -522,10 +408,10 @@ export function BackupCenterPage() {
               </div>
             )}
             <div className="backup-pagination">
-              <span>第 {currentPage} / {totalPages} 页</span>
+              <span>{copy.page.pagination(currentPage, totalPages)}</span>
               <div>
-                <button className="backup-icon-button" type="button" title="上一页" aria-label="上一页" disabled={currentPage <= 1} onClick={() => setFilter("offset", Math.max(0, query.offset - PAGE_LIMIT))}><ChevronLeft size={17} /></button>
-                <button className="backup-icon-button" type="button" title="下一页" aria-label="下一页" disabled={currentPage >= totalPages} onClick={() => setFilter("offset", query.offset + PAGE_LIMIT)}><ChevronRight size={17} /></button>
+                <button className="backup-icon-button" type="button" title={copy.page.prevPage} aria-label={copy.page.prevPage} disabled={currentPage <= 1} onClick={() => setFilter("offset", Math.max(0, query.offset - PAGE_LIMIT))}><ChevronLeft size={17} /></button>
+                <button className="backup-icon-button" type="button" title={copy.page.nextPage} aria-label={copy.page.nextPage} disabled={currentPage >= totalPages} onClick={() => setFilter("offset", query.offset + PAGE_LIMIT)}><ChevronRight size={17} /></button>
               </div>
             </div>
           </section>
@@ -533,17 +419,17 @@ export function BackupCenterPage() {
       ) : pageState.status === "error" ? (
         <div className="backup-center-loading-page is-error" role="alert">
           <CircleAlert size={24} />
-          <strong>备份中心暂时不可用</strong>
+          <strong>{copy.page.unavailableTitle}</strong>
           <span>{pageState.message}</span>
-          <button className="backup-action-button is-primary" type="button" onClick={() => setRefreshToken((value) => value + 1)}><RefreshCw size={15} /> 重试</button>
+          <button className="backup-action-button is-primary" type="button" onClick={() => setRefreshToken((value) => value + 1)}><RefreshCw size={15} /> {copy.page.retry}</button>
         </div>
-      ) : <div className="backup-center-loading-page" aria-busy="true"><Loader2 className="backup-spin" size={24} /> 正在读取备份中心</div>}
+      ) : <div className="backup-center-loading-page" aria-busy="true"><Loader2 className="backup-spin" size={24} /> {copy.page.loadingPage}</div>}
 
       <Dialog
         open={pendingMaintenanceProfile !== null}
         role="alertdialog"
-        title="确认立即整理备份"
-        description="将按该配置档已保存的保留策略整理普通备份。最新普通备份和恢复前保护点不会被删除，符合数量、年龄或空间规则的普通备份可能被永久删除。此操作不可撤销。"
+        title={copy.maintenanceDialog.title}
+        description={copy.maintenanceDialog.description}
         initialFocusRef={cancelMaintenanceRef}
         onClose={() => setPendingMaintenanceProfile(null)}
         footer={
@@ -554,7 +440,7 @@ export function BackupCenterPage() {
               className="backup-action-button"
               onClick={() => setPendingMaintenanceProfile(null)}
             >
-              取消
+              {copy.maintenanceDialog.cancel}
             </button>
             <button
               type="button"
@@ -566,7 +452,7 @@ export function BackupCenterPage() {
               }}
             >
               <Eraser size={15} />
-              确认整理
+              {copy.maintenanceDialog.confirm}
             </button>
           </>
         }
@@ -589,21 +475,21 @@ function SummaryMetric({ label, value, icon, tone = "normal" }: { label: string;
   return <div className={`backup-summary-metric is-${tone}`}><span className="backup-summary-metric__icon">{icon}</span><span><small>{label}</small><strong>{value}</strong></span></div>;
 }
 
-function ProfileSummaryCard({ profile, selected, maintenance, onSelect, onMaintain }: { profile: SaveBackupCenterProfileSummaryDto; selected: boolean; maintenance: BackupMaintenanceState; onSelect: () => void; onMaintain: () => void }) {
+function ProfileSummaryCard({ copy, profile, selected, maintenance, onSelect, onMaintain }: { copy: BackupCenterCopy; profile: SaveBackupCenterProfileSummaryDto; selected: boolean; maintenance: BackupMaintenanceState; onSelect: () => void; onMaintain: () => void }) {
   const running = maintenance.status === "running";
   return (
     <article className={`backup-profile-card${selected ? " is-selected" : ""}`}>
       <button className="backup-profile-card__select" type="button" onClick={onSelect} aria-pressed={selected}>
         <BackupProfileAvatar profile={profile} />
-        <span className="backup-profile-card__identity"><strong>{profile.profileName}</strong><small>{profile.isActive ? "当前活动配置档" : profile.steamAccount?.accountLabel ?? "未绑定账号摘要"}</small></span>
-        {profile.isActive ? <span className="backup-active-dot" title="活动配置档" aria-label="活动配置档" /> : null}
+        <span className="backup-profile-card__identity"><strong>{profile.profileName}</strong><small>{profile.isActive ? copy.profileCard.activeIdentity : profile.steamAccount?.accountLabel ?? copy.profileCard.unboundIdentity}</small></span>
+        {profile.isActive ? <span className="backup-active-dot" title={copy.profileCard.activeDotAria} aria-label={copy.profileCard.activeDotAria} /> : null}
       </button>
-      <div className="backup-profile-card__facts"><span><small>记录</small><strong>{profile.backupCount}</strong></span><span><small>空间</small><strong>{formatBytes(profile.archiveBytes)}</strong></span><span><small>策略</small><strong className={profile.budgetSatisfied ? "is-good" : "is-warning"}>{profile.budgetSatisfied ? "正常" : "超预算"}</strong></span></div>
+      <div className="backup-profile-card__facts"><span><small>{copy.profileCard.factRecords}</small><strong>{profile.backupCount}</strong></span><span><small>{copy.profileCard.factSpace}</small><strong>{formatBytes(profile.archiveBytes)}</strong></span><span><small>{copy.profileCard.factPolicy}</small><strong className={profile.budgetSatisfied ? "is-good" : "is-warning"}>{profile.budgetSatisfied ? copy.profileCard.policyOk : copy.profileCard.policyOverBudget}</strong></span></div>
       <div className="backup-profile-card__footer">
-        {maintenance.status === "completed" ? <span className={`backup-maintenance-result is-${reportTone(maintenance.report)}`}><Check size={14} /> {reportLabel(maintenance.report)} · {formatElapsed(maintenance.elapsedMs)}</span> : null}
-        {maintenance.status === "error" ? <span className="backup-maintenance-result is-danger" title={maintenance.message}><CircleAlert size={14} /> 整理失败 · {formatElapsed(maintenance.elapsedMs)}</span> : null}
+        {maintenance.status === "completed" ? <span className={`backup-maintenance-result is-${reportTone(maintenance.report)}`}><Check size={14} /> {reportLabel(maintenance.report, copy)} · {formatElapsed(maintenance.elapsedMs)}</span> : null}
+        {maintenance.status === "error" ? <span className="backup-maintenance-result is-danger" title={maintenance.message}><CircleAlert size={14} /> {copy.profileCard.maintainFailed} · {formatElapsed(maintenance.elapsedMs)}</span> : null}
         {running ? <span className="backup-maintenance-running"><Loader2 size={14} className="backup-spin" /> {formatElapsed(maintenance.elapsedMs)}</span> : null}
-        <button className="backup-action-button" type="button" disabled={running} onClick={onMaintain}><Eraser size={15} /> {running ? "整理中" : "立即整理"}</button>
+        <button className="backup-action-button" type="button" disabled={running} onClick={onMaintain}><Eraser size={15} /> {running ? copy.profileCard.maintaining : copy.profileCard.maintainNow}</button>
       </div>
     </article>
   );
@@ -632,18 +518,18 @@ function BackupProfileAvatar({ profile }: { profile: SaveBackupCenterProfileSumm
   );
 }
 
-function BackupHistoryRow({ backup, profileName, editing, noteDraft, saving, onEdit, onCancel, onNoteChange, onSave, onRestore }: { backup: SaveBackupSummaryDto; profileName: string; editing: boolean; noteDraft: string; saving: boolean; onEdit: () => void; onCancel: () => void; onNoteChange: (value: string) => void; onSave: () => void; onRestore: () => void }) {
+function BackupHistoryRow({ copy, locale, backup, profileName, editing, noteDraft, saving, onEdit, onCancel, onNoteChange, onSave, onRestore }: { copy: BackupCenterCopy; locale: Locale; backup: SaveBackupSummaryDto; profileName: string; editing: boolean; noteDraft: string; saving: boolean; onEdit: () => void; onCancel: () => void; onNoteChange: (value: string) => void; onSave: () => void; onRestore: () => void }) {
   const tone = statusTone(backup.status);
   return (
     <article className={`backup-history-row is-${tone}`}>
       <div className="backup-history-row__main">
-        <div className="backup-history-row__title"><strong>{backup.notes?.trim() || backup.fileName}</strong><span className={`backup-status-badge is-${tone}`}>{statusLabel(backup.status)}</span></div>
-        <div className="backup-history-row__meta"><span>{profileName}</span><span>{triggerLabel(backup.trigger)}</span><span>{formatDate(backup.createdAt)}</span><span>{backup.fileCount} 个文件</span><span>{formatBytes(backup.sizeBytes)}</span></div>
-        {editing ? <div className="backup-note-editor"><input value={noteDraft} maxLength={200} aria-label="备份备注" onChange={(event) => onNoteChange(event.target.value)} autoFocus /><button className="backup-icon-button is-primary" type="button" title="保存备注" aria-label="保存备注" disabled={saving} onClick={onSave}>{saving ? <Loader2 size={15} className="backup-spin" /> : <Check size={15} />}</button><button className="backup-icon-button" type="button" title="取消编辑" aria-label="取消编辑" disabled={saving} onClick={onCancel}><X size={15} /></button></div> : null}
+        <div className="backup-history-row__title"><strong>{backup.notes?.trim() || backup.fileName}</strong><span className={`backup-status-badge is-${tone}`}>{statusLabel(backup.status, copy)}</span></div>
+        <div className="backup-history-row__meta"><span>{profileName}</span><span>{triggerLabel(backup.trigger, copy)}</span><span>{formatDate(backup.createdAt, locale)}</span><span>{copy.historyRow.fileCount(backup.fileCount)}</span><span>{formatBytes(backup.sizeBytes)}</span></div>
+        {editing ? <div className="backup-note-editor"><input value={noteDraft} maxLength={200} aria-label={copy.historyRow.noteAria} onChange={(event) => onNoteChange(event.target.value)} autoFocus /><button className="backup-icon-button is-primary" type="button" title={copy.historyRow.saveNoteAria} aria-label={copy.historyRow.saveNoteAria} disabled={saving} onClick={onSave}>{saving ? <Loader2 size={15} className="backup-spin" /> : <Check size={15} />}</button><button className="backup-icon-button" type="button" title={copy.historyRow.cancelEditAria} aria-label={copy.historyRow.cancelEditAria} disabled={saving} onClick={onCancel}><X size={15} /></button></div> : null}
       </div>
       <div className="backup-history-row__actions">
-        {!editing ? <button className="backup-icon-button" type="button" title="编辑备注" aria-label="编辑备注" onClick={onEdit}><Edit3 size={16} /></button> : null}
-        {backup.status === "completed" ? <button className="backup-action-button is-restore" type="button" onClick={onRestore}><ArchiveRestore size={15} /> 恢复存档</button> : <span className="backup-action-disabled" title="只有可恢复的备份点才能恢复">不可恢复</span>}
+        {!editing ? <button className="backup-icon-button" type="button" title={copy.historyRow.editNoteAria} aria-label={copy.historyRow.editNoteAria} onClick={onEdit}><Edit3 size={16} /></button> : null}
+        {backup.status === "completed" ? <button className="backup-action-button is-restore" type="button" onClick={onRestore}><ArchiveRestore size={15} /> {copy.historyRow.restore}</button> : <span className="backup-action-disabled" title={copy.historyRow.notRestorableHint}>{copy.historyRow.notRestorable}</span>}
       </div>
     </article>
   );
@@ -653,6 +539,6 @@ function LoadingRows() {
   return <div className="backup-loading-list" aria-busy="true">{[1, 2, 3].map((item) => <div className="backup-loading-row" key={item}><span /><span /><span /></div>)}</div>;
 }
 
-function EmptyHistory() {
-  return <div className="backup-empty-state"><Archive size={28} /><strong>暂无符合条件的备份</strong><span>调整筛选条件后再试。</span></div>;
+function EmptyHistory({ copy }: { copy: BackupCenterCopy }) {
+  return <div className="backup-empty-state"><Archive size={28} /><strong>{copy.page.emptyTitle}</strong><span>{copy.page.emptyHint}</span></div>;
 }
