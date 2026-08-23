@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { externalImportCopy } from "./externalImportCopy.ts";
 import {
   applyExternalImportSelectionMutationResult,
   canSelectExternalImportCandidateWithDecision,
@@ -13,6 +14,8 @@ import {
   isExternalImportSelectionExpired,
   isExternalImportSelectionMutationResultDto,
 } from "./externalImportSelectionModel.ts";
+
+const zhSelection = externalImportCopy.zh_cn.selection;
 
 function selection(overrides = {}) {
   return {
@@ -239,11 +242,11 @@ test("batch launch guard requires the same batch and a queued mod import task", 
 
 test("selection error mapping branches only on stable codes", () => {
   assert.equal(
-    getExternalImportSelectionErrorMessage("selection_revision_conflict"),
+    getExternalImportSelectionErrorMessage("selection_revision_conflict", zhSelection),
     "选择已发生变化，已重新载入",
   );
   assert.equal(
-    getExternalImportSelectionErrorMessage("C:\\private\\raw-error"),
+    getExternalImportSelectionErrorMessage("C:\\private\\raw-error", zhSelection),
     "无法更新候选选择，请重新载入后重试",
   );
 });

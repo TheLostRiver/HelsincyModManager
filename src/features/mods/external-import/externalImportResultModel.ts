@@ -70,59 +70,18 @@ export type ExternalImportResultSummary = {
   retryable: number;
 };
 
-const itemStatusPresentation: Readonly<
-  Record<
-    ExternalImportItemStatus,
-    Pick<ExternalImportResultViewModel, "statusLabel" | "statusTone">
-  >
+import type { ExternalImportCopy } from "./externalImportCopy";
+
+// tone 是语义不是文案：文本经 copy.result.status 取，tone 固定在此。
+const itemStatusTones: Readonly<
+  Record<ExternalImportItemStatus, ExternalImportResultViewModel["statusTone"]>
 > = {
-  imported: { statusLabel: "已导入", statusTone: "ready" },
-  already_imported: { statusLabel: "已存在", statusTone: "neutral" },
-  skipped: { statusLabel: "已跳过", statusTone: "neutral" },
-  blocked: { statusLabel: "已阻断", statusTone: "danger" },
-  failed: { statusLabel: "导入失败", statusTone: "danger" },
-  cancelled: { statusLabel: "已取消", statusTone: "warning" },
-};
-
-const reasonLabels: Readonly<Record<string, string>> = {
-  already_imported: "内容已存在",
-  duplicate_in_batch: "批次内重复",
-  name_collision: "名称冲突",
-  structure_invalid: "目录结构不可用",
-  metadata_invalid: "元数据不可用",
-  unsupported_entry: "包含不支持的条目",
-  resource_limit_exceeded: "超出资源限制",
-  source_unreadable: "来源不可读取",
-  source_changed: "来源已变化",
-  selection_revision_conflict: "选择版本已变化",
-  selection_empty: "选择为空",
-  selection_mutation_empty: "没有选择变更",
-  selection_mutation_limit_exceeded: "选择变更超限",
-  selection_total_limit_exceeded: "选择总数超限",
-  selection_resource_limit_exceeded: "选择资源超限",
-  selection_candidate_invalid: "候选状态已变化",
-  selection_expired: "选择已过期",
-  selection_closed: "选择已封存",
-  selection_revision_overflow: "选择版本不可用",
-};
-
-const batchStatusLabels: Readonly<Record<string, string>> = {
-  completed: "全部完成",
-  completed_with_errors: "部分完成",
-  failed: "任务失败，已保留结果",
-  cancelled: "任务已取消，已保留结果",
-};
-
-const resultErrorMessages: Readonly<Record<string, string>> = {
-  external_import_batch_unavailable: "批量导入结果不可用，请重新扫描",
-  external_import_batch_not_startable: "当前批次没有可重试项",
-  external_import_result_cursor_invalid: "结果分页位置不可用，请重新载入",
-  external_import_result_limit_invalid: "结果分页大小不可用，请重新载入",
-  external_import_result_request_invalid: "结果请求不可用，请重新载入",
-  external_import_selection_unavailable: "已封存的选择不可用，请重新扫描",
-  external_import_source_unavailable: "来源已失效，请重新选择来源后重试",
-  external_import_task_unavailable: "导入任务不可用，请稍后重试",
-  external_import_result_invalid: "批量导入结果不可识别，请重新扫描",
+  imported: "ready",
+  already_imported: "neutral",
+  skipped: "neutral",
+  blocked: "danger",
+  failed: "danger",
+  cancelled: "warning",
 };
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]) {
@@ -214,19 +173,19 @@ export function isExternalImportBatchResultPageForBatch(
 
 export function toExternalImportResultViewModel(
   result: ExternalImportItemResultDto,
+  resultCopy: ExternalImportCopy["result"],
 ): ExternalImportResultViewModel {
-  const presentation = itemStatusPresentation[result.status];
   return {
     candidateId: result.candidateId,
     status: result.status,
-    statusLabel: presentation.statusLabel,
-    statusTone: presentation.statusTone,
+    statusLabel: resultCopy.status[result.status] ?? resultCopy.unknownBatchStatus,
+    statusTone: itemStatusTones[result.status],
     reasonLabel:
       result.reasonCode === null
         ? result.retryable
-          ? "可重试"
+          ? resultCopy.retryable
           : null
-        : reasonLabels[result.reasonCode] ?? "结果原因不可识别",
+        : resultCopy.reasons[result.reasonCode] ?? resultCopy.unknownReason,
     importedModId: result.importedModId,
     retryable: result.retryable,
   };
@@ -235,6 +194,7 @@ export function toExternalImportResultViewModel(
 export function appendExternalImportResults(
   existing: ExternalImportResultViewModel[],
   incoming: ExternalImportItemResultDto[],
+  resultCopy: ExternalImportCopy["result"],
 ) {
   const seenCandidateIds = new Set(existing.map((result) => result.candidateId));
   const next = [...existing];
@@ -243,7 +203,7 @@ export function appendExternalImportResults(
       continue;
     }
     seenCandidateIds.add(result.candidateId);
-    next.push(toExternalImportResultViewModel(result));
+    next.push(toExternalImportResultViewModel(result, resultCopy));
   }
   return next;
 }
@@ -292,13 +252,14 @@ export function summarizeExternalImportResults(
 
 export function getExternalImportBatchStatusLabel(
   status: ExternalImportBatchImportStatus,
+  resultCopy: ExternalImportCopy["result"],
 ) {
-  return batchStatusLabels[status] ?? "批次状态不可识别";
+  return resultCopy.batchStatus[status] ?? resultCopy.unknownBatchStatus;
 }
 
-export function getExternalImportResultErrorMessage(errorCode: string) {
-  return (
-    resultErrorMessages[errorCode] ??
-    "无法读取批量导入结果，请稍后重试"
-  );
+export function getExternalImportResultErrorMessage(
+  errorCode: string,
+  resultCopy: ExternalImportCopy["result"],
+) {
+  return resultCopy.errors[errorCode] ?? resultCopy.fallbackError;
 }

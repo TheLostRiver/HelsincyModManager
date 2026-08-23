@@ -74,6 +74,7 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
     "src/features/game-setup/gamePrerequisiteCopy.ts",
     "src/features/mods/modLibraryCopy.ts",
     "src/features/mods/modImportCopy.ts",
+    "src/features/mods/external-import/externalImportCopy.ts",
   ]) {
     const source = readSource(relativePath);
     for (const locale of ["zh_cn", "en", "ja"]) {
@@ -115,6 +116,18 @@ test("试点页与设置页内嵌面板去注释后不再包含硬编码中文�
     "src/features/mods/modLibraryFilters.ts",
     "src/features/mods/modSelection.ts",
     "src/features/mods/modLibraryQueryState.ts",
+    "src/features/mods/external-import/ExternalImportAction.tsx",
+    "src/features/mods/external-import/ExternalImportCandidateSelectionItem.tsx",
+    "src/features/mods/external-import/ExternalImportSelectionPanel.tsx",
+    "src/features/mods/external-import/ExternalImportResultPanel.tsx",
+    "src/features/mods/external-import/externalImportScanState.ts",
+    "src/features/mods/external-import/externalImportProgressState.ts",
+    "src/features/mods/external-import/externalImportSelectionModel.ts",
+    "src/features/mods/external-import/externalImportResultModel.ts",
+    "src/features/mods/external-import/externalImportPreviewModel.ts",
+    "src/features/mods/external-import/useExternalImportResultWorkflow.ts",
+    "src/features/mods/external-import/useExternalImportSelectionWorkflow.ts",
+    "src/features/mods/external-import/useExternalImportTaskProgress.ts",
   ]) {
     const source = stripComments(readSource(relativePath));
     const hanMatches = source.match(/[一-鿿][^\n]{0,40}/gu) ?? [];

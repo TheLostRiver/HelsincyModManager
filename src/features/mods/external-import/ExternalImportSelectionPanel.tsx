@@ -1,3 +1,5 @@
+import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { externalImportCopy } from "./externalImportCopy";
 import {
   CheckCircle2,
   CircleAlert,
@@ -25,6 +27,8 @@ function ImportProgress({
 }: {
   workflow: ExternalImportSelectionWorkflow;
 }) {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const state = workflow.importState;
   if (state.status === "idle") {
     return null;
@@ -33,20 +37,20 @@ function ImportProgress({
     return (
       <div className="external-import__state" role="status" aria-live="polite">
         <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-        <span>正在封存选择并创建批量导入任务</span>
+        <span>{extCopy.selectionPanel.sealing}</span>
       </div>
     );
   }
   if (state.status === "running") {
     const progress =
       state.current !== null && state.total !== null
-        ? `（${formatCount(state.current)} / ${formatCount(state.total)}）`
+        ? extCopy.selectionPanel.progressCount(formatCount(state.current), formatCount(state.total))
         : "";
     return (
       <div className="external-import__import-progress" role="status" aria-live="polite">
         <div>
           <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-          <span>{getExternalImportPhaseLabel(state.phase)}{progress}</span>
+          <span>{getExternalImportPhaseLabel(state.phase, extCopy.progress)}{progress}</span>
         </div>
         <button
           type="button"
@@ -59,7 +63,7 @@ function ImportProgress({
           ) : (
             <XCircle size={15} />
           )}
-          {workflow.cancelPending ? "正在请求取消" : "取消导入"}
+          {workflow.cancelPending ? extCopy.selectionPanel.cancelPending : extCopy.selectionPanel.cancelImport}
         </button>
       </div>
     );
@@ -68,7 +72,7 @@ function ImportProgress({
     return (
       <div className="external-import__state is-muted" role="status" aria-live="polite">
         <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-        <span>正在安全取消；等待批量导入专用终态</span>
+        <span>{extCopy.selectionPanel.cancellingSafely}</span>
       </div>
     );
   }
@@ -76,7 +80,7 @@ function ImportProgress({
     return (
       <div className="external-import__state is-success" role="status" aria-live="polite">
         <CheckCircle2 size={18} aria-hidden="true" />
-        <span>批量导入已完成。正在读取下方的权威结果明细。</span>
+        <span>{extCopy.selectionPanel.completedReadingResults}</span>
       </div>
     );
   }
@@ -84,14 +88,14 @@ function ImportProgress({
     return (
       <div className="external-import__state is-muted" role="status" aria-live="polite">
         <XCircle size={18} aria-hidden="true" />
-        <span>批量导入已取消；本页面不会根据聚合计数推断部分成功结果。</span>
+        <span>{extCopy.selectionPanel.cancelledNoInference}</span>
       </div>
     );
   }
   return (
     <div className="external-import__state is-error" role="alert">
       <CircleAlert size={18} aria-hidden="true" />
-      <span>批量导入未完成。正在读取已保留结果与可恢复操作。</span>
+      <span>{extCopy.selectionPanel.incompleteReadingResults}</span>
     </div>
   );
 }
@@ -99,6 +103,8 @@ function ImportProgress({
 export function ExternalImportSelectionPanel({
   workflow,
 }: ExternalImportSelectionPanelProps) {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const headingId = useId();
   const categories =
     workflow.categoryState.status === "ready" ? workflow.categoryState.options : [];
@@ -108,32 +114,32 @@ export function ExternalImportSelectionPanel({
     <section className="external-import__selection" aria-labelledby={headingId}>
       <header className="external-import__preview-header">
         <div>
-          <span className="external-import__eyebrow">候选选择</span>
+          <span className="external-import__eyebrow">{extCopy.selectionPanel.candidateEyebrow}</span>
           <h3 id={headingId}>
             {workflow.selection
-              ? `已选择 ${formatCount(workflow.selection.selectedCount)} 项`
-              : "正在创建选择快照"}
+              ? extCopy.selectionPanel.selectedCount(formatCount(workflow.selection.selectedCount))
+              : extCopy.selectionPanel.creatingSnapshot}
           </h3>
         </div>
         {workflow.selection?.status === "editing" && workflow.selectionEditable ? (
-          <span className="external-import__badge is-neutral">可编辑</span>
+          <span className="external-import__badge is-neutral">{extCopy.selectionPanel.editable}</span>
         ) : workflow.selection ? (
           <span className="external-import__badge is-warning">
-            {workflow.selection.status === "sealed" ? "已封存" : "已过期"}
+            {workflow.selection.status === "sealed" ? extCopy.selectionPanel.sealed : extCopy.selectionPanel.expired}
           </span>
         ) : null}
       </header>
 
       {workflow.listenerStatus === "failed" ? (
         <div className="external-import__inline-action is-error" role="alert">
-          <span>无法监听批量导入进度，启动操作已禁用。</span>
+          <span>{extCopy.selectionPanel.progressListenerUnavailable}</span>
           <button
             type="button"
             className="external-import__button is-secondary"
             onClick={workflow.retryListener}
           >
             <RefreshCcw size={15} />
-            重试进度监听
+            {extCopy.selectionPanel.retryProgressListener}
           </button>
         </div>
       ) : null}
@@ -147,7 +153,7 @@ export function ExternalImportSelectionPanel({
             onClick={workflow.retryCategories}
           >
             <RefreshCcw size={15} />
-            重新加载分类
+            {extCopy.selectionPanel.reloadCategories}
           </button>
         </div>
       ) : null}
@@ -162,7 +168,7 @@ export function ExternalImportSelectionPanel({
       {workflow.previewState.status === "loading" ? (
         <div className="external-import__state" role="status" aria-live="polite">
           <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-          <span>正在读取选择快照与候选预览</span>
+          <span>{extCopy.selectionPanel.loadingSnapshot}</span>
         </div>
       ) : null}
 
@@ -175,7 +181,7 @@ export function ExternalImportSelectionPanel({
             onClick={workflow.retryPreview}
           >
             <RefreshCcw size={15} />
-            重新加载候选
+            {extCopy.selectionPanel.reloadCandidates}
           </button>
         </div>
       ) : null}
@@ -183,8 +189,8 @@ export function ExternalImportSelectionPanel({
       {workflow.previewState.status === "empty" ? (
         <div className="external-import__empty" role="status" aria-live="polite">
           <FileSearch size={24} aria-hidden="true" />
-          <strong>没有可显示的候选</strong>
-          <span>扫描共返回 {formatCount(workflow.previewState.totalCount)} 项。</span>
+          <strong>{extCopy.selectionPanel.noCandidates}</strong>
+          <span>{extCopy.selectionPanel.scanReturned(formatCount(workflow.previewState.totalCount))}</span>
         </div>
       ) : null}
 
@@ -192,8 +198,10 @@ export function ExternalImportSelectionPanel({
         <>
           <div className="external-import__selection-toolbar">
             <span>
-              已加载 {formatCount(workflow.previewState.candidates.length)} /{" "}
-              {formatCount(workflow.previewState.totalCount)} 项
+              {extCopy.selectionPanel.loadedCount(
+                formatCount(workflow.previewState.candidates.length),
+                formatCount(workflow.previewState.totalCount),
+              )}
             </span>
             <button
               type="button"
@@ -206,7 +214,7 @@ export function ExternalImportSelectionPanel({
               ) : (
                 <CheckCircle2 size={15} />
               )}
-              选择全部可直接导入项
+              {extCopy.selectionPanel.selectAllImportable}
             </button>
           </div>
 
@@ -260,7 +268,7 @@ export function ExternalImportSelectionPanel({
               ) : (
                 <FileSearch size={15} />
               )}
-              {workflow.previewState.loadingMore ? "正在载入" : "载入更多候选"}
+              {workflow.previewState.loadingMore ? extCopy.selectionPanel.loadingMore : extCopy.selectionPanel.loadMoreCandidates}
             </button>
           ) : null}
         </>
@@ -269,8 +277,8 @@ export function ExternalImportSelectionPanel({
       {workflow.selectionEditable && workflow.selection ? (
         <div className="external-import__start-row">
           <div>
-            <strong>仅导入到 HMM Mod 库</strong>
-            <span>不会安装、启用或写入游戏目录。</span>
+            <strong>{extCopy.selectionPanel.importOnlyTitle}</strong>
+            <span>{extCopy.selectionPanel.importOnlyDescription}</span>
           </div>
           <button
             type="button"
@@ -287,7 +295,7 @@ export function ExternalImportSelectionPanel({
             ) : (
               <CheckCircle2 size={15} />
             )}
-            开始批量导入
+            {extCopy.selectionPanel.startBatchImport}
           </button>
         </div>
       ) : null}

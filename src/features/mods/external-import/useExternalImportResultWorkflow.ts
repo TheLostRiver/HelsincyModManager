@@ -1,3 +1,5 @@
+import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { externalImportCopy } from "./externalImportCopy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFeedback } from "../../../shared/feedback";
 import {
@@ -108,6 +110,8 @@ export function useExternalImportResultWorkflow({
   launchImport,
   onImported,
 }: UseExternalImportResultWorkflowInput): ExternalImportResultWorkflow {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const { pushToast } = useFeedback();
   const [state, setState] = useState<ExternalImportResultState>({
     status: "idle",
@@ -162,21 +166,21 @@ export function useExternalImportResultWorkflow({
             pushToast({
               eventKey: `external-import.result.refreshed.${taskId}`,
               taskId,
-              title: "批量导入结果已载入",
-              message: "Mod 列表与服务端确认的结果明细已刷新。",
+              title: extCopy.workflow.resultsLoadedTitle,
+              message: extCopy.workflow.resultsLoadedMessage,
               tone: "success",
             }),
           () =>
             pushToast({
               eventKey: `external-import.result.refresh-failed.${taskId}`,
               taskId,
-              title: "结果已载入，Mod 列表刷新失败",
-              message: "导入事实不受影响，请稍后手动刷新 Mod 列表。",
+              title: extCopy.workflow.refreshFailedTitle,
+              message: extCopy.workflow.refreshFailedMessage,
               tone: "warning",
             }),
         );
     },
-    [pushToast],
+    [extCopy, pushToast],
   );
 
   const loadFirstPage = useCallback(
@@ -201,7 +205,7 @@ export function useExternalImportResultWorkflow({
           return false;
         }
 
-        const results = page.results.map(toExternalImportResultViewModel);
+        const results = page.results.map((item) => toExternalImportResultViewModel(item, extCopy.result));
         if (
           !isExternalImportResultCoverageValid(
             page.totalCount,
@@ -245,12 +249,13 @@ export function useExternalImportResultWorkflow({
           taskId: expectedTaskId,
           message: getExternalImportResultErrorMessage(
             errorCodeFrom(error, "external_import_result_invalid"),
+            extCopy.result,
           ),
         });
         return false;
       }
     },
-    [refreshLibraryOnce, setTrackedState],
+    [extCopy, refreshLibraryOnce, setTrackedState],
   );
 
   useEffect(() => {
@@ -320,6 +325,7 @@ export function useExternalImportResultWorkflow({
       const mergedResults = appendExternalImportResults(
         current.results,
         page.results,
+        extCopy.result,
       );
       if (
         !isExternalImportResultCoverageValid(
@@ -350,10 +356,11 @@ export function useExternalImportResultWorkflow({
         loadingMore: false,
         loadMoreError: getExternalImportResultErrorMessage(
           errorCodeFrom(error, "external_import_result_invalid"),
+          extCopy.result,
         ),
       });
     }
-  }, [importActive, setTrackedState]);
+  }, [extCopy, importActive, setTrackedState]);
 
   const loadMore = useCallback(() => {
     void loadMoreRequest();
@@ -403,12 +410,13 @@ export function useExternalImportResultWorkflow({
       }
       if (launchResult.status === "failed") {
         setActionError(
-          getExternalImportResultErrorMessage(launchResult.errorCode),
+          getExternalImportResultErrorMessage(launchResult.errorCode, extCopy.result),
         );
       } else if (launchResult.status === "ignored") {
         setActionError(
           getExternalImportResultErrorMessage(
             "external_import_task_unavailable",
+            extCopy.result,
           ),
         );
       }
@@ -418,7 +426,7 @@ export function useExternalImportResultWorkflow({
         setRetryPending(false);
       }
     }
-  }, [importActive, launchImport, progressReady]);
+  }, [extCopy, importActive, launchImport, progressReady]);
 
   const retryResults = useCallback(() => {
     void retryResultsRequest();
