@@ -1,8 +1,8 @@
 # HMM 界面中英日本地化设计（I18N）
 
-> 状态（2026-08-23）：I18N-00 设计稿，已并入维护者反馈（语言切换只进设置页；扩展性
-> 前提：未来可能支持怪物猎人其他作品与更多语言）。范围：桌面端 UI 文案的 zh_cn/en/ja
-> 三语本地化、语言切换与持久化，以及 catalog 名称展示的 locale 对齐路线。
+> 状态（2026-08-23）：I18N-00 `design-complete`（PR #241 合并，拍板：方案 A typed 字典 +
+> locale 模型）；I18N-01 基建与 Settings/About 试点已实现，待截图验收。范围：桌面端 UI
+> 文案的 zh_cn/en/ja 三语本地化、语言切换与持久化，以及 catalog 名称展示的 locale 对齐路线。
 > 不改动安装/存档安全链语义，不进入当前发版判断（发版前置仍只有 Sandbox Gate 全量
 > catalog 复验一项，见 [WEAPON_RETARGET_DESIGN.md](WEAPON_RETARGET_DESIGN.md)）。
 

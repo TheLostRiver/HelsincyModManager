@@ -1,3 +1,9 @@
+// 直连 locales 而不是 shared/i18n barrel，且带 .ts 显式扩展：本模块会被 node --test 直接
+// import（type stripping 不处理 JSX、不做扩展名推断），barrel 里的 I18nProvider.tsx 与
+// 无扩展 specifier 都会让功能测试无法加载。
+import { resolveCopy, type Locale } from "../../shared/i18n/locales.ts";
+import { backgroundProtectionCopy } from "./backgroundProtectionCopy.ts";
+
 export type BackgroundProtectionStatus =
   | "not_enabled"
   | "starting"
@@ -25,67 +31,29 @@ export type BackgroundProtectionCopy = {
   action: BackgroundProtectionAction;
 };
 
-const UNKNOWN_ERROR_MESSAGE = "后台保护操作未完成，请重新检查状态后重试。";
+// 文案在 backgroundProtectionCopy.ts；这里只保留语义（tone/action）与取词组装。
+const statusSemantics: Record<
+  BackgroundProtectionStatus | "unknown",
+  { tone: BackgroundProtectionTone; action: BackgroundProtectionAction }
+> = {
+  not_enabled: { tone: "neutral", action: "none" },
+  starting: { tone: "warning", action: "none" },
+  protected: { tone: "success", action: "none" },
+  registration_failed: { tone: "danger", action: "retry" },
+  worker_unhealthy: { tone: "danger", action: "retry" },
+  permission_required: { tone: "warning", action: "retry" },
+  unsupported_platform: { tone: "neutral", action: "none" },
+  unknown: { tone: "danger", action: "retry" },
+};
 
-export function getBackgroundProtectionCopy(status: BackgroundProtectionStatus): BackgroundProtectionCopy {
-  switch (status) {
-    case "not_enabled":
-      return {
-        label: "未启用",
-        description: "自动备份只会在客户端运行期间检查。",
-        tone: "neutral",
-        action: "none",
-      };
-    case "starting":
-      return {
-        label: "正在验证后台保护",
-        description: "后台任务已注册，正在等待首次运行验证。",
-        tone: "warning",
-        action: "none",
-      };
-    case "protected":
-      return {
-        label: "已保护",
-        description: "后台任务与最近一次运行均已验证，退出客户端后仍会继续检查。",
-        tone: "success",
-        action: "none",
-      };
-    case "registration_failed":
-      return {
-        label: "注册未完成",
-        description: "后台任务未通过完整注册检查，当前不能确认退出后仍受保护。",
-        tone: "danger",
-        action: "retry",
-      };
-    case "worker_unhealthy":
-      return {
-        label: "后台运行异常",
-        description: "后台任务存在，但最近一次运行验证不可用或已经过期。",
-        tone: "danger",
-        action: "retry",
-      };
-    case "permission_required":
-      return {
-        label: "需要系统权限",
-        description: "当前账户无法完成后台任务注册或检查。",
-        tone: "warning",
-        action: "retry",
-      };
-    case "unsupported_platform":
-      return {
-        label: "当前平台不支持",
-        description: "此平台暂不支持退出客户端后的系统后台保护。",
-        tone: "neutral",
-        action: "none",
-      };
-    default:
-      return {
-        label: "状态不可用",
-        description: "无法识别后台保护状态，请重新检查。",
-        tone: "danger",
-        action: "retry",
-      };
-  }
+export function getBackgroundProtectionCopy(
+  status: BackgroundProtectionStatus,
+  locale: Locale,
+): BackgroundProtectionCopy {
+  // 后端可能给出未来版本的新状态：语义与文案都按 unknown fail closed。
+  const key: BackgroundProtectionStatus | "unknown" = status in statusSemantics ? status : "unknown";
+  const text = resolveCopy(backgroundProtectionCopy, locale).status[key];
+  return { ...text, ...statusSemantics[key] };
 }
 
 export function getBackgroundProtectionErrorCode(error: unknown): string {
@@ -97,30 +65,35 @@ export function getBackgroundProtectionErrorCode(error: unknown): string {
   return typeof code === "string" && code.trim() ? code : "unknown";
 }
 
-export function getBackgroundProtectionErrorMessage(code: string | null | undefined): string {
+export function getBackgroundProtectionErrorMessage(
+  code: string | null | undefined,
+  locale: Locale,
+): string {
+  const errors = resolveCopy(backgroundProtectionCopy, locale).errors;
   switch (code) {
     case "save_backup_background_permission_required":
-      return "系统拒绝更新后台任务，请检查当前账户权限后重试。";
+      return errors.permissionRequired;
     case "save_backup_background_unsupported_platform":
-      return "当前平台不支持此后台保护方式。";
+      return errors.unsupportedPlatform;
     case "save_backup_background_not_registered":
-      return "系统后台任务尚未完成注册，请重试启用。";
+      return errors.notRegistered;
     case "save_backup_background_configuration_drift":
-      return "后台任务配置与当前版本不一致，请重试启用。";
+      return errors.configurationDrift;
     case "save_backup_background_registration_failed":
-      return "系统后台任务注册失败，请稍后重试。";
+      return errors.registrationFailed;
     case "save_backup_background_worker_unhealthy":
-      return "后台运行验证不可用或已经过期，请重试启用。";
+      return errors.workerUnhealthy;
     case "save_backup_background_settings_unavailable":
-      return "后台保护设置暂时无法读取，请重新检查。";
+      return errors.settingsUnavailable;
     case "save_backup_scheduler_unavailable":
-      return "自动备份调度状态暂时不可用，请重新检查。";
+      return errors.schedulerUnavailable;
     case "save_backup_clock_unavailable":
     case "save_backup_background_audit_unavailable":
     case "save_backup_background_status_unavailable":
-      return "后台保护状态暂时不可用，请重新检查。";
+      return errors.statusUnavailable;
     default:
-      return UNKNOWN_ERROR_MESSAGE;
+      // 未知错误码只返回通用文案，绝不把 code 本身拼进消息（可能含路径等敏感内容）。
+      return errors.unknown;
   }
 }
 
@@ -138,7 +111,8 @@ export function hasBackgroundProtectionConverged(
   return !control.desiredEnabled && control.status === "not_enabled";
 }
 
-export function formatBackgroundProtectionDuration(elapsedMs: number): string {
-  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return "不足 0.1 秒";
-  return `${Math.max(0.1, elapsedMs / 1_000).toFixed(1)} 秒`;
+export function formatBackgroundProtectionDuration(elapsedMs: number, locale: Locale): string {
+  const duration = resolveCopy(backgroundProtectionCopy, locale).duration;
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return duration.underTenth;
+  return duration.seconds(Math.max(0.1, elapsedMs / 1_000).toFixed(1));
 }

@@ -9,8 +9,17 @@ import {
   saveWindowClosePreference,
   type WindowClosePreference,
 } from "../../app/window-lifecycle/windowClosePreference";
+import { useFeedback } from "../../shared/feedback";
+import {
+  coreLocales,
+  localeMeta,
+  resolveCopy,
+  useI18n,
+  type LocalePreference,
+} from "../../shared/i18n";
 import { BackgroundProtectionPanel } from "./BackgroundProtectionPanel";
 import { DebugLogSettingsPanel } from "./DebugLogSettingsPanel";
+import { settingsPageCopy } from "./settingsPageCopy";
 
 type ToggleSettingId =
   | "compactPanels"
@@ -44,11 +53,20 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const { preference: colorSchemePreference, setPreference: setColorSchemePreference } =
     useColorScheme();
+  const {
+    locale,
+    preference: localePreference,
+    systemLocale,
+    setPreference: setLocalePreference,
+  } = useI18n();
+  const { pushToast } = useFeedback();
+  const copy = resolveCopy(settingsPageCopy, locale);
   const prerequisites = useGamePrerequisites("mhw");
   const [windowClosePreference, setWindowClosePreference] = useState<WindowClosePreference>(() =>
     typeof window === "undefined" ? "ask" : loadWindowClosePreference(),
   );
-  const [windowClosePreferenceError, setWindowClosePreferenceError] = useState<string | null>(null);
+  // 只存"保存失败"这个事实，不存渲染文案：切换界面语言后错误提示必须跟着换语言。
+  const [hasWindowClosePreferenceError, setHasWindowClosePreferenceError] = useState(false);
 
   const hasSessionChanges = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(initialSettings),
@@ -70,41 +88,69 @@ export function SettingsPage() {
   const updateWindowClosePreference = (value: WindowClosePreference) => {
     const saveSucceeded = saveWindowClosePreference(undefined, value);
     if (!saveSucceeded) {
-      setWindowClosePreferenceError("关闭行为偏好保存失败，请检查应用存储权限后重试。");
+      setHasWindowClosePreferenceError(true);
       return;
     }
 
     setWindowClosePreference(value);
-    setWindowClosePreferenceError(null);
+    setHasWindowClosePreferenceError(false);
   };
+
+  const updateLocalePreference = (value: LocalePreference) => {
+    if (value === localePreference) {
+      return;
+    }
+
+    setLocalePreference(value);
+
+    // 确认反馈必须用切换后的语言：用户选了日语，就不该再收到中文 toast。
+    const nextLocale = value === "system" ? systemLocale : value;
+    const nextCopy = resolveCopy(settingsPageCopy, nextLocale);
+    pushToast({
+      eventKey: "settings.language-changed",
+      title: nextCopy.appearance.language.toastTitle,
+      message: nextCopy.appearance.language.toastMessage(localeMeta[nextLocale].nativeName),
+      tone: "success",
+    });
+  };
+
+  // 「跟随系统」置顶并括注当前系统解析结果；语言项永远显示自称名（I18N_DESIGN.md UI 规格）。
+  const localeOptions: { value: LocalePreference; label: string }[] = [
+    {
+      value: "system",
+      label: copy.appearance.language.followSystem(localeMeta[systemLocale].nativeName),
+    },
+    ...coreLocales.map((candidate) => ({
+      value: candidate,
+      label: localeMeta[candidate].nativeName,
+    })),
+  ];
 
   return (
     <section className="settings-page" aria-labelledby="settings-title">
       <header className="settings-hero">
         <div className="settings-hero__copy">
-          <span className="settings-hero__eyebrow">应用设置</span>
-          <h2 id="settings-title">调整管理器的工作方式</h2>
-          <p>
-            后台保护与窗口关闭偏好会正式保存；其余标记为预览的选项只在当前会话中生效。
-          </p>
+          <span className="settings-hero__eyebrow">{copy.hero.eyebrow}</span>
+          <h2 id="settings-title">{copy.hero.title}</h2>
+          <p>{copy.hero.description}</p>
         </div>
 
-        <div className="settings-hero__status" aria-label="设置保存状态">
+        <div className="settings-hero__status" aria-label={copy.hero.statusLabel}>
           <span className={`settings-save-indicator ${hasSessionChanges ? "is-dirty" : ""}`}>
             <Save size={14} strokeWidth={2.1} />
-            {hasSessionChanges ? "存在本次会话改动" : "使用默认预览值"}
+            {hasSessionChanges ? copy.hero.dirty : copy.hero.pristine}
           </span>
           <button type="button" className="settings-reset-button" onClick={resetSessionPreview} disabled={!hasSessionChanges}>
             <RotateCcw size={14} strokeWidth={2.1} />
-            重置预览
+            {copy.hero.reset}
           </button>
         </div>
       </header>
 
       <div className="settings-sections">
         <SettingsSection
-          title="界面偏好"
-          description="主题模式会立即保存并长期生效；其余显示密度类选项只是本次会话的预览，正式保存前不写入配置文件。"
+          title={copy.appearance.title}
+          description={copy.appearance.description}
           icon={SlidersHorizontal}
           tourId="settings.appearance"
         >
@@ -114,89 +160,97 @@ export function SettingsPage() {
            * 那时设置页是够得到主题的唯一位置。
            */}
           <ChoiceGroup<ColorSchemePreference>
-            label="主题模式"
-            hint="立即生效并长期保存，不受下方预览选项的重置影响。"
+            label={copy.appearance.theme.label}
+            hint={copy.appearance.theme.hint}
             value={colorSchemePreference}
             options={[
-              { value: "light", label: "浅色模式" },
-              { value: "dark", label: "深色模式" },
-              { value: "system", label: "跟随系统" },
+              { value: "light", label: copy.appearance.theme.light },
+              { value: "dark", label: copy.appearance.theme.dark },
+              { value: "system", label: copy.appearance.theme.system },
             ]}
             onChange={setColorSchemePreference}
           />
+          {/* 语言切换的唯一入口（I18N_DESIGN.md：不做顶栏快捷切换）。 */}
+          <ChoiceGroup<LocalePreference>
+            label={copy.appearance.language.label}
+            hint={copy.appearance.language.hint}
+            value={localePreference}
+            options={localeOptions}
+            onChange={updateLocalePreference}
+          />
           <ToggleRow
-            title="紧凑面板"
-            description="减少卡片内边距，适合小窗口或 Steam Deck 桌面模式。"
+            title={copy.appearance.compactPanels.title}
+            description={copy.appearance.compactPanels.description}
             checked={settings.compactPanels}
             onChange={() => updateToggle("compactPanels")}
           />
           <ToggleRow
-            title="减少动效"
-            description="降低页面过渡和 hover 动画强度。未来应与系统无障碍偏好合并。"
+            title={copy.appearance.reduceMotion.title}
+            description={copy.appearance.reduceMotion.description}
             checked={settings.reduceMotion}
             onChange={() => updateToggle("reduceMotion")}
           />
           <ChoiceGroup
-            label="启动后打开"
+            label={copy.appearance.startPage.label}
             value={settings.startPage}
             options={[
-              { value: "dashboard", label: "工作台" },
-              { value: "mods", label: "Mod 管理" },
-              { value: "last", label: "上次页面" },
+              { value: "dashboard", label: copy.appearance.startPage.dashboard },
+              { value: "mods", label: copy.appearance.startPage.mods },
+              { value: "last", label: copy.appearance.startPage.last },
             ]}
             onChange={(value) => updateChoice("startPage", value)}
           />
         </SettingsSection>
 
         <SettingsSection
-          title="窗口行为"
-          description="控制点击窗口关闭按钮时的默认动作；这不会改变后台守护是否已启用。"
+          title={copy.windowBehavior.title}
+          description={copy.windowBehavior.description}
           icon={MonitorCog}
           tourId="settings.window-behavior"
         >
           <ChoiceGroup
-            label="关闭主窗口时"
+            label={copy.windowBehavior.closeLabel}
             value={windowClosePreference}
             options={[
-              { value: "ask", label: "每次询问" },
-              { value: "tray", label: "收起至托盘" },
-              { value: "exit", label: "退出应用" },
+              { value: "ask", label: copy.windowBehavior.ask },
+              { value: "tray", label: copy.windowBehavior.tray },
+              { value: "exit", label: copy.windowBehavior.exit },
             ]}
             onChange={updateWindowClosePreference}
           />
-          {windowClosePreferenceError ? (
+          {hasWindowClosePreferenceError ? (
             <div className="settings-callout" role="alert">
               <Bell size={16} strokeWidth={2.1} />
-              <span>{windowClosePreferenceError}</span>
+              <span>{copy.windowBehavior.saveError}</span>
             </div>
           ) : null}
           <div className="settings-callout settings-callout--neutral" role="note">
             <Bell size={16} strokeWidth={2.1} />
-            <span>关闭行为偏好与后台保护是独立设置；退出后的保护状态以“存档备份”区域为准。</span>
+            <span>{copy.windowBehavior.note}</span>
           </div>
         </SettingsSection>
         <SettingsSection
-          title="Mod 导入"
-          description="这些选项只影响未来导入流程的前端意图表达，不在前端判断文件安全。"
+          title={copy.modImport.title}
+          description={copy.modImport.description}
           icon={FileArchive}
         >
           <ToggleRow
-            title="导入后显示预览"
-            description="导入完成后优先展示预览图和结构摘要。预览图校验仍应由后端完成。"
+            title={copy.modImport.previewAfterImport.title}
+            description={copy.modImport.previewAfterImport.description}
             checked={settings.previewAfterImport}
             onChange={() => updateToggle("previewAfterImport")}
           />
           <ToggleRow
-            title="冲突前二次确认"
-            description="当安装计划存在冲突时，在继续前显示确认步骤。"
+            title={copy.modImport.confirmBeforeConflict.title}
+            description={copy.modImport.confirmBeforeConflict.description}
             checked={settings.confirmBeforeConflict}
             onChange={() => updateToggle("confirmBeforeConflict")}
           />
         </SettingsSection>
 
         <SettingsSection
-          title="前置环境"
-          description="只读检查当前已配置游戏目录中的 Stracker's Loader 与 CRCBypass，不访问测试目录。"
+          title={copy.prerequisites.title}
+          description={copy.prerequisites.description}
           icon={ShieldCheck}
           tourId="settings.prerequisites"
         >
@@ -204,29 +258,29 @@ export function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection
-          title="存档备份"
-          description="后台保护会正式保存；安装前提醒仍是当前会话预览，不读取真实存档。"
+          title={copy.saveBackup.title}
+          description={copy.saveBackup.description}
           icon={ShieldCheck}
           tourId="settings.save-backup"
         >
           <BackgroundProtectionPanel />
           <ToggleRow
-            title="安装前提醒备份"
-            description="在执行会写入游戏目录的任务前提示检查存档备份状态。"
+            title={copy.saveBackup.backupReminder.title}
+            description={copy.saveBackup.backupReminder.description}
             checked={settings.backupReminder}
             onChange={() => updateToggle("backupReminder")}
           />
         </SettingsSection>
 
         <SettingsSection
-          title="日志与诊断"
-          description="诊断包导出需要后端脱敏能力，本页不会生成或写入任何日志文件。"
+          title={copy.logs.title}
+          description={copy.logs.description}
           icon={Database}
         >
           <DebugLogSettingsPanel />
           <div className="settings-callout" role="note">
             <Bell size={16} strokeWidth={2.1} />
-            <span>正式导出前必须经过统一脱敏，并由用户主动触发。</span>
+            <span>{copy.logs.exportNote}</span>
           </div>
         </SettingsSection>
       </div>

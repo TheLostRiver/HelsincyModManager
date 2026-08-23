@@ -165,9 +165,11 @@ test("effective color scheme is synchronized to the native Tauri title bar", () 
 test("settings window preference write reports storage failures before changing UI state", () => {
   const source = readProjectFile("src/features/settings/SettingsPage.tsx");
 
-  assert.match(source, /windowClosePreferenceError/);
+  // I18N-01 起错误状态只存事实标志（hasWindowClosePreferenceError），
+  // 文案在渲染时取当前语言，保证切换界面语言后错误提示跟着换语言。
+  assert.match(source, /hasWindowClosePreferenceError/);
   assert.match(source, /const saveSucceeded = saveWindowClosePreference\(undefined, value\);/);
-  assert.match(source, /if \(!saveSucceeded\) \{[\s\S]*?setWindowClosePreferenceError/);
+  assert.match(source, /if \(!saveSucceeded\) \{[\s\S]*?setHasWindowClosePreferenceError\(true\)/);
   assert.match(source, /setWindowClosePreference\(value\);/);
   assert.match(source, /role="alert"/);
 });
