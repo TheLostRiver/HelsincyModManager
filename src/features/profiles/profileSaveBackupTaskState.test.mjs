@@ -9,6 +9,10 @@ import {
   nextProfileSaveBackupTaskStateFromProgress,
   shouldRefreshProfileSaveBackupHistory,
 } from "./profileSaveBackupTaskState.ts";
+import { saveBackupCopy } from "./saveBackupCopy.ts";
+
+// 功能测试固定使用 zh_cn 字典，断言中文值不回归。
+const zhCopy = saveBackupCopy.zh_cn;
 
 test("profile save backup task phases map to user-facing labels", () => {
   assert.equal(isProfileSaveBackupTaskPhase("save_backup.queued"), true);
@@ -20,7 +24,7 @@ test("profile save backup task phases map to user-facing labels", () => {
   assert.equal(isProfileSaveBackupTaskPhase("save_backup.failed"), true);
   assert.equal(isProfileSaveBackupTaskPhase("save_backup.cancelled"), true);
   assert.equal(isProfileSaveBackupTaskPhase("install.completed"), false);
-  assert.equal(getProfileSaveBackupTaskPhaseLabel("save_backup.manifest_writing"), "写入备份清单");
+  assert.equal(getProfileSaveBackupTaskPhaseLabel("save_backup.manifest_writing", zhCopy.phases), "写入备份清单");
 });
 
 test("profile save backup progress ignores unrelated task ids and task kinds", () => {
@@ -105,8 +109,12 @@ test("profile save backup completed and failed progress map to stable UI states"
       taskId: "save-backup-a",
       phase: "save_backup.failed",
       errorCode: "save_backup_source_unset",
-      message: "当前配置档尚未设置存档目录。",
     },
+  );
+  // 语义/文本分离后 state 只存 errorCode，文本在渲染时取词。
+  assert.equal(
+    getProfileSaveBackupTaskErrorMessage("save_backup_source_unset", zhCopy.errors),
+    "当前配置档尚未设置存档目录。",
   );
 });
 
@@ -116,11 +124,11 @@ test("profile save backup failures map stable codes without exposing raw backend
     "write_admission_busy",
   );
   assert.equal(
-    getProfileSaveBackupTaskErrorMessage("save_backup_failed:write_admission_busy"),
+    getProfileSaveBackupTaskErrorMessage("save_backup_failed:write_admission_busy", zhCopy.errors),
     "另一项存档操作正在进行，请稍后再试。",
   );
   assert.equal(
-    getProfileSaveBackupTaskErrorMessage("save_backup_failed:future_internal_error"),
+    getProfileSaveBackupTaskErrorMessage("save_backup_failed:future_internal_error", zhCopy.errors),
     "存档备份失败，请稍后重试。",
   );
   assert.equal(getProfileSaveBackupTaskErrorCode("raw backend failure with spaces"), null);

@@ -20,6 +20,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppRoute } from "../../app/routing/useAppRoute";
 import { useFeedback, type FeedbackToastInput } from "../../shared/feedback";
+import { localeMeta, resolveCopy, useI18n } from "../../shared/i18n";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import { useActiveProfile } from "./ActiveProfileProvider";
 import { BackupPolicyPanel } from "./BackupPolicyPanel";
@@ -29,7 +30,16 @@ import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscover
 import { SaveDirectoryPanel } from "./SaveDirectoryPanel";
 import { SaveRestoreDialog } from "./SaveRestoreDialog";
 import { listProfiles } from "./profileApi";
-import { DEFAULT_PROFILE_BACKUP_RETENTION } from "./profileSaveSettingsDefaults";
+import { backupPolicyCopy } from "./backupPolicyCopy";
+import { profilePageCopy, type ProfilePageCopy } from "./profilePageCopy";
+import { saveBackupCopy, type SaveBackupCopy } from "./saveBackupCopy";
+import { saveDirectoryCopy } from "./saveDirectoryCopy";
+import {
+  createPreviewProfiles,
+  createPreviewSaveBackups,
+  createPreviewSaveSettings,
+  PREVIEW_SAVE_SETTINGS,
+} from "./profilesPreviewData";
 import {
   checkProfileAutoSaveBackup,
   getSaveBackupBackgroundStatus,
@@ -45,6 +55,7 @@ import {
   shouldRefreshProfileSaveBackupHistory,
   type ProfileSaveBackupTaskState,
 } from "./profileSaveBackupTaskState";
+import type { Locale } from "../../shared/i18n";
 import type {
   ProfileAutoSaveBackupCheckDto,
   SaveBackupBackgroundStatusDto,
@@ -64,116 +75,9 @@ import type { Profile } from "./profileTypes";
 import { formatBackupSchedule, formatDirectoryStatus } from "./profileViewModel";
 
 const CURRENT_GAME_ID = "mhw";
-const PREVIEW_PROFILES: Profile[] = [
-  {
-    id: "preview-default",
-    name: "Default (主游戏配置)",
-    description: "主要玩大剑的主存档",
-    isActive: true,
-    createdAt: 1719665600000,
-    updatedAt: 1719765600000,
-  },
-  {
-    id: "preview-taichi",
-    name: "太刀毕业档",
-    description: "独立存档，目前全武器毕业阶段",
-    isActive: false,
-    createdAt: 1717065600000,
-    updatedAt: 1719565600000,
-  },
-  {
-    id: "preview-online-test",
-    name: "联机修改测试档",
-    description: "用于 Mod 联机修改装备测试备份",
-    isActive: false,
-    createdAt: 1714465600000,
-    updatedAt: 1719465600000,
-  },
-];
-const PREVIEW_SAVE_SETTINGS: ProfileSaveSettingsDto = {
-  profileId: "preview-default",
-  saveDirectory: {
-    mode: "custom",
-    status: "valid",
-    pathLabel: "Steam/userdata/<steam-id>/582010/remote",
-    messages: ["已验证存档结构和读取权限"],
-  },
-  backupDirectory: {
-    mode: "default",
-    status: "defaulted",
-    pathLabel: "HelsincyModManager/Backups/MHW",
-    messages: ["将按配置档自动归档备份"],
-  },
-  schedule: {
-    cadence: "daily",
-    hour: 3,
-    minute: 0,
-    weekdays: [],
-  },
-  retention: { ...DEFAULT_PROFILE_BACKUP_RETENTION },
-  steamAccount: null,
-  preRestoreBackupEnabled: true,
-  updatedAt: 0,
-};
-const PREVIEW_SAVE_SETTINGS_BY_PROFILE: Record<string, ProfileSaveSettingsDto> = {
-  "preview-default": PREVIEW_SAVE_SETTINGS,
-  "preview-taichi": {
-    ...PREVIEW_SAVE_SETTINGS,
-    profileId: "preview-taichi",
-    schedule: { cadence: "weekly", hour: 2, minute: 30, weekdays: [1, 3, 5] },
-    retention: { maxCount: 36, maxAgeDays: 60, maxTotalBytes: null },
-    saveDirectory: {
-      mode: "custom",
-      status: "valid",
-      pathLabel: "Steam/userdata/<steam-id>/582010/remote-taichi",
-      messages: ["独立配置槽已关联存档源"],
-    },
-  },
-  "preview-online-test": {
-    ...PREVIEW_SAVE_SETTINGS,
-    profileId: "preview-online-test",
-    schedule: { cadence: "manual", hour: null, minute: null, weekdays: [] },
-    retention: { maxCount: 12, maxAgeDays: 14, maxTotalBytes: null },
-    saveDirectory: {
-      mode: "unset",
-      status: "unset",
-      pathLabel: null,
-      messages: ["等待关联游戏存档源目录"],
-    },
-  },
-};
 
 function isPlainBrowserRuntime() {
   return typeof window !== "undefined" && !("__TAURI_INTERNALS__" in window);
-}
-
-function createPreviewProfiles(): Profile[] {
-  return PREVIEW_PROFILES.map((profile) => ({ ...profile }));
-}
-
-function createPreviewSaveSettings(profileId = PREVIEW_SAVE_SETTINGS.profileId): ProfileSaveSettingsDto {
-  const template = PREVIEW_SAVE_SETTINGS_BY_PROFILE[profileId] ?? {
-    ...PREVIEW_SAVE_SETTINGS,
-    profileId,
-  };
-
-  return {
-    ...template,
-    profileId,
-    saveDirectory: {
-      ...template.saveDirectory,
-      messages: [...template.saveDirectory.messages],
-    },
-    backupDirectory: {
-      ...template.backupDirectory,
-      messages: [...template.backupDirectory.messages],
-    },
-    schedule: {
-      ...template.schedule,
-      weekdays: [...template.schedule.weekdays],
-    },
-    retention: { ...template.retention },
-  };
 }
 
 type ProfileListState =
@@ -208,6 +112,15 @@ type BackgroundProtectionState =
 export function ProfilePage() {
   const { navigate } = useAppRoute();
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const pageCopy = resolveCopy(profilePageCopy, locale);
+  const backupCopy = resolveCopy(saveBackupCopy, locale);
+  // 数据加载 effect 与终态 toast effect 经 ref 取词：语言切换既不能触发重新拉取，
+  // 也不能让已消费的终态重复推送 toast。
+  const pageCopyRef = useRef(pageCopy);
+  pageCopyRef.current = pageCopy;
+  const backupCopyRef = useRef(backupCopy);
+  backupCopyRef.current = backupCopy;
   const { activeProfile, refreshActiveProfile, setActiveProfile } = useActiveProfile();
   const { latestDiscovery, isDiscovering, discoveringTarget, runDiscovery } = useProfileSaveDirectoryDiscovery();
   const previewMode = isPlainBrowserRuntime();
@@ -346,7 +259,7 @@ export function ProfilePage() {
           return;
         }
         if (!cancelled) {
-          setSettingsState({ status: "error", message: getErrorMessage(error, "存档设置不可用") });
+          setSettingsState({ status: "error", message: getErrorMessage(error, pageCopyRef.current.settingsStates.unavailableFallback) });
         }
       });
 
@@ -384,13 +297,14 @@ export function ProfilePage() {
     if (previewMode) {
       setBackupHistoryState({
         status: "ready",
-        backups: createPreviewSaveBackups(selectedProfileId),
+        backups: createPreviewSaveBackups(CURRENT_GAME_ID, selectedProfileId),
       });
       publishPendingBackupCompletionToast(
         pendingBackupCompletionToastRef,
         saveBackupTaskProfileIdsRef,
         selectedProfileId,
         pushToast,
+        pageCopyRef.current.toasts,
       );
       return;
     }
@@ -408,6 +322,7 @@ export function ProfilePage() {
             saveBackupTaskProfileIdsRef,
             selectedProfileId,
             pushToast,
+            pageCopyRef.current.toasts,
           );
         }
       })
@@ -416,7 +331,7 @@ export function ProfilePage() {
           setBackupHistoryState((current) => ({
             status: "error",
             backups: current.backups,
-            message: getErrorMessage(error, "备份历史不可用"),
+            message: getErrorMessage(error, pageCopyRef.current.history.unavailableFallback),
           }));
           const pending = pendingBackupCompletionToastRef.current;
           if (pending?.profileId === selectedProfileId) {
@@ -425,8 +340,8 @@ export function ProfilePage() {
             pushToast({
               eventKey: `profile.save-backup.refresh-failed.${pending.taskId}`,
               taskId: pending.taskId,
-              title: "备份完成，历史刷新失败",
-              message: "备份任务已完成，但当前历史列表未能刷新，请稍后重试。",
+              title: pageCopyRef.current.toasts.refreshFailedTitle,
+              message: pageCopyRef.current.toasts.refreshFailedMessage,
               tone: "warning",
             });
           }
@@ -469,7 +384,7 @@ export function ProfilePage() {
         }
       } catch (error) {
         if (!cancelled) {
-          setAutoBackupCheckState({ status: "error", message: getErrorMessage(error, "自动备份检查失败") });
+          setAutoBackupCheckState({ status: "error", message: getErrorMessage(error, pageCopyRef.current.autoBackup.checkFailedFallback) });
         }
       }
     })();
@@ -593,8 +508,8 @@ export function ProfilePage() {
         eventKey: `profile.save-backup.failed.${saveBackupTaskState.taskId ?? "start"}`,
         taskId: saveBackupTaskState.taskId ?? undefined,
         tone: admissionBusy ? "warning" : "danger",
-        title: admissionBusy ? "存档操作正在进行" : "存档备份失败",
-        message: saveBackupTaskState.message,
+        title: admissionBusy ? pageCopyRef.current.toasts.admissionBusyTitle : pageCopyRef.current.toasts.failedTitle,
+        message: getProfileSaveBackupTaskErrorMessage(saveBackupTaskState.errorCode, backupCopyRef.current.errors),
       });
     }
   }, [pushToast, saveBackupTaskState, selectedProfileId]);
@@ -611,14 +526,16 @@ export function ProfilePage() {
     selectedProfileId,
     settingsState,
     taskState: saveBackupTaskState,
+    reasons: pageCopy.blockedReasons,
   });
   const canStartManualSaveBackup = manualBackupBlockedReason === null;
-  const autoBackupCheckBlockedReason = getAutoBackupCheckBlockedReason(saveBackupTaskState);
+  const autoBackupCheckBlockedReason = getAutoBackupCheckBlockedReason(saveBackupTaskState, pageCopy.blockedReasons);
   const saveRestoreBlockedReason = getSaveRestoreBlockedReason({
     dirty,
     savingSettings,
     selectedProfileId,
     settingsState,
+    reasons: pageCopy.blockedReasons,
   });
 
   const updateSettings = (settings: ProfileSaveSettingsDto) => {
@@ -689,7 +606,7 @@ export function ProfilePage() {
       setPendingDirectories({});
       setDirty(false);
     } catch (error) {
-      setSaveError(getErrorMessage(error, "保存失败"));
+      setSaveError(getErrorMessage(error, pageCopy.settingsStates.saveFailedFallback));
     } finally {
       setSavingSettings(false);
     }
@@ -715,7 +632,7 @@ export function ProfilePage() {
       const task = await startProfileSaveBackup({
         gameId: CURRENT_GAME_ID,
         profileId: selectedProfileId,
-        note: selectedProfile ? `手动备份：${selectedProfile.name}` : null,
+        note: selectedProfile ? pageCopy.manualBackup.noteTemplate(selectedProfile.name) : null,
       });
       attachStartedSaveBackupTask(task, selectedProfileId);
     } catch (error) {
@@ -725,10 +642,9 @@ export function ProfilePage() {
         taskId: null,
         phase: "save_backup.failed",
         errorCode,
-        message: getProfileSaveBackupTaskErrorMessage(errorCode),
       });
     }
-  }, [attachStartedSaveBackupTask, canStartManualSaveBackup, previewMode, selectedProfile, selectedProfileId]);
+  }, [attachStartedSaveBackupTask, canStartManualSaveBackup, pageCopy, previewMode, selectedProfile, selectedProfileId]);
 
   return (
     <section className="profile-page" data-preview-mode={previewMode ? "true" : undefined} aria-labelledby="profile-page-title">
@@ -738,12 +654,12 @@ export function ProfilePage() {
             <ShieldCheck size={15} />
             Profile Workspace
           </span>
-          <h1 id="profile-page-title">存档备份</h1>
+          <h1 id="profile-page-title">{pageCopy.header.title}</h1>
           <p className="profile-page__subtitle">
-            管理当前游戏实例的多套存档配置、目录映射与自动备份策略
+            {pageCopy.header.subtitle}
           </p>
         </div>
-        <div className="profile-page__actions header-status-deck" aria-label="配置档操作">
+        <div className="profile-page__actions header-status-deck" aria-label={pageCopy.header.actionsAria}>
           <ProfileHeaderSaveAction
             dirty={dirty}
             saveError={saveError}
@@ -760,7 +676,7 @@ export function ProfilePage() {
             }}
           >
             <RefreshCw size={14} />
-            同步刷新
+            {pageCopy.header.syncRefresh}
           </button>
           <button
             type="button"
@@ -768,7 +684,7 @@ export function ProfilePage() {
             onClick={() => setCreateProfileRequestToken((current) => current + 1)}
           >
             <Plus size={14} />
-            新建配置槽
+            {pageCopy.header.createSlot}
           </button>
         </div>
       </header>
@@ -795,17 +711,17 @@ export function ProfilePage() {
           data-tour-id="profiles.settings"
         >
           {settingsState.status !== "ready" ? (
-            <section className="profile-settings-panel glass-card profile-detail-console" aria-label="配置档详情与存档目录">
+            <section className="profile-settings-panel glass-card profile-detail-console" aria-label={pageCopy.settingsStates.detailAria}>
             {settingsState.status === "idle" ? (
               <div className="profile-settings-state" role="status">
-                <span>选择配置档后显示存档设置</span>
+                <span>{pageCopy.settingsStates.idle}</span>
               </div>
             ) : null}
 
             {settingsState.status === "loading" ? (
               <div className="profile-settings-state" role="status">
                 <Loader2 className="profile-spinner" size={20} />
-                <span>正在读取存档设置</span>
+                <span>{pageCopy.settingsStates.loading}</span>
               </div>
             ) : null}
 
@@ -818,7 +734,7 @@ export function ProfilePage() {
                   className="profile-action-button"
                   onClick={() => setSettingsRefreshToken((current) => current + 1)}
                 >
-                  重试
+                  {pageCopy.settingsStates.retry}
                 </button>
               </div>
             ) : null}
@@ -912,14 +828,17 @@ function ActiveSavePanel({
   profile: Profile | null;
   settings: ProfileSaveSettingsDto;
 }) {
-  const saveStatus = formatDirectoryStatus(settings.saveDirectory);
+  const { locale } = useI18n();
+  const copy = resolveCopy(profilePageCopy, locale).activeSave;
+  const statusLabels = resolveCopy(saveDirectoryCopy, locale).directoryStatus;
+  const saveStatus = formatDirectoryStatus(settings.saveDirectory, statusLabels);
   const ready = settings.saveDirectory.status === "valid";
 
   return (
     <section className="profile-active-save-card" aria-labelledby="profile-active-save-title">
       <div className="profile-settings-panel__header">
         <div>
-          <h2 id="profile-active-save-title">活动存档与自动策略</h2>
+          <h2 id="profile-active-save-title">{copy.title}</h2>
           <span>Active save channel</span>
         </div>
         <Database size={18} aria-hidden="true" />
@@ -932,8 +851,8 @@ function ActiveSavePanel({
             <Database size={18} />
           </span>
           <div className="active-save-copy">
-            <strong>{profile?.name ?? "未选择配置档"}</strong>
-            <span>{ready ? saveStatus.label : "等待关联存档源目录"}</span>
+            <strong>{profile?.name ?? copy.noProfile}</strong>
+            <span>{ready ? saveStatus.label : copy.waitingDirectory}</span>
           </div>
         </div>
       </div>
@@ -952,7 +871,10 @@ function ManualSaveBackupPanel({
   canStartManualSaveBackup: boolean;
   onClick: () => void;
 }) {
-  const statusCopy = getManualBackupStatusCopy(taskState, disabledReason);
+  const { locale } = useI18n();
+  const copy = resolveCopy(profilePageCopy, locale).manualBackup;
+  const backupCopy = resolveCopy(saveBackupCopy, locale);
+  const statusCopy = getManualBackupStatusCopy(taskState, disabledReason, copy, backupCopy);
   const running = taskState.status === "starting" || taskState.status === "running";
 
   return (
@@ -962,8 +884,8 @@ function ManualSaveBackupPanel({
       data-tour-id="profiles.manual-backup"
     >
       <div className="profile-manual-backup-card__copy">
-        <h2 id="profile-manual-backup-title">手动备份</h2>
-        <p>立即为当前配置档创建一个受控存档归档点。</p>
+        <h2 id="profile-manual-backup-title">{copy.title}</h2>
+        <p>{copy.hint}</p>
       </div>
       <div className={`profile-manual-backup-status is-${statusCopy.tone}`} role="status" aria-live="polite">
         {running ? <Loader2 className="profile-spinner" size={16} /> : statusCopy.icon}
@@ -976,7 +898,7 @@ function ManualSaveBackupPanel({
         onClick={onClick}
       >
         <Save size={14} />
-        {running ? "备份中" : "立即归档当前存档"}
+        {running ? copy.runningButton : copy.startButton}
       </button>
     </section>
   );
@@ -997,17 +919,20 @@ function AutoSaveBackupRuntimePanel({
   onCheck: () => void;
   onOpenSettings: () => void;
 }) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(profilePageCopy, locale);
+  const scheduleCopy = resolveCopy(backupPolicyCopy, locale).schedule;
   const checking = checkState.status === "checking";
   const disabled = checking || disabledReason !== null;
-  const statusCopy = getAutoBackupStatusCopy(checkState);
-  const protectionCopy = getBackgroundProtectionCopy(settings.schedule.cadence, backgroundState);
-  const protectionBadge = getBackgroundProtectionBadge(settings.schedule.cadence, backgroundState);
+  const statusCopy = getAutoBackupStatusCopy(checkState, copy.autoBackup);
+  const protectionCopy = getBackgroundProtectionCopy(settings.schedule.cadence, backgroundState, copy.background, locale);
+  const protectionBadge = getBackgroundProtectionBadge(settings.schedule.cadence, backgroundState, copy.background);
   const showSettingsLink = shouldOfferBackgroundSettingsNavigation(
     settings.schedule.cadence,
     backgroundState,
   );
-  const lastAutoCheck = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.checkedAt) : "尚未检查";
-  const nextDue = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.nextDueAt) : "等待调度信息";
+  const lastAutoCheck = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.checkedAt, copy.time, locale) : copy.autoBackup.neverChecked;
+  const nextDue = "result" in checkState ? formatAutoBackupTimestamp(checkState.result.nextDueAt, copy.time, locale) : copy.autoBackup.waitingSchedule;
 
   return (
     <section
@@ -1017,8 +942,8 @@ function AutoSaveBackupRuntimePanel({
     >
       <div className="profile-auto-backup-card__header">
         <div>
-          <h2 id="profile-auto-backup-title">自动备份运行期</h2>
-          <p>{formatBackupSchedule(settings.schedule)}</p>
+          <h2 id="profile-auto-backup-title">{copy.autoBackup.title}</h2>
+          <p>{formatBackupSchedule(settings.schedule, scheduleCopy)}</p>
         </div>
         <span className={`profile-auto-backup-card__badge is-${protectionBadge.tone}`}>
           {protectionBadge.label}
@@ -1031,8 +956,8 @@ function AutoSaveBackupRuntimePanel({
       </div>
 
       <div className="profile-auto-backup-card__meta">
-        <span>最近检查：{lastAutoCheck}</span>
-        <span>下次计划：{nextDue}</span>
+        <span>{copy.autoBackup.lastCheck(lastAutoCheck)}</span>
+        <span>{copy.autoBackup.nextDue(nextDue)}</span>
       </div>
 
       <div className={`profile-auto-backup-protection is-${protectionCopy.tone}`} role="status">
@@ -1050,7 +975,7 @@ function AutoSaveBackupRuntimePanel({
           onClick={onOpenSettings}
         >
           <Settings2 size={14} aria-hidden="true" />
-          前往设置处理
+          {copy.autoBackup.goToSettings}
         </button>
       ) : null}
 
@@ -1061,7 +986,7 @@ function AutoSaveBackupRuntimePanel({
         onClick={onCheck}
       >
         {checking ? <Loader2 className="profile-spinner" size={14} /> : <RefreshCw size={14} />}
-        {disabledReason ?? "立即检查"}
+        {disabledReason ?? copy.autoBackup.checkNow}
       </button>
     </section>
   );
@@ -1080,8 +1005,10 @@ function BackupHistoryPanel({
   onRestore: (backup: SaveBackupSummaryDto) => void;
   restoreBlockedReason: string | null;
 }) {
-  const rows = historyState.backups.map((backup) => ({ backup, ...toBackupHistoryRow(backup) }));
-  const countLabel = historyState.status === "loading" ? "刷新中" : `${rows.length} 个归档包`;
+  const { locale } = useI18n();
+  const copy = resolveCopy(profilePageCopy, locale);
+  const rows = historyState.backups.map((backup) => ({ backup, ...toBackupHistoryRow(backup, copy, locale) }));
+  const countLabel = historyState.status === "loading" ? copy.history.refreshing : copy.history.count(rows.length);
 
   return (
     <section
@@ -1091,10 +1018,10 @@ function BackupHistoryPanel({
     >
       <div className="profile-settings-panel__header profile-history-header">
         <div>
-          <h2 id="profile-history-title">备份历史点</h2>
+          <h2 id="profile-history-title">{copy.history.title}</h2>
           <span>{profile?.name ? `${profile.name} · ${countLabel}` : countLabel}</span>
         </div>
-        <button type="button" className="profile-icon-button" aria-label="刷新备份历史" onClick={onRefresh}>
+        <button type="button" className="profile-icon-button" aria-label={copy.history.refreshAria} onClick={onRefresh}>
           {historyState.status === "loading" ? <Loader2 className="profile-spinner" size={16} /> : <History size={16} />}
         </button>
       </div>
@@ -1109,18 +1036,18 @@ function BackupHistoryPanel({
       {restoreBlockedReason ? (
         <div className="profile-history-restore-blocked" role="status">
           <AlertTriangle size={16} />
-          <span>恢复暂不可用：{restoreBlockedReason}</span>
+          <span>{copy.history.restoreBlocked(restoreBlockedReason)}</span>
         </div>
       ) : null}
 
       <label className="profile-history-search search-row">
         <Search size={14} aria-hidden="true" />
-        <span className="sr-only">筛选备份历史</span>
-        <input type="search" placeholder="输入备份备注以筛选历史..." disabled />
+        <span className="sr-only">{copy.history.filterSr}</span>
+        <input type="search" placeholder={copy.history.filterPlaceholder} disabled />
       </label>
 
       {rows.length > 0 ? (
-        <div className="profile-backup-list" role="list" aria-label="备份历史">
+        <div className="profile-backup-list" role="list" aria-label={copy.history.listAria}>
           {rows.map((row) => (
             <article className="profile-backup-item" key={row.id} role="listitem">
               <div className="profile-backup-item__summary">
@@ -1130,11 +1057,11 @@ function BackupHistoryPanel({
 
               <dl className="profile-backup-item__meta">
                 <div>
-                  <dt>大小</dt>
+                  <dt>{copy.history.metaSize}</dt>
                   <dd>{row.size}</dd>
                 </div>
                 <div>
-                  <dt>归档时间</dt>
+                  <dt>{copy.history.metaCreatedAt}</dt>
                   <dd>{row.createdAt}</dd>
                 </div>
               </dl>
@@ -1143,15 +1070,15 @@ function BackupHistoryPanel({
                 <button
                   type="button"
                   className="profile-action-button is-primary profile-backup-restore-button"
-                  aria-label={`恢复存档：${row.name}`}
+                  aria-label={copy.history.restoreAria(row.name)}
                   title={row.backup.status !== "completed"
-                    ? "该备份尚未完成，不能恢复"
-                    : restoreBlockedReason ?? "预览并恢复此存档"}
+                    ? copy.history.notCompletedTitle
+                    : restoreBlockedReason ?? copy.history.restoreTitle}
                   disabled={row.backup.status !== "completed" || restoreBlockedReason !== null}
                   onClick={() => onRestore(row.backup)}
                 >
                   <ArchiveRestore size={15} aria-hidden="true" />
-                  恢复存档
+                  {copy.history.restore}
                 </button>
               </div>
             </article>
@@ -1160,66 +1087,12 @@ function BackupHistoryPanel({
       ) : (
         <div className="profile-history-empty">
           <Archive size={24} aria-hidden="true" />
-          <strong>暂无存档备份</strong>
-          <span>完成首次归档后会在这里显示历史点。</span>
+          <strong>{copy.history.emptyTitle}</strong>
+          <span>{copy.history.emptyHint}</span>
         </div>
       )}
     </section>
   );
-}
-
-function createPreviewSaveBackups(profileId: string | null): SaveBackupSummaryDto[] {
-  if (profileId === "preview-online-test" || profileId === null) return [];
-
-  const now = Date.now();
-  const rows: SaveBackupSummaryDto[] = [
-    {
-      backupId: "preview-backup-fatalis",
-      gameId: CURRENT_GAME_ID,
-      profileId,
-      trigger: "manual",
-      status: "completed",
-      fileName: "mhw-preview-default-20260707-150000.zip",
-      createdAt: now - 60 * 60 * 1000,
-      sizeBytes: 3_800_000,
-      fileCount: 8,
-      sourcePathLabel: "Steam/userdata/<steam-id>/582010/remote",
-      notes: "讨伐黑龙前夕",
-    },
-    {
-      backupId: "preview-backup-iceborne",
-      gameId: CURRENT_GAME_ID,
-      profileId,
-      trigger: "manual",
-      status: "completed",
-      fileName: "mhw-preview-default-20260706-210000.zip",
-      createdAt: now - 24 * 60 * 60 * 1000,
-      sizeBytes: 3_600_000,
-      fileCount: 8,
-      sourcePathLabel: "Steam/userdata/<steam-id>/582010/remote",
-      notes: "冰原通关节点",
-    },
-  ];
-
-  if (profileId === "preview-taichi") {
-    return [
-      {
-        backupId: "preview-backup-taichi",
-        gameId: CURRENT_GAME_ID,
-        profileId,
-        trigger: "manual",
-        status: "completed",
-        fileName: "mhw-preview-taichi-20260707-030000.zip",
-        createdAt: now - 12 * 60 * 60 * 1000,
-        sizeBytes: 3_400_000,
-        fileCount: 7,
-        sourcePathLabel: "Steam/userdata/<steam-id>/582010/remote-taichi",
-        notes: "迅龙速刷备份",
-      },
-    ];
-  }
-
-  return rows;
 }
 
 function createPreviewAutoBackupCheckState(
@@ -1250,13 +1123,13 @@ function autoBackupCheckStateFromResult(result: ProfileAutoSaveBackupCheckDto): 
   return { status: "notDue", result };
 }
 
-function toBackupHistoryRow(backup: SaveBackupSummaryDto) {
+function toBackupHistoryRow(backup: SaveBackupSummaryDto, copy: ProfilePageCopy, locale: Locale) {
   return {
     id: backup.backupId,
     name: backup.notes?.trim() || backup.fileName,
     size: formatBytes(backup.sizeBytes),
-    createdAt: formatRelativeTime(backup.createdAt),
-    detail: `${formatBackupTrigger(backup.trigger)} · ${formatBackupStatus(backup.status)} · ${backup.fileCount} 个文件`,
+    createdAt: formatRelativeTime(backup.createdAt, copy.time, locale),
+    detail: `${copy.trigger[backup.trigger]} · ${copy.backupStatus[backup.status]} · ${copy.history.fileCount(backup.fileCount)}`,
   };
 }
 
@@ -1273,16 +1146,18 @@ function ProfileHeaderSaveAction({
   settingsEditable: boolean;
   onSave: () => void;
 }) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(profilePageCopy, locale).saveAction;
   const tone = saveError ? "error" : dirty ? "dirty" : settingsEditable ? "synced" : "disabled";
   const label = saveError
     ? saveError
     : savingSettings
-      ? "正在保存设置"
+      ? copy.saving
       : dirty
-        ? "有未保存的更改"
+        ? copy.dirty
         : settingsEditable
-          ? "设置已同步"
-          : "设置未就绪";
+          ? copy.synced
+          : copy.notReady;
   const icon = savingSettings ? (
     <Loader2 className="profile-spinner" size={15} aria-hidden="true" />
   ) : saveError || dirty ? (
@@ -1304,7 +1179,7 @@ function ProfileHeaderSaveAction({
         disabled={!settingsEditable || !dirty || savingSettings}
       >
         <Save size={14} />
-        {savingSettings ? "保存中" : "保存设置"}
+        {savingSettings ? copy.savingButton : copy.saveButton}
       </button>
     </div>
   );
@@ -1315,19 +1190,21 @@ function getManualBackupBlockedReason({
   selectedProfileId,
   settingsState,
   taskState,
+  reasons,
 }: {
   dirty: boolean;
   selectedProfileId: string | null;
   settingsState: SaveSettingsState;
   taskState: ProfileSaveBackupTaskState;
+  reasons: ProfilePageCopy["blockedReasons"];
 }) {
-  if (!selectedProfileId) return "请选择配置档";
+  if (!selectedProfileId) return reasons.selectProfile;
   if (settingsState.status !== "ready") {
-    return settingsState.status === "error" ? "存档设置不可用" : "读取存档设置后可备份";
+    return settingsState.status === "error" ? reasons.settingsUnavailable : reasons.settingsLoadingBackup;
   }
-  if (settingsState.settings.saveDirectory.status !== "valid") return "请先关联有效存档目录";
-  if (dirty) return "请先保存存档设置";
-  if (taskState.status === "starting" || taskState.status === "running") return "备份任务正在执行";
+  if (settingsState.settings.saveDirectory.status !== "valid") return reasons.linkValidDirectory;
+  if (dirty) return reasons.saveSettingsFirst;
+  if (taskState.status === "starting" || taskState.status === "running") return reasons.backupTaskRunning;
   return null;
 }
 
@@ -1336,19 +1213,21 @@ function getSaveRestoreBlockedReason({
   savingSettings,
   selectedProfileId,
   settingsState,
+  reasons,
 }: {
   dirty: boolean;
   savingSettings: boolean;
   selectedProfileId: string | null;
   settingsState: SaveSettingsState;
+  reasons: ProfilePageCopy["blockedReasons"];
 }) {
-  if (!selectedProfileId) return "请选择配置档";
-  if (savingSettings) return "正在保存存档设置";
+  if (!selectedProfileId) return reasons.selectProfile;
+  if (savingSettings) return reasons.savingSettings;
   if (settingsState.status !== "ready") {
-    return settingsState.status === "error" ? "存档设置不可用" : "读取存档设置后可恢复";
+    return settingsState.status === "error" ? reasons.settingsUnavailable : reasons.settingsLoadingRestore;
   }
-  if (dirty) return "请先保存存档设置";
-  if (settingsState.settings.saveDirectory.status !== "valid") return "请先关联有效存档目录";
+  if (dirty) return reasons.saveSettingsFirst;
+  if (settingsState.settings.saveDirectory.status !== "valid") return reasons.linkValidDirectory;
   return null;
 }
 
@@ -1357,6 +1236,7 @@ function publishPendingBackupCompletionToast(
   taskProfileIdsRef: React.MutableRefObject<Map<string, string>>,
   profileId: string,
   pushToast: (input: FeedbackToastInput) => void,
+  toasts: ProfilePageCopy["toasts"],
 ) {
   const pending = pendingRef.current;
   if (!pending || pending.profileId !== profileId) return;
@@ -1367,21 +1247,29 @@ function publishPendingBackupCompletionToast(
     eventKey: `profile.save-backup.completed.${pending.taskId}`,
     taskId: pending.taskId,
     tone: "success",
-    title: "存档备份完成",
-    message: "新的备份历史点已经写入当前配置档。",
+    title: toasts.completedTitle,
+    message: toasts.completedMessage,
   });
 }
 
-function getAutoBackupCheckBlockedReason(taskState: ProfileSaveBackupTaskState) {
-  if (taskState.status === "starting" || taskState.status === "running") return "备份任务正在执行";
+function getAutoBackupCheckBlockedReason(
+  taskState: ProfileSaveBackupTaskState,
+  reasons: ProfilePageCopy["blockedReasons"],
+) {
+  if (taskState.status === "starting" || taskState.status === "running") return reasons.backupTaskRunning;
   return null;
 }
 
-function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabledReason: string | null) {
+function getManualBackupStatusCopy(
+  taskState: ProfileSaveBackupTaskState,
+  disabledReason: string | null,
+  copy: ProfilePageCopy["manualBackup"],
+  backupCopy: SaveBackupCopy,
+) {
   if (taskState.status === "starting") {
     return {
       tone: "running",
-      label: "正在启动备份任务",
+      label: copy.starting,
       icon: null,
     };
   }
@@ -1389,7 +1277,7 @@ function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabl
   if (taskState.status === "running") {
     return {
       tone: "running",
-      label: getProfileSaveBackupTaskPhaseLabel(taskState.phase),
+      label: getProfileSaveBackupTaskPhaseLabel(taskState.phase, backupCopy.phases),
       icon: null,
     };
   }
@@ -1397,7 +1285,7 @@ function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabl
   if (taskState.status === "completed") {
     return {
       tone: "success",
-      label: "最近一次备份完成",
+      label: copy.lastCompleted,
       icon: <CheckCircle2 size={16} aria-hidden="true" />,
     };
   }
@@ -1405,7 +1293,7 @@ function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabl
   if (taskState.status === "failed") {
     return {
       tone: "warning",
-      label: taskState.message,
+      label: getProfileSaveBackupTaskErrorMessage(taskState.errorCode, backupCopy.errors),
       icon: <AlertTriangle size={16} aria-hidden="true" />,
     };
   }
@@ -1413,23 +1301,23 @@ function getManualBackupStatusCopy(taskState: ProfileSaveBackupTaskState, disabl
   if (taskState.status === "cancelled") {
     return {
       tone: "warning",
-      label: "备份任务已取消",
+      label: copy.cancelled,
       icon: <AlertTriangle size={16} aria-hidden="true" />,
     };
   }
 
   return {
     tone: disabledReason ? "waiting" : "ready",
-    label: disabledReason ?? "可以创建手动备份",
+    label: disabledReason ?? copy.ready,
     icon: disabledReason ? <AlertTriangle size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />,
   };
 }
 
-function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
+function getAutoBackupStatusCopy(checkState: AutoBackupCheckState, copy: ProfilePageCopy["autoBackup"]) {
   if (checkState.status === "checking") {
     return {
       tone: "running",
-      label: "正在检查自动备份计划",
+      label: copy.checking,
       icon: null,
     };
   }
@@ -1437,7 +1325,7 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
   if (checkState.status === "manual") {
     return {
       tone: "waiting",
-      label: "当前配置为仅手动备份",
+      label: copy.manualOnly,
       icon: <AlertTriangle size={16} aria-hidden="true" />,
     };
   }
@@ -1446,20 +1334,20 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
     if (checkState.result.pendingReason === "game_running") {
       return {
         tone: "waiting",
-        label: "游戏运行中，自动备份已延后",
+        label: copy.deferredGameRunning,
         icon: <AlertTriangle size={16} aria-hidden="true" />,
       };
     }
     if (checkState.result.pendingReason === "game_running_unknown") {
       return {
         tone: "waiting",
-        label: "暂时无法确认游戏状态，备份已延后",
+        label: copy.deferredGameUnknown,
         icon: <AlertTriangle size={16} aria-hidden="true" />,
       };
     }
     return {
       tone: checkState.result.startedTask ? "running" : "warning",
-      label: checkState.result.startedTask ? "自动备份已排队" : "自动备份计划已到期",
+      label: checkState.result.startedTask ? copy.queued : copy.due,
       icon: checkState.result.startedTask ? <Archive size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />,
     };
   }
@@ -1467,7 +1355,7 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
   if (checkState.status === "notDue") {
     return {
       tone: "success",
-      label: "自动备份计划尚未到期",
+      label: copy.notDue,
       icon: <CheckCircle2 size={16} aria-hidden="true" />,
     };
   }
@@ -1482,7 +1370,7 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
 
   return {
     tone: "waiting",
-    label: "等待自动备份检查",
+    label: copy.waiting,
     icon: <Archive size={16} aria-hidden="true" />,
   };
 }
@@ -1490,31 +1378,34 @@ function getAutoBackupStatusCopy(checkState: AutoBackupCheckState) {
 function getBackgroundProtectionBadge(
   cadence: ProfileBackupScheduleDto["cadence"],
   state: BackgroundProtectionState,
+  copy: ProfilePageCopy["background"],
 ) {
   if (cadence === "manual") {
-    return { tone: "manual", label: "未启用自动备份" };
+    return { tone: "manual", label: copy.badgeManual };
   }
 
   if (state.status === "ready" && state.result.status === "protected") {
-    return { tone: "protected", label: "退出后受保护" };
+    return { tone: "protected", label: copy.badgeProtected };
   }
 
   if (state.status === "ready" && state.result.status === "starting") {
-    return { tone: "starting", label: "等待后台验证" };
+    return { tone: "starting", label: copy.badgeStarting };
   }
 
-  return { tone: "client-only", label: "仅客户端运行时" };
+  return { tone: "client-only", label: copy.badgeClientOnly };
 }
 
 function getBackgroundProtectionCopy(
   cadence: ProfileBackupScheduleDto["cadence"],
   state: BackgroundProtectionState,
+  copy: ProfilePageCopy["background"],
+  locale: Locale,
 ) {
   if (cadence === "manual") {
     return {
       tone: "waiting",
-      label: "未启用自动备份",
-      hint: "此 Profile 使用手动备份，不参与后台调度",
+      label: copy.manualLabel,
+      hint: copy.manualHint,
       icon: <ShieldOff size={16} aria-hidden="true" />,
     };
   }
@@ -1522,8 +1413,8 @@ function getBackgroundProtectionCopy(
   if (state.status === "loading") {
     return {
       tone: "waiting",
-      label: "正在读取后台保护状态",
-      hint: "查询后台备份保障的最近记录",
+      label: copy.loadingLabel,
+      hint: copy.loadingHint,
       icon: <Shield size={16} aria-hidden="true" />,
     };
   }
@@ -1531,72 +1422,73 @@ function getBackgroundProtectionCopy(
   if (state.status === "unavailable") {
     return {
       tone: "warning",
-      label: "后台保护状态不可用",
-      hint: "暂时无法读取调度状态，自动备份仍按客户端计划执行",
+      label: copy.unavailableLabel,
+      hint: copy.unavailableHint,
       icon: <ShieldAlert size={16} aria-hidden="true" />,
     };
   }
 
   const { result } = state;
+  const timeCopy = resolveCopy(profilePageCopy, locale).time;
   const lastSuccess =
-    result.lastSuccessAt !== null ? `上次成功备份：${formatAutoBackupTimestamp(result.lastSuccessAt)}` : null;
+    result.lastSuccessAt !== null ? copy.lastSuccess(formatAutoBackupTimestamp(result.lastSuccessAt, timeCopy, locale)) : null;
 
   switch (result.status) {
     case "protected":
       return {
         tone: "success",
-        label: "已受后台保护",
-        hint: lastSuccess ?? "退出主客户端后仍会继续检查备份计划",
+        label: copy.protectedLabel,
+        hint: lastSuccess ?? copy.protectedHint,
         icon: <ShieldCheck size={16} aria-hidden="true" />,
       };
     case "starting":
       return {
         tone: "waiting",
-        label: "正在验证后台保护",
-        hint: "后台任务已注册，正在等待首次运行验证",
+        label: copy.startingLabel,
+        hint: copy.startingHint,
         icon: <Shield size={16} aria-hidden="true" />,
       };
     case "tray_only":
       return {
         tone: "waiting",
-        label: "仅客户端运行期保护",
-        hint: lastSuccess ?? "退出主客户端后自动备份暂不受后台保障",
+        label: copy.trayOnlyLabel,
+        hint: lastSuccess ?? copy.trayOnlyHint,
         icon: <Shield size={16} aria-hidden="true" />,
       };
     case "registration_failed":
       return {
         tone: "warning",
-        label: "后台保护注册失败",
-        hint: "计划任务或自启动注册失败，退出客户端后不会自动备份",
+        label: copy.registrationFailedLabel,
+        hint: copy.registrationFailedHint,
         icon: <ShieldAlert size={16} aria-hidden="true" />,
       };
     case "worker_unhealthy":
       return {
         tone: "warning",
-        label: "后台保护异常",
-        hint: "后台守护最近没有心跳，请重新检查备份计划",
+        label: copy.workerUnhealthyLabel,
+        hint: copy.workerUnhealthyHint,
         icon: <ShieldAlert size={16} aria-hidden="true" />,
       };
     case "permission_required":
       return {
         tone: "warning",
-        label: "需要系统权限",
-        hint: "当前环境需要额外权限才能启用后台保护",
+        label: copy.permissionRequiredLabel,
+        hint: copy.permissionRequiredHint,
         icon: <ShieldAlert size={16} aria-hidden="true" />,
       };
     case "unsupported_platform":
       return {
         tone: "waiting",
-        label: "当前平台暂不支持后台保护",
-        hint: "自动备份仅在客户端运行时执行",
+        label: copy.unsupportedLabel,
+        hint: copy.unsupportedHint,
         icon: <ShieldOff size={16} aria-hidden="true" />,
       };
     case "not_enabled":
     default:
       return {
         tone: "waiting",
-        label: "未启用后台保护",
-        hint: "自动备份仅在客户端运行时执行",
+        label: copy.notEnabledLabel,
+        hint: copy.notEnabledHint,
         icon: <ShieldOff size={16} aria-hidden="true" />,
       };
   }
@@ -1635,10 +1527,10 @@ function createPreviewBackgroundStatus(
   };
 }
 
-function formatAutoBackupTimestamp(timestamp: number | null) {
-  if (!timestamp) return "暂无";
+function formatAutoBackupTimestamp(timestamp: number | null, timeCopy: ProfilePageCopy["time"], locale: Locale) {
+  if (!timestamp) return timeCopy.none;
   if (timestamp > Date.now()) {
-    return new Date(timestamp).toLocaleString("zh-CN", {
+    return new Date(timestamp).toLocaleString(localeMeta[locale].bcp47, {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
@@ -1646,7 +1538,7 @@ function formatAutoBackupTimestamp(timestamp: number | null) {
     });
   }
 
-  return formatRelativeTime(timestamp);
+  return formatRelativeTime(timestamp, timeCopy, locale);
 }
 
 function formatBytes(bytes: number) {
@@ -1661,31 +1553,17 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-function formatRelativeTime(timestamp: number) {
+function formatRelativeTime(timestamp: number, timeCopy: ProfilePageCopy["time"], locale: Locale) {
   const diffMs = Date.now() - timestamp;
-  if (!Number.isFinite(diffMs) || diffMs < 0) return "刚刚";
+  if (!Number.isFinite(diffMs) || diffMs < 0) return timeCopy.justNow;
   const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return timeCopy.justNow;
+  if (minutes < 60) return timeCopy.minutesAgo(minutes);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return timeCopy.hoursAgo(hours);
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
-  return new Date(timestamp).toLocaleDateString("zh-CN");
-}
-
-function formatBackupTrigger(trigger: SaveBackupSummaryDto["trigger"]) {
-  if (trigger === "auto") return "自动备份";
-  if (trigger === "pre_install") return "安装前备份";
-  if (trigger === "pre_restore") return "恢复前安全备份";
-  return "手动备份";
-}
-
-function formatBackupStatus(status: SaveBackupSummaryDto["status"]) {
-  if (status === "deleted_by_retention") return "已按保留策略清理";
-  if (status === "missing") return "文件缺失";
-  if (status === "invalid") return "需要检查";
-  return "已完成";
+  if (days < 7) return timeCopy.daysAgo(days);
+  return new Date(timestamp).toLocaleDateString(localeMeta[locale].bcp47);
 }
 
 function getErrorMessage(error: unknown, fallback: string) {

@@ -22,6 +22,13 @@ export type RecoveryRollbackPhase =
   | "install.recovery.completed"
   | "install.recovery.failed";
 
+// failed 只存语义 reason 与后端透传消息，文本在渲染时经 recoveryCenterCopy 取。
+export type RecoveryRollbackFailureReason =
+  | "profile_not_ready"
+  | "preview_failed"
+  | "start_failed"
+  | "task_failed";
+
 export type RecoveryRollbackState =
   | { status: "idle" }
   | { status: "previewing"; modId: string }
@@ -30,22 +37,26 @@ export type RecoveryRollbackState =
   | { status: "starting"; modId: string }
   | { status: "running"; modId: string; taskId: string; phase: RecoveryRollbackPhase }
   | { status: "completed"; modId: string; taskId: string }
-  | { status: "failed"; modId: string; message: string };
+  | { status: "failed"; modId: string; reason: RecoveryRollbackFailureReason; backendMessage: string | null };
 
-const recoveryRollbackPhaseLabels: Record<RecoveryRollbackPhase, string> = {
-  "install.recovery.queued": "排队中",
-  "install.recovery.planning": "分析中",
-  "install.recovery.processing": "回滚中",
-  "install.recovery.completed": "回滚完成",
-  "install.recovery.failed": "回滚失败",
-};
+// 语义 Set：阶段判定不依赖任何文案表。
+const recoveryRollbackPhases: ReadonlySet<string> = new Set<RecoveryRollbackPhase>([
+  "install.recovery.queued",
+  "install.recovery.planning",
+  "install.recovery.processing",
+  "install.recovery.completed",
+  "install.recovery.failed",
+]);
 
-export function getRecoveryRollbackPhaseLabel(phase: RecoveryRollbackPhase) {
-  return recoveryRollbackPhaseLabels[phase];
+export function getRecoveryRollbackPhaseLabel(
+  phase: RecoveryRollbackPhase,
+  phaseLabels: Record<RecoveryRollbackPhase, string>,
+) {
+  return phaseLabels[phase];
 }
 
 function isRecoveryRollbackPhase(phase: string): phase is RecoveryRollbackPhase {
-  return Object.prototype.hasOwnProperty.call(recoveryRollbackPhaseLabels, phase);
+  return recoveryRollbackPhases.has(phase);
 }
 
 type UseRecoveryRollbackInput = {
@@ -78,7 +89,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
       }
 
       if (activeProfile.status !== "ready" || activeProfileId === null) {
-        setState({ status: "failed", modId, message: "配置档尚未就绪" });
+        setState({ status: "failed", modId, reason: "profile_not_ready", backendMessage: null });
         return;
       }
 
@@ -103,7 +114,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
         })
         .catch(() => {
           if (stateRef.current.status === "previewing" && stateRef.current.modId === modId) {
-            setState({ status: "failed", modId, message: "预览回滚动作时出错" });
+            setState({ status: "failed", modId, reason: "preview_failed", backendMessage: null });
           }
         });
     },
@@ -118,7 +129,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
 
     const { modId } = current;
     if (activeProfile.status !== "ready" || activeProfileId === null) {
-      setState({ status: "failed", modId, message: "配置档尚未就绪" });
+      setState({ status: "failed", modId, reason: "profile_not_ready", backendMessage: null });
       return;
     }
 
@@ -145,7 +156,8 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
             setState({
               status: "failed",
               modId,
-              message: pending.error ?? pending.message ?? "回滚失败",
+              reason: "task_failed",
+              backendMessage: pending.error ?? pending.message,
             });
           } else {
             setState({
@@ -166,7 +178,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
       })
       .catch(() => {
         if (stateRef.current.status === "starting" && stateRef.current.modId === modId) {
-          setState({ status: "failed", modId, message: "启动回滚任务时出错" });
+          setState({ status: "failed", modId, reason: "start_failed", backendMessage: null });
         }
       });
   }, [activeProfile.status, activeProfileId, gameId, markCompleted]);
@@ -210,7 +222,8 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
         setState({
           status: "failed",
           modId: current.modId,
-          message: event.payload.error ?? event.payload.message ?? "回滚失败",
+          reason: "task_failed",
+          backendMessage: event.payload.error ?? event.payload.message,
         });
       } else {
         setState({

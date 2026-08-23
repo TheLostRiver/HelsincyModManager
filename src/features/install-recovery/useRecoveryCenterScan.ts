@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { scanInstallRecovery } from "../mods/modInstallPlanApi";
+import type { InstallRecoverySummary } from "../mods/modInstallPlanTypes";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
-import {
-  deriveRecoveryCenterViewModel,
-  type RecoveryCenterViewModel,
-} from "./recoveryCenterViewModel";
 
+// state 只存后端语义摘要；带文案的 viewModel 由页面在渲染时结合当前 locale 派生，
+// 语言切换不触发重新扫描。
 export type RecoveryCenterScanState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; viewModel: RecoveryCenterViewModel }
+  | { status: "ready"; summaries: InstallRecoverySummary[] }
   | { status: "unavailable" };
 
 type UseRecoveryCenterScanInput = {
@@ -43,7 +42,7 @@ export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
     })
       .then((summaries) => {
         if (!cancelled) {
-          setState({ status: "ready", viewModel: deriveRecoveryCenterViewModel(summaries) });
+          setState({ status: "ready", summaries });
         }
       })
       .catch(() => {
