@@ -114,14 +114,17 @@ impl RuntimeDataRootMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliWriteCommandPolicy {
-    Disabled,
+    /// CLI-3B 起：Production 写命令按 command 逐项解禁（当前为四条单项 lifecycle），
+    /// 每条各自要求 production token + `--commit --yes` + 跨进程 admission + 锁内重验。
+    /// 未逐项认证的写命令（batch、backup create 等）继续在各自边界拒绝。
+    ProductionCommandLevel,
     SandboxOnly,
 }
 
 impl CliWriteCommandPolicy {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Disabled => "disabled",
+            Self::ProductionCommandLevel => "production_command_level",
             Self::SandboxOnly => "sandbox_only",
         }
     }
@@ -199,7 +202,7 @@ impl RuntimeEnvironment {
 
     pub const fn cli_write_command_policy(&self) -> CliWriteCommandPolicy {
         match self.kind {
-            RuntimeEnvironmentKind::Production => CliWriteCommandPolicy::Disabled,
+            RuntimeEnvironmentKind::Production => CliWriteCommandPolicy::ProductionCommandLevel,
             RuntimeEnvironmentKind::Sandbox => CliWriteCommandPolicy::SandboxOnly,
         }
     }
@@ -352,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn production_is_read_only_and_does_not_accept_data_dir_override() {
+    fn production_uses_command_level_write_policy_and_rejects_data_dir_override() {
         let environment =
             RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
                 .expect("production environment");
@@ -361,9 +364,10 @@ mod tests {
         assert_eq!(environment.data_root_mode(), RuntimeDataRootMode::System);
         assert_eq!(
             environment.cli_write_command_policy(),
-            CliWriteCommandPolicy::Disabled
+            CliWriteCommandPolicy::ProductionCommandLevel
         );
         assert_eq!(environment.sandbox_data_dir(), None);
+        // --data-dir 禁令是 Production 数据根安全的根基，随 CLI-3B 开放依然不变。
         assert_eq!(
             RuntimeEnvironment::from_options(
                 RuntimeEnvironmentKind::Production,

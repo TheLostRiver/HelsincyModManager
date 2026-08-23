@@ -771,7 +771,7 @@ fn run_runtime_status<W: Write, E: Write>(
         environment: environment.kind().as_str(),
         data_root_mode: environment.data_root_mode().as_str(),
         write_command_policy: environment.cli_write_command_policy().as_str(),
-        production_writes_allowed: false,
+        production_writes_allowed: environment.kind() == RuntimeEnvironmentKind::Production,
         business_commands_available: true,
     };
 
@@ -1484,21 +1484,6 @@ fn run_install_apply<W: Write + Send, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
 ) -> i32 {
-    if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-        return write_command_error(
-            format,
-            INSTALL_APPLY_COMMAND,
-            CliErrorEnvelope::new(
-                "production_write_command_forbidden",
-                CliErrorCategory::DataSafetyRisk,
-                false,
-            ),
-            CliExitCode::Rejected,
-            stdout,
-            stderr,
-        );
-    }
-
     if !options.lifecycle.commit || !options.lifecycle.yes {
         let automation = match ReadOnlyInstallAutomation::from_environment(environment) {
             Ok(automation) => automation,
@@ -1554,7 +1539,7 @@ fn run_install_apply<W: Write + Send, E: Write>(
         }
     };
 
-    run_sandbox_lifecycle_operation(
+    run_lifecycle_operation(
         format,
         INSTALL_APPLY_COMMAND,
         &automation,
@@ -1572,21 +1557,6 @@ fn run_install_uninstall<W: Write + Send, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
 ) -> i32 {
-    if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-        return write_command_error(
-            format,
-            INSTALL_UNINSTALL_COMMAND,
-            CliErrorEnvelope::new(
-                "production_write_command_forbidden",
-                CliErrorCategory::DataSafetyRisk,
-                false,
-            ),
-            CliExitCode::Rejected,
-            stdout,
-            stderr,
-        );
-    }
-
     if !options.lifecycle.commit || !options.lifecycle.yes {
         let automation = match ReadOnlyInstallAutomation::from_environment(environment) {
             Ok(automation) => automation,
@@ -1648,7 +1618,7 @@ fn run_install_uninstall<W: Write + Send, E: Write>(
         }
     };
 
-    run_sandbox_lifecycle_operation(
+    run_lifecycle_operation(
         format,
         INSTALL_UNINSTALL_COMMAND,
         &automation,
@@ -1666,21 +1636,6 @@ fn run_install_recovery_apply<W: Write + Send, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
 ) -> i32 {
-    if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-        return write_command_error(
-            format,
-            INSTALL_RECOVERY_APPLY_COMMAND,
-            CliErrorEnvelope::new(
-                "production_write_command_forbidden",
-                CliErrorCategory::DataSafetyRisk,
-                false,
-            ),
-            CliExitCode::Rejected,
-            stdout,
-            stderr,
-        );
-    }
-
     if !options.lifecycle.commit || !options.lifecycle.yes {
         let automation = match ReadOnlyInstallAutomation::from_environment(environment) {
             Ok(automation) => automation,
@@ -1759,7 +1714,7 @@ fn run_install_recovery_apply<W: Write + Send, E: Write>(
         }
     };
 
-    run_sandbox_lifecycle_operation(
+    run_lifecycle_operation(
         format,
         INSTALL_RECOVERY_APPLY_COMMAND,
         &automation,
@@ -1777,21 +1732,6 @@ fn run_install_reinstall<W: Write + Send, E: Write>(
     stdout: &mut W,
     stderr: &mut E,
 ) -> i32 {
-    if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-        return write_command_error(
-            format,
-            INSTALL_REINSTALL_COMMAND,
-            CliErrorEnvelope::new(
-                "production_write_command_forbidden",
-                CliErrorCategory::DataSafetyRisk,
-                false,
-            ),
-            CliExitCode::Rejected,
-            stdout,
-            stderr,
-        );
-    }
-
     if !options.lifecycle.commit || !options.lifecycle.yes {
         let automation = match ReadOnlyInstallAutomation::from_environment(environment) {
             Ok(automation) => automation,
@@ -1858,7 +1798,7 @@ fn run_install_reinstall<W: Write + Send, E: Write>(
         }
     };
 
-    run_sandbox_lifecycle_operation(
+    run_lifecycle_operation(
         format,
         INSTALL_REINSTALL_COMMAND,
         &automation,
@@ -1891,7 +1831,7 @@ fn install_cli_cancellation<W: Write, E: Write>(
     })
 }
 
-fn run_sandbox_lifecycle_operation<W: Write + Send, E: Write>(
+fn run_lifecycle_operation<W: Write + Send, E: Write>(
     format: OutputFormat,
     command: &'static str,
     automation: &CliLifecycleAutomation,
