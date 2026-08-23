@@ -359,6 +359,7 @@ impl CliLifecycleAutomation {
         mod_id: &str,
         plan_token: &str,
     ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
         let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
@@ -422,6 +423,7 @@ impl CliLifecycleAutomation {
         mod_id: &str,
         plan_token: &str,
     ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
         let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
@@ -488,6 +490,7 @@ impl CliLifecycleAutomation {
         action: ReadOnlyInstallRecoveryAction,
         plan_token: &str,
     ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
         let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
@@ -556,6 +559,7 @@ impl CliLifecycleAutomation {
         candidate_revision_id: &str,
         plan_token: &str,
     ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
         let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
@@ -1586,6 +1590,16 @@ fn reinstall_block_reason_token_code(reason: ReinstallBlockingReason) -> &'stati
         ReinstallBlockingReason::PlanConflict => "plan_conflict",
         ReinstallBlockingReason::CrossModTargetConflict => "cross_mod_target_conflict",
     }
+}
+
+/// 纯语法 token 预检：格式与有效期，不读取任何数据根。放在 prepare 最前，
+/// 让明显无效的 token 在触达文件系统之前 fail closed。
+fn precheck_plan_token(token: &str) -> Result<(), CliLifecycleAutomationError> {
+    let expires_at_unix_millis = parse_token_expiry(token)?;
+    if now_unix_millis()? >= expires_at_unix_millis {
+        return Err(CliLifecycleAutomationError::PlanTokenExpired);
+    }
+    Ok(())
 }
 
 fn parse_token_expiry(token: &str) -> Result<u128, CliLifecycleAutomationError> {
