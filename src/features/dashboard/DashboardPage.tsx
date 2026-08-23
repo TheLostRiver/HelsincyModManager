@@ -1,12 +1,16 @@
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { useGameSetup } from "../game-setup/GameSetupProvider";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
 import { useGameLaunch } from "../game-launch/useGameLaunch";
 import { useInstallRecoveryHealth } from "../install-recovery/useInstallRecoveryHealth";
+import { dashboardCopy } from "./dashboardCopy";
 import { DashboardHeroCard } from "./DashboardHeroCard";
 import { DashboardModulePreview } from "./DashboardModulePreview";
 import { SetupStatusPanel } from "./SetupStatusPanel";
 
 export function DashboardPage() {
+  const { locale } = useI18n();
+  const copy = resolveCopy(dashboardCopy, locale).page;
   const gameSetup = useGameSetup();
   const gamePrerequisites = useGamePrerequisites("mhw");
   const gameLaunch = useGameLaunch("mhw");
@@ -25,8 +29,8 @@ export function DashboardPage() {
     <>
       <section className="main-workspace" aria-labelledby="workbench-title">
         <header className="main-header">
-          <h2 id="workbench-title">工作台</h2>
-          <p>首次启动需要先完成游戏目录识别。</p>
+          <h2 id="workbench-title">{copy.title}</h2>
+          <p>{copy.subtitle}</p>
         </header>
 
         <DashboardHeroCard
@@ -36,7 +40,8 @@ export function DashboardPage() {
           actionMessage={gameSetup.actionMessage}
           launchState={{
             isLaunchingGame: gameLaunch.isLaunchingGame,
-            message: gameLaunch.gameLaunchMessage,
+            outcome: gameLaunch.gameLaunchOutcome,
+            errorCode: gameLaunch.gameLaunchErrorCode,
           }}
           prerequisiteState={gamePrerequisites.state}
           onDirectorySelected={gameSetup.saveDirectory}
@@ -51,7 +56,7 @@ export function DashboardPage() {
       <SetupStatusPanel
         status={gameSetup.status}
         actionMessage={gameSetup.actionMessage}
-        startupDetail={gameSetup.startupNotice?.detail ?? null}
+        startupNotice={gameSetup.startupNotice}
         recoveryHealth={recoveryHealth}
       />
     </>

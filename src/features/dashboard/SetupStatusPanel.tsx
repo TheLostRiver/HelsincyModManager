@@ -1,6 +1,9 @@
-import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { gameSetupCopy, type GameSetupCopy } from "../game-setup/gameSetupCopy";
+import { messageForError } from "../game-setup/gameSetupViewModel";
+import type { GameSetupStartupNotice, GameSetupStatus } from "../game-setup/gameSetupTypes";
 import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
-import { setupLogs } from "./dashboardData";
+import { dashboardCopy, type DashboardCopy } from "./dashboardCopy";
 import { InstallRecoveryHealthPanel } from "./InstallRecoveryHealthPanel";
 import { resolveSetupSteps, type SetupStepItem } from "./setupStatusSteps";
 
@@ -12,30 +15,35 @@ type SetupStatusPanelProps = {
    * 「Steam 返回了候选目录但校验未通过」（扫到了、目录不对，该换一个）与
    * 「没有找到可直接保存的 Steam 安装目录」（根本没扫到，该手动选）。
    * 该信息原先只存在于启动时自动弹出的模态里，模态移除后并入这里常驻展示。
+   * notice 只带语义 kind，文本在此按当前 locale 取。
    */
-  startupDetail: string | null;
+  startupNotice: GameSetupStartupNotice | null;
   recoveryHealth: InstallRecoveryHealthLoadState;
 };
 
 export function SetupStatusPanel({
   status,
   actionMessage,
-  startupDetail,
+  startupNotice,
   recoveryHealth,
 }: SetupStatusPanelProps) {
-  const copy = statusPanelCopy(status, actionMessage);
-  const stepItems = resolveSetupSteps(status);
+  const { locale } = useI18n();
+  const panelCopy = resolveCopy(dashboardCopy, locale);
+  const setupErrors = resolveCopy(gameSetupCopy, locale);
+  const copy = statusPanelCopy(status, actionMessage, panelCopy, setupErrors.errors);
+  const stepItems = resolveSetupSteps(status, panelCopy.steps);
+  const startupDetail = deriveStartupDetail(startupNotice, setupErrors);
 
   return (
     <aside
       className="setup-rail"
-      aria-label="首次启动设置状态"
+      aria-label={panelCopy.setupPanel.railAria}
       data-tour-id="dashboard.setup-status"
     >
       <header className="rail-header">
-        <span>首次启动</span>
-        <h2>设置状态</h2>
-        <p>Helsincy 需要先完成几项检查，才能启用模组管理。</p>
+        <span>{panelCopy.setupPanel.eyebrow}</span>
+        <h2>{panelCopy.setupPanel.title}</h2>
+        <p>{panelCopy.setupPanel.description}</p>
       </header>
 
       <section className="rail-card current-state" aria-labelledby="current-state-title">
@@ -50,7 +58,7 @@ export function SetupStatusPanel({
 
       <section className="rail-section" aria-labelledby="next-step-title">
         <div className="section-title-row">
-          <h3 id="next-step-title">下一步</h3>
+          <h3 id="next-step-title">{panelCopy.setupPanel.nextStepTitle}</h3>
           <span>{copy.stepLabel}</span>
         </div>
         <div className="step-list">
@@ -66,10 +74,10 @@ export function SetupStatusPanel({
       </section>
 
       <section className="rail-section" aria-labelledby="summary-title">
-        <h3 id="summary-title">设置摘要</h3>
+        <h3 id="summary-title">{panelCopy.setupPanel.summaryTitle}</h3>
         <div className="summary-grid">
-          <SummaryBox label="状态" value={copy.summaryStatus} />
-          <SummaryBox label="风险" value={copy.summaryRisk} />
+          <SummaryBox label={panelCopy.setupPanel.statusLabel} value={copy.summaryStatus} />
+          <SummaryBox label={panelCopy.setupPanel.riskLabel} value={copy.summaryRisk} />
         </div>
         <article className="summary-note">
           <strong>{copy.noteTitle}</strong>
@@ -80,10 +88,10 @@ export function SetupStatusPanel({
       <InstallRecoveryHealthPanel state={recoveryHealth} />
 
       <section className="rail-section" aria-labelledby="setup-log-title">
-        <h3 id="setup-log-title">设置日志</h3>
+        <h3 id="setup-log-title">{panelCopy.setupPanel.logTitle}</h3>
         <div className="log-card">
-          {setupLogs.map((log) => (
-            <p key={`${log.time}-${log.message}`} className={"muted" in log && log.muted ? "is-muted" : ""}>
+          {panelCopy.logs.map((log) => (
+            <p key={`${log.time}-${log.message}`} className={log.muted ? "is-muted" : ""}>
               <time>{log.time}</time>
               {log.message}
             </p>
@@ -94,59 +102,90 @@ export function SetupStatusPanel({
   );
 }
 
-function statusPanelCopy(status: GameSetupStatus, actionMessage: string | null) {
+function deriveStartupDetail(
+  notice: GameSetupStartupNotice | null,
+  copy: GameSetupCopy,
+): string | null {
+  if (!notice) {
+    return null;
+  }
+
+  if (notice.detailKind === "invalid_candidate") {
+    return copy.startupNotice.detailInvalidCandidate;
+  }
+  if (notice.detailKind === "not_found") {
+    return copy.startupNotice.detailNotFound;
+  }
+  if (notice.detailKind === "startup_timeout") {
+    return copy.startupNotice.detailStartupTimeout;
+  }
+  return notice.backendDetail;
+}
+
+function statusPanelCopy(
+  status: GameSetupStatus,
+  actionMessage: string | null,
+  copyDict: DashboardCopy,
+  setupErrors: GameSetupCopy["errors"],
+) {
+  const states = copyDict.setupPanel.states;
+
   if (status.kind === "configured") {
     return {
-      title: "游戏目录已保存",
-      description: `已识别 ${status.displayName}，目录摘要：${status.pathLabel}。`,
-      badge: "配置完成",
+      title: states.configured.title,
+      description: states.configured.description(status.displayName, status.pathLabel),
+      badge: states.configured.badge,
       dotClass: "success-dot",
-      stepLabel: "第 4 / 4 步",
-      summaryStatus: "已配置",
-      summaryRisk: "低：等待 Mod 导入",
-      noteTitle: "可以继续",
-      noteBody: "游戏目录配置已经保存，后续导入、安装和备份功能会基于该配置继续启用。",
+      stepLabel: states.configured.stepLabel,
+      summaryStatus: states.configured.summaryStatus,
+      summaryRisk: states.configured.summaryRisk,
+      noteTitle: states.configured.noteTitle,
+      noteBody: states.configured.noteBody,
     };
   }
 
   if (status.kind === "validating") {
     return {
-      title: "正在验证目录",
-      description: "正在检查所选目录是否包含 MHW:I 可执行文件。",
-      badge: "校验中",
+      title: states.validating.title,
+      description: states.validating.description,
+      badge: states.validating.badge,
       dotClass: "warning-dot",
-      stepLabel: "第 2 / 4 步",
-      summaryStatus: "校验中",
-      summaryRisk: "中：等待结果",
-      noteTitle: "正在检查",
-      noteBody: "当前只读取玩家主动选择的目录，不会写入游戏目录或读取存档。",
+      stepLabel: states.validating.stepLabel,
+      summaryStatus: states.validating.summaryStatus,
+      summaryRisk: states.validating.summaryRisk,
+      noteTitle: states.validating.noteTitle,
+      noteBody: states.validating.noteBody,
     };
   }
 
   if (status.kind === "invalid") {
     return {
-      title: "目录校验失败",
-      description: status.message || actionMessage || "未知错误",
-      badge: "需要重新选择",
+      title: states.invalid.title,
+      description:
+        status.backendMessage
+        || messageForError(status.errorCode, setupErrors)
+        || actionMessage
+        || states.invalid.fallbackDescription,
+      badge: states.invalid.badge,
       dotClass: "danger-dot",
-      stepLabel: "第 2 / 4 步",
-      summaryStatus: "未通过",
-      summaryRisk: "高：目录不可用",
-      noteTitle: "检查未通过",
-      noteBody: "请选择包含 MonsterHunterWorld.exe 的游戏安装目录。当前失败不会保存为有效配置。",
+      stepLabel: states.invalid.stepLabel,
+      summaryStatus: states.invalid.summaryStatus,
+      summaryRisk: states.invalid.summaryRisk,
+      noteTitle: states.invalid.noteTitle,
+      noteBody: states.invalid.noteBody,
     };
   }
 
   return {
-    title: "等待选择游戏目录",
-    description: actionMessage ?? "尚未选择游戏目录。自动扫描暂未启用时，请先手动选择 MHW:I 安装目录。",
-    badge: "等待主区操作",
+    title: states.notConfigured.title,
+    description: actionMessage ?? states.notConfigured.defaultDescription,
+    badge: states.notConfigured.badge,
     dotClass: "neutral-dot",
-    stepLabel: "第 1 / 4 步",
-    summaryStatus: "未配置",
-    summaryRisk: "风险：等待检查",
-    noteTitle: "检查等待中",
-    noteBody: "将在设置过程中检查游戏可执行文件和配置存储，但不会写入真实游戏目录。",
+    stepLabel: states.notConfigured.stepLabel,
+    summaryStatus: states.notConfigured.summaryStatus,
+    summaryRisk: states.notConfigured.summaryRisk,
+    noteTitle: states.notConfigured.noteTitle,
+    noteBody: states.notConfigured.noteBody,
   };
 }
 

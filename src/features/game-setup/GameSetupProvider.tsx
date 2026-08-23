@@ -28,7 +28,7 @@ export function useGameSetup(): GameSetupContextValue {
   const value = useContext(GameSetupContext);
 
   if (!value) {
-    throw new Error("useGameSetup 必须在 GameSetupProvider 内使用");
+    throw new Error("useGameSetup must be used inside GameSetupProvider.");
   }
 
   return value;

@@ -1,4 +1,6 @@
 import { CheckCircle2, CircleAlert, HardDrive } from "lucide-react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { gameSetupCopy } from "./gameSetupCopy";
 import type { GameDirectoryCandidate } from "./gameSetupTypes";
 import { messageForError } from "./gameSetupViewModel";
 import "./GameDirectoryCandidateList.css";
@@ -14,12 +16,15 @@ export function GameDirectoryCandidateList({
   isBusy,
   onCandidateSelected,
 }: GameDirectoryCandidateListProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(gameSetupCopy, locale);
+
   if (candidates.length === 0) {
     return null;
   }
 
   return (
-    <section className="candidate-list" aria-label="Steam 候选目录">
+    <section className="candidate-list" aria-label={copy.candidates.listAria}>
       {candidates.map((candidate) => (
         <article className="candidate-item" key={candidate.directory}>
           <div className="candidate-icon" aria-hidden="true">
@@ -33,7 +38,7 @@ export function GameDirectoryCandidateList({
             <strong>{candidate.displayName}</strong>
             <p>{candidate.pathLabel}</p>
             {!candidate.isValid && candidate.errors.length > 0 ? (
-              <small>{messageForError(candidate.errors[0])}</small>
+              <small>{messageForError(candidate.errors[0], copy.errors)}</small>
             ) : null}
           </div>
           <button
@@ -42,7 +47,7 @@ export function GameDirectoryCandidateList({
             disabled={isBusy || !candidate.isValid}
             onClick={() => void onCandidateSelected(candidate.directory)}
           >
-            使用此目录
+            {copy.candidates.useDirectory}
           </button>
         </article>
       ))}

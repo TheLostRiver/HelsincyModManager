@@ -82,12 +82,19 @@ export type CommandErrorDto = {
 export type GameSetupStatus =
   | { kind: "not_configured"; gameId: GameId }
   | { kind: "validating"; gameId: GameId }
-  | { kind: "invalid"; gameId: GameId; errorCode: GameSetupErrorCode; message: string }
+  | { kind: "invalid"; gameId: GameId; errorCode: GameSetupErrorCode; backendMessage: string | null }
   | { kind: "configured"; gameId: GameId; displayName: string; pathLabel: string };
 
+// 启动自检通知只存语义：文本在渲染时经 gameSetupCopy 取（语义/文本分离）。
+export type GameSetupStartupNoticeDetailKind =
+  | "invalid_candidate"
+  | "not_found"
+  | "startup_timeout"
+  | "command_error";
+
 export type GameSetupStartupNotice = {
-  title: string;
-  message: string;
-  detail: string;
   errorCode: GameSetupErrorCode;
+  detailKind: GameSetupStartupNoticeDetailKind;
+  /** 仅 detailKind === "command_error" 时可能存在，为后端透传消息。 */
+  backendDetail: string | null;
 };

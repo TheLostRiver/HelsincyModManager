@@ -1,16 +1,22 @@
 import { CheckCircle2, CircleDashed, Play } from "lucide-react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { GameDirectoryActions } from "../game-setup/GameDirectoryActions";
 import { GameDirectoryCandidateList } from "../game-setup/GameDirectoryCandidateList";
 import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
+import { gameSetupCopy } from "../game-setup/gameSetupCopy";
+import { messageForError } from "../game-setup/gameSetupViewModel";
 import type { GamePrerequisiteLoadState } from "../game-setup/gamePrerequisiteTypes";
 import type { GameDirectoryCandidate, GameSetupStatus } from "../game-setup/gameSetupTypes";
+import { gameLaunchCopy } from "../game-launch/gameLaunchCopy";
+import { messageForGameLaunchOutcome, type GameLaunchOutcome } from "../game-launch/useGameLaunch";
+import type { GameLaunchErrorCode } from "../game-launch/gameLaunchTypes";
+import { dashboardCopy, type DashboardCopy } from "./dashboardCopy";
 import { supportCards } from "./dashboardData";
-
-const launchBlockedDescription = "配置游戏目录后即可启动。";
 
 type DashboardLaunchState = {
   isLaunchingGame: boolean;
-  message: string | null;
+  outcome: GameLaunchOutcome | null;
+  errorCode: GameLaunchErrorCode | null;
 };
 
 type DashboardHeroCardProps = {
@@ -40,9 +46,14 @@ export function DashboardHeroCard({
   onRefreshPrerequisites,
   onScanSteam,
 }: DashboardHeroCardProps) {
-  const copy = heroCopyForStatus(status, actionMessage);
+  const { locale } = useI18n();
+  const heroCopyDict = resolveCopy(dashboardCopy, locale);
+  const setupErrors = resolveCopy(gameSetupCopy, locale).errors;
+  const launchCopyDict = resolveCopy(gameLaunchCopy, locale);
+  const copy = heroCopyForStatus(status, actionMessage, heroCopyDict, setupErrors);
   const isLaunchReady = status.kind === "configured";
-  const launchCopy = launchCopyForStatus(status);
+  const launchCopy = launchCopyForStatus(status, heroCopyDict.hero.launchStates);
+  const launchMessage = messageForGameLaunchOutcome(launchState.outcome, launchState.errorCode, launchCopyDict);
   const LaunchStatusIcon = isLaunchReady ? CheckCircle2 : CircleDashed;
 
   return (
@@ -72,7 +83,7 @@ export function DashboardHeroCard({
       <div
         className={`launch-action-card${isLaunchReady ? "" : " is-disabled"}`}
         role="group"
-        aria-label="游戏启动"
+        aria-label={heroCopyDict.hero.launchGroupAria}
         data-tour-id="dashboard.launch-game"
       >
         <div className={`launch-action-copy${isLaunchReady ? "" : " is-muted"}`}>
@@ -97,11 +108,11 @@ export function DashboardHeroCard({
           <span className="launch-action-button__icon" aria-hidden="true">
             <Play size={17} fill="currentColor" />
           </span>
-          <span>{launchState.isLaunchingGame ? "正在启动" : "启动游戏"}</span>
+          <span>{launchState.isLaunchingGame ? heroCopyDict.hero.launching : heroCopyDict.hero.launchButton}</span>
         </button>
-        {launchState.message ? (
+        {launchMessage ? (
           <p className="launch-status-note" role="status">
-            {launchState.message}
+            {launchMessage}
           </p>
         ) : null}
       </div>
@@ -120,14 +131,18 @@ export function DashboardHeroCard({
         tourId="dashboard.prerequisites"
       />
 
-      <div className="support-grid" aria-label="支持信息">
+      <div className="support-grid" aria-label={heroCopyDict.hero.supportAria}>
         {supportCards.map((card) => (
-          <article className="support-card group" key={card.label}>
+          <article className="support-card group" key={card.id}>
             <div className="support-card-header">
               <card.icon size={16} color={card.iconColor} strokeWidth={2.1} />
-              <span>{card.label}</span>
+              <span>
+                {"labelKey" in card ? heroCopyDict.supportCards[card.labelKey] : card.label}
+              </span>
             </div>
-            <strong>{card.value}</strong>
+            <strong>
+              {"valueKey" in card ? heroCopyDict.supportCards[card.valueKey] : card.value}
+            </strong>
           </article>
         ))}
       </div>
@@ -135,70 +150,81 @@ export function DashboardHeroCard({
   );
 }
 
-function launchCopyForStatus(status: GameSetupStatus) {
+function launchCopyForStatus(status: GameSetupStatus, copy: DashboardCopy["hero"]["launchStates"]) {
   if (status.kind === "configured") {
     return {
-      status: "已准备就绪",
-      description: "当前配置档可用，游戏目录已通过校验。",
+      status: copy.readyStatus,
+      description: copy.readyDescription,
     };
   }
 
   if (status.kind === "validating") {
     return {
-      status: "等待目录校验",
-      description: "目录校验完成后即可启动。",
+      status: copy.validatingStatus,
+      description: copy.validatingDescription,
     };
   }
 
   if (status.kind === "invalid") {
     return {
-      status: "需要重新选择目录",
-      description: launchBlockedDescription,
+      status: copy.invalidStatus,
+      description: copy.blockedDescription,
     };
   }
 
   return {
-    status: "等待目录配置",
-    description: launchBlockedDescription,
+    status: copy.notConfiguredStatus,
+    description: copy.blockedDescription,
   };
 }
 
-function heroCopyForStatus(status: GameSetupStatus, actionMessage: string | null) {
+function heroCopyForStatus(
+  status: GameSetupStatus,
+  actionMessage: string | null,
+  copyDict: DashboardCopy,
+  setupErrors: Parameters<typeof messageForError>[1],
+) {
+  const copy = copyDict.hero.setupStates;
+
   if (status.kind === "configured") {
     return {
-      badge: "目录已配置",
+      badge: copy.configuredBadge,
       badgeTone: "success",
       dotClass: "success-dot",
       title: status.displayName,
-      description: `当前目录：${status.pathLabel}`,
+      description: copy.configuredDescription(status.pathLabel),
     };
   }
 
   if (status.kind === "validating") {
     return {
-      badge: "正在校验",
+      badge: copy.validatingBadge,
       badgeTone: "warning",
       dotClass: "warning-dot",
-      title: "正在验证游戏目录",
-      description: "Helsincy 正在确认所选目录是否包含 MHW:I 可执行文件。",
+      title: copy.validatingTitle,
+      description: copy.validatingDescription,
     };
   }
 
   if (status.kind === "invalid") {
     return {
-      badge: "校验失败",
+      badge: copy.invalidBadge,
       badgeTone: "danger",
       dotClass: "danger-dot",
-      title: "目录校验未通过",
-      description: status.message || actionMessage || "请选择正确的游戏安装目录。",
+      title: copy.invalidTitle,
+      description:
+        status.backendMessage
+        || messageForError(status.errorCode, setupErrors)
+        || actionMessage
+        || copy.invalidFallbackDescription,
     };
   }
 
   return {
-    badge: "目录未配置",
+    badge: copy.notConfiguredBadge,
     badgeTone: "warning",
     dotClass: "warning-dot",
-    title: "未找到游戏目录",
-    description: "需要先识别《怪物猎人：世界 冰原》的安装目录，才能导入和安装 Mod。",
+    title: copy.notConfiguredTitle,
+    description: copy.notConfiguredDescription,
   };
 }
