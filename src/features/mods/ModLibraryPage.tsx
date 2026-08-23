@@ -119,6 +119,7 @@ import {
   analyzeImportedModReplacement,
   listReplacementTargets,
 } from "../replacements/replacementApi";
+import { resolveReplacementTargetNames } from "../replacements/replacementTargetNames";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -456,10 +457,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               modId,
               retargetable: analysis.retargetable,
               installedTargetId: analysis.installedTargetId ?? null,
-              targets: targets.map(({ id, displayName, secondaryName }) => ({
+              targets: targets.map(({ id, displayNames }) => ({
                 id,
-                displayName,
-                secondaryName,
+                ...resolveReplacementTargetNames(displayNames, locale),
               })),
             };
           } catch {

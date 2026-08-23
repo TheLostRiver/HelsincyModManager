@@ -70,9 +70,9 @@ pub struct ReplacementTargetDto {
     pub id: String,
     pub game_id: String,
     pub target_type: String,
-    pub display_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub secondary_name: Option<String>,
+    /// 全语言展示名（locale -> name）；键集即该游戏的名称 locale 能力声明，
+    /// 展示投影与 fallback 链由前端按当前界面语言执行（I18N-08）。
+    pub display_names: std::collections::BTreeMap<String, String>,
     pub aliases: Vec<String>,
     pub internal_id: String,
 }
@@ -248,8 +248,10 @@ mod replacement_dto_tests {
             id: "mhw:armor:fatalis-alpha".to_owned(),
             game_id: "mhw".to_owned(),
             target_type: "armor".to_owned(),
-            display_name: "【精英‧龙α】服装".to_owned(),
-            secondary_name: Some("Fatalis Alpha +".to_owned()),
+            display_names: std::collections::BTreeMap::from([
+                ("zh_cn".to_owned(), "【精英‧龙α】服装".to_owned()),
+                ("en".to_owned(), "Fatalis Alpha +".to_owned()),
+            ]),
             aliases: vec!["黑龙".to_owned()],
             internal_id: "pl129_0000".to_owned(),
         };
@@ -275,7 +277,11 @@ mod replacement_dto_tests {
         })
         .expect("serialize action");
         assert_eq!(target_value["gameId"], "mhw");
-        assert_eq!(target_value["secondaryName"], "Fatalis Alpha +");
+        // I18N-08：DTO 携带全语言名称表，展示投影由前端按界面语言执行。
+        assert_eq!(target_value["displayNames"]["zh_cn"], "【精英‧龙α】服装");
+        assert_eq!(target_value["displayNames"]["en"], "Fatalis Alpha +");
+        assert!(target_value.get("displayName").is_none());
+        assert!(target_value.get("secondaryName").is_none());
         // catalogScope 随 developer seed 退役（WR-05），不得再回到 DTO 契约。
         assert!(target_value.get("catalogScope").is_none());
         assert!(target_value.get("metadata").is_none());
@@ -350,8 +356,10 @@ mod replacement_dto_tests {
                 id: "mhw:armor:fatalis-alpha".to_owned(),
                 game_id: "mhw".to_owned(),
                 target_type: "armor".to_owned(),
-                display_name: "Target".to_owned(),
-                secondary_name: None,
+                display_names: std::collections::BTreeMap::from([(
+                    "en".to_owned(),
+                    "Target".to_owned(),
+                )]),
                 aliases: Vec::new(),
                 internal_id: "pl129_0000".to_owned(),
             },
