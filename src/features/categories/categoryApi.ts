@@ -24,7 +24,7 @@ export type UpdateCategoryInput = {
 const CATEGORY_DEV_STORAGE_KEY = "hmm.category.devStore.v1";
 
 // 浏览器预览环境的种子分类（mock 内容不翻译），见 categoriesPreviewData.ts。
-import { CATEGORY_DEV_SEED } from "./categoriesPreviewData";
+import { CATEGORY_DEV_SEED } from "./categoriesPreviewData.ts";
 
 let categoryDevStore: CategoryItem[] | null = null;
 let nextCategoryDevId = 1;

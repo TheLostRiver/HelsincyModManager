@@ -37,6 +37,8 @@ import {
   type RefObject,
 } from "react";
 import { FeedbackPortal } from "../feedback/FeedbackProvider";
+import { resolveCopy, useI18n } from "../i18n";
+import { tourOverlayCopy } from "./tourOverlayCopy";
 import { getFocusableElements } from "../feedback/focusTrap";
 import { useModalFocusTrap } from "../feedback/useModalFocusTrap";
 import { shouldDockTourPanel } from "./tourGeometry";
@@ -55,7 +57,7 @@ const EMPTY_TOUR_STEP: TourStep = {
   id: "tour-step-unavailable",
   title: "",
   description: "",
-  primaryLabel: "关闭引导",
+  primaryLabel: "",
   interaction: "blocked",
   advance: { kind: "terminal" },
 };
@@ -77,6 +79,8 @@ export function TourOverlay({
   onTargetActivate,
   onFinish,
 }: TourOverlayProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(tourOverlayCopy, locale);
   const stepIndex = steps.length === 0
     ? 0
     : Math.min(Math.max(requestedStepIndex, 0), steps.length - 1);
@@ -329,8 +333,8 @@ export function TourOverlay({
                 <button
                   type="button"
                   className="tour-panel__icon-button"
-                  aria-label="退出新手引导"
-                  title="退出新手引导"
+                  aria-label={copy.exitAria}
+                  title={copy.exitAria}
                   onClick={() => requestFinish("skipped")}
                 >
                   <X size={18} />
@@ -357,7 +361,7 @@ export function TourOverlay({
                 {isTargetPending ? (
                   <div className="tour-panel__pending" role="status">
                     <LoaderCircle size={17} aria-hidden="true" />
-                    <span>正在定位界面目标...</span>
+                    <span>{copy.locatingTarget}</span>
                   </div>
                 ) : null}
 
@@ -365,14 +369,14 @@ export function TourOverlay({
                   <div className="tour-panel__target-unavailable" role="status">
                     <RefreshCw size={17} aria-hidden="true" />
                     <div>
-                      <strong>当前页面没有可高亮的对应区域</strong>
+                      <strong>{copy.targetUnavailableTitle}</strong>
                       <span>
                         {isAwaitingRouteChange
-                          ? "可以重新定位；若页面入口尚未开放，请退出引导后先完成前置设置。"
-                          : "可以重新定位，或跳过此项继续查看后续功能。"}
+                          ? copy.targetUnavailableRouteHint
+                          : copy.targetUnavailableSkipHint}
                       </span>
                     </div>
-                    <button type="button" onClick={targetState.retry}>重新定位</button>
+                    <button type="button" onClick={targetState.retry}>{copy.relocate}</button>
                   </div>
                 ) : null}
 
@@ -386,12 +390,12 @@ export function TourOverlay({
 
               <footer className="tour-panel__footer">
                 <strong className="tour-panel__counter">{stepIndex + 1} / {steps.length}</strong>
-                <div className="tour-panel__navigation" aria-label="引导步骤">
+                <div className="tour-panel__navigation" aria-label={copy.navigationAria}>
                   <button
                     type="button"
                     className="tour-panel__icon-button"
-                    aria-label="上一步"
-                    title="上一步"
+                    aria-label={copy.previous}
+                    title={copy.previous}
                     disabled={!canGoPrevious}
                     onClick={goPrevious}
                   >
@@ -400,8 +404,8 @@ export function TourOverlay({
                   <button
                     type="button"
                     className="tour-panel__icon-button"
-                    aria-label="下一步"
-                    title="下一步"
+                    aria-label={copy.next}
+                    title={copy.next}
                     disabled={step.advance.kind !== "controls" || isTargetPending}
                     onClick={goNext}
                   >
@@ -413,7 +417,7 @@ export function TourOverlay({
                   className="tour-panel__exit-button"
                   onClick={() => requestFinish("skipped")}
                 >
-                  退出引导
+                  {copy.exit}
                 </button>
                 {isAwaitingRouteChange ? (
                   <span className="tour-panel__interaction-hint" role="status">
@@ -429,7 +433,7 @@ export function TourOverlay({
                     onClick={goNext}
                   >
                     {stepIndex === 0 ? <Rocket size={17} /> : step.advance.kind === "terminal" ? <Check size={17} /> : null}
-                    <span>{isTargetUnavailable ? "跳过此项" : step.primaryLabel}</span>
+                    <span>{isTargetUnavailable ? copy.skipStep : step.primaryLabel || copy.emptyStepPrimary}</span>
                     {stepIndex > 0 && step.advance.kind === "controls" ? <ArrowRight size={17} /> : null}
                   </button>
                 )}
