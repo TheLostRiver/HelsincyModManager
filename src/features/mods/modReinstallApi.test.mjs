@@ -109,10 +109,11 @@ test("reinstall workflow matches task id and phase then refetches durable facts 
 
 test("post-commit failure copy is fail-closed and never offers a v1 rollback shortcut", () => {
   const source = readSource("src/features/mods/ReinstallPlanPreviewPanel.tsx");
+  const copySource = readSource("src/features/mods/modReinstallCopy.ts");
 
   assert.match(source, /committed_cleanup_pending/);
   assert.match(source, /cleanup_pending/);
-  assert.match(source, /新版本已提交/);
-  assert.doesNotMatch(source, /回滚到\s*(?:v1|旧版本)|rollback.*v1/i);
+  assert.match(copySource, /新版本已提交/);
+  assert.doesNotMatch(copySource, /回滚到\s*(?:v1|旧版本)|rollback.*v1/i);
   assert.doesNotMatch(source, /安装状态已刷新/);
 });

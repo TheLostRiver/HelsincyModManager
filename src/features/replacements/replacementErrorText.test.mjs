@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { replacementCopy } from "./replacementCopy.ts";
 import {
   WEAPON_REPLACEMENT_ERROR_CODES,
   isWeaponReplacementErrorCode,
@@ -9,20 +10,28 @@ import {
 } from "./replacementErrorText.ts";
 
 const FALLBACK = "替换目标信息读取失败";
+const LOCALES = ["zh_cn", "en", "ja"];
+const zhErrors = replacementCopy.zh_cn.errors;
 
-test("每个武器稳定码都有具体文案，不落回兜底提示", () => {
-  for (const code of WEAPON_REPLACEMENT_ERROR_CODES) {
-    const message = replacementErrorMessage({ code }, FALLBACK);
-    assert.notEqual(message, FALLBACK, `${code} 缺少具体文案`);
-    assert.ok(message.length > 0);
+test("每个武器稳定码在三种语言下都有具体文案，不落回兜底提示", () => {
+  for (const locale of LOCALES) {
+    for (const code of WEAPON_REPLACEMENT_ERROR_CODES) {
+      const message = replacementErrorMessage({ code }, FALLBACK, replacementCopy[locale].errors);
+      assert.notEqual(message, FALLBACK, `${locale}/${code} 缺少具体文案`);
+      assert.ok(message.length > 0);
+    }
   }
 });
 
 test("武器码附带可复制的诊断码，通用流程错误不附带", () => {
-  const weapon = replacementErrorMessage({ code: "weapon_binary_format_invalid" }, FALLBACK);
+  const weapon = replacementErrorMessage({ code: "weapon_binary_format_invalid" }, FALLBACK, zhErrors);
   assert.ok(weapon.includes("（诊断码：weapon_binary_format_invalid）"));
 
-  const generic = replacementErrorMessage({ code: "replacement_target_already_selected" }, FALLBACK);
+  const generic = replacementErrorMessage(
+    { code: "replacement_target_already_selected" },
+    FALLBACK,
+    zhErrors,
+  );
   assert.ok(!generic.includes("诊断码"));
   assert.equal(generic, "当前目标已安装。");
 });
@@ -46,7 +55,7 @@ const FORBIDDEN_DETAIL_PATTERNS = [
 
 test("文案不回显路径、offset 或二进制内部字段", () => {
   for (const code of WEAPON_REPLACEMENT_ERROR_CODES) {
-    const message = replacementErrorMessage({ code }, FALLBACK);
+    const message = replacementErrorMessage({ code }, FALLBACK, zhErrors);
     for (const { pattern, label } of FORBIDDEN_DETAIL_PATTERNS) {
       assert.ok(!pattern.test(message), `${code} 回显了${label}：${message}`);
     }
@@ -74,10 +83,10 @@ test("脱敏断言本身有效——真回显了细节就会红", () => {
 });
 
 test("未知码与非错误对象回落到兜底文案", () => {
-  assert.equal(replacementErrorMessage({ code: "weapon_future_code" }, FALLBACK), FALLBACK);
-  assert.equal(replacementErrorMessage(new Error("boom"), FALLBACK), FALLBACK);
-  assert.equal(replacementErrorMessage(null, FALLBACK), FALLBACK);
-  assert.equal(replacementErrorMessage("weapon_unknown_part", FALLBACK), FALLBACK);
+  assert.equal(replacementErrorMessage({ code: "weapon_future_code" }, FALLBACK, zhErrors), FALLBACK);
+  assert.equal(replacementErrorMessage(new Error("boom"), FALLBACK, zhErrors), FALLBACK);
+  assert.equal(replacementErrorMessage(null, FALLBACK, zhErrors), FALLBACK);
+  assert.equal(replacementErrorMessage("weapon_unknown_part", FALLBACK, zhErrors), FALLBACK);
 });
 
 test("码提取与武器码判定", () => {
@@ -89,6 +98,6 @@ test("码提取与武器码判定", () => {
 });
 
 test("跨武器类型的目标给出可执行建议", () => {
-  const message = replacementErrorMessage({ code: "weapon_cross_family_target" }, FALLBACK);
+  const message = replacementErrorMessage({ code: "weapon_cross_family_target" }, FALLBACK, zhErrors);
   assert.ok(message.includes("请选择同一类武器作为目标。"));
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  batchModLifecycleCopy,
   getBatchAttemptStatusLabel,
   getBatchCapabilityUnavailableLabel,
   getBatchErrorLabel,
@@ -9,6 +10,8 @@ import {
   getBatchItemStatusLabel,
   getBatchOperationLabel,
 } from "./batchModLifecycleCopy.ts";
+
+const zhBatch = batchModLifecycleCopy.zh_cn;
 
 function readSource(path) {
   return readFileSync(path, "utf8");
@@ -27,21 +30,21 @@ test("batch preview panel exposes a modal with policy choice and blocked confirm
   assert.match(source, /type="radio"/);
   assert.match(source, /stop_on_failure/);
   assert.match(source, /continue_on_item_failure/);
-  assert.match(source, /遇到失败即停止/);
-  assert.match(source, /跳过失败项继续/);
+  assert.match(source, /panelCopy\.stopOnFailure/);
+  assert.match(source, /panelCopy\.continueOnFailure/);
   assert.match(source, /preview\.previewToken === null/);
   assert.match(source, /blockedItemCount > 0/);
   assert.match(source, /target-selection/);
   assert.match(source, /onReplacementTargetChange/);
   assert.match(source, /onPreviewWithReplacementTargets/);
   assert.match(source, /type="radio"/);
-  assert.match(source, /getBatchOperationLabel\(operation\)/);
-  assert.match(source, /aria-label="批量计划逐项明细"/);
-  assert.match(source, /已安装版本/);
-  assert.match(source, /候选展示版本/);
+  assert.match(source, /getBatchOperationLabel\(operation, bCopy\.operations\)/);
+  assert.match(source, /aria-label=\{panelCopy\.itemsAria\}/);
+  assert.match(source, /panelCopy\.installedRevision/);
+  assert.match(source, /panelCopy\.candidateDisplayRevision/);
   assert.match(source, /item\.layer\.name/);
   assert.match(source, /item\.layer\.priority/);
-  assert.match(source, /切换至/);
+  assert.match(source, /panelCopy\.switchTo\(/);
   assert.match(source, /replacementTargets/);
   assert.doesNotMatch(source, /nativePC|targetPath|installPath|cachePath|sandboxPath|convertFileSrc/i);
 });
@@ -72,24 +75,24 @@ test("batch result panel gates retry and pagination on backend facts", () => {
   assert.match(source, /result\.status === "completed_with_errors"/);
   assert.match(source, /result\.status === "failed"/);
   assert.match(source, /retryAvailableByStatus &&/);
-  assert.match(source, /重试失败项/);
+  assert.match(source, /panelCopy\.retryFailed/);
   assert.match(source, /canLoadMore = result\.nextCursor !== null/);
-  assert.match(source, /加载更多/);
-  assert.match(source, /getBatchItemStatusLabel\(item\.status\)/);
-  assert.match(source, /getBatchReasonCodeLabel\(item\.reasonCode\)/);
+  assert.match(source, /panelCopy\.loadMore/);
+  assert.match(source, /getBatchItemStatusLabel\(item\.status, bCopy\.itemStatus\)/);
+  assert.match(source, /getBatchReasonCodeLabel\(item\.reasonCode, bCopy\.reasonCodes\)/);
   assert.match(source, /evidenceHealthDegraded/);
   assert.doesNotMatch(source, /nativePC|targetPath|installPath|cachePath|sandboxPath|convertFileSrc/i);
 });
 
 test("batch copy maps stable codes without raw backend text", () => {
-  assert.equal(getBatchOperationLabel("install"), "批量安装");
-  assert.equal(getBatchOperationLabel("uninstall"), "批量卸载");
-  assert.equal(getBatchOperationLabel("reinstall"), "批量重装");
-  assert.equal(getBatchItemStatusLabel("succeeded"), "成功");
-  assert.equal(getBatchItemStatusLabel("recovery_required"), "需要恢复");
-  assert.equal(getBatchItemStatusLabel("skipped"), "已跳过");
-  assert.equal(getBatchAttemptStatusLabel("completed_with_errors"), "部分成功");
-  assert.equal(getBatchAttemptStatusLabel("interrupted"), "已中断");
+  assert.equal(getBatchOperationLabel("install", zhBatch.operations), "批量安装");
+  assert.equal(getBatchOperationLabel("uninstall", zhBatch.operations), "批量卸载");
+  assert.equal(getBatchOperationLabel("reinstall", zhBatch.operations), "批量重装");
+  assert.equal(getBatchItemStatusLabel("succeeded", zhBatch.itemStatus), "成功");
+  assert.equal(getBatchItemStatusLabel("recovery_required", zhBatch.itemStatus), "需要恢复");
+  assert.equal(getBatchItemStatusLabel("skipped", zhBatch.itemStatus), "已跳过");
+  assert.equal(getBatchAttemptStatusLabel("completed_with_errors", zhBatch.attemptStatus), "部分成功");
+  assert.equal(getBatchAttemptStatusLabel("interrupted", zhBatch.attemptStatus), "已中断");
 
   const codes = [
     "batch_no_applicable_items",
@@ -112,14 +115,17 @@ test("batch copy maps stable codes without raw backend text", () => {
     "batch_internal_error",
   ];
   for (const code of codes) {
-    const label = getBatchErrorLabel(code);
+    const label = getBatchErrorLabel(code, zhBatch);
     assert.ok(label.length > 0, `missing copy for ${code}`);
     assert.ok(!label.includes(":"), `${code} copy must not embed backend text`);
     assert.ok(!label.includes("\\"), `${code} copy must not embed paths`);
   }
-  assert.equal(getBatchErrorLabel("unknown_code"), "批量操作失败");
-  assert.equal(getBatchExcludedReasonLabel("already_installed"), "已安装，不参与本次安装");
-  assert.equal(getBatchExcludedReasonLabel("installed_revision_unavailable"), "已安装但缺少版本信息（旧格式清单），无法参与");
+  assert.equal(getBatchErrorLabel("unknown_code", zhBatch), "批量操作失败");
+  assert.equal(getBatchExcludedReasonLabel("already_installed", zhBatch), "已安装，不参与本次安装");
+  assert.equal(
+    getBatchExcludedReasonLabel("installed_revision_unavailable", zhBatch),
+    "已安装但缺少版本信息（旧格式清单），无法参与",
+  );
 });
 
 test("ModLibraryPage dispatches lifecycle flows by explicit selection mode", () => {
@@ -187,20 +193,26 @@ test("batch capability is backend-owned, fail-closed, and mapped to product copy
   assert.doesNotMatch(hookSource, /HMM_SANDBOX_DATA_DIR|process\.env|import\.meta\.env/);
 
   assert.equal(
-    getBatchCapabilityUnavailableLabel({
-      previewAvailable: false,
-      writeAvailable: false,
-      unavailableReasonCode: "sandbox_batch_production_forbidden",
-    }),
+    getBatchCapabilityUnavailableLabel(
+      {
+        previewAvailable: false,
+        writeAvailable: false,
+        unavailableReasonCode: "sandbox_batch_production_forbidden",
+      },
+      zhBatch.capability,
+    ),
     "当前版本仅允许在受控测试环境执行批量操作",
   );
   assert.equal(
-    getBatchCapabilityUnavailableLabel({
-      previewAvailable: false,
-      writeAvailable: false,
-      unavailableReasonCode: "batch_capability_unavailable",
-    }),
+    getBatchCapabilityUnavailableLabel(
+      {
+        previewAvailable: false,
+        writeAvailable: false,
+        unavailableReasonCode: "batch_capability_unavailable",
+      },
+      zhBatch.capability,
+    ),
     "无法确认批量操作权限，请刷新后重试",
   );
-  assert.ok(getBatchCapabilityUnavailableLabel(null).length > 0);
+  assert.ok(getBatchCapabilityUnavailableLabel(null, zhBatch.capability).length > 0);
 });

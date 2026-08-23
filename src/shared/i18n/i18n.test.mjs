@@ -75,6 +75,11 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
     "src/features/mods/modLibraryCopy.ts",
     "src/features/mods/modImportCopy.ts",
     "src/features/mods/external-import/externalImportCopy.ts",
+    "src/features/mods/modDetailDialogCopy.ts",
+    "src/features/mods/modLifecycleCopy.ts",
+    "src/features/mods/modReinstallCopy.ts",
+    "src/features/mods/batch-lifecycle/batchModLifecycleCopy.ts",
+    "src/features/replacements/replacementCopy.ts",
   ]) {
     const source = readSource(relativePath);
     for (const locale of ["zh_cn", "en", "ja"]) {
@@ -128,6 +133,19 @@ test("试点页与设置页内嵌面板去注释后不再包含硬编码中文�
     "src/features/mods/external-import/useExternalImportResultWorkflow.ts",
     "src/features/mods/external-import/useExternalImportSelectionWorkflow.ts",
     "src/features/mods/external-import/useExternalImportTaskProgress.ts",
+    "src/features/mods/ModDetailDialog.tsx",
+    "src/features/mods/ModLifecycleFeedback.tsx",
+    "src/features/mods/modLifecycleFeedbackState.ts",
+    "src/features/mods/modInstallTaskState.ts",
+    "src/features/mods/modPrerequisiteDecision.ts",
+    "src/features/mods/ReinstallPlanPreviewPanel.tsx",
+    "src/features/mods/useModReinstallWorkflow.ts",
+    "src/features/mods/modReinstallTaskState.ts",
+    "src/features/mods/batch-lifecycle/BatchModLifecyclePreviewPanel.tsx",
+    "src/features/mods/batch-lifecycle/BatchModLifecycleResultPanel.tsx",
+    "src/features/replacements/ReplacementTargetPanel.tsx",
+    "src/features/replacements/replacementWorkflow.ts",
+    "src/features/replacements/replacementErrorText.ts",
   ]) {
     const source = stripComments(readSource(relativePath));
     const hanMatches = source.match(/[一-鿿][^\n]{0,40}/gu) ?? [];

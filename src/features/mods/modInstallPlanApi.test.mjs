@@ -170,7 +170,7 @@ test("install plan types expose preview DTO without filesystem paths", () => {
 
 test("install plan sheet renders backend prerequisite decision without rebuilding rules", () => {
   const panel = readSource("src/features/mods/ModLifecycleFeedback.tsx");
-  const labels = readSource("src/features/mods/modPrerequisiteDecision.ts");
+  const labels = readSource("src/features/mods/modLifecycleCopy.ts");
 
   assert.match(panel, /plan\.prerequisiteDecision/);
   assert.match(panel, /getPrerequisiteDecisionMessage/);
@@ -212,7 +212,10 @@ test("mod library page starts install task and tracks only matching task progres
   assert.match(source, /pendingInstallProgressEventsRef/);
   assert.match(source, /pendingInstallProgressEventsRef\.current\.set\(event\.payload\.taskId,\s*event\.payload\)/);
   assert.match(source, /pendingInstallProgressEventsRef\.current\.get\(task\.taskId\)/);
-  assert.match(source, /nextManagedInstallTaskStateFromProgress\(runningState,\s*pendingProgressEvent\)/);
+  assert.match(
+    source,
+    /nextManagedInstallTaskStateFromProgress\(\s*runningState,\s*pendingProgressEvent,/,
+  );
   assert.match(source, /canInstallSelected/);
   assert.match(source, /install\.queued/);
   assert.match(source, /install\.failed/);
@@ -290,9 +293,10 @@ test("mod library page blocks install and uninstall actions during unsafe recove
   assert.match(availabilitySource, /case "install":[\s\S]*?canInstallSelection \? undefined/);
   assert.match(availabilitySource, /case "reinstall":[\s\S]*?canReinstallSelection \? undefined/);
   assert.match(availabilitySource, /case "uninstall":[\s\S]*?canUninstallSelection \? undefined/);
-  assert.match(feedbackSource, /"committed_cleanup_pending"/);
-  assert.match(feedbackSource, /"cleanup_pending"/);
-  assert.match(feedbackSource, /重装待收尾/);
-  assert.match(feedbackSource, /恢复待清理/);
+  const lifecycleCopySource = readSource("src/features/mods/modLifecycleCopy.ts");
+  assert.match(lifecycleCopySource, /committed_cleanup_pending: "重装待收尾"/);
+  assert.match(lifecycleCopySource, /cleanup_pending: "恢复待清理"/);
+  assert.match(feedbackSource, /planSheet\.recoveryTitles\[status\]/);
+  assert.match(feedbackSource, /planSheet\.recoveryMessages\[status\]/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });

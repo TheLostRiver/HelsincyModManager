@@ -18,11 +18,15 @@ import {
   renderModSelectionNotice,
   type ModLibraryCopy,
 } from "./modLibraryCopy";
+import { modLifecycleCopy } from "./modLifecycleCopy";
 import { useBatchModLifecycleWorkflow } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
 import {
   useBatchModLifecycleCapability,
 } from "./batch-lifecycle/useBatchModLifecycleCapability.ts";
-import { getBatchCapabilityUnavailableLabel } from "./batch-lifecycle/batchModLifecycleCopy.ts";
+import {
+  batchModLifecycleCopy,
+  getBatchCapabilityUnavailableLabel,
+} from "./batch-lifecycle/batchModLifecycleCopy.ts";
 import {
   InstallPlanDetailSheet,
   ManagedInstallTaskFeedback,
@@ -311,6 +315,11 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanDetailSheet
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(modLibraryCopy, locale);
+  const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
+  const batchCopy = resolveCopy(batchModLifecycleCopy, locale);
+  // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
+  const lifecycleCopyRef = useRef(lifecycleCopy);
+  lifecycleCopyRef.current = lifecycleCopy;
   const { activeProfile, activeProfileId } = useActiveProfile();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ModLibraryFilter>(allLibraryFilter);
@@ -380,6 +389,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const batchCapability = useBatchModLifecycleCapability();
   const batchCapabilityUnavailableReason = getBatchCapabilityUnavailableLabel(
     batchCapability.capability,
+    batchCopy.capability,
   );
   const batchPreviewUnavailableReason =
     batchCapability.status === "loading" || !batchCapability.capability?.previewAvailable
@@ -792,7 +802,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           failClosedModInstallSummary(items, terminalTask.modId));
       }
 
-      setLifecycleToast(getManagedInstallTerminalToast(terminalTask, terminalRefresh));
+      setLifecycleToast(getManagedInstallTerminalToast(terminalTask, terminalRefresh, lifecycleCopyRef.current.terminalToasts));
     };
 
     void refreshTerminalFacts();
@@ -833,7 +843,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       }
 
       setTrackedInstallTaskState((current) => {
-        return nextManagedInstallTaskStateFromProgress(current, event.payload);
+        return nextManagedInstallTaskStateFromProgress(current, event.payload, lifecycleCopyRef.current.installTask);
       });
     }).then((unlisten) => {
       if (disposed) {
@@ -1165,7 +1175,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           }
 
           return pendingProgressEvent
-            ? nextManagedInstallTaskStateFromProgress(runningState, pendingProgressEvent)
+            ? nextManagedInstallTaskStateFromProgress(
+                runningState,
+                pendingProgressEvent,
+                lifecycleCopyRef.current.installTask,
+              )
             : runningState;
         });
       })
@@ -1285,7 +1299,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           }
 
           return pendingProgressEvent
-            ? nextManagedInstallTaskStateFromProgress(runningState, pendingProgressEvent)
+            ? nextManagedInstallTaskStateFromProgress(
+                runningState,
+                pendingProgressEvent,
+                lifecycleCopyRef.current.installTask,
+              )
             : runningState;
         });
       })

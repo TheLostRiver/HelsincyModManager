@@ -1,12 +1,14 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, X } from "lucide-react";
 import { useId, useRef } from "react";
 import { useModalFocusTrap } from "../../../shared/feedback/useModalFocusTrap";
+import { resolveCopy, useI18n } from "../../../shared/i18n";
 import type {
   BatchModLifecycleExecutionPolicy,
   BatchModLifecyclePreviewDto,
   BatchModLifecycleRequestDto,
 } from "./batchModLifecycleTypes";
 import {
+  batchModLifecycleCopy,
   getBatchErrorLabel,
   getBatchExcludedReasonLabel,
   getBatchOperationLabel,
@@ -40,25 +42,27 @@ function operationOf(state: BatchModLifecycleWorkflowState): "install" | "uninst
 }
 
 function PreviewSummary({ preview }: { preview: BatchModLifecyclePreviewDto }) {
+  const { locale } = useI18n();
+  const panelCopy = resolveCopy(batchModLifecycleCopy, locale).previewPanel;
   const summary = preview.actionSummary;
   return (
-    <section className="batch-panel__summary" aria-label="批量计划摘要">
+    <section className="batch-panel__summary" aria-label={panelCopy.summaryAria}>
       <div className="batch-panel__summary-counts">
-        <span>共 {preview.readyItemCount + preview.blockedItemCount} 项</span>
-        <span>可执行 {preview.readyItemCount} 项</span>
-        {preview.blockedItemCount > 0 && <span>被阻止 {preview.blockedItemCount} 项</span>}
+        <span>{panelCopy.totalCount(preview.readyItemCount + preview.blockedItemCount)}</span>
+        <span>{panelCopy.readyCount(preview.readyItemCount)}</span>
+        {preview.blockedItemCount > 0 && <span>{panelCopy.blockedCount(preview.blockedItemCount)}</span>}
       </div>
       <div className="batch-panel__summary-actions">
-        <span>新增 {summary.added}</span>
-        <span>保留 {summary.retained}</span>
-        <span>替换 {summary.replaced}</span>
-        <span>过期 {summary.stale}</span>
-        <span>动作 {summary.actions}</span>
+        <span>{panelCopy.addedCount(summary.added)}</span>
+        <span>{panelCopy.retainedCount(summary.retained)}</span>
+        <span>{panelCopy.replacedCount(summary.replaced)}</span>
+        <span>{panelCopy.staleCount(summary.stale)}</span>
+        <span>{panelCopy.actionCount(summary.actions)}</span>
       </div>
       {preview.blockedItemCount > 0 && (
         <p className="batch-panel__blocked-note" role="status">
           <AlertTriangle size={14} aria-hidden="true" />
-          {preview.blockedItemCount} 项因版本或目标冲突被阻止；继续执行时将跳过这些项。
+          {panelCopy.blockedNote(preview.blockedItemCount)}
         </p>
       )}
     </section>
@@ -66,13 +70,15 @@ function PreviewSummary({ preview }: { preview: BatchModLifecyclePreviewDto }) {
 }
 
 function PreviewItems({ request }: { request: BatchModLifecycleRequestDto }) {
+  const { locale } = useI18n();
+  const panelCopy = resolveCopy(batchModLifecycleCopy, locale).previewPanel;
   const replacementTargetByModId = new Map(
     (request.replacementTargets ?? []).map((target) => [target.modId, target.targetId]),
   );
 
   return (
-    <section className="batch-panel__preview-items" aria-label="批量计划逐项明细">
-      <h3>逐项计划</h3>
+    <section className="batch-panel__preview-items" aria-label={panelCopy.itemsAria}>
+      <h3>{panelCopy.itemsTitle}</h3>
       <ul>
         {request.items.map((item) => (
           <li className="batch-panel__preview-item" key={item.modId}>
@@ -81,41 +87,41 @@ function PreviewItems({ request }: { request: BatchModLifecycleRequestDto }) {
               {item.operation === "install" && (
                 <>
                   <div>
-                    <dt>展示版本</dt>
+                    <dt>{panelCopy.displayRevision}</dt>
                     <dd>{item.revisionId}</dd>
                   </div>
                   <div>
-                    <dt>层级</dt>
+                    <dt>{panelCopy.layerLabel}</dt>
                     <dd>{item.layer.name}/{item.layer.priority}</dd>
                   </div>
                 </>
               )}
               {item.operation === "uninstall" && (
                 <div>
-                  <dt>已安装版本</dt>
+                  <dt>{panelCopy.installedRevision}</dt>
                   <dd>{item.expectedInstalledRevisionId}</dd>
                 </div>
               )}
               {item.operation === "reinstall" && (
                 <>
                   <div>
-                    <dt>已安装版本</dt>
+                    <dt>{panelCopy.installedRevision}</dt>
                     <dd>{item.installedRevisionId}</dd>
                   </div>
                   <div>
-                    <dt>候选展示版本</dt>
+                    <dt>{panelCopy.candidateDisplayRevision}</dt>
                     <dd>{item.candidateRevisionId}</dd>
                   </div>
                   <div>
-                    <dt>层级</dt>
+                    <dt>{panelCopy.layerLabel}</dt>
                     <dd>{item.layer.name}/{item.layer.priority}</dd>
                   </div>
                   <div>
-                    <dt>目标</dt>
+                    <dt>{panelCopy.targetLabel}</dt>
                     <dd>
                       {replacementTargetByModId.has(item.modId)
-                        ? `切换至 ${replacementTargetByModId.get(item.modId)}`
-                        : "保持当前目标"}
+                        ? panelCopy.switchTo(replacementTargetByModId.get(item.modId) ?? "")
+                        : panelCopy.keepCurrent}
                     </dd>
                   </div>
                 </>
@@ -138,6 +144,9 @@ export function BatchModLifecyclePreviewPanel({
   onConfirm,
   onClose,
 }: BatchModLifecyclePreviewPanelProps) {
+  const { locale } = useI18n();
+  const bCopy = resolveCopy(batchModLifecycleCopy, locale);
+  const panelCopy = bCopy.previewPanel;
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   useModalFocusTrap({
@@ -179,11 +188,11 @@ export function BatchModLifecyclePreviewPanel({
         aria-labelledby={titleId}
       >
         <header className="batch-panel__header">
-          <h2 id={titleId}>{getBatchOperationLabel(operation)}</h2>
+          <h2 id={titleId}>{getBatchOperationLabel(operation, bCopy.operations)}</h2>
           <button
             type="button"
             className="batch-panel__close"
-            aria-label="关闭"
+            aria-label={panelCopy.closeAria}
             onClick={onClose}
           >
             <X size={16} aria-hidden="true" />
@@ -194,24 +203,22 @@ export function BatchModLifecyclePreviewPanel({
           {loading && (
             <div className="batch-panel__loading" role="status">
               <LoaderCircle size={18} className="batch-panel__spinner" aria-hidden="true" />
-              正在生成批量计划…
+              {panelCopy.generating}
             </div>
           )}
 
           {errorCode !== null && (
             <div className="batch-panel__error" role="alert">
               <AlertTriangle size={16} aria-hidden="true" />
-              {getBatchErrorLabel(errorCode)}
+              {getBatchErrorLabel(errorCode, bCopy)}
             </div>
           )}
 
           {targetSelection !== null && (
-            <section className="batch-panel__target-selection" aria-label="批量重装目标选择">
+            <section className="batch-panel__target-selection" aria-label={panelCopy.targetSelectionAria}>
               <div>
-                <h3>选择需要切换的外观目标</h3>
-                <p>
-                  同一版本的重装需要为每个可重定向 Mod 选择一个不同于当前目标的目标。
-                </p>
+                <h3>{panelCopy.targetSelectionTitle}</h3>
+                <p>{panelCopy.targetSelectionHint}</p>
               </div>
               {targetSelection.targetFacts.map((facts) => {
                 const availableTargets = facts.targets.filter(
@@ -222,10 +229,10 @@ export function BatchModLifecyclePreviewPanel({
                     <legend>{facts.modId}</legend>
                     {!facts.retargetable || availableTargets.length === 0 ? (
                       <p className="batch-panel__target-unavailable" role="alert">
-                        当前 Mod 没有可用的目标切换选项，无法参加本次同版本重装。
+                        {panelCopy.targetUnavailable}
                       </p>
                     ) : (
-                      <div className="batch-panel__target-options" role="radiogroup" aria-label={`${facts.modId} 的替换目标`}>
+                      <div className="batch-panel__target-options" role="radiogroup" aria-label={panelCopy.targetGroupAria(facts.modId)}>
                         {availableTargets.map((target) => (
                           <label className="batch-panel__target-option" key={target.id}>
                             <input
@@ -254,23 +261,23 @@ export function BatchModLifecyclePreviewPanel({
               <PreviewSummary preview={preview} />
               <PreviewItems request={workflowState.request} />
               {resolution.excluded.length > 0 && (
-                <section className="batch-panel__excluded" aria-label="不参与本次操作的项">
-                  <h3>不参与本次操作的项</h3>
+                <section className="batch-panel__excluded" aria-label={panelCopy.excludedTitle}>
+                  <h3>{panelCopy.excludedTitle}</h3>
                   <ul>
                     {resolution.excluded.map(({ modId, reason }) => (
                       <li key={modId}>
-                        {modId}：{getBatchExcludedReasonLabel(reason)}
+                        {panelCopy.excludedItem(modId, getBatchExcludedReasonLabel(reason, bCopy))}
                       </li>
                     ))}
                   </ul>
                 </section>
               )}
               {resolution.unresolvable.length > 0 && (
-                <section className="batch-panel__excluded" aria-label="无法解析的项">
-                  <h3>无法解析版本的项</h3>
+                <section className="batch-panel__excluded" aria-label={panelCopy.unresolvableAria}>
+                  <h3>{panelCopy.unresolvableTitle}</h3>
                   <ul>
                     {resolution.unresolvable.map((modId) => (
-                      <li key={modId}>{modId}：无法读取版本信息</li>
+                      <li key={modId}>{panelCopy.unresolvableItem(modId)}</li>
                     ))}
                   </ul>
                 </section>
@@ -279,8 +286,8 @@ export function BatchModLifecyclePreviewPanel({
           )}
 
           {(preview !== null || targetSelection !== null) && (
-            <section className="batch-panel__policy" aria-label="执行策略">
-              <h3>执行策略</h3>
+            <section className="batch-panel__policy" aria-label={panelCopy.policyTitle}>
+              <h3>{panelCopy.policyTitle}</h3>
               <label className="batch-panel__policy-option">
                 <input
                   type="radio"
@@ -288,7 +295,7 @@ export function BatchModLifecyclePreviewPanel({
                   checked={policy === "stop_on_failure"}
                   onChange={() => onPolicyChange("stop_on_failure")}
                 />
-                <span>遇到失败即停止（推荐）</span>
+                <span>{panelCopy.stopOnFailure}</span>
               </label>
               <label className="batch-panel__policy-option">
                 <input
@@ -297,7 +304,7 @@ export function BatchModLifecyclePreviewPanel({
                   checked={policy === "continue_on_item_failure"}
                   onChange={() => onPolicyChange("continue_on_item_failure")}
                 />
-                <span>跳过失败项继续</span>
+                <span>{panelCopy.continueOnFailure}</span>
               </label>
             </section>
           )}
@@ -305,7 +312,7 @@ export function BatchModLifecyclePreviewPanel({
 
         <footer className="batch-panel__footer">
           <button type="button" className="batch-panel__cancel" onClick={onClose}>
-            取消
+            {panelCopy.cancel}
           </button>
           {targetSelection !== null ? (
             <button
@@ -315,7 +322,7 @@ export function BatchModLifecyclePreviewPanel({
               onClick={onPreviewWithReplacementTargets}
             >
               <CheckCircle2 size={16} aria-hidden="true" />
-              生成批量预览
+              {panelCopy.generatePreview}
             </button>
           ) : (
             <button
@@ -325,7 +332,7 @@ export function BatchModLifecyclePreviewPanel({
               onClick={onConfirm}
             >
               <CheckCircle2 size={16} aria-hidden="true" />
-              确认并开始
+              {panelCopy.confirmStart}
             </button>
           )}
         </footer>
