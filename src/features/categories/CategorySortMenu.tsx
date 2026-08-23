@@ -1,5 +1,7 @@
 import { ArrowDownWideNarrow, Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { categoryCopy } from "./categoryCopy";
 import type { CategorySortMode } from "./categoryWorkflow";
 
 export type CategorySortOption = {
@@ -14,6 +16,8 @@ type CategorySortMenuProps = {
 };
 
 export function CategorySortMenu({ value, options, onChange }: CategorySortMenuProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(categoryCopy, locale);
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -102,12 +106,12 @@ export function CategorySortMenu({ value, options, onChange }: CategorySortMenuP
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={menuId}
-        aria-label="排序视图"
+        aria-label={copy.sort.menuAria}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={handleTriggerKeyDown}
       >
         <ArrowDownWideNarrow size={15} strokeWidth={2.2} aria-hidden="true" />
-        <span>{selectedOption?.label ?? "排序"}</span>
+        <span>{selectedOption?.label ?? copy.sort.fallbackLabel}</span>
         <ChevronDown
           size={15}
           strokeWidth={2.2}
@@ -117,7 +121,7 @@ export function CategorySortMenu({ value, options, onChange }: CategorySortMenuP
       </button>
 
       {open && (
-        <div className="category-sort-menu__popover" id={menuId} role="listbox" aria-label="排序视图">
+        <div className="category-sort-menu__popover" id={menuId} role="listbox" aria-label={copy.sort.menuAria}>
           {options.map((option) => {
             const selected = option.value === value;
 
